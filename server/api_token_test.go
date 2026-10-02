@@ -600,3 +600,50 @@ func TestACLSubstringInjectionNeedsEscaping(t *testing.T) {
 		t.Fatal("the grant itself must still pass its own URL")
 	}
 }
+
+// A token issued by an SSO identity keeps that identity for self-service: the
+// cluster-add authorization goes through the self-service rules, while a token
+// issued by a local account is refused like any non-SSO caller without the grants.
+func TestAPITokenKeepsSSOIdentityForSelfService(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	repman.Conf.Cloud18 = true
+	repman.Conf.Cloud18SelfServiceClusters = true
+	repman.Conf.Cloud18SelfServiceMaxClustersPerUser = 3
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	// A local owner's token is not an SSO identity (issued before the sponsor
+	// attach reloads the fixture's users).
+	local, err := repman.createAPITokenAs("alice", "Local", APITokenForm{Label: "ci", Grants: "db-show", Clusters: []string{"c1"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.OwnerAuthType != "" {
+		t.Fatalf("a local owner leaves the type empty: %+v", local)
+	}
+	if _, isSSO, _, status, _ := repman.clusterAddAuthorize(bearerRequest(local.Token, "/api/clusters/actions/add/blab")); isSSO || status != http.StatusForbidden {
+		t.Fatalf("a local owner's token without cluster-create must be refused: sso=%v status=%d", isSSO, status)
+	}
+	if err := repman.attachSelfServiceSponsor(cl, "u@x.io"); err != nil {
+		t.Fatal(err)
+	}
+	sso, err := repman.createAPITokenAs("u@x.io", "SSO", APITokenForm{Label: "mcp", Clusters: []string{"*"}}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sso.OwnerAuthType != "SSO" {
+		t.Fatalf("the owner's auth type must be kept on the token: %+v", sso)
+	}
+	claims, err := repman.GetJWTClaims(bearerRequest(sso.Token, "/api/clusters/actions/add/blab"))
+	if err != nil || claims["AuthType"] != "Token" || claims["OwnerAuthType"] != "SSO" {
+		t.Fatalf("token claims must carry the owner's auth type: %v %v", claims, err)
+	}
+	identity, isSSO, selfService, status, reason := repman.clusterAddAuthorize(bearerRequest(sso.Token, "/api/clusters/actions/add/blab"))
+	if status != 0 || identity != "u@x.io" || !isSSO || !selfService {
+		t.Fatalf("an SSO owner's token must go through self-service: identity=%q sso=%v self=%v status=%d %s", identity, isSSO, selfService, status, reason)
+	}
+	// Reloaded from the store, the type survives.
+	repman.apiTokens.loaded = false
+	claims, _ = repman.GetJWTClaims(bearerRequest(sso.Token, "/api/clusters"))
+	if claims["OwnerAuthType"] != "SSO" {
+		t.Fatalf("the owner's auth type must survive a store reload: %v", claims)
+	}
+}

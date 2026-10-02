@@ -705,6 +705,10 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.app_img}"
 		svccontainer["type"] = cluster.Conf.ProvType
+		// The orchestrator's own start timeout is short for a large image: the app's
+		// prov-app-start-timeout (else the cluster default) bounds both the pull and the start.
+		svccontainer["start_timeout"] = app.GetStartTimeout()
+		svccontainer["pull_timeout"] = app.GetStartTimeout()
 		if app.AppConfig.ProvAppHATopology == "failover" {
 			svccontainer["shared"] = "true"
 		}

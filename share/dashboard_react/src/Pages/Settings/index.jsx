@@ -16,6 +16,7 @@ import RepFailOverSettings from './RepFailOverSettings'
 import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
 import BackupSettings from './BackupSettings'
+import ArchiveSettings from './ArchiveSettings'
 import SchedulerSettings from './SchedulerSettings'
 import DynamicConfigSettings from './DynamicConfigSettings'
 import S3ProvidersSettings from './S3ProvidersSettings'
@@ -43,6 +44,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
 
   const { isOpen: isBackupOpen, onToggle: onBackupToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isBackupOpen')) || false
+  })
+  const { isOpen: isArchiveOpen, onToggle: onArchiveToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isArchiveOpen')) || false
   })
   const { isOpen: isSchedulerOpen, onToggle: onSchedulerToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isSchedulerOpen')) || false
@@ -93,6 +97,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   useEffect(() => {
     localStorage.setItem('isBackupOpen', JSON.stringify(isBackupOpen))
   }, [isBackupOpen])
+  useEffect(() => {
+    localStorage.setItem('isArchiveOpen', JSON.stringify(isArchiveOpen))
+  }, [isArchiveOpen])
   useEffect(() => {
     localStorage.setItem('isSchedulerOpen', JSON.stringify(isSchedulerOpen))
   }, [isSchedulerOpen])
@@ -281,6 +288,14 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<BackupSettings selectedCluster={selectedCluster} user={user} />}
+      />}
+      {isVisible('isArchiveOpen') && <AccordionComponent
+        heading={'Archive'}
+        onToggle={onArchiveToggle}
+        isOpen={isArchiveOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<ArchiveSettings selectedCluster={selectedCluster} user={user} />}
       />}
       {isVisible('isS3ProvidersOpen') && <AccordionComponent
         heading={'S3 Providers'}

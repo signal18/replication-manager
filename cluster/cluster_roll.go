@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -71,6 +72,7 @@ func (cluster *Cluster) RollingReprov() error {
 		if slave == nil || slave.IsIgnored() {
 			continue
 		}
+		reprovStart := time.Now().UnixNano()
 
 		if !slave.IsDown() {
 			maintenanceEnabled := !slave.IsMaintenance
@@ -109,6 +111,16 @@ func (cluster *Cluster) RollingReprov() error {
 				}
 				return err
 			}
+			// The rejoin armed an ASYNC reseed: wait for its outcome before the next
+			// node (#1866: the loop used to move on while the reseed job had not even
+			// started, and destroyed the next replica after a failed one).
+			if err = cluster.waitRollingReseed(slave, reprovStart); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov: %s", err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
+				return err
+			}
 
 			currentMaster := cluster.GetMaster()
 			if currentMaster == nil {
@@ -137,6 +149,7 @@ func (cluster *Cluster) RollingReprov() error {
 		if maintenanceEnabled {
 			master.SwitchMaintenance()
 		}
+		masterReprovStart := time.Now().UnixNano()
 		err := cluster.UnprovisionDatabaseService(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
@@ -164,6 +177,13 @@ func (cluster *Cluster) RollingReprov() error {
 		err = cluster.WaitDatabaseStart(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
+		}
+		if err = cluster.waitRollingReseed(master, masterReprovStart); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov: %s", err)
 			if maintenanceEnabled {
 				master.SwitchMaintenance()
 			}
@@ -228,12 +248,16 @@ func (cluster *Cluster) RollingRestart() error {
 					return err
 				}
 			} else {
+				if ferr := cluster.FreezeDatabaseService(slave); ferr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", slave.URL, ferr)
+				}
 				err := cluster.StopDatabaseService(slave)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
 					if maintenanceEnabled {
 						slave.SwitchMaintenance()
 					}
+					_ = cluster.UnfreezeDatabaseService(slave)
 					return err
 				}
 
@@ -243,6 +267,7 @@ func (cluster *Cluster) RollingRestart() error {
 					if maintenanceEnabled {
 						slave.SwitchMaintenance()
 					}
+					_ = cluster.UnfreezeDatabaseService(slave)
 					return err
 				}
 
@@ -250,10 +275,13 @@ func (cluster *Cluster) RollingRestart() error {
 				// env) so the slave comes up on the CURRENT OpenSVC service config, not the
 				// one written at the last provision. prov-orchestrator-deployment-upgrade-on-start
 				// (default on); non-fatal -- a push failure just leaves the previous cap.
-				if uerr := cluster.UpgradeDatabaseDeploymentOnStart(slave); uerr != nil {
+				if uerr := cluster.UpgradeDatabaseDeploymentOnStart(slave, true); uerr != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on slave %s (continuing): %s", slave.URL, uerr)
 				}
 				err = cluster.StartDatabaseWaitRejoin(slave)
+				if uerr := cluster.UnfreezeDatabaseService(slave); uerr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", slave.URL, uerr)
+				}
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
 					if maintenanceEnabled {
@@ -313,12 +341,16 @@ func (cluster *Cluster) RollingRestart() error {
 			return err
 		}
 	} else {
+		if ferr := cluster.FreezeDatabaseService(master); ferr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", master.URL, ferr)
+		}
 		err := cluster.StopDatabaseService(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
 			if maintenanceEnabled {
 				master.SwitchMaintenance()
 			}
+			_ = cluster.UnfreezeDatabaseService(master)
 			return err
 		}
 		err = cluster.WaitDatabaseFailed(master)
@@ -327,15 +359,19 @@ func (cluster *Cluster) RollingRestart() error {
 			if maintenanceEnabled {
 				master.SwitchMaintenance()
 			}
+			_ = cluster.UnfreezeDatabaseService(master)
 			return err
 		}
 		// Reapply the deployment (the plan-driven container cap, image, run_args, env)
 		// so the old master comes up on the CURRENT OpenSVC service config.
 		// prov-orchestrator-deployment-upgrade-on-start (default on); non-fatal.
-		if uerr := cluster.UpgradeDatabaseDeploymentOnStart(master); uerr != nil {
+		if uerr := cluster.UpgradeDatabaseDeploymentOnStart(master, true); uerr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on old master %s (continuing): %s", master.URL, uerr)
 		}
 		err = cluster.StartDatabaseWaitRejoin(master)
+		if uerr := cluster.UnfreezeDatabaseService(master); uerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", master.URL, uerr)
+		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
 			if maintenanceEnabled {
@@ -424,6 +460,15 @@ func (cluster *Cluster) rollingUpgradeStopUpdateStart(server *ServerMonitor, for
 	if !isKubernetes {
 		updateConfig()
 	}
+	// Frozen for the stop/start: the orchestrator must not undo the stop (opensvc/om3#1142).
+	if err := cluster.FreezeDatabaseService(server); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade (%s): freeze failed on %s: %s (going on unfrozen)", phase, server.URL, err)
+	}
+	defer func() {
+		if err := cluster.UnfreezeDatabaseService(server); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade (%s): unfreeze failed on %s: %s", phase, server.URL, err)
+		}
+	}()
 	if err := stop(server); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): stop failed on %s: %s", phase, server.URL, err)
 		return err
@@ -458,6 +503,14 @@ func (cluster *Cluster) RollingUpgrade() error {
 		return errors.New("No master found for rolling upgrade")
 	}
 	masterID := master.Id
+	// The release the definitions are pinned on was decided by PrepareRollingUpgrade
+	// (the plan: list method, running release kept when the list is older). Here only a
+	// missing record is filled from the list, an existing one is never overridden
+	// (#1862: dev3 2026-10-02, a forced re-resolution took the stale list's 11.8.8 over
+	// the prepared 11.8.9).
+	if err := cluster.ResolveDatabaseImage(false); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade: prov-db-image %s not resolved from the image list: %s", cluster.Conf.ProvDbImg, err)
+	}
 
 	// Loop 1 — pull: force PullAlways (K8s) / image_pull_policy=always (OpenSVC)
 	// and restart every slave so the orchestrator re-pulls the new image. Maintenance
@@ -799,4 +852,48 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade completed")
 
 	return nil
+}
+
+// waitRollingReseed waits for the async reseed a rolling reprov armed on a node, and
+// answers its outcome: nil once the reseed completed without a reported failure, an
+// error when the reseed job reported one (#1866) or when nothing completed within
+// rollingReseedWait. A node that armed no reseed returns at once.
+const rollingReseedWait = 4 * time.Hour
+
+// rollingReseedArmWait is how long the loop gives the rejoin to arm a reseed on a node
+// that is not yet a healthy replica, before taking "nothing armed" as "nothing to do".
+const rollingReseedArmWait = 3 * time.Minute
+
+func (cluster *Cluster) waitRollingReseed(server *ServerMonitor, since int64) error {
+	deadline := time.Now().Add(rollingReseedWait)
+	armDeadline := time.Now().Add(rollingReseedArmWait)
+	logged := false
+	healthy := func() bool {
+		if !server.IsSlave || server.IsFailed() || cluster.master == nil {
+			return false
+		}
+		m, _ := cluster.GetMasterFromReplication(server)
+		return m != nil && m.URL == cluster.master.URL
+	}
+	for {
+		if failure := server.ReseedFailedSince(since); failure != "" {
+			return fmt.Errorf("reseed of %s failed: %s", server.URL, failure)
+		}
+		armed := server.reseedFromRejoin.Load() || server.IsReseeding != ""
+		if !armed {
+			// Nothing in flight: done when the node replicates from the master, or when
+			// the rejoin had a grace period to arm a reseed and armed none (a node that
+			// needed no reseed); never on the empty node the rejoin has not looked at yet.
+			if healthy() || time.Now().After(armDeadline) {
+				return nil
+			}
+		} else if !logged {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprov: waiting for the reseed of %s to complete", server.URL)
+			logged = true
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("reseed of %s not completed after %s", server.URL, rollingReseedWait)
+		}
+		time.Sleep(5 * time.Second)
+	}
 }

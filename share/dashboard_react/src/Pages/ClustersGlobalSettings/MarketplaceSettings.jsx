@@ -5,6 +5,7 @@ import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo } from '../../redux/globalClustersSlice'
 import TextForm from '../../components/TextForm'
+import Dropdown from '../../components/Dropdown'
 import RMIconButton from '../../components/RMIconButton'
 import { HiOutlineInformationCircle, HiQuestionMarkCircle, HiRefresh } from 'react-icons/hi'
 import RMButton from '../../components/RMButton'
@@ -21,6 +22,9 @@ function MarketplaceSettings({ config }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
   const [shouldRedownload, setShouldRedownload] = useState(true)
+
+  const pricingMode = config?.cloud18MarketplacePricingMode || 'csv-service-plan'
+  const isUnitPricing = pricingMode === 'global-unit-pricing'
 
   const openInfo = (title, content) => {
     setAction({ title, body: <Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown></Box> })
@@ -45,8 +49,123 @@ function MarketplaceSettings({ config }) {
   const hDomainUser = `**Domain User**\n\nUsername for the domain management API (DNS provider, load balancer, etc.) called by the add/drop scripts to automate tenant routing.\n\nConfig: \`cloud18-domain-user\``
   const hDomainSecret = `**Domain Secret**\n\nAPI key or password for domain management authentication.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-domain-secret\``
   const hReloadPlans = `**Reload Plans**\n\nDownload and reapply marketplace service plans from the Cloud18 GitLab repository.\nPlans define available database topologies, resource profiles, and OpenSVC provisioning templates.\nUse the info button to reload plan metadata only without reprovisioning.`
+  const hPricingMode = `**Marketplace Pricing Mode**\n\nHow clusters are priced in the Cloud18 marketplace:\n\n- **csv-service-plan** (default): each cluster is priced from a per-cluster service plan downloaded as CSV.\n- **global-unit-pricing**: all clusters are priced from a single global EUR price per Database Unit and per Application Unit — no per-cluster plan.\n\nConfig: \`cloud18-marketplace-pricing-mode\``
+  const hDbuPrice = `**DBU Price**\n\nPrice in EUR per DBU, the Database Unit (1 core / 4 GB RAM / 40 GB disk / 1000 IOPS).\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-dbu-price\``
+  const hApuPrice = `**APU Price**\n\nPrice in EUR per APU, the Application Unit (its size is the setting \`resource-manager-ratio-apu\`, shown below) consumed by proxies and applications.\nOnly used when pricing mode is **global-unit-pricing**.\n\nConfig: \`cloud18-marketplace-apu-price\``
+
+  const hBkuPrice = `**BKU Price**\n\nPrice of one Backup Unit per month, in Eur. One BKU is 20 GB of **local** storage on the cluster's NVMe pool: the last backup of each server, the restic archive when its repository is a local path, and the declared volumes of the cluster's applications times the agents holding a copy (a failover app replicates its volume on every agent), rounded up per app. Disk only: no cpu, no memory. It is counted against the cluster's BKU plan (\`prov-db-bku\`); the billed units are the plan or the usage rounded up to the next unit, whichever is larger. 0 = local backups are not priced.\n\nConfig: \`cloud18-marketplace-bku-price\``
+  const hBauPrice = `**BAU Price**\n\nPrice of one Backup Archive Unit per month, in Eur. One BAU is 20 GB of **archive** storage, two roles: as consumer, what restic holds off the cluster on S3 or SFTP, after deduplication; as producer, the declared volume of a storage application (*S3 provider* in the app settings, e.g. minio) that hosts an archive for others. There is no plan: billed on usage, rounded up to the next unit. The price applies to Signal18 or partner storage only; a cluster that brought its own remote storage (*Cloud18 → Remote archive on client storage*) is tracked but never priced. 0 = the remote archive is not priced.\n\nConfig: \`cloud18-marketplace-bau-price\``
+
+  const hOverPct = `**Over-commit Price Ratio**\n\nSurcharge on a unit consumed **above** the plan, in percent of the unit price. 150 means an over-plan unit costs 2.5 times the unit price. Applies to every unit family with a plan (DBU, APU, BKU); the BAU has no plan and is pure usage, so it is never marked up. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-overcommit-price-pct\` (default 150)`
+  const hUnderPct = `**Under-commit Price Ratio**\n\nReduction on a plan unit left **unconsumed**, in percent of the unit price. 80 means an unused plan unit costs 0.2 times the unit price; 0 bills the plan in full whatever is consumed. The pendant of the over-commit ratio, asymmetric on purpose. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-undercommit-price-pct\` (default 80)`
+
+  const hRatio = (unit, key) => `**${unit} ratio**\n\nWhat one ${unit} is made of, as \`cores=…,mem=…,disk=…,iops=…\` (mem in m or g, disk in g or t; a missing key excludes the axis). This is the ONE source of the ratio: the resource manager, the billing, the charts and the configurators all read it. Changing it re-projects every plan and consumption at the next tick; it does not resize anything.\n\nConfig: \`${key}\``
 
   const dataObject = [
+    {
+      key: 'DBU ratio',
+      help: h(hRatio('DBU', 'resource-manager-ratio-dbu'), 'DBU ratio'),
+      value: (<TextForm value={config?.resourceManagerRatioDbu} confirmTitle='Confirm DBU ratio to ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'resource-manager-ratio-dbu', value }))} />)
+    },
+    {
+      key: 'APU ratio',
+      help: h(hRatio('APU', 'resource-manager-ratio-apu'), 'APU ratio'),
+      value: (<TextForm value={config?.resourceManagerRatioApu} confirmTitle='Confirm APU ratio to ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'resource-manager-ratio-apu', value }))} />)
+    },
+    {
+      key: 'BKU / BAU ratio',
+      help: h(hRatio('BKU', 'resource-manager-ratio-bku'), 'BKU ratio'),
+      value: (<TextForm value={config?.resourceManagerRatioBku} confirmTitle='Confirm BKU ratio to ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'resource-manager-ratio-bku', value }))} />)
+    },
+    {
+      key: 'Marketplace Pricing Mode',
+      help: h(hPricingMode, 'Marketplace Pricing Mode'),
+      value: (
+        <Dropdown
+          options={[
+            { value: 'csv-service-plan', label: 'CSV Service Plan (per-cluster)' },
+            { value: 'global-unit-pricing', label: 'Global Unit Pricing (EUR / DBU + APU)' }
+          ]}
+          selectedValue={pricingMode}
+          confirmTitle='Confirm marketplace pricing mode: '
+          onChange={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-pricing-mode', value }))}
+        />
+      )
+    },
+    ...(isUnitPricing ? [
+      {
+        key: 'DBU Price (EUR)',
+        help: h(hDbuPrice, 'DBU Price'),
+        value: (
+          <TextForm
+            value={config?.cloud18MarketplaceDbuPrice}
+            regexPattern='^\d+(\.\d+)?$'
+            confirmTitle='Confirm DBU price (EUR) to '
+            onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-dbu-price', value }))}
+          />
+        )
+      },
+      {
+        key: 'APU Price (EUR)',
+        help: h(hApuPrice, 'APU Price'),
+        value: (
+          <TextForm
+            value={config?.cloud18MarketplaceApuPrice}
+            regexPattern='^\d+(\.\d+)?$'
+            confirmTitle='Confirm APU price (EUR) to '
+            onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-apu-price', value }))}
+          />
+        )
+      },
+    ] : []),
+    {
+      key: 'BKU Price (Eur / month)',
+      help: h(hBkuPrice, 'BKU Price'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceBkuPrice ?? '')}
+          type='number'
+          confirmTitle='Confirm BKU price (Eur per backup unit per month) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-bku-price', value }))}
+        />
+      )
+    },
+    {
+      key: 'BAU Price (Eur / month)',
+      help: h(hBauPrice, 'BAU Price'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceBauPrice ?? '')}
+          type='number'
+          confirmTitle='Confirm BAU price (Eur per backup archive unit per month) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-bau-price', value }))}
+        />
+      )
+    },
+    {
+      key: 'Over-commit Surcharge (%)',
+      help: h(hOverPct, 'Over-commit Price Ratio'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceOvercommitPricePct ?? '')}
+          type='number'
+          confirmTitle='Confirm over-commit price ratio (% of the unit price) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-overcommit-price-pct', value }))}
+        />
+      )
+    },
+    {
+      key: 'Under-commit Reduction (%)',
+      help: h(hUnderPct, 'Under-commit Price Ratio'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceUndercommitPricePct ?? '')}
+          type='number'
+          confirmTitle='Confirm under-commit price ratio (% of the unit price) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-undercommit-price-pct', value }))}
+        />
+      )
+    },
     {
       key: 'Platform Description',
       help: h(hPlatformDesc, 'Platform Description'),
@@ -125,7 +244,7 @@ function MarketplaceSettings({ config }) {
         />
       )
     },
-    {
+    ...(!isUnitPricing ? [{
       key: 'Reload Plans',
       help: h(hReloadPlans, 'Reload Plans'),
       value: (
@@ -152,7 +271,7 @@ function MarketplaceSettings({ config }) {
           />
         </Flex>
       )
-    },
+    }] : []),
   ]
 
   return (

@@ -23,7 +23,10 @@ type fakeRepman struct {
 	events   []string
 }
 
-func (f *fakeRepman) GetClusters() map[string]*cluster.Cluster                 { return f.clusters }
+func (f *fakeRepman) GetClusters() map[string]*cluster.Cluster { return f.clusters }
+func (f *fakeRepman) ListAppTemplates(cl *cluster.Cluster) []string {
+	return []string{"dummy", "phpmyadmin/phpmyadmin"}
+}
 func (f *fakeRepman) GetClusterByName(n string) *cluster.Cluster               { return f.clusters[n] }
 func (f *fakeRepman) GetVersion() string                                       { return "test" }
 func (f *fakeRepman) GetFullVersion() string                                   { return "test" }
@@ -71,6 +74,12 @@ func (f *fakeRepman) Cloud18CreateClusterToken(infra, name, label, grants string
 }
 func (f *fakeRepman) Cloud18GetCluster(infra, name string) (map[string]any, error) {
 	return map[string]any{"cluster": name}, nil
+}
+func (f *fakeRepman) ClusterPrice(name string) (map[string]any, error) {
+	return map[string]any{"cluster": name, "monthCost": 0.0}, nil
+}
+func (f *fakeRepman) Cloud18GetClusterPrice(infra, name string) (map[string]any, error) {
+	return map[string]any{"cluster": name, "monthCost": 0.0}, nil
 }
 func (f *fakeRepman) Cloud18Infrastructures() ([]Cloud18Infrastructure, error) {
 	return []Cloud18Infrastructure{{ApiPublicUrl: "https://infra.example:10005", Clusters: 2}}, nil
@@ -120,13 +129,13 @@ func TestACLURLBuilding(t *testing.T) {
 	req := mcp.CallToolRequest{}
 	req.Params.Arguments = map[string]any{"cluster_name": "c1", "server_name": "db1", "setting_name": "failover-mode", "setting_value": "manual", "snapshot_id": "abc"}
 	cases := map[string]string{
-		"cluster-switchover":             "/api/clusters/c1/actions/switchover",
-		"get-server-variables":           "/api/clusters/c1/servers/db1/variables",
-		"cluster-set-setting":            "/api/clusters/c1/settings/actions/set/failover-mode/manual",
-		"restic-purge":                   "/api/clusters/c1/restic/purge/abc",
-		"get-cluster-settings":           "/api/clusters/c1",
-		"get-cluster-topology":           "/api/clusters/c1",
-		"server-restore-physical-backup": "/api/clusters/c1/servers/db1/actions/reseed/physicalbackup",
+		"cluster-switchover":               "/api/clusters/c1/actions/switchover",
+		"get-database-variables":           "/api/clusters/c1/servers/db1/variables",
+		"cluster-set-setting":              "/api/clusters/c1/settings/actions/set/failover-mode/manual",
+		"cluster-archive-purge":            "/api/clusters/c1/restic/purge/abc",
+		"get-cluster-settings":             "/api/clusters/c1",
+		"get-cluster-topology":             "/api/clusters/c1",
+		"database-restore-physical-backup": "/api/clusters/c1/servers/db1/actions/reseed/physicalbackup",
 	}
 	for tool, want := range cases {
 		if got := aclURL("c1", toolACLPaths[tool], req); got != want {

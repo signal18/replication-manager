@@ -107,6 +107,8 @@ type Config struct {
 	MonitorChecksumIgnoreTables              string                       `mapstructure:"monitoring-checksum-ignore-tables" toml:"monitoring-checksum-ingore-tables" json:"monitoringChecksumIngoreTables"`
 	MonitorQueryRules                        bool                         `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                string                       `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
+	MonitoringAddMonitorScript               string                       `mapstructure:"monitoring-add-monitor-script" toml:"monitoring-add-monitor-script" json:"monitoringAddMonitorScript"`
+	MonitoringDropMonitorScript              string                       `mapstructure:"monitoring-drop-monitor-script" toml:"monitoring-drop-monitor-script" json:"monitoringDropMonitorScript"`
 	MonitorCheckGrants                       bool                         `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
 	MonitorProcessList                       bool                         `mapstructure:"monitoring-processlist" toml:"monitoring-processlist" json:"monitoringProcesslist"`
 	MonitorProcessListLimit                  string                       `mapstructure:"monitoring-processlist-limit" toml:"monitoring-processlist-limit" json:"monitoringProcesslistLimit"`
@@ -602,6 +604,7 @@ type Config struct {
 	ProvOrchestrator                         string                       `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvOrchestratorEnable                   string                       `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
 	ProvOrchestratorCluster                  string                       `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
+	ProvDbUpgradeMajorReprov                 bool                         `mapstructure:"prov-db-upgrade-major-reprov" toml:"prov-db-upgrade-major-reprov" json:"provDbUpgradeMajorReprov"`
 	ProvOrchestratorDeploymentUpgradeOnStart bool                         `mapstructure:"prov-orchestrator-deployment-upgrade-on-start" toml:"prov-orchestrator-deployment-upgrade-on-start" json:"provOrchestratorDeploymentUpgradeOnStart"`
 	ProvDBApplyDynamicConfig                 bool                         `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
 	ProvDBDynamicResource                    bool                         `mapstructure:"prov-db-dynamic-resource" toml:"prov-db-dynamic-resource" json:"provDbDynamicResource"`
@@ -665,6 +668,7 @@ type Config struct {
 	ProvGateway                               string            `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
 	ProvUseIpv6                               bool              `mapstructure:"prov-use-ipv6" toml:"prov-use-ipv6" json:"provUseIpv6"`
 	ProvDbImg                                 string            `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
+	ProvDbImgResolved                         string            `mapstructure:"prov-db-docker-img-resolved" toml:"prov-db-docker-img-resolved" json:"provDbDockerImgResolved"`
 	ProvDBDockerTmpfsSize                     string            `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDBDockerRunArgs                       string            `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
 	ProvDBDockerRunArgsLimit                  bool              `mapstructure:"prov-db-docker-run-args-limit" toml:"prov-db-docker-run-args-limit" json:"provDbDockerRunArgsLimit"`
@@ -729,9 +733,13 @@ type Config struct {
 	ProvServicePlanRegistry                   string            `scope:"server" mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
 	ProvServicePlanDbu                        int               `mapstructure:"prov-service-plan-dbu" toml:"prov-service-plan-dbu" json:"provServicePlanDbu"`
 	ProvDbDbu                                 int               `mapstructure:"prov-db-dbu" toml:"prov-db-dbu" json:"provDbDbu"`
+	ProvDbBku                                 int               `mapstructure:"prov-db-bku" toml:"prov-db-bku" json:"provDbBku"`
 	ProvServicePlanApu                        int               `mapstructure:"prov-service-plan-apu" toml:"prov-service-plan-apu" json:"provServicePlanApu"`
 	ProvServicePlanBpu                        int               `mapstructure:"prov-service-plan-bpu" toml:"prov-service-plan-bpu" json:"provServicePlanBpu"`
 	ProvServicePlanBku                        int               `mapstructure:"prov-service-plan-bku" toml:"prov-service-plan-bku" json:"provServicePlanBku"`
+	ResourceManagerRatioDBU                   string            `scope:"server" mapstructure:"resource-manager-ratio-dbu" toml:"resource-manager-ratio-dbu" json:"resourceManagerRatioDbu"`
+	ResourceManagerRatioAPU                   string            `scope:"server" mapstructure:"resource-manager-ratio-apu" toml:"resource-manager-ratio-apu" json:"resourceManagerRatioApu"`
+	ResourceManagerRatioBKU                   string            `scope:"server" mapstructure:"resource-manager-ratio-bku" toml:"resource-manager-ratio-bku" json:"resourceManagerRatioBku"`
 	ResourceManagerInfraQuotaPct              float64           `scope:"server" mapstructure:"resource-manager-infra-quota-pct" toml:"resource-manager-infra-quota-pct" json:"resourceManagerInfraQuotaPct"`
 	ResourceManagerInfraCpuCores              float64           `scope:"server" mapstructure:"resource-manager-infra-cpu-cores" toml:"resource-manager-infra-cpu-cores" json:"resourceManagerInfraCpuCores"`
 	ResourceManagerInfraMemoryMB              float64           `scope:"server" mapstructure:"resource-manager-infra-memory-mb" toml:"resource-manager-infra-memory-mb" json:"resourceManagerInfraMemoryMb"`
@@ -759,6 +767,7 @@ type Config struct {
 	AppErrorDebounceThreshold                 int               `mapstructure:"app-error-debounce-threshold" toml:"app-error-debounce-threshold" json:"appErrorDebounceThreshold"`
 	AppRefreshConcurrency                     int               `mapstructure:"app-refresh-concurrency" toml:"app-refresh-concurrency" json:"appRefreshConcurrency"`
 	ProvAppMem                                string            `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory" groups:"apps"`
+	ProvAppStartTimeout                       string            `mapstructure:"prov-app-start-timeout" toml:"prov-app-start-timeout" json:"provAppStartTimeout" groups:"apps"`
 	ProvAppDisk                               string            `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize" groups:"apps"`
 	ProvAppCpuCores                           string            `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
 	ProvAppAgents                             string            `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
@@ -1026,55 +1035,61 @@ type Config struct {
 	// Cloud18LicenseFile, when set, is the single switch for offline-license mode:
 	// the instance sources its plan from this signed file instead of the CRM (for
 	// air-gapped/PCI instances). Empty = normal online CRM path.
-	Cloud18LicenseFile                     string                 `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
-	Cloud18PeerHealthMode                  string                 `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
-	Cloud18DisablePeers                    bool                   `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
-	Cloud18SelfServiceClusters             bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
-	Cloud18SelfServiceMaxClustersPerUser   int                    `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
-	Cloud18DisableForSale                  bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
-	Cloud18OpenSysops                      bool                   `mapstructure:"cloud18-open-sysops"  toml:"cloud18-open-sysops" json:"cloud18OpenSysops"`
-	Cloud18DatabaseReadWriteSplitSrvRecord string                 `mapstructure:"cloud18-database-read-write-split-srv-record"  toml:"cloud18-database-read-write-split-srv-record" json:"cloud18DatabaseReadWriteSplitSrvRecord"`
-	Cloud18DatabaseReadSrvRecord           string                 `mapstructure:"cloud18-database-read-srv-record"  toml:"cloud18-database-read-srv-record" json:"cloud18DatabaseReadSrvRecord"`
-	Cloud18DatabaseReadWriteSrvRecord      string                 `mapstructure:"cloud18-database-read-write-srv-record"  toml:"cloud18-database-read-write-srv-record" json:"cloud18DatabaseReadWriteSrvRecord"`
-	Cloud18DbaUserCredentials              string                 `mapstructure:"cloud18-dba-user-credentials"  toml:"cloud18-dba-user-credentials" json:"cloud18DbaUserCredential"`
-	Cloud18SponsorUserCredentials          string                 `mapstructure:"cloud18-sponsor-user-credentials"  toml:"cloud18-sponsor-user-credentials" json:"cloud18SponsorUserCredential"`
-	Cloud18SalesSubscriptionScript         string                 `mapstructure:"cloud18-sales-subscription-script"  toml:"cloud18-sales-subscription-script" json:"cloud18SalesSubscriptionScript"`
-	Cloud18SalesSubscriptionValidateScript string                 `mapstructure:"cloud18-sales-subscription-validate-script"  toml:"cloud18-sales-subscription-validate-script" json:"cloud18SalesSubscriptionValidateScript"`
-	Cloud18SalesUnsubscribeScript          string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
-	Cloud18SalesExternalOpsValidateScript  string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
-	Cloud18SalesExternalOpsStopScript      string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
-	Cloud18Alert                           bool                   `mapstructure:"cloud18-alert"  toml:"cloud18-alert" json:"cloud18Alert"`
-	Cloud18AlertSlackChannel               string                 `mapstructure:"cloud18-alert-slack-channel"  toml:"cloud18-alert-slack-channel" json:"cloud18AlertSlackChannel"`
-	Cloud18AlertSlackURL                   string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
-	Cloud18AlertSlackUser                  string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
-	Cloud18HealthRefreshInterval           int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
-	Cloud18ApplicationCredits              int                    `mapstructure:"cloud18-application-credits" toml:"Cloud18-application-credits" json:"cloud18ApplicationCredits"`
-	Cloud18ApplicationCreditsUsed          int                    `mapstructure:"-" toml:"-" json:"cloud18ApplicationCreditsUsed"`
-	Cloud18ApplicationCreditsPlanned       int                    `mapstructure:"-" toml:"-" json:"cloud18ApplicationCreditsPlanned"`
-	Cloud18ApplicationCreditsPrice         int                    `mapstructure:"cloud18-application-credits-price" toml:"Cloud18-application-credits-price" json:"cloud18ApplicationCreditsPrice"`
-	ProvRegister                           bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
-	ProvAdminUser                          string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
-	Measurement                            bool                   `mapstructure:"measurement" toml:"measurement" json:"measurement"`
-	MeasurementAutoClampLimit              bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
-	LogSecrets                             bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
-	Apps                                   []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps" groups:"apps"`
-	Secrets                                map[string]Secret      `toml:"-" json:"-"`
-	SecretKey                              []byte                 `toml:"-" json:"-"`
-	ImmuableFlagMap                        map[string]interface{} `toml:"-" json:"-"`
-	DynamicFlagMap                         map[string]interface{} `toml:"-" json:"-"`
-	DefaultFlagMap                         map[string]interface{} `toml:"-" json:"-"`
-	OAuthProvider                          string                 `mapstructure:"api-oauth-provider-url" toml:"api-oauth-provider-url" json:"apiOAuthProvider"`
-	OAuthClientID                          string                 `mapstructure:"api-oauth-client-id" toml:"api-oauth-client-id" json:"apiOAuthClientID"`
-	OAuthClientSecret                      string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
-	CacheStaticMaxAge                      int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
-	TokenTimeout                           int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
-	JobLogBatchSize                        int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
-	APIUserTokens                          bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
-	APIUserTokensDefaultExpireDays         int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`
-	ApiSwaggerEnabled                      bool                   `scope:"server" mapstructure:"api-swagger-enabled" toml:"api-swagger-enabled" json:"apiSwaggerEnabled"`
-	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
-	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
-	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
+	Cloud18LicenseFile                      string                 `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
+	Cloud18PeerHealthMode                   string                 `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
+	Cloud18DisablePeers                     bool                   `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
+	Cloud18SelfServiceClusters              bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
+	Cloud18SelfServiceMaxClustersPerUser    int                    `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
+	Cloud18SelfServiceClustersEnabledScript string                 `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
+	Cloud18SelfServiceClustersCanBorrow     bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
+	Cloud18DisableForSale                   bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
+	Cloud18MarketplacePricingMode           string                 `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
+	Cloud18MarketplaceDBUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
+	Cloud18MarketplaceAPUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
+	Cloud18MarketplaceBKUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
+	Cloud18MarketplaceBAUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
+	Cloud18MarketplaceBAUClientStorage      bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`
+	Cloud18MarketplaceOvercommitPricePct    int                    `scope:"server" mapstructure:"cloud18-marketplace-overcommit-price-pct" toml:"cloud18-marketplace-overcommit-price-pct" json:"cloud18MarketplaceOvercommitPricePct"`
+	Cloud18MarketplaceUndercommitPricePct   int                    `scope:"server" mapstructure:"cloud18-marketplace-undercommit-price-pct" toml:"cloud18-marketplace-undercommit-price-pct" json:"cloud18MarketplaceUndercommitPricePct"`
+	Cloud18OpenSysops                       bool                   `mapstructure:"cloud18-open-sysops"  toml:"cloud18-open-sysops" json:"cloud18OpenSysops"`
+	Cloud18DatabaseReadWriteSplitSrvRecord  string                 `mapstructure:"cloud18-database-read-write-split-srv-record"  toml:"cloud18-database-read-write-split-srv-record" json:"cloud18DatabaseReadWriteSplitSrvRecord"`
+	Cloud18DatabaseReadSrvRecord            string                 `mapstructure:"cloud18-database-read-srv-record"  toml:"cloud18-database-read-srv-record" json:"cloud18DatabaseReadSrvRecord"`
+	Cloud18DatabaseReadWriteSrvRecord       string                 `mapstructure:"cloud18-database-read-write-srv-record"  toml:"cloud18-database-read-write-srv-record" json:"cloud18DatabaseReadWriteSrvRecord"`
+	Cloud18DbaUserCredentials               string                 `mapstructure:"cloud18-dba-user-credentials"  toml:"cloud18-dba-user-credentials" json:"cloud18DbaUserCredential"`
+	Cloud18SponsorUserCredentials           string                 `mapstructure:"cloud18-sponsor-user-credentials"  toml:"cloud18-sponsor-user-credentials" json:"cloud18SponsorUserCredential"`
+	Cloud18SalesSubscriptionScript          string                 `mapstructure:"cloud18-sales-subscription-script"  toml:"cloud18-sales-subscription-script" json:"cloud18SalesSubscriptionScript"`
+	Cloud18SalesSubscriptionValidateScript  string                 `mapstructure:"cloud18-sales-subscription-validate-script"  toml:"cloud18-sales-subscription-validate-script" json:"cloud18SalesSubscriptionValidateScript"`
+	Cloud18SalesUnsubscribeScript           string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
+	Cloud18SalesExternalOpsValidateScript   string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
+	Cloud18SalesExternalOpsStopScript       string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
+	Cloud18Alert                            bool                   `mapstructure:"cloud18-alert"  toml:"cloud18-alert" json:"cloud18Alert"`
+	Cloud18AlertSlackChannel                string                 `mapstructure:"cloud18-alert-slack-channel"  toml:"cloud18-alert-slack-channel" json:"cloud18AlertSlackChannel"`
+	Cloud18AlertSlackURL                    string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
+	Cloud18AlertSlackUser                   string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
+	Cloud18HealthRefreshInterval            int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
+	ProvRegister                            bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
+	ProvAdminUser                           string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
+	Measurement                             bool                   `mapstructure:"measurement" toml:"measurement" json:"measurement"`
+	MeasurementAutoClampLimit               bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
+	LogSecrets                              bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
+	Apps                                    []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps" groups:"apps"`
+	Secrets                                 map[string]Secret      `toml:"-" json:"-"`
+	SecretKey                               []byte                 `toml:"-" json:"-"`
+	ImmuableFlagMap                         map[string]interface{} `toml:"-" json:"-"`
+	DynamicFlagMap                          map[string]interface{} `toml:"-" json:"-"`
+	DefaultFlagMap                          map[string]interface{} `toml:"-" json:"-"`
+	OAuthProvider                           string                 `mapstructure:"api-oauth-provider-url" toml:"api-oauth-provider-url" json:"apiOAuthProvider"`
+	OAuthClientID                           string                 `mapstructure:"api-oauth-client-id" toml:"api-oauth-client-id" json:"apiOAuthClientID"`
+	OAuthClientSecret                       string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
+	CacheStaticMaxAge                       int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
+	TokenTimeout                            int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
+	JobLogBatchSize                         int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
+	APIUserTokens                           bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
+	APIUserTokensDefaultExpireDays          int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`
+	ApiSwaggerEnabled                       bool                   `scope:"server" mapstructure:"api-swagger-enabled" toml:"api-swagger-enabled" json:"apiSwaggerEnabled"`
+	TerminalSessionEnabled                  bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
+	TerminalSessionResume                   bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
+	TerminalSessionManager                  string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
@@ -1103,6 +1118,7 @@ type AppConfig struct {
 	ProvAppDiskType       string `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
 	ProvAppDockerImg      string `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
 	ProvAppDockerCmd      string `mapstructure:"prov-app-docker-cmd" toml:"prov-app-docker-cmd" json:"provAppDockerCmd"`
+	ProvAppStartTimeout   string `mapstructure:"prov-app-start-timeout" toml:"prov-app-start-timeout" json:"provAppStartTimeout"` // om3 start_timeout and pull_timeout of the app container (10m, 1h); empty = the cluster default
 	ProvAppRouteAddr      string `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
 	ProvAppRoutePort      string `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
 	ProvAppRouteMask      string `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
@@ -1110,8 +1126,6 @@ type AppConfig struct {
 	ProvAppAgents         string `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
 	ProvAppHATopology     string `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
 	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	ProvAppCreditUsed     int    `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
-	ProvAppCreditPlanned  int    `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
 	ProvAppSizingMode     string `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode"`
 	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
@@ -1121,6 +1135,11 @@ type AppConfig struct {
 	AppDbPassClear        string `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
 	AppDbSchema           string `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
 	AppS3Provider         bool   `mapstructure:"app-s3-provider" toml:"app-s3-provider" json:"appS3Provider"`
+	// AppStateful: the app holds data (minio, a storage service), so it is accounted on the
+	// Database profile as whole DBU (reserved in the DBU pool, billed at the DBU price), not
+	// as APU. A template default (cloud18-templates minio) inherited at creation, overridable
+	// per app in the GUI.
+	AppStateful bool `mapstructure:"app-stateful" toml:"app-stateful" json:"appStateful"`
 	// AppConfigVersion is the explicit persisted migration marker stamped by
 	// cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
 	// content; AppConfigVersionV2 means content already matches the V1 -> V2
@@ -1319,14 +1338,8 @@ const (
 	AppSizingModeManual = "manual"
 )
 
-// Fixed resource quantities that define one App Unit.
-const (
-	// App Unit == APU (same concept): 1 core / 1 GB / 10 GB, matching ProfileCompute in
-	// the ResourceManager. Kept in sync -- an app unit and a proxy APU are one thing.
-	AppUnitCpuCores = 1    // 1 core per App Unit
-	AppUnitMemMB    = 1024 // 1 GB per App Unit (in MB) -- unified with APU (was 4 GB)
-	AppUnitDiskGB   = 10   // 10 GB per App Unit
-)
+// The App Unit == APU quantities are NOT constants any more: they are the ResourceManager's
+// Compute ratio, fed from resource-manager-ratio-apu (Cluster.computeRatioInts).
 const (
 	ConstProxyMaxscale    string = "maxscale"
 	ConstProxyHaproxy     string = "haproxy"
@@ -1375,7 +1388,8 @@ type DockerTag struct {
 }
 
 type TagResult struct {
-	Name string `json:"name"`
+	Name   string `json:"name"`
+	Digest string `json:"digest,omitempty"` // present in the back-office delivered list, absent in the embedded one
 }
 
 type DockerRepo struct {
@@ -1534,6 +1548,11 @@ const (
 	ConstBackupBinlogTypeSSH         string = "ssh"
 	ConstBackupBinlogTypeScript      string = "script"
 	ConstBackupBinlogTypeGoMySQL     string = "gomysql"
+)
+
+const (
+	ConstMarketplacePricingModeCsvServicePlan    string = "csv-service-plan"
+	ConstMarketplacePricingModeGlobalUnitPricing string = "global-unit-pricing"
 )
 
 /*
@@ -3561,6 +3580,12 @@ func (conf *Config) IsVariableServerLevel(v string) bool {
 
 func (conf *Config) SetApiTokenTimeout(value int) {
 	conf.TokenTimeout = value
+}
+
+// SwitchCloud18MarketplaceBAUClientStorage declares the cluster's remote backup repository as
+// the client's own storage: the remote archive is still measured in BAU but never priced.
+func (conf *Config) SwitchCloud18MarketplaceBAUClientStorage() {
+	conf.Cloud18MarketplaceBAUClientStorage = !conf.Cloud18MarketplaceBAUClientStorage
 }
 
 func (conf *Config) SwitchCloud18Shared() {

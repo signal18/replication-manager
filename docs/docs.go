@@ -2191,6 +2191,83 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/rolling/upgrade/plan": {
+            "get": {
+                "description": "Resolves the target with the image list of the configurator (patch, next-minor, next-lts, next-major, last-lts, version) from the line the nodes run and describes the steps, the target release, what prov-db-image declares afterwards and the warnings. Nothing is changed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMaintenance"
+                ],
+                "summary": "Plan a rolling upgrade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "patch",
+                            "next-minor",
+                            "next-lts",
+                            "next-major",
+                            "last-lts",
+                            "previous-minor",
+                            "previous-major",
+                            "version"
+                        ],
+                        "type": "string",
+                        "description": "patch (default), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major, version",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "with target=version: the release or line to move to",
+                        "name": "version",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.RollingUpgradePlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Target not resolvable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/rolling/{action}": {
             "post": {
                 "description": "Triggers one of: restart, reprov, upgrade, jobs-upgrade.\nreprov and upgrade are long-running and return 202 Accepted immediately; the operation runs in the background.",
@@ -2232,6 +2309,28 @@ const docTemplate = `{
                         "name": "action",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "patch",
+                            "next-minor",
+                            "next-lts",
+                            "next-major",
+                            "last-lts",
+                            "previous-minor",
+                            "previous-major",
+                            "version"
+                        ],
+                        "type": "string",
+                        "description": "upgrade only: the release to move to, a method of the image list: patch (default: the declared prov-db-image resolved by the list), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major (downgrades), version",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "upgrade with target=version: the release or line to move to",
+                        "name": "version",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -6778,6 +6877,55 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/price": {
+            "get": {
+                "description": "The cluster's month statement: partner, sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Price of a cluster for the running month",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ClusterStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement yet",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -20752,6 +20900,96 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/global/price": {
+            "get": {
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Month billing statement of the infrastructure",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.MonthStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement for that month",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/price/{month}": {
+            "get": {
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Month billing statement of the infrastructure",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Month YYYY-MM (default: the running month)",
+                        "name": "month",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.MonthStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement for that month",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/global/resources": {
             "get": {
                 "produces": [
@@ -20896,6 +21134,43 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error signing token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/me/units": {
+            "get": {
+                "description": "For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, failover DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Units consumed this month by the logged user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "No statement",
                         "schema": {
                             "type": "string"
                         }
@@ -22777,6 +23052,10 @@ const docTemplate = `{
                 "encryptionKey": {
                     "type": "string"
                 },
+                "encryptionKeyVersion": {
+                    "description": "EncryptionKeyVersion is the secret_store.json version of\ndb-servers-credential whose password encrypted the artifact (0 when\nunknown). A version number only, never the password: restore uses it\nto pick the right historic root password after a password change.",
+                    "type": "integer"
+                },
                 "endTime": {
                     "type": "string"
                 },
@@ -22785,6 +23064,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "integrityAlgo": {
+                    "type": "string"
                 },
                 "metaFile": {
                     "type": "string"
@@ -23750,11 +24032,42 @@ const docTemplate = `{
                 "type": {
                     "type": "string"
                 },
+                "url": {
+                    "description": "https://\u003cprimary route cname\u003e/ once routed, else the internal http://host:port/",
+                    "type": "string"
+                },
                 "version": {
                     "type": "string"
                 },
                 "weight": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.BillingPrices": {
+            "type": "object",
+            "properties": {
+                "apu": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "bau": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "bku": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "dbu": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "overPct": {
+                    "type": "integer"
+                },
+                "underPct": {
+                    "type": "integer"
                 }
             }
         },
@@ -23769,6 +24082,58 @@ const docTemplate = `{
                 },
                 "plan": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.ClusterStatement": {
+            "type": "object",
+            "properties": {
+                "accrued": {
+                    "description": "Accrued unit-seconds per family, kept on disk so a reload continues the month:\nplan, over, under, rate, planCost, overCost, underCredit.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "number",
+                            "format": "float64"
+                        }
+                    }
+                },
+                "cluster": {
+                    "type": "string"
+                },
+                "firstSeen": {
+                    "type": "string"
+                },
+                "lastSeen": {
+                    "type": "string"
+                },
+                "monthCost": {
+                    "description": "EUR accrued this month",
+                    "type": "number"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "projected": {
+                    "description": "MonthCost + Rate × the time left",
+                    "type": "number"
+                },
+                "rate": {
+                    "description": "EUR per month at the last tick",
+                    "type": "number"
+                },
+                "sponsors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "units": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.UnitBillingRow"
+                    }
                 }
             }
         },
@@ -23794,6 +24159,66 @@ const docTemplate = `{
                 },
                 "whitelist": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.LedgerAxes": {
+            "type": "object",
+            "properties": {
+                "cores": {
+                    "type": "number"
+                },
+                "diskBytes": {
+                    "type": "number"
+                },
+                "iops": {
+                    "type": "number"
+                },
+                "memBytes": {
+                    "type": "number"
+                }
+            }
+        },
+        "cluster.MonthStatement": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.ClusterStatement"
+                    }
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "defaultPrices": {
+                    "description": "the instance's price list; each row carries the price its cluster applied",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.BillingPrices"
+                        }
+                    ]
+                },
+                "elapsedPct": {
+                    "type": "number"
+                },
+                "final": {
+                    "type": "boolean"
+                },
+                "generatedAt": {
+                    "type": "string"
+                },
+                "month": {
+                    "type": "string"
+                },
+                "monthCost": {
+                    "type": "number"
+                },
+                "projected": {
+                    "type": "number"
+                },
+                "rate": {
+                    "type": "number"
                 }
             }
         },
@@ -23921,6 +24346,93 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.ResourceLedger": {
+            "type": "object",
+            "properties": {
+                "borrowPot": {
+                    "description": "over-commit pot per unit (smallest axis)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.UnitPots"
+                        }
+                    ]
+                },
+                "borrowed": {
+                    "description": "Σ resources granted above the plans (DB config over plan, BKU usage over plan)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "capacity": {
+                    "description": "the metal (agents summed, config override winning)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "known": {
+                    "type": "boolean"
+                },
+                "overCommitPot": {
+                    "description": "capacity − reserved − borrowed",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "overdrawn": {
+                    "description": "an over-commit pot axis is negative: borrowed resources must give way",
+                    "type": "boolean"
+                },
+                "planPot": {
+                    "description": "sellable − reserved",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "planPotUnits": {
+                    "description": "plan pot per unit (smallest axis)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.UnitPots"
+                        }
+                    ]
+                },
+                "quotaPct": {
+                    "type": "number"
+                },
+                "reserved": {
+                    "description": "Σ plans of every cluster, DBU + APU + BKU, physical",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "reservedUnits": {
+                    "description": "Σ plans per unit, as sold (DBU, APU, BKU)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.UnitPots"
+                        }
+                    ]
+                },
+                "sellable": {
+                    "description": "capacity × quota: what plans may add up to",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                }
+            }
+        },
         "cluster.ResticEnsureBucketResult": {
             "type": "object",
             "properties": {
@@ -23935,6 +24447,86 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.RollingUpgradePlan": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "currentImage": {
+                    "description": "prov-db-image as declared",
+                    "type": "string"
+                },
+                "currentIsLTS": {
+                    "type": "boolean"
+                },
+                "currentLine": {
+                    "type": "string"
+                },
+                "currentRelease": {
+                    "description": "the release the service definitions carry (prov-db-docker-img-resolved)",
+                    "type": "string"
+                },
+                "declaredAfter": {
+                    "description": "prov-db-image after the upgrade",
+                    "type": "string"
+                },
+                "flavor": {
+                    "type": "string"
+                },
+                "imageList": {
+                    "type": "string"
+                },
+                "mechanic": {
+                    "description": "\"upgrade\" (restart on the new image) or \"reprov\" (provision again + reseed)",
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "target": {
+                    "type": "string"
+                },
+                "targetImage": {
+                    "description": "the real release, repo:x.y.z",
+                    "type": "string"
+                },
+                "targetIsLTS": {
+                    "type": "boolean"
+                },
+                "targetLine": {
+                    "type": "string"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -23990,6 +24582,133 @@ const docTemplate = `{
                 },
                 "result": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.UnitBillingRow": {
+            "type": "object",
+            "properties": {
+                "billable": {
+                    "type": "number"
+                },
+                "family": {
+                    "type": "string"
+                },
+                "monthCost": {
+                    "description": "= monthPlanCost + monthOverCost − monthUnderCredit",
+                    "type": "number"
+                },
+                "monthOverCommit": {
+                    "type": "number"
+                },
+                "monthOverCost": {
+                    "type": "number"
+                },
+                "monthPlan": {
+                    "type": "number"
+                },
+                "monthPlanCost": {
+                    "type": "number"
+                },
+                "monthUnderCommit": {
+                    "type": "number"
+                },
+                "monthUnderCredit": {
+                    "type": "number"
+                },
+                "overCommit": {
+                    "type": "number"
+                },
+                "overCommitPct": {
+                    "type": "integer"
+                },
+                "overCost": {
+                    "description": "+ over-commit × price × (100+over%)/100",
+                    "type": "number"
+                },
+                "plan": {
+                    "type": "number"
+                },
+                "planCost": {
+                    "description": "plan × price, per month, at the last tick",
+                    "type": "number"
+                },
+                "priced": {
+                    "type": "boolean"
+                },
+                "projectedCost": {
+                    "type": "number"
+                },
+                "projectedOverCommit": {
+                    "type": "number"
+                },
+                "projectedOverCost": {
+                    "type": "number"
+                },
+                "projectedPlan": {
+                    "description": "Projection to the end of the month: each component as it stands at the last tick\ncarried over the time left (plan count of every tick, over-commit and under-commit\nprojected per unit), then priced: projectedCost = monthCost + rate × time left.",
+                    "type": "number"
+                },
+                "projectedPlanCost": {
+                    "type": "number"
+                },
+                "projectedUnderCommit": {
+                    "type": "number"
+                },
+                "projectedUnderCredit": {
+                    "type": "number"
+                },
+                "rate": {
+                    "description": "EUR per month at the last tick = planCost + overCost − underCredit",
+                    "type": "number"
+                },
+                "underCommit": {
+                    "type": "number"
+                },
+                "underCommitPct": {
+                    "type": "integer"
+                },
+                "underCredit": {
+                    "description": "− under-commit × price × under%/100",
+                    "type": "number"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unitPrice": {
+                    "type": "number"
+                }
+            }
+        },
+        "cluster.UnitPots": {
+            "type": "object",
+            "properties": {
+                "apu": {
+                    "type": "number"
+                },
+                "bku": {
+                    "type": "number"
+                },
+                "dbu": {
+                    "type": "number"
+                }
+            }
+        },
+        "cluster.UnitRatios": {
+            "type": "object",
+            "properties": {
+                "coresPerUnit": {
+                    "type": "number"
+                },
+                "diskGBPerUnit": {
+                    "type": "number"
+                },
+                "iopsPerUnit": {
+                    "description": "0 = axis excluded",
+                    "type": "number"
+                },
+                "memMBPerUnit": {
+                    "type": "number"
                 }
             }
         },
@@ -24063,6 +24782,10 @@ const docTemplate = `{
                 "appS3Provider": {
                     "type": "boolean"
                 },
+                "appStateful": {
+                    "description": "AppStateful: the app holds data (minio, a storage service), so it is accounted on the\nDatabase profile as whole DBU (reserved in the DBU pool, billed at the DBU price), not\nas APU. A template default (cloud18-templates minio) inherited at creation, overridable\nper app in the GUI.",
+                    "type": "boolean"
+                },
                 "deployment": {
                     "$ref": "#/definitions/config.Deployment"
                 },
@@ -24074,12 +24797,6 @@ const docTemplate = `{
                 },
                 "provAppCpuCores": {
                     "type": "string"
-                },
-                "provAppCreditPlanned": {
-                    "type": "integer"
-                },
-                "provAppCreditUsed": {
-                    "type": "integer"
                 },
                 "provAppDiskIops": {
                     "type": "string"
@@ -24115,6 +24832,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppSizingMode": {
+                    "type": "string"
+                },
+                "provAppStartTimeout": {
+                    "description": "om3 start_timeout and pull_timeout of the app container (10m, 1h); empty = the cluster default",
                     "type": "string"
                 },
                 "provAppTemplate": {
@@ -24717,6 +25438,9 @@ const docTemplate = `{
                 "backupDiskTresholdWarn": {
                     "type": "integer"
                 },
+                "backupEncryption": {
+                    "type": "boolean"
+                },
                 "backupEstimateSize": {
                     "type": "boolean"
                 },
@@ -25101,18 +25825,6 @@ const docTemplate = `{
                 "cloud18AlertSlackUser": {
                     "type": "string"
                 },
-                "cloud18ApplicationCredits": {
-                    "type": "integer"
-                },
-                "cloud18ApplicationCreditsPlanned": {
-                    "type": "integer"
-                },
-                "cloud18ApplicationCreditsPrice": {
-                    "type": "integer"
-                },
-                "cloud18ApplicationCreditsUsed": {
-                    "type": "integer"
-                },
                 "cloud18CostCurrency": {
                     "type": "string"
                 },
@@ -25204,6 +25916,30 @@ const docTemplate = `{
                     "description": "Cloud18LicenseFile, when set, is the single switch for offline-license mode:\nthe instance sources its plan from this signed file instead of the CRM (for\nair-gapped/PCI instances). Empty = normal online CRM path.",
                     "type": "string"
                 },
+                "cloud18MarketplaceApuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceBauClientStorage": {
+                    "type": "boolean"
+                },
+                "cloud18MarketplaceBauPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceBkuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceDbuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceOvercommitPricePct": {
+                    "type": "integer"
+                },
+                "cloud18MarketplacePricingMode": {
+                    "type": "string"
+                },
+                "cloud18MarketplaceUndercommitPricePct": {
+                    "type": "integer"
+                },
                 "cloud18MonthlyDbopsCost": {
                     "type": "number"
                 },
@@ -25254,6 +25990,12 @@ const docTemplate = `{
                 },
                 "cloud18SelfServiceClusters": {
                     "type": "boolean"
+                },
+                "cloud18SelfServiceClustersCanBorrow": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceClustersEnabledScript": {
+                    "type": "string"
                 },
                 "cloud18SelfServiceMaxClustersPerUser": {
                     "type": "integer"
@@ -26017,6 +26759,9 @@ const docTemplate = `{
                 "measurementAutoClampLimit": {
                     "type": "boolean"
                 },
+                "monitoringAddMonitorScript": {
+                    "type": "string"
+                },
                 "monitoringAddress": {
                     "type": "string"
                 },
@@ -26076,6 +26821,9 @@ const docTemplate = `{
                 },
                 "monitoringDiskUsagePct": {
                     "type": "integer"
+                },
+                "monitoringDropMonitorScript": {
+                    "type": "string"
                 },
                 "monitoringErrorLogLength": {
                     "type": "integer"
@@ -26452,6 +27200,9 @@ const docTemplate = `{
                 "provAppSizingMode": {
                     "type": "string"
                 },
+                "provAppStartTimeout": {
+                    "type": "string"
+                },
                 "provAppTemplateRepo": {
                     "type": "string"
                 },
@@ -26507,6 +27258,9 @@ const docTemplate = `{
                 },
                 "provDbBinaryTarballName": {
                     "type": "string"
+                },
+                "provDbBku": {
+                    "type": "integer"
                 },
                 "provDbBootstrapScript": {
                     "type": "string"
@@ -26586,6 +27340,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provDbDockerImg": {
+                    "type": "string"
+                },
+                "provDbDockerImgResolved": {
                     "type": "string"
                 },
                 "provDbDockerJemallocPreload": {
@@ -26682,6 +27439,9 @@ const docTemplate = `{
                 "provDbUndercommitPct": {
                     "description": "scale-down floor: auto-shrink never under floor(plan x (1 - pct/100)) DBU/node, min 1 -- the pendant of prov-db-overcommit-pct",
                     "type": "integer"
+                },
+                "provDbUpgradeMajorReprov": {
+                    "type": "boolean"
                 },
                 "provDbVolumeData": {
                     "type": "string"
@@ -27126,6 +27886,15 @@ const docTemplate = `{
                 },
                 "resourceManagerInfraQuotaPct": {
                     "type": "number"
+                },
+                "resourceManagerRatioApu": {
+                    "type": "string"
+                },
+                "resourceManagerRatioBku": {
+                    "type": "string"
+                },
+                "resourceManagerRatioDbu": {
+                    "type": "string"
                 },
                 "scaleDownConfigInPlanSpeed": {
                     "description": "sustain duration before scaling DOWN a server's config resources within the plan. Default 5m",
@@ -27976,6 +28745,10 @@ const docTemplate = `{
                 "lastUsedFrom": {
                     "type": "string"
                 },
+                "ownerAuthType": {
+                    "description": "OwnerAuthType is how the owner was authenticated when the token was issued\n(\"SSO\" or \"Local\"): a token issued by a Cloud18 identity keeps that identity\nfor the self-service rules, which need an SSO caller.",
+                    "type": "string"
+                },
                 "revoked": {
                     "type": "boolean"
                 },
@@ -28148,6 +28921,32 @@ const docTemplate = `{
                 }
             }
         },
+        "server.InfraUnitPool": {
+            "type": "object",
+            "properties": {
+                "freeApu": {
+                    "type": "number"
+                },
+                "freeDbu": {
+                    "type": "number"
+                },
+                "known": {
+                    "type": "boolean"
+                },
+                "plannedApu": {
+                    "type": "number"
+                },
+                "plannedDbu": {
+                    "type": "number"
+                },
+                "usableApu": {
+                    "type": "number"
+                },
+                "usableDbu": {
+                    "type": "number"
+                }
+            }
+        },
         "server.MeetAlertMessage": {
             "type": "object",
             "properties": {
@@ -28266,6 +29065,16 @@ const docTemplate = `{
         "server.SelfServiceStatus": {
             "type": "object",
             "properties": {
+                "appTemplates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "borrowed": {
+                    "description": "Borrowed: the pool could not guarantee the units but the over-commit pot can lend them\n(cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.",
+                    "type": "boolean"
+                },
                 "clusters": {
                     "type": "array",
                     "items": {
@@ -28281,8 +29090,15 @@ const docTemplate = `{
                 "defaultDbu": {
                     "type": "integer"
                 },
+                "domain": {
+                    "description": "The infrastructure identity and the app templates it can deploy, so a client\nplans an app and renders its URL (the template's primary route CNAME is\n\u003capp\u003e.\u003ccluster\u003e.\u003csubDomain\u003e-\u003czone\u003e.\u003cdomain\u003e.cloud18.io) before creating anything.",
+                    "type": "string"
+                },
                 "enabled": {
                     "type": "boolean"
+                },
+                "gatewayDomain": {
+                    "type": "string"
                 },
                 "identity": {
                     "type": "string"
@@ -28290,8 +29106,24 @@ const docTemplate = `{
                 "maxClustersPerUser": {
                     "type": "integer"
                 },
+                "neededApu": {
+                    "type": "number"
+                },
+                "neededDbu": {
+                    "description": "ResourceManager pool: what a new cluster needs and what is free.",
+                    "type": "number"
+                },
                 "orchestrator": {
                     "type": "string"
+                },
+                "pool": {
+                    "$ref": "#/definitions/server.InfraUnitPool"
+                },
+                "poolNote": {
+                    "type": "string"
+                },
+                "poolOk": {
+                    "type": "boolean"
                 },
                 "reason": {
                     "type": "string"
@@ -28299,8 +29131,14 @@ const docTemplate = `{
                 "remaining": {
                     "type": "integer"
                 },
+                "subDomain": {
+                    "type": "string"
+                },
                 "used": {
                     "type": "integer"
+                },
+                "zone": {
+                    "type": "string"
                 }
             }
         },
@@ -28657,8 +29495,16 @@ const docTemplate = `{
                     "description": "the cluster's DBU reservation contract (prov-service-plan-dbu)",
                     "type": "number"
                 },
+                "planStatefulDbu": {
+                    "description": "their DBU reservation, own line (never in planDbu)",
+                    "type": "number"
+                },
                 "servers": {
                     "type": "integer"
+                },
+                "statefulDbu": {
+                    "description": "real consumed DBU of the stateful apps (app-stateful)",
+                    "type": "number"
                 }
             }
         },
@@ -28688,7 +29534,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "capacityApu": {
-                    "description": "APU (Compute) infra view -- the SAME metal projected into APU (1c/1GB/10GB, no IO).",
+                    "description": "APU (Compute) infra view -- the SAME metal projected into APU (1c/2GB/10GB, no IO).",
                     "type": "number"
                 },
                 "capacityDbu": {
@@ -28706,6 +29552,14 @@ const docTemplate = `{
                 "consumedDbu": {
                     "type": "number"
                 },
+                "ledger": {
+                    "description": "the physical ledger: plan pot + over-commit pot, every unit from ONE metal",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.ResourceLedger"
+                        }
+                    ]
+                },
                 "quotaPct": {
                     "type": "number"
                 },
@@ -28714,6 +29568,13 @@ const docTemplate = `{
                 },
                 "slackDbu": {
                     "type": "number"
+                },
+                "unitRatios": {
+                    "description": "the manager's ratios, the page's only source of unit arithmetic",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.UnitRatios"
+                    }
                 },
                 "usableApu": {
                     "type": "number"

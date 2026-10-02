@@ -187,6 +187,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 		cluster.errorChan <- err
 		return
 	}
+	cluster.ResolveDatabaseImage(false) // the service definition carries a release, not a pointer (#1862)
 
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		err = cluster.OpenSVCProvisionDatabaseV1(s, svc, agent)
@@ -220,6 +221,7 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor, for
 		const key = "image_pull_policy"
 		if forcePull {
 			return svc.SetServiceConfigKeysV2(s.ServiceName, s.Agent, []string{
+				"env.docker_image=" + cluster.deployImage(), // the release the upgrade pins (#1862)
 				dbSection + "." + key + "=always",
 				jobsSection + "." + key + "=always",
 			})
@@ -248,6 +250,12 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor, for
 
 	for _, section := range cfg.Sections() {
 		name := section.Name()
+		if name == "env" && forcePull {
+			// The pull phase of the upgrade pins the release the declared image resolved
+			// to (#1862); the file keeps every other key as it is.
+			section.Key("docker_image").SetValue(cluster.deployImage())
+			continue
+		}
 		if name != "container#db" && name != "container#jobs" {
 			continue
 		}
@@ -604,6 +612,9 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 // appending the shared allocator tuning (GetDBAllocatorEnv, #1749).
 func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
 	env := "MYSQL_INITDB_SKIP_TZINFO=yes"
+	if server.ClusterGroup.DBImageAutoUpgradeEnv() {
+		env += " MARIADB_AUTO_UPGRADE=1"
+	}
 	if preload, arenaMax := server.ClusterGroup.GetDBAllocatorEnv(); preload != "" {
 		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + arenaMax
 	}
@@ -652,7 +663,7 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 	}
 	svcenv["nodes"] = agent.HostName
 	svcenv["size"] = server.ClusterGroup.Conf.ProvDisk + "g"
-	svcenv["docker_image"] = server.ClusterGroup.Conf.ProvDbImg
+	svcenv["docker_image"] = server.deployImage()
 	ips := strings.Split(server.ClusterGroup.Conf.ProvGateway, ".")
 	masks := strings.Split(server.ClusterGroup.Conf.ProvNetmask, ".")
 	for i, mask := range masks {
@@ -1257,4 +1268,14 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 		}
 	}
 	return vm
+}
+
+// deployImage is the image a deployment render uses: the running image a rolling restart
+// keeps on the server (#1861), else the explicit release prov-db-image resolved to
+// (cluster.deployImage, #1862).
+func (server *ServerMonitor) deployImage() string {
+	if server.DeployImageOverride != "" {
+		return server.DeployImageOverride
+	}
+	return server.ClusterGroup.deployImage()
 }

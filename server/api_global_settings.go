@@ -130,6 +130,10 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 	}
 	value := ""
 	if settingValue, ok := vars["settingValue"]; ok {
+		// The GUI clears a text setting with the literal "{undefined}".
+		if settingValue == "{undefined}" {
+			settingValue = ""
+		}
 		value = settingValue
 	}
 
@@ -293,6 +297,29 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		new_secret.Value = repman.Conf.Cloud18DomainSecret
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-domain-secret")
 		repman.Conf.Secrets["cloud18-domain-secret"] = new_secret
+	case "cloud18-marketplace-pricing-mode":
+		if value != config.ConstMarketplacePricingModeCsvServicePlan && value != config.ConstMarketplacePricingModeGlobalUnitPricing {
+			return fmt.Errorf("invalid marketplace pricing mode %q, expected %q or %q", value, config.ConstMarketplacePricingModeCsvServicePlan, config.ConstMarketplacePricingModeGlobalUnitPricing)
+		}
+		repman.Conf.Cloud18MarketplacePricingMode = value
+	case "cloud18-marketplace-dbu-price":
+		price, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur price for %s: %w", name, err)
+		}
+		if price < 0 {
+			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceDBUPrice = price
+	case "cloud18-marketplace-apu-price":
+		price, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur price for %s: %w", name, err)
+		}
+		if price < 0 {
+			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceAPUPrice = price
 	case "api-bind":
 		repman.Conf.APIBind = value
 	case "api-port":
@@ -568,12 +595,55 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MonitoringLogAPILogin = isactive
 	case "monitoring-log-api-login-silent-users":
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
+	case "cloud18-self-service-clusters-enabled-script":
+		repman.Conf.Cloud18SelfServiceClustersEnabledScript = strings.TrimSpace(value)
+	case "cloud18-self-service-clusters-can-borrow":
+		repman.Conf.Cloud18SelfServiceClustersCanBorrow = isactive
 	case "cloud18-self-service-max-clusters-per-user":
 		n, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || n < 0 {
 			return fmt.Errorf("cloud18-self-service-max-clusters-per-user must be a positive integer, got %q", value)
 		}
 		repman.Conf.Cloud18SelfServiceMaxClustersPerUser = n
+	case "resource-manager-ratio-dbu", "resource-manager-ratio-apu", "resource-manager-ratio-bku":
+		if _, err := cluster.ParseUnitRatios(value); err != nil {
+			return fmt.Errorf("%s: %w (format cores=1,mem=4g,disk=20g,iops=1000)", name, err)
+		}
+		switch name {
+		case "resource-manager-ratio-dbu":
+			repman.Conf.ResourceManagerRatioDBU = value
+		case "resource-manager-ratio-apu":
+			repman.Conf.ResourceManagerRatioAPU = value
+		default:
+			repman.Conf.ResourceManagerRatioBKU = value
+		}
+		if repman.resourceManager != nil {
+			if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
+				return err
+			}
+		}
+	case "cloud18-marketplace-bku-price":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("cloud18-marketplace-bku-price must be a positive number of Eur per BKU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceBKUPrice = f
+	case "cloud18-marketplace-bau-price":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("cloud18-marketplace-bau-price must be a positive number of Eur per BAU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceBAUPrice = f
+	case "cloud18-marketplace-overcommit-price-pct", "cloud18-marketplace-undercommit-price-pct":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("%s must be a positive percent of the unit price, got %q", name, value)
+		}
+		if name == "cloud18-marketplace-overcommit-price-pct" {
+			repman.Conf.Cloud18MarketplaceOvercommitPricePct = n
+		} else {
+			repman.Conf.Cloud18MarketplaceUndercommitPricePct = n
+		}
 	case "mcp-transport":
 		if value != "api" && value != "sse" && value != "stdio" && value != "both" {
 			return errors.New("mcp-transport must be api, sse, stdio or both")
@@ -636,6 +706,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.restartMCPServer()
 	case "cloud18-self-service-clusters":
 		repman.Conf.Cloud18SelfServiceClusters = !repman.Conf.Cloud18SelfServiceClusters
+	case "cloud18-self-service-clusters-can-borrow":
+		repman.Conf.Cloud18SelfServiceClustersCanBorrow = !repman.Conf.Cloud18SelfServiceClustersCanBorrow
 	case "mcp-auth-enabled":
 		repman.Conf.MCPAuthEnabled = !repman.Conf.MCPAuthEnabled
 		repman.restartMCPServer()

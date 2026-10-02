@@ -1246,3 +1246,26 @@ func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 	return false
 
 }
+
+// MarkReseedFailed records a reseed job failure for the reconciliation (#1866): a
+// reseed that reported a failure is a failed reseed, even if the empty replica then
+// looks like a slave of its master.
+func (server *ServerMonitor) MarkReseedFailed(err error) {
+	if err == nil {
+		return
+	}
+	server.reseedLastError.Store(err.Error())
+	server.reseedFailedAt.Store(time.Now().UnixNano())
+}
+
+// ReseedFailedSince answers the error of a reseed failure recorded after since
+// (unix-nanos), "" when none.
+func (server *ServerMonitor) ReseedFailedSince(since int64) string {
+	if at := server.reseedFailedAt.Load(); at > since {
+		if e, ok := server.reseedLastError.Load().(string); ok {
+			return e
+		}
+		return "reseed failed"
+	}
+	return ""
+}

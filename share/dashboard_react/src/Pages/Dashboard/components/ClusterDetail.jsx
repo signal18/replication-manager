@@ -311,15 +311,33 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
             setConfirmHandler(() => () => dispatch(rollingAction({ clusterName: selectedCluster?.name, action: 'reprov' })))
           }
         },
-        {
-          name: 'Rolling Upgrade',
+        ...[
+          ['Rolling Upgrade', 'patch', 'the declared image resolved by the image list (a line moves to its newest release)'],
+          ['Rolling Upgrade Next Minor', 'next-minor', 'the next line of the same major'],
+          ['Rolling Upgrade Next Major', 'next-major', 'the first line of the next major'],
+          ['Rolling Upgrade Last LTS', 'last-lts', 'the highest long-term line'],
+          ['Rolling Downgrade Previous Minor', 'previous-minor', 'the line below in the same major'],
+          ['Rolling Downgrade Previous Major', 'previous-major', 'the highest line of the previous major (a reprov from the last logical backup)']
+        ].map(([name, target, meaning]) => ({
+          name,
           isDisabled: !g['cluster-rolling'] || rollingActionLoading,
-          onClick: () => {
+          onClick: async () => {
+            // Ask the plan first, so the confirm says the release, the mechanic and the warnings.
+            let title = `${name}?`
+            let body = `Target: ${meaning}.`
+            try {
+              const { data: plan } = await clusterService.rollingUpgradePlan(selectedCluster?.name, target)
+              title = `${name}: ${plan.currentLine} to ${plan.targetImage} (${plan.mechanic})?`
+              body = `${meaning}. prov-db-image after: ${plan.declaredAfter}. Order: ${(plan.order || []).join(', ')}.` + ((plan.warnings || []).length ? ' Warnings: ' + plan.warnings.join(' | ') : '')
+            } catch (e) {
+              body = `${meaning}. The plan is refused: ${e?.response?.data || e?.message || e}`
+            }
             openConfirmModal()
-            setConfirmTitle('Rolling upgrade?')
-            setConfirmHandler(() => () => dispatch(rollingAction({ clusterName: selectedCluster?.name, action: 'upgrade' })))
+            setConfirmTitle(title)
+            setConfirmBody(body)
+            setConfirmHandler(() => () => dispatch(rollingAction({ clusterName: selectedCluster?.name, action: 'upgrade', target })))
           }
-        },
+        })),
         {
           name: 'Rotate Certificates',
           isDisabled: !g['cluster-certificates-rotate'],

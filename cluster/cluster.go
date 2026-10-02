@@ -102,32 +102,38 @@ type Cluster struct {
 	IsSplitBrainBck   bool   `json:"-"`
 	SplitBrainStartTs int64  `json:"splitBrainStartTs" groups:"web"` // unix ts when the current/last split brain began; used to filter a peer crash to THIS split
 
-	injectTrafficTableReady       map[string]bool `json:"-"` // dml marker schema created once per proxy target
-	IsFailedArbitrator            bool            `json:"isFailedArbitrator" groups:"web"`
-	IsLostMajority                bool            `json:"isLostMajority" groups:"web"`
-	IsDown                        bool            `json:"isDown" groups:"web"`
-	IsClusterDown                 bool            `json:"isClusterDown" groups:"web"`
-	IsMasterDown                  bool            `json:"isMasterDown" groups:"web"`
-	IsAllDbUp                     bool            `json:"isAllDbUp" groups:"web"`
-	IsFailable                    bool            `json:"isFailable" groups:"web"`
-	IsPostgres                    bool            `json:"isPostgres" groups:"web"`
-	IsProvision                   bool            `json:"isProvision" groups:"web"`
-	IsNeedProxiesRestart          bool            `json:"isNeedProxiesRestart" groups:"web"`
-	IsNeedProxiesReprov           bool            `json:"isNeedProxiesReprov" groups:"web"`
-	IsNeedProxiesConfigChange     bool            `json:"isNeedProxiesConfigChange" groups:"web"`
-	IsNeedDatabasesRestart        bool            `json:"isNeedDatabasesRestart" groups:"web"`
-	SwitchoverLongWriteWait       *LongWriteWait  `json:"switchoverLongWriteWait" groups:"web"` // tracked fact: a switchover is waiting for long writes on the master; WARN0217 open while non-nil
-	IsNeedDatabasesRollingRestart bool            `json:"isNeedDatabasesRollingRestart" groups:"web"`
-	IsNeedDatabasesRollingReprov  bool            `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedResourceCapUp           bool            `json:"isNeedResourceCapUp" groups:"web"`   // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
-	ResourceGrowRefused           *GrowRefusal    `json:"resourceGrowRefused" groups:"web"`   // last dynamic over-plan step refused by the ResourceManager gate (nil = none); tracked state, surfaced as ERR00112 in the workload channel
-	ConfigDbuPerNode              DBUReading      `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
-	ConfigDbu                     float64         `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan
-	IsNeedResourceCapDown         bool            `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
-	LastDynamicResizeDay          string          `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
-	lastDynamicResize             time.Time       `json:"-"`                                  // last dynamic in-plan grow (DriveDynamicResize); cooldown = one step per scale-up window
-	lastDynamicGrowAxis           string          `json:"-"`                                  // axis of the last dynamic grow ("cpu"/"mem"/"io"); drives the QPS-feedback mem->io escalation
-	qpsBeforeDynamicGrow          float64         `json:"-"`                                  // cluster QPS sampled just before that grow; next window compares to detect a plateau
+	injectTrafficTableReady       map[string]bool                `json:"-"` // dml marker schema created once per proxy target
+	IsFailedArbitrator            bool                           `json:"isFailedArbitrator" groups:"web"`
+	IsLostMajority                bool                           `json:"isLostMajority" groups:"web"`
+	IsDown                        bool                           `json:"isDown" groups:"web"`
+	IsClusterDown                 bool                           `json:"isClusterDown" groups:"web"`
+	IsMasterDown                  bool                           `json:"isMasterDown" groups:"web"`
+	IsAllDbUp                     bool                           `json:"isAllDbUp" groups:"web"`
+	IsFailable                    bool                           `json:"isFailable" groups:"web"`
+	IsPostgres                    bool                           `json:"isPostgres" groups:"web"`
+	IsProvision                   bool                           `json:"isProvision" groups:"web"`
+	IsNeedProxiesRestart          bool                           `json:"isNeedProxiesRestart" groups:"web"`
+	IsNeedProxiesReprov           bool                           `json:"isNeedProxiesReprov" groups:"web"`
+	IsNeedProxiesConfigChange     bool                           `json:"isNeedProxiesConfigChange" groups:"web"`
+	IsNeedDatabasesRestart        bool                           `json:"isNeedDatabasesRestart" groups:"web"`
+	SwitchoverLongWriteWait       *LongWriteWait                 `json:"switchoverLongWriteWait" groups:"web"` // tracked fact: a switchover is waiting for long writes on the master; WARN0217 open while non-nil
+	IsNeedDatabasesRollingRestart bool                           `json:"isNeedDatabasesRollingRestart" groups:"web"`
+	IsNeedDatabasesRollingReprov  bool                           `json:"isNeedDatabasesRollingReprov" groups:"web"`
+	IsNeedResourceCapUp           bool                           `json:"isNeedResourceCapUp" groups:"web"` // composed from the per-server plan states: ANY up server over the plan -> RAISE THE PLAN (cap up). Set by CheckResourceCapPlan
+	resizerOverride               ResourceResizer                // tests: a fake resizer in place of resourceResizer()
+	ResourceGrowRefused           *GrowRefusal                   `json:"resourceGrowRefused" groups:"web"`   // last dynamic over-plan step refused by the ResourceManager gate (nil = none); tracked state, surfaced as ERR00112 in the workload channel
+	ConfigDbuPerNode              DBUReading                     `json:"configDbuPerNode" groups:"web"`      // prov-db-* projected through the ratios: the TECHNICAL cap per node (paramétré axis), refreshed each tick
+	BackupUnits                   *BKUReading                    `json:"backupUnits" groups:"web"`           // BKU: per-cluster local backup storage vs prov-db-bku (RefreshBackupUnits, every 30 ticks)
+	BackupArchiveUnits            *BAUReading                    `json:"backupArchiveUnits" groups:"web"`    // BAU: per-cluster remote archive on S3/SFTP, no plan (RefreshBackupUnits, every 30 ticks)
+	StatefulUnits                 *StatefulBilling               `json:"statefulUnits" groups:"web"`         // DBU billing of the stateful apps (app-stateful), own line next to computeUnits
+	ComputeUnits                  *APUBilling                    `json:"computeUnits" groups:"web"`          // APU billing: apps + proxies, floor 1 per instance, vs prov-service-plan-apu (RefreshComputeBilling, each tick)
+	UnitRatios                    map[WorkloadProfile]UnitRatios `json:"unitRatios" groups:"web"`            // the manager's ratios (database/compute/storage): the dashboard's ONLY source for unit arithmetic
+	ConfigDbu                     float64                        `json:"configDbu" groups:"web"`             // cluster-wide configured DBU = per-node pivot x #DB nodes; the graph draws it as the "configured" line above the plan
+	IsNeedResourceCapDown         bool                           `json:"isNeedResourceCapDown" groups:"web"` // composed: EVERY up server under the plan -> LOWER THE PLAN (cap down); one non-under server breaks it (safe-shrink). Set by CheckResourceCapPlan
+	LastDynamicResizeDay          string                         `json:"-"`                                  // YYYY-MM-DD of the last daily-time memory reconcile (DriveDailyDynamicResize); one apply per day per window
+	lastDynamicResize             time.Time                      `json:"-"`                                  // last dynamic in-plan grow (DriveDynamicResize); cooldown = one step per scale-up window
+	lastDynamicGrowAxis           string                         `json:"-"`                                  // axis of the last dynamic grow ("cpu"/"mem"/"io"); drives the QPS-feedback mem->io escalation
+	qpsBeforeDynamicGrow          float64                        `json:"-"`                                  // cluster QPS sampled just before that grow; next window compares to detect a plateau
 	// Per-axis consumed-vs-reference detail is PER SERVER (ServerMonitor.ResourceConsumedOver/UnderConfigAxes for raise/shrink resources, .ResourceConsumedOver/UnderPlanAxes composed here).
 	IsNeedDatabasesReprov        bool                `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange  bool                `json:"isNeedDatabasesConfigChange" groups:"web"`
@@ -917,12 +923,9 @@ func (cluster *Cluster) InitFromConf() {
 			cluster.SetProxyServerMaintenance(server.ServerID)
 		}
 	}
-	persistRebasedAppCreditCap := false
 	err = cluster.newAppList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set app list %s", err)
-	} else if cluster.rebaseAppCreditCap() {
-		persistRebasedAppCreditCap = true
 	}
 	//Loading configuration compliances
 	err = cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
@@ -949,12 +952,6 @@ func (cluster *Cluster) InitFromConf() {
 	// users, restic paths, ACLs), emitting transient config change events
 	// that then replay on peers.
 	cluster.initConfigDone.Store(true)
-	if persistRebasedAppCreditCap {
-		if _, saveErr := cluster.SaveConfigFile(); saveErr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
-				"Failed to reconcile credit cap at startup: %s", saveErr)
-		}
-	}
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
 }
@@ -1033,7 +1030,7 @@ var pstates30 = []string{
 	"WARN0169",             // On-premise SSH key (CheckOnPremiseSSHKey runs %30)
 	"WARN0170",             // Configurator prerequisites (CheckConfiguratorPrerequisites runs %30)
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
-	"CREDIT01", // Credit related
+	"WARN0225", // Local backup storage over the BKU plan (RefreshBackupUnits runs %30)
 }
 
 var pstates3600 = []string{
@@ -1244,11 +1241,13 @@ func (cluster *Cluster) tickBody() {
 				cluster.trackTickGoroutine(cluster.maybeRefreshAppsAsync)
 				if heartbeats%10 == 0 {
 					goRun(cluster.MonitorTableSchemaDiff)
+					cluster.trackTickGoroutine(cluster.ScrapeComputeSensors) // APU sensor: om3 per-service cgroup metrics of the apps + proxies (cluster_compute_sensor.go); HTTP to the agents, never waited by the tick
 				}
 				if heartbeats%30 == 0 {
 					goRun(cluster.ResticFetchRepo)
 					goRun(cluster.MonitorVariablesDiff)
 					goRun(cluster.MonitorVariablesChange)
+					goRun(cluster.RefreshBackupUnits) // BKU: local backup disk vs prov-db-bku (WARN0225, preserved via pstates30) + BAU: remote restic archive, no plan
 				}
 				wg.Wait()
 
@@ -1267,7 +1266,6 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckComplianceUpdate)
 					goRun(cluster.ReloadDockerRepos)
 				}
-				goRun(cluster.CheckAppsCredit)
 				goRun(cluster.CheckWaitRunJobSSH)
 				goRun(cluster.CheckDummyConfigSendCookies)
 				goRun(cluster.CheckRestartContainerCookies)
@@ -1284,7 +1282,6 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckCanSaveDynamicConfig)
 					goRun(cluster.CheckIsOverwrite)
 					goRun(cluster.CheckAllBackupEstimatedSize)
-					goRun(cluster.CheckAvailableCredit)
 					goRun(cluster.CheckOpenSVCTresholds)
 					goRun(cluster.JobsCheckSchedulerTable)
 					goRun(cluster.CheckOnPremiseSSHKey)
@@ -1295,11 +1292,13 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.CheckClusterServiceAgents)
 				}
 				if cluster.Conf.GraphiteMetrics && heartbeats%5 == 0 {
-					cluster.CollectComputeMetrics()  // queue APU (proxies+apps) BEFORE the flush -> same batch
-					cluster.CollectPerAgentMetrics() // queue per-agent DBU+APU rollup into the same batch
+					cluster.CollectComputeMetrics()    // queue APU (proxies+apps) BEFORE the flush -> same batch
+					cluster.CollectBackupUnitMetrics() // queue BKU (plan, local) + BAU (remote archive) into the same batch
+					cluster.CollectPerAgentMetrics()   // queue per-agent DBU+APU rollup into the same batch
 					goRun(func() { cluster.SendGraphiteMetrics() })
 					goRun(cluster.CheckDisksUsage)
 				}
+				cluster.CheckReseedReadiness() // WARN0222/0223/0224 gate the rolling reprov across a major
 				wg.Wait()
 
 				// PreserveState for non-running ticks (fast, no I/O)
@@ -1444,6 +1443,7 @@ func (cluster *Cluster) StateProcessing() {
 						servertoreseed.SetInReseedBackup("")
 					}
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
+					servertoreseed.MarkReseedFailed(err)
 				}
 				// NOTE: a rejoin-armed reseed is NOT reconciled here — ProcessReseedPhysical
 				// only arms a detached WaitAndSendSST/SSTRunSender goroutine and returns nil,
@@ -1517,6 +1517,7 @@ func (cluster *Cluster) StateProcessing() {
 		cluster.LogPrintAllStates()
 		cluster.LogPrintAllWorkloadStates()
 		cluster.LogPrintAllSecurityStates()
+		cluster.LogPrintAllSchemaStates()
 
 		// trigger action on resolving states
 		ostates := cluster.StateMachine.GetOpenStates()
@@ -1659,6 +1660,7 @@ func (cluster *Cluster) launchLogicalReseed(servertoreseed *ServerMonitor) {
 				srvReseed.SetInReseedBackup("")
 			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing logical reseed for %s: %s", srvReseed.URL, err)
+			srvReseed.MarkReseedFailed(err)
 		}
 		// Rejoin-armed reseed outcome is reconciled uniformly at true
 		// completion (IsReseeding clear) by reconcileDeferredRejoinReseeds,
@@ -1908,64 +1910,17 @@ type ClusterState struct {
 	IsProvisioned bool `json:"isProvisioned"`
 }
 
-// recomputeAppCredits recomputes Cloud18ApplicationCreditsUsed and
-// Cloud18ApplicationCreditsPlanned from the current per-app values.
-// Must be called without the cluster lock held.
-func (cluster *Cluster) recomputeAppCredits() {
-	cluster.Lock()
-	used := 0
-	planned := 0
-	for _, app := range cluster.Apps {
-		used += app.AppConfig.ProvAppCreditUsed
-		planned += app.AppConfig.ProvAppCreditPlanned
-	}
-	cluster.Unlock()
-	cluster.Conf.Cloud18ApplicationCreditsUsed = used
-	cluster.Conf.Cloud18ApplicationCreditsPlanned = planned
-}
-
-// rebaseAppCreditCap raises Cloud18ApplicationCredits to the current used total
-// when actual provisioned usage has outgrown the persisted cap.
-func (cluster *Cluster) rebaseAppCreditCap() bool {
-	if cluster.Conf.Cloud18ApplicationCreditsUsed <= cluster.Conf.Cloud18ApplicationCredits {
-		return false
-	}
-	cluster.Conf.Cloud18ApplicationCredits = cluster.Conf.Cloud18ApplicationCreditsUsed
-	return true
-}
-
-// ClearAppProvisionedCredits zeros the used credits for app, removes its provision
-// cookie, refreshes cluster totals, and persists the cleared state so restart
-// rebuilds stay correct. Call this after a successful unprovision.
-func (cluster *Cluster) ClearAppProvisionedCredits(app *App) {
+// ClearAppProvisioned removes the provision cookie and marks the app explicitly
+// unprovisioned (so the status-cycle backfill does not re-cookie it while it briefly
+// still appears running), then persists. Call this after a successful unprovision.
+func (cluster *Cluster) ClearAppProvisioned(app *App) {
 	if app == nil {
 		return
 	}
-	app.AppConfig.ProvAppCreditUsed = 0
 	app.DelProvisionCookie()
-	// Mark explicitly unprovisioned so the status-cycle backfill in IsAppProvisioned
-	// does not re-credit the app if it still briefly appears running.
 	app.SetUnprovisionCookie()
-	cluster.recomputeAppCredits()
 	if _, err := cluster.SaveApp(app, ""); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist credit clear for %s: %s", app.Name, err)
-	}
-}
-
-// StartBillingCycle is called when a new sponsorship cycle is accepted.
-// It recomputes totals from apps and, if current usage is below the cap,
-// lowers the cap to match usage (including zero), then persists the new cap.
-// Failures are logged but never propagated — sponsorship is already committed
-// by the time this runs, so a persist failure must not misreport the outcome.
-func (cluster *Cluster) StartBillingCycle() {
-	cluster.recomputeAppCredits()
-	used := cluster.Conf.Cloud18ApplicationCreditsUsed
-	cap := cluster.Conf.Cloud18ApplicationCredits
-	if cap > 0 && used < cap {
-		cluster.Conf.Cloud18ApplicationCredits = used
-		if _, err := cluster.SaveConfigFile(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to persist billing cycle cap: %s", err)
-		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist unprovision of %s: %s", app.Name, err)
 	}
 }
 
@@ -3460,12 +3415,6 @@ func (c *Cluster) AddApp(app *App) error {
 	c.bumpAppListVersion()
 	c.Unlock()
 
-	c.recomputeAppCredits()
-	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
-		if app.HasProvisionCookie() {
-			app.SetReprovCookie()
-		}
-	}
 	return nil
 }
 

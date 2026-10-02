@@ -438,6 +438,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorSchemaIgnoreTables, "monitoring-schema-ignore-tables", "", "Comma separated list of tables to ignore for schema change monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorChecksumIgnoreTables, "monitoring-checksum-ignore-tables", "replication_manager_schema.jobs,replication_manager_schema.table_checksum", "Comma separated list of tables to ignore for data checksum monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
+	flags.StringVar(&conf.MonitoringAddMonitorScript, "monitoring-add-monitor-script", "", "Script run before a database, proxy or app monitor is added (argv: cluster, type, name, version, units; env REPMAN_MONITOR_*, REPMAN_RESOURCE_*); a non-zero exit refuses the add, its first output line is the reason")
+	flags.StringVar(&conf.MonitoringDropMonitorScript, "monitoring-drop-monitor-script", "", "Script run after a database, proxy or app monitor is dropped, same contract as monitoring-add-monitor-script, informative only")
 	flags.StringVar(&conf.MonitoringSSLCert, "monitoring-ssl-cert", "", "HTTPS & API TLS certificate")
 	flags.StringVar(&conf.MonitoringSSLKey, "monitoring-ssl-key", "", "HTTPS & API TLS key")
 	flags.StringVar(&conf.MonitoringKeyPath, "monitoring-key-path", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
@@ -1075,6 +1077,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBConfig, "prov-db-config", WithProvisioning == "ON", "Enable configurator config tracking and deployment to database servers. When false, dbjobs skips config refresh and no config is pushed to databases. Default: true for PRO, false for OSC.")
+	flags.BoolVar(&conf.ProvDbUpgradeMajorReprov, "prov-db-upgrade-major-reprov", false, "Rolling upgrade across a major release: provision each node again from scratch on the new release and reseed it from the master (rolling reprov) instead of restarting it on its data directory with mariadb-upgrade. A downgrade across a major always reprovisions (#1862)")
 	flags.BoolVar(&conf.ProvOrchestratorDeploymentUpgradeOnStart, "prov-orchestrator-deployment-upgrade-on-start", true, "On each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: image, resources/cgroup cap, run_args, env) to the orchestrator BEFORE start, so the recreated container/pod comes up on the current config instead of the last-provisioned one. Covers the resource cap; also lets an unpinned image tag roll forward on restart (intended). On by default; set false to keep rolling restart deployment-neutral.")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
 	flags.BoolVar(&conf.ProvDBDynamicResource, "prov-db-dynamic-resource", false, "Apply system-resource resizes (prov-db-memory/cpu/io) live via SET GLOBAL instead of a restart, for the dynamically-settable variables (buffer pool, max_session_mem_used, io capacity, ...); off by default")
@@ -1117,9 +1120,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
 	flags.IntVar(&conf.ProvServicePlanDbu, "prov-service-plan-dbu", 0, "Per-cluster DBU service plan = the SUM of the deployment plans (Σ prov-db-dbu over the DB nodes). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-node prov-db-dbu, not this, so it never re-locks in /etc.")
 	flags.IntVar(&conf.ProvDbDbu, "prov-db-dbu", 2, "Per-node DBU reservation (technical resource contract; 1 DBU = 1 core / 4GB / 20GB / 1000 IOPS). All DB nodes are identical, so the cluster DBU contract = prov-db-dbu x number of nodes. Client-controlled (dynamic layer), the DBU configurator moves it. Default 2 (2 cores / 8GB / 80GB / 2000 IOPS per node).")
+	flags.IntVar(&conf.ProvDbBku, "prov-db-bku", 6, "Per-cluster BKU reservation, the backup unit plan (1 BKU = 20 GB of backup disk, nothing else; accounted per cluster, never per node). Backup storage above the plan is over-commit: billed, never blocked. Local BKU = the cluster's local backup (the repman backups directory on the local pool); remote BKU = what is archived on S3/SFTP (restic), billed at its own price.")
 	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 4, "Per-cluster APU service plan = the SUM of the deployment plans (proxies at prov-proxy-apu + apps at their own config). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-deployment reservations, not this. 1 APU = 1 core / 1GB / 10GB, no IOPS.")
 	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Public-network/Bandwidth Units (BPU reservation contract; public network capacity, maps to cloud18-infra-public-bandwidth). Default 1.")
 	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
+	flags.StringVar(&conf.ResourceManagerRatioDBU, "resource-manager-ratio-dbu", cluster.DefaultRatioDBU, "What one DBU (Database Unit) is made of: cores=,mem=,disk=,iops= (mem in m/g, disk in g/t). The ONE source of the ratio, for the resource manager, the billing and the dashboard")
+	flags.StringVar(&conf.ResourceManagerRatioAPU, "resource-manager-ratio-apu", cluster.DefaultRatioAPU, "What one APU (Application Unit, proxies and apps) is made of: cores=,mem=,disk= (no iops)")
+	flags.StringVar(&conf.ResourceManagerRatioBKU, "resource-manager-ratio-bku", cluster.DefaultRatioBKU, "What one BKU/BAU (storage unit) is made of: disk= only")
 	flags.Float64Var(&conf.ResourceManagerInfraQuotaPct, "resource-manager-infra-quota-pct", 90, "Share of the physical metal (0-100) repman's ResourceManager may allocate, protecting non-repman workloads on the agent. Default 90.")
 	flags.Float64Var(&conf.ResourceManagerInfraCpuCores, "resource-manager-infra-cpu-cores", 0, "ResourceManager infra capacity override: total CPU cores. 0 = unset (use the monitored value).")
 	flags.Float64Var(&conf.ResourceManagerInfraMemoryMB, "resource-manager-infra-memory-mb", 0, "ResourceManager infra capacity override: total memory in MB. 0 = unset (use the monitored value).")
@@ -1228,14 +1235,22 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "pulling", "Peer health polling scope. pulling (DEFAULT) and smart both serve the for-sale catalog from the BO-aggregated peer.json and live-poll ONLY clusters this instance has a relationship to — own fleet (registering user) + delegated + active-session users' clusters + sale workflows. An instance with no such relationship (a fresh/browsing client) opens no peer connections. peering is a legacy full-mesh that live-polls EVERY peer incl. the for-sale catalog (O(N^2); opt-in only, never for clients). partner plan auto-promotes pulling->smart.")
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
+	flags.StringVar(&conf.Cloud18MarketplacePricingMode, "cloud18-marketplace-pricing-mode", config.ConstMarketplacePricingModeCsvServicePlan, "Marketplace pricing model. csv-service-plan (DEFAULT) uses a per-cluster service plan downloaded as CSV. global-unit-pricing prices clusters globally from cloud18-marketplace-dbu-price and cloud18-marketplace-apu-price (both in Eur), with no per-cluster plan.")
+	flags.Float64Var(&conf.Cloud18MarketplaceDBUPrice, "cloud18-marketplace-dbu-price", 0, "Price per Database Unit in Eur, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
+	flags.Float64Var(&conf.Cloud18MarketplaceAPUPrice, "cloud18-marketplace-apu-price", 0, "Price per APU (Application Unit: 1 core, 2 GB RAM, 10 GB disk, no IOPS) in Eur, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
+	flags.Float64Var(&conf.Cloud18MarketplaceBKUPrice, "cloud18-marketplace-bku-price", 0, "Price per BKU and per month in Eur (1 BKU = 20 GB of local backup storage: the last backup of each server plus a local restic archive); 0 = not priced")
+	flags.Float64Var(&conf.Cloud18MarketplaceBAUPrice, "cloud18-marketplace-bau-price", 0, "Price per BAU and per month in Eur (1 BAU = 20 GB of remote backup archive held by restic on S3/SFTP, no plan, billed on usage); applies to Signal18 or partner storage only; 0 = not priced")
+	flags.IntVar(&conf.Cloud18MarketplaceOvercommitPricePct, "cloud18-marketplace-overcommit-price-pct", 150, "SURCHARGE on a unit consumed ABOVE the plan, in percent of the unit price (150 = the unit costs 2.5 times the price); asymmetric with cloud18-marketplace-undercommit-price-pct; applies to every unit family with a plan (DBU, APU, BKU), never to the BAU (pure usage)")
+	flags.IntVar(&conf.Cloud18MarketplaceUndercommitPricePct, "cloud18-marketplace-undercommit-price-pct", 80, "REDUCTION on a plan unit left UNCONSUMED, in percent of the unit price (80 = the unit costs 0.2 times the price; 0 = the plan is billed in full); the pendant of cloud18-marketplace-overcommit-price-pct")
+	flags.BoolVar(&conf.Cloud18MarketplaceBAUClientStorage, "cloud18-marketplace-bau-client-storage", false, "The cluster's remote backup repository (S3/SFTP) is the client's own storage: its BAU are tracked but never priced")
 	flags.BoolVar(&conf.Cloud18SelfServiceClusters, "cloud18-self-service-clusters", false, "Let registered Cloud18 users reaching this instance through peering create clusters here without subscription acceptance; the partner is only informed (OpenSVC and Kubernetes orchestrators)")
 	flags.IntVar(&conf.Cloud18SelfServiceMaxClustersPerUser, "cloud18-self-service-max-clusters-per-user", 3, "Clusters a Cloud18 user may sponsor on this instance through self-service")
+	flags.StringVar(&conf.Cloud18SelfServiceClustersEnabledScript, "cloud18-self-service-clusters-enabled-script", "", "Script run before a self-service cluster creation (argv: identity, orchestrator; env REPMAN_IDENTITY, REPMAN_SPONSORED_CLUSTERS, REPMAN_NEEDED_DBU/APU, REPMAN_FREE_DBU/APU, REPMAN_BORROW_DBU/APU); a non-zero exit vetoes it, its first output line is the reason")
+	flags.BoolVar(&conf.Cloud18SelfServiceClustersCanBorrow, "cloud18-self-service-clusters-can-borrow", false, "Let a self-service cluster be created on borrowed capacity (the over-commit pot) when the plan pot cannot guarantee its default units")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
-	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
-	flags.IntVar(&conf.Cloud18ApplicationCreditsPrice, "cloud18-application-credits-price", 20, "Cloud18 application credits price in Eur")
 	flags.StringVar(&conf.Cloud18DomainAddScript, "cloud18-domain-add-script", "/usr/share/replication-manager/scripts/prov_domain_add_script.sh", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainUser, "cloud18-domain-user", "", "First parameter to pass prov-domain-?-script")
@@ -1256,6 +1271,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
 		flags.StringVar(&conf.ProvDiskTempSize, "prov-db-disk-temp-size", "128", "Disk in m for micro service VM")
 		flags.StringVar(&conf.ProvDiskDockerSize, "prov-db-disk-docker-size", "2", "Disk in g for Docker Private per micro service VM")
+		flags.StringVar(&conf.ProvDbImgResolved, "prov-db-docker-img-resolved", "", "Written by replication-manager: the release prov-db-docker-img resolved to at the last provision or rolling upgrade, as \"declared=explicit\" (mariadb:latest=mariadb:13.0.2); the service definition always carries the explicit release, so only an upgrade moves it (#1862)")
 		flags.StringVar(&conf.ProvDbImg, "prov-db-docker-img", "mariadb:latest", "Docker image for database")
 		flags.StringVar(&conf.ProvDBDockerTmpfsSize, "prov-db-docker-tmpfs-size", "256", "Docker tmpfs size in megabytes. If 0 or not set, no tmpfs will be used. Please note that tmpfs is a memory filesystem and will use memory from the host.")
 		flags.StringVar(&conf.ProvDBDockerRunArgs, "prov-db-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for db")
@@ -1369,6 +1385,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4G", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
+	flags.StringVar(&conf.ProvAppStartTimeout, "prov-app-start-timeout", "2m", "Start and image pull timeout of an app container in the orchestrator service definition (om3 start_timeout and pull_timeout, e.g. 2m, 15m): the default of every app, a template or an app may set its own for a heavy image")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "App container memory, value with unit e.g. 256M, 1G. Base for 1 credit in cloud18")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
 	flags.StringVar(&conf.ProvAppSizingMode, "prov-app-sizing-mode", "", "Cluster-level app sizing policy: 'unit' (App Unit credit-based) or 'manual' (direct resource edit). Empty means legacy mode.")
@@ -3219,7 +3236,6 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceContractedCapacityState()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
-			repman.RefreshCreditsFromCRM()
 		} else {
 			// The connectivity probes only run every %60 ticks while the
 			// lifecycle clears every tick: carry their states across the
@@ -3551,6 +3567,21 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Global policy: the share of the metal repman may allocate (protects non-repman
 	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
 	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
+	repman.resourceManager.SetPrices(repman.billingPrices())
+	if repman.Conf.WorkingDir != "" {
+		logf := func(format string, args ...interface{}) {
+			if repman.Logrus != nil {
+				repman.Logrus.WithFields(log.Fields{"module": "billing"}).Infof(format, args...)
+			}
+		}
+		if err := repman.resourceManager.SetBillingDir(repman.Conf.WorkingDir, logf); err != nil {
+			logf("%s: %v", cluster.UnitsLogName, err)
+		}
+		repman.resourceManager.SetFinalPush(repman.PushUnitsLogToGit)
+	}
+	if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s (built-in defaults kept for the profiles that failed)", err)
+	}
 	repman.currentCluster.SetResourceManager(repman.resourceManager)
 
 	if repman.currentCluster.Conf.SecretKey == nil {

@@ -142,12 +142,21 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	if spec.Proxy == "" {
 		spec.Proxy = "haproxy"
 	}
+	// phpMyAdmin is deployed by default; apps=none opts out.
 	apps := []string{}
+	optOut := false
 	for _, a := range spec.Apps {
 		a = strings.TrimSpace(a)
+		if strings.EqualFold(a, "none") {
+			optOut = true
+			continue
+		}
 		if a != "" {
 			apps = append(apps, a)
 		}
+	}
+	if len(apps) == 0 && !optOut {
+		apps = []string{"phpmyadmin"}
 	}
 	spec.Apps = apps
 	return spec, nil
@@ -165,7 +174,32 @@ func plannedHosts(spec Cloud18ClusterSpec) []map[string]string {
 		out = append(out, map[string]string{"type": spec.Proxy, "host": spec.Proxy + "1", "port": "3306"})
 	}
 	for i, app := range spec.Apps {
-		out = append(out, map[string]string{"type": "app", "host": fmt.Sprintf("%s%d", app, i+1), "port": "80", "template": app})
+		short := app
+		if k := strings.LastIndex(short, "/"); k >= 0 {
+			short = short[k+1:]
+		}
+		out = append(out, map[string]string{"type": "app", "host": fmt.Sprintf("%s%d", short, i+1), "port": "80", "template": app})
+	}
+	return out
+}
+
+// plannedAppURLs renders, per planned app, the URL its template's primary route
+// gives once provisioned: https://<app>.<cluster>.<subDomain>-<zone>.<domain>.cloud18.io/
+// ("" when the infrastructure declares no identity).
+func plannedAppURLs(spec Cloud18ClusterSpec, ss map[string]any) []map[string]string {
+	domain, _ := ss["domain"].(string)
+	sub, _ := ss["subDomain"].(string)
+	zone, _ := ss["zone"].(string)
+	out := []map[string]string{}
+	for _, h := range plannedHosts(spec) {
+		if h["type"] != "app" {
+			continue
+		}
+		u := ""
+		if domain != "" && sub != "" {
+			u = "https://" + h["host"] + "." + spec.ClusterName + "." + sub + "-" + zone + "." + domain + ".cloud18.io/"
+		}
+		out = append(out, map[string]string{"name": h["host"], "template": h["template"], "url": u, "note": "answers once the app is provisioned (cloud18-get-cluster lists the apps with their url)"})
 	}
 	return out
 }
@@ -192,13 +226,39 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 	}
 	var ss map[string]any
 	_ = json.Unmarshal(statusBody, &ss)
+	// The apps are resolved against the templates the infrastructure can deploy: a
+	// name with no template is refused here, never silently turned into a docker image.
+	templates := []string{}
+	if raw, ok := ss["appTemplates"].([]any); ok {
+		for _, t := range raw {
+			if n, ok := t.(string); ok {
+				templates = append(templates, n)
+			}
+		}
+	}
+	unresolved := []string{}
+	for i, a := range spec.Apps {
+		if t := ResolveAppTemplate(a, templates); t != "" {
+			spec.Apps[i] = t
+		} else {
+			unresolved = append(unresolved, a)
+		}
+	}
 	plan := map[string]any{
 		"infrastructure": sess.base,
 		"identity":       repman.Conf.Cloud18GitUser,
 		"cluster":        spec.ClusterName,
 		"services":       plannedHosts(spec),
+		"apps":           plannedAppURLs(spec, ss),
 		"selfService":    ss,
 		"unitPlan":       "the infrastructure's default DBU / APU / BKU (no service plan)",
+	}
+	if len(unresolved) > 0 {
+		plan["refused"] = fmt.Sprintf("app template not available on the infrastructure: %s (templates: %s)", strings.Join(unresolved, ", "), strings.Join(templates, ", "))
+		if !confirm {
+			return plan, nil
+		}
+		return plan, fmt.Errorf("%s", plan["refused"])
 	}
 	if enabled, _ := ss["enabled"].(bool); !enabled {
 		plan["refused"] = ss["reason"]
@@ -389,5 +449,42 @@ func (repman *ReplicationManager) Cloud18GetCluster(infra, clusterName string) (
 			out[part] = json.RawMessage(body)
 		}
 	}
+	return out, nil
+}
+
+// ClusterPrice is the local cluster's rows of the running month statement (the MCP
+// get-cluster-price tool; same answer as GET /api/clusters/{clusterName}/price).
+func (repman *ReplicationManager) ClusterPrice(clusterName string) (map[string]any, error) {
+	if repman.resourceManager == nil {
+		return nil, errors.New("resource manager not ready")
+	}
+	cs, ok := repman.resourceManager.ClusterStatementOf(clusterName, time.Now())
+	if !ok {
+		return nil, fmt.Errorf("no statement yet for %s: the first monitoring tick has not pushed its usage", clusterName)
+	}
+	st, _ := repman.resourceManager.Statement("", time.Now())
+	return map[string]any{"month": st.Month, "elapsedPct": st.ElapsedPct, "currency": st.Currency, "prices": st.Prices, "cluster": cs}, nil
+}
+
+// Cloud18GetClusterPrice reads a cluster's month statement on an infrastructure, as this
+// instance's Cloud18 identity: what the infrastructure's resource manager integrated.
+func (repman *ReplicationManager) Cloud18GetClusterPrice(infra, clusterName string) (map[string]any, error) {
+	clusterName = strings.TrimSpace(clusterName)
+	if clusterName == "" {
+		return nil, errors.New("cluster_name is required")
+	}
+	sess, err := repman.peerLogin(infra)
+	if err != nil {
+		return nil, err
+	}
+	body, err := sess.mustOK(http.MethodGet, "/api/clusters/"+clusterName+"/price", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("price of %s on %s: %w", clusterName, sess.base, err)
+	}
+	out["infrastructure"] = sess.base
 	return out, nil
 }

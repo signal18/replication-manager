@@ -44,6 +44,9 @@ type RepmanProvider interface {
 	// AuthorizeMCPGlobal: repman-global tools (no cluster) need a grant held on at
 	// least one cluster, token narrowing and "*" scope applied; "" = any principal.
 	AuthorizeMCPGlobal(p *Principal, grant string) bool
+	// ListAppTemplates: the app templates this instance can deploy (repository cache +
+	// the cluster's local files), names as template paths ("phpmyadmin/phpmyadmin").
+	ListAppTemplates(cl *cluster.Cluster) []string
 	// Cloud18 (registration, subscription, marketplace), see server_cloud18_mcp.go.
 	Cloud18Status() map[string]any
 	Cloud18RegisterStatus() map[string]any
@@ -58,6 +61,9 @@ type RepmanProvider interface {
 	// Self-service clusters on an infrastructure, see server_cloud18_infra.go.
 	Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error)
 	Cloud18GetCluster(infra, clusterName string) (map[string]any, error)
+	// Billing (resource manager month statement): local cluster, and a cluster on an infrastructure.
+	ClusterPrice(clusterName string) (map[string]any, error)
+	Cloud18GetClusterPrice(infra, clusterName string) (map[string]any, error)
 	Cloud18CreateClusterToken(infra, clusterName, label, grants string, expireDays int) (map[string]any, error)
 }
 
@@ -142,6 +148,7 @@ func NewMCPServer(repman RepmanProvider, conf *config.Config, logger *log.Logger
 	s.registerReadOnlyTools()
 	s.registerWriteTools()
 	s.registerCloud18Tools()
+	s.registerAppTools()
 	s.registerPrompts()
 
 	return s

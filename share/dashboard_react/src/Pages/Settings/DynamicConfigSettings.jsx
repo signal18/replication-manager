@@ -70,18 +70,27 @@ function DynamicConfigSettings({ selectedCluster, user }) {
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-apply-dynamic-config?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-apply-dynamic-config' }))} isDisabled={disabled} isChecked={cfg.provDBApplyDynamicConfig} />)
     },
     {
-      key: 'Apply Dynamic Resource Resize',
-      help: h(`**Dynamic Resource Resize**\n\nWhen on, a provisioned-memory change (e.g. a DBU/plan resize) is applied to the RUNNING database live (SET GLOBAL + cgroup via orchestrator/client hook) instead of a restart. Restart-only vars still schedule a restart. Optional hooks: \`prov-db-dynamic-resource-can-change-script\` (feasibility) and \`prov-db-dynamic-resource-change-script\` (does the infra resize).\n\nConfig: \`prov-db-dynamic-resource\``, 'Apply Dynamic Resource Resize'),
+      key: 'Apply Dynamic Config On Resource Resize',
+      help: h(`**Dynamic Resource Resize**\n\nWhen on, a provisioned-memory change (e.g. a DBU/plan resize) is applied to the RUNNING database live (SET GLOBAL + cgroup via orchestrator/client hook) instead of a restart. Restart-only vars still schedule a restart. Optional hooks: \`prov-db-dynamic-resource-can-change-script\` (feasibility) and \`prov-db-dynamic-resource-change-script\` (does the infra resize).\n\nConfig: \`prov-db-dynamic-resource\``, 'Apply Dynamic Config On Resource Resize'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-dynamic-resource?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-dynamic-resource' }))} isDisabled={disabled} isChecked={cfg.provDbDynamicResource} />)
     },
     {
       key: 'Reapply Deployment On Start',
-      help: h(`**Reapply Deployment On Start**\n\nOn each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: the plan-driven container memory cap, image, run_args, env) to the orchestrator BEFORE start, so the recreated container comes up on the CURRENT config instead of the one written at the last provision. This is how a plan/cap change -- and an unpinned image tag rolling forward -- actually lands on restart. The live in-plan resize (pg_mem_limit + MySQL SET GLOBAL) is separate and unaffected; this only raises the outer ceiling. On by default.\n\nConfig: \`prov-orchestrator-deployment-upgrade-on-start\``, 'Reapply Deployment On Start'),
+      help: h(`**Reapply Deployment On Start**\n\nOn each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: the plan-driven container memory cap, image, run_args, env) to the orchestrator BEFORE start, so the recreated container comes up on the CURRENT config instead of the one written at the last provision. This is how a plan/cap change actually lands on restart. The IMAGE is never changed by a restart: the service keeps the image it runs, only the rolling upgrade moves it to prov-db-image. The live in-plan resize (pg_mem_limit + MySQL SET GLOBAL) is separate and unaffected; this only raises the outer ceiling. On by default.\n\nConfig: \`prov-orchestrator-deployment-upgrade-on-start\``, 'Reapply Deployment On Start'),
       value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-orchestrator-deployment-upgrade-on-start?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-orchestrator-deployment-upgrade-on-start' }))} isDisabled={disabled} isChecked={cfg.provOrchestratorDeploymentUpgradeOnStart} />)
     },
     {
+      key: 'Reprovision On Major Upgrade',
+      help: h(`**Reprovision On Major Upgrade**
+
+Rolling upgrade across a major release: provision each node again from scratch on the new release and reseed it from the master (a rolling reprov, node by node, replicas first then the old master after the switchover) instead of restarting it on its data directory and letting the engine run mariadb-upgrade. Cleaner for a major move, longer (a full reseed per node). A downgrade across a major always reprovisions, whatever this switch says, because a data directory rewritten by a newer major cannot start on the older one. Off by default.
+
+Config: \`prov-db-upgrade-major-reprov\``, 'Reprovision On Major Upgrade'),
+      value: (<RMSwitch confirmTitle={'Confirm switch settings for prov-db-upgrade-major-reprov?'} onChange={() => dispatch(switchSetting({ clusterName, setting: 'prov-db-upgrade-major-reprov' }))} isDisabled={disabled} isChecked={cfg.provDbUpgradeMajorReprov} />)
+    },
+    {
       key: 'Dynamic Resize Policy',
-      help: h(`**Dynamic Resize Policy**\n\nWHEN a live memory resize (Apply Dynamic Resource Resize) is applied:\n\n- **scale-speed** (default): as saturation dictates, throttled by the Scale Speeds below.\n- **daily-time**: deferred to a fixed daily clock time (Dynamic Resize Daily Time), so any InnoDB buffer-pool-resize stall is contained to an off-peak hour.\n\nCPU/IO tuning is unaffected (no stall).\n\nConfig: \`prov-db-dynamic-resize-policy\``, 'Dynamic Resize Policy'),
+      help: h(`**Dynamic Resize Policy**\n\nWHEN a live memory resize (Apply Dynamic Config On Resource Resize) is applied:\n\n- **scale-speed** (default): as saturation dictates, throttled by the Scale Speeds below.\n- **daily-time**: deferred to a fixed daily clock time (Dynamic Resize Daily Time), so any InnoDB buffer-pool-resize stall is contained to an off-peak hour.\n\nCPU/IO tuning is unaffected (no stall).\n\nConfig: \`prov-db-dynamic-resize-policy\``, 'Dynamic Resize Policy'),
       value: (
         <Dropdown
           options={[{ value: 'scale-speed', label: 'scale-speed (default)' }, { value: 'daily-time', label: 'daily-time' }]}

@@ -74,6 +74,9 @@ func (repman *ReplicationManager) testFile(fn string) error {
 func (repman *ReplicationManager) httpserver() {
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
+	// Same as the API router: no path cleaning, a setting value in the path may start
+	// with a slash (this router serves the API too when the dashboard port is used).
+	router.SkipClean(true)
 	router.Use(repman.RecoveryMiddleware)
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
@@ -382,6 +385,18 @@ func (repman *ReplicationManager) httpserver() {
 		router.Handle("/api/global/resources", negroni.New(
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalResources)),
+		))
+		router.Handle("/api/global/price", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalPrice)),
+		))
+		router.Handle("/api/global/price/{month}", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalPrice)),
+		))
+		router.Handle("/api/me/units", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxMyUnits)),
 		))
 		router.Handle("/api/global/http-logs", negroni.New(
 			negroni.HandlerFunc(repman.validateTokenMiddleware),

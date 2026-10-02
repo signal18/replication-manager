@@ -25,21 +25,197 @@ per workload is the **ratio**, not just the price:
 | Profile (unit) | cpu | mem | disk | iops |
 |---|---|---|---|---|
 | **Database** (DBU) | 1 | 4 GB | **20 GB** (40 until 2026-09-22) | **1000** (locked) |
-| **Compute/App** (APU) | 1 | **1 GB** | **10 GB** | **— (none)** |
+| **Compute/App** (APU) | 1 | **2 GB** (1 GB until 2026-09-29) | **10 GB** | **— (none)** |
 | **Storage / Backup** (BKU) | 0 | 0 | **20 GB** (= the DBU disk axis) | 0 |
+| **Remote archive** (BAU) | 0 | 0 | **20 GB** (same quantity as the BKU) | 0 |
 
 The **BKU** (backup unit, 2026-09-22) is storage ONLY: it bills the REAL disk used by backups
 (backup catalog sizes, restic repository size), never a flat "+1 DBU when a backup schedule is
 on". The BKU has its **own plan** per database, like the DBU plan (client-set); its default is
 **3 × the database's DBU disk**. Usage above the BKU plan is over-commit: billed, never blocked.
-Two kinds: **local** BKU (the cluster's backup cache + archive on the nodes) and **remote** BKU
-(archived on S3/SFTP), each with its own price. Open: whether the plan covers local only, rounding
-over the billing period, the price setting names, the measurement wiring.
+The BKU is the **local** backup only (the cluster's own storage: the repman backups directory on
+the local pool). What is archived **off** the cluster is a unit of its own, the **BAU** (Backup
+Archive Unit, decision 2026-09-28, superseding a one-day 2026-09-27 attempt to fold the remote
+archive into the BKU): the same 20 GB quantity, **no plan** (tracked and billed on usage,
+`ceil(units)`, never warned about), its own price `cloud18-marketplace-bau-price`. The BAU price
+applies to **Signal18 or partner storage only**: a cluster whose remote repository is the
+client's own storage declares it with `cloud18-marketplace-bau-client-storage` (per cluster,
+GUI Settings → Cloud18 → "Remote Archive On Client Storage") and its BAU are tracked, never priced.
+Prices: `cloud18-marketplace-bku-price` and `cloud18-marketplace-bau-price` (Eur/unit/month,
+server scope, GUI Settings → Marketplace), named like Ahmad's `cloud18-marketplace-dbu-price` /
+`-apu-price` (branch marketplace-pricing) so the four merge as one family. **Price ratios, global to the
+instance (Stéphane 2026-09-28, asymmetric on purpose):** `cloud18-marketplace-overcommit-price-pct`
+= SURCHARGE (default **150**: a unit consumed above the plan costs 2.5× the unit price) and
+`cloud18-marketplace-undercommit-price-pct` = REDUCTION (default **80**: a plan unit left unconsumed is
+billed at 0.2×). Both server scope, GUI Settings → Marketplace. `planUnitCost(plan, consumed, price, over,
+under)` in `cluster_bku.go`: consumed > plan → plan×price + (consumed−plan)×price×(1+over/100); else
+consumed×price + (plan−consumed)×price×(1−under/100) (0/0 = flat max(plan, consumed)). Applies to
+every unit family with a plan (DBU, APU, BKU); the **BAU is outside the ratios** (pure usage, no plan).
+DBU costs are not computed anywhere yet. **APU billing (Stéphane 2026-09-28, `cluster_apu_billing.go`):** the
+measured side (compute sensor) stays honest at 0 when nothing pushed; the BILLABLE side floors every running unit:
+an app counts at least its **running instances** in APU (`appInstanceCount`: flex = one per agent behind the load
+balancer, failover = ONE, "failover consume disk, no memory, no cpu"), a proxy at least 1, a down unit 0; billable =
+Σ max(floor, ceil(measured)). The app PLAN is the per-instance shape (floor 1 APU) × the instances
+(`RefreshComputePlanAPU`). **App disk is billed apart, cpu/memory free** (`cluster_app_volume.go`,
+`appDiskAccounting`, every 30 ticks with the BKU): the DECLARED `prov-app-disk-size` (every unit bills from its
+declared setting, like `prov-db-disk-size`, nothing read back from OpenSVC) × the agents holding a copy
+(`appCopyCount`), rounded up per app; a compute app's disk joins the **BKU** (`appDiskUnits`, counted in the plan
+and the surcharge/reduction), a storage app's (`app-s3-provider`, the profile, settable per app in the GUI) is
+**producer BAU** (`producerUnits`, no plan). Series `bku.<c>.app_disk[_bytes]`, `bau.<c>.producer[_bytes]`.
 
-A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. Ratios are
-the **operator's rules**, held on the manager as `ratios map[WorkloadProfile]UnitRatios`
-and **configurable** (`SetProfileRatios`) — the product does not hard-lock them; the
-marketplace "lock" is a commercial policy, nothing is contracted outside these ratios.
+**Stateful apps are DBU (Stéphane 2026-09-29, "minio should account as DBU because it is a stateful service").**
+`app-stateful` (config.AppConfig, TOML/JSON, so a TEMPLATE seeds it: cloud18-templates `minio/minio.toml` carries
+`app-stateful = true` + `app-s3-provider = true`; an existing app takes it through *reset from template* or the
+per-app switch, App → Overview → Stateful, `app_set.go`). When on, `RefreshComputePlanAPU` projects the SAME
+declared shape with the Database ratio (`computePlanDBUReading`, io axis 0, floor 1 DBU, × `appInstanceCount`)
+and stores it on the ResourceManager's stateful track (`statefulPlan`/`statefulConsumed`, `DBUReading`-typed,
+same `AppKey`/`appAgent` placement) while clearing the APU plan of that key; the compute sensor's push is routed
+there too (`IngestAppConsumedAPU` → `ComputeUsedDBU`). The ledger reserves it in the **DBU pool**
+(`ReservedUnits.Dbu`, physical axes incl. io), every physical rollup (cluster/agent plan + consumed,
+`ClusterResourceView.Stateful/StatefulPlan`) includes it, and billing is its own line: `cluster.StatefulUnits`
+(`StatefulBilling`, json `statefulUnits`; plan = Σ stateful planned DBU, NEVER the databases'
+`prov-service-plan-dbu`; floor 1 per running instance; price `cloud18-marketplace-dbu-price`; the shared
+`computeUnitBilling` arithmetic with the APU track). Series `resourcemanager.<C>.plan_stateful_dbu` /
+`billed_stateful_dbu`; `/api/global/resources` rows carry `statefulDbu` / `planStatefulDbu`. Minio on crm:
+2 cores / 8 GB / 20 GB failover → 2 DBU (was 4 APU under the 2 GB APU ratio).
+
+**Disk is dynamic too (#1854, 2026-09-30, `applyDiskResize`).** `prov-db-disk-size` used to be a paper
+number on the virtual pool dbssd (volumes created with size 0, no refquota: curepipe's 50 GB = 2.5 DBU "over
+plan" bounded nothing) and the disk-follow rule only moved the declaration. Now every move of the declared
+disk -- the follow rule (`followDiskUsage`), the shrink rule (`driveDynamicShrink`, disk axis), the setter
+`SetDBDiskSize` when `prov-db-dynamic-resource` is on (a plan change on the disk axis goes through it) --
+asks each up server's volume to follow: `ResourceResizer.ResizeDisk(server, gb)`. OpenSVC v3 (`openSVCResizeDisk`): `env.size` is
+rewritten on the service (what `volume#01.size` declares, so a later provision agrees;
+`openSVCWriteServiceKeywords`, shared with the pg keywords), then `ResizeVolumeV3` posts the om3 resize
+action on the VOLUME object `<ns>/vol/<svcname>` (rc40 `om vol resize SIZE`: the size lands in the vol config,
+every node converges, the answer is a queued orchestration). Script / restart / Kubernetes resizers schedule a reprovision (PVC expansion is a later
+step). A refusal (no refquota, target under what the datasets hold, v2 daemon, pool full) is a tracked
+per-server state `ServerMonitor.DiskResizeRefused` surfaced each tick as **WARN0226**, cleared by the next
+grow that goes through; no retry loop. What the tree really gets: the dbssd template now carries
+`quota = x1` on the parent dataset (the `$(100% * size)` expression form is refused by rc40, "quota:
+invalid size"); rc40's zfs driver moves only the head's refquota on resize, the quota follows in the om3
+release OpenSVC announced, existing volumes then get `quota = x1` as a catch-up. Test:
+`TestApplyDiskResize_GrowsUpServersAndTracksRefusal`. Validated on dev3 (reprovisioned on the new template).
+
+**IOPS shrinks toward the plan too (2026-10-01).** `driveDynamicShrink` carries a fourth axis after disk:
+when every live server has been under its configured IOPS for the scale-down window (the same tracked
+state `ResourceConsumedUnderConfigAxes`, "io"), `dynamicShrinkTarget("io")` lands `prov-db-disk-iops` on the
+larger of the plan's IOPS (1000 × plan DBU per node) and the peak IO consumption plus the safety headroom,
+on the DBU grid. IOPS is a cap, pure configuration on the database, so the move is a setter call
+(`SetDBDiskIOPS`) with no runtime impact; the IO grow (+1 DBU on a genuine bottleneck) stays the only way
+above the plan. Test `TestDynamicShrinkTargetIO`. Preprod 2026-10-01: belair pinned at 2000 IOPS over a
+1 DBU plan = 2 DBU billed per node until this shrink.
+
+**Disk shrinks toward the plan (2026-09-30, "downsizing the disk based on real usage to the plan DBU").**
+The shrink rule (`driveDynamicShrink`) now carries a third axis after mem and cpu: when every live server has
+been under-used on disk for `prov-db-scale-down-config-in-plan-speed`, `dynamicShrinkTarget("disk")` lands
+`prov-db-disk-size` in one move on the larger of the **plan's disk** (20 GB × plan DBU per node) and the peak
+datadir occupancy (`DBUConsumed.DbuDisk`) plus the safety headroom, on the DBU grid. The plan is the floor:
+data is a guarantee, the undercommit floor of cpu/mem (`prov-db-undercommit-pct`) does not apply, a disk
+never goes under what the plan promises. The move goes through the same glue (`SetDBDiskSize` →
+`applyDiskResize` → `ResizeDisk`), down as well as up. On om3 rc40 the resize action grows only ("asking for
+less is nothing to do"): `openSVCResizeDisk` reads the volume's `DEFAULT.size` back after the wait
+(`GetVolumeSizeV3`) and, when the volume stays above the declaration, sets the tracked per-server state
+`ServerMonitor.DiskQuotaAbove` surfaced each tick as **WARN0221** ("the declaration moved, the quota did
+not"), cleared once a later resize lands the volume at or under the declared disk: the om3 release that lowers
+a quota down to the used data (asked of OpenSVC with the quota-follows-size fix). A shrink never sets the
+reprovision cookie: it is data, nothing is rebuilt for a smaller number. Tests: `TestDynamicShrinkTargetDisk`,
+`TestApplyDiskResize_GrowsUpServersAndTracksRefusal` (both directions).
+
+**No credits (Stéphane 2026-09-29, "those credits should not be here", removed on #1827).** The app credit
+model of July 2025 (`prov-app-credit-planned` / `-used` per app, `cloud18-application-credits` cap + price
+per cluster, the used/planned totals, the self-rebasing cap, `CheckAppsCredit` / `CheckAvailableCredit`,
+states CREDIT01-04, `StartBillingCycle`) was a second contract next to the ResourceManager: it stored the
+unit count as a field (planned = units × agents, so an agent change desynchronised it: 3 credits for 2
+agents on the two phpmyadmins) and gated on a per-cluster cap the ledger already covers. Rule: **what is
+declared lives in the config (the per-instance shape `prov-app-cpu-cores` / `-memory` / `-disk-size`), what
+is tracked lives in graphite, the unit count is DERIVED, never stored.** So: the plan of an app is the shape
+projected at the ratio × instances (`RefreshComputePlanAPU`), billed from it; the GUI "App Unit" slider is a
+sizing HELPER, the `prov-app-units` app setting writes the three prov-app-* values at the ratio of the app's
+profile (`applyUnitShape`, Compute or Database when `app-stateful`) and arms a reprovision — it stores no
+count; the displayed count comes back from the shape (`deriveUnitFromStoredResources`, App → Overview → Infra
+Resources, `AppUnits.jsx`). Per-unit tracking: `apu.<c>.<unit>.plan_apu` (compute units), `plan_dbu` + `dbu`
+(stateful apps) next to the consumed `apu.<c>.<unit>.apu*` series (`computeUnitPlanMetrics`). The old keys
+are ignored at load (no struct field) and dropped from the app file at its next save; `ClearAppProvisioned`
+keeps the cookie bookkeeping of the former `ClearAppProvisionedCredits`. The CRM sponsor credits
+(`/api/credits/personal`, registration) are a different thing and untouched.
+
+**Memory scale-DOWN is a state (Stéphane 2026-09-29, curepipe stayed at 16 GB after a plan decrease under
+dynamic resources):** memory was dropped from every under-use axis (occupancy means nothing, the pool fills what it
+is given) so nothing ever shrank it in-plan. Now `ServerMonitor.memoryOverPlanNoPressure` = configured memory DBU
+> plan memory DBU AND no buffer-pool pressure (`BufferPoolMemGrowDue` false, no pressure timer) opens **CINF0010**
+per server every tick and folds `mem` into `ResourceConsumedUnderConfigAxes`; the existing `driveDynamicShrink`
+(all live servers, sustained over `prov-db-scale-down-config-in-plan-speed`) then runs `shrinkAxisInPlan("mem")`:
+target = ceil(peak/headroom) floored by `UndercommitFloorDBU` (1 DBU for a plan of 1), applied through
+`SetDBMemorySize` (buffer pool first, deferred cgroup). No one-shot at the plan click.
+
+**The physical ledger, two pots and the precedence rule (Stéphane 2026-09-28, `resource_ledger.go`):** DBU, APU and
+BKU are strongly correlated (the same metal through three ratios), so a unit's free pot is computed by subtracting
+what the OTHER units hold, and there are TWO limits because a plan is a guarantee: **plan pot** = capacity × quota −
+Σ plans (every cluster, DBU + APU + BKU, physical) gates a PLAN INCREASE (`ResourceManager.CanPlanIncrease`, called by
+`Cluster.CanPlanIncrease` in `ChangePlanUnits`: DBU delta × #nodes, APU delta × #proxies, BKU delta); **over-commit
+pot** = capacity − Σ plans − Σ borrowed gates a BORROW above an existing plan (`CanBorrow`, called in
+`resourceManagerGrowCheck` after the commercial ceiling). Neither pot reads consumption. Inputs: the server feeds
+`SetInfraCapacity` from `ProduceContractedCapacityState`; each cluster tick feeds `SetBorrowed(cluster,"db")` = configured
+DB resources over the DBU plan × nodes (`srv_dbu.go`); the 30-tick BKU refresh feeds `SetStoragePlan` + `SetBorrowed(…,"bku")`
+= backup usage over the BKU plan. **Precedence (documented rule): a plan increase always wins over borrowed resources.**
+A sale admitted into the plan pot may drive the over-commit pot negative: `Ledger().Overdrawn`, GWARN017 names the
+borrowing clusters, `CanBorrow` refuses any further loan; the automatic shrink-back of the borrowed part is the
+follow-up (today the dynamic driver only shrinks on under-use). The archive class (BAU) has no capacity source yet, no
+BAU pot. `/api/global/resources` carries `ledger`; the Resource Manager page shows the table and the three unit pots;
+`infraUnitPool` (self-service gate) takes its free DBU/APU from the ledger's plan pot instead of per-unit double counts.
+
+**Compute sensor for apps + proxies = the om3 daemon's pg metrics (`cluster_compute_sensor.go`, 2026-09-28,
+Stéphane's go; he noted I should have asked sidecar-vs-orchestrator first):** every 10 ticks the cluster GETs
+`https://<agent>:<daemon port>/metrics/pg` (Prometheus text, no auth, verified remote 200 on preprod) for the
+agents of its apps and proxies (per-agent cache 5 s shared by the clusters), keeps
+`opensvc_pg_cgroup_cpu_usage_usec` (cumulative → Δ/Δt = cores) and `opensvc_pg_cgroup_memory_current_bytes`
+per `path=<ns>/svc/<name>` (one cgroup slice per SERVICE, so the shared namespace never mixes the apps; the
+slice holds every container of the service; volumes are their own path), sums a flex app over its agents, and
+feeds `IngestAppConsumedAPU` (the path the sidecar pushed to). No IO counter is exported → disk 0 (billed
+apart, declared). **Daemon snapshot refreshed every ~15 s** (measured): a scrape on an unchanged snapshot is
+skipped (`samePgSnapshot`), the delta spans two distinct snapshots. Previous sample per agent+path is a
+package-level map, no struct field. Off switch: `monitoring-system-resources`. The proxy sidecar sensor
+(`container#sensor`, SENSOR_API_KEY) is superseded; it was never delivered on preprod (services provisioned
+before it, config never re-pushed). `APUBilling` (`computeUnits` in the
+cluster JSON, refreshed each tick after the plan) carries plan, units, runningUnits, floorUnits, measuredApu,
+billableUnits, over/underPlanUnits, the price + ratios and monthlyCost; series `resourcemanager.<C>.billed_apu`
+next to `plan_apu`. Live on preprod crm (instances 1/3/1/1/3 + 2 proxies): 11 APU billable; api + dolibarr + arbitrator + phpmyadmin 1 BKU each (12 GB declared × copies); minio 103 BAU as producer once flagged S3 provider (2048 declared) or 1 while its app config says 20. `BKUReading` carries
+`overCommit = max(0, local − plan)`, `consumedUnits = ceil(local)`, `billedUnits = max(plan, consumed)`,
+`overPlanUnits`, `underPlanUnits`, `unitPrice`, `overPricePct`, `underPricePct`, `monthlyCost`; `BAUReading` (`backupArchiveUnits` in the cluster JSON, `cluster_bau.go`)
+carries `bytes`, `units`, `billedUnits = ceil(units)`, `priced`, `unitPrice`, `monthlyCost`.
+
+**Shipped (feat/bku-backup-unit):** `prov-db-bku` (default **6**, per cluster) is `PlanUnitBKU` in
+`ChangePlanUnits` (floor 1, admin lock on its own flag, no resource follow: nothing is provisioned
+from it). `RefreshBackupUnits` (every 30 ticks, `cluster_bku.go`) measures **local** = every path of
+`GetBackupDiskPaths` walked on disk (each server's backup directory holding its last backup, plus
+the restic archive when its repository is a local path; a backup kept after its push to the
+archive counts TWICE, it uses the disk twice; never a catalog sum) and **remote** = the restic
+repository raw-data size (`restic stats --mode raw-data`, refreshed by `ResticFetchRepo`) ONLY when
+that repository is S3/SFTP (`resticRepositoryIsRemote`; a local restic repository is local disk),
+converts local at the Storage-profile ratio (20 GB/BKU) into `BKUReading` (`backupUnits` in
+the cluster JSON) and asserts **WARN0225** when local BKU is over the plan (over-commit, billed
+never blocked; in `pstates30`), and remote at the same ratio into `BAUReading`
+(`backupArchiveUnits`; no plan, no state). Graphite every tick: `resourcemanager.<CTOKEN>.plan_bku`,
+`bku.<cluster>.{local,local_bytes,billed}`, `bau.<cluster>.{units,bytes,billed}` (raw cluster
+name segment like `dbu.<cluster>.*`). GUI: Graphs → Resources third chart (local bars, plan line)
+and fourth chart (BAU remote bars, no plan line) via `ChartGroupedDBU`'s `axes` prop;
+Database Configurator → Resources "Backup BKU" gauge (`changePlanUnits('BKU')`). Open: rounding
+over the billing period, a node-side backup directory if one exists outside the streaming
+directory, whether the client-storage declaration should be reconciled against the
+repository endpoint (today it is self-declared, like the subscription plan).
+
+A database is **not** an app (proxy/phpMyAdmin): little disk, no IOPS lock. **The ratios are SETTINGS,
+one source (Stéphane 2026-09-29: "I see constants in your code, I don't get why this is not variables"):**
+`resource-manager-ratio-dbu` (default `cores=1,mem=4g,disk=20g,iops=1000`), `resource-manager-ratio-apu`
+(`cores=1,mem=2g,disk=10g`), `resource-manager-ratio-bku` (`disk=20g`, BAU shares it), server scope, GUI
+Settings → Marketplace, parsed by `ParseUnitRatios` (`resource_ratios.go`), applied to the manager at startup
+and on change (`ApplyRatioSettings`, a bad value keeps the previous ratio). Every consumer reads the manager:
+the projections, the ledger, the billing, the app unit sizing (`computeRatioInts`, the former `config.AppUnit*`
+constants are gone), and the DASHBOARD through `cluster.unitRatios` / `globalResources.unitRatios`
+(`utility/unitRatios.js`: charts axes, configurator lines, app base; no fallback numbers in JS). The table
+above documents the defaults only; the marketplace "lock" is a commercial policy, nothing is contracted
+outside these ratios.
 An axis with ratio 0 is excluded (never binds) — that is how Compute drops IOPS.
 
 **Network is a planned 5th axis, but NOT a cgroup axis.** cgroup v1 `net_cls`/`net_prio`
@@ -105,9 +281,8 @@ Per **service** (a "server" is a DB service; a proxy/app is another kind of serv
   Per-unit pricing instead sets a few €/unit and **derives every price across all workload
   profiles** (CLOUD18_CREDIT_MODEL.md §2.1). The `ServicePlan` stays a provisioning
   template, not a unit contract (the self-declared tier `Cloud18SubscriptionPlan` sits
-  alongside it). When the dedicated
-  DBU/APU plan field is added it mirrors the app credit model (`Cloud18ApplicationCredits*`
-  → `Cloud18DatabaseCredits*`; `prov-app-credit-planned` → the DB plan).
+  alongside it). The DB plan is `prov-db-dbu` per database (client-set whole DBU); apps have
+  NO plan field at all, their plan is derived (see "No credits" below).
 
 Aggregated views (`DBUAggregate`: per-axis + a global pivot = the binding axis):
 - `ConsumedByCluster` / `ConsumedByAgent`
@@ -424,6 +599,20 @@ buffer pool up; the over-plan gate runs there for memory). CPU and IO re-tune th
   below live memory); `SetDBCores` re-tunes and moves the cgroup, and derives grow/shrink
   from the delta.
 
+### 4b. Disk: the configuration follows the datadir (2026-09-23, #1825)
+
+There is no live disk resize: `prov-db-disk-size` only sized the volume at provisioning and
+the datadir is NOT bounded by it (dev3: 2 GB declared, 19 GB used; the om3 zfs driver applies
+`size` as a `refquota` on the parent dataset of the volume, which holds the socket and config
+directories, while the `data` dataset underneath is unquota'd). So the disk axis of
+`DriveDynamicResize` is `followDiskUsage`: when a node's measured datadir (`DiskMaxBytes`) is
+over the configured disk (CINF0007 on "disk"), `prov-db-disk-size` becomes the largest node's
+usage in whole GB, ceiling, NO rounding to the DBU grid (cpu/mem/io are not rounded either),
+within the plan for free, past the plan through `overPlanGrowAllowed` (borrow, or ERR00112 on
+axis disk). Applied first and independently of the cpu/mem/io hill-climb. Persisted through the
+dynamic config manager, no reprovision cookie: bookkeeping until the rc40 volume resize action
+follows the value. Disk never shrinks.
+
 ### 5. What the operator sees
 
 | signal | meaning |
@@ -590,7 +779,9 @@ A DB container has **two** distinct memory limits, changed by two different mech
 **`prov-orchestrator-deployment-upgrade-on-start`** (default on) is what applies (2). On each
 node (re)start in a rolling restart/upgrade, `UpgradeDatabaseDeploymentOnStart` (prov.go)
 re-renders and pushes the full deployment BEFORE start, so the recreated container comes up on
-the current service config — the plan-driven ceiling, image, run_args, env — instead of the
+the current service config — the plan-driven ceiling, run_args, env; the image the service
+runs is kept, #1861, and is in any case the explicit release pinned by the last provision or
+rolling upgrade, see `doc/implementation/cluster/DATABASE_IMAGE_PINNING.md` — instead of the
 one written at the last provision. OpenSVC v3 → `OpenSVCUpdateDatabaseTemplate` (full re-push);
 K8s → the on-develop image-update path (container resources stay owned by `k8sResizer`).
 Non-fatal in the rolling loop: a push failure leaves the previous cap and never breaks the
@@ -656,8 +847,7 @@ them — `ChartGroupedDBU` (grouped bars per axis: real conso → DBU, pivot max
 line = the configurator ceiling the GUI reads but does not own).
 Follow-ups: `SetPlan` wiring — the plan is a **client-set DBU size** (whole units); a
 **+1/−1 DBU resizes `prov-db-*`** at the locked ratio (except admin-immutable resources)
-and is **NOT** derived from them; future dedicated `Cloud18DatabaseCredits*` vars mirror
-the app credit model, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
+and is **NOT** derived from them, driven by `AddDBU`/`RemoveDBU`. Also `SetServerAgent` /
 `SetAgentCapacity` from physical monitoring (#1778),
 per-cluster/agent/minute **emission** (the data), then the burst/overcommit **policy**
 and the heatmap.
@@ -829,7 +1019,7 @@ impossible (no `io.max` in om3 pg); "unset resets the slice" and `pg reset` do *
 any om3 release up to rc36 — always write explicit values.
 
 **Vocabulary:** units are **DBU**/**APU**; classes **controlled**/**uncontrolled**; never
-"credits" (the app system's own accounting) or "tier".
+"credits" (the former app accounting, removed 2026-09-29) or "tier".
 
 ## om3 process-group facts (checked on opensvc/om3 up to v3.0.0-rc36, 2026-09-14)
 
@@ -859,3 +1049,59 @@ when made configurable), T18 (Graphite is the bounded history, no in-memory buff
 T20 (one conversion source — reconcile `ComputeUsedDBUPerNode`), T6 (GUI for the editable
 capacity). Commercial axis (refund %, overage, tiered price) stacks on top and never
 gates the technical path.
+
+## Billing: the month statement (2026-10-01)
+
+Owned by the ResourceManager (`cluster/resource_manager_billing.go`), not by the clusters:
+the manager holds every cluster's plans, consumption and borrows, receives the unit prices
+(`SetPrices` from cloud18-marketplace-*-price and the over/under-commit percentages, refreshed
+at every capacity tick) and is the one place that prices usage.
+
+**Rule (Stéphane):** the price is the INTEGRAL over every monitoring period since the first
+of the month of each unit family's rate, `rate = unit price × [plan + over × (100+over%)/100 −
+under × under%/100]`, over = max(0, billable − plan), under = max(0, plan − billable). Five
+families: `dbu` (database plan vs what the servers hold: config DBU when provisioned, plan +
+borrowed never less, `BillingUsage` in cluster_billing_feed.go), `stateful_dbu`, `apu`, `bku`,
+`bau` (no plan, priced only on the partner's storage).
+
+**Feed:** every tick, with its compute metrics batch, a cluster calls `RecordUsage(name,
+identity, usage, now)`: the manager prices the rows, accrues `Δt` (bounded by 5 min: a pause is
+not billed as if the last reading had held) into the running **month statement**, and hands back
+the `billing.<CLUSTER>.<family>.{plan,over,under,rate}` series for the graphs. Identity =
+partner (this infrastructure's Cloud18 domain/subdomain-zone) + sponsor identities (role
+sponsor, emails for SSO), captured with every tick so a cluster dropped on the 12th keeps its
+12 days.
+
+**Consumed units of the logged user:** `GET /api/me/units` (any logged user; `handlerMuxMyUnits`) answers, for the clusters the user sponsors or has access to, invoice lines per unit family: reserved (the plan, debit), borrowed (over the plan, debit), unused (under the plan, credit), in unit-months so far with the end-of-month projection, subtotal per cluster and totals per unit kind; on a Cloud18 instance (`cloud18` on) each line also carries the amount in EUR at the cluster's unit price, + debit / - credit, and its projection; elsewhere units only (the money is the provider's). Shown in the GUI under the user pill, *Consumed* tab (`UserInfoPanel`).
+
+**Statement file = the record for the back office:** `<working dir>/Units.log` (JSON; the running month, rewritten every minute, never staged by the periodic git sync; at the month rollover the closed month is committed and pushed ONCE to the git sync repository, "Units statement YYYY-MM final", then the file starts the new month — past months are the git history of `Units.log`; `GET /api/global/price/{month}` serves the current month only), formerly `billing/billing-YYYY-MM.json`
+(`MonthStatement`: month, prices, per cluster partner / sponsors / rows with the unit-months and
+EUR, totals, projection), written atomically every minute (`Tick`, from
+ProduceContractedCapacityState) and reloaded at start; at the month change the file is closed
+`final: true` and one line per cluster goes to the log (module billing). Graphite retention for
+`billing.*` is 35 days (share/schemas.conf) so a restart can re-integrate the month to date of
+every live cluster from the series (`BackfillFromGraphite`, once, when graphite answers): memory is
+the working copy, the file is the truth for a dropped cluster, graphite the recovery.
+
+**API/GUI/MCP:** `GET /api/global/price[/{YYYY-MM}]` (global-admin-show; running or past month, +
+the list of months on disk), `GET /api/clusters/{clusterName}/price` (cluster ACL), the "Month
+statement per cluster" table on the Resource Manager page, MCP `get-cluster-price` and
+`get-cloud18-cluster-price` (reads the cluster route on the remote infrastructure). Tests
+`TestUnitRate`, `TestResourceManagerBillingAccrualAndStatement` (accrual, gap, reload, backfill,
+rollover).
+
+## Per axis: grow and shrink as the code runs them (2026-10-01)
+
+`DriveDynamicResize` (cluster_resize_dynamic.go) each tick, active only, not in failover, one step per
+scale-up window, never while a memory resize is in flight. Evidence = the per-server tracked states
+`ResourceConsumedOverConfigAxes` / `ResourceConsumedUnderConfigAxes` sustained over the window
+(`canScaleSustained`, graphite-backed for windows over 1 min), plus `BufferPoolMemGrowDue` for memory.
+
+| axis | grow (growAxisInPlan) | gate | shrink (driveDynamicShrink / dynamicShrinkTarget) | floor | applied by |
+|---|---|---|---|---|---|
+| cpu | priority 1 when cpu is due: +1 core | overPlanGrowAllowed (envelope, node pool, client hook) else ERR00112 | all servers under cpu: smallest DBU keeping the peak under the mark | UndercommitFloorDBU | SetDBCores → SET GLOBAL re-tune + openSVCResizeCPU (pg_cpu_quota) |
+| mem | when mem or io is due and no plateau: +1 DBU of memory, clamped to GetDBContainerMemoryCapMB | in-flight gate; over plan by ResizeDynamicResources | first in the shrink order | UndercommitFloorDBU | SetDBMemorySize → buffer pool live, pg_mem_limit deferred on shrink, redo follows |
+| io | only after a memory step that bought no QPS (plateau check) or memory at its ceiling: +1000 IOPS | overPlanGrowAllowed | all servers under io: plan or peak+margin on the grid | the plan (cap, not consumption) | SetDBDiskIOPS → innodb_io_capacity/_max, write threads; no cgroup primitive |
+| disk | followDiskUsage: declaration follows the datadir in whole GB, applied first and alone | within plan free, else the envelope | all servers under disk: plan or peak+margin on the grid | the plan | SetDBDiskSize → applyDiskResize → om3 volume resize (grow only on rc40, WARN0226 refusal, WARN0221 quota above) |
+
+Shrink order: mem, cpu, disk, io, one axis per tick, only when nothing is saturated.

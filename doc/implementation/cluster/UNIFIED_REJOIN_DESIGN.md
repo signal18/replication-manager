@@ -459,3 +459,31 @@ carry a result; these guards cover the never-attempted stale entry it could not 
 **Tests.** Unit: `srv_rejoin_guard_test.go`. Regtest: `testRejoinStaleCrashKeepsMaster` seeds a
 stale crash naming the master as loser, fires `RejoinMaster` on the master, and asserts the
 topology stays master-slave (no channel on the master, slave still replicating).
+
+## Unprovision leaves repman with nothing of the old life (2026-09-30, `ForgetInstance`)
+
+Observed on dev3 while validating the zfs quota template: db2 was unprovisioned and provisioned
+again, came up as a fresh standalone, the automatic rejoin fired once on the Failed→up edge, logged
+"Rejoining standalone server" and stopped: `rejoinAlreadyAttempted` found in the failover history
+a terminal outcome ("no-divergence", 2026-09-19) for the OLD db2 and treated the new one as a retry
+of that event. Unprovision only dropped three cookies and `Crashes`; the history on disk, the datadir
+and the per-instance memory survived, and there is no API to rejoin a standalone without crash
+history (the cluster-level rejoin resolves its target from `LatestCrashURL`).
+
+Rule: **a successful unprovision is a clean slate on repman's side too**, on disk and in memory,
+without a restart. `cluster.ForgetInstance(server)` (cluster/prov_forget.go), on every unprovision
+success path (`Unprovision`, `UnprovisionDatabaseService`; `ForgetProxyInstance` for
+`UnprovisionProxyService` and the proxy loop):
+
+1. every FILE of the server datadir is deleted, the directory tree is kept (Stéphane: keep the
+   structure), `log/ var/ init/` ensured, the log tailers re-armed on the new files;
+2. every crash event whose failed server is the instance is deleted from disk (`crash-bin-<ts>/`
+   with its binlog delta, and the legacy `failover.<ts>.json`), `Crashes` filtered, and
+   `FailoverHistory` rebuilt from what remains on disk (`LoadFailoverHistory`);
+3. the tracked per-instance memory is reset: fail count, `IsReseeding`, `reseedFromRejoin`, the
+   resize in-flight marks, the consumed axes, `DBUConsumed`, and the ResourceManager drops the
+   consumed reading (`SetConsumed(k, nil)` now deletes the key).
+
+Nothing here changes the rejoin's one-shot-per-event rule: an unprovisioned instance simply has no
+events left. The declared side (config, plan, agents) is untouched. Test:
+`TestForgetInstance_CleanSlateWithoutRestart`.

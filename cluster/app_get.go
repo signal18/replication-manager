@@ -107,6 +107,7 @@ type appConfigAPIView struct {
 // never has it, rather than adding it and deleting it after marshal.
 type AppAPIView struct {
 	Id                    string               `json:"id"`
+	URL                   string               `json:"url"` // https on the primary route once routed, else the internal http://host:port/
 	Name                  string               `json:"name"`
 	Type                  string               `json:"type"`
 	Host                  string               `json:"host"`
@@ -150,6 +151,7 @@ func (app *App) GetAppAPIView() *AppAPIView {
 	view := &AppAPIView{
 		Id:                    app.Id,
 		Name:                  app.Name,
+		URL:                   app.GetPublicURL(),
 		Type:                  app.Type,
 		Host:                  app.Host,
 		HostIPV6:              app.HostIPV6,
@@ -822,4 +824,44 @@ func (app *App) GetVolumes(resolved bool) []string {
 
 func (app *App) GetS3Endpoint() string {
 	return app.GetHost() + ":" + app.GetPort()
+}
+
+// GetPublicURL is where the app answers: https (or the route's protocol) on the
+// primary route's CNAME when the app has one, else the internal address, reachable
+// from the cluster network only. GetURL above is the bare host:port.
+func (app *App) GetPublicURL() string {
+	if app == nil {
+		return ""
+	}
+	if app.AppConfig != nil {
+		for _, route := range app.AppConfig.Deployment.Routes {
+			if route.Primary && route.CName != "" && !strings.Contains(route.CName, "(") {
+				proto := strings.ToLower(route.Protocol)
+				if proto == "" {
+					proto = "https"
+				}
+				return proto + "://" + route.CName + "/"
+			}
+		}
+	}
+	if app.Host == "" {
+		return ""
+	}
+	port := app.Port
+	if port == "" {
+		port = "80"
+	}
+	return "http://" + app.Host + ":" + port + "/"
+}
+
+// GetStartTimeout is the om3 start_timeout / pull_timeout of the app container: the
+// app's own prov-app-start-timeout, else the cluster's, else 2m.
+func (app *App) GetStartTimeout() string {
+	if app != nil && app.AppConfig != nil && strings.TrimSpace(app.AppConfig.ProvAppStartTimeout) != "" {
+		return strings.TrimSpace(app.AppConfig.ProvAppStartTimeout)
+	}
+	if app != nil && app.ClusterGroup != nil && strings.TrimSpace(app.ClusterGroup.Conf.ProvAppStartTimeout) != "" {
+		return strings.TrimSpace(app.ClusterGroup.Conf.ProvAppStartTimeout)
+	}
+	return "2m"
 }

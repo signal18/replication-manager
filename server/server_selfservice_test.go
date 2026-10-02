@@ -3,6 +3,8 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -169,7 +171,9 @@ func TestSelfServicePoolGate(t *testing.T) {
 	if err := repman.selfServiceCheck("u@x.io"); err != nil {
 		t.Errorf("2 DBU needed of 3 free must pass: %v", err)
 	}
-	// A cluster already planned at 2 DBU leaves 1 free: refused.
+	// A cluster already planned at 2 DBU leaves 1 free: refused (an unprovisioned
+	// cluster reserves nothing, so the fixture must be provisioned to count).
+	cl.IsProvision = true
 	cl.Conf.ProvServicePlanDbu = 2
 	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "no free DBU") {
 		t.Errorf("1 DBU free must refuse a 2 DBU cluster, got %v", err)
@@ -189,5 +193,109 @@ func TestSelfServicePoolGate(t *testing.T) {
 	repman.Conf.ProvServicePlanApu = 4
 	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "no free APU") {
 		t.Errorf("4 APU needed of 3 must refuse, got %v", err)
+	}
+}
+
+// cloud18-self-service-clusters-can-borrow: a pool that cannot guarantee the default units
+// asks the over-commit pot; the creation goes through on borrowed capacity, said in the note.
+func TestSelfServiceCanBorrow(t *testing.T) {
+	repman, _ := newTokenTestManager(t)
+	repman.Conf.Cloud18 = true
+	repman.Conf.Cloud18SelfServiceClusters = true
+	repman.Conf.Cloud18SelfServiceMaxClustersPerUser = 3
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	repman.Conf.ProvDbDbu = 1
+	repman.Conf.ProvServicePlanApu = 1
+	repman.resourceManager = cluster.NewResourceManager()
+	repman.Conf.ResourceManagerInfraCpuCores = 3
+	repman.Conf.ResourceManagerInfraMemoryMB = 12288
+	repman.resourceManager.SetInfraCapacity(&cluster.AgentCapacity{Cores: 3, MemMB: 12288, DiskGB: 1000, Iops: 10000})
+	// Quota 50 %: 1.5 DBU sellable, 2 needed -> refused without the flag.
+	repman.resourceManager.SetQuotaPct(50)
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "no free DBU") {
+		t.Fatalf("1.5 usable DBU must refuse a 2 DBU cluster, got %v", err)
+	}
+	// With the flag the over-commit pot (3 cores, nothing borrowed) lends the 2 DBU + 1 APU.
+	repman.Conf.Cloud18SelfServiceClustersCanBorrow = true
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Fatalf("the borrow pot must admit the cluster: %v", err)
+	}
+	st := repman.selfServiceStatusFor("u@x.io")
+	if !st.Enabled || !st.PoolOK || !st.Borrowed || !contains(st.PoolNote, "borrowed capacity") {
+		t.Fatalf("status must say the cluster is created on borrowed capacity: %+v", st)
+	}
+	// A pot that cannot lend either still refuses: 4 DBU needed of 3 cores.
+	repman.Conf.ProvDbDbu = 2
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "cannot borrow either") {
+		t.Fatalf("4 DBU over 3 cores must refuse even with the flag, got %v", err)
+	}
+}
+
+// cloud18-self-service-clusters-enabled-script: a non-zero exit vetoes with the first output
+// line as reason, the pool figures ride env, an empty script allows.
+func TestSelfServiceEnabledScript(t *testing.T) {
+	repman, _ := newTokenTestManager(t)
+	repman.Conf.Cloud18 = true
+	repman.Conf.Cloud18SelfServiceClusters = true
+	repman.Conf.Cloud18SelfServiceMaxClustersPerUser = 3
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	repman.Conf.ProvDbDbu = 1
+	repman.Conf.ProvServicePlanApu = 1
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, "env")
+	veto := filepath.Join(dir, "veto.sh")
+	if err := os.WriteFile(veto, []byte("#!/bin/sh\necho \"no new cluster for $1 on $2\"\necho more\nenv | grep ^REPMAN_ > "+envFile+"\nexit 3\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repman.Conf.Cloud18SelfServiceClustersEnabledScript = veto
+	err := repman.selfServiceCheck("u@x.io")
+	if err == nil || !contains(err.Error(), "no new cluster for u@x.io on opensvc") || contains(err.Error(), "more") {
+		t.Fatalf("the veto must carry the first output line only, got %v", err)
+	}
+	env, _ := os.ReadFile(envFile)
+	for _, want := range []string{"REPMAN_IDENTITY=u@x.io", "REPMAN_ORCHESTRATOR=opensvc", "REPMAN_SPONSORED_CLUSTERS=0", "REPMAN_NEEDED_DBU=2.00", "REPMAN_NEEDED_APU=1.00", "REPMAN_FREE_DBU=", "REPMAN_BORROW_APU="} {
+		if !contains(string(env), want) {
+			t.Errorf("script env must carry %s, got:\n%s", want, env)
+		}
+	}
+	st := repman.selfServiceStatusFor("u@x.io")
+	if st.Enabled || !contains(st.Reason, "enabled-script refused") {
+		t.Fatalf("status must expose the veto: %+v", st)
+	}
+	allow := filepath.Join(dir, "allow.sh")
+	if err := os.WriteFile(allow, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repman.Conf.Cloud18SelfServiceClustersEnabledScript = allow
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Fatalf("an allowing script must pass: %v", err)
+	}
+	repman.Conf.Cloud18SelfServiceClustersEnabledScript = ""
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Fatalf("no script must pass: %v", err)
+	}
+}
+
+// A self-service cluster is born dynamic on OpenSVC (PG slice: run-args cap off) and on
+// Kubernetes (in-place Pod resize: requests/limits pair on); other orchestrators untouched.
+func TestSelfServiceBornDynamic(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	cl.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	cl.Conf.ProvDBDockerRunArgsLimit = true
+	repman.selfServiceBornDynamic(cl)
+	if !cl.Conf.ProvDBApplyDynamicConfig || !cl.Conf.ProvDBDynamicResource || cl.Conf.ProvDBDockerRunArgsLimit {
+		t.Fatalf("OpenSVC: dynamic on, run-args cap off, got apply=%t resource=%t runargs=%t", cl.Conf.ProvDBApplyDynamicConfig, cl.Conf.ProvDBDynamicResource, cl.Conf.ProvDBDockerRunArgsLimit)
+	}
+	cl.Conf.ProvOrchestrator = config.ConstOrchestratorKubernetes
+	cl.Conf.ProvDBApplyDynamicConfig, cl.Conf.ProvDBDynamicResource, cl.Conf.ProvDBDockerRunArgsLimit = false, false, false
+	repman.selfServiceBornDynamic(cl)
+	if !cl.Conf.ProvDBApplyDynamicConfig || !cl.Conf.ProvDBDynamicResource || !cl.Conf.ProvDBDockerRunArgsLimit {
+		t.Fatalf("Kubernetes: dynamic on, requests/limits pair on")
+	}
+	cl.Conf.ProvOrchestrator = "local"
+	cl.Conf.ProvDBApplyDynamicConfig, cl.Conf.ProvDBDynamicResource = false, false
+	repman.selfServiceBornDynamic(cl)
+	if cl.Conf.ProvDBApplyDynamicConfig || cl.Conf.ProvDBDynamicResource {
+		t.Fatalf("another orchestrator must be left as the defaults say")
 	}
 }

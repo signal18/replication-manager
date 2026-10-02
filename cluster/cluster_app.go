@@ -355,6 +355,20 @@ func (cluster *Cluster) OwnGatewayRoutes(gateway string) [][]config.Route {
 	return cluster.allAppRoutes()
 }
 
+// refreshAppS3Providers rebuilds the S3 provider host:port list from the app configs (after
+// an app-s3-provider flip), the same list newAppList builds at load.
+func (cluster *Cluster) refreshAppS3Providers() {
+	providers := make([]string, 0)
+	for _, app := range cluster.Apps {
+		if app != nil && app.AppConfig != nil && app.AppConfig.AppS3Provider {
+			providers = append(providers, app.GetHost()+":"+app.GetPort())
+		}
+	}
+	cluster.Lock()
+	cluster.AppS3Providers = providers
+	cluster.Unlock()
+}
+
 // pruneEjectedAppsLocked removes entries from cluster.Apps that no longer have
 // a corresponding AppConfig in cluster.Conf.Apps.  Caller must hold the cluster
 // lock.  Rebuilds AppS3Providers and bumps appListEpoch.
@@ -920,6 +934,9 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	appcnf := cluster.NewAppConfig(srv, port)
 	appcnf.ProvAppDockerImg = dockerImg
 	appcnf.ProvAppTemplate = template
+	if err := cluster.RunAddMonitorScript(cluster.monitorHookApp(appcnf, nil)); err != nil {
+		return err
+	}
 	if appended := cluster.appendConfAppIfAbsent(appcnf); !appended {
 		return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
 	}
@@ -997,7 +1014,6 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			}
 		}
 	}
-	cluster.recomputeAppCredits()
 	appAdded = false
 	return nil
 }
@@ -1047,9 +1063,26 @@ func (cluster *Cluster) GetAppAgents(appcnf *config.AppConfig) string {
 	return agents
 }
 
+// normalizeAppMeasure turns a sized value ("4G", "1024M", "4") into the whole number of
+// the base unit the renderers expect ("4" GB for a disk, "1024" MB for memory); an
+// unparsable value is returned as is (a template placeholder left unresolved, say).
+func normalizeAppMeasure(tag, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return value
+	}
+	if n, err := config.ParseUnitMeasurementToInt(tag, value, false); err == nil {
+		return strconv.Itoa(n)
+	}
+	return value
+}
+
 func (cluster *Cluster) GetAppDisk(appcnf *config.AppConfig) string {
 	if appcnf != nil && appcnf.ProvAppDisk != "" {
-		// If the app config has disk, return it
+		// If the app config has disk, return it, in whole GB whatever unit it was
+		// written with (a template may carry the cluster's "4G": the volume render
+		// appends its own unit and zfs refused "4Gg" as a zero size, curepipe 2026-10-02).
+		appcnf.ProvAppDisk = normalizeAppMeasure("G,bytes", appcnf.ProvAppDisk)
 		return appcnf.ProvAppDisk
 	}
 
@@ -1069,7 +1102,8 @@ func (cluster *Cluster) GetAppDisk(appcnf *config.AppConfig) string {
 
 func (cluster *Cluster) GetAppMemory(appcnf *config.AppConfig) string {
 	if appcnf != nil && appcnf.ProvAppMem != "" {
-		// If the app config has memory, return it
+		// If the app config has memory, return it, in whole MB whatever unit it was written with
+		appcnf.ProvAppMem = normalizeAppMeasure("M,bytes", appcnf.ProvAppMem)
 		return appcnf.ProvAppMem
 	}
 
@@ -1142,10 +1176,41 @@ func (cluster *Cluster) IngestAppConsumedAPU(kind ComputeKind, name string, star
 	if cluster == nil || cluster.resources == nil {
 		return APUReading{}
 	}
-	r := cluster.resources.ComputeUsedAPU(start, end, memMaxBytes, cpuMaxCores, diskMaxBytes)
 	k := AppKey{Cluster: cluster.Name, App: name, Kind: kind}
+	if kind == KindApp && cluster.appIsStateful(name) {
+		// Stateful app: the same cgroup maxima, projected with the DATABASE ratio (io axis
+		// unmeasured by the pg sensor -> 0) and stored on the DBU track.
+		d := cluster.resources.ComputeUsedDBU(start, end, memMaxBytes, cpuMaxCores, 0, diskMaxBytes)
+		cluster.resources.SetStatefulConsumed(k, &d)
+		cluster.resources.SetAppConsumed(k, nil)
+		return APUReading{}
+	}
+	r := cluster.resources.ComputeUsedAPU(start, end, memMaxBytes, cpuMaxCores, diskMaxBytes)
 	cluster.resources.SetAppConsumed(k, &r)
+	cluster.resources.SetStatefulConsumed(k, nil)
 	return r
+}
+
+// appIsStateful reports whether the named app deployment is accounted on the Database
+// profile (app-stateful, e.g. minio from the cloud18 template).
+func (cluster *Cluster) appIsStateful(name string) bool {
+	for _, app := range cluster.Apps {
+		if app != nil && app.Name == name && app.AppConfig != nil && app.AppConfig.AppStateful {
+			return true
+		}
+	}
+	return false
+}
+
+// computePlanDBUReading is the stateful-app twin of computePlanAPUReading: the declared
+// prov-app-* shape projected with the Database ratio. An app declares no IOPS, so the io
+// axis is 0 and the unit follows cores, memory or disk.
+func (cluster *Cluster) computePlanDBUReading(now time.Time, memStr, coresStr, diskStr string) DBUReading {
+	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", memStr, true)
+	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", diskStr, true)
+	cores, _ := strconv.ParseFloat(strings.TrimSpace(coresStr), 64)
+	return cluster.resources.ComputeUsedDBU(now, now,
+		int64(memMB)*1024*1024, cores, 0, int64(diskGB)*1024*1024*1024)
 }
 
 // RefreshComputePlanAPU projects the PLANNED resources of every stateless Compute
@@ -1161,10 +1226,53 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		return
 	}
 	now := time.Now()
+	// An UNPROVISIONED cluster reserves nothing (see RefreshDBUPlan): clear its app and proxy
+	// plans so no rollup counts them, then materialize a zero contract.
+	if !cluster.IsProvision {
+		for _, app := range cluster.Apps {
+			if app != nil {
+				cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}, nil)
+				cluster.resources.SetStatefulPlan(AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}, nil)
+			}
+		}
+		for _, prx := range cluster.Proxies {
+			if prx != nil {
+				cluster.resources.SetAppPlan(AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}, nil)
+			}
+		}
+		cluster.Conf.ProvServicePlanApu = 0
+		cluster.RefreshComputeBilling()
+		return
+	}
 	for _, app := range cluster.Apps {
 		if app == nil {
 			continue
 		}
+		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
+		if app.AppConfig != nil && app.AppConfig.AppStateful {
+			// STATEFUL app (app-stateful, e.g. minio): the same declared shape and the same
+			// instance rule, but on the DATABASE profile -> whole DBU, reserved in the DBU
+			// pool and billed at the DBU price (Stéphane 2026-09-29: "minio should account
+			// as DBU because it is a stateful service"). Floor 1 DBU per instance.
+			d := cluster.computePlanDBUReading(now,
+				cluster.GetAppMemory(app.AppConfig), cluster.GetAppCores(app.AppConfig), cluster.GetAppDisk(app.AppConfig))
+			if d.Dbu < 1 {
+				dr := cluster.resources.Ratios(ProfileDatabase)
+				d = cluster.resources.ComputeUsedDBU(now, now,
+					int64(dr.MemMBPerUnit)*1024*1024, dr.CoresPerUnit, 0, int64(dr.DiskGBPerUnit)*1024*1024*1024)
+			}
+			if n := cluster.appInstanceCount(app); n > 1 {
+				d = cluster.resources.ComputeUsedDBU(now, now,
+					d.MemMaxBytes*int64(n), d.CpuMaxCores*float64(n), 0, d.DiskMaxBytes*int64(n))
+			}
+			cluster.resources.SetStatefulPlan(k, &d)
+			cluster.resources.SetAppPlan(k, nil)
+			if app.Agent != "" {
+				cluster.resources.SetAppAgent(k, app.Agent)
+			}
+			continue
+		}
+		cluster.resources.SetStatefulPlan(k, nil)
 		// PER-APP sizing: each app reserves from its OWN AppConfig (GetApp* fall back to the
 		// cluster default only when the app sets nothing), so a dev php (~0) and a prod php
 		// (large) are distinct reservations -- not a cluster average. This is the app class:
@@ -1179,7 +1287,14 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 			r = cluster.resources.ComputeUsedAPU(now, now,
 				int64(cr.MemMBPerUnit)*1024*1024, cr.CoresPerUnit, int64(cr.DiskGBPerUnit)*1024*1024*1024)
 		}
-		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
+		// The shape is PER INSTANCE: a flex app runs one instance per agent behind the load
+		// balancer (N x the shape), a failover app runs ONE instance (its standby agents only
+		// hold a copy of its volume, billed as disk in BKU, never as cpu/memory here).
+		// Stéphane 2026-09-28: "failover consume disk, no memory, no cpu".
+		if n := cluster.appInstanceCount(app); n > 1 {
+			r = cluster.resources.ComputeUsedAPU(now, now,
+				r.MemMaxBytes*int64(n), r.CpuMaxCores*float64(n), r.DiskMaxBytes*int64(n))
+		}
 		cluster.resources.SetAppPlan(k, &r)
 		if app.Agent != "" {
 			cluster.resources.SetAppAgent(k, app.Agent)
@@ -1215,6 +1330,33 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 	// per-instance inputs; the client moves those (prov-proxy-apu / per-app), never this directly,
 	// so it stays a real cluster number without re-locking in /etc.
 	cluster.Conf.ProvServicePlanApu = int(cluster.resources.AppPlanByCluster(cluster.Name).Apu + 0.5)
+	cluster.RefreshComputeBilling()
+}
+
+// appCopyCount is how many agents hold the app's volume: the app's agents, else the cluster
+// app agents, else the cluster agents; never under 1. A failover app replicates its volume
+// on every one of them, a flex app has one volume per instance.
+func (cluster *Cluster) appCopyCount(app *App) int {
+	n := 0
+	for _, a := range strings.Split(cluster.GetAppAgents(app.AppConfig), ",") {
+		if strings.TrimSpace(a) != "" {
+			n++
+		}
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// appInstanceCount is how many instances of the app RUN, the compute it really consumes:
+// one per agent when flex (load balanced), exactly one when failover (the standby agents
+// hold a volume copy, no cpu, no memory).
+func (cluster *Cluster) appInstanceCount(app *App) int {
+	if cluster.GetAppHATopology(app.AppConfig) == "flex" {
+		return cluster.appCopyCount(app)
+	}
+	return 1
 }
 
 func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
@@ -2013,13 +2155,5 @@ func (cluster *Cluster) EnqueueRefreshAppTemplateMD5(app *App) {
 		// Enqueued successfully
 	default:
 		// Channel full — drop silently
-	}
-}
-
-func (cluster *Cluster) CheckAppsCredit() {
-	for _, app := range cluster.Apps {
-		if app != nil {
-			app.CheckAppCredits()
-		}
 	}
 }

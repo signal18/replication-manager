@@ -9,6 +9,8 @@ export const globalClustersService = {
   getGlobalAlerts,
   getGlobalMetrics,
   getGlobalResources,
+  getGlobalPrice,
+  getMyUnits,
   getGlobalLogs,
   getGlobalLogHistory,
   getGlobalJobs,
@@ -53,6 +55,10 @@ function getGlobalResources(baseURL) {
   return getApi(baseURL).get('global/resources')
 }
 
+function getGlobalPrice(baseURL, month) {
+  return getApi(baseURL).get(month ? `global/price/${month}` : 'global/price')
+}
+
 function getGlobalLogs(baseURL) {
   return getApi(baseURL).get('global/http-logs')
 }
@@ -91,7 +97,7 @@ function switchGlobalSetting(setting) {
 }
 
 function setGlobalSetting(setting, value) {
-  return getApi().get(`clusters/settings/actions/set/${setting}/${value}`)
+  return getApi().get(`clusters/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
 }
 
 function clearGlobalSetting(setting) {
@@ -161,4 +167,8 @@ function setServerActiveStatus(baseURL) {
 
 function fetchDynamicClustersFromGit() {
   return getApi().post('clusters/actions/fetch-dynamic-from-git')
+}
+
+function getMyUnits(baseURL) {
+  return getApi(baseURL).get('me/units')
 }

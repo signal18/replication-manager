@@ -6579,6 +6579,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using script from backup-load-script on %s", server.URL)
 		if err := server.JobReseedBackupScript(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
+			server.MarkReseedFailed(err)
 			server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 			return err
 		}
@@ -6722,6 +6723,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
+			server.MarkReseedFailed(err)
 			server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 			return err
 		}
@@ -6758,6 +6760,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
+			server.MarkReseedFailed(err)
 			server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 			return err
 		}

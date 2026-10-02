@@ -245,6 +245,11 @@ func (repman *ReplicationManager) apiserver() {
 	var err error
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
+	// No path cleaning: a setting value carried in the path may start with a slash
+	// (an absolute script path), and cleaning turned ".../set/name//tmp/x.sh" into a
+	// 301 to "/tmp" without its leading slash. A doubled slash or a ".." is now
+	// matched as typed (404 when nothing matches) instead of redirected.
+	router.SkipClean(true)
 
 	router.Use(repman.RecoveryMiddleware)
 	//router.HandleFunc("/", repman.handlerApp)
@@ -665,7 +670,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 func (repman *ReplicationManager) GetJWTClaims(r *http.Request) (map[string]string, error) {
 	// An API token has no profile claims: the owner is the identity, AuthType marks it.
 	if t, ok := repman.parseAPITokenFromRequest(r); ok {
-		return map[string]string{"User": t.User, "AuthType": "Token", "TokenID": t.ID, "TokenLabel": t.Label}, nil
+		return map[string]string{"User": t.User, "AuthType": "Token", "OwnerAuthType": t.OwnerAuthType, "TokenID": t.ID, "TokenLabel": t.Label}, nil
 	}
 
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
@@ -1981,6 +1986,7 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 				repman.Logrus.Warnf("self-service: cannot attach sponsor %s to %s: %v", username, cl.Name, err)
 			}
 			if selfService {
+				repman.selfServiceBornDynamic(cl)
 				repman.notifySelfServiceCluster(cl, username, r.RemoteAddr)
 			}
 		}

@@ -68,6 +68,7 @@ export const clusterService = {
   rotateDBCredential,
   rollingOptimize,
   rollingAction,
+  rollingUpgradePlan,
   rotateCertificates,
   reloadCertificates,
   cancelRollingRestart,
@@ -436,8 +437,13 @@ function rollingOptimize(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/optimize`)
 }
 
-function rollingAction(clusterName, action, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/rolling/${action}`)
+function rollingAction(clusterName, action, baseURL, target) {
+  const q = action === 'upgrade' && target ? `?target=${encodeURIComponent(target)}` : ''
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/rolling/${action}${q}`)
+}
+
+function rollingUpgradePlan(clusterName, target, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/rolling/upgrade/plan?target=${encodeURIComponent(target || 'patch')}`)
 }
 
 function rotateCertificates(clusterName, baseURL) {
