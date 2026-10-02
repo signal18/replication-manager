@@ -27,11 +27,15 @@ func TestReseedReadiness(t *testing.T) {
 	if len(r.Issues) != 1 || !strings.Contains(r.Issues[0], "no backup usable") || r.Retention != 7*24*time.Hour {
 		t.Fatalf("no backup yet: %+v", r)
 	}
-	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{EndTime: time.Now().Add(-8 * 24 * time.Hour)}
+	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Completed: true, EndTime: time.Now().Add(-8 * 24 * time.Hour)}
 	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || !strings.Contains(r.Issues[0], "older") && !strings.Contains(r.Issues[0], "no backup usable") {
 		t.Fatalf("a backup older than the retention is not usable: %+v", r)
 	}
-	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{EndTime: time.Now().Add(-2 * time.Hour)}
+	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{EndTime: time.Now().Add(-2 * time.Hour)} // failed job, metadata written anyway
+	if r := cl.GetReseedReadiness(); len(r.Issues) != 1 || r.LogicalFresh {
+		t.Fatalf("an incomplete backup is no backup: %+v", r)
+	}
+	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Completed: true, EndTime: time.Now().Add(-2 * time.Hour)}
 	if r := cl.GetReseedReadiness(); len(r.Issues) != 0 || !r.LogicalFresh {
 		t.Fatalf("fresh logical backup: %+v", r)
 	}
@@ -52,7 +56,7 @@ func TestReseedReadiness(t *testing.T) {
 	m.HaveBinlog = true
 	m.Variables.Set("BINLOG_EXPIRE_LOGS_SECONDS", "0")
 	m.Variables.Set("EXPIRE_LOGS_DAYS", "0")
-	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{EndTime: time.Now().Add(-90 * 24 * time.Hour)}
+	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Completed: true, EndTime: time.Now().Add(-90 * 24 * time.Hour)}
 	if r := cl.GetReseedReadiness(); len(r.Issues) != 0 {
 		t.Fatalf("no purge: any completed backup is usable: %+v", r)
 	}
@@ -70,7 +74,7 @@ func TestPlanRollingUpgradeGate(t *testing.T) {
 	if _, err := cl.PlanRollingUpgrade("next-major", ""); err == nil || !strings.Contains(err.Error(), "refused") {
 		t.Fatalf("no backup: the major reprov is refused: %v", err)
 	}
-	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{EndTime: time.Now().Add(-time.Hour)}
+	m.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Completed: true, EndTime: time.Now().Add(-time.Hour)}
 	p, err := cl.PlanRollingUpgrade("next-major", "")
 	if err != nil || p.Mechanic != "reprov" {
 		t.Fatalf("fresh backup: the major reprov is planned: err=%v plan=%+v", err, p)
@@ -79,7 +83,7 @@ func TestPlanRollingUpgradeGate(t *testing.T) {
 	m.DBVersion = &version.Version{Flavor: "MariaDB", Major: 12, Minor: 3, Release: 3}
 	cl.Conf.ProvDbImg = "mariadb:12.3"
 	cl.Conf.AutorejoinLogicalBackup, cl.Conf.AutorejoinPhysicalBackup = false, true
-	m.LastBackupMeta.Physical = &backupmgr.BackupMetadata{EndTime: time.Now().Add(-time.Hour)}
+	m.LastBackupMeta.Physical = &backupmgr.BackupMetadata{Completed: true, EndTime: time.Now().Add(-time.Hour)}
 	if _, err := cl.PlanRollingUpgrade("version", "11.8"); err == nil || !strings.Contains(err.Error(), "logical backup") {
 		t.Fatalf("downgrade with a physical backup only is refused: %v", err)
 	}

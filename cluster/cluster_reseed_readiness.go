@@ -48,14 +48,14 @@ func binlogRetention(master *ServerMonitor) time.Duration {
 // backupFresh says whether a completed backup is newer than the retention (any
 // completed backup when the server never purges).
 func backupFresh(meta *backupmgr.BackupMetadata, retention time.Duration) bool {
-	if meta == nil || meta.EndTime.IsZero() {
-		return false
+	if meta == nil || !meta.Completed || meta.EndTime.IsZero() {
+		return false // an incomplete backup (the job failed, metadata written anyway) is no backup
 	}
 	return retention == 0 || time.Since(meta.EndTime) < retention
 }
 
 func describeBackup(kind string, meta *backupmgr.BackupMetadata) string {
-	if meta == nil || meta.EndTime.IsZero() {
+	if meta == nil || !meta.Completed || meta.EndTime.IsZero() {
 		return "no completed " + kind + " backup of the primary"
 	}
 	return "last " + kind + " backup of the primary " + meta.EndTime.UTC().Format("2006-01-02 15:04") + " UTC"
