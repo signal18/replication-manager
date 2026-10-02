@@ -1,10 +1,10 @@
 package cluster
 
 import (
-	"strings"
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -139,7 +139,7 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 		return nil
 	})
 	m2.Tick(nov)
-	m2.Tick(nov.Add(time.Minute))
+	m2.Tick(nov) // a second tick of the new month pushes nothing more
 	if len(pushed) != 1 || pushed[0] != "2026-10" {
 		t.Fatalf("the closed month is pushed once: %v", pushed)
 	}
