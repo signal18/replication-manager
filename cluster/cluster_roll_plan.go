@@ -65,9 +65,10 @@ type RollingUpgradePlan struct {
 	Status         string                   `json:"status,omitempty"`
 }
 
-// PlanRollingUpgrade resolves the target with the image list methods (GetLastMinor,
-// GetNextMinor, GetNextMajor, GetNextMajorLTS, GetLastMajorLTS, or a given version)
-// from the line the nodes run, and describes the upgrade without touching anything.
+// PlanRollingUpgrade resolves the target with the image list: the default (patch)
+// resolves the declared prov-db-image (a line to its newest release, latest / lts to
+// what the list says); next-minor, next-lts, next-major, last-lts and version move
+// the declaration from the line the nodes run. Nothing is touched.
 func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpgradePlan, error) {
 	cat, err := cluster.ImageCatalog()
 	if err != nil {
@@ -115,14 +116,17 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 	if strings.TrimSpace(target) == "" {
 		target = releases.TargetPatch
 	}
-	release, err := cat.Target(repo, flavor, current, target, explicit)
-	if err != nil {
-		switch strings.ToLower(strings.TrimSpace(target)) {
-		case releases.TargetPatch, releases.TargetLastMinor:
-			// Not in the list: the declared tag comes back unchanged, the upgrade
-			// re-pulls it as it always did.
-			release = tag
-		default:
+	var release string
+	switch strings.ToLower(strings.TrimSpace(target)) {
+	case releases.TargetPatch, releases.TargetLastMinor:
+		// The default upgrade follows the DECLARED image, not the line the nodes run:
+		// a line resolves to its newest release in the list, latest / lts to what they
+		// mean in the list, an explicit release to itself, an unknown tag to itself.
+		// So declaring a higher line and running the default upgrade moves there.
+		release = cat.Resolve(repo, flavor, tag)
+	default:
+		var err error
+		if release, err = cat.Target(repo, flavor, current, target, explicit); err != nil {
 			return nil, err
 		}
 	}
@@ -186,7 +190,7 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 				warnings = append(warnings, "prov-db-image "+declared+" is pinned in the immutable configuration (cluster.d): the upgrade is refused until the operator changes the pin")
 			}
 		}
-		steps = append(steps, "pin the service definitions on "+targetImage+" (the release the image list gives for "+target+")")
+		steps = append(steps, "render the service definitions with "+targetImage+" (the release the image list gives for "+target+")")
 		if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 			steps = append(steps, "push the service definition of every node (update-opensvc-template), inert until the node restarts")
 		}

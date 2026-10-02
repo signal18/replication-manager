@@ -95,6 +95,11 @@ func TestPlanRollingUpgradeFromEmbeddedList(t *testing.T) {
 	if err != nil || p.TargetImage != "mariadb:12.9" {
 		t.Fatalf("patch on a line absent from the list keeps the declared tag: err=%v plan=%+v", err, p)
 	}
+	cl.Conf.ProvDbImg = "mariadb:12.3" // declared one major higher: the default upgrade follows the declaration
+	p, err = cl.PlanRollingUpgrade("", "")
+	if err != nil || p.TargetImage != "mariadb:12.3.2" || p.DeclaredAfter != "mariadb:12.3" {
+		t.Fatalf("default upgrade follows the declared line: err=%v plan=%+v", err, p)
+	}
 	cl.Conf.ProvDbImg = "mariadb:11.4"
 	if _, err := cl.PlanRollingUpgrade("sideways", ""); err == nil {
 		t.Fatal("unknown target must fail")

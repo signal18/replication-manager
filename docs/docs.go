@@ -2318,7 +2318,7 @@ const docTemplate = `{
                             "version"
                         ],
                         "type": "string",
-                        "description": "upgrade only: the release to move to, a method of the image list: patch (newest release of the current line, default), next-minor, next-lts, next-major, last-lts, version",
+                        "description": "upgrade only: the release to move to, a method of the image list: patch (default: the declared prov-db-image resolved by the list), next-minor, next-lts, next-major, last-lts, version",
                         "name": "target",
                         "in": "query"
                     },

@@ -53,8 +53,12 @@ the list at provision and at every rolling upgrade (`prov-db-docker-img-resolved
 | `GetLastMajorLTS()` | newest release of the highest LTS line |
 | `Target(current, target, version)` | `patch`/`last-minor`, `next-minor`, `next-major`, `next-lts`, `last-lts`, `version` (a release is taken as is, in the list or not; a line is `GetLastMinor`, unchanged when absent) |
 
-`Cluster.PlanRollingUpgrade(target, version)` takes the current line from the master's
-running version (else the declared tag, else the record), applies `Target`, refuses a
+`Cluster.PlanRollingUpgrade(target, version)`: the default target (`patch`, what the GUI
+menu and the API without `target` run) resolves the **declared** `prov-db-image` with
+`Resolve`, so a line moves to its newest release and a declaration raised to a higher line
+moves there on the next default upgrade; the other targets take the current line from the
+master's running version (else the declared tag, else the record) and apply `Target`. It
+refuses a
 downgrade (line, and release when the running one is known; `patch` on a list older than
 the running release answers the running release with a warning), and says what
 `prov-db-image` declares afterwards: `patch` keeps the declaration, a line move declares the

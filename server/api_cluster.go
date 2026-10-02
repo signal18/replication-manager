@@ -1616,7 +1616,7 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param action path string true "Rolling action" Enums(restart,reprov,upgrade,jobs-upgrade)
-// @Param target query string false "upgrade only: the release to move to, a method of the image list: patch (newest release of the current line, default), next-minor, next-lts, next-major, last-lts, version" Enums(patch,next-minor,next-lts,next-major,last-lts,version)
+// @Param target query string false "upgrade only: the release to move to, a method of the image list: patch (default: the declared prov-db-image resolved by the list), next-minor, next-lts, next-major, last-lts, version" Enums(patch,next-minor,next-lts,next-major,last-lts,version)
 // @Param version query string false "upgrade with target=version: the release or line to move to"
 // @Success 200 {string} string "Action triggered successfully"
 // @Success 202 {string} string "Long-running action started in background (reprov, upgrade)"
