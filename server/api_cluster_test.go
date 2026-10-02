@@ -340,6 +340,118 @@ func TestSetClusterSetting_ProvKubeProxyStorageClass(t *testing.T) {
 	}
 }
 
+// TestSetClusterSetting_ProvDBIdentity guards the explicit settings dispatcher used
+// by the configurator for prov-db-run-as-uid and prov-db-volume-uid. Each value is empty
+// (legacy behavior), a numeric UID or UID:GID, 0 being root; the two are
+// independent; a meaningful change must request reprovisioning without performing it.
+func TestSetClusterSetting_ProvDBIdentity(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+	db := &cluster.ServerMonitor{ClusterGroup: cl, Datadir: t.TempDir()}
+	cl.Servers = append(cl.Servers, db)
+
+	set := func(setting, value string) {
+		t.Helper()
+		if err := repman.setClusterSetting(cl, setting, value); err != nil {
+			t.Fatalf("setClusterSetting(%s, %q): unexpected error: %v", setting, value, err)
+		}
+	}
+	expectReprov := func(want bool) {
+		t.Helper()
+		if db.HasReprovCookie() != want {
+			t.Fatalf("database reprov cookie = %v, want %v", db.HasReprovCookie(), want)
+		}
+		if want {
+			if err := db.DelReprovisionCookie(); err != nil {
+				t.Fatalf("clear database reprov cookie: %v", err)
+			}
+		}
+	}
+
+	set("prov-db-run-as-uid", "0")
+	if cl.Conf.ProvDBRunAsUID != "0" || cl.Conf.ProvDBVolumeUID != "" {
+		t.Fatalf("run as = %q chown = %q, want 0 and empty (independent settings)", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+	}
+	expectReprov(true)
+
+	set("prov-db-volume-uid", "1001:1001")
+	if cl.Conf.ProvDBVolumeUID != "1001:1001" || cl.Conf.ProvDBRunAsUID != "0" {
+		t.Fatalf("run as = %q chown = %q, want 0 and 1001:1001", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+	}
+	expectReprov(true)
+
+	set("prov-db-volume-uid", " 1001:1001 ")
+	expectReprov(false)
+
+	for _, setting := range []string{"prov-db-run-as-uid", "prov-db-volume-uid"} {
+		for _, value := range []string{"-1", "mysql", "1001:2147483648", "1001:", "1:2:3"} {
+			if err := repman.setClusterSetting(cl, setting, value); err == nil {
+				t.Fatalf("setClusterSetting(%s, %q): expected validation error", setting, value)
+			}
+		}
+	}
+	expectReprov(false)
+	if cl.Conf.ProvDBRunAsUID != "0" || cl.Conf.ProvDBVolumeUID != "1001:1001" {
+		t.Fatalf("refused values must leave the configuration alone, got %q and %q", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+	}
+
+	// The configurator clears a setting by sending an empty value.
+	set("prov-db-run-as-uid", "")
+	set("prov-db-volume-uid", "")
+	if cl.Conf.ProvDBRunAsUID != "" || cl.Conf.ProvDBVolumeUID != "" {
+		t.Fatalf("cleared settings = %q and %q, want empty", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+	}
+	expectReprov(true)
+}
+
+// Both settings only exist for OpenSVC and Kubernetes databases: for any other
+// provisioner they are refused (no silent no-op, no reprovision cookie).
+func TestSetClusterSetting_ProvDBIdentityRefusedForOtherOrchestrators(t *testing.T) {
+	for _, tc := range []struct {
+		orchestrator string
+		accepted     bool
+	}{
+		{config.ConstOrchestratorOpenSVC, true},
+		{config.ConstOrchestratorKubernetes, true},
+		{config.ConstOrchestratorLocalhost, false},
+		{config.ConstOrchestratorOnPremise, false},
+		{config.ConstOrchestratorSlapOS, false},
+		{"", false},
+	} {
+		t.Run("orchestrator="+tc.orchestrator, func(t *testing.T) {
+			cl := newTestClusterForAPI(t)
+			cl.Conf.ProvOrchestrator = tc.orchestrator
+			cl.Conf.Secrets = make(map[string]config.Secret)
+			cl.ConfigManager = newConfigManagerForTest()
+			repman := newTestRepmanWithCluster(t, cl.Name, cl)
+			db := &cluster.ServerMonitor{ClusterGroup: cl, Datadir: t.TempDir()}
+			cl.Servers = append(cl.Servers, db)
+
+			for _, setting := range []string{"prov-db-run-as-uid", "prov-db-volume-uid"} {
+				err := repman.setClusterSetting(cl, setting, "1001")
+				if tc.accepted && err != nil {
+					t.Fatalf("setClusterSetting(%s) must be accepted for %q: %v", setting, tc.orchestrator, err)
+				}
+				if !tc.accepted && err == nil {
+					t.Fatalf("setClusterSetting(%s) must be refused for %q", setting, tc.orchestrator)
+				}
+			}
+			if tc.accepted {
+				return
+			}
+			if cl.Conf.ProvDBRunAsUID != "" || cl.Conf.ProvDBVolumeUID != "" {
+				t.Errorf("refused settings must leave the configuration alone, got %q and %q", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+			}
+			if db.HasReprovCookie() {
+				t.Error("a refused setting must not raise a reprovision cookie")
+			}
+		})
+	}
+}
+
 func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.Secrets = make(map[string]config.Secret)

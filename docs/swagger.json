@@ -26526,6 +26526,9 @@
                 "provDbConfigPreserveVars": {
                     "type": "string"
                 },
+                "provDbVolumeUid": {
+                    "type": "string"
+                },
                 "provDbCpuCores": {
                     "type": "string"
                 },
@@ -26651,6 +26654,9 @@
                     "type": "string"
                 },
                 "provDbResourceRaisedOverPlanScript": {
+                    "type": "string"
+                },
+                "provDbRunAsUid": {
                     "type": "string"
                 },
                 "provDbServiceType": {

@@ -342,6 +342,7 @@ type Cluster struct {
 	// to the Phase-2 per-operation-channel refactor. See
 	// doc/implementation/cluster/ERRORCHAN_PROVISIONING.md.
 	provisioningMutex                   sync.Mutex                  `json:"-"`
+	dbIdentityLog                       dbIdentityLogState          `json:"-"`
 	testStopCluster                     bool                        `json:"-"`
 	testStartCluster                    bool                        `json:"-"`
 	lastmaster                          *ServerMonitor              `json:"-"`

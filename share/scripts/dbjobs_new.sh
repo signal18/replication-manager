@@ -48,6 +48,19 @@ readonly MYSQL_CONF="%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%"
 readonly DATADIR="%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%"
 readonly CLIENT_BASEDIR="%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%"
 
+# Owner for files written into the database volume. The orchestrator gives the
+# datadir the database owner UID/GID (prov-db-volume-uid, 1001 for Percona Server
+# images), which can differ from the image's "mysql" account; $1 is
+# the legacy owner, used when the datadir is missing or owned by root.
+db_owner() {
+    local owner
+    owner=$(stat -c '%u:%g' "$DATADIR" 2>/dev/null)
+    if [[ -z "$owner" || "$owner" == 0:* ]]; then
+        owner="$1"
+    fi
+    printf '%s' "$owner"
+}
+
 # MariaDB binaries
 readonly MARIADB_CLIENT="${CLIENT_BASEDIR}/mariadb"
 readonly MARIADB_CHECK="${CLIENT_BASEDIR}/mariadb-check"
@@ -867,7 +880,7 @@ fetch_and_extract_config() {
 
     # Set ownership if running as root
     if [[ "$(id -u)" == "0" && -d "$extract_dir/etc/mysql" ]]; then
-        chown -R 999:999 "$extract_dir/etc/mysql" 2>/dev/null || true
+        chown -R "$(db_owner 999:999)" "$extract_dir/etc/mysql" 2>/dev/null || true
     fi
 
     return 0
@@ -891,7 +904,7 @@ EOF
 
     # Set ownership if running as root
     if [[ "$(id -u)" == "0" ]]; then
-        chown 999:999 "$dummy_config_file" 2>/dev/null || true
+        chown "$(db_owner 999:999)" "$dummy_config_file" 2>/dev/null || true
     fi
 
     return 0
@@ -1551,7 +1564,7 @@ partialRestore() {
     [[ "$(id -u)" == "0" ]] && isr=1
 
     if [[ $isr -eq 1 ]]; then
-        pr_cmd "Chown backup directory" chown -R mysql:mysql "$BACKUPDIR"
+        pr_cmd "Chown backup directory" chown -R "$(db_owner mysql:mysql)" "$BACKUPDIR"
     else
         pr_log "Skipping chown of backup directory; not running as root."
     fi
@@ -1580,7 +1593,7 @@ partialRestore() {
         for file in $(find $BACKUPDIR/$dir/ -name "*.ibd" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
             pr_pipe "Create FRM stub for $dir.$file" "cat \"$BACKUPDIR/$dir/$file.frm\" | sed -e 's/\\x06\\x00\\x49\\x6E\\x6E\\x6F\\x44\\x42\\x00\\x00\\x00/\\x09\\x00\\x42\\x4C\\x41\\x43\\x4B\\x48\\x4F\\x4C\\x45/g' >\"$DATADIR/$dir/mrm_pivo.frm\""
             if [[ $isr -eq 1 ]]; then
-                pr_cmd "Chown FRM stub for $dir.$file" chown mysql:mysql "$DATADIR/$dir/mrm_pivo.frm"
+                pr_cmd "Chown FRM stub for $dir.$file" chown "$(db_owner mysql:mysql)" "$DATADIR/$dir/mrm_pivo.frm"
             else
                 pr_log "Skipping chown for $dir.$file; not running as root."
             fi

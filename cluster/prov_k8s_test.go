@@ -1069,6 +1069,134 @@ func TestK8SDatabaseDeployment_NodeSelectorTracksHostnameLabelArgument(t *testin
 	}
 }
 
+func TestK8SDatabaseDeployment_Identity(t *testing.T) {
+	build := func(image, runAs, chown string) (apiv1.PodSpec, string) {
+		cluster := newTestCluster("k8stest")
+		if image != "" {
+			cluster.Conf.ProvDbImg = image
+		}
+		cluster.Conf.ProvDBRunAsUID = runAs
+		cluster.Conf.ProvDBVolumeUID = chown
+		spec := cluster.k8sDatabaseDeployment(&ServerMonitor{Name: "db1", Port: "3306"}, 3306, "node-a").Spec.Template.Spec
+		return spec, spec.InitContainers[0].Command[2]
+	}
+	int64Of := func(p *int64) string {
+		if p == nil {
+			return "unset"
+		}
+		return strconv.FormatInt(*p, 10)
+	}
+	hasRunVolume := func(spec apiv1.PodSpec) (mounted, volume bool) {
+		for _, m := range spec.Containers[0].VolumeMounts {
+			if m.MountPath == "/run/mysqld" {
+				mounted = m.Name == k8sDatabaseRunVolumeName("db1")
+			}
+		}
+		for _, v := range spec.Volumes {
+			if v.Name == k8sDatabaseRunVolumeName("db1") {
+				volume = v.EmptyDir != nil
+			}
+		}
+		return mounted, volume
+	}
+	chownFragment := func(u, g string) string {
+		return `find /var/lib/mysql \( ! -user ` + u + ` -o ! -group ` + g + ` \) -exec chown -h ` + u + ":" + g + ` {} +`
+	}
+
+	// Both empty is the pod as it was before these settings: nothing is added.
+	t.Run("empty on a MariaDB image is unchanged", func(t *testing.T) {
+		spec, initCmd := build("mariadb:11.8", "", "")
+		if sc := spec.Containers[0].SecurityContext; sc != nil {
+			t.Fatalf("database securityContext = %+v, want none", sc)
+		}
+		if sc := spec.Containers[1].SecurityContext; sc != nil {
+			t.Fatalf("dbjobs securityContext = %+v, want none", sc)
+		}
+		if strings.Contains(initCmd, "chown") {
+			t.Fatalf("init command must not chown: %s", initCmd)
+		}
+		if mounted, volume := hasRunVolume(spec); mounted || volume {
+			t.Fatalf("no /run/mysqld emptyDir expected (mounted=%v volume=%v)", mounted, volume)
+		}
+		if len(spec.Volumes) != 1 {
+			t.Fatalf("pod volumes = %+v, want only the data volume", spec.Volumes)
+		}
+	})
+
+	// The Percona Server image runs as its own 1001 already: only the owner is managed.
+	t.Run("empty on a Percona Server image owns the volume 1001 and keeps its own user", func(t *testing.T) {
+		spec, initCmd := build("percona/percona-server:8.4", "", "")
+		if sc := spec.Containers[0].SecurityContext; sc != nil {
+			t.Fatalf("database securityContext = %+v, want none (the image's own 1001)", sc)
+		}
+		if !strings.Contains(initCmd, chownFragment("1001", "1001")) {
+			t.Fatalf("init command must chown to 1001:1001: %s", initCmd)
+		}
+		if jsc := spec.Containers[1].SecurityContext; jsc == nil || int64Of(jsc.RunAsUser) != "0" {
+			t.Fatalf("dbjobs sidecar must run as root, got %+v", jsc)
+		}
+	})
+
+	// The two settings are independent.
+	t.Run("run as alone does not chown", func(t *testing.T) {
+		spec, initCmd := build("mariadb:11.8", "0", "")
+		sc := spec.Containers[0].SecurityContext
+		if sc == nil || int64Of(sc.RunAsUser) != "0" || int64Of(sc.RunAsGroup) != "0" {
+			t.Fatalf("database securityContext = %+v, want root", sc)
+		}
+		if strings.Contains(initCmd, "chown") {
+			t.Fatalf("init command must not chown: %s", initCmd)
+		}
+		if mounted, volume := hasRunVolume(spec); !mounted || !volume {
+			t.Fatalf("an explicit run-as user needs the /run/mysqld emptyDir (mounted=%v volume=%v)", mounted, volume)
+		}
+		if jsc := spec.Containers[1].SecurityContext; jsc == nil || int64Of(jsc.RunAsUser) != "0" {
+			t.Fatalf("dbjobs sidecar must run as root, got %+v", jsc)
+		}
+	})
+
+	t.Run("chown alone does not set the user", func(t *testing.T) {
+		spec, initCmd := build("mariadb:11.8", "", "1234:1235")
+		if sc := spec.Containers[0].SecurityContext; sc != nil {
+			t.Fatalf("database securityContext = %+v, want none", sc)
+		}
+		if !strings.Contains(initCmd, chownFragment("1234", "1235")) {
+			t.Fatalf("init command missing the chown to 1234:1235: %s", initCmd)
+		}
+		if mounted, volume := hasRunVolume(spec); mounted || volume {
+			t.Fatalf("no /run/mysqld emptyDir expected without a run-as user (mounted=%v volume=%v)", mounted, volume)
+		}
+	})
+
+	t.Run("both, different values", func(t *testing.T) {
+		spec, initCmd := build("mariadb:11.8", "2000:2001", "999:1001")
+		sc := spec.Containers[0].SecurityContext
+		if sc == nil || int64Of(sc.RunAsUser) != "2000" || int64Of(sc.RunAsGroup) != "2001" {
+			t.Fatalf("database securityContext = %+v, want runAsUser 2000 runAsGroup 2001", sc)
+		}
+		if !strings.Contains(initCmd, chownFragment("999", "1001")) {
+			t.Fatalf("init command missing the chown to 999:1001: %s", initCmd)
+		}
+		if !strings.HasSuffix(initCmd, `exit "$MKDIR_STATUS"`) {
+			t.Fatalf("ownership fix must not decide the init exit code: %s", initCmd)
+		}
+		if !strings.Contains(initCmd, `|| echo "WARNING: could not set the owner of /var/lib/mysql to 999:1001"`) {
+			t.Fatalf("a failed ownership repair must be reported in the init log: %s", initCmd)
+		}
+	})
+
+	t.Run("uid alone sets the gid, root is literal", func(t *testing.T) {
+		spec, initCmd := build("mariadb:11.8", "1234", "0")
+		sc := spec.Containers[0].SecurityContext
+		if sc == nil || int64Of(sc.RunAsUser) != "1234" || int64Of(sc.RunAsGroup) != "1234" {
+			t.Fatalf("database securityContext = %+v, want 1234:1234", sc)
+		}
+		if !strings.Contains(initCmd, chownFragment("0", "0")) {
+			t.Fatalf("init command missing the chown to 0:0: %s", initCmd)
+		}
+	})
+}
+
 // --- Namespace ensure ---
 
 func TestK8SEnsureNamespace_AlreadyExistsDoesNotPanic(t *testing.T) {
