@@ -58,7 +58,9 @@ error channel. Steps, all on the primary:
    `CreateUser` for `%` (the configurator sets `skip_name_resolve=ON`, so a
    hostname-bound account can never log in, as the security monitor flags;
    the database is reachable from the cluster network only), `SetUserGrants`
-   `ALL PRIVILEGES ON schema.*`;
+   `ALL PRIVILEGES ON schema.*`; on an owned account that already exists the
+   stored password is re-applied (a drop and re-add of the app generates a new
+   one while the account keeps the old, seen live on curepipe);
 4. mark `app-db-owned`, clear `App.DbProvisionError`.
 
 A refusal is tracked, not logged only: `App.DbProvisionError` is turned into the

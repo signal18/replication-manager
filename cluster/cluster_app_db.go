@@ -258,7 +258,15 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 	hosts := cluster.appDbUserHosts()
 	for _, h := range hosts {
 		if userHosts[h] {
-			continue // owned, already there: the password is never re-applied here (app-db-pass setter rotates it)
+			// Owned and already there: the stored password is re-applied, since a drop
+			// and re-add of the app generates a new one while the account keeps the old
+			// (never on a foreign account: the decision above refused those).
+			logs, err := dbhelper.SetUserPassword(conn, master.DBVersion, h, user, pass)
+			cluster.LogSQL(logs, err, master.URL, "App", config.LvlErr, "Set app user password: %s", err)
+			if err != nil {
+				return fail(fmt.Errorf("setting the password of %q@%q: %w", user, h, err))
+			}
+			continue
 		}
 		logs, err := dbhelper.CreateUser(conn, master.DBVersion, h, user, pass)
 		cluster.LogSQL(strings.ReplaceAll(logs, pass, "*.*"), err, master.URL, "App", config.LvlErr, "Create app user: %s", err)
