@@ -29,8 +29,8 @@ func TestGwuDeltaAndReset(t *testing.T) {
 func TestGatewayTrafficIngestAttributesAndRollsOver(t *testing.T) {
 	g := newGatewayTraffic(t.TempDir())
 	rows := []haproxy.Stats{
-		{Pxname: "a.c1.svc.x_80", Svname: "BACKEND", Bout: "1000"},
-		{Pxname: "a.c1.svc.x_80", Svname: "srv1", Bout: "999999"}, // server rows are ignored
+		{Pxname: "a.c1.svc.x_80", Svname: "BACKEND", Bin: "200", Bout: "800"}, // both directions count
+		{Pxname: "a.c1.svc.x_80", Svname: "srv1", Bout: "999999"},             // server rows are ignored
 		{Pxname: "b.c2.svc.x_80", Svname: "BACKEND", Bout: "10"},
 		{Pxname: "be_other", Svname: "BACKEND", Bout: "5"},
 	}
@@ -40,10 +40,10 @@ func TestGatewayTrafficIngestAttributesAndRollsOver(t *testing.T) {
 	if g.bytesOf("c1") != 1020 || g.bytesOf("c2") != 10 || g.bytesOf("other") != 0 {
 		t.Fatalf("attribution: c1=%d c2=%d", g.bytesOf("c1"), g.bytesOf("c2"))
 	}
-	// second poll: delta on gw1, reset on gw2
-	g.ingest("gw1", []haproxy.Stats{{Pxname: "a.c1.svc.x_80", Svname: "BACKEND", Bout: "1500"}}, jan.Add(time.Minute))
+	// second poll: deltas on gw1 (out 800->1500, in 200->250), reset on gw2 (20 -> 5)
+	g.ingest("gw1", []haproxy.Stats{{Pxname: "a.c1.svc.x_80", Svname: "BACKEND", Bin: "250", Bout: "1500"}}, jan.Add(time.Minute))
 	g.ingest("gw2", []haproxy.Stats{{Pxname: "a.c1.svc.x_80", Svname: "BACKEND", Bout: "5"}}, jan.Add(time.Minute))
-	if g.bytesOf("c1") != 1020+500+5 {
+	if g.bytesOf("c1") != 1020+700+50+5 {
 		t.Fatalf("delta+reset: c1=%d", g.bytesOf("c1"))
 	}
 	// month rollover: totals restart, counters keep their last value

@@ -2,11 +2,11 @@
 
 ## What is metered
 
-The octets a cluster's applications send **out** through the Cloud18 gateways
-(Stéphane, 2026-10-02: out only, octets). The gateway is the HAProxy OpenSVC service
+The octets a cluster's applications exchange, **in and out**, through the Cloud18
+gateways (Stéphane, 2026-10-03: both directions; octets). The gateway is the HAProxy OpenSVC service
 (`cloud18-gateway-service`) whose `frontend stats` on port 8404 serves the stats CSV
 at `/;csv`, the same columns as `show stat`; `router/haproxy.Stats` parses it
-(`Pxname`, `Svname`, `Bout`). A backend is named
+(`Pxname`, `Svname`, `Bin`, `Bout`). A backend is named
 `<app>.<cluster>.svc.<orchestrator>_<port>`, so its cluster is the second label
 (`gwuClusterOf`); the infrastructure's own backends (`be_*`, `acme_*`) are ignored.
 
@@ -15,7 +15,7 @@ at `/;csv`, the same columns as `show stat`; `router/haproxy.Stats` parses it
 One goroutine per manager (`gatewayTrafficLoop`, monitoring ticker pace, 10 s floor)
 polls every domain of `cloud18-gateway-domain-name`. HAProxy counters are cumulative
 since the worker started and reset at every reload, so the collector keeps the last
-`bout` per `<gateway>|<backend>` and adds the delta, a lower value being a reset
+`bout` per `<gateway>|<backend>` and the last `bin` under a `|in` suffix, and adds the deltas, a lower value being a reset
 (`gwuDelta`). The month-to-date total per cluster and the last values live in
 `<working dir>/gwu.json`, saved after every successful poll, so a restart loses
 nothing; at the month rollover the totals start again, the closed month is in the

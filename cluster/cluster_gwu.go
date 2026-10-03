@@ -4,7 +4,7 @@
 
 package cluster
 
-// GWU, the gateway network unit (#1872): the octets a cluster's apps send out through the
+// GWU, the gateway network unit (#1872): the octets a cluster's apps exchange (in and out) through the
 // Cloud18 gateways, read on every gateway's HAProxy stats port by the manager
 // (server/server_gwu.go), attributed by backend name, accumulated over the month. The
 // cluster holds the reading; the plan is prov-gateway-units; the family is cumulative
@@ -21,7 +21,7 @@ import (
 
 // GWUReading is the gateway egress of the cluster for the running month.
 type GWUReading struct {
-	Bytes       int64     `json:"bytes"`       // octets out through the gateways, month to date
+	Bytes       int64     `json:"bytes"`       // octets in + out through the gateways, month to date
 	Units       float64   `json:"units"`       // Bytes / UnitBytes
 	Plan        int       `json:"plan"`        // prov-gateway-units
 	BilledUnits int       `json:"billedUnits"` // ceil(Units)

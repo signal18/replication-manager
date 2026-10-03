@@ -401,7 +401,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartGroupedDBU
          context={context}
          axes={[
-           { key: 'egress', label: 'Gateway egress', ratio: (selectedCluster?.gatewayUnits?.unitBytes || 100000000), light: '#d08a3f', dark: '#e6a85a' },
+           { key: 'egress', label: 'Gateway traffic', ratio: (selectedCluster?.gatewayUnits?.unitBytes || 100000000), light: '#d08a3f', dark: '#e6a85a' },
          ]}
          unit='GWU'
          dbuPaths={{ egress: scope('sumSeries(gwu.*.units)') }}
@@ -410,7 +410,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          planDbu={selectedCluster?.gatewayUnits?.plan ?? 0}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="Gateway network — GWU (octets sent out through the Cloud18 gateways, month to date; plan prov-gateway-units)"
+         title="Gateway network — GWU (octets in + out through the Cloud18 gateways, month to date; plan prov-gateway-units)"
        />
       </GraphSection>
 

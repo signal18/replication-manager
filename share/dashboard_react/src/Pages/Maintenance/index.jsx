@@ -703,7 +703,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             />
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
             <Flex gap={3} alignItems='center' wrap='wrap'>
-              <Text fontWeight='bold'>Gateway network plan (GWU, {gwuMB} MB out each)</Text>
+              <Text fontWeight='bold'>Gateway network plan (GWU, {gwuMB} MB in + out each)</Text>
               <TextForm
                 value={String(gwuPlan)}
                 type='number'
@@ -714,7 +714,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                   if (!Number.isFinite(next) || next < 1) return
                   const delta = next - gwuPlan
                   if (delta === 0) return
-                  setGwuConfirm({ isOpen: true, delta, title: `Confirm the gateway network plan at ${next} GWU = ${next * gwuMB} MB sent out per month through the gateways` })
+                  setGwuConfirm({ isOpen: true, delta, title: `Confirm the gateway network plan at ${next} GWU = ${next * gwuMB} MB exchanged per month through the gateways` })
                 }}
               />
               <Text>{gwu ? `month to date: ${(gwu.bytes / 1000000).toFixed(1)} MB = ${gwu.units.toFixed(2)} GWU on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>

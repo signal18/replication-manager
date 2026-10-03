@@ -5,8 +5,8 @@
 package server
 
 // Gateway traffic collector (#1872): every gateway's HAProxy stats port
-// (<domain>:8404/;csv, the same CSV as "show stat") gives the octets each backend sent
-// out (bout). A backend is named <app>.<cluster>.svc.<orchestrator>_<port>, so its
+// (<domain>:8404/;csv, the same CSV as "show stat") gives the octets each backend
+// received (bin) and sent out (bout); both directions count (Stéphane 2026-10-03). A backend is named <app>.<cluster>.svc.<orchestrator>_<port>, so its
 // cluster is the second label. The counters are cumulative since the worker started and
 // reset at every reload: the collector keeps the last value per gateway and backend,
 // adds the deltas (a lower value is a reset), and keeps the month-to-date total per
@@ -155,14 +155,17 @@ func (g *gatewayTraffic) ingest(gateway string, rows []haproxy.Stats, now time.T
 		if cl == "" {
 			continue
 		}
-		cur, err := strconv.ParseInt(strings.TrimSpace(r.Bout), 10, 64)
-		if err != nil {
-			continue
+		// out: the historical key; in: its own counter under a "|in" suffix
+		for _, dir := range []struct{ raw, suffix string }{{r.Bout, ""}, {r.Bin, "|in"}} {
+			cur, err := strconv.ParseInt(strings.TrimSpace(dir.raw), 10, 64)
+			if err != nil {
+				continue
+			}
+			key := gateway + "|" + r.Pxname + dir.suffix
+			last, seen := g.state.Last[key]
+			g.state.Bytes[cl] += gwuDelta(last, cur, seen)
+			g.state.Last[key] = cur
 		}
-		key := gateway + "|" + r.Pxname
-		last, seen := g.state.Last[key]
-		g.state.Bytes[cl] += gwuDelta(last, cur, seen)
-		g.state.Last[key] = cur
 	}
 	g.state.Errors[gateway] = ""
 	g.state.Updated = now
