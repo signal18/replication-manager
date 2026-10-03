@@ -28,9 +28,10 @@ command of the `xtrabackup` job gets `"${XB_UNDO_ARGS[@]}"`.
 - It is passed as one array element: a space or a glob in the path is neither split nor expanded.
 - The version is matched as `8.0.*` or `8.4.*`. Other series (5.7, the 8.1 to 8.3 innovation releases, 9.x) get no argument
   and behave as before; the layout has a version group for 8.0 and 8.4 only.
-- When the server cannot be asked (connection, TLS or permission failure), the backup runs as before, without the argument,
-  and a warning with no command and no credential in it is posted to the `xtrabackup` job log, so the pre-existing undo
-  error that may follow is traceable. No timeout is added: the query goes through the same client as the other queries of
+- When the server cannot be asked (connection, TLS or permission failure), or answers nothing (an empty version, or an empty
+  `innodb_undo_directory` on 8.0 or 8.4), the backup runs as before, without the argument, and a warning with no command and
+  no credential in it is posted to the `xtrabackup` job log, so the pre-existing undo error that may follow is traceable.
+  A series that is not covered stays silent. No timeout is added: the query goes through the same client as the other queries of
   the script.
 
 ## Tests

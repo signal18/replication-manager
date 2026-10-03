@@ -52,6 +52,13 @@ for mode in 1 undo; do
   case "$API_SENT" in *SECRETPW*|*--password*) bad "the warning leaks the client command: $API_SENT" ;; *) ok "query failure ($mode): the warning holds no credential" ;; esac
 done
 BINARY_CLIENT=$T/client
+echo "=== a client that exits 0 but answers nothing: no argument, and a warning"
+check "" ./ ""
+[ "$API_LVL" = WARN ] && ok "empty version: a WARN is posted" || bad "empty version: lvl='$API_LVL' msg='$API_SENT'"
+check 8.0.35 "" ""
+[ "$API_LVL" = WARN ] && ok "empty innodb_undo_directory on 8.0: a WARN is posted" || bad "empty undo directory: lvl='$API_LVL' msg='$API_SENT'"
+check 5.7.44 "" ""
+[ -z "$API_SENT" ] && ok "an empty undo directory on a series that is not covered stays silent" || bad "unexpected warning on 5.7: $API_SENT"
 check 8.0.35 ./ "--innodb-undo-directory=./"
 [ -z "$API_SENT" ] && ok "no warning when the server answers" || bad "unexpected warning: $API_SENT"
 check 5.7.44 ./ ""

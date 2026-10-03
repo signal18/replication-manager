@@ -93,6 +93,10 @@ xtrabackup_undo_args() {
         send_lines_to_api "Cannot read the server version: the xtrabackup backup runs without --innodb-undo-directory." "xtrabackup" "$LVL_WARN"
         return 0
     fi
+    if [[ -z "$version" ]]; then
+        send_lines_to_api "The server version query returned nothing: the xtrabackup backup runs without --innodb-undo-directory." "xtrabackup" "$LVL_WARN"
+        return 0
+    fi
     case "$version" in
     8.0.* | 8.4.*) ;;
     *) return 0 ;;
@@ -101,7 +105,11 @@ xtrabackup_undo_args() {
         send_lines_to_api "Cannot read innodb_undo_directory: the xtrabackup backup runs without --innodb-undo-directory." "xtrabackup" "$LVL_WARN"
         return 0
     fi
-    [[ -n "$undo" ]] && XB_UNDO_ARGS=("--innodb-undo-directory=$undo")
+    if [[ -z "$undo" ]]; then
+        send_lines_to_api "innodb_undo_directory is empty on this server: the xtrabackup backup runs without --innodb-undo-directory." "xtrabackup" "$LVL_WARN"
+        return 0
+    fi
+    XB_UNDO_ARGS=("--innodb-undo-directory=$undo")
     return 0
 }
 
