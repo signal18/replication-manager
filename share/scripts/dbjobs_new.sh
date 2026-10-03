@@ -84,6 +84,8 @@ readonly INNODBACKUPEX="${CLIENT_BASEDIR}/innobackupex"
 # argument (an array, so a space or a glob in it is not split or expanded): xtrabackup writes it into backup-my.cnf, and
 # an absolute path would point a server started from that backup at the live server's undo files. The array stays empty
 # for another series, or when the server cannot be asked (a warning, with no secret in it, is posted to the job log).
+# NOTE: share/scripts/tests/xtrabackup_undo/*.sh extract this function with sed ('/^xtrabackup_undo_args() {/,/^}/'): keep its
+# name, and its closing brace alone at the start of a line.
 xtrabackup_undo_args() {
     local version undo
     XB_UNDO_ARGS=()

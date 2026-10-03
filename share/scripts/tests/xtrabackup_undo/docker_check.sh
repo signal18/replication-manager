@@ -18,6 +18,9 @@ command -v docker >/dev/null || { echo "FAIL: docker is required"; exit 2; }
 cd "$(dirname "$0")/../../../.." || exit 2
 SCRIPT=share/scripts/dbjobs_new.sh
 P=xbu_$$; PW=pw; fail=0; ran=0
+for arg in "$@"; do
+  case "$arg" in *:percona/percona-xtrabackup:*) ;; *) echo "usage: docker_check.sh [server-image:percona/percona-xtrabackup:<tag> ...], got '$arg'" >&2; exit 2 ;; esac
+done
 PAIRS=("$@"); [ ${#PAIRS[@]} -gt 0 ] || PAIRS=(mysql:8.0:percona/percona-xtrabackup:8.0 mysql:8.4:percona/percona-xtrabackup:8.4 percona/percona-server:8.0:percona/percona-xtrabackup:8.0 percona/percona-server:8.4:percona/percona-xtrabackup:8.4)
 ok() { echo "  ok:   $*"; }
 bad() { echo "  FAIL: $*"; fail=1; }
