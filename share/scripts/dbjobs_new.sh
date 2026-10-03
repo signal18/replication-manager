@@ -74,6 +74,35 @@ readonly MYSQL_DUMP="${CLIENT_BASEDIR}/mysqldump"
 readonly XTRABACKUP="${CLIENT_BASEDIR}/xtrabackup"
 readonly INNODBACKUPEX="${CLIENT_BASEDIR}/innobackupex"
 
+# xtrabackup_undo_args fills the array XB_UNDO_ARGS with --innodb-undo-directory=<value>, the running server's own
+# setting, for MySQL 8.0 and 8.4 (the series replication-manager's default_path.cnf has a version group for). xtrabackup
+# reads the [mysqld] group of my.cnf but not the version specific [mysqld-8.0] / [mysqld-8.4] groups, and the
+# default_path.cnf puts the undo tablespaces under .system/innodb/undo in [mysqld] but keeps them in the datadir for
+# MySQL 8 (it does not scan hidden folders, #1857): without the server's real setting xtrabackup looks in the wrong
+# place and stops with "Cannot create .../undo_001 because ./undo_001 already uses Space ID" (xb_load_tablespaces
+# error 110). The value is passed AS IT IS (./ for MySQL 8 here), never turned into an absolute path, and as ONE
+# argument (an array, so a space or a glob in it is not split or expanded): xtrabackup writes it into backup-my.cnf, and
+# an absolute path would point a server started from that backup at the live server's undo files. The array stays empty
+# for another series, or when the server cannot be asked (a warning, with no secret in it, is posted to the job log).
+xtrabackup_undo_args() {
+    local version undo
+    XB_UNDO_ARGS=()
+    if ! version=$($BINARY_CLIENT -N -B -e "SELECT @@version" 2>/dev/null); then
+        send_lines_to_api "Cannot read the server version: the xtrabackup backup runs without --innodb-undo-directory." "xtrabackup" "$LVL_WARN"
+        return 0
+    fi
+    case "$version" in
+    8.0.* | 8.4.*) ;;
+    *) return 0 ;;
+    esac
+    if ! undo=$($BINARY_CLIENT -N -B -e "SELECT @@innodb_undo_directory" 2>/dev/null); then
+        send_lines_to_api "Cannot read innodb_undo_directory: the xtrabackup backup runs without --innodb-undo-directory." "xtrabackup" "$LVL_WARN"
+        return 0
+    fi
+    [[ -n "$undo" ]] && XB_UNDO_ARGS=("--innodb-undo-directory=$undo")
+    return 0
+}
+
 # Network Configuration
 SOCAT_BIND="$(add_ipv6_brackets "%%ENV:SERVER_IP%%")"
 if [[ "$SOCAT_BIND" == \[*\]* ]]; then
@@ -2008,7 +2037,8 @@ for job in "${JOBS[@]}"; do
             ;;
         xtrabackup)
             cd /docker-entrypoint-initdb.d
-            $XTRABACKUP --defaults-file=$MYSQL_CONF/my.cnf --backup -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=$LOG_DIR/ 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            xtrabackup_undo_args
+            $XTRABACKUP --defaults-file=$MYSQL_CONF/my.cnf --backup "${XB_UNDO_ARGS[@]}" -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=$LOG_DIR/ 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mariabackup)
             cd /docker-entrypoint-initdb.d
