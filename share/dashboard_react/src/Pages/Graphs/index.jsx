@@ -90,6 +90,8 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           .replaceAll('bku.*', `bku.${selectedCluster?.name}`)
           .replaceAll('bau.*', `bau.${selectedCluster?.name}`)
           .replaceAll('gwu.*', `gwu.${selectedCluster?.name}`)
+          // net.<cluster>.<kind>.<unit>.<series> and the cluster total net.<cluster>.mbps
+          .replaceAll('net.*', `net.${selectedCluster?.name}`)
       : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
@@ -414,6 +416,25 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          title="Gateway network — GWU (Mb/s in + out through the Cloud18 gateways; 1 GWU = unit Mb/s; plan = gateway capacity / clusters present)"
        />
         )}
+        {/* Internal network: what each unit moves on its own interface, both directions, in
+            Mb/s -- the pod eth0 under an orchestrator, the host NICs on premise, read by the
+            same jobs scripts that push the cgroup maxima (cluster_net.go). Monitoring only:
+            no unit, no plan, no price. Shown per kind (databases, proxies, apps) plus the
+            cluster total; the per-unit series net.<cluster>.<kind>.<unit>.mbps stay in Graphite
+            for drill-down. */}
+        <ChartTimeSeriesLine
+          title='Internal network — Mb/s per kind (databases, proxies, apps; in + out on the unit interface)'
+          yLabel='Mb/s'
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(net.*.database.*.mbps)'), label: 'Databases' },
+            { target: scope('sumSeries(net.*.proxy.*.mbps)'), label: 'Proxies' },
+            { target: scope('sumSeries(net.*.app.*.mbps)'), label: 'Apps' },
+            { target: scope('net.*.mbps'), label: 'Cluster total' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
       </GraphSection>
 
       <GraphSection heading='InnoDB'>

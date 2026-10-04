@@ -335,6 +335,8 @@ type Cluster struct {
 	statecloseChan              chan state.State     `json:"-"`
 	switchoverChan              chan bool            `json:"-"`
 	errorChan                   chan error           `json:"-"`
+	net                         *netStore            `json:"-"` // internal network readings per unit (cluster_net.go); on the cluster so a reload never wipes the counters
+	netOnce                     sync.Once            `json:"-"`
 	resources                   *ResourceManager     `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
 	// provisioningMutex serialises every provision/unprovision operation that
 	// reports its result through the shared, unbuffered errorChan (the ~10

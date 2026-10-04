@@ -736,6 +736,25 @@ func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name strin
 	return svccontainer
 }
 
+// OpenSVCGetAppSensorContainerSection is the sensor sidecar of an APP service. Same
+// busybox/netns/cgroup contract as the proxy one, but an app service has no config
+// tarball and no init container to stage init/app_job from, so the script arrives as a
+// config key of the namespace `env` object (published by openSVCPublishAppJobScript, named
+// after the script's content hash so a new repman build never has to overwrite a key) and
+// is materialised from the environment at start. The sidecar runs the exact script version
+// it was provisioned with; a reprovision picks up a newer one.
+func (cluster *Cluster) OpenSVCGetAppSensorContainerSection(app *App, scriptKey string) map[string]string {
+	svccontainer := cluster.OpenSVCGetSensorContainerSection(string(KindApp), app.Name)
+	if len(svccontainer) == 0 {
+		return svccontainer
+	}
+	svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro" +
+		" /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL env/" + scriptKey
+	svccontainer["command"] = "-c 'printf \"%s\\n\" \"$" + scriptKey + "\" > /tmp/app_job; exec sh /tmp/app_job'"
+	return svccontainer
+}
+
 func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {

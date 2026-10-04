@@ -20,6 +20,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 	ini "gopkg.in/ini.v1"
@@ -287,6 +288,11 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 	if err != nil {
 		return err
 	}
+	if err := cluster.openSVCPublishAppJobScript(svc); err != nil {
+		// The sidecar is monitoring, never a reason to refuse the app: log and go on, the
+		// sidecar stays in its wait loop until a later provision publishes the key.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s sensor script not published: %s", app.Name, err)
+	}
 
 	res, err := cluster.OpenSVCGetAppTemplateV3(app)
 	if err != nil {
@@ -447,9 +453,52 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	}
 
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
+	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
+	// monitoring-system-resources off-switch, T14). Needs the script key published in the
+	// namespace `env` object (openSVCPublishAppJobScript, done by the V3 provision).
+	if cluster.Conf.MonitoringSystemResources {
+		svcsection["container#sensor"] = cluster.OpenSVCGetAppSensorContainerSection(app, appJobScriptKey())
+	}
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
 
 	return svcsection, nil
+}
+
+// appJobScriptKey names the `env` config key carrying the embedded app_job.sh for app
+// sensor sidecars: APP_JOB_SCRIPT_<8 hex of the content hash>. A key is never rewritten --
+// a new script version is a new key, and the sidecar command references the key it was
+// provisioned with.
+func appJobScriptKey() string {
+	b, err := share.EmbededDbModuleFS.ReadFile("scripts/app_job.sh")
+	if err != nil {
+		return "APP_JOB_SCRIPT"
+	}
+	return "APP_JOB_SCRIPT_" + misc.GetMD5HashFromBytes(b)[:8]
+}
+
+// openSVCPublishAppJobScript makes sure the namespace `env` config object holds the current
+// app_job.sh under appJobScriptKey(). Idempotent: an existing key is left alone.
+func (cluster *Cluster) openSVCPublishAppJobScript(svc opensvc.Collector) error {
+	if !cluster.Conf.MonitoringSystemResources {
+		return nil
+	}
+	key := appJobScriptKey()
+	if keys, err := svc.ListConfigKeysV2(cluster.Name, "env"); err == nil {
+		for _, k := range keys {
+			if k == key {
+				return nil
+			}
+		}
+	}
+	b, err := share.EmbededDbModuleFS.ReadFile("scripts/app_job.sh")
+	if err != nil {
+		return err
+	}
+	if err := svc.CreateConfigKeyValueV2(cluster.Name, "env", key, string(b)); err != nil {
+		return fmt.Errorf("publish app sensor script key %s: %w", key, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Published app sensor script as config key env/%s", key)
+	return nil
 }
 
 func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {

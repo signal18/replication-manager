@@ -1262,6 +1262,11 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 	proxy.reconcileReadBackendServers(haRuntime, readBackendSvnames, readBackendAddrBySvname, readBackendStatusBySvname, resolverBackedPool)
 
+	// Internal network fallback (cluster_net.go): on premise no jobs script reports the
+	// proxy pod, so the stats' cumulative bin/bout summed over the backend servers stand
+	// in (SQL traffic only, Source=status). Ignored while the pod sensor reports.
+	proxy.ingestNetFromBackends()
+
 	return nil
 }
 

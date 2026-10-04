@@ -87,7 +87,13 @@ collect_apu() {
     ws=$(date -u -d "@$pe" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
     we=$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
 
-    data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cores,\"diskMaxBytes\":$disk}"
+    # Internal network: cumulative rx/tx octets of the pod interface (the sidecar shares
+    # the pod netns, so /proc/net/dev IS the unit's eth0). Raw counters -- repman rates them.
+    netrx=0; nettx=0
+    read -r netrx nettx <<EOF2
+$(awk -F'[: ]+' 'NR>2 && $2!="lo" {rx+=$3; tx+=$11} END{printf "%d %d\n", rx+0, tx+0}' /proc/net/dev 2>/dev/null || echo "0 0")
+EOF2
+    data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cores,\"diskMaxBytes\":$disk,\"netRxBytes\":${netrx:-0},\"netTxBytes\":${nettx:-0}}"
     wget -q --no-check-certificate -O- \
         --header "Authorization: Bearer $tok" \
         --header "Content-Type:application/json" \

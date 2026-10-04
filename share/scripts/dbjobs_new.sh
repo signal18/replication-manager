@@ -633,6 +633,19 @@ resolve_dbu_cgroup() {
     done
 }
 
+# read_net_counters: "<rx_octets> <tx_octets>" summed over every interface but lo, from
+# the database process's own network namespace view when the process is visible
+# (/proc/<pid>/net/dev), else this process's (/proc/net/dev). Both resolve to the same
+# pod interface under an orchestrator and to the host NICs on premise. Echoes "0 0" when
+# nothing is readable so the caller never breaks.
+read_net_counters() {
+    local pid f=/proc/net/dev
+    pid=$(pgrep -x mariadbd 2>/dev/null | head -1)
+    [[ -z "$pid" ]] && pid=$(pgrep -x mysqld 2>/dev/null | head -1)
+    [[ -n "$pid" && -r "/proc/$pid/net/dev" ]] && f="/proc/$pid/net/dev"
+    awk -F'[: ]+' 'NR>2 && $2!="lo" {rx+=$3; tx+=$11} END{printf "%d %d\n", rx+0, tx+0}' "$f" 2>/dev/null || echo "0 0"
+}
+
 # collect_dbu: thin DBU sensor. Reads the database cgroup (see resolve_dbu_cgroup:
 # an orchestrator bind at /svc-cgroup, or the DB process's own cgroup discovered
 # via /proc) plus the datadir df, and pushes the four raw per-axis maxima to
@@ -674,7 +687,13 @@ collect_dbu() {
     ws=$(date -u -d "@$prev_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
     we=$(date -u -d "@$now_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
 
-    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk}"
+    # Internal network: cumulative rx/tx octets of the database's own interfaces, read
+    # through the DB process's network namespace (/proc/<pid>/net/dev): the pod eth0 under
+    # an orchestrator (the jobs container shares the pod netns), the host NICs on premise.
+    # Raw counters only -- repman derives the Mb/s and absorbs resets (cluster_net.go).
+    local net_rx net_tx
+    read -r net_rx net_tx < <(read_net_counters)
+    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk,\"netRxBytes\":${net_rx:-0},\"netTxBytes\":${net_tx:-0}}"
     local endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/dbu"
     send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$TOKEN" >/dev/null 2>&1 || true
 }
