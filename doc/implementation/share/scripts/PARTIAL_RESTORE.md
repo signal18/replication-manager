@@ -26,6 +26,11 @@ and did not work on MySQL 8 (no `.frm` files at all).
 receive -> prepare -> read definitions -> pre-check -> per database: recreate, import -> routines -> views -> verify -> clean up
 ```
 
+0. **Job log.** The job creates its log (`reseed.out`, `flash.out` for a
+   flashback) before it waits for the backup stream and appends the prepare
+   output to it. The log follower, which gives up after 60 s when the file does
+   not exist, therefore starts at once and streams the whole restore, however
+   long the transfer takes.
 1. **Receive** (`receiveBackup`). The stream repman sends is unpacked into
    `$DATADIR/.system/backup`, on the datadir volume. The job aims to leave 10%
    of the volume free (`RECEIVE_MIN_FREE_PCT`). The stream is capped with
@@ -120,14 +125,24 @@ receive -> prepare -> read definitions -> pre-check -> per database: recreate, i
 ## Dead jobs
 
 A dbjobs run can die without ending its job (SIGKILL, OOM kill, timeout).
-Each job's `.run` lock folder holds the PID of the run that owns it; at the
+Each job's `.run` lock folder holds the PID of the run that owns it and the
+start time of that process (`start`, field 22 of `/proc/<pid>/stat`), so a PID
+reused by another dbjobs run is not mistaken for the owner (a folder written
+by an older version has no start time and is judged by the PID alone). At the
 start of every run, `recoverDeadJobs` ends a job whose owner is gone as
 failed, through the usual channel (the jobs table in SQL mode, the job-state
 API in API mode), so repman clears it like any failed job instead of refusing
 every new run ("Concurrent reseed blocked"). It also removes the job's log
 lock file (else the next run does not stream its log) and stops a temporary
 definition server left running (`pr_stop_stale_definition_server`, which
-recognises it by its `--datadir`, so the live server is never touched).
+recognises it by its `--datadir`, so the live server is never touched) and
+removes its `mrm_defs_ro`/`mrm_defs_run` folders. The
+lock folder stays until the failure was reported, so a report that could not
+reach repman is retried at the next run. The restore refuses to start when the
+data directory is not set (`pr_paths_ok`), and every removal of the unpacked
+backup goes through `pr_rm_backupdir`/`reset_backupdir`, which remove nothing
+when the directories are unset, so a missing template value can never turn
+`$DATADIR/.system/...` into a path from the root of the filesystem.
 
 ## Space on the datadir volume
 
@@ -164,6 +179,32 @@ about 400 MB unpacked.
   the old command only worked because `-h<host>` was taken for it, and failed with `Missing argument` once the connection
   options were long options. It now runs the native `--backup --target-dir` form (`MARIABACKUP_NATIVE_BACKUP.md`).
 - Lab servers run `innodb_force_primary_key=ON`.
+
+## Regression test (regtest)
+
+`regtest/test_physical_reseed_restore.go` (`testPhysicalReseedRestore`) runs the
+whole chain on a live cluster: a replica is stopped, rows are committed on the
+master, the master is backed up with the physical tool matching its servers
+(mariabackup on MariaDB, xtrabackup on MySQL/Percona), the replica is reseeded
+from that backup through the jobs containers, and the test requires the replica
+to hold the master's fixture rows (matching row counts and content digests of a
+foreign-key table, a stored-generated-column table and a partitioned table) and
+to keep their definitions (the foreign key, the stored generated column and the
+partitions, read from `information_schema`, which a content digest does not
+see), to replicate again and to apply a later transaction. The fixture is
+dropped at the end.
+
+It is not part of "ALL" (the framework has no "skip" result, it reseeds a
+replica and needs a jobs container next to each database). Run it by name:
+`/api/clusters/<cluster>/tests/actions/run/testPhysicalReseedRestore`.
+
+The test writes the master through a connection of its own: the shared pool
+can hold sessions with `sql_log_bin=0`, which keep the fixture out of the
+binary log. Its first run, on the pool, failed for that reason: the replica
+never received the fixture.
+
+Not covered by the regtest, still run by hand (`lab_kill_during_defs.sh`): a
+job killed during the restore, and a nearly full volume.
 
 ## Tests
 

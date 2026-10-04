@@ -11,6 +11,7 @@
 package dbhelper
 
 import (
+	"database/sql"
 	"fmt"
 	"runtime"
 	"sort"
@@ -194,6 +195,89 @@ func ChecksumTable(db *sqlx.DB, table string) (string, error) {
 	query := "CHECKSUM TABLE " + quotedTable + " EXTENDED"
 	err = db.QueryRowx(query).Scan(&tableres, &checkres)
 	return checkres, err
+}
+
+// ExecStatements runs the statements in order on db and stops at the first
+// failure, naming the statement. Used to build test fixtures: the statements
+// are trusted constants of the test, never user input.
+func ExecStatements(db *sqlx.DB, statements ...string) error {
+	for _, stmt := range statements {
+		if _, err := db.Exec(stmt); err != nil {
+			return fmt.Errorf("statement %q failed: %w", stmt, err)
+		}
+	}
+	return nil
+}
+
+// TableContentDigest returns "<rows>/<sum of CRC32 of rowExpr over the rows>"
+// of a table ("schema.table"), to compare the content of a table between two
+// servers. CHECKSUM TABLE is not used because its value is not stable for
+// tables with stored generated columns. rowExpr is a SQL expression over the
+// table's columns written by the caller (a constant, never user input).
+func TableContentDigest(db *sqlx.DB, table string, rowExpr string) (string, error) {
+	quotedTable, err := QuoteMySQLTableIdentifier(table)
+	if err != nil {
+		return "", err
+	}
+	var rows, sum string
+	query := "SELECT COUNT(*), COALESCE(SUM(CRC32(" + rowExpr + ")), 0) FROM " + quotedTable
+	if err := db.QueryRowx(query).Scan(&rows, &sum); err != nil {
+		return "", err
+	}
+	return rows + "/" + sum, nil
+}
+
+// TableShape is what a physical restore must keep of a table's definition and
+// that a content digest (TableContentDigest) does not see: its foreign keys,
+// its STORED generated columns and its partitions.
+type TableShape struct {
+	ForeignKeys     map[string]string // constraint name -> referenced table
+	StoredGenerated []string          // STORED GENERATED columns, in column order
+	Partitions      []string          // partition names, in order; empty when not partitioned
+}
+
+// TableShapeOf reads the TableShape of schema.table from information_schema.
+// The same three queries answer on MariaDB, MySQL and Percona Server:
+//   - a generated column is told by EXTRA = 'STORED GENERATED' (and a non-empty
+//     expression), not by GENERATION_EXPRESSION IS NOT NULL: MySQL reports an
+//     empty string for a plain column where MariaDB reports NULL;
+//   - a table that is not partitioned has one row in PARTITIONS with a NULL
+//     PARTITION_NAME, which is not a partition.
+//
+// schema and table are bound as parameters.
+func TableShapeOf(db *sqlx.DB, schema, table string) (TableShape, error) {
+	shape := TableShape{ForeignKeys: map[string]string{}}
+
+	fks, err := db.Queryx("SELECT CONSTRAINT_NAME, REFERENCED_TABLE_NAME FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ? AND TABLE_NAME = ?", schema, table)
+	if err != nil {
+		return shape, err
+	}
+	defer fks.Close()
+	for fks.Next() {
+		var name, referenced string
+		if err := fks.Scan(&name, &referenced); err != nil {
+			return shape, err
+		}
+		shape.ForeignKeys[name] = referenced
+	}
+	if err := fks.Err(); err != nil {
+		return shape, err
+	}
+
+	if err := db.Select(&shape.StoredGenerated, "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND EXTRA = 'STORED GENERATED' AND COALESCE(GENERATION_EXPRESSION, '') <> '' ORDER BY ORDINAL_POSITION", schema, table); err != nil {
+		return shape, err
+	}
+
+	var partitions []sql.NullString
+	if err := db.Select(&partitions, "SELECT PARTITION_NAME FROM information_schema.PARTITIONS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY PARTITION_ORDINAL_POSITION", schema, table); err != nil {
+		return shape, err
+	}
+	for _, p := range partitions {
+		if p.Valid {
+			shape.Partitions = append(shape.Partitions, p.String)
+		}
+	}
+	return shape, nil
 }
 
 // InjectLongTrx injects a long-running transaction for testing

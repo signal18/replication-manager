@@ -1214,7 +1214,7 @@ remove_run_lockdir() {
     # Remove the run lockdir if it exists (with the owner PID a job's
     # lockdir holds, see recoverDeadJobs)
     if [ -d "$run_lockdir" ]; then
-        rm -f "$run_lockdir/pid"
+        rm -f "$run_lockdir/pid" "$run_lockdir/start"
         rmdir "$run_lockdir"
     fi
 
@@ -1538,6 +1538,10 @@ receiveReserveBytes() {
 
 receiveBackup() {
     local unpack="$1" sub total avail floor reserve budget count="$LOG_DIR/$job.received" got i
+    if ! pr_paths_ok; then
+        receiveBackupAbort "Backup transfer not started: the data directory is not set. No database or table was changed."
+        return 1
+    fi
     read -r total avail < <(df -P -B1 "$DATADIR" 2>/dev/null | awk 'NR==2{print $2, $4}')
     floor=$((${total:-0} * RECEIVE_MIN_FREE_PCT / 100))
     # Without the redo log size the allowance cannot be sized: stop before a
@@ -1576,7 +1580,9 @@ receiveBackup() {
     got=$(cat "$count" 2>/dev/null)
     rm -f "$count"
     if [[ "${got:-0}" -ge "$budget" ]]; then
-        receiveBackupStop "$((avail))" "$total"
+        # The numbers of the last poll can be old: report the current ones.
+        read -r total avail < <(df -P -B1 "$DATADIR" 2>/dev/null | awk 'NR==2{print $2, $4}')
+        receiveBackupStop "${avail:-0}" "${total:-0}"
         return 1
     fi
     return 0
@@ -1591,7 +1597,7 @@ receiveBackupStop() {
 # and sets PR_STATUS=1.
 receiveBackupAbort() {
     local msg="$1"
-    rm -rf "$BACKUPDIR"
+    pr_rm_backupdir
     echo "$msg" >>"$LOG_DIR/$job.out"
     case "$job" in
     reseed*) echo "$msg" >>"$LOG_DIR/reseed.out" ;;
@@ -1599,6 +1605,17 @@ receiveBackupAbort() {
     esac
     send_lines_to_api "$msg" "$job" "$LVL_ERROR"
     PR_STATUS=1
+}
+
+# proc_start_ticks prints the start time of process $1 (field 22 of
+# /proc/$1/stat, in clock ticks since boot): with the PID it identifies a
+# process, since a PID can be reused. Returns 1 when the process is gone.
+proc_start_ticks() {
+    local s
+    s=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+    s=${s##*) }
+    set -- $s
+    printf '%s' "${20}"
 }
 
 # recoverDeadJobs ends every job whose dbjobs run died without ending it
@@ -1615,7 +1632,7 @@ receiveBackupAbort() {
 # so the next run retries. A lockdir without a PID (written by an older
 # dbjobs) is left alone.
 recoverDeadJobs() {
-    local d job pid cmd msg reported
+    local d job pid cmd msg reported started
     for d in "$LOG_DIR"/*.run; do
         [[ -d "$d" && -f "$d/pid" ]] || continue
         job=$(basename "$d" .run)
@@ -1623,8 +1640,15 @@ recoverDeadJobs() {
         pid=$(cat "$d/pid" 2>/dev/null)
         [[ "$pid" =~ ^[0-9]+$ ]] || continue
         cmd=$(tr '\0' ' ' 2>/dev/null <"/proc/$pid/cmdline")
-        # Still running (a concurrent dbjobs run owns it).
-        [[ "$pid" != "$$" && "$cmd" == *dbjobs* ]] && continue
+        # Still running (a concurrent dbjobs run owns it). A reused PID that now
+        # belongs to another dbjobs run is told apart by the start time the job
+        # recorded next to its PID.
+        if [[ "$pid" != "$$" && "$cmd" == *dbjobs* ]]; then
+            started=$(cat "$d/start" 2>/dev/null)
+            if [[ -z "$started" || "$started" == "$(proc_start_ticks "$pid")" ]]; then
+                continue
+            fi
+        fi
         msg="Job $job was interrupted: its dbjobs run (pid $pid) ended without finishing it."
         # A report that fails again at every launch must not grow the log.
         grep -qxF -- "$msg" "$LOG_DIR/$job.out" 2>/dev/null || echo "$msg" >>"$LOG_DIR/$job.out"
@@ -1633,6 +1657,9 @@ recoverDeadJobs() {
         reseed* | flashback*)
             PR_LOG="$LOG_DIR/$job.out"
             pr_stop_stale_definition_server
+            # Its folders hold a copy of the backup's system files and redo log:
+            # taken back at once, not at the next restore.
+            pr_paths_ok && rm -rf -- "$DATADIR/.system/mrm_defs_ro" "$DATADIR/.system/mrm_defs_run"
             PR_LOG=""
             ;;
         esac
@@ -1647,7 +1674,7 @@ recoverDeadJobs() {
         # reported: kept while repman or the jobs table is unreachable, so
         # the next launch retries.
         [[ $reported -eq 1 ]] || continue
-        rm -f "$d/pid"
+        rm -f "$d/pid" "$d/start"
         rmdir "$d" 2>/dev/null
         rm -f "$LOCK_DIR/${job}_lockfile"
     done
@@ -1768,6 +1795,10 @@ pr_filter_backup_cnf() {
 }
 
 pr_export_definitions() {
+    if ! pr_paths_ok; then
+        pr_log "ERROR: the data directory is not set."
+        return 1
+    fi
     local ro="$DATADIR/.system/mrm_defs_ro" run="$DATADIR/.system/mrm_defs_run" sock="$DATADIR/.system/mrm_defs_run/mariadbd.sock" bin f n db t type engine
     bin=$(command -v mariadbd || command -v mysqld || ls /usr/sbin/mariadbd /usr/sbin/mysqld 2>/dev/null | head -1)
     if [[ ! -x "$bin" ]]; then
@@ -2353,6 +2384,26 @@ pr_prepare_ok() {
     fi
 }
 
+# pr_paths_ok succeeds when the directories the restore removes and replaces
+# are set and absolute: an empty DATADIR or BACKUPDIR (a missing template
+# value) would turn "$DATADIR/.system/..." into a path from the root of the
+# filesystem, and a relative one into a path under the current directory.
+pr_paths_ok() {
+    [[ "$DATADIR" == /?* && "$DATADIR" != "/" && "$BACKUPDIR" == /?* && "$BACKUPDIR" != "/" ]]
+}
+
+# pr_rm_backupdir removes the unpacked backup; with unset directories it
+# removes nothing and returns 1. reset_backupdir does the same and recreates
+# the folder for a new transfer. Every removal of $BACKUPDIR goes through them.
+pr_rm_backupdir() {
+    pr_paths_ok || return 1
+    rm -rf -- "$BACKUPDIR"
+}
+
+reset_backupdir() {
+    pr_rm_backupdir && mkdir -p -- "$BACKUPDIR"
+}
+
 # pr_disk_ok checks, between the phases that write on the datadir volume after
 # the stream was received, that RECEIVE_MIN_FREE_PCT percent of it is still
 # free. When it is not, the backup is removed (it would keep the volume full)
@@ -2364,7 +2415,7 @@ pr_disk_ok() {
     [[ -n "$avail" && "$avail" -ge "$floor" ]] && return 0
     msg="Partial restore stopped $phase: less than ${RECEIVE_MIN_FREE_PCT}% is free on the datadir volume ($((${avail:-0} / 1048576)) MiB free of $((${total:-0} / 1048576)) MiB). The backup was removed; no database was changed. Free space, or restore on a larger volume."
     pr_log "ERROR: $msg"
-    rm -rf "$BACKUPDIR"
+    pr_rm_backupdir
     PR_STATUS=1
     return 1
 }
@@ -2442,6 +2493,12 @@ partialRestore() {
         ;;
     esac
 
+    if ! pr_paths_ok; then
+        PR_STATUS=1
+        echo "Partial restore not started: the data directory is not set. No database or table was changed." >>"$LOG_DIR/$job.out"
+        send_lines_to_api "Partial restore not started: the data directory is not set." "$job" "$LVL_ERROR"
+        return $PR_STATUS
+    fi
     pr_log "Partial restore started for job $job."
 
     local isr=0
@@ -2613,7 +2670,7 @@ partialRestore() {
         # its whole size on the datadir volume until the next reseed. After a
         # failure it is kept, to investigate. Quarantined leftovers of
         # earlier failed restores are bounded to the newest three.
-        pr_try "Remove the restored backup $BACKUPDIR" rm -rf "$BACKUPDIR"
+        pr_try "Remove the restored backup $BACKUPDIR" pr_rm_backupdir
         ls -1dt "$DATADIR"/.system/orphan-quarantine-* 2>/dev/null | tail -n +4 | while read -r f; do
             pr_try "Remove old quarantine $f" rm -rf "$f"
         done
@@ -2870,6 +2927,7 @@ for job in "${JOBS[@]}"; do
 
         mkdir -p "$LOG_DIR/$job.run"
         echo "$$" >"$LOG_DIR/$job.run/pid"
+        proc_start_ticks "$$" >"$LOG_DIR/$job.run/start"
         process_log_file "$job" &
         trap 'remove_run_lockdir "$job"' EXIT
         echo "Processing $job"
@@ -2884,47 +2942,47 @@ for job in "${JOBS[@]}"; do
 
         case "$job" in
         reseedxtrabackup)
-            rm -rf $BACKUPDIR
-            mkdir -p $BACKUPDIR
+            reset_backupdir
+            echo "Waiting for the backup stream." >>"$LOG_DIR/reseed.out"
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
             if receiveBackup xbstream; then
-                $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
+                $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/reseed.out"
                 partialRestore
             fi
             ;;
         reseedmariabackup)
-            rm -rf $BACKUPDIR
-            mkdir -p $BACKUPDIR
+            reset_backupdir
+            echo "Waiting for the backup stream." >>"$LOG_DIR/reseed.out"
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
             if receiveBackup mbstream; then
                 # mbstream -p, --parallel
-                $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
+                $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/reseed.out"
                 partialRestore
             fi
             ;;
         flashbackxtrabackup)
-            rm -rf $BACKUPDIR
-            mkdir -p $BACKUPDIR
+            reset_backupdir
+            echo "Waiting for the backup stream." >>"$LOG_DIR/flash.out"
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
             if receiveBackup xbstream; then
-                $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
+                $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/flash.out"
                 partialRestore
             fi
             ;;
         flashbackmariabackup)
-            rm -rf $BACKUPDIR
-            mkdir -p $BACKUPDIR
+            reset_backupdir
+            echo "Waiting for the backup stream." >>"$LOG_DIR/flash.out"
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
             if receiveBackup xbstream; then
-                $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
+                $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/flash.out"
                 partialRestore
             fi
             ;;

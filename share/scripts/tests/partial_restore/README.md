@@ -132,11 +132,11 @@ export DB1_ID=<repman server id of db1> DB2_ID=<repman server id of db2>
    by nature), object counts and GTID equal.
 4. Interrupted run (scenario `interrupted`, by hand): start a reseed of db2
    (step 3 of the cycle script, or the GUI), then on the db2 node wait for
-   the temporary server and kill the job script, not the server:
+   the temporary server and kill the process that owns the job (the PID in
+   the job's `.run` folder), not the server:
    ```bash
    sudo docker exec $CLUSTER..db2.container.jobs sh -c 'ls /var/lib/mysql/.system/mrm_defs_run/mariadbd.sock'
-   sudo docker exec $CLUSTER..db2.container.jobs ps -eo pid,args | grep '[d]bjobs_new'
-   sudo docker exec $CLUSTER..db2.container.jobs kill -9 <every pid running .../dbjobs_new>
+   sudo docker exec $CLUSTER..db2.container.jobs sh -c 'kill -9 $(cat /var/lib/mysql/.system/jobs/reseed*.run/pid)'
    ```
    (`lab_kill_during_defs.sh`, copied to the db2 node, does both steps:
    `scp lab_kill_during_defs.sh $NODE2:/tmp/ && ssh $NODE2 CLUSTER=$CLUSTER /tmp/lab_kill_during_defs.sh`.)
@@ -146,7 +146,8 @@ export DB1_ID=<repman server id of db1> DB2_ID=<repman server id of db2>
    reseedmariabackup ended with ERROR: Job reseedmariabackup was
    interrupted ..." and the jobs row reads `done=1, state=5`. The same run
    logs "Stopping 1 temporary server(s) left by an earlier restore" in
-   `reseedmariabackup.out`. No cancel is needed: run `./lab_reseed_cycle.sh`
+   `reseedmariabackup.out` and removes the server's `mrm_defs_ro` and
+   `mrm_defs_run` folders. No cancel is needed: run `./lab_reseed_cycle.sh`
    again; it must pass
    as in step 3. Afterwards `ps -eo args | grep -c '[m]rm_defs_ro'` in the
    jobs container must print 0.

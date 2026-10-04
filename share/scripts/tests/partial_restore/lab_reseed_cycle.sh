@@ -52,6 +52,13 @@ for i in $(seq 1 120); do
     if [[ "${ts:-0}" -gt "$T1" && "$r" == *"Partial restore"* ]]; then RESULT=$(echo "$r" | tail -1); break; fi
 done
 say "   ${RESULT:-no result within 20 minutes}"
+if [[ "$RESULT" != *"completed successfully"* ]]; then
+    # An aborted or failed restore is the end of the cycle: replication will
+    # not resume and there is nothing to compare.
+    $N2 "sudo docker exec ${CLUSTER}..db2.container.db sh -c \"grep -E 'SKIPPED|Objects not restored|aborted|ERROR:|FAILED' $J/reseed.out | cut -c1-200 | tail -25\"" 2>/dev/null
+    say "FAIL: the reseed of db2 did not complete successfully; replication was not checked"
+    exit 1
+fi
 $N2 "sudo docker exec ${CLUSTER}..db2.container.db sh -c \"grep -E '^\\[20' $J/reseed.out | awk -v t=\$(date -u -d @$T1 +%H:%M) '{print}' | grep -E 'SKIPPED|Objects not restored|aborted|ERROR:|FAILED' | cut -c1-200 | tail -25\""
 
 say "4. waiting for replication to resume on db2"

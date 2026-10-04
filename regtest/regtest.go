@@ -70,6 +70,10 @@ var tests = []string{
 	// (and hard-FAIL, since this framework has no "skip" result) as part of
 	// "ALL" on every non-staging cluster. Run it explicitly by name instead:
 	// --test=testStagingRecoverNoReadOnly
+	// testPhysicalReseedRestore is intentionally not in this list for the same
+	// reason: it needs a jobs container next to each database and a physical
+	// backup tool matching the servers, and it reseeds a replica. Run it by
+	// name: /api/clusters/<cluster>/tests/actions/run/testPhysicalReseedRestore
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testConfigCookiePushBasic",
