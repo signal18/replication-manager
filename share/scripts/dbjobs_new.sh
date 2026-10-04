@@ -71,7 +71,11 @@ readonly MARIADB_BACKUP="${CLIENT_BASEDIR}/mariabackup"
 readonly MYSQL_CLIENT="${CLIENT_BASEDIR}/mysql"
 readonly MYSQL_CHECK="${CLIENT_BASEDIR}/mysqlcheck"
 readonly MYSQL_DUMP="${CLIENT_BASEDIR}/mysqldump"
-readonly XTRABACKUP="${CLIENT_BASEDIR}/xtrabackup"
+# the image's own xtrabackup first; else the one on the PATH (the bundle injected by prov-db-docker-xtrabackup-img,
+# which the container definition puts on the PATH)
+XTRABACKUP="${CLIENT_BASEDIR}/xtrabackup"
+[[ -x "$XTRABACKUP" ]] || XTRABACKUP="$(command -v xtrabackup || echo "$XTRABACKUP")"
+readonly XTRABACKUP
 readonly INNODBACKUPEX="${CLIENT_BASEDIR}/innobackupex"
 
 # xtrabackup_undo_args fills the array XB_UNDO_ARGS with --innodb-undo-directory=<value>, the running server's own

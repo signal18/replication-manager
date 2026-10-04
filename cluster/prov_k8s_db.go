@@ -593,6 +593,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 			},
 		},
 	}
+	cluster.k8sAddXtrabackupBundle(dep, s)
 	return dep
 }
 

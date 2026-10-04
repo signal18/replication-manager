@@ -26,6 +26,7 @@ IMAGES=(
   "haproxy|library/haproxy"
   "sphinx|leodido/sphinxsearch"
   "postgres|library/postgres"
+  "xtrabackup|percona/percona-xtrabackup"
 )
 
 log() { echo "[updaterepo] $*" >&2; }
