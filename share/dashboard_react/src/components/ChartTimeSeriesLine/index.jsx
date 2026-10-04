@@ -82,8 +82,10 @@ function ChartTimeSeriesLine({
                 y: v === 'None' ? null : parseFloat(v),
               }))
               const segs = ti[0].split('.')
+              // expanded series are named after the path segment alone (db1, prx1, forgejo1):
+              // the unit name already tells the kind, a suffix would just repeat it.
               const label = t.expand && Number.isFinite(t.labelNode) ? (segs[t.labelNode] ?? ti[0]) : t.label
-              return { label: t.label && t.expand ? `${label} ${t.label}` : label, color: t.color, data }
+              return { label, color: t.color, data }
             }
             const lines = text.trim().split('\n').filter((l) => l.includes('|'))
             if (lines.length === 0) return null
@@ -130,17 +132,22 @@ function ChartTimeSeriesLine({
     const allX = valid.flatMap((s) => s.data.map((d) => d.x))
     const x = d3.scaleTime().domain(d3.extent(allX)).range([0, width])
 
-    // Stacked mode: align every series on the union of timestamps (null -> 0) and stack
-    // them, the top of the stack being the sum. Y spans the stacked maximum.
+    // Stacked mode: align every series on the union of timestamps and stack them, the top
+    // of the stack being the sum. Sensor series are sparse (one push a minute on a 10 s
+    // grid), so a gap is FORWARD-FILLED with the last known value -- a null taken as 0
+    // would saw the stack down to zero between two pushes. Before a series' first sample
+    // it contributes 0. Y spans the stacked maximum.
     let layers = null
     if (stacked) {
       const keys = valid.map((_, i) => String(i))
       const byX = new Map()
       valid.forEach((s, i) => {
+        let last = 0
         s.data.forEach((d) => {
+          if (d.y != null) last = d.y
           const k = d.x.getTime()
           if (!byX.has(k)) byX.set(k, { x: d.x })
-          byX.get(k)[String(i)] = d.y == null ? 0 : d.y
+          byX.get(k)[String(i)] = last
         })
       })
       const rows = Array.from(byX.values()).sort((a, b) => a.x - b.x)
