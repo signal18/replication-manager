@@ -27,13 +27,27 @@ receive -> prepare -> read definitions -> pre-check -> per database: recreate, i
 ```
 
 1. **Receive** (`receiveBackup`). The stream repman sends is unpacked into
-   `$DATADIR/.system/backup`, on the datadir volume. 10% of the volume always
-   stays free (`RECEIVE_MIN_FREE_PCT`): the stream is capped with `head -c` at
-   the free space above that reserve, measured when it starts, so no transfer
-   speed can overshoot it; free space is also checked every second, since
-   other writers share the volume. When stopped, the partial backup is
-   removed and the job fails with the reason. repman only knows the
-   compressed backup size, so the unpacked size cannot be checked up front.
+   `$DATADIR/.system/backup`, on the datadir volume. The job aims to leave 10%
+   of the volume free (`RECEIVE_MIN_FREE_PCT`). The stream is capped with
+   `head -c` at the free space above that reserve minus an allowance for what
+   the job writes after the stream (prepare/export files, the definition
+   server's redo and Aria logs). The allowance is twice the redo log size of
+   the local server (`innodb_redo_log_capacity`, else `innodb_log_file_size`;
+   the backup's own configuration is unknown before it arrives and is normally
+   the same), at least 512 MiB (`RECEIVE_RESERVE_MIB`). When the redo log
+   size cannot be read (each query is bounded to 15 s), the transfer is not
+   started and the job fails with that reason. It is measured when
+   the stream starts, so no transfer speed can overshoot it. Free space is also
+   checked every second while the stream arrives, and again after the prepare
+   and after the definitions were read (`pr_disk_ok`). This is a checked
+   bound, not a reservation: other writers share the volume, and a backup whose
+   redo log is larger than the local server's can use more than the allowance
+   while the prepare runs; the check right after the prepare then stops the job
+   before any database is changed. The floor can therefore still be crossed
+   between two checks. When a check stops the job, the backup is removed and
+   the job fails with the reason. repman only knows the compressed backup
+   size, so the unpacked size cannot be checked up front. The allowance has
+   not been measured on a large production layout.
 2. **Prepare**: `--prepare --export` (the `.cfg` files IMPORT needs).
 3. **Prepare check** (`pr_prepare_ok`): no `completed OK!` in the prepare
    log, no further step. Checked before anything is started on the backup.
@@ -62,7 +76,10 @@ receive -> prepare -> read definitions -> pre-check -> per database: recreate, i
    - Stopped with `SHUTDOWN` and by signal; its folders are removed.
 5. **Pre-check** (`pr_preflight`): every database has a folder of that name,
    every table has a definition, no table is subpartitioned. Any failure: the
-   job stops, **nothing in the datadir was changed**.
+   job stops and **no database or table of the server was changed**. Before this
+   point the job did write in the datadir volume: the ownership of the
+   unpacked backup, and the temporary definition server's folders under
+   `.system` (removed when it stops).
 6. **Per database** (`pr_recreate_database`): `DROP DATABASE`, then
    `CREATE DATABASE`. Files the server does not know (leftovers of an earlier
    failed restore) make the drop fail; once the server lists no table left in
@@ -125,7 +142,7 @@ about 400 MB unpacked.
 
 | Limit | Behaviour |
 | --- | --- |
-| Users and grants (`mysql` schema) | Not restored; the target keeps its own (replicas receive accounts through replication) |
+| Users and grants (`mysql` schema) | Not restored; the target keeps its own (replicas receive accounts through replication). The account and grant tables are also skipped on layouts where the `mysql` schema still has MyISAM tables (MariaDB <= 10.3); other MyISAM tables of `mysql` are taken from the backup |
 | Databases that exist only on the target | Kept, not dropped |
 | MEMORY tables | Come back empty |
 | Subpartitioned tables | The job stops before any change |
@@ -143,16 +160,20 @@ about 400 MB unpacked.
 - MariaDB >= 11.4 uses TLS even over a socket and its client verifies the
   certificate the server generated for itself; a small clock step made it
   "not yet valid".
-- `mariabackup --innobackupex` needs its target directory as a positional
-  argument; the old command only worked because `-h<host>` was taken for it.
+- The `mariabackup` job used to run in `--innobackupex` mode, which needs its target directory as a positional argument;
+  the old command only worked because `-h<host>` was taken for it, and failed with `Missing argument` once the connection
+  options were long options. It now runs the native `--backup --target-dir` form (`MARIABACKUP_NATIVE_BACKUP.md`).
 - Lab servers run `innodb_force_primary_key=ON`.
 
 ## Tests
 
 `share/scripts/tests/partial_restore/` (see its README): a local harness that
 runs the restore functions against real servers in Docker (MariaDB 10.5 to
-11.8, Percona Server 8.0 and 8.4), with success scenarios and six failure
-scenarios (prepare failed, subpartitioned table, corrupt `.cfg`, root password
+11.8, Percona Server 8.0 and 8.4), with success scenarios and seven failure
+scenarios (prepare failed, subpartitioned table, unsafe object name, corrupt `.cfg`, root password
 changed, replica target, job killed during the definition read), plus the
-OpenSVC lab cycle and kill test. 45/45 local runs passed on 2026-09-30, and
-the lab cycle restored 82/82 tables with equal content, objects and GTID.
+OpenSVC lab cycle and kill test. `all_matrix.sh` runs the whole local matrix
+(15 success + 35 failure runs = 50, preceded by `unit_checks.sh`, which checks
+the free-space floor, the dead-job report retry, the object-name guard and the
+configuration filter without a database) and exits 0 only when all pass.
+The lab cycle restored 82/82 tables with equal content, objects and GTID.

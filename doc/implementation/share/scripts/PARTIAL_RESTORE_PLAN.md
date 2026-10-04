@@ -16,8 +16,8 @@ committed or pushed.
   read-only server started on the prepared backup exports the exact definitions of every
   table, view, routine, event and trigger; tables are created from them and their
   tablespaces imported (partitions via `EXCHANGE PARTITION`).
-- Nothing in the datadir changes until the prepare succeeded and every definition was
-  read. A final check compares what exists on the server with the backup and fails the
+- No database or table changes until the prepare succeeded and every definition was
+  read (the unpacked backup and the temporary definition server use the volume before). A final check compares what exists on the server with the backup and fails the
   job if anything is missing.
 - Safe handling of: generated columns, foreign keys, partitioned tables, encoded table
   names, FULLTEXT, Aria (`aria_chk --zerofill`), MEMORY tables (no errant GTID), MySQL 8
@@ -99,8 +99,9 @@ the node can then be rebuilt with a logical reseed.
 Decided 2026-09-30: commit the harness (only `.work/` ignored), add the disk-space
 safeguards, keep databases that exist only on the target. The user commits.
 
-- [x] Disk space: the transfer is capped and watched so 10% of the datadir volume
-      stays free (`receiveBackup`); the backup is removed after a successful
+- [x] Disk space: the transfer is capped (free space minus 10% of the volume minus an
+      allowance of twice the redo log size, at least 512 MiB) and watched, and the floor is checked again after the prepare
+      and after the definitions were read (`receiveBackup`, `pr_disk_ok`); the backup is removed after a successful
       restore; quarantine folders bounded to the newest three. An up-front check
       is not possible: repman only knows the compressed size.
 - [x] `doc/implementation/share/scripts/PARTIAL_RESTORE.md` (T8).

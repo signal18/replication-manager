@@ -45,11 +45,40 @@ log, the job fails, and the server is not put back into replication.
 
 ### Space needed
 
-The data volume of the server being reseeded needs free space for the whole
-unpacked backup, about the size of the master's data directory without
-binary logs, plus 10% of the volume, which always stays free. The unpacked
-backup is removed once the restore succeeds; after a failure it is kept for
-investigation until the next reseed.
+A reseed replaces the databases one at a time while the server keeps running,
+so the data volume of the server being reseeded holds the old data **and** the
+unpacked backup at the same time. It needs free space for:
+
+- the unpacked backup, about the size of the master's data directory without
+  binary logs;
+- a target floor of 10% of the volume, checked while the backup is received
+  and between the restore phases;
+- a margin for what the job writes after the backup is unpacked (prepare files
+  and a temporary server): twice the redo log size of the server, at least
+  512 MiB. If the redo log size cannot be read, the job does not start the
+  transfer and says so in the job log.
+
+The job caps the incoming backup at the free space minus the floor and the
+margin, and checks the floor again after the prepare and after the table
+definitions were read. If it does not fit, the job stops before any database
+or table is changed, removes the unpacked backup and says so in the job log.
+The floor is checked at those points, not reserved: another process writing on
+the volume, or a backup with a much larger redo log than the server's, can
+still cross it between two checks.
+
+Examples (the margin is not the total free space left, it is added on top of
+the 10% floor):
+
+| Volume | Free space | Redo log | Floor (10%) | Margin | Largest backup accepted |
+|---|---|---|---|---|---|
+| 1 TB | 400 GB | 4 GiB | 100 GB | 8 GiB | about 292 GB |
+| 100 GB | 40 GB | 96 MiB | 10 GB | 512 MiB | about 29.5 GB |
+
+On a volume that cannot hold the old data and the backup together, reseed
+with a logical backup instead.
+
+The unpacked backup is removed once the restore succeeds; after a failure
+other than a lack of space it is kept for investigation until the next reseed.
 
 ### If a reseed job is interrupted
 

@@ -5,6 +5,7 @@
 #
 #   prepare-failed  the backup was never prepared: abort before any change
 #   subpart         a subpartitioned table: abort before any change
+#   unsafe-name     a table with a backtick in its name: abort before any change
 #   bad-cfg         one table's .cfg is corrupt: that table is rolled back,
 #                   the others restored, the job fails
 #   pw-changed      root's password changed since the backup: the temporary
@@ -20,6 +21,9 @@
 # Objects a scenario needs inside the backup.
 sc_before_backup() {
     case "$1" in
+    unsafe-name)
+        $CLI -e 'CREATE TABLE prt_a.`bad``name` (id INT PRIMARY KEY) ENGINE=InnoDB; INSERT INTO prt_a.`bad``name` VALUES (1);'
+        ;;
     subpart)
         $CLI -e "CREATE TABLE prt_a.sp (id INT, d DATE, PRIMARY KEY (id, d)) ENGINE=InnoDB
             PARTITION BY RANGE (YEAR(d)) SUBPARTITION BY HASH (id) SUBPARTITIONS 2
@@ -107,10 +111,11 @@ sc_verdict() {
         [[ $(obj "routines WHERE routine_schema='prt_a' AND routine_name='f_double'") == 1 ]] || why+=("function f_double missing")
     }
     case "$s" in
-    prepare-failed | subpart)
+    prepare-failed | subpart | unsafe-name)
         [[ $rc -ne 0 ]] || why+=("rc=0")
-        has "aborted before any change"
+        has "aborted before any database or table change"
         [[ "$s" == subpart ]] && has "is subpartitioned"
+        [[ "$s" == unsafe-name ]] && has "has a quote, backtick or backslash"
         sc_state >/tmp/post.txt
         diff -q /tmp/pre.txt /tmp/post.txt >/dev/null ||
             why+=("target changed ($(diff /tmp/pre.txt /tmp/post.txt | grep -c '^[<>]') differing lines, see /tmp/pre.txt /tmp/post.txt)")

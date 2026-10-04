@@ -6,7 +6,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SRV="$1"; PXB="$2"; SCEN="${3:-keep-schema}"; SCRIPT="${4:-$HERE/../../dbjobs_new.sh}"
 mkdir -p "$HERE/.work"
 WORK="$(mktemp -d "$HERE/.work/mysql.XXXX")"; mkdir -p "$WORK/out"; chmod 777 "$WORK/out"
-awk '/^pr_log\(\) \{/{p=1} /^jobsCheck\(\) \{/{p=0} p' "$SCRIPT" >"$WORK/functions.sh"
+awk '/^db_owner\(\) \{/{d=1} d{print} d&&/^}/{d=0} /^pr_log\(\) \{/{p=1} /^jobsCheck\(\) \{/{p=0} p' "$SCRIPT" >"$WORK/functions.sh"
 cp "$HERE/mysql_inside.sh" "$HERE/scenarios.sh" "$WORK/"
 ID="prm$$"; VD="${ID}_data"; VB="${ID}_bk"
 cleanup() { docker stop "$ID" >/dev/null 2>&1; docker volume rm "$VD" "$VB" >/dev/null 2>&1; }

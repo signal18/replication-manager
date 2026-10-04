@@ -1,8 +1,8 @@
 #!/bin/bash
-# Run on opensvc-node2 while a reseed of db2 runs: waits for the temporary
+# Run on the node of db2 (CLUSTER set in the environment) while a reseed of db2 runs: waits for the temporary
 # definition server, then kills every dbjobs_new process (the job dies as a
 # whole, like an OOM kill or a timeout would), leaving that server running.
-C=repmanlab..db2.container.jobs
+C=${CLUSTER:?set CLUSTER}..db2.container.jobs
 for i in $(seq 1 600); do
     sudo docker exec $C test -S /var/lib/mysql/.system/mrm_defs_run/mariadbd.sock 2>/dev/null && break
     sleep 0.3

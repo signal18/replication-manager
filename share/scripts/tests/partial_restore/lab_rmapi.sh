@@ -1,5 +1,5 @@
 #!/bin/bash
-# Usage (on opensvc-node1, copied as /tmp/rmapi.sh): rmapi.sh <METHOD> <API path> [body file]
+# Usage (on the first node, copied as /tmp/rmapi.sh): rmapi.sh <METHOD> <API path> [body file]
 # Logs in with api-credentials from the lab config; the response body goes to /tmp/rmapi.out.
 CRED=$(sudo grep -E "^\s*api-credentials\s*=" /etc/replication-manager/config.toml | head -1 | sed -E "s/^[^=]*=\s*\"?([^\",]*).*/\1/")
 U=${CRED%%:*}; P=${CRED#*:}

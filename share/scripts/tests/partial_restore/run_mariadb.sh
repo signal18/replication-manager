@@ -6,8 +6,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 VER="$1"; SCEN="${2:-keep-schema}"; SCRIPT="${3:-$HERE/../../dbjobs_new.sh}"
 mkdir -p "$HERE/.work"
 WORK="$(mktemp -d "$HERE/.work/mariadb.XXXX")"; mkdir -p "$WORK/out"; chmod 777 "$WORK/out"
-# Every helper partialRestore needs lives between pr_log() and jobsCheck().
-awk '/^pr_log\(\) \{/{p=1} /^jobsCheck\(\) \{/{p=0} p' "$SCRIPT" >"$WORK/functions.sh"
+# Every helper partialRestore needs lives between pr_log() and jobsCheck(), plus db_owner().
+awk '/^db_owner\(\) \{/{d=1} d{print} d&&/^}/{d=0} /^pr_log\(\) \{/{p=1} /^jobsCheck\(\) \{/{p=0} p' "$SCRIPT" >"$WORK/functions.sh"
 cp "$HERE/mariadb_inside.sh" "$HERE/scenarios.sh" "$WORK/"
 NAME="prtest-${VER//./}-$$"
 trap 'docker stop "$NAME" >/dev/null 2>&1' EXIT

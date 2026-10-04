@@ -1,9 +1,10 @@
 #!/bin/bash
-# Usage: lab_dbstate.sh <db1|db2>  -> per-table row count + content hash and object counts (copy to opensvc-node1 as /tmp/dbstate.sh)
-H="$1.repmanlab.svc.repman-lab"
-U=$(sudo python3 -c 'import re;t=open("/etc/replication-manager/cluster.d/repmanlab.toml").read();print(re.search(r"^\s*db-servers-credential\s*=\s*\"([^\"]*)\"",t,re.M).group(1))')
+# Usage: lab_dbstate.sh <db1|db2>  -> per-table row count + content hash and object counts (copy to the first node as /tmp/dbstate.sh; needs CLUSTER and SVC_DOMAIN in the environment)
+CLUSTER="${CLUSTER:?set CLUSTER}"; SVC_DOMAIN="${SVC_DOMAIN:?set SVC_DOMAIN}"
+H="$1.$CLUSTER.svc.$SVC_DOMAIN"
+U=$(sudo python3 -c 'import re,sys;t=open("/etc/replication-manager/cluster.d/%s.toml"%sys.argv[1]).read();print(re.search(r"^\s*db-servers-credential\s*=\s*\"([^\"]*)\"",t,re.M).group(1))' "$CLUSTER")
 CNF=$(mktemp); chmod 600 "$CNF"; printf "[client]\nuser=%s\npassword=%s\n" "${U%%:*}" "${U#*:}" > "$CNF"
-M() { sudo docker exec -i repmanlab..db1.container.db mariadb --defaults-extra-file=/dev/stdin -h "$H" -N -B -e "$1" < "$CNF"; }
+M() { sudo docker exec -i $CLUSTER..db1.container.db mariadb --defaults-extra-file=/dev/stdin -h "$H" -N -B -e "$1" < "$CNF"; }
 SYS="('mysql','sys','performance_schema','information_schema','replication_manager_schema')"
 M "SELECT table_schema, table_name FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema NOT IN $SYS ORDER BY 1,2" |
 while IFS=$'\t' read -r d n; do
