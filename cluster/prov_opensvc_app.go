@@ -483,7 +483,9 @@ func (cluster *Cluster) openSVCPublishAppJobScript(svc opensvc.Collector) error 
 		return nil
 	}
 	key := appJobScriptKey()
-	if keys, err := svc.ListConfigKeysV2(cluster.Name, "env"); err == nil {
+	// Version-dispatching helpers (V3 daemon API over h2, V2 relay otherwise): the V2 ones
+	// fail "tls: no application protocol" against an om3 daemon (live, forgejo1 2026-10-04).
+	if keys, err := svc.ListConfigKeys(cluster.Name, "env"); err == nil {
 		for _, k := range keys {
 			if k == key {
 				return nil
@@ -494,7 +496,7 @@ func (cluster *Cluster) openSVCPublishAppJobScript(svc opensvc.Collector) error 
 	if err != nil {
 		return err
 	}
-	if err := svc.CreateConfigKeyValueV2(cluster.Name, "env", key, string(b)); err != nil {
+	if err := svc.CreateConfigKeyValue(cluster.Name, "env", key, string(b)); err != nil {
 		return fmt.Errorf("publish app sensor script key %s: %w", key, err)
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Published app sensor script as config key env/%s", key)
