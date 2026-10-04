@@ -397,6 +397,9 @@ type globalResourcesResponse struct {
 	// Gateways: the shared uplinks the clusters' traffic is tracked against (#1872), Mb/s.
 	GatewayDomains      []string `json:"gatewayDomains"`
 	GatewayCapacityMbit float64  `json:"gatewayCapacityMbit"`
+	CapacityGWU         float64  `json:"capacityGwu"` // the same capacity in GWU (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s)
+	UsableGWU           float64  `json:"usableGwu"`   // = capacity: the uplink has no quota
+	ConsumedGWU         float64  `json:"consumedGwu"` // Σ clusters
 	ConsumedDBU         float64  `json:"consumedDbu"`
 	SlackDBU            float64  `json:"slackDbu"`
 	// APU (Compute) infra view -- the SAME metal projected into APU (1c/2GB/10GB, no IO).
@@ -436,6 +439,8 @@ type globalResourcesCluster struct {
 
 	StatefulDbu     float64 `json:"statefulDbu"`     // real consumed DBU of the stateful apps (app-stateful)
 	PlanStatefulDbu float64 `json:"planStatefulDbu"` // their DBU reservation, own line (never in planDbu)
+	Gwu             float64 `json:"gwu"`             // gateway bandwidth consumed, in GWU (#1872)
+	PlanGwu         float64 `json:"planGwu"`         // its GWU plan: gateway capacity / clusters present, or pinned
 }
 
 // handlerMuxGlobalResources returns the ResourceManager infra-wide capacity-vs-consumed
@@ -486,8 +491,14 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	}
 	consumedApu := rm.AppConsumedInfra()
 
-	// Per-cluster consumed breakdown (stacks up to the infra consumed), DBU + APU.
+	// Per-cluster consumed breakdown (stacks up to the infra consumed), DBU + APU + GWU.
 	var perCluster []globalResourcesCluster
+	consumedGwu := 0.0
+	gwuUnit := repman.Conf.Cloud18MarketplaceGWUUnitMbit
+	if gwuUnit <= 0 {
+		gwuUnit = 100
+	}
+	capacityGwu := repman.Conf.GatewayBandwidthTotalMbit() / gwuUnit
 	for _, cl := range clusters {
 		if !cl.IsProvision {
 			continue // an unprovisioned cluster reserves and consumes nothing: not in the infra view
@@ -501,12 +512,17 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		if a.Servers == 0 && a.Dbu == 0 && plan == 0 && apuPlan.Apu == 0 && apuCons.Apu == 0 && stPlan.Dbu == 0 && stCons.Dbu == 0 {
 			continue
 		}
-		perCluster = append(perCluster, globalResourcesCluster{
+		row := globalResourcesCluster{
 			Cluster: cl.Name, Dbu: a.Dbu, DbuCpu: a.DbuCpu, DbuMem: a.DbuMem,
 			DbuIo: a.DbuIo, DbuDisk: a.DbuDisk, PlanDbu: plan,
 			Apu: apuCons.Apu, PlanApu: apuPlan.Apu, Servers: a.Servers,
 			StatefulDbu: stCons.Dbu, PlanStatefulDbu: stPlan.Dbu,
-		})
+		}
+		if g := cl.GatewayUnits; g != nil {
+			row.Gwu, row.PlanGwu = g.Units, g.Plan
+			consumedGwu += g.Units
+		}
+		perCluster = append(perCluster, row)
 	}
 	sort.Slice(perCluster, func(i, j int) bool { return perCluster[i].PlanDbu > perCluster[j].PlanDbu })
 
@@ -525,6 +541,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		BindingAxis:    bindingAxis,
 		UsableDBU:      usable,
 		GatewayDomains: repman.Conf.GatewayDomains(), GatewayCapacityMbit: repman.Conf.GatewayBandwidthTotalMbit(),
+		CapacityGWU: capacityGwu, UsableGWU: capacityGwu, ConsumedGWU: consumedGwu,
 		ConsumedDBU:    consumed.Dbu,
 		SlackDBU:       usable - consumed.Dbu,
 		CapacityAPU:    bindingAPU,

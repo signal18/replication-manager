@@ -182,6 +182,8 @@ function ResourceManager() {
         const sumPlan = data.clusters.reduce((s, c) => s + (c.planDbu || 0), 0)
         const sumRealApu = data.clusters.reduce((s, c) => s + (c.apu || 0), 0)
         const sumPlanApu = data.clusters.reduce((s, c) => s + (c.planApu || 0), 0)
+        const sumRealGwu = data.clusters.reduce((s, c) => s + (c.gwu || 0), 0)
+        const sumPlanGwu = data.clusters.reduce((s, c) => s + (c.planGwu || 0), 0)
         const StackBar = ({ title, k, sum, usable, unit }) => {
           const scale = Math.max(usable || 0, sum, ...data.clusters.map((c) => c[k] || 0), 0.0001)
           const markerPct = Math.min(100, (usable / scale) * 100)
@@ -215,6 +217,9 @@ function ResourceManager() {
             <Text fontSize='md' fontWeight='bold' mb={2} mt={4}>Per cluster — APU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableApu)} APU · beyond = over-reserved)</Text></Text>
             <StackBar title='Real (consumed)' k='apu' sum={sumRealApu} usable={data.usableApu} unit='APU' />
             <StackBar title='Plan (reserved)' k='planApu' sum={sumPlanApu} usable={data.usableApu} unit='APU' />
+            <Text fontSize='md' fontWeight='bold' mb={2} mt={4}>Per cluster — GWU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = gateway capacity {fmt(data.capacityGwu)} GWU = {fmt(data.gatewayCapacityMbit)} Mb/s shared by every cluster on the gateway · plan = capacity / clusters present)</Text></Text>
+            <StackBar title='Real (consumed)' k='gwu' sum={sumRealGwu} usable={data.usableGwu} unit='GWU' />
+            <StackBar title='Plan (reserved)' k='planGwu' sum={sumPlanGwu} usable={data.usableGwu} unit='GWU' />
             <Flex gap={4} wrap='wrap' mt={2}>
               {data.clusters.map((c, i) => (
                 <Flex key={c.cluster} align='center' gap={1}>
@@ -240,35 +245,6 @@ function ResourceManager() {
             minYMax={data.usableDbu}
             ceilingLabel={`usable ${fmt(data.usableDbu)} DBU`}
             metricPaths={data.clusters.map((c) => `sumSeries(dbu.${c.cluster}.*.dbu)`)}
-            metricLabels={data.clusters.map((c) => c.cluster)}
-          />
-          <Text fontSize='xs' opacity={0.6} mt={4} mb={1}>
-            Gateway bandwidth = gwu.&lt;cluster&gt;.mbps (Mb/s in + out through the Cloud18 gateways, from the gateways' HAProxy counters) · capacity = cloud18-gateway-bandwidth-mbit summed over the gateways ({(data.gatewayDomains || []).join(', ') || 'no gateway'}). Tracked, not invoiced: when the stack reaches the line, the shared uplink saturates and every cluster slows down.
-          </Text>
-          <ChartBarStack
-            context={ctx}
-            height={200}
-            title='Gateway bandwidth Mb/s (per cluster, against the shared uplink)'
-            minYMax={data.gatewayCapacityMbit || 0}
-            ceilingLabel={`capacity ${fmt(data.gatewayCapacityMbit || 0)} Mb/s`}
-            metricPaths={data.clusters.map((c) => `gwu.${c.cluster}.mbps`)}
-            metricLabels={data.clusters.map((c) => c.cluster)}
-          />
-          <Text fontSize='xs' opacity={0.6} mt={2} mb={1}>
-            Plan = gateway capacity / clusters present on the gateway (with at least one backend), gwu.&lt;cluster&gt;.plan_mbps (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s) · Borrowed = max(0, mbps − plan), what a cluster takes above its plan · Given away = max(0, plan − mbps), what it leaves to the others. Derived at query, nothing emitted.
-          </Text>
-          <ChartBarStack
-            context={ctx}
-            height={200}
-            title='Borrowed gateway bandwidth Mb/s (above the plan, per cluster)'
-            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.mbps,gwu.${c.cluster}.plan_mbps),0)`)}
-            metricLabels={data.clusters.map((c) => c.cluster)}
-          />
-          <ChartBarStack
-            context={ctx}
-            height={200}
-            title='Given away gateway bandwidth Mb/s (below the plan, per cluster)'
-            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.plan_mbps,gwu.${c.cluster}.mbps),0)`)}
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <ChartBarStack
@@ -359,6 +335,40 @@ function ResourceManager() {
             height={200}
             title='Undercommit BKU (plan > consumed, per cluster; billed with the reduction)'
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_bku,sumSeries(bku.${c.cluster}.local,bku.${c.cluster}.app_disk)),0)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Gateway (GWU) — bandwidth through the Cloud18 gateways, tracked not invoiced</Text>
+          <Text fontSize='xs' opacity={0.6} mb={1}>
+            Consumed = gwu.&lt;cluster&gt;.units (Mb/s in + out through the gateways / {fmt(100)} Mb/s per GWU by default, cloud18-marketplace-gwu-unit-mbit) · Plan = gwu.&lt;cluster&gt;.plan (gateway capacity / clusters present on it, or prov-gateway-units when pinned) · ┊ = capacity {fmt(data.capacityGwu)} GWU shared by every cluster: when the consumed stack reaches it the uplink saturates
+          </Text>
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Consumed GWU (per cluster)'
+            minYMax={data.capacityGwu}
+            ceilingLabel={`capacity ${fmt(data.capacityGwu)} GWU`}
+            metricPaths={data.clusters.map((c) => `gwu.${c.cluster}.units`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Plan GWU (per cluster)'
+            metricPaths={data.clusters.map((c) => `gwu.${c.cluster}.plan`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Overcommit GWU (borrowed: consumed > plan, per cluster)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.units,gwu.${c.cluster}.plan),0)`)}
+            metricLabels={data.clusters.map((c) => c.cluster)}
+          />
+          <ChartBarStack
+            context={ctx}
+            height={200}
+            title='Undercommit GWU (given away: plan > consumed, per cluster)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.plan,gwu.${c.cluster}.units),0)`)}
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Archive (BAU) — remote archive, consumer + producer, no plan</Text>
