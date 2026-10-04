@@ -24,9 +24,14 @@ The injection is for the **official** database images only (`mysql`, `library/my
 "The tools on the PATH of the container"). With any other database image, whatever the value, nothing is rendered and the
 setting is logged once as ignored.
 
-An advanced setting (Go `ProvDbDockerXtrabackupImg`, JSON `provDbDockerXtrabackupImg`), OpenSVC and Kubernetes only
-(it is read from the TOML configuration; it has no dynamic settings API). A change of the file takes effect at the next
-provisioning of the database service; it never changes a running container.
+An advanced setting (Go `ProvDbDockerXtrabackupImg`, JSON `provDbDockerXtrabackupImg`), OpenSVC and Kubernetes only.
+It is written in the TOML configuration, or set from the GUI (Configs, Orchestrator images, "Xtrabackup") or the
+settings API (`/api/clusters/{cluster}/settings/actions/set/prov-db-docker-xtrabackup-img/{value}`; `actions/clear/...`
+turns it off). The settings API (`SetProvDbDockerXtrabackupImg`) validates the value and refuses a bad one, or an
+orchestrator that does not render the injection, with an error; a TOML file or a flag is not checked when it is read, so
+the render checks it again. The GUI offers Off, Auto and the tags of the `xtrabackup` repository of the image catalog.
+A change takes effect at the next provisioning of the database service (the reprovision cookie is raised); it never
+changes a running container.
 
 | Value | Meaning |
 |---|---|
@@ -125,6 +130,18 @@ image are shared (one in flight) and no lock is held while the network is used, 
 holds nothing for the others. The memory of the check is bounded: one entry per cluster and image, dropped when its answer and its confirmation have both expired, and never more than 256 (the least recently used go first). The requests in flight are bounded too: at most 8 reach the registry at once, through 8 slots. A cluster that finds them all taken waits for its turn, no longer than a request takes (10 s), and no more than 32 wait, counting both those waiting for a slot and those waiting for the answer of a request already out for the same cluster and image: a caller that finds the queue full is not queued, and none waits longer than 10 s. When no turn comes, in time or at all, the registry could not be asked for it, and it is answered as when the registry cannot be reached (rendered only if that cluster confirmed the image earlier), without keeping the answer, so it asks again at its next render. A confirmation lasts 24 hours after the last time the registry handed the image out. What was confirmed, and every answer kept, belongs to one cluster and one image: another cluster may reach another registry, so nothing is inherited from a cluster that happened to be confirmed. After a restart of repman nothing is confirmed: with the registry down at that moment the
 injection is not rendered until it answers.
 
+**Where the check runs.** Only in the provisioning renders, never in the monitoring loop or the state machine: the
+render is reached from `ProvisionServices` and `InitDatabaseService` (which start `OpenSVCProvisionDatabaseService` or
+`K8SProvisionDatabaseService` in a goroutine and wait for its result), from `UpgradeDatabaseDeploymentOnStart` (the
+rolling restart and upgrade) and from `OpenSVCUpdateDatabaseTemplate` (the API handler); their callers are the API
+handlers, the cron scheduler functions, the security remediation (`go cluster.RollingRestart()`) and the regtest, and no
+monitoring file calls them. The locks held across the render are `provisioningMutex`, which only the provision and
+unprovision operations take (it serialises their `errorChan`), and `rollingReprovMutex`, which only `RollingReprov`
+takes against itself; neither is taken by the monitor, and the lock of the check itself is never held while the network
+is used. A render with a cold cache and a registry that does not answer costs one request (10 s) and at most one wait
+for a turn (10 s) per cluster and image, kept for 5 minutes; the provisioning in progress lasts that much longer.
+A check that panics ends its request: the flight is removed and the callers waiting on it are released.
+
 A helper image that repman cannot read anonymously is refused too: mirror it into a registry repman can reach without
 credentials, or leave the setting empty and use an image that ships the tools. What the check cannot see is a node that
 cannot pull an image the registry hands out (a network rule between the node and the registry, for instance): that case
@@ -202,9 +219,8 @@ container still exits 0 (once its image is pulled) so the database starts.
 `share/scripts/tests/xtrabackup_bundle/docker_check.sh` is the check from outside, at Docker level, on a running jobs
 container (see Tests).
 
-Not part of this change (kept out on purpose, to be done separately): a dynamic settings API for
-`prov-db-docker-xtrabackup-img`, its swagger documentation and a dashboard tooltip, a check in the monitor that raises
-an alert when `status` is `failed`, and the success of the backup and restore jobs themselves.
+Not part of this change (kept out on purpose, to be done separately): a check in the monitor that raises an alert when
+`status` is `failed`, and the success of the backup and restore jobs themselves.
 
 ## Trust
 

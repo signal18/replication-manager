@@ -458,3 +458,47 @@ func TestXtrabackupServerSeries(t *testing.T) {
 func init() {
 	xtrabackupHelperCheck = func(context.Context, string) error { return nil }
 }
+
+// The settings API refuses a bad value to the operator, leaves the setting as it was, and refuses an orchestrator that
+// does not render the injection. (The cookie that marks the services stale is raised per server and needs a working
+// directory: it is covered by the reprovision tests of the other image settings, not here.)
+func TestSetProvDbDockerXtrabackupImg(t *testing.T) {
+	cluster := newBundleCluster("mysql:8.4", "")
+	cluster.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+
+	for _, value := range []string{"auto", "percona/percona-xtrabackup:8.4", "  percona/percona-xtrabackup:8.0  ", ""} {
+		if err := cluster.SetProvDbDockerXtrabackupImg(value); err != nil {
+			t.Errorf("%q must be accepted: %v", value, err)
+		}
+		if got, want := cluster.Conf.ProvDbDockerXtrabackupImg, strings.TrimSpace(value); got != want {
+			t.Errorf("after %q the setting is %q, want %q", value, got, want)
+		}
+	}
+
+	cluster.Conf.ProvDbDockerXtrabackupImg = "percona/percona-xtrabackup:8.4"
+	for _, value := range []string{"a b", "image;rm -rf /", "$(id)", "x`y`", "image\nother", "percona/percona-xtrabackup:8.4\"", strings.Repeat("a", 300)} {
+		if err := cluster.SetProvDbDockerXtrabackupImg(value); err == nil {
+			t.Errorf("%q must be refused", value)
+		}
+		if cluster.Conf.ProvDbDockerXtrabackupImg != "percona/percona-xtrabackup:8.4" {
+			t.Errorf("a refused value changed the setting to %q", cluster.Conf.ProvDbDockerXtrabackupImg)
+		}
+	}
+
+	for _, orchestrator := range []string{config.ConstOrchestratorKubernetes} {
+		cluster.Conf.ProvOrchestrator = orchestrator
+		if err := cluster.SetProvDbDockerXtrabackupImg("auto"); err != nil {
+			t.Errorf("%s renders the injection, the setting must be accepted: %v", orchestrator, err)
+		}
+	}
+	for _, orchestrator := range []string{config.ConstOrchestratorLocalhost, config.ConstOrchestratorOnPremise, config.ConstOrchestratorSlapOS} {
+		cluster.Conf.ProvOrchestrator = orchestrator
+		cluster.Conf.ProvDbDockerXtrabackupImg = ""
+		if err := cluster.SetProvDbDockerXtrabackupImg("auto"); err == nil {
+			t.Errorf("%s does not render the injection, the setting must be refused", orchestrator)
+		}
+		if cluster.Conf.ProvDbDockerXtrabackupImg != "" {
+			t.Errorf("%s: a refused setting changed the value to %q", orchestrator, cluster.Conf.ProvDbDockerXtrabackupImg)
+		}
+	}
+}

@@ -233,9 +233,24 @@ func (cluster *Cluster) xtrabackupHelperPullable(image string) bool {
 		haveSlot = true
 	}
 
+	// Whatever happens to the request, the flight is ended: if the check panics, the entry is removed and the callers
+	// waiting on it are released, as when the registry could not be asked. Otherwise every later caller for this
+	// cluster and image would find the stale flight and wait for it until the process restarts.
+	finished := false
+	defer func() {
+		if finished {
+			return
+		}
+		xtrabackupHelperMu.Lock()
+		delete(xtrabackupHelperInflight, key)
+		flight.pullable = wasConfirmed
+		xtrabackupHelperMu.Unlock()
+		close(flight.done)
+	}()
+
 	ctx, cancel := context.WithTimeout(context.Background(), xtrabackupHelperTimeout)
+	defer cancel()
 	err := xtrabackupHelperCheck(ctx, image)
-	cancel()
 
 	pullable := false
 	switch {
@@ -262,6 +277,7 @@ func (cluster *Cluster) xtrabackupHelperPullable(image string) bool {
 	delete(xtrabackupHelperInflight, key)
 	flight.pullable = pullable
 	xtrabackupHelperMu.Unlock()
+	finished = true
 	close(flight.done)
 	return pullable
 }

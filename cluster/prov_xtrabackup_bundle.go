@@ -180,7 +180,7 @@ func (cluster *Cluster) xtrabackupBundleImageSetting() string {
 		return ""
 	}
 	if value != xtrabackupImageAuto {
-		// The settings API validates the value, a TOML file or a flag does not: the reference goes into a shell
+		// The settings API (SetProvDbDockerXtrabackupImg) validates the value, a TOML file or a flag does not: the reference goes into a shell
 		// command and a service definition, so it is checked here, whichever way it was written.
 		if err := ValidateXtrabackupImage(value); err != nil {
 			cluster.logInvalidDBIdentityOnce("prov-db-docker-xtrabackup-img", value, err)

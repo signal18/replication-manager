@@ -701,3 +701,81 @@ func TestXtrabackupHelperSharedWaiterTimesOut(t *testing.T) {
 		t.Error("the next render must find the answer of the request")
 	}
 }
+
+// A check that panics must not leave its flight behind: the callers waiting on it are released, the table of flights
+// is empty again, and the next render asks the registry afresh instead of waiting for a request that is gone.
+func TestXtrabackupHelperPanicEndsTheFlight(t *testing.T) {
+	armed := make(chan struct{})
+	boom := make(chan struct{})
+	panicking := true
+	stubHelperCheck(t, func(string) error {
+		if panicking {
+			close(armed)
+			<-boom
+			panic("the registry client blew up")
+		}
+		return nil
+	})
+	previous := xtrabackupHelperSlotWait
+	xtrabackupHelperSlotWait = 300 * time.Millisecond
+	t.Cleanup(func() { xtrabackupHelperSlotWait = previous })
+
+	cluster := newBundleCluster("mysql:8.4", testHelperImage)
+	cluster.Name = "panic"
+	leaderDone := make(chan interface{}, 1)
+	go func() {
+		defer func() { leaderDone <- recover() }()
+		cluster.xtrabackupHelperPullable(testHelperImage)
+	}()
+	<-armed
+
+	// a caller joins the flight, then the check panics: the caller must come back, not wait for the full turn
+	follower := make(chan bool, 1)
+	go func() { follower <- cluster.xtrabackupHelperPullable(testHelperImage) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		xtrabackupHelperMu.Lock()
+		n := xtrabackupHelperWaiting
+		xtrabackupHelperMu.Unlock()
+		if n == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the follower never joined the flight")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	begin := time.Now()
+	close(boom)
+	if r := <-leaderDone; r == nil {
+		t.Error("the panic must reach the caller, it is not swallowed")
+	}
+	select {
+	case ok := <-follower:
+		if ok {
+			t.Error("the registry was never answered and the image never confirmed: not rendered")
+		}
+		if time.Since(begin) > 200*time.Millisecond {
+			t.Errorf("the follower waited %s after the panic, want it released at once", time.Since(begin))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the follower is still waiting on a flight whose request panicked")
+	}
+
+	xtrabackupHelperMu.Lock()
+	flights, waiting := len(xtrabackupHelperInflight), xtrabackupHelperWaiting
+	xtrabackupHelperMu.Unlock()
+	if flights != 0 || waiting != 0 || len(xtrabackupHelperSlots) != 0 {
+		t.Errorf("after the panic: %d flights, %d waiting, %d slots taken, want none", flights, waiting, len(xtrabackupHelperSlots))
+	}
+
+	// the next render asks again and is answered, it does not run into the dead flight
+	panicking = false
+	begin = time.Now()
+	if !cluster.xtrabackupHelperPullable(testHelperImage) {
+		t.Error("after the panic the next render must be answered by the registry")
+	}
+	if time.Since(begin) > 200*time.Millisecond {
+		t.Errorf("the next render took %s: it waited for the dead flight", time.Since(begin))
+	}
+}
