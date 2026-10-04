@@ -19,8 +19,8 @@ Three substitution keys, resolved like every other `{{...}}` key by
 The `db` object is present on the app only when it asked for a database, so a
 template that references the keys on a plain app is refused at add with
 `missing keys`. It is also present on every sibling, which is how dependent
-processes share one database: `{{apps.#(name==erp-backend).db.user}}`. gjson
-selectors take bare values, `name==erp-backend`, because the raw template is
+processes share one database: `{{apps.#(name==erpnext-backend).db.user}}`. gjson
+selectors take bare values, `name==erpnext-backend`, because the raw template is
 TOML-parsed before the substitution runs (quotes would break the first parse).
 
 The password is handed out in its encrypted form: a `type = "secret"` variable
