@@ -1084,9 +1084,6 @@ definitions:
     properties:
       billable:
         type: number
-      cumulative:
-        description: month-to-date volume, not integrated (#1872)
-        type: boolean
       family:
         type: string
       monthCost:
@@ -2026,8 +2023,8 @@ definitions:
         type: number
       cloud18MarketplaceGwuPrice:
         type: number
-      cloud18MarketplaceGwuUnitMb:
-        type: integer
+      cloud18MarketplaceGwuUnitMbit:
+        type: number
       cloud18MarketplaceOvercommitPricePct:
         type: integer
       cloud18MarketplacePricingMode:

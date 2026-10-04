@@ -1054,7 +1054,7 @@ type Config struct {
 	// cloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).
 	Cloud18GatewayBandwidthMbit             string                 `scope:"server" mapstructure:"cloud18-gateway-bandwidth-mbit" toml:"cloud18-gateway-bandwidth-mbit" json:"cloud18GatewayBandwidthMbit"`
 	Cloud18MarketplaceGWUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-price" toml:"cloud18-marketplace-gwu-price" json:"cloud18MarketplaceGwuPrice"`
-	Cloud18MarketplaceGWUUnitMB             int                    `scope:"server" mapstructure:"cloud18-marketplace-gwu-unit-mb" toml:"cloud18-marketplace-gwu-unit-mb" json:"cloud18MarketplaceGwuUnitMb"`
+	Cloud18MarketplaceGWUUnitMbit           float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-unit-mbit" toml:"cloud18-marketplace-gwu-unit-mbit" json:"cloud18MarketplaceGwuUnitMbit"`
 	Cloud18MarketplaceBAUClientStorage      bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`
 	Cloud18MarketplaceOvercommitPricePct    int                    `scope:"server" mapstructure:"cloud18-marketplace-overcommit-price-pct" toml:"cloud18-marketplace-overcommit-price-pct" json:"cloud18MarketplaceOvercommitPricePct"`
 	Cloud18MarketplaceUndercommitPricePct   int                    `scope:"server" mapstructure:"cloud18-marketplace-undercommit-price-pct" toml:"cloud18-marketplace-undercommit-price-pct" json:"cloud18MarketplaceUndercommitPricePct"`

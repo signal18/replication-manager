@@ -1,93 +1,77 @@
 # GWU, the gateway network unit, and several gateways (#1872, #1873)
 
-## What is metered
+## The model (Stéphane, 2026-10-04)
 
-The octets a cluster's applications exchange, **in and out**, through the Cloud18
-gateways (Stéphane, 2026-10-03: both directions; octets). The gateway is the HAProxy OpenSVC service
-(`cloud18-gateway-service`) whose `frontend stats` on port 8404 serves the stats CSV
-at `/;csv`, the same columns as `show stat`; `router/haproxy.Stats` parses it
-(`Pxname`, `Svname`, `Bin`, `Bout`). A backend is named
-`<app>.<cluster>.svc.<orchestrator>_<port>`, so its cluster is the second label
-(`gwuClusterOf`); the infrastructure's own backends (`be_*`, `acme_*`) are ignored.
+The Cloud18 gateways share one uplink (1 or 2 Gb/s). The bandwidth is **tracked, not
+invoiced**: what matters is to see when the clusters together saturate the uplink and who
+holds it. GWU is a **bandwidth unit**:
+
+| term | definition |
+|---|---|
+| unit | 1 GWU = `cloud18-marketplace-gwu-unit-mbit` Mb/s, default 100 (a 1000 Mb/s gateway = 10 GWU) |
+| capacity | `cloud18-gateway-bandwidth-mbit`, one value per gateway, list aligned with the gateways, default 1000, never hardcoded |
+| plan of a cluster | gateway capacity / clusters **present** on the gateway (at least one backend in its stats), summed over the cluster's gateways, in GWU; `prov-gateway-units` > 0 pins it |
+| consumed | the cluster's traffic in + out through the gateways in Mb/s / unit |
+| borrowed / given away | consumed above / below the plan, integrated over the month in unit-months like DBU and APU |
+
+Configured-but-absent clusters do not divide the capacity: they cannot use an uplink they
+have no route on (preprod: 10 configured, 4 provisioned, 3 present).
 
 ## Collector (server/server_gwu.go)
 
-One goroutine per manager (`gatewayTrafficLoop`, monitoring ticker pace, 10 s floor)
-polls every domain of `cloud18-gateway-domain-name`. HAProxy counters are cumulative
-since the worker started and reset at every reload, so the collector keeps the last
-`bout` per `<gateway>|<backend>` and the last `bin` under a `|in` suffix, and adds the deltas, a lower value being a reset
-(`gwuDelta`). The month-to-date total per cluster and the last values live in
-`<working dir>/gwu.json`, saved after every successful poll, so a restart loses
-nothing; at the month rollover the totals start again, the closed month is in the
-Units statement. A gateway that does not answer keeps its last error
-(`GatewayTrafficErrors`), the others are still summed.
+The gateway's `frontend stats` on port 8404 serves the stats CSV at `/;csv`;
+`router/haproxy.Stats` parses it (`Pxname`, `Svname`, `Bin`, `Bout`). A backend is named
+`<app>.<cluster>.svc.<orchestrator>_<port>`, so its cluster is the second label
+(`gwuClusterOf`); the infrastructure's own backends (`be_*`, `acme_*`) are ignored. One
+goroutine (`gatewayTrafficLoop`, monitoring ticker pace, 10 s floor) polls every domain of
+`cloud18-gateway-domain-name`. The counters are cumulative since the worker started and
+reset at every reload, so the collector keeps the last `bin` (key suffix `|in`) and `bout`
+per `<gateway>|<backend>`, adds the deltas (a lower value is a reset, `gwuDelta`), and
+derives the rate since the gateway's previous poll (`mbps`, per cluster and per gateway) plus
+the set of clusters present (`gatewayRates`). The month-to-date octets per cluster live in
+`<working dir>/gwu.json`, information only. A gateway that does not answer keeps its last
+error (`GatewayTrafficErrors`), the others are still summed.
 
-Every cluster then gets `SetGatewayTraffic(bytes, gateways, now)`: the `GWUReading`
-(`GatewayUnits` on the cluster, `gatewayUnits` on the wire) with units = bytes /
-unit bytes, billed = ceil(units), and the graphite series `gwu.<cluster>.bytes`,
-`units`, `plan`, `billed`.
+Every cluster then gets `SetGatewayTraffic(bytes, mbps, planMbps, gateways, now)`: the
+`GWUReading` (`GatewayUnits`, `gatewayUnits` on the wire) with `Units` = mbps / unit,
+`Plan` = planMbps / unit or the pinned value, and the series `gwu.<cluster>.mbps`,
+`plan_mbps`, `units`, `plan`, `bytes`. The gateway-level series ride on the first cluster's
+metrics feed: `gateway.<domain with _>.mbps`, `capacity_mbps`, `utilization_pct`.
 
-## Unit, plan, price
+## Statement
 
-| setting | scope | meaning |
-|---|---|---|
-| `cloud18-marketplace-gwu-unit-mb` | server, default 100 | octets per GWU in MB (million octets; MB and GB are the disk units, octets are what HAProxy counts) |
-| `cloud18-marketplace-gwu-price` | server, default 0 | EUR per GWU per month; 0 = not priced |
-| `prov-gateway-units` | cluster, default 10 | the plan; `PlanUnitGWU` in cluster_plan.go, moved by `ChangePlanUnits("GWU", delta)` like BKU |
+`BillingFamilyGateway` (`gwu`) is a rate family like the others (`gatewayUsage`: plan and
+consumed in GWU), present only when `cloud18-marketplace-gwu-price` is set. The Consumed
+tab, `/api/me/units` and `get-cluster-price` pick it up as any family.
 
-## Statement: a cumulative family
+## Surfaces
 
-`BillingFamilyGateway` (`gwu`) joins the usage rows with `Cumulative: true`: the
-reading is the month-to-date volume, so `RecordUsage` stores it as whole-month
-integrals instead of integrating a rate over time, and `recomputeTotalsLocked`
-projects it linearly (`billable × month / elapsed`), with plan, over and under
-commit derived from the projection. Cluster and statement projections are sums of
-the rows' projections. The Consumed tab, `/api/me/units` and `get-cluster-price`
-pick the row up as any family, unit `GWU`.
+* Resource Manager page: three stacks per cluster, bandwidth under the capacity line
+  (`/api/global/resources` answers `gatewayCapacityMbit`, `gatewayDomains`), borrowed above
+  the plan, given away below (`removeBelowValue(diffSeries(mbps, plan_mbps))`, derived at
+  query).
+* Graphs page: the Gateway network section in GWU; Maintenance page: the plan, consumed,
+  borrowed or given away, and the pin control (`ChangePlanUnits("GWU")`, `PlanUnitGWU`);
+  Marketplace settings: capacity, GWU price and size.
+* More bandwidth = another gateway (VIP, shared stick tables, DNS round robin), which the
+  gateway lists allow. Equalizing by throttling the top cluster's containers: #1880.
 
 ## Several gateways (#1873)
 
-`cloud18-gateway-service` and `cloud18-gateway-domain-name` are comma-separated
-lists, order aligned (`config/gateway.go`: `GatewayServices`, `GatewayDomains`,
+`cloud18-gateway-service` and `cloud18-gateway-domain-name` are comma-separated lists,
+order aligned (`config/gateway.go`: `GatewayServices`, `GatewayDomains`,
 `PrimaryGatewayService`, `PrimaryGatewayDomain`, `HasGateway`, `SharesGateway`,
-`GatewayServiceParts`). A single value is unchanged.
+`GatewayServiceParts`, `GatewayBandwidthMbit`). A single value is unchanged.
 
-- Route fragments are withdrawn from and published on every gateway, the merge task
-  runs on each (`withdrawGatewayRoutesOn`, the per-gateway loop of
-  `OpenSVCProvisionRoute`).
+- Route fragments are withdrawn from and published on every gateway, the merge task runs
+  on each (`withdrawGatewayRoutesOn`, the per-gateway loop of `OpenSVCProvisionRoute`).
 - Conflict detection: two clusters are gateway peers when they share any gateway
   (`SharesGateway`, `OwnGatewayRoutesAny`); at startup the prior-routes pile is kept per
   gateway and a cluster is checked against the union of its gateways' piles;
   `RecomputeGatewayConflicts` recomputes every current gateway and every gateway the
-  cluster left; the gateway mutexes of a cluster are taken in sorted order
-  (`lockGateways`).
-- DNS: one gateway name with one A record per VIP on the DNS side; the app CNAMEs point
-  at the first domain (`PrimaryGatewayDomain`), which the self-service status
-  advertises; the gateway-nodes API answers the union.
+  cluster left; the gateway mutexes of a cluster are taken in sorted order (`lockGateways`).
+- DNS: one gateway name with one A record per VIP on the DNS side; the app CNAMEs point at
+  the first domain (`PrimaryGatewayDomain`), which the self-service status advertises; the
+  gateway-nodes API answers the union.
 
 Tests: `config/gateway_test.go`, `server/server_gwu_test.go`.
-
-## Bandwidth tracking (2026-10-04): the real need
-
-The gateways share one uplink (1 or 2 Gb/s) and the bandwidth is not invoiced; what matters
-is to see when the clusters together saturate it and who holds it. So the collector also
-derives rates between two polls of the same gateway (`mbps`, in + out, per cluster and per
-gateway, `gatewayRates`), published as `gwu.<cluster>.mbps` and, on the first cluster's
-metrics feed, `gateway.<domain with _>.mbps`, `.capacity_mbps`, `.utilization_pct`. The
-capacity is `cloud18-gateway-bandwidth-mbit`, a list aligned with the gateways (one value
-applies to all, 1000 by default, never hardcoded; `GatewayBandwidthMbit(i)`,
-`GatewayBandwidthTotalMbit`). The Resource Manager page stacks `gwu.<cluster>.mbps` per
-cluster under the capacity line (`/api/global/resources` answers `gatewayCapacityMbit` and
-`gatewayDomains`); reaching the line means the shared uplink saturates. More bandwidth is
-another gateway (VIP, shared stick tables, DNS round robin), which the gateway lists allow.
-
-The GWU statement row exists only when `cloud18-marketplace-gwu-price` is set
-(`gatewayUsage` returns ok=false otherwise): tracked, not invoiced by default.
-
-**Fair share, borrowed, given away** (Stéphane 2026-10-04): a cluster's bandwidth plan is the
-gateway capacity divided by the clusters **present on that gateway** (at least one backend in
-its stats; configured-but-absent clusters do not share an uplink they cannot use), summed over
-the gateways it is present on (`shareOf`, `gatewayRates.Present`, `GWUReading.ShareMbps`, series `gwu.<cluster>.share_mbps`).
-Above the share the cluster **borrows**, below it **gives away**, the same words as the DBU
-model; both are stacked per cluster on the Resource Manager page, derived at query time
-(`removeBelowValue(diffSeries(...))`), nothing more emitted.

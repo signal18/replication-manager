@@ -650,12 +650,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			}
 		}
 		repman.Conf.Cloud18GatewayBandwidthMbit = strings.Join(config.SplitGatewayList(value), ",")
-	case "cloud18-marketplace-gwu-unit-mb":
-		n, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil || n < 1 {
-			return fmt.Errorf("cloud18-marketplace-gwu-unit-mb must be a whole number of MB per GWU, got %q", value)
+	case "cloud18-marketplace-gwu-unit-mbit":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f <= 0 {
+			return fmt.Errorf("cloud18-marketplace-gwu-unit-mbit must be a positive number of Mb/s per GWU, got %q", value)
 		}
-		repman.Conf.Cloud18MarketplaceGWUUnitMB = n
+		repman.Conf.Cloud18MarketplaceGWUUnitMbit = f
 	case "cloud18-marketplace-overcommit-price-pct", "cloud18-marketplace-undercommit-price-pct":
 		n, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || n < 0 {

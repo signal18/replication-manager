@@ -158,14 +158,14 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
-      key: 'GWU Size (MB per unit, in + out)',
+      key: 'GWU Size (Mb/s per unit)',
       help: h(hGwuUnit, 'GWU Size'),
       value: (
         <TextForm
-          value={String(config?.cloud18MarketplaceGwuUnitMb ?? '')}
+          value={String(config?.cloud18MarketplaceGwuUnitMbit ?? '')}
           type='number'
-          confirmTitle='Confirm the GWU size in MB (million octets) sent out per unit and per month to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-gwu-unit-mb', value }))}
+          confirmTitle='Confirm the GWU size in Mb/s per unit to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-gwu-unit-mbit', value }))}
         />
       )
     },

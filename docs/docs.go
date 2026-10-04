@@ -24599,10 +24599,6 @@ const docTemplate = `{
                 "billable": {
                     "type": "number"
                 },
-                "cumulative": {
-                    "description": "month-to-date volume, not integrated (#1872)",
-                    "type": "boolean"
-                },
                 "family": {
                     "type": "string"
                 },
@@ -25965,8 +25961,8 @@ const docTemplate = `{
                 "cloud18MarketplaceGwuPrice": {
                     "type": "number"
                 },
-                "cloud18MarketplaceGwuUnitMb": {
-                    "type": "integer"
+                "cloud18MarketplaceGwuUnitMbit": {
+                    "type": "number"
                 },
                 "cloud18MarketplaceOvercommitPricePct": {
                     "type": "integer"

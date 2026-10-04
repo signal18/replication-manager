@@ -234,7 +234,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   const [gwuConfirm, setGwuConfirm] = useState({ isOpen: false, title: '', delta: 0 })
   const gwu = selectedCluster?.gatewayUnits
   const gwuPlan = selectedCluster?.config?.provGatewayUnits ?? 0
-  const gwuMB = Math.round((gwu?.unitBytes || 100000000) / 1000000)
+  const gwuUnit = gwu?.unitMbit || 100
   const clusterData = useSelector((state) => state.cluster?.clusterData)
   const bkuGB = getUnitRatios(clusterData).storage.diskGBPerUnit || 20
   const bku = selectedCluster?.backupUnits
@@ -703,11 +703,11 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             />
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
             <Flex gap={3} alignItems='center' wrap='wrap'>
-              <Text fontWeight='bold'>Gateway network plan (GWU, {gwuMB} MB in + out each)</Text>
+              <Text fontWeight='bold'>Gateway network plan (GWU, {gwuUnit} Mb/s each)</Text>
               <TextForm
-                value={String(gwuPlan)}
+                value={gwuPlan > 0 ? String(gwuPlan) : ''}
                 type='number'
-                placeholder='prov-gateway-units'
+                placeholder={gwu ? `follows the gateway: ${gwu.plan.toFixed(2)} GWU` : 'follows the gateway'}
                 confirmTitle='Confirm the gateway network plan in GWU for the cluster: '
                 onSave={(value) => {
                   const next = parseInt(value, 10)
@@ -717,7 +717,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                   setGwuConfirm({ isOpen: true, delta, title: `Confirm the gateway network plan at ${next} GWU = ${next * gwuMB} MB exchanged per month through the gateways` })
                 }}
               />
-              <Text>{gwu ? `now ${gwu.mbps.toFixed(1)} Mb/s, fair share ${gwu.shareMbps.toFixed(0)} Mb/s (gateway capacity / clusters present on it), ${gwu.mbps > gwu.shareMbps ? `borrowing ${(gwu.mbps - gwu.shareMbps).toFixed(1)}` : `giving away ${(gwu.shareMbps - gwu.mbps).toFixed(1)}`} Mb/s; month to date ${(gwu.bytes / 1000000).toFixed(1)} MB = ${gwu.units.toFixed(2)} GWU on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
+              <Text>{gwu ? `plan ${gwu.plan.toFixed(2)} GWU = ${gwu.planMbps.toFixed(0)} Mb/s${gwu.pinned ? ' (pinned)' : ' (gateway capacity / clusters present)'}, consumed ${gwu.units.toFixed(3)} GWU = ${gwu.mbps.toFixed(1)} Mb/s, ${gwu.units > gwu.plan ? `borrowing ${(gwu.units - gwu.plan).toFixed(2)}` : `giving away ${(gwu.plan - gwu.units).toFixed(2)}`} GWU; ${(gwu.bytes / 1000000).toFixed(0)} MB this month on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
             </Flex>
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>

@@ -255,20 +255,20 @@ function ResourceManager() {
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <Text fontSize='xs' opacity={0.6} mt={2} mb={1}>
-            Fair share = capacity / clusters present on the gateway (with at least one backend) (gwu.&lt;cluster&gt;.share_mbps) · Borrowed = max(0, mbps − share), what a cluster takes above its part · Given away = max(0, share − mbps), what it leaves to the others. Derived at query, nothing emitted.
+            Plan = gateway capacity / clusters present on the gateway (with at least one backend), gwu.&lt;cluster&gt;.plan_mbps (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s) · Borrowed = max(0, mbps − plan), what a cluster takes above its plan · Given away = max(0, plan − mbps), what it leaves to the others. Derived at query, nothing emitted.
           </Text>
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Borrowed gateway bandwidth Mb/s (above the fair share, per cluster)'
-            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.mbps,gwu.${c.cluster}.share_mbps),0)`)}
+            title='Borrowed gateway bandwidth Mb/s (above the plan, per cluster)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.mbps,gwu.${c.cluster}.plan_mbps),0)`)}
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <ChartBarStack
             context={ctx}
             height={200}
-            title='Given away gateway bandwidth Mb/s (below the fair share, per cluster)'
-            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.share_mbps,gwu.${c.cluster}.mbps),0)`)}
+            title='Given away gateway bandwidth Mb/s (below the plan, per cluster)'
+            metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.plan_mbps,gwu.${c.cluster}.mbps),0)`)}
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <ChartBarStack

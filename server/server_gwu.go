@@ -302,10 +302,10 @@ func (repman *ReplicationManager) pollGatewayTraffic(now time.Time) {
 		}
 	}
 	repman.Unlock()
-	// Fair share (Stéphane 2026-10-04): a cluster's bandwidth plan is the gateway
-	// capacity divided by the clusters PRESENT on that gateway (at least one backend in
-	// its stats: the ones that can consume the uplink, not every configured cluster),
-	// summed over the gateways the cluster is present on.
+	// The plan (Stéphane 2026-10-04): a cluster's bandwidth plan is the gateway capacity
+	// divided by the clusters PRESENT on that gateway (at least one backend in its stats:
+	// the ones that can consume the uplink, not every configured cluster), summed over the
+	// gateways the cluster is present on; the cluster converts it to GWU.
 	attached := make([]int, len(domains))
 	for i, d := range domains {
 		for _, cl := range clusters {
@@ -314,7 +314,7 @@ func (repman *ReplicationManager) pollGatewayTraffic(now time.Time) {
 			}
 		}
 	}
-	shareOf := func(cl *cluster.Cluster) float64 {
+	planMbpsOf := func(cl *cluster.Cluster) float64 {
 		share := 0.0
 		for i, d := range domains {
 			if g.presentOn(d, cl.Name) && attached[i] > 0 {
@@ -324,7 +324,7 @@ func (repman *ReplicationManager) pollGatewayTraffic(now time.Time) {
 		return share
 	}
 	for _, cl := range clusters {
-		cl.SetGatewayTraffic(g.bytesOf(cl.Name), g.clusterMbps(cl.Name), shareOf(cl), polled, now)
+		cl.SetGatewayTraffic(g.bytesOf(cl.Name), g.clusterMbps(cl.Name), planMbpsOf(cl), polled, now)
 	}
 	// The gateway-level series (bandwidth against the uplink capacity) ride on the first
 	// cluster's metrics feed: there is no manager-level graphite sender.

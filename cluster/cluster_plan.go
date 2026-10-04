@@ -210,8 +210,9 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 		return cluster.Conf.ProvDbBku, 1,
 			func(v int) { cluster.Conf.ProvDbBku = v }, nil
 	case PlanUnitGWU:
-		// prov-gateway-units is the PER-CLUSTER egress reservation through the gateways. Floor 1.
-		return cluster.Conf.ProvGatewayUnits, 1,
+		// prov-gateway-units pins the PER-CLUSTER gateway bandwidth plan in GWU; 0 = follow the
+		// gateway capacity / clusters present (the default). Floor 0.
+		return cluster.Conf.ProvGatewayUnits, 0,
 			func(v int) { cluster.Conf.ProvGatewayUnits = v }, nil
 	default:
 		return 0, 0, nil, fmt.Errorf("ChangePlanUnits: unit %q not supported yet", unit)
