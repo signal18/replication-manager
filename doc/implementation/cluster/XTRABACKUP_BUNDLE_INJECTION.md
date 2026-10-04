@@ -28,7 +28,8 @@ An advanced setting (Go `ProvDbDockerXtrabackupImg`, JSON `provDbDockerXtrabacku
 It is written in the TOML configuration, or set from the GUI (Configs, Orchestrator images, "Xtrabackup") or the
 settings API (`/api/clusters/{cluster}/settings/actions/set/prov-db-docker-xtrabackup-img/{value}`; `actions/clear/...`
 turns it off). The settings API (`SetProvDbDockerXtrabackupImg`) validates the value and refuses a bad one, or an
-orchestrator that does not render the injection, with an error; a TOML file or a flag is not checked when it is read, so
+orchestrator that does not render the injection, with an error (an empty value, which turns the injection off, is always
+accepted, so that the GUI's Off works on any cluster); a TOML file or a flag is not checked when it is read, so
 the render checks it again. The GUI offers Off, Auto and the tags of the `xtrabackup` repository of the image catalog.
 A change takes effect at the next provisioning of the database service (the reprovision cookie is raised); it never
 changes a running container.
@@ -61,7 +62,8 @@ catalog the configurator and the GUI use for the images of MariaDB, MySQL, Proxy
 repository (`percona/percona-xtrabackup`). A series is answered for when its tag is in that list, so a new series is
 supported as soon as the catalog lists its xtrabackup tag, with no change of the code. The render reads the catalog the
 way the configurator does (`GetDockerRepos`): the back-office file when one was pushed, the embedded one otherwise, and
-keeps what it read for 5 minutes. A pushed catalog that does not list the `xtrabackup` repository yet falls back to the
+keeps what it read for 5 minutes, per cluster (the back-office file and the configuration are the cluster's, so no answer is
+shared between clusters and nothing accumulates in the process). A pushed catalog that does not list the `xtrabackup` repository yet falls back to the
 built-in series `5.7`, `8.0` and `8.4`. `TestEmbeddedCatalogListsXtrabackup` keeps the embedded catalog and the built-in
 series in step. The LTS list (`plugins/data/lts-versions.json`) is read by the security score plugin only and is not
 used here: the series come from the database image tag.
@@ -164,8 +166,17 @@ When the setting resolves to an image:
   mounting the emptyDir read-write at `/bundle`;
 - the dbjobs sidecar mounts it read-only at `/opt/xtrabackup`; the database container does not mount it.
 
-The emptyDir lives as long as the pod, so the bundle is copied at every pod start (a few seconds); the init container
-exits 0 even when the copy failed, as above.
+The emptyDir lives as long as the pod, so the bundle is copied at every pod start (about a second once the helper image
+is on the node); the init container exits 0 even when the copy failed, as above.
+
+- **PodSecurity.** The helper init container runs as root (`runAsUser: 0`) to fill the volume, which the `restricted`
+  Pod Security Standard forbids and `baseline` allows. A namespace that enforces `restricted` rejects the pod, and the
+  registry check cannot see it. Repman's own database pods do not meet `restricted` either: no pod builder sets a
+  `seccompProfile`, `runAsNonRoot` or dropped capabilities, so a namespace enforcing `restricted` is not one repman's
+  database pods run in, with or without this setting.
+- **Free space.** The free-space floor of the script is measured on the filesystem that backs `/bundle`, which for an
+  `emptyDir` is the node's filesystem: it protects the node's free space. The 256 MiB `sizeLimit` of the `emptyDir` is
+  enforced by the kubelet, and the copy never exceeds it (the copy is bounded to the same 256 MiB minus a 1 MiB reserve).
 
 ## The tools on the PATH of the container
 

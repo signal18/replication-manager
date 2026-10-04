@@ -67,13 +67,26 @@ var xtrabackupCatalog = func(conf *config.Config) []config.DockerRepo {
 	return repos
 }
 
+// xtrabackupCatalogCache keeps what a cluster read from the catalog for a while: a render asks several times and the
+// catalog is large. It belongs to the cluster, which is what the catalog is read for: the back-office file and the
+// configuration it depends on are the cluster's, so no answer is shared between clusters, and it lives and goes with
+// the cluster (nothing accumulates in the process).
+type xtrabackupCatalogCache struct {
+	mu    sync.Mutex
+	tags  map[string]bool
+	until time.Time
+}
+
+const xtrabackupCatalogTTL = 5 * time.Minute
+
 // xtrabackupPublishedTags is the set of tags of the xtrabackup repository in the catalog, nil when the catalog does not
-// list that repository. The answer is kept for a while: a render asks several times and the catalog is large.
+// list that repository.
 func (cluster *Cluster) xtrabackupPublishedTags() map[string]bool {
-	xtrabackupCatalogMu.Lock()
-	defer xtrabackupCatalogMu.Unlock()
-	if time.Now().Before(xtrabackupCatalogUntil) {
-		return xtrabackupCatalogTags
+	cache := &cluster.xbCatalog
+	cache.mu.Lock()
+	defer cache.mu.Unlock()
+	if time.Now().Before(cache.until) {
+		return cache.tags
 	}
 	var tags map[string]bool
 	for _, repo := range xtrabackupCatalog(cluster.Conf) {
@@ -85,19 +98,13 @@ func (cluster *Cluster) xtrabackupPublishedTags() map[string]bool {
 			tags[tag.Name] = true
 		}
 	}
-	xtrabackupCatalogTags, xtrabackupCatalogUntil = tags, time.Now().Add(xtrabackupCatalogTTL)
+	cache.tags, cache.until = tags, time.Now().Add(xtrabackupCatalogTTL)
 	return tags
 }
 
-const xtrabackupCatalogTTL = 5 * time.Minute
-
-var (
-	xtrabackupCatalogMu    sync.Mutex
-	xtrabackupCatalogTags  map[string]bool
-	xtrabackupCatalogUntil time.Time
-)
-
-// xtrabackupAutoImage derives the xtrabackup image from the database image for prov-db-docker-xtrabackup-img=auto.
+// xtrabackupAutoImage derives the xtrabackup image from the database image for prov-db-docker-xtrabackup-img=auto. It
+// is only valid behind the gate of xtrabackupBundleImageSetting (IsStockMySQLImage: the official images only): taken
+// alone it also answers for a mirror or a custom image that is named mysql or percona-server, which the gate refuses.
 // It only answers for what it can read without guessing: the official MySQL (`mysql`) and Percona Server
 // (`percona-server`) repositories with a tag that starts with a series. A MariaDB image ships mariabackup and needs
 // nothing (empty image, no error). Anything else (digest, latest, a private name) is an error and the injection stays

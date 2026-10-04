@@ -1985,13 +1985,17 @@ func (cluster *Cluster) SetProvDBImage(value string) error {
 // have no effect and would only raise a reprovision cookie for nothing. Reprovisioning remains an explicit operator
 // action: the cookie only surfaces that the rendered service is now stale.
 func (cluster *Cluster) SetProvDbDockerXtrabackupImg(value string) error {
-	if orchestrator := cluster.GetOrchestrator(); orchestrator != config.ConstOrchestratorOpenSVC && orchestrator != config.ConstOrchestratorKubernetes {
-		return fmt.Errorf("prov-db-docker-xtrabackup-img is only supported with the %s and %s orchestrators, this cluster uses %q",
-			config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes, orchestrator)
-	}
 	value = strings.TrimSpace(value)
-	if err := ValidateXtrabackupImage(value); err != nil {
-		return err
+	// An empty value turns the injection off: always allowed, whatever the orchestrator, so that a setting can be
+	// cleared (the dashboard's Off) on a cluster where it can no longer be set.
+	if value != "" {
+		if orchestrator := cluster.GetOrchestrator(); orchestrator != config.ConstOrchestratorOpenSVC && orchestrator != config.ConstOrchestratorKubernetes {
+			return fmt.Errorf("prov-db-docker-xtrabackup-img is only supported with the %s and %s orchestrators, this cluster uses %q",
+				config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes, orchestrator)
+		}
+		if err := ValidateXtrabackupImage(value); err != nil {
+			return err
+		}
 	}
 	if cluster.Conf.ProvDbDockerXtrabackupImg == value {
 		return nil

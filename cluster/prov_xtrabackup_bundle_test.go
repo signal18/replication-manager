@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -71,9 +70,6 @@ func TestXtrabackupAutoImageFromCatalog(t *testing.T) {
 // is what the render reads when no back-office catalog was pushed.
 func TestEmbeddedCatalogListsXtrabackup(t *testing.T) {
 	cluster := newBundleCluster("mysql:8.4", "auto")
-	xtrabackupCatalogMu.Lock()
-	xtrabackupCatalogUntil = time.Time{}
-	xtrabackupCatalogMu.Unlock()
 	tags := cluster.xtrabackupPublishedTags()
 	if tags == nil {
 		t.Fatal("the embedded repos.json does not list the xtrabackup repository (scripts/updaterepo.sh)")
@@ -88,18 +84,10 @@ func TestEmbeddedCatalogListsXtrabackup(t *testing.T) {
 // A catalog without the xtrabackup repository (a back-office file that predates it) falls back to the built-in series.
 func TestXtrabackupCatalogWithoutRepository(t *testing.T) {
 	saved := xtrabackupCatalog
-	defer func() {
-		xtrabackupCatalog = saved
-		xtrabackupCatalogMu.Lock()
-		xtrabackupCatalogUntil = time.Time{}
-		xtrabackupCatalogMu.Unlock()
-	}()
+	defer func() { xtrabackupCatalog = saved }()
 	xtrabackupCatalog = func(*config.Config) []config.DockerRepo {
 		return []config.DockerRepo{{Name: "mariadb"}, {Name: "proxysql"}}
 	}
-	xtrabackupCatalogMu.Lock()
-	xtrabackupCatalogUntil = time.Time{}
-	xtrabackupCatalogMu.Unlock()
 	cluster := newBundleCluster("mysql:8.4", "auto")
 	if tags := cluster.xtrabackupPublishedTags(); tags != nil {
 		t.Fatalf("no xtrabackup repository in the catalog: want nil, got %v", tags)
@@ -500,5 +488,43 @@ func TestSetProvDbDockerXtrabackupImg(t *testing.T) {
 		if cluster.Conf.ProvDbDockerXtrabackupImg != "" {
 			t.Errorf("%s: a refused setting changed the value to %q", orchestrator, cluster.Conf.ProvDbDockerXtrabackupImg)
 		}
+		// clearing is always allowed: the dashboard's Off must work on a cluster where the setting can no longer be set
+		cluster.Conf.ProvDbDockerXtrabackupImg = "percona/percona-xtrabackup:8.4"
+		if err := cluster.SetProvDbDockerXtrabackupImg(""); err != nil {
+			t.Errorf("%s: clearing the setting must be accepted: %v", orchestrator, err)
+		}
+		if cluster.Conf.ProvDbDockerXtrabackupImg != "" {
+			t.Errorf("%s: the setting is %q after clearing, want empty", orchestrator, cluster.Conf.ProvDbDockerXtrabackupImg)
+		}
+	}
+}
+
+// What a cluster read of the catalog is its own: the catalog depends on the cluster's configuration (the back-office
+// file), so a cluster does not get the answer another one read, and each keeps its answer for a while.
+func TestXtrabackupCatalogIsPerCluster(t *testing.T) {
+	saved := xtrabackupCatalog
+	defer func() { xtrabackupCatalog = saved }()
+	reads := 0
+	xtrabackupCatalog = func(conf *config.Config) []config.DockerRepo {
+		reads++
+		// the catalog of the cluster whose database image is mysql:8.0 publishes 8.0 only, the other publishes 8.4 only
+		tag := "8.4"
+		if conf.ProvDbImg == "mysql:8.0" {
+			tag = "8.0"
+		}
+		return []config.DockerRepo{{Name: xtrabackupCatalogName, Tags: config.DockerTag{Results: []config.TagResult{{Name: tag}}}}}
+	}
+	a := newBundleCluster("mysql:8.0", "auto")
+	b := newBundleCluster("mysql:8.4", "auto")
+	for i := 0; i < 3; i++ {
+		if got := a.xtrabackupBundleImageSetting(); got != "percona/percona-xtrabackup:8.0" {
+			t.Errorf("cluster A: image = %q", got)
+		}
+		if got := b.xtrabackupBundleImageSetting(); got != "percona/percona-xtrabackup:8.4" {
+			t.Errorf("cluster B: image = %q", got)
+		}
+	}
+	if reads != 2 {
+		t.Errorf("the catalog was read %d times for two clusters asking three times each, want 2 (one each)", reads)
 	}
 }
