@@ -46,10 +46,12 @@ tab, `/api/me/units` and `get-cluster-price` pick it up as any family.
 
 ## Surfaces
 
-* Resource Manager page: three stacks per cluster, bandwidth under the capacity line
-  (`/api/global/resources` answers `gatewayCapacityMbit`, `gatewayDomains`), borrowed above
-  the plan, given away below (`removeBelowValue(diffSeries(mbps, plan_mbps))`, derived at
-  query).
+* Resource Manager page: the gateway is a unit section like APU and BKU, in GWU: the
+  per-cluster bars (Real / Plan against the capacity in GWU) in the summary, then the four
+  history charts Consumed GWU (ceiling = capacity GWU), Plan GWU, Overcommit GWU (borrowed),
+  Undercommit GWU (given away), derived at query from `gwu.<cluster>.units` and `.plan`.
+  `/api/global/resources` answers `gwu`/`planGwu` per cluster and `capacityGwu`,
+  `usableGwu`, `consumedGwu`, `gatewayCapacityMbit`, `gatewayDomains`.
 * Graphs page: the Gateway network section in GWU; Maintenance page: the plan, consumed,
   borrowed or given away, and the pin control (`ChangePlanUnits("GWU")`, `PlanUnitGWU`);
   Marketplace settings: capacity, GWU price and size.
