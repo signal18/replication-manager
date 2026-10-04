@@ -394,8 +394,11 @@ type globalResourcesResponse struct {
 	CapacityDBU float64                                        `json:"capacityDbu"`
 	BindingAxis string                                         `json:"bindingAxis"`
 	UsableDBU   float64                                        `json:"usableDbu"`
-	ConsumedDBU float64                                        `json:"consumedDbu"`
-	SlackDBU    float64                                        `json:"slackDbu"`
+	// Gateways: the shared uplinks the clusters' traffic is tracked against (#1872), Mb/s.
+	GatewayDomains      []string `json:"gatewayDomains"`
+	GatewayCapacityMbit float64  `json:"gatewayCapacityMbit"`
+	ConsumedDBU         float64  `json:"consumedDbu"`
+	SlackDBU            float64  `json:"slackDbu"`
 	// APU (Compute) infra view -- the SAME metal projected into APU (1c/2GB/10GB, no IO).
 	CapacityAPU    float64                  `json:"capacityApu"`
 	BindingAxisApu string                   `json:"bindingAxisApu"`
@@ -521,6 +524,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 		CapacityDBU:    bindingDBU,
 		BindingAxis:    bindingAxis,
 		UsableDBU:      usable,
+		GatewayDomains: repman.Conf.GatewayDomains(), GatewayCapacityMbit: repman.Conf.GatewayBandwidthTotalMbit(),
 		ConsumedDBU:    consumed.Dbu,
 		SlackDBU:       usable - consumed.Dbu,
 		CapacityAPU:    bindingAPU,

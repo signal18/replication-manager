@@ -67,3 +67,18 @@ func TestParseGatewayStats(t *testing.T) {
 		t.Fatalf("rows=%v err=%v", rows, err)
 	}
 }
+
+func TestGatewayTrafficRates(t *testing.T) {
+	g := newGatewayTraffic(t.TempDir())
+	t0 := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	g.ingest("gw", []haproxy.Stats{{Pxname: "a.c1.svc.x_80", Svname: "BACKEND", Bin: "0", Bout: "0"}, {Pxname: "b.c2.svc.x_80", Svname: "BACKEND", Bin: "0", Bout: "0"}}, t0)
+	if g.gatewayMbps("gw") != 0 || g.clusterMbps("c1") != 0 {
+		t.Fatalf("no rate on the first poll")
+	}
+	// 10 s later: c1 moved 12.5 MB (100 Mb), c2 2.5 MB in + 2.5 MB out (40 Mb)
+	g.ingest("gw", []haproxy.Stats{{Pxname: "a.c1.svc.x_80", Svname: "BACKEND", Bin: "0", Bout: "12500000"}, {Pxname: "b.c2.svc.x_80", Svname: "BACKEND", Bin: "2500000", Bout: "2500000"}}, t0.Add(10*time.Second))
+	near := func(a, b float64) bool { return a > b-0.01 && a < b+0.01 }
+	if !near(g.clusterMbps("c1"), 10) || !near(g.clusterMbps("c2"), 4) || !near(g.gatewayMbps("gw"), 14) {
+		t.Fatalf("rates: c1=%v c2=%v gw=%v", g.clusterMbps("c1"), g.clusterMbps("c2"), g.gatewayMbps("gw"))
+	}
+}

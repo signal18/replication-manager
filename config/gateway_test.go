@@ -28,3 +28,17 @@ func TestGatewayLists(t *testing.T) {
 		t.Fatalf("single value must keep working")
 	}
 }
+
+func TestGatewayBandwidth(t *testing.T) {
+	c := &Config{Cloud18GatewayService: "a/svc/h,b/svc/h", Cloud18GatewayBandwidthMbit: "2000"}
+	if c.GatewayBandwidthMbit(0) != 2000 || c.GatewayBandwidthMbit(1) != 2000 || c.GatewayBandwidthTotalMbit() != 4000 {
+		t.Fatalf("single value applies to every gateway: %v %v %v", c.GatewayBandwidthMbit(0), c.GatewayBandwidthMbit(1), c.GatewayBandwidthTotalMbit())
+	}
+	c.Cloud18GatewayBandwidthMbit = "1000, 10000"
+	if c.GatewayBandwidthMbit(1) != 10000 || c.GatewayBandwidthTotalMbit() != 11000 {
+		t.Fatalf("aligned list: %v", c.GatewayBandwidthTotalMbit())
+	}
+	if (&Config{}).GatewayBandwidthMbit(0) != 1000 || (&Config{Cloud18GatewayBandwidthMbit: "x"}).GatewayBandwidthMbit(0) != 1000 {
+		t.Fatalf("default 1000")
+	}
+}

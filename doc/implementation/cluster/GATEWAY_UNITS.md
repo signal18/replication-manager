@@ -66,3 +66,27 @@ lists, order aligned (`config/gateway.go`: `GatewayServices`, `GatewayDomains`,
   advertises; the gateway-nodes API answers the union.
 
 Tests: `config/gateway_test.go`, `server/server_gwu_test.go`.
+
+## Bandwidth tracking (2026-10-04): the real need
+
+The gateways share one uplink (1 or 2 Gb/s) and the bandwidth is not invoiced; what matters
+is to see when the clusters together saturate it and who holds it. So the collector also
+derives rates between two polls of the same gateway (`mbps`, in + out, per cluster and per
+gateway, `gatewayRates`), published as `gwu.<cluster>.mbps` and, on the first cluster's
+metrics feed, `gateway.<domain with _>.mbps`, `.capacity_mbps`, `.utilization_pct`. The
+capacity is `cloud18-gateway-bandwidth-mbit`, a list aligned with the gateways (one value
+applies to all, 1000 by default, never hardcoded; `GatewayBandwidthMbit(i)`,
+`GatewayBandwidthTotalMbit`). The Resource Manager page stacks `gwu.<cluster>.mbps` per
+cluster under the capacity line (`/api/global/resources` answers `gatewayCapacityMbit` and
+`gatewayDomains`); reaching the line means the shared uplink saturates. More bandwidth is
+another gateway (VIP, shared stick tables, DNS round robin), which the gateway lists allow.
+
+The GWU statement row exists only when `cloud18-marketplace-gwu-price` is set
+(`gatewayUsage` returns ok=false otherwise): tracked, not invoiced by default.
+
+**Fair share, borrowed, given away** (Stéphane 2026-10-04): a cluster's bandwidth plan is the
+gateway capacity divided by the clusters attached to that gateway, summed over its gateways
+(`shareOf` in the collector, `GWUReading.ShareMbps`, series `gwu.<cluster>.share_mbps`).
+Above the share the cluster **borrows**, below it **gives away**, the same words as the DBU
+model; both are stacked per cluster on the Resource Manager page, derived at query time
+(`removeBelowValue(diffSeries(...))`), nothing more emitted.

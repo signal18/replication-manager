@@ -22,6 +22,8 @@ import (
 // GWUReading is the gateway egress of the cluster for the running month.
 type GWUReading struct {
 	Bytes       int64     `json:"bytes"`       // octets in + out through the gateways, month to date
+	Mbps        float64   `json:"mbps"`        // bandwidth in + out at the last poll, Mb/s, summed over the gateways
+	ShareMbps   float64   `json:"shareMbps"`   // the cluster's fair share: gateway capacity / clusters attached, summed over its gateways
 	Units       float64   `json:"units"`       // Bytes / UnitBytes
 	Plan        int       `json:"plan"`        // prov-gateway-units
 	BilledUnits int       `json:"billedUnits"` // ceil(Units)
@@ -43,9 +45,9 @@ func (cluster *Cluster) GWUUnitBytes() int64 {
 }
 
 // SetGatewayTraffic records the month-to-date egress collected on the gateways.
-func (cluster *Cluster) SetGatewayTraffic(bytes int64, gateways int, now time.Time) {
+func (cluster *Cluster) SetGatewayTraffic(bytes int64, mbpsNow, shareMbps float64, gateways int, now time.Time) {
 	unit := cluster.GWUUnitBytes()
-	r := &GWUReading{Bytes: bytes, UnitBytes: unit, Gateways: gateways, UpdatedAt: now,
+	r := &GWUReading{Bytes: bytes, Mbps: mbpsNow, ShareMbps: shareMbps, UnitBytes: unit, Gateways: gateways, UpdatedAt: now,
 		Plan: cluster.Conf.ProvGatewayUnits, UnitPrice: cluster.Conf.Cloud18MarketplaceGWUPrice}
 	r.Units = float64(bytes) / float64(unit)
 	r.BilledUnits = int(math.Ceil(r.Units))
@@ -59,12 +61,19 @@ func (cluster *Cluster) SetGatewayTraffic(bytes int64, gateways int, now time.Ti
 		graphite.NewMetric(fmt.Sprintf("gwu.%s.units", cluster.Name), strconv.FormatFloat(r.Units, 'f', 4, 64), ts),
 		graphite.NewMetric(fmt.Sprintf("gwu.%s.plan", cluster.Name), strconv.Itoa(r.Plan), ts),
 		graphite.NewMetric(fmt.Sprintf("gwu.%s.billed", cluster.Name), strconv.Itoa(r.BilledUnits), ts),
+		graphite.NewMetric(fmt.Sprintf("gwu.%s.mbps", cluster.Name), strconv.FormatFloat(r.Mbps, 'f', 3, 64), ts),
+		graphite.NewMetric(fmt.Sprintf("gwu.%s.share_mbps", cluster.Name), strconv.FormatFloat(r.ShareMbps, 'f', 3, 64), ts),
 	})
 }
 
-// gatewayUsage is the GWU row of the statement: a cumulative family with a plan.
-func (cluster *Cluster) gatewayUsage(over, under int) UnitUsage {
+// gatewayUsage is the GWU row of the statement, a cumulative family with a plan; the
+// bandwidth is tracked, not invoiced (Stéphane 2026-10-04), so the row exists only when
+// a GWU price is set.
+func (cluster *Cluster) gatewayUsage(over, under int) (UnitUsage, bool) {
 	c := cluster.Conf
+	if c.Cloud18MarketplaceGWUPrice <= 0 {
+		return UnitUsage{}, false
+	}
 	u := UnitUsage{Family: BillingFamilyGateway, Unit: "GWU", Plan: float64(c.ProvGatewayUnits), Cumulative: true,
 		Priced: c.Cloud18MarketplaceGWUPrice > 0, UnitPrice: c.Cloud18MarketplaceGWUPrice, OverPct: over, UnderPct: under}
 	cluster.Lock()
@@ -73,5 +82,5 @@ func (cluster *Cluster) gatewayUsage(over, under int) UnitUsage {
 	if r != nil {
 		u.Billable = r.Units
 	}
-	return u
+	return u, true
 }

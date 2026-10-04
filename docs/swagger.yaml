@@ -1980,6 +1980,12 @@ definitions:
         type: string
       cloud18ExternalSysOpsStatus:
         type: string
+      cloud18GatewayBandwidthMbit:
+        description: |-
+          GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.
+          Cloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with
+          cloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).
+        type: string
       cloud18GatewayDomainName:
         type: string
       cloud18GatewayService:
@@ -2019,8 +2025,6 @@ definitions:
       cloud18MarketplaceDbuPrice:
         type: number
       cloud18MarketplaceGwuPrice:
-        description: 'GWU (#1872): the gateway network unit, egress through the Cloud18
-          gateways.'
         type: number
       cloud18MarketplaceGwuUnitMb:
         type: integer
@@ -4483,6 +4487,14 @@ definitions:
         type: number
       consumedDbu:
         type: number
+      gatewayCapacityMbit:
+        type: number
+      gatewayDomains:
+        description: 'Gateways: the shared uplinks the clusters'' traffic is tracked
+          against (#1872), Mb/s.'
+        items:
+          type: string
+        type: array
       ledger:
         allOf:
         - $ref: '#/definitions/cluster.ResourceLedger'

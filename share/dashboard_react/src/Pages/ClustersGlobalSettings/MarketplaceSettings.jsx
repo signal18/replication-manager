@@ -55,7 +55,8 @@ function MarketplaceSettings({ config }) {
 
   const hBkuPrice = `**BKU Price**\n\nPrice of one Backup Unit per month, in Eur. One BKU is 20 GB of **local** storage on the cluster's NVMe pool: the last backup of each server, the restic archive when its repository is a local path, and the declared volumes of the cluster's applications times the agents holding a copy (a failover app replicates its volume on every agent), rounded up per app. Disk only: no cpu, no memory. It is counted against the cluster's BKU plan (\`prov-db-bku\`); the billed units are the plan or the usage rounded up to the next unit, whichever is larger. 0 = local backups are not priced.\n\nConfig: \`cloud18-marketplace-bku-price\``
   const hBauPrice = `**BAU Price**\n\nPrice of one Backup Archive Unit per month, in Eur. One BAU is 20 GB of **archive** storage, two roles: as consumer, what restic holds off the cluster on S3 or SFTP, after deduplication; as producer, the declared volume of a storage application (*S3 provider* in the app settings, e.g. minio) that hosts an archive for others. There is no plan: billed on usage, rounded up to the next unit. The price applies to Signal18 or partner storage only; a cluster that brought its own remote storage (*Cloud18 → Remote archive on client storage*) is tracked but never priced. 0 = the remote archive is not priced.\n\nConfig: \`cloud18-marketplace-bau-price\``
-  const hGwuPrice = `**GWU Price**\n\nPrice of one Gateway Unit per month, in Eur. One GWU is \`cloud18-marketplace-gwu-unit-mb\` MB (million octets, 100 by default) exchanged (**in and out**) through the Cloud18 gateways by the cluster's applications, read on every gateway's HAProxy stats port and attributed by backend name. Counted against the cluster's plan (\`prov-gateway-units\`, 10 by default) with the over and under-commit percentages; the family is a volume, the month-to-date total is billed, not a rate. 0 = gateway traffic is not priced.\n\nConfig: \`cloud18-marketplace-gwu-price\``
+  const hGatewayBandwidth = `**Gateway Bandwidth (Mb/s)**\n\nUplink capacity of each Cloud18 gateway in Mb/s, comma-separated and aligned with the gateway services (one value applies to all; 1000 by default). The traffic of every cluster through the gateways is tracked in Mb/s against it on the Resource Manager page (stacked per cluster): when the stack reaches the capacity the shared uplink saturates. More bandwidth = another gateway with its own VIP, stick tables shared and DNS round robin. Not invoiced.\n\nConfig: \`cloud18-gateway-bandwidth-mbit\``
+  const hGwuPrice = `**GWU Price**\n\nPrice of one Gateway Unit per month, in Eur. One GWU is \`cloud18-marketplace-gwu-unit-mb\` MB (million octets, 100 by default) exchanged (**in and out**) through the Cloud18 gateways by the cluster's applications, read on every gateway's HAProxy stats port and attributed by backend name. Counted against the cluster's plan (\`prov-gateway-units\`, 10 by default) with the over and under-commit percentages; the family is a volume, the month-to-date total is billed, not a rate. 0 = gateway traffic is tracked (Resource Manager page, bandwidth per cluster) but not invoiced and absent from the statement.\n\nConfig: \`cloud18-marketplace-gwu-price\``
   const hGwuUnit = `**GWU Size (MB)**\n\nOctets (in + out) per GWU, in MB (million octets). Changing it changes every cluster's unit count at the next poll.\n\nConfig: \`cloud18-marketplace-gwu-unit-mb\``
 
   const hOverPct = `**Over-commit Price Ratio**\n\nSurcharge on a unit consumed **above** the plan, in percent of the unit price. 150 means an over-plan unit costs 2.5 times the unit price. Applies to every unit family with a plan (DBU, APU, BKU); the BAU has no plan and is pure usage, so it is never marked up. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-overcommit-price-pct\` (default 150)`
@@ -222,6 +223,18 @@ function MarketplaceSettings({ config }) {
           value={config?.cloud18GatewayService}
           confirmTitle='Confirm gateway service to '
           onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-gateway-service', value }))}
+        />
+      )
+    },
+    {
+      key: 'Gateway Bandwidth (Mb/s)',
+      help: h(hGatewayBandwidth, 'Gateway Bandwidth'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18GatewayBandwidthMbit ?? '')}
+          placeholder='1000'
+          confirmTitle='Confirm the gateway uplink capacity in Mb/s (one value per gateway, comma-separated) to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-gateway-bandwidth-mbit', value }))}
         />
       )
     },

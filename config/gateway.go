@@ -4,7 +4,10 @@
 
 package config
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // Several Cloud18 gateways at once (#1873): cloud18-gateway-service and
 // cloud18-gateway-domain-name are comma-separated lists, order aligned. A single
@@ -92,4 +95,36 @@ func GatewayServiceParts(gw string) (namespace, name string, ok bool) {
 		return "", "", false
 	}
 	return parts[0], parts[2], true
+}
+
+// GatewayBandwidthMbit is the uplink capacity of the i-th gateway in Mb/s
+// (cloud18-gateway-bandwidth-mbit, a list aligned with the gateways; a single value
+// applies to every gateway; 1000 when unset or unreadable).
+func (conf *Config) GatewayBandwidthMbit(i int) float64 {
+	l := SplitGatewayList(conf.Cloud18GatewayBandwidthMbit)
+	v := ""
+	switch {
+	case len(l) == 0:
+	case i < len(l):
+		v = l[i]
+	default:
+		v = l[len(l)-1]
+	}
+	if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+		return f
+	}
+	return 1000
+}
+
+// GatewayBandwidthTotalMbit sums the capacity of every gateway.
+func (conf *Config) GatewayBandwidthTotalMbit() float64 {
+	n := len(conf.GatewayServices())
+	if n == 0 {
+		n = len(conf.GatewayDomains())
+	}
+	total := 0.0
+	for i := 0; i < n; i++ {
+		total += conf.GatewayBandwidthMbit(i)
+	}
+	return total
 }

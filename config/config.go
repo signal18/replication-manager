@@ -1050,6 +1050,9 @@ type Config struct {
 	Cloud18MarketplaceBKUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
 	Cloud18MarketplaceBAUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
 	// GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.
+	// Cloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with
+	// cloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).
+	Cloud18GatewayBandwidthMbit             string                 `scope:"server" mapstructure:"cloud18-gateway-bandwidth-mbit" toml:"cloud18-gateway-bandwidth-mbit" json:"cloud18GatewayBandwidthMbit"`
 	Cloud18MarketplaceGWUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-price" toml:"cloud18-marketplace-gwu-price" json:"cloud18MarketplaceGwuPrice"`
 	Cloud18MarketplaceGWUUnitMB             int                    `scope:"server" mapstructure:"cloud18-marketplace-gwu-unit-mb" toml:"cloud18-marketplace-gwu-unit-mb" json:"cloud18MarketplaceGwuUnitMb"`
 	Cloud18MarketplaceBAUClientStorage      bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`

@@ -25906,6 +25906,10 @@ const docTemplate = `{
                 "cloud18ExternalSysOpsStatus": {
                     "type": "string"
                 },
+                "cloud18GatewayBandwidthMbit": {
+                    "description": "GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.\nCloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with\ncloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).",
+                    "type": "string"
+                },
                 "cloud18GatewayDomainName": {
                     "type": "string"
                 },
@@ -25959,7 +25963,6 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "cloud18MarketplaceGwuPrice": {
-                    "description": "GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.",
                     "type": "number"
                 },
                 "cloud18MarketplaceGwuUnitMb": {
@@ -29588,6 +29591,16 @@ const docTemplate = `{
                 },
                 "consumedDbu": {
                     "type": "number"
+                },
+                "gatewayCapacityMbit": {
+                    "type": "number"
+                },
+                "gatewayDomains": {
+                    "description": "Gateways: the shared uplinks the clusters' traffic is tracked against (#1872), Mb/s.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "ledger": {
                     "description": "the physical ledger: plan pot + over-commit pot, every unit from ONE metal",

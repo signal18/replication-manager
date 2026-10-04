@@ -643,6 +643,13 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		if repman.resourceManager != nil {
 			repman.resourceManager.SetPrices(repman.billingPrices())
 		}
+	case "cloud18-gateway-bandwidth-mbit":
+		for i, p := range config.SplitGatewayList(value) {
+			if f, err := strconv.ParseFloat(p, 64); err != nil || f <= 0 {
+				return fmt.Errorf("cloud18-gateway-bandwidth-mbit: entry %d %q must be a positive number of Mb/s", i+1, p)
+			}
+		}
+		repman.Conf.Cloud18GatewayBandwidthMbit = strings.Join(config.SplitGatewayList(value), ",")
 	case "cloud18-marketplace-gwu-unit-mb":
 		n, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || n < 1 {

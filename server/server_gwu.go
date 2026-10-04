@@ -30,6 +30,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/router/haproxy"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -42,22 +43,32 @@ const (
 
 type gatewayTrafficState struct {
 	Month   string            `json:"month"`   // YYYY-MM of the totals
-	Last    map[string]int64  `json:"last"`    // "<gateway>|<backend>" -> last bout seen
-	Bytes   map[string]int64  `json:"bytes"`   // cluster -> octets out, month to date
+	Last    map[string]int64  `json:"last"`    // "<gateway>|<backend>[|in]" -> last counter seen
+	Bytes   map[string]int64  `json:"bytes"`   // cluster -> octets in + out, month to date
 	Updated time.Time         `json:"updated"` //
 	Errors  map[string]string `json:"errors"`  // gateway -> last poll error, "" when fine
+	// PollAt: when each gateway was last read, for the rates between two polls.
+	PollAt map[string]time.Time `json:"pollAt"`
+}
+
+// gatewayRates is one poll's bandwidth: Mb/s per gateway and per cluster on it.
+type gatewayRates struct {
+	Gateway  map[string]float64            // gateway -> Mb/s (in + out), all clusters
+	Clusters map[string]map[string]float64 // gateway -> cluster -> Mb/s
 }
 
 type gatewayTraffic struct {
 	mu    sync.Mutex
 	path  string
 	state gatewayTrafficState
+	rates gatewayRates
 	seen  bool
 }
 
 func newGatewayTraffic(dir string) *gatewayTraffic {
 	g := &gatewayTraffic{path: filepath.Join(dir, gwuStateFile)}
-	g.state = gatewayTrafficState{Last: map[string]int64{}, Bytes: map[string]int64{}, Errors: map[string]string{}}
+	g.state = gatewayTrafficState{Last: map[string]int64{}, Bytes: map[string]int64{}, Errors: map[string]string{}, PollAt: map[string]time.Time{}}
+	g.rates = gatewayRates{Gateway: map[string]float64{}, Clusters: map[string]map[string]float64{}}
 	if b, err := os.ReadFile(g.path); err == nil {
 		var st gatewayTrafficState
 		if json.Unmarshal(b, &st) == nil {
@@ -69,6 +80,9 @@ func newGatewayTraffic(dir string) *gatewayTraffic {
 			}
 			if st.Errors == nil {
 				st.Errors = map[string]string{}
+			}
+			if st.PollAt == nil {
+				st.PollAt = map[string]time.Time{}
 			}
 			g.state = st
 		}
@@ -138,7 +152,16 @@ func fetchGatewayStats(domain string) ([]haproxy.Stats, error) {
 	return parseGatewayStats(string(body))
 }
 
-// ingest folds one gateway's backend rows into the month-to-date totals.
+// mbps converts octets moved in dt seconds to megabits per second.
+func mbps(octets int64, dt float64) float64 {
+	if dt <= 0 || octets <= 0 {
+		return 0
+	}
+	return float64(octets) * 8 / 1e6 / dt
+}
+
+// ingest folds one gateway's backend rows into the month-to-date totals and derives
+// the bandwidth since the gateway's previous poll (Mb/s, in + out) per cluster and in total.
 func (g *gatewayTraffic) ingest(gateway string, rows []haproxy.Stats, now time.Time) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -147,6 +170,13 @@ func (g *gatewayTraffic) ingest(gateway string, rows []haproxy.Stats, now time.T
 		g.state.Month = month
 		g.state.Bytes = map[string]int64{}
 	}
+	prevPoll, polledBefore := g.state.PollAt[gateway]
+	dt := 0.0
+	if polledBefore {
+		dt = now.Sub(prevPoll).Seconds()
+	}
+	moved := map[string]int64{} // cluster -> octets since the previous poll of this gateway
+	var movedAll int64
 	for _, r := range rows {
 		if r.Svname != "BACKEND" {
 			continue
@@ -163,12 +193,41 @@ func (g *gatewayTraffic) ingest(gateway string, rows []haproxy.Stats, now time.T
 			}
 			key := gateway + "|" + r.Pxname + dir.suffix
 			last, seen := g.state.Last[key]
-			g.state.Bytes[cl] += gwuDelta(last, cur, seen)
+			d := gwuDelta(last, cur, seen)
+			g.state.Bytes[cl] += d
+			if seen && polledBefore {
+				moved[cl] += d
+				movedAll += d
+			}
 			g.state.Last[key] = cur
 		}
 	}
+	rates := map[string]float64{}
+	for cl, octets := range moved {
+		rates[cl] = mbps(octets, dt)
+	}
+	g.rates.Clusters[gateway] = rates
+	g.rates.Gateway[gateway] = mbps(movedAll, dt)
+	g.state.PollAt[gateway] = now
 	g.state.Errors[gateway] = ""
 	g.state.Updated = now
+}
+
+// clusterMbps sums a cluster's bandwidth over the gateways.
+func (g *gatewayTraffic) clusterMbps(cluster string) float64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	total := 0.0
+	for _, per := range g.rates.Clusters {
+		total += per[cluster]
+	}
+	return total
+}
+
+func (g *gatewayTraffic) gatewayMbps(gateway string) float64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.rates.Gateway[gateway]
 }
 
 func (g *gatewayTraffic) fail(gateway string, err error) {
@@ -231,8 +290,57 @@ func (repman *ReplicationManager) pollGatewayTraffic(now time.Time) {
 		}
 	}
 	repman.Unlock()
+	// Fair share (Stéphane 2026-10-04): a cluster's bandwidth plan is the gateway
+	// capacity divided by the clusters attached to that gateway, summed over its gateways.
+	services := repman.Conf.GatewayServices()
+	attached := make([]int, len(domains))
+	for i := range domains {
+		svc := ""
+		if i < len(services) {
+			svc = services[i]
+		}
+		for _, cl := range clusters {
+			if svc == "" || cl.Conf.HasGateway(svc) {
+				attached[i]++
+			}
+		}
+	}
+	shareOf := func(cl *cluster.Cluster) float64 {
+		share := 0.0
+		for i := range domains {
+			svc := ""
+			if i < len(services) {
+				svc = services[i]
+			}
+			if (svc == "" || cl.Conf.HasGateway(svc)) && attached[i] > 0 {
+				share += repman.Conf.GatewayBandwidthMbit(i) / float64(attached[i])
+			}
+		}
+		return share
+	}
 	for _, cl := range clusters {
-		cl.SetGatewayTraffic(g.bytesOf(cl.Name), polled, now)
+		cl.SetGatewayTraffic(g.bytesOf(cl.Name), g.clusterMbps(cl.Name), shareOf(cl), polled, now)
+	}
+	// The gateway-level series (bandwidth against the uplink capacity) ride on the first
+	// cluster's metrics feed: there is no manager-level graphite sender.
+	if len(clusters) > 0 {
+		ts := now.Unix()
+		f := func(v float64) string { return strconv.FormatFloat(v, 'f', 3, 64) }
+		var metrics []graphite.Metric
+		for i, d := range domains {
+			key := strings.NewReplacer(".", "_", ":", "_").Replace(d)
+			capacity := repman.Conf.GatewayBandwidthMbit(i)
+			rate := g.gatewayMbps(d)
+			pct := 0.0
+			if capacity > 0 {
+				pct = rate / capacity * 100
+			}
+			metrics = append(metrics,
+				graphite.NewMetric("gateway."+key+".mbps", f(rate), ts),
+				graphite.NewMetric("gateway."+key+".capacity_mbps", f(capacity), ts),
+				graphite.NewMetric("gateway."+key+".utilization_pct", f(pct), ts))
+		}
+		clusters[0].AddMetrics(metrics)
 	}
 }
 
