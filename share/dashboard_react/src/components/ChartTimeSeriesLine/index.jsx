@@ -61,7 +61,10 @@ function ChartTimeSeriesLine({
             params.set('format', 'raw')
             params.set('from', String(from))
             params.set('until', String(until))
-            params.set('target', `alias(${t.target},'')`)
+            // The alias('') strips the series name from the raw response (the label comes
+            // from the caller). An EXPANDED target needs the real path back to name each
+            // series after a segment, so it goes bare.
+            params.set('target', t.expand ? t.target : `alias(${t.target},'')`)
             params.set('noCache', '1')
             const res = await fetch(`/graphite/render?${params.toString()}`)
             if (!res.ok) return null
