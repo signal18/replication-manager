@@ -85,8 +85,9 @@ The GWU statement row exists only when `cloud18-marketplace-gwu-price` is set
 (`gatewayUsage` returns ok=false otherwise): tracked, not invoiced by default.
 
 **Fair share, borrowed, given away** (Stéphane 2026-10-04): a cluster's bandwidth plan is the
-gateway capacity divided by the clusters attached to that gateway, summed over its gateways
-(`shareOf` in the collector, `GWUReading.ShareMbps`, series `gwu.<cluster>.share_mbps`).
+gateway capacity divided by the clusters **present on that gateway** (at least one backend in
+its stats; configured-but-absent clusters do not share an uplink they cannot use), summed over
+the gateways it is present on (`shareOf`, `gatewayRates.Present`, `GWUReading.ShareMbps`, series `gwu.<cluster>.share_mbps`).
 Above the share the cluster **borrows**, below it **gives away**, the same words as the DBU
 model; both are stacked per cluster on the Resource Manager page, derived at query time
 (`removeBelowValue(diffSeries(...))`), nothing more emitted.

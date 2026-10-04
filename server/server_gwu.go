@@ -51,10 +51,12 @@ type gatewayTrafficState struct {
 	PollAt map[string]time.Time `json:"pollAt"`
 }
 
-// gatewayRates is one poll's bandwidth: Mb/s per gateway and per cluster on it.
+// gatewayRates is one poll's bandwidth: Mb/s per gateway and per cluster on it, and the
+// clusters present on each gateway (at least one backend), the denominator of the fair share.
 type gatewayRates struct {
 	Gateway  map[string]float64            // gateway -> Mb/s (in + out), all clusters
 	Clusters map[string]map[string]float64 // gateway -> cluster -> Mb/s
+	Present  map[string]map[string]bool    // gateway -> clusters with a backend on it
 }
 
 type gatewayTraffic struct {
@@ -68,7 +70,7 @@ type gatewayTraffic struct {
 func newGatewayTraffic(dir string) *gatewayTraffic {
 	g := &gatewayTraffic{path: filepath.Join(dir, gwuStateFile)}
 	g.state = gatewayTrafficState{Last: map[string]int64{}, Bytes: map[string]int64{}, Errors: map[string]string{}, PollAt: map[string]time.Time{}}
-	g.rates = gatewayRates{Gateway: map[string]float64{}, Clusters: map[string]map[string]float64{}}
+	g.rates = gatewayRates{Gateway: map[string]float64{}, Clusters: map[string]map[string]float64{}, Present: map[string]map[string]bool{}}
 	if b, err := os.ReadFile(g.path); err == nil {
 		var st gatewayTrafficState
 		if json.Unmarshal(b, &st) == nil {
@@ -177,6 +179,7 @@ func (g *gatewayTraffic) ingest(gateway string, rows []haproxy.Stats, now time.T
 	}
 	moved := map[string]int64{} // cluster -> octets since the previous poll of this gateway
 	var movedAll int64
+	present := map[string]bool{}
 	for _, r := range rows {
 		if r.Svname != "BACKEND" {
 			continue
@@ -185,6 +188,7 @@ func (g *gatewayTraffic) ingest(gateway string, rows []haproxy.Stats, now time.T
 		if cl == "" {
 			continue
 		}
+		present[cl] = true
 		// out: the historical key; in: its own counter under a "|in" suffix
 		for _, dir := range []struct{ raw, suffix string }{{r.Bout, ""}, {r.Bin, "|in"}} {
 			cur, err := strconv.ParseInt(strings.TrimSpace(dir.raw), 10, 64)
@@ -208,6 +212,7 @@ func (g *gatewayTraffic) ingest(gateway string, rows []haproxy.Stats, now time.T
 	}
 	g.rates.Clusters[gateway] = rates
 	g.rates.Gateway[gateway] = mbps(movedAll, dt)
+	g.rates.Present[gateway] = present
 	g.state.PollAt[gateway] = now
 	g.state.Errors[gateway] = ""
 	g.state.Updated = now
@@ -222,6 +227,13 @@ func (g *gatewayTraffic) clusterMbps(cluster string) float64 {
 		total += per[cluster]
 	}
 	return total
+}
+
+// presentOn reports whether the cluster has a backend on the gateway (last poll).
+func (g *gatewayTraffic) presentOn(gateway, cluster string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.rates.Present[gateway][cluster]
 }
 
 func (g *gatewayTraffic) gatewayMbps(gateway string) float64 {
@@ -291,28 +303,21 @@ func (repman *ReplicationManager) pollGatewayTraffic(now time.Time) {
 	}
 	repman.Unlock()
 	// Fair share (Stéphane 2026-10-04): a cluster's bandwidth plan is the gateway
-	// capacity divided by the clusters attached to that gateway, summed over its gateways.
-	services := repman.Conf.GatewayServices()
+	// capacity divided by the clusters PRESENT on that gateway (at least one backend in
+	// its stats: the ones that can consume the uplink, not every configured cluster),
+	// summed over the gateways the cluster is present on.
 	attached := make([]int, len(domains))
-	for i := range domains {
-		svc := ""
-		if i < len(services) {
-			svc = services[i]
-		}
+	for i, d := range domains {
 		for _, cl := range clusters {
-			if svc == "" || cl.Conf.HasGateway(svc) {
+			if g.presentOn(d, cl.Name) {
 				attached[i]++
 			}
 		}
 	}
 	shareOf := func(cl *cluster.Cluster) float64 {
 		share := 0.0
-		for i := range domains {
-			svc := ""
-			if i < len(services) {
-				svc = services[i]
-			}
-			if (svc == "" || cl.Conf.HasGateway(svc)) && attached[i] > 0 {
+		for i, d := range domains {
+			if g.presentOn(d, cl.Name) && attached[i] > 0 {
 				share += repman.Conf.GatewayBandwidthMbit(i) / float64(attached[i])
 			}
 		}

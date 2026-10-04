@@ -82,3 +82,11 @@ func TestGatewayTrafficRates(t *testing.T) {
 		t.Fatalf("rates: c1=%v c2=%v gw=%v", g.clusterMbps("c1"), g.clusterMbps("c2"), g.gatewayMbps("gw"))
 	}
 }
+
+func TestGatewayTrafficPresentClusters(t *testing.T) {
+	g := newGatewayTraffic(t.TempDir())
+	g.ingest("gw", []haproxy.Stats{{Pxname: "a.c1.svc.x_80", Svname: "BACKEND", Bout: "1"}, {Pxname: "be_infra", Svname: "BACKEND", Bout: "1"}}, time.Now())
+	if !g.presentOn("gw", "c1") || g.presentOn("gw", "c2") || g.presentOn("other", "c1") {
+		t.Fatalf("presence: only clusters with a backend on the gateway count")
+	}
+}

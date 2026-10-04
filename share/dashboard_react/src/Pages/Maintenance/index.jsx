@@ -717,7 +717,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                   setGwuConfirm({ isOpen: true, delta, title: `Confirm the gateway network plan at ${next} GWU = ${next * gwuMB} MB exchanged per month through the gateways` })
                 }}
               />
-              <Text>{gwu ? `now ${gwu.mbps.toFixed(1)} Mb/s, fair share ${gwu.shareMbps.toFixed(0)} Mb/s (gateway capacity / clusters), ${gwu.mbps > gwu.shareMbps ? `borrowing ${(gwu.mbps - gwu.shareMbps).toFixed(1)}` : `giving away ${(gwu.shareMbps - gwu.mbps).toFixed(1)}`} Mb/s; month to date ${(gwu.bytes / 1000000).toFixed(1)} MB = ${gwu.units.toFixed(2)} GWU on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
+              <Text>{gwu ? `now ${gwu.mbps.toFixed(1)} Mb/s, fair share ${gwu.shareMbps.toFixed(0)} Mb/s (gateway capacity / clusters present on it), ${gwu.mbps > gwu.shareMbps ? `borrowing ${(gwu.mbps - gwu.shareMbps).toFixed(1)}` : `giving away ${(gwu.shareMbps - gwu.mbps).toFixed(1)}`} Mb/s; month to date ${(gwu.bytes / 1000000).toFixed(1)} MB = ${gwu.units.toFixed(2)} GWU on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
             </Flex>
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>

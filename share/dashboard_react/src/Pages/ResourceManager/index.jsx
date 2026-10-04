@@ -255,7 +255,7 @@ function ResourceManager() {
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
           <Text fontSize='xs' opacity={0.6} mt={2} mb={1}>
-            Fair share = capacity / clusters attached to the gateway (gwu.&lt;cluster&gt;.share_mbps) · Borrowed = max(0, mbps − share), what a cluster takes above its part · Given away = max(0, share − mbps), what it leaves to the others. Derived at query, nothing emitted.
+            Fair share = capacity / clusters present on the gateway (with at least one backend) (gwu.&lt;cluster&gt;.share_mbps) · Borrowed = max(0, mbps − share), what a cluster takes above its part · Given away = max(0, share − mbps), what it leaves to the others. Derived at query, nothing emitted.
           </Text>
           <ChartBarStack
             context={ctx}
