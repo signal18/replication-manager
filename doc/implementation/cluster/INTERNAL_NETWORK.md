@@ -76,6 +76,15 @@ command = -c 'printf "%s\n" "$APP_JOB_SCRIPT_<hash>" > /tmp/app_job; exec sh /tm
 A key is never rewritten: a new script version is a new key; the sidecar runs the version it
 was provisioned with and a reprovision picks up the newer one.
 
+Two live lessons (curepipe, 2026-10-04): (1) the key must go through the version-dispatching
+helpers `CreateConfigKeyValue`/`ListConfigKeys` — the V2 ones hit the om3 daemon API without
+h2 and fail "tls: no application protocol"; (2) a namespace provisioned before the sensor
+existed has no `SENSOR_API_KEY` in its `env` secret (the maps routine only adds keys when it
+creates the objects), so the sidecar exited "missing env" and neither proxies nor apps ever
+reported. `openSVCEnsureSensorPrerequisites` now publishes the secret key and the script key
+at every app and proxy provision (idempotent, V3 create-or-update). Verified: forgejo1 sidecar
+up, `net.curepipe.app.forgejo1.rx_mbps|tx_mbps` rated 0.008 / 0.06 Mb/s.
+
 ## Rollout
 
 * Databases: `dbjobs_new.sh` is refreshed by repman into the datadir on change
@@ -89,7 +98,10 @@ was provisioned with and a reprovision picks up the newer one.
 Graphs → Resources: two charts, "Internal network IN" and "Internal network OUT", each
 STACKED PER SERVICE (db1, db2, prx1, forgejo1…, the top of the stack being the cluster).
 `ChartTimeSeriesLine` gained `stacked` and per-target `expand`/`labelNode` (one series per
-graphite path matched by the wildcard, named after a path segment). Nothing on the Resource
+graphite path matched by the wildcard, named after a path segment). Gotcha: the component
+wraps targets in `alias(…,'')`, which strips the series name; an expanded target is sent bare
+so the path comes back (the legend was empty otherwise). Sparse sensor series are
+forward-filled in the stack (a null taken as 0 sawed the stack to zero between pushes). Nothing on the Resource
 Manager (no unit), no alert.
 
 ## Tests
