@@ -62,8 +62,7 @@ type NetReading struct {
 	RxBytes     uint64      `json:"rxBytes"` // cumulative octets received, as reported
 	TxBytes     uint64      `json:"txBytes"` // cumulative octets sent, as reported
 	RxMbps      float64     `json:"rxMbps"`  // Mb/s received over the last window
-	TxMbps      float64     `json:"txMbps"`  // Mb/s sent over the last window
-	Mbps        float64     `json:"mbps"`    // RxMbps + TxMbps: both directions, like GWU
+	TxMbps      float64     `json:"txMbps"`  // Mb/s sent over the last window: in and out are NEVER summed (Stéphane: "in + out doesn't make sense")
 	Source      string      `json:"source"`  // pod | status
 	ReceivedAt  time.Time   `json:"receivedAt"`
 	// Rated reports whether this reading carries a rate: the first push of a unit only
@@ -109,7 +108,6 @@ func netRate(prev *NetReading, cur *NetReading) {
 	window := cur.WindowEnd.Sub(prev.WindowEnd)
 	cur.RxMbps = netMbps(netCounterDelta(prev.RxBytes, cur.RxBytes), window)
 	cur.TxMbps = netMbps(netCounterDelta(prev.TxBytes, cur.TxBytes), window)
-	cur.Mbps = cur.RxMbps + cur.TxMbps
 	cur.WindowStart = prev.WindowEnd
 	cur.Rated = true
 }
@@ -190,25 +188,26 @@ func (cluster *Cluster) DropNetReading(kind NetUnitKind, name string) {
 	st.mu.Unlock()
 }
 
-// NetClusterMbps sums the fresh rated readings of every unit: the cluster's internal
-// traffic, both directions, in Mb/s. Stale units (no push within the sensor freshness
+// NetClusterMbps sums the fresh rated readings of every unit, in and out kept apart: the
+// cluster's internal traffic in Mb/s. Stale units (no push within the sensor freshness
 // window) are left out rather than frozen at their last value.
-func (cluster *Cluster) NetClusterMbps(now time.Time) float64 {
+func (cluster *Cluster) NetClusterMbps(now time.Time) (rx, tx float64) {
 	st := cluster.netStoreRef()
 	st.mu.RLock()
 	defer st.mu.RUnlock()
-	total := 0.0
 	for _, r := range st.readings {
 		if r.Rated && now.Sub(r.ReceivedAt) < resourceSensorFreshnessWindow {
-			total += r.Mbps
+			rx += r.RxMbps
+			tx += r.TxMbps
 		}
 	}
-	return total
+	return rx, tx
 }
 
 // emitNetMetrics writes the unit series and the cluster total. Path shape follows the APU
-// convention: net.<cluster>.<kind>.<unit>.* with the RAW cluster name (the GUI scope()
-// splices the same string) and a sanitised unit segment.
+// convention: net.<cluster>.<kind>.<unit>.rx_mbps|tx_mbps with the RAW cluster name (the GUI
+// scope() splices the same string) and a sanitised unit segment, plus the cluster totals
+// net.<cluster>.rx_mbps|tx_mbps. In and out are separate series, never summed.
 func (cluster *Cluster) emitNetMetrics(r *NetReading) {
 	if cluster.ClusterGraphite == nil {
 		return // no sink yet (startup, tests)
@@ -216,11 +215,12 @@ func (cluster *Cluster) emitNetMetrics(r *NetReading) {
 	ts := r.WindowEnd.Unix()
 	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
 	unit := fmt.Sprintf("net.%s.%s.%s", cluster.Name, r.Kind, computeTokenReplacer.Replace(r.Name))
+	rx, tx := cluster.NetClusterMbps(r.ReceivedAt)
 	cluster.AddMetrics([]graphite.Metric{
 		graphite.NewMetric(unit+".rx_mbps", f(r.RxMbps), ts),
 		graphite.NewMetric(unit+".tx_mbps", f(r.TxMbps), ts),
-		graphite.NewMetric(unit+".mbps", f(r.Mbps), ts),
-		graphite.NewMetric(fmt.Sprintf("net.%s.mbps", cluster.Name), f(cluster.NetClusterMbps(r.ReceivedAt)), ts),
+		graphite.NewMetric(fmt.Sprintf("net.%s.rx_mbps", cluster.Name), f(rx), ts),
+		graphite.NewMetric(fmt.Sprintf("net.%s.tx_mbps", cluster.Name), f(tx), ts),
 	})
 }
 

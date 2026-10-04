@@ -419,19 +419,31 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         {/* Internal network: what each unit moves on its own interface, both directions, in
             Mb/s -- the pod eth0 under an orchestrator, the host NICs on premise, read by the
             same jobs scripts that push the cgroup maxima (cluster_net.go). Monitoring only:
-            no unit, no plan, no price. Shown per kind (databases, proxies, apps) plus the
-            cluster total; the per-unit series net.<cluster>.<kind>.<unit>.mbps stay in Graphite
-            for drill-down. */}
+            no unit, no plan, no price. IN and OUT are two charts, never summed (Stéphane),
+            each stacked per service so the top of the stack is the cluster. */}
         <ChartTimeSeriesLine
-          title='Internal network — Mb/s per kind (databases, proxies, apps; in + out on the unit interface)'
-          yLabel='Mb/s'
+          title='Internal network IN — Mb/s received per service, stacked (top of the stack = cluster)'
+          yLabel='Mb/s in'
+          stacked
           windowSec={windowSec}
           refreshMs={refreshMs}
           targets={[
-            { target: scope('sumSeries(net.*.database.*.mbps)'), label: 'Databases' },
-            { target: scope('sumSeries(net.*.proxy.*.mbps)'), label: 'Proxies' },
-            { target: scope('sumSeries(net.*.app.*.mbps)'), label: 'Apps' },
-            { target: scope('net.*.mbps'), label: 'Cluster total' }
+            { target: scope('net.*.database.*.rx_mbps'), expand: true, labelNode: 3, label: 'db' },
+            { target: scope('net.*.proxy.*.rx_mbps'), expand: true, labelNode: 3, label: 'proxy' },
+            { target: scope('net.*.app.*.rx_mbps'), expand: true, labelNode: 3, label: 'app' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Internal network OUT — Mb/s sent per service, stacked (top of the stack = cluster)'
+          yLabel='Mb/s out'
+          stacked
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('net.*.database.*.tx_mbps'), expand: true, labelNode: 3, label: 'db' },
+            { target: scope('net.*.proxy.*.tx_mbps'), expand: true, labelNode: 3, label: 'proxy' },
+            { target: scope('net.*.app.*.tx_mbps'), expand: true, labelNode: 3, label: 'app' }
           ]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />

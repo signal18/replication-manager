@@ -8,7 +8,11 @@ import { useTheme } from '../../ThemeProvider'
 // spans [1, cap] so the full dynamic range is always visible), and multiple series drawn on
 // the same axes (e.g. network in/out). Polls every refreshMs over [now-windowSec, now].
 //
-//   targets: [{ target: '<graphite target>', label, color? }]
+//   targets: [{ target: '<graphite target>', label, color?, expand?: true, labelNode?: n }]
+//   expand: a wildcard target yields ONE series per matching graphite path instead of the
+//   first line only; the series is named after path segment `labelNode` (0-based), so
+//   net.<cluster>.<kind>.<unit>.mbps with labelNode 3 names it after the unit.
+//   stacked: draw the series as stacked areas (sum on top) instead of independent lines.
 function ChartTimeSeriesLine({
   title,
   targets = [],
@@ -21,6 +25,7 @@ function ChartTimeSeriesLine({
   height = 220,
   windowSec = 3600,
   refreshMs = 10000,
+  stacked = false,
   className,
 }) {
   const { theme } = useTheme()
@@ -63,23 +68,30 @@ function ChartTimeSeriesLine({
             const text = await res.text()
             if (!text.trim()) return null
             // raw format is one "name,start,end,step|v,v,..." line per series; a wildcard
-            // target that wasn't aggregated returns several -- take the first rather than blank.
-            const rawLine = text.trim().split('\n').find((l) => l.includes('|'))
-            if (!rawLine) return null
-            const parts = rawLine.split('|')
-            if (parts.length !== 2) return null
-            const ti = parts[0].split(',')
-            const start = parseInt(ti[1])
-            const step = parseInt(ti[3])
-            if (!Number.isFinite(start) || !Number.isFinite(step) || step <= 0) return null
-            const data = parts[1].split(',').map((v, j) => ({
-              x: new Date((start + j * step) * 1000),
-              y: v === 'None' ? null : parseFloat(v),
-            }))
-            return { label: t.label, color: t.color, data }
+            // target that wasn't aggregated returns several -- take the first rather than
+            // blank, or every one of them when the target asks to expand.
+            const parseLine = (rawLine) => {
+              const parts = rawLine.split('|')
+              if (parts.length !== 2) return null
+              const ti = parts[0].split(',')
+              const start = parseInt(ti[1])
+              const step = parseInt(ti[3])
+              if (!Number.isFinite(start) || !Number.isFinite(step) || step <= 0) return null
+              const data = parts[1].split(',').map((v, j) => ({
+                x: new Date((start + j * step) * 1000),
+                y: v === 'None' ? null : parseFloat(v),
+              }))
+              const segs = ti[0].split('.')
+              const label = t.expand && Number.isFinite(t.labelNode) ? (segs[t.labelNode] ?? ti[0]) : t.label
+              return { label: t.label && t.expand ? `${label} ${t.label}` : label, color: t.color, data }
+            }
+            const lines = text.trim().split('\n').filter((l) => l.includes('|'))
+            if (lines.length === 0) return null
+            if (!t.expand) return parseLine(lines[0])
+            return lines.map(parseLine).filter(Boolean)
           })
         )
-        if (alive) setSeries(results.filter(Boolean))
+        if (alive) setSeries(results.flat().filter(Boolean))
       } catch (e) {
         // graphite hiccup -> keep the last series rather than blank the chart
       }
@@ -118,7 +130,26 @@ function ChartTimeSeriesLine({
     const allX = valid.flatMap((s) => s.data.map((d) => d.x))
     const x = d3.scaleTime().domain(d3.extent(allX)).range([0, width])
 
-    const maxY = d3.max(valid, (s) => d3.max(s.data, (d) => d.y)) || 1
+    // Stacked mode: align every series on the union of timestamps (null -> 0) and stack
+    // them, the top of the stack being the sum. Y spans the stacked maximum.
+    let layers = null
+    if (stacked) {
+      const keys = valid.map((_, i) => String(i))
+      const byX = new Map()
+      valid.forEach((s, i) => {
+        s.data.forEach((d) => {
+          const k = d.x.getTime()
+          if (!byX.has(k)) byX.set(k, { x: d.x })
+          byX.get(k)[String(i)] = d.y == null ? 0 : d.y
+        })
+      })
+      const rows = Array.from(byX.values()).sort((a, b) => a.x - b.x)
+      rows.forEach((r) => keys.forEach((k) => { if (r[k] == null) r[k] = 0 }))
+      layers = d3.stack().keys(keys)(rows)
+    }
+    const maxY = stacked
+      ? (d3.max(layers[layers.length - 1], (d) => d[1]) || 1)
+      : (d3.max(valid, (s) => d3.max(s.data, (d) => d.y)) || 1)
     let y
     if (logScale) {
       // Fixed span [1, cap] (grows only if data exceeds the cap) -> the full dynamic range
@@ -164,14 +195,27 @@ function ChartTimeSeriesLine({
       .defined((d) => d.y != null && (!logScale || d.y > 0))
       .curve(d3.curveMonotoneX)
 
-    valid.forEach((s, i) => {
-      g.append('path')
-        .datum(s.data)
-        .attr('fill', 'none')
-        .attr('stroke', s.color || palette[i % palette.length])
-        .attr('stroke-width', 1.5)
-        .attr('d', line)
-    })
+    if (stacked) {
+      const area = d3.area()
+        .x((d) => x(d.data.x))
+        .y0((d) => y(d[0]))
+        .y1((d) => y(d[1]))
+        .curve(d3.curveMonotoneX)
+      layers.forEach((layer, i) => {
+        const color = valid[i].color || palette[i % palette.length]
+        g.append('path').datum(layer).attr('fill', color).attr('fill-opacity', 0.55)
+          .attr('stroke', color).attr('stroke-width', 1).attr('d', area)
+      })
+    } else {
+      valid.forEach((s, i) => {
+        g.append('path')
+          .datum(s.data)
+          .attr('fill', 'none')
+          .attr('stroke', s.color || palette[i % palette.length])
+          .attr('stroke-width', 1.5)
+          .attr('d', line)
+      })
+    }
 
     // Legend
     const legend = g.append('g').attr('transform', `translate(${width + 10}, 0)`)
@@ -188,7 +232,7 @@ function ChartTimeSeriesLine({
         .attr('x', -chartH / 2).attr('y', -44).attr('text-anchor', 'middle')
         .style('fill', textColor, 'important').attr('font-size', '10px').attr('opacity', 0.8).text(yLabel)
     }
-  }, [series, theme, w, logScale, cap, height, title, yLabel])
+  }, [series, theme, w, logScale, cap, height, title, yLabel, stacked])
 
   return (
     <Box className={className} ref={wrapRef} sx={{ width: '100%' }}>

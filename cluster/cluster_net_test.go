@@ -34,7 +34,7 @@ func TestIngestNetCountersRatesAgainstPreviousSample(t *testing.T) {
 	}
 	// +75 MB rx, +0 tx over 60 s -> 10 Mb/s rx
 	r := c.IngestNetCounters(NetUnitDatabase, "db1", t0.Add(60*time.Second), 75_001_000, 2_000)
-	if !r.Rated || math.Abs(r.RxMbps-10) > 1e-6 || r.TxMbps != 0 || math.Abs(r.Mbps-10) > 1e-6 {
+	if !r.Rated || math.Abs(r.RxMbps-10) > 1e-6 || r.TxMbps != 0 {
 		t.Fatalf("rated reading wrong: %+v", r)
 	}
 	if !r.WindowStart.Equal(t0) {
@@ -73,10 +73,10 @@ func TestNetStatusFallbackYieldsToFreshPodReading(t *testing.T) {
 func TestNetClusterMbpsSkipsStale(t *testing.T) {
 	c := &Cluster{Name: "c"}
 	st := c.netStoreRef()
-	st.readings[netKey(NetUnitDatabase, "db1")] = &NetReading{Rated: true, Mbps: 3, ReceivedAt: time.Now()}
-	st.readings[netKey(NetUnitApp, "old")] = &NetReading{Rated: true, Mbps: 100, ReceivedAt: time.Now().Add(-resourceSensorFreshnessWindow - time.Second)}
-	st.readings[netKey(NetUnitProxy, "seed")] = &NetReading{Rated: false, Mbps: 0, ReceivedAt: time.Now()}
-	if got := c.NetClusterMbps(time.Now()); math.Abs(got-3) > 1e-9 {
-		t.Fatalf("cluster total = %v, want 3 (stale and unrated left out)", got)
+	st.readings[netKey(NetUnitDatabase, "db1")] = &NetReading{Rated: true, RxMbps: 3, TxMbps: 1, ReceivedAt: time.Now()}
+	st.readings[netKey(NetUnitApp, "old")] = &NetReading{Rated: true, RxMbps: 100, TxMbps: 100, ReceivedAt: time.Now().Add(-resourceSensorFreshnessWindow - time.Second)}
+	st.readings[netKey(NetUnitProxy, "seed")] = &NetReading{Rated: false, ReceivedAt: time.Now()}
+	if rx, tx := c.NetClusterMbps(time.Now()); math.Abs(rx-3) > 1e-9 || math.Abs(tx-1) > 1e-9 {
+		t.Fatalf("cluster totals = %v/%v, want 3/1 (stale and unrated left out, in and out apart)", rx, tx)
 	}
 }

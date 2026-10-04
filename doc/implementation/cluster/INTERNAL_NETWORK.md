@@ -40,8 +40,9 @@ or a missed push can never produce a negative or inflated rate.
 
 ## Repman side: `cluster/cluster_net.go`
 
-* `NetReading{Kind, Name, WindowStart, WindowEnd, RxBytes, TxBytes, RxMbps, TxMbps, Mbps,
-  Source, ReceivedAt, Rated}`; kinds `database | proxy | app`; sources `pod | status`.
+* `NetReading{Kind, Name, WindowStart, WindowEnd, RxBytes, TxBytes, RxMbps, TxMbps, Source,
+  ReceivedAt, Rated}`; kinds `database | proxy | app`; sources `pod | status`. In and out are
+  never summed (Stéphane: "in + out doesn't make sense").
 * The store lives **on the cluster** (`netStore`, lazily built), not on the
   ServerMonitor/Proxy/App, so a config reload never wipes the counters (the DBUConsumed
   reload-wipe lesson).
@@ -50,9 +51,9 @@ or a missed push can never produce a negative or inflated rate.
 * `IngestNetStatusCounters` (status): ignored while a pod reading fresher than
   `resourceSensorFreshnessWindow` (3 min) exists for the unit. A source change reseeds
   (the two count different things).
-* `NetClusterMbps(now)`: sum of fresh rated readings; stale units are left out, never frozen.
+* `NetClusterMbps(now)`: (rx, tx) sums of fresh rated readings; stale units are left out, never frozen.
 * Series, same shape as APU (raw cluster name, sanitised unit):
-  `net.<cluster>.<kind>.<unit>.rx_mbps | tx_mbps | mbps` and the total `net.<cluster>.mbps`.
+  `net.<cluster>.<kind>.<unit>.rx_mbps | tx_mbps` and the totals `net.<cluster>.rx_mbps | tx_mbps`.
 * Handlers: `handlerMuxServerDBUConsumed` (database, name = `server.Name`) and
   `handlerMuxAppAPUConsumed` (proxy/app, name = route name). Fallback hooks: end of
   `HaproxyProxy.Refresh` and `ProxySQLProxy.Refresh` → `Proxy.ingestNetFromBackends`.
@@ -85,9 +86,11 @@ was provisioned with and a reprovision picks up the newer one.
 
 ## GUI
 
-Graphs → Resources: "Internal network — Mb/s per kind" (databases, proxies, apps, cluster
-total). Per-unit series stay in Graphite for drill-down. Nothing on the Resource Manager
-(no unit), no alert.
+Graphs → Resources: two charts, "Internal network IN" and "Internal network OUT", each
+STACKED PER SERVICE (db1, db2, prx1, forgejo1…, the top of the stack being the cluster).
+`ChartTimeSeriesLine` gained `stacked` and per-target `expand`/`labelNode` (one series per
+graphite path matched by the wildcard, named after a path segment). Nothing on the Resource
+Manager (no unit), no alert.
 
 ## Tests
 
