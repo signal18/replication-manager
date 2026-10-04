@@ -288,10 +288,10 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 	if err != nil {
 		return err
 	}
-	if err := cluster.openSVCPublishAppJobScript(svc); err != nil {
-		// The sidecar is monitoring, never a reason to refuse the app: log and go on, the
-		// sidecar stays in its wait loop until a later provision publishes the key.
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s sensor script not published: %s", app.Name, err)
+	if err := cluster.openSVCEnsureSensorPrerequisites(svc); err != nil {
+		// The sidecar is monitoring, never a reason to refuse the app: log and go on, a
+		// later provision publishes what is missing.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s sensor prerequisites not published: %s", app.Name, err)
 	}
 
 	res, err := cluster.OpenSVCGetAppTemplateV3(app)
@@ -476,12 +476,29 @@ func appJobScriptKey() string {
 	return "APP_JOB_SCRIPT_" + misc.GetMD5HashFromBytes(b)[:8]
 }
 
-// openSVCPublishAppJobScript makes sure the namespace `env` config object holds the current
-// app_job.sh under appJobScriptKey(). Idempotent: an existing key is left alone.
-func (cluster *Cluster) openSVCPublishAppJobScript(svc opensvc.Collector) error {
+// openSVCEnsureSensorPrerequisites makes sure a namespace can run the sensor sidecar: the
+// `env` SECRET holds SENSOR_API_KEY (the derived system credential the sidecar logs in with)
+// and the `env` CONFIG holds the current app_job.sh under appJobScriptKey(). Idempotent and
+// called at every app/proxy provision, because the maps routine only adds keys when it
+// creates the objects: a namespace provisioned before the sensor existed never got the key
+// (live curepipe 2026-10-04: the sidecar ran and exited "missing env"), so neither its
+// proxies nor its apps ever reported.
+func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) error {
 	if !cluster.Conf.MonitoringSystemResources {
 		return nil
 	}
+	if k := cluster.GetSystemAPIKey(); k != "" {
+		// V3: create-or-update; V2: an existing key is fine. The value is never logged.
+		if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
+			return fmt.Errorf("publish sensor credential key: %w", err)
+		}
+	}
+	return cluster.openSVCPublishAppJobScript(svc)
+}
+
+// openSVCPublishAppJobScript makes sure the namespace `env` config object holds the current
+// app_job.sh under appJobScriptKey(). Idempotent: an existing key is left alone.
+func (cluster *Cluster) openSVCPublishAppJobScript(svc opensvc.Collector) error {
 	key := appJobScriptKey()
 	// Version-dispatching helpers (V3 daemon API over h2, V2 relay otherwise): the V2 ones
 	// fail "tls: no application protocol" against an om3 daemon (live, forgejo1 2026-10-04).
