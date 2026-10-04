@@ -218,7 +218,9 @@ script does not run), `xtrabackup` and `xbstream` are **available** on the PATH 
 **executed**, and xtrabackup is the **right version** for the server. Whether a backup, a transfer or a restore that use
 them succeed is not part of it.
 
-The init container does the checking, in the helper image, before the bundle replaces the previous one: `socat` first
+The init container does the checking, in the helper image, before the bundle replaces the previous one (a library that
+`ldd` reports as not found is refused at once, naming the tool and the library, instead of showing up later as a tool
+that does not run): `socat` first
 (`socat -V`), then `xtrabackup --version` and `xbstream --version`, each run through the bundled loader, so a tool that
 is present but cannot start (a missing library, another architecture) is refused. The series (major.minor) of the MySQL
 server xtrabackup is "based on" is compared with the series of the database image tag (`XB_SERIES`, passed by repman for

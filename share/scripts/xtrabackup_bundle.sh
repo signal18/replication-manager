@@ -86,7 +86,12 @@ LOADER=""
 for t in $TOOLS; do
     p=$(command -v "$t") || fail "$t is not in the image $SRC"
     take "$p" "$STAGE/libexec/$t"
-    for l in $(ldd "$p" 2>/dev/null | awk '/=> \//{print $3} /^[ \t]*\//{print $1}'); do
+    deps=$(ldd "$p" 2>&1)
+    # a library that ldd cannot find would only show later, when the tool fails to run: say it now, and which one
+    case "$deps" in
+    *"not found"*) fail "$t needs a library that is not in the image $SRC: $(printf '%s\n' "$deps" | grep 'not found' | head -1 | tr -d '\t')" ;;
+    esac
+    for l in $(printf '%s\n' "$deps" | awk '/=> \//{print $3} /^[ \t]*\//{print $1}'); do
         [ -e "$STAGE/lib/$(basename "$l")" ] && continue
         take "$l" "$STAGE/lib/"
         case "$(basename "$l")" in ld-linux*|ld-musl*) LOADER=$(basename "$l") ;; esac

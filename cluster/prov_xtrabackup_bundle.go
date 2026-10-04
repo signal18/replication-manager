@@ -88,6 +88,8 @@ func (cluster *Cluster) xtrabackupPublishedTags() map[string]bool {
 	if time.Now().Before(cache.until) {
 		return cache.tags
 	}
+	// the catalog is read under the lock of this cluster's cache: GetDockerRepos only reads a local file (the
+	// back-office one or the one embedded in the binary), it never uses the network
 	var tags map[string]bool
 	for _, repo := range xtrabackupCatalog(cluster.Conf) {
 		if repo.Name != xtrabackupCatalogName {
