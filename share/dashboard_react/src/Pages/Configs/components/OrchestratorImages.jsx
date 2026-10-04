@@ -174,6 +174,32 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      // The tools of the physical backup for the official MySQL and Percona Server images, which do not ship them:
+      // 'off' is sent as an empty value (the setting is cleared), 'auto' derives the image from the database image.
+      key: 'Xtrabackup (official MySQL/Percona images)',
+      value: (
+        <Dropdown
+          className={parentStyles.dropdown}
+          options={[
+            { name: 'Off (the database image ships the tools)', value: 'off' },
+            { name: 'Auto (from the database image)', value: 'auto' },
+            ...(serviceRepos.find((repo) => repo.name === 'xtrabackup')?.options || [])
+          ]}
+          selectedValue={selectedCluster?.config?.provDbDockerXtrabackupImg || 'off'}
+          confirmTitle={`Confirm change xtrabackup OCI image to:`}
+          onChange={(value) => {
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'prov-db-docker-xtrabackup-img',
+                value: value === 'off' ? '' : `${value}`
+              })
+            )
+          }}
+        />
+      )
+    },
+    {
       key: 'Sphinx',
       value: (
         <Dropdown

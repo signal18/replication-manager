@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1226,6 +1227,24 @@ func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {
 		}
 
 		cluster.OpenSVCStats.Swap(stats)
+	}
+	return nil
+}
+
+// xtrabackupImageRe is the character set of a docker image reference (registry, path,
+// tag, digest). The value is written into an OpenSVC configuration and a Kubernetes
+// image field, so anything else (spaces, quotes, shell or INI metacharacters) is refused.
+var xtrabackupImageRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@+-]*$`)
+
+// ValidateXtrabackupImage validates prov-db-docker-xtrabackup-img: empty (injection off),
+// "auto" (derived from the database image when the bundle is rendered) or an image
+// reference.
+func ValidateXtrabackupImage(value string) error {
+	if value == "" || value == xtrabackupImageAuto {
+		return nil
+	}
+	if len(value) > 255 || !xtrabackupImageRe.MatchString(value) {
+		return fmt.Errorf("prov-db-docker-xtrabackup-img must be empty, auto, or a docker image reference such as percona/percona-xtrabackup:8.4, got %q", value)
 	}
 	return nil
 }

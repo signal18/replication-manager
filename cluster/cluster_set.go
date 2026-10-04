@@ -1978,6 +1978,33 @@ func (cluster *Cluster) SetProvDBImage(value string) error {
 	return nil
 }
 
+// SetProvDbDockerXtrabackupImg sets prov-db-docker-xtrabackup-img: empty (the injection off), "auto" or the reference
+// of an official xtrabackup image (see doc/implementation/cluster/XTRABACKUP_BUNDLE_INJECTION.md). The value is checked
+// here (ValidateXtrabackupImage) so that a bad one is refused to the operator instead of being accepted and only
+// logged by the render. Only the OpenSVC and Kubernetes provisioners render the injection; elsewhere the value would
+// have no effect and would only raise a reprovision cookie for nothing. Reprovisioning remains an explicit operator
+// action: the cookie only surfaces that the rendered service is now stale.
+func (cluster *Cluster) SetProvDbDockerXtrabackupImg(value string) error {
+	value = strings.TrimSpace(value)
+	// An empty value turns the injection off: always allowed, whatever the orchestrator, so that a setting can be
+	// cleared (the dashboard's Off) on a cluster where it can no longer be set.
+	if value != "" {
+		if orchestrator := cluster.GetOrchestrator(); orchestrator != config.ConstOrchestratorOpenSVC && orchestrator != config.ConstOrchestratorKubernetes {
+			return fmt.Errorf("prov-db-docker-xtrabackup-img is only supported with the %s and %s orchestrators, this cluster uses %q",
+				config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes, orchestrator)
+		}
+		if err := ValidateXtrabackupImage(value); err != nil {
+			return err
+		}
+	}
+	if cluster.Conf.ProvDbDockerXtrabackupImg == value {
+		return nil
+	}
+	cluster.Conf.ProvDbDockerXtrabackupImg = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
 // SetProvDBRunAsUID sets the numeric UID[:GID] a provisioned database container
 // runs as (OpenSVC --user, Kubernetes securityContext). Empty restores the
 // legacy behavior; 0 is root, taken literally (for the process; the dbjobs script
