@@ -755,10 +755,12 @@ func (server *ServerMonitor) SlowLogWatcher() {
 
 }
 
-// decryptAES256 runs openssl AES-256-CBC decryption and returns the plaintext bytes.
+// DecryptAES256 runs openssl AES-256-CBC decryption and returns the plaintext bytes.
+// dbjobs_new.sh removes Base64 line breaks, while -A requires a single input line.
+// Normalizing whitespace preserves compatibility with wrapped Base64 callbacks.
 func (server *ServerMonitor) DecryptAES256(encrypted, key, iv string) ([]byte, error) {
-	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", key, "-iv", iv)
-	cmd.Stdin = strings.NewReader(encrypted + "\n")
+	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-A", "-nosalt", "-K", key, "-iv", iv)
+	cmd.Stdin = strings.NewReader(strings.Join(strings.Fields(encrypted), "") + "\n")
 
 	var out bytes.Buffer
 	var stderr bytes.Buffer

@@ -3792,6 +3792,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvSphinxImage(value)
 	case "prov-db-image":
 		mycluster.SetProvDBImage(value)
+	case "prov-db-docker-xtrabackup-img":
+		if err := mycluster.SetProvDbDockerXtrabackupImg(value); err != nil {
+			return err
+		}
 	case "prov-db-run-as-uid":
 		if err := mycluster.SetProvDBRunAsUID(value); err != nil {
 			return err
