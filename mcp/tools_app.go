@@ -138,7 +138,9 @@ func (s *MCPServer) registerAppTools() {
 				case "provision":
 					// Provisioned and answering: nothing to do (a double call, a retry by a
 					// client). A fresh app, or one whose service is gone, provisions.
-					if a.HasProvisionCookie() && a.IsRunning() {
+					// IsRunning is "not Failed": a freshly added app (Suspect, never checked) passes it,
+					// so require the checked Running state before calling a double provision.
+					if a.HasProvisionCookie() && a.State == cluster.StateAppRunning && !a.HasPendingCheckFailures() {
 						return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "app": appView(a), "status": "already provisioned and running, nothing to do"})), nil
 					}
 					go func() {

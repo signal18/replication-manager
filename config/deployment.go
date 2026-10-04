@@ -1345,6 +1345,11 @@ type Volume struct {
 	PoolName  string `mapstructure:"poolname" toml:"poolname" json:"poolname" groups:"apps"`
 	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
 	Size      string `mapstructure:"size" toml:"size" json:"size" groups:"apps"`
+	// Owner of the volume directories (OpenSVC volume user/group/dirperm): images that run as a
+	// non-root user (rustfs 10001, frappe 1000) cannot write a root-owned directory (#1870).
+	User    string `mapstructure:"user" toml:"user,omitempty" json:"user,omitempty" groups:"apps"`
+	Group   string `mapstructure:"group" toml:"group,omitempty" json:"group,omitempty" groups:"apps"`
+	DirPerm string `mapstructure:"dirperm" toml:"dirperm,omitempty" json:"dirperm,omitempty" groups:"apps"`
 }
 
 // NormalizeVolumeSize normalizes a per-volume size override using the same

@@ -31,6 +31,7 @@ const (
 	ErrAppUnsupportedProto = "APPERR004"
 	ErrAppGatewayConflict  = "APPERR005"
 	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
+	StateAppRunning        = stateAppRunning // exported for the MCP tools
 	appErrFailureThreshold = 3
 )
 
@@ -295,6 +296,14 @@ func (app *App) ResetAppErrConsecutiveCntExcept(keep ...string) {
 			delete(app.AppErrConsecutiveMap, k)
 		}
 	}
+}
+
+// HasPendingCheckFailures reports debounced check failures not yet turned into a state: a
+// freshly declared app reads Running while its first probes fail below the threshold.
+func (app *App) HasPendingCheckFailures() bool {
+	app.Lock()
+	defer app.Unlock()
+	return len(app.AppErrConsecutiveMap) > 0
 }
 
 func (app *App) ResetAppErrConsecutiveCnt(routeKey string) {

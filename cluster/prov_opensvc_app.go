@@ -596,6 +596,16 @@ func openSVCAppVolumeSection(vol *config.Volume, pathmap map[string][]string, sh
 
 	sort.Strings(dirs) // Optional: consistent order
 	svcvol["directories"] = strings.Join(dirs, " ")
+	// Owner of the directories, for images running as a non-root user (#1870 live: rustfs).
+	if v := strings.TrimSpace(vol.User); v != "" {
+		svcvol["user"] = v
+	}
+	if v := strings.TrimSpace(vol.Group); v != "" {
+		svcvol["group"] = v
+	}
+	if v := strings.TrimSpace(vol.DirPerm); v != "" {
+		svcvol["dirperm"] = v
+	}
 	return svcvol
 }
 
