@@ -49,6 +49,11 @@ type gatewayTrafficState struct {
 	Errors  map[string]string `json:"errors"`  // gateway -> last poll error, "" when fine
 	// PollAt: when each gateway was last read, for the rates between two polls.
 	PollAt map[string]time.Time `json:"pollAt"`
+	// OnTopGbit: traffic a cluster moved while holding more bandwidth than its free GWU
+	// allowance, Gbit, month to date (what the back office is told, cumulated).
+	OnTopGbit map[string]float64 `json:"onTopGbit"`
+	// LastRateAt: the time of the previous cluster rate reading, for the on-top integration.
+	LastRateAt time.Time `json:"lastRateAt"`
 }
 
 // gatewayRates is one poll's bandwidth: Mb/s per gateway and per cluster on it, and the
@@ -69,7 +74,7 @@ type gatewayTraffic struct {
 
 func newGatewayTraffic(dir string) *gatewayTraffic {
 	g := &gatewayTraffic{path: filepath.Join(dir, gwuStateFile)}
-	g.state = gatewayTrafficState{Last: map[string]int64{}, Bytes: map[string]int64{}, Errors: map[string]string{}, PollAt: map[string]time.Time{}}
+	g.state = gatewayTrafficState{Last: map[string]int64{}, Bytes: map[string]int64{}, Errors: map[string]string{}, PollAt: map[string]time.Time{}, OnTopGbit: map[string]float64{}}
 	g.rates = gatewayRates{Gateway: map[string]float64{}, Clusters: map[string]map[string]float64{}, Present: map[string]map[string]bool{}}
 	if b, err := os.ReadFile(g.path); err == nil {
 		var st gatewayTrafficState
@@ -85,6 +90,9 @@ func newGatewayTraffic(dir string) *gatewayTraffic {
 			}
 			if st.PollAt == nil {
 				st.PollAt = map[string]time.Time{}
+			}
+			if st.OnTopGbit == nil {
+				st.OnTopGbit = map[string]float64{}
 			}
 			g.state = st
 		}
@@ -171,6 +179,7 @@ func (g *gatewayTraffic) ingest(gateway string, rows []haproxy.Stats, now time.T
 	if g.state.Month != month {
 		g.state.Month = month
 		g.state.Bytes = map[string]int64{}
+		g.state.OnTopGbit = map[string]float64{}
 	}
 	prevPoll, polledBefore := g.state.PollAt[gateway]
 	dt := 0.0
@@ -234,6 +243,26 @@ func (g *gatewayTraffic) presentOn(gateway, cluster string) bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.rates.Present[gateway][cluster]
+}
+
+// accumulateOnTop adds, for one cluster, the traffic moved above its free allowance since the
+// previous rate reading: max(0, mbps − freeMbps) × dt, in Gbit. Returns the month total.
+func (g *gatewayTraffic) accumulateOnTop(cluster string, mbps, freeMbps float64, now time.Time) float64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.state.LastRateAt.IsZero() && mbps > freeMbps {
+		dt := now.Sub(g.state.LastRateAt).Seconds()
+		if dt > 0 && dt < 3600 {
+			g.state.OnTopGbit[cluster] += (mbps - freeMbps) * dt / 1000
+		}
+	}
+	return g.state.OnTopGbit[cluster]
+}
+
+func (g *gatewayTraffic) markRateTime(now time.Time) {
+	g.mu.Lock()
+	g.state.LastRateAt = now
+	g.mu.Unlock()
 }
 
 func (g *gatewayTraffic) gatewayMbps(gateway string) float64 {
@@ -324,7 +353,13 @@ func (repman *ReplicationManager) pollGatewayTraffic(now time.Time) {
 		return share
 	}
 	for _, cl := range clusters {
-		cl.SetGatewayTraffic(g.bytesOf(cl.Name), g.clusterMbps(cl.Name), planMbpsOf(cl), polled, now)
+		mbpsNow := g.clusterMbps(cl.Name)
+		onTopGbit := g.accumulateOnTop(cl.Name, mbpsNow, cl.GWUFreeMbit(), now)
+		cl.SetGatewayTraffic(g.bytesOf(cl.Name), mbpsNow, planMbpsOf(cl), onTopGbit, polled, now)
+	}
+	g.markRateTime(now)
+	if err := g.save(); err != nil {
+		log.Warnf("GWU: gateway traffic state not saved: %v", err)
 	}
 	// The gateway-level series (bandwidth against the uplink capacity) ride on the first
 	// cluster's metrics feed: there is no manager-level graphite sender.

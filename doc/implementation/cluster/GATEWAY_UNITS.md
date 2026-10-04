@@ -78,28 +78,24 @@ order aligned (`config/gateway.go`: `GatewayServices`, `GatewayDomains`,
 
 Tests: `config/gateway_test.go`, `server/server_gwu_test.go`.
 
-## The BO volume axis (Stéphane 2026-10-04, "we want to report usage to BO")
+## What the back office receives (Stéphane 2026-10-04, corrected the same day)
 
-The bandwidth axis above is for saturation and is never invoiced. The back office gets a
-**volume**: rules agreed before coding:
+Everything is in bits, like every cloud: no gigabytes anywhere. GWU is bandwidth only.
 
-1. 1 GWU of traffic = `cloud18-marketplace-gwu-unit-mb` MB (million octets), in + out through
-   every gateway, per cluster, month to date (the collector's `gwu.json` octets); calendar
-   month in UTC like the Units statement, restarted at rollover.
-2. `cloud18-marketplace-gwu-free-units` GWU free per cluster per month (default 10 = 1 GB),
-   provider default, cluster file override.
-3. On top = max(0, volume − free), fractional, the **borrowed** line; nothing below the
-   allowance is credited (`FreePlan`: UnderCommit = 0, PlanCost = 0, UnderCredit = 0).
-4. The free units cost nothing even with a price; the on-top units are priced at the plain
-   unit price, no over-commit surcharge.
-5. The GWU row is **always** in the statement (`gatewayUsage` always ok), `Priced` tells the
-   BO whether an amount is attached.
-6. `UnitUsage.Cumulative`: the month-to-date volume is recorded as is (whole-month integrals)
-   and projected linearly (`billable × month / elapsed`); cluster and statement totals are
-   the sums of the rows.
-7. The BO channel is the existing one: the closed month's Units statement pushed to GitLab at
-   rollover, plus `GET /api/me/units` and the Consumed tab (the allowance line reads "free").
-8. Nothing is ever blocked by the allowance.
+1. Every cluster may hold `cloud18-marketplace-gwu-free-units` GWU for free (default 10 =
+   1 Gb/s at the 100 Mb/s unit), provider default, cluster file override.
+2. Bandwidth held **above** the allowance is "on top". On a 1 Gb/s gateway nothing can be on
+   top; it happens where the gateways give more (several gateways, BSO or Rdem links).
+3. The statement row (`gatewayUsage`, always present, `FreePlan`): plan = the free GWU,
+   billable = the cluster's GWU rate, integrated over the month like DBU; the on-top part is
+   the **borrowed** line at the plain price (no surcharge), nothing is credited below the
+   allowance, the free units cost nothing, `Priced` tells the BO whether an amount is attached.
+4. The collector also **accumulates the traffic moved above the allowance** in Gbit, month to
+   date (`accumulateOnTop`: max(0, mbps − free Mb/s) × dt, persisted in `gwu.json`), exposed as
+   `GWUReading.OnTopGbit` and the series `gwu.<cluster>.on_top_gbit`, next to `gbit` (all
+   traffic) and `on_top` (GWU above the allowance now).
+5. Channel: the closed month's Units statement pushed to GitLab at rollover, `GET
+   /api/me/units`, the Consumed tab (the allowance line reads "free"). Nothing is blocked.
 
-Reading: `GWUReading.VolumeUnitMB/VolumeUnits/FreeUnits/OnTopUnits`, series
-`gwu.<cluster>.volume_units`, `on_top_units`. Test: `cluster/resource_manager_gwu_test.go`.
+The earlier volume axis (100 MB units, 1 GB free) was wrong and is removed: with GWU =
+100 Mb/s, "10 GWU free" is 1 Gb/s of bandwidth, not a transfer volume.

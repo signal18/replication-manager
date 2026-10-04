@@ -160,31 +160,19 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
-      key: 'GWU Traffic Size (MB per unit)',
-      help: h(hGwuVolume, 'GWU Traffic Size'),
-      value: (
-        <TextForm
-          value={String(config?.cloud18MarketplaceGwuUnitMb ?? '')}
-          type='number'
-          confirmTitle='Confirm the GWU traffic size in MB (million octets) per unit to '
-          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-gwu-unit-mb', value }))}
-        />
-      )
-    },
-    {
-      key: 'Free GWU per cluster (per month)',
+      key: 'Free GWU per cluster (bandwidth)',
       help: h(hGwuFree, 'Free GWU'),
       value: (
         <TextForm
           value={String(config?.cloud18MarketplaceGwuFreeUnits ?? '')}
           type='number'
-          confirmTitle='Confirm the free GWU of traffic per cluster and per month to '
+          confirmTitle='Confirm the free GWU of gateway bandwidth per cluster (10 = 1 Gb/s) to '
           onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-gwu-free-units', value }))}
         />
       )
     },
     {
-      key: 'GWU Bandwidth Size (Mb/s per unit, Resource Manager axis)',
+      key: 'GWU Size (Mb/s per unit)',
       help: h(hGwuUnit, 'GWU Size'),
       value: (
         <TextForm

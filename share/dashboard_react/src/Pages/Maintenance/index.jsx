@@ -717,7 +717,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                   setGwuConfirm({ isOpen: true, delta, title: `Confirm the gateway network plan at ${next} GWU = ${next * gwuMB} MB exchanged per month through the gateways` })
                 }}
               />
-              <Text>{gwu ? `plan ${gwu.plan.toFixed(2)} GWU = ${gwu.planMbps.toFixed(0)} Mb/s${gwu.pinned ? ' (pinned)' : ' (gateway capacity / clusters present)'}, consumed ${gwu.units.toFixed(3)} GWU = ${gwu.mbps.toFixed(1)} Mb/s, ${gwu.units > gwu.plan ? `borrowing ${(gwu.units - gwu.plan).toFixed(2)}` : `giving away ${(gwu.plan - gwu.units).toFixed(2)}`} GWU; traffic this month ${(gwu.bytes / 1000000).toFixed(0)} MB = ${gwu.volumeUnits.toFixed(2)} GWU of ${gwu.freeUnits} free, ${gwu.onTopUnits.toFixed(2)} on top (reported to the back office) on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
+              <Text>{gwu ? `plan ${gwu.plan.toFixed(2)} GWU = ${gwu.planMbps.toFixed(0)} Mb/s${gwu.pinned ? ' (pinned)' : ' (gateway capacity / clusters present)'}, consumed ${gwu.units.toFixed(3)} GWU = ${gwu.mbps.toFixed(1)} Mb/s, ${gwu.units > gwu.plan ? `borrowing ${(gwu.units - gwu.plan).toFixed(2)}` : `giving away ${(gwu.plan - gwu.units).toFixed(2)}`} GWU; ${gwu.freeUnits} GWU free, ${gwu.onTop.toFixed(3)} GWU held above it now, ${gwu.onTopGbit.toFixed(3)} Gbit moved above it this month (reported to the back office); ${gwu.gbit.toFixed(2)} Gbit moved in total on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
             </Flex>)}
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>

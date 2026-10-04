@@ -650,12 +650,6 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			}
 		}
 		repman.Conf.Cloud18GatewayBandwidthMbit = strings.Join(config.SplitGatewayList(value), ",")
-	case "cloud18-marketplace-gwu-unit-mb":
-		n, err := strconv.Atoi(strings.TrimSpace(value))
-		if err != nil || n < 1 {
-			return fmt.Errorf("cloud18-marketplace-gwu-unit-mb must be a whole number of MB per GWU, got %q", value)
-		}
-		repman.Conf.Cloud18MarketplaceGWUUnitMB = n
 	case "cloud18-marketplace-gwu-free-units":
 		n, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || n < 0 {

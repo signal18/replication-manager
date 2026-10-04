@@ -90,3 +90,22 @@ func TestGatewayTrafficPresentClusters(t *testing.T) {
 		t.Fatalf("presence: only clusters with a backend on the gateway count")
 	}
 }
+
+func TestGatewayTrafficOnTopAccumulation(t *testing.T) {
+	g := newGatewayTraffic(t.TempDir())
+	t0 := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	// first reading sets the clock, nothing accumulated yet
+	if v := g.accumulateOnTop("c1", 1500, 1000, t0); v != 0 {
+		t.Fatalf("first reading must not accumulate: %v", v)
+	}
+	g.markRateTime(t0)
+	// 10 s at 1500 Mb/s with 1000 free: 500 Mb/s × 10 s = 5000 Mb = 5 Gbit on top
+	if v := g.accumulateOnTop("c1", 1500, 1000, t0.Add(10*time.Second)); v < 4.99 || v > 5.01 {
+		t.Fatalf("on top: %v Gbit, want 5", v)
+	}
+	g.markRateTime(t0.Add(10 * time.Second))
+	// below the allowance: nothing added
+	if v := g.accumulateOnTop("c1", 200, 1000, t0.Add(20*time.Second)); v < 4.99 || v > 5.01 {
+		t.Fatalf("below the allowance must add nothing: %v", v)
+	}
+}
