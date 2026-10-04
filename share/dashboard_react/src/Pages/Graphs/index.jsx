@@ -398,6 +398,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Backup archive — BAU (remote restic archive on S3/SFTP; no plan, billed on usage)"
        />
+        {selectedCluster?.gatewayUnits && (
         <ChartGroupedDBU
          context={context}
          axes={[
@@ -412,6 +413,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Gateway network — GWU (Mb/s in + out through the Cloud18 gateways; 1 GWU = unit Mb/s; plan = gateway capacity / clusters present)"
        />
+        )}
       </GraphSection>
 
       <GraphSection heading='InnoDB'>

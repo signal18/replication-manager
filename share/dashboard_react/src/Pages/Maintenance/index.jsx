@@ -702,7 +702,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               }}
             />
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
-            <Flex gap={3} alignItems='center' wrap='wrap'>
+            {gwu && (<Flex gap={3} alignItems='center' wrap='wrap'>
               <Text fontWeight='bold'>Gateway network plan (GWU, {gwuUnit} Mb/s each)</Text>
               <TextForm
                 value={gwuPlan > 0 ? String(gwuPlan) : ''}
@@ -718,7 +718,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                 }}
               />
               <Text>{gwu ? `plan ${gwu.plan.toFixed(2)} GWU = ${gwu.planMbps.toFixed(0)} Mb/s${gwu.pinned ? ' (pinned)' : ' (gateway capacity / clusters present)'}, consumed ${gwu.units.toFixed(3)} GWU = ${gwu.mbps.toFixed(1)} Mb/s, ${gwu.units > gwu.plan ? `borrowing ${(gwu.units - gwu.plan).toFixed(2)}` : `giving away ${(gwu.plan - gwu.units).toFixed(2)}`} GWU; ${(gwu.bytes / 1000000).toFixed(0)} MB this month on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
-            </Flex>
+            </Flex>)}
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>
         }

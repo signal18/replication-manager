@@ -182,6 +182,7 @@ function ResourceManager() {
         const sumPlan = data.clusters.reduce((s, c) => s + (c.planDbu || 0), 0)
         const sumRealApu = data.clusters.reduce((s, c) => s + (c.apu || 0), 0)
         const sumPlanApu = data.clusters.reduce((s, c) => s + (c.planApu || 0), 0)
+        const hasGateway = (data.gatewayDomains || []).length > 0
         const sumRealGwu = data.clusters.reduce((s, c) => s + (c.gwu || 0), 0)
         const sumPlanGwu = data.clusters.reduce((s, c) => s + (c.planGwu || 0), 0)
         const StackBar = ({ title, k, sum, usable, unit }) => {
@@ -217,9 +218,11 @@ function ResourceManager() {
             <Text fontSize='md' fontWeight='bold' mb={2} mt={4}>Per cluster — APU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = usable {fmt(data.usableApu)} APU · beyond = over-reserved)</Text></Text>
             <StackBar title='Real (consumed)' k='apu' sum={sumRealApu} usable={data.usableApu} unit='APU' />
             <StackBar title='Plan (reserved)' k='planApu' sum={sumPlanApu} usable={data.usableApu} unit='APU' />
+            {hasGateway && (<>
             <Text fontSize='md' fontWeight='bold' mb={2} mt={4}>Per cluster — GWU <Text as='span' fontSize='xs' opacity={0.6}>(┊ = gateway capacity {fmt(data.capacityGwu)} GWU = {fmt(data.gatewayCapacityMbit)} Mb/s shared by every cluster on the gateway · plan = capacity / clusters present)</Text></Text>
             <StackBar title='Real (consumed)' k='gwu' sum={sumRealGwu} usable={data.usableGwu} unit='GWU' />
             <StackBar title='Plan (reserved)' k='planGwu' sum={sumPlanGwu} usable={data.usableGwu} unit='GWU' />
+            </>)}
             <Flex gap={4} wrap='wrap' mt={2}>
               {data.clusters.map((c, i) => (
                 <Flex key={c.cluster} align='center' gap={1}>
@@ -337,6 +340,7 @@ function ResourceManager() {
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(resourcemanager.${carbonHost(c.cluster)}.plan_bku,sumSeries(bku.${c.cluster}.local,bku.${c.cluster}.app_disk)),0)`)}
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
+          {(data.gatewayDomains || []).length > 0 && (<>
           <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Gateway (GWU) — bandwidth through the Cloud18 gateways, tracked not invoiced</Text>
           <Text fontSize='xs' opacity={0.6} mb={1}>
             Consumed = gwu.&lt;cluster&gt;.units (Mb/s in + out through the gateways / {fmt(100)} Mb/s per GWU by default, cloud18-marketplace-gwu-unit-mbit) · Plan = gwu.&lt;cluster&gt;.plan (gateway capacity / clusters present on it, or prov-gateway-units when pinned) · ┊ = capacity {fmt(data.capacityGwu)} GWU shared by every cluster: when the consumed stack reaches it the uplink saturates
@@ -371,6 +375,7 @@ function ResourceManager() {
             metricPaths={data.clusters.map((c) => `removeBelowValue(diffSeries(gwu.${c.cluster}.plan,gwu.${c.cluster}.units),0)`)}
             metricLabels={data.clusters.map((c) => c.cluster)}
           />
+          </>)}
           <Text fontSize='md' fontWeight='bold' mt={6} mb={1}>Archive (BAU) — remote archive, consumer + producer, no plan</Text>
           <Text fontSize='xs' opacity={0.6} mb={1}>
             Consumer = bau.&lt;cluster&gt;.units (what the cluster holds on S3/SFTP) · Producer = bau.&lt;cluster&gt;.producer (declared volumes of its S3-provider apps) · Billed = bau.&lt;cluster&gt;.billed, on usage
