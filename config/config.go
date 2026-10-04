@@ -1053,6 +1053,10 @@ type Config struct {
 	// Cloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with
 	// cloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).
 	Cloud18GatewayBandwidthMbit             string                 `scope:"server" mapstructure:"cloud18-gateway-bandwidth-mbit" toml:"cloud18-gateway-bandwidth-mbit" json:"cloud18GatewayBandwidthMbit"`
+	// GWU volume for the BO (#1872): 1 unit = cloud18-marketplace-gwu-unit-mb MB of traffic in + out, the first
+	// cloud18-marketplace-gwu-free-units are free each month, the rest is reported on top.
+	Cloud18MarketplaceGWUUnitMB             int                    `scope:"server" mapstructure:"cloud18-marketplace-gwu-unit-mb" toml:"cloud18-marketplace-gwu-unit-mb" json:"cloud18MarketplaceGwuUnitMb"`
+	Cloud18MarketplaceGWUFreeUnits          int                    `mapstructure:"cloud18-marketplace-gwu-free-units" toml:"cloud18-marketplace-gwu-free-units" json:"cloud18MarketplaceGwuFreeUnits"`
 	Cloud18MarketplaceGWUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-price" toml:"cloud18-marketplace-gwu-price" json:"cloud18MarketplaceGwuPrice"`
 	Cloud18MarketplaceGWUUnitMbit           float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-unit-mbit" toml:"cloud18-marketplace-gwu-unit-mbit" json:"cloud18MarketplaceGwuUnitMbit"`
 	Cloud18MarketplaceBAUClientStorage      bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`

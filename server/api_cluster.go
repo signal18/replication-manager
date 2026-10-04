@@ -3485,6 +3485,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	}
 
 	switch name {
+	case "cloud18-marketplace-gwu-free-units":
+		// per-cluster override of the free GWU traffic allowance (#1872)
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("cloud18-marketplace-gwu-free-units must be a whole number of GWU, got %q", value)
+		}
+		mycluster.Conf.Cloud18MarketplaceGWUFreeUnits = n
 	case "replication-credential":
 		mycluster.SetReplicationCredential(value)
 	case "failover-max-slave-delay":

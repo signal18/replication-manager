@@ -57,6 +57,8 @@ function MarketplaceSettings({ config }) {
   const hBauPrice = `**BAU Price**\n\nPrice of one Backup Archive Unit per month, in Eur. One BAU is 20 GB of **archive** storage, two roles: as consumer, what restic holds off the cluster on S3 or SFTP, after deduplication; as producer, the declared volume of a storage application (*S3 provider* in the app settings, e.g. minio) that hosts an archive for others. There is no plan: billed on usage, rounded up to the next unit. The price applies to Signal18 or partner storage only; a cluster that brought its own remote storage (*Cloud18 → Remote archive on client storage*) is tracked but never priced. 0 = the remote archive is not priced.\n\nConfig: \`cloud18-marketplace-bau-price\``
   const hGatewayBandwidth = `**Gateway Bandwidth (Mb/s)**\n\nUplink capacity of each Cloud18 gateway in Mb/s, comma-separated and aligned with the gateway services (one value applies to all; 1000 by default). The traffic of every cluster through the gateways is tracked in Mb/s against it on the Resource Manager page (stacked per cluster): when the stack reaches the capacity the shared uplink saturates. More bandwidth = another gateway with its own VIP, stick tables shared and DNS round robin. Not invoiced.\n\nConfig: \`cloud18-gateway-bandwidth-mbit\``
   const hGwuPrice = `**GWU Price**\n\nPrice of one Gateway Unit per month, in Eur. One GWU is \`cloud18-marketplace-gwu-unit-mb\` MB (million octets, 100 by default) exchanged (**in and out**) through the Cloud18 gateways by the cluster's applications, read on every gateway's HAProxy stats port and attributed by backend name. Counted against the cluster's plan (\`prov-gateway-units\`, 10 by default) with the over and under-commit percentages; the family is a volume, the month-to-date total is billed, not a rate. 0 = gateway traffic is tracked (Resource Manager page, bandwidth per cluster) but not invoiced and absent from the statement.\n\nConfig: \`cloud18-marketplace-gwu-price\``
+  const hGwuVolume = `**GWU Traffic Size (MB)**\n\nMB of traffic (in + out, million octets) per GWU in the monthly statement reported to the back office. 100 by default.\n\nConfig: \`cloud18-marketplace-gwu-unit-mb\``
+  const hGwuFree = `**Free GWU per cluster**\n\nGWU of traffic every cluster gets free each month (10 by default = 1 GB). The traffic on top is reported as borrowed. A cluster file can override it.\n\nConfig: \`cloud18-marketplace-gwu-free-units\``
   const hGwuUnit = `**GWU Size (MB)**\n\nOctets (in + out) per GWU, in MB (million octets). Changing it changes every cluster's unit count at the next poll.\n\nConfig: \`cloud18-marketplace-gwu-unit-mb\``
 
   const hOverPct = `**Over-commit Price Ratio**\n\nSurcharge on a unit consumed **above** the plan, in percent of the unit price. 150 means an over-plan unit costs 2.5 times the unit price. Applies to every unit family with a plan (DBU, APU, BKU); the BAU has no plan and is pure usage, so it is never marked up. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-overcommit-price-pct\` (default 150)`
@@ -158,7 +160,31 @@ function MarketplaceSettings({ config }) {
       )
     },
     {
-      key: 'GWU Size (Mb/s per unit)',
+      key: 'GWU Traffic Size (MB per unit)',
+      help: h(hGwuVolume, 'GWU Traffic Size'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceGwuUnitMb ?? '')}
+          type='number'
+          confirmTitle='Confirm the GWU traffic size in MB (million octets) per unit to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-gwu-unit-mb', value }))}
+        />
+      )
+    },
+    {
+      key: 'Free GWU per cluster (per month)',
+      help: h(hGwuFree, 'Free GWU'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18MarketplaceGwuFreeUnits ?? '')}
+          type='number'
+          confirmTitle='Confirm the free GWU of traffic per cluster and per month to '
+          onSave={(value) => dispatch(setGlobalSetting({ setting: 'cloud18-marketplace-gwu-free-units', value }))}
+        />
+      )
+    },
+    {
+      key: 'GWU Bandwidth Size (Mb/s per unit, Resource Manager axis)',
       help: h(hGwuUnit, 'GWU Size'),
       value: (
         <TextForm

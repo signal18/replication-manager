@@ -23,17 +23,31 @@ import (
 
 // GWUReading is the gateway bandwidth of the cluster at the last poll.
 type GWUReading struct {
-	Mbps      float64   `json:"mbps"`      // traffic in + out through the gateways, Mb/s
-	PlanMbps  float64   `json:"planMbps"`  // gateway capacity / clusters present, summed over the cluster's gateways
-	UnitMbit  float64   `json:"unitMbit"`  // Mb/s per GWU (cloud18-marketplace-gwu-unit-mbit)
-	Units     float64   `json:"units"`     // consumed GWU = Mbps / UnitMbit
-	Plan      float64   `json:"plan"`      // plan GWU = PlanMbps / UnitMbit, or prov-gateway-units when pinned
-	Pinned    bool      `json:"pinned"`    // the plan comes from prov-gateway-units
-	Bytes     int64     `json:"bytes"`     // octets in + out, month to date (information)
-	Priced    bool      `json:"priced"`    // cloud18-marketplace-gwu-price > 0
-	UnitPrice float64   `json:"unitPrice"` // Eur per GWU per month
-	Gateways  int       `json:"gateways"`  // gateways polled for this reading
-	UpdatedAt time.Time `json:"updatedAt"`
+	Mbps     float64 `json:"mbps"`     // traffic in + out through the gateways, Mb/s
+	PlanMbps float64 `json:"planMbps"` // gateway capacity / clusters present, summed over the cluster's gateways
+	UnitMbit float64 `json:"unitMbit"` // Mb/s per GWU (cloud18-marketplace-gwu-unit-mbit)
+	Units    float64 `json:"units"`    // consumed GWU = Mbps / UnitMbit
+	Plan     float64 `json:"plan"`     // plan GWU = PlanMbps / UnitMbit, or prov-gateway-units when pinned
+	Pinned   bool    `json:"pinned"`   // the plan comes from prov-gateway-units
+	Bytes    int64   `json:"bytes"`    // octets in + out, month to date
+	// The BO volume axis (Stéphane 2026-10-04): 1 unit = cloud18-marketplace-gwu-unit-mb MB of traffic,
+	// cloud18-marketplace-gwu-free-units free each month, the rest on top, reported as borrowed.
+	VolumeUnitMB int64     `json:"volumeUnitMb"`
+	VolumeUnits  float64   `json:"volumeUnits"` // Bytes / (VolumeUnitMB × 1e6)
+	FreeUnits    int       `json:"freeUnits"`
+	OnTopUnits   float64   `json:"onTopUnits"` // max(0, VolumeUnits − FreeUnits)
+	Priced       bool      `json:"priced"`     // cloud18-marketplace-gwu-price > 0
+	UnitPrice    float64   `json:"unitPrice"`  // Eur per GWU per month
+	Gateways     int       `json:"gateways"`   // gateways polled for this reading
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+// GWUVolumeUnitMB is the size of one GWU of traffic in MB (million octets), 100 when unset.
+func (cluster *Cluster) GWUVolumeUnitMB() int64 {
+	if v := cluster.Conf.Cloud18MarketplaceGWUUnitMB; v > 0 {
+		return int64(v)
+	}
+	return 100
 }
 
 // GWUUnitMbit is the size of one GWU in Mb/s, 100 when unset.
@@ -57,6 +71,15 @@ func (cluster *Cluster) SetGatewayTraffic(bytes int64, mbpsNow, planMbps float64
 		r.Plan = planMbps / unit
 	}
 	r.Priced = r.UnitPrice > 0
+	r.VolumeUnitMB = cluster.GWUVolumeUnitMB()
+	r.VolumeUnits = float64(bytes) / float64(r.VolumeUnitMB*1000000)
+	r.FreeUnits = cluster.Conf.Cloud18MarketplaceGWUFreeUnits
+	if r.FreeUnits < 0 {
+		r.FreeUnits = 0
+	}
+	if r.VolumeUnits > float64(r.FreeUnits) {
+		r.OnTopUnits = r.VolumeUnits - float64(r.FreeUnits)
+	}
 	cluster.Lock()
 	cluster.GatewayUnits = r
 	cluster.Unlock()
@@ -68,23 +91,27 @@ func (cluster *Cluster) SetGatewayTraffic(bytes int64, mbpsNow, planMbps float64
 		graphite.NewMetric(fmt.Sprintf("gwu.%s.units", cluster.Name), f(r.Units), ts),
 		graphite.NewMetric(fmt.Sprintf("gwu.%s.plan", cluster.Name), f(r.Plan), ts),
 		graphite.NewMetric(fmt.Sprintf("gwu.%s.bytes", cluster.Name), strconv.FormatInt(r.Bytes, 10), ts),
+		graphite.NewMetric(fmt.Sprintf("gwu.%s.volume_units", cluster.Name), f(r.VolumeUnits), ts),
+		graphite.NewMetric(fmt.Sprintf("gwu.%s.on_top_units", cluster.Name), f(r.OnTopUnits), ts),
 	})
 }
 
-// gatewayUsage is the GWU row of the statement, a rate with a plan like the compute units;
-// the bandwidth is tracked, not invoiced (Stéphane 2026-10-04), so the row exists only when
-// a GWU price is set.
+// gatewayUsage is the GWU row of the statement, the volume axis reported to the back
+// office (Stéphane 2026-10-04): a cumulative family whose plan is the free allowance; the
+// traffic on top is the borrowed line; always present, priced only when a price is set.
 func (cluster *Cluster) gatewayUsage(over, under int) (UnitUsage, bool) {
 	c := cluster.Conf
-	if c.Cloud18MarketplaceGWUPrice <= 0 {
-		return UnitUsage{}, false
+	free := c.Cloud18MarketplaceGWUFreeUnits
+	if free < 0 {
+		free = 0
 	}
-	u := UnitUsage{Family: BillingFamilyGateway, Unit: "GWU", Priced: true, UnitPrice: c.Cloud18MarketplaceGWUPrice, OverPct: over, UnderPct: under}
+	u := UnitUsage{Family: BillingFamilyGateway, Unit: "GWU", Plan: float64(free), Cumulative: true, FreePlan: true,
+		Priced: c.Cloud18MarketplaceGWUPrice > 0, UnitPrice: c.Cloud18MarketplaceGWUPrice, OverPct: over, UnderPct: under}
 	cluster.Lock()
 	r := cluster.GatewayUnits
 	cluster.Unlock()
 	if r != nil {
-		u.Plan, u.Billable = r.Plan, r.Units
+		u.Billable = r.VolumeUnits
 	}
 	return u, true
 }
