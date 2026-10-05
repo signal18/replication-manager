@@ -656,6 +656,8 @@ type Config struct {
 	ProvDiskDockerSize                        string            `measurement:"G,bytes,required" mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
 	ProvVolumeDocker                          string            `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
 	ProvVolumeData                            string            `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
+	ProvDBRunAsUID                            string            `mapstructure:"prov-db-run-as-uid" toml:"prov-db-run-as-uid" json:"provDbRunAsUid"`
+	ProvDBVolumeUID                           string            `mapstructure:"prov-db-volume-uid" toml:"prov-db-volume-uid" json:"provDbVolumeUid"`
 	ProvDiskFS                                string            `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
 	ProvDiskFSCompress                        string            `mapstructure:"prov-db-disk-fs-compress" toml:"prov-db-disk-fs-compress" json:"provDbDiskFsCompress"`
 	ProvDiskPool                              string            `mapstructure:"prov-db-disk-pool" toml:"prov-db-disk-pool" json:"provDbDiskPool"`
@@ -669,6 +671,7 @@ type Config struct {
 	ProvUseIpv6                               bool              `mapstructure:"prov-use-ipv6" toml:"prov-use-ipv6" json:"provUseIpv6"`
 	ProvDbImg                                 string            `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
 	ProvDbImgResolved                         string            `mapstructure:"prov-db-docker-img-resolved" toml:"prov-db-docker-img-resolved" json:"provDbDockerImgResolved"`
+	ProvDbDockerXtrabackupImg                 string            `mapstructure:"prov-db-docker-xtrabackup-img" toml:"prov-db-docker-xtrabackup-img" json:"provDbDockerXtrabackupImg"`
 	ProvDBDockerTmpfsSize                     string            `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDBDockerRunArgs                       string            `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
 	ProvDBDockerRunArgsLimit                  bool              `mapstructure:"prov-db-docker-run-args-limit" toml:"prov-db-docker-run-args-limit" json:"provDbDockerRunArgsLimit"`

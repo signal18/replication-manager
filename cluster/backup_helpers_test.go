@@ -19,6 +19,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
@@ -1201,5 +1202,169 @@ func TestJobsCheckStatesApiModeSkipsSQL(t *testing.T) {
 
 	if err := server.JobsCheckStates(); err != nil {
 		t.Fatalf("JobsCheckStates in api mode returned %v, want nil (must skip the SQL path)", err)
+	}
+}
+
+// A logical backup fills its binlog position while the dump is read; once the dump function
+// has returned nothing can publish it. WriteBackupMetadata must therefore not wait for it:
+// the wait never ended, kept InLogicalBackup raised and held the global backup slot forever.
+func TestWriteBackupMetadataLogicalDoesNotWaitForBinlogPosition(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.DiskStatManager = misc.NewDiskStatManager()
+	server.JobResults = config.NewTasksMap()
+	server.JobResults.Set("mysqldump", &config.Task{Task: "mysqldump", State: 3, Done: 1})
+
+	dest := filepath.Join(t.TempDir(), "mysqldump.sql.gz")
+	if err := os.WriteFile(dest, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
+		Id:         1,
+		BackupTool: "mysqldump",
+		Dest:       dest,
+		StartTime:  time.Now(),
+	}
+	done := make(chan struct{})
+	go func() {
+		server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteBackupMetadata kept waiting for a binlog position a finished logical backup can no longer receive")
+	}
+	if !server.LastBackupMeta.Logical.Completed {
+		t.Fatal("a finished logical backup must be written as completed even without a binlog position")
+	}
+}
+
+// waitSlotsHeld polls until the semaphore holds want slots or the timeout elapses.
+func waitSlotsHeld(sem chan struct{}, want int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if len(sem) == want {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return len(sem) == want
+}
+
+// While another backup of the cluster is running (here a binlog copy, which takes no backup
+// slot), a physical backup request waits for it while holding exactly the one slot it took.
+// The old code called itself again, which took a second slot while still holding the first:
+// with a single slot it waited for its own slot forever, with more it leaked one per retry.
+func TestJobBackupPhysicalWaitsHoldingOneSlotAndReleasesWhenAborted(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	sem := make(chan struct{}, 2)
+	cluster.ServerGlobals = &ServerGlobals{BackupSemaphore: sem}
+	cluster.SetInBinlogBackupState(true)
+
+	done := make(chan error, 1)
+	go func() { done <- server.JobBackupPhysicalWithOptions(BackupRunOptions{}) }()
+
+	if !waitSlotsHeld(sem, 1, 5*time.Second) {
+		t.Fatalf("holding %d slots, want the one it waits with", len(sem))
+	}
+	// Past the retry delay the old code had taken a second slot by now.
+	time.Sleep(1500 * time.Millisecond)
+	select {
+	case err := <-done:
+		t.Fatalf("returned while another backup was running: %v", err)
+	default:
+	}
+	if got := len(sem); got != 1 {
+		t.Fatalf("holding %d slots while waiting, want exactly 1", got)
+	}
+
+	cluster.exit.Store(true)
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected an error when the cluster is shutting down")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("kept waiting after the cluster started shutting down")
+	}
+	if got := len(sem); got != 0 {
+		t.Fatalf("slot not given back after the wait was aborted: %d held", got)
+	}
+}
+
+// The abort conditions must also be checked on the pass that ends the wait. If the cluster
+// started shutting down while the request slept and the backup it waited for ended in the
+// meantime, it must not go on to raise InPhysicalBackup and open a receiver; it gives the
+// slot back instead (WARN0073 is not open yet, so nothing else would release it).
+//
+// It ends the awaited backup by clearing a plain bool flag while the request reads it, as the
+// monitor does in production, so it is not clean under -race (neither is the rest of this package).
+func TestJobBackupPhysicalChecksAbortWhenTheAwaitedBackupEnds(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	sem := make(chan struct{}, 1)
+	cluster.ServerGlobals = &ServerGlobals{BackupSemaphore: sem}
+	cluster.SetInBinlogBackupState(true)
+
+	done := make(chan error, 1)
+	go func() {
+		// A request that wrongly goes on would run into the unconfigured test server: report
+		// that as a failure of this test instead of crashing the whole test binary.
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("went on with the backup: %v", r)
+			}
+		}()
+		done <- server.JobBackupPhysicalWithOptions(BackupRunOptions{})
+	}()
+
+	if !waitSlotsHeld(sem, 1, 5*time.Second) {
+		t.Fatalf("holding %d slots, want the one it waits with", len(sem))
+	}
+	cluster.exit.Store(true)              // shutdown starts while the request sleeps...
+	cluster.SetInBinlogBackupState(false) // ...and the backup it waits for ends
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "shutting down") {
+			t.Fatalf("got %v, want a shutting down error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not return")
+	}
+	if cluster.InPhysicalBackup {
+		t.Fatal("raised InPhysicalBackup for a cluster that is shutting down")
+	}
+	if got := len(sem); got != 0 {
+		t.Fatalf("slot not given back: %d held", got)
+	}
+}
+
+// Same as above for the server going down while the request waits. Like the previous test it
+// changes a plain field the monitor also changes in production (server.State), so it is not
+// clean under -race.
+func TestJobBackupPhysicalGivesSlotBackWhenServerGoesDownWhileWaiting(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	sem := make(chan struct{}, 1)
+	cluster.ServerGlobals = &ServerGlobals{BackupSemaphore: sem}
+	cluster.SetInBinlogBackupState(true)
+
+	done := make(chan error, 1)
+	go func() { done <- server.JobBackupPhysicalWithOptions(BackupRunOptions{}) }()
+
+	if !waitSlotsHeld(sem, 1, 5*time.Second) {
+		t.Fatalf("holding %d slots, want the one it waits with", len(sem))
+	}
+	server.State = stateFailed
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "server down") {
+			t.Fatalf("got %v, want a server down error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("kept waiting after the server went down")
+	}
+	if got := len(sem); got != 0 {
+		t.Fatalf("slot not given back: %d held", got)
 	}
 }

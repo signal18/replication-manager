@@ -1991,3 +1991,29 @@ func TestMarkBackupPhysicalDone_NoopForOtherTasks(t *testing.T) {
 		t.Fatal("expected Completed to stay false when no matching task name was passed")
 	}
 }
+
+// An 8.4 server dumped by the MariaDB mysqldump repman ships gets the legacy
+// "CHANGE MASTER TO MASTER_LOG_*" header; a MySQL 8.4 client writes the new
+// "CHANGE REPLICATION SOURCE TO SOURCE_LOG_*" one. Both must give the binlog position.
+func TestBackupRegexPatternsMySQL84AcceptsLegacyAndNewDumpHeader(t *testing.T) {
+	cases := []struct {
+		name   string
+		v      *version.Version
+		header string
+	}{
+		{"percona 8.4 legacy header", &version.Version{Flavor: "Percona", Major: 8, Minor: 4, Release: 11}, "CHANGE MASTER TO MASTER_LOG_FILE='binlog.000007', MASTER_LOG_POS=997979;"},
+		{"percona 8.4 new header", &version.Version{Flavor: "Percona", Major: 8, Minor: 4, Release: 11}, "CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000007', SOURCE_LOG_POS=997979;"},
+		{"mysql 8.0 legacy header", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0, Release: 35}, "CHANGE MASTER TO MASTER_LOG_FILE='binlog.000007', MASTER_LOG_POS=997979;"},
+		{"mariadb legacy header", &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11, Release: 19}, "CHANGE MASTER TO MASTER_LOG_FILE='binlog.000007', MASTER_LOG_POS=997979;"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := &ServerMonitor{DBVersion: tc.v}
+			binlogRegex, _ := server.getBackupRegexPatterns()
+			m := binlogRegex.FindStringSubmatch(tc.header)
+			if len(m) != 3 || m[1] != "binlog.000007" || m[2] != "997979" {
+				t.Fatalf("regex %q did not extract file/pos from %q: %v", binlogRegex, tc.header, m)
+			}
+		})
+	}
+}

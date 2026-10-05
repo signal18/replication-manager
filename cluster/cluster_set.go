@@ -1994,6 +1994,73 @@ func (cluster *Cluster) SetProvDBImage(value string) error {
 	cluster.SetDBReprovCookie()
 	return nil
 }
+
+// SetProvDbDockerXtrabackupImg sets prov-db-docker-xtrabackup-img: empty (the injection off), "auto" or the reference
+// of an official xtrabackup image (see doc/implementation/cluster/XTRABACKUP_BUNDLE_INJECTION.md). The value is checked
+// here (ValidateXtrabackupImage) so that a bad one is refused to the operator instead of being accepted and only
+// logged by the render. Only the OpenSVC and Kubernetes provisioners render the injection; elsewhere the value would
+// have no effect and would only raise a reprovision cookie for nothing. Reprovisioning remains an explicit operator
+// action: the cookie only surfaces that the rendered service is now stale.
+func (cluster *Cluster) SetProvDbDockerXtrabackupImg(value string) error {
+	value = strings.TrimSpace(value)
+	// An empty value turns the injection off: always allowed, whatever the orchestrator, so that a setting can be
+	// cleared (the dashboard's Off) on a cluster where it can no longer be set.
+	if value != "" {
+		if orchestrator := cluster.GetOrchestrator(); orchestrator != config.ConstOrchestratorOpenSVC && orchestrator != config.ConstOrchestratorKubernetes {
+			return fmt.Errorf("prov-db-docker-xtrabackup-img is only supported with the %s and %s orchestrators, this cluster uses %q",
+				config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes, orchestrator)
+		}
+		if err := ValidateXtrabackupImage(value); err != nil {
+			return err
+		}
+	}
+	if cluster.Conf.ProvDbDockerXtrabackupImg == value {
+		return nil
+	}
+	cluster.Conf.ProvDbDockerXtrabackupImg = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
+// SetProvDBRunAsUID sets the numeric UID[:GID] a provisioned database container
+// runs as (OpenSVC --user, Kubernetes securityContext). Empty restores the
+// legacy behavior; 0 is root, taken literally (for the process; the dbjobs script
+// db_owner keeps the legacy owner for the few files it writes when the datadir is owned
+// by root, see doc/implementation/cluster/DATABASE_RUNTIME_UID_GID.md). It is
+// independent of prov-db-volume-uid. Reprovisioning remains an explicit operator action; the cookie
+// only surfaces that the rendered service is now stale.
+func (cluster *Cluster) SetProvDBRunAsUID(value string) error {
+	return cluster.setProvDBIdentity("prov-db-run-as-uid", &cluster.Conf.ProvDBRunAsUID, value)
+}
+
+// SetProvDBVolumeUID sets the numeric UID[:GID] that owns a provisioned database's
+// data volume (OpenSVC volume owner and bootstrap chown, Kubernetes init
+// chown). See SetProvDBRunAsUID.
+func (cluster *Cluster) SetProvDBVolumeUID(value string) error {
+	return cluster.setProvDBIdentity("prov-db-volume-uid", &cluster.Conf.ProvDBVolumeUID, value)
+}
+
+func (cluster *Cluster) setProvDBIdentity(setting string, field *string, value string) error {
+	// Only the OpenSVC and Kubernetes provisioners create database containers with a
+	// run-as identity or an owned data volume. Elsewhere (local, on-premise, SlapOS)
+	// the value would have no effect and would only raise a reprovision cookie for
+	// nothing.
+	if orchestrator := cluster.GetOrchestrator(); orchestrator != config.ConstOrchestratorOpenSVC && orchestrator != config.ConstOrchestratorKubernetes {
+		return fmt.Errorf("%s is only supported with the %s and %s orchestrators, this cluster uses %q",
+			setting, config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes, orchestrator)
+	}
+	if _, _, _, err := ParseDBIdentity(setting, value); err != nil {
+		return err
+	}
+	value = strings.TrimSpace(value)
+	if *field == value {
+		return nil
+	}
+	*field = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
 func (cluster *Cluster) SetProvMaxscaleImage(value string) error {
 	cluster.Conf.ProvProxMaxscaleImg = value
 	cluster.SetProxiesReprovCookie()

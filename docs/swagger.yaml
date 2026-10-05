@@ -2940,6 +2940,8 @@ definitions:
         type: boolean
       provDbConfigPreserveVars:
         type: string
+      provDbVolumeUid:
+        type: string
       provDbCpuCores:
         type: string
       provDbDatadirVersion:
@@ -3033,6 +3035,8 @@ definitions:
           / "up" / "off"'
         type: string
       provDbResourceRaisedOverPlanScript:
+        type: string
+      provDbRunAsUid:
         type: string
       provDbServiceType:
         type: string

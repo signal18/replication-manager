@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1285,4 +1286,185 @@ func (cluster *Cluster) UnfreezeDatabaseService(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"OpenSVC V3 instance unfreeze for %s on node %s", server.URL, server.Agent)
 	return svc.UnfreezeInstanceV3(server.Agent, server.ServiceName)
+// xtrabackupImageRe is the character set of a docker image reference (registry, path,
+// tag, digest). The value is written into an OpenSVC configuration and a Kubernetes
+// image field, so anything else (spaces, quotes, shell or INI metacharacters) is refused.
+var xtrabackupImageRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/:@+-]*$`)
+
+// ValidateXtrabackupImage validates prov-db-docker-xtrabackup-img: empty (injection off),
+// "auto" (derived from the database image when the bundle is rendered) or an image
+// reference.
+func ValidateXtrabackupImage(value string) error {
+	if value == "" || value == xtrabackupImageAuto {
+		return nil
+	}
+	if len(value) > 255 || !xtrabackupImageRe.MatchString(value) {
+		return fmt.Errorf("prov-db-docker-xtrabackup-img must be empty, auto, or a docker image reference such as percona/percona-xtrabackup:8.4, got %q", value)
+	}
+	return nil
+}
+
+// dbIDMax keeps a UID/GID inside the signed 32-bit range that Docker,
+// Kubernetes (runAsUser) and the configurator input all accept.
+const dbIDMax = 2147483647
+
+// ParseDBIdentity validates prov-db-run-as-uid and prov-db-volume-uid: empty (not set)
+// or a numeric "UID" or "UID:GID", where 0 is root, taken literally and the GID
+// defaults to the UID. "Literally" holds for the process and the volume owner; the
+// dbjobs script db_owner is the one exception (it keeps the legacy owner for the few
+// files it writes when the datadir is owned by root, see
+// doc/implementation/cluster/DATABASE_RUNTIME_UID_GID.md). Names are refused: they
+// would resolve through the image's passwd, and Kubernetes only takes numbers.
+func ParseDBIdentity(setting, value string) (uid, gid int, set bool, err error) {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return 0, 0, false, nil
+	}
+	parts := strings.Split(v, ":")
+	if len(parts) <= 2 {
+		ids := make([]int, len(parts))
+		valid := true
+		for i, part := range parts {
+			id, convErr := strconv.Atoi(part)
+			if convErr != nil || id < 0 || id > dbIDMax || part != strings.TrimSpace(part) || strings.HasPrefix(part, "+") {
+				valid = false
+				break
+			}
+			ids[i] = id
+		}
+		if valid {
+			if len(ids) == 1 {
+				return ids[0], ids[0], true, nil
+			}
+			return ids[0], ids[1], true, nil
+		}
+	}
+	return 0, 0, false, fmt.Errorf("%s must be empty (legacy behavior), UID or UID:GID with numeric ids from 0 (root) to %d, got %q", setting, dbIDMax, value)
+}
+
+// dbRunAs is the UID/GID the database container process runs as (OpenSVC
+// --user, Kubernetes securityContext), from prov-db-run-as-uid. set is false when
+// it is empty: nothing is rendered and the container runs as it did before the
+// setting existed (`--user mysql` for images named mysql, the image's own user
+// otherwise). An invalid value (the setter refuses one, but a config file may
+// carry it) is logged and handled as empty rather than guessed.
+func (cluster *Cluster) dbRunAs() (uid, gid int, set bool) {
+	uid, gid, set, err := ParseDBIdentity("prov-db-run-as-uid", cluster.Conf.ProvDBRunAsUID)
+	if err != nil {
+		cluster.logInvalidDBIdentityOnce("prov-db-run-as-uid", cluster.Conf.ProvDBRunAsUID, err)
+		return 0, 0, false
+	}
+	cluster.dbIdentityLog.valid("prov-db-run-as-uid")
+	return uid, gid, set
+}
+
+// dbVolumeOwner is the UID/GID that owns the database data volume (OpenSVC volume
+// owner and bootstrap chown, Kubernetes init chown), from prov-db-volume-uid. It is
+// independent of the user the process runs as (dbRunAs): an operator can run as
+// one identity and keep, or choose, another owner. managed tells whether
+// replication-manager manages the owner at all:
+//   - prov-db-volume-uid set: that owner, managed ("0" is root).
+//   - empty, Percona Server image (recognized by name): 1001, managed. The image
+//     is built for 1001 and runs as it by default; a volume owned by the legacy
+//     999 cannot be written by it, and under any other UID its entrypoint cannot
+//     start the telemetry agent ("Permission denied").
+//   - empty otherwise: not managed, the legacy owner is kept unchanged (volume
+//     and bootstrap chown 999:999, nothing on Kubernetes).
+//
+// An invalid value is logged and handled as empty.
+func (cluster *Cluster) dbVolumeOwner() (uid, gid int, managed bool) {
+	uid, gid, set, err := ParseDBIdentity("prov-db-volume-uid", cluster.Conf.ProvDBVolumeUID)
+	if err != nil {
+		cluster.logInvalidDBIdentityOnce("prov-db-volume-uid", cluster.Conf.ProvDBVolumeUID, err)
+	} else {
+		cluster.dbIdentityLog.valid("prov-db-volume-uid")
+	}
+	if err == nil && set {
+		return uid, gid, true
+	}
+	if strings.Contains(strings.ToLower(cluster.Conf.ProvDbImg), "percona") {
+		return 1001, 1001, true
+	}
+	return 999, 999, false
+}
+
+// dbIdentityLogState remembers, per setting, the last invalid identity value already
+// reported, so a bad value in a configuration file is logged once and not at every render
+// of the templates (the settings API refuses invalid values, so this only concerns
+// hand-edited files). At most one value per setting (two in all) is kept per cluster: a
+// new invalid value replaces the previous one, and a valid or empty value forgets it.
+type dbIdentityLogState struct {
+	mu   sync.Mutex
+	last map[string]string
+}
+
+// invalid records an invalid value and reports whether it must be logged: true unless it
+// is the one already reported for that setting.
+func (st *dbIdentityLogState) invalid(setting, value string) bool {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if prev, seen := st.last[setting]; seen && prev == value {
+		return false
+	}
+	if st.last == nil {
+		st.last = make(map[string]string, 2)
+	}
+	st.last[setting] = value
+	return true
+}
+
+// valid forgets the invalid value of a setting that now parses (or is empty).
+func (st *dbIdentityLogState) valid(setting string) {
+	st.mu.Lock()
+	delete(st.last, setting)
+	st.mu.Unlock()
+}
+
+// logInvalidDBIdentityOnce reports whether it logged.
+func (cluster *Cluster) logInvalidDBIdentityOnce(setting, value string, err error) bool {
+	if !cluster.dbIdentityLog.invalid(setting, value) {
+		return false
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s; using the legacy behavior", err)
+	return true
+}
+
+// dbRunAsVolumeMismatch describes, and is empty when there is nothing to say, a
+// configuration where the database runs as a non-root UID (prov-db-run-as-uid)
+// that does not own its data volume (prov-db-volume-uid, or the legacy 999 owner
+// of OpenSVC, or whatever the storage gives on Kubernetes when the owner is not
+// managed): mysqld then cannot write its datadir. The two settings are
+// independent on purpose, so this is only reported, never corrected. Only the UID is
+// compared: the owner permission bits decide for a process running as the owner, whatever
+// the group of the files is.
+func (cluster *Cluster) dbRunAsVolumeMismatch() string {
+	runUID, _, set := cluster.dbRunAs()
+	if !set || runUID == 0 {
+		return ""
+	}
+	ownerUID, ownerGID, managed := cluster.dbVolumeOwner()
+	switch {
+	case !managed && cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes:
+		return fmt.Sprintf("prov-db-run-as-uid runs the database as UID %d but prov-db-volume-uid is not set: the data volume keeps the owner the storage gives it and mysqld may not be able to write its datadir; set prov-db-volume-uid to %d", runUID, runUID)
+	case ownerUID != runUID:
+		return fmt.Sprintf("prov-db-run-as-uid runs the database as UID %d but the data volume is owned by %d:%d: mysqld may not be able to write its datadir; set prov-db-volume-uid to %d", runUID, ownerUID, ownerGID, runUID)
+	}
+	return ""
+}
+
+// warnDBRunAsVolumeMismatch logs dbRunAsVolumeMismatch once per provisioning.
+func (cluster *Cluster) warnDBRunAsVolumeMismatch() {
+	if msg := cluster.dbRunAsVolumeMismatch(); msg != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "%s", msg)
+	}
+}
+
+// dbIdentityManaged tells whether replication-manager manages the database
+// identity in any way (a run-as user, an owner, or a Percona Server image). The
+// dbjobs containers then run as root: they must read and chown a datadir that
+// can belong to any UID, and Percona Server images default to a non-root user.
+func (cluster *Cluster) dbIdentityManaged() bool {
+	_, _, runAsSet := cluster.dbRunAs()
+	_, _, chownManaged := cluster.dbVolumeOwner()
+	return runAsSet || chownManaged
 }

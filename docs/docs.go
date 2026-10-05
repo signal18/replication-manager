@@ -27324,6 +27324,9 @@ const docTemplate = `{
                 "provDbConfigPreserveVars": {
                     "type": "string"
                 },
+                "provDbVolumeUid": {
+                    "type": "string"
+                },
                 "provDbCpuCores": {
                     "type": "string"
                 },
@@ -27452,6 +27455,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provDbResourceRaisedOverPlanScript": {
+                    "type": "string"
+                },
+                "provDbRunAsUid": {
                     "type": "string"
                 },
                 "provDbServiceType": {
