@@ -47,12 +47,51 @@ func (server *ServerMonitor) logicalBackupType() string {
 	return server.ClusterGroup.Conf.BackupLogicalType
 }
 
+// physicalBackupType is the physical backup tool of this server: the cluster's
+// backup-physical-type, or pg_basebackup in the jobs sidecar for a PostgreSQL server.
+func (server *ServerMonitor) physicalBackupType() string {
+	if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+		return string(config.ConstTaskPgBaseBackup)
+	}
+	return server.ClusterGroup.Conf.BackupPhysicalType
+}
+
+// physicalBackupExtension is the extension of the physical artifact before compression:
+// an xbstream for mariabackup and xtrabackup, a tar for pg_basebackup.
+func (server *ServerMonitor) physicalBackupExtension(tool string) string {
+	if tool == string(config.ConstTaskPgBaseBackup) {
+		return ".tar"
+	}
+	return ".xbtream"
+}
+
+// openPhysicalBackupReceiver opens the receiver of a physical backup stream. For
+// pg_basebackup nothing is opened here: the jobs sidecar asks for its receiver when it
+// takes the task (receive-task), on the destination the running backup recorded.
+func (server *ServerMonitor) openPhysicalBackupReceiver(gzip bool, dest, tool string) (string, error) {
+	cluster := server.ClusterGroup
+	if tool == string(config.ConstTaskPgBaseBackup) {
+		return "0", nil
+	}
+	if gzip {
+		return cluster.SSTRunReceiverToGZip(server, dest, ConstJobCreateFile, tool)
+	}
+	return cluster.SSTRunReceiverToFile(server, dest, ConstJobCreateFile, tool)
+}
+
+// BackupStagingSuffix is the suffix of a backup artifact still in staging (encryption).
+func BackupStagingSuffix() string {
+	return partialSuffixForCleanup
+}
+
 // PostgresBackupDest is the default artifact of a PostgreSQL backup task in the server's
 // backup directory.
 func (server *ServerMonitor) PostgresBackupDest(task string) string {
 	switch config.TaskName(task) {
 	case config.ConstTaskPgDump:
 		return server.GetMyBackupDirectory() + "pg_dumpall.sql.gz"
+	case config.ConstTaskPgBaseBackup:
+		return server.GetMyBackupDirectory() + task + ".tar.gz"
 	}
 	return server.GetMyBackupDirectory() + task
 }
@@ -64,6 +103,9 @@ func (server *ServerMonitor) PostgresStreamDest(task string) string {
 	server.backupMetaMutex.Lock()
 	defer server.backupMetaMutex.Unlock()
 	if m := server.LastBackupMeta.Logical; m != nil && m.BackupTool == task && m.Dest != "" && !m.Completed {
+		return m.Dest
+	}
+	if m := server.LastBackupMeta.Physical; m != nil && m.BackupTool == task && m.Dest != "" && !m.Completed {
 		return m.Dest
 	}
 	return server.PostgresBackupDest(task)

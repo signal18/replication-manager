@@ -5370,6 +5370,15 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		// PostgreSQL logical backup streamed by the jobs sidecar, compressed here
 		dest = node.PostgresStreamDest(taskname)
 		rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
+	case config.ConstTaskPgBaseBackup:
+		// PostgreSQL physical backup (tar stream of pg_basebackup), compressed here when the
+		// running backup asked for it
+		dest = node.PostgresStreamDest(taskname)
+		if strings.HasSuffix(strings.TrimSuffix(dest, cluster.BackupStagingSuffix()), ".gz") {
+			rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
+		} else {
+			rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+		}
 	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 		dest = node.GetMyBackupDirectory() + taskname
 		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)

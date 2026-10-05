@@ -7,6 +7,8 @@
 # streaming its output to the receiver replication-manager opens for it:
 #
 #   pgdump         pg_dumpall of the instance (logical backup)
+#   pgbasebackup   pg_basebackup as a tar stream with the WAL it needs (physical backup,
+#                  online, it blocks neither reads nor writes)
 #
 # Every call to replication-manager goes through replication-manager-cli, delivered in
 # /jobs by the init container: `job needs|receiver|state` for the API, `stream` for the
@@ -28,7 +30,7 @@ export PGCONNECT_TIMEOUT=5
 INTERVAL="${PG_JOB_INTERVAL:-10}"
 CLI="${REPMAN_CLIENT:-/jobs/replication-manager-cli}"
 ERR=/tmp/postgres_job.err
-TASKS="pgdump"
+TASKS="pgdump pgbasebackup"
 
 log() { echo "[postgres_job] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 
@@ -47,6 +49,10 @@ run_task() {
     case "$task" in
     pgdump)
         pg_dumpall --clean --if-exists 2>"$ERR" | "$CLI" stream --to "$addr"
+        rc_cmd=${PIPESTATUS[0]} rc_stream=${PIPESTATUS[1]}
+        ;;
+    pgbasebackup)
+        pg_basebackup -D - -Ft -X fetch -c fast 2>"$ERR" | "$CLI" stream --to "$addr"
         rc_cmd=${PIPESTATUS[0]} rc_stream=${PIPESTATUS[1]}
         ;;
     esac

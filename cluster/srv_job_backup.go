@@ -432,6 +432,9 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
+	// the tool of this backup: the cluster's, or pg_basebackup in the jobs sidecar for a
+	// PostgreSQL server (srv_job_postgres.go) -- one path for every tool
+	physType := server.physicalBackupType()
 
 	// Wait for the other running backup of this cluster while holding the slot taken above, the
 	// way JobBackupLogicalWithOptions does. Calling this function again instead would take a
@@ -452,7 +455,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		if !cluster.IsInBackup() {
 			break
 		}
-		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Physical", cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Physical", physType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 	}
 
@@ -460,23 +463,24 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	// Live progress (cluster_backup_progress.go): the physical job runs in the DB jobs
 	// container and streams to the SST receiver, which counts the bytes it reads into this
 	// state (level bytes); ended with the state.
-	cluster.StartBackupProgress(server, "physical", cluster.Conf.BackupPhysicalType)
-	cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+	cluster.StartBackupProgress(server, "physical", physType)
+	cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], physType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
 	// Prevent backing up with incompatible tools
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") && cluster.Conf.BackupPhysicalType == "xtrabackup" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master %s MariaDB version is greater than 10.1. Changing from xtrabackup to mariabackup as physical backup tools", server.URL)
 		cluster.Conf.BackupPhysicalType = config.ConstBackupPhysicalTypeMariaBackup
+		physType = config.ConstBackupPhysicalTypeMariaBackup
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive physical backup %s (%s line) request for server: %s", cluster.Conf.BackupPhysicalType, backupLine, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive physical backup %s (%s line) request for server: %s", physType, backupLine, server.URL)
 
 	now := time.Now()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s started at %s for: %s", cluster.Conf.BackupPhysicalType, now.Format(time.RFC3339), server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s started at %s for: %s", physType, now.Format(time.RFC3339), server.URL)
 	var port string
 	var err error
-	var backupext string = ".xbtream"
-	var dest string = server.GetMyBackupDirectory() + cluster.Conf.BackupPhysicalType
+	var backupext string = server.physicalBackupExtension(physType)
+	var dest string = server.GetMyBackupDirectory() + physType
 	if isAdhoc {
 		dest = fmt.Sprintf("%s.%d", dest, now.Unix())
 	}
@@ -492,7 +496,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 				exec.Command("mv", oldSrc, oldSrc+".old").Run()
 			}
 		}
-		port, err = cluster.SSTRunReceiverToGZip(server, cluster.prepareBackupStaging(dest), ConstJobCreateFile, cluster.Conf.BackupPhysicalType)
+		port, err = server.openPhysicalBackupReceiver(true, cluster.prepareBackupStaging(dest), physType)
 	} else {
 		dest = dest + backupext
 		if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
@@ -504,7 +508,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 				exec.Command("mv", oldSrc, oldSrc+".old").Run()
 			}
 		}
-		port, err = cluster.SSTRunReceiverToFile(server, cluster.prepareBackupStaging(dest), ConstJobCreateFile, cluster.Conf.BackupPhysicalType)
+		port, err = server.openPhysicalBackupReceiver(false, cluster.prepareBackupStaging(dest), physType)
 	}
 	// The receiver writes to staging when encryption is on; metadata tracks
 	// it until JobFinishReceiveFile publishes or discards it.
@@ -524,7 +528,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	// Reset last backup meta
 	var prevId int64
 	if !isAdhoc {
-		prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupPhysicalType, server.URL)
+		prev := cluster.BackupMetaMap.GetPreviousBackup(physType, server.URL)
 		if prev != nil {
 			prevId = prev.Id
 		}
@@ -548,7 +552,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		StartTime:         now,
 		BackupMethod:      backupmgr.BackupMethodPhysical,
 		BackupStrategy:    backupmgr.BackupStrategyFull,
-		BackupTool:        cluster.Conf.BackupPhysicalType,
+		BackupTool:        physType,
 		Source:            server.URL,
 		Dest:              dest,
 		Compressed:        cluster.Conf.CompressBackups,
@@ -562,7 +566,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
 
-	_, err = server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
+	_, err = server.JobInsertTask(physType, port, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to insert physical backup task: %s (backup continues via SST)", err)
 	}
@@ -7175,7 +7179,9 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for writing metadata for backup in %s", server.URL)
 
 	if task.State == 3 || task.State == 4 {
-		if backtype == backupmgr.BackupMethodPhysical {
+		if backtype == backupmgr.BackupMethodPhysical && lastmeta.BackupTool == string(config.ConstTaskPgBaseBackup) {
+			// PostgreSQL: no binary log position to wait for, the tar carries the WAL it needs
+		} else if backtype == backupmgr.BackupMethodPhysical {
 			//Wait for binlog metadata sent by writelog API
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", lastmeta)
 			// Releases backupMetaMutex while polling and re-acquires before we mutate below; see
@@ -7336,8 +7342,16 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case string(config.ConstTaskPgDump):
 		// the stream of a jobs sidecar task ended: the backup waiting on it goes on
 		server.signalStreamTaskDone(task)
-	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup, string(config.ConstTaskPgBaseBackup):
 		backtype := "physical"
+		if task == string(config.ConstTaskPgBaseBackup) {
+			// the stream ended: the job is over whatever the sidecar's own report says or
+			// when (WriteBackupMetadata waits on this state), and the server has a physical backup
+			server.JobsUpdateStateRuntimeOnly(task, "received", JobStateSuccess, 1)
+			if m := server.LastBackupMeta.Physical; m != nil && !m.IsAdhoc() && !isEmptyBackupStaging(m.Dest) {
+				server.SetBackupPhysicalCookie(task)
+			}
+		}
 		// The SST file has been received — mark the backup as completed.
 		// This used to rely on AfterJobProcess polling the DB job state, but
 		// file receipt can happen before the poll runs, causing a race where

@@ -269,7 +269,7 @@ func (p *BackupProgress) refreshLocked(now time.Time) {
 // receiver task is its stream (the receivers also carry logs and other files).
 func (cluster *Cluster) physicalBackupProgressForTask(server *ServerMonitor, task string) *BackupProgress {
 	switch task {
-	case config.ConstBackupPhysicalTypeMariaBackup, config.ConstBackupPhysicalTypeXtrabackup:
+	case config.ConstBackupPhysicalTypeMariaBackup, config.ConstBackupPhysicalTypeXtrabackup, string(config.ConstTaskPgBaseBackup):
 		return cluster.backupProgressFor(server, "physical")
 	case string(config.ConstTaskPgDump):
 		// a PostgreSQL dump is streamed by the jobs sidecar: the receiver counts it too

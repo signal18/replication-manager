@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -79,4 +80,32 @@ func TestRunPostgresStreamTask(t *testing.T) {
 		t.Fatal("a cancelled request is withdrawn")
 	}
 	s.signalStreamTaskDone("pgdump") // no waiter: tolerated
+}
+
+// A PostgreSQL server takes its physical backup with pg_basebackup in the sidecar: a tar,
+// no receiver opened ahead (the sidecar asks for it), written where the running backup says.
+func TestPostgresPhysicalBackupIsASidecarTask(t *testing.T) {
+	s := postgresJobTestServer(t)
+	s.ClusterGroup.Conf.BackupPhysicalType = config.ConstBackupPhysicalTypeMariaBackup
+	s.ClusterGroup.Conf.WorkingDir = t.TempDir()
+	if s.physicalBackupType() != "pgbasebackup" || s.physicalBackupExtension("pgbasebackup") != ".tar" || s.physicalBackupExtension("mariabackup") != ".xbtream" {
+		t.Fatalf("tool %s", s.physicalBackupType())
+	}
+	if port, err := s.openPhysicalBackupReceiver(true, "/nowhere", "pgbasebackup"); err != nil || port != "0" {
+		t.Fatalf("no receiver is opened ahead for the sidecar: %q %v", port, err)
+	}
+	if !config.IsRemoteTask(config.ConstTaskPgBaseBackup, nil) {
+		t.Fatal("pgbasebackup runs in the sidecar")
+	}
+	if !strings.HasSuffix(s.PostgresStreamDest("pgbasebackup"), "pgbasebackup.tar.gz") {
+		t.Fatalf("default destination: %s", s.PostgresStreamDest("pgbasebackup"))
+	}
+	s.LastBackupMeta.Physical = &backupmgr.BackupMetadata{BackupTool: "pgbasebackup", Dest: "/x/pgbasebackup.1.tar.gz.partial"}
+	if s.PostgresStreamDest("pgbasebackup") != "/x/pgbasebackup.1.tar.gz.partial" {
+		t.Fatal("the receiver writes where the running backup recorded")
+	}
+	s.LastBackupMeta.Physical.Completed = true
+	if !strings.HasSuffix(s.PostgresStreamDest("pgbasebackup"), "pgbasebackup.tar.gz") {
+		t.Fatal("a completed backup no longer steers the receiver")
+	}
 }
