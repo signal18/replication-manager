@@ -38,22 +38,39 @@
         {
             "fset_name": null,
             "ruleset_name": "postgres.svc.mrm.db.cnf",
+            "variables": [],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [
+                "postgres.svc.mrm.db.cnf.generic"
+            ],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1180,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": null,
+            "ruleset_name": "postgres.svc.mrm.db.cnf.generic",
             "variables": [
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/postgresql/replication-manager.d/01_memory.conf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# memory, sized from the plan\\n\\nmax_connections = %%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%\\nshared_buffers = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%MB\\neffective_cache_size = %%ENV:SVC_CONF_ENV_INNODB_BUFFER_POOL_SIZE%%MB\\nwork_mem = %%ENV:SVC_CONF_ENV_JOIN_BUFFER_SIZE%%MB\\ntemp_buffers = %%ENV:SVC_CONF_ENV_TMP_TABLE_SIZE%%MB\\nmaintenance_work_mem = %%ENV:SVC_CONF_ENV_MAX_SESSION_MEM_USED%%MB\\nmax_worker_processes = %%ENV:SVC_CONF_ENV_MAX_CORES%%\\nmax_parallel_workers = %%ENV:SVC_CONF_ENV_MAX_CORES%%\\neffective_io_concurrency = %%ENV:SVC_CONF_ENV_INNODB_READ_IO_THREADS%%\\n\\n\"}",
-                    "var_updated": "2026-10-05 18:09:36",
+                    "var_updated": "2026-10-05 18:19:21",
                     "var_name": "pg_cnf_default_memory",
-                    "id": 6371
+                    "id": 6373
                 },
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/postgresql/replication-manager.d/02_vacuum.conf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# autovacuum, sized from the plan\\n\\nautovacuum = on\\nautovacuum_max_workers = %%ENV:SVC_CONF_ENV_INNODB_PURGE_THREADS%%\\nautovacuum_work_mem = %%ENV:SVC_CONF_ENV_MAX_SESSION_MEM_USED%%MB\\nautovacuum_naptime = 30s\\nautovacuum_vacuum_scale_factor = 0.05\\nautovacuum_analyze_scale_factor = 0.02\\nautovacuum_vacuum_cost_delay = 2ms\\nautovacuum_vacuum_cost_limit = %%ENV:CHECKPOINTIOPS%%\\nvacuum_cost_page_hit = 1\\nvacuum_cost_page_miss = 2\\nvacuum_cost_page_dirty = 20\\n\\n\"}",
-                    "var_updated": "2026-10-05 18:11:38",
+                    "var_updated": "2026-10-05 18:19:24",
                     "var_name": "pg_cnf_default_vacuum",
-                    "id": 6372
+                    "id": 6374
                 }
             ],
             "ruleset_public": false,
@@ -62,7 +79,7 @@
             "publications": [
                 "replication-manager"
             ],
-            "id": 1180,
+            "id": 1181,
             "responsibles": [
                 "replication-manager"
             ]
