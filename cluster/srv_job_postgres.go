@@ -174,3 +174,55 @@ func (server *ServerMonitor) runPostgresStreamTask(ctx context.Context, task, de
 	}
 	return nil
 }
+
+// postgresNextStartTargetKey is where the primary a role-change task works against is kept
+// while the task is armed (streamTasks holds the per-task runtime of the sidecar tasks).
+func postgresNextStartTargetKey(task string) string {
+	return "target:" + task
+}
+
+// PostgresNextStartTarget answers the jobs sidecar's question for a role-change task
+// (pgstandby, pgreseed): the "host:port" of the primary its next start must follow. Empty
+// when no such task is armed for this server.
+func (server *ServerMonitor) PostgresNextStartTarget(task string) string {
+	if v, ok := server.streamTasks.Load(postgresNextStartTargetKey(task)); ok {
+		return v.(string)
+	}
+	return ""
+}
+
+// armPostgresNextStart asks the jobs sidecar of this server to arm its next start --
+// as a standby of primary (pgstandby) or re-seeded from it (pgreseed) -- and waits for the
+// sidecar to report it done. PostgreSQL cannot change role while it runs: the caller then
+// stops or restarts the service, whose start script applies what was armed.
+func (server *ServerMonitor) armPostgresNextStart(task config.TaskName, primary *ServerMonitor) error {
+	cluster := server.ClusterGroup
+	name := string(task)
+	key := postgresNextStartTargetKey(name)
+	server.streamTasks.Store(key, primary.Host+":"+primary.Port)
+	defer server.streamTasks.Delete(key)
+
+	armed := time.Now().Unix()
+	if err := server.setTaskCookie(name); err != nil {
+		return fmt.Errorf("can not arm the %s task: %w", name, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Task %s requested from the jobs sidecar of %s (primary %s)", name, server.URL, primary.URL)
+	cookie := postgresJobCookie(name)
+	deadline := time.Now().Add(postgresJobPickupTimeout)
+	for time.Now().Before(deadline) {
+		if server.JobResults != nil {
+			if t := server.JobResults.Get(name); t != nil && t.Done == 1 && t.End >= armed {
+				if t.State != JobStateSuccess {
+					return fmt.Errorf("the jobs sidecar of %s failed the %s task: %s", server.URL, name, t.Result)
+				}
+				return nil
+			}
+		}
+		if cluster.exit.Load() {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	server.delCookie(cookie)
+	return fmt.Errorf("the jobs sidecar of %s did not complete the %s task within %s", server.URL, name, postgresJobPickupTimeout)
+}

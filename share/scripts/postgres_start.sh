@@ -12,6 +12,9 @@
 #      through WAL streaming;
 #   4. starts PostgreSQL through the image entrypoint.
 #
+# A role change armed by the jobs sidecar (replication-manager.next_start in the data
+# directory) is applied first: start as a standby of a new primary, or re-seed from it.
+#
 # Environment: POSTGRES_PASSWORD (and POSTGRES_USER), PGDATA, PG_PRIMARY_HOST and
 # PG_PRIMARY_PORT for a standby.
 
@@ -37,6 +40,41 @@ mkdir -p /docker-entrypoint-initdb.d
 cat > /docker-entrypoint-initdb.d/10-replication-manager.sh <<'EOS'
 echo "host replication all all scram-sha-256" >> "$PGDATA/pg_hba.conf"
 EOS
+
+# 2b. role change armed by the jobs sidecar on request of replication-manager
+#     (switchover, rejoin of a former primary): "<standby|reseed> <host> <port>"
+NEXT_START="$PGDATA/replication-manager.next_start"
+if [ -s "$NEXT_START" ]; then
+    read -r next_mode next_host next_port < "$NEXT_START" || true
+    case "${next_mode:-}" in
+    reseed)
+        log "armed: re-seed from $next_host:$next_port, the data directory is cleared"
+        find "${PGDATA:?}" -mindepth 1 -delete
+        PG_PRIMARY_HOST="$next_host"
+        PG_PRIMARY_PORT="$next_port"
+        ;;
+    standby)
+        log "armed: start as a standby of $next_host:$next_port, data kept"
+        # a conninfo value in single quotes escapes \ and ' with a backslash; the
+        # configuration file then doubles the single quotes
+        pw=$(printf '%s' "${POSTGRES_PASSWORD:-}" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g")
+        conninfo="user=$PG_USER password='$pw' host=$next_host port=$next_port"
+        auto="$PGDATA/postgresql.auto.conf"
+        touch "$auto"
+        grep -v '^[[:space:]]*primary_conninfo[[:space:]]*=' "$auto" > "$auto.tmp" || true
+        printf "primary_conninfo = '%s'\n" "$(printf '%s' "$conninfo" | sed "s/'/''/g")" >> "$auto.tmp"
+        mv "$auto.tmp" "$auto"
+        touch "$PGDATA/standby.signal"
+        chown postgres:postgres "$auto" "$PGDATA/standby.signal"
+        chmod 600 "$auto"
+        find "$NEXT_START" -delete
+        ;;
+    *)
+        log "armed start ignored, unknown mode: ${next_mode:-}"
+        find "$NEXT_START" -delete
+        ;;
+    esac
+fi
 
 # 3. standby seeding
 if [ -n "${PG_PRIMARY_HOST:-}" ] && [ ! -s "$PGDATA/PG_VERSION" ]; then

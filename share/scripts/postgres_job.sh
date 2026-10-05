@@ -7,6 +7,8 @@
 # streaming its output to the receiver replication-manager opens for it:
 #
 #   pgdump         pg_dumpall of the instance (logical backup)
+#   pgstandby      arm the next start as a standby of the primary replication-manager names
+#   pgreseed       arm the next start to copy the data again from that primary
 #   pgbasebackup   pg_basebackup as a tar stream with the WAL it needs (physical backup,
 #                  online, it blocks neither reads nor writes)
 #   optimize       vacuumdb --all --analyze: reclaims dead rows and refreshes the planner
@@ -33,7 +35,9 @@ export PGCONNECT_TIMEOUT=5
 INTERVAL="${PG_JOB_INTERVAL:-10}"
 CLI="${REPMAN_CLIENT:-/jobs/replication-manager-cli}"
 ERR=/tmp/postgres_job.err
-TASKS="pgdump pgbasebackup optimize"
+TASKS="pgdump pgbasebackup optimize pgstandby pgreseed"
+# what the next start of PostgreSQL must do, read by the start script (postgres_start.sh)
+NEXT_START="${PGDATA:-/var/lib/postgresql/data}/replication-manager.next_start"
 
 log() { echo "[postgres_job] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 
@@ -61,6 +65,23 @@ run_task() {
         job state "$task" error
         return
     fi
+    case "$task" in
+    pgstandby|pgreseed)
+        # Role change of this server, decided by replication-manager: PostgreSQL cannot
+        # become a standby while it runs, so the change is armed here, on the data
+        # volume, and applied by the start script at the next start of the service.
+        #   pgstandby  follow $addr as a standby, data kept (clean switchover)
+        #   pgreseed   copy the data again from $addr (former primary after a failover)
+        if printf '%s %s %s\n' "${task#pg}" "${addr%:*}" "${addr##*:}" > "$NEXT_START.tmp" && mv "$NEXT_START.tmp" "$NEXT_START"; then
+            log "$task: next start armed: ${task#pg} of $addr"
+            job state "$task" done || log "$task: cannot report done"
+        else
+            log "$task: cannot write $NEXT_START"
+            job state "$task" error || log "$task: cannot report error"
+        fi
+        return
+        ;;
+    esac
     log "$task: streaming to $addr"
     : > "$ERR"
     case "$task" in

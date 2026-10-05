@@ -5379,6 +5379,16 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		} else {
 			rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
 		}
+	case config.ConstTaskPgStandby, config.ConstTaskPgReseed:
+		// nothing to stream: the sidecar asks which primary the next start must follow
+		target := node.PostgresNextStartTarget(taskname)
+		if target == "" {
+			http.Error(w, "No primary to follow for "+taskname, 500)
+			return
+		}
+		w.WriteHeader(200)
+		w.Write([]byte("TARGET=" + target))
+		return
 	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 		dest = node.GetMyBackupDirectory() + taskname
 		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)

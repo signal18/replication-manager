@@ -1675,6 +1675,8 @@ const (
 	ConstTaskMB                 TaskName = "mariabackup"
 	ConstTaskPgDump             TaskName = "pgdump"       // PostgreSQL logical backup, pg_dumpall run by the jobs sidecar
 	ConstTaskPgBaseBackup       TaskName = "pgbasebackup" // PostgreSQL physical backup, pg_basebackup run by the jobs sidecar
+	ConstTaskPgStandby          TaskName = "pgstandby"    // PostgreSQL: the jobs sidecar arms the next start as a standby of the given primary
+	ConstTaskPgReseed           TaskName = "pgreseed"     // PostgreSQL: the jobs sidecar arms the next start to re-seed from the given primary
 	ConstTaskError              TaskName = "errorlog"
 	ConstTaskSlowQuery          TaskName = "slowquery"
 	ConstTaskSqlError           TaskName = "sqlerrorlog"
@@ -1724,6 +1726,8 @@ var TaskRegistry = map[TaskName]TaskDef{
 	// PostgreSQL tools run in the jobs sidecar of the PostgreSQL service
 	ConstTaskPgDump:       {Name: ConstTaskPgDump, Capability: TaskCapRemoteOnly},
 	ConstTaskPgBaseBackup: {Name: ConstTaskPgBaseBackup, Capability: TaskCapRemoteOnly},
+	ConstTaskPgStandby:    {Name: ConstTaskPgStandby, Capability: TaskCapRemoteOnly},
+	ConstTaskPgReseed:     {Name: ConstTaskPgReseed, Capability: TaskCapRemoteOnly},
 	ConstTaskReseedXB: {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
 	ConstTaskReseedMB: {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
 	ConstTaskFlashXB:  {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},

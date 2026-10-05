@@ -58,10 +58,9 @@ func (server *ServerMonitor) RejoinMaster() error {
 	}()
 
 	if server.IsPostgreSQLHost() {
-		// A former PostgreSQL primary is on an older timeline: it rejoins as a standby by
-		// rewind or re-seed, on its data directory, which the statements below cannot do.
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PostgreSQL server %s is back after a failover: it is not rejoined automatically yet, it must be re-seeded as a standby of the new primary", server.URL)
-		return nil
+		// A former PostgreSQL primary rejoins on its data directory (re-seed armed by the
+		// jobs sidecar, applied at restart): none of the statements below exists there.
+		return server.postgresRejoin()
 	}
 
 	if cluster.Conf.ActivePassive {
@@ -811,6 +810,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		cluster.rejoinCond.Send <- true
 	}()
 
+	if server.IsPostgreSQLHost() {
+		// a PostgreSQL standby follows whom its primary_conninfo names: nothing to repoint here
+		return nil
+	}
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep {
 		if cluster.GetTopology() == config.TopoMultiMasterRing {
 			server.RejoinLoop()

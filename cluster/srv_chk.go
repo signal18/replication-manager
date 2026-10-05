@@ -663,7 +663,7 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 			server.DelWaitMariabackupCookie()
 			return true, nil
 		}
-	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup:
+	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup, config.ConstTaskPgStandby, config.ConstTaskPgReseed:
 		// PostgreSQL tasks run in the jobs sidecar (srv_job_postgres.go)
 		if server.hasCookie(postgresJobCookie(checktype)) {
 			server.delCookie(postgresJobCookie(checktype))

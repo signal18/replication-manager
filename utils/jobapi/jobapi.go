@@ -117,6 +117,10 @@ func (c *Client) Receiver(task string) (string, error) {
 	if body == "NO_RECEIVER_NEEDED" {
 		return "", nil
 	}
+	if target := strings.TrimPrefix(body, "TARGET="); target != body {
+		// not a receiver: the address the task works against (the primary to follow)
+		return target, nil
+	}
 	port := strings.TrimPrefix(body, "RECEIVER_PORT=")
 	if port == body || port == "" {
 		return "", fmt.Errorf("receiver for %s: unexpected answer %q", task, body)

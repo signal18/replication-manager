@@ -150,4 +150,12 @@ func (cluster *Cluster) openSVCAddAppJobsSections(svcsection map[string]map[stri
 			" /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"),
 		"command": "-c 'printenv " + appJobsScriptKey + " > /tmp/app_jobs; exec bash /tmp/app_jobs'",
 	}
+	if app.AppConfig.ProvAppHATopology == "failover" {
+		// Both mount the app's volume, which a failover app has on ONE node at a time:
+		// like the app container they are shared resources, provisioned and started by
+		// the leader only. Unshared, the other nodes failed their provisioning on the
+		// missing mount and kept an address up that the service name then resolved to.
+		init["shared"] = "true"
+		svcsection["container#jobs"]["shared"] = "true"
+	}
 }
