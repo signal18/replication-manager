@@ -59,3 +59,23 @@ schema level owned the percentage, as designed, and the bytes level alone would 
 
 Not done yet: physical level bytes/schema (the SST receiver's byte count, mariabackup's
 "Copying" lines), mydumper boundaries, a modal instead of the tooltip.
+
+## splitdump speed (found by the progress pill, 2026-10-05)
+
+Stéphane watching the pill: "it is badly slow, compare backup time with splitdump and unsplit
+dump". Same 10.8 GB belair dataset, same host, three runs the same morning:
+
+| run | writer of the output | duration | throughput | pipeline CPU |
+|---|---|---|---|---|
+| splitdump, before | stdlib `compress/gzip`, one goroutine that also parses every line | 13 min 03 s (and 13 min 19 s) | ~10 MB/s | `replication-manager-cli splitdump` at 99 % of one core |
+| plain dump | parallel pgzip at the configured level | 4 min 23 s | ~32 MB/s | mariadb-dump 29 % |
+| splitdump, after | parallel pgzip, 1 MiB blocks, one goroutine per CPU, same gzip format | **2 min 49 s** | ~40 MB/s | 90 to 95 % spread over the cores |
+
+Fix (3958fa5d9): `utils/splitdump/split.go` writes the per-table files through
+klauspost/pgzip (`newTableWriter`: level + `SetConcurrency(1<<20, threads)`) and reads through
+it too; `CompressionLevel` / `CompressionThreads` are set by the new `--compression-level` and
+`--compression-threads` flags of the `splitdump` CLI, which the dump pipeline
+(`cluster_bck.go`) passes from `compress-backups-compression-level`. The files stay plain gzip
+(`gzip -t` passes, restore unchanged); output 860 MB / 273 files for the same data. Note for
+the next person: the `clients` package carries the `clients` build tag, `go build ./...` does
+not compile it, use `go build -tags clients ./clients/`.
