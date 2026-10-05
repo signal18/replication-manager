@@ -278,7 +278,9 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		return
 	}
 	master := cluster.GetMaster()
-	if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
+	if sl.IsPostgreSQLHost() {
+		// PostgreSQL has no semi-sync plugin: nothing to enforce, nothing to warn about
+	} else if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
 		dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
 	} else if !sl.IsIgnored() && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
@@ -425,7 +427,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if !sl.IsIgnored() && !sl.HaveBinlogCompress && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 		cluster.SetState("WARN0056", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0056"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if !sl.IsIgnored() && !sl.HaveBinlogSlaveUpdates {
+	if !sl.IsIgnored() && !sl.HaveBinlogSlaveUpdates && !sl.IsPostgreSQLHost() {
 		cluster.SetState("WARN0057", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 

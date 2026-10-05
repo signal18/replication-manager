@@ -1035,6 +1035,10 @@ func SetGTIDSlavePos(db *sqlx.DB, gtid string) (string, error) {
 func GetBinlogDumpThreads(db *sqlx.DB, myver *version.Version) (int, string, error) {
 	var i int
 	query := "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'"
+	if myver.IsPostgreSQL() {
+		// WAL senders: one per attached standby or subscriber
+		query = "SELECT COUNT(*) AS n FROM pg_stat_replication"
+	}
 	err := db.Get(&i, query)
 	return i, query, err
 }

@@ -1426,6 +1426,10 @@ func (cluster *Cluster) CheckJobsVersion() {
 
 func (cluster *Cluster) JobsCheckSchedulerTable() {
 	for _, server := range cluster.Servers {
+		if server.IsPostgreSQLHost() {
+			// no jobs table on PostgreSQL: its sidecar is driven through the API
+			continue
+		}
 		err := server.JobsCheckSchedulerTable()
 		if err != nil {
 			cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL, err), ErrFrom: "CLUSTER"})

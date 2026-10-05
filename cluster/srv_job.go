@@ -125,6 +125,10 @@ WHERE table_schema = 'replication_manager_schema'
 
 func (server *ServerMonitor) JobsCreateTable() error {
 	cluster := server.ClusterGroup
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	// In API mode the jobs table is not used — but still ensure the
 	// replication_manager_schema database exists (needed by checksum, benchmarks, etc.)
 	if cluster.Conf.SchedulerJobsMode == "api" {
@@ -1757,6 +1761,11 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 	var sum, newsum string
 	var checkerr error
 	cluster := server.ClusterGroup
+
+	if server.IsPostgreSQLHost() {
+		// the PostgreSQL sidecar script is delivered with the app, not by the jobs upgrade
+		return nil
+	}
 
 	if server.IsIgnored() {
 		return nil

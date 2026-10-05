@@ -1492,6 +1492,13 @@ func (server *ServerMonitor) Refresh() error {
 
 	} // End not PG
 
+	if server.DBVersion.IsPostgreSQL() {
+		// the replicas attached to this server (WAL senders): what designates a primary in
+		// topology discovery, as the binlog dump threads do on MariaDB/MySQL
+		server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get WAL senders %s %s", server.URL, err)
+	}
+
 	// Set channel source name is dangerous with multi cluster
 
 	// SHOW SLAVE STATUS
@@ -1525,6 +1532,12 @@ func (server *ServerMonitor) Refresh() error {
 			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), cluster.GetCrcTable()), 10), 10, 64)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PG Could not assign server_id s", err)
+			}
+			// the primary is one of the monitored servers: use ITS internal id, which is
+			// built from its monitored address (name + domain + port) and is what the
+			// master lookup by server id compares with
+			if src := cluster.GetServerFromURL(server.SlaveStatus.MasterHost.String + ":" + server.SlaveStatus.MasterPort.String); src != nil {
+				sid = src.ServerID
 			}
 			server.SlaveStatus.MasterServerID = sid
 			for i := range server.Replications {
