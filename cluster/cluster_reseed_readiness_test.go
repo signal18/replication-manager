@@ -115,3 +115,30 @@ func TestReseedReadinessPostgreSQLHasNoBinaryLogWarning(t *testing.T) {
 		t.Fatalf("listing binary logs is a no-op on PostgreSQL: %v", err)
 	}
 }
+
+// WARN0223 (no backup-based reseed method) is raised on PostgreSQL only where a node can
+// be reseeded: the logical replication topology, not a single active-passive instance.
+func TestReseedReadinessPostgreSQLReseedMethodByTopology(t *testing.T) {
+	cl, m := readinessCluster(t)
+	cl.Conf.AutorejoinLogicalBackup = false
+	has := func() bool {
+		for _, issue := range cl.GetReseedReadiness().Issues {
+			if issue.Code == "WARN0223" {
+				return true
+			}
+		}
+		return false
+	}
+	if !has() {
+		t.Fatal("MariaDB without a backup-based reseed method raises WARN0223")
+	}
+	m.DBVersion, _ = version.NewVersion("PostgreSQL", 17, 11, 0)
+	cl.Topology = config.TopoActivePassive
+	if has() {
+		t.Fatal("a single active-passive PostgreSQL instance has nothing to reseed")
+	}
+	cl.Topology = config.TopoMasterSlavePgLog
+	if !has() {
+		t.Fatal("PostgreSQL logical replication raises WARN0223")
+	}
+}

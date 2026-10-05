@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"fmt"
+	"github.com/signal18/replication-manager/config"
 	"strconv"
 	"strings"
 	"time"
@@ -83,7 +84,10 @@ func (cluster *Cluster) GetReseedReadiness() ReseedReadiness {
 	case !cluster.Conf.BackupBinlogs:
 		r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0224", Text: fmt.Sprintf(clusterError["WARN0224"], "backup-binlogs is off")})
 	}
-	if !cluster.Conf.AutorejoinLogicalBackup && !cluster.Conf.AutorejoinPhysicalBackup {
+	// The reseed method matters where a node can be reseeded: on PostgreSQL that is the
+	// logical replication topology only (a single active-passive instance has no replica).
+	reseedable := master.DBVersion == nil || !master.DBVersion.IsPostgreSQL() || cluster.GetTopology() == config.TopoMasterSlavePgLog
+	if reseedable && !cluster.Conf.AutorejoinLogicalBackup && !cluster.Conf.AutorejoinPhysicalBackup {
 		r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0223", Text: clusterError["WARN0223"]})
 	}
 	r.Retention = binlogRetention(master)
