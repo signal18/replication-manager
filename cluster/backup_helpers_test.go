@@ -19,6 +19,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
@@ -1201,5 +1202,39 @@ func TestJobsCheckStatesApiModeSkipsSQL(t *testing.T) {
 
 	if err := server.JobsCheckStates(); err != nil {
 		t.Fatalf("JobsCheckStates in api mode returned %v, want nil (must skip the SQL path)", err)
+	}
+}
+
+// A logical backup fills its binlog position while the dump is read; once the dump function
+// has returned nothing can publish it. WriteBackupMetadata must therefore not wait for it:
+// the wait never ended, kept InLogicalBackup raised and held the global backup slot forever.
+func TestWriteBackupMetadataLogicalDoesNotWaitForBinlogPosition(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.DiskStatManager = misc.NewDiskStatManager()
+	server.JobResults = config.NewTasksMap()
+	server.JobResults.Set("mysqldump", &config.Task{Task: "mysqldump", State: 3, Done: 1})
+
+	dest := filepath.Join(t.TempDir(), "mysqldump.sql.gz")
+	if err := os.WriteFile(dest, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
+		Id:         1,
+		BackupTool: "mysqldump",
+		Dest:       dest,
+		StartTime:  time.Now(),
+	}
+	done := make(chan struct{})
+	go func() {
+		server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteBackupMetadata kept waiting for a binlog position a finished logical backup can no longer receive")
+	}
+	if !server.LastBackupMeta.Logical.Completed {
+		t.Fatal("a finished logical backup must be written as completed even without a binlog position")
 	}
 }
