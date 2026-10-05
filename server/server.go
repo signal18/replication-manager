@@ -1010,7 +1010,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
 	flags.StringVar(&conf.BackupLogicalPostScript, "backup-logical-post-script", "", "Customized backup post script location. Params: <clustername> <hostname> <port> <backup-path>")
 	flags.StringVar(&conf.BackupPhysicalPostScript, "backup-physical-post-script", "", "Customized backup post script location. Params: <clustername> <hostname> <port> <backup-path>")
-	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
+	flags.BoolVar(&conf.CompressBackups, "compress-backups", true, "Compress backups (on by default; set to false to keep them uncompressed)")
 	flags.StringVar(&conf.CompressBackupsLogical, "compress-backups-logical", "auto", "Compression for logical backups: auto|true|false (auto uses compress-backups)")
 	flags.StringVar(&conf.CompressBackupsPhysical, "compress-backups-physical", "auto", "Compression for physical backups: auto|true|false (auto uses compress-backups)")
 	flags.IntVar(&conf.CompressBackupsCompressionLevel, "compress-backups-compression-level", 6, "Compression level for pgzip (1=fastest, 9=best compression, 6=default)")
