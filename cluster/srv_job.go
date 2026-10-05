@@ -426,6 +426,18 @@ func (server *ServerMonitor) JobInsertTaskWithPayload(task string, port string, 
 	return server.jobInsertTask(task, port, repmanhost, &payload)
 }
 
+// jobTaskStillOpen reports whether a job row is still open: not ended
+// (done=0) and in a state before the DB-side job finished (states 0 to 3).
+func jobTaskStillOpen(state, done int) bool {
+	return state <= 3 && done == 0
+}
+
+// jobOpenTaskError is the error returned when a task cannot be started
+// because its previous job is still open in the jobs table.
+func jobOpenTaskError(task string, id int64, state int) error {
+	return fmt.Errorf("Task %s is still open in the jobs table (id %d, state %d): wait for it to end or cancel it", task, id, state)
+}
+
 func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost string, payload *string) (int64, error) {
 	cluster := server.ClusterGroup
 	if cluster.InRollingRestart {
@@ -520,8 +532,8 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 		nr = 1
 		rows.Scan(&t.Id, &t.Task, &t.Done, &t.State)
 
-		if t.State <= 3 && t.Done == 0 {
-			return 0, fmt.Errorf("Failed to retrieve data on jobs table: %v", err)
+		if jobTaskStillOpen(t.State, t.Done) {
+			return 0, jobOpenTaskError(task, t.Id, t.State)
 		}
 	}
 	rows.Close()
