@@ -463,6 +463,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// active-passive was configured explicitly.
 	if !hasRelay && !hasCycling && !cluster.HasConfigTopoActivePassive() {
 		cluster.Topology = config.TopoMasterSlave
+		if pgTopology := cluster.postgresReplicationTopology(); pgTopology != "" {
+			cluster.Topology = pgTopology
+		}
 	}
 
 	if cluster.GetTopology() == config.TopoMultiMaster || cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterGrouprep {

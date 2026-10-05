@@ -446,7 +446,9 @@ func (server *ServerMonitor) CheckMasterSettings() {
 		return
 	}
 	cluster := server.ClusterGroup
-	if cluster.Conf.ForceSlaveSemisync && !server.HaveSemiSync {
+	if server.IsPostgreSQLHost() {
+		// PostgreSQL has no semi-sync plugin: nothing to enforce, nothing to warn about
+	} else if cluster.Conf.ForceSlaveSemisync && !server.HaveSemiSync {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce semisync on Master %s", server.URL)
 		dbhelper.InstallSemiSync(server.Conn, server.DBVersion)
 	} else if !server.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
@@ -488,7 +490,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	} else if !server.HaveBinlogCompress && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
 		cluster.SetState("WARN0068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0068"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if !server.HaveBinlogSlaveUpdates {
+	if !server.HaveBinlogSlaveUpdates && !server.IsPostgreSQLHost() {
 		cluster.SetState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if !server.HaveGtidStrictMode && server.DBVersion.Flavor == "MariaDB" && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {

@@ -20,6 +20,10 @@ import "github.com/jmoiron/sqlx"
 // WAL file names and offsets are computed from the LSN: pg_walfile_name() cannot be
 // executed during recovery, and the same names must come out on a primary and a standby.
 
+// PostgresStandbyConnectionName is the connection name of a physical standby's status: what
+// tells it from a logical replication status, named after its subscription.
+const PostgresStandbyConnectionName = "walreceiver"
+
 // postgresStandbyStatusQuery returns one row on a server in recovery, none on a primary.
 const postgresStandbyStatusQuery = `WITH w AS (
   SELECT (SELECT setting::bigint FROM pg_settings WHERE name = 'wal_segment_size') AS seg,
