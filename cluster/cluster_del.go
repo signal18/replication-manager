@@ -16,6 +16,9 @@ import (
 )
 
 func (cluster *Cluster) RemoveServerFromIndex(index int) {
+	if index >= 0 && index < len(cluster.Servers) && cluster.Servers[index] != nil {
+		cluster.Servers[index].CloseBinlogEventSyncer()
+	}
 	newServers := make([]*ServerMonitor, 0)
 	newServers = append(newServers, cluster.Servers[:index]...)
 	newServers = append(newServers, cluster.Servers[index+1:]...)

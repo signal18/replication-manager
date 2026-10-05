@@ -5312,7 +5312,14 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	// With encryption on, mysqlbinlog writes into the ".partial" staging
 	// directory; only finalizeBinlogCopy publishes the encrypted copy.
 	copyDir := server.binlogCopyDir()
-	params := append(cluster.GetBinlogCredentials(server), "--read-from-remote-server", "--raw", "--server-id=10000", "--result-file="+copyDir)
+	// Replica server-id leased from the pool for the copy (#1886): the hard-coded 10000
+	// collided with the metadata syncer and with the rejoin fetch.
+	serverID, release, err := cluster.binlogServerIDPool().Acquire("binlog-backup")
+	if err != nil {
+		return err
+	}
+	defer release()
+	params := append(cluster.GetBinlogCredentials(server), "--read-from-remote-server", "--raw", "--server-id="+strconv.FormatUint(uint64(serverID), 10), "--result-file="+copyDir)
 	params = append(params, server.GetSSLClientParam("client-binlog")...)
 	params = append(params, binlogfile)
 	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(params)...)

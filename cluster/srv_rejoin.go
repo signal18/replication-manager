@@ -1115,11 +1115,18 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 		}
 	}
 
+	// Replica server-id leased from the pool for the fetch (#1886): the hard-coded 10000
+	// collided with the binlog backup copy and the metadata syncer.
+	fetchID, release, err := cluster.binlogServerIDPool().Acquire("rejoin-fetch")
+	if err != nil {
+		return err
+	}
+	defer release()
 	var params []string = make([]string, 0)
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		params = append(params, "--connection-server-id=10000")
+		params = append(params, "--connection-server-id="+strconv.FormatUint(uint64(fetchID), 10))
 	} else {
-		params = append(params, "--stop-never-slave-server-id=10000")
+		params = append(params, "--stop-never-slave-server-id="+strconv.FormatUint(uint64(fetchID), 10))
 	}
 	params = append(params, "--read-from-remote-server", "--raw", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos)
 	params = append(params, server.GetSSLClientParam("client-binlog")...)

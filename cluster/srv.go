@@ -199,6 +199,13 @@ type ServerMonitor struct {
 	binlogEventSyncer           *replication.BinlogSyncer   // persistent syncer for security event scanning
 	binlogEventStreamer         *replication.BinlogStreamer // stream open on the current binlog file
 	binlogEventFile             string                      // binlog filename the streamer is attached to
+	binlogEventServerID         uint32                      // replica server-id leased for the open stream (pool, #1886)
+	binlogEventRelease          func()                      // returns the lease to the pool
+	binlogScanResets            int                         // hard resets of the event scanner stream in the current window (#1886)
+	binlogScanFirstReset        time.Time                   // start of the reset window
+	binlogScanLastReset         time.Time                   // last hard reset
+	binlogScanBackoffUntil      time.Time                   // no reopen before this instant
+	binlogScanBackoff           time.Duration               // backoff in force, for the state text
 	MonitorTime                 int64                       `json:"-"`
 	PrevMonitorTime             int64                       `json:"-"`
 	maxConn                     string                      `json:"maxConn"` // used to back max connection for failover

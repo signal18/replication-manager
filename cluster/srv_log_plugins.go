@@ -751,8 +751,12 @@ func (cluster *Cluster) CheckLogPlugins() {
 		// Refresh binlog QUERY events before running plugins that inspect them.
 		// Only scan the master: replicas receive the same events via replication,
 		// so scanning them would produce duplicate findings and waste connections.
-		if cluster.Conf.MonitorBinlogEvents && server.HaveBinlog && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL {
+		// Only the ACTIVE monitor scans (#1886): a standby never opens a replica
+		// stream on the client's primary -- it watches, it does not consume.
+		if cluster.Conf.MonitorBinlogEvents && server.HaveBinlog && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL && cluster.IsActive() {
 			server.ScanBinlogQueryEvents()
+		} else {
+			server.CloseBinlogEventSyncer()
 		}
 		server.RunLogPlugins(cluster.pluginSpikeCache, &newScore)
 	}

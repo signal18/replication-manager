@@ -29,6 +29,11 @@ func (cluster *Cluster) newServerList() error {
 	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,config.LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Lock()
+	// The old monitors are dropped, never closed: release what they hold on the primaries
+	// (the event scanner's replica stream and its pool lease, #1886) or every rebuild --
+	// config reload, host list change, add server -- leaks one Binlog Dump thread and one
+	// id, and the pool is exhausted after eleven of them.
+	cluster.closeServersBinlogStreams(cluster.Servers)
 	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Processing host: %s", cluster.Conf.Hosts)
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
@@ -1002,4 +1007,14 @@ func (cluster *Cluster) standbyDesignateMaster(local *ServerMonitor) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Standby: master of %s is %s: %s, nothing written", cluster.Name, local.URL, why)
 	cluster.master = local
 	cluster.master.SetMaster()
+}
+
+// closeServersBinlogStreams releases the binlog event stream and its leased replica
+// server-id of every monitor about to be dropped (cluster_binlog_serverid.go, #1886).
+func (cluster *Cluster) closeServersBinlogStreams(servers []*ServerMonitor) {
+	for _, old := range servers {
+		if old != nil {
+			old.CloseBinlogEventSyncer()
+		}
+	}
 }

@@ -16,7 +16,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"os"
 	"os/exec"
@@ -62,75 +61,6 @@ func (server *ServerMonitor) binlogSyncerTLSConfig() *tls.Config {
 	return nil
 }
 
-// binlogSyncerServerIDFor computes the go-mysql server-id for check-binlog-server-id
-// plus offset, using the exact uint32 conversion go-mysql performs internally
-// (which wraps, so large values such as 4294967296 also produce 0, not just
-// literal 0 or -offset). Shared by binlogSyncerServerID and InitFromConf's
-// startup validation so the two can't drift apart on what counts as invalid.
-func binlogSyncerServerIDFor(checkBinServerId, offset int) (uint32, bool) {
-	id := uint32(checkBinServerId + offset + binlogSyncerInstanceSalt())
-	return id, id != 0
-}
-
-// binlogSyncerInstanceSaltRange keeps the per-instance salt below the 2000 gap between
-// the metadata syncer (offset 0) and the event scanner (offset 2000), so the two syncers
-// of one instance never collide with each other whatever the salt.
-const binlogSyncerInstanceSaltRange = 1999
-
-var (
-	binlogSyncerSaltOnce sync.Once
-	binlogSyncerSalt     int
-)
-
-// binlogSyncerInstanceSalt is the per-repman-instance component of every binlog syncer
-// server-id: FNV-1a of this instance's hostname, folded into [0, 1999). Two replication
-// managers watching the same cluster (the active and the standby, a dev instance on the
-// side) used to present the SAME replica server-id: MariaDB kills the previous Binlog
-// Dump thread when a new one connects with that id, the loser reconnects on its next
-// tick and re-streams the current binlog file from the start, the winner is killed in
-// turn -- belair db1 served 1.7 TB in five days to its two monitors that way (#1886).
-// Hostname is what distinguishes the instances in every deployment we run (one pod or
-// one host per instance); the salt is logged at startup so a collision is visible.
-func binlogSyncerInstanceSalt() int {
-	binlogSyncerSaltOnce.Do(func() {
-		binlogSyncerSalt = binlogSyncerSaltFor(binlogSyncerInstanceName())
-	})
-	return binlogSyncerSalt
-}
-
-func binlogSyncerInstanceName() string {
-	h, err := os.Hostname()
-	if err != nil || h == "" {
-		return "replication-manager"
-	}
-	return h
-}
-
-func binlogSyncerSaltFor(instance string) int {
-	f := fnv.New32a()
-	f.Write([]byte(instance))
-	return int(f.Sum32() % binlogSyncerInstanceSaltRange)
-}
-
-// binlogSyncerServerID computes the go-mysql server-id for a binlog syncer
-// (check-binlog-server-id plus offset) and refuses a value of 0: go-mysql's
-// NewBinlogSyncer calls Logger.Fatal on ServerID==0 with no way to recover
-// unless the call goes through newSafeBinlogSyncer. InitFromConf already logs
-// a loud, one-time error at cluster startup when the config produces this;
-// this guard just makes sure the syncer is never actually started with it,
-// without re-logging every tick. This is the primary prevention layer;
-// newSafeBinlogSyncer is the last-resort safety net if it's ever missed or a
-// future go-mysql version adds new Fatal conditions.
-func (server *ServerMonitor) binlogSyncerServerID(offset int) (uint32, bool) {
-	cluster := server.ClusterGroup
-	id, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, offset)
-	if !ok {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg,
-			"check-binlog-server-id produces server-id 0 for %s, skipping binlog syncer", server.URL)
-	}
-	return id, ok
-}
-
 // newSafeBinlogSyncer is the only place cluster code may call
 // replication.NewBinlogSyncer directly; every call site in this file must go
 // through it (enforced by TestBinlogSyncerConstructionOnlyThroughSafeWrapper
@@ -139,7 +69,8 @@ func (server *ServerMonitor) binlogSyncerServerID(offset int) (uint32, bool) {
 // go-mysql's NewBinlogSyncer calls Logger.Fatal(...) synchronously on
 // ServerID==0, and BinlogSyncerLogger.Fatal panics with s18log.FatalError
 // rather than calling os.Exit(1) precisely so this constructor can recover
-// from it. binlogSyncerServerID already prevents ServerID==0 from reaching
+// from it. The replica server-id pool (cluster_binlog_serverid.go) already refuses a
+// zero base, so ServerID==0 never reaches
 // this call in normal operation; this recover is defense in depth for a
 // validation gap, a future call site that forgets it, or a future go-mysql
 // version that fails closed somewhere else in the constructor.
@@ -234,10 +165,11 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 	cluster := server.ClusterGroup
 	port, _ := strconv.Atoi(server.Port)
 
-	serverID, ok := server.binlogSyncerServerID(0)
-	if !ok {
-		return errors.New("check-binlog-server-id produces an invalid server-id of 0")
+	serverID, release, err := cluster.binlogServerIDPool().Acquire("binlog-meta")
+	if err != nil {
+		return err
 	}
+	defer release()
 
 	cfg := replication.BinlogSyncerConfig{
 		ServerID: serverID,
@@ -289,7 +221,12 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 func (server *ServerMonitor) RefreshBinlogMetaMySQL(meta *dbhelper.BinaryLogMetadata) error {
 	var err error
 	cluster := server.ClusterGroup
-	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+	serverID, release, err := cluster.binlogServerIDPool().Acquire("binlog-meta")
+	if err != nil {
+		return err
+	}
+	defer release()
+	binsrvid := strconv.FormatUint(uint64(serverID), 10)
 
 	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
@@ -885,7 +822,12 @@ func (server *ServerMonitor) WriteBackupBinlogMetadata() {
 
 func (server *ServerMonitor) FindLogPositionForTimestamp(binlogFile string, timestamp time.Time, maxRange int) (string, int, error) {
 	cluster := server.ClusterGroup
-	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+	serverID, release, err := cluster.binlogServerIDPool().Acquire("restore-lookup")
+	if err != nil {
+		return "", 0, err
+	}
+	defer release()
+	binsrvid := strconv.FormatUint(uint64(serverID), 10)
 
 	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
@@ -920,7 +862,12 @@ func (server *ServerMonitor) FindLogPositionForTimestamp(binlogFile string, time
 
 func (server *ServerMonitor) FindNearestLogPosition(binlogFile string, timestamp time.Time, maxRetries int) (string, int, error) {
 	cluster := server.ClusterGroup
-	binsrvid := strconv.Itoa(cluster.Conf.CheckBinServerId)
+	serverID, release, err := cluster.binlogServerIDPool().Acquire("restore-lookup")
+	if err != nil {
+		return "", 0, err
+	}
+	defer release()
+	binsrvid := strconv.FormatUint(uint64(serverID), 10)
 
 	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlBinlogPath())
@@ -1030,10 +977,11 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *b
 	cluster := server.ClusterGroup
 	port, _ := strconv.Atoi(server.Port)
 
-	serverID, ok := server.binlogSyncerServerID(0)
-	if !ok {
-		return errors.New("check-binlog-server-id produces an invalid server-id of 0")
+	serverID, release, err := cluster.binlogServerIDPool().Acquire("restore-lookup")
+	if err != nil {
+		return err
 	}
+	defer release()
 
 	cfg := replication.BinlogSyncerConfig{
 		ServerID: serverID,
@@ -1220,19 +1168,51 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 
 	port, _ := strconv.Atoi(server.Port)
 
+	// Backoff after repeated hard resets (#1886): a stream killed again and again --
+	// typically another replication manager presenting the same replica server-id --
+	// used to be reopened on the very next tick, re-streaming the current binlog every
+	// time. While the backoff runs the scanner stays closed and the state says why.
+	// The state stays open for the whole time the reset counter is armed -- sleeping
+	// or retrying -- and resolves only after a quiet window; opening it for the pause
+	// alone would flap at every retry (the pstates lesson).
+	now := time.Now()
+	if server.binlogScanArmed(now) {
+		phase := "scanning paused for " + server.binlogScanBackoff.Round(time.Second).String()
+		if !now.Before(server.binlogScanBackoffUntil) {
+			phase = "retrying after a pause of " + server.binlogScanBackoff.Round(time.Second).String()
+		}
+		cluster.SetState("WARN0227", state.State{ErrType: "WARNING",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0227"], server.URL, server.binlogScanResets,
+				binlogScanResetWindow.String(), server.binlogScanLastReset.Format("15:04:05"),
+				server.binlogEventServerID, phase),
+			ErrFrom: "MON", ServerUrl: server.URL})
+	}
+	if now.Before(server.binlogScanBackoffUntil) {
+		return
+	}
+
 	// (Re)open the streamer when it does not exist yet or when the binlog has
 	// rotated to a new file.
 	if server.binlogEventStreamer == nil || server.binlogEventFile != currentFile {
 		// Tear down the previous syncer cleanly before opening a new one.
 		server.CloseBinlogEventSyncer()
 
-		// Use a server-id that is distinct from the metadata syncer
-		// (CheckBinServerId) and from any real replica, to avoid
-		// "duplicate server-id" errors.
-		serverID, ok := server.binlogSyncerServerID(2000)
-		if !ok {
+		// Lease a replica server-id for the life of the stream (released by
+		// CloseBinlogEventSyncer); the pool keeps it apart from every other binlog
+		// consumer of this instance and from the sibling instances' blocks.
+		serverID, release, err := cluster.binlogServerIDPool().Acquire("event-scanner")
+		if err != nil {
+			// Every id streams already (a leak, or eleven real consumers): say it as a
+			// state, not a debug line -- the scanner is silently off otherwise.
+			cluster.SetState("WARN0228", state.State{ErrType: "WARNING",
+				ErrDesc: fmt.Sprintf(clusterError["WARN0228"], server.URL, err.Error()),
+				ErrFrom: "MON", ServerUrl: server.URL})
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+				"[binlog-scan] %s: %v -- scan skipped this tick", server.URL, err)
 			return
 		}
+		server.binlogEventServerID = serverID
+		server.binlogEventRelease = release
 
 		cfg := replication.BinlogSyncerConfig{
 			ServerID: serverID,
@@ -1247,6 +1227,8 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 
 		syncer, err := newSafeBinlogSyncer(cfg)
 		if err != nil {
+			release()
+			server.binlogEventRelease = nil
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
 				"[binlog-scan] failed to create binlog syncer on %s: %v", server.URL, err)
 			return
@@ -1313,10 +1295,17 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 			break
 		}
 		if err != nil {
-			// Hard error (connection reset, etc.) — tear down and retry next tick.
+			// Hard error (connection reset, etc.) — tear down; the next tick reopens
+			// unless the resets pile up, then noteBinlogScanReset arms a backoff.
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
 				"[binlog-scan] streamer error on %s: %v — closing syncer", server.URL, err)
 			server.CloseBinlogEventSyncer()
+			if backoff := server.noteBinlogScanReset(time.Now()); backoff > 0 {
+				scanID := server.binlogEventServerID
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+					"[binlog-scan] stream on %s reset %d times in %s: pausing the scanner for %s (another binlog consumer -- a replica, another replication manager, a mysqlbinlog fetch -- presents the same replica server-id %d)",
+					server.URL, server.binlogScanResets, binlogScanResetWindow, backoff.Round(time.Second), scanID)
+			}
 			break
 		}
 
@@ -1339,6 +1328,54 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 	}
 }
 
+// Backoff policy of the event scanner (#1886). Resets are counted in a sliding window;
+// from the third one the scanner pauses 30 s, doubling at every further reset up to
+// 30 min. A window without resets forgets the count.
+const (
+	binlogScanResetWindow    = 10 * time.Minute
+	binlogScanResetThreshold = 3
+	binlogScanBackoffBase    = 30 * time.Second
+	binlogScanBackoffMax     = 30 * time.Minute
+)
+
+// binlogScanBackoffFor returns the pause after the n-th reset of the window (0 below the
+// threshold).
+func binlogScanBackoffFor(resets int) time.Duration {
+	if resets < binlogScanResetThreshold {
+		return 0
+	}
+	d := binlogScanBackoffBase
+	for i := binlogScanResetThreshold; i < resets && d < binlogScanBackoffMax; i++ {
+		d *= 2
+	}
+	if d > binlogScanBackoffMax {
+		d = binlogScanBackoffMax
+	}
+	return d
+}
+
+// binlogScanArmed reports whether the reset counter is at or past the threshold and its
+// window has not expired: the WARN0227 state is open exactly then.
+func (server *ServerMonitor) binlogScanArmed(now time.Time) bool {
+	return server.binlogScanResets >= binlogScanResetThreshold && now.Sub(server.binlogScanLastReset) <= binlogScanResetWindow
+}
+
+// noteBinlogScanReset records a hard reset of the scanner stream at now and returns the
+// backoff it arms (0 when none).
+func (server *ServerMonitor) noteBinlogScanReset(now time.Time) time.Duration {
+	if server.binlogScanFirstReset.IsZero() || now.Sub(server.binlogScanLastReset) > binlogScanResetWindow {
+		server.binlogScanResets = 0
+		server.binlogScanFirstReset = now
+	}
+	server.binlogScanResets++
+	server.binlogScanLastReset = now
+	server.binlogScanBackoff = binlogScanBackoffFor(server.binlogScanResets)
+	if server.binlogScanBackoff > 0 {
+		server.binlogScanBackoffUntil = now.Add(server.binlogScanBackoff)
+	}
+	return server.binlogScanBackoff
+}
+
 // binlogScanStartPosition is where a (re)opened event scanner starts reading: the
 // master's current position when the monitor's last SHOW MASTER STATUS is about the
 // same file, else the first event of the file (position 4, the classic fallback).
@@ -1358,5 +1395,9 @@ func (server *ServerMonitor) CloseBinlogEventSyncer() {
 		server.binlogEventSyncer = nil
 		server.binlogEventStreamer = nil
 		server.binlogEventFile = ""
+	}
+	if server.binlogEventRelease != nil {
+		server.binlogEventRelease()
+		server.binlogEventRelease = nil
 	}
 }

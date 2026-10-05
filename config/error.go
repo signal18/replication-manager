@@ -324,6 +324,8 @@ var ClusterError = map[string]string{
 	"WARN0224":  "Cluster: binary logs are not monitored (%s): a reseeded node could not catch up, a rolling reprov across a major release is refused",
 	"WARN0226":  "Server %s: disk resize %sGB -> %sGB refused by the orchestrator: %s -- the volume keeps its size, the declared disk was saved; the next disk move asks again",
 	"WARN0225":  "Cluster %s: local backup storage %.2f BKU over its BKU plan of %d (%s on the infrastructure); monitored as over-commit, never blocked",
+	"WARN0227":  "Server %s: binlog event scanner stream reset %d times in %s (last: %s); another binlog consumer presents the same replica server-id %d to this server (a replica, another replication manager instance, or a mysqlbinlog fetch such as a binlog backup or a rejoin); %s",
+	"WARN0228":  "Server %s: binlog event scanner has no replica server-id to use: %s -- scan skipped",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",
