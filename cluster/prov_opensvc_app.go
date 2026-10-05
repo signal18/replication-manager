@@ -288,6 +288,7 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 	if err != nil {
 		return err
 	}
+	cluster.openSVCEnsureAppNamespaceEnv(svc, agent.Node_name)
 	if err := cluster.openSVCEnsureSensorPrerequisites(svc); err != nil {
 		// The sidecar is monitoring, never a reason to refuse the app: log and go on, a
 		// later provision publishes what is missing.
@@ -495,6 +496,26 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 		}
 	}
 	return cluster.openSVCPublishAppJobScript(svc)
+}
+
+// openSVCEnsureAppNamespaceEnv makes sure the namespace `env` config and secret objects
+// exist and tell where replication-manager is. The database provisioning creates them
+// (OpenSVCCreateMaps); a namespace that only ever had apps never got them, so the sensor
+// sidecar and the jobs init container started without REPLICATION_MANAGER_URL (live
+// pgtest 2026-10-05: "wget: bad address ''"). Idempotent; an error is logged, the app
+// provisioning goes on.
+func (cluster *Cluster) openSVCEnsureAppNamespaceEnv(svc opensvc.Collector, agent string) {
+	if err := svc.CreateConfig(cluster.Name, "env", agent); err != nil && !isOpenSVCAlreadyExists(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not create the namespace env config: %s", err)
+		return
+	}
+	if err := svc.CreateSecret(cluster.Name, "env", agent); err != nil && !isOpenSVCAlreadyExists(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not create the namespace env secret: %s", err)
+	}
+	url := "https://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.APIPort
+	if err := svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_URL", url); err != nil && !isOpenSVCAlreadyExists(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
+	}
 }
 
 // openSVCPublishAppJobScript makes sure the namespace `env` config object holds the current
