@@ -95,6 +95,10 @@ function Graphs({ selectedCluster, onOpenSettings }) {
       : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
 
+  // Mb/s axes print plain decimals: the default SI formatter turns 0.1 Mb/s into "100m",
+  // which reads as 100 M at a glance (Stéphane saw "a lot of in" on a 0.05 Mb/s belair).
+  const mbpsTick = (v) => (v >= 100 ? String(Math.round(v)) : v >= 1 ? v.toFixed(1) : v.toFixed(3).replace(/\.?0+$/, ''))
+
   const cfg = selectedCluster?.config || {}
   // The plan line = prov-service-plan-dbu, the materialized service-plan DBU (Σ per-node
   // deployment plans = prov-db-dbu x #nodes), recomputed each tick. The GUI just READS it.
@@ -424,6 +428,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartTimeSeriesLine
           title='Internal network IN — Mb/s received per service, stacked (top of the stack = cluster)'
           yLabel='Mb/s in'
+          yTickFormat={mbpsTick}
           stacked
           windowSec={windowSec}
           refreshMs={refreshMs}
@@ -437,6 +442,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         <ChartTimeSeriesLine
           title='Internal network OUT — Mb/s sent per service, stacked (top of the stack = cluster)'
           yLabel='Mb/s out'
+          yTickFormat={mbpsTick}
           stacked
           windowSec={windowSec}
           refreshMs={refreshMs}
