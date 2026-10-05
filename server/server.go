@@ -1143,7 +1143,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Test, "test", false, "Enable non regression tests")
 	flags.BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 	flags.BoolVar(&conf.TestInjectTrafficStaging, "test-inject-traffic-staging", false, "Inject some database traffic via proxy to staging")
-	flags.StringVar(&conf.InjectTrafficMode, "inject-traffic-mode", "ddl", "Pseudo-GTID / traffic marker format: ddl (CREATE OR REPLACE VIEW — self-contained idempotent DDL, needs no table on newly-monitored/reseeded nodes, greppable for positional rejoin; battle-tested DEFAULT) or dml (single-row REPLACE, flashback-able; table created once via the proxy so it replicates ahead of the writes — EXPERIMENTAL, pending the topology matrix)")
+	flags.StringVar(&conf.InjectTrafficMode, "inject-traffic-mode", "dml", "Pseudo-GTID / traffic marker format: dml (DEFAULT since 3.1.43: a single-row REPLACE, a ROW event flashback can reverse; table created once via the proxy so it replicates ahead of the writes) or ddl (CREATE OR REPLACE VIEW: self-contained, greppable for positional rejoin, but every marker is a non-flashbackable binlog event -- tests and positional replication only, forced anyway by force-slave-no-gtid-mode; WARN0230 while in use)")
 	flags.IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 	flags.IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
 	flags.StringVar(&conf.SysbenchTest, "sysbench-test", "oltp_read_write", "oltp_read_write|tpcc|oltp_read_only|oltp_update_index|oltp_update_non_index")
