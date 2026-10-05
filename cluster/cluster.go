@@ -337,6 +337,8 @@ type Cluster struct {
 	errorChan                   chan error           `json:"-"`
 	net                         *netStore            `json:"-"` // internal network readings per unit (cluster_net.go); on the cluster so a reload never wipes the counters
 	netOnce                     sync.Once            `json:"-"`
+	binlogServerIDs             *binlogServerIDPool  `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
+	binlogServerIDsOnce         sync.Once            `json:"-"`
 	resources                   *ResourceManager     `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
 	// provisioningMutex serialises every provision/unprovision operation that
 	// reports its result through the shared, unbuffered errorChan (the ~10
@@ -744,31 +746,17 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in automatic mode")
 	}
 
-	// go-mysql's replication.NewBinlogSyncer calls Logger.Fatal (os.Exit(1))
-	// when its ServerID is 0. The binlog syncer call sites (srv_binlog.go)
-	// derive that ServerID from check-binlog-server-id (offset 0 for the
-	// metadata/position syncers, +2000 for the query-event scanner) via
-	// binlogSyncerServerIDFor's uint32 conversion, which wraps — so check the
-	// actual computed value for both offsets, not just the literal inputs
-	// (0 and -2000) that happen to produce it, to also catch values like
-	// 4294967296 that wrap around to 0. Catch this once, loudly, at cluster
-	// startup rather than letting it silently kill the whole process the
-	// first time a binlog syncer opens.
-	if _, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, 0); !ok {
+	// Replica server-id pool (#1886): go-mysql aborts the process on server-id 0, so a
+	// check-binlog-server-id of 0 disables every binlog consumer loudly here instead of
+	// killing the daemon the first time one opens a stream.
+	if lo, hi := cluster.binlogServerIDPool().Range(); lo == 0 {
 		cluster.LogModulePrintf(true, config.ConstLogModPurge, config.LvlErr,
-			"check-binlog-server-id=%d produces an invalid binlog syncer server-id of 0: binlog metadata refresh and timestamp lookup will be disabled to avoid an unrecoverable go-mysql error. Set check-binlog-server-id to a different value.",
+			"check-binlog-server-id=%d disables the replica server-id pool: binlog metadata refresh, event scanning, restore lookups, binlog backup and rejoin fetches will refuse to stream. Set check-binlog-server-id to a positive value.",
 			cluster.Conf.CheckBinServerId)
-	}
-	if _, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, 2000); !ok {
-		cluster.LogModulePrintf(true, config.ConstLogModPurge, config.LvlErr,
-			"check-binlog-server-id=%d produces an invalid binlog syncer server-id of 0 with the query-event scanner's +2000 offset: query-event scanning will be disabled to avoid an unrecoverable go-mysql error. Set check-binlog-server-id to a different value.",
-			cluster.Conf.CheckBinServerId)
-	}
-	if idMeta, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, 0); ok {
-		idScan, _ := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, 2000)
+	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Binlog syncer replica server-ids for this instance: metadata %d, event scanner %d (check-binlog-server-id %d + per-instance salt %d from hostname %s)",
-			idMeta, idScan, cluster.Conf.CheckBinServerId, binlogSyncerInstanceSalt(), binlogSyncerInstanceName())
+			"Replica server-id pool for this instance: %d..%d (check-binlog-server-id %d + instance block %d from hostname %s), leased per binlog consumer",
+			lo, hi, cluster.Conf.CheckBinServerId, binlogServerIDInstanceBlock(), binlogServerIDInstanceName())
 	}
 
 	//working directory of the cluster is working directory of server and cluster name

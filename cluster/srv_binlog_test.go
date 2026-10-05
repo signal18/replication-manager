@@ -159,22 +159,63 @@ func TestBinlogSyncerConstructionOnlyThroughSafeWrapper(t *testing.T) {
 	}
 }
 
-func TestBinlogSyncerInstanceSaltKeepsSyncersApart(t *testing.T) {
-	// The salt never reaches the 2000 gap between the metadata syncer and the event
-	// scanner of one instance, whatever the hostname.
-	for _, h := range []string{"repman.s18.svc.cloud18", "repman-dr.s18.svc.cloud18", "repman-dev3", "", "a-very-long-hostname-with-many-characters.example.org"} {
-		if salt := binlogSyncerSaltFor(h); salt < 0 || salt >= 2000 {
-			t.Fatalf("salt for %q = %d, want [0,2000)", h, salt)
+func TestBinlogServerIDPoolLeasesDistinctIDs(t *testing.T) {
+	p := newBinlogServerIDPool(10000)
+	id1, rel1, err := p.Acquire("event-scanner")
+	if err != nil || id1 != 10000 {
+		t.Fatalf("first lease must be the pool base: %d %v", id1, err)
+	}
+	id2, rel2, err := p.Acquire("binlog-meta")
+	if err != nil || id2 != 10001 {
+		t.Fatalf("second concurrent lease takes the next id: %d %v", id2, err)
+	}
+	rel1()
+	rel1() // idempotent
+	id3, rel3, err := p.Acquire("binlog-backup")
+	if err != nil || id3 != 10000 {
+		t.Fatalf("a released id is reused: %d %v", id3, err)
+	}
+	if lo, hi := p.Range(); lo != 10000 || hi != 10010 {
+		t.Fatalf("pool is 10000..10010, got %d..%d", lo, hi)
+	}
+	rel2()
+	rel3()
+	if len(p.Leases()) != 0 {
+		t.Fatalf("every lease released, got %+v", p.Leases())
+	}
+}
+
+func TestBinlogServerIDPoolRefusesWhenExhausted(t *testing.T) {
+	p := newBinlogServerIDPool(10000)
+	releases := []func(){}
+	for i := 0; i < binlogServerIDPoolSize; i++ {
+		_, rel, err := p.Acquire("x")
+		if err != nil {
+			t.Fatalf("lease %d must succeed: %v", i, err)
+		}
+		releases = append(releases, rel)
+	}
+	if _, _, err := p.Acquire("one-too-many"); err == nil {
+		t.Fatal("an exhausted pool must refuse, never steal an id in use")
+	}
+	releases[5]()
+	if id, _, err := p.Acquire("again"); err != nil || id != 10005 {
+		t.Fatalf("the released id comes back: %d %v", id, err)
+	}
+	if _, _, err := newBinlogServerIDPool(0).Acquire("x"); err == nil {
+		t.Fatal("a zero base (check-binlog-server-id 0) refuses: go-mysql aborts on server-id 0")
+	}
+}
+
+func TestBinlogServerIDInstanceBlockKeepsInstancesApart(t *testing.T) {
+	for _, h := range []string{"repman.s18.svc.cloud18", "repman-dr.s18.svc.cloud18", "repman-dev3", ""} {
+		b := binlogServerIDBlockFor(h)
+		if b%binlogServerIDPoolSize != 0 || b < 0 || b >= binlogServerIDBlockCount*binlogServerIDPoolSize {
+			t.Fatalf("block for %q = %d, want a multiple of %d below %d", h, b, binlogServerIDPoolSize, binlogServerIDBlockCount*binlogServerIDPoolSize)
 		}
 	}
-	// Two instances with different hostnames get different ids (the belair case: the
-	// active and the standby both presented 12000, #1886).
-	if binlogSyncerSaltFor("repman.s18.svc.cloud18") == binlogSyncerSaltFor("repman-dr.s18.svc.cloud18") {
-		t.Fatal("active and standby hostnames must not share a salt")
-	}
-	// Deterministic.
-	if binlogSyncerSaltFor("x") != binlogSyncerSaltFor("x") {
-		t.Fatal("salt must be deterministic")
+	if binlogServerIDBlockFor("repman.s18.svc.cloud18") == binlogServerIDBlockFor("repman-dr.s18.svc.cloud18") {
+		t.Fatal("the active and the standby must not share a block")
 	}
 }
 
