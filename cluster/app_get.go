@@ -42,6 +42,10 @@ type appSubstitutionView struct {
 	Version   string                 `json:"version" groups:"apps"`
 	AppConfig *config.AppConfig      `json:"config" groups:"apps"`
 	Db        *appDbSubstitutionView `json:"db,omitempty" groups:"apps"` // {{app.db.*}}, present only when the app asked for a database (#1870)
+	// {{app.randompassword}}: the password replication-manager generated for this app
+	// (stored encrypted, a secret-type variable decrypts it); absent when the app asked
+	// for none, so the key stays unresolved and the add is refused
+	RandomPassword string `json:"randompassword,omitempty" groups:"apps"`
 }
 
 // cloneAppConfigForSubstitution returns an independent copy of cnf, safe to
@@ -211,6 +215,7 @@ func (app *App) buildAppSubstitutionView() *appSubstitutionView {
 	app.Lock()
 	view.AppConfig = cloneAppConfigForSubstitution(app.AppConfig)
 	view.Db = appDbView(app.AppConfig)
+	view.RandomPassword = app.AppConfig.AppRandomPassword
 	app.Unlock()
 	return view
 }

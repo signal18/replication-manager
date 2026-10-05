@@ -277,6 +277,9 @@ func (app *App) SetSetting(key, value string) error {
 		if err := app.ClusterGroup.RotateAppDatabasePassword(app); err != nil {
 			return err
 		}
+	case "app-random-password":
+		// stored encrypted; the app's containers read it at their next provisioning
+		app.AppConfig.AppRandomPassword = app.ClusterGroup.Conf.GetEncryptedString(app.ClusterGroup.Conf.GetDecryptedPassword("app-random-password", value))
 	case "app-db-auto-create":
 		app.AppConfig.AppDbAutoCreate = value == "true" || value == "1" || value == "on"
 		if err := app.ClusterGroup.ApplyAppDbDefaults(app.AppConfig); err != nil {

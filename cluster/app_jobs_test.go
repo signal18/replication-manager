@@ -62,32 +62,3 @@ func TestAppJobsSections(t *testing.T) {
 		}
 	}
 }
-
-// A database engine app takes the cluster's database credential and is never provisioned
-// on the shipped default password.
-func TestAppEngineCredential(t *testing.T) {
-	c, a := jobsTestApp("postgres", &config.Volume{Name: "v"})
-	if u, p := appEngineCredentialEnv(a); u != "POSTGRES_USER" || p != "POSTGRES_PASSWORD" {
-		t.Fatalf("postgres superuser variables: %s %s", u, p)
-	}
-	c.Conf.Secrets = map[string]config.Secret{"db-servers-credential": {Value: "root:mariadb"}}
-	if err := c.appEngineCredentialError(a); err == nil || !strings.Contains(err.Error(), "db-servers-credential") {
-		t.Fatalf("the default password refuses the provisioning: %v", err)
-	}
-	c.Conf.Secrets = map[string]config.Secret{"db-servers-credential": {Value: "root:"}}
-	if err := c.appEngineCredentialError(a); err == nil {
-		t.Fatal("an empty password refuses the provisioning")
-	}
-	c.Conf.Secrets = map[string]config.Secret{"db-servers-credential": {Value: "root:Xy7-long-random-value"}}
-	if err := c.appEngineCredentialError(a); err != nil {
-		t.Fatalf("a set password is accepted: %v", err)
-	}
-	_, plain := jobsTestApp("", &config.Volume{Name: "v"})
-	if u, p := appEngineCredentialEnv(plain); u != "" || p != "" {
-		t.Fatal("an ordinary app carries its own variables")
-	}
-	c.Conf.Secrets = map[string]config.Secret{"db-servers-credential": {Value: "root:mariadb"}}
-	if err := c.appEngineCredentialError(plain); err != nil {
-		t.Fatalf("an ordinary app is not concerned: %v", err)
-	}
-}

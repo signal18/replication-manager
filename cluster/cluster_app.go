@@ -983,6 +983,15 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			}
 			app.AppClusterSubstitute = ""
 		}
+		// Generated password: a template referencing {{app.randompassword}} gets one,
+		// generated here and stored encrypted, before the substitution runs.
+		if appRandomPasswordWanted(content) {
+			if err := cluster.ApplyAppRandomPassword(appcnf); err != nil {
+				rollbackAddedApp()
+				return err
+			}
+			app.AppClusterSubstitute = ""
+		}
 		resolvedContent, err := cluster.ParseTemplateContent(app, content)
 		if err != nil {
 			rollbackAddedApp()

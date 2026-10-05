@@ -59,37 +59,6 @@ func appEngineScript(app *App, kind string) string {
 	return string(b)
 }
 
-// defaultDatabasePassword is the password of the shipped db-servers-credential default
-// (root:mariadb): a database engine is never provisioned with it.
-const defaultDatabasePassword = "mariadb"
-
-// appEngineCredentialEnv names the environment variables an engine image reads its
-// superuser from. An engine app does not carry its own password: it is the CLUSTER's
-// database credential (db-servers-credential), the one the monitor, the jobs sidecar and
-// a standby's replication connection all use, delivered as a secret.
-func appEngineCredentialEnv(app *App) (userKey, passKey string) {
-	if app == nil || app.AppConfig == nil {
-		return "", ""
-	}
-	switch strings.TrimSpace(app.AppConfig.ProvAppConfigurator) {
-	case "postgres":
-		return "POSTGRES_USER", "POSTGRES_PASSWORD"
-	}
-	return "", ""
-}
-
-// appEngineCredentialError refuses to provision an engine app on the shipped default
-// password (or none): set db-servers-credential first, the dashboard generates one.
-func (cluster *Cluster) appEngineCredentialError(app *App) error {
-	if _, passKey := appEngineCredentialEnv(app); passKey == "" {
-		return nil
-	}
-	if pass := cluster.GetDbPass(); pass == "" || pass == defaultDatabasePassword {
-		return fmt.Errorf("app %s is a database engine and the cluster database password is the default: set db-servers-credential before provisioning it", app.Name)
-	}
-	return nil
-}
-
 // appJobsScript returns the jobs script of the app's engine, "" when it has none.
 func appJobsScript(app *App) string {
 	if app == nil || app.AppConfig == nil {
