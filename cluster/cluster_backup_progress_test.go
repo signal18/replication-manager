@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
 func TestBackupProgressBytesLevel(t *testing.T) {
@@ -117,4 +119,76 @@ func TestBackupProgressObserveDumpLine(t *testing.T) {
 	if p.CurrentTable != "tpcc.item" || p.TablesDone != 1 {
 		t.Fatalf("qualified form: %+v", p)
 	}
+}
+
+func TestBackupProgressPhysicalStream(t *testing.T) {
+	t0 := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
+	// first run: no comparable previous backup, the schema total is the estimate
+	p := newBackupProgress("k", "db1", "physical", "mariabackup", t0)
+	p.Level, p.TablesBytesTotal = BackupProgressLevelBytes, 8000
+	p.mu.Lock()
+	p.BytesDone = 2000
+	p.refreshLocked(t0.Add(10 * time.Second))
+	p.mu.Unlock()
+	if math.Abs(p.Percent-25) > 1e-9 || p.RateBytesPerS != 200 || p.EtaSeconds != 30 {
+		t.Fatalf("first run against the schema total: %+v", p)
+	}
+	// next runs: the previous stream size owns the denominator
+	p.PreviousSize = 10000
+	p.mu.Lock()
+	p.refreshLocked(t0.Add(10 * time.Second))
+	p.mu.Unlock()
+	if math.Abs(p.Percent-20) > 1e-9 || p.EtaSeconds != 40 {
+		t.Fatalf("against the previous stream size: %+v", p)
+	}
+	// a logical dump never borrows the schema total at the bytes level
+	q := newBackupProgress("k2", "db1", "logical", "mysqldump", t0)
+	q.TablesBytesTotal = 8000
+	q.AddBytes(100)
+	if q.Percent != -1 {
+		t.Fatalf("logical bytes level needs a previous size: %+v", q)
+	}
+}
+
+func TestBackupProgressComparableSize(t *testing.T) {
+	const phys = backupmgr.BackupMethodPhysical
+	for _, c := range []struct {
+		name string
+		m    backupmgr.BackupMetadata
+		want int64
+	}{
+		{"logical: artifact size", backupmgr.BackupMetadata{BackupMethod: backupmgr.BackupMethodLogical, Size: 7, Compressed: true}, 7},
+		{"physical: recorded stream size", backupmgr.BackupMetadata{BackupMethod: phys, Size: 3, StreamSize: 9, Compressed: true}, 9},
+		{"physical, plain artifact is the stream", backupmgr.BackupMetadata{BackupMethod: phys, Size: 5}, 5},
+		{"physical, compressed without stream size: not comparable", backupmgr.BackupMetadata{BackupMethod: phys, Size: 5, Compressed: true}, 0},
+		{"physical, encrypted without stream size: not comparable", backupmgr.BackupMetadata{BackupMethod: phys, Size: 5, Encrypted: true}, 0},
+	} {
+		if got := backupProgressComparableSize(&c.m); got != c.want {
+			t.Fatalf("%s: got %d want %d", c.name, got, c.want)
+		}
+	}
+}
+
+func TestPhysicalBackupProgressForTask(t *testing.T) {
+	c := &Cluster{Name: "c"}
+	s := &ServerMonitor{URL: "db1:3306", Name: "db1"}
+	if c.physicalBackupProgressForTask(s, "mariabackup") != nil {
+		t.Fatal("no backup running -> nil, and AddBytes on nil is a no-op")
+	}
+	var none *BackupProgress
+	none.AddBytes(10)
+	// stored directly: StartBackupProgress reads the backup catalog, absent from this bare cluster
+	p := newBackupProgress(backupProgressKey(s, "physical"), s.URL, "physical", "mariabackup", time.Now())
+	c.backupProgress.Store(p.Key, p)
+	if c.physicalBackupProgressForTask(s, "mariabackup") != p || c.physicalBackupProgressForTask(s, "xtrabackup") != p {
+		t.Fatal("the backup stream feeds the running physical backup")
+	}
+	if c.physicalBackupProgressForTask(s, "errorlog") != nil {
+		t.Fatal("a log fetched during the backup must not count as backup bytes")
+	}
+	p.AddBytes(42)
+	if v := c.snapshotBackupProgress()[0]; v.BytesDone != 42 || v.Kind != "physical" {
+		t.Fatalf("stream bytes visible in the tick snapshot: %+v", v)
+	}
+	c.EndBackupProgress(p)
 }

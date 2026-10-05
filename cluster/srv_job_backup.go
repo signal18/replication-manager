@@ -458,7 +458,8 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 	cluster.SetInPhysicalBackupState(true)
 	// Live progress (cluster_backup_progress.go): the physical job runs in the DB jobs
-	// container and streams to the SST receiver; level running here, ended with the state.
+	// container and streams to the SST receiver, which counts the bytes it reads into this
+	// state (level bytes); ended with the state.
 	cluster.StartBackupProgress(server, "physical", cluster.Conf.BackupPhysicalType)
 	cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
@@ -7310,6 +7311,10 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		// file receipt can happen before the poll runs, causing a race where
 		// restic was skipped ("physical backup not completed").
 		if server.LastBackupMeta.Physical != nil {
+			// the bytes the receiver counted are the next run's progress denominator
+			if p := cluster.backupProgressFor(server, "physical"); p != nil {
+				server.LastBackupMeta.Physical.StreamSize = p.View().BytesDone
+			}
 			if server.LastBackupMeta.Physical.SourceJobFailed && isBackupStagingPath(server.LastBackupMeta.Physical.Dest) {
 				// The DB-side backup job already reported an error.
 				server.reportBackupEncryptionFailure(server.LastBackupMeta.Physical, "physical", errors.New("the backup job reported an error"))

@@ -46,8 +46,9 @@ type SST struct {
 	outresticreader    io.WriteCloser
 	outfilegzipwriter  *gzip.Writer
 	cluster            *Cluster
-	Filename           string // destination path, if this receiver writes to a file; used to detect an in-flight receiver for a given path (see IsFileOpenForSSTReceive)
-	dbLogWriterRelease func() // set when outfilewriter is a shared ServerMonitor.getDBLogRotatingWriter borrow; must be called exactly once when this receiver is done writing (see tcp_con_handle_to_file), so a concurrent cache eviction doesn't close the writer out from under this still-streaming receiver
+	Filename           string          // destination path, if this receiver writes to a file; used to detect an in-flight receiver for a given path (see IsFileOpenForSSTReceive)
+	progress           *BackupProgress // the running physical backup this receiver is the stream of, nil otherwise (cluster_backup_progress.go)
+	dbLogWriterRelease func()          // set when outfilewriter is a shared ServerMonitor.getDBLogRotatingWriter borrow; must be called exactly once when this receiver is done writing (see tcp_con_handle_to_file), so a concurrent cache eviction doesn't close the writer out from under this still-streaming receiver
 }
 
 // IsFileOpenForSSTReceive reports whether filename currently has an active
@@ -315,6 +316,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 		return
 	}
 
+	sst.progress = sst.cluster.physicalBackupProgressForTask(server, task)
 	chan_to_stdout := sst.stream_copy_to_gzip()
 
 	<-chan_to_stdout
@@ -355,6 +357,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 		return
 	}
 
+	sst.progress = sst.cluster.physicalBackupProgressForTask(server, task)
 	chan_to_stdout := sst.stream_copy_to_file()
 
 	<-chan_to_stdout
@@ -430,6 +433,7 @@ func (sst *SST) stream_copy_to_file() <-chan int {
 				}
 				break
 			}
+			sst.progress.AddBytes(int64(nBytes))
 			_, err = sst.outfilewriter.Write(buf[0:nBytes])
 			if err != nil {
 				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Write error: %s", err)
@@ -470,6 +474,7 @@ func (sst *SST) stream_copy_to_gzip() <-chan int {
 				break
 			}
 
+			sst.progress.AddBytes(int64(nBytes))
 			_, err = sst.outfilegzipwriter.Write(buf[0:nBytes])
 			if err != nil {
 				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Write error: %s", err)

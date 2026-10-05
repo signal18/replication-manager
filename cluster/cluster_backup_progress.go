@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 )
@@ -27,7 +28,12 @@ import (
 //	level "running": a backup is in flight, its kind and since when (always available)
 //	level "bytes":   bytes already written to disk / streamed to the archive against the
 //	                 SIZE OF THE PREVIOUS COMPLETED BACKUP of the same kind for this server
-//	                 (backup metadata catalog); rate and ETA from the observed throughput
+//	                 (backup metadata catalog); rate and ETA from the observed throughput.
+//	                 A physical backup (mariabackup, xtrabackup) counts the bytes of its
+//	                 stream as the SST receiver reads them, against the stream size recorded
+//	                 by the previous run; on a first run, against the schema monitor's
+//	                 data + index total (an estimate: the stream also carries the redo log
+//	                 and the free space inside the tablespaces)
 //	level "schema":  the dump's --verbose stream marks every table boundary; with the schema
 //	                 monitor's per-table sizes the progress becomes Σ sizes of the tables done
 //	                 over Σ all tables, with a per-table throughput (bytes/s) kept in a bounded
@@ -104,8 +110,15 @@ func (cluster *Cluster) StartBackupProgress(server *ServerMonitor, kind, task st
 	if p.PreviousSize > 0 {
 		p.Level = BackupProgressLevelBytes
 	}
-	if kind == "logical" {
+	switch kind {
+	case "logical":
 		p.tableSizes, p.TablesBytesTotal, p.TablesTotal = cluster.backupTableSizes(server)
+	case "physical":
+		// no table boundaries in the stream: only the total serves, as the estimate of a first run
+		_, p.TablesBytesTotal, p.TablesTotal = cluster.backupTableSizes(server)
+		if p.PreviousSize == 0 && p.TablesBytesTotal > 0 {
+			p.Level = BackupProgressLevelBytes
+		}
 	}
 	cluster.backupProgress.Store(p.Key, p)
 	return p
@@ -146,7 +159,7 @@ func (cluster *Cluster) previousBackupSize(server *ServerMonitor, kind string) i
 	var best *backupmgr.BackupMetadata
 	cluster.BackupMetaMap.Range(func(_, v any) bool {
 		m, ok := v.(*backupmgr.BackupMetadata)
-		if !ok || m == nil || !m.Completed || m.Source != server.URL || m.BackupMethod != method || m.Size <= 0 {
+		if !ok || m == nil || !m.Completed || m.Source != server.URL || m.BackupMethod != method || backupProgressComparableSize(m) <= 0 {
 			return true
 		}
 		if best == nil || m.EndTime.After(best.EndTime) {
@@ -157,7 +170,24 @@ func (cluster *Cluster) previousBackupSize(server *ServerMonitor, kind string) i
 	if best == nil {
 		return 0
 	}
-	return best.Size
+	return backupProgressComparableSize(best)
+}
+
+// backupProgressComparableSize is the size of a past backup in the unit the running one is
+// counted in. Logical: the artifact size. Physical: the bytes of the stream, recorded since
+// the receiver counts them; an older entry serves only when its artifact IS the stream
+// (neither compressed nor encrypted), else it is not comparable and the estimate applies.
+func backupProgressComparableSize(m *backupmgr.BackupMetadata) int64 {
+	if m.BackupMethod != backupmgr.BackupMethodPhysical {
+		return m.Size
+	}
+	if m.StreamSize > 0 {
+		return m.StreamSize
+	}
+	if !m.Compressed && !m.Encrypted {
+		return m.Size
+	}
+	return 0
 }
 
 // backupTableSizes snapshots the schema monitor's per-table sizes (data + index) for the
@@ -217,18 +247,32 @@ func (p *BackupProgress) refreshLocked(now time.Time) {
 	if p.Level == BackupProgressLevelSchema {
 		return
 	}
-	if p.PreviousSize > 0 {
-		pct := float64(p.BytesDone) / float64(p.PreviousSize) * 100
+	expected := p.PreviousSize
+	if expected == 0 && p.Kind == "physical" {
+		expected = p.TablesBytesTotal // first run: the schema monitor's data + index total
+	}
+	if expected > 0 {
+		pct := float64(p.BytesDone) / float64(expected) * 100
 		if pct > backupProgressMaxPercent {
 			pct = backupProgressMaxPercent
 		}
 		p.Percent = pct
-		if p.RateBytesPerS > 0 && p.PreviousSize > p.BytesDone {
-			p.EtaSeconds = int64(float64(p.PreviousSize-p.BytesDone) / p.RateBytesPerS)
+		if p.RateBytesPerS > 0 && expected > p.BytesDone {
+			p.EtaSeconds = int64(float64(expected-p.BytesDone) / p.RateBytesPerS)
 		} else {
 			p.EtaSeconds = -1
 		}
 	}
+}
+
+// physicalBackupProgressForTask returns the running physical backup of server when the SST
+// receiver task is its stream (the receivers also carry logs and other files).
+func (cluster *Cluster) physicalBackupProgressForTask(server *ServerMonitor, task string) *BackupProgress {
+	switch task {
+	case config.ConstBackupPhysicalTypeMariaBackup, config.ConstBackupPhysicalTypeXtrabackup:
+		return cluster.backupProgressFor(server, "physical")
+	}
+	return nil
 }
 
 // mysqldump --verbose marks every table: "-- Retrieving table structure for table t1..."
