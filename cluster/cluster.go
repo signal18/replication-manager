@@ -337,6 +337,8 @@ type Cluster struct {
 	errorChan                   chan error           `json:"-"`
 	net                         *netStore            `json:"-"` // internal network readings per unit (cluster_net.go); on the cluster so a reload never wipes the counters
 	netOnce                     sync.Once            `json:"-"`
+	injectTrafficInFlight       atomic.Bool          `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
+	injectTrafficSince          atomic.Int64         `json:"-"` // unix time the running injection started
 	binlogServerIDs             *binlogServerIDPool  `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
 	binlogServerIDsOnce         sync.Once            `json:"-"`
 	resources                   *ResourceManager     `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
@@ -1255,7 +1257,10 @@ func (cluster *Cluster) tickBody() {
 					goRun(cluster.MonitorQueryRules)
 				}
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
-					goRun(cluster.InjectProxiesTraffic)
+					// Background and non-reentrant (Stéphane 2026-10-05): the tick never waits
+					// for the marker, and a marker still stuck from an earlier tick is not
+					// doubled -- see cluster_inject_traffic.go.
+					cluster.startInjectProxiesTraffic()
 				}
 				if heartbeats%3600 == 0 {
 					goRun(func() { cluster.ResticPurgeRepo(false) })
