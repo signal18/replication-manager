@@ -72,13 +72,21 @@ func TestAdoptEngineAppCredentialRefusals(t *testing.T) {
 	if c.adoptEngineAppCredential(a) {
 		t.Fatal("the app is not a monitored server of the cluster: it is an app next to the database")
 	}
-	c.Servers = []*ServerMonitor{{Host: "pg1.c.svc.x", Port: "5432", ClusterGroup: c}}
+	// a cluster that also monitors a server replication-manager did not deploy as an engine
+	// app: the credential that was set is kept
+	c.Servers = []*ServerMonitor{{Host: "pg1.c.svc.x", Port: "5432", ClusterGroup: c}, {Host: "db1.c.svc.x", Port: "3306", ClusterGroup: c}}
+	c.Apps = appList{a}
 	c.Conf.Secrets["db-servers-credential"] = config.Secret{Value: "root:SetByTheOwner123"}
-	if c.adoptEngineAppCredential(a) {
-		t.Fatal("a credential somebody set is never replaced")
+	if c.allServersAreEngineApps() || c.adoptEngineAppCredential(a) {
+		t.Fatal("a credential somebody set is never replaced while another kind of server is monitored")
 	}
 	if !strings.HasSuffix(c.Conf.Secrets["db-servers-credential"].Value, "SetByTheOwner123") {
 		t.Fatal("the credential must be untouched")
+	}
+	// every monitored server is an engine app: the inherited credential has no other consumer
+	c.Servers = c.Servers[:1]
+	if !c.allServersAreEngineApps() {
+		t.Fatal("the only monitored server is the engine app")
 	}
 }
 

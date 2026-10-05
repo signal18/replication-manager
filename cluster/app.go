@@ -344,6 +344,9 @@ func (app *App) Refresh() error {
 	}()
 
 	app.CheckPrimaryRoute()
+	// a database engine app that is the cluster's database brings it its credential (no-op
+	// once done, app_random_password.go)
+	cluster.adoptEngineAppCredential(app)
 	appState := app.GetMonitoringStatus()
 	sub, err := cluster.GetAppsSubstitutionJSon(app)
 	if err == nil {

@@ -78,11 +78,41 @@ func (cluster *Cluster) appIsMonitoredServer(app *App) bool {
 	return false
 }
 
+// appIsEngineServer tells whether a monitored server is a database engine app of the cluster.
+func (cluster *Cluster) appIsEngineServer(s *ServerMonitor) bool {
+	for _, a := range cluster.Apps {
+		if a != nil && a.AppConfig != nil && strings.TrimSpace(a.AppConfig.ProvAppConfigurator) != "" &&
+			a.Port == s.Port && (a.Host == s.Host || a.Name == s.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// allServersAreEngineApps: every monitored server of the cluster is a database engine app
+// replication-manager deploys. The cluster's database credential then has no other
+// consumer than those apps.
+func (cluster *Cluster) allServersAreEngineApps() bool {
+	if len(cluster.Servers) == 0 {
+		return false
+	}
+	for _, s := range cluster.Servers {
+		if s == nil || !cluster.appIsEngineServer(s) {
+			return false
+		}
+	}
+	return true
+}
+
 // adoptEngineAppCredential makes the generated password of a database engine app the
-// cluster's database credential, when the app is a monitored server of the cluster and
-// the cluster still has the shipped default password (or none). The monitor, the jobs
-// sidecar and a standby then all use the one password replication-manager generated. A
-// credential somebody set is never replaced. The password is never logged.
+// cluster's database credential, when the app is a monitored server of the cluster. The
+// monitor, the jobs sidecar and a standby then all use the one password replication-manager
+// generated. It applies when the cluster has the shipped default password (or none), or
+// when every monitored server is such an app: the credential a new cluster inherits from
+// the global configuration belongs to no database there (live, pg-stream 2026-10-05: the
+// monitor kept logging in as root). In a cluster that also monitors servers replication-manager
+// did not deploy this way, a credential that was set is never replaced. Idempotent, called
+// at provisioning and at each app refresh. The password is never logged.
 func (cluster *Cluster) adoptEngineAppCredential(app *App) bool {
 	if app == nil || app.AppConfig == nil || strings.TrimSpace(app.AppConfig.AppRandomPassword) == "" {
 		return false
@@ -91,11 +121,15 @@ func (cluster *Cluster) adoptEngineAppCredential(app *App) bool {
 	if user == "" || !cluster.appIsMonitoredServer(app) {
 		return false
 	}
-	if current := cluster.GetDbPass(); current != "" && current != defaultDatabasePassword {
-		return false
-	}
 	pass := cluster.Conf.GetDecryptedPassword("app-random-password", app.AppConfig.AppRandomPassword)
 	if pass == "" {
+		return false
+	}
+	current := cluster.GetDbPass()
+	if current == pass && cluster.GetDbUser() == user {
+		return false // already the cluster's credential
+	}
+	if current != "" && current != defaultDatabasePassword && !cluster.allServersAreEngineApps() {
 		return false
 	}
 	credential := user + ":" + pass
@@ -107,6 +141,6 @@ func (cluster *Cluster) adoptEngineAppCredential(app *App) bool {
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetReplicationCredential(credential)
 	cluster.Save()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "The cluster database credential is now the one generated for the database app %s (user %s): the cluster had the default password", app.Name, user)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "The cluster database credential is now the one generated for the database app %s (user %s)", app.Name, user)
 	return true
 }
