@@ -132,6 +132,53 @@ func (c *Client) Receiver(task string) (string, error) {
 	return host + ":" + port, nil
 }
 
+// Login exchanges the encrypted identity for the token of the calls that need one
+// (secret-login, the jobs scripts' login).
+func (c *Client) Login() (string, error) {
+	code, body, err := c.post("/secret-login")
+	if err != nil {
+		return "", err
+	}
+	if code != http.StatusOK {
+		return "", fmt.Errorf("login: http %d %s", code, body)
+	}
+	var answer struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(body), &answer); err != nil || answer.Token == "" {
+		return "", fmt.Errorf("login: no token in the answer")
+	}
+	return answer.Token, nil
+}
+
+// ReportUsage posts the service's resource usage of one window (the dbu route: memory,
+// cpu, io, disk and network read from the service cgroup by the jobs script).
+func (c *Client) ReportUsage(report []byte) error {
+	if !json.Valid(report) {
+		return fmt.Errorf("usage report is not JSON")
+	}
+	token, err := c.Login()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, c.endpoint("/dbu"), bytes.NewReader(report))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.http().Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<12))
+		return fmt.Errorf("usage report: http %d %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	return nil
+}
+
 // State reports the task state: processing, done, error or waiting.
 func (c *Client) State(task, state string) error {
 	code, body, err := c.post("/actions/job-state/" + url.PathEscape(task) + "/" + url.PathEscape(state))

@@ -115,8 +115,12 @@ func (cluster *Cluster) openSVCAddAppJobsSections(svcsection map[string]map[stri
 		"secrets_environment": app.GetOpenSVCDeploymentAppEnv("secret"),
 		// who this server is for replication-manager: the cluster, and the host and port
 		// the monitor knows it by (the service name in the cluster namespace)
-		"environment":   "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={svcname}.{namespace}.svc.{clustername} REPLICATION_MANAGER_HOST_PORT=" + app.Port,
-		"volume_mounts": "/etc/localtime:/etc/localtime:ro " + mount,
-		"command":       "-c 'printenv " + appJobsScriptKey + " > /tmp/app_jobs; exec bash /tmp/app_jobs'",
+		"environment": "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={svcname}.{namespace}.svc.{clustername} REPLICATION_MANAGER_HOST_PORT=" + app.Port,
+		// the client, the app's own mounts read-only use (the data directory, for its size)
+		// and ONLY this service's cgroup slice, read-only, like the database jobs container:
+		// the script reports memory, cpu, io, disk and network from it
+		"volume_mounts": strings.TrimSpace("/etc/localtime:/etc/localtime:ro " + mount + " " + cluster.GetOpenSVCDeploymentPathMapping(app) +
+			" /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"),
+		"command": "-c 'printenv " + appJobsScriptKey + " > /tmp/app_jobs; exec bash /tmp/app_jobs'",
 	}
 }

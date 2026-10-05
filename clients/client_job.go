@@ -9,7 +9,9 @@
 package clients
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/signal18/replication-manager/utils/jobapi"
@@ -30,6 +32,7 @@ var (
 //	job needs TASK            exit 0 when replication-manager wants the task run now
 //	job receiver TASK         prints the receiver address host:port opened for the task
 //	job state TASK STATE      reports processing, done, error or waiting
+//	job usage                 reports the resource usage JSON read on stdin
 var jobCmd = &cobra.Command{
 	Use:   "job",
 	Short: "Jobs script calls to replication-manager (API jobs mode)",
@@ -100,11 +103,26 @@ var jobStateCmd = &cobra.Command{
 	},
 }
 
+var jobUsageCmd = &cobra.Command{
+	Use:   "usage",
+	Short: "Report the service resource usage read on stdin as JSON (the dbu route)",
+	Args:  cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		report, err := io.ReadAll(io.LimitReader(os.Stdin, 1<<16))
+		if err != nil {
+			jobFail(err)
+		}
+		if err := jobClient().ReportUsage(bytes.TrimSpace(report)); err != nil {
+			jobFail(err)
+		}
+	},
+}
+
 func initJobFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cliJobURL, "url", "", "replication-manager URL (default $REPLICATION_MANAGER_URL)")
 	cmd.PersistentFlags().StringVar(&cliJobCluster, "cluster", "", "Cluster name (default $REPLICATION_MANAGER_CLUSTER_NAME)")
 	cmd.PersistentFlags().StringVar(&cliJobServer, "server", "", "Monitored server host (default $REPLICATION_MANAGER_HOST_NAME)")
 	cmd.PersistentFlags().StringVar(&cliJobPort, "port", "", "Monitored server port (default $REPLICATION_MANAGER_HOST_PORT)")
 	cmd.PersistentFlags().StringVar(&cliJobSecretEnv, "secret-env", "MYSQL_ROOT_PASSWORD", "Name of the environment variable holding the database password")
-	cmd.AddCommand(jobNeedsCmd, jobReceiverCmd, jobStateCmd)
+	cmd.AddCommand(jobNeedsCmd, jobReceiverCmd, jobStateCmd, jobUsageCmd)
 }

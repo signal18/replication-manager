@@ -52,6 +52,14 @@ func TestClientCalls(t *testing.T) {
 			w.Write([]byte("NO_RECEIVER_NEEDED"))
 		case strings.HasSuffix(r.URL.Path, "/actions/job-state/pgdump/done"):
 			w.Write([]byte("ok"))
+		case strings.HasSuffix(r.URL.Path, "/secret-login"):
+			w.Write([]byte(`{"token":"tok123"}`))
+		case strings.HasSuffix(r.URL.Path, "/dbu"):
+			if r.Header.Get("Authorization") != "Bearer tok123" {
+				http.Error(w, "no token", 401)
+				return
+			}
+			w.Write([]byte("ok"))
 		default:
 			http.Error(w, "Invalid secret", 401)
 		}
@@ -77,6 +85,15 @@ func TestClientCalls(t *testing.T) {
 	}
 	if err := c.State("pgdump", "bogus"); err == nil || !strings.Contains(err.Error(), "401") {
 		t.Fatalf("a refused call is an error: %v", err)
+	}
+	if err := c.ReportUsage([]byte(`{"memMaxBytes":1}`)); err != nil {
+		t.Fatalf("usage report with the login token: %v", err)
+	}
+	if err := c.ReportUsage([]byte(`not json`)); err == nil {
+		t.Fatal("a report that is not JSON is refused before any call")
+	}
+	if last := bodies[len(bodies)-1]; last != `{"memMaxBytes":1}` {
+		t.Fatalf("the report is posted as is: %s", last)
 	}
 	if paths[0] != "POST /api/clusters/pgtest/servers/pg1.pgtest.svc.cloud18/5432/needs/pgdump" {
 		t.Fatalf("path: %s", paths[0])

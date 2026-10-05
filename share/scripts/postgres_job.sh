@@ -65,6 +65,38 @@ run_task() {
     fi
 }
 
+# report_usage: the thin resource sensor of the MariaDB jobs (collect_dbu), for PostgreSQL.
+# Reads this service's cgroup (bound read-only at /svc-cgroup), the data directory size and
+# the network counters of the shared namespace, and posts the window since the last report.
+USAGE_INTERVAL="${PG_JOB_USAGE_INTERVAL:-60}"
+USAGE_CKPT=/tmp/postgres_job.usage
+last_usage=0
+report_usage() {
+    local cg=/svc-cgroup now mem cpu io disk rx tx
+    [ -r "$cg/memory.current" ] || return 0
+    now=$(date +%s)
+    [ $((now - last_usage)) -ge "$USAGE_INTERVAL" ] || return 0
+    last_usage=$now
+    mem=$(cat "$cg/memory.current" 2>/dev/null || echo 0)
+    cpu=$(awk '/^usage_usec/{print $2}' "$cg/cpu.stat" 2>/dev/null)
+    io=$(awk '{for(i=1;i<=NF;i++){if($i ~ /^rios=/){sub("rios=","",$i);r+=$i} if($i ~ /^wios=/){sub("wios=","",$i);w+=$i}}} END{printf "%d", r+w+0}' "$cg/io.stat" 2>/dev/null)
+    disk=$(du -sb "${PGDATA:-/var/lib/postgresql/data}" 2>/dev/null | awk '{print $1}')
+    read -r rx tx < <(awk -F'[: ]+' 'NR>2 && $2!="lo" {rx+=$3; tx+=$11} END{printf "%d %d\n", rx+0, tx+0}' /proc/net/dev 2>/dev/null)
+    local p_epoch="" p_cpu="" p_io=""
+    [ -s "$USAGE_CKPT" ] && read -r p_epoch p_cpu p_io < "$USAGE_CKPT"
+    echo "$now ${cpu:-0} ${io:-0}" > "$USAGE_CKPT"
+    [ -n "$p_epoch" ] || return 0
+    local dt=$((now - p_epoch))
+    [ "$dt" -gt 0 ] || return 0
+    local cores iops
+    cores=$(awk -v c="${cpu:-0}" -v p="$p_cpu" -v dt="$dt" 'BEGIN{v=(c-p)/(dt*1000000); if(v<0)v=0; printf "%.4f", v}')
+    iops=$(awk -v c="${io:-0}" -v p="$p_io" -v dt="$dt" 'BEGIN{v=(c-p)/dt; if(v<0)v=0; printf "%.4f", v}')
+    printf '{"windowStart":"%s","windowEnd":"%s","memMaxBytes":%s,"cpuMaxCores":%s,"ioMaxIops":%s,"diskMaxBytes":%s,"netRxBytes":%s,"netTxBytes":%s}' \
+        "$(date -u -d "@$p_epoch" +%Y-%m-%dT%H:%M:%SZ)" "$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ)" \
+        "${mem:-0}" "$cores" "$iops" "${disk:-0}" "${rx:-0}" "${tx:-0}" \
+        | job usage 2>"$ERR" || log "usage report: $(head -c 200 "$ERR")"
+}
+
 log "starting: PostgreSQL $PGHOST:$PGPORT as $PGUSER, server ${REPLICATION_MANAGER_HOST_NAME:-?}:${REPLICATION_MANAGER_HOST_PORT:-?} of ${REPLICATION_MANAGER_CLUSTER_NAME:-?}, every ${INTERVAL}s"
 while [ ! -x "$CLI" ]; do
     log "waiting for $CLI"
@@ -79,5 +111,6 @@ while true; do
         *) log "needs $task: $(head -c 200 "$ERR")" ;;
         esac
     done
+    report_usage
     sleep "$INTERVAL"
 done
