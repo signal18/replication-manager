@@ -1720,6 +1720,9 @@ var TaskRegistry = map[TaskName]TaskDef{
 	// RemoteOnly — requires DB host filesystem or system access
 	ConstTaskXB:       {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
 	ConstTaskMB:       {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
+	// PostgreSQL tools run in the jobs sidecar of the PostgreSQL service
+	ConstTaskPgDump:       {Name: ConstTaskPgDump, Capability: TaskCapRemoteOnly},
+	ConstTaskPgBaseBackup: {Name: ConstTaskPgBaseBackup, Capability: TaskCapRemoteOnly},
 	ConstTaskReseedXB: {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
 	ConstTaskReseedMB: {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
 	ConstTaskFlashXB:  {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},

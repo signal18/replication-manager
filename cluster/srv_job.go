@@ -457,7 +457,7 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 	// In API mode, dispatch depends on the task's execution mode.
 	// Remote tasks: set a cookie so the dbjobs script discovers them via the needs API.
 	// Local tasks (mysqldump, mydumper): only track state in memory — repman runs them directly.
-	if cluster.Conf.SchedulerJobsMode == "api" {
+	if cluster.Conf.SchedulerJobsMode == "api" || server.IsPostgreSQLHost() {
 		newTask := &config.Task{Task: task, Start: time.Now().Unix(), State: JobStateAvailable}
 		if payload != nil {
 			newTask.Payload = *payload
@@ -588,6 +588,9 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 		server.DelWaitXtrabackupCookie()
 		server.delLegacyPhysicalBackupCookie()
 		return server.SetWaitMariabackupCookie()
+	// PostgreSQL tools — the jobs sidecar runs them
+	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup:
+		return server.createCookie(postgresJobCookie(task))
 	// Optimize — dbjobs runs mysqlcheck on DB host
 	case config.ConstTaskOptimize:
 		return server.SetWaitOptimizeCookie()
@@ -1527,7 +1530,8 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 // with the scheduler disabled.
 func (server *ServerMonitor) JobsUpdateState(task, result string, state, done int) error {
 	cluster := server.ClusterGroup
-	return server.jobsUpdateState(task, result, state, done, cluster.Conf.SchedulerJobsMode == "api")
+	// a PostgreSQL server has no jobs table (its SQL is MySQL dialect): runtime only, like the API mode
+	return server.jobsUpdateState(task, result, state, done, cluster.Conf.SchedulerJobsMode == "api" || server.IsPostgreSQLHost())
 }
 
 // JobsUpdateStateRuntimeOnly behaves like JobsUpdateState but always stamps

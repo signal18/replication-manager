@@ -4638,10 +4638,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	cluster := server.ClusterGroup
-	if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
-		// PostgreSQL: the dump runs in the jobs sidecar (srv_job_postgres.go)
-		return server.JobBackupPostgresLogical()
-	}
+	// the tool of this backup: the cluster's, or pg_dumpall in the jobs sidecar for a
+	// PostgreSQL server (srv_job_postgres.go) -- one path for every tool
+	logicalType := server.logicalBackupType()
 	if err := cluster.preflightBackupEncryptionKey(); err != nil {
 		return err
 	}
@@ -4649,13 +4648,13 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", logicalType, server.URL)
 	if server.IsDown() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup aborted: server %s is down (state=%s)", server.URL, server.State)
 		return errors.New("Can't backup when server down")
 	}
 
-	switch cluster.Conf.BackupLogicalType {
+	switch logicalType {
 	case config.ConstBackupLogicalTypeMysqldump:
 		if _, err := os.Stat(cluster.GetMysqlDumpPath()); os.IsNotExist(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlDumpPath())
@@ -4677,7 +4676,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	var waited bool
 	for cluster.IsInBackup() {
 		waited = true
-		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Logical", logicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
 	}
 
@@ -4686,16 +4685,16 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	// Live progress (cluster_backup_progress.go): level running now, bytes as the dump
 	// writes, schema as the verbose stream crosses tables; the per-table speeds are
 	// emitted when the dump ends.
-	progress := cluster.StartBackupProgress(server, "logical", cluster.Conf.BackupLogicalType)
+	progress := cluster.StartBackupProgress(server, "logical", logicalType)
 	defer func() {
 		progress.FinishTables(time.Now())
 		cluster.emitBackupTableRates(server, progress)
 		cluster.EndBackupProgress(progress)
 	}()
-	cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+	cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], logicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
 	if waited {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Resuming logical backup %s after waiting for previous backup to finish for: %s", cluster.Conf.BackupLogicalType, server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Resuming logical backup %s after waiting for previous backup to finish for: %s", logicalType, server.URL)
 	}
 
 	waited = false
@@ -4723,10 +4722,10 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	start := time.Now()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup %s started at %s for: %s", cluster.Conf.BackupLogicalType, start.Format(time.RFC3339), server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup %s started at %s for: %s", logicalType, start.Format(time.RFC3339), server.URL)
 	var prevId int64
 	if !isAdhoc {
-		prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupLogicalType, server.URL)
+		prev := cluster.BackupMetaMap.GetPreviousBackup(logicalType, server.URL)
 		if prev != nil {
 			prevId = prev.Id
 		}
@@ -4749,7 +4748,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		Id:                start.Unix(),
 		StartTime:         start,
 		BackupMethod:      backupmgr.BackupMethodLogical,
-		BackupTool:        cluster.Conf.BackupLogicalType,
+		BackupTool:        logicalType,
 		BackupStrategy:    backupmgr.BackupStrategyFull,
 		Source:            server.URL,
 		Previous:          prevId,
@@ -4807,7 +4806,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 		}
 	} else {
-		task := cluster.Conf.BackupLogicalType
+		task := logicalType
 
 		// JobInsertTask creates a DB row only when the scheduler is active; when
 		// it's off every JobsUpdateState call below for this task run must go
@@ -4828,7 +4827,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		}
 
 		//Change to switch since we only allow one type of backup (for now)
-		switch cluster.Conf.BackupLogicalType {
+		switch logicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
 			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(isAdhoc, cluster.Conf.BackupMysqldumpSplitDump, start)
 			oldV, _ := cluster.GetToolsVersion("client-dump")
@@ -4974,6 +4973,32 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					}
 				}
 			}
+		case string(config.ConstTaskPgDump):
+			// PostgreSQL: the jobs sidecar streams pg_dumpall to a receiver; this waits for it
+			dest := server.PostgresBackupDest(task)
+			if isAdhoc {
+				dest = fmt.Sprintf("%spg_dumpall.%d.sql.gz", server.GetMyBackupDirectory(), start.Unix())
+			}
+			server.LastBackupMeta.Logical.Dest = cluster.prepareBackupStaging(dest)
+			server.LastBackupMeta.Logical.Compressed = true
+			err = server.runPostgresStreamTask(ctx, task, server.LastBackupMeta.Logical.Dest)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error pg_dumpall backup request: %s", err.Error())
+				if e2 := updateJobState(task, err.Error(), 5, 1); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+				}
+			} else {
+				if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+				}
+				server.LastBackupMeta.Logical.EndTime = time.Now()
+				server.LastBackupMeta.Logical.GetSizeAndFileCount()
+				server.LastBackupMeta.Logical.StreamSize = progress.View().BytesDone // the next run's progress denominator
+				server.LastBackupMeta.Logical.Completed = true
+				if !isAdhoc {
+					server.SetBackupLogicalCookie(task)
+				}
+			}
 		case config.ConstBackupLogicalTypeRiver:
 			//No change on river
 			err = server.JobBackupRiver()
@@ -5002,16 +5027,16 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 
 	server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
 	if err == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", logicalType, server.URL)
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", logicalType, server.URL)
 	}
 	elapsed := time.Since(start).Round(time.Second)
 	backupLogLevel := config.LvlInfo
 	if err != nil {
 		backupLogLevel = config.LvlWarn
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, backupLogLevel, "Logical backup %s completed in %s (started at %s) for: %s", cluster.Conf.BackupLogicalType, elapsed, start.Format(time.RFC3339), server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, backupLogLevel, "Logical backup %s completed in %s (started at %s) for: %s", logicalType, elapsed, start.Format(time.RFC3339), server.URL)
 
 	// Create restic snapshot asynchronously and update metadata when complete
 	backtype := "logical"
@@ -5024,7 +5049,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			resticPath = server.LastBackupMeta.Logical.Dest
 		}
 		resticScheduled = true
-		server.BackupRestic(backupmgr.BackupMethodLogical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupLogicalType, backupLine, server.LastBackupMeta.Logical)...)
+		server.BackupRestic(backupmgr.BackupMethodLogical, true, resticPath, server.BuildResticTags(backtype, logicalType, backupLine, server.LastBackupMeta.Logical)...)
 	}
 
 	return nil
@@ -7309,7 +7334,8 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.DelWaitSqlErrorlogCookie()
 		server.maybeRetryDBLogMigration()
 	case string(config.ConstTaskPgDump):
-		server.finishPostgresLogicalBackup()
+		// the stream of a jobs sidecar task ended: the backup waiting on it goes on
+		server.signalStreamTaskDone(task)
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		// The SST file has been received — mark the backup as completed.

@@ -5368,7 +5368,7 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		rcvPort, err = mycluster.SSTRunReceiverToDBLogFile(node, kind, taskname)
 	case config.ConstTaskPgDump:
 		// PostgreSQL logical backup streamed by the jobs sidecar, compressed here
-		dest = node.PostgresBackupDest(taskname)
+		dest = node.PostgresStreamDest(taskname)
 		rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
 	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 		dest = node.GetMyBackupDirectory() + taskname

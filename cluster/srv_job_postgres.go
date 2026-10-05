@@ -7,32 +7,48 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/backupmgr"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 // PostgreSQL backups (#1850). The tools run in the jobs sidecar of the PostgreSQL service
-// (share/scripts/postgres_job.sh), driven through the API jobs mode, never a jobs table:
+// (share/scripts/postgres_job.sh), driven through the API jobs mode, never a jobs table.
+// The backup itself goes through the common path (JobBackupLogicalWithOptions: slot,
+// states, metadata, encryption, archive); pg_dumpall is one more tool of its switch:
 //
-//	request   JobBackupPostgresLogical arms the task (a cookie) and opens the metadata
-//	sidecar   asks /needs/pgdump, then /actions/receive-task/pgdump for a receiver port,
-//	          streams pg_dumpall to it, reports /actions/job-state/pgdump/done
-//	receiver  at the end of the stream JobFinishReceiveFile closes the metadata
+//	common path  arms the task (a cookie the sidecar asks for through /needs/pgdump)
+//	sidecar      asks /actions/receive-task/pgdump for a receiver port, streams
+//	             pg_dumpall to it, reports /actions/job-state/pgdump/done
+//	receiver     at the end of the stream JobFinishReceiveFile signals the common path,
+//	             which was waiting in runPostgresStreamTask and goes on
 //
 // The receiver compresses (gzip) on replication-manager's side, like a physical backup.
+
+const (
+	postgresJobPickupTimeout = 2 * time.Minute // the sidecar polls every 10 s
+	postgresJobStreamTimeout = 12 * time.Hour
+)
 
 func postgresJobCookie(task string) string {
 	return "cookie_wait" + task
 }
 
-// PostgresBackupDest is the artifact of a PostgreSQL backup task in the server's backup
-// directory.
+// logicalBackupType is the logical backup tool of this server: the cluster's
+// backup-logical-type, or pg_dumpall in the jobs sidecar for a PostgreSQL server.
+func (server *ServerMonitor) logicalBackupType() string {
+	if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+		return string(config.ConstTaskPgDump)
+	}
+	return server.ClusterGroup.Conf.BackupLogicalType
+}
+
+// PostgresBackupDest is the default artifact of a PostgreSQL backup task in the server's
+// backup directory.
 func (server *ServerMonitor) PostgresBackupDest(task string) string {
 	switch config.TaskName(task) {
 	case config.ConstTaskPgDump:
@@ -41,94 +57,78 @@ func (server *ServerMonitor) PostgresBackupDest(task string) string {
 	return server.GetMyBackupDirectory() + task
 }
 
-// JobBackupPostgresLogical requests a logical backup of a PostgreSQL server from its jobs
-// sidecar. It returns once the task is armed: the sidecar picks it at its next poll.
-func (server *ServerMonitor) JobBackupPostgresLogical() error {
-	cluster := server.ClusterGroup
-	task := string(config.ConstTaskPgDump)
-	if server.IsDown() {
-		return errors.New("Can't backup when server down")
-	}
-	if cluster.IsInBackup() {
-		return errors.New("A backup is already running on the cluster")
-	}
-	cluster.SetInLogicalBackupState(true)
-	cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], "pg_dumpall", server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-
-	now := time.Now()
-	var prevID int64
-	if prev := cluster.BackupMetaMap.GetPreviousBackup("pg_dumpall", server.URL); prev != nil {
-		prevID = prev.Id
-	}
+// PostgresStreamDest is where the receiver of a sidecar task writes: the destination the
+// running backup recorded (a staging name when encryption is on, a unique one when ad
+// hoc), else the default artifact.
+func (server *ServerMonitor) PostgresStreamDest(task string) string {
 	server.backupMetaMutex.Lock()
-	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
-		Id:             now.Unix(),
-		StartTime:      now,
-		BackupMethod:   backupmgr.BackupMethodLogical,
-		BackupStrategy: backupmgr.BackupStrategyFull,
-		BackupTool:     task, // the job name: WriteBackupMetadata reads the job state under it
-		Source:         server.URL,
-		Dest:           server.PostgresBackupDest(task),
-		Compressed:     true,
-		Previous:       prevID,
-		BackupLine:     backupmgr.BackupLineDefault,
+	defer server.backupMetaMutex.Unlock()
+	if m := server.LastBackupMeta.Logical; m != nil && m.BackupTool == task && m.Dest != "" && !m.Completed {
+		return m.Dest
 	}
-	meta := server.LastBackupMeta.Logical
-	server.backupMetaMutex.Unlock()
-	server.ensureBackupSessionID(meta, backupmgr.BackupMethodLogical, now, backupmgr.BackupLineDefault)
-	cluster.BackupMetaMap.Set(meta.Id, meta)
-
-	// live progress: the receiver counts the stream into this state (cluster_backup_progress.go)
-	cluster.StartBackupProgress(server, "logical", "pg_dumpall")
-	server.JobsUpdateStateRuntimeOnly(task, "requested", JobStateAvailable, 0)
-	if err := server.createCookie(postgresJobCookie(task)); err != nil {
-		cluster.SetInLogicalBackupState(false)
-		cluster.EndBackupProgress(cluster.backupProgressFor(server, "logical"))
-		return fmt.Errorf("can not arm the %s task: %w", task, err)
-	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup pg_dumpall requested from the jobs sidecar of %s", server.URL)
-	return nil
+	return server.PostgresBackupDest(task)
 }
 
-// finishPostgresLogicalBackup closes a PostgreSQL logical backup when its stream ends:
-// completed when something was received, then the metadata is written and the cluster
-// leaves the backup state.
-func (server *ServerMonitor) finishPostgresLogicalBackup() {
-	cluster := server.ClusterGroup
-	task := string(config.ConstTaskPgDump)
-	defer cluster.SetInLogicalBackupState(false)
-	progress := cluster.backupProgressFor(server, "logical")
-	defer cluster.EndBackupProgress(progress)
+// armStreamTask registers the wait for the end of a sidecar task's stream.
+func (server *ServerMonitor) armStreamTask(task string) chan struct{} {
+	done := make(chan struct{})
+	server.streamTasks.Store(task, done)
+	return done
+}
 
-	server.backupMetaMutex.Lock()
-	meta := server.LastBackupMeta.Logical
-	if meta != nil && progress != nil {
-		// the bytes the receiver counted are the next run's progress denominator
-		meta.StreamSize = progress.View().BytesDone
+// signalStreamTaskDone is called when the receiver of a sidecar task reaches the end of
+// its stream. Without a waiter it is a no-op.
+func (server *ServerMonitor) signalStreamTaskDone(task string) {
+	if v, ok := server.streamTasks.LoadAndDelete(task); ok {
+		close(v.(chan struct{}))
 	}
-	server.backupMetaMutex.Unlock()
-	if meta == nil || meta.BackupTool != task {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "PostgreSQL dump received on %s without a pending backup request", server.URL)
-		return
+}
+
+// runPostgresStreamTask makes the jobs sidecar run a task and waits for the end of its
+// stream into dest. It fails when the sidecar does not take the task (no sidecar, not
+// reachable), when nothing was received, or when the caller is cancelled.
+func (server *ServerMonitor) runPostgresStreamTask(ctx context.Context, task, dest string) error {
+	cluster := server.ClusterGroup
+	done := server.armStreamTask(task)
+	defer server.streamTasks.Delete(task)
+
+	cookie := postgresJobCookie(task)
+	if !server.hasCookie(cookie) {
+		if err := server.setTaskCookie(task); err != nil {
+			return fmt.Errorf("can not arm the %s task: %w", task, err)
+		}
 	}
-	received := false
-	if fi, err := os.Stat(meta.Dest); err == nil && fi.Size() > 20 { // an empty gzip stream is 20 bytes
-		received = true
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Task %s requested from the jobs sidecar of %s", task, server.URL)
+
+	pickup := time.NewTimer(postgresJobPickupTimeout)
+	defer pickup.Stop()
+	limit := time.NewTimer(postgresJobStreamTimeout)
+	defer limit.Stop()
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for waiting := true; waiting; {
+		select {
+		case <-done:
+			waiting = false
+		case <-ctx.Done():
+			server.delCookie(cookie)
+			return fmt.Errorf("%s canceled: %w", task, ctx.Err())
+		case <-pickup.C:
+			if server.hasCookie(cookie) {
+				server.delCookie(cookie)
+				return fmt.Errorf("the jobs sidecar of %s did not take the %s task within %s", server.URL, task, postgresJobPickupTimeout)
+			}
+		case <-limit.C:
+			return fmt.Errorf("%s still streaming after %s", task, postgresJobStreamTimeout)
+		case <-tick.C:
+			if cluster.exit.Load() {
+				server.delCookie(cookie)
+				return errors.New("backup canceled: cluster shutting down")
+			}
+		}
 	}
-	if received {
-		// the stream ended: the job is over whatever the sidecar's own report says or when
-		server.JobsUpdateStateRuntimeOnly(task, "received", JobStateSuccess, 1)
-		// the mark HasValidBackup reads: the cluster has a logical backup of this server
-		// (closes WARN0111)
-		server.createCookie("cookie_logicalbackup")
-	} else {
-		server.JobsUpdateStateRuntimeOnly(task, "no data received from the dump", JobStateErrorExec, 1)
+	if fi, err := os.Stat(dest); err != nil || fi.Size() <= 20 { // an empty gzip stream is 20 bytes
+		return fmt.Errorf("no data received from %s", task)
 	}
-	server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
-	elapsed := time.Since(meta.StartTime).Round(time.Second)
-	if received {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup pg_dumpall completed in %s for: %s", elapsed, server.URL)
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Logical backup pg_dumpall received no data after %s for: %s", elapsed, server.URL)
-	}
+	return nil
 }
