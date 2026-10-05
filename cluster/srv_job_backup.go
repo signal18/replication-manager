@@ -457,6 +457,9 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	cluster.SetInPhysicalBackupState(true)
+	// Live progress (cluster_backup_progress.go): the physical job runs in the DB jobs
+	// container and streams to the SST receiver; level running here, ended with the state.
+	cluster.StartBackupProgress(server, "physical", cluster.Conf.BackupPhysicalType)
 	cluster.SetState("WARN0073", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0073"], cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
 	// Prevent backing up with incompatible tools
@@ -513,6 +516,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 			os.RemoveAll(dest)
 		}
 		cluster.SetInPhysicalBackupState(false)
+		cluster.EndBackupProgress(cluster.backupProgressFor(server, "physical"))
 		return nil
 	}
 
@@ -3926,10 +3930,16 @@ func (cluster *Cluster) createGzipWriter(filePath string, logModule int) (*os.Fi
 
 // spawnLogCopier spawns a goroutine to copy logs from reader to cluster logs
 func (server *ServerMonitor) spawnLogCopier(wg *sync.WaitGroup, r io.Reader, module int, level string) {
+	server.spawnLogCopierHook(wg, r, module, level, nil)
+}
+
+// spawnLogCopierHook is spawnLogCopier with a per-line observer (nil for none), used by
+// the dump to feed its live progress from the verbose stream without a second reader.
+func (server *ServerMonitor) spawnLogCopierHook(wg *sync.WaitGroup, r io.Reader, module int, level string, observe func(string)) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		server.copyLogs(r, module, level)
+		server.copyLogsHook(r, module, level, observe)
 	}()
 }
 
@@ -4188,7 +4198,13 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	errCh := make(chan error, 4)
 
 	var wg sync.WaitGroup
-	server.spawnLogCopier(&wg, stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
+	// The verbose stream marks every table boundary: it feeds the schema level of the
+	// live progress on its way to the log.
+	server.spawnLogCopierHook(&wg, stderrIn, config.ConstLogModBackupStream, config.LvlDbg, func(line string) {
+		if p := cluster.backupProgressFor(server, "logical"); p != nil {
+			p.ObserveDumpLine(line)
+		}
+	})
 
 	parseBinlog, parseGTID := server.shouldParseDumpBinlogGTID()
 	parser := newDumpStreamParser(
@@ -4268,6 +4284,9 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 				break
 			}
 			bytesProgress.Add(int64(n))
+			if p := cluster.backupProgressFor(server, "logical"); p != nil {
+				p.AddBytes(int64(n))
+			}
 			if parser.Enabled() {
 				parser.Consume(buffer[:n])
 			}
@@ -4659,6 +4678,15 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 
 	cluster.SetInLogicalBackupState(true)
 	defer cluster.SetInLogicalBackupState(false)
+	// Live progress (cluster_backup_progress.go): level running now, bytes as the dump
+	// writes, schema as the verbose stream crosses tables; the per-table speeds are
+	// emitted when the dump ends.
+	progress := cluster.StartBackupProgress(server, "logical", cluster.Conf.BackupLogicalType)
+	defer func() {
+		progress.FinishTables(time.Now())
+		cluster.emitBackupTableRates(server, progress)
+		cluster.EndBackupProgress(progress)
+	}()
 	cluster.SetState("WARN0175", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0175"], cluster.Conf.BackupLogicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 
 	if waited {
@@ -4998,6 +5026,10 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 }
 
 func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
+	server.copyLogsHook(r, module, level, nil)
+}
+
+func (server *ServerMonitor) copyLogsHook(r io.Reader, module int, level string, observe func(string)) {
 	cluster := server.ClusterGroup
 	//	buf := make([]byte, 1024)
 	s := bufio.NewScanner(r)
@@ -5007,6 +5039,9 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 		} else {
 			//Remove empty lines
 			if strings.TrimSpace(s.Text()) != "" {
+				if observe != nil {
+					observe(s.Text())
+				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
 			}
 		}
@@ -5328,6 +5363,8 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	server.SetBackingUpBinaryLog(true)
 	defer server.SetBackingUpBinaryLog(false)
+	progress := cluster.StartBackupProgress(server, "binlog", binlogfile)
+	defer cluster.EndBackupProgress(progress)
 
 	// With encryption on, mysqlbinlog writes into the ".partial" staging
 	// directory; only finalizeBinlogCopy publishes the encrypted copy.
@@ -7314,6 +7351,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		}
 
 		cluster.SetInPhysicalBackupState(false)
+		cluster.EndBackupProgress(cluster.backupProgressFor(server, "physical"))
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")
 		tmpFile := filename + ".tmp"

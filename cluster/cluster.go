@@ -164,6 +164,7 @@ type Cluster struct {
 	IsResticQueuePaused          bool                `json:"isResticQueuePaused" groups:"web"`
 	BackupSlotsInUse             int                 `json:"backupSlotsInUse" groups:"web"`
 	BackupSlotsTotal             int                 `json:"backupSlotsTotal" groups:"web"`
+	BackupsInProgress            []BackupProgress    `json:"backupsInProgress" groups:"web"` // live progress of every running backup (cluster_backup_progress.go), refreshed each tick
 	SchemaMonitorRequested       int32               `json:"-"`
 	Conf                         *config.Config      `json:"config" groups:"apps"`
 	Confs                        *config.ConfVersion `json:"-"`
@@ -337,6 +338,7 @@ type Cluster struct {
 	errorChan                   chan error           `json:"-"`
 	net                         *netStore            `json:"-"` // internal network readings per unit (cluster_net.go); on the cluster so a reload never wipes the counters
 	netOnce                     sync.Once            `json:"-"`
+	backupProgress              sync.Map             `json:"-"` // key server/kind -> *BackupProgress (cluster_backup_progress.go)
 	injectTrafficInFlight       atomic.Bool          `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
 	injectTrafficSince          atomic.Int64         `json:"-"` // unix time the running injection started
 	binlogServerIDs             *binlogServerIDPool  `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
@@ -1133,6 +1135,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.BackupSlotsInUse = len(cluster.ServerGlobals.BackupSemaphore)
 		cluster.BackupSlotsTotal = cap(cluster.ServerGlobals.BackupSemaphore)
 	}
+	cluster.BackupsInProgress = cluster.snapshotBackupProgress()
 	cluster.trackTickGoroutine(func() { cluster.CheckDefaultUser(false) })
 
 	if cluster.HasBadConfigMeasurement() {
