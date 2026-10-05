@@ -433,11 +433,27 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
 
-	if cluster.IsInBackup() {
+	// Wait for the other running backup of this cluster while holding the slot taken above, the
+	// way JobBackupLogicalWithOptions does. Calling this function again instead would take a
+	// second slot while still holding the first: with the default single slot it waits for its
+	// own slot forever, and with more slots it leaks one slot per retry (only one is released
+	// when WARN0073 resolves). What can change meanwhile is checked at the start of every pass,
+	// including the one that ends the wait, and the slot is given back if the backup can no
+	// longer go on: WARN0073 is not open yet, so nothing else would release it.
+	for {
+		if cluster.exit.Load() {
+			cluster.ServerGlobals.ReleaseBackupSlot()
+			return errors.New("backup canceled: cluster shutting down")
+		}
+		if server.IsDown() {
+			cluster.ServerGlobals.ReleaseBackupSlot()
+			return fmt.Errorf("Can't backup when server down: %s", server.URL)
+		}
+		if !cluster.IsInBackup() {
+			break
+		}
 		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Physical", cluster.Conf.BackupPhysicalType, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 		time.Sleep(1 * time.Second)
-
-		return server.JobBackupPhysicalWithOptions(opts)
 	}
 
 	cluster.SetInPhysicalBackupState(true)
