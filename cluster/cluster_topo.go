@@ -824,7 +824,22 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 }
 
 func (cluster *Cluster) BootstrapTopology(topology string) error {
+	// the PostgreSQL replication topologies are exclusive of each other and of active-passive
+	cluster.Conf.MasterSlavePgStream = false
+	cluster.Conf.MasterSlavePgLogical = false
 	switch topology {
+	case config.TopoMasterSlavePgStream, config.TopoMasterSlavePgLog:
+		// PostgreSQL: WAL streaming (physical standbys) or logical replication
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
+		cluster.Conf.MasterSlavePgStream = topology == config.TopoMasterSlavePgStream
+		cluster.Conf.MasterSlavePgLogical = topology == config.TopoMasterSlavePgLog
 	case "active-passive":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -909,7 +924,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetMultiMasterGroupRep(true)
 		cluster.SetActivePassive(false)
 	default:
-		return errors.New("Invalid topology type, supported types are: master-slave, master-slave-no-gtid, multi-master, multi-tier-slave, maxscale-binlog, multi-master-ring, multi-master-wsrep, multi-master-grprep, active-passive")
+		return errors.New("Invalid topology type, supported types are: master-slave, master-slave-no-gtid, multi-master, multi-tier-slave, maxscale-binlog, multi-master-ring, multi-master-wsrep, multi-master-grprep, active-passive, master-slave-pg-stream, master-slave-pg-logical")
 	}
 	cluster.SetTopologyTarget(topology)
 	return nil

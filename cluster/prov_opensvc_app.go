@@ -1165,6 +1165,14 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 	}
 
+	// Engine start script (app_jobs.go), run by the template's start command.
+	if script := appStartScript(app); script != "" {
+		err = svc.CreateConfigKeyValue(cluster.Name, app.Name, appStartScriptKey, script)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appStartScriptKey, err)
+			addKeyErr(fmt.Errorf("config key %q: %w", appStartScriptKey, err))
+		}
+	}
 	// Jobs sidecar (app_jobs.go): the engine's jobs script travels the same way.
 	if script := appJobsScript(app); script != "" {
 		err = svc.CreateConfigKeyValue(cluster.Name, app.Name, appJobsScriptKey, script)

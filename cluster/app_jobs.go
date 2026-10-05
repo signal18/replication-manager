@@ -32,6 +32,33 @@ const (
 	appJobsMount     = "/jobs"
 )
 
+// appStartScriptKey carries the engine's start script (share/scripts/<engine>_start.sh):
+// what the engine container runs before the engine itself -- write the rendered
+// configuration, seed a standby -- so the template's start command stays one line and the
+// logic is versioned with replication-manager.
+const appStartScriptKey = "APP_START_SCRIPT"
+
+// appStartScript returns the start script of the app's engine, "" when it has none.
+func appStartScript(app *App) string {
+	return appEngineScript(app, "start")
+}
+
+// appEngineScript reads share/scripts/<engine>_<kind>.sh of the app's configurator engine.
+func appEngineScript(app *App, kind string) string {
+	if app == nil || app.AppConfig == nil {
+		return ""
+	}
+	engine := strings.TrimSpace(app.AppConfig.ProvAppConfigurator)
+	if !appConfiguratorEngineRe.MatchString(engine) {
+		return ""
+	}
+	b, err := share.EmbededDbModuleFS.ReadFile("scripts/" + engine + "_" + kind + ".sh")
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
 // appJobsScript returns the jobs script of the app's engine, "" when it has none.
 func appJobsScript(app *App) string {
 	if app == nil || app.AppConfig == nil {

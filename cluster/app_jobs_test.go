@@ -21,6 +21,9 @@ func TestAppJobsSections(t *testing.T) {
 	if !strings.Contains(appJobsScript(a), "pg_dumpall") || !strings.Contains(appJobsScript(a), "job needs") {
 		t.Fatal("the PostgreSQL jobs script is embedded")
 	}
+	if start := appStartScript(a); !strings.Contains(start, "pg_basebackup") || !strings.Contains(start, "APP_CONFIGURATOR_SCRIPT") {
+		t.Fatal("the PostgreSQL start script is embedded: configuration, standby seeding")
+	}
 	sections := map[string]map[string]string{"volume#1": {"name": "pg1-drbd", "directories": "data"}}
 	n := 1
 	c.openSVCAddAppJobsSections(sections, a, &n)
