@@ -2346,9 +2346,11 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 		return 0, err
 	}
 
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "set sql_log_bin=0")
-	if err != nil {
-		return 0, err
+	if !server.IsPostgreSQLHost() {
+		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "set sql_log_bin=0")
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	cleantables := []string{}

@@ -149,3 +149,22 @@ func PostgresSetPrimary(db *sqlx.DB, host string, port string) (string, error) {
 	_, err := db.Exec(reload)
 	return logs, err
 }
+
+// PostgresEnsurePublication creates the publication of all tables a logical replication
+// subscriber follows (CREATE SUBSCRIPTION ... PUBLICATION <name>), unless it exists.
+func PostgresEnsurePublication(db *sqlx.DB, name string) (string, error) {
+	if name == "" {
+		name = "alltables"
+	}
+	var n int
+	query := "SELECT count(*) FROM pg_catalog.pg_publication WHERE pubname = $1"
+	if err := db.Get(&n, query, name); err != nil {
+		return query, err
+	}
+	if n > 0 {
+		return query, nil
+	}
+	stmt := "CREATE PUBLICATION " + name + " FOR ALL TABLES"
+	_, err := db.Exec(stmt)
+	return stmt, err
+}

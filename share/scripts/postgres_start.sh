@@ -13,7 +13,8 @@
 #   4. starts PostgreSQL through the image entrypoint.
 #
 # A role change armed by the jobs sidecar (replication-manager.next_start in the data
-# directory) is applied first: start as a standby of a new primary, or re-seed from it.
+# directory) is applied first: start as a standby of a new primary, or resynchronise from it
+# (pg_rewind, else a new copy).
 #
 # Environment: POSTGRES_PASSWORD (and POSTGRES_USER), PGDATA, PG_PRIMARY_HOST and
 # PG_PRIMARY_PORT for a standby.
@@ -32,7 +33,9 @@ if [ -n "${APP_CONFIGURATOR_SCRIPT:-}" ]; then
     printenv APP_CONFIGURATOR_SCRIPT | sh
 fi
 # include_dir is a file directive: it cannot be passed with -c
-printf "include_dir = 'replication-manager.d'\nlisten_addresses = '*'\n" > "$CONF_DIR/postgresql.conf"
+# wal_log_hints lets pg_rewind resynchronise a former primary without a full copy;
+# wal_level = logical lets the server publish for logical replication subscribers
+printf "include_dir = 'replication-manager.d'\nlisten_addresses = '*'\nwal_log_hints = on\nwal_level = logical\n" > "$CONF_DIR/postgresql.conf"
 
 # 2. a new primary accepts replication connections from the cluster network (the image's
 #    default pg_hba only opens the databases, not the replication protocol)
@@ -41,37 +44,58 @@ cat > /docker-entrypoint-initdb.d/10-replication-manager.sh <<'EOS'
 echo "host replication all all scram-sha-256" >> "$PGDATA/pg_hba.conf"
 EOS
 
+# arm_standby <host> <port>: this server starts as a standby of that primary, data kept
+arm_standby() {
+    # a conninfo value in single quotes escapes \ and ' with a backslash; the
+    # configuration file then doubles the single quotes
+    local pw conninfo auto
+    pw=$(printf '%s' "${POSTGRES_PASSWORD:-}" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g")
+    conninfo="user=$PG_USER password='$pw' host=$1 port=$2"
+    auto="$PGDATA/postgresql.auto.conf"
+    touch "$auto"
+    grep -v '^[[:space:]]*primary_conninfo[[:space:]]*=' "$auto" > "$auto.tmp" || true
+    printf "primary_conninfo = '%s'\n" "$(printf '%s' "$conninfo" | sed "s/'/''/g")" >> "$auto.tmp"
+    mv "$auto.tmp" "$auto"
+    touch "$PGDATA/standby.signal"
+    chown postgres:postgres "$auto" "$PGDATA/standby.signal"
+    chmod 600 "$auto"
+}
+
 # 2b. role change armed by the jobs sidecar on request of replication-manager
 #     (switchover, rejoin of a former primary): "<standby|reseed> <host> <port>"
 NEXT_START="$PGDATA/replication-manager.next_start"
 if [ -s "$NEXT_START" ]; then
     read -r next_mode next_host next_port < "$NEXT_START" || true
+    find "$NEXT_START" -delete
     case "${next_mode:-}" in
     reseed)
-        log "armed: re-seed from $next_host:$next_port, the data directory is cleared"
-        find "${PGDATA:?}" -mindepth 1 -delete
-        PG_PRIMARY_HOST="$next_host"
-        PG_PRIMARY_PORT="$next_port"
+        # A former primary: its timeline forked from the new primary's. pg_rewind keeps
+        # the data and rewinds it to the fork point; when it cannot, the data is copied again.
+        rewound=1
+        if [ -s "$PGDATA/PG_VERSION" ]; then
+            PGPASSWORD="${POSTGRES_PASSWORD:-}" gosu postgres pg_rewind --target-pgdata="$PGDATA" \
+                --source-server="host=$next_host port=$next_port user=$PG_USER dbname=postgres" \
+                > /tmp/pg_rewind.log 2>&1 || rewound=0
+            sed 's/^/[pg_rewind] /' /tmp/pg_rewind.log
+        else
+            rewound=0
+        fi
+        if [ "$rewound" = 1 ]; then
+            log "armed: rewound to the timeline of $next_host:$next_port, starting as its standby"
+            arm_standby "$next_host" "$next_port"
+        else
+            log "armed: re-seed from $next_host:$next_port, the data directory is cleared"
+            find "${PGDATA:?}" -mindepth 1 -delete
+            PG_PRIMARY_HOST="$next_host"
+            PG_PRIMARY_PORT="$next_port"
+        fi
         ;;
     standby)
         log "armed: start as a standby of $next_host:$next_port, data kept"
-        # a conninfo value in single quotes escapes \ and ' with a backslash; the
-        # configuration file then doubles the single quotes
-        pw=$(printf '%s' "${POSTGRES_PASSWORD:-}" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g")
-        conninfo="user=$PG_USER password='$pw' host=$next_host port=$next_port"
-        auto="$PGDATA/postgresql.auto.conf"
-        touch "$auto"
-        grep -v '^[[:space:]]*primary_conninfo[[:space:]]*=' "$auto" > "$auto.tmp" || true
-        printf "primary_conninfo = '%s'\n" "$(printf '%s' "$conninfo" | sed "s/'/''/g")" >> "$auto.tmp"
-        mv "$auto.tmp" "$auto"
-        touch "$PGDATA/standby.signal"
-        chown postgres:postgres "$auto" "$PGDATA/standby.signal"
-        chmod 600 "$auto"
-        find "$NEXT_START" -delete
+        arm_standby "$next_host" "$next_port"
         ;;
     *)
         log "armed start ignored, unknown mode: ${next_mode:-}"
-        find "$NEXT_START" -delete
         ;;
     esac
 fi

@@ -965,6 +965,12 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				continue
 			}
 			if key == masterKey {
+				if server.IsPostgreSQLHost() {
+					// logical replication: the subscribers follow a publication of all tables
+					logs, err := dbhelper.PostgresEnsurePublication(server.Conn, cluster.Conf.MasterConn)
+					cluster.LogSQL(logs, err, server.URL, "Bootstrap", config.LvlErr, "Could not create the publication on %s: %s", server.URL, err)
+					continue
+				}
 				dbhelper.FlushTables(server.Conn)
 				server.SetReadWrite()
 
@@ -999,7 +1005,8 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				} else {
 					_ = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
 				}
-				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
+				if !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.IsPostgreSQLHost() {
+					// a logical replication subscriber stays writable: no read_only on PostgreSQL
 					server.SetReadOnly()
 				}
 			}

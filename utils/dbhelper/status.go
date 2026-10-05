@@ -213,9 +213,9 @@ func GetVariablesCase(db *sqlx.DB, myver *version.Version, vcase string) (map[st
 		query = "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables"
 	}
 	if myver.IsPostgreSQL() {
-		query = "SELECT upper(name) AS variable_name, setting AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
+		query = "SELECT upper(name) AS variable_name, regexp_replace(setting, 'password=(''(\\\\.|[^''])*''|\\S+)', 'password=<hidden>') AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
 		if vcase == "UPPER" {
-			query = "SELECT upper(name) AS variable_name, upper(setting) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
+			query = "SELECT upper(name) AS variable_name, upper(regexp_replace(setting, 'password=(''(\\\\.|[^''])*''|\\S+)', 'password=<hidden>')) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
 		}
 	}
 	rows, err := db.Queryx(query)

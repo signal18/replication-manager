@@ -25,6 +25,10 @@ func (server *ServerMonitor) GetConnNoBinlog(db *sqlx.DB) (*sqlx.Conn, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
 	defer cancel()
 
+	if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+		// no binary log to keep the connection out of
+		return conn, nil
+	}
 	_, err = conn.ExecContext(ctx, "set session sql_log_bin=0")
 	if err != nil {
 		conn.Close()
