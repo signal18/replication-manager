@@ -57,6 +57,13 @@ func (server *ServerMonitor) RejoinMaster() error {
 		cluster.rejoinCond.Send <- true
 	}()
 
+	if server.IsPostgreSQLHost() {
+		// A former PostgreSQL primary is on an older timeline: it rejoins as a standby by
+		// rewind or re-seed, on its data directory, which the statements below cannot do.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PostgreSQL server %s is back after a failover: it is not rejoined automatically yet, it must be re-seeded as a standby of the new primary", server.URL)
+		return nil
+	}
+
 	if cluster.Conf.ActivePassive {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining %s ignored caused by active-passive mode", server.URL)
 		return nil

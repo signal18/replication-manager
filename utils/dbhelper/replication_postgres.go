@@ -6,7 +6,14 @@
 
 package dbhelper
 
-import "github.com/jmoiron/sqlx"
+import (
+	"errors"
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/jmoiron/sqlx"
+)
 
 // PostgreSQL WAL streaming (physical standby) status, in the shape of SHOW SLAVE STATUS.
 //
@@ -72,4 +79,73 @@ func postgresInRecovery(db *sqlx.DB) bool {
 		return false
 	}
 	return inRecovery
+}
+
+// PostgresReceivedLSN returns the last WAL position a standby RECEIVED from its primary, in
+// bytes: what a promotion replays up to, so the position candidates are compared on.
+func PostgresReceivedLSN(db *sqlx.DB) (uint64, string, error) {
+	query := "SELECT (COALESCE(pg_last_wal_receive_lsn(), pg_last_wal_replay_lsn()) - '0/0'::pg_lsn)::bigint"
+	var lsn uint64
+	err := db.Get(&lsn, query)
+	return lsn, query, err
+}
+
+// PostgresPromote promotes a standby to primary and waits for the promotion to complete.
+// PostgreSQL replays all the WAL it received before it opens to writes.
+func PostgresPromote(db *sqlx.DB, waitSeconds int) (string, error) {
+	query := fmt.Sprintf("SELECT pg_promote(true, %d)", waitSeconds)
+	var promoted bool
+	if err := db.Get(&promoted, query); err != nil {
+		return query, err
+	}
+	if !promoted {
+		return query, fmt.Errorf("promotion not completed after %d s", waitSeconds)
+	}
+	return query, nil
+}
+
+var (
+	postgresConninfoHost = regexp.MustCompile(`(^|\s)host=('[^']*'|\S+)`)
+	postgresConninfoPort = regexp.MustCompile(`(^|\s)port=('[^']*'|\S+)`)
+	postgresConninfoPass = regexp.MustCompile(`password=('[^']*'|\S+)`)
+)
+
+// postgresRepointConninfo returns a primary_conninfo that connects to another primary with
+// the same user, password and options.
+func postgresRepointConninfo(conninfo string, host string, port string) string {
+	if postgresConninfoHost.MatchString(conninfo) {
+		conninfo = postgresConninfoHost.ReplaceAllString(conninfo, "${1}host="+host)
+	} else {
+		conninfo += " host=" + host
+	}
+	if postgresConninfoPort.MatchString(conninfo) {
+		conninfo = postgresConninfoPort.ReplaceAllString(conninfo, "${1}port="+port)
+	} else {
+		conninfo += " port=" + port
+	}
+	return strings.TrimSpace(conninfo)
+}
+
+// PostgresSetPrimary makes a standby follow another primary: primary_conninfo is rewritten
+// with the new host and port and the configuration reloaded (no restart since PostgreSQL 13).
+// The statement is returned with the password hidden: it is logged.
+func PostgresSetPrimary(db *sqlx.DB, host string, port string) (string, error) {
+	var conninfo string
+	query := "SELECT current_setting('primary_conninfo', true)"
+	if err := db.Get(&conninfo, query); err != nil {
+		return query, err
+	}
+	if conninfo == "" {
+		return query, errors.New("no primary_conninfo on this server: not a standby")
+	}
+	conninfo = postgresRepointConninfo(conninfo, host, port)
+	stmt := "ALTER SYSTEM SET primary_conninfo = '" + strings.ReplaceAll(conninfo, "'", "''") + "'"
+	logs := postgresConninfoPass.ReplaceAllString(stmt, "password=<hidden>")
+	if _, err := db.Exec(stmt); err != nil {
+		return logs, errors.New(postgresConninfoPass.ReplaceAllString(err.Error(), "password=<hidden>"))
+	}
+	reload := "SELECT pg_reload_conf()"
+	logs += "\n" + reload
+	_, err := db.Exec(reload)
+	return logs, err
 }
