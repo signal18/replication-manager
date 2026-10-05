@@ -49,5 +49,13 @@ GUI: Navbar teal "Backup N%" pill (count = running backups) with a tooltip line 
 kind, server, percent or bytes, rate, ETA, current table and count, since, level. It is a
 report: nothing reads it to decide anything.
 
+Live run, belair 2026-10-05 09:56Z, logical dump of 116 tables, previous completed dump 806.8 MB
+in the catalog: the first sample already sat at level schema (table 31/116), the percentage
+advanced table by table (2.0 → 26.0 % in 3 min 15 s), rate steady at 10 MB/s, ETA converging
+from a wild first estimate (35396 s on one table) to 524 s. Bytes written passed the previous
+size (1.9 GB against 806.8 MB, the previous dump was gzip-compressed, this one is not): the
+schema level owned the percentage, as designed, and the bytes level alone would have shown
+99 %. The heartbeat supervision logged nothing during the dump: the traffic marker fix holds.
+
 Not done yet: physical level bytes/schema (the SST receiver's byte count, mariabackup's
 "Copying" lines), mydumper boundaries, a modal instead of the tooltip.
