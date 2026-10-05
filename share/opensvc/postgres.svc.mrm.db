@@ -1,0 +1,37 @@
+{
+    "modulesets": [
+        {
+            "modules": [],
+            "rulesets": [
+                "postgres.svc.mrm.db.cnf"
+            ],
+            "modset_name": "postgres.svc.mrm.db",
+            "modulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 359,
+            "responsibles": [
+                "replication-manager"
+            ]
+        }
+    ],
+    "filtersets": [],
+    "rulesets": [
+        {
+            "fset_name": null,
+            "ruleset_name": "postgres.svc.mrm.db.cnf",
+            "variables": [],
+            "ruleset_public": false,
+            "ruleset_type": "explicit",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1180,
+            "responsibles": [
+                "replication-manager"
+            ]
+        }
+    ]
+}
