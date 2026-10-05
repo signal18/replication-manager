@@ -4638,6 +4638,10 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	cluster := server.ClusterGroup
+	if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+		// PostgreSQL: the dump runs in the jobs sidecar (srv_job_postgres.go)
+		return server.JobBackupPostgresLogical()
+	}
 	if err := cluster.preflightBackupEncryptionKey(); err != nil {
 		return err
 	}
@@ -7304,6 +7308,8 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case "sqlerrorlog":
 		server.DelWaitSqlErrorlogCookie()
 		server.maybeRetryDBLogMigration()
+	case string(config.ConstTaskPgDump):
+		server.finishPostgresLogicalBackup()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		// The SST file has been received — mark the backup as completed.

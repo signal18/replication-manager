@@ -2,18 +2,19 @@
 # replication-manager jobs sidecar for a PostgreSQL service.
 #
 # Runs next to the PostgreSQL container, in the same network namespace, from the same
-# image (psql, pg_dumpall, pg_basebackup are there). It polls the jobs table that
-# replication-manager fills (replication_manager_schema.jobs) and runs one task at a
-# time, streaming its output to the receiver replication-manager opened for it:
+# image (psql, pg_dumpall, pg_basebackup are there). It asks replication-manager through
+# its API whether a task is wanted (the API jobs mode, no jobs table), and runs it,
+# streaming its output to the receiver replication-manager opens for it:
 #
 #   pgdump         pg_dumpall of the instance (logical backup)
-#   pgbasebackup   pg_basebackup as a tar stream with the WAL it needs (physical backup,
-#                  online, non blocking)
 #
-# The stream goes through `replication-manager-cli stream`, delivered in /jobs by the
-# init container; without it, through bash's own TCP redirection (no TLS).
+# Every call to replication-manager goes through replication-manager-cli, delivered in
+# /jobs by the init container: `job needs|receiver|state` for the API, `stream` for the
+# data. The image needs neither openssl, curl nor socat.
 #
-# Job states, the ones the MariaDB jobs use: 0 queued, 1 processing, 3 finished, 5 error.
+# Environment: REPLICATION_MANAGER_URL, REPLICATION_MANAGER_CLUSTER_NAME,
+# REPLICATION_MANAGER_HOST_NAME, REPLICATION_MANAGER_HOST_PORT (the server as the monitor
+# knows it), POSTGRES_PASSWORD (also the secret of the API calls).
 
 set -u
 
@@ -27,70 +28,50 @@ export PGCONNECT_TIMEOUT=5
 INTERVAL="${PG_JOB_INTERVAL:-10}"
 CLI="${REPMAN_CLIENT:-/jobs/replication-manager-cli}"
 ERR=/tmp/postgres_job.err
+TASKS="pgdump"
 
 log() { echo "[postgres_job] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 
-sql() { psql -X -q -At -v ON_ERROR_STOP=1 -c "$1"; }
-
-# stream_to HOST PORT: stdin to the receiver, the `socat -u STDIN TCP:host:port` of the
-# MariaDB jobs.
-stream_to() {
-    local host="$1" port="$2"
-    if [ -x "$CLI" ]; then
-        case "$host" in *:*) host="[$host]" ;; esac
-        "$CLI" stream --to "$host:$port"
-        return $?
-    fi
-    exec 3<>"/dev/tcp/$1/$port" || return 1
-    cat >&3
-    local rc=$?
-    exec 3>&-
-    return $rc
-}
-
-# set_state ID STATE DONE MESSAGE
-set_state() {
-    local msg="${4//\'/\'\'}"
-    sql "UPDATE replication_manager_schema.jobs SET state=$2, done=$3, result='${msg:0:2000}', \"end\"=CASE WHEN $3=1 OR $2=5 THEN now() ELSE \"end\" END WHERE id=$1" \
-        || log "cannot report state $2 of job $1"
-}
+job() { "$CLI" job --secret-env POSTGRES_PASSWORD "$@"; }
 
 run_task() {
-    local id="$1" task="$2" host="$3" port="$4"
-    local rc_cmd=0 rc_stream=0
+    local task="$1" addr rc_cmd=0 rc_stream=0
+    job state "$task" processing || log "$task: cannot report processing"
+    if ! addr=$(job receiver "$task") || [ -z "$addr" ]; then
+        log "$task: no receiver"
+        job state "$task" error
+        return
+    fi
+    log "$task: streaming to $addr"
     : > "$ERR"
     case "$task" in
     pgdump)
-        pg_dumpall --clean --if-exists 2>"$ERR" | stream_to "$host" "$port"
+        pg_dumpall --clean --if-exists 2>"$ERR" | "$CLI" stream --to "$addr"
         rc_cmd=${PIPESTATUS[0]} rc_stream=${PIPESTATUS[1]}
-        ;;
-    pgbasebackup)
-        pg_basebackup -D - -Ft -X fetch -c fast 2>"$ERR" | stream_to "$host" "$port"
-        rc_cmd=${PIPESTATUS[0]} rc_stream=${PIPESTATUS[1]}
-        ;;
-    *)
-        set_state "$id" 5 0 "unknown task $task"
-        log "job $id: unknown task $task"
-        return
         ;;
     esac
     if [ "$rc_cmd" -eq 0 ] && [ "$rc_stream" -eq 0 ]; then
-        set_state "$id" 3 1 "$task streamed to $host:$port"
-        log "job $id: $task streamed to $host:$port"
+        log "$task: done"
+        job state "$task" done || log "$task: cannot report done"
     else
-        set_state "$id" 5 0 "$task failed (tool $rc_cmd, stream $rc_stream): $(tr '\n' ' ' < "$ERR" | cut -c1-1500)"
-        log "job $id: $task failed (tool $rc_cmd, stream $rc_stream): $(head -c 300 "$ERR")"
+        log "$task: failed (tool $rc_cmd, stream $rc_stream): $(head -c 300 "$ERR")"
+        job state "$task" error || log "$task: cannot report error"
     fi
 }
 
-log "starting: PostgreSQL $PGHOST:$PGPORT as $PGUSER, every ${INTERVAL}s, client $([ -x "$CLI" ] && echo "$CLI" || echo 'absent, bash TCP')"
+log "starting: PostgreSQL $PGHOST:$PGPORT as $PGUSER, server ${REPLICATION_MANAGER_HOST_NAME:-?}:${REPLICATION_MANAGER_HOST_PORT:-?} of ${REPLICATION_MANAGER_CLUSTER_NAME:-?}, every ${INTERVAL}s"
+while [ ! -x "$CLI" ]; do
+    log "waiting for $CLI"
+    sleep "$INTERVAL"
+done
 while true; do
-    row=$(sql "SELECT id||'|'||task||'|'||server||'|'||port FROM replication_manager_schema.jobs WHERE done=0 AND state=0 ORDER BY id LIMIT 1" 2>/dev/null)
-    if [ -n "$row" ]; then
-        IFS='|' read -r id task host port <<<"$row"
-        log "job $id: $task to $host:$port"
-        set_state "$id" 1 0 "processing"
-        run_task "$id" "$task" "$host" "$port"
-    fi
+    for task in $TASKS; do
+        job needs "$task" 2>"$ERR"
+        case $? in
+        0) run_task "$task" ;;
+        1) ;;
+        *) log "needs $task: $(head -c 200 "$ERR")" ;;
+        esac
+    done
     sleep "$INTERVAL"
 done

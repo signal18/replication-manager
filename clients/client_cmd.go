@@ -390,6 +390,9 @@ func init() {
 	rootClientCmd.AddCommand(streamCmd)
 	initStreamFlags(streamCmd)
 
+	rootClientCmd.AddCommand(jobCmd)
+	initJobFlags(jobCmd)
+
 	rootClientCmd.AddCommand(bootstrapCmd)
 	initBootstrapFlags(bootstrapCmd)
 	initClusterFlags(bootstrapCmd)

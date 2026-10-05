@@ -1672,6 +1672,8 @@ const (
 	ConstTaskMydumper           TaskName = "mydumper"
 	ConstTaskXB                 TaskName = "xtrabackup"
 	ConstTaskMB                 TaskName = "mariabackup"
+	ConstTaskPgDump             TaskName = "pgdump"       // PostgreSQL logical backup, pg_dumpall run by the jobs sidecar
+	ConstTaskPgBaseBackup       TaskName = "pgbasebackup" // PostgreSQL physical backup, pg_basebackup run by the jobs sidecar
 	ConstTaskError              TaskName = "errorlog"
 	ConstTaskSlowQuery          TaskName = "slowquery"
 	ConstTaskSqlError           TaskName = "sqlerrorlog"

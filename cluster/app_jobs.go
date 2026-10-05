@@ -111,9 +111,12 @@ func (cluster *Cluster) openSVCAddAppJobsSections(svcsection map[string]map[stri
 		"detach":              "true",
 		"rm":                  "true",
 		"entrypoint":          "/bin/bash",
-		"configs_environment": app.GetOpenSVCDeploymentAppEnv("env"),
+		"configs_environment": "env/REPLICATION_MANAGER_URL " + app.GetOpenSVCDeploymentAppEnv("env"),
 		"secrets_environment": app.GetOpenSVCDeploymentAppEnv("secret"),
-		"volume_mounts":       "/etc/localtime:/etc/localtime:ro " + mount,
-		"command":             "-c 'printenv " + appJobsScriptKey + " > /tmp/app_jobs; exec bash /tmp/app_jobs'",
+		// who this server is for replication-manager: the cluster, and the host and port
+		// the monitor knows it by (the service name in the cluster namespace)
+		"environment":   "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={svcname}.{namespace}.svc.{clustername} REPLICATION_MANAGER_HOST_PORT=" + app.Port,
+		"volume_mounts": "/etc/localtime:/etc/localtime:ro " + mount,
+		"command":       "-c 'printenv " + appJobsScriptKey + " > /tmp/app_jobs; exec bash /tmp/app_jobs'",
 	}
 }

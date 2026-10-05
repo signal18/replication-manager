@@ -18,7 +18,7 @@ func jobsTestApp(engine string, volumes ...*config.Volume) (*Cluster, *App) {
 // directory of its first volume; an app without an engine jobs script gets neither.
 func TestAppJobsSections(t *testing.T) {
 	c, a := jobsTestApp("postgres", &config.Volume{Name: "pg1-drbd"})
-	if !strings.Contains(appJobsScript(a), "pg_dumpall") {
+	if !strings.Contains(appJobsScript(a), "pg_dumpall") || !strings.Contains(appJobsScript(a), "job needs") {
 		t.Fatal("the PostgreSQL jobs script is embedded")
 	}
 	sections := map[string]map[string]string{"volume#1": {"name": "pg1-drbd", "directories": "data"}}
@@ -35,7 +35,7 @@ func TestAppJobsSections(t *testing.T) {
 		!strings.Contains(init["command"], "/static/configurator/bin/replication-manager-cli") || init["configs_environment"] != "env/REPLICATION_MANAGER_URL" {
 		t.Fatalf("init container: %v", init)
 	}
-	if jobs["image"] != "{env.app_img}" || jobs["netns"] != "container#01" || jobs["configs_environment"] != "pg1/*" || jobs["secrets_environment"] != "pg1/*" ||
+	if jobs["image"] != "{env.app_img}" || jobs["netns"] != "container#01" || jobs["configs_environment"] != "env/REPLICATION_MANAGER_URL pg1/*" || !strings.Contains(jobs["environment"], "REPLICATION_MANAGER_HOST_NAME={svcname}.{namespace}.svc.{clustername}") || jobs["secrets_environment"] != "pg1/*" ||
 		!strings.Contains(jobs["volume_mounts"], "pg1-drbd/jobs:/jobs") || !strings.Contains(jobs["command"], "printenv APP_JOBS_SCRIPT") {
 		t.Fatalf("jobs sidecar: %v", jobs)
 	}
