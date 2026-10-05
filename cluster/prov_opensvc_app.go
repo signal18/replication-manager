@@ -1165,6 +1165,21 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 	}
 
+	// Engine superuser (app_jobs.go): the cluster's database credential, never a password
+	// carried by the template.
+	if userKey, passKey := appEngineCredentialEnv(app); passKey != "" {
+		if err := cluster.appEngineCredentialError(app); err != nil {
+			return err
+		}
+		if err = svc.CreateConfigKeyValue(cluster.Name, app.Name, userKey, cluster.GetDbUser()); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", userKey, err)
+			addKeyErr(fmt.Errorf("config key %q: %w", userKey, err))
+		}
+		if err = svc.CreateSecretKeyValue(cluster.Name, app.Name, passKey, cluster.GetDbPass()); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", passKey, err)
+			addKeyErr(fmt.Errorf("secret key %q: %w", passKey, err))
+		}
+	}
 	// Engine start script (app_jobs.go), run by the template's start command.
 	if script := appStartScript(app); script != "" {
 		err = svc.CreateConfigKeyValue(cluster.Name, app.Name, appStartScriptKey, script)
