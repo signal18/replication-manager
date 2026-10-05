@@ -109,6 +109,9 @@ func (server *ServerMonitor) finishPostgresLogicalBackup() {
 	if received {
 		// the stream ended: the job is over whatever the sidecar's own report says or when
 		server.JobsUpdateStateRuntimeOnly(task, "received", JobStateSuccess, 1)
+		// the mark HasValidBackup reads: the cluster has a logical backup of this server
+		// (closes WARN0111)
+		server.createCookie("cookie_logicalbackup")
 	} else {
 		server.JobsUpdateStateRuntimeOnly(task, "no data received from the dump", JobStateErrorExec, 1)
 	}
