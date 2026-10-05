@@ -1286,6 +1286,8 @@ func (cluster *Cluster) UnfreezeDatabaseService(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"OpenSVC V3 instance unfreeze for %s on node %s", server.URL, server.Agent)
 	return svc.UnfreezeInstanceV3(server.Agent, server.ServiceName)
+}
+
 // xtrabackupImageRe is the character set of a docker image reference (registry, path,
 // tag, digest). The value is written into an OpenSVC configuration and a Kubernetes
 // image field, so anything else (spaces, quotes, shell or INI metacharacters) is refused.
