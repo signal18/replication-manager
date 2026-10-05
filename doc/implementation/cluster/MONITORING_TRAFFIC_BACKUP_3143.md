@@ -65,11 +65,17 @@ Not done yet: physical level bytes/schema (the SST receiver's byte count, mariab
 Stéphane watching the pill: "it is badly slow, compare backup time with splitdump and unsplit
 dump". Same 10.8 GB belair dataset, same host, three runs the same morning:
 
-| run | writer of the output | duration | throughput | pipeline CPU |
+All three runs dump the same belair database, 8 GB (7.1 GB data + 1.4 GB index in
+information_schema, 116 tables, 10.8 GB on the ZFS dataset), from db1 on s18-fr-4 to the
+repman active on s18-fr-6 over the 1 Gb/s private link. "Data rate" is the database size over
+the duration; "wire" is db1's measured outbound from the internal network series (one sample a
+minute, so a 3 min run is under-sampled and its average is a floor).
+
+| run | duration | data rate | wire out of db1 | what limited it |
 |---|---|---|---|---|
-| splitdump, before | stdlib `compress/gzip`, one goroutine that also parses every line | 13 min 03 s (and 13 min 19 s) | ~10 MB/s | `replication-manager-cli splitdump` at 99 % of one core |
-| plain dump | parallel pgzip at the configured level | 4 min 23 s | ~32 MB/s | mariadb-dump 29 % |
-| splitdump, after | parallel pgzip, 1 MiB blocks, one goroutine per CPU, same gzip format | **2 min 49 s** | ~40 MB/s | 90 to 95 % spread over the cores |
+| splitdump, before | 13 min 03 s (and 13 min 19 s) | 10.8 MB/s = 86 Mb/s | 67 Mb/s avg, 81 peak | `replication-manager-cli splitdump` at 99 % of ONE core: the stdlib gzip writer ran in the same goroutine that parses every line |
+| plain dump | 4 min 23 s | 32 MB/s = 257 Mb/s | 185 Mb/s avg, 193 peak | the plain path's own in-line stream parser (binlog position / GTID scan of the output) plus pgzip at the configured level; mariadb-dump at 29 % CPU, so not the source |
+| splitdump, after | 2 min 49 s | 50 MB/s = 400 Mb/s | 263 Mb/s avg, 307 peak | compression now spread over the cores (pipeline 90-95 % total); the remaining ceiling is the single-threaded line parser of splitdump and mariadb-dump's single SELECT stream, the link sits at 30 % |
 
 Fix (3958fa5d9): `utils/splitdump/split.go` writes the per-table files through
 klauspost/pgzip (`newTableWriter`: level + `SetConcurrency(1<<20, threads)`) and reads through
