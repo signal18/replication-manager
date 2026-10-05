@@ -37,6 +37,8 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 		// if server.HasBackupDumplingCookie() {
 		server.AppendLastMetadata(config.ConstBackupLogicalTypeDumpling, &logical)
 		// }
+		// PostgreSQL dump taken by the jobs sidecar (srv_job_postgres.go)
+		server.AppendLastMetadata(string(config.ConstTaskPgDump), &logical)
 
 		if logical > 0 {
 			server.LastBackupMeta.Logical = cluster.BackupMetaMap.Get(logical)

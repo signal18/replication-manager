@@ -158,6 +158,7 @@ func TestBackupProgressComparableSize(t *testing.T) {
 		want int64
 	}{
 		{"logical: artifact size", backupmgr.BackupMetadata{BackupMethod: backupmgr.BackupMethodLogical, Size: 7, Compressed: true}, 7},
+		{"logical streamed (PostgreSQL dump): stream size", backupmgr.BackupMetadata{BackupMethod: backupmgr.BackupMethodLogical, Size: 7, StreamSize: 30, Compressed: true}, 30},
 		{"physical: recorded stream size", backupmgr.BackupMetadata{BackupMethod: phys, Size: 3, StreamSize: 9, Compressed: true}, 9},
 		{"physical, plain artifact is the stream", backupmgr.BackupMetadata{BackupMethod: phys, Size: 5}, 5},
 		{"physical, compressed without stream size: not comparable", backupmgr.BackupMetadata{BackupMethod: phys, Size: 5, Compressed: true}, 0},
@@ -183,6 +184,12 @@ func TestPhysicalBackupProgressForTask(t *testing.T) {
 	if c.physicalBackupProgressForTask(s, "mariabackup") != p || c.physicalBackupProgressForTask(s, "xtrabackup") != p {
 		t.Fatal("the backup stream feeds the running physical backup")
 	}
+	lp := newBackupProgress(backupProgressKey(s, "logical"), s.URL, "logical", "pg_dumpall", time.Now())
+	c.backupProgress.Store(lp.Key, lp)
+	if c.physicalBackupProgressForTask(s, "pgdump") != lp {
+		t.Fatal("a PostgreSQL dump stream feeds the running logical backup")
+	}
+	c.EndBackupProgress(lp)
 	if c.physicalBackupProgressForTask(s, "errorlog") != nil {
 		t.Fatal("a log fetched during the backup must not count as backup bytes")
 	}

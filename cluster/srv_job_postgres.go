@@ -78,9 +78,12 @@ func (server *ServerMonitor) JobBackupPostgresLogical() error {
 	server.ensureBackupSessionID(meta, backupmgr.BackupMethodLogical, now, backupmgr.BackupLineDefault)
 	cluster.BackupMetaMap.Set(meta.Id, meta)
 
+	// live progress: the receiver counts the stream into this state (cluster_backup_progress.go)
+	cluster.StartBackupProgress(server, "logical", "pg_dumpall")
 	server.JobsUpdateStateRuntimeOnly(task, "requested", JobStateAvailable, 0)
 	if err := server.createCookie(postgresJobCookie(task)); err != nil {
 		cluster.SetInLogicalBackupState(false)
+		cluster.EndBackupProgress(cluster.backupProgressFor(server, "logical"))
 		return fmt.Errorf("can not arm the %s task: %w", task, err)
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup pg_dumpall requested from the jobs sidecar of %s", server.URL)
@@ -94,9 +97,15 @@ func (server *ServerMonitor) finishPostgresLogicalBackup() {
 	cluster := server.ClusterGroup
 	task := string(config.ConstTaskPgDump)
 	defer cluster.SetInLogicalBackupState(false)
+	progress := cluster.backupProgressFor(server, "logical")
+	defer cluster.EndBackupProgress(progress)
 
 	server.backupMetaMutex.Lock()
 	meta := server.LastBackupMeta.Logical
+	if meta != nil && progress != nil {
+		// the bytes the receiver counted are the next run's progress denominator
+		meta.StreamSize = progress.View().BytesDone
+	}
 	server.backupMetaMutex.Unlock()
 	if meta == nil || meta.BackupTool != task {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "PostgreSQL dump received on %s without a pending backup request", server.URL)
