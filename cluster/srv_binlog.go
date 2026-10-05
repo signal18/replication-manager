@@ -1172,13 +1172,22 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 	// typically another replication manager presenting the same replica server-id --
 	// used to be reopened on the very next tick, re-streaming the current binlog every
 	// time. While the backoff runs the scanner stays closed and the state says why.
-	if now := time.Now(); now.Before(server.binlogScanBackoffUntil) {
-		scanID := server.binlogEventServerID
+	// The state stays open for the whole time the reset counter is armed -- sleeping
+	// or retrying -- and resolves only after a quiet window; opening it for the pause
+	// alone would flap at every retry (the pstates lesson).
+	now := time.Now()
+	if server.binlogScanArmed(now) {
+		phase := "scanning paused for " + server.binlogScanBackoff.Round(time.Second).String()
+		if !now.Before(server.binlogScanBackoffUntil) {
+			phase = "retrying after a pause of " + server.binlogScanBackoff.Round(time.Second).String()
+		}
 		cluster.SetState("WARN0227", state.State{ErrType: "WARNING",
 			ErrDesc: fmt.Sprintf(clusterError["WARN0227"], server.URL, server.binlogScanResets,
 				binlogScanResetWindow.String(), server.binlogScanLastReset.Format("15:04:05"),
-				scanID, server.binlogScanBackoff.Round(time.Second).String()),
+				server.binlogEventServerID, phase),
 			ErrFrom: "MON", ServerUrl: server.URL})
+	}
+	if now.Before(server.binlogScanBackoffUntil) {
 		return
 	}
 
@@ -1193,7 +1202,12 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 		// consumer of this instance and from the sibling instances' blocks.
 		serverID, release, err := cluster.binlogServerIDPool().Acquire("event-scanner")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
+			// Every id streams already (a leak, or eleven real consumers): say it as a
+			// state, not a debug line -- the scanner is silently off otherwise.
+			cluster.SetState("WARN0228", state.State{ErrType: "WARNING",
+				ErrDesc: fmt.Sprintf(clusterError["WARN0228"], server.URL, err.Error()),
+				ErrFrom: "MON", ServerUrl: server.URL})
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
 				"[binlog-scan] %s: %v -- scan skipped this tick", server.URL, err)
 			return
 		}
@@ -1338,6 +1352,12 @@ func binlogScanBackoffFor(resets int) time.Duration {
 		d = binlogScanBackoffMax
 	}
 	return d
+}
+
+// binlogScanArmed reports whether the reset counter is at or past the threshold and its
+// window has not expired: the WARN0227 state is open exactly then.
+func (server *ServerMonitor) binlogScanArmed(now time.Time) bool {
+	return server.binlogScanResets >= binlogScanResetThreshold && now.Sub(server.binlogScanLastReset) <= binlogScanResetWindow
 }
 
 // noteBinlogScanReset records a hard reset of the scanner stream at now and returns the

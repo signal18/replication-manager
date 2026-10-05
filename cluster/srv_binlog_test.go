@@ -263,3 +263,56 @@ func TestNoteBinlogScanResetWindow(t *testing.T) {
 		t.Fatalf("after a quiet window the count restarts: got %v resets=%d", b, s.binlogScanResets)
 	}
 }
+
+func TestCloseBinlogEventSyncerReleasesLease(t *testing.T) {
+	p := newBinlogServerIDPool(10000)
+	s := &ServerMonitor{}
+	id, rel, err := p.Acquire("event-scanner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.binlogEventServerID, s.binlogEventRelease = id, rel
+	s.CloseBinlogEventSyncer()
+	if len(p.Leases()) != 0 {
+		t.Fatalf("closing the scanner must return its lease, got %+v", p.Leases())
+	}
+	s.CloseBinlogEventSyncer() // idempotent, no panic without a lease
+}
+
+func TestServerRebuildReleasesBinlogLeases(t *testing.T) {
+	// newServerList / RemoveServerFromIndex drop the old monitors: what they hold on
+	// the primary (stream + lease) must be released or every reload leaks one id (#1886).
+	c := &Cluster{Name: "c"}
+	p := newBinlogServerIDPool(10000)
+	old := make([]*ServerMonitor, 0, 3)
+	for i := 0; i < 3; i++ {
+		id, rel, err := p.Acquire("event-scanner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		old = append(old, &ServerMonitor{binlogEventServerID: id, binlogEventRelease: rel})
+	}
+	c.closeServersBinlogStreams(old)
+	if n := len(p.Leases()); n != 0 {
+		t.Fatalf("rebuild must release every lease, %d left", n)
+	}
+	// a nil entry in the list is tolerated (RemoveServerFromIndex guards the same way)
+	c.closeServersBinlogStreams([]*ServerMonitor{nil, old[0]})
+}
+
+func TestBinlogScanArmedFollowsTheWindow(t *testing.T) {
+	s := &ServerMonitor{}
+	t0 := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
+	s.noteBinlogScanReset(t0)
+	s.noteBinlogScanReset(t0.Add(5 * time.Second))
+	if s.binlogScanArmed(t0.Add(6 * time.Second)) {
+		t.Fatal("below the threshold nothing is armed")
+	}
+	s.noteBinlogScanReset(t0.Add(10 * time.Second))
+	if !s.binlogScanArmed(t0.Add(11*time.Second)) || !s.binlogScanArmed(t0.Add(5*time.Minute)) {
+		t.Fatal("armed while sleeping AND while retrying inside the window: the state must not flap")
+	}
+	if s.binlogScanArmed(t0.Add(10*time.Second + binlogScanResetWindow + time.Second)) {
+		t.Fatal("a quiet window resolves the state")
+	}
+}
