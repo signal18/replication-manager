@@ -15,7 +15,13 @@ block (FNV-1a of the hostname, 180 blocks of 11: 10000..11979) so the active and
 distinct blocks. A lease lives as long as the stream and is released when it closes (the event
 scanner releases in `CloseBinlogEventSyncer`, the bounded fetches with `defer`). An exhausted
 pool refuses the lease and the caller skips its run; nothing ever steals an id in use. The
-startup log line says "Replica server-id pool for this instance: N..N+10". The table's
+startup log line says "Replica server-id pool for this instance: N..N+10". A refused scanner
+lease opens state WARN0228 (never a silent debug line). A server rebuild -- config reload, host
+list change, add or remove server (`newServerList`, `RemoveServerFromIndex`) -- releases the old
+monitors' streams and leases first: before that, every rebuild leaked one Binlog Dump thread and
+one id, and the pool was exhausted after eleven reloads (the old fixed id hid the leak: MariaDB
+killed the orphan for us). WARN0227 (repeated resets) stays open while the reset counter is armed,
+pausing or retrying, and resolves after a quiet window, so it never flaps. The table's
 "server-id presented" column is therefore history: today every row but 1 and 7 reads "leased
 from the pool, purpose X".
 
