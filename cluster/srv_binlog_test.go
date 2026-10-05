@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/signal18/replication-manager/config"
@@ -187,5 +188,37 @@ func TestBinlogScanStartPositionUsesMasterPosition(t *testing.T) {
 	// fall back to the head of the file.
 	if p := s.binlogScanStartPosition("binlog.000023"); p.Pos != 4 {
 		t.Fatalf("expected position 4 on a file mismatch, got %+v", p)
+	}
+}
+
+func TestBinlogScanBackoffPolicy(t *testing.T) {
+	if binlogScanBackoffFor(1) != 0 || binlogScanBackoffFor(2) != 0 {
+		t.Fatal("below the threshold the scanner reopens on the next tick")
+	}
+	if binlogScanBackoffFor(3) != 30*time.Second || binlogScanBackoffFor(4) != time.Minute || binlogScanBackoffFor(5) != 2*time.Minute {
+		t.Fatalf("doubling from 30 s: %v %v %v", binlogScanBackoffFor(3), binlogScanBackoffFor(4), binlogScanBackoffFor(5))
+	}
+	if binlogScanBackoffFor(40) != 30*time.Minute {
+		t.Fatalf("capped at 30 min, got %v", binlogScanBackoffFor(40))
+	}
+}
+
+func TestNoteBinlogScanResetWindow(t *testing.T) {
+	s := &ServerMonitor{}
+	t0 := time.Date(2026, 10, 5, 8, 0, 0, 0, time.UTC)
+	// belair pattern: a reset every 5 s -> third one arms 30 s, then doubles
+	if b := s.noteBinlogScanReset(t0); b != 0 {
+		t.Fatalf("first reset: no backoff, got %v", b)
+	}
+	s.noteBinlogScanReset(t0.Add(5 * time.Second))
+	if b := s.noteBinlogScanReset(t0.Add(10 * time.Second)); b != 30*time.Second || !s.binlogScanBackoffUntil.Equal(t0.Add(40*time.Second)) {
+		t.Fatalf("third reset: 30 s backoff from now, got %v until %v", b, s.binlogScanBackoffUntil)
+	}
+	if b := s.noteBinlogScanReset(t0.Add(50 * time.Second)); b != time.Minute {
+		t.Fatalf("fourth reset: 1 min, got %v", b)
+	}
+	// a quiet window forgets the count
+	if b := s.noteBinlogScanReset(t0.Add(50*time.Second + binlogScanResetWindow + time.Second)); b != 0 || s.binlogScanResets != 1 {
+		t.Fatalf("after a quiet window the count restarts: got %v resets=%d", b, s.binlogScanResets)
 	}
 }

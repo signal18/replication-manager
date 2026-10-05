@@ -1220,6 +1220,20 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 
 	port, _ := strconv.Atoi(server.Port)
 
+	// Backoff after repeated hard resets (#1886): a stream killed again and again --
+	// typically another replication manager presenting the same replica server-id --
+	// used to be reopened on the very next tick, re-streaming the current binlog every
+	// time. While the backoff runs the scanner stays closed and the state says why.
+	if now := time.Now(); now.Before(server.binlogScanBackoffUntil) {
+		scanID, _ := server.binlogSyncerServerID(2000)
+		cluster.SetState("WARN0227", state.State{ErrType: "WARNING",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0227"], server.URL, server.binlogScanResets,
+				binlogScanResetWindow.String(), server.binlogScanLastReset.Format("15:04:05"),
+				scanID, server.binlogScanBackoff.Round(time.Second).String()),
+			ErrFrom: "MON", ServerUrl: server.URL})
+		return
+	}
+
 	// (Re)open the streamer when it does not exist yet or when the binlog has
 	// rotated to a new file.
 	if server.binlogEventStreamer == nil || server.binlogEventFile != currentFile {
@@ -1313,10 +1327,17 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 			break
 		}
 		if err != nil {
-			// Hard error (connection reset, etc.) — tear down and retry next tick.
+			// Hard error (connection reset, etc.) — tear down; the next tick reopens
+			// unless the resets pile up, then noteBinlogScanReset arms a backoff.
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlDbg,
 				"[binlog-scan] streamer error on %s: %v — closing syncer", server.URL, err)
 			server.CloseBinlogEventSyncer()
+			if backoff := server.noteBinlogScanReset(time.Now()); backoff > 0 {
+				scanID, _ := server.binlogSyncerServerID(2000)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
+					"[binlog-scan] stream on %s reset %d times in %s: pausing the scanner for %s (another binlog consumer -- a replica, another replication manager, a mysqlbinlog fetch -- presents the same replica server-id %d)",
+					server.URL, server.binlogScanResets, binlogScanResetWindow, backoff.Round(time.Second), scanID)
+			}
 			break
 		}
 
@@ -1337,6 +1358,48 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 			})
 		}
 	}
+}
+
+// Backoff policy of the event scanner (#1886). Resets are counted in a sliding window;
+// from the third one the scanner pauses 30 s, doubling at every further reset up to
+// 30 min. A window without resets forgets the count.
+const (
+	binlogScanResetWindow    = 10 * time.Minute
+	binlogScanResetThreshold = 3
+	binlogScanBackoffBase    = 30 * time.Second
+	binlogScanBackoffMax     = 30 * time.Minute
+)
+
+// binlogScanBackoffFor returns the pause after the n-th reset of the window (0 below the
+// threshold).
+func binlogScanBackoffFor(resets int) time.Duration {
+	if resets < binlogScanResetThreshold {
+		return 0
+	}
+	d := binlogScanBackoffBase
+	for i := binlogScanResetThreshold; i < resets && d < binlogScanBackoffMax; i++ {
+		d *= 2
+	}
+	if d > binlogScanBackoffMax {
+		d = binlogScanBackoffMax
+	}
+	return d
+}
+
+// noteBinlogScanReset records a hard reset of the scanner stream at now and returns the
+// backoff it arms (0 when none).
+func (server *ServerMonitor) noteBinlogScanReset(now time.Time) time.Duration {
+	if server.binlogScanFirstReset.IsZero() || now.Sub(server.binlogScanLastReset) > binlogScanResetWindow {
+		server.binlogScanResets = 0
+		server.binlogScanFirstReset = now
+	}
+	server.binlogScanResets++
+	server.binlogScanLastReset = now
+	server.binlogScanBackoff = binlogScanBackoffFor(server.binlogScanResets)
+	if server.binlogScanBackoff > 0 {
+		server.binlogScanBackoffUntil = now.Add(server.binlogScanBackoff)
+	}
+	return server.binlogScanBackoff
 }
 
 // binlogScanStartPosition is where a (re)opened event scanner starts reading: the
