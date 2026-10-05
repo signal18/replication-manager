@@ -453,6 +453,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	}
 
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
+	cluster.openSVCAddAppJobsSections(svcsection, app, &containernum)
 	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
 	// monitoring-system-resources off-switch, T14). Needs the script key published in the
 	// namespace `env` object (openSVCPublishAppJobScript, done by the V3 provision).
@@ -1140,6 +1141,15 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appConfiguratorScriptKey, err)
 			addKeyErr(fmt.Errorf("config key %q: %w", appConfiguratorScriptKey, err))
+		}
+	}
+
+	// Jobs sidecar (app_jobs.go): the engine's jobs script travels the same way.
+	if script := appJobsScript(app); script != "" {
+		err = svc.CreateConfigKeyValue(cluster.Name, app.Name, appJobsScriptKey, script)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appJobsScriptKey, err)
+			addKeyErr(fmt.Errorf("config key %q: %w", appJobsScriptKey, err))
 		}
 	}
 

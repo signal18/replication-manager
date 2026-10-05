@@ -1,0 +1,61 @@
+package cluster
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/signal18/replication-manager/config"
+)
+
+func jobsTestApp(engine string, volumes ...*config.Volume) (*Cluster, *App) {
+	c := &Cluster{Name: "pgtest", Conf: &config.Config{ProvType: "docker"}}
+	a := &App{Name: "pg1", ClusterGroup: c, AppConfig: &config.AppConfig{ProvAppConfigurator: engine, Deployment: config.NewDeploymentConfig()}}
+	a.AppConfig.Deployment.Storages.Volumes = volumes
+	return c, a
+}
+
+// A PostgreSQL app gets the client init container and the jobs sidecar, on the jobs
+// directory of its first volume; an app without an engine jobs script gets neither.
+func TestAppJobsSections(t *testing.T) {
+	c, a := jobsTestApp("postgres", &config.Volume{Name: "pg1-drbd"})
+	if !strings.Contains(appJobsScript(a), "pg_dumpall") {
+		t.Fatal("the PostgreSQL jobs script is embedded")
+	}
+	sections := map[string]map[string]string{"volume#1": {"name": "pg1-drbd", "directories": "data"}}
+	n := 1
+	c.openSVCAddAppJobsSections(sections, a, &n)
+	if sections["volume#1"]["directories"] != "data jobs" {
+		t.Fatalf("jobs directory added to the first volume: %q", sections["volume#1"]["directories"])
+	}
+	init, jobs := sections["container#02initjobs"], sections["container#jobs"]
+	if init == nil || jobs == nil || n != 2 {
+		t.Fatalf("init container and sidecar expected: %v", sections)
+	}
+	if init["detach"] != "false" || !strings.Contains(init["volume_mounts"], "pg1-drbd/jobs:/jobs") ||
+		!strings.Contains(init["command"], "/static/configurator/bin/replication-manager-cli") || init["configs_environment"] != "env/REPLICATION_MANAGER_URL" {
+		t.Fatalf("init container: %v", init)
+	}
+	if jobs["image"] != "{env.app_img}" || jobs["netns"] != "container#01" || jobs["configs_environment"] != "pg1/*" || jobs["secrets_environment"] != "pg1/*" ||
+		!strings.Contains(jobs["volume_mounts"], "pg1-drbd/jobs:/jobs") || !strings.Contains(jobs["command"], "printenv APP_JOBS_SCRIPT") {
+		t.Fatalf("jobs sidecar: %v", jobs)
+	}
+	// rendering twice does not duplicate the directory
+	c.openSVCAddAppJobsSections(sections, a, &n)
+	if sections["volume#1"]["directories"] != "data jobs" {
+		t.Fatalf("directory duplicated: %q", sections["volume#1"]["directories"])
+	}
+
+	for name, app := range map[string]func() (*Cluster, *App){
+		"no engine":               func() (*Cluster, *App) { return jobsTestApp("", &config.Volume{Name: "v"}) },
+		"engine without script":   func() (*Cluster, *App) { return jobsTestApp("nosuchengine", &config.Volume{Name: "v"}) },
+		"postgres without volume": func() (*Cluster, *App) { return jobsTestApp("postgres") },
+	} {
+		c, a := app()
+		s := map[string]map[string]string{"volume#1": {"directories": "data"}}
+		k := 1
+		c.openSVCAddAppJobsSections(s, a, &k)
+		if len(s) != 1 || k != 1 || s["volume#1"]["directories"] != "data" {
+			t.Fatalf("%s: nothing must be added: %v", name, s)
+		}
+	}
+}
