@@ -2,17 +2,18 @@ package splitdump
 
 import (
 	"bufio"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/jacoblockett/sanitizefilename"
+	gzip "github.com/klauspost/pgzip"
 )
 
 // SplitDumpChannelBusChannelBus a struct to hold all channels used by the different go routines
@@ -264,7 +265,16 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 		if openErr != nil {
 			return fmt.Errorf("splitdump: create file %s: %w", tablePath, openErr)
 		}
-		tableFile = gzip.NewWriter(f)
+		// Parallel gzip (klauspost/pgzip, same file format): the standard library's writer
+		// compressed every table on the single goroutine that also parses the stream and
+		// capped a belair dump at 10 MB/s on one core at 99 % (2026-10-05). Level and
+		// concurrency come from CompressionLevel / CompressionThreads (the CLI flags the
+		// dump pipeline passes from compress-backups-compression-level).
+		tableFile, openErr = newTableWriter(f)
+		if openErr != nil {
+			_ = f.Close()
+			return fmt.Errorf("splitdump: gzip writer %s: %w", tablePath, openErr)
+		}
 		currentOutputName = tableName
 		openedOutputs[tableName] = true
 		if isFirstOpen {
@@ -515,4 +525,29 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	}
 
 	bus.Finished <- true
+}
+
+// CompressionLevel is the gzip level of the per-table files (1 fastest .. 9 smallest, 6 the
+// gzip default); CompressionThreads the parallel blocks pgzip compresses at once (0 = every
+// CPU). Set by the splitdump CLI flags before Split runs.
+var (
+	CompressionLevel   = gzip.DefaultCompression
+	CompressionThreads = 0
+)
+
+func newTableWriter(f *os.File) (*gzip.Writer, error) {
+	w, err := gzip.NewWriterLevel(f, CompressionLevel)
+	if err != nil {
+		return nil, err
+	}
+	threads := CompressionThreads
+	if threads <= 0 {
+		threads = runtime.NumCPU()
+	}
+	// 1 MiB blocks: enough work per goroutine to amortise the scheduling, small enough to
+	// keep the memory bounded (threads x block size in flight).
+	if err := w.SetConcurrency(1<<20, threads); err != nil {
+		return nil, err
+	}
+	return w, nil
 }
