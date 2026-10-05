@@ -447,8 +447,11 @@ function Navbar({ username, user }) {
                   const since = r.started ? `, since ${new Date(r.started).toLocaleTimeString()}` : ''
                   return `${who}: ${pct}${rate}${eta}${tbl}${since} [${r.level}]`
                 }
+                // rows come ranked by the server: the data dump first, then the binlog copy,
+                // then the archive push (which belongs to the previous backup)
                 const first = rows[0]
-                const text = first.percent >= 0 ? `Backup ${Math.round(first.percent)}%` : 'Backup'
+                const kindLabel = { logical: 'Dump', physical: 'Backup', binlog: 'Binlog', archive: 'Archive' }[first.kind] || 'Backup'
+                const text = first.percent >= 0 ? `${kindLabel} ${Math.round(first.percent)}%` : kindLabel
                 return (
                   <Tooltip as='div' label={rows.map(line).join('\n')} whiteSpace='pre-line' hasArrow>
                     <Box>

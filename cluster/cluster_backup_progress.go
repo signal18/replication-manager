@@ -360,6 +360,8 @@ func (cluster *Cluster) snapshotBackupProgress() []BackupProgress {
 				Level: BackupProgressLevelBytes, Percent: -1, EtaSeconds: -1, BytesDone: t.BytesDone, PreviousSize: t.TotalBytes, UpdatedAt: time.Now()}
 			if t.StartedAt != nil {
 				p.Started = *t.StartedAt
+			} else {
+				p.Started = p.UpdatedAt
 			}
 			if t.TotalBytes > 0 {
 				p.Percent = t.PercentDone * 100
@@ -370,7 +372,26 @@ func (cluster *Cluster) snapshotBackupProgress() []BackupProgress {
 			out = append(out, p)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Started.Before(out[j].Started) })
+	// The dump of the cluster's data comes first (the pill shows the first row), then the
+	// binlog copy, then the archive push -- which belongs to the PREVIOUS backup and must
+	// never pass for the running one (Stéphane saw "53 % super fast": restic's push of my
+	// dump, shown as the pill while his own dump was about to start).
+	rank := func(kind string) int {
+		switch kind {
+		case "logical", "physical":
+			return 0
+		case "binlog":
+			return 1
+		default:
+			return 2
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if rank(out[i].Kind) != rank(out[j].Kind) {
+			return rank(out[i].Kind) < rank(out[j].Kind)
+		}
+		return out[i].Started.Before(out[j].Started)
+	})
 	return out
 }
 
