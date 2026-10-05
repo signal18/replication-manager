@@ -110,6 +110,11 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 		return err
 	}
 
+	// PostgreSQL has no binary logs: nothing to list, and no ERR00014 to raise for it
+	if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+		return nil
+	}
+
 	if server.IsRefreshingBinlog {
 		return errors.New("Server is refreshing binlogs")
 	}

@@ -76,6 +76,8 @@ func (cluster *Cluster) GetReseedReadiness() ReseedReadiness {
 		return r
 	}
 	switch {
+	case master.DBVersion != nil && master.DBVersion.IsPostgreSQL():
+		// no binary logs on PostgreSQL: WARN0224 does not apply
 	case !master.HaveBinlog:
 		r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0224", Text: fmt.Sprintf(clusterError["WARN0224"], "log_bin is off on "+master.URL)})
 	case !cluster.Conf.BackupBinlogs:

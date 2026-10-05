@@ -92,3 +92,26 @@ func TestPlanRollingUpgradeGate(t *testing.T) {
 		t.Fatalf("downgrade with a fresh logical backup is planned: err=%v plan=%+v", err, p)
 	}
 }
+
+// PostgreSQL has no binary logs: the readiness never raises WARN0224 for it, and listing
+// binary logs is skipped (no ERR00014). The backup issues stay: no backup is no backup.
+func TestReseedReadinessPostgreSQLHasNoBinaryLogWarning(t *testing.T) {
+	cl, m := readinessCluster(t)
+	m.HaveBinlog = false
+	if r := cl.GetReseedReadiness(); len(r.Issues) == 0 || r.Issues[0].Code != "WARN0224" {
+		t.Fatalf("MariaDB without log_bin raises WARN0224: %+v", r)
+	}
+	m.DBVersion, _ = version.NewVersion("PostgreSQL", 17, 11, 0)
+	r := cl.GetReseedReadiness()
+	for _, issue := range r.Issues {
+		if issue.Code == "WARN0224" {
+			t.Fatalf("WARN0224 must not be raised on PostgreSQL: %+v", r)
+		}
+	}
+	if len(r.Issues) != 1 || !strings.Contains(r.Issues[0].Text, "no backup usable") {
+		t.Fatalf("the missing backup is still reported: %+v", r)
+	}
+	if err := m.RefreshBinaryLogs(); err != nil {
+		t.Fatalf("listing binary logs is a no-op on PostgreSQL: %v", err)
+	}
+}
