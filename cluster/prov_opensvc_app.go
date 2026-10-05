@@ -1129,6 +1129,20 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 	}
 
+	// App configurator (app_configurator.go): the engine's moduleset files, rendered from
+	// the app plan, travel as one config key the container start command writes out.
+	if app.AppConfig.ProvAppConfigurator != "" {
+		script, err := cluster.AppConfiguratorScript(app)
+		if err != nil {
+			return err
+		}
+		err = svc.CreateConfigKeyValue(cluster.Name, app.Name, appConfiguratorScriptKey, script)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appConfiguratorScriptKey, err)
+			addKeyErr(fmt.Errorf("config key %q: %w", appConfiguratorScriptKey, err))
+		}
+	}
+
 	if len(keyErrs) > 0 {
 		return fmt.Errorf("partial map update for app %s: %d key(s) failed: %w", app.Name, len(keyErrs), errors.Join(keyErrs...))
 	}

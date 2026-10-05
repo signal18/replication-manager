@@ -254,6 +254,13 @@ func (app *App) SetSetting(key, value string) error {
 			}
 		}
 		app.AppConfig.ProvAppStartTimeout = value
+	case "prov-app-configurator":
+		if value != "" {
+			if _, err := loadAppConfiguratorModule(value); err != nil {
+				return err
+			}
+		}
+		app.AppConfig.ProvAppConfigurator = value
 	case "prov-app-agents":
 		// The shape (prov-app-cpu-cores/memory/disk) is PER INSTANCE and never depends on
 		// the agent count; the instances follow the topology (flex = agents, failover = 1).

@@ -1140,6 +1140,7 @@ type AppConfig struct {
 	ProvAppHATopology     string `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
 	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	ProvAppSizingMode     string `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode"`
+	ProvAppConfigurator   string `mapstructure:"prov-app-configurator" toml:"prov-app-configurator" json:"provAppConfigurator"` // engine whose moduleset (share/opensvc/moduleset_<engine>.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none
 	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppPort               string `mapstructure:"app-port" toml:"app-port" json:"appPort"`
