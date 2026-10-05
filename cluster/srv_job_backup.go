@@ -3857,7 +3857,11 @@ func (server *ServerMonitor) getBackupRegexPatterns() (*regexp.Regexp, *regexp.R
 	gtidRegex := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		binlogRegex = regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
+		// The dump client is not necessarily the server's own: the MariaDB mysqldump repman
+		// ships still writes the legacy CHANGE MASTER TO MASTER_LOG_* header against an 8.4
+		// server, while a MySQL 8.4 client writes CHANGE REPLICATION SOURCE TO SOURCE_LOG_*.
+		// Accept both, or the binlog position of the dump is never found.
+		binlogRegex = regexp.MustCompile(`CHANGE (?:REPLICATION SOURCE|MASTER) TO (?:SOURCE|MASTER)_LOG_FILE='(.+)', (?:SOURCE|MASTER)_LOG_POS=(\d+)`)
 	}
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
 		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:/\*![0-9]*\s*'([^']+)'\*/\s*|'([^']+)')`)
@@ -7078,11 +7082,19 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for writing metadata for backup in %s", server.URL)
 
 	if task.State == 3 || task.State == 4 {
-		//Wait for binlog metadata sent by writelog API
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", lastmeta)
-		// Releases backupMetaMutex while polling and re-acquires before we mutate below; see
-		// the waitForBinlogMeta contract -- this is the self-deadlock fix.
-		server.waitForBinlogMeta(lastmeta)
+		if backtype == backupmgr.BackupMethodPhysical {
+			//Wait for binlog metadata sent by writelog API
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", lastmeta)
+			// Releases backupMetaMutex while polling and re-acquires before we mutate below; see
+			// the waitForBinlogMeta contract -- this is the self-deadlock fix.
+			server.waitForBinlogMeta(lastmeta)
+		} else if lastmeta.BinLogFileName == "" {
+			// Only a physical backup gets its binlog position from the DB node (writelog API).
+			// A logical backup fills it while the dump is read, so once the dump function has
+			// returned nothing can publish it any more: waiting here would never end and would
+			// keep the backup state and its global slot held.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No binlog position found for logical backup on %s: writing metadata without it", server.URL)
+		}
 		if lastmeta.EncryptionFailed {
 			// The underlying backup tool succeeded (that's why task.State is
 			// 3/4), but a post-producer encryption step failed and already
