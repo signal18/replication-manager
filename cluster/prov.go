@@ -312,21 +312,6 @@ func (cluster *Cluster) InitAppService(app *App) error {
 	err := <-cluster.errorChan
 	cluster.StateMachine.RemoveFailoverState()
 	if err == nil {
-		if app != nil {
-			app.ApplyPlannedCredits()
-			cluster.recomputeAppCredits()
-			if _, saveErr := cluster.SaveApp(app, ""); saveErr != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist credit usage for %s: %s", app.Name, saveErr)
-			}
-			// Rebase cap upward if actual provisioned usage now exceeds it.
-			// No cap > 0 guard: StartBillingCycle may have legitimately zeroed the cap,
-			// and a fresh provision must still be able to raise it.
-			if cluster.rebaseAppCreditCap() {
-				if _, saveErr := cluster.SaveConfigFile(); saveErr != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Failed to persist rebased credit cap for %s: %s", app.Name, saveErr)
-				}
-			}
-		}
 		app.DelUnprovisionCookie()
 		app.SetProvisionCookie()
 	} else {
@@ -376,9 +361,7 @@ func (cluster *Cluster) Unprovision() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
-			prx.DelProvisionCookie()
-			prx.DelRestartCookie()
-			prx.DelReprovisionCookie()
+			cluster.ForgetProxyInstance(prx) // clean slate: datadir (cookies included)
 			if hprx, ok := prx.(*HaproxyProxy); ok {
 				hprx.delProvisionedBootstrapServers()
 			}
@@ -407,10 +390,7 @@ func (cluster *Cluster) Unprovision() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
-			server.DelProvisionCookie()
-			server.DelRestartCookie()
-			server.DelReprovisionCookie()
-			server.DelConfigPathCookie()
+			cluster.ForgetInstance(server) // clean slate: datadir, crash events, tracked state (cookies included)
 		}
 	}
 	err := cluster.WaitClusterStop()
@@ -448,9 +428,7 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 	cluster.UnprovisionProxyScript(prx)
 	err := <-cluster.errorChan
 	if err == nil {
-		prx.DelProvisionCookie()
-		prx.DelReprovisionCookie()
-		prx.DelRestartCookie()
+		cluster.ForgetProxyInstance(prx) // clean slate: datadir (cookies included)
 		if hprx, ok := prx.(*HaproxyProxy); ok {
 			hprx.delProvisionedBootstrapServers()
 		}
@@ -480,9 +458,7 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	cluster.UnprovisionDatabaseScript(server)
 	err := <-cluster.errorChan
 	if err == nil {
-		server.DelProvisionCookie()
-		server.DelReprovisionCookie()
-		server.DelRestartCookie()
+		cluster.ForgetInstance(server) // clean slate: datadir, crash events, tracked state (cookies included)
 	} else {
 		return err
 	}
@@ -537,7 +513,12 @@ func (cluster *Cluster) UpgradeDatabaseService(server *ServerMonitor) error {
 // when off, or when the orchestrator/API has no full-deployment push (OpenSVC v2 legacy).
 // Called SYNCHRONOUSLY from the rolling loop and returns its error directly -- it must NOT
 // go through cluster.errorChan (per-op cross-talk, issue #1769).
-func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor) error {
+//
+// keepImage (the rolling RESTART): the service keeps the image it runs, whatever
+// prov-db-image says -- a restart never changes the database version, only the rolling
+// upgrade does (#1861: curepipe 2026-10-01, prov-db-image "latest" re-rendered on a
+// restart put two replicas on a stale local 11.7.2 under an 11.8.8 master).
+func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor, keepImage bool) error {
 	if !cluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart {
 		return nil
 	}
@@ -545,8 +526,17 @@ func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor) 
 	case config.ConstOrchestratorOpenSVC:
 		// Full re-render + push exists only on the v3 API; the v2 legacy path keeps a
 		// restart deployment-neutral rather than failing it.
-		if svc := cluster.OpenSVCConnect(); !svc.IsV3() {
+		svc := cluster.OpenSVCConnect()
+		if !svc.IsV3() {
 			return nil
+		}
+		if keepImage {
+			if img := cluster.openSVCCurrentDatabaseImage(server); img != "" && img != cluster.Conf.ProvDbImg {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"Restart keeps the image %s runs (%s), prov-db-image %s is for the rolling upgrade", server.URL, img, cluster.Conf.ProvDbImg)
+				server.DeployImageOverride = img
+				defer func() { server.DeployImageOverride = "" }()
+			}
 		}
 		return cluster.OpenSVCUpdateDatabaseTemplate(server)
 	case config.ConstOrchestratorKubernetes:
@@ -556,10 +546,45 @@ func (cluster *Cluster) UpgradeDatabaseDeploymentOnStart(server *ServerMonitor) 
 		// stopped phase, which satisfies that. The K8s container RESOURCE baseline and the
 		// live in-place pod resize are owned by the k8sResizer (cluster_resize_k8s.go): that
 		// stays a separate mechanism and is NOT re-implemented here.
-		return cluster.K8SUpdateDatabaseServiceConfig(server, false)
+		return cluster.k8sUpdateDatabaseServiceConfigKeepImage(server, keepImage)
 	default:
 		return nil
 	}
+}
+
+// openSVCCurrentDatabaseImage reads env.docker_image from the service's current
+// configuration on the orchestrator: the image the service runs today.
+func (cluster *Cluster) openSVCCurrentDatabaseImage(server *ServerMonitor) string {
+	svc := cluster.OpenSVCConnect()
+	parts := strings.SplitN(server.ServiceName, "/", 3)
+	if len(parts) != 3 {
+		return ""
+	}
+	raw, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2])
+	if err != nil {
+		return ""
+	}
+	return openSVCConfigValue(string(raw), "env", "docker_image")
+}
+
+// openSVCConfigValue reads key under [section] of an om3 config file (INI, "key = value").
+func openSVCConfigValue(raw, section, key string) string {
+	in := false
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "[") {
+			in = line == "["+section+"]"
+			continue
+		}
+		if !in || strings.HasPrefix(line, "#") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) == 2 && strings.TrimSpace(kv[0]) == key {
+			return strings.TrimSpace(kv[1])
+		}
+	}
+	return ""
 }
 
 // StopDatabaseServiceClean stops the database with innodb_fast_shutdown=0 for
@@ -1229,6 +1254,38 @@ func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {
 		cluster.OpenSVCStats.Swap(stats)
 	}
 	return nil
+}
+
+// FreezeDatabaseService holds the orchestrator off a database instance for the duration of
+// a rolling stop/start. On om3 rc40 a status refresh racing an instance stop clears the
+// stopped flag and the HA orchestration restarts the instance ~8 s later (opensvc/om3#1142,
+// curepipe 2026-10-01); a frozen instance stays down whatever the refresh sees (proven on
+// dev3). No-op on the other orchestrators and on OpenSVC v2.
+func (cluster *Cluster) FreezeDatabaseService(server *ServerMonitor) error {
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI {
+		return nil
+	}
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"OpenSVC V3 instance freeze for %s on node %s (rolling operation)", server.URL, server.Agent)
+	return svc.FreezeInstanceV3(server.Agent, server.ServiceName)
+}
+
+// UnfreezeDatabaseService gives the instance back to the orchestration after the start.
+func (cluster *Cluster) UnfreezeDatabaseService(server *ServerMonitor) error {
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI {
+		return nil
+	}
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"OpenSVC V3 instance unfreeze for %s on node %s", server.URL, server.Agent)
+	return svc.UnfreezeInstanceV3(server.Agent, server.ServiceName)
 }
 
 // xtrabackupImageRe is the character set of a docker image reference (registry, path,

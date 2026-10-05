@@ -325,7 +325,6 @@ function ResticRepositorySettings({
   const [isStorageOpen, setIsStorageOpen] = useState(() => readStoredState('storage', false))
   const [isTaggingOpen, setIsTaggingOpen] = useState(() => readStoredState('tagging', false))
   const [isLegacyOpen, setIsLegacyOpen] = useState(!(config?.backupResticAwsBucket || '').trim())
-  const areAllSectionsOpen = isConnectionOpen && isStorageOpen && isTaggingOpen
 
   // Restic init modal state
   const { 
@@ -768,14 +767,6 @@ function ResticRepositorySettings({
     })
   }
 
-  const setAllSectionsState = (nextState) => {
-    setIsConnectionOpen(nextState)
-    persistStoredState('connection-credentials', nextState)
-    setIsStorageOpen(nextState)
-    persistStoredState('storage', nextState)
-    setIsTaggingOpen(nextState)
-    persistStoredState('tagging', nextState)
-  }
 
   const renderSectionPanel = ({ sectionKey, title, description, isOpen, setOpen, controlsId, content }) => (
     <Box className={styles.panel} w='full'>
@@ -888,30 +879,40 @@ function ResticRepositorySettings({
           <HStack spacing={2} className={styles.resticMountHeaderInfo}>
             <Text className={styles.resticMountHeaderTitle}>Restic repository settings</Text>
           </HStack>
-          <HStack
-            spacing={2}
-            className={styles.resticMountHeaderActions}
-            w={{ base: 'full', md: 'auto' }}
-            justify={{ base: 'flex-start', md: 'flex-end' }}
-            flexWrap='wrap'
-          >
-            <Box
-              as='button'
-              type='button'
-              className={styles.resticMountActionButton}
-              aria-expanded={areAllSectionsOpen}
-              aria-controls='restic-repo-connection-credentials restic-repo-storage restic-repo-tagging'
-              aria-label={
-                areAllSectionsOpen
-                  ? 'Hide all restic repository settings sections'
-                  : 'Show all restic repository settings sections'
-              }
-              onClick={() => setAllSectionsState(!areAllSectionsOpen)}
-            >
-              {areAllSectionsOpen ? 'Hide all' : 'Show all'}
-            </Box>
-          </HStack>
         </Flex>
+
+      <Grid
+        className={styles.resticMountGrid}
+        templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+        columnGap={3}
+        rowGap={1}
+        w='full'
+      >
+        <GridItem className={styles.rowLabel}>
+          <HStack spacing={1} justify='space-between' width='full'>
+            <Text>Restic repository type</Text>
+            {h(ResticRepositoryTypeHelp, 'Restic Repository Type')}
+          </HStack>
+        </GridItem>
+        <GridItem className={styles.valueCell}>
+          <Flex className={styles.dropdownContainer}>
+            <Dropdown
+              options={RESTIC_REPOSITORY_TYPE_OPTIONS}
+              className={styles.dropdownButton}
+              selectedValue={archiveMode}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={'Confirm backup-archive-mode to'}
+              confirmBody={'This activates the saved configuration below and changes which repository subsequent Restic operations use. Change repository type to: '}
+              onChange={(value) => handleArchiveModeChange(value)}
+            />
+          </Flex>
+          <Text className={styles.helperText}>
+            This control selects which saved repository configuration Restic uses right now. The
+            tabs below (Storage) let you edit repository settings for each repository type.
+            Operational actions continue to use the current active repository, not the selected tab.
+          </Text>
+        </GridItem>
+      </Grid>
 
         <Box className={styles.summaryPanel} w='full'>
           <HStack spacing={2} align='center' flexWrap='wrap'>
@@ -952,38 +953,6 @@ function ResticRepositorySettings({
           controlsId: 'restic-repo-connection-credentials',
           content: (
             <Stack spacing={{ base: 1, md: 2 }}>
-              <Grid
-                className={styles.resticMountGrid}
-                templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
-                columnGap={3}
-                rowGap={1}
-                w='full'
-              >
-                <GridItem className={styles.rowLabel}>
-                  <HStack spacing={1} justify='space-between' width='full'>
-                    <Text>Restic repository type</Text>
-                    {h(ResticRepositoryTypeHelp, 'Restic Repository Type')}
-                  </HStack>
-                </GridItem>
-                <GridItem className={styles.valueCell}>
-                  <Flex className={styles.dropdownContainer}>
-                    <Dropdown
-                      options={RESTIC_REPOSITORY_TYPE_OPTIONS}
-                      className={styles.dropdownButton}
-                      selectedValue={archiveMode}
-                      isDisabled={user?.grants['cluster-settings'] == false}
-                      confirmTitle={'Confirm backup-archive-mode to'}
-                      confirmBody={'This activates the saved configuration below and changes which repository subsequent Restic operations use. Change repository type to: '}
-                      onChange={(value) => handleArchiveModeChange(value)}
-                    />
-                  </Flex>
-                  <Text className={styles.helperText}>
-                    This control selects which saved repository configuration Restic uses right now. The
-                    tabs below (Storage) let you edit repository settings for each repository type.
-                    Operational actions continue to use the current active repository, not the selected tab.
-                  </Text>
-                </GridItem>
-              </Grid>
 
               <Grid
                 className={styles.resticMountGrid}

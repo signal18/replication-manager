@@ -566,17 +566,15 @@ func SetUserPassword(db *sqlx.DB, myver *version.Version, user_host string, user
 		return "", fmt.Errorf("invalid username: %w", err)
 	}
 
-	// Build query using parameterization where possible
-	// ALTER USER syntax doesn't support full parameterization, but we validate and escape
-	query := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY ?",
+	// ALTER USER takes no bound parameter on MariaDB/MySQL (Error 1064 near '?', #1871):
+	// the password is a quoted literal; the returned query masks it for the SQL log.
+	query := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY %s",
 		QuoteMySQLIdentifier(user_name),
-		QuoteMySQLIdentifier(user_host))
+		QuoteMySQLIdentifier(user_host), QuoteMySQLString(new_password))
+	logged := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY '*****'", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
 
-	_, err := db.Exec(query, new_password)
-	if err != nil {
-		return query, err
-	}
-	return query, nil
+	_, err := db.Exec(query)
+	return logged, err
 }
 
 // validateDBHost validates a MySQL host string.
@@ -1152,18 +1150,19 @@ func CreateUser(db *sqlx.DB, myver *version.Version, user_host string, user_name
 	if err := ValidateIdentifier(user_name); err != nil {
 		return "", fmt.Errorf("invalid username: %w", err)
 	}
-	if err := ValidateIdentifier(user_host); err != nil {
+	if err := validateDBHost(user_host); err != nil { // hosts take '%' and ':' (IPv6), unlike identifiers (#1870)
 		return "", fmt.Errorf("invalid host: %w", err)
 	}
 
-	// Note: CREATE USER cannot use parameterized password in all MySQL versions
-	// Using quoted identifiers for user/host and escaping password
-	query := fmt.Sprintf("CREATE USER %s@%s IDENTIFIED BY ?",
+	// CREATE USER takes no bound parameter on MariaDB/MySQL (Error 1064 near '?', #1871):
+	// the password is a quoted literal; the returned query masks it for the SQL log.
+	query := fmt.Sprintf("CREATE USER %s@%s IDENTIFIED BY %s",
 		QuoteMySQLIdentifier(user_name),
-		QuoteMySQLIdentifier(user_host))
+		QuoteMySQLIdentifier(user_host), QuoteMySQLString(new_password))
+	logged := fmt.Sprintf("CREATE USER %s@%s IDENTIFIED BY '*****'", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
 
-	_, err := db.Exec(query, new_password)
-	return query, err
+	_, err := db.Exec(query)
+	return logged, err
 }
 
 // RevokeUserGrants revokes all privileges from a user
@@ -2043,4 +2042,15 @@ func attachJoinWeight(tablemap map[string]*Table, keyA, keyB string, pct float64
 		Cardinality:   CardinalityOneToMany,
 		JoinWeightPct: pct,
 	})
+}
+
+// CreateDatabaseIfNotExists creates a schema for an application (#1870); the
+// identifier is validated then quoted, the statement is returned for the SQL log.
+func CreateDatabaseIfNotExists(db *sqlx.DB, schema string) (string, error) {
+	if err := ValidateIdentifier(schema); err != nil {
+		return "", fmt.Errorf("invalid schema name: %w", err)
+	}
+	query := "CREATE DATABASE IF NOT EXISTS " + QuoteMySQLIdentifier(schema)
+	_, err := db.Exec(query)
+	return query, err
 }

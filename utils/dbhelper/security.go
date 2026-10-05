@@ -292,6 +292,15 @@ func BuildSafeSetGlobal(variable, value string) (string, error) {
 	return fmt.Sprintf("SET GLOBAL %s = ?", variable), nil
 }
 
+// QuoteMySQLString returns s as a MySQL/MariaDB single-quoted string literal,
+// backslashes and single quotes escaped, for statements that take no bound
+// parameter: CREATE USER / ALTER USER ... IDENTIFIED BY (#1871).
+func QuoteMySQLString(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "'", "''")
+	return "'" + s + "'"
+}
+
 // EscapeSingleQuotes escapes single quotes for string literals
 // WARNING: Use parameterized queries instead when possible
 // This is only for cases where parameterization isn't supported (DDL, etc.)

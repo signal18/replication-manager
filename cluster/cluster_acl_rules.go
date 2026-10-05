@@ -119,6 +119,19 @@ var proxyACLRules = []ACLRule{
 	{"/actions/staging", nil, []string{config.GrantClusterStaging}},
 }
 
+// pricingACLRules are EXCLUSIVE rules for the settings that decide how a cluster or an
+// app is metered and priced. Sizing (prov-app-*, prov-db-dbu, agents, topology) is the
+// owner's right and stays on the ordinary app-config / cluster-settings grants; the
+// metering rule is the provider's (Stéphane 2026-09-30: "some cluster owner can not change
+// the way it's monitored and priced"). Unlike every other table, a URL matching one of
+// these is decided by that rule ALONE (IsURLPassACL): the generic "/settings/actions/"
+// rules never grant it, since matchACLRules grants on ANY matching rule.
+var pricingACLRules = []ACLRule{
+	{"/settings/actions/set/app-stateful", nil, []string{config.GrantSalesPricing}},
+	{"/settings/actions/set/app-s3-provider", nil, []string{config.GrantSalesPricing}},
+	{"/settings/actions/switch/cloud18-marketplace-bau-client-storage", nil, []string{config.GrantSalesPricing}},
+}
+
 // appACLRules defines ACL rules for application endpoints
 var appACLRules = []ACLRule{
 	{"/actions/provision", nil, []string{config.GrantProvAppProvision}},

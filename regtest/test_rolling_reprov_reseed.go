@@ -11,6 +11,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/releases"
 )
 
 const (
@@ -54,7 +55,21 @@ func probeTablePresent(s *cluster.ServerMonitor) (bool, error) {
 // -- the guarantee must hold whatever the provisioning backend (OpenSVC /
 // Kubernetes / localhost / on-premise), so there is deliberately no
 // GetOrchestrator() check.
+// versionRule says what the running versions must be afterwards: "same" (a restart
+// never changes the release, #1861) or the exact release the operation announced
+// ("x.y.z": every node runs it afterwards, #1862). "" skips the check.
 func rollingHealthCheck(cl *cluster.Cluster, opName string, op func() error) bool {
+	return rollingHealthCheckVersions(cl, opName, op, "same")
+}
+
+func versionOf(s *cluster.ServerMonitor) string {
+	if s == nil || s.DBVersion == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d", s.DBVersion.Major, s.DBVersion.Minor, s.DBVersion.Release)
+}
+
+func rollingHealthCheckVersions(cl *cluster.Cluster, opName string, op func() error, versionRule string) bool {
 	logf := func(format string, args ...interface{}) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", format, args...)
 	}
@@ -90,10 +105,12 @@ func rollingHealthCheck(cl *cluster.Cluster, opName string, op func() error) boo
 	}
 
 	// Snapshot each server's uptime before, to prove afterwards they were really
-	// cycled (uptime read from the collected status, no extra query).
+	// cycled (uptime read from the collected status, no extra query), and its version.
 	uptimeBefore := make(map[string]int64, len(cl.Servers))
+	versionBefore := make(map[string]string, len(cl.Servers))
 	for _, s := range cl.Servers {
 		uptimeBefore[s.URL] = s.GetDatabaseUptime()
+		versionBefore[s.URL] = versionOf(s)
 	}
 
 	// Launch the method under test.
@@ -131,6 +148,24 @@ func rollingHealthCheck(cl *cluster.Cluster, opName string, op func() error) boo
 		}
 	}
 
+	// The release: a restart never moves it, an upgrade lands exactly what it announced.
+	for _, s := range cl.Servers {
+		after := versionOf(s)
+		switch versionRule {
+		case "", "none":
+		case "same":
+			if versionBefore[s.URL] != "" && after != versionBefore[s.URL] {
+				logf("FAIL %s: %s changed release (before %s, after %s): a %s must not move the version", opName, s.URL, versionBefore[s.URL], after, opName)
+				return false
+			}
+		default:
+			if after != versionRule {
+				logf("FAIL %s: %s runs %s afterwards, the operation announced %s", opName, s.URL, after, versionRule)
+				return false
+			}
+		}
+	}
+
 	// Probe table survived on every server (data preserved / reseeded).
 	for _, s := range cl.Servers {
 		present, err := probeTablePresent(s)
@@ -154,10 +189,22 @@ func (regtest *RegTest) TestRollingRestart(cl *cluster.Cluster, conf string, tes
 	return rollingHealthCheck(cl, "RollingRestart", cl.RollingRestart)
 }
 
-// TestRollingUpgrade re-pushes the service config and restarts every node (data
-// preserved), and checks the cluster is left healthy.
+// TestRollingUpgrade plans the default upgrade (the declared image resolved by the
+// image list), prepares it (declaration, service definitions on the release), runs it
+// and checks the cluster is left healthy with every node on the announced release.
+// On-premise clusters have no image: only the health check applies.
 func (regtest *RegTest) TestRollingUpgrade(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	return rollingHealthCheck(cl, "RollingUpgrade", cl.RollingUpgrade)
+	if cl.GetOrchestrator() == config.ConstOrchestratorOnPremise {
+		return rollingHealthCheckVersions(cl, "RollingUpgrade", cl.RollingUpgrade, "")
+	}
+	plan, err := cl.PrepareRollingUpgrade("patch", "")
+	if err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL RollingUpgrade: plan refused: %s", err)
+		return false
+	}
+	_, release := releases.SplitImage(plan.TargetImage)
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "RollingUpgrade plan: %s -> %s (%s), every node must run %s afterwards", plan.CurrentImage, plan.TargetImage, plan.Mechanic, release)
+	return rollingHealthCheckVersions(cl, "RollingUpgrade", func() error { return cl.RunRollingUpgrade(plan) }, release)
 }
 
 // TestRollingReprovReseed destroys, recreates and reseeds every node, and checks

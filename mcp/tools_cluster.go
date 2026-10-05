@@ -7,9 +7,14 @@ package repmanmcp
 
 import (
 	"context"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/releases"
+	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // registerReadOnlyTools registers all read-only MCP tools (Phase 1).
@@ -89,7 +94,40 @@ func (s *MCPServer) registerClusterReadTools() {
 
 	s.addTool(
 		mcp.NewTool("get-cluster-alerts",
-			mcp.WithDescription("Get all currently active errors and warnings for a cluster. Errors indicate critical problems (e.g. ERR00012=no master, ERR00021=cluster down, ERR00076=replication stopped). Warnings indicate non-critical issues (e.g. WARN0108=default password, WARN0111=no logical backup). Always check this when diagnosing a problem."),
+			mcp.WithDescription("Get the open errors and warnings of a cluster, per module. Modules: ha (topology, replication, failover: e.g. ERR00012=no master, ERR00021=cluster down, ERR00076=replication stopped), workload (query storms, tmp-table and sort pressure, PFS coverage, spikes), security (audit, authentication, hardening findings), schema (schema advisory findings). Default all: one object keyed by module, each with its errors and warnings; the module tells which log to open next with list-cluster-logs (log_type=general for ha). Always check this first when diagnosing a problem."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("module", mcp.Description("ha, workload, security, schema or all (default all)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			module := strings.ToLower(strings.TrimSpace(req.GetString("module", "all")))
+			machines := map[string]*state.StateMachine{
+				"ha":       cl.GetStateMachine(),
+				"workload": cl.WorkloadStateMachine,
+				"security": cl.SecurityStateMachine,
+				"schema":   cl.SchemaStateMachine,
+			}
+			if module != "all" && module != "" {
+				sm, ok := machines[module]
+				if !ok {
+					return mcp.NewToolResultError("unknown module " + module + ": use ha, workload, security, schema or all"), nil
+				}
+				return mcp.NewToolResultText(toJSON(alertsOf(sm))), nil
+			}
+			out := map[string]interface{}{}
+			for name, sm := range machines {
+				out[name] = alertsOf(sm)
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("get-cluster-price",
+			mcp.WithDescription("Get what a cluster costs this month on this infrastructure, in EUR, as the resource manager integrates it per monitoring period: the partner and the sponsors, and per unit family (database plan in DBU, stateful applications in DBU, applications and proxies in APU, local backups in BKU, archives in BAU) the plan, the over-commit and the under-commit in unit-months, the unit price, the EUR accrued, the current rate and the projection to the end of the month. A family the infrastructure does not price answers priced=false."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -97,29 +135,52 @@ func (s *MCPServer) registerClusterReadTools() {
 			if errResult != nil {
 				return errResult, nil
 			}
+			out, err := s.repman.ClusterPrice(cl.Name)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("list-cluster-logs",
+			mcp.WithDescription("List recent log entries of a cluster, newest first, from one of its logs. log_type: general (topology, failover, replication corrections, config changes, orchestrator actions; the HA alerts' log), task (backup, restore and database jobs), workload (query storms, PFS digest coverage, tmp-table and sort findings), security (audit, authentication and hardening findings), schema (schema advisory findings), ddl (schema changes seen on the databases), variable-change (server variables that changed), sysbench. Filter with level (minimum level, default warning: only warnings and errors come back; use info or debug when you need the narrative), module (the log module tag such as topology, orchestrator, backup, config, task) and limit (default 50). Complements get-cluster-alerts, which is the current state; this is the history."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("log_type", mcp.Description("general (default), task, workload, security, schema, ddl, variable-change, sysbench")),
+			mcp.WithString("level", mcp.Description("minimum level: error, warning (default), info, debug")),
+			mcp.WithString("module", mcp.Description("only entries of this log module tag (e.g. topology, orchestrator, backup, config)")),
+			mcp.WithNumber("limit", mcp.Description("maximum entries, newest first (default 50)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			logType := strings.ToLower(strings.TrimSpace(req.GetString("log_type", "general")))
+			if logType == "" {
+				logType = "general"
+			}
+			buf := cl.GetWebLogsByType(logType)
+			if buf == nil {
+				return mcp.NewToolResultError("unknown log_type " + logType + ": use general, task, workload, security, schema, ddl, variable-change or sysbench"), nil
+			}
+			hl, ok := buf.(*s18log.HttpLog)
+			if !ok {
+				return mcp.NewToolResultText(toJSON(buf)), nil
+			}
+			limit := int(req.GetFloat("limit", 50))
+			entries := filterLogEntries(hl.Buffer, req.GetString("level", "warning"), req.GetString("module", ""), limit)
 			return mcp.NewToolResultText(toJSON(map[string]interface{}{
-				"errors":   cl.GetStateMachine().GetOpenErrors(),
-				"warnings": cl.GetStateMachine().GetOpenWarnings(),
+				"logType": logType,
+				"count":   len(entries),
+				"entries": entries,
 			})), nil
 		},
 	)
 
 	s.addTool(
-		mcp.NewTool("get-cluster-logs",
-			mcp.WithDescription("Get recent orchestrator log entries for a cluster. Useful for seeing what replication-manager has been doing: topology changes, failover attempts, replication corrections, backup jobs. Complements get-cluster-alerts which shows current state rather than history."),
-			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
-		),
-		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
-			if errResult != nil {
-				return errResult, nil
-			}
-			return mcp.NewToolResultText(toJSON(cl.Log.Buffer)), nil
-		},
-	)
-
-	s.addTool(
-		mcp.NewTool("get-cluster-crashes",
+		mcp.NewTool("list-cluster-crashes",
 			mcp.WithDescription("Get the history of crash and failover events for a cluster. Each entry records when the master was lost, which replica was promoted, and the GTID state at the time. Use this to understand past incidents and assess data loss risk."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
@@ -133,10 +194,10 @@ func (s *MCPServer) registerClusterReadTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("last-crash-lost-event",
+		mcp.NewTool("get-cluster-last-crash-lost-event",
 			mcp.WithDescription("Get the lost events of the last crash of a server: the transactions the old master had committed but that never reached the promoted replica, captured as a binlog delta at rejoin and decoded to SQL. Returns the crash record (when, who was promoted, GTID positions, delta counters: transactions, row events, DDL, statement DML, flashable), the decoded delta text (first page) and the rejoin methods available. Use it to assess data loss after a failover and decide between replaying or flashing back the delta. No crash record means no data was lost on that server."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
-			mcp.WithString("server_name", mcp.Required(), mcp.Description("The old master: server name, host or id as shown by get-cluster-crashes")),
+			mcp.WithString("server_name", mcp.Required(), mcp.Description("The old master: server name, host or id as shown by list-cluster-crashes")),
 			mcp.WithString("file", mcp.Description("\"delta\" (default) for the lost events, \"flashback\" for their inverse")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -242,8 +303,78 @@ func (s *MCPServer) registerClusterWriteTools() {
 			if errResult != nil {
 				return errResult, nil
 			}
-			cl.RollingRestart()
-			return mcp.NewToolResultText(`{"status":"rolling restart initiated"}`), nil
+			// Asynchronous like the API route: a rolling operation lasts minutes.
+			go cl.RollingRestart()
+			return mcp.NewToolResultText(`{"status":"rolling restart started"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("cluster-rolling-reprov",
+			mcp.WithDescription("Reprovision every database node of the cluster one at a time, preserving availability: each replica is unprovisioned, provisioned again from the current configuration (image, resources, config template) and reseeded from the master, then a switchover moves the master role and the old master goes through the same cycle. Refused when autorejoin is off, since a reprovisioned replica is empty until the rejoin reseeds it. Use it when a provisioning change cannot be applied by a restart (volume layout, image repository, service template)."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			if !cl.Conf.Autorejoin {
+				return mcp.NewToolResultError("rolling reprovision refused: autorejoin is off on " + cl.Name + ", a reprovisioned replica would stay empty; switch autorejoin on first"), nil
+			}
+			go cl.RollingReprov()
+			return mcp.NewToolResultText(`{"status":"rolling reprovision started"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("cluster-rolling-jobs-upgrade",
+			mcp.WithDescription("Upgrade the jobs sidecar (the container running backups, restores and database jobs) of every node, one at a time. The database containers are not restarted."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			cl.SetRollingJobsUpgradeState()
+			return mcp.NewToolResultText(`{"status":"rolling jobs upgrade started"}`), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("cluster-rolling-upgrade",
+			mcp.WithDescription("Upgrade the database engine of every node one at a time, preserving availability, to a target taken from the image list of the configurator (never a registry lookup): patch (the default: the declared prov-db-image resolved by the list, a line to its newest release, latest or lts to what they mean in the list, an explicit release to itself), next-minor (newest release of the next line of the same major, 11.4 to 11.5), next-lts (newest release of the next long-term line, 11.4 to 11.8), next-major (newest release of the first line of the next major, 11.x to 12.0), last-lts (newest release of the highest long-term line), previous-minor and previous-major (downgrades: the line below in the same major, the highest line of the previous major), version (the release or line given in version, refused when the list does not have it). Without confirm the tool only answers the plan: current version per node, target release, what prov-db-image declares afterwards, node order, steps, warnings (a major move needs mariadb-upgrade, there is no rolling way back, a pinned image is refused). With confirm=true it runs the same steps as the API rolling upgrade with that target: declares the image, renders the service definitions on the target release, on OpenSVC pushes them node by node, then starts the rolling part the plan announced as mechanic: upgrade (each node restarts on the new image) or reprov (each node is provisioned again from scratch and reseeded from the master: always for a downgrade across a major, for a major upgrade when prov-db-upgrade-major-reprov is on), replicas first, then a switchover and the old master. A downgrade is announced, never refused. On-premise clusters run the configured upgrade script instead of an image change."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("target", mcp.Description("patch (default), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major or version")),
+			mcp.WithString("version", mcp.Description("with target=version: the release or line to move to, e.g. 11.8.9 or 11.8")),
+			mcp.WithBoolean("confirm", mcp.Description("false (default): answer the plan only; true: start the rolling upgrade")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			target, version := req.GetString("target", releases.TargetPatch), req.GetString("version", "")
+			if !req.GetBool("confirm", false) {
+				plan, err := cl.PlanRollingUpgrade(target, version)
+				if err != nil {
+					return mcp.NewToolResultError(err.Error()), nil
+				}
+				plan.Status = "plan only: call again with confirm=true to start"
+				return mcp.NewToolResultText(toJSON(plan)), nil
+			}
+			plan, err := cl.PrepareRollingUpgrade(target, version)
+			if err != nil {
+				if plan == nil {
+					return mcp.NewToolResultError(err.Error()), nil
+				}
+				plan.Status = "refused: " + err.Error()
+				return mcp.NewToolResultError(toJSON(plan)), nil
+			}
+			go cl.RunRollingUpgrade(plan)
+			plan.Status = "rolling " + plan.Mechanic + " started"
+			return mcp.NewToolResultText(toJSON(plan)), nil
 		},
 	)
 
@@ -372,8 +503,8 @@ func (s *MCPServer) registerClusterWriteTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("run-sysbench",
-			mcp.WithDescription("Run a sysbench benchmark against the cluster through its proxy (a proxy must be configured). Optional test (sysbench script name, e.g. oltp_read_write), time in seconds and threads; threads=0 scales from 1 thread up to twice the cores and records each step. Prepares the schema, runs, and logs the result in the cluster benchmark history; the previous bench data is cleaned first. Runs in the background; read get-cluster-logs for the result. Needs the cluster-bench or cluster-test grant."),
+		mcp.NewTool("cluster-sysbench-run",
+			mcp.WithDescription("Run a sysbench benchmark against the cluster through its proxy (a proxy must be configured). Optional test (sysbench script name, e.g. oltp_read_write), time in seconds and threads; threads=0 scales from 1 thread up to twice the cores and records each step. Prepares the schema, runs, and logs the result in the cluster benchmark history; the previous bench data is cleaned first. Runs in the background; read list-cluster-logs for the result. Needs the cluster-bench or cluster-test grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("test", mcp.Description("sysbench test name, empty keeps the cluster setting sysbench-test")),
 			mcp.WithString("time", mcp.Description("duration in seconds, empty keeps sysbench-time")),
@@ -397,7 +528,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 			if threads == "0" {
 				go func() {
 					if err := cl.RunSysbenchScaleThreads(); err != nil {
-						s.logger.Errorf("MCP run-sysbench scale on %s: %v", cl.Name, err)
+						s.logger.Errorf("MCP cluster-sysbench-run scale on %s: %v", cl.Name, err)
 					}
 				}()
 				return mcp.NewToolResultText(`{"status":"sysbench thread-scaling run initiated"}`), nil
@@ -407,7 +538,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 			}
 			go func() {
 				if err := cl.RunSysbench(); err != nil {
-					s.logger.Errorf("MCP run-sysbench on %s: %v", cl.Name, err)
+					s.logger.Errorf("MCP cluster-sysbench-run on %s: %v", cl.Name, err)
 				}
 			}()
 			return mcp.NewToolResultText(`{"status":"sysbench run initiated"}`), nil
@@ -415,7 +546,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("sysbench-cleanup",
+		mcp.NewTool("cluster-sysbench-cleanup",
 			mcp.WithDescription("Drop the sysbench benchmark schema and data from the cluster. Needs the cluster-bench or cluster-test grant."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 		),
@@ -525,4 +656,66 @@ func (s *MCPServer) registerClusterWriteTools() {
 			return mcp.NewToolResultText(`{"status":"replication cleanup initiated"}`), nil
 		},
 	)
+}
+
+// logEntry is one log line as the assistant sees it: the module by name, not by id.
+type logEntry struct {
+	Timestamp string `json:"timestamp"`
+	Level     string `json:"level"`
+	Module    string `json:"module"`
+	Text      string `json:"text"`
+}
+
+// logLevelRank orders the levels a buffer entry carries; unknown levels (STATE,
+// ALERT...) rank with warnings so a filter never hides them by accident.
+func logLevelRank(level string) int {
+	switch strings.ToUpper(strings.TrimSpace(level)) {
+	case "DEBUG", "DBG", "TRACE":
+		return 0
+	case "INFO":
+		return 1
+	case "WARN", "WARNING":
+		return 2
+	case "ERROR", "ERR", "FATAL", "PANIC":
+		return 3
+	}
+	return 2
+}
+
+// filterLogEntries keeps the buffer entries at or above minLevel, of the given module
+// tag when one is asked, newest first (the ring buffers hold the newest at index 0),
+// up to limit (<= 0 = 50). Empty ring slots are skipped.
+func filterLogEntries(buf []s18log.HttpMessage, minLevel, module string, limit int) []logEntry {
+	if limit <= 0 {
+		limit = 50
+	}
+	min := logLevelRank(minLevel)
+	module = strings.ToLower(strings.TrimSpace(module))
+	out := make([]logEntry, 0, limit)
+	for _, m := range buf {
+		if m.Text == "" {
+			continue
+		}
+		if logLevelRank(m.Level) < min {
+			continue
+		}
+		tag := config.GetTagsForLog(m.Module)
+		if module != "" && strings.ToLower(tag) != module {
+			continue
+		}
+		out = append(out, logEntry{Timestamp: m.Timestamp, Level: m.Level, Module: tag, Text: m.Text})
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
+}
+
+// alertsOf is one state machine's open errors and warnings; a nil machine (feature
+// off) answers empty lists, never a panic.
+func alertsOf(sm *state.StateMachine) map[string]interface{} {
+	if sm == nil {
+		return map[string]interface{}{"errors": []state.StateHttp{}, "warnings": []state.StateHttp{}}
+	}
+	return map[string]interface{}{"errors": sm.GetOpenErrors(), "warnings": sm.GetOpenWarnings()}
 }

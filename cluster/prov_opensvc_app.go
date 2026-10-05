@@ -20,6 +20,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 	ini "gopkg.in/ini.v1"
@@ -287,6 +288,11 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 	if err != nil {
 		return err
 	}
+	if err := cluster.openSVCEnsureSensorPrerequisites(svc); err != nil {
+		// The sidecar is monitoring, never a reason to refuse the app: log and go on, a
+		// later provision publishes what is missing.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s sensor prerequisites not published: %s", app.Name, err)
+	}
 
 	res, err := cluster.OpenSVCGetAppTemplateV3(app)
 	if err != nil {
@@ -331,6 +337,13 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Found app agent %s. Creating maps", agent.Node_name)
+
+	// Database auto-create (#1870): the schema and the user exist before the service runs;
+	// a refusal (foreign schema or user) aborts the provision.
+	if err := cluster.ProvisionAppDatabase(app); err != nil {
+		cluster.errorChan <- err
+		return err
+	}
 
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI && svc.IsV3() {
 		err = cluster.OpenSVCProvisionAppV3(app, svc, agent)
@@ -440,9 +453,71 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	}
 
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
+	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
+	// monitoring-system-resources off-switch, T14). Needs the script key published in the
+	// namespace `env` object (openSVCPublishAppJobScript, done by the V3 provision).
+	if cluster.Conf.MonitoringSystemResources {
+		svcsection["container#sensor"] = cluster.OpenSVCGetAppSensorContainerSection(app, appJobScriptKey())
+	}
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
 
 	return svcsection, nil
+}
+
+// appJobScriptKey names the `env` config key carrying the embedded app_job.sh for app
+// sensor sidecars: APP_JOB_SCRIPT_<8 hex of the content hash>. A key is never rewritten --
+// a new script version is a new key, and the sidecar command references the key it was
+// provisioned with.
+func appJobScriptKey() string {
+	b, err := share.EmbededDbModuleFS.ReadFile("scripts/app_job.sh")
+	if err != nil {
+		return "APP_JOB_SCRIPT"
+	}
+	return "APP_JOB_SCRIPT_" + misc.GetMD5HashFromBytes(b)[:8]
+}
+
+// openSVCEnsureSensorPrerequisites makes sure a namespace can run the sensor sidecar: the
+// `env` SECRET holds SENSOR_API_KEY (the derived system credential the sidecar logs in with)
+// and the `env` CONFIG holds the current app_job.sh under appJobScriptKey(). Idempotent and
+// called at every app/proxy provision, because the maps routine only adds keys when it
+// creates the objects: a namespace provisioned before the sensor existed never got the key
+// (live curepipe 2026-10-04: the sidecar ran and exited "missing env"), so neither its
+// proxies nor its apps ever reported.
+func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) error {
+	if !cluster.Conf.MonitoringSystemResources {
+		return nil
+	}
+	if k := cluster.GetSystemAPIKey(); k != "" {
+		// V3: create-or-update; V2: an existing key is fine. The value is never logged.
+		if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
+			return fmt.Errorf("publish sensor credential key: %w", err)
+		}
+	}
+	return cluster.openSVCPublishAppJobScript(svc)
+}
+
+// openSVCPublishAppJobScript makes sure the namespace `env` config object holds the current
+// app_job.sh under appJobScriptKey(). Idempotent: an existing key is left alone.
+func (cluster *Cluster) openSVCPublishAppJobScript(svc opensvc.Collector) error {
+	key := appJobScriptKey()
+	// Version-dispatching helpers (V3 daemon API over h2, V2 relay otherwise): the V2 ones
+	// fail "tls: no application protocol" against an om3 daemon (live, forgejo1 2026-10-04).
+	if keys, err := svc.ListConfigKeys(cluster.Name, "env"); err == nil {
+		for _, k := range keys {
+			if k == key {
+				return nil
+			}
+		}
+	}
+	b, err := share.EmbededDbModuleFS.ReadFile("scripts/app_job.sh")
+	if err != nil {
+		return err
+	}
+	if err := svc.CreateConfigKeyValue(cluster.Name, "env", key, string(b)); err != nil {
+		return fmt.Errorf("publish app sensor script key %s: %w", key, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Published app sensor script as config key env/%s", key)
+	return nil
 }
 
 func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
@@ -589,6 +664,16 @@ func openSVCAppVolumeSection(vol *config.Volume, pathmap map[string][]string, sh
 
 	sort.Strings(dirs) // Optional: consistent order
 	svcvol["directories"] = strings.Join(dirs, " ")
+	// Owner of the directories, for images running as a non-root user (#1870 live: rustfs).
+	if v := strings.TrimSpace(vol.User); v != "" {
+		svcvol["user"] = v
+	}
+	if v := strings.TrimSpace(vol.Group); v != "" {
+		svcvol["group"] = v
+	}
+	if v := strings.TrimSpace(vol.DirPerm); v != "" {
+		svcvol["dirperm"] = v
+	}
 	return svcvol
 }
 
@@ -705,6 +790,10 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.app_img}"
 		svccontainer["type"] = cluster.Conf.ProvType
+		// The orchestrator's own start timeout is short for a large image: the app's
+		// prov-app-start-timeout (else the cluster default) bounds both the pull and the start.
+		svccontainer["start_timeout"] = app.GetStartTimeout()
+		svccontainer["pull_timeout"] = app.GetStartTimeout()
 		if app.AppConfig.ProvAppHATopology == "failover" {
 			svccontainer["shared"] = "true"
 		}
@@ -783,7 +872,7 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		diskname := s3m.GetSourceVolumeName()
 		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
-		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid 33 --gid 33 -f"
+		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid " + s3m.MountUid() + " --gid " + s3m.MountGid() + " -f"
 		svccontainer["blocking_post_provision"] = "sleep 3"
 		svccontainer["blocking_post_start"] = "sleep 3"
 	}
@@ -1040,6 +1129,20 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 	}
 
+	// App configurator (app_configurator.go): the engine's moduleset files, rendered from
+	// the app plan, travel as one config key the container start command writes out.
+	if app.AppConfig.ProvAppConfigurator != "" {
+		script, err := cluster.AppConfiguratorScript(app)
+		if err != nil {
+			return err
+		}
+		err = svc.CreateConfigKeyValue(cluster.Name, app.Name, appConfiguratorScriptKey, script)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appConfiguratorScriptKey, err)
+			addKeyErr(fmt.Errorf("config key %q: %w", appConfiguratorScriptKey, err))
+		}
+	}
+
 	if len(keyErrs) > 0 {
 		return fmt.Errorf("partial map update for app %s: %d key(s) failed: %w", app.Name, len(keyErrs), errors.Join(keyErrs...))
 	}
@@ -1058,13 +1161,20 @@ func appRouteFragmentPrefix(opensvcDNS string) string {
 // state matches the blocked publication state.  Best-effort: errors are
 // returned but logged by the caller as warnings rather than halting startup.
 func (cluster *Cluster) withdrawGatewayRoutes(app *App) error {
-	cloud18GatewayServiceConfig := strings.Split(cluster.Conf.Cloud18GatewayService, "/")
-	if len(cloud18GatewayServiceConfig) < 3 {
-		return nil
+	var errs []error
+	for _, gwRef := range cluster.Conf.GatewayServices() { // #1873: every gateway
+		gwNamespace, gwService, ok := config.GatewayServiceParts(gwRef)
+		if !ok {
+			continue
+		}
+		if err := cluster.withdrawGatewayRoutesOn(app, gwNamespace, gwService); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	gwNamespace := cloud18GatewayServiceConfig[0]
-	gwService := cloud18GatewayServiceConfig[2]
+	return errors.Join(errs...)
+}
 
+func (cluster *Cluster) withdrawGatewayRoutesOn(app *App, gwNamespace, gwService string) error {
 	svc := cluster.OpenSVCConnect()
 	opensvcDNS := app.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 	ownerPrefix := appRouteFragmentPrefix(opensvcDNS)
@@ -1220,12 +1330,15 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 		numBE = 1
 	}
 
-	cloud18GatewayServiceConfig := strings.Split(cluster.Conf.Cloud18GatewayService, "/")
-	if len(cloud18GatewayServiceConfig) < 3 {
+	gateways := cluster.Conf.GatewayServices() // #1873: fragments go to every gateway
+	if len(gateways) == 0 {
 		return fmt.Errorf("invalid Cloud18GatewayService format: %q", cluster.Conf.Cloud18GatewayService)
 	}
-	gwNamespace := cloud18GatewayServiceConfig[0]
-	gwService := cloud18GatewayServiceConfig[2]
+	for _, gwRef := range gateways {
+		if _, _, ok := config.GatewayServiceParts(gwRef); !ok {
+			return fmt.Errorf("invalid Cloud18GatewayService format: %q", gwRef)
+		}
+	}
 	opensvcDNS := app.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster
 
 	// Step 1: normalize then validate — fail closed before any OpenSVC write.
@@ -1239,11 +1352,10 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	// shares the same Cloud18GatewayService, excluding this app.
 	// Cloud18GatewayService (namespace/type/service) uniquely identifies the
 	// shared HAProxy instance regardless of DNS domain aliases.
-	thisGateway := strings.ToLower(strings.TrimSpace(cluster.Conf.Cloud18GatewayService))
-	if thisGateway != "" {
+	if cluster.Conf.PrimaryGatewayService() != "" {
 		var externalRoutes [][]config.Route
 		collectOthers := func(cl *Cluster) {
-			if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != thisGateway {
+			if !cl.Conf.SharesGateway(cluster.Conf) {
 				return
 			}
 			for _, other := range cl.GetAppsCopy() {
@@ -1379,61 +1491,64 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	ownerPrefix := appRouteFragmentPrefix(opensvcDNS)
 	staleBranchPrefix := "haproxy.cfg.d/repman_" + cluster.Name + "_" + app.Name + "_"
 
-	existingKeys, listErr := svc.ListConfigKeys(gwNamespace, gwService)
-	if listErr != nil {
-		return fmt.Errorf("cannot list gateway config keys for stale-fragment cleanup (app %s): %w", app.Name, listErr)
-	}
-
-	for _, key := range existingKeys {
-		isOwned := strings.HasPrefix(key, ownerPrefix)
-		isStaleBranch := strings.HasPrefix(key, staleBranchPrefix)
-		if !isOwned && !isStaleBranch {
-			continue
+	for _, gwRef := range gateways { // #1873: publish on every gateway
+		gwNamespace, gwService, _ := config.GatewayServiceParts(gwRef)
+		existingKeys, listErr := svc.ListConfigKeys(gwNamespace, gwService)
+		if listErr != nil {
+			return fmt.Errorf("cannot list gateway config keys for stale-fragment cleanup (app %s): %w", app.Name, listErr)
 		}
-		if isOwned {
-			if _, stillWanted := desired[key]; stillWanted {
+
+		for _, key := range existingKeys {
+			isOwned := strings.HasPrefix(key, ownerPrefix)
+			isStaleBranch := strings.HasPrefix(key, staleBranchPrefix)
+			if !isOwned && !isStaleBranch {
 				continue
 			}
+			if isOwned {
+				if _, stillWanted := desired[key]; stillWanted {
+					continue
+				}
+			}
+			// Branch-specific repman_ keys are always stale once we reconcile with
+			// the restored origin/develop naming scheme.
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Deleting stale route fragment key=%s (app %s)", key, app.Name)
+			if delErr := svc.DeleteConfigKeyValue(gwNamespace, gwService, key); delErr != nil {
+				return fmt.Errorf("failed to delete stale fragment key=%s (app %s): %w", key, app.Name, delErr)
+			}
 		}
-		// Branch-specific repman_ keys are always stale once we reconcile with
-		// the restored origin/develop naming scheme.
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Deleting stale route fragment key=%s (app %s)", key, app.Name)
-		if delErr := svc.DeleteConfigKeyValue(gwNamespace, gwService, key); delErr != nil {
-			return fmt.Errorf("failed to delete stale fragment key=%s (app %s): %w", key, app.Name, delErr)
+
+		// Step 5: upsert desired fragments.
+		for key, frag := range desired {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Upserting route fragment key=%s (app %s)", key, app.Name)
+			if err := svc.CreateConfigKeyValue(gwNamespace, gwService, key, frag); err != nil {
+				return fmt.Errorf("failed to upsert fragment %s: %w", key, err)
+			}
 		}
-	}
 
-	// Step 5: upsert desired fragments.
-	for key, frag := range desired {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Upserting route fragment key=%s (app %s)", key, app.Name)
-		if err := svc.CreateConfigKeyValue(gwNamespace, gwService, key, frag); err != nil {
-			return fmt.Errorf("failed to upsert fragment %s: %w", key, err)
-		}
-	}
-
-	// Step 6: run mergecfg on all gateway nodes.
-	nodes, err := svc.GetServiceNodeFromState(cluster.Conf.Cloud18GatewayService)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-			"Cannot find node of gateway service: %s", err)
-		return err
-	}
-
-	var errtask ErrSlice
-	for _, node := range nodes {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-			"Merging app route fragments for %s on host %s", app.GetId(), node)
-		if err := svc.RunTask(cluster.Name, cluster.Conf.Cloud18GatewayService, node, "task#mergecfg", ""); err != nil {
+		// Step 6: run mergecfg on all gateway nodes.
+		nodes, err := svc.GetServiceNodeFromState(gwRef)
+		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-				"Cannot aggregate gateway fragments: %s", err)
-			errtask = append(errtask, err)
+				"Cannot find node of gateway service: %s", err)
+			return err
 		}
-	}
 
-	if len(errtask) > 0 {
-		return ErrSlice(errtask)
+		var errtask ErrSlice
+		for _, node := range nodes {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Merging app route fragments for %s on host %s", app.GetId(), node)
+			if err := svc.RunTask(cluster.Name, gwRef, node, "task#mergecfg", ""); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+					"Cannot aggregate gateway fragments: %s", err)
+				errtask = append(errtask, err)
+			}
+		}
+
+		if len(errtask) > 0 {
+			return ErrSlice(errtask)
+		}
 	}
 
 	return nil

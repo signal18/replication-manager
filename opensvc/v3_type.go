@@ -8,7 +8,7 @@ import (
 type InstanceActionParams struct {
 	Slaves          *apiv3.InQueryAllSlaves       `form:"slaves,omitempty" json:"slaves,omitempty"`
 	Master          *apiv3.InQueryMaster          `form:"master,omitempty" json:"master,omitempty"`
-	SessionId    *apiv3.InQuerySessionID    `form:"session_id,omitempty" json:"session_id,omitempty"`
+	SessionId       *apiv3.SessionID              `form:"session_id,omitempty" json:"session_id,omitempty"`
 	Rid             *apiv3.InQueryRid             `form:"rid,omitempty" json:"rid,omitempty"`
 	Slave           *apiv3.InQuerySlaves          `form:"slave,omitempty" json:"slave,omitempty"`
 	Subset          *apiv3.InQuerySubset          `form:"subset,omitempty" json:"subset,omitempty"`
@@ -26,29 +26,29 @@ type InstanceActionParams struct {
 
 func (ap *InstanceActionParams) ToBootParams() *apiv3.PostInstanceActionBootParams {
 	return &apiv3.PostInstanceActionBootParams{
-		Slaves:       ap.Slaves,
-		Master:       ap.Master,
-		SessionId: ap.SessionId,
-		Rid:          ap.Rid,
-		Slave:        ap.Slave,
-		Subset:       ap.Subset,
-		Tag:          ap.Tag,
-		To:           ap.To,
+		Slaves:    ap.Slaves,
+		Master:    ap.Master,
+		SessionID: ap.SessionId,
+		Rid:       ap.Rid,
+		Slave:     ap.Slave,
+		Subset:    ap.Subset,
+		Tag:       ap.Tag,
+		To:        ap.To,
 	}
 }
 
 func (ap *InstanceActionParams) ToDeleteParams() *apiv3.PostInstanceActionDeleteParams {
 	return &apiv3.PostInstanceActionDeleteParams{
-		SessionId: ap.SessionId,
+		SessionID: ap.SessionId,
 	}
 }
 
 func (ap *InstanceActionParams) ToFreezeParams() *apiv3.PostInstanceActionFreezeParams {
 	return &apiv3.PostInstanceActionFreezeParams{
-		Slaves:       ap.Slaves,
-		Master:       ap.Master,
-		Slave:        ap.Slave,
-		SessionId: ap.SessionId,
+		Slaves:    ap.Slaves,
+		Master:    ap.Master,
+		Slave:     ap.Slave,
+		SessionID: ap.SessionId,
 	}
 }
 
@@ -59,7 +59,7 @@ func (ap *InstanceActionParams) ToProvisionParams() *apiv3.PostInstanceActionPro
 		Force:           ap.Force,
 		Leader:          ap.Leader,
 		Master:          ap.Master,
-		SessionId:    ap.SessionId,
+		SessionID:       ap.SessionId,
 		Rid:             ap.Rid,
 		Slave:           ap.Slave,
 		StateOnly:       ap.StateOnly,
@@ -74,7 +74,7 @@ func (ap *InstanceActionParams) ToPRStartParams() *apiv3.PostInstanceActionPRSta
 		DisableRollback: ap.DisableRollback,
 		Force:           ap.Force,
 		Master:          ap.Master,
-		SessionId:    ap.SessionId,
+		SessionID:       ap.SessionId,
 		Rid:             ap.Rid,
 		Slave:           ap.Slave,
 		Subset:          ap.Subset,
@@ -88,17 +88,12 @@ func (ap *InstanceActionParams) ToPRStopParams() *apiv3.PostInstanceActionPRStop
 		DisableRollback: ap.DisableRollback,
 		Force:           ap.Force,
 		Master:          ap.Master,
-		SessionId:    ap.SessionId,
+		SessionID:       ap.SessionId,
 		Rid:             ap.Rid,
 		Slave:           ap.Slave,
 		Subset:          ap.Subset,
 		Tag:             ap.Tag,
 		To:              ap.To,
-	}
-}
-func (ap *InstanceActionParams) ToPushResourceInfoParams() *apiv3.PostInstanceActionPushResourceInfoParams {
-	return &apiv3.PostInstanceActionPushResourceInfoParams{
-		SessionId: ap.SessionId,
 	}
 }
 func (ap *InstanceActionParams) ToStartParams() *apiv3.PostInstanceActionStartParams {
@@ -107,7 +102,7 @@ func (ap *InstanceActionParams) ToStartParams() *apiv3.PostInstanceActionStartPa
 		DisableRollback: ap.DisableRollback,
 		Force:           ap.Force,
 		Master:          ap.Master,
-		SessionId:    ap.SessionId,
+		SessionID:       ap.SessionId,
 		Rid:             ap.Rid,
 		Slave:           ap.Slave,
 		Subset:          ap.Subset,
@@ -122,7 +117,7 @@ func (ap *InstanceActionParams) ToRestartParams() *apiv3.PostInstanceActionResta
 		DisableRollback: ap.DisableRollback,
 		Force:           ap.Force,
 		Master:          ap.Master,
-		SessionId:    ap.SessionId,
+		SessionID:       ap.SessionId,
 		Rid:             ap.Rid,
 		Slave:           ap.Slave,
 		Subset:          ap.Subset,
@@ -133,62 +128,54 @@ func (ap *InstanceActionParams) ToRestartParams() *apiv3.PostInstanceActionResta
 
 func (ap *InstanceActionParams) ToStopParams() *apiv3.PostInstanceActionStopParams {
 	return &apiv3.PostInstanceActionStopParams{
-		Slaves:       ap.Slaves,
-		Force:        ap.Force,
-		Master:       ap.Master,
-		MoveTo:       ap.MoveTo,
-		SessionId: ap.SessionId,
-		Rid:          ap.Rid,
-		Slave:        ap.Slave,
-		Subset:       ap.Subset,
-		Tag:          ap.Tag,
-		To:           ap.To,
-	}
-}
-func (ap *InstanceActionParams) ToSyncIngestParams() *apiv3.PostInstanceActionSyncIngestParams {
-	return &apiv3.PostInstanceActionSyncIngestParams{
-		SessionId: ap.SessionId,
-		Rid:          ap.Rid,
-		Subset:       ap.Subset,
-		Tag:          ap.Tag,
+		Slaves:    ap.Slaves,
+		Force:     ap.Force,
+		Master:    ap.Master,
+		MoveTo:    ap.MoveTo,
+		SessionID: ap.SessionId,
+		Rid:       ap.Rid,
+		Slave:     ap.Slave,
+		Subset:    ap.Subset,
+		Tag:       ap.Tag,
+		To:        ap.To,
 	}
 }
 func (ap *InstanceActionParams) ToUnfreezeParams() *apiv3.PostInstanceActionUnfreezeParams {
 	return &apiv3.PostInstanceActionUnfreezeParams{
-		Slaves:       ap.Slaves,
-		Master:       ap.Master,
-		SessionId: ap.SessionId,
-		Slave:        ap.Slave,
+		Slaves:    ap.Slaves,
+		Master:    ap.Master,
+		SessionID: ap.SessionId,
+		Slave:     ap.Slave,
 	}
 }
 func (ap *InstanceActionParams) ToUnprovisionParams() *apiv3.PostInstanceActionUnprovisionParams {
 	return &apiv3.PostInstanceActionUnprovisionParams{
-		Slaves:       ap.Slaves,
-		Force:        ap.Force,
-		Leader:       ap.Leader,
-		Master:       ap.Master,
-		SessionId: ap.SessionId,
-		Rid:          ap.Rid,
-		StateOnly:    ap.StateOnly,
-		Slave:        ap.Slave,
-		Subset:       ap.Subset,
-		Tag:          ap.Tag,
-		To:           ap.To,
+		Slaves:    ap.Slaves,
+		Force:     ap.Force,
+		Leader:    ap.Leader,
+		Master:    ap.Master,
+		SessionID: ap.SessionId,
+		Rid:       ap.Rid,
+		StateOnly: ap.StateOnly,
+		Slave:     ap.Slave,
+		Subset:    ap.Subset,
+		Tag:       ap.Tag,
+		To:        ap.To,
 	}
 }
 
 func (ap *InstanceActionParams) ToRunParams() *apiv3.PostInstanceActionRunParams {
 	return &apiv3.PostInstanceActionRunParams{
-		Slaves:       ap.Slaves,
-		Confirm:      ap.Confirm,
-		Cron:         ap.Cron,
-		Force:        ap.Force,
-		Master:       ap.Master,
-		SessionId: ap.SessionId,
-		Rid:          ap.Rid,
-		Slave:        ap.Slave,
-		Subset:       ap.Subset,
-		Tag:          ap.Tag,
-		Env:          ap.Env,
+		Slaves:    ap.Slaves,
+		Confirm:   ap.Confirm,
+		Cron:      ap.Cron,
+		Force:     ap.Force,
+		Master:    ap.Master,
+		SessionID: ap.SessionId,
+		Rid:       ap.Rid,
+		Slave:     ap.Slave,
+		Subset:    ap.Subset,
+		Tag:       ap.Tag,
+		Env:       ap.Env,
 	}
 }

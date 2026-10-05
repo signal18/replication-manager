@@ -82,6 +82,26 @@ func (cluster *Cluster) computeUnitMetrics(name string, r *APUReading, down bool
 	}
 }
 
+// computeUnitPlanMetrics is the PLAN side of one compute unit, next to its consumed
+// series: the derived reservation (shape x instances) as apu.<C>.<name>.plan_apu for a
+// Compute unit, or plan_dbu / dbu for a stateful app on the DBU track. No field on the
+// app: the unit count is tracked here, never stored (Stéphane 2026-09-29).
+func (cluster *Cluster) computeUnitPlanMetrics(name string, k AppKey, ts int64) []graphite.Metric {
+	token := cluster.Name + "." + computeTokenReplacer.Replace(name)
+	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
+	var out []graphite.Metric
+	if r := cluster.resources.GetAppPlan(k); r != nil {
+		out = append(out, graphite.NewMetric(fmt.Sprintf("apu.%s.plan_apu", token), f(r.Apu), ts))
+	}
+	if r := cluster.resources.GetStatefulPlan(k); r != nil {
+		out = append(out, graphite.NewMetric(fmt.Sprintf("apu.%s.plan_dbu", token), f(r.Dbu), ts))
+	}
+	if r := cluster.resources.GetStatefulConsumed(k); r != nil {
+		out = append(out, graphite.NewMetric(fmt.Sprintf("apu.%s.dbu", token), f(r.Dbu), ts))
+	}
+	return out
+}
+
 // CollectComputeMetrics queues the APU series for every Compute unit (proxies + apps)
 // into the graphite batch, once per graphite tick. The twin of the per-server
 // FetchDatabaseStats path, but stateless units have no ServerMonitor, so the cluster
@@ -99,6 +119,7 @@ func (cluster *Cluster) CollectComputeMetrics() {
 		}
 		k := AppKey{Cluster: cluster.Name, App: prx.GetName(), Kind: KindProxy}
 		metrics = append(metrics, cluster.computeUnitMetrics(prx.GetName(), cluster.resources.GetAppConsumed(k), prx.IsDown(), ts)...)
+		metrics = append(metrics, cluster.computeUnitPlanMetrics(prx.GetName(), k, ts)...)
 	}
 	for _, app := range cluster.Apps {
 		if app == nil {
@@ -106,6 +127,7 @@ func (cluster *Cluster) CollectComputeMetrics() {
 		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
 		metrics = append(metrics, cluster.computeUnitMetrics(app.Name, cluster.resources.GetAppConsumed(k), app.IsDown(), ts)...)
+		metrics = append(metrics, cluster.computeUnitPlanMetrics(app.Name, k, ts)...)
 	}
 
 	// Cluster-level APU PLAN contract, the Compute mirror of resourcemanager.<C>.plan_dbu:
@@ -122,6 +144,26 @@ func (cluster *Cluster) CollectComputeMetrics() {
 	metrics = append(metrics, graphite.NewMetric(
 		fmt.Sprintf("resourcemanager.%s.plan_apu", ctoken),
 		strconv.FormatFloat(planAPU, 'f', 4, 64), ts))
+	// The billable APU (floor 1 per running instance, see cluster_apu_billing.go): what the
+	// asymmetric price applies to, next to the plan so over/under-commit derive at query time.
+	if b := cluster.ComputeUnits; b != nil {
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.billed_apu", ctoken), strconv.Itoa(b.BillableUnits), ts))
+	}
+	// Stateful apps (app-stateful): their own DBU plan and billed lines, next to the DB
+	// plan_dbu but never summed into it.
+	if cluster.resources != nil {
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.plan_stateful_dbu", ctoken),
+			strconv.FormatFloat(cluster.resources.StatefulPlanByCluster(cluster.Name).Dbu, 'f', 4, 64), ts))
+	}
+	if b := cluster.StatefulUnits; b != nil {
+		metrics = append(metrics, graphite.NewMetric(
+			fmt.Sprintf("resourcemanager.%s.billed_stateful_dbu", ctoken), strconv.Itoa(b.BillableUnits), ts))
+	}
+	// Billing feed: plan and billable units per family to the ResourceManager, which prices
+	// them, accrues the month statement and hands back the billing.* series for the graphs.
+	metrics = append(metrics, cluster.pushBillingUsage(time.Now())...)
 
 	if len(metrics) > 0 {
 		cluster.AddMetrics(metrics)

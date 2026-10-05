@@ -87,6 +87,7 @@ type ReplicationManager struct {
 	CpuProfile                   string                             `json:"cpuprofile"`
 	Clusters                     map[string]*cluster.Cluster        `json:"-"`
 	resourceManager              *cluster.ResourceManager           `json:"-"` // repman-side DBU authority (Epic #1776); created once, injected into every cluster; survives ServerMonitor recreation
+	gatewayTraffic               *gatewayTraffic                    `json:"-"` // GWU collector state (#1872)
 	PeerManager                  *peer.PeerManager                  `json:"-"`
 	Partners                     []config.Partner                   `json:"partners"`
 	Partner                      config.Partner                     `json:"partner"`
@@ -438,6 +439,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorSchemaIgnoreTables, "monitoring-schema-ignore-tables", "", "Comma separated list of tables to ignore for schema change monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorChecksumIgnoreTables, "monitoring-checksum-ignore-tables", "replication_manager_schema.jobs,replication_manager_schema.table_checksum", "Comma separated list of tables to ignore for data checksum monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
+	flags.StringVar(&conf.MonitoringAddMonitorScript, "monitoring-add-monitor-script", "", "Script run before a database, proxy or app monitor is added (argv: cluster, type, name, version, units; env REPMAN_MONITOR_*, REPMAN_RESOURCE_*); a non-zero exit refuses the add, its first output line is the reason")
+	flags.StringVar(&conf.MonitoringDropMonitorScript, "monitoring-drop-monitor-script", "", "Script run after a database, proxy or app monitor is dropped, same contract as monitoring-add-monitor-script, informative only")
 	flags.StringVar(&conf.MonitoringSSLCert, "monitoring-ssl-cert", "", "HTTPS & API TLS certificate")
 	flags.StringVar(&conf.MonitoringSSLKey, "monitoring-ssl-key", "", "HTTPS & API TLS key")
 	flags.StringVar(&conf.MonitoringKeyPath, "monitoring-key-path", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
@@ -1075,6 +1078,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBConfig, "prov-db-config", WithProvisioning == "ON", "Enable configurator config tracking and deployment to database servers. When false, dbjobs skips config refresh and no config is pushed to databases. Default: true for PRO, false for OSC.")
+	flags.BoolVar(&conf.ProvDbUpgradeMajorReprov, "prov-db-upgrade-major-reprov", false, "Rolling upgrade across a major release: provision each node again from scratch on the new release and reseed it from the master (rolling reprov) instead of restarting it on its data directory with mariadb-upgrade. A downgrade across a major always reprovisions (#1862)")
 	flags.BoolVar(&conf.ProvOrchestratorDeploymentUpgradeOnStart, "prov-orchestrator-deployment-upgrade-on-start", true, "On each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: image, resources/cgroup cap, run_args, env) to the orchestrator BEFORE start, so the recreated container/pod comes up on the current config instead of the last-provisioned one. Covers the resource cap; also lets an unpinned image tag roll forward on restart (intended). On by default; set false to keep rolling restart deployment-neutral.")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
 	flags.BoolVar(&conf.ProvDBDynamicResource, "prov-db-dynamic-resource", false, "Apply system-resource resizes (prov-db-memory/cpu/io) live via SET GLOBAL instead of a restart, for the dynamically-settable variables (buffer pool, max_session_mem_used, io capacity, ...); off by default")
@@ -1117,9 +1121,14 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
 	flags.IntVar(&conf.ProvServicePlanDbu, "prov-service-plan-dbu", 0, "Per-cluster DBU service plan = the SUM of the deployment plans (Σ prov-db-dbu over the DB nodes). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-node prov-db-dbu, not this, so it never re-locks in /etc.")
 	flags.IntVar(&conf.ProvDbDbu, "prov-db-dbu", 2, "Per-node DBU reservation (technical resource contract; 1 DBU = 1 core / 4GB / 20GB / 1000 IOPS). All DB nodes are identical, so the cluster DBU contract = prov-db-dbu x number of nodes. Client-controlled (dynamic layer), the DBU configurator moves it. Default 2 (2 cores / 8GB / 80GB / 2000 IOPS per node).")
+	flags.IntVar(&conf.ProvDbBku, "prov-db-bku", 6, "Per-cluster BKU reservation, the backup unit plan (1 BKU = 20 GB of backup disk, nothing else; accounted per cluster, never per node). Backup storage above the plan is over-commit: billed, never blocked. Local BKU = the cluster's local backup (the repman backups directory on the local pool); remote BKU = what is archived on S3/SFTP (restic), billed at its own price.")
+	flags.IntVar(&conf.ProvGatewayUnits, "prov-gateway-units", 0, "Gateway network plan of the cluster in GWU (cloud18-marketplace-gwu-unit-mbit Mb/s each); 0 = the plan follows the gateway capacity divided by the clusters present on it; a value pins it")
 	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 4, "Per-cluster APU service plan = the SUM of the deployment plans (proxies at prov-proxy-apu + apps at their own config). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-deployment reservations, not this. 1 APU = 1 core / 1GB / 10GB, no IOPS.")
 	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Public-network/Bandwidth Units (BPU reservation contract; public network capacity, maps to cloud18-infra-public-bandwidth). Default 1.")
 	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
+	flags.StringVar(&conf.ResourceManagerRatioDBU, "resource-manager-ratio-dbu", cluster.DefaultRatioDBU, "What one DBU (Database Unit) is made of: cores=,mem=,disk=,iops= (mem in m/g, disk in g/t). The ONE source of the ratio, for the resource manager, the billing and the dashboard")
+	flags.StringVar(&conf.ResourceManagerRatioAPU, "resource-manager-ratio-apu", cluster.DefaultRatioAPU, "What one APU (Application Unit, proxies and apps) is made of: cores=,mem=,disk= (no iops)")
+	flags.StringVar(&conf.ResourceManagerRatioBKU, "resource-manager-ratio-bku", cluster.DefaultRatioBKU, "What one BKU/BAU (storage unit) is made of: disk= only")
 	flags.Float64Var(&conf.ResourceManagerInfraQuotaPct, "resource-manager-infra-quota-pct", 90, "Share of the physical metal (0-100) repman's ResourceManager may allocate, protecting non-repman workloads on the agent. Default 90.")
 	flags.Float64Var(&conf.ResourceManagerInfraCpuCores, "resource-manager-infra-cpu-cores", 0, "ResourceManager infra capacity override: total CPU cores. 0 = unset (use the monitored value).")
 	flags.Float64Var(&conf.ResourceManagerInfraMemoryMB, "resource-manager-infra-memory-mb", 0, "ResourceManager infra capacity override: total memory in MB. 0 = unset (use the monitored value).")
@@ -1134,7 +1143,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Test, "test", false, "Enable non regression tests")
 	flags.BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 	flags.BoolVar(&conf.TestInjectTrafficStaging, "test-inject-traffic-staging", false, "Inject some database traffic via proxy to staging")
-	flags.StringVar(&conf.InjectTrafficMode, "inject-traffic-mode", "ddl", "Pseudo-GTID / traffic marker format: ddl (CREATE OR REPLACE VIEW — self-contained idempotent DDL, needs no table on newly-monitored/reseeded nodes, greppable for positional rejoin; battle-tested DEFAULT) or dml (single-row REPLACE, flashback-able; table created once via the proxy so it replicates ahead of the writes — EXPERIMENTAL, pending the topology matrix)")
+	flags.StringVar(&conf.InjectTrafficMode, "inject-traffic-mode", "dml", "Pseudo-GTID / traffic marker format: dml (DEFAULT since 3.1.43: a single-row REPLACE, a ROW event flashback can reverse; table created once via the proxy so it replicates ahead of the writes) or ddl (CREATE OR REPLACE VIEW: self-contained, greppable for positional rejoin, but every marker is a non-flashbackable binlog event -- tests and positional replication only, forced anyway by force-slave-no-gtid-mode; WARN0230 while in use)")
 	flags.IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 	flags.IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
 	flags.StringVar(&conf.SysbenchTest, "sysbench-test", "oltp_read_write", "oltp_read_write|tpcc|oltp_read_only|oltp_update_index|oltp_update_non_index")
@@ -1228,14 +1237,26 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "pulling", "Peer health polling scope. pulling (DEFAULT) and smart both serve the for-sale catalog from the BO-aggregated peer.json and live-poll ONLY clusters this instance has a relationship to — own fleet (registering user) + delegated + active-session users' clusters + sale workflows. An instance with no such relationship (a fresh/browsing client) opens no peer connections. peering is a legacy full-mesh that live-polls EVERY peer incl. the for-sale catalog (O(N^2); opt-in only, never for clients). partner plan auto-promotes pulling->smart.")
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
+	flags.StringVar(&conf.Cloud18MarketplacePricingMode, "cloud18-marketplace-pricing-mode", config.ConstMarketplacePricingModeCsvServicePlan, "Marketplace pricing model. csv-service-plan (DEFAULT) uses a per-cluster service plan downloaded as CSV. global-unit-pricing prices clusters globally from cloud18-marketplace-dbu-price and cloud18-marketplace-apu-price (both in Eur), with no per-cluster plan.")
+	flags.Float64Var(&conf.Cloud18MarketplaceDBUPrice, "cloud18-marketplace-dbu-price", 0, "Price per Database Unit in Eur, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
+	flags.Float64Var(&conf.Cloud18MarketplaceAPUPrice, "cloud18-marketplace-apu-price", 0, "Price per APU (Application Unit: 1 core, 2 GB RAM, 10 GB disk, no IOPS) in Eur, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
+	flags.Float64Var(&conf.Cloud18MarketplaceBKUPrice, "cloud18-marketplace-bku-price", 0, "Price per BKU and per month in Eur (1 BKU = 20 GB of local backup storage: the last backup of each server plus a local restic archive); 0 = not priced")
+	flags.Float64Var(&conf.Cloud18MarketplaceBAUPrice, "cloud18-marketplace-bau-price", 0, "Price per BAU and per month in Eur (1 BAU = 20 GB of remote backup archive held by restic on S3/SFTP, no plan, billed on usage); applies to Signal18 or partner storage only; 0 = not priced")
+	flags.IntVar(&conf.Cloud18MarketplaceOvercommitPricePct, "cloud18-marketplace-overcommit-price-pct", 150, "SURCHARGE on a unit consumed ABOVE the plan, in percent of the unit price (150 = the unit costs 2.5 times the price); asymmetric with cloud18-marketplace-undercommit-price-pct; applies to every unit family with a plan (DBU, APU, BKU), never to the BAU (pure usage)")
+	flags.IntVar(&conf.Cloud18MarketplaceUndercommitPricePct, "cloud18-marketplace-undercommit-price-pct", 80, "REDUCTION on a plan unit left UNCONSUMED, in percent of the unit price (80 = the unit costs 0.2 times the price; 0 = the plan is billed in full); the pendant of cloud18-marketplace-overcommit-price-pct")
+	flags.StringVar(&conf.Cloud18GatewayBandwidthMbit, "cloud18-gateway-bandwidth-mbit", "1000", "Uplink capacity of each Cloud18 gateway in Mb/s, comma-separated and aligned with cloud18-gateway-service (one value applies to all); the traffic of every cluster is tracked in Mb/s against it, not invoiced")
+	flags.Float64Var(&conf.Cloud18MarketplaceGWUPrice, "cloud18-marketplace-gwu-price", 0, "Price per GWU and per month of gateway bandwidth held above the free allowance, in Eur (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s in + out through the Cloud18 gateways, integrated over the month; the free units cost nothing). 0 = reported to the back office without an amount")
+	flags.IntVar(&conf.Cloud18MarketplaceGWUFreeUnits, "cloud18-marketplace-gwu-free-units", 10, "GWU of gateway bandwidth free for every cluster (10 = 1 Gb/s at the default 100 Mb/s unit); bandwidth held above it is reported to the back office as borrowed, never blocked; per cluster override allowed")
+	flags.Float64Var(&conf.Cloud18MarketplaceGWUUnitMbit, "cloud18-marketplace-gwu-unit-mbit", 100, "Size of one GWU in Mb/s (a 1000 Mb/s gateway = 10 GWU)")
+	flags.BoolVar(&conf.Cloud18MarketplaceBAUClientStorage, "cloud18-marketplace-bau-client-storage", false, "The cluster's remote backup repository (S3/SFTP) is the client's own storage: its BAU are tracked but never priced")
 	flags.BoolVar(&conf.Cloud18SelfServiceClusters, "cloud18-self-service-clusters", false, "Let registered Cloud18 users reaching this instance through peering create clusters here without subscription acceptance; the partner is only informed (OpenSVC and Kubernetes orchestrators)")
 	flags.IntVar(&conf.Cloud18SelfServiceMaxClustersPerUser, "cloud18-self-service-max-clusters-per-user", 3, "Clusters a Cloud18 user may sponsor on this instance through self-service")
-	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
+	flags.StringVar(&conf.Cloud18SelfServiceClustersEnabledScript, "cloud18-self-service-clusters-enabled-script", "", "Script run before a self-service cluster creation (argv: identity, orchestrator; env REPMAN_IDENTITY, REPMAN_SPONSORED_CLUSTERS, REPMAN_NEEDED_DBU/APU, REPMAN_FREE_DBU/APU, REPMAN_BORROW_DBU/APU); a non-zero exit vetoes it, its first output line is the reason")
+	flags.BoolVar(&conf.Cloud18SelfServiceClustersCanBorrow, "cloud18-self-service-clusters-can-borrow", false, "Let a self-service cluster be created on borrowed capacity (the over-commit pot) when the plan pot cannot guarantee its default units")
+	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 gateway VIP domain(s), comma-separated and aligned with cloud18-gateway-service; the first one is where the app CNAMEs point (the DNS round-robins the VIPs)")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
-	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
-	flags.IntVar(&conf.Cloud18ApplicationCreditsPrice, "cloud18-application-credits-price", 20, "Cloud18 application credits price in Eur")
 	flags.StringVar(&conf.Cloud18DomainAddScript, "cloud18-domain-add-script", "/usr/share/replication-manager/scripts/prov_domain_add_script.sh", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainUser, "cloud18-domain-user", "", "First parameter to pass prov-domain-?-script")
@@ -1251,11 +1272,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	}
 
 	if WithProvisioning == "ON" {
-		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC service of the janitor proxy")
+		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC HAProxy gateway service(s) namespace/svc/name, comma-separated: route fragments are published on every one of them")
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
 		flags.StringVar(&conf.ProvDiskTempSize, "prov-db-disk-temp-size", "128", "Disk in m for micro service VM")
 		flags.StringVar(&conf.ProvDiskDockerSize, "prov-db-disk-docker-size", "2", "Disk in g for Docker Private per micro service VM")
+		flags.StringVar(&conf.ProvDbImgResolved, "prov-db-docker-img-resolved", "", "Written by replication-manager: the release prov-db-docker-img resolved to at the last provision or rolling upgrade, as \"declared=explicit\" (mariadb:latest=mariadb:13.0.2); the service definition always carries the explicit release, so only an upgrade moves it (#1862)")
 		flags.StringVar(&conf.ProvDbImg, "prov-db-docker-img", "mariadb:latest", "Docker image for database")
 		flags.StringVar(&conf.ProvDbDockerXtrabackupImg, "prov-db-docker-xtrabackup-img", "", "Advanced setting. Official xtrabackup image (for example percona/percona-xtrabackup:8.4, or auto to derive it from the database image) whose xtrabackup, xbstream and socat are injected into the database jobs container; for the official MySQL (mysql) and Percona Server (percona/percona-server) images only, which do not ship them (OpenSVC, Kubernetes), ignored for any other image; the tag must match the server major version; empty = off, the database image must ship them")
 		flags.StringVar(&conf.ProvDBDockerTmpfsSize, "prov-db-docker-tmpfs-size", "256", "Docker tmpfs size in megabytes. If 0 or not set, no tmpfs will be used. Please note that tmpfs is a memory filesystem and will use memory from the host.")
@@ -1372,6 +1394,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4G", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
+	flags.StringVar(&conf.ProvAppStartTimeout, "prov-app-start-timeout", "2m", "Start and image pull timeout of an app container in the orchestrator service definition (om3 start_timeout and pull_timeout, e.g. 2m, 15m): the default of every app, a template or an app may set its own for a heavy image")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "App container memory, value with unit e.g. 256M, 1G. Base for 1 credit in cloud18")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
 	flags.StringVar(&conf.ProvAppSizingMode, "prov-app-sizing-mode", "", "Cluster-level app sizing policy: 'unit' (App Unit credit-based) or 'manual' (direct resource edit). Empty means legacy mode.")
@@ -2931,14 +2954,20 @@ func (repman *ReplicationManager) Run() error {
 		if !ok {
 			continue
 		}
-		gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
-		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(priorRoutesByGateway[gw]); len(conflicts) > 0 {
+		gws := cl.Conf.GatewayServicesLower() // #1873: a cluster may sit on several gateways
+		var prior [][]config.Route
+		for _, gw := range gws {
+			prior = append(prior, priorRoutesByGateway[gw]...)
+		}
+		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(prior); len(conflicts) > 0 {
 			cl.MarkGatewayConflicts(conflicts)
 			cl.WithdrawConflictedGatewayRoutes()
 		}
 		// OwnGatewayRoutes now excludes apps marked conflicted in either 3a or 3b,
 		// so only genuinely publishable routes accumulate in the prior-routes pile.
-		priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
+		for _, gw := range gws {
+			priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
+		}
 	}
 
 	// Ensure per-cluster plugin dirs are symlinks to the shared dir so that
@@ -2981,6 +3010,9 @@ func (repman *ReplicationManager) Run() error {
 
 	//this ticker generate a new app access token, using app refresh token
 	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
+	// GWU (#1872): poll the gateways' HAProxy stats for the egress of every cluster.
+	go repman.gatewayTrafficLoop()
+
 	ticker_PAT := time.NewTicker(86400 * time.Second)
 	quit_PAT := make(chan struct{})
 	go func() {
@@ -3222,7 +3254,6 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceContractedCapacityState()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
-			repman.RefreshCreditsFromCRM()
 		} else {
 			// The connectivity probes only run every %60 ticks while the
 			// lifecycle clears every tick: carry their states across the
@@ -3554,6 +3585,21 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Global policy: the share of the metal repman may allocate (protects non-repman
 	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
 	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
+	repman.resourceManager.SetPrices(repman.billingPrices())
+	if repman.Conf.WorkingDir != "" {
+		logf := func(format string, args ...interface{}) {
+			if repman.Logrus != nil {
+				repman.Logrus.WithFields(log.Fields{"module": "billing"}).Infof(format, args...)
+			}
+		}
+		if err := repman.resourceManager.SetBillingDir(repman.Conf.WorkingDir, logf); err != nil {
+			logf("%s: %v", cluster.UnitsLogName, err)
+		}
+		repman.resourceManager.SetFinalPush(repman.PushUnitsLogToGit)
+	}
+	if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s (built-in defaults kept for the profiles that failed)", err)
+	}
 	repman.currentCluster.SetResourceManager(repman.resourceManager)
 
 	if repman.currentCluster.Conf.SecretKey == nil {
@@ -3610,8 +3656,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	// same policy as full startup and ReloadConfig.  Applies to git auto-discovery
 	// and dynamic API adds so that APPERR005 fires, route ownership is accurate,
 	// and previously published fragments for a losing cluster are cleaned up.
-	gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
-	if gw != "" {
+	if cl.Conf.PrimaryGatewayService() != "" {
 		var priorRoutes [][]config.Route
 		for _, name := range clusterOrderCopy {
 			if name == clusterName {
@@ -3621,8 +3666,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 			if peer == nil {
 				continue
 			}
-			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
-				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			if peer.Conf.SharesGateway(cl.Conf) { // #1873
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutesAny()...)
 			}
 		}
 		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
@@ -3685,7 +3730,7 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 	// OwnGatewayRoutes (which filters the GatewayConflicts map).
 	for _, name := range clusterOrder {
 		peer := clusters[name]
-		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+		if peer == nil || !peer.Conf.HasGateway(gw) {
 			continue
 		}
 		peer.RefreshGatewayConflicts()
@@ -3695,7 +3740,7 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 	var priorRoutes [][]config.Route
 	for _, name := range clusterOrder {
 		peer := clusters[name]
-		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+		if peer == nil || !peer.Conf.HasGateway(gw) {
 			continue
 		}
 		if conflicts, _ := peer.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
@@ -3727,21 +3772,23 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 		return
 	}
 
-	gw := strings.ToLower(strings.TrimSpace(changed.Conf.Cloud18GatewayService))
-	prev := strings.ToLower(strings.TrimSpace(prevGateway))
-
-	if gw != "" {
-		repman.recomputeConflictsForGateway(gw)
+	gws := changed.Conf.GatewayServicesLower() // #1873: every current gateway
+	if len(gws) > 0 {
+		for _, gw := range gws {
+			repman.recomputeConflictsForGateway(gw)
+		}
 	} else {
 		// No current gateway: local intra-cluster refresh only.
 		changed.RefreshGatewayConflicts()
 		changed.WithdrawConflictedGatewayRoutes()
 	}
 
-	// If the cluster moved to a different gateway (or left entirely), recompute
-	// the old gateway so peers that were blocked by this cluster are unblocked.
-	if prev != "" && prev != gw {
-		repman.recomputeConflictsForGateway(prev)
+	// If the cluster left a gateway (moved, or left entirely), recompute that
+	// gateway so peers that were blocked by this cluster are unblocked.
+	for _, prev := range config.SplitGatewayList(strings.ToLower(prevGateway)) {
+		if !changed.Conf.HasGateway(prev) {
+			repman.recomputeConflictsForGateway(prev)
+		}
 	}
 }
 

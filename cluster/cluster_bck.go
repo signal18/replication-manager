@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -2555,6 +2556,9 @@ func (cluster *Cluster) SplitDumpWithCli(ctx context.Context, destination *Serve
 	// Use parent context for cancellation control
 	// If caller wants a timeout, they should pass context.WithTimeout
 	args := []string{"splitdump", "--outputdir", outputDir}
+	// The per-table files follow the dump's compression level (compress-backups-compression-level)
+	// through parallel pgzip; the stdlib writer held the whole dump at one core (#1892).
+	args = append(args, "--compression-level", strconv.Itoa(cluster.getSanitizedCompressionLevel(config.ConstLogModTask)))
 	trimmedFileSize := strings.TrimSpace(cluster.Conf.BackupSplitdumpFileSize)
 	if trimmedFileSize != "" {
 		if sizeBytes, err := splitdump.ParseSizeBytes(trimmedFileSize); err != nil {

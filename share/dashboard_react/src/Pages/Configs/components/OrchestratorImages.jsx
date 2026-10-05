@@ -1,4 +1,4 @@
-import { Flex, HStack, VStack } from '@chakra-ui/react'
+import { Flex, HStack, VStack, Text } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import TagPill from '../../../components/TagPill'
 import Dropdown from '../../../components/Dropdown'
@@ -111,6 +111,18 @@ function OrchestratorImages({ selectedCluster }) {
             </HStack>
           )}
         </Flex>
+      )
+    },
+    {
+      key: 'Service definition image',
+      value: (
+        <Text>
+          {selectedCluster?.config?.provDbDockerImgResolved
+            ? selectedCluster.config.provDbDockerImgResolved.split('=')[1] +
+              ' (release the declared image resolved to at the last provision or rolling upgrade; only a rolling upgrade moves it)'
+            : selectedCluster?.config?.provDbDockerImg +
+              ' (declared image, explicit or not yet resolved; a rolling upgrade resolves a floating tag to a release and pins it)'}
+        </Text>
       )
     },
     {

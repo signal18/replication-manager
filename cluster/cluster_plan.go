@@ -22,7 +22,8 @@ type PlanUnit string
 const (
 	PlanUnitDBU PlanUnit = "DBU" // database reservation  -> prov-service-plan-dbu
 	PlanUnitAPU PlanUnit = "APU" // compute reservation   -> prov-service-plan-apu
-	// PlanUnitBKU / PlanUnitNEU (backup / network) -- wire when their plan variable lands.
+	PlanUnitBKU PlanUnit = "BKU" // backup storage reservation, PER CLUSTER -> prov-db-bku
+	PlanUnitGWU PlanUnit = "GWU" // gateway network reservation, PER CLUSTER -> prov-gateway-units (#1872)
 )
 
 // ChangePlanUnits moves this cluster's reservation for ONE unit by a relative delta. The
@@ -39,6 +40,25 @@ const (
 //
 // It is validation + hooking only. The plan is a client-set config variable; the dynamic
 // config manager persists it (SaveConfig) and the resource keeps living under the cap.
+// CanPlanIncrease asks the physical ledger whether `delta` more units of a plan can be SOLD:
+// the per-instance delta is multiplied by the instances it applies to (DBU per node ×
+// #nodes, APU per proxy × #proxies, BKU per cluster) and must fit the plan pot on every
+// axis. A plan is a guarantee: only other plans bind it, never consumption or borrows.
+func (cluster *Cluster) CanPlanIncrease(unit PlanUnit, delta int) (bool, string) {
+	if cluster.resources == nil || delta <= 0 {
+		return true, ""
+	}
+	switch unit {
+	case PlanUnitDBU:
+		return cluster.resources.CanPlanIncrease(ProfileDatabase, float64(delta*len(cluster.Servers)))
+	case PlanUnitAPU:
+		return cluster.resources.CanPlanIncrease(ProfileCompute, float64(delta*len(cluster.Proxies)))
+	case PlanUnitBKU:
+		return cluster.resources.CanPlanIncrease(ProfileStorage, float64(delta))
+	}
+	return true, ""
+}
+
 func (cluster *Cluster) ChangePlanUnits(unit PlanUnit, delta int) error {
 	if delta == 0 {
 		return nil
@@ -62,7 +82,10 @@ func (cluster *Cluster) ChangePlanUnits(unit PlanUnit, delta int) error {
 	if !cluster.CanPlanChange(unit) {
 		return fmt.Errorf("plan %s is admin-locked (immutable) for this cluster; the reservation cannot be changed", unit)
 	}
-	if target > cur { // increase -> prov-plan-increase-script may still refuse it
+	if target > cur { // increase -> the plan pot, then prov-plan-increase-script may still refuse it
+		if ok, reason := cluster.CanPlanIncrease(unit, target-cur); !ok {
+			return fmt.Errorf("plan increase refused for %s: %s", unit, reason)
+		}
 		if err := cluster.RunPlanIncreaseScript(unit, cur, target); err != nil {
 			return fmt.Errorf("plan increase refused for %s by prov-plan-increase-script: %w", unit, err)
 		}
@@ -109,6 +132,10 @@ func (cluster *Cluster) applyPlanResourceFollow(unit PlanUnit, cur, target int) 
 		// Proxies (and, once folded in, apps) have no live-resize path: the resource always
 		// follows the plan directly, in both directions.
 		cluster.alignProxyResourceToPlan(target)
+	case PlanUnitBKU:
+		// The BKU plan reserves backup STORAGE, nothing is provisioned from it: the
+		// measurement (RefreshBackupUnits) compares real backup disk with it, over-commit
+		// is billed, never blocked.
 	}
 }
 
@@ -177,6 +204,16 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 		// (AppPlanByCluster) separately; they are not moved here.
 		return cluster.Conf.ProvProxyApu, 1,
 			func(v int) { cluster.Conf.ProvProxyApu = v }, nil
+	case PlanUnitBKU:
+		// prov-db-bku is the PER-CLUSTER backup storage reservation (backups are of the dataset,
+		// not of each node). Floor 1 BKU. Default 6 (three times the default 2 DBU/node).
+		return cluster.Conf.ProvDbBku, 1,
+			func(v int) { cluster.Conf.ProvDbBku = v }, nil
+	case PlanUnitGWU:
+		// prov-gateway-units pins the PER-CLUSTER gateway bandwidth plan in GWU; 0 = follow the
+		// gateway capacity / clusters present (the default). Floor 0.
+		return cluster.Conf.ProvGatewayUnits, 0,
+			func(v int) { cluster.Conf.ProvGatewayUnits = v }, nil
 	default:
 		return 0, 0, nil, fmt.Errorf("ChangePlanUnits: unit %q not supported yet", unit)
 	}
@@ -184,8 +221,13 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 
 // planFlag is the config flag name backing a unit's reservation -- the admin-lock target.
 func (cluster *Cluster) planFlag(unit PlanUnit) string {
-	if PlanUnit(strings.ToUpper(string(unit))) == PlanUnitAPU {
+	switch PlanUnit(strings.ToUpper(string(unit))) {
+	case PlanUnitAPU:
 		return "prov-proxy-apu"
+	case PlanUnitBKU:
+		return "prov-db-bku"
+	case PlanUnitGWU:
+		return "prov-gateway-units"
 	}
 	return "prov-db-dbu"
 }

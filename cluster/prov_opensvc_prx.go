@@ -174,6 +174,9 @@ func (cluster *Cluster) OpenSVCClearProxyInstanceState(server DatabaseProxy, nod
 
 func (cluster *Cluster) OpenSVCProvisionProxyV3(pri DatabaseProxy, svc opensvc.Collector, agent opensvc.Host) error {
 	err := cluster.OpenSVCCreateMaps(agent.Node_name)
+	if perr := cluster.openSVCEnsureSensorPrerequisites(svc); perr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Proxy %s sensor prerequisites not published: %s", pri.GetName(), perr)
+	}
 	if err != nil {
 		return err
 	}

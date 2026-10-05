@@ -128,10 +128,18 @@ func (cluster *Cluster) SetInteractive(check bool) {
 }
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
-
+	oldGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	cluster.Configurator.SetDBDisk(value)
 	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
-
+	newGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	// Live move (#1854): with the dynamic resource on, the declared disk moves the volumes
+	// through the orchestrator instead of asking for a reprovision, up or down (a shrink
+	// the orchestrator does not honour yet is tracked as WARN0221, never a reprovision:
+	// it is data). Without it, the reprovision path as before.
+	if cluster.Conf.ProvDBDynamicResource && newGB != oldGB {
+		cluster.applyDiskResize(int(oldGB), int(newGB))
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
@@ -1972,7 +1980,16 @@ func (cluster *Cluster) SetProvOrchestrator(value string) error {
 	return nil
 }
 
+// SetProvDBImage declares the database image. A pinned image (prov-db-docker-img in the
+// immutable cluster.d config) is not moved by a setting or a rolling upgrade: the operator
+// changes the pin first (#1862).
 func (cluster *Cluster) SetProvDBImage(value string) error {
+	if value != cluster.Conf.ProvDbImg && cluster.IsVariableImmutable("prov-db-docker-img") {
+		return fmt.Errorf("prov-db-image %s is pinned in the immutable configuration: %s not applied, change the pin first", cluster.Conf.ProvDbImg, value)
+	}
+	if value != cluster.Conf.ProvDbImg {
+		cluster.Conf.ProvDbImgResolved = "" // resolved again at the next provision / upgrade
+	}
 	cluster.Conf.ProvDbImg = value
 	cluster.SetDBReprovCookie()
 	return nil

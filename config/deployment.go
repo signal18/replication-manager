@@ -1345,6 +1345,11 @@ type Volume struct {
 	PoolName  string `mapstructure:"poolname" toml:"poolname" json:"poolname" groups:"apps"`
 	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
 	Size      string `mapstructure:"size" toml:"size" json:"size" groups:"apps"`
+	// Owner of the volume directories (OpenSVC volume user/group/dirperm): images that run as a
+	// non-root user (rustfs 10001, frappe 1000) cannot write a root-owned directory (#1870).
+	User    string `mapstructure:"user" toml:"user,omitempty" json:"user,omitempty" groups:"apps"`
+	Group   string `mapstructure:"group" toml:"group,omitempty" json:"group,omitempty" groups:"apps"`
+	DirPerm string `mapstructure:"dirperm" toml:"dirperm,omitempty" json:"dirperm,omitempty" groups:"apps"`
 }
 
 // NormalizeVolumeSize normalizes a per-volume size override using the same
@@ -1550,6 +1555,10 @@ type S3Mount struct {
 	VolumeName   string `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
 	VolumeDir    string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" groups:"apps"`
 	ProviderName string `mapstructure:"providername" toml:"providername" json:"providerName,omitempty" groups:"apps"`
+	// Uid / Gid: the owner the mounted files are presented as inside the container
+	// (the mount sidecar's --uid/--gid); empty = 33 (www-data), the historical value.
+	Uid string `mapstructure:"uid" toml:"uid,omitempty" json:"uid,omitempty" groups:"apps"`
+	Gid string `mapstructure:"gid" toml:"gid,omitempty" json:"gid,omitempty" groups:"apps"`
 
 	Node   S3Node  `mapstructure:"-" toml:"-" json:"-"`
 	Volume *Volume `mapstructure:"-" toml:"-" json:"-"`
@@ -1576,6 +1585,21 @@ func GetS3SecretKeys() []string {
 	return []string{
 		S3VarSuffixSecretKey,
 	}
+}
+
+// MountUid / MountGid: the sidecar owner flags, 33 (www-data) when unset (#1870, ERPNext runs as 1000).
+func (s *S3Mount) MountUid() string {
+	if strings.TrimSpace(s.Uid) == "" {
+		return "33"
+	}
+	return strings.TrimSpace(s.Uid)
+}
+
+func (s *S3Mount) MountGid() string {
+	if strings.TrimSpace(s.Gid) == "" {
+		return "33"
+	}
+	return strings.TrimSpace(s.Gid)
 }
 
 func (s *S3Mount) GetVariablePrefix() string {

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +30,8 @@ const (
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
 	ErrAppGatewayConflict  = "APPERR005"
+	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
+	StateAppRunning        = stateAppRunning // exported for the MCP tools
 	appErrFailureThreshold = 3
 )
 
@@ -40,6 +43,7 @@ type App struct {
 	Host          string `json:"host" groups:"apps"`
 	HostIPV6      string `json:"hostIPV6"`
 	Port          string `json:"port" groups:"apps"`
+	URL           string `json:"url" groups:"apps"` // https://<primary route cname>/ once routed, else the internal http://host:port/
 	User          string `json:"-"`
 	Pass          string `json:"-"`
 	Version       string `json:"version" groups:"apps"`
@@ -72,6 +76,7 @@ type App struct {
 	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
 	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
 	LastRefreshError      string    `json:"lastRefreshError"`
+	DbProvisionError      string    `json:"dbProvisionError"` // last app database auto-create refusal (#1870), "" once one goes through
 	RefreshInProgress     bool      `json:"refreshInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
 	AppErrConsecutiveMap map[string]int         `json:"-"`
@@ -150,22 +155,6 @@ func (cluster *Cluster) newAppList() error {
 
 	cluster.LoadAllAppTemplateMD5Provisioned()
 
-	// Backfill ProvAppCreditUsed for apps that are provisioned but whose saved
-	// value is zero — this covers apps created before credit persistence was added.
-	// We only save when the value actually changes so restarts after backfill are
-	// no-ops.
-	for _, app := range cluster.Apps {
-		if app.HasProvisionCookie() && app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
-			app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
-			if _, err := cluster.SaveApp(app, ""); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
-					"Failed to persist backfilled credit usage for %s: %s", app.Name, err)
-			}
-		}
-	}
-
-	cluster.recomputeAppCredits()
-
 	return nil
 }
 
@@ -176,15 +165,17 @@ func (c *Cluster) initializeAppForRegistration(app *App) error {
 	app.SetID()
 	app.SetDataDir()
 	app.SetServiceName(c.Name)
-	if err := app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name); err != nil {
-		return fmt.Errorf("app %s: default route generation failed: %w", app.Name, err)
+	// A template says what is routed: one without routes is an app that stays on the
+	// cluster network (a database, a cache: never on a gateway port, Stéphane
+	// 2026-10-02). The default https route is for an app declared from a docker image.
+	if app.AppConfig == nil || strings.TrimSpace(app.AppConfig.ProvAppTemplate) == "" {
+		if err := app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name); err != nil {
+			return fmt.Errorf("app %s: default route generation failed: %w", app.Name, err)
+		}
 	}
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
 	app.SetState(stateSuspect)
-	if app.AppConfig.ProvAppCreditPlanned == 0 {
-		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
-	}
 	return nil
 }
 
@@ -292,6 +283,29 @@ func appErrorDebounceThreshold(conf *config.Config) int {
 	return appErrFailureThreshold
 }
 
+// ResetAppErrConsecutiveCntExcept drops every debounce counter but the kept keys.
+func (app *App) ResetAppErrConsecutiveCntExcept(keep ...string) {
+	app.Lock()
+	defer app.Unlock()
+	kept := map[string]bool{}
+	for _, k := range keep {
+		kept[k] = true
+	}
+	for k := range app.AppErrConsecutiveMap {
+		if !kept[k] {
+			delete(app.AppErrConsecutiveMap, k)
+		}
+	}
+}
+
+// HasPendingCheckFailures reports debounced check failures not yet turned into a state: a
+// freshly declared app reads Running while its first probes fail below the threshold.
+func (app *App) HasPendingCheckFailures() bool {
+	app.Lock()
+	defer app.Unlock()
+	return len(app.AppErrConsecutiveMap) > 0
+}
+
 func (app *App) ResetAppErrConsecutiveCnt(routeKey string) {
 	app.Lock()
 	defer app.Unlock()
@@ -315,11 +329,10 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppDbPass, "app-db-pass", "", "App Database Password")
 	flags.StringVar(&conf.AppDbSchema, "app-db-schema", "", "App Database Schema")
 	flags.BoolVar(&conf.AppS3Provider, "app-s3-provider", false, "Whether the app is an S3 provider, default is false.")
-	flags.IntVar(&conf.ProvAppCreditPlanned, "prov-app-credit-planned", 0, "Planned App Credit for the application, default is 0.")
-	flags.IntVar(&conf.ProvAppCreditUsed, "prov-app-credit-used", 0, "Used App Credit for the application, default is 0.")
 }
 
 func (app *App) Refresh() error {
+	app.URL = app.GetPublicURL()
 	cluster := app.ClusterGroup
 
 	start := time.Now()

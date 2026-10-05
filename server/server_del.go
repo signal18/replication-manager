@@ -23,7 +23,7 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 	// (strings.ToLower + TrimSpace), so prevGateway must match that form.
 	var prevGateway string
 	if cl != nil {
-		prevGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+		prevGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) // a list (#1873), split by RecomputeGatewayConflicts
 		//if cl.IsProvision {
 		err := cl.Unprovision()
 		if err != nil {

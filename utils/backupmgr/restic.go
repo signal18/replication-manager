@@ -5192,6 +5192,22 @@ type resticMessageEnvelope struct {
 	MessageType string `json:"message_type"`
 }
 
+// CurrentTaskProgress returns a copy of the running task's state (nil when nothing runs):
+// the archive push progress restic reports itself (percent_done, bytes_done, total_bytes),
+// consumed by the cluster's backup progress view.
+func (repo *ResticManager) CurrentTaskProgress() *ResticTaskState {
+	if repo == nil {
+		return nil
+	}
+	repo.currentTaskMutex.Lock()
+	defer repo.currentTaskMutex.Unlock()
+	if repo.currentTask == nil || repo.currentTask.Status != "running" {
+		return nil
+	}
+	c := *repo.currentTask
+	return &c
+}
+
 func (repo *ResticManager) SetCurrentTaskRunning(task *ResticTask) {
 	if task == nil {
 		return

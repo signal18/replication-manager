@@ -2821,6 +2821,7 @@ func (repman *ReplicationManager) handlerMuxServerUpdateOpensvcTemplate(w http.R
 		http.Error(w, "Server Not Found", http.StatusInternalServerError)
 		return
 	}
+	mycluster.ResolveDatabaseImage(false) // the rendered definition carries a release, not a pointer (#1862)
 	if err := mycluster.OpenSVCUpdateDatabaseTemplate(node); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -4879,10 +4880,17 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 		CpuMaxCores  float64   `json:"cpuMaxCores"`
 		IoMaxIops    float64   `json:"ioMaxIops"`
 		DiskMaxBytes int64     `json:"diskMaxBytes"`
+		// Internal network (cluster_net.go): cumulative octets of the database's own
+		// interfaces, optional -- an older dbjobs_new.sh omits them.
+		NetRxBytes *uint64 `json:"netRxBytes,omitempty"`
+		NetTxBytes *uint64 `json:"netTxBytes,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Decode error: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+	if req.NetRxBytes != nil && req.NetTxBytes != nil {
+		mycluster.IngestNetCounters(cluster.NetUnitDatabase, node.Name, req.WindowEnd, *req.NetRxBytes, *req.NetTxBytes)
 	}
 
 	// The handler stays dumb: forward the raw maxima; the cluster's ResourceManager
@@ -4903,7 +4911,7 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 // (Compute profile) and records them as consumed, so the per-cluster APU graph and
 // AppConsumedByCluster reflect live app/proxy compute. The DB CPU is never spent on it.
 // @Summary Ingest an app/proxy APU compute-sensor push
-// @Description The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy.
+// @Description The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy. Optional netRxBytes/netTxBytes (cumulative octets of the pod interface) feed the internal network series net.<cluster>.<kind>.<name>.*.
 // @Tags ClusterResources
 // @Accept json
 // @Produce json
@@ -4934,10 +4942,20 @@ func (repman *ReplicationManager) handlerMuxAppAPUConsumed(w http.ResponseWriter
 		MemMaxBytes  int64     `json:"memMaxBytes"`
 		CpuMaxCores  float64   `json:"cpuMaxCores"`
 		DiskMaxBytes int64     `json:"diskMaxBytes"`
+		// Internal network (cluster_net.go): cumulative octets of the pod's eth0, optional.
+		NetRxBytes *uint64 `json:"netRxBytes,omitempty"`
+		NetTxBytes *uint64 `json:"netTxBytes,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Decode error: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+	if req.NetRxBytes != nil && req.NetTxBytes != nil {
+		netKind := cluster.NetUnitApp
+		if kind == cluster.KindProxy {
+			netKind = cluster.NetUnitProxy
+		}
+		mycluster.IngestNetCounters(netKind, vars["name"], req.WindowEnd, *req.NetRxBytes, *req.NetTxBytes)
 	}
 	reading := mycluster.IngestAppConsumedAPU(kind, vars["name"], req.WindowStart, req.WindowEnd, req.MemMaxBytes, req.CpuMaxCores, req.DiskMaxBytes)
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,

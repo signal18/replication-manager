@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"github.com/gorilla/mux"
 	"io"
 	"net/http"
 	"os"
@@ -385,15 +386,23 @@ type globalResourcesAxis struct {
 // expose no disk/iops/network). The binding axis is the SCARCEST (min); usable =
 // capacity x quota%; slack = usable - consumed. This is the claim's first gate.
 type globalResourcesResponse struct {
-	QuotaPct    float64               `json:"quotaPct"`
-	Agents      int                   `json:"agents"`
-	Axes        []globalResourcesAxis `json:"axes"`
-	CapacityDBU float64               `json:"capacityDbu"`
-	BindingAxis string                `json:"bindingAxis"`
-	UsableDBU   float64               `json:"usableDbu"`
-	ConsumedDBU float64               `json:"consumedDbu"`
-	SlackDBU    float64               `json:"slackDbu"`
-	// APU (Compute) infra view -- the SAME metal projected into APU (1c/1GB/10GB, no IO).
+	UnitRatios  map[cluster.WorkloadProfile]cluster.UnitRatios `json:"unitRatios"` // the manager's ratios, the page's only source of unit arithmetic
+	Ledger      cluster.ResourceLedger                         `json:"ledger"`     // the physical ledger: plan pot + over-commit pot, every unit from ONE metal
+	QuotaPct    float64                                        `json:"quotaPct"`
+	Agents      int                                            `json:"agents"`
+	Axes        []globalResourcesAxis                          `json:"axes"`
+	CapacityDBU float64                                        `json:"capacityDbu"`
+	BindingAxis string                                         `json:"bindingAxis"`
+	UsableDBU   float64                                        `json:"usableDbu"`
+	// Gateways: the shared uplinks the clusters' traffic is tracked against (#1872), Mb/s.
+	GatewayDomains      []string `json:"gatewayDomains"`
+	GatewayCapacityMbit float64  `json:"gatewayCapacityMbit"`
+	CapacityGWU         float64  `json:"capacityGwu"` // the same capacity in GWU (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s)
+	UsableGWU           float64  `json:"usableGwu"`   // = capacity: the uplink has no quota
+	ConsumedGWU         float64  `json:"consumedGwu"` // Σ clusters
+	ConsumedDBU         float64  `json:"consumedDbu"`
+	SlackDBU            float64  `json:"slackDbu"`
+	// APU (Compute) infra view -- the SAME metal projected into APU (1c/2GB/10GB, no IO).
 	CapacityAPU    float64                  `json:"capacityApu"`
 	BindingAxisApu string                   `json:"bindingAxisApu"`
 	UsableAPU      float64                  `json:"usableApu"`
@@ -427,6 +436,11 @@ type globalResourcesCluster struct {
 	Apu     float64 `json:"apu"`     // real consumed APU pivot -- the cluster's share of infra APU
 	PlanApu float64 `json:"planApu"` // the cluster's APU reservation contract (prov-service-plan-apu)
 	Servers int     `json:"servers"`
+
+	StatefulDbu     float64 `json:"statefulDbu"`     // real consumed DBU of the stateful apps (app-stateful)
+	PlanStatefulDbu float64 `json:"planStatefulDbu"` // their DBU reservation, own line (never in planDbu)
+	Gwu             float64 `json:"gwu"`             // gateway bandwidth consumed, in GWU (#1872)
+	PlanGwu         float64 `json:"planGwu"`         // its GWU plan: gateway capacity / clusters present, or pinned
 }
 
 // handlerMuxGlobalResources returns the ResourceManager infra-wide capacity-vs-consumed
@@ -477,21 +491,38 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	}
 	consumedApu := rm.AppConsumedInfra()
 
-	// Per-cluster consumed breakdown (stacks up to the infra consumed), DBU + APU.
+	// Per-cluster consumed breakdown (stacks up to the infra consumed), DBU + APU + GWU.
 	var perCluster []globalResourcesCluster
+	consumedGwu := 0.0
+	gwuUnit := repman.Conf.Cloud18MarketplaceGWUUnitMbit
+	if gwuUnit <= 0 {
+		gwuUnit = 100
+	}
+	capacityGwu := repman.Conf.GatewayBandwidthTotalMbit() / gwuUnit
 	for _, cl := range clusters {
+		if !cl.IsProvision {
+			continue // an unprovisioned cluster reserves and consumes nothing: not in the infra view
+		}
 		a := rm.ConsumedByCluster(cl.Name)
 		plan := float64(cl.GetPlanDbu()) // explicit prov-service-plan-dbu, else auto (per-node × nodes)
 		apuPlan := rm.AppPlanByCluster(cl.Name)
 		apuCons := rm.AppConsumedByCluster(cl.Name)
-		if a.Servers == 0 && a.Dbu == 0 && plan == 0 && apuPlan.Apu == 0 && apuCons.Apu == 0 {
+		stPlan := rm.StatefulPlanByCluster(cl.Name)
+		stCons := rm.StatefulConsumedByCluster(cl.Name)
+		if a.Servers == 0 && a.Dbu == 0 && plan == 0 && apuPlan.Apu == 0 && apuCons.Apu == 0 && stPlan.Dbu == 0 && stCons.Dbu == 0 {
 			continue
 		}
-		perCluster = append(perCluster, globalResourcesCluster{
+		row := globalResourcesCluster{
 			Cluster: cl.Name, Dbu: a.Dbu, DbuCpu: a.DbuCpu, DbuMem: a.DbuMem,
 			DbuIo: a.DbuIo, DbuDisk: a.DbuDisk, PlanDbu: plan,
 			Apu: apuCons.Apu, PlanApu: apuPlan.Apu, Servers: a.Servers,
-		})
+			StatefulDbu: stCons.Dbu, PlanStatefulDbu: stPlan.Dbu,
+		}
+		if g := cl.GatewayUnits; g != nil {
+			row.Gwu, row.PlanGwu = g.Units, g.Plan
+			consumedGwu += g.Units
+		}
+		perCluster = append(perCluster, row)
 	}
 	sort.Slice(perCluster, func(i, j int) bool { return perCluster[i].PlanDbu > perCluster[j].PlanDbu })
 
@@ -502,11 +533,15 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 	}
 
 	resp := globalResourcesResponse{
+		UnitRatios:     rm.AllRatios(),
+		Ledger:         rm.Ledger(),
 		QuotaPct:       quota,
 		Agents:         len(agentCores),
 		CapacityDBU:    bindingDBU,
 		BindingAxis:    bindingAxis,
 		UsableDBU:      usable,
+		GatewayDomains: repman.Conf.GatewayDomains(), GatewayCapacityMbit: repman.Conf.GatewayBandwidthTotalMbit(),
+		CapacityGWU: capacityGwu, UsableGWU: capacityGwu, ConsumedGWU: consumedGwu,
 		ConsumedDBU:    consumed.Dbu,
 		SlackDBU:       usable - consumed.Dbu,
 		CapacityAPU:    bindingAPU,
@@ -915,4 +950,180 @@ func (repman *ReplicationManager) handlerMuxGlobalJobs(w http.ResponseWriter, r 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(out)
+}
+
+// billingPrices is the infrastructure's price list for the ResourceManager.
+func (repman *ReplicationManager) billingPrices() cluster.BillingPrices {
+	c := repman.Conf
+	return cluster.BillingPrices{DBU: c.Cloud18MarketplaceDBUPrice, APU: c.Cloud18MarketplaceAPUPrice, BKU: c.Cloud18MarketplaceBKUPrice, BAU: c.Cloud18MarketplaceBAUPrice, GWU: c.Cloud18MarketplaceGWUPrice,
+		OverPct: c.Cloud18MarketplaceOvercommitPricePct, UnderPct: c.Cloud18MarketplaceUndercommitPricePct}
+}
+
+// handlerMuxGlobalPrice answers the month statement: every cluster's rows (partner,
+// sponsors, per unit family plan / over-commit / under-commit in unit-months, unit price,
+// EUR) and the totals, for the running month or a past one.
+// @Summary Month billing statement of the infrastructure
+// @Description The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.
+// @Tags Global
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param month path string false "Month YYYY-MM (default: the running month)"
+// @Success 200 {object} cluster.MonthStatement
+// @Failure 403 {string} string "Forbidden"
+// @Failure 404 {string} string "No statement for that month"
+// @Router /api/global/price [get]
+// @Router /api/global/price/{month} [get]
+func (repman *ReplicationManager) handlerMuxGlobalPrice(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if !repman.UserHasGlobalGrant(r, config.GrantGlobalAdminShow) {
+		http.Error(w, "Forbidden: requires "+config.GrantGlobalAdminShow+" grant", http.StatusForbidden)
+		return
+	}
+	if repman.resourceManager == nil {
+		http.Error(w, "ResourceManager not ready", http.StatusServiceUnavailable)
+		return
+	}
+	month := mux.Vars(r)["month"]
+	st, err := repman.resourceManager.Statement(month, time.Now())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	out := map[string]any{"statement": st, "months": repman.resourceManager.StatementMonths()}
+	repman.jsonResponse(out, w)
+}
+
+// UserUnitsRow is one cluster / unit family line of what the logged user consumed this month.
+type UserUnitsRow struct {
+	Cluster                 string  `json:"cluster"`
+	Family                  string  `json:"family"`
+	Unit                    string  `json:"unit"`
+	Plan                    float64 `json:"plan"`              // units declared right now
+	Reserved                float64 `json:"reserved"`          // unit-months so far of the plan: a debit line
+	Borrowed                float64 `json:"borrowed"`          // unit-months so far over the plan: a debit line
+	Unused                  float64 `json:"unused"`            // unit-months so far under the plan: a credit line
+	Debit                   float64 `json:"debit"`             // reserved + borrowed
+	Credit                  float64 `json:"credit"`            // unused
+	Net                     float64 `json:"net"`               // debit - credit
+	ProjectedReserved       float64 `json:"projectedReserved"` // end of month at the current rate
+	ProjectedBorrowed       float64 `json:"projectedBorrowed"` //
+	ProjectedUnused         float64 `json:"projectedUnused"`   //
+	ProjectedNet            float64 `json:"projectedNet"`      //
+	Sponsor                 bool    `json:"sponsor"`           // the user holds the sponsor role on this cluster
+	UnitPrice               float64 `json:"unitPrice"`         // the cluster's unit price, per unit-month
+	ReservedAmount          float64 `json:"reservedAmount"`    // EUR so far, + (debit)
+	BorrowedAmount          float64 `json:"borrowedAmount"`    // EUR so far, + (debit)
+	UnusedAmount            float64 `json:"unusedAmount"`      // EUR so far, - (credit), given positive
+	Amount                  float64 `json:"amount"`            // reserved + borrowed - unused
+	ProjectedReservedAmount float64 `json:"projectedReservedAmount"`
+	ProjectedBorrowedAmount float64 `json:"projectedBorrowedAmount"`
+	ProjectedUnusedAmount   float64 `json:"projectedUnusedAmount"`
+	ProjectedAmount         float64 `json:"projectedAmount"`
+}
+
+// UserUnitsTotal is the sum of the rows of one unit kind (DBU, APU, BKU, BAU) or of all.
+type UserUnitsTotal struct {
+	Unit            string  `json:"unit"`
+	Debit           float64 `json:"debit"`
+	Credit          float64 `json:"credit"`
+	Net             float64 `json:"net"`
+	ProjectedNet    float64 `json:"projectedNet"`
+	DebitAmount     float64 `json:"debitAmount"`     // EUR, Cloud18 only
+	CreditAmount    float64 `json:"creditAmount"`    // EUR, given positive
+	Amount          float64 `json:"amount"`          // EUR net
+	ProjectedAmount float64 `json:"projectedAmount"` // EUR net at the end of the month
+}
+
+// handlerMuxMyUnits answers what the logged user consumed this month, in units (no price:
+// the money is the provider's, the Cloud18 domain): one line per cluster and unit family
+// for the clusters the user sponsors or has access to, with a total per unit kind.
+// @Summary Units consumed this month by the logged user
+// @Description For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, failover DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.
+// @Tags Users
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} map[string]interface{}
+// @Failure 500 {string} string "No statement"
+// @Router /api/me/units [get]
+func (repman *ReplicationManager) handlerMuxMyUnits(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	user := repman.GetUserFromRequest(r)
+	st, err := repman.resourceManager.Statement("", time.Now())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// The amounts (EUR) appear only on a Cloud18 instance (the money is the provider's);
+	// elsewhere the answer is units only.
+	priced := repman.Conf.Cloud18
+	rows := []UserUnitsRow{}
+	totals := map[string]*UserUnitsTotal{}
+	all := &UserUnitsTotal{Unit: "all"}
+	names := make([]string, 0, len(st.Clusters))
+	for name := range st.Clusters {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		cs := st.Clusters[name]
+		sponsor := false
+		for _, s := range cs.Sponsors {
+			if strings.EqualFold(s, user) {
+				sponsor = true
+			}
+		}
+		access := false
+		if cl := repman.getClusterByName(name); cl != nil {
+			_, access = cl.APIUsers[user]
+		}
+		if !sponsor && !access {
+			continue
+		}
+		for _, u := range cs.Units {
+			row := UserUnitsRow{Cluster: name, Family: u.Family, Unit: u.Unit, Plan: u.Plan,
+				Reserved: u.MonthPlan, Borrowed: u.MonthOverCommit, Unused: u.MonthUnderCommit,
+				ProjectedReserved: u.ProjectedPlan, ProjectedBorrowed: u.ProjectedOverCommit, ProjectedUnused: u.ProjectedUnderCommit, Sponsor: sponsor}
+			row.Debit = row.Reserved + row.Borrowed
+			row.Credit = row.Unused
+			row.Net = row.Debit - row.Credit
+			row.ProjectedNet = row.ProjectedReserved + row.ProjectedBorrowed - row.ProjectedUnused
+			if priced {
+				row.UnitPrice = u.UnitPrice
+				row.ReservedAmount, row.BorrowedAmount, row.UnusedAmount = u.MonthPlanCost, u.MonthOverCost, u.MonthUnderCredit
+				row.Amount = row.ReservedAmount + row.BorrowedAmount - row.UnusedAmount
+				row.ProjectedReservedAmount, row.ProjectedBorrowedAmount, row.ProjectedUnusedAmount = u.ProjectedPlanCost, u.ProjectedOverCost, u.ProjectedUnderCredit
+				row.ProjectedAmount = row.ProjectedReservedAmount + row.ProjectedBorrowedAmount - row.ProjectedUnusedAmount
+			}
+			rows = append(rows, row)
+			t := totals[u.Unit]
+			if t == nil {
+				t = &UserUnitsTotal{Unit: u.Unit}
+				totals[u.Unit] = t
+			}
+			for _, x := range []*UserUnitsTotal{t, all} {
+				x.Debit += row.Debit
+				x.Credit += row.Credit
+				x.Net += row.Net
+				x.ProjectedNet += row.ProjectedNet
+				x.DebitAmount += row.ReservedAmount + row.BorrowedAmount
+				x.CreditAmount += row.UnusedAmount
+				x.Amount += row.Amount
+				x.ProjectedAmount += row.ProjectedAmount
+			}
+		}
+	}
+	units := []string{}
+	for k := range totals {
+		units = append(units, k)
+	}
+	sort.Strings(units)
+	byUnit := []UserUnitsTotal{}
+	for _, k := range units {
+		byUnit = append(byUnit, *totals[k])
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user": user, "month": st.Month, "priced": priced, "currency": st.Currency, "elapsedPct": st.ElapsedPct, "generatedAt": st.GeneratedAt,
+		"rows": rows, "totals": byUnit, "total": all,
+	})
 }

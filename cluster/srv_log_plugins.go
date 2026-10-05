@@ -434,10 +434,10 @@ func (cluster *Cluster) RefreshSchemaWireTables() {
 	tables := make([]logplugin.StdioTable, 0, len(dict))
 	for _, t := range dict {
 		wt := logplugin.StdioTable{
-			Schema:       t.TableSchema,
-			Name:         t.TableName,
-			Engine:       t.Engine,
-			RowFormat:    t.RowFormat,
+			Schema:        t.TableSchema,
+			Name:          t.TableName,
+			Engine:        t.Engine,
+			RowFormat:     t.RowFormat,
 			Rows:          t.TableRows,
 			DataLength:    t.DataLength,
 			AvgRowLength:  t.AvgRowLength,
@@ -666,6 +666,24 @@ func (cluster *Cluster) checkResourceScaleWorkloadStates() {
 		if srv == nil || srv.IsDown() {
 			continue
 		}
+		if q := srv.DiskQuotaAbove; q != nil {
+			sm.AddState("WARN0221@"+srv.URL, state.State{
+				ErrType:   "WARNING",
+				ErrKey:    "WARN0221",
+				ErrDesc:   fmt.Sprintf(clusterError["WARN0221"], srv.URL, humanBytes(q.VolumeBytes), q.DeclaredGB),
+				ErrFrom:   "WORKLOAD",
+				ServerUrl: srv.URL,
+			})
+		}
+		if r := srv.DiskResizeRefused; r != nil {
+			sm.AddState("WARN0226@"+srv.URL, state.State{
+				ErrType:   "WARNING",
+				ErrKey:    "WARN0226",
+				ErrDesc:   fmt.Sprintf(clusterError["WARN0226"], srv.URL, r.From, r.To, r.Reason),
+				ErrFrom:   "WORKLOAD",
+				ServerUrl: srv.URL,
+			})
+		}
 		add("CINF0007", "INFO", srv.URL, srv.CanScaleConfigInPlan(true), cluster.Conf.ScaleUpConfigInPlanSpeed)
 		add("CINF0008", "INFO", srv.URL, srv.CanScaleConfigInPlan(false), cluster.Conf.ScaleDownConfigInPlanSpeed)
 		add("WARN0213", "WARNING", srv.URL, srv.CanScalePlan(true), cluster.Conf.ScaleUpPlanSpeed)
@@ -733,8 +751,12 @@ func (cluster *Cluster) CheckLogPlugins() {
 		// Refresh binlog QUERY events before running plugins that inspect them.
 		// Only scan the master: replicas receive the same events via replication,
 		// so scanning them would produce duplicate findings and waste connections.
-		if cluster.Conf.MonitorBinlogEvents && server.HaveBinlog && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL {
+		// Only the ACTIVE monitor scans (#1886): a standby never opens a replica
+		// stream on the client's primary -- it watches, it does not consume.
+		if cluster.Conf.MonitorBinlogEvents && server.HaveBinlog && cluster.GetMaster() != nil && server.URL == cluster.GetMaster().URL && cluster.IsActive() {
 			server.ScanBinlogQueryEvents()
+		} else {
+			server.CloseBinlogEventSyncer()
 		}
 		server.RunLogPlugins(cluster.pluginSpikeCache, &newScore)
 	}

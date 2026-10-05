@@ -7,6 +7,7 @@ package cluster
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -282,6 +283,41 @@ func (server *ServerMonitor) CheckResourceConsumed() {
 	server.ResourceConsumedUnderConfigAxes = dropMem(consumedAxes(c, cfg, lo, false))
 	server.ResourceConsumedOverPlanAxes = dropMem(consumedAxes(c, plan, hi, true))
 	server.ResourceConsumedUnderPlanAxes = dropMem(consumedAxes(c, plan, lo, false))
+	// Memory has its own DOWN signal, a STATE not a click (Stéphane 2026-09-29, after a plan
+	// decrease left curepipe at 16 GB): the configured memory sits above the plan AND the
+	// buffer pool shows no pressure. Occupancy says nothing about memory (the pool fills
+	// whatever it is given), pressure does. While that state holds, "mem" joins the
+	// under-config axes and the existing in-plan shrink (driveDynamicShrink, sustained over
+	// prov-db-scale-down-config-in-plan-speed, floored by the undercommit floor and the
+	// consumption headroom) brings the memory down, buffer pool first then cgroup.
+	if server.memoryOverPlanNoPressure(cfg, plan) {
+		server.ResourceConsumedUnderConfigAxes = appendAxis(server.ResourceConsumedUnderConfigAxes, "mem")
+		cluster.SetState("CINF0010", state.State{ErrType: "INFO", ErrFrom: "WORKLOAD", ServerUrl: server.URL,
+			ErrDesc: fmt.Sprintf(clusterError["CINF0010"], server.URL, cfg.DbuMem, plan.DbuMem, cluster.Conf.ScaleDownConfigInPlanSpeed)})
+	}
+}
+
+// memoryOverPlanNoPressure is the memory scale-DOWN state: the configured memory exceeds the
+// plan on the memory axis and the buffer pool has shown no pressure (no wait-free growth
+// pending nor sustained). Pure, so the rule is unit-testable.
+func (server *ServerMonitor) memoryOverPlanNoPressure(cfg, plan DBUReading) bool {
+	if plan.DbuMem <= 0 || cfg.DbuMem <= plan.DbuMem+1e-9 {
+		return false
+	}
+	return !server.BufferPoolMemGrowDue && server.bufferPoolPressureSince.IsZero()
+}
+
+// appendAxis adds an axis once, keeping the stable cpu/mem/io/disk order of consumedAxes.
+func appendAxis(axes []string, axis string) []string {
+	for _, a := range axes {
+		if a == axis {
+			return axes
+		}
+	}
+	order := map[string]int{"cpu": 0, "mem": 1, "io": 2, "disk": 3}
+	out := append(append([]string{}, axes...), axis)
+	sort.Slice(out, func(i, j int) bool { return order[out[i]] < order[out[j]] })
+	return out
 }
 
 // checkBufferPoolPressure sets the memory GROW signal from buffer-pool PRESSURE (not occupancy,
@@ -400,6 +436,7 @@ func (cluster *Cluster) RefreshDBUPlan() {
 	if cluster == nil || cluster.resources == nil {
 		return
 	}
+	cluster.UnitRatios = cluster.resources.AllRatios()
 	now := time.Now()
 	dbu := cluster.Conf.ProvDbDbu
 	if dbu < 1 {
@@ -408,6 +445,13 @@ func (cluster *Cluster) RefreshDBUPlan() {
 	r := cluster.resources.Ratios(ProfileDatabase)
 	for _, server := range cluster.Servers {
 		if server == nil {
+			continue
+		}
+		// An UNPROVISIONED cluster reserves nothing on the infrastructure (Stéphane 2026-09-29):
+		// its plan is a configured intent, not a delivered contract. A nil reading is skipped by
+		// every rollup (PlanByCluster, the ledger, GWARN016) and the plan reappears at provisioning.
+		if !cluster.IsProvision {
+			cluster.resources.SetPlan(ResourceKey{Cluster: cluster.Name, Server: server.URL}, nil)
 			continue
 		}
 		reading := cluster.resources.ComputeUsedDBU(now, now,
@@ -439,6 +483,31 @@ func (cluster *Cluster) RefreshDBUPlan() {
 	// operator sees resources raised over the plan (dynamic over-plan grow) as the state it is.
 	cluster.ConfigDbuPerNode = cluster.GetConfigDBUPerNode()
 	cluster.ConfigDbu = math.Round(cluster.ConfigDbuPerNode.Dbu*float64(len(cluster.Servers))*100) / 100
+	// Ledger: what the DB track holds ABOVE its plan (the configured resources over the plan
+	// reservation, per node × nodes) is BORROWED from the unreserved capacity. Only a
+	// PROVISIONED cluster holds anything: an unprovisioned one has a plan (reserved) but no
+	// resources granted, so it borrows nothing.
+	if cluster.resources != nil {
+		plan := cluster.GetPlanDBUPerNode()
+		var b PhysicalUsage
+		n := float64(len(cluster.Servers))
+		if !cluster.IsProvision {
+			n = 0
+		}
+		if d := cluster.ConfigDbuPerNode.CpuMaxCores - plan.CpuMaxCores; d > 0 {
+			b.CpuCores = d * n
+		}
+		if d := cluster.ConfigDbuPerNode.MemMaxBytes - plan.MemMaxBytes; d > 0 {
+			b.MemBytes = int64(float64(d) * n)
+		}
+		if d := cluster.ConfigDbuPerNode.IoMaxIops - plan.IoMaxIops; d > 0 {
+			b.IoIops = d * n
+		}
+		if d := cluster.ConfigDbuPerNode.DiskMaxBytes - plan.DiskMaxBytes; d > 0 {
+			b.DiskBytes = int64(float64(d) * n)
+		}
+		cluster.resources.SetBorrowed(cluster.Name, "db", b)
+	}
 }
 
 // GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container.

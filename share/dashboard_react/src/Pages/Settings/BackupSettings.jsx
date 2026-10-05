@@ -1,5 +1,5 @@
 import { Box, Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react'
-import React, { useRef, useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch, useSelector } from 'react-redux'
@@ -15,7 +15,6 @@ import Markdown from 'react-markdown'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import remarkGfm from 'remark-gfm'
-import BackupSnapshotsSettings from './BackupSnapshotsSettings'
 import NumberInput from '../../components/NumberInput'
 
 const sizeGenerator = () => {
@@ -47,9 +46,6 @@ function BackupSettings({ selectedCluster, user }) {
   const [sizeOptions, setSizeOptions] = useState(sizeGenerator())
   const decompressBufferOptions = useMemo(() => buildDecompressBufferOptions(sizeOptions), [sizeOptions])
   const [selectedBinlogBackupType, setselectedBinlogBackupType] = useState('')
-  const [isBackupSnapshotsOpen, setIsBackupSnapshotsOpen] = useState(true)
-  const [isResticRepoConfigOpen, setIsResticRepoConfigOpen] = useState(true)
-  const backupSnapshotsToggleRef = useRef(null)
   const [action, setAction] = useState({ title: '', type: '', body: <></> })
   const { title, type } = action
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
@@ -90,14 +86,6 @@ function BackupSettings({ selectedCluster, user }) {
       iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
   )
 
-  const handleBackupSnapshotsToggle = () => {
-    setIsBackupSnapshotsOpen((prev) => !prev)
-    requestAnimationFrame(() => {
-      backupSnapshotsToggleRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    })
-  }
-
-  const handleResticRepoToggle = () => setIsResticRepoConfigOpen((prev) => !prev)
 
   useEffect(() => {
     if (selectedCluster?.config?.binlogCopyMode) setselectedBinlogBackupType(selectedCluster.config.binlogCopyMode)
@@ -148,14 +136,9 @@ function BackupSettings({ selectedCluster, user }) {
   const hMinReplicas = `**Minimum Replicas Needed for Purging**\n\nMinimum number of replicas that must have received a binary log event before it is eligible for purging on the master.\n\nConfig: \`force-binlog-purge-min-replica\``
   const hPurgeOnRestore = `**Enforce Binlog Purge on Restore**\n\nWhen enabled, binary logs are purged on the restored node immediately after a reseed completes.\n\nConfig: \`force-binlog-purge-on-restore\``
   const hPurgeOnReplicas = `**Enforce Binlog Purge on Replicas**\n\nWhen enabled, binary log purge is enforced on all replica servers in addition to the master.\n\nConfig: \`force-binlog-purge-replicas\``
-  const hStreamingEndpoint = `**Backup Streaming Endpoint**\n\nS3-compatible endpoint URL for streaming backup storage.\nExample: \`https://s3.amazonaws.com\`\n\nConfig: \`backup-streaming-endpoint\``
-  const hStreamingRegion = `**Backup Streaming Region**\n\nCloud region for the streaming backup bucket.\nExample: \`eu-west-1\`\n\nConfig: \`backup-streaming-region\``
-  const hStreamingBucket = `**Backup Streaming Bucket**\n\nS3 bucket name used for streaming backup storage.\n\nConfig: \`backup-streaming-bucket\``
   const hCheckFreeSpace = `**Check Free Space Before Backup**\n\nVerifies that sufficient disk space is available before starting a backup.\nPrevents partial backups that could corrupt the backup directory.\n\nConfig: \`backup-check-free-space\``
   const hDiskWarn = `**Disk Usage Warning Threshold**\n\nDisk usage percentage at which a warning alert is triggered.\n\nConfig: \`backup-disk-treshold-warn\``
   const hDiskCrit = `**Disk Usage Critical Threshold**\n\nDisk usage percentage at which backup is blocked and a critical alert is triggered.\n\nConfig: \`backup-disk-treshold-crit\``
-  const hResticPurgeThreshold = `**Custom Threshold for Purging Old Restic Backups**\n\nDisk usage percentage at which the oldest Restic backups are automatically purged.\nSet to 0 to follow the critical threshold.\n\nConfig: \`backup-restic-purge-oldest-on-disk-threshold\``
-  const hResticPurgeOnDisk = `**Purge Oldest Restic Backups if Disk Usage Exceeds Threshold**\n\nWhen enabled, automatically removes the oldest Restic backup snapshots when disk usage exceeds the configured threshold.\n\nConfig: \`backup-restic-purge-oldest-on-disk-space\``
   const hEstimateSize = `**Estimate Backup Size**\n\nEstimates the expected backup size before starting, using the last backup size or information_schema data.\nUsed to verify sufficient free space is available.\n\nConfig: \`backup-estimate-size\``
   const hGrowthPercentage = `**Last Backup Growth Percentage**\n\nExpected growth percentage applied to the last backup size when estimating the next backup size.\nSet to 0 to use the last backup size without adjustment.\n\nConfig: \`backup-growth-percentage\``
   const hEstimatePercentage = `**Backup Estimation Percentage from information_schema**\n\nPercentage of the information_schema size used as the backup size estimate when no previous backup exists.\n\nConfig: \`backup-estimate-size-percentage\``
@@ -521,57 +504,12 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
-      key: 'Backup Streaming Endpoint',
-      help: h(hStreamingEndpoint, 'Backup Streaming Endpoint'),
-      value: (
-        <TextForm value={selectedCluster?.config?.backupStreamingEndpoint} confirmTitle={`Confirm backup-streaming-endpoint to `}
-          className={styles.textbox}
-          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-endpoint', value }))} />
-      )
-    },
-    {
-      key: 'Backup Streaming Region',
-      help: h(hStreamingRegion, 'Backup Streaming Region'),
-      value: (
-        <TextForm value={selectedCluster?.config?.backupStreamingRegion} confirmTitle={`Confirm backup-streaming-region to `}
-          className={styles.textbox}
-          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-region', value }))} />
-      )
-    },
-    {
-      key: 'Backup Streaming Bucket',
-      help: h(hStreamingBucket, 'Backup Streaming Bucket'),
-      value: (
-        <TextForm value={selectedCluster?.config?.backupStreamingBucket} confirmTitle={`Confirm backup-streaming-bucket to `}
-          className={styles.textbox}
-          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-bucket', value }))} />
-      )
-    },
-    {
-      // Backup Snapshots uses a different fullWidth layout — keep icon inline in the key
-      key: (
-        <HStack spacing={2} className={styles.sectionHeader}>
-          <Text>Backup Snapshots</Text>
-          <Box as="button" type="button" ref={backupSnapshotsToggleRef}
-            className={styles.sectionToggle} aria-expanded={isBackupSnapshotsOpen}
-            onClick={handleBackupSnapshotsToggle}>
-            {isBackupSnapshotsOpen ? 'Hide' : 'Show'}
-          </Box>
-        </HStack>
-      ),
-      value: isBackupSnapshotsOpen
-        ? BackupSnapshotsSettings({ selectedCluster, user, dispatch, onOpenInfoModal: openInfoModal, isResticRepoConfigOpen, onToggleResticRepoConfig: handleResticRepoToggle })
-        : null
-    },
-    {
       key: 'Check Free Space',
       value: [
         { key: 'Check Free Space Before Backup', help: h(hCheckFreeSpace, 'Check Free Space Before Backup'), value: (<RMSwitch isChecked={selectedCluster?.config?.backupCheckFreeSpace} isDisabled={user?.grants['cluster-settings'] == false} confirmTitle={'Confirm switch settings for backup-check-free-space?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-check-free-space' }))} />) },
         ...(selectedCluster?.config?.backupCheckFreeSpace ? [
           { key: 'Disk Usage Warning Threshold', help: h(hDiskWarn, 'Disk Usage Warning Threshold'), value: (<NumberInput min={1} max={100} value={selectedCluster?.config?.backupDiskTresholdWarn} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-disk-treshold-warn' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-disk-treshold-warn', value }))} />) },
           { key: 'Disk Usage Critical Threshold', help: h(hDiskCrit, 'Disk Usage Critical Threshold'), value: (<NumberInput min={1} max={100} value={selectedCluster?.config?.backupDiskTresholdCrit} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-disk-treshold-crit' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-disk-treshold-crit', value }))} />) },
-          { key: 'Restic Purge Threshold', help: h(hResticPurgeThreshold, 'Custom Threshold for Purging Old Restic Backups'), value: (<NumberInput min={0} max={100} value={selectedCluster?.config?.backupResticPurgeOldestOnDiskThreshold} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change restic threshold to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-purge-oldest-on-disk-threshold', value }))} />) },
-          { key: 'Purge Oldest Restic on Low Disk', help: h(hResticPurgeOnDisk, 'Purge Oldest Restic Backups if Disk Usage Exceeds Threshold'), value: (<RMSwitch isChecked={selectedCluster?.config?.backupResticPurgeOldestOnDiskSpace} isDisabled={user?.grants['cluster-settings'] == false} confirmTitle={'Confirm switch settings for backup-restic-purge-oldest-on-disk-space?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-purge-oldest-on-disk-space' }))} />) },
           { key: 'Estimate Backup Size', help: h(hEstimateSize, 'Estimate Backup Size'), value: (<RMSwitch isChecked={selectedCluster?.config?.backupEstimateSize} isDisabled={user?.grants['cluster-settings'] == false} confirmTitle={'Confirm switch settings for backup-estimate-size?'} onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-estimate-size' }))} />) },
           ...(selectedCluster?.config?.backupEstimateSize ? [
             { key: 'Backup Growth Percentage', help: h(hGrowthPercentage, 'Last Backup Growth Percentage'), value: (<NumberInput min={1} value={selectedCluster?.config?.backupGrowthPercentage} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-growth-percentage' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-growth-percentage', value }))} />) },

@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react'
 import '../../styles/_graphite.scss'
 import styles from '../../styles/Graphs.module.scss';
 import { Flex } from '@chakra-ui/react'
+import { getUnitRatios, dbuAxes, apuAxes, diskBytesPerUnit } from '../../utility/unitRatios'
 import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
 import ChartLatchTracing from '../../components/ChartLatchTracing';
@@ -84,8 +85,19 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           .replaceAll('mysql.*', `mysql.*-${clusterToken}-*`)
           .replaceAll('dbu.*', `dbu.${selectedCluster?.name}.*`)
           .replaceAll('apu.*', `apu.${selectedCluster?.name}.*`)
+          // bku.<cluster>.<series>: no per-unit segment (the BKU is per cluster), so the wildcard
+          // is the cluster itself, not a level under it.
+          .replaceAll('bku.*', `bku.${selectedCluster?.name}`)
+          .replaceAll('bau.*', `bau.${selectedCluster?.name}`)
+          .replaceAll('gwu.*', `gwu.${selectedCluster?.name}`)
+          // net.<cluster>.<kind>.<unit>.<series> and the cluster total net.<cluster>.mbps
+          .replaceAll('net.*', `net.${selectedCluster?.name}`)
       : s
   const scopeAll = (a) => (Array.isArray(a) ? a.map(scope) : a)
+
+  // Mb/s axes print plain decimals: the default SI formatter turns 0.1 Mb/s into "100m",
+  // which reads as 100 M at a glance (Stéphane saw "a lot of in" on a 0.05 Mb/s belair).
+  const mbpsTick = (v) => (v >= 100 ? String(Math.round(v)) : v >= 1 ? v.toFixed(1) : v.toFixed(3).replace(/\.?0+$/, ''))
 
   const cfg = selectedCluster?.config || {}
   // The plan line = prov-service-plan-dbu, the materialized service-plan DBU (Σ per-node
@@ -95,6 +107,11 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // DBU (per-node pivot x #nodes), refreshed each tick by repman. Distinct from the plan: a
   // dynamic over-plan grow moves this line, never the plan.
   const configDbu = Number(selectedCluster?.configDbu) || 0
+  // The BKU plan line = prov-db-bku, the per-cluster backup storage reservation (1 BKU = 20 GB).
+  const planBku = parseInt(cfg.provDbBku) || 0
+  // Unit ratios from the server (resource-manager-ratio-*): the charts' only source.
+  const ratios = getUnitRatios(selectedCluster)
+  const storageUnitBytes = diskBytesPerUnit(ratios.storage)
 
   // Window (seconds) and refresh cadence for the d3 line charts, from the same
   // hour/step selectors that drive the cubism graphs.
@@ -318,6 +335,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
            io: scope('sumSeries(dbu.*.service_io)'),
            disk: scope('sumSeries(dbu.*.service_disk)')
          }}
+         axes={dbuAxes(ratios.database)}
          pivotPath={scope('sumSeries(dbu.*.dbu)')}
          planDbu={planDbu}
          configDbu={configDbu}
@@ -340,12 +358,101 @@ function Graphs({ selectedCluster, onOpenSettings }) {
            disk: scope('sumSeries(apu.*.apu_disk)')
          }}
          servicePaths={{}}
+         axes={apuAxes(ratios.compute)}
          pivotPath={scope('sumSeries(apu.*.apu)')}
+         unit='APU'
          planDbu={parseInt(cfg.provServicePlanApu) || 0}
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Consumed APU — proxies + apps (Compute; plan = service-plan APU)"
        />
+        {/* Backup (BKU) — per-cluster LOCAL backup storage: the last backup of each server on
+            the cluster's pool + the restic archive when its repository is a local path.
+            bku.<cluster>.local is already in BKU (20 GB); local_bytes gives the real→unit
+            overlay. Plan line = prov-db-bku. Over-commit (local above the plan) is billed,
+            never blocked, at cloud18-marketplace-bku-price per BKU. */}
+        <ChartGroupedDBU
+         context={context}
+         axes={[
+           { key: 'local', label: 'Local backups', ratio: storageUnitBytes, light: '#37a06f', dark: '#4dc088' },
+         ]}
+         unit='BKU'
+         dbuPaths={{ local: scope('sumSeries(bku.*.local)') }}
+         servicePaths={{ local: scope('sumSeries(bku.*.local_bytes)') }}
+         pivotPath=''
+         planDbu={planBku}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Backup storage — BKU (local backups on the cluster pool; plan = prov-db-bku)"
+       />
+        {/* Backup archive (BAU) — what restic holds OFF the cluster on S3/SFTP, after
+            deduplication. Same 20 GB unit, NO plan (no plan line): tracked and billed on
+            usage at cloud18-marketplace-bau-price, unless the cluster's remote repository is
+            the client's own storage (cloud18-marketplace-bau-client-storage: tracked, not
+            priced). */}
+        <ChartGroupedDBU
+         context={context}
+         axes={[
+           { key: 'remote', label: 'Remote archive', ratio: storageUnitBytes, light: '#3f8fd0', dark: '#5aa8e6' },
+         ]}
+         unit='BAU'
+         dbuPaths={{ remote: scope('sumSeries(bau.*.units)') }}
+         servicePaths={{ remote: scope('sumSeries(bau.*.bytes)') }}
+         pivotPath=''
+         planDbu={0}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Backup archive — BAU (remote restic archive on S3/SFTP; no plan, billed on usage)"
+       />
+        {selectedCluster?.gatewayUnits && (
+        <ChartGroupedDBU
+         context={context}
+         axes={[
+           { key: 'egress', label: 'Gateway traffic', ratio: (selectedCluster?.gatewayUnits?.unitMbit || 100), light: '#d08a3f', dark: '#e6a85a' },
+         ]}
+         unit='GWU'
+         dbuPaths={{ egress: scope('sumSeries(gwu.*.units)') }}
+         servicePaths={{ egress: scope('sumSeries(gwu.*.mbps)') }}
+         pivotPath=''
+         planDbu={selectedCluster?.gatewayUnits?.plan ?? 0}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Gateway network — GWU (Mb/s in + out through the Cloud18 gateways; 1 GWU = unit Mb/s; plan = gateway capacity / clusters present)"
+       />
+        )}
+        {/* Internal network: what each unit moves on its own interface, both directions, in
+            Mb/s -- the pod eth0 under an orchestrator, the host NICs on premise, read by the
+            same jobs scripts that push the cgroup maxima (cluster_net.go). Monitoring only:
+            no unit, no plan, no price. IN and OUT are two charts, never summed (Stéphane),
+            each stacked per service so the top of the stack is the cluster. */}
+        <ChartTimeSeriesLine
+          title='Internal network IN — Mb/s received per service, stacked (top of the stack = cluster)'
+          yLabel='Mb/s in'
+          yTickFormat={mbpsTick}
+          stacked
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('net.*.database.*.rx_mbps'), expand: true, labelNode: 3, label: 'db' },
+            { target: scope('net.*.proxy.*.rx_mbps'), expand: true, labelNode: 3, label: 'proxy' },
+            { target: scope('net.*.app.*.rx_mbps'), expand: true, labelNode: 3, label: 'app' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Internal network OUT — Mb/s sent per service, stacked (top of the stack = cluster)'
+          yLabel='Mb/s out'
+          yTickFormat={mbpsTick}
+          stacked
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('net.*.database.*.tx_mbps'), expand: true, labelNode: 3, label: 'db' },
+            { target: scope('net.*.proxy.*.tx_mbps'), expand: true, labelNode: 3, label: 'proxy' },
+            { target: scope('net.*.app.*.tx_mbps'), expand: true, labelNode: 3, label: 'app' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
       </GraphSection>
 
       <GraphSection heading='InnoDB'>

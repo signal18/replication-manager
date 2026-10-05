@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -312,7 +313,7 @@ func (collector *Collector) GetObjectConfigFileV3(namespace, kind, service strin
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err := client.GetObjectConfigFile(ctx, namespace, oKind, service, collector.RequestCloserV3())
+	resp, err := client.GetObjectConfigFile(ctx, namespace, oKind, service, nil, collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object config for %s/%s/%s: %w", namespace, kind, service, err)
 	}
@@ -852,6 +853,126 @@ func (collector *Collector) PGUpdateInstanceV3(node, svc, rid string) error {
 	return nil
 }
 
+// ResizeVolumeV3 asks the daemon to GROW the volume object <namespace>/vol/<name> to size
+// ("50g"): POST .../vol/<name>/action/resize (om3 rc40, `om vol resize SIZE`). The size is
+// written to the volume configuration and every node converges to it; the answer is a
+// queued orchestration, not a result: the volume's own status tells whether it landed. A
+// resize only grows, and on rc40 the zfs driver moves the refquota of the head dataset
+// (the quota keyword follows in a later om3 release). Returns the orchestration id.
+func (collector *Collector) ResizeVolumeV3(namespace, volname, size string) (string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	body := apiv3.PostObjectActionResize{Size: &size}
+	resp, err := client.PostObjectActionResizeWithResponse(ctx, namespace, apiv3.Kind("vol"), volname, &apiv3.PostObjectActionResizeParams{}, body, collector.RequestCloserV3())
+	if err != nil {
+		return "", err
+	}
+	if resp.JSON200 != nil {
+		return resp.JSON200.OrchestrationID.String(), nil
+	}
+	return "", fmt.Errorf("volume resize refused on %s/vol/%s (size %s): status %d: %s", namespace, volname, size, resp.StatusCode(), strings.TrimSpace(string(resp.Body)))
+}
+
+// GetVolumeSizeV3 reads DEFAULT.size of the volume object <namespace>/vol/<name> in bytes
+// (om3 writes it as "4gi", "3g" or a plain byte count).
+func (collector *Collector) GetVolumeSizeV3(namespace, volname string) (int64, error) {
+	raw, err := collector.GetObjectConfigFileV3(namespace, "vol", volname)
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "size") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) != 2 || strings.TrimSpace(kv[0]) != "size" {
+			continue
+		}
+		return ParseOpenSVCSize(strings.TrimSpace(kv[1]))
+	}
+	return 0, fmt.Errorf("no DEFAULT.size in %s/vol/%s", namespace, volname)
+}
+
+// ParseOpenSVCSize parses an om3 size expression ("4gi", "3g", "512m", "1t", "4294967296")
+// into bytes; the k/m/g/t suffixes are binary multiples, as om3 evaluates them.
+func ParseOpenSVCSize(s string) (int64, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return 0, fmt.Errorf("empty size")
+	}
+	mult := int64(1)
+	for _, suf := range []struct {
+		s string
+		m int64
+	}{{"tib", 1 << 40}, {"gib", 1 << 30}, {"mib", 1 << 20}, {"kib", 1 << 10}, {"tb", 1 << 40}, {"gb", 1 << 30}, {"mb", 1 << 20}, {"kb", 1 << 10}, {"ti", 1 << 40}, {"gi", 1 << 30}, {"mi", 1 << 20}, {"ki", 1 << 10}, {"t", 1 << 40}, {"g", 1 << 30}, {"m", 1 << 20}, {"k", 1 << 10}} {
+		if strings.HasSuffix(s, suf.s) {
+			mult = suf.m
+			s = strings.TrimSuffix(s, suf.s)
+			break
+		}
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size %q: %w", s, err)
+	}
+	return int64(f * float64(mult)), nil
+}
+
+// WaitVolumeResizeV3 follows the queued resize of <namespace>/vol/<name> through the
+// instance monitors: "resizing" while a stage runs, then "idle" when the volume converged
+// or "resize failed" when a stage refused (the reason is in the volume's om logs). Returns
+// the final monitor state, or "timeout" when nothing settled within timeout.
+func (collector *Collector) WaitVolumeResizeV3(namespace, volname string, timeout time.Duration) (string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return "", err
+	}
+	path := apiv3.PathOptional(namespace + "/vol/" + volname)
+	deadline := time.Now().Add(timeout)
+	sawResizing := false
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+		resp, err := client.GetInstancesWithResponse(ctx, &apiv3.GetInstancesParams{Path: &path}, collector.RequestCloserV3())
+		cancel()
+		if err != nil {
+			return "", err
+		}
+		failed, resizing := false, false
+		if resp.JSON200 != nil {
+			for _, it := range resp.JSON200.Items {
+				if it.Data.Monitor == nil {
+					continue
+				}
+				switch it.Data.Monitor.State.String() {
+				case "resize failed":
+					failed = true
+				case "resizing":
+					resizing = true
+				}
+			}
+		}
+		if failed {
+			return "resize failed", nil
+		}
+		if resizing {
+			sawResizing = true
+		} else if sawResizing || time.Since(deadline.Add(-timeout)) > 4*time.Second {
+			// settled (idle everywhere) after a resize was seen, or nothing ever started
+			// resizing in the first seconds: the orchestration is done either way.
+			return "idle", nil
+		}
+		if time.Now().After(deadline) {
+			return "timeout", nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
 func (collector *Collector) StopServiceV3(cluster, svc string) error {
 
 	svcparts := strings.SplitN(svc, "/", 3)
@@ -956,6 +1077,10 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 			rpparams = params.ToRunParams()
 		}
 		resp, err = client.PostInstanceActionRun(ctx, node, namespace, oKind, service, rpparams, collector.RequestCloserV3())
+	case "freeze":
+		resp, err = client.PostInstanceActionFreeze(ctx, node, namespace, oKind, service, nil, collector.RequestCloserV3())
+	case "unfreeze":
+		resp, err = client.PostInstanceActionUnfreeze(ctx, node, namespace, oKind, service, nil, collector.RequestCloserV3())
 	case "clear":
 		resp, err = client.PostInstanceClear(ctx, node, namespace, oKind, service, collector.RequestCloserV3())
 	default:
@@ -979,6 +1104,27 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	}
 
 	return body, nil
+}
+
+// FreezeInstanceV3 freezes one instance: the daemon's HA orchestration leaves it alone, so a
+// user stop holds whatever status refresh lands during the stop (om3 rc40, opensvc/om3#1142).
+func (collector *Collector) FreezeInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "freeze", nil)
+	return err
+}
+
+// UnfreezeInstanceV3 gives the instance back to the orchestration.
+func (collector *Collector) UnfreezeInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "unfreeze", nil)
+	return err
 }
 
 func (collector *Collector) ClearInstanceV3(node, svc string) error {

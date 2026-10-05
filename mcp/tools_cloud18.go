@@ -157,7 +157,7 @@ func (s *MCPServer) registerCloud18Tools() {
 			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts (latest MariaDB long-term-support release)")),
 			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5")),
 			mcp.WithString("proxy", mcp.Description("haproxy (default), proxysql or none")),
-			mcp.WithString("apps", mcp.Description("Comma-separated app template names to deploy, e.g. phpmyadmin")),
+			mcp.WithString("apps", mcp.Description("Comma-separated app template names to deploy, resolved against the infrastructure's templates (phpmyadmin finds phpmyadmin/phpmyadmin); default phpmyadmin, none to deploy no app. The answer gives each app's URL, live once provisioned")),
 			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: create")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -195,7 +195,22 @@ func (s *MCPServer) registerCloud18Tools() {
 	)
 
 	s.addTool(
-		mcp.NewTool("create-cloud18-cluster-token",
+		mcp.NewTool("get-cloud18-cluster-price",
+			mcp.WithDescription("Get what a cluster costs this month on a Cloud18 infrastructure, in EUR, as that infrastructure's resource manager integrates it per monitoring period: the partner and the sponsors, and per unit family (database plan in DBU, stateful applications in DBU, applications and proxies in APU, local backups in BKU, archives in BAU) the plan, the over-commit and the under-commit in unit-months, the unit price, the EUR accrued, the current rate and the projection to the end of the month. Use it after cloud18-create-cluster or a plan change to tell the user what they will pay."),
+			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure")),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster on that infrastructure")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			out, err := s.repman.Cloud18GetClusterPrice(req.GetString("infrastructure", ""), req.GetString("cluster_name", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("cloud18-create-cluster-token",
 			mcp.WithDescription("Mint, on a Cloud18 infrastructure and as this instance's Cloud18 identity (the sponsor of the cluster), an API token scoped to one cluster there, and return the infrastructure's MCP endpoint configuration to add as a second MCP server. This is how an assistant gets to operate a cluster created with cloud18-create-cluster: tokens never cross infrastructures, the sponsor mints one on the infrastructure that hosts the cluster. The token carries the sponsor's grants on that cluster, narrowed to 'grants' if given; it is returned once and not stored. Needs the global-admin-show grant here; a token also needs the every-cluster scope."),
 			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure hosting the cluster")),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster on that infrastructure")),

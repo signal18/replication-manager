@@ -544,11 +544,6 @@ func (repman *ReplicationManager) ProduceCloud18ConnectivityStates() {
 	}
 }
 
-// RefreshCreditsFromCRM is retained for future use; credit usage is now computed
-// from per-app ProvAppCreditUsed totals and is no longer sourced from CRM.
-func (repman *ReplicationManager) RefreshCreditsFromCRM() {
-}
-
 // probeHTTPReachability performs a HEAD request to url and returns an error if
 // the host is unreachable or returns a 5xx server error.  4xx responses are
 // treated as reachable (the endpoint exists; access control is expected).
@@ -590,6 +585,9 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 	var cCores, cMemMB, capCores, capMemMB float64
 	seen := map[string]bool{}
 	for _, cl := range clusters {
+		if !cl.IsProvision {
+			continue // an unprovisioned cluster reserves nothing on the infrastructure
+		}
 		// Both contracts are the per-instance reservation ROLLUPS, not the legacy single
 		// numbers: DBU = Σ per-node prov-db-dbu (PlanByCluster); APU = Σ proxies at prov-proxy-apu
 		// + Σ apps at their own config (AppPlanByCluster).
@@ -615,6 +613,38 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 	}
 	if repman.Conf.ResourceManagerInfraMemoryMB > 0 {
 		capMemMB = repman.Conf.ResourceManagerInfraMemoryMB
+	}
+	// Feed the physical ledger (plan pot / over-commit pot) with the same capacity, plus the
+	// disk and iops the agents do not report (config overrides only).
+	// Billing: the prices in force, the statement clock (save every minute, month
+	// rollover) and, once graphite answers, the re-integration of the month to date.
+	repman.resourceManager.SetPrices(repman.billingPrices())
+	repman.resourceManager.Tick(time.Now())
+	if repman.Conf.GraphiteMetrics && repman.Conf.GraphiteEmbedded {
+		names := make([]string, 0, len(clusters))
+		for _, cl := range clusters {
+			names = append(names, cl.Name)
+		}
+		repman.resourceManager.BackfillFromGraphite(names, time.Now())
+	}
+	repman.resourceManager.SetInfraCapacity(&cluster.AgentCapacity{
+		Cores: capCores, MemMB: capMemMB,
+		DiskGB: repman.Conf.ResourceManagerInfraDiskGB, Iops: repman.Conf.ResourceManagerInfraIops,
+	})
+	// The ledger's precedence rule: once a plan sale leaves the over-commit pot negative,
+	// the clusters holding resources above their plan must give them back. Surface it as a
+	// global state naming them; the borrow gate already refuses any further loan.
+	if l := repman.resourceManager.Ledger(); l.Known && l.Overdrawn {
+		var who []string
+		for _, cl := range clusters {
+			if b := repman.resourceManager.BorrowedByCluster(cl.Name); b != (cluster.PhysicalUsage{}) {
+				who = append(who, fmt.Sprintf("%s (%.1f cores, %.0f MB, %.0f GB)", cl.Name, b.CpuCores, float64(b.MemBytes)/1024/1024, float64(b.DiskBytes)/1024/1024/1024))
+			}
+		}
+		repman.SetState("GWARN017", state.State{ErrType: "WARNING", ErrKey: "GWARN017",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN017"], fmt.Sprintf("over-commit pot %.1f cores / %.0f MB / %.0f GB; borrowed by %s",
+				l.OverCommitPot.Cores, l.OverCommitPot.MemBytes/1024/1024, l.OverCommitPot.DiskBytes/1024/1024/1024, strings.Join(who, ", "))),
+			ErrFrom: "REPMAN"})
 	}
 	q := repman.Conf.ResourceManagerInfraQuotaPct / 100.0
 	if q <= 0 {

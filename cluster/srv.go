@@ -199,6 +199,13 @@ type ServerMonitor struct {
 	binlogEventSyncer           *replication.BinlogSyncer   // persistent syncer for security event scanning
 	binlogEventStreamer         *replication.BinlogStreamer // stream open on the current binlog file
 	binlogEventFile             string                      // binlog filename the streamer is attached to
+	binlogEventServerID         uint32                      // replica server-id leased for the open stream (pool, #1886)
+	binlogEventRelease          func()                      // returns the lease to the pool
+	binlogScanResets            int                         // hard resets of the event scanner stream in the current window (#1886)
+	binlogScanFirstReset        time.Time                   // start of the reset window
+	binlogScanLastReset         time.Time                   // last hard reset
+	binlogScanBackoffUntil      time.Time                   // no reopen before this instant
+	binlogScanBackoff           time.Duration               // backoff in force, for the state text
 	MonitorTime                 int64                       `json:"-"`
 	PrevMonitorTime             int64                       `json:"-"`
 	maxConn                     string                      `json:"maxConn"` // used to back max connection for failover
@@ -265,6 +272,9 @@ type ServerMonitor struct {
 	HasConfigPathChanged            bool
 	HasConfigDiff                   bool                                 `json:"hasConfigDiff"`         // Indicates if there are differences between deployed and generated config
 	IssuedBufferPoolBytes           int64                                `json:"issuedBufferPoolBytes"` // the innodb_buffer_pool_size a live memory resize actually SENT (SET GLOBAL); the in-flight gate compares the runtime with THIS, never with the configurator's latest wish (#1822); 0 = nothing issued
+	DeployImageOverride             string                               `json:"-"`                     // set by a rolling restart: render the deployment with the image the service runs, not prov-db-image (#1861)
+	DiskQuotaAbove                  *DiskQuotaAbove                      `json:"diskQuotaAbove"`        // tracked: the volume stays above the declared disk after a shrink the orchestrator ignored (WARN0221)
+	DiskResizeRefused               *DiskResizeRefusal                   `json:"diskResizeRefused"`     // tracked: the last volume grow the orchestrator refused on this server (WARN0226), nil once one goes through
 	PendingCgroupShrink             bool                                 `json:"-"`                     // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
 	pendingK8sMemoryResize          atomic.Pointer[K8sMemoryResizeState] // a native Kubernetes Pod memory resize was requested and is awaiting kubelet confirmation (see cluster_resize_k8s.go); written from the resize-dispatch path, read/cleared from the monitor tick -- different goroutines, so atomic not a plain pointer (GetPendingK8sMemoryResize/SetPendingK8sMemoryResize below)
 	RestartNode                     string                               // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
@@ -277,6 +287,8 @@ type ServerMonitor struct {
 	rejoinInProgress                atomic.Bool                          // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
 	reseedFromRejoin                atomic.Bool                          // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
 	rejoinReseedStart               atomic.Int64                         // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
+	reseedFailedAt                  atomic.Int64                         // unix-nanos of the last reseed job that reported a failure (#1866): a reseed armed before it is reconciled as FAILED whatever the replica looks like
+	reseedLastError                 atomic.Value                         // string: the error of that failure
 	reseedInfo                      atomic.Value                         // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
 	reseedBytes                     atomic.Int64                         // raw bytes streamed so far (compressed input; no decompression accounting yet)
 	reseedTotal                     atomic.Int64                         // total compressed backup file size (0 = unknown)

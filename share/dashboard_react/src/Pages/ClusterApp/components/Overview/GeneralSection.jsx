@@ -1,7 +1,8 @@
 import { Box, Flex, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Text, Tooltip } from '@chakra-ui/react'
 import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
+import { getUnitRatios } from '../../../../utility/unitRatios';
 import TableType2 from '../../../../components/TableType2';
 import { previewAppTemplateContent, previewResetAppTemplateImpact, resetAppFromTemplate, saveAppAsTemplate, setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
@@ -16,6 +17,7 @@ import CopyTextModal from '../../../../components/Modals/CopyTextModal';
 import ConfirmModal from '../../../../components/Modals/ConfirmModal';
 import { convertSize } from '../../../../utility/common';
 import Gauge from '../../../../components/Gauge';
+import RMSwitch from '../../../../components/RMSwitch';
 
 function AppUnitSlider({ value, min, max, step, isDisabled, formatFn, onChange }) {
   const [draft, setDraft] = useState(null)
@@ -85,9 +87,11 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     return [{ name: 'Select Template', value: '' }, ...templateList.map(item => ({ name: item, value: item }))]
   }, [dockerTemplates])
   const {
-    provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '',
-    provAppAgents = '', provAppHaTopology = '', provAppCreditPlanned = 0,
-    provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = ''
+    provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppStartTimeout = '',
+    provAppAgents = '', provAppHaTopology = '',
+    provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
+    appS3Provider = false, appStateful = false,
+    appDbAutoCreate = false, appDbOwned = false, appDbSchema = '', appDbUser = ''
   } = appConfig;
 
   // Effective mode resolution mirrors backend logic:
@@ -105,9 +109,15 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   // Preserve raw stored values on read; the first unit-based write normalizes them.
   const isLegacyAppInUnitCluster = isUnitMode && appSizingMode !== 'unit'
 
-  const baseCore = 1
-  const baseMem = 4096
-  const baseDisk = 10
+  // 1 unit = the manager's ratio of the app's PROFILE (resource-manager-ratio-apu, or
+  // -dbu when the app is stateful), never a number typed here.
+  const clusterData = useSelector((state) => state.cluster?.clusterData)
+  const ratios = getUnitRatios(clusterData)
+  const unitRatio = appStateful ? ratios.database : ratios.compute
+  const unitName = appStateful ? 'DBU' : 'APU'
+  const baseCore = unitRatio.coresPerUnit || 1
+  const baseMem = unitRatio.memMBPerUnit || 1
+  const baseDisk = unitRatio.diskGBPerUnit || 1
 
   // Derive unit from raw stored resources (used for legacy apps that haven't been normalised yet).
   const derivedUnitFromResources = useMemo(() => {
@@ -120,40 +130,19 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
       memMB ? memMB / baseMem : 0,
       diskGB ? diskGB / baseDisk : 0
     )))
-  }, [provAppCpuCores, provAppMemory, provAppDiskSize])
+  }, [provAppCpuCores, provAppMemory, provAppDiskSize, baseCore, baseMem, baseDisk])
 
-  const creditStep = useMemo(() => {
-    const raw = provAppAgents
-    const list = typeof raw === 'string' ? raw.split(',').filter((a) => a.trim()) : (Array.isArray(raw) ? raw.filter(Boolean) : [])
-    return list.length || 1
-  }, [provAppAgents])
-
-  const clusterCredits = config?.cloud18ApplicationCredits || 0
-  const clusterCreditsUsed = config?.cloud18ApplicationCreditsUsed || 0
-  const clusterCreditsAvailable = clusterCredits > 0 ? clusterCredits - clusterCreditsUsed + provAppCreditPlanned : 0
-
-  const appUnitIsValid = isLegacyAppInUnitCluster
-    ? true
-    : isUnitMode && creditStep > 0 && provAppCreditPlanned > 0
-    ? provAppCreditPlanned % creditStep === 0
-    : true
-  const appUnitValue = (appUnitIsValid && creditStep > 0 && provAppCreditPlanned > 0)
-    ? (isLegacyAppInUnitCluster ? derivedUnitFromResources : provAppCreditPlanned / creditStep)
-    : (isLegacyAppInUnitCluster ? derivedUnitFromResources : 0)
+  // The unit count is DERIVED from the declared shape, never stored (tracked in graphite
+  // as apu.<cluster>.<app>.plan_apu / plan_dbu). The slider is a sizing helper: it writes
+  // the three prov-app-* values at the ratio through the prov-app-units setting.
   const maxAppUnit = 256
-
-  const sliderDisplayValue = useMemo(() => {
-    if (isUnitMode && !isLegacyAppInUnitCluster && appUnitIsValid && creditStep > 0 && provAppCreditPlanned > 0) {
-      return provAppCreditPlanned / creditStep
-    }
-    return derivedUnitFromResources || 1
-  }, [isUnitMode, isLegacyAppInUnitCluster, appUnitIsValid, creditStep, provAppCreditPlanned, derivedUnitFromResources])
+  const sliderDisplayValue = derivedUnitFromResources || 1
 
   const formatAppUnit = useCallback((unit) => {
     const mem = unit * baseMem
     const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
-    return `${unit} App Unit — ${unit * baseCore} cores, ${memLabel} mem, ${unit * baseDisk}GB disk per agent`
-  }, [])
+    return `${unit} ${unitName} — ${unit * baseCore} cores, ${memLabel} mem, ${unit * baseDisk}GB disk per instance`
+  }, [unitName, baseCore, baseMem, baseDisk])
 
   const agentList = useMemo(() => {
     const raw = config?.provAppAgents || config?.provDbAgents
@@ -164,6 +153,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
 
   const onSaveDockerImage = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value })), [clusterName, appId, dispatch])
   const onSaveDockerCmd = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-cmd', value: value })), [clusterName, appId, dispatch])
+  const onSaveStartTimeout = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-start-timeout', value: value })), [clusterName, appId, dispatch])
   const onSaveAppAsTemplate = useCallback(() => dispatch(saveAppAsTemplate({ clusterName: clusterName, appId: appId, template: appName })), [clusterName, appId, appName, dispatch])
   const onResetAppFromTemplate = useCallback((value) => {
     const templateName = typeof value === 'string' ? value : value?.value || value?.name || ''
@@ -200,11 +190,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     const newList = Array.isArray(value)
       ? value.filter(Boolean)
       : (typeof value === 'string' ? value.split(',').filter(a => a.trim()) : [])
-    // Always dispatch agent update; backend handles credit recalculation for unit mode
+    // The shape is per instance: an agent change never resizes anything.
     dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: newList.join(',') }))
   }, [clusterName, appId, dispatch])
 
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
+  const onS3ProviderChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-s3-provider', value: appS3Provider ? 'false' : 'true' })) }, [clusterName, appId, appS3Provider, dispatch])
+  const onDbAutoCreateChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-auto-create', value: appDbAutoCreate ? 'false' : 'true' })) }, [clusterName, appId, appDbAutoCreate, dispatch])
+  const onDbOwnedChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-owned', value: appDbOwned ? 'false' : 'true' })) }, [clusterName, appId, appDbOwned, dispatch])
+  const onSaveDbSchema = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-schema', value: value })), [clusterName, appId, dispatch])
+  const onSaveDbUser = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-user', value: value })), [clusterName, appId, dispatch])
+  const onSaveDbPass = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-pass', value: value })), [clusterName, appId, dispatch])
+  const onStatefulChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-stateful', value: appStateful ? 'false' : 'true' })) }, [clusterName, appId, appStateful, dispatch])
   const onPreviewTemplate = useCallback(() => {
     if (!provAppTemplate) {
       return
@@ -239,6 +236,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             confirmTitle="Docker Image Change"
             confirmBody='Are you sure you want to change "prov-app-docker-img" to: '
             onSave={onSaveDockerImage}
+          />
+        )
+      },
+      {
+        key: 'Start Timeout',
+        value: (
+          <TextForm
+            value={provAppStartTimeout}
+            placeholder='cluster default (prov-app-start-timeout, 2m)'
+            confirmTitle="Start Timeout Change"
+            confirmBody='Start and image pull timeout of the container in the orchestrator (2m, 15m). Change "prov-app-start-timeout" to: '
+            onSave={onSaveStartTimeout}
           />
         )
       },
@@ -316,9 +325,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             values={provAppAgents}
             confirm={true}
             splitConfirm={true}
-            confirmTitle={isUnitMode && !isLegacyAppInUnitCluster
-              ? `Confirm agent change — App Unit stays at ${appUnitValue || 1} per agent, planned credits will be updated`
-              : `Confirm agent change`}
+            confirmTitle={`Confirm agent change (the per-instance shape is unchanged; a flex app runs one instance per agent)`}
             onChange={onAgentsChange}
             parentStyles={styles}
           />
@@ -337,6 +344,84 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
           />
         )
       },
+      {
+        key: 'S3 Provider (storage app)',
+        value: (
+          <RMSwitch
+            confirmTitle={`Confirm switch app-s3-provider to ${appS3Provider ? 'off' : 'on'}? (metering rule: requires the sales-pricing grant)`}
+            onChange={onS3ProviderChange}
+            isChecked={!!appS3Provider}
+            isDisabled={user?.grants['sales-pricing'] == false}
+          />
+        )
+      },
+      {
+        key: 'Database (auto-create)',
+        value: (
+          <RMSwitch
+            confirmTitle={`Confirm switch app-db-auto-create to ${appDbAutoCreate ? 'off' : 'on'}? On: the app asks the cluster for its own schema, user and password, created at provision; an existing schema or user is never touched (refused, APPERR008).`}
+            onChange={onDbAutoCreateChange}
+            isChecked={!!appDbAutoCreate}
+          />
+        )
+      },
+      ...(appDbAutoCreate ? [
+        {
+          key: 'Database Schema',
+          value: (
+            <TextForm
+              value={appDbSchema}
+              confirmTitle="Database Schema Change"
+              confirmBody='Schema created for the app at provision ("{{app.db.schema}}" in templates). Change "app-db-schema" to: '
+              onSave={onSaveDbSchema}
+            />
+          )
+        },
+        {
+          key: 'Database User',
+          value: (
+            <TextForm
+              value={appDbUser}
+              confirmTitle="Database User Change"
+              confirmBody='User created for the app at provision ("{{app.db.user}}" in templates). Change "app-db-user" to: '
+              onSave={onSaveDbUser}
+            />
+          )
+        },
+        {
+          key: 'Database Password',
+          value: (
+            <TextForm
+              value=''
+              placeholder='generated at add; enter a value to rotate'
+              confirmTitle="Database Password Change"
+              confirmBody='Stored encrypted; on an owned database the user password is rotated at once. Change "app-db-pass" to: '
+              onSave={onSaveDbPass}
+            />
+          )
+        },
+        {
+          key: 'Database Owned',
+          value: (
+            <RMSwitch
+              confirmTitle={`Confirm switch app-db-owned to ${appDbOwned ? 'off' : 'on'}? The ownership mark set by the provision that created the schema and the user; set it by hand only when they belong to this app.`}
+              onChange={onDbOwnedChange}
+              isChecked={!!appDbOwned}
+            />
+          )
+        },
+      ] : []),
+      {
+        key: 'Stateful (accounted as DBU)',
+        value: (
+          <RMSwitch
+            confirmTitle={`Confirm switch app-stateful to ${appStateful ? 'off' : 'on'}? A stateful app reserves and bills whole DBU (Database ratio) instead of APU. (metering rule: requires the sales-pricing grant)`}
+            onChange={onStatefulChange}
+            isChecked={!!appStateful}
+            isDisabled={user?.grants['sales-pricing'] == false}
+          />
+        )
+      },
     ]
 
     rows.push({
@@ -345,12 +430,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
         <Flex direction='column' gap={4} w='100%'>
           {isUnitMode && isLegacyAppInUnitCluster && (
             <Text fontSize='xs' color='orange.500'>
-              Legacy resource values preserved. The next App Unit edit will normalize this app (derived: {derivedUnitFromResources} App Unit).
-            </Text>
-          )}
-          {isUnitMode && !appUnitIsValid && (
-            <Text fontSize='sm' color='red.500'>
-              Inconsistent state: {provAppCreditPlanned} credit{provAppCreditPlanned !== 1 ? 's' : ''} cannot be evenly distributed across {creditStep} agent{creditStep !== 1 ? 's' : ''}. Update agents or credits to resolve.
+              Legacy resource values preserved. The next unit edit snaps this app onto whole {unitName} (derived: {derivedUnitFromResources} {unitName}).
             </Text>
           )}
           <AppUnitSlider
@@ -361,21 +441,18 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             step={1}
             formatFn={formatAppUnit}
             onChange={(unit) => {
-              const credits = unit * creditStep
               const needsModeSwitch = provAppSizingMode !== 'unit'
-              const exceedsPool = clusterCredits > 0 && clusterCreditsAvailable > 0 && credits > clusterCreditsAvailable
-              const poolWarning = exceedsPool ? ` — ⚠ exceeds available pool (${Math.floor(clusterCreditsAvailable / creditStep)} App Unit free)` : ''
               setAppUnitConfirmState({
                 isOpen: true,
                 title: needsModeSwitch
-                  ? `Switch to App Unit: ${unit} App Unit — ${formatAppUnit(unit)} × ${creditStep} agent(s) = ${credits} credits${poolWarning}`
-                  : `Confirm App Unit change to ${unit} — ${formatAppUnit(unit)} × ${creditStep} agent(s) = ${credits} credits${poolWarning}`,
+                  ? `Switch to unit sizing: ${formatAppUnit(unit)} (reprovision needed)`
+                  : `Confirm ${formatAppUnit(unit)} (reprovision needed)`,
                 handler: () => {
-                  const saveCredits = () => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-credit-planned', value: credits }))
+                  const saveUnits = () => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-units', value: unit }))
                   if (needsModeSwitch) {
-                    dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-sizing-mode', value: 'unit' })).unwrap().then(saveCredits)
+                    dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-sizing-mode', value: 'unit' })).unwrap().then(saveUnits)
                   } else {
-                    saveCredits()
+                    saveUnits()
                   }
                 }
               })
@@ -471,13 +548,13 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     onSaveAppAsTemplate, templateOptions, provAppTemplate, onPreviewTemplate,
     onResetAppFromTemplate, onRefreshAndResetAppFromTemplate,
     agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions,
+    appS3Provider, onS3ProviderChange, appStateful, onStatefulChange,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,
     isLegacyAppInUnitCluster, derivedUnitFromResources,
     substitution, user,
-    sliderDisplayValue, appUnitValue, appUnitIsValid, maxAppUnit, creditStep, formatAppUnit, clusterName, appId, dispatch,
-    provAppCreditPlanned, provAppCpuCores, provAppMemory, provAppDiskSize,
-    clusterCreditsAvailable, clusterCredits,
+    sliderDisplayValue, maxAppUnit, formatAppUnit, unitName, clusterName, appId, dispatch,
+    provAppCpuCores, provAppMemory, provAppDiskSize,
   ])
 
   return (
@@ -545,8 +622,6 @@ GeneralSection.propTypes = {
     provAppMemory: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     provAppDiskSize: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     provAppSizingMode: PropTypes.string,
-    cloud18ApplicationCredits: PropTypes.number,
-    cloud18ApplicationCreditsUsed: PropTypes.number,
   }),
   appConfig: PropTypes.shape({
     provAppDockerImg: PropTypes.string,
@@ -554,7 +629,6 @@ GeneralSection.propTypes = {
     provAppTemplate: PropTypes.string,
     provAppAgents: PropTypes.oneOfType([PropTypes.array, PropTypes.string]),
     provAppHaTopology: PropTypes.string,
-    provAppCreditPlanned: PropTypes.number,
     provAppSizingMode: PropTypes.string,
     provAppCpuCores: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     provAppMemory: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),

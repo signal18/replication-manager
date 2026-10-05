@@ -15,7 +15,7 @@ import ConfigModal from '../Modals/ConfigModal'
 import CrashesModal from '../Modals/CrashesModal'
 import ReseedProgressModal from '../Modals/ReseedProgressModal'
 import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
-import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings, MdHistory, MdHourglassTop } from 'react-icons/md'
+import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings, MdHistory, MdHourglassTop, MdBackup } from 'react-icons/md'
 import { HiRefresh } from 'react-icons/hi'
 import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
@@ -422,6 +422,47 @@ function Navbar({ username, user }) {
                         blink={true}
                         bubbleStyle={{
                           background: 'var(--chakra-colors-orange-500)',
+                          color: 'white',
+                        }}
+                        showText={!isMobile}
+                      />
+                    </Box>
+                  </Tooltip>
+                )
+              })()}
+              {(clusterData?.backupsInProgress || []).length > 0 && (() => {
+                // LIVE: every running backup carries its tracked progress on the cluster
+                // object (backupsInProgress, refreshed each tick): level running = kind +
+                // since when, bytes = against the previous backup's size, schema = per
+                // table from the dump's verbose stream. A report, it gates nothing.
+                const rows = clusterData.backupsInProgress
+                const fmtBytes = (b) => (b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : b >= 1e3 ? (b / 1e3).toFixed(0) + ' KB' : b + ' B')
+                const fmtDur = (sec) => (sec >= 3600 ? Math.floor(sec / 3600) + 'h' + Math.floor((sec % 3600) / 60) + 'm' : sec >= 60 ? Math.floor(sec / 60) + 'm' + (sec % 60) + 's' : sec + 's')
+                const line = (r) => {
+                  const who = r.server ? `${r.kind} ${r.server}` : `${r.kind} ${r.task}`
+                  const pct = r.percent >= 0 ? `${Math.round(r.percent)}%` : fmtBytes(r.bytesDone || 0)
+                  const rate = r.rateBytesPerS > 0 ? ` at ${fmtBytes(r.rateBytesPerS)}/s` : ''
+                  const eta = r.etaSeconds >= 0 ? `, ETA ${fmtDur(r.etaSeconds)}` : ''
+                  const tbl = r.currentTable ? `, table ${r.currentTable} (${r.tablesDone}/${r.tablesTotal})` : ''
+                  const since = r.started ? `, since ${new Date(r.started).toLocaleTimeString()}` : ''
+                  return `${who}: ${pct}${rate}${eta}${tbl}${since} [${r.level}]`
+                }
+                // rows come ranked by the server: the data dump first, then the binlog copy,
+                // then the archive push (which belongs to the previous backup)
+                const first = rows[0]
+                const kindLabel = { logical: 'Dump', physical: 'Backup', binlog: 'Binlog', archive: 'Archive' }[first.kind] || 'Backup'
+                const text = first.percent >= 0 ? `${kindLabel} ${Math.round(first.percent)}%` : kindLabel
+                return (
+                  <Tooltip as='div' label={rows.map(line).join('\n')} whiteSpace='pre-line' hasArrow>
+                    <Box>
+                      <AlertBadge
+                        colorScheme={'teal'}
+                        icon={MdBackup}
+                        text={text}
+                        count={rows.length}
+                        blink={true}
+                        bubbleStyle={{
+                          background: 'var(--chakra-colors-teal-500)',
                           color: 'white',
                         }}
                         showText={!isMobile}

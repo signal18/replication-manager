@@ -90,7 +90,7 @@ locally or in S3. Snapshots are versioned and can be browsed, purged, or restore
 
 When diagnosing a problem, always start with:
 1. get-cluster-health — overall status
-2. get-cluster-alerts — active errors and warnings
+2. get-cluster-alerts — open errors and warnings per module (ha, workload, security, schema); then list-cluster-logs with the matching log_type
 3. get-cluster-topology — server roles, replication state, lag
 
 Before any write operation (switchover, failover, bootstrap):

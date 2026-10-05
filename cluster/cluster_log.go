@@ -448,6 +448,24 @@ func (cluster *Cluster) LogPrintAllWorkloadStates() {
 	}
 }
 
+// LogPrintAllSchemaStates prints the schema advisory machine's transitions to the
+// schema buffer and schema.log, like the workload and security printers (the schema
+// machine had none: its findings appeared once at open and never as OPENED/RESOLV).
+func (cluster *Cluster) LogPrintAllSchemaStates() {
+	SM := cluster.SchemaStateMachine
+	if SM == nil {
+		return
+	}
+	if !cluster.runOnceAfterTopology {
+		for _, st := range SM.GetLastResolvedStates() {
+			cluster.logPrintStateTo(st, true, &cluster.LogSchema)
+		}
+	}
+	for _, st := range SM.GetLastOpenedStates() {
+		cluster.logPrintStateTo(st, false, &cluster.LogSchema)
+	}
+}
+
 func (cluster *Cluster) LogPrintAllSecurityStates() {
 	SM := cluster.SecurityStateMachine
 	if !cluster.runOnceAfterTopology {
@@ -495,7 +513,30 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 	logformat := "[%s] [%s] %s - " + format
 	logargs := []interface{}{cluster.Name, tag, padright(level, " ", 5), st.ErrKey, logDesc}
 
-	if cluster.tlog != nil && cluster.tlog.Len > 0 {
+	// The daemon line follows the buffer: a workload, security or schema state is
+	// written to its own log file (workload.log, security.log, schema.log) and to
+	// its own terminal buffer, never to the general ones -- the general cluster
+	// log (live buffer, CLI log, and the on-disk history the GUI pages through)
+	// carries HA/operational states only. A missing dedicated logger falls back
+	// to the main one, as before.
+	general := buf == cluster.htlog
+	daemon := cluster.Logrus
+	switch buf {
+	case &cluster.LogWorkload:
+		if cluster.WorkloadLogrus != nil {
+			daemon = cluster.WorkloadLogrus
+		}
+	case &cluster.LogSecurity:
+		if cluster.SecurityLogrus != nil {
+			daemon = cluster.SecurityLogrus
+		}
+	case &cluster.LogSchema:
+		if cluster.SchemaLogrus != nil {
+			daemon = cluster.SchemaLogrus
+		}
+	}
+
+	if general && cluster.tlog != nil && cluster.tlog.Len > 0 {
 		cluster.tlog.Add(fmt.Sprintf(logformat, logargs...))
 	}
 
@@ -529,7 +570,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 	if cluster.Conf.Daemon {
 		// wrap logrus levels
 		if resolved {
-			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
+			daemon.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
 			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["status"] = "RESOLV"
@@ -537,7 +578,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 				}
 			}
 		} else {
-			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
+			daemon.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
 			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["status"] = "OPENED"

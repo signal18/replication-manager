@@ -23,9 +23,9 @@ monitored clusters. Library `github.com/mark3labs/mcp-go`. Package `mcp/`
 - Tools call repman **in process** through the `RepmanProvider` interface (implemented by
   `*server.ReplicationManager` in `server/server_get.go`), not through the REST API.
 - 66 tools: 26 cluster, 22 database, 12 backup, 6 proxy, all registered (added 2026-09-25:
-  `run-sysbench`, `sysbench-cleanup`,
-  `last-crash-lost-event`, `server-backup-logical`, `server-logical-backup-splitdump`,
-  `server-restore-logical-backup`, `server-restore-physical-backup`). There is no global
+  `cluster-sysbench-run`, `cluster-sysbench-cleanup`,
+  `get-cluster-last-crash-lost-event`, `database-backup-logical`, `database-logical-backup-splitdump`,
+  `database-restore-logical-backup`, `database-restore-physical-backup`). There is no global
   read-only switch (removed 2026-09-25): read-only versus read-write is a property of the
   account or token the assistant authenticates with, decided per tool by the cluster ACL.
 - Resources `repman://status`, `repman://version`, `repman://clusters`,
@@ -124,6 +124,24 @@ without the subscription / email-acceptance chain; the partner is only informed.
 - Limit: `cloud18-self-service-max-clusters-per-user` (default 3), counted per SSO identity as
   the clusters where that identity holds the `sponsor` role (`countSponsoredClusters`), so a
   malicious user cannot flood the marketplace listing. Dropping a cluster frees a slot.
+- Enabled-script: `cloud18-self-service-clusters-enabled-script` (server scope), run by
+  `runSelfServiceEnabledScript` inside `selfServiceCheck` after `selfServiceCapable` and before
+  the per-user limit and the pool, and again by `selfServiceStatusFor` so the status endpoint
+  tells the truth. argv = identity, orchestrator; env REPMAN_IDENTITY/ORCHESTRATOR/
+  SPONSORED_CLUSTERS/NEEDED_DBU/NEEDED_APU/FREE_DBU/FREE_APU/BORROW_DBU/BORROW_APU.
+  Non-zero exit or a 30 s timeout = veto, reason = first output line (or the error). Can only
+  refuse more than the switch.
+- Can-borrow: `cloud18-self-service-clusters-can-borrow` (server scope). `selfServicePoolCheck`
+  returns `(borrowNote, err)`: when the plan pot is short and the flag is on, `CanBorrow` on the
+  Database profile for the DBU and the Compute profile for the APU decides; both ok = created on
+  borrowed capacity, `SelfServiceStatus.Borrowed = true` and the note carries the figures; either
+  short = refused with "cannot borrow either". The cluster still gets the default plan, so the
+  ledger shows the plan pot further overdrawn: the honest figure.
+- Born dynamic: `selfServiceBornDynamic` runs in `handlerMuxClusterAdd` on the self-service branch
+  before the first `cl.Save()`: on OpenSVC `prov-db-docker-run-args-limit` off (PG slice governs,
+  no WARN0214), on Kubernetes on (requests/limits pair = the in-place Pod resizer's opt-in), then
+  `prov-db-apply-dynamic-config` and `prov-db-dynamic-resource` on. Other orchestrators untouched.
+  Tests: `TestSelfServiceCanBorrow`, `TestSelfServiceEnabledScript`, `TestSelfServiceBornDynamic`.
 - `POST /api/clusters/actions/add/{name}` (`handlerMuxClusterAdd`) used to accept any
   authenticated user with no grant and never added the creator to the cluster. Now a local
   account needs `cluster-create` or `prov-cluster`; an SSO identity (JWT `AuthType=SSO`,
@@ -190,7 +208,7 @@ without the subscription / email-acceptance chain; the partner is only informed.
   would end after the first cluster.
 - `get-cloud18-cluster` (infrastructure, cluster_name): flags, servers, proxies, apps through
   the same session, to follow the provisioning. ACL: any authenticated principal.
-- `create-cloud18-cluster-token` (infrastructure, cluster_name, label, grants, expire_days):
+- `cloud18-create-cluster-token` (infrastructure, cluster_name, label, grants, expire_days):
   the answer to "how does the assistant operate the cluster it just created": tokens never
   cross infrastructures, so the sponsor mints one **on the infrastructure** (`POST
   /api/tokens` through the peer session, scope = that cluster, grants = the sponsor's ∩
@@ -217,3 +235,68 @@ sponsor account shape, per-identity limit, status); `mcp/acl_test.go` mapping co
 without principal or grant and passed with it, visibility of clusters, middleware 401 and
 security event); `server/api_token_test.go` `TestMCPAuthenticateAndAuthorize` (token
 authenticates, scope and grants applied, revoked token refused).
+
+## Tool naming rules (2026-10-01)
+
+Set with Stéphane after three renames in a row ("we need rules"): (1) reads are
+`<verb>-<domain>-<object>` with `list-` for several entries, `get-` for one object, `check-`
+for a verdict; (2) actions are `<domain>-<verb>[-<object>]`; (3) domains are the API's,
+`cluster`, `database` (never "server", to contrast with `proxy`), `proxy`, `cloud18`;
+(4) product words only (`local` / `archive` backups, never `restic`); (5) parameters
+`cluster_name`, `server_name` (host:port), `proxy_name`, `task_id`; (6) one tool = one REST
+route in `acl.go` (`TestEveryToolHasAnACLMapping`). No aliases: the tools were not in a
+release when renamed. The user doc states the same rules under 3.8.6.
+
+## Alerts and logs per module (2026-10-01)
+
+`get-cluster-alerts` reads the four state machines (`GetStateMachine()` = ha,
+`WorkloadStateMachine`, `SecurityStateMachine`, `SchemaStateMachine`), `module` selects one or
+`all` groups them; a nil machine answers empty lists. `list-cluster-logs` mirrors
+`/topology/logs/{logType}` through `GetWebLogsByType` and filters in `filterLogEntries`:
+minimum `level` (default warning; STATE/ALERT rank as warning so they are never hidden),
+`module` by tag name (`config.GetTagsForLog`, exposed in each entry instead of the id),
+`limit` newest first (the ring buffers hold the newest at index 0, empty slots skipped).
+Why: the assistant's context is the scarce resource; a 200-line INFO dump hides the one
+WARN that matters, and the module in an alert names the log to open next.
+Test `TestFilterLogEntries`.
+
+## Rolling tools and the release table (2026-10-01)
+
+`cluster-rolling-reprov`, `cluster-rolling-jobs-upgrade` and `cluster-rolling-upgrade` join
+`cluster-rolling-restart` on the `/actions/rolling/{action}` route; all four are asynchronous
+like the API (the restart tool used to block the MCP call for the whole operation).
+`cluster-rolling-upgrade` takes a `target`, a method of the configurator's image list:
+`patch` (newest release of the current line), `next-minor`, `next-lts`, `next-major`,
+`last-lts`, `version` (+ `version`), and `confirm`. Without confirm it answers
+`Cluster.PlanRollingUpgrade` (the same plan as `GET /actions/rolling/upgrade/plan`): current
+line from the master's running version, target release from the list (never a registry
+lookup, `doc/implementation/cluster/DATABASE_IMAGE_PINNING.md`), what `prov-db-image`
+declares afterwards, node order, warnings (major = mariadb-upgrade, no rolling way back,
+non-LTS line, not in the list, pinned image, on-premise = script path) and the `steps`. With confirm it runs `Cluster.PrepareRollingUpgrade` (declare, pin the definitions on the
+target release, push them node by node on OpenSVC; refused on an immutable pin) and starts
+`RollingUpgrade`, exactly what `POST /actions/rolling/upgrade?target=` does. A rolling restart never changes the image (#1861). The
+declared image is resolved to a release before the push (`ResolveDatabaseImage`, the service
+definition never carries a pointer, `doc/implementation/cluster/DATABASE_IMAGE_PINNING.md`);
+the plan reports `targetRelease` (what the target tag points at today) and `currentRelease`. The release table `utils/releases/lts-versions.json`
+(lts + published lines per flavor) is shared with plugin-score-lts and overridable from
+`<share>/plugins/data/lts-versions.json`. Tests `TestResolveTargets`, `TestRollingUpgradePlan`.
+The doc tables are regenerated with `doc/implementation/mcp/gen_tool_tables.py`.
+
+## App tools and phpMyAdmin by default (2026-10-02)
+
+Domain `app`, one tool = one route: `list-app-templates` (`GET /templates/apps`: the
+repository cache of `prov-app-template-repo` plus the cluster's local templates, names as
+template paths such as `phpmyadmin/phpmyadmin`), `list-cluster-apps` (`GET /topology/apps`,
+with each app's `url` and, when the app asked the cluster for a database (#1870), its `db` object), `app-add` (`POST /actions/addserver/{name}/{port}/app/{template}`,
+a short name resolves against the list, an unknown template is refused, never turned into a
+docker image), `app-provision` / `app-unprovision` (`/apps/{app}/actions/...`, OpenSVC,
+asynchronous). `App.URL` (`GetPublicURL`): the protocol and CNAME of the primary route once
+the app has one (`https://<app>.<cluster>.<subDomain>-<zone>.<domain>.cloud18.io/`), else
+the internal `http://host:port/`; refreshed every tick, in the topology JSON for the GUI.
+Lifecycle (2026-10-02): `app-start`, `app-stop`, `app-restart` (`POST /apps/{app}/actions/start|stop|restart`, optional node) and `app-resize` (`prov-app-units` through `/apps/{app}/settings/actions/set/prov-app-units/{value}`: the plan in whole units, cores/memory/disk at the ratio; the answer says a reprovision is needed to apply it, since `OpenSVCProvisionAppV3` reuses an existing service definition).
+
+`cloud18-create-cluster` deploys `phpmyadmin` by default (`apps=none` to opt out), resolves
+the app names against the infrastructure's `appTemplates` (the self-service status now
+carries them with the identity `domain` / `subDomain` / `zone` / `gatewayDomain`), refuses
+a template the infrastructure does not have, and answers `apps: [{name, template, url}]`,
+the URL the template's primary route gives once provisioned.

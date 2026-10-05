@@ -1115,11 +1115,18 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 		}
 	}
 
+	// Replica server-id leased from the pool for the fetch (#1886): the hard-coded 10000
+	// collided with the binlog backup copy and the metadata syncer.
+	fetchID, release, err := cluster.binlogServerIDPool().Acquire("rejoin-fetch")
+	if err != nil {
+		return err
+	}
+	defer release()
 	var params []string = make([]string, 0)
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		params = append(params, "--connection-server-id=10000")
+		params = append(params, "--connection-server-id="+strconv.FormatUint(uint64(fetchID), 10))
 	} else {
-		params = append(params, "--stop-never-slave-server-id=10000")
+		params = append(params, "--stop-never-slave-server-id="+strconv.FormatUint(uint64(fetchID), 10))
 	}
 	params = append(params, "--read-from-remote-server", "--raw", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos)
 	params = append(params, server.GetSSLClientParam("client-binlog")...)
@@ -1245,4 +1252,27 @@ func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin server can not found a GTID greater than 0 ")
 	return false
 
+}
+
+// MarkReseedFailed records a reseed job failure for the reconciliation (#1866): a
+// reseed that reported a failure is a failed reseed, even if the empty replica then
+// looks like a slave of its master.
+func (server *ServerMonitor) MarkReseedFailed(err error) {
+	if err == nil {
+		return
+	}
+	server.reseedLastError.Store(err.Error())
+	server.reseedFailedAt.Store(time.Now().UnixNano())
+}
+
+// ReseedFailedSince answers the error of a reseed failure recorded after since
+// (unix-nanos), "" when none.
+func (server *ServerMonitor) ReseedFailedSince(since int64) string {
+	if at := server.reseedFailedAt.Load(); at > since {
+		if e, ok := server.reseedLastError.Load().(string); ok {
+			return e
+		}
+		return "reseed failed"
+	}
+	return ""
 }

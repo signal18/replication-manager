@@ -397,3 +397,25 @@ func TestEscapeSingleQuotes(t *testing.T) {
 		})
 	}
 }
+
+func TestQuoteMySQLString(t *testing.T) {
+	cases := map[string]string{"abc": "'abc'", "it's": "'it''s'", `a\b`: `'a\\b'`, "": "''", "p@ss#w0rd": "'p@ss#w0rd'"}
+	for in, want := range cases {
+		if got := QuoteMySQLString(in); got != want {
+			t.Errorf("QuoteMySQLString(%q)=%s want %s", in, got, want)
+		}
+	}
+}
+
+func TestValidateDBHostAcceptsWildcardAndIPv6(t *testing.T) {
+	for _, h := range []string{"%", "10.0.0.%", "::1", "app.ns.svc.cloud18"} {
+		if err := validateDBHost(h); err != nil {
+			t.Errorf("validateDBHost(%q): %v", h, err)
+		}
+	}
+	for _, h := range []string{"a`b", ""} {
+		if err := validateDBHost(h); err == nil {
+			t.Errorf("validateDBHost(%q) must be refused", h)
+		}
+	}
+}

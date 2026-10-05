@@ -839,10 +839,10 @@ const rollingActionLabels = {
 
 export const rollingAction = createGuardedAsyncThunk(
   'cluster/rollingAction',
-  async ({ clusterName, action }, thunkAPI) => {
+  async ({ clusterName, action, target }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.rollingAction(clusterName, action, baseURL)
+      const { data, status } = await clusterService.rollingAction(clusterName, action, baseURL, target)
       showSuccessBanner(`${rollingActionLabels[action] ?? 'Rolling action'} successful!`, status, thunkAPI)
       return { data, status }
     } catch (error) {

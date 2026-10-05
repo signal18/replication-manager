@@ -4,6 +4,7 @@ import RMSwitch from '../../../components/RMSwitch'
 import TableType2 from '../../../components/TableType2'
 import styles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
+import { getUnitRatios } from '../../../utility/unitRatios'
 import { setSetting, switchSetting, changePlanUnits } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
@@ -41,11 +42,14 @@ function DBUSlider({ value, isDisabled, onChange, nbNodes = 1 }) {
   const dbu = posToDbu(pos) // PER-NODE DBU (the configurator is per-cluster: all nodes identical)
   const total = dbu * nbNodes // plan total = per-node x node count
 
+  // resource-manager-ratio-dbu, from the server: the slider is rendered outside DBConfigs, so
+  // it reads the selected cluster from the store itself.
+  const dbuRatio = getUnitRatios(useSelector((state) => state?.cluster?.clusterData)).database
   const formatDBU = useCallback((d) => {
-    const mem = d * 4096
+    const mem = d * (dbuRatio.memMBPerUnit || 0)
     const memLabel = mem >= 1024 ? `${mem / 1024}GB` : `${mem}MB`
-    return `${d} DBU/node — ${d} cores · ${memLabel} · ${d * 40}GB disk · ${d * 1000} IO/s`
-  }, [])
+    return `${d} DBU/node — ${d * (dbuRatio.coresPerUnit || 0)} cores · ${memLabel} · ${d * (dbuRatio.diskGBPerUnit || 0)}GB disk · ${d * (dbuRatio.iopsPerUnit || 0)} IO/s`
+  }, [dbuRatio])
 
   return (
     <Box w='100%'>

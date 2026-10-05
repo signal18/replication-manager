@@ -74,14 +74,14 @@ func (cluster *Cluster) ManagedHostCNAME(fullCname string) (shortCname string, m
 }
 
 func (cluster *Cluster) BashScriptProvDNS(cname string) error {
-	if cluster.Conf.Cloud18GatewayDomainName == "" {
+	if cluster.Conf.PrimaryGatewayDomain() == "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", "Empty gateway for cloud18-gateway-domain-name")
 		return errors.New("Empty gateway for cloud18-gateway-domain-name")
 	}
 	if cluster.Conf.Cloud18DomainAddScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision add domain script")
 		var out []byte
-		out, err := exec.Command(cluster.Conf.Cloud18DomainAddScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.Cloud18DomainAddScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.PrimaryGatewayDomain()).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 			return fmt.Errorf("domain add script failed for %s: %w", cname, err)
@@ -94,14 +94,14 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 // BashScriptDeprovDNS calls the cloud18-domain-drop-script to remove a managed
 // CNAME entry that is no longer needed (route dropped or renamed).
 func (cluster *Cluster) BashScriptDeprovDNS(cname string) error {
-	if cluster.Conf.Cloud18GatewayDomainName == "" {
+	if cluster.Conf.PrimaryGatewayDomain() == "" {
 		return errors.New("empty gateway for cloud18-gateway-domain-name")
 	}
 	if cluster.Conf.Cloud18DomainDropScript == "" {
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision drop domain script for %s", cname)
-	out, err := exec.Command(cluster.Conf.Cloud18DomainDropScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
+	out, err := exec.Command(cluster.Conf.Cloud18DomainDropScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.PrimaryGatewayDomain()).CombinedOutput()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		return fmt.Errorf("domain drop script failed for %s: %w", cname, err)

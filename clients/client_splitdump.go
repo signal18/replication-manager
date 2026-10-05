@@ -32,6 +32,8 @@ var splitDumpCmd = &cobra.Command{
 }
 
 func runSplitdump(inputFile, outputDir string) error {
+	splitdump.CompressionLevel = cliSplitDumpCompressionLevel
+	splitdump.CompressionThreads = cliSplitDumpCompressionThreads
 	bus := splitdump.NewSplitDumpChannelBus()
 	var options splitdump.SplitDumpOptions
 	if cliSplitDumpStreamSizeMax != "" {

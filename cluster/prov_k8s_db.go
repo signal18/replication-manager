@@ -76,14 +76,18 @@ func k8sImagePullPolicy(cluster *Cluster) apiv1.PullPolicy {
 // k8sDBAllocatorEnv maps the shared allocator tuning (GetDBAllocatorEnv,
 // #1749) onto the DB container env; nil when the feature is disabled.
 func k8sDBAllocatorEnv(cluster *Cluster) []apiv1.EnvVar {
+	var env []apiv1.EnvVar
+	if cluster.DBImageAutoUpgradeEnv() {
+		env = append(env, apiv1.EnvVar{Name: "MARIADB_AUTO_UPGRADE", Value: "1"})
+	}
 	preload, arenaMax := cluster.GetDBAllocatorEnv()
 	if preload == "" {
-		return nil
+		return env
 	}
-	return []apiv1.EnvVar{
-		{Name: "LD_PRELOAD", Value: preload},
-		{Name: "MALLOC_ARENA_MAX", Value: arenaMax},
-	}
+	return append(env,
+		apiv1.EnvVar{Name: "LD_PRELOAD", Value: preload},
+		apiv1.EnvVar{Name: "MALLOC_ARENA_MAX", Value: arenaMax},
+	)
 }
 
 // k8sSecretKeyRootPassword is the key MYSQL_ROOT_PASSWORD is stored under
@@ -509,7 +513,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 					Containers: []apiv1.Container{
 						{
 							Name:            s.Name,
-							Image:           cluster.Conf.ProvDbImg,
+							Image:           cluster.deployImage(),
 							ImagePullPolicy: k8sImagePullPolicy(cluster),
 							Resources:       cluster.k8sDatabaseContainerResources(),
 							SecurityContext: dbSecurityContext,
@@ -542,7 +546,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 						// TCP.
 						{
 							Name:      s.Name + "-dbjobs",
-							Image:     cluster.Conf.ProvDbImg,
+							Image:     cluster.deployImage(),
 							Resources: cluster.k8sDBJobsContainerResources(),
 							// Root whatever the image's own USER is (Percona
 							// Server images default to mysql, 1001): dbjobs must
@@ -1064,6 +1068,7 @@ func (cluster *Cluster) k8sResourceSensorRuntimeIssue(ctx context.Context, clien
 }
 
 func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
+	cluster.ResolveDatabaseImage(false) // the deployment carries a release, not a pointer (#1862)
 	cluster.warnDBRunAsVolumeMismatch()
 
 	client, err := cluster.K8SConnectAPI()
@@ -1526,6 +1531,21 @@ func (cluster *Cluster) K8SForceRepullDatabaseService(s *ServerMonitor) error {
 // a live pod's image would race the Deployment controller's own rollout
 // against the caller's explicit stop/start.
 func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClient(client kubernetes.Interface, name string, forcePull bool) error {
+	return cluster.k8sUpdateDatabaseServiceConfigWithClientImage(client, name, forcePull, false)
+}
+
+// k8sUpdateDatabaseServiceConfigKeepImage is the rolling-restart entry: the Deployment is
+// re-rendered with the image its main container runs today, not prov-db-image (#1861).
+func (cluster *Cluster) k8sUpdateDatabaseServiceConfigKeepImage(s *ServerMonitor, keepImage bool) error {
+	client, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		return err
+	}
+	return cluster.k8sUpdateDatabaseServiceConfigWithClientImage(client, s.Name, false, keepImage)
+}
+
+func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClientImage(client kubernetes.Interface, name string, forcePull bool, keepImage bool) error {
 	deploymentsClient := client.AppsV1().Deployments(cluster.Name)
 	dep, err := deploymentsClient.Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
@@ -1553,10 +1573,12 @@ func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClient(client kubernet
 	jobsName := name + "-dbjobs"
 	hasMain := false
 	hasJobs := false
+	currentImage := ""
 	for _, c := range dep.Spec.Template.Spec.Containers {
 		switch c.Name {
 		case name:
 			hasMain = true
+			currentImage = c.Image
 		case jobsName:
 			hasJobs = true
 		}
@@ -1571,7 +1593,10 @@ func (cluster *Cluster) k8sUpdateDatabaseServiceConfigWithClient(client kubernet
 	if forcePull {
 		pullPolicy = apiv1.PullAlways
 	}
-	image := cluster.Conf.ProvDbImg
+	image := cluster.deployImage()
+	if keepImage && currentImage != "" {
+		image = currentImage // a restart keeps the running image (#1861)
+	}
 
 	container := func(cname string) map[string]interface{} {
 		return map[string]interface{}{

@@ -34,12 +34,21 @@ definitions:
         type: string
       encryptionKey:
         type: string
+      encryptionKeyVersion:
+        description: |-
+          EncryptionKeyVersion is the secret_store.json version of
+          db-servers-credential whose password encrypted the artifact (0 when
+          unknown). A version number only, never the password: restore uses it
+          to pick the right historic root password after a password change.
+        type: integer
       endTime:
         type: string
       fileCount:
         type: integer
       id:
         type: integer
+      integrityAlgo:
+        type: string
       metaFile:
         type: string
       previous:
@@ -648,6 +657,10 @@ definitions:
         $ref: '#/definitions/config.AppConfig'
       datadir:
         type: string
+      dbProvisionError:
+        description: last app database auto-create refusal (#1870), "" once one goes
+          through
+        type: string
       failCount:
         type: integer
       host:
@@ -698,10 +711,36 @@ definitions:
         type: string
       type:
         type: string
+      url:
+        description: https://<primary route cname>/ once routed, else the internal
+          http://host:port/
+        type: string
       version:
         type: string
       weight:
         type: string
+    type: object
+  cluster.BillingPrices:
+    properties:
+      apu:
+        format: float64
+        type: number
+      bau:
+        format: float64
+        type: number
+      bku:
+        format: float64
+        type: number
+      dbu:
+        format: float64
+        type: number
+      gwu:
+        format: float64
+        type: number
+      overPct:
+        type: integer
+      underPct:
+        type: integer
     type: object
   cluster.ClusterForm:
     properties:
@@ -711,6 +750,44 @@ definitions:
         type: string
       plan:
         type: string
+    type: object
+  cluster.ClusterStatement:
+    properties:
+      accrued:
+        additionalProperties:
+          items:
+            format: float64
+            type: number
+          type: array
+        description: |-
+          Accrued unit-seconds per family, kept on disk so a reload continues the month:
+          plan, over, under, rate, planCost, overCost, underCredit.
+        type: object
+      cluster:
+        type: string
+      firstSeen:
+        type: string
+      lastSeen:
+        type: string
+      monthCost:
+        description: EUR accrued this month
+        type: number
+      partner:
+        type: string
+      projected:
+        description: MonthCost + Rate × the time left
+        type: number
+      rate:
+        description: EUR per month at the last tick
+        type: number
+      sponsors:
+        items:
+          type: string
+        type: array
+      units:
+        items:
+          $ref: '#/definitions/cluster.UnitBillingRow'
+        type: array
     type: object
   cluster.Diff:
     properties:
@@ -727,6 +804,45 @@ definitions:
         type: string
       whitelist:
         type: string
+    type: object
+  cluster.LedgerAxes:
+    properties:
+      cores:
+        type: number
+      diskBytes:
+        type: number
+      iops:
+        type: number
+      memBytes:
+        type: number
+    type: object
+  cluster.MonthStatement:
+    properties:
+      clusters:
+        additionalProperties:
+          $ref: '#/definitions/cluster.ClusterStatement'
+        type: object
+      currency:
+        type: string
+      defaultPrices:
+        allOf:
+        - $ref: '#/definitions/cluster.BillingPrices'
+        description: the instance's price list; each row carries the price its cluster
+          applied
+      elapsedPct:
+        type: number
+      final:
+        type: boolean
+      generatedAt:
+        type: string
+      month:
+        type: string
+      monthCost:
+        type: number
+      projected:
+        type: number
+      rate:
+        type: number
     type: object
   cluster.PFSExplainRecord:
     properties:
@@ -813,6 +929,54 @@ definitions:
           $ref: '#/definitions/cluster.RemediationEntry'
         type: array
     type: object
+  cluster.ResourceLedger:
+    properties:
+      borrowPot:
+        allOf:
+        - $ref: '#/definitions/cluster.UnitPots'
+        description: over-commit pot per unit (smallest axis)
+      borrowed:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: Σ resources granted above the plans (DB config over plan, BKU
+          usage over plan)
+      capacity:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: the metal (agents summed, config override winning)
+      known:
+        type: boolean
+      overCommitPot:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: capacity − reserved − borrowed
+      overdrawn:
+        description: 'an over-commit pot axis is negative: borrowed resources must
+          give way'
+        type: boolean
+      planPot:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: sellable − reserved
+      planPotUnits:
+        allOf:
+        - $ref: '#/definitions/cluster.UnitPots'
+        description: plan pot per unit (smallest axis)
+      quotaPct:
+        type: number
+      reserved:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: Σ plans of every cluster, DBU + APU + BKU, physical
+      reservedUnits:
+        allOf:
+        - $ref: '#/definitions/cluster.UnitPots'
+        description: Σ plans per unit, as sold (DBU, APU, BKU)
+      sellable:
+        allOf:
+        - $ref: '#/definitions/cluster.LedgerAxes'
+        description: 'capacity × quota: what plans may add up to'
+    type: object
   cluster.ResticEnsureBucketResult:
     properties:
       bucket:
@@ -823,6 +987,62 @@ definitions:
         type: string
       message:
         type: string
+    type: object
+  cluster.RollingUpgradePlan:
+    properties:
+      cluster:
+        type: string
+      currentImage:
+        description: prov-db-image as declared
+        type: string
+      currentIsLTS:
+        type: boolean
+      currentLine:
+        type: string
+      currentRelease:
+        description: the release the service definitions carry (prov-db-docker-img-resolved)
+        type: string
+      declaredAfter:
+        description: prov-db-image after the upgrade
+        type: string
+      flavor:
+        type: string
+      imageList:
+        type: string
+      mechanic:
+        description: '"upgrade" (restart on the new image) or "reprov" (provision
+          again + reseed)'
+        type: string
+      nodes:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      orchestrator:
+        type: string
+      order:
+        items:
+          type: string
+        type: array
+      status:
+        type: string
+      steps:
+        items:
+          type: string
+        type: array
+      target:
+        type: string
+      targetImage:
+        description: the real release, repo:x.y.z
+        type: string
+      targetIsLTS:
+        type: boolean
+      targetLine:
+        type: string
+      warnings:
+        items:
+          type: string
+        type: array
     type: object
   cluster.SnapshotMetadataSummary:
     properties:
@@ -860,6 +1080,95 @@ definitions:
       result:
         type: string
     type: object
+  cluster.UnitBillingRow:
+    properties:
+      billable:
+        type: number
+      family:
+        type: string
+      monthCost:
+        description: = monthPlanCost + monthOverCost − monthUnderCredit
+        type: number
+      monthOverCommit:
+        type: number
+      monthOverCost:
+        type: number
+      monthPlan:
+        type: number
+      monthPlanCost:
+        type: number
+      monthUnderCommit:
+        type: number
+      monthUnderCredit:
+        type: number
+      overCommit:
+        type: number
+      overCommitPct:
+        type: integer
+      overCost:
+        description: + over-commit × price × (100+over%)/100
+        type: number
+      plan:
+        type: number
+      planCost:
+        description: plan × price, per month, at the last tick
+        type: number
+      priced:
+        type: boolean
+      projectedCost:
+        type: number
+      projectedOverCommit:
+        type: number
+      projectedOverCost:
+        type: number
+      projectedPlan:
+        description: |-
+          Projection to the end of the month: each component as it stands at the last tick
+          carried over the time left (plan count of every tick, over-commit and under-commit
+          projected per unit), then priced: projectedCost = monthCost + rate × time left.
+        type: number
+      projectedPlanCost:
+        type: number
+      projectedUnderCommit:
+        type: number
+      projectedUnderCredit:
+        type: number
+      rate:
+        description: EUR per month at the last tick = planCost + overCost − underCredit
+        type: number
+      underCommit:
+        type: number
+      underCommitPct:
+        type: integer
+      underCredit:
+        description: − under-commit × price × under%/100
+        type: number
+      unit:
+        type: string
+      unitPrice:
+        type: number
+    type: object
+  cluster.UnitPots:
+    properties:
+      apu:
+        type: number
+      bku:
+        type: number
+      dbu:
+        type: number
+    type: object
+  cluster.UnitRatios:
+    properties:
+      coresPerUnit:
+        type: number
+      diskGBPerUnit:
+        type: number
+      iopsPerUnit:
+        description: 0 = axis excluded
+        type: number
+      memMBPerUnit:
+        type: number
+    type: object
   cluster.UserForm:
     properties:
       grants:
@@ -896,6 +1205,16 @@ definitions:
           content; AppConfigVersionV2 means content already matches the V1 -> V2
           migration baseline and does not need re-canonicalizing for shape alone.
         type: integer
+      appDbAutoCreate:
+        description: |-
+          AppDbAutoCreate (#1870): the app asks the cluster for its own schema, user and password
+          ({{app.db.*}} template keys); created at provision, never on foreign objects.
+        type: boolean
+      appDbOwned:
+        description: |-
+          AppDbOwned: the ownership mark, set by the provision that created the schema and the user;
+          without it an existing schema or user is never touched (APPERR008).
+        type: boolean
       appDbPass:
         type: string
       appDbSchema:
@@ -910,6 +1229,13 @@ definitions:
         type: string
       appS3Provider:
         type: boolean
+      appStateful:
+        description: |-
+          AppStateful: the app holds data (minio, a storage service), so it is accounted on the
+          Database profile as whole DBU (reserved in the DBU pool, billed at the DBU price), not
+          as APU. A template default (cloud18-templates minio) inherited at creation, overridable
+          per app in the GUI.
+        type: boolean
       deployment:
         $ref: '#/definitions/config.Deployment'
       provAppAgents:
@@ -918,10 +1244,6 @@ definitions:
         type: string
       provAppCpuCores:
         type: string
-      provAppCreditPlanned:
-        type: integer
-      provAppCreditUsed:
-        type: integer
       provAppDiskIops:
         type: string
       provAppDiskSize:
@@ -945,6 +1267,10 @@ definitions:
       provAppServiceType:
         type: string
       provAppSizingMode:
+        type: string
+      provAppStartTimeout:
+        description: om3 start_timeout and pull_timeout of the app container (10m,
+          1h); empty = the cluster default
         type: string
       provAppTemplate:
         type: string
@@ -1083,6 +1409,8 @@ definitions:
         type: string
       endpoint:
         type: string
+      gid:
+        type: string
       mountdir:
         type: string
       name:
@@ -1092,6 +1420,11 @@ definitions:
       region:
         type: string
       secretkey:
+        type: string
+      uid:
+        description: |-
+          Uid / Gid: the owner the mounted files are presented as inside the container
+          (the mount sidecar's --uid/--gid); empty = 33 (www-data), the historical value.
         type: string
       volumedir:
         type: string
@@ -1346,6 +1679,8 @@ definitions:
         type: integer
       backupDiskTresholdWarn:
         type: integer
+      backupEncryption:
+        type: boolean
       backupEstimateSize:
         type: boolean
       backupEstimateSizePercentage:
@@ -1606,14 +1941,6 @@ definitions:
         type: string
       cloud18AlertSlackUser:
         type: string
-      cloud18ApplicationCredits:
-        type: integer
-      cloud18ApplicationCreditsPlanned:
-        type: integer
-      cloud18ApplicationCreditsPrice:
-        type: integer
-      cloud18ApplicationCreditsUsed:
-        type: integer
       cloud18CostCurrency:
         type: string
       cloud18CrmApiUrl:
@@ -1650,6 +1977,12 @@ definitions:
         type: string
       cloud18ExternalSysOpsStatus:
         type: string
+      cloud18GatewayBandwidthMbit:
+        description: |-
+          GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.
+          Cloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with
+          cloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).
+        type: string
       cloud18GatewayDomainName:
         type: string
       cloud18GatewayService:
@@ -1678,6 +2011,26 @@ definitions:
           the instance sources its plan from this signed file instead of the CRM (for
           air-gapped/PCI instances). Empty = normal online CRM path.
         type: string
+      cloud18MarketplaceApuPrice:
+        type: number
+      cloud18MarketplaceBauClientStorage:
+        type: boolean
+      cloud18MarketplaceBauPrice:
+        type: number
+      cloud18MarketplaceBkuPrice:
+        type: number
+      cloud18MarketplaceDbuPrice:
+        type: number
+      cloud18MarketplaceGwuPrice:
+        type: number
+      cloud18MarketplaceGwuUnitMbit:
+        type: number
+      cloud18MarketplaceOvercommitPricePct:
+        type: integer
+      cloud18MarketplacePricingMode:
+        type: string
+      cloud18MarketplaceUndercommitPricePct:
+        type: integer
       cloud18MonthlyDbopsCost:
         type: number
       cloud18MonthlyExternalDbopsCost:
@@ -1712,6 +2065,10 @@ definitions:
         type: string
       cloud18SelfServiceClusters:
         type: boolean
+      cloud18SelfServiceClustersCanBorrow:
+        type: boolean
+      cloud18SelfServiceClustersEnabledScript:
+        type: string
       cloud18SelfServiceMaxClustersPerUser:
         type: integer
       cloud18Shared:
@@ -2221,6 +2578,8 @@ definitions:
         type: boolean
       measurementAutoClampLimit:
         type: boolean
+      monitoringAddMonitorScript:
+        type: string
       monitoringAddress:
         type: string
       monitoringAlertTrigger:
@@ -2261,6 +2620,8 @@ definitions:
         type: boolean
       monitoringDiskUsagePct:
         type: integer
+      monitoringDropMonitorScript:
+        type: string
       monitoringErrorLogLength:
         type: integer
       monitoringGlobalHeartbeatStallThreshold:
@@ -2511,6 +2872,8 @@ definitions:
         type: string
       provAppSizingMode:
         type: string
+      provAppStartTimeout:
+        type: string
       provAppTemplateRepo:
         type: string
       provAppTemplateRepoAllowOverride:
@@ -2550,6 +2913,8 @@ definitions:
         type: string
       provDbBinaryTarballName:
         type: string
+      provDbBku:
+        type: integer
       provDbBootstrapScript:
         type: string
       provDbCapSafetyPct:
@@ -2610,6 +2975,8 @@ definitions:
       provDbDiskType:
         type: string
       provDbDockerImg:
+        type: string
+      provDbDockerImgResolved:
         type: string
       provDbDockerJemallocPreload:
         type: string
@@ -2685,6 +3052,8 @@ definitions:
         description: 'scale-down floor: auto-shrink never under floor(plan x (1 -
           pct/100)) DBU/node, min 1 -- the pendant of prov-db-overcommit-pct'
         type: integer
+      provDbUpgradeMajorReprov:
+        type: boolean
       provDbVolumeData:
         type: string
       provDbVolumeDocker:
@@ -2694,6 +3063,8 @@ definitions:
       provDockerRegistryCredentials:
         type: string
       provEventTimeout:
+        type: integer
+      provGatewayUnits:
         type: integer
       provKubeImageForcePull:
         type: boolean
@@ -2981,6 +3352,12 @@ definitions:
         type: number
       resourceManagerInfraQuotaPct:
         type: number
+      resourceManagerRatioApu:
+        type: string
+      resourceManagerRatioBku:
+        type: string
+      resourceManagerRatioDbu:
+        type: string
       scaleDownConfigInPlanSpeed:
         description: sustain duration before scaling DOWN a server's config resources
           within the plan. Default 5m
@@ -3566,6 +3943,12 @@ definitions:
         type: string
       lastUsedFrom:
         type: string
+      ownerAuthType:
+        description: |-
+          OwnerAuthType is how the owner was authenticated when the token was issued
+          ("SSO" or "Local"): a token issued by a Cloud18 identity keeps that identity
+          for the self-service rules, which need an SSO caller.
+        type: string
       revoked:
         type: boolean
       revokedAt:
@@ -3679,6 +4062,23 @@ definitions:
       uuid:
         type: string
     type: object
+  server.InfraUnitPool:
+    properties:
+      freeApu:
+        type: number
+      freeDbu:
+        type: number
+      known:
+        type: boolean
+      plannedApu:
+        type: number
+      plannedDbu:
+        type: number
+      usableApu:
+        type: number
+      usableDbu:
+        type: number
+    type: object
   server.MeetAlertMessage:
     properties:
       message:
@@ -3754,6 +4154,15 @@ definitions:
     type: object
   server.SelfServiceStatus:
     properties:
+      appTemplates:
+        items:
+          type: string
+        type: array
+      borrowed:
+        description: |-
+          Borrowed: the pool could not guarantee the units but the over-commit pot can lend them
+          (cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.
+        type: boolean
       clusters:
         items:
           type: string
@@ -3764,20 +4173,43 @@ definitions:
         type: integer
       defaultDbu:
         type: integer
+      domain:
+        description: |-
+          The infrastructure identity and the app templates it can deploy, so a client
+          plans an app and renders its URL (the template's primary route CNAME is
+          <app>.<cluster>.<subDomain>-<zone>.<domain>.cloud18.io) before creating anything.
+        type: string
       enabled:
         type: boolean
+      gatewayDomain:
+        type: string
       identity:
         type: string
       maxClustersPerUser:
         type: integer
+      neededApu:
+        type: number
+      neededDbu:
+        description: 'ResourceManager pool: what a new cluster needs and what is free.'
+        type: number
       orchestrator:
         type: string
+      pool:
+        $ref: '#/definitions/server.InfraUnitPool'
+      poolNote:
+        type: string
+      poolOk:
+        type: boolean
       reason:
         type: string
       remaining:
         type: integer
+      subDomain:
+        type: string
       used:
         type: integer
+      zone:
+        type: string
     type: object
   server.appTemplateContentResponse:
     properties:
@@ -4014,8 +4446,14 @@ definitions:
       planDbu:
         description: the cluster's DBU reservation contract (prov-service-plan-dbu)
         type: number
+      planStatefulDbu:
+        description: their DBU reservation, own line (never in planDbu)
+        type: number
       servers:
         type: integer
+      statefulDbu:
+        description: real consumed DBU of the stateful apps (app-stateful)
+        type: number
     type: object
   server.globalResourcesResponse:
     properties:
@@ -4038,7 +4476,7 @@ definitions:
         type: string
       capacityApu:
         description: APU (Compute) infra view -- the SAME metal projected into APU
-          (1c/1GB/10GB, no IO).
+          (1c/2GB/10GB, no IO).
         type: number
       capacityDbu:
         type: number
@@ -4050,12 +4488,30 @@ definitions:
         type: number
       consumedDbu:
         type: number
+      gatewayCapacityMbit:
+        type: number
+      gatewayDomains:
+        description: 'Gateways: the shared uplinks the clusters'' traffic is tracked
+          against (#1872), Mb/s.'
+        items:
+          type: string
+        type: array
+      ledger:
+        allOf:
+        - $ref: '#/definitions/cluster.ResourceLedger'
+        description: 'the physical ledger: plan pot + over-commit pot, every unit
+          from ONE metal'
       quotaPct:
         type: number
       slackApu:
         type: number
       slackDbu:
         type: number
+      unitRatios:
+        additionalProperties:
+          $ref: '#/definitions/cluster.UnitRatios'
+        description: the manager's ratios, the page's only source of unit arithmetic
+        type: object
       usableApu:
         type: number
       usableDbu:
@@ -5349,6 +5805,26 @@ paths:
         name: action
         required: true
         type: string
+      - description: 'upgrade only: the release to move to, a method of the image
+          list: patch (default: the declared prov-db-image resolved by the list),
+          next-minor, next-lts, next-major, last-lts, previous-minor, previous-major
+          (downgrades), version'
+        enum:
+        - patch
+        - next-minor
+        - next-lts
+        - next-major
+        - last-lts
+        - previous-minor
+        - previous-major
+        - version
+        in: query
+        name: target
+        type: string
+      - description: 'upgrade with target=version: the release or line to move to'
+        in: query
+        name: version
+        type: string
       produces:
       - application/json
       responses:
@@ -5373,6 +5849,64 @@ paths:
           schema:
             type: string
       summary: Trigger a rolling action on a cluster
+      tags:
+      - ClusterMaintenance
+  /api/clusters/{clusterName}/actions/rolling/upgrade/plan:
+    get:
+      description: Resolves the target with the image list of the configurator (patch,
+        next-minor, next-lts, next-major, last-lts, version) from the line the nodes
+        run and describes the steps, the target release, what prov-db-image declares
+        afterwards and the warnings. Nothing is changed.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: patch (default), next-minor, next-lts, next-major, last-lts,
+          previous-minor, previous-major, version
+        enum:
+        - patch
+        - next-minor
+        - next-lts
+        - next-major
+        - last-lts
+        - previous-minor
+        - previous-major
+        - version
+        in: query
+        name: target
+        type: string
+      - description: 'with target=version: the release or line to move to'
+        in: query
+        name: version
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.RollingUpgradePlan'
+        "400":
+          description: Target not resolvable
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Plan a rolling upgrade
       tags:
       - ClusterMaintenance
   /api/clusters/{clusterName}/actions/rotate-passwords:
@@ -8491,6 +9025,42 @@ paths:
       summary: Reload external log plugins for a cluster
       tags:
       - ClusterSettings
+  /api/clusters/{clusterName}/price:
+    get:
+      description: 'The cluster''s month statement: partner, sponsors and, per unit
+        family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit
+        in unit-months, unit price, EUR accrued, rate and projection. Integrated per
+        monitoring period by the resource manager.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.ClusterStatement'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No statement yet
+          schema:
+            type: string
+      summary: Price of a cluster for the running month
+      tags:
+      - Cluster
   /api/clusters/{clusterName}/proxies/{proxyName}:
     get:
       description: Shows the proxies for that specific named cluster
@@ -18533,6 +19103,74 @@ paths:
       summary: Get global metrics
       tags:
       - Global
+  /api/global/price:
+    get:
+      description: 'The price of every cluster for the month, integrated per monitoring
+        period: per cluster the partner, the sponsors and, per unit family (DBU, failover
+        DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit
+        price and EUR. Running month by default, a past month with /{month} (YYYY-MM).
+        Requires global-admin-show.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.MonthStatement'
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+        "404":
+          description: No statement for that month
+          schema:
+            type: string
+      summary: Month billing statement of the infrastructure
+      tags:
+      - Global
+  /api/global/price/{month}:
+    get:
+      description: 'The price of every cluster for the month, integrated per monitoring
+        period: per cluster the partner, the sponsors and, per unit family (DBU, failover
+        DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit
+        price and EUR. Running month by default, a past month with /{month} (YYYY-MM).
+        Requires global-admin-show.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: 'Month YYYY-MM (default: the running month)'
+        in: path
+        name: month
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.MonthStatement'
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+        "404":
+          description: No statement for that month
+          schema:
+            type: string
+      summary: Month billing statement of the infrastructure
+      tags:
+      - Global
   /api/global/resources:
     get:
       produces:
@@ -18632,6 +19270,37 @@ paths:
       summary: User login
       tags:
       - Auth
+  /api/me/units:
+    get:
+      description: 'For every cluster the logged user sponsors or has access to, like
+        an invoice: per unit family (DBU, failover DBU, APU, BKU, BAU) the units declared
+        and, in unit-months so far, the reserved (plan, debit), the borrowed (over
+        the plan, debit), the unused (under the plan, credit), the net, and the end-of-month
+        projection; totals per unit kind and overall. On a Cloud18 instance each line
+        also carries the amount in EUR at the cluster''s unit price (+ debit, - credit)
+        and its projection; elsewhere units only.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: No statement
+          schema:
+            type: string
+      summary: Units consumed this month by the logged user
+      tags:
+      - Users
   /api/monitor:
     get:
       consumes:

@@ -38,9 +38,10 @@ type BackupMetadata struct {
 	BackupTool        string         `json:"backupTool"`
 	BackupToolVersion string         `json:"backupToolVersion"`
 	BackupStrategy    BackupStrategy `json:"backupStrategy"`
-	Source            string         `json:"source"` // server URL
-	Dest              string         `json:"dest"`   // backup destination path
-	Size              int64          `json:"size"`   // in bytes
+	Source            string         `json:"source"`               // server URL
+	Dest              string         `json:"dest"`                 // backup destination path
+	Size              int64          `json:"size"`                 // in bytes
+	StreamSize        int64          `json:"streamSize,omitempty"` // bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator
 	FileCount         int64          `json:"fileCount"`
 	Compressed        bool           `json:"compressed"`
 	Encrypted         bool           `json:"encrypted"`

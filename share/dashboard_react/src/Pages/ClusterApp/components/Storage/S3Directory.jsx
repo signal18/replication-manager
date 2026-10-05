@@ -18,7 +18,7 @@ import {
   matchVolumeDirToken,
 } from "./volumeDirUtils";
 
-const defaultS3 = { name: "", endpoint: "", bucket: "", region: "", accesskey: "", secretkey: "", providerName: "", volumename: "", volumedir: "", subpath: "" };
+const defaultS3 = { name: "", endpoint: "", bucket: "", region: "", accesskey: "", secretkey: "", providerName: "", volumename: "", volumedir: "", subpath: "", uid: "", gid: "" };
 const providerSourceOptions = [
   { value: "app", name: "Sibling App" },
   { value: "custom", name: "Custom Endpoint" },
@@ -453,6 +453,10 @@ const S3DirectoryRowForm = React.memo(({ appId = "", fieldName, volumeOptions = 
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Bucket:</Text>
                     <TextForm placeholder="Bucket" value={s3.bucket} onSave={(value) => onChange(fieldName, index, "bucket", value)} />
+                    <HStack spacing={2}>
+                      <TextForm placeholder="uid (33)" value={s3.uid || ""} onSave={(value) => onChange(fieldName, index, "uid", value)} />
+                      <TextForm placeholder="gid (33)" value={s3.gid || ""} onSave={(value) => onChange(fieldName, index, "gid", value)} />
+                    </HStack>
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume:</Text>
@@ -758,6 +762,10 @@ const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], clusterS3Providers 
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Region:</Text>
                     <Input placeholder="e.g. us-east-1" value={s3.region} onChange={(e) => handleArrayChange("region", e.target.value)} />
+                    <HStack spacing={2}>
+                      <Input placeholder="uid in the container (33)" value={s3.uid || ""} onChange={(e) => handleArrayChange("uid", e.target.value)} />
+                      <Input placeholder="gid in the container (33)" value={s3.gid || ""} onChange={(e) => handleArrayChange("gid", e.target.value)} />
+                    </HStack>
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume:</Text>

@@ -40,6 +40,7 @@ import (
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/releases"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/splitdump"
 )
@@ -577,6 +578,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/rolling/upgrade/plan", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRollingUpgradePlan)),
+	)).Methods("GET")
 	router.Handle("/api/clusters/{clusterName}/actions/rolling/{action}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRollingAction)),
@@ -777,6 +782,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/topology/alerts", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAlerts)),
+	))
+	router.Handle("/api/clusters/{clusterName}/price", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterPrice)),
 	))
 	router.Handle("/api/clusters/{clusterName}/topology/crashes", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1607,6 +1616,8 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param action path string true "Rolling action" Enums(restart,reprov,upgrade,jobs-upgrade)
+// @Param target query string false "upgrade only: the release to move to, a method of the image list: patch (default: the declared prov-db-image resolved by the list), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major (downgrades), version" Enums(patch,next-minor,next-lts,next-major,last-lts,previous-minor,previous-major,version)
+// @Param version query string false "upgrade with target=version: the release or line to move to"
 // @Success 200 {string} string "Action triggered successfully"
 // @Success 202 {string} string "Long-running action started in background (reprov, upgrade)"
 // @Failure 400 {string} string "Unknown rolling action"
@@ -1635,15 +1646,68 @@ func (repman *ReplicationManager) handlerMuxRollingAction(w http.ResponseWriter,
 		w.WriteHeader(http.StatusAccepted)
 		w.Write([]byte("Rolling reprov started"))
 	case "upgrade":
-		go func() { mycluster.RollingUpgrade() }()
+		// The target is a method of the image list (#1862): declare, pin the service
+		// definitions on the release, push them, then the rolling part in background.
+		target := r.URL.Query().Get("target")
+		if target == "" {
+			target = releases.TargetPatch
+		}
+		plan, err := mycluster.PrepareRollingUpgrade(target, r.URL.Query().Get("version"))
+		if err != nil {
+			http.Error(w, "Rolling upgrade refused: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		go func() { mycluster.RunRollingUpgrade(plan) }()
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		w.Write([]byte("Rolling upgrade started"))
+		plan.Status = "rolling " + plan.Mechanic + " started"
+		json.NewEncoder(w).Encode(plan)
 	case "jobs-upgrade":
 		mycluster.SetRollingJobsUpgradeState()
 		w.Write([]byte("Cluster flagged for jobs upgrade"))
 	default:
 		http.Error(w, "Unknown rolling action: "+vars["action"], http.StatusBadRequest)
 	}
+}
+
+// handlerMuxRollingUpgradePlan answers what a rolling upgrade to a target would do,
+// from the image list, without touching the cluster.
+// @Summary Plan a rolling upgrade
+// @Description Resolves the target with the image list of the configurator (patch, next-minor, next-lts, next-major, last-lts, version) from the line the nodes run and describes the steps, the target release, what prov-db-image declares afterwards and the warnings. Nothing is changed.
+// @Tags ClusterMaintenance
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param target query string false "patch (default), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major, version" Enums(patch,next-minor,next-lts,next-major,last-lts,previous-minor,previous-major,version)
+// @Param version query string false "with target=version: the release or line to move to"
+// @Success 200 {object} cluster.RollingUpgradePlan
+// @Failure 400 {string} string "Target not resolvable"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/rolling/upgrade/plan [get]
+func (repman *ReplicationManager) handlerMuxRollingUpgradePlan(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	target := r.URL.Query().Get("target")
+	if target == "" {
+		target = releases.TargetPatch
+	}
+	plan, err := mycluster.PlanRollingUpgrade(target, r.URL.Query().Get("version"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(plan)
 }
 
 // handlerMuxStartTraffic handles the start traffic process for a given cluster.
@@ -2814,6 +2878,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvDBDockerRunArgsLimit = !mycluster.Conf.ProvDBDockerRunArgsLimit
 	case "prov-orchestrator-deployment-upgrade-on-start":
 		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = !mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart
+	case "prov-db-upgrade-major-reprov":
+		mycluster.Conf.ProvDbUpgradeMajorReprov = !mycluster.Conf.ProvDbUpgradeMajorReprov
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
 	case "prov-object-allow-overwrite":
@@ -2996,6 +3062,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.SwitchMailSmtpTlsSkipVerify()
 	case "cloud18-shared":
 		mycluster.Conf.SwitchCloud18Shared()
+	case "cloud18-marketplace-bau-client-storage":
+		mycluster.Conf.SwitchCloud18MarketplaceBAUClientStorage()
 	case "cloud18-open-dbops":
 		mycluster.SwitchCloud18OpenDbops()
 	case "cloud18-subscribed-dbops":
@@ -3064,6 +3132,10 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 	setting := vars["settingName"]
 	value := ""
 	if settingValue, ok := vars["settingValue"]; ok {
+		// The GUI clears a text setting with the literal "{undefined}".
+		if settingValue == "{undefined}" {
+			settingValue = ""
+		}
 		value = settingValue
 	}
 
@@ -3413,6 +3485,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	}
 
 	switch name {
+	case "cloud18-marketplace-gwu-free-units":
+		// per-cluster override of the free GWU traffic allowance (#1872)
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("cloud18-marketplace-gwu-free-units must be a whole number of GWU, got %q", value)
+		}
+		mycluster.Conf.Cloud18MarketplaceGWUFreeUnits = n
 	case "replication-credential":
 		mycluster.SetReplicationCredential(value)
 	case "failover-max-slave-delay":
@@ -3791,7 +3870,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-sphinx-img":
 		mycluster.SetProvSphinxImage(value)
 	case "prov-db-image":
-		mycluster.SetProvDBImage(value)
+		err = mycluster.SetProvDBImage(value)
 	case "prov-db-docker-xtrabackup-img":
 		if err := mycluster.SetProvDbDockerXtrabackupImg(value); err != nil {
 			return err
@@ -4024,6 +4103,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorVariableChangeIgnore = value
 	case "monitoring-schema-change-script":
 		mycluster.Conf.MonitorSchemaChangeScript = value
+	case "monitoring-add-monitor-script":
+		// The GUI clears a text setting with "{undefined}": an empty script, never a
+		// path named "{undefined}" that would veto every add.
+		if value == "{undefined}" {
+			value = ""
+		}
+		mycluster.Conf.MonitoringAddMonitorScript = strings.TrimSpace(value)
+	case "monitoring-drop-monitor-script":
+		if value == "{undefined}" {
+			value = ""
+		}
+		mycluster.Conf.MonitoringDropMonitorScript = strings.TrimSpace(value)
 	case "api-token-timeout":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.SetApiTokenTimeout(val)
@@ -4711,6 +4802,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
 	case "prov-orchestrator-deployment-upgrade-on-start":
 		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = applyIsActive(mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart, isactive)
+	case "prov-db-upgrade-major-reprov":
+		mycluster.Conf.ProvDbUpgradeMajorReprov = applyIsActive(mycluster.Conf.ProvDbUpgradeMajorReprov, isactive)
 	case "prov-auto-update-compliance":
 		mycluster.Conf.ProvAutoUpdateCompliance = applyIsActive(mycluster.Conf.ProvAutoUpdateCompliance, isactive)
 	case "prov-docker-daemon-private":
@@ -5079,6 +5172,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MailSMTPTLSSkipVerify = applyIsActive(mycluster.Conf.MailSMTPTLSSkipVerify, isactive)
 	case "cloud18-shared":
 		mycluster.Conf.Cloud18Shared = applyIsActive(mycluster.Conf.Cloud18Shared, isactive)
+	case "cloud18-marketplace-bau-client-storage":
+		mycluster.Conf.Cloud18MarketplaceBAUClientStorage = applyIsActive(mycluster.Conf.Cloud18MarketplaceBAUClientStorage, isactive)
 	case "cloud18-open-dbops":
 		mycluster.Conf.Cloud18OpenDbops = applyIsActive(mycluster.Conf.Cloud18OpenDbops, isactive)
 	case "cloud18-open-sysops":
@@ -9579,11 +9674,15 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 			return
 		}
 		svc := mycluster.OpenSVCConnect()
-		nodes, err := svc.GetServiceNodeFromState(mycluster.Conf.Cloud18GatewayService)
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: ", err)
-			http.Error(w, "Error getting gateway nodes: "+err.Error(), http.StatusInternalServerError)
-			return
+		var nodes []string
+		for _, gwRef := range mycluster.Conf.GatewayServices() { // #1873: every gateway
+			gwNodes, err := svc.GetServiceNodeFromState(gwRef)
+			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: ", err)
+				http.Error(w, "Error getting gateway nodes: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			nodes = append(nodes, gwNodes...)
 		}
 
 		// Marshal provided interface into JSON structure
@@ -11075,4 +11174,41 @@ func (repman *ReplicationManager) toggleServerActiveStatus() error {
 		}
 	}
 	return nil
+}
+
+// handlerMuxClusterPrice answers one cluster's rows of the running month statement.
+// @Summary Price of a cluster for the running month
+// @Description The cluster's month statement: partner, sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.
+// @Tags Cluster
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.ClusterStatement
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "No statement yet"
+// @Router /api/clusters/{clusterName}/price [get]
+func (repman *ReplicationManager) handlerMuxClusterPrice(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if repman.resourceManager == nil {
+		http.Error(w, "ResourceManager not ready", http.StatusServiceUnavailable)
+		return
+	}
+	cs, ok := repman.resourceManager.ClusterStatementOf(mycluster.Name, time.Now())
+	if !ok {
+		http.Error(w, "No statement yet for "+mycluster.Name+": the first monitoring tick has not pushed its usage", http.StatusNotFound)
+		return
+	}
+	st, _ := repman.resourceManager.Statement("", time.Now())
+	out := map[string]any{"month": st.Month, "elapsedPct": st.ElapsedPct, "currency": st.Currency, "prices": st.Prices, "cluster": cs}
+	repman.jsonResponse(out, w)
 }
