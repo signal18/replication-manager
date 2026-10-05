@@ -476,6 +476,10 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveS
 										ON ss.subname =s.subname
 								) ON ros.external_id='pg_' || ss.subid::text ,
 								(SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
+				if postgresInRecovery(db) {
+					// a physical standby: WAL receiver, not subscriptions
+					query = postgresStandbyStatusQuery
+				}
 			}
 
 			err = udb.Get(&ss, query)
@@ -674,6 +678,10 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, str
 									  ON ss.subname =s.subname
 								) ON ros.external_id='pg_' || ss.subid::text ,
 							  (SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
+		if postgresInRecovery(db) {
+			// a physical standby: WAL receiver, not subscriptions
+			query = postgresStandbyStatusQuery
+		}
 	}
 	err = udb.Select(&ss, query)
 	return ss, query, err
@@ -792,11 +800,7 @@ func GetMasterStatus(db *sqlx.DB, myver *version.Version) (MasterStatus, string,
 	udb := db.Unsafe()
 	query := "SHOW MASTER STATUS"
 	if myver.IsPostgreSQL() {
-		query = `select
-		 	 'master.' ||	pg_walfile_name(pg_current_wal_lsn()) as "File" ,
-				(SELECT file_offset  FROM pg_walfile_name_offset(pg_current_wal_lsn())) as "Position" ,
-				'' as Binlog_Do_DB ,
-				'' as "Binlog_Ignore_DB"`
+		query = postgresMasterStatusQuery
 
 	} else if myver.IsMySQLOrPerconaGreater84() {
 		query = "SHOW BINARY LOG STATUS"

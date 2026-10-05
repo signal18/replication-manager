@@ -51,3 +51,32 @@ func TestPostgresTablesQuery(t *testing.T) {
 		t.Fatal("MariaDB keeps the information_schema query")
 	}
 }
+
+// The streaming standby status returns every column the logical replication status
+// returns (the monitor reads both into the same structure), and neither it nor the
+// position query calls a function PostgreSQL refuses during recovery.
+func TestPostgresStandbyStatusQueryShape(t *testing.T) {
+	for _, col := range []string{"Connection_name", "Master_Host", "Master_Port", "Master_User", "Master_Log_File",
+		"Read_Master_Log_Pos", "Relay_Master_Log_File", "Slave_IO_Running", "Slave_SQL_Running", "Exec_Master_Log_Pos",
+		"Seconds_Behind_Master", "Last_IO_Errno", "Last_SQL_Errno", "Last_SQL_Error", "Master_Server_Id", "Using_Gtid",
+		"Gtid_IO_Pos", "Gtid_Slave_Pos", "Slave_Heartbeat_Period", "Slave_SQL_Running_State"} {
+		if !strings.Contains(postgresStandbyStatusQuery, `"`+col+`"`) {
+			t.Fatalf("column %s missing from the standby status", col)
+		}
+	}
+	for _, q := range []string{postgresStandbyStatusQuery, postgresMasterStatusQuery} {
+		for _, refused := range []string{"pg_walfile_name", "pg_current_wal_lsn() AS"} {
+			if strings.Contains(q, refused) && refused == "pg_walfile_name" {
+				t.Fatalf("%s cannot be executed during recovery", refused)
+			}
+		}
+	}
+	if !strings.Contains(postgresStandbyStatusQuery, "pg_is_in_recovery()") || !strings.Contains(postgresStandbyStatusQuery, "pg_stat_wal_receiver") {
+		t.Fatal("the standby status reads the WAL receiver, on a server in recovery only")
+	}
+	for _, col := range []string{`"File"`, `"Position"`} {
+		if !strings.Contains(postgresMasterStatusQuery, col) {
+			t.Fatalf("column %s missing from the position query", col)
+		}
+	}
+}
