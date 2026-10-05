@@ -317,7 +317,7 @@ func (server *ServerMonitor) SetDSN() {
 		}
 		return dsn
 	}
-	if cluster.Conf.MasterSlavePgStream || cluster.Conf.MasterSlavePgLogical {
+	if server.IsPostgreSQLHost() {
 		server.DSN = pgdsn()
 	} else {
 		server.DSN = mydsn()
@@ -335,7 +335,14 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 	server.User = user
 	server.Pass = pass
 	server.URL = url
-	server.Host, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
+	// The url may come back without its database: the orchestrator domain is appended to the
+	// name and port only, and a credential rotation passes server.URL. The database of the
+	// host entry is kept, it was parsed once from the configuration.
+	host, port, db := misc.SplitHostPortDB(url)
+	server.Host, server.Port = host, port
+	if db != "" {
+		server.PostgressDB = db
+	}
 	cluster := server.ClusterGroup
 	server.IP, err = dbhelper.CheckHostAddr(server.Host, cluster.Conf.DNSTimeout)
 	if err != nil {

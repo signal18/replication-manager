@@ -1235,7 +1235,7 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		}
 	}
 	// get topology is call to late
-	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
+	if server.IsPostgreSQLHost() {
 		return sqlx.Connect("postgres", server.DSN)
 
 	}

@@ -212,6 +212,7 @@ type ServerMonitor struct {
 	Datadir                     string                      `json:"datadir"`
 	SlapOSDatadir               string                      `json:"slaposDatadir"`
 	PostgressDB                 string                      `json:"postgressDB"`
+	postgresDeclared            bool                        // the host entry names a database (host:port/database): a PostgreSQL instance, whatever the cluster topology
 	TLSConfigUsed               string                      `json:"tlsConfigUsed"`      //used to track TLS config during key rotation
 	LastTLSConfig               string                      `json:"lastTLSConfig"`      //used to track last working TLS config
 	ForceTLSSkipVerify          bool                        `json:"forceTLSSkipVerify"` // auto-detected when server returns error 3159 (require_secure_transport=ON)
@@ -386,6 +387,13 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ClusterGroup = cluster
 	server.DBVersion, _ = version.NewMySQLVersion("Unknowed-0.0.0", "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
+	if server.PostgressDB != "" {
+		// host:port/database is the PostgreSQL form of a host entry: this server is opened
+		// with the PostgreSQL driver even when the cluster declares no PostgreSQL replication
+		// topology (a single instance monitored active-passive)
+		server.postgresDeclared = true
+		cluster.IsPostgres = true
+	}
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false

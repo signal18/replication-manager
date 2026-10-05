@@ -831,6 +831,21 @@ func (server *ServerMonitor) IsMaster() bool {
 	return false
 }
 
+// IsPostgreSQLHost tells which driver opens this server, before any connection exists (the
+// version is only known once connected). PostgreSQL when the cluster declares a PostgreSQL
+// replication topology, or when the server's own host entry names a database
+// (host:port/database): the second lets one PostgreSQL instance be monitored
+// active-passive with no replication topology to declare.
+func (server *ServerMonitor) IsPostgreSQLHost() bool {
+	if server.postgresDeclared {
+		return true
+	}
+	if server.ClusterGroup == nil || server.ClusterGroup.Conf == nil {
+		return false
+	}
+	return server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical
+}
+
 func (server *ServerMonitor) IsMySQL() bool {
 	return server.DBVersion.IsMySQL()
 }
