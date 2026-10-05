@@ -390,6 +390,21 @@ func (cluster *Cluster) RollingRestart() error {
 }
 
 func (cluster *Cluster) RollingOptimize() {
+	// PostgreSQL: the optimize is a VACUUM (ANALYZE) run by the jobs sidecar of the PRIMARY.
+	// It blocks neither reads nor writes, and a standby cannot be vacuumed: it replays the
+	// primary's. The MariaDB rule below (replicas only, one after the other) does not apply.
+	if m := cluster.GetMaster(); m != nil && m.DBVersion != nil && m.DBVersion.IsPostgreSQL() {
+		if m.IsDown() || m.IsIgnored() {
+			return
+		}
+		jobid, err := m.JobOptimize()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Optimize request failed on %s: %s", m.URL, err)
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Optimize job id %d on %s ", jobid, m.URL)
+		return
+	}
 	for _, s := range cluster.slaves {
 		if s == nil || s.IsIgnored() || s.IsDown() {
 			continue

@@ -835,9 +835,10 @@ func (server *ServerMonitor) IsMaster() bool {
 // version is only known once connected). PostgreSQL when the cluster declares a PostgreSQL
 // replication topology, or when the server's own host entry names a database
 // (host:port/database): the second lets one PostgreSQL instance be monitored
-// active-passive with no replication topology to declare.
+// active-passive with no replication topology to declare. Once connected, the version
+// read from the server says it too.
 func (server *ServerMonitor) IsPostgreSQLHost() bool {
-	if server.postgresDeclared {
+	if server.postgresDeclared || (server.DBVersion != nil && server.DBVersion.IsPostgreSQL()) {
 		return true
 	}
 	if server.ClusterGroup == nil || server.ClusterGroup.Conf == nil {

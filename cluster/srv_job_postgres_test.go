@@ -10,6 +10,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -107,5 +108,24 @@ func TestPostgresPhysicalBackupIsASidecarTask(t *testing.T) {
 	s.LastBackupMeta.Physical.Completed = true
 	if !strings.HasSuffix(s.PostgresStreamDest("pgbasebackup"), "pgbasebackup.tar.gz") {
 		t.Fatal("a completed backup no longer steers the receiver")
+	}
+}
+
+// The scheduled optimize of a PostgreSQL cluster asks the PRIMARY's sidecar (a single
+// instance has no replica, and a standby cannot be vacuumed); the task is given once.
+func TestRollingOptimizePostgreSQLRunsOnThePrimary(t *testing.T) {
+	s := postgresJobTestServer(t)
+	c := s.ClusterGroup
+	c.master = s
+	c.Servers = []*ServerMonitor{s}
+	c.StateMachine = new(state.StateMachine)
+	c.StateMachine.Init()
+	s.State = stateMaster
+	c.RollingOptimize()
+	if ok, _ := s.CheckTaskNeeded("optimize"); !ok {
+		t.Fatal("the primary's sidecar is asked to optimize")
+	}
+	if ok, _ := s.CheckTaskNeeded("optimize"); ok {
+		t.Fatal("a request is given once")
 	}
 }
