@@ -387,6 +387,9 @@ func init() {
 	rootClientCmd.AddCommand(splitRestoreCmd)
 	initSplitRestoreFlags(splitRestoreCmd)
 
+	rootClientCmd.AddCommand(streamCmd)
+	initStreamFlags(streamCmd)
+
 	rootClientCmd.AddCommand(bootstrapCmd)
 	initBootstrapFlags(bootstrapCmd)
 	initClusterFlags(bootstrapCmd)
