@@ -502,7 +502,7 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 // exist and tell where replication-manager is. The database provisioning creates them
 // (OpenSVCCreateMaps); a namespace that only ever had apps never got them, so the sensor
 // sidecar and the jobs init container started without REPLICATION_MANAGER_URL (live
-// pgtest 2026-10-05: "wget: bad address ''"). Idempotent; an error is logged, the app
+// pgtest 2026-10-05: wget "bad address", an empty URL). Idempotent; an error is logged, the app
 // provisioning goes on.
 func (cluster *Cluster) openSVCEnsureAppNamespaceEnv(svc opensvc.Collector, agent string) {
 	if err := svc.CreateConfig(cluster.Name, "env", agent); err != nil && !isOpenSVCAlreadyExists(err) {
