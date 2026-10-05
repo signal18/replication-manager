@@ -764,6 +764,12 @@ func (cluster *Cluster) InitFromConf() {
 			"check-binlog-server-id=%d produces an invalid binlog syncer server-id of 0 with the query-event scanner's +2000 offset: query-event scanning will be disabled to avoid an unrecoverable go-mysql error. Set check-binlog-server-id to a different value.",
 			cluster.Conf.CheckBinServerId)
 	}
+	if idMeta, ok := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, 0); ok {
+		idScan, _ := binlogSyncerServerIDFor(cluster.Conf.CheckBinServerId, 2000)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Binlog syncer replica server-ids for this instance: metadata %d, event scanner %d (check-binlog-server-id %d + per-instance salt %d from hostname %s)",
+			idMeta, idScan, cluster.Conf.CheckBinServerId, binlogSyncerInstanceSalt(), binlogSyncerInstanceName())
+	}
 
 	//working directory of the cluster is working directory of server and cluster name
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {

@@ -157,3 +157,35 @@ func TestBinlogSyncerConstructionOnlyThroughSafeWrapper(t *testing.T) {
 			"error instead of exiting the whole replication-manager process", total)
 	}
 }
+
+func TestBinlogSyncerInstanceSaltKeepsSyncersApart(t *testing.T) {
+	// The salt never reaches the 2000 gap between the metadata syncer and the event
+	// scanner of one instance, whatever the hostname.
+	for _, h := range []string{"repman.s18.svc.cloud18", "repman-dr.s18.svc.cloud18", "repman-dev3", "", "a-very-long-hostname-with-many-characters.example.org"} {
+		if salt := binlogSyncerSaltFor(h); salt < 0 || salt >= 2000 {
+			t.Fatalf("salt for %q = %d, want [0,2000)", h, salt)
+		}
+	}
+	// Two instances with different hostnames get different ids (the belair case: the
+	// active and the standby both presented 12000, #1886).
+	if binlogSyncerSaltFor("repman.s18.svc.cloud18") == binlogSyncerSaltFor("repman-dr.s18.svc.cloud18") {
+		t.Fatal("active and standby hostnames must not share a salt")
+	}
+	// Deterministic.
+	if binlogSyncerSaltFor("x") != binlogSyncerSaltFor("x") {
+		t.Fatal("salt must be deterministic")
+	}
+}
+
+func TestBinlogScanStartPositionUsesMasterPosition(t *testing.T) {
+	s := &ServerMonitor{}
+	s.MasterStatus.File, s.MasterStatus.Position = "binlog.000022", 65371756
+	if p := s.binlogScanStartPosition("binlog.000022"); p.Pos != 65371756 || p.Name != "binlog.000022" {
+		t.Fatalf("expected the master's current position, got %+v", p)
+	}
+	// Master status about another file (rotation seen by one path, not the other yet):
+	// fall back to the head of the file.
+	if p := s.binlogScanStartPosition("binlog.000023"); p.Pos != 4 {
+		t.Fatalf("expected position 4 on a file mismatch, got %+v", p)
+	}
+}

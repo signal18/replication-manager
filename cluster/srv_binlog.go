@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"os"
 	"os/exec"
@@ -67,8 +68,48 @@ func (server *ServerMonitor) binlogSyncerTLSConfig() *tls.Config {
 // literal 0 or -offset). Shared by binlogSyncerServerID and InitFromConf's
 // startup validation so the two can't drift apart on what counts as invalid.
 func binlogSyncerServerIDFor(checkBinServerId, offset int) (uint32, bool) {
-	id := uint32(checkBinServerId + offset)
+	id := uint32(checkBinServerId + offset + binlogSyncerInstanceSalt())
 	return id, id != 0
+}
+
+// binlogSyncerInstanceSaltRange keeps the per-instance salt below the 2000 gap between
+// the metadata syncer (offset 0) and the event scanner (offset 2000), so the two syncers
+// of one instance never collide with each other whatever the salt.
+const binlogSyncerInstanceSaltRange = 1999
+
+var (
+	binlogSyncerSaltOnce sync.Once
+	binlogSyncerSalt     int
+)
+
+// binlogSyncerInstanceSalt is the per-repman-instance component of every binlog syncer
+// server-id: FNV-1a of this instance's hostname, folded into [0, 1999). Two replication
+// managers watching the same cluster (the active and the standby, a dev instance on the
+// side) used to present the SAME replica server-id: MariaDB kills the previous Binlog
+// Dump thread when a new one connects with that id, the loser reconnects on its next
+// tick and re-streams the current binlog file from the start, the winner is killed in
+// turn -- belair db1 served 1.7 TB in five days to its two monitors that way (#1886).
+// Hostname is what distinguishes the instances in every deployment we run (one pod or
+// one host per instance); the salt is logged at startup so a collision is visible.
+func binlogSyncerInstanceSalt() int {
+	binlogSyncerSaltOnce.Do(func() {
+		binlogSyncerSalt = binlogSyncerSaltFor(binlogSyncerInstanceName())
+	})
+	return binlogSyncerSalt
+}
+
+func binlogSyncerInstanceName() string {
+	h, err := os.Hostname()
+	if err != nil || h == "" {
+		return "replication-manager"
+	}
+	return h
+}
+
+func binlogSyncerSaltFor(instance string) int {
+	f := fnv.New32a()
+	f.Write([]byte(instance))
+	return int(f.Sum32() % binlogSyncerInstanceSaltRange)
 }
 
 // binlogSyncerServerID computes the go-mysql server-id for a binlog syncer
@@ -1213,7 +1254,11 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 		// Start from the beginning of the current file so we see all events
 		// written since the last rotation.  Position 4 skips the 4-byte magic
 		// header that precedes the first real event.
-		streamer, err := syncer.StartSync(mysql.Position{Name: currentFile, Pos: 4})
+		// Start at the master's CURRENT position, never at the head of the file: the
+		// scanner wants new events only, and a (re)connect at position 4 re-streams the
+		// whole current file (65 MB on belair) for nothing (#1886).
+		startPos := server.binlogScanStartPosition(currentFile)
+		streamer, err := syncer.StartSync(startPos)
 		if err != nil {
 			syncer.Close()
 			// If the server requires SSL and we haven't detected it yet via the
@@ -1234,7 +1279,7 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 						"[binlog-scan] failed to recreate binlog syncer on %s: %v", server.URL, err)
 					return
 				}
-				streamer, err = syncer.StartSync(mysql.Position{Name: currentFile, Pos: 4})
+				streamer, err = syncer.StartSync(startPos)
 				if err != nil {
 					syncer.Close()
 				}
@@ -1292,6 +1337,16 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 			})
 		}
 	}
+}
+
+// binlogScanStartPosition is where a (re)opened event scanner starts reading: the
+// master's current position when the monitor's last SHOW MASTER STATUS is about the
+// same file, else the first event of the file (position 4, the classic fallback).
+func (server *ServerMonitor) binlogScanStartPosition(currentFile string) mysql.Position {
+	if server.MasterStatus.File == currentFile && server.MasterStatus.Position > 4 {
+		return mysql.Position{Name: currentFile, Pos: uint32(server.MasterStatus.Position)}
+	}
+	return mysql.Position{Name: currentFile, Pos: 4}
 }
 
 // CloseBinlogEventSyncer tears down the persistent binlog streamer used by
