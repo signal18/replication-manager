@@ -395,6 +395,12 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		server.postgresDeclared = true
 		cluster.IsPostgres = true
 	}
+	if server.IsPostgreSQLHost() {
+		// known before the first connection: until the real version is read, every check
+		// keyed on the flavour must already take the PostgreSQL branch (the schema monitor
+		// ran its MySQL query at start: column "engine" does not exist)
+		server.DBVersion.Flavor = "PostgreSQL"
+	}
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false

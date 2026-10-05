@@ -9,6 +9,9 @@
 #   pgdump         pg_dumpall of the instance (logical backup)
 #   pgbasebackup   pg_basebackup as a tar stream with the WAL it needs (physical backup,
 #                  online, it blocks neither reads nor writes)
+#   optimize       vacuumdb --all --analyze: reclaims dead rows and refreshes the planner
+#                  statistics of every database; it blocks neither reads nor writes (never
+#                  VACUUM FULL, which locks the tables)
 #
 # Every call to replication-manager goes through replication-manager-cli, delivered in
 # /jobs by the init container: `job needs|receiver|state` for the API, `stream` for the
@@ -30,7 +33,7 @@ export PGCONNECT_TIMEOUT=5
 INTERVAL="${PG_JOB_INTERVAL:-10}"
 CLI="${REPMAN_CLIENT:-/jobs/replication-manager-cli}"
 ERR=/tmp/postgres_job.err
-TASKS="pgdump pgbasebackup"
+TASKS="pgdump pgbasebackup optimize"
 
 log() { echo "[postgres_job] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 
@@ -39,6 +42,20 @@ job() { "$CLI" job --secret-env POSTGRES_PASSWORD "$@"; }
 run_task() {
     local task="$1" addr rc_cmd=0 rc_stream=0
     job state "$task" processing || log "$task: cannot report processing"
+    case "$task" in
+    optimize)
+        # nothing to stream: run, report
+        log "$task: vacuumdb --all --analyze"
+        if vacuumdb --all --analyze >"$ERR" 2>&1; then
+            log "$task: done"
+            job state "$task" done || log "$task: cannot report done"
+        else
+            log "$task: failed: $(tail -c 300 "$ERR")"
+            job state "$task" error || log "$task: cannot report error"
+        fi
+        return
+        ;;
+    esac
     if ! addr=$(job receiver "$task") || [ -z "$addr" ]; then
         log "$task: no receiver"
         job state "$task" error
