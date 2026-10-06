@@ -338,6 +338,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 		return 0, 0, 0, err
 	}
 
+	myThreads = cluster.sysbenchCapThreads(myThreads)
 	test := "--test=" + myTest
 	threads := "--num-threads=" + myThreads
 	tablesize := "--oltp-table-size=" + mySize
@@ -868,4 +869,32 @@ func (cluster *Cluster) postgresServer() *ServerMonitor {
 		}
 	}
 	return nil
+}
+
+// sysbenchCapThreads bounds the sysbench threads by what the primary accepts: each thread
+// is a connection, and max_connections minus a reserve for the monitor, the replication
+// and the superuser (PostgreSQL refused the run with "too many clients already", 2026-10-06;
+// MySQL answers "Too many connections"). The cap is logged when it applies.
+func (cluster *Cluster) sysbenchCapThreads(threads string) string {
+	n, err := strconv.Atoi(threads)
+	if err != nil || n < 1 {
+		return threads
+	}
+	master := cluster.GetMaster()
+	if master == nil {
+		return threads
+	}
+	maxConn, err := strconv.Atoi(master.maxConn)
+	if err != nil || maxConn < 1 {
+		return threads
+	}
+	cap := maxConn - 10
+	if cap < 1 {
+		cap = 1
+	}
+	if n <= cap {
+		return threads
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Sysbench threads %d capped to %d: max_connections is %d on %s", n, cap, maxConn, master.URL)
+	return strconv.Itoa(cap)
 }
