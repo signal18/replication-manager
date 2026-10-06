@@ -379,3 +379,38 @@ func (cluster *Cluster) lastCrash() *Crash {
 	}
 	return cluster.Crashes[len(cluster.Crashes)-1]
 }
+
+// postgresWaitSync waits until this PostgreSQL replica has everything the primary wrote:
+// a standby replays up to the primary's current LSN, a logical subscriber's slot on the
+// primary confirms the primary's current LSN. Bounded by timeout; the monitor logs the
+// outcome and goes on, as MasterPosWait does for MariaDB.
+func (server *ServerMonitor) postgresWaitSync(master *ServerMonitor, timeout time.Duration) {
+	cluster := server.ClusterGroup
+	if master == nil || master.Conn == nil || server.Conn == nil {
+		return
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var target uint64
+		if err := master.Conn.Get(&target, "SELECT (pg_current_wal_lsn() - '0/0'::pg_lsn)::bigint"); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to read the primary position of %s: %s", master.URL, err)
+			return
+		}
+		var inRecovery bool
+		_ = server.Conn.Get(&inRecovery, "SELECT pg_is_in_recovery()")
+		if inRecovery {
+			var replay uint64
+			if err := server.Conn.Get(&replay, "SELECT (COALESCE(pg_last_wal_replay_lsn(), '0/0'::pg_lsn) - '0/0'::pg_lsn)::bigint"); err == nil && replay >= target {
+				return
+			}
+		} else if name, _, err := dbhelper.PostgresSubscriptionName(server.Conn); err == nil && name != "" {
+			if ok, _, err := dbhelper.PostgresSubscriberCaughtUp(master.Conn, name); err == nil && ok {
+				return
+			}
+		} else {
+			return // not a replica of this primary
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Replica %s did not reach the primary position within %s", server.URL, timeout)
+}

@@ -1805,6 +1805,10 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 func (server *ServerMonitor) LogReplPostion() {
 	cluster := server.ClusterGroup
 	server.Refresh()
+	if server.CurrentGtid == nil || server.SlaveGtid == nil || server.GTIDBinlogPos == nil {
+		// no GTID lists on PostgreSQL (nil dereference killed the monitor in a rolling restart, 2026-10-06)
+		return
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.GTIDBinlogPos.Sprint())
 }
 

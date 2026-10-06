@@ -23,6 +23,13 @@ import (
 func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for slave %s to sync", server.URL)
+	if server.IsPostgreSQLHost() {
+		// a standby has applied everything when its replay position reaches the primary's
+		// current position; a logical subscriber when its slot confirmed it (publisher side)
+		server.postgresWaitSync(master, 30*time.Second)
+		server.LogReplPostion()
+		return
+	}
 	if server.DBVersion.Flavor == "MariaDB" {
 		logs, err := dbhelper.MasterWaitGTID(server.Conn, master.GTIDBinlogPos.Sprint(), 30)
 		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Failed MasterWaitGTID, %s", err)
