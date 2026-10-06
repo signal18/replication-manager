@@ -149,7 +149,13 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			cm += " FOR CHANNEL '" + opt.Channel + "'"
 		}
 	}
-	_, err := db.Exec(cm)
+	var err error
+	if myver.IsPostgreSQL() {
+		// a subscriber keeps a read-only default: the monitor's session is switched
+		err = PostgresExecReadWrite(db, cm)
+	} else {
+		_, err = db.Exec(cm)
+	}
 	cm = strings.Replace(cm, opt.Password, "XXX", -1)
 	if err != nil {
 		return cm, fmt.Errorf("Change "+masterOrSource+" statement %s failed, reason: %s", cm, err)
@@ -1132,7 +1138,12 @@ func StartSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, er
 			cmd += " FOR CHANNEL '" + Channel + "'"
 		}
 	}
-	_, err := db.Exec(cmd)
+	var err error
+	if myver.IsPostgreSQL() {
+		err = PostgresExecReadWrite(db, cmd)
+	} else {
+		_, err = db.Exec(cmd)
+	}
 	return cmd, err
 }
 

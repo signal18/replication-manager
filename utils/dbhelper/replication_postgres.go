@@ -7,6 +7,7 @@
 package dbhelper
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -164,12 +165,37 @@ func PostgresEnsurePublication(db *sqlx.DB, name string) (string, error) {
 	if n > 0 {
 		return query, nil
 	}
-	stmt := "CREATE PUBLICATION " + name + " FOR ALL TABLES"
-	_, err := db.Exec(stmt)
-	return stmt, err
+	stmt := "CREATE PUBLICATION " + QuotePostgreSQLIdentifier(name) + " FOR ALL TABLES"
+	return stmt, PostgresExecReadWrite(db, stmt)
 }
 
 // Logical replication (publication / subscription) helpers of a master change.
+
+// PostgresExecReadWrite runs statements the monitor must execute on a server whose default is
+// read-only (a frozen primary, a subscriber): one dedicated connection, switched to
+// read-write first. Not a multi-statement string: that would be an implicit transaction
+// block, which CREATE/DROP/REFRESH SUBSCRIPTION and ALTER SYSTEM refuse.
+func PostgresExecReadWrite(db *sqlx.DB, stmts ...string) error {
+	conn, err := db.Connx(context.Background())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(context.Background(), "SET default_transaction_read_only = off"); err != nil {
+		return err
+	}
+	for _, stmt := range stmts {
+		if _, err := conn.ExecContext(context.Background(), stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// postgresLiteral quotes a string literal.
+func postgresLiteral(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
 
 // PostgresSubscriptionName returns the subscription of a subscriber, "" when none.
 func PostgresSubscriptionName(db *sqlx.DB) (string, string, error) {
@@ -187,24 +213,22 @@ func PostgresDropSubscription(db *sqlx.DB, name string, publisherAlive bool) (st
 	if !publisherAlive {
 		for _, stmt := range []string{"ALTER SUBSCRIPTION " + id + " DISABLE", "ALTER SUBSCRIPTION " + id + " SET (slot_name = NONE)"} {
 			logs += stmt + "\n"
-			if _, err := db.Exec(stmt); err != nil {
+			if err := PostgresExecReadWrite(db, stmt); err != nil {
 				return logs, err
 			}
 		}
 	}
 	stmt := "DROP SUBSCRIPTION " + id
 	logs += stmt
-	_, err := db.Exec(stmt)
-	return logs, err
+	return logs, PostgresExecReadWrite(db, stmt)
 }
 
 // PostgresRefreshSubscription makes a subscription cover the tables its publication has now
 // (tables added after the subscription are not followed until then), without copying data.
 // It cannot run inside a transaction block nor a read-only session.
 func PostgresRefreshSubscription(db *sqlx.DB, name string) (string, error) {
-	stmt := "SET default_transaction_read_only = off; ALTER SUBSCRIPTION " + QuotePostgreSQLIdentifier(name) + " REFRESH PUBLICATION WITH (copy_data = false)"
-	_, err := db.Exec(stmt)
-	return stmt, err
+	stmt := "ALTER SUBSCRIPTION " + QuotePostgreSQLIdentifier(name) + " REFRESH PUBLICATION WITH (copy_data = false)"
+	return stmt, PostgresExecReadWrite(db, stmt)
 }
 
 // PostgresSetDefaultReadOnly is the PostgreSQL freeze: new transactions of every session are
@@ -215,12 +239,8 @@ func PostgresSetDefaultReadOnly(db *sqlx.DB, readOnly bool) (string, error) {
 	if readOnly {
 		stmt = "ALTER SYSTEM SET default_transaction_read_only = on"
 	}
-	if _, err := db.Exec(stmt); err != nil {
-		return stmt, err
-	}
 	reload := "SELECT pg_reload_conf()"
-	_, err := db.Exec(reload)
-	return stmt + "\n" + reload, err
+	return stmt + "\n" + reload, PostgresExecReadWrite(db, stmt, reload)
 }
 
 // PostgresTerminateClientBackends ends the client sessions other than this one: with the
@@ -243,7 +263,6 @@ func PostgresSubscriberCaughtUp(db *sqlx.DB, slot string) (bool, string, error) 
 
 // PostgresDropReplicationSlot drops a leftover slot (a former subscriber's) on a publisher.
 func PostgresDropReplicationSlot(db *sqlx.DB, slot string) (string, error) {
-	query := "SELECT pg_drop_replication_slot(slot_name) FROM pg_catalog.pg_replication_slots WHERE slot_name = $1 AND NOT active"
-	_, err := db.Exec(query, slot)
-	return query, err
+	query := "SELECT pg_drop_replication_slot(slot_name) FROM pg_catalog.pg_replication_slots WHERE slot_name = " + postgresLiteral(slot) + " AND NOT active"
+	return query, PostgresExecReadWrite(db, query)
 }

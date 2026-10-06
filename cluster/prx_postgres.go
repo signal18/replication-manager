@@ -79,7 +79,7 @@ func (cluster *Cluster) postgresInjectTrafficMarker(db *sqlx.DB, uuid string, re
 // cluster (a standby in recovery refuses DDL and is skipped: it has the primary's copy), and
 // makes every logical replication subscriber pick the table up.
 func (cluster *Cluster) postgresEnsureTrafficTable() error {
-	const ddl = "CREATE SCHEMA IF NOT EXISTS replication_manager_schema; CREATE TABLE IF NOT EXISTS replication_manager_schema.pseudo_gtid_hist (id INT PRIMARY KEY, uuid VARCHAR(64), ts TIMESTAMPTZ)"
+	ddl := []string{"CREATE SCHEMA IF NOT EXISTS replication_manager_schema", "CREATE TABLE IF NOT EXISTS replication_manager_schema.pseudo_gtid_hist (id INT PRIMARY KEY, uuid VARCHAR(64), ts TIMESTAMPTZ)"}
 	for _, s := range cluster.Servers {
 		if s == nil || s.Conn == nil || s.IsDown() || !s.IsPostgreSQLHost() {
 			continue
@@ -88,13 +88,14 @@ func (cluster *Cluster) postgresEnsureTrafficTable() error {
 		if err := s.Conn.Get(&inRecovery, "SELECT pg_is_in_recovery()"); err != nil || inRecovery {
 			continue
 		}
-		if _, err := s.Conn.Exec(ddl); err != nil {
+		// a subscriber keeps a read-only default: the monitor's session is switched
+		if err := dbhelper.PostgresExecReadWrite(s.Conn, ddl...); err != nil {
 			return fmt.Errorf("traffic marker table on %s: %w", s.URL, err)
 		}
 		for _, r := range s.Replications {
 			if name := r.ConnectionName.String; name != "" && name != dbhelper.PostgresStandbyConnectionName {
 				// a subscriber: tables created after the subscription need a refresh
-				if _, err := s.Conn.Exec("ALTER SUBSCRIPTION " + dbhelper.QuotePostgreSQLIdentifier(name) + " REFRESH PUBLICATION"); err != nil {
+				if _, err := dbhelper.PostgresRefreshSubscription(s.Conn, name); err != nil {
 					return fmt.Errorf("subscription refresh on %s: %w", s.URL, err)
 				}
 			}
