@@ -6475,9 +6475,9 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		proxies := mycluster.GetProxies()
-		if len(proxies) == 0 || proxies[0] == nil {
-			http.Error(w, "No proxy configured", http.StatusConflict)
+		if proxies := mycluster.GetProxies(); (len(proxies) == 0 || proxies[0] == nil) && mycluster.GetMaster() == nil {
+			// without proxy the benchmark goes to the master (getFirstProxy)
+			http.Error(w, "No proxy configured and no master", http.StatusConflict)
 			return
 		}
 		if r.URL.Query().Get("test") != "" {
@@ -6509,9 +6509,9 @@ func (repman *ReplicationManager) handlerMuxClusterSysbenchCleanup(w http.Respon
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		proxies := mycluster.GetProxies()
-		if len(proxies) == 0 || proxies[0] == nil {
-			http.Error(w, "No proxy configured", http.StatusConflict)
+		if proxies := mycluster.GetProxies(); (len(proxies) == 0 || proxies[0] == nil) && mycluster.GetMaster() == nil {
+			// without proxy the benchmark goes to the master (getFirstProxy)
+			http.Error(w, "No proxy configured and no master", http.StatusConflict)
 			return
 		}
 		if r.URL.Query().Get("test") != "" {

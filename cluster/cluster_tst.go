@@ -200,12 +200,20 @@ func (cluster *Cluster) ensureSysbenchVersionAvailable() error {
 	return nil
 }
 
+// getFirstProxy is the entry point of the benchmark: the first proxy, as the application
+// would connect, else the master itself (a cluster without proxy, pg-active-passive) carried
+// by a bare Proxy value for its host and write port.
 func (cluster *Cluster) getFirstProxy() (DatabaseProxy, error) {
 	proxies := cluster.GetProxies()
-	if len(proxies) == 0 || proxies[0] == nil {
-		return nil, errors.New("No proxy")
+	if len(proxies) > 0 && proxies[0] != nil {
+		return proxies[0], nil
 	}
-	return proxies[0], nil
+	master := cluster.GetMaster()
+	if master == nil {
+		return nil, errors.New("No proxy and no master to benchmark")
+	}
+	port, _ := strconv.Atoi(master.Port)
+	return &Proxy{Host: master.Host, WritePort: port}, nil
 }
 
 func (cluster *Cluster) PrepareBench() error {
