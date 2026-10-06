@@ -19,10 +19,21 @@ func pgReplica(connection string) *ServerMonitor {
 // The PostgreSQL topology is the one the replicas report: physical standbys are WAL
 // streaming, subscribers are logical replication, MariaDB replicas are neither.
 func TestPostgresReplicationTopology(t *testing.T) {
-	cl := &Cluster{}
+	cl := &Cluster{Conf: &config.Config{}}
 	if got := cl.postgresReplicationTopology(); got != "" {
-		t.Fatalf("no replica: got %q", got)
+		t.Fatalf("no replica, no server: got %q", got)
 	}
+	// no replica: a PostgreSQL cluster keeps its declared topology, a MariaDB one does not
+	cl.Conf.TopologyTarget = config.TopoMasterSlavePgStream
+	cl.Servers = serverList{pgReplica(""), pgReplica("")}
+	if got := cl.postgresReplicationTopology(); got != config.TopoMasterSlavePgStream {
+		t.Fatalf("no replica, PostgreSQL servers: got %q", got)
+	}
+	cl.Servers = serverList{pgReplica(""), {DBVersion: &version.Version{Flavor: "MariaDB", Major: 11}}}
+	if got := cl.postgresReplicationTopology(); got != "" {
+		t.Fatalf("no replica, mixed servers: got %q", got)
+	}
+	cl.Conf.TopologyTarget = ""
 	cl.slaves = serverList{pgReplica(dbhelper.PostgresStandbyConnectionName)}
 	if got := cl.postgresReplicationTopology(); got != config.TopoMasterSlavePgStream {
 		t.Fatalf("physical standby: got %q", got)

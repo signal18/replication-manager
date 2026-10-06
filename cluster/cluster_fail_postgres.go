@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -229,6 +230,10 @@ func (cluster *Cluster) postgresSwitchover() bool {
 	cluster.master = candidate
 	cluster.master.SetMaster()
 	cluster.master.delete(&cluster.slaves)
+	// the old primary is a replica from here: a stale Master state on a stopped server
+	// is what discovery would otherwise pick up as the master again
+	old.SetState(stateSlave)
+	cluster.slaves = append(cluster.slaves, old)
 
 	crash := new(Crash)
 	crash.Switchover = true
@@ -249,9 +254,8 @@ func (cluster *Cluster) postgresSwitchover() bool {
 
 	// 4. the old primary comes back as a standby
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting %s as a standby of %s", old.URL, candidate.URL)
-	if err := cluster.OpenSVCStartAppService(app, ""); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not start %s: %s. It is armed to start as a standby of %s", old.URL, err, candidate.URL)
-	} else {
+	startErr := cluster.postgresStartApp(app)
+	if startErr == nil {
 		// stopped before the promotion: no divergent tail by construction
 		cluster.finishCrashRecord(crash, RejoinResultNoDivergence)
 	}
@@ -261,7 +265,29 @@ func (cluster *Cluster) postgresSwitchover() bool {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master switch on %s complete", cluster.master.URL)
 	cluster.master.FailCount = 0
 	cluster.MasterChangeTs = time.Now().Unix()
+	if startErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Switchover to %s done but the old primary %s could not be started: %s. Start its service: it is armed to come back as a standby of %s", candidate.URL, old.URL, startErr, candidate.URL)
+		return false
+	}
 	return true
+}
+
+// postgresStartApp starts the service of a PostgreSQL server, retrying while the
+// orchestrator still runs the stop that preceded (409, orchestration in progress).
+func (cluster *Cluster) postgresStartApp(app *App) error {
+	deadline := time.Now().Add(3 * time.Minute)
+	for {
+		err := cluster.OpenSVCStartAppService(app, "")
+		if err == nil {
+			return nil
+		}
+		msg := err.Error()
+		if !(strings.Contains(msg, "409") || strings.Contains(msg, "in progress")) || time.Now().After(deadline) {
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Orchestrator still busy with %s, start retried in 5 s", app.GetServiceName())
+		time.Sleep(5 * time.Second)
+	}
 }
 
 // postgresWaitWalReceiverGone waits until a standby no longer receives from its primary:
@@ -282,7 +308,7 @@ func (cluster *Cluster) postgresWaitWalReceiverGone(standby *ServerMonitor, time
 // stopped and armed to start as a standby, so it is started and promoted back.
 func (cluster *Cluster) postgresSwitchoverRollback(old *ServerMonitor, app *App) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Switchover failed at the promotion: starting %s again and promoting it back", old.URL)
-	if err := cluster.OpenSVCStartAppService(app, ""); err != nil {
+	if err := cluster.postgresStartApp(app); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not start %s: %s. NO PRIMARY: start its service, then promote it", old.URL, err)
 		return
 	}
@@ -320,6 +346,21 @@ func (server *ServerMonitor) postgresRejoin() error {
 		// not reachable yet, or already a standby
 		return err
 	}
+	// Only the RECORDED former primary of the last master change is re-seeded, and only
+	// from the primary that change elected, which must be up and really a primary. A master
+	// pointer alone is not enough: with the old primary stopped and no replica left, the
+	// generic discovery once re-designated the stopped server as master and this rejoin
+	// cleared the data of the server that had just been promoted (2026-10-06).
+	last := cluster.lastCrash()
+	if last == nil || last.URL != server.URL || last.ElectedMasterURL != master.URL {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PostgreSQL server %s is a second primary but is not the former primary of the last master change: not rejoined, check the cluster", server.URL)
+		return nil
+	}
+	var masterInRecovery bool
+	if master.Conn == nil || master.Conn.Get(&masterInRecovery, "SELECT pg_is_in_recovery()") != nil || masterInRecovery {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Former primary %s not rejoined: %s is not a running primary", server.URL, master.URL)
+		return nil
+	}
 	if !cluster.Conf.Autorejoin {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PostgreSQL server %s is back as a second primary and auto rejoin is disabled: re-seed it as a standby of %s", server.URL, master.URL)
 		return nil
@@ -340,4 +381,12 @@ func (server *ServerMonitor) postgresRejoin() error {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Former primary %s restarted to re-seed from %s", server.URL, master.URL)
 	return nil
+}
+
+// lastCrash returns the record of the last failover or switchover, nil when none.
+func (cluster *Cluster) lastCrash() *Crash {
+	if len(cluster.Crashes) == 0 {
+		return nil
+	}
+	return cluster.Crashes[len(cluster.Crashes)-1]
 }

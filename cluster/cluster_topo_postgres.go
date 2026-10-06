@@ -18,6 +18,20 @@ import (
 // so a cluster declared for one and running the other still raises the topology mismatch.
 func (cluster *Cluster) postgresReplicationTopology() string {
 	standbys, subscribers := 0, 0
+	if len(cluster.slaves) == 0 && cluster.Conf != nil {
+		// No replica for the moment (old primary stopped during a switchover, lost after
+		// a failover): a PostgreSQL cluster keeps the topology it is declared for, so the
+		// generic master-slave rules (last non-slave is master, extra master after
+		// split-brain) never run on it. The target is trusted only when every monitored
+		// server is PostgreSQL.
+		switch cluster.Conf.TopologyTarget {
+		case config.TopoMasterSlavePgStream, config.TopoMasterSlavePgLog:
+			if cluster.allServersPostgres() {
+				return cluster.Conf.TopologyTarget
+			}
+		}
+		return ""
+	}
 	for _, sl := range cluster.slaves {
 		if sl == nil || sl.DBVersion == nil || !sl.DBVersion.IsPostgreSQL() {
 			return ""
@@ -45,4 +59,17 @@ func postgresIsPhysicalStandbyStatus(replications []dbhelper.SlaveStatus) bool {
 		}
 	}
 	return false
+}
+
+// allServersPostgres: every monitored server is PostgreSQL (none unknown).
+func (cluster *Cluster) allServersPostgres() bool {
+	if len(cluster.Servers) == 0 {
+		return false
+	}
+	for _, s := range cluster.Servers {
+		if s == nil || s.DBVersion == nil || !s.DBVersion.IsPostgreSQL() {
+			return false
+		}
+	}
+	return true
 }
