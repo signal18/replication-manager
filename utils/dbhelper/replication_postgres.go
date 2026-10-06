@@ -184,6 +184,10 @@ func PostgresExecReadWrite(db *sqlx.DB, stmts ...string) error {
 	if _, err := conn.ExecContext(context.Background(), "SET default_transaction_read_only = off"); err != nil {
 		return err
 	}
+	// the session goes back to the server's default before the connection returns to the
+	// pool: a session-level SET would hide the server value from the monitor's reads
+	// (pg_settings shows the session's value) and the read-only enforcement looped
+	defer conn.ExecContext(context.Background(), "RESET default_transaction_read_only")
 	for _, stmt := range stmts {
 		if _, err := conn.ExecContext(context.Background(), stmt); err != nil {
 			return err
@@ -266,4 +270,3 @@ func PostgresDropReplicationSlot(db *sqlx.DB, slot string) (string, error) {
 	query := "SELECT pg_drop_replication_slot(slot_name) FROM pg_catalog.pg_replication_slots WHERE slot_name = " + postgresLiteral(slot) + " AND NOT active"
 	return query, PostgresExecReadWrite(db, query)
 }
-
