@@ -10,6 +10,8 @@ import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
 import Apps from './components/Apps/index.jsx'
 import RMIconButton from '../../components/RMIconButton'
+import TableType2 from '../../components/TableType2'
+import styles from './styles.module.scss'
 import { HiCog } from 'react-icons/hi'
 // Accordion heading with a "?" tooltip explaining log content
 function LogHeading({ title, description }) {
@@ -37,6 +39,22 @@ function LogHeading({ title, description }) {
       </Tooltip>
     </HStack>
   )
+}
+
+const toolLabels = {
+  client: 'Database client',
+  'client-dump': 'Dump client',
+  'client-binlog': 'Binlog client',
+  mydumper: 'mydumper',
+  sysbench: 'sysbench',
+  restic: 'restic'
+}
+
+function LocalTools({ tools }) {
+  const rows = Object.keys(tools)
+    .sort()
+    .map((tool) => ({ key: toolLabels[tool] || tool, value: tools[tool] }))
+  return <TableType2 dataArray={rows} className={styles.table} labelClassName={styles.rowLabel} valueClassName={styles.rowValue} />
 }
 
 function Dashboard({ selectedCluster, user, openSettings = {} }) {
@@ -85,6 +103,17 @@ function Dashboard({ selectedCluster, user, openSettings = {} }) {
           heading={'Application Servers'}
           panelSX={{ overflowX: 'auto', p: 0 }}
           body={<Apps selectedCluster={selectedCluster} user={user} />}
+        />)}
+
+        {selectedCluster?.toolsVersions && Object.keys(selectedCluster.toolsVersions).length > 0 && (
+        <AccordionComponent
+          heading={
+            <LogHeading
+              title='Local tools'
+              description='Command line tools found on this replication-manager for the cluster (database client, dump and binlog clients, mydumper, sysbench, restic) with their detected version. A tool that was not found is not listed.'
+            />
+          }
+          body={<LocalTools tools={selectedCluster.toolsVersions} />}
         />)}
 
       <AccordionComponent heading={'Cluster Logs'} headerActions={gearButton(openSettings.logs, 'Log Settings')} body={<GeneralLogs />} />

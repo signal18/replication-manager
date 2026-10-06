@@ -38,6 +38,24 @@ func (cluster *Cluster) RefreshToolVersions() {
 			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
 		}
 	}
+	cluster.ToolsVersions = cluster.GetToolsVersions()
+}
+
+// GetToolsVersions returns the local tools found on this replication-manager, tool name
+// to version (client, client-dump, client-binlog, mydumper, sysbench, restic), for the API
+// and the dashboard. A tool that was not found is absent.
+func (cluster *Cluster) GetToolsVersions() map[string]string {
+	out := map[string]string{}
+	if cluster.VersionsMap == nil {
+		return out
+	}
+	cluster.VersionsMap.Callback(func(tool string, v *version.Version) bool {
+		if v != nil {
+			out[tool] = strings.TrimSpace(v.Flavor + " " + v.ToString())
+		}
+		return true
+	})
+	return out
 }
 
 // CheckComplianceUpdate checks if new compliance files are available in

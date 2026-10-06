@@ -111,6 +111,7 @@ type Cluster struct {
 	IsAllDbUp                     bool                           `json:"isAllDbUp" groups:"web"`
 	IsFailable                    bool                           `json:"isFailable" groups:"web"`
 	IsPostgres                    bool                           `json:"isPostgres" groups:"web"`
+	ToolsVersions                 map[string]string              `json:"toolsVersions" groups:"web"` // local tools found by RefreshToolVersions, tool -> version
 	IsProvision                   bool                           `json:"isProvision" groups:"web"`
 	IsNeedProxiesRestart          bool                           `json:"isNeedProxiesRestart" groups:"web"`
 	IsNeedProxiesReprov           bool                           `json:"isNeedProxiesReprov" groups:"web"`

@@ -267,6 +267,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCreateBucket)),
 	)).Methods("POST")
 
+	router.Handle("/api/clusters/{clusterName}/tools", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterTools)),
+	))
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -2267,6 +2271,31 @@ func (repman *ReplicationManager) handlerMuxMaster(w http.ResponseWriter, r *htt
 
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
+	}
+}
+
+// handlerMuxClusterTools returns the local tools replication-manager found for a cluster.
+// @Summary Local tools and their versions
+// @Description The command line tools found on this replication-manager for the cluster (database client, dump and binlog clients, mydumper, sysbench, restic) with their detected version; a tool that was not found is absent.
+// @Tags Cluster
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} map[string]string "tool name to version"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/tools [get]
+func (repman *ReplicationManager) handlerMuxClusterTools(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(mycluster.GetToolsVersions()); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 	}
 }
 
