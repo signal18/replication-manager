@@ -165,6 +165,24 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 		if err != nil {
 			return err
 		}
+		// and the scripts its containers run from config keys: the start script and the
+		// configurator render, written at provision, follow the build like the definition
+		// (pg1 of pg-active-passive restarted on an old start script, 2026-10-06); the
+		// jobs script has its own upgrade (checkPostgresJobsVersion)
+		if script := appStartScript(app); script != "" {
+			if err := svc.CreateConfigKeyValue(cluster.Name, app.Name, appStartScriptKey, script); err != nil { // create updates an existing key
+				return fmt.Errorf("config key %s of %s: %w", appStartScriptKey, app.Name, err)
+			}
+		}
+		if app.AppConfig != nil && app.AppConfig.ProvAppConfigurator != "" {
+			script, err := cluster.AppConfiguratorScript(app)
+			if err != nil {
+				return err
+			}
+			if err := svc.CreateConfigKeyValue(cluster.Name, app.Name, appConfiguratorScriptKey, script); err != nil {
+				return fmt.Errorf("config key %s of %s: %w", appConfiguratorScriptKey, app.Name, err)
+			}
+		}
 	} else {
 		if _, err = cluster.OpenSVCFoundDatabaseAgent(s); err != nil {
 			return err
