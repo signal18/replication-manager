@@ -5379,12 +5379,16 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		} else {
 			rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
 		}
-	case config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync:
+	case config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync, config.ConstTaskPgReseedLogical:
 		// nothing to stream: the sidecar asks which primary the task works against
 		target := node.PostgresNextStartTarget(taskname)
 		if target == "" {
 			http.Error(w, "No primary to follow for "+taskname, 500)
 			return
+		}
+		if taskname == string(config.ConstTaskPgReseedLogical) {
+			// and the name of the slot (the subscription's) it creates there
+			target += " SLOT=" + mycluster.PostgresSubscriptionNameFor()
 		}
 		w.WriteHeader(200)
 		w.Write([]byte("TARGET=" + target))
@@ -5488,6 +5492,10 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 		if taskname == string(config.ConstTaskPgRestoreLogical) {
 			node.SetInReseedBackup("")
 		}
+		if taskname == string(config.ConstTaskPgReseedLogical) {
+			// the data is in place at the snapshot of the slot: subscribe on that slot
+			go node.PostgresLogicalReseedFinish()
+		}
 		if physicalRestoreJobTasks[taskname] {
 			// RecoverPhysicalRestore is the same vendor/topology-aware
 			// GTID-apply and channel-restart owner SQL mode's
@@ -5526,6 +5534,10 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 		node.MarkBackupPhysicalDone(taskname)
 		node.JobsUpdateState(taskname, result, state, 1)
 	case "error":
+		if strings.HasPrefix(taskname, "pg") && node.HasReseedingState(taskname) {
+			// a PostgreSQL reseed or restore that failed in the sidecar releases the state
+			node.SetInReseedBackup("")
+		}
 		if physicalRestoreJobTasks[taskname] {
 			// Mirrors JobsCheckErrors' SQL-mode error path (cluster/srv_job.go):
 			// a reseed/flashback that ends in error must release the reseeding

@@ -11,6 +11,7 @@
 #   pgreseed       arm the next start to copy the data again from that primary
 #   pgschemasync   create the published tables this subscriber misses (DDL is not replicated)
 #   pgrestore      receive the stored physical backup, arm the next start to restore it
+#   pgreseedlogical  re-copy this server from the primary at the snapshot of a new slot
 #   pgrestorelogical  receive the stored logical backup and replay it on this server
 #   pgbasebackup   pg_basebackup as a tar stream with the WAL it needs (physical backup,
 #                  online, it blocks neither reads nor writes)
@@ -38,7 +39,7 @@ export PGCONNECT_TIMEOUT=5
 INTERVAL="${PG_JOB_INTERVAL:-10}"
 CLI="${REPMAN_CLIENT:-/jobs/replication-manager-cli}"
 ERR=/tmp/postgres_job.err
-TASKS="pgdump pgbasebackup optimize pgstandby pgreseed pgschemasync pgrestore pgrestorelogical"
+TASKS="pgdump pgbasebackup optimize pgstandby pgreseed pgschemasync pgrestore pgrestorelogical pgreseedlogical"
 # where the received physical backup waits for the next start (kept by the restore wipe)
 RESTORE_DIR="${PGDATA:-/var/lib/postgresql/data}/replication-manager.restore"
 # what the next start of PostgreSQL must do, read by the start script (postgres_start.sh)
@@ -110,6 +111,48 @@ run_task() {
             job state "$task" done || log "$task: cannot report done"
         else
             log "$task: cannot write $NEXT_START"
+            job state "$task" error || log "$task: cannot report error"
+        fi
+        return
+        ;;
+    pgreseedlogical)
+        # Re-copy of a logical replication subscriber (a former primary after a failover):
+        # logical replication has no position to resume from, so the slot the subscription
+        # will use is created on the primary FIRST, with an exported snapshot, the primary is
+        # dumped at that snapshot while the slot's connection stays open, and the dump is
+        # replayed here; replication-manager then subscribes on that slot (create_slot=false)
+        # and streaming resumes exactly where the dump stopped. "TARGET=host:port SLOT=name".
+        local target slot phost pport db snap line dumprc
+        target="${addr%% *}"; slot=$(printf '%s' "$addr" | sed -n 's/.*SLOT=\([^ ]*\).*/\1/p'); slot="${slot:-alltables}"
+        phost="${target%:*}"; pport="${target##*:}"; db="${PGDATABASE:-postgres}"
+        : > "$ERR"
+        # a slot of that name left by an earlier attempt, never consumed, is in the way
+        PGHOST="$phost" PGPORT="$pport" psql -X -At -d "$db" -c "SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots WHERE slot_name = '$slot' AND NOT active" >>"$ERR" 2>&1
+        coproc REPL { PGHOST="$phost" PGPORT="$pport" psql -X -At -F '|' "dbname=$db replication=database" 2>>"$ERR"; }
+        echo "CREATE_REPLICATION_SLOT $slot LOGICAL pgoutput EXPORT_SNAPSHOT;" >&"${REPL[1]}"
+        line=""; read -r -t 60 line <&"${REPL[0]}" || true
+        snap=$(printf '%s' "$line" | cut -d'|' -f3)
+        if [ -z "$snap" ]; then
+            log "$task: no slot/snapshot from $target: $(tail -c 300 "$ERR")"
+            exec {REPL[1]}>&-; wait "$REPL_PID" 2>/dev/null
+            job state "$task" error || log "$task: cannot report error"
+            return
+        fi
+        log "$task: slot $slot created on $target at snapshot $snap, copying database $db"
+        # the local replay: writes allowed, the DDL log trigger silent (this server was a
+        # publisher: its event trigger would log the replay), its own publication dropped
+        { printf "SET default_transaction_read_only = off;\nSET replication_manager.applying_ddl = on;\nDROP PUBLICATION IF EXISTS %s;\n" "$slot"
+          PGHOST="$phost" PGPORT="$pport" pg_dump -d "$db" --snapshot="$snap" --clean --if-exists --no-owner --no-privileges --no-publications --no-subscriptions 2>>"$ERR"
+          echo "-- dump rc ${PIPESTATUS[0]:-?}" >&2
+        } | psql -X -v ON_ERROR_STOP=0 -q -d "$db" >>"$ERR" 2>&1
+        dumprc=$?
+        exec {REPL[1]}>&-; wait "$REPL_PID" 2>/dev/null
+        if [ "$dumprc" -eq 0 ] && ! grep -q '^pg_dump: error' "$ERR"; then
+            log "$task: database $db replayed at snapshot $snap ($(grep -c '^ERROR' "$ERR" 2>/dev/null || echo 0) statements refused, see $ERR)"
+            job state "$task" done || log "$task: cannot report done"
+        else
+            log "$task: failed: $(grep -m1 '^pg_dump: error' "$ERR" || tail -c 300 "$ERR")"
+            PGHOST="$phost" PGPORT="$pport" psql -X -At -d "$db" -c "SELECT pg_drop_replication_slot('$slot')" >>"$ERR" 2>&1
             job state "$task" error || log "$task: cannot report error"
         fi
         return

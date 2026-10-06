@@ -86,6 +86,11 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			opt.Channel = "alltables"
 		}
 		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + misc.Unbracket(opt.Host) + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel + " WITH (enabled=false, copy_data=false, create_slot=true)"
+		if opt.PostgresExistingSlot {
+			// the slot created on the publisher with the snapshot the data was dumped at:
+			// streaming resumes exactly where the dump stopped
+			cm = strings.TrimSuffix(cm, "create_slot=true)") + "create_slot=false, slot_name='" + strings.ReplaceAll(opt.Channel, "'", "''") + "')"
+		}
 	} else {
 		if myver.IsMariaDB() && opt.Channel != "" {
 			cm += "CHANGE " + masterOrSource + " '" + opt.Channel + "' TO "

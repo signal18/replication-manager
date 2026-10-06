@@ -250,10 +250,13 @@ func (cluster *Cluster) postgresLogicalRepointSubscribers() {
 	}
 }
 
-// postgresLogicalRejoin brings a former publisher back as a subscriber of the new one. Its
-// own publication and the leftover slot of its former subscriber are dropped. Writes it took
-// after the failover are NOT reconciled by logical replication: they are reported, the
-// operator decides (a re-copy is a logical dump restore, the backup job's business).
+// postgresLogicalRejoin brings a former publisher back as a subscriber of the new one, by a
+// re-copy: logical replication has no position to resume from (a new slot starts at "now",
+// what the new primary wrote since the failover would never reach this server), so its jobs
+// sidecar creates the slot on the primary with an exported snapshot, dumps the primary at that
+// snapshot, replays it here, and the subscription then takes that slot (pgreseedlogical,
+// PostgresLogicalReseedFinish). Writes this server took after the failover are lost, as on
+// MariaDB without flashback; they are reported.
 func (server *ServerMonitor) postgresLogicalRejoin() error {
 	cluster := server.ClusterGroup
 	master := cluster.GetMaster()
@@ -262,6 +265,9 @@ func (server *ServerMonitor) postgresLogicalRejoin() error {
 	}
 	if name, _, _ := dbhelper.PostgresSubscriptionName(server.Conn); name != "" {
 		return nil // already a subscriber
+	}
+	if server.HasAnyReseedingState() {
+		return nil // the re-copy is under way
 	}
 	last := cluster.lastCrash()
 	if last == nil || last.URL != server.URL || last.ElectedMasterURL != master.URL {
@@ -278,22 +284,22 @@ func (server *ServerMonitor) postgresLogicalRejoin() error {
 	// the slot the new primary held on it as a subscriber, left behind by the failover
 	for _, s := range cluster.Servers {
 		if s != nil && s.URL != server.URL && s.IsPostgreSQLHost() {
-			logs, err := dbhelper.PostgresDropReplicationSlot(server.Conn, cluster.postgresSubscriptionNameFor())
+			logs, err := dbhelper.PostgresDropReplicationSlot(server.Conn, cluster.PostgresSubscriptionNameFor())
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlWarn, "Could not drop the leftover slot on %s: %s", server.URL, err)
 			break
 		}
 	}
-	if err := cluster.postgresLogicalSubscribe(server, master); err != nil {
+	if err := server.armPostgresLogicalReseed(master); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rejoin of %s failed: %s", server.URL, err)
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Former primary %s subscribes to %s from now on: the writes it took after the failover, if any, are not reconciled by logical replication", server.URL, master.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Former primary %s is re-copied from %s at the snapshot of its new slot: the writes it took after the failover are lost", server.URL, master.URL)
 	return nil
 }
 
 // postgresSubscriptionNameFor is the subscription (and slot) name replication-manager uses:
 // the replication source name, "alltables" by default (dbhelper.ChangeMaster).
-func (cluster *Cluster) postgresSubscriptionNameFor() string {
+func (cluster *Cluster) PostgresSubscriptionNameFor() string {
 	if cluster.Conf.MasterConn != "" {
 		return cluster.Conf.MasterConn
 	}
@@ -360,7 +366,7 @@ func (server *ServerMonitor) postgresRefreshSubscriptionOnDDL() {
 	if master == nil || master.Conn == nil {
 		return
 	}
-	name := cluster.postgresSubscriptionNameFor()
+	name := cluster.PostgresSubscriptionNameFor()
 	needed, _, err := dbhelper.PostgresSubscriptionNeedsRefresh(master.Conn, server.Conn, name)
 	if err != nil || !needed {
 		return

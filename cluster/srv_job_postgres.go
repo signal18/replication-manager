@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -334,4 +335,49 @@ func (server *ServerMonitor) postgresReseedFromBackup(task config.TaskName) erro
 		}
 	}()
 	return nil
+}
+
+// armPostgresLogicalReseed asks the jobs sidecar of this server (a former publisher, or any
+// subscriber to re-copy) for the task pgreseedlogical: on the primary it creates the slot of
+// the subscription with an exported snapshot, dumps the primary at that snapshot and replays
+// the dump here; PostgresLogicalReseedFinish then subscribes on that slot (job-state done).
+func (server *ServerMonitor) armPostgresLogicalReseed(primary *ServerMonitor) error {
+	cluster := server.ClusterGroup
+	name := string(config.ConstTaskPgReseedLogical)
+	server.streamTasks.Store(postgresNextStartTargetKey(name), primary.Host+":"+primary.Port)
+	server.SetInReseedBackup(name)
+	if err := server.setTaskCookie(name); err != nil {
+		server.SetInReseedBackup("")
+		return fmt.Errorf("can not arm the %s task: %w", name, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Re-copy of %s from %s at the snapshot of a new slot requested from its jobs sidecar", server.URL, primary.URL)
+	return nil
+}
+
+// PostgresLogicalReseedFinish is the end of pgreseedlogical, on the sidecar's done: the data
+// is in place at the snapshot of the slot the sidecar created on the primary, the subscription
+// takes that slot, the server keeps the read-only default of a replica.
+func (server *ServerMonitor) PostgresLogicalReseedFinish() {
+	cluster := server.ClusterGroup
+	defer server.SetInReseedBackup("")
+	primary := cluster.GetMaster()
+	if primary == nil || primary.URL == server.URL || server.Conn == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Re-copy of %s done but no primary to subscribe to", server.URL)
+		return
+	}
+	cluster.postgresInstallDDLReplication(server)
+	opt := cluster.GetChangeMasterBaseOptForSlave(server, primary, false)
+	opt.PostgresExistingSlot = true
+	logs, err := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Re-copy of %s done but it could not subscribe on its slot: %s", server.URL, err)
+	if err != nil {
+		return
+	}
+	if _, err := server.StartSlave(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Re-copy of %s done but its subscription could not be enabled: %s", server.URL, err)
+		return
+	}
+	logs, err = server.SetReadOnly()
+	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Could not set the read-only default on %s: %s", server.URL, err)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "%s re-copied from %s and subscribed on the slot of its snapshot", server.URL, primary.URL)
 }
