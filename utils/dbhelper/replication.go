@@ -883,6 +883,9 @@ func StopSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, err
 			cmd += " FOR CHANNEL '" + Channel + "'"
 		}
 	}
+	if myver.IsPostgreSQL() {
+		return cmd, PostgresExecReadWrite(db, cmd) // a subscriber keeps a read-only default
+	}
 	_, err := db.Exec(cmd)
 	return cmd, err
 }
@@ -1173,6 +1176,9 @@ func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *version.Version) (
 			}
 		}
 	}
+	if myver.IsPostgreSQL() {
+		return stmt, PostgresExecReadWrite(db, stmt) // a read-only default may be in place
+	}
 	_, err := db.Exec(stmt)
 	return stmt, err
 }
@@ -1188,6 +1194,9 @@ func ResetMaster(db *sqlx.DB, Channel string, myver *version.Version) (string, e
 		stmt += "RESET BINARY LOGS AND GTIDS"
 	} else {
 		stmt += "RESET MASTER"
+	}
+	if myver.IsPostgreSQL() {
+		return stmt, PostgresExecReadWrite(db, stmt) // a read-only default may be in place
 	}
 	_, err := db.Exec(stmt)
 

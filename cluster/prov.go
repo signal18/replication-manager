@@ -1006,6 +1006,11 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 					_ = server.ChangeMasterTo(server, "SLAVE_POS")
 					server.StartGroupReplication()
 				} else {
+					if server.IsPostgreSQLHost() {
+						// the DDL replication objects before the subscription: the log table
+						// must exist here for its rows to be applied, the apply trigger with it
+						cluster.postgresInstallDDLReplication(server)
+					}
 					_ = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
 				}
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.IsPostgreSQLHost() {
