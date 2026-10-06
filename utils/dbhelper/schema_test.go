@@ -6,7 +6,9 @@ package dbhelper
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"hash/crc64"
 	"regexp"
 	"strings"
@@ -662,11 +664,12 @@ func TestGetEventDefinition(t *testing.T) {
 		return sqlmock.NewRows(eventListColumns).AddRow("app", "ev", "root@%", size, "ONE TIME", "2030-06-01 00:00:00", "", "", "", "", "PRESERVE", "", "SYSTEM", "")
 	}
 	metaQuery := regexp.QuoteMeta("FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?")
-	bodyQuery := regexp.QuoteMeta("SELECT /*replication-manager*/ COALESCE(EVENT_DEFINITION, '') FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?")
+	bodyQuery := regexp.QuoteMeta("SELECT /*replication-manager*/ COALESCE(LENGTH(EVENT_DEFINITION), 0), COALESCE(LEFT(CAST(EVENT_DEFINITION AS BINARY), ?), '') FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?")
 
-	// within the maximum: metadata, then the body
+	// Within the maximum: metadata, then the current body read with a hard
+	// byte cap of maximum + 1.
 	mock.ExpectQuery(metaQuery).WithArgs("app", "ev").WillReturnRows(meta(17))
-	mock.ExpectQuery(bodyQuery).WithArgs("app", "ev").WillReturnRows(sqlmock.NewRows([]string{"d"}).AddRow("delete from audit"))
+	mock.ExpectQuery(bodyQuery).WithArgs(1025, "app", "ev").WillReturnRows(sqlmock.NewRows([]string{"size", "d"}).AddRow(17, "delete from audit"))
 	ev, _, err := GetEventDefinition(sqlxdb, "app", "ev", 1024)
 	if err != nil || ev == nil || ev.Definition != "delete from audit" || ev.DefinitionBytes != 17 || ev.ExecuteAt != "2030-06-01 00:00:00" {
 		t.Fatalf("GetEventDefinition = %+v, %v", ev, err)
@@ -679,12 +682,20 @@ func TestGetEventDefinition(t *testing.T) {
 		t.Fatalf("an oversized definition must be refused without its body: %+v, %v", ev, err)
 	}
 
-	// grown between the two queries: refused on what was read, not returned
+	// Grown between the two queries: the second query returns no more than
+	// maximum + 1 bytes, but its current byte length still refuses the body.
 	mock.ExpectQuery(metaQuery).WithArgs("app", "ev").WillReturnRows(meta(10))
-	mock.ExpectQuery(bodyQuery).WithArgs("app", "ev").WillReturnRows(sqlmock.NewRows([]string{"d"}).AddRow(strings.Repeat("x", 2000)))
+	mock.ExpectQuery(bodyQuery).WithArgs(1025, "app", "ev").WillReturnRows(sqlmock.NewRows([]string{"size", "d"}).AddRow(2000, strings.Repeat("x", 1025)))
 	ev, _, err = GetEventDefinition(sqlxdb, "app", "ev", 1024)
-	if !errors.Is(err, ErrEventDefinitionTooLarge) || ev == nil || ev.Definition != "" {
+	if !errors.Is(err, ErrEventDefinitionTooLarge) || ev == nil || ev.Definition != "" || ev.DefinitionBytes != 2000 {
 		t.Fatalf("a definition that grew past the maximum must not be returned: %+v, %v", ev, err)
+	}
+
+	// A dropped event can surface a wrapped sql.ErrNoRows from the body query.
+	mock.ExpectQuery(metaQuery).WithArgs("app", "ev").WillReturnRows(meta(10))
+	mock.ExpectQuery(bodyQuery).WithArgs(1025, "app", "ev").WillReturnError(fmt.Errorf("event dropped: %w", sql.ErrNoRows))
+	if ev, _, err := GetEventDefinition(sqlxdb, "app", "ev", 1024); err != nil || ev != nil {
+		t.Fatalf("a body query that loses the event = %+v, %v", ev, err)
 	}
 
 	// no such event: nil, no error

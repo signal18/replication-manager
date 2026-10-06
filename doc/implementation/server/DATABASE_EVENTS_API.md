@@ -16,7 +16,8 @@ event scheduler on or off and does not change an event's status.
   operator looks at it, so it is never collected by the monitoring loop.
   `dbhelper.ListEvents` returns a bounded metadata page (identity, definer, schedule and
   body size, but no SQL body); `dbhelper.GetEventDefinition` returns one named event with
-  its body after checking its byte size. Both use bound parameters and
+  its body after checking its byte size. Its body query reads no more than the configured
+  byte cap plus one byte, even if the event changes after the metadata query. Both use bound parameters and
   `scanContext(defaultSchemaScanTimeout)` (5 s), so a metadata lock cannot hold a request.
 
 ## API
@@ -27,6 +28,11 @@ of matching events. `schema` limits the page to one schema. `schema` + `name` re
 event including its SQL body. The GUI always asks for one event, so the size of a server's
 event list does not matter to a click.
 
+List counts and pages are independent, live reads rather than a transaction snapshot. If an
+event is created, dropped or renamed while a client follows offsets, a later page can change,
+skip or repeat an event; the CLI still terminates on an empty page or once it reaches the
+reported total.
+
 | Case | Response |
 |---|---|
 | list success | `200`, ordered JSON array of `dbhelper.EventDefinition` metadata `{db, name, definer, definitionBytes, eventType, executeAt, intervalValue, intervalField, starts, ends, onCompletion, lastExecuted, timeZone, comment}` and `X-Total-Count`; `definition` is empty |
@@ -34,7 +40,7 @@ event list does not matter to a click.
 | `name` without `schema` | `400 name requires schema` |
 | invalid `limit` / `offset`, or `limit` over `monitoring-event-status-max-definitions` | `400` |
 | a method other than `GET` | `405 Method Not Allowed` |
-| named event body larger than `monitoring-event-status-max-definition-bytes` | `413`; the body is never read or truncated |
+| named event body larger than `monitoring-event-status-max-definition-bytes` | `413`; the full body is never read or returned (a concurrent update is capped at the limit plus one byte) |
 | `monitoring-event-status` off for the cluster | `403 monitoring-event-status is disabled for this cluster` |
 | caller lacks `db-show-status` | `403 No valid ACL` |
 | unknown cluster / server | `500 Cluster Not Found` / `Server Not Found` |
@@ -47,9 +53,11 @@ Handler: `handlerMuxServerEvents` in `server/api_database.go`; server methods
 right after the cluster ACL, before the server is looked up or any query runs.
 
 ### ACL
-`cluster/cluster_acl_rules.go` maps `/events` to `db-show-status` (the grant that already
-shows server status). Rules match by substring and any matching rule grants, so route
-names were checked against existing patterns; `TestEventsACL` covers it.
+`cluster/cluster_acl_rules.go` maps the full path
+`/api/clusters/*/servers/*/events` to `db-show-status` (the grant that already shows server
+status). Rules without `*` retain their legacy substring matching; this rule uses full
+`path.Match` semantics, so it cannot grant a future `/events/actions/...` route.
+`TestEventsACL` covers both the intended path and non-matching sibling paths.
 
 ### CLI
 `replication-manager-cli server --cluster=<cluster> --id=<server id> --get=events` follows

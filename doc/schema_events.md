@@ -87,11 +87,14 @@ including its SQL body.
 The server never returns more than its configured `monitoring-event-status-max-definitions`
 rows per list response (default 100), and refuses a named SQL body larger than
 `monitoring-event-status-max-definition-bytes` (default 1 MiB) instead of truncating it.
+List pages are a live view, not a transaction snapshot: if an event is created, dropped or
+renamed while you page through the list, a later page can change, skip or repeat an event.
 
 ## Turning it off
 Set `monitoring-event-status = false` for the cluster (or switch **Monitoring Event Status**
 off in **Settings > Monitoring**). The Events section disappears and the definitions API
-and CLI call are refused. The monitoring of event status continues.
+and CLI call are refused. This gates those user/API surfaces only; the monitoring of event
+status continues with the same monitoring work.
 
 ## Read-only
 The section, the API endpoint and the CLI getter only read. They do not turn the event

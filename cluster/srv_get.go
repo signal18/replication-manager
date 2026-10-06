@@ -1932,8 +1932,9 @@ func (server *ServerMonitor) ListEventDefinitions(schema string, limit, offset i
 
 // GetEventDefinition reads the event schema.name of the server with its
 // schedule and definition body, nil when there is no such event. A body larger
-// than monitoring-event-status-max-definition-bytes is not read:
-// dbhelper.ErrEventDefinitionTooLarge is returned with the event.
+// than monitoring-event-status-max-definition-bytes is not returned; the
+// dbhelper body read remains capped if the event changes between size and body
+// queries. dbhelper.ErrEventDefinitionTooLarge is returned with the event.
 func (server *ServerMonitor) GetEventDefinition(schema, name string) (*dbhelper.EventDefinition, error) {
 	maxBytes := config.EffectiveMonitorEventStatusMaxDefinitionBytes(server.ClusterGroup.Conf.MonitorEventStatusMaxDefinitionBytes)
 	ev, logs, err := dbhelper.GetEventDefinition(server.Conn, schema, name, int64(maxBytes))

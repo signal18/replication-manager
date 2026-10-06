@@ -868,10 +868,14 @@ func ListEvents(db *sqlx.DB, schema string, limit, offset int) ([]EventDefinitio
 // GetEventDefinition returns the event schema.name with its schedule and its
 // definition body, or nil when there is no such event. The size of the body is
 // read first: when it is larger than maxBytes, the event is returned without
-// its body together with ErrEventDefinitionTooLarge, and the body is never
-// read. Bounded by defaultSchemaScanTimeout per query; schema and name are
-// bound as parameters.
+// its body together with ErrEventDefinitionTooLarge. The later body query is
+// byte-capped at maxBytes+1 too, in case the event grows between the queries.
+// Bounded by defaultSchemaScanTimeout per query; schema and name are bound as
+// parameters.
 func GetEventDefinition(db *sqlx.DB, schema, name string, maxBytes int64) (*EventDefinition, string, error) {
+	if maxBytes < 0 || maxBytes == int64(^uint64(0)>>1) {
+		return nil, "", fmt.Errorf("invalid maximum event definition size %d", maxBytes)
+	}
 	query := "SELECT /*replication-manager*/ " + eventColumns + " FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?"
 	ctx, cancel := scanContext(defaultSchemaScanTimeout)
 	defer cancel()
@@ -886,22 +890,20 @@ func GetEventDefinition(db *sqlx.DB, schema, name string, maxBytes int64) (*Even
 	if ev.DefinitionBytes > maxBytes {
 		return &ev, query, ErrEventDefinitionTooLarge
 	}
-	bodyQuery := "SELECT /*replication-manager*/ COALESCE(EVENT_DEFINITION, '') FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?"
+	bodyQuery := "SELECT /*replication-manager*/ COALESCE(LENGTH(EVENT_DEFINITION), 0), COALESCE(LEFT(CAST(EVENT_DEFINITION AS BINARY), ?), '') FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?"
 	ctx2, cancel2 := scanContext(defaultSchemaScanTimeout)
 	defer cancel2()
-	if err := db.QueryRowxContext(ctx2, bodyQuery, schema, name).Scan(&ev.Definition); err != nil {
-		if err == sql.ErrNoRows {
+	var definition []byte
+	if err := db.QueryRowxContext(ctx2, bodyQuery, maxBytes+1, schema, name).Scan(&ev.DefinitionBytes, &definition); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, bodyQuery, nil // dropped in between
 		}
 		return nil, bodyQuery, err
 	}
-	// altered in between: the size is checked again on what was read
-	if int64(len(ev.Definition)) > maxBytes {
-		ev.DefinitionBytes = int64(len(ev.Definition))
-		ev.Definition = ""
+	if ev.DefinitionBytes > maxBytes || int64(len(definition)) > maxBytes {
 		return &ev, bodyQuery, ErrEventDefinitionTooLarge
 	}
-	ev.DefinitionBytes = int64(len(ev.Definition))
+	ev.Definition = string(definition)
 	return &ev, bodyQuery, nil
 }
 

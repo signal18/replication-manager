@@ -1285,8 +1285,8 @@ func TestIsURLPassACLDatabaseServiceRoute(t *testing.T) {
 	}
 }
 
-// TestEventsACL tests the read-only Events route: reading the definitions needs
-// db-show-status.
+// TestEventsACL tests the exact read-only Events route: reading the definitions
+// needs db-show-status, without granting a future Events action route.
 func TestEventsACL(t *testing.T) {
 	cluster := setupACLTestCluster()
 	cluster.APIUsers["user_show_status"] = APIUser{User: "user_show_status", Grants: map[string]bool{config.GrantDBShowStatus: true}}
@@ -1296,5 +1296,13 @@ func TestEventsACL(t *testing.T) {
 	}
 	if cluster.IsURLPassDatabasesACL("user_start_only", url) {
 		t.Errorf("a user without db-show-status must not read %s", url)
+	}
+	for _, futureURL := range []string{
+		"/api/clusters/testcluster/servers/db1/events/actions/future-action",
+		"/api/clusters/testcluster/servers/db1/some-events",
+	} {
+		if cluster.IsURLPassDatabasesACL("user_show_status", futureURL) {
+			t.Errorf("db-show-status must not be granted by the Events rule for %s", futureURL)
+		}
 	}
 }
