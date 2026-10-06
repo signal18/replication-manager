@@ -80,11 +80,15 @@ var jobNeedsCmd = &cobra.Command{
 }
 
 var jobReceiverCmd = &cobra.Command{
-	Use:   "receiver TASK",
-	Short: "Print the receiver address host:port opened for the task",
-	Args:  cobra.ExactArgs(1),
+	Use:   "receiver TASK [NAME]",
+	Short: "Print the receiver address host:port opened for the task (NAME: the file it receives)",
+	Args:  cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
-		addr, err := jobClient().Receiver(args[0])
+		name := ""
+		if len(args) == 2 {
+			name = args[1]
+		}
+		addr, err := jobClient().ReceiverNamed(args[0], name)
 		if err != nil {
 			jobFail(err)
 		}

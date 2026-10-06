@@ -1520,6 +1520,8 @@ func (server *ServerMonitor) Refresh() error {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get WAL senders %s %s", server.URL, err)
 		// a logical subscriber that received a replicated DDL may have a new table to subscribe
 		server.postgresRefreshSubscriptionOnDDL()
+		// the WAL archive (backup-binlogs) must not pile segments up in pg_wal
+		server.postgresCheckWalArchiver()
 	}
 
 	// Set channel source name is dangerous with multi cluster

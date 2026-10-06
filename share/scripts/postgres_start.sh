@@ -17,7 +17,9 @@
 # (pg_rewind, else a new copy).
 #
 # Environment: POSTGRES_PASSWORD (and POSTGRES_USER), PGDATA, PG_PRIMARY_HOST and
-# PG_PRIMARY_PORT for a standby.
+# PG_PRIMARY_PORT for a standby, PG_WAL_ARCHIVE=on to archive the completed WAL segments
+# into /var/lib/postgresql/wal_archive (the jobs sidecar ships them to replication-manager,
+# the binlog copy of PostgreSQL).
 
 set -eu
 
@@ -44,6 +46,17 @@ cores=$(cat "$CONF_DIR"/replication-manager.d/*.conf 2>/dev/null | sed -n 's/^[[
 workers=$(( ${cores:-2} + 6 ))
 [ "$workers" -ge 8 ] || workers=8
 printf "include_dir = 'replication-manager.d'\nlisten_addresses = '*'\nwal_log_hints = on\nwal_level = logical\nmax_worker_processes = %s\n" "$workers" > "$CONF_DIR/postgresql.conf"
+# WAL archive: the completed segments go to the archive directory shared with the jobs
+# sidecar, which ships them to replication-manager (PITR from a physical backup). A copy
+# that fails keeps the segment in pg_wal until it succeeds: replication-manager watches
+# the archiver (WARN0232). archive_mode changes need a restart: the rolling restart.
+WAL_ARCHIVE_DIR=/var/lib/postgresql/wal_archive
+if [ "${PG_WAL_ARCHIVE:-off}" = on ] && [ -d "$WAL_ARCHIVE_DIR" ]; then
+    chown postgres:postgres "$WAL_ARCHIVE_DIR"
+    printf "archive_mode = on\narchive_command = 'test ! -f %s/%%f && cp %%p %s/%%f'\n" "$WAL_ARCHIVE_DIR" "$WAL_ARCHIVE_DIR" >> "$CONF_DIR/postgresql.conf"
+else
+    echo "archive_mode = off" >> "$CONF_DIR/postgresql.conf"
+fi
 
 # 2. a new primary accepts replication connections from the cluster network (the image's
 #    default pg_hba only opens the databases, not the replication protocol)

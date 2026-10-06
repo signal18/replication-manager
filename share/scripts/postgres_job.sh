@@ -12,6 +12,9 @@
 #   pgschemasync   create the published tables this subscriber misses (DDL is not replicated)
 #   pgrestore      receive the stored physical backup, arm the next start to restore it
 #   pgreseedlogical  re-copy this server from the primary at the snapshot of a new slot
+# and, every loop, ships the WAL segments archive_command left in /var/lib/postgresql/wal_archive
+# to replication-manager (task pgwalarchive, the binlog copy of PostgreSQL), deleting each
+# one once received.
 #   pgrestorelogical  receive the stored logical backup and replay it on this server
 #   pgbasebackup   pg_basebackup as a tar stream with the WAL it needs (physical backup,
 #                  online, it blocks neither reads nor writes)
@@ -300,6 +303,34 @@ report_usage() {
         | job usage 2>"$ERR" || log "usage report: $(head -c 200 "$ERR")"
 }
 
+# ship_wal_archive: each file archive_command completed (oldest first, a .partial is still
+# being written by cp) is streamed to a receiver replication-manager opens for it and
+# removed once sent; a failure leaves it for the next loop (PostgreSQL keeps producing,
+# replication-manager watches the backlog). The archive directory exists only when the
+# service mounts it.
+WAL_ARCHIVE_DIR=/var/lib/postgresql/wal_archive
+wal_ship_failed=""
+ship_wal_archive() {
+    [ -d "$WAL_ARCHIVE_DIR" ] || return 0
+    local f name addr n=0
+    for f in $(ls -1 "$WAL_ARCHIVE_DIR" 2>/dev/null | grep -E '^[0-9A-F]{24}(\.[0-9A-F]{8}\.backup)?$|^[0-9A-F]{8}\.history$' | sort); do
+        name="$f"; f="$WAL_ARCHIVE_DIR/$f"
+        if ! addr=$(job receiver pgwalarchive "$name" 2>"$ERR") || [ -z "$addr" ]; then
+            [ "$wal_ship_failed" = "$name" ] || log "wal archive: no receiver for $name: $(head -c 200 "$ERR")"
+            wal_ship_failed="$name"
+            return
+        fi
+        if "$CLI" stream --to "$addr" < "$f" 2>"$ERR"; then
+            rm -f "$f"; n=$((n + 1)); wal_ship_failed=""
+        else
+            [ "$wal_ship_failed" = "$name" ] || log "wal archive: $name not sent: $(head -c 200 "$ERR")"
+            wal_ship_failed="$name"
+            return
+        fi
+    done
+    [ "$n" -eq 0 ] || log "wal archive: $n file(s) shipped"
+}
+
 log "starting: PostgreSQL $PGHOST:$PGPORT as $PGUSER, server ${REPLICATION_MANAGER_HOST_NAME:-?}:${REPLICATION_MANAGER_HOST_PORT:-?} of ${REPLICATION_MANAGER_CLUSTER_NAME:-?}, every ${INTERVAL}s"
 while [ ! -x "$CLI" ]; do
     log "waiting for $CLI"
@@ -319,5 +350,6 @@ while true; do
         esac
     done
     report_usage
+    ship_wal_archive
     sleep "$INTERVAL"
 done

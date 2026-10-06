@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -398,4 +399,21 @@ func PostgresSubscriptionNeedsRefresh(publisher, subscriber *sqlx.DB, publicatio
 func PostgresOwnSubscription(db *sqlx.DB, name string) (string, error) {
 	stmt := "ALTER SUBSCRIPTION " + QuotePostgreSQLIdentifier(name) + " OWNER TO replication_manager"
 	return stmt, PostgresExecReadWrite(db, stmt)
+}
+
+// PostgresArchiverStatus is pg_stat_archiver with the count of segments waiting to be
+// archived (the .ready files of pg_wal/archive_status).
+type PostgresArchiver struct {
+	Ready        int
+	FailedCount  int
+	LastArchived time.Time
+	LastFailed   time.Time
+}
+
+// PostgresArchiverStatus reads the archiver's state on a server with archive_mode on.
+func PostgresArchiverStatus(db *sqlx.DB) (PostgresArchiver, string, error) {
+	var st PostgresArchiver
+	query := "SELECT (SELECT count(*) FROM pg_ls_archive_statusdir() WHERE name LIKE '%.ready'), failed_count, coalesce(last_archived_time, 'epoch'::timestamptz), coalesce(last_failed_time, 'epoch'::timestamptz) FROM pg_stat_archiver"
+	err := db.QueryRow(query).Scan(&st.Ready, &st.FailedCount, &st.LastArchived, &st.LastFailed)
+	return st, query, err
 }

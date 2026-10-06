@@ -107,7 +107,16 @@ func (c *Client) Needs(task string) (bool, error) {
 // Receiver asks replication-manager to open a receiver for the task and returns its
 // address host:port ("" when the task streams nothing).
 func (c *Client) Receiver(task string) (string, error) {
-	code, body, err := c.post("/actions/receive-task/" + url.PathEscape(task))
+	return c.ReceiverNamed(task, "")
+}
+
+// ReceiverNamed is Receiver for a task that receives one named file (the WAL archive).
+func (c *Client) ReceiverNamed(task, name string) (string, error) {
+	suffix := "/actions/receive-task/" + url.PathEscape(task)
+	if name != "" {
+		suffix += "?name=" + url.QueryEscape(name)
+	}
+	code, body, err := c.post(suffix)
 	if err != nil {
 		return "", err
 	}

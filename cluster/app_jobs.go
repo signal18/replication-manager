@@ -75,6 +75,24 @@ func appJobsScript(app *App) string {
 	return string(b)
 }
 
+// postgresWalArchiveMount is the WAL archive directory of a PostgreSQL engine app, on its
+// first volume, mounted in the engine container (archive_command copies the completed
+// segments there, postgres_start.sh) and in the jobs sidecar (which ships them to
+// replication-manager, task pgwalarchive); "" for other engines or without a volume.
+func postgresWalArchiveMount(app *App) string {
+	if app == nil || app.AppConfig == nil || strings.TrimSpace(app.AppConfig.ProvAppConfigurator) != "postgres" || app.AppConfig.Deployment == nil {
+		return ""
+	}
+	vols := app.AppConfig.Deployment.Storages.Volumes
+	if len(vols) == 0 || vols[0] == nil || vols[0].Name == "" {
+		return ""
+	}
+	return vols[0].Name + "/wal_archive:" + postgresWalArchiveDir
+}
+
+// postgresWalArchiveDir is where the engine container and its jobs sidecar see the archive
+const postgresWalArchiveDir = "/var/lib/postgresql/wal_archive"
+
 // appJobsVolumeMount is the mount of the jobs directory, on the app's first volume; ""
 // when the app has no volume (no jobs sidecar then: the client has nowhere to land).
 func appJobsVolumeMount(app *App) string {
@@ -147,7 +165,7 @@ func (cluster *Cluster) openSVCAddAppJobsSections(svcsection map[string]map[stri
 		// and ONLY this service's cgroup slice read-only at /svc-cgroup, like the database
 		// jobs container (openSVCServiceCgroupMount spells it as systemd does)
 		"volume_mounts": strings.TrimSpace("/etc/localtime:/etc/localtime:ro " + mount + " " + cluster.GetOpenSVCDeploymentPathMapping(app) +
-			" " + openSVCServiceCgroupMount(cluster.Name, app.Name)),
+			" " + postgresWalArchiveMount(app) + " " + openSVCServiceCgroupMount(cluster.Name, app.Name)),
 		"command": "-c 'printenv " + appJobsScriptKey + " > /tmp/app_jobs; exec bash /tmp/app_jobs'",
 	}
 	if app.AppConfig.ProvAppHATopology == "failover" {

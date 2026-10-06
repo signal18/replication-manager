@@ -5393,6 +5393,21 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		w.WriteHeader(200)
 		w.Write([]byte("TARGET=" + target))
 		return
+	case config.ConstTaskPgWalArchive:
+		// an archived WAL segment (or timeline history / backup label file) shipped by the
+		// jobs sidecar: one receiver per file, stored with the server's backups
+		name := r.URL.Query().Get("name")
+		if !cluster.PostgresWalArchiveFileRe.MatchString(name) {
+			http.Error(w, "not a WAL archive file name: "+name, 400)
+			return
+		}
+		dest = node.PostgresWalArchiveDir() + name
+		if err := os.MkdirAll(node.PostgresWalArchiveDir(), 0750); err != nil {
+			http.Error(w, "WAL archive directory: "+err.Error(), 500)
+			return
+		}
+		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+		go node.PostgresPurgeWalArchive()
 	case config.ConstTaskPgRestore, config.ConstTaskPgRestoreLogical:
 		// the stored backup goes the other way: the sidecar listens on the server's SST
 		// port (WaitAndSendSST streams the file to it as to a dbjobs listener) and learns

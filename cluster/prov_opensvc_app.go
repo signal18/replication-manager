@@ -865,7 +865,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + appMemStr + " --memory-swap=" + appMemStr + " --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
 		}
 
-		svccontainer["volume_mounts"] = cluster.GetOpenSVCDeploymentPathMapping(app)
+		svccontainer["volume_mounts"] = strings.TrimSpace(cluster.GetOpenSVCDeploymentPathMapping(app) + " " + postgresWalArchiveMount(app))
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv("env")
 		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv("secret")
 	}
@@ -1199,6 +1199,19 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appConfiguratorScriptKey, err)
 			addKeyErr(fmt.Errorf("config key %q: %w", appConfiguratorScriptKey, err))
+		}
+	}
+
+	// PostgreSQL WAL archive (the binlog copy of PostgreSQL): follows backup-binlogs, read by
+	// the start script (archive_mode, archive_command into the shared archive directory)
+	if postgresWalArchiveMount(app) != "" {
+		v := "off"
+		if cluster.Conf.BackupBinlogs {
+			v = "on"
+		}
+		if err = svc.CreateConfigKeyValue(cluster.Name, app.Name, "PG_WAL_ARCHIVE", v); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: PG_WAL_ARCHIVE %s ", err)
+			addKeyErr(fmt.Errorf("config key PG_WAL_ARCHIVE: %w", err))
 		}
 	}
 
