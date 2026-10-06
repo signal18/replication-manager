@@ -88,8 +88,10 @@ func (cluster *Cluster) postgresFailover(fail bool) bool {
 	crash.UnixTimestamp = time.Now().Unix()
 	crash.URL = cluster.oldMaster.URL
 	crash.ElectedMasterURL = cluster.master.URL
-	crash.FailoverMasterLogFile = ss.MasterLogFile.String
-	crash.FailoverMasterLogPos = ss.ReadMasterLogPos.String
+	if ss != nil {
+		crash.FailoverMasterLogFile = ss.MasterLogFile.String
+		crash.FailoverMasterLogPos = ss.ReadMasterLogPos.String
+	}
 	crash.FailoverIOGtid = gtid.NewList(fmt.Sprintf("0-0-%d", received))
 	cluster.Crashes = append(cluster.Crashes, crash)
 	cluster.ensureCrashArchive(crash)
@@ -246,8 +248,10 @@ func (cluster *Cluster) postgresSwitchover() bool {
 	crash.UnixTimestamp = time.Now().Unix()
 	crash.URL = old.URL
 	crash.ElectedMasterURL = candidate.URL
-	crash.FailoverMasterLogFile = ss.MasterLogFile.String
-	crash.FailoverMasterLogPos = ss.ReadMasterLogPos.String
+	if ss != nil {
+		crash.FailoverMasterLogFile = ss.MasterLogFile.String
+		crash.FailoverMasterLogPos = ss.ReadMasterLogPos.String
+	}
 	crash.FailoverIOGtid = gtid.NewList(fmt.Sprintf("0-0-%d", received))
 	cluster.Crashes = append(cluster.Crashes, crash)
 	cluster.ensureCrashArchive(crash)

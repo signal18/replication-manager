@@ -88,15 +88,17 @@ func (cluster *Cluster) postgresLogicalSubscribe(server *ServerMonitor, primary 
 	return err
 }
 
-func (cluster *Cluster) postgresLogicalRecordChange(old, candidate *ServerMonitor, switchover bool) *Crash {
-	ss, _ := old.GetSlaveStatus(old.ReplicationSourceName)
+func (cluster *Cluster) postgresLogicalRecordChange(old, candidate *ServerMonitor, switchover bool, ss *dbhelper.SlaveStatus) *Crash {
 	crash := new(Crash)
 	crash.Switchover = switchover
 	crash.UnixTimestamp = time.Now().Unix()
 	crash.URL = old.URL
 	crash.ElectedMasterURL = candidate.URL
-	crash.FailoverMasterLogFile = ss.MasterLogFile.String
-	crash.FailoverMasterLogPos = ss.ReadMasterLogPos.String
+	if ss != nil {
+		// the candidate's position as a subscriber, read before its subscription went
+		crash.FailoverMasterLogFile = ss.MasterLogFile.String
+		crash.FailoverMasterLogPos = ss.ReadMasterLogPos.String
+	}
 	crash.FailoverIOGtid = gtid.NewList("0-0-0")
 	cluster.Crashes = append(cluster.Crashes, crash)
 	cluster.ensureCrashArchive(crash)
@@ -148,6 +150,7 @@ func (cluster *Cluster) postgresLogicalSwitchover() bool {
 		return false
 	}
 
+	ss, _ := candidate.GetSlaveStatus(candidate.ReplicationSourceName)
 	if err := cluster.postgresLogicalPromote(candidate, subscription, true); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Promotion of %s failed, primary %s unfrozen", candidate.URL, old.URL)
 		logs, err := dbhelper.PostgresSetDefaultReadOnly(old.Conn, false)
@@ -158,7 +161,7 @@ func (cluster *Cluster) postgresLogicalSwitchover() bool {
 	cluster.master = candidate
 	cluster.master.SetMaster()
 	cluster.master.delete(&cluster.slaves)
-	crash := cluster.postgresLogicalRecordChange(old, candidate, true)
+	crash := cluster.postgresLogicalRecordChange(old, candidate, true, ss)
 
 	cluster.failoverProxies()
 	cluster.failoverProxiesWaitMonitor()
@@ -199,6 +202,7 @@ func (cluster *Cluster) postgresLogicalFailover() bool {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Subscriber %s has been elected as a new primary", candidate.URL)
 	old := cluster.master
 	cluster.failoverPreScript(true)
+	ss, _ := candidate.GetSlaveStatus(candidate.ReplicationSourceName)
 	if err := cluster.postgresLogicalPromote(candidate, subscription, false); err != nil {
 		return false
 	}
@@ -206,7 +210,7 @@ func (cluster *Cluster) postgresLogicalFailover() bool {
 	cluster.master = candidate
 	cluster.master.SetMaster()
 	cluster.master.delete(&cluster.slaves)
-	cluster.postgresLogicalRecordChange(old, candidate, false)
+	cluster.postgresLogicalRecordChange(old, candidate, false, ss)
 
 	cluster.failoverProxies()
 	cluster.failoverProxiesWaitMonitor()
