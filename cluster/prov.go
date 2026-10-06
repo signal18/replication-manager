@@ -1163,11 +1163,34 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 	return nil
 }
 
+// GetDatabaseAgentNames is the agent list databases are placed on: prov-db-agents, or,
+// when it is empty, every agent of the orchestrator (OpenSVC nodes, Kubernetes nodes...),
+// so a cluster without an explicit list is placed on the whole infrastructure.
+func (cluster *Cluster) GetDatabaseAgentNames() []string {
+	names := []string{}
+	for _, a := range strings.Split(cluster.Conf.ProvAgents, ",") {
+		if a = strings.TrimSpace(a); a != "" {
+			names = append(names, a)
+		}
+	}
+	if len(names) > 0 {
+		return names
+	}
+	cluster.Lock()
+	defer cluster.Unlock()
+	for _, node := range cluster.Agents {
+		if node.HostName != "" {
+			names = append(names, node.HostName)
+		}
+	}
+	return names
+}
+
 func (cluster *Cluster) GetDatabaseAgent(server *ServerMonitor) (Agent, error) {
 	var agent Agent
-	agents := strings.Split(cluster.Conf.ProvAgents, ",")
+	agents := cluster.GetDatabaseAgentNames()
 	if len(agents) == 0 {
-		return agent, errors.New("No databases agent list provided")
+		return agent, errors.New("No databases agent list provided and no agent known from the orchestrator")
 	}
 	for i, srv := range cluster.Servers {
 

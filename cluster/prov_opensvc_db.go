@@ -523,7 +523,8 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 		return agent, errors.New("Error getting OpenSVC node list")
 	}
 	for _, node := range agents {
-		if strings.Contains(svc.ProvAgents, node.Node_name) {
+		// prov-db-agents, or every orchestrator node when the list is empty
+		if strings.TrimSpace(svc.ProvAgents) == "" || strings.Contains(svc.ProvAgents, node.Node_name) {
 			clusteragents = append(clusteragents, node)
 		}
 	}
