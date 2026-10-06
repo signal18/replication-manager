@@ -109,23 +109,31 @@ run_task() {
 USAGE_INTERVAL="${PG_JOB_USAGE_INTERVAL:-60}"
 USAGE_CKPT=/tmp/postgres_job.usage
 last_usage=0
-# resolve_cgroup: the cgroup v2 directory of this PostgreSQL server, as dbjobs_new.sh's
-# resolve_dbu_cgroup: the service slice the orchestrator binds at /svc-cgroup when it is
-# there; on premise (this script runs on the host through ssh) the postmaster's own cgroup
-# from /proc/<pid>/cgroup under the host cgroup tree. Nothing when neither is readable.
+CG_NS="${REPLICATION_MANAGER_CLUSTER_NAME:-}"
+CG_SVC="${REPLICATION_MANAGER_HOST_NAME%%.*}"
+# resolve_cgroup: this service's cgroup v2 directory. /svc-cgroup when the orchestrator
+# bound the exact slice there; else, under the OpenSVC tree bound at /svc-cgroup-root, the
+# slice found by NAME: systemd spells a dash as \x2d (pg-logical -> pg\x2dlogical) and a
+# backslash cannot travel in a bind mount, so the directory names are decoded before they
+# are compared with the cluster (namespace) and service names.
 resolve_cgroup() {
-    if [ -r /svc-cgroup/memory.current ]; then
-        echo /svc-cgroup
-        return 0
-    fi
-    local pid sub base
+    if [ -r /svc-cgroup/memory.current ]; then echo /svc-cgroup; return 0; fi
+    # on premise (run on the host through ssh): the postmaster's own cgroup
     pid=$(pgrep -x postgres 2>/dev/null | head -1)
-    [ -n "$pid" ] || return 0
-    sub=$(awk -F: '$1=="0"{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
-    [ -n "$sub" ] || return 0
-    for base in "/proc/$pid/root/sys/fs/cgroup" "/sys/fs/cgroup"; do
-        [ -r "${base}${sub}/memory.current" ] && { echo "${base}${sub}"; return 0; }
+    if [ -n "$pid" ]; then
+        sub=$(awk -F: '$1=="0"{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
+        for base in "/proc/$pid/root/sys/fs/cgroup" "/sys/fs/cgroup"; do
+            [ -n "$sub" ] && [ -r "${base}${sub}/memory.current" ] && { echo "${base}${sub}"; return 0; }
+        done
+    fi
+    [ -n "${CG_NS:-}" ] && [ -n "${CG_SVC:-}" ] && [ -d /svc-cgroup-root ] || return 1
+    for d in /svc-cgroup-root/opensvc-ns.*.slice; do
+        [ "$(printf '%s' "${d##*/}" | sed 's/\\x2d/-/g')" = "opensvc-ns.$CG_NS.slice" ] || continue
+        for s in "$d"/opensvc-ns.*-svc.*.slice; do
+            [ "$(printf '%s' "${s##*/}" | sed 's/\\x2d/-/g')" = "opensvc-ns.$CG_NS-svc.$CG_SVC.slice" ] && { echo "$s"; return 0; }
+        done
     done
+    return 1
 }
 report_usage() {
     local cg now mem cpu io disk rx tx

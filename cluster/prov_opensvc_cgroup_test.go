@@ -2,15 +2,14 @@ package cluster
 
 import "testing"
 
-func TestOpenSVCServiceCgroupSlice(t *testing.T) {
+func TestOpenSVCServiceCgroupMount(t *testing.T) {
 	if got := systemdEscape("pg-logical"); got != `pg\x2dlogical` {
 		t.Fatalf("dash: %q", got)
 	}
-	if got := systemdEscape("belair"); got != "belair" {
-		t.Fatalf("plain: %q", got)
+	if got := openSVCServiceCgroupMount("belair", "db1"); got != "/sys/fs/cgroup/opensvc.slice/opensvc-ns.belair.slice/opensvc-ns.belair-svc.db1.slice:/svc-cgroup:ro" {
+		t.Fatalf("plain names keep the exact slice: %s", got)
 	}
-	want := `/sys/fs/cgroup/opensvc.slice/opensvc-ns.pg\x2dlogical.slice/opensvc-ns.pg\x2dlogical-svc.pg1.slice`
-	if got := openSVCServiceCgroupSlice("pg-logical", "pg1"); got != want {
-		t.Fatalf("slice:\n got  %s\n want %s", got, want)
+	if got := openSVCServiceCgroupMount("pg-logical", "pg1"); got != "/sys/fs/cgroup/opensvc.slice:/svc-cgroup-root:ro" {
+		t.Fatalf("a dashed name gets the tree: %s", got)
 	}
 }

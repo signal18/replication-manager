@@ -681,6 +681,17 @@ resolve_dbu_cgroup() {
         echo /svc-cgroup
         return 0
     fi
+    # the OpenSVC cgroup tree bound at /svc-cgroup-root (a namespace or service name systemd
+    # escapes, a dash is \x2d, cannot be bound as the exact slice): the slice by decoded name
+    if [[ -d /svc-cgroup-root && -n "${REPLICATION_MANAGER_CLUSTER_NAME:-}" ]]; then
+        local ns="$REPLICATION_MANAGER_CLUSTER_NAME" svc="${REPLICATION_MANAGER_HOST_NAME%%.*}" d s
+        for d in /svc-cgroup-root/opensvc-ns.*.slice; do
+            [[ "${d##*/}" == "opensvc-ns.${ns//-/\\x2d}.slice" ]] || continue
+            for s in "$d"/opensvc-ns.*-svc.*.slice; do
+                [[ "${s##*/}" == "opensvc-ns.${ns//-/\\x2d}-svc.${svc//-/\\x2d}.slice" && -r "$s/memory.current" ]] && { echo "$s"; return 0; }
+            done
+        done
+    fi
     local pid sub base
     pid=$(pgrep -x mariadbd 2>/dev/null | head -1)
     [[ -z "$pid" ]] && pid=$(pgrep -x mysqld 2>/dev/null | head -1)
