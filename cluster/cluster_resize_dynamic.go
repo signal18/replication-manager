@@ -161,18 +161,18 @@ func (cluster *Cluster) resourceResizer() ResourceResizer {
 const openSVCConfigSettleTimeout = 30 * time.Second
 
 // OpenSVCCPUQuotaKeyword renders `cores` as an om3 pg_cpu_quota value meaning exactly
-// that many cores on ANY node. om3 (rc20 through rc36, util/pg CPUQuota.Convert)
-// computes quota = pct × period × cpus / maxCpus / 100 with cpus = 1 when no "@" is
-// given, so a bare "300%" is 3/maxCpus of ONE core -- 0.125 core on a 24-thread node,
-// the dev3 "300% -> 0.09 core" surprise. With "@all", cpus = maxCpus cancels out and pct
-// is simply cores × 100: "300%@all" = 3 cores everywhere. (The 2.1 agent has the opposite
-// convention -- "300%" = 3 cores, "@all" multiplies by the thread count -- so this helper
-// is for the v3 API path only.) Returns "" for a non-positive value.
+// that many cores. Measured on om3 rc43 (s18-fr-4, 32 threads, 2026-10-06, systemd
+// CPUQuotaPerSecUSec read back after `instance pg update`): "200%" = 2 cores, "100%@2" =
+// 2 cores, "200%@1" = 2 cores, "100%@all" = 32 cores, "200%@all" = 64 cores -- the percent
+// is of ONE core and "@N" multiplies it by N, "@all" by the node's thread count. The
+// previous rendering "<cores*100>%@all" (written against the rc20-rc36 convention, where
+// "@all" cancelled a division by maxCpus) therefore capped nothing on a 32-core node: belair
+// and mahebourg ran uncapped on preprod. Returns "" for a non-positive value.
 func OpenSVCCPUQuotaKeyword(cores float64) string {
 	if cores <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("%d%%@all", int(math.Round(cores*100)))
+	return fmt.Sprintf("%d%%", int(math.Round(cores*100)))
 }
 
 // openSVCApplyPGKeywords writes process-group (cgroup) keywords into the service
@@ -1643,4 +1643,43 @@ func (cluster *Cluster) CheckDynamicResourceDeploymentReady() {
 			ErrFrom: "PROV",
 		})
 	}
+}
+
+// The container cap on the om3 PG slice (prov-db-docker-run-args-limit = false) is written
+// as pg_cpu_quota/pg_mem_limit keywords, but om3 (rc43) applies them to the systemd slice
+// ONLY on an `instance pg update`, never at instance start: belair and mahebourg ran with
+// CPUQuotaPerSecUSec=infinity on preprod although their definitions carried the keywords
+// (2026-10-06). A start or provision therefore arms this cookie, and the first tick that
+// sees the server connected runs the pg update on its node.
+const cookiePGCapPending = "cookie_pgcap"
+
+// ArmOpenSVCPGCap marks the server for a pg update once it is up (no-op when the cap lives
+// in the docker run args or outside OpenSVC v3).
+func (server *ServerMonitor) ArmOpenSVCPGCap() {
+	cluster := server.ClusterGroup
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI || cluster.Conf.ProvDBDockerRunArgsLimit {
+		return
+	}
+	server.createCookie(cookiePGCapPending)
+}
+
+// ApplyOpenSVCPGCapIfPending runs the pg update armed by ArmOpenSVCPGCap on a connected
+// server, then drops the cookie; a failure keeps it for the next tick.
+func (server *ServerMonitor) ApplyOpenSVCPGCapIfPending() {
+	if !server.hasCookie(cookiePGCapPending) || server.IsDown() {
+		return
+	}
+	cluster := server.ClusterGroup
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		server.delCookie(cookiePGCapPending)
+		return
+	}
+	node := server.Agent
+	if err := svc.PGUpdateInstanceV3(node, server.ServiceName, ""); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OpenSVC pg update after start failed on %s (node %s), retried next tick: %s", server.URL, node, err)
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC pg update after start on %s (node %s): container cap applied on the PG slice", server.URL, node)
+	server.delCookie(cookiePGCapPending)
 }

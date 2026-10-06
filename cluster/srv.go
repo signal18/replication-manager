@@ -1477,6 +1477,9 @@ func (server *ServerMonitor) Refresh() error {
 
 	} // End not PG
 
+	// a container cap armed by a start or a provision is applied once the server is up
+	server.ApplyOpenSVCPGCapIfPending()
+
 	// Set channel source name is dangerous with multi cluster
 
 	// SHOW SLAVE STATUS

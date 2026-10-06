@@ -169,6 +169,7 @@ func (cluster *Cluster) ProvisionServices() error {
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+server.Name)
 			server.SetProvisionCookie()
+			server.ArmOpenSVCPGCap()
 			server.DelReprovisionCookie()
 			server.DelRestartCookie()
 		}
