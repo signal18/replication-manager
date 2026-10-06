@@ -1329,6 +1329,11 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 		if app == nil {
 			continue
 		}
+		if cluster.engineServerOfApp(app) != nil {
+			// an engine that is a monitored SERVER: its plan is the database plan (prov-db-*)
+			// and its DBU the server's, nothing is counted on the app side
+			continue
+		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
 		if app.AppConfig != nil && app.AppConfig.AppStateful {
 			// STATEFUL app (app-stateful, e.g. minio): the same declared shape and the same

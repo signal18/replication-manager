@@ -491,7 +491,9 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
 	// monitoring-system-resources off-switch, T14). Needs the script key published in the
 	// namespace `env` object (openSVCPublishAppJobScript, done by the V3 provision).
-	if cluster.Conf.MonitoringSystemResources {
+	if cluster.Conf.MonitoringSystemResources && cluster.engineServerOfApp(app) == nil {
+		// an engine that is a monitored server reports DBU through its jobs sidecar: no
+		// APU sensor, the service is counted once
 		svcsection["container#sensor"] = cluster.OpenSVCGetAppSensorContainerSection(app, appJobScriptKey())
 	}
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
