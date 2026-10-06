@@ -185,15 +185,6 @@ func (cluster *Cluster) postgresSwitchover() bool {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot switchover without a running primary")
 		return false
 	}
-	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "PostgreSQL switchover restarts the primary as a standby: it needs the OpenSVC orchestrator")
-		return false
-	}
-	app := cluster.postgresAppOfServer(old)
-	if app == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "PostgreSQL switchover restarts the primary as a standby: %s is not a service of this cluster", old.URL)
-		return false
-	}
 	candidate, _ := cluster.electPostgresCandidate()
 	if candidate == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No candidates found")
@@ -214,7 +205,7 @@ func (cluster *Cluster) postgresSwitchover() bool {
 
 	// 2. stop the primary
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping primary %s", old.URL)
-	if err := cluster.OpenSVCStopAppService(app, ""); err != nil {
+	if err := cluster.postgresStopServer(old); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not stop primary %s: %s. Its next start is armed as a standby of %s", old.URL, err, candidate.URL)
 		return false
 	}
@@ -231,7 +222,7 @@ func (cluster *Cluster) postgresSwitchover() bool {
 	logs, err = dbhelper.PostgresPromote(candidate.Conn, postgresPromoteWaitSeconds)
 	cluster.LogSQL(logs, err, candidate.URL, "MasterFailover", config.LvlErr, "Could not promote %s: %s", candidate.URL, err)
 	if err != nil {
-		cluster.postgresSwitchoverRollback(old, app)
+		cluster.postgresSwitchoverRollback(old)
 		return false
 	}
 	cluster.oldMaster = old
@@ -264,7 +255,7 @@ func (cluster *Cluster) postgresSwitchover() bool {
 
 	// 4. the old primary comes back as a standby
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting %s as a standby of %s", old.URL, candidate.URL)
-	startErr := cluster.postgresStartApp(app)
+	startErr := cluster.postgresStartServer(old)
 	if startErr == nil {
 		// stopped before the promotion: no divergent tail by construction
 		cluster.finishCrashRecord(crash, RejoinResultNoDivergence)
@@ -282,12 +273,27 @@ func (cluster *Cluster) postgresSwitchover() bool {
 	return true
 }
 
-// postgresStartApp starts the service of a PostgreSQL server, retrying while the
-// orchestrator still runs the stop that preceded (409, orchestration in progress).
-func (cluster *Cluster) postgresStartApp(app *App) error {
+// postgresStopServer and postgresStartServer stop and start a PostgreSQL server's service the
+// way the cluster's servers are stopped and started (orchestrator, or the ssh jobs on
+// premise, as for MariaDB); a server that is an app of the cluster on OpenSVC goes through
+// its app service. The start is retried while the orchestrator still runs the stop that
+// preceded (409, orchestration in progress).
+func (cluster *Cluster) postgresStopServer(server *ServerMonitor) error {
+	if app := cluster.postgresAppOfServer(server); app != nil && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+		return cluster.OpenSVCStopAppService(app, "")
+	}
+	return cluster.StopDatabaseService(server)
+}
+
+func (cluster *Cluster) postgresStartServer(server *ServerMonitor) error {
 	deadline := time.Now().Add(3 * time.Minute)
 	for {
-		err := cluster.OpenSVCStartAppService(app, "")
+		var err error
+		if app := cluster.postgresAppOfServer(server); app != nil && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+			err = cluster.OpenSVCStartAppService(app, "")
+		} else {
+			err = cluster.StartDatabaseService(server)
+		}
 		if err == nil {
 			return nil
 		}
@@ -295,9 +301,16 @@ func (cluster *Cluster) postgresStartApp(app *App) error {
 		if !(strings.Contains(msg, "409") || strings.Contains(msg, "in progress")) || time.Now().After(deadline) {
 			return err
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Orchestrator still busy with %s, start retried in 5 s", app.GetServiceName())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Orchestrator still busy with %s, start retried in 5 s", server.URL)
 		time.Sleep(5 * time.Second)
 	}
+}
+
+func (cluster *Cluster) postgresRestartServer(server *ServerMonitor) error {
+	if app := cluster.postgresAppOfServer(server); app != nil && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+		return cluster.OpenSVCRestartAppService(app, "", "")
+	}
+	return cluster.RestartDatabaseService(server, "", "")
 }
 
 // postgresWaitWalReceiverGone waits until a standby no longer receives from its primary:
@@ -316,9 +329,9 @@ func (cluster *Cluster) postgresWaitWalReceiverGone(standby *ServerMonitor, time
 
 // postgresSwitchoverRollback restores the old primary after a failed promotion: it was
 // stopped and armed to start as a standby, so it is started and promoted back.
-func (cluster *Cluster) postgresSwitchoverRollback(old *ServerMonitor, app *App) {
+func (cluster *Cluster) postgresSwitchoverRollback(old *ServerMonitor) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Switchover failed at the promotion: starting %s again and promoting it back", old.URL)
-	if err := cluster.postgresStartApp(app); err != nil {
+	if err := cluster.postgresStartServer(old); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not start %s: %s. NO PRIMARY: start its service, then promote it", old.URL, err)
 		return
 	}
@@ -378,17 +391,12 @@ func (server *ServerMonitor) postgresRejoin() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PostgreSQL server %s is back as a second primary and auto rejoin is disabled: re-seed it as a standby of %s", server.URL, master.URL)
 		return nil
 	}
-	app := cluster.postgresAppOfServer(server)
-	if app == nil || cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PostgreSQL server %s is back as a second primary and is not a service of this cluster: re-seed it as a standby of %s", server.URL, master.URL)
-		return nil
-	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoining former primary %s: re-seed from %s", server.URL, master.URL)
 	if err := server.armPostgresNextStart(config.ConstTaskPgReseed, master); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rejoin of %s failed: %s", server.URL, err)
 		return err
 	}
-	if err := cluster.OpenSVCRestartAppService(app, "", ""); err != nil {
+	if err := cluster.postgresRestartServer(server); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rejoin of %s: could not restart its service: %s", server.URL, err)
 		return err
 	}
