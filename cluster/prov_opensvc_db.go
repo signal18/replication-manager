@@ -367,9 +367,9 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 			// Default: instance-level start (om start --local). Bypasses the
 			// orchestrator's global monitor state check so it works even when the
 			// service is in warn state. Does not coordinate failover volumes.
-			if app := cluster.engineAppOfServer(server); app != nil && app.AppConfig != nil && app.AppConfig.ProvAppHATopology == "failover" {
-				// a service placed on several agents: the orchestrator picks the node, an
-				// instance start on one node would fight its placement
+			if len(cluster.GetDatabaseAgentNames(server)) > 1 {
+				// a service placed on several agents (its prov-db-agents): the orchestrator
+				// picks the node, an instance start on one node would fight its placement
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 					"OpenSVC V3 orchestrated start for %s (failover placement)", server.URL)
 				// retried while the orchestrator still runs the stop that preceded (409)
