@@ -3133,6 +3133,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.RestartDBLogTailers()
 	case "monitoring-binlog-events":
 		mycluster.SwitchMonitorBinlogEvents()
+	case "monitoring-event-status":
+		mycluster.SwitchMonitorEventStatus()
 	default:
 		return errors.New("setting not found")
 	}
@@ -4130,6 +4132,17 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorVariableChangeScript = value
 	case "monitoring-variable-change-ignore":
 		mycluster.Conf.MonitorVariableChangeIgnore = value
+	case "monitoring-event-status-max-definitions", "monitoring-event-status-max-definition-bytes":
+		// a bound of the event definitions API: 0 or less would mean no bound
+		val, convErr := strconv.Atoi(value)
+		if convErr != nil || val < 1 {
+			return fmt.Errorf("invalid value for %s: %q, expected an integer of 1 or more", name, value)
+		}
+		if name == "monitoring-event-status-max-definitions" {
+			mycluster.Conf.MonitorEventStatusMaxDefinitions = val
+		} else {
+			mycluster.Conf.MonitorEventStatusMaxDefinitionBytes = val
+		}
 	case "monitoring-schema-change-script":
 		mycluster.Conf.MonitorSchemaChangeScript = value
 	case "monitoring-add-monitor-script":
@@ -4919,6 +4932,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorVariableDiff = applyIsActive(mycluster.Conf.MonitorVariableDiff, isactive)
 	case "monitoring-processlist":
 		mycluster.Conf.MonitorProcessList = applyIsActive(mycluster.Conf.MonitorProcessList, isactive)
+	case "monitoring-event-status":
+		mycluster.Conf.MonitorEventStatus = applyIsActive(mycluster.Conf.MonitorEventStatus, isactive)
 	case "monitoring-performance-schema-queries":
 		mycluster.Conf.MonitorPFSQueries = applyIsActive(mycluster.Conf.MonitorPFSQueries, isactive)
 	case "monitoring-performance-schema-queries-period":

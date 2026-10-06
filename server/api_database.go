@@ -14,10 +14,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +30,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -454,6 +457,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSwitchReadOnly)),
 	))
+
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/events", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerEvents)),
+	)).Methods(http.MethodGet)
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-meta-data-locks", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2414,6 +2422,135 @@ func (repman *ReplicationManager) handlerMuxSetLongQueryTime(w http.ResponseWrit
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
+	}
+}
+
+// eventStatusEnabled refuses the request with 403 when monitoring-event-status
+// is off for the cluster (T14 off-switch of the Events section).
+func eventStatusEnabled(w http.ResponseWriter, mycluster *cluster.Cluster) bool {
+	if !mycluster.Conf.MonitorEventStatus {
+		http.Error(w, "monitoring-event-status is disabled for this cluster", http.StatusForbidden)
+		return false
+	}
+	return true
+}
+
+// eventsPage reads the limit and offset of an Events list request. An omitted
+// or 0 limit is the maximum (monitoring-event-status-max-definitions), never
+// "no limit"; a limit above the maximum, or a negative or non-integer limit or
+// offset, is an error. An omitted offset is 0.
+func eventsPage(q url.Values, max int) (limit, offset int, err error) {
+	limit = max
+	if v := q.Get("limit"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 0 {
+			return 0, 0, fmt.Errorf("limit must be an integer of 0 or more, got %q", v)
+		}
+		if n > max {
+			return 0, 0, fmt.Errorf("limit %d is above the maximum %d (monitoring-event-status-max-definitions)", n, max)
+		}
+		if n > 0 {
+			limit = n
+		}
+	}
+	if v := q.Get("offset"); v != "" {
+		n, convErr := strconv.Atoi(v)
+		if convErr != nil || n < 0 {
+			return 0, 0, fmt.Errorf("offset must be an integer of 0 or more, got %q", v)
+		}
+		offset = n
+	}
+	return limit, offset, nil
+}
+
+// handlerMuxServerEvents handles the HTTP request to get the events of a server.
+// @Summary Get the events of a server
+// @Description Reads the events of the server, on demand (not collected by the monitoring loop). Without name, a page of events (all, or those of one schema) with their schema, name, definer, schedule and definitionBytes, without the SQL body; X-Total-Count gives the number of events. With schema and name, that one event with its SQL body. The status of each event is in the server's eventStatus. Requires the db-show-status grant. Refused when monitoring-event-status is off.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param schema query string false "Only the events of this schema"
+// @Param name query string false "Only this event, with its SQL body (requires schema)"
+// @Param limit query int false "Events per page, 1 to monitoring-event-status-max-definitions; omitted or 0 is that maximum"
+// @Param offset query int false "Events to skip, default 0"
+// @Success 200 {array} dbhelper.EventDefinition "Events; the definition body only for schema and name"
+// @Header 200 {integer} X-Total-Count "Number of events matching the request (list mode)"
+// @Failure 400 {string} string "name requires schema" or an invalid limit or offset
+// @Failure 403 {string} string "No valid ACL" or "monitoring-event-status is disabled for this cluster"
+// @Failure 405 {string} string "Method Not Allowed"
+// @Failure 413 {string} string "The definition is larger than monitoring-event-status-max-definition-bytes"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Could not read events"
+// @Failure 503 {string} string "Server is down"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/events [get]
+func (repman *ReplicationManager) handlerMuxServerEvents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if !eventStatusEnabled(w, mycluster) {
+		return
+	}
+	q := r.URL.Query()
+	schema, name := q.Get("schema"), q.Get("name")
+	if name != "" && schema == "" {
+		http.Error(w, "name requires schema", http.StatusBadRequest)
+		return
+	}
+	maxDefinitions := config.EffectiveMonitorEventStatusMaxDefinitions(mycluster.Conf.MonitorEventStatusMaxDefinitions)
+	maxDefinitionBytes := config.EffectiveMonitorEventStatusMaxDefinitionBytes(mycluster.Conf.MonitorEventStatusMaxDefinitionBytes)
+	limit, offset, err := eventsPage(q, maxDefinitions)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", 500)
+		return
+	}
+	if node.IsDown() {
+		http.Error(w, "Server is down", http.StatusServiceUnavailable)
+		return
+	}
+
+	events := []dbhelper.EventDefinition{}
+	if name != "" {
+		ev, err := node.GetEventDefinition(schema, name)
+		if errors.Is(err, dbhelper.ErrEventDefinitionTooLarge) {
+			http.Error(w, fmt.Sprintf("The definition of %s.%s is %d bytes, larger than monitoring-event-status-max-definition-bytes (%d): it is not returned",
+				schema, name, ev.DefinitionBytes, maxDefinitionBytes), http.StatusRequestEntityTooLarge)
+			return
+		}
+		if err != nil {
+			http.Error(w, "Could not read events: "+err.Error(), 500)
+			return
+		}
+		if ev != nil {
+			events = append(events, *ev)
+		}
+	} else {
+		page, total, err := node.ListEventDefinitions(schema, limit, offset)
+		if err != nil {
+			http.Error(w, "Could not read events: "+err.Error(), 500)
+			return
+		}
+		events = page
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
+	}
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(events); err != nil {
+		http.Error(w, "Encoding error", 500)
 	}
 }
 

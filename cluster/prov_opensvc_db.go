@@ -764,7 +764,7 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 		return svcenv
 	}
 	svcenv["nodes"] = agent.HostName
-	svcenv["size"] = server.ClusterGroup.Conf.ProvDisk + "g"
+	svcenv["size"] = server.ClusterGroup.provDiskSizeForOpenSVC()
 	svcenv["docker_image"] = server.deployImage()
 	ips := strings.Split(server.ClusterGroup.Conf.ProvGateway, ".")
 	masks := strings.Split(server.ClusterGroup.Conf.ProvNetmask, ".")
@@ -1352,7 +1352,7 @@ run_requires = fs#01(up,stdby up) container#01(up,stdby up)
 	conf = conf + `
 [env]
 nodes = ` + agent + `
-size = ` + collector.ProvDisk + `g
+size = ` + server.ClusterGroup.provDiskSizeForOpenSVC() + `
 docker_imgage = ` + collector.ProvDockerImg + `
 ` + ipPods + `
 ` + portPods + `
@@ -1444,4 +1444,17 @@ func (server *ServerMonitor) deployImage() string {
 		return server.DeployImageOverride
 	}
 	return server.ClusterGroup.deployImage()
+}
+
+// provDiskSizeForOpenSVC is prov-db-disk-size as an OpenSVC size: the setting carries its
+// unit ("20G"), the templates used to append a hard-coded "g" to a bare number, and
+// "20Gg" gave the volume a size of 0 (ZFS then refused quota=0 and the provisioning of
+// mahebourg failed, 2026-10-06). Gigabytes, rounded down, at least 1.
+func (cluster *Cluster) provDiskSizeForOpenSVC() string {
+	gb, err := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	if err != nil || gb < 1 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "prov-db-disk-size %q is not a size (%v): 1g used", cluster.Conf.ProvDisk, err)
+		gb = 1
+	}
+	return strconv.Itoa(gb) + "g"
 }

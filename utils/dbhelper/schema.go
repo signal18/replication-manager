@@ -843,6 +843,102 @@ func GetEventStatus(db *sqlx.DB, version *version.Version) ([]Event, string, err
 	return ss, query, err
 }
 
+// eventColumns is what ListEvents and GetEventDefinition read of an event:
+// identity, definer, schedule and the size of the body, not the body itself.
+const eventColumns = "EVENT_SCHEMA AS db, EVENT_NAME AS name, DEFINER AS definer, COALESCE(LENGTH(EVENT_DEFINITION), 0) AS definition_bytes," +
+	" COALESCE(EVENT_TYPE, '') AS event_type, COALESCE(CAST(EXECUTE_AT AS CHAR), '') AS execute_at," +
+	" COALESCE(CAST(INTERVAL_VALUE AS CHAR), '') AS interval_value, COALESCE(INTERVAL_FIELD, '') AS interval_field," +
+	" COALESCE(CAST(STARTS AS CHAR), '') AS starts, COALESCE(CAST(ENDS AS CHAR), '') AS ends, COALESCE(ON_COMPLETION, '') AS on_completion," +
+	" COALESCE(CAST(LAST_EXECUTED AS CHAR), '') AS last_executed, COALESCE(TIME_ZONE, '') AS time_zone, COALESCE(EVENT_COMMENT, '') AS comment"
+
+// ErrEventDefinitionTooLarge is returned by GetEventDefinition when the body
+// of the event is larger than the maximum asked for; the body is not read.
+var ErrEventDefinitionTooLarge = errors.New("event definition larger than the maximum")
+
+// CountEvents returns the number of events of schema, or of every schema when
+// schema is empty. schema is bound as a parameter.
+func CountEvents(db *sqlx.DB, schema string) (int, string, error) {
+	query := "SELECT /*replication-manager*/ COUNT(*) FROM information_schema.EVENTS"
+	var args []any
+	if schema != "" {
+		query += " WHERE EVENT_SCHEMA = ?"
+		args = append(args, schema)
+	}
+	ctx, cancel := scanContext(defaultSchemaScanTimeout)
+	defer cancel()
+	var n int
+	err := db.QueryRowxContext(ctx, query, args...).Scan(&n)
+	return n, query, err
+}
+
+// ListEvents returns one page of events, limit rows from offset, ordered by
+// schema and name: the events of schema, or of every schema when schema is
+// empty. A row carries the identity, definer, schedule and body size of the
+// event, not the body (GetEventDefinition reads it). limit must be 1 or more:
+// the caller bounds it. It is read on demand, never by the monitoring loop,
+// and bounded by defaultSchemaScanTimeout. schema, limit and offset are bound
+// as parameters.
+func ListEvents(db *sqlx.DB, schema string, limit, offset int) ([]EventDefinition, string, error) {
+	events := []EventDefinition{}
+	if limit < 1 || offset < 0 {
+		return events, "", fmt.Errorf("invalid page: limit %d, offset %d", limit, offset)
+	}
+	query := "SELECT /*replication-manager*/ " + eventColumns + " FROM information_schema.EVENTS"
+	var args []any
+	if schema != "" {
+		query += " WHERE EVENT_SCHEMA = ?"
+		args = append(args, schema)
+	}
+	query += " ORDER BY EVENT_SCHEMA, EVENT_NAME LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
+	ctx, cancel := scanContext(defaultSchemaScanTimeout)
+	defer cancel()
+	err := db.SelectContext(ctx, &events, query, args...)
+	return events, query, err
+}
+
+// GetEventDefinition returns the event schema.name with its schedule and its
+// definition body, or nil when there is no such event. The size of the body is
+// read first: when it is larger than maxBytes, the event is returned without
+// its body together with ErrEventDefinitionTooLarge. The later body query is
+// byte-capped at maxBytes+1 too, in case the event grows between the queries.
+// Bounded by defaultSchemaScanTimeout per query; schema and name are bound as
+// parameters.
+func GetEventDefinition(db *sqlx.DB, schema, name string, maxBytes int64) (*EventDefinition, string, error) {
+	if maxBytes < 0 || maxBytes == int64(^uint64(0)>>1) {
+		return nil, "", fmt.Errorf("invalid maximum event definition size %d", maxBytes)
+	}
+	query := "SELECT /*replication-manager*/ " + eventColumns + " FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?"
+	ctx, cancel := scanContext(defaultSchemaScanTimeout)
+	defer cancel()
+	events := []EventDefinition{}
+	if err := db.SelectContext(ctx, &events, query, schema, name); err != nil {
+		return nil, query, err
+	}
+	if len(events) == 0 {
+		return nil, query, nil
+	}
+	ev := events[0]
+	if ev.DefinitionBytes > maxBytes {
+		return &ev, query, ErrEventDefinitionTooLarge
+	}
+	bodyQuery := "SELECT /*replication-manager*/ COALESCE(LENGTH(EVENT_DEFINITION), 0), COALESCE(LEFT(CAST(EVENT_DEFINITION AS BINARY), ?), '') FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?"
+	ctx2, cancel2 := scanContext(defaultSchemaScanTimeout)
+	defer cancel2()
+	var definition []byte
+	if err := db.QueryRowxContext(ctx2, bodyQuery, maxBytes+1, schema, name).Scan(&ev.DefinitionBytes, &definition); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, bodyQuery, nil // dropped in between
+		}
+		return nil, bodyQuery, err
+	}
+	if ev.DefinitionBytes > maxBytes || int64(len(definition)) > maxBytes {
+		return &ev, bodyQuery, ErrEventDefinitionTooLarge
+	}
+	ev.Definition = string(definition)
+	return &ev, bodyQuery, nil
+}
+
 // IsGroupReplicationMaster checks if server is a group replication master
 func IsGroupReplicationMaster(db *sqlx.DB, myver *version.Version, host string) (bool, error) {
 	var value bool

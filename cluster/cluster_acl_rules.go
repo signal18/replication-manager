@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -15,7 +16,7 @@ import (
 
 // ACLRule represents an access control rule for a URL pattern
 type ACLRule struct {
-	URLPattern     string   // The URL pattern to match (uses strings.Contains)
+	URLPattern     string   // Literal patterns use strings.Contains; patterns with * use a full path.Match.
 	RequiredGrants []string // All grants in this list are required (AND logic)
 	AllowedGrants  []string // Any grant in this list is sufficient (OR logic)
 }
@@ -74,6 +75,9 @@ var databaseACLRules = []ACLRule{
 
 	// Read-only toggle
 	{"actions/toggle-read-only", nil, []string{config.GrantDBReadOnly}},
+
+	// Events page (monitoring-event-status): read-only event definitions
+	{"/api/clusters/*/servers/*/events", nil, []string{config.GrantDBShowStatus}},
 
 	// Config actions
 	{"/config", nil, []string{config.GrantDBConfigFlag}},
@@ -409,7 +413,11 @@ func (cluster *Cluster) matchACLRules(strUser string, URL string, rules []ACLRul
 	var matches []matchedRule
 
 	for _, rule := range rules {
-		if strings.Contains(URL, rule.URLPattern) {
+		matched := strings.Contains(URL, rule.URLPattern)
+		if strings.Contains(rule.URLPattern, "*") {
+			matched, _ = path.Match(rule.URLPattern, URL)
+		}
+		if matched {
 			matches = append(matches, matchedRule{
 				rule:          rule,
 				patternLength: len(rule.URLPattern),

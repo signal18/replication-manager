@@ -821,6 +821,10 @@ func (cluster *Cluster) SwitchTopologyStaging() {
 	cluster.Conf.TopologyStaging = !cluster.Conf.TopologyStaging
 }
 
+func (cluster *Cluster) SwitchMonitorEventStatus() {
+	cluster.Conf.MonitorEventStatus = !cluster.Conf.MonitorEventStatus
+}
+
 func (cluster *Cluster) SwitchMonitorBinlogEvents() {
 	cluster.Conf.MonitorBinlogEvents = !cluster.Conf.MonitorBinlogEvents
 }
