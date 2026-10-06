@@ -329,6 +329,11 @@ func (server *ServerMonitor) HasBackupMariabackupCookie() bool {
 }
 
 func (server *ServerMonitor) HasReadOnly() bool {
+	if server.IsPostgreSQLHost() {
+		// a standby in recovery, or a server whose transactions default to read-only
+		// (the PostgreSQL read_only, set by SetReadOnly and the switchover)
+		return server.Variables.Get("IN_HOT_STANDBY") == "ON" || server.Variables.Get("DEFAULT_TRANSACTION_READ_ONLY") == "ON"
+	}
 	return server.Variables.Get("READ_ONLY") == "ON"
 }
 

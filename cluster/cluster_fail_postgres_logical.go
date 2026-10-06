@@ -72,9 +72,7 @@ func (cluster *Cluster) postgresLogicalPromote(candidate *ServerMonitor, subscri
 	if err != nil {
 		return err
 	}
-	logs, err = dbhelper.PostgresSetDefaultReadOnly(candidate.Conn, false)
-	cluster.LogSQL(logs, err, candidate.URL, "MasterFailover", config.LvlErr, "Could not open %s to writes: %s", candidate.URL, err)
-	return err
+	return candidate.SetReadWrite()
 }
 
 // postgresLogicalSubscribe makes a server follow the new primary: a subscription without
@@ -83,7 +81,7 @@ func (cluster *Cluster) postgresLogicalSubscribe(server *ServerMonitor, primary 
 	if err := server.ChangeMasterTo(primary, "SLAVE_POS"); err != nil {
 		return err
 	}
-	logs, err := dbhelper.PostgresSetDefaultReadOnly(server.Conn, true)
+	logs, err := server.SetReadOnly()
 	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Could not set the read-only default on %s: %s", server.URL, err)
 	return err
 }
@@ -127,7 +125,7 @@ func (cluster *Cluster) postgresLogicalSwitchover() bool {
 	cluster.failoverPreScript(false)
 
 	// freeze: no new write on the old primary, then wait for the subscriber to confirm all
-	logs, err := dbhelper.PostgresSetDefaultReadOnly(old.Conn, true)
+	logs, err := old.SetReadOnly()
 	cluster.LogSQL(logs, err, old.URL, "MasterFailover", config.LvlErr, "Could not freeze %s: %s", old.URL, err)
 	if err != nil {
 		return false
@@ -145,16 +143,18 @@ func (cluster *Cluster) postgresLogicalSwitchover() bool {
 	}
 	if !caughtUp {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Subscriber %s did not confirm all the changes of %s within %d s (switchover-wait-trx), switchover cancelled, primary unfrozen", candidate.URL, old.URL, cluster.Conf.SwitchWaitTrx)
-		logs, err := dbhelper.PostgresSetDefaultReadOnly(old.Conn, false)
-		cluster.LogSQL(logs, err, old.URL, "MasterFailover", config.LvlErr, "Could not unfreeze %s: %s", old.URL, err)
+		if err := old.SetReadWrite(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not unfreeze %s: %s", old.URL, err)
+		}
 		return false
 	}
 
 	ss, _ := candidate.GetSlaveStatus(candidate.ReplicationSourceName)
 	if err := cluster.postgresLogicalPromote(candidate, subscription, true); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Promotion of %s failed, primary %s unfrozen", candidate.URL, old.URL)
-		logs, err := dbhelper.PostgresSetDefaultReadOnly(old.Conn, false)
-		cluster.LogSQL(logs, err, old.URL, "MasterFailover", config.LvlErr, "Could not unfreeze %s: %s", old.URL, err)
+		if err := old.SetReadWrite(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not unfreeze %s: %s", old.URL, err)
+		}
 		return false
 	}
 	cluster.oldMaster = old
@@ -269,7 +269,7 @@ func (server *ServerMonitor) postgresLogicalRejoin() error {
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoining former primary %s as a subscriber of %s", server.URL, master.URL)
-	logs, err := dbhelper.PostgresSetDefaultReadOnly(server.Conn, true)
+	logs, err := server.SetReadOnly()
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Could not freeze %s: %s", server.URL, err)
 	// the slot the new primary held on it as a subscriber, left behind by the failover
 	for _, s := range cluster.Servers {

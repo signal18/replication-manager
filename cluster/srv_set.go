@@ -151,6 +151,18 @@ func (server *ServerMonitor) SetSemiSyncLeader() (string, error) {
 func (server *ServerMonitor) SetReadOnly() (string, error) {
 	cluster := server.ClusterGroup
 	logs := ""
+	if server.IsPostgreSQLHost() {
+		// PostgreSQL's read_only is default_transaction_read_only, set live for every
+		// session (a standby in recovery is read-only by nature and needs nothing)
+		if server.IsReadOnly() {
+			return logs, nil
+		}
+		logs, err := dbhelper.PostgresSetDefaultReadOnly(server.Conn, true)
+		if err == nil {
+			server.HaveReadOnly = true
+		}
+		return logs, err
+	}
 	if !server.IsReadOnly() {
 		logs, err := dbhelper.SetReadOnly(server.Conn, true)
 		if err != nil {
@@ -238,6 +250,17 @@ func (server *ServerMonitor) SetReadWrite() error {
 	if cluster.Conf.Arbitration && cluster.IsFailedArbitrator {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel ReadWrite on %s caused by arbitration failed ", server.URL)
 		return errors.New("Arbitration is Failed")
+	}
+	if server.IsPostgreSQLHost() {
+		if !server.IsReadOnly() {
+			return nil
+		}
+		logs, err := dbhelper.PostgresSetDefaultReadOnly(server.Conn, false)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed Set Read Write on %s : %s", server.URL, err)
+		if err == nil {
+			server.HaveReadOnly = false
+		}
+		return err
 	}
 	if server.IsReadOnly() {
 		logs, err := dbhelper.SetReadOnly(server.Conn, false)
