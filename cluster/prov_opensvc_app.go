@@ -1185,8 +1185,10 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 	}
 
 	// App configurator (app_configurator.go): the engine's moduleset files, rendered from
-	// the app plan, travel as one config key the container start command writes out.
+	// the database plan (initialized from the app plan the first time), travel as one config
+	// key the container start command writes out.
 	if app.AppConfig.ProvAppConfigurator != "" {
+		cluster.initDBSizingFromEngineApp(app)
 		script, err := cluster.AppConfiguratorScript(app)
 		if err != nil {
 			return err

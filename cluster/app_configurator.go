@@ -180,14 +180,40 @@ func (cluster *Cluster) appConfiguratorEnv(app *App) map[string]string {
 	return env
 }
 
+// engineServerOfApp returns the monitored server an engine app runs, nil when the app is
+// not a server of the cluster (a PostgreSQL that is an application's own store).
+func (cluster *Cluster) engineServerOfApp(app *App) *ServerMonitor {
+	if app == nil || app.AppConfig == nil || strings.TrimSpace(app.AppConfig.ProvAppConfigurator) == "" {
+		return nil
+	}
+	for _, s := range cluster.Servers {
+		if s != nil && s.Port == app.Port && (s.Host == app.Host || s.Name == app.Name) {
+			return s
+		}
+	}
+	return nil
+}
+
 // AppConfiguratorScript renders the configuration of an app that names an engine.
+//
+// A monitored server renders from the DATABASE configurator (server.GetEnv(), the prov-db-*
+// plan): the database plan is the source of truth for a server's sizing, its moduleset and
+// its DBU; the app plan only initialized it (initDBSizingFromEngineApp). An engine app that
+// is not a server (an application's own store) renders from its app plan.
 func (cluster *Cluster) AppConfiguratorScript(app *App) (string, error) {
 	engine := strings.TrimSpace(app.AppConfig.ProvAppConfigurator)
 	module, err := loadAppConfiguratorModule(engine)
 	if err != nil {
 		return "", err
 	}
-	files, err := renderAppConfiguratorFiles(module, engine, cluster.appConfiguratorEnv(app))
+	env := cluster.appConfiguratorEnv(app)
+	if server := cluster.engineServerOfApp(app); server != nil {
+		env = server.GetEnv()
+		env["%%ENV:SVC_NAMESPACE%%"] = cluster.Name
+		env["%%ENV:SVC_NAME%%"] = app.Name
+		env["%%ENV:SERVER_PORT%%"] = app.Port
+	}
+	files, err := renderAppConfiguratorFiles(module, engine, env)
 	if err != nil {
 		return "", err
 	}
@@ -195,4 +221,36 @@ func (cluster *Cluster) AppConfiguratorScript(app *App) (string, error) {
 		return "", fmt.Errorf("moduleset %s renders no file for an app", engine)
 	}
 	return appConfiguratorScript(files), nil
+}
+
+// initDBSizingFromEngineApp initializes the database plan of the cluster from the plan of
+// the first engine app that becomes one of its servers: prov-db-memory, prov-db-cpu-cores,
+// prov-db-disk-size, prov-db-disk-iops and prov-db-agents. Once only: with an engine server
+// already there, the database plan is the one in force and the app plan is not consulted.
+func (cluster *Cluster) initDBSizingFromEngineApp(app *App) {
+	server := cluster.engineServerOfApp(app)
+	if server == nil {
+		return
+	}
+	for _, s := range cluster.Servers {
+		if s != nil && s != server && cluster.appIsEngineServer(s) {
+			return
+		}
+	}
+	if v := strings.TrimSpace(cluster.GetAppMemory(app.AppConfig)); v != "" {
+		cluster.SetDBMemorySize(v)
+	}
+	if v := strings.TrimSpace(cluster.GetAppCores(app.AppConfig)); v != "" {
+		cluster.SetDBCores(v)
+	}
+	if v := strings.TrimSpace(cluster.GetAppDisk(app.AppConfig)); v != "" {
+		cluster.SetDBDiskSize(v)
+	}
+	if v := strings.TrimSpace(cluster.GetAppDiskIops(app.AppConfig)); v != "" {
+		cluster.SetDBDiskIOPS(v)
+	}
+	if v := strings.TrimSpace(cluster.GetAppAgents(app.AppConfig)); v != "" {
+		cluster.SetProvDbAgents(v)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database plan of the cluster initialized from the plan of %s: memory %s, cores %s, disk %s, iops %s, agents %s", app.Name, cluster.Conf.ProvMem, cluster.Conf.ProvCores, cluster.Conf.ProvDisk, cluster.Conf.ProvIops, cluster.Conf.ProvAgents)
 }
