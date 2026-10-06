@@ -380,6 +380,68 @@ function Graphs({ selectedCluster, onOpenSettings }) {
       </GraphSection>
       )}
 
+      {isPostgres && (
+      <GraphSection heading='WAL and vacuum (PostgreSQL)'>
+        <ChartTimeSeriesLine
+          title='WAL written — bytes/s and records/s'
+          yLabel='per second'
+          logScale
+          cap={1e9}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_wal_bytes))'), label: 'Bytes' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_wal_records))'), label: 'Records' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_wal_fpi))'), label: 'Full page images' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Checkpoints — timed vs requested per second, buffers written/s'
+          yLabel='per second'
+          logScale
+          cap={1e6}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_checkpoints_timed))'), label: 'Timed' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_checkpoints_req))'), label: 'Requested' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_checkpoint_buffers_written))'), label: 'Buffers written' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_wal_buffers_full))'), label: 'WAL buffers full' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Tuples — live vs dead (vacuum backlog)'
+          yLabel='tuples'
+          logScale
+          cap={1e10}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(mysql.*.mysql_global_status_n_live_tup)'), label: 'Live' },
+            { target: scope('sumSeries(mysql.*.mysql_global_status_n_dead_tup)'), label: 'Dead' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Vacuum and analyze runs per second — manual vs auto'
+          yLabel='runs/s'
+          logScale
+          cap={1e3}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_vacuum_count))'), label: 'Vacuum' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_autovacuum_count))'), label: 'Autovacuum' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_analyze_count))'), label: 'Analyze' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_autoanalyze_count))'), label: 'Autoanalyze' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+      </GraphSection>
+      )}
+
       <GraphSection heading='Replication'>
         <ChartTimeSeriesLine
           title='Replication delay'
