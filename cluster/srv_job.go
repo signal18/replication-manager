@@ -339,6 +339,10 @@ func shouldUpdateCachedJobTask(cached *config.Task, dbTask *config.Task) bool {
 }
 
 func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	query := "SELECT id, task, port, server, done, state, result, payload, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
 
 	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
@@ -951,6 +955,10 @@ func (server *ServerMonitor) ReconcileRestoredAPIJobs() {
 }
 
 func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
 		return nil
 	}
@@ -998,6 +1006,10 @@ func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
 }
 
 func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	var err error
 	cluster := server.ClusterGroup
 
@@ -1403,6 +1415,10 @@ func (server *ServerMonitor) JobsReconcileSQL() error {
 }
 
 func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	var err error
 	cluster := server.ClusterGroup
 

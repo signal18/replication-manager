@@ -35,7 +35,15 @@ fi
 # include_dir is a file directive: it cannot be passed with -c
 # wal_log_hints lets pg_rewind resynchronise a former primary without a full copy;
 # wal_level = logical lets the server publish for logical replication subscribers
-printf "include_dir = 'replication-manager.d'\nlisten_addresses = '*'\nwal_log_hints = on\nwal_level = logical\n" > "$CONF_DIR/postgresql.conf"
+# max_worker_processes: the configurator sets it to the cores of the plan, which leaves no
+# background worker for the logical replication apply and table-sync workers ("out of
+# background worker slots" on a 2-core plan): cores + 6, at least the PostgreSQL default 8,
+# set after the include so it wins. To move into the configurator rule (collector) and drop
+# from here.
+cores=$(cat "$CONF_DIR"/replication-manager.d/*.conf 2>/dev/null | sed -n 's/^[[:space:]]*max_worker_processes[[:space:]]*=[[:space:]]*\([0-9]*\).*/\1/p' | tail -1)
+workers=$(( ${cores:-2} + 6 ))
+[ "$workers" -ge 8 ] || workers=8
+printf "include_dir = 'replication-manager.d'\nlisten_addresses = '*'\nwal_log_hints = on\nwal_level = logical\nmax_worker_processes = %s\n" "$workers" > "$CONF_DIR/postgresql.conf"
 
 # 2. a new primary accepts replication connections from the cluster network (the image's
 #    default pg_hba only opens the databases, not the replication protocol)
