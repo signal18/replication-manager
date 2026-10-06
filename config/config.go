@@ -1677,6 +1677,7 @@ const (
 	ConstTaskPgBaseBackup       TaskName = "pgbasebackup" // PostgreSQL physical backup, pg_basebackup run by the jobs sidecar
 	ConstTaskPgStandby          TaskName = "pgstandby"    // PostgreSQL: the jobs sidecar arms the next start as a standby of the given primary
 	ConstTaskPgReseed           TaskName = "pgreseed"     // PostgreSQL: the jobs sidecar arms the next start to re-seed from the given primary
+	ConstTaskPgSchemaSync       TaskName = "pgschemasync" // PostgreSQL logical replication: the jobs sidecar creates on this subscriber the published tables it misses
 	ConstTaskError              TaskName = "errorlog"
 	ConstTaskSlowQuery          TaskName = "slowquery"
 	ConstTaskSqlError           TaskName = "sqlerrorlog"
@@ -1728,6 +1729,7 @@ var TaskRegistry = map[TaskName]TaskDef{
 	ConstTaskPgBaseBackup: {Name: ConstTaskPgBaseBackup, Capability: TaskCapRemoteOnly},
 	ConstTaskPgStandby:    {Name: ConstTaskPgStandby, Capability: TaskCapRemoteOnly},
 	ConstTaskPgReseed:     {Name: ConstTaskPgReseed, Capability: TaskCapRemoteOnly},
+	ConstTaskPgSchemaSync: {Name: ConstTaskPgSchemaSync, Capability: TaskCapRemoteOnly},
 	ConstTaskReseedXB: {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
 	ConstTaskReseedMB: {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
 	ConstTaskFlashXB:  {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},

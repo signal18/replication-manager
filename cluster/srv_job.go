@@ -597,7 +597,7 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 		server.delLegacyPhysicalBackupCookie()
 		return server.SetWaitMariabackupCookie()
 	// PostgreSQL tools — the jobs sidecar runs them
-	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup, config.ConstTaskPgStandby, config.ConstTaskPgReseed:
+	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup, config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync:
 		return server.createCookie(postgresJobCookie(task))
 	// Optimize — dbjobs runs mysqlcheck on DB host
 	case config.ConstTaskOptimize:

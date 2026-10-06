@@ -270,3 +270,4 @@ func PostgresDropReplicationSlot(db *sqlx.DB, slot string) (string, error) {
 	query := "SELECT pg_drop_replication_slot(slot_name) FROM pg_catalog.pg_replication_slots WHERE slot_name = " + postgresLiteral(slot) + " AND NOT active"
 	return query, PostgresExecReadWrite(db, query)
 }
+

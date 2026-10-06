@@ -295,3 +295,28 @@ func (cluster *Cluster) postgresSubscriptionNameFor() string {
 	}
 	return "alltables"
 }
+
+// postgresSchemaSyncOnDiff is what the schema diff of the monitor (MonitorTableSchemaDiff,
+// WARN0164: tables of the master missing or different on a replica) triggers on a logical
+// replication subscriber: PostgreSQL does not replicate DDL, so a table created on the
+// publisher is unknown to the subscriber and its apply worker dies on every change to it
+// ("logical replication target relation does not exist", replication stopped). The
+// subscriber's jobs sidecar is asked to create the missing tables from the primary's
+// definition and refresh the subscription (task pgschemasync); the diff re-arms it until the
+// subscriber matches.
+func (cluster *Cluster) postgresSchemaSyncOnDiff(sl *ServerMonitor) {
+	if !cluster.isPostgresLogical() || sl == nil || !sl.IsPostgreSQLHost() || sl.IsDown() {
+		return
+	}
+	master := cluster.GetMaster()
+	if master == nil || master.IsDown() {
+		return
+	}
+	if sl.hasCookie(postgresJobCookie(string(config.ConstTaskPgSchemaSync))) {
+		return // already asked, the sidecar is on it
+	}
+	sl.streamTasks.Store(postgresNextStartTargetKey(string(config.ConstTaskPgSchemaSync)), master.Host+":"+master.Port)
+	if err := sl.setTaskCookie(string(config.ConstTaskPgSchemaSync)); err == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Schema sync requested from the jobs sidecar of %s: the subscriber differs from the publication", sl.URL)
+	}
+}

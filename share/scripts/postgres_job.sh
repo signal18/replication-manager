@@ -9,6 +9,7 @@
 #   pgdump         pg_dumpall of the instance (logical backup)
 #   pgstandby      arm the next start as a standby of the primary replication-manager names
 #   pgreseed       arm the next start to copy the data again from that primary
+#   pgschemasync   create the published tables this subscriber misses (DDL is not replicated)
 #   pgbasebackup   pg_basebackup as a tar stream with the WAL it needs (physical backup,
 #                  online, it blocks neither reads nor writes)
 #   optimize       vacuumdb --all --analyze: reclaims dead rows and refreshes the planner
@@ -35,7 +36,7 @@ export PGCONNECT_TIMEOUT=5
 INTERVAL="${PG_JOB_INTERVAL:-10}"
 CLI="${REPMAN_CLIENT:-/jobs/replication-manager-cli}"
 ERR=/tmp/postgres_job.err
-TASKS="pgdump pgbasebackup optimize pgstandby pgreseed"
+TASKS="pgdump pgbasebackup optimize pgstandby pgreseed pgschemasync"
 # what the next start of PostgreSQL must do, read by the start script (postgres_start.sh)
 NEXT_START="${PGDATA:-/var/lib/postgresql/data}/replication-manager.next_start"
 
@@ -66,6 +67,33 @@ run_task() {
         return
     fi
     case "$task" in
+    pgschemasync)
+        # Logical replication subscriber: PostgreSQL does not replicate DDL. The tables of the
+        # publication this server has not are created here from the primary's definition
+        # (pg_dump --schema-only), then the subscription is refreshed so they join it with
+        # their rows copied; the apply worker, dead on "relation does not exist", passes.
+        local phost="${addr%:*}" pport="${addr##*:}" sub missing t args
+        sub=$(psql -X -At -c "SELECT subname FROM pg_subscription ORDER BY oid LIMIT 1")
+        missing=$(PGHOST="$phost" PGPORT="$pport" psql -X -At -c "SELECT schemaname || '.' || tablename FROM pg_publication_tables WHERE pubname = '${sub:-alltables}'" 2>"$ERR" \
+            | while read -r t; do [ -n "$t" ] && [ "$(psql -X -At -c "SELECT to_regclass('$t') IS NOT NULL")" = "f" ] && echo "$t"; done)
+        if [ -z "$missing" ]; then
+            log "$task: no published table missing"
+            job state "$task" done
+            return
+        fi
+        args=""; for t in $missing; do args="$args -t $t"; done
+        log "$task: creating from $addr:$(echo $missing | tr '\n' ' ')"
+        # shellcheck disable=SC2086
+        if PGHOST="$phost" PGPORT="$pport" pg_dump --schema-only --no-owner --no-privileges $args 2>"$ERR" | psql -X -v ON_ERROR_STOP=0 -q >>"$ERR" 2>&1 \
+            && psql -X -At -c "SET default_transaction_read_only = off" -c "ALTER SUBSCRIPTION ${sub:-alltables} REFRESH PUBLICATION" >>"$ERR" 2>&1; then
+            log "$task: done, subscription refreshed"
+            job state "$task" done || log "$task: cannot report done"
+        else
+            log "$task: failed: $(tail -c 300 "$ERR")"
+            job state "$task" error || log "$task: cannot report error"
+        fi
+        return
+        ;;
     pgstandby|pgreseed)
         # Role change of this server, decided by replication-manager: PostgreSQL cannot
         # become a standby while it runs, so the change is armed here, on the data
