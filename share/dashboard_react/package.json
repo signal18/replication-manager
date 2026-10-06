@@ -16,6 +16,7 @@
     "test:git-clone-volume-dir": "node src/Pages/ClusterApp/components/Storage/__tests__/gitCloneVolumeDir.test.js",
     "test:s3-volume-dir": "node src/Pages/ClusterApp/components/Storage/__tests__/s3VolumeDir.test.js",
     "test:crash-pill": "node src/utility/__tests__/crashPill.test.js",
+    "test:events-matrix": "node src/Pages/Shards/Events/__tests__/eventsMatrix.test.js",
     "test:reseed-progress": "node src/utility/__tests__/reseedProgress.test.js"
   },
   "dependencies": {

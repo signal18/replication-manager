@@ -443,6 +443,30 @@ type Event struct {
 	Status  int64  `json:"status"`
 }
 
+// EventDefinition is a scheduled event with its schedule (ListEvents) and, for
+// one event read by GetEventDefinition, its definition body, as
+// information_schema.EVENTS reports them; a field that does not apply
+// (EXECUTE_AT of a recurring event, ENDS without an end, ...) is empty.
+// DefinitionBytes is the size of the body, always filled. Event carries the
+// status instead (GetEventStatus).
+type EventDefinition struct {
+	Db              string `db:"db" json:"db"`
+	Name            string `db:"name" json:"name"`
+	Definer         string `db:"definer" json:"definer"`
+	Definition      string `db:"-" json:"definition,omitempty"`
+	DefinitionBytes int64  `db:"definition_bytes" json:"definitionBytes"`
+	EventType     string `db:"event_type" json:"eventType"`         // ONE TIME or RECURRING
+	ExecuteAt     string `db:"execute_at" json:"executeAt"`         // one-time event: when it runs
+	IntervalValue string `db:"interval_value" json:"intervalValue"` // recurring event: every <value> <field>
+	IntervalField string `db:"interval_field" json:"intervalField"`
+	Starts        string `db:"starts" json:"starts"`
+	Ends          string `db:"ends" json:"ends"`
+	OnCompletion  string `db:"on_completion" json:"onCompletion"` // PRESERVE or NOT PRESERVE
+	LastExecuted  string `db:"last_executed" json:"lastExecuted"`
+	TimeZone      string `db:"time_zone" json:"timeZone"`
+	Comment       string `db:"comment" json:"comment"`
+}
+
 // Processlist represents a process/connection in the database
 type Processlist struct {
 	Id                 uint64          `json:"id" db:"Id"`

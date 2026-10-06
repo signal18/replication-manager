@@ -75,6 +75,9 @@ var databaseACLRules = []ACLRule{
 	// Read-only toggle
 	{"actions/toggle-read-only", nil, []string{config.GrantDBReadOnly}},
 
+	// Events page (monitoring-event-status): read-only event definitions
+	{"/events", nil, []string{config.GrantDBShowStatus}},
+
 	// Config actions
 	{"/config", nil, []string{config.GrantDBConfigFlag}},
 	{"/config-gen", nil, []string{config.GrantDBConfigFlag}},

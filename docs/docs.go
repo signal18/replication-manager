@@ -5440,7 +5440,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/apu/{kind}/{name}": {
             "post": {
-                "description": "The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy.",
+                "description": "The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy. Optional netRxBytes/netTxBytes (cumulative octets of the pod interface) feed the internal network series net.\u003ccluster\u003e.\u003ckind\u003e.\u003cname\u003e.*.",
                 "consumes": [
                     "application/json"
                 ],
@@ -12994,6 +12994,119 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/events": {
+            "get": {
+                "description": "Reads the events of the server, on demand (not collected by the monitoring loop). Without name, a page of events (all, or those of one schema) with their schema, name, definer, schedule and definitionBytes, without the SQL body; X-Total-Count gives the number of events. With schema and name, that one event with its SQL body. The status of each event is in the server's eventStatus. Requires the db-show-status grant. Refused when monitoring-event-status is off.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get the events of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only the events of this schema",
+                        "name": "schema",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Only this event, with its SQL body (requires schema)",
+                        "name": "name",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Events per page, 1 to monitoring-event-status-max-definitions; omitted or 0 is that maximum",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Events to skip, default 0",
+                        "name": "offset",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Events; the definition body only for schema and name",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/dbhelper.EventDefinition"
+                            }
+                        },
+                        "headers": {
+                            "X-Total-Count": {
+                                "type": "integer",
+                                "description": "Number of events matching the request (list mode)"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "name requires schema\" or an invalid limit or offset",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL\" or \"monitoring-event-status is disabled for this cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "413": {
+                        "description": "The definition is larger than monitoring-event-status-max-definition-bytes",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Could not read events",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Server is down",
                         "schema": {
                             "type": "string"
                         }
@@ -23105,6 +23218,10 @@ const docTemplate = `{
                 },
                 "startTime": {
                     "type": "string"
+                },
+                "streamSize": {
+                    "description": "bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator",
+                    "type": "integer"
                 }
             }
         },
@@ -24052,24 +24169,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "apu": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "bau": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "bku": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "dbu": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "gwu": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "overPct": {
                     "type": "integer"
@@ -24102,8 +24214,7 @@ const docTemplate = `{
                     "additionalProperties": {
                         "type": "array",
                         "items": {
-                            "type": "number",
-                            "format": "float64"
+                            "type": "number"
                         }
                     }
                 },
@@ -24599,8 +24710,16 @@ const docTemplate = `{
                 "billable": {
                     "type": "number"
                 },
+                "cumulative": {
+                    "description": "month-to-date volume, not integrated (#1872)",
+                    "type": "boolean"
+                },
                 "family": {
                     "type": "string"
+                },
+                "freePlan": {
+                    "description": "the plan is a free allowance: no plan cost, no unused credit",
+                    "type": "boolean"
                 },
                 "monthCost": {
                     "description": "= monthPlanCost + monthOverCost − monthUnderCredit",
@@ -24809,6 +24928,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppAgentsFailover": {
+                    "type": "string"
+                },
+                "provAppConfigurator": {
+                    "description": "engine whose moduleset (share/opensvc/moduleset_\u003cengine\u003e.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none",
                     "type": "string"
                 },
                 "provAppCpuCores": {
@@ -25201,6 +25324,12 @@ const docTemplate = `{
         "config.Volume": {
             "type": "object",
             "properties": {
+                "dirperm": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -25210,7 +25339,65 @@ const docTemplate = `{
                 "size": {
                     "type": "string"
                 },
+                "user": {
+                    "description": "Owner of the volume directories (OpenSVC volume user/group/dirperm): images that run as a\nnon-root user (rustfs 10001, frappe 1000) cannot write a root-owned directory (#1870).",
+                    "type": "string"
+                },
                 "volumedir": {
+                    "type": "string"
+                }
+            }
+        },
+        "dbhelper.EventDefinition": {
+            "type": "object",
+            "properties": {
+                "comment": {
+                    "type": "string"
+                },
+                "db": {
+                    "type": "string"
+                },
+                "definer": {
+                    "type": "string"
+                },
+                "definition": {
+                    "type": "string"
+                },
+                "definitionBytes": {
+                    "type": "integer"
+                },
+                "ends": {
+                    "type": "string"
+                },
+                "eventType": {
+                    "description": "ONE TIME or RECURRING",
+                    "type": "string"
+                },
+                "executeAt": {
+                    "description": "one-time event: when it runs",
+                    "type": "string"
+                },
+                "intervalField": {
+                    "type": "string"
+                },
+                "intervalValue": {
+                    "description": "recurring event: every \u003cvalue\u003e \u003cfield\u003e",
+                    "type": "string"
+                },
+                "lastExecuted": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "onCompletion": {
+                    "description": "PRESERVE or NOT PRESERVE",
+                    "type": "string"
+                },
+                "starts": {
+                    "type": "string"
+                },
+                "timeZone": {
                     "type": "string"
                 }
             }
@@ -25957,6 +26144,10 @@ const docTemplate = `{
                 },
                 "cloud18MarketplaceDbuPrice": {
                     "type": "number"
+                },
+                "cloud18MarketplaceGwuFreeUnits": {
+                    "description": "GWU for the BO (#1872): the first cloud18-marketplace-gwu-free-units GWU of BANDWIDTH (10 = 1 Gb/s) are free\nfor every cluster; bandwidth held above them is reported on top (only possible where the gateways give more).",
+                    "type": "integer"
                 },
                 "cloud18MarketplaceGwuPrice": {
                     "type": "number"
@@ -26861,6 +27052,15 @@ const docTemplate = `{
                 "monitoringErrorLogLength": {
                     "type": "integer"
                 },
+                "monitoringEventStatus": {
+                    "type": "boolean"
+                },
+                "monitoringEventStatusMaxDefinitionBytes": {
+                    "type": "integer"
+                },
+                "monitoringEventStatusMaxDefinitions": {
+                    "type": "integer"
+                },
                 "monitoringGlobalHeartbeatStallThreshold": {
                     "type": "integer"
                 },
@@ -27324,9 +27524,6 @@ const docTemplate = `{
                 "provDbConfigPreserveVars": {
                     "type": "string"
                 },
-                "provDbVolumeUid": {
-                    "type": "string"
-                },
                 "provDbCpuCores": {
                     "type": "string"
                 },
@@ -27391,6 +27588,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "provDbDockerTmpfsSize": {
+                    "type": "string"
+                },
+                "provDbDockerXtrabackupImg": {
                     "type": "string"
                 },
                 "provDbDomain": {
@@ -27486,6 +27686,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provDbVolumeDocker": {
+                    "type": "string"
+                },
+                "provDbVolumeUid": {
                     "type": "string"
                 },
                 "provDockerDaemonPrivate": {
@@ -28360,8 +28563,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "extension": {
                     "type": "string"
@@ -28396,8 +28598,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "fileIds": {
                     "type": "array",
@@ -29529,12 +29730,20 @@ const docTemplate = `{
                 "dbuMem": {
                     "type": "number"
                 },
+                "gwu": {
+                    "description": "gateway bandwidth consumed, in GWU (#1872)",
+                    "type": "number"
+                },
                 "planApu": {
                     "description": "the cluster's APU reservation contract (prov-service-plan-apu)",
                     "type": "number"
                 },
                 "planDbu": {
                     "description": "the cluster's DBU reservation contract (prov-service-plan-dbu)",
+                    "type": "number"
+                },
+                "planGwu": {
+                    "description": "its GWU plan: gateway capacity / clusters present, or pinned",
                     "type": "number"
                 },
                 "planStatefulDbu": {
@@ -29582,6 +29791,10 @@ const docTemplate = `{
                 "capacityDbu": {
                     "type": "number"
                 },
+                "capacityGwu": {
+                    "description": "the same capacity in GWU (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s)",
+                    "type": "number"
+                },
                 "clusters": {
                     "type": "array",
                     "items": {
@@ -29592,6 +29805,10 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "consumedDbu": {
+                    "type": "number"
+                },
+                "consumedGwu": {
+                    "description": "Σ clusters",
                     "type": "number"
                 },
                 "gatewayCapacityMbit": {
@@ -29632,6 +29849,10 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "usableDbu": {
+                    "type": "number"
+                },
+                "usableGwu": {
+                    "description": "= capacity: the uplink has no quota",
                     "type": "number"
                 }
             }

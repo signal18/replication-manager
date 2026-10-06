@@ -74,6 +74,9 @@ var tests = []string{
 	// reason: it needs a jobs container next to each database and a physical
 	// backup tool matching the servers, and it reseeds a replica. Run it by
 	// name: /api/clusters/<cluster>/tests/actions/run/testPhysicalReseedRestore
+	// testEventsReadOnlyAPI is not in this list either: it switches
+	// monitoring-event-status off and on while it runs. Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testEventsReadOnlyAPI
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testConfigCookiePushBasic",

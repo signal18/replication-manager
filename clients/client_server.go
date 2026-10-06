@@ -64,6 +64,14 @@ var serverCmd = &cobra.Command{
 		if strings.Contains(strings.ToLower(cliServerGet), "variables") {
 			urlpost += "/" + cliServerID + "/variables"
 		}
+		if strings.Contains(strings.ToLower(cliServerGet), "events") {
+			// paged by the server: streamed page by page, never held whole
+			if err := cliStreamEvents(cliConn.Do, cliToken, urlpost+"/"+cliServerID+"/events", os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "API call error: %s", err)
+				os.Exit(1)
+			}
+			os.Exit(0)
+		}
 		if strings.Contains(strings.ToLower(cliServerGet), "meta-data-locks") {
 			urlpost += "/" + cliServerID + "/meta-data-locks"
 		}
