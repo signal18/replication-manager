@@ -1074,6 +1074,10 @@ func (cluster *Cluster) registerEngineAppAsServer(appcnf *config.AppConfig) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Engine app %s is a server of the cluster: %s", appcnf.AppHost, host)
 		}
 	}
+	if cluster.IsVariableImmutable("prov-db-agents") {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "prov-db-agents is defined in the cluster configuration file: kept, the agents of %s (%s) are not added to it", appcnf.AppHost, cluster.GetAppAgents(appcnf))
+		return
+	}
 	agents := strings.Split(cluster.Conf.ProvAgents, ",")
 	for _, a := range strings.Split(cluster.GetAppAgents(appcnf), ",") {
 		a = strings.TrimSpace(a)

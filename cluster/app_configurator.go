@@ -237,20 +237,23 @@ func (cluster *Cluster) initDBSizingFromEngineApp(app *App) {
 			return
 		}
 	}
-	if v := strings.TrimSpace(cluster.GetAppMemory(app.AppConfig)); v != "" {
-		cluster.SetDBMemorySize(v)
+	// a value defined in the cluster's configuration file (immutable) is the operator's:
+	// the file would win again at the next restart, so it is kept and said
+	set := func(key, v string, apply func(string)) {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return
+		}
+		if cluster.IsVariableImmutable(key) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "%s is defined in the cluster configuration file: kept, the plan of %s would have set %s", key, app.Name, v)
+			return
+		}
+		apply(v)
 	}
-	if v := strings.TrimSpace(cluster.GetAppCores(app.AppConfig)); v != "" {
-		cluster.SetDBCores(v)
-	}
-	if v := strings.TrimSpace(cluster.GetAppDisk(app.AppConfig)); v != "" {
-		cluster.SetDBDiskSize(v)
-	}
-	if v := strings.TrimSpace(cluster.GetAppDiskIops(app.AppConfig)); v != "" {
-		cluster.SetDBDiskIOPS(v)
-	}
-	if v := strings.TrimSpace(cluster.GetAppAgents(app.AppConfig)); v != "" {
-		cluster.SetProvDbAgents(v)
-	}
+	set("prov-db-memory", cluster.GetAppMemory(app.AppConfig), cluster.SetDBMemorySize)
+	set("prov-db-cpu-cores", cluster.GetAppCores(app.AppConfig), cluster.SetDBCores)
+	set("prov-db-disk-size", cluster.GetAppDisk(app.AppConfig), cluster.SetDBDiskSize)
+	set("prov-db-disk-iops", cluster.GetAppDiskIops(app.AppConfig), cluster.SetDBDiskIOPS)
+	set("prov-db-agents", cluster.GetAppAgents(app.AppConfig), func(v string) { cluster.SetProvDbAgents(v) })
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database plan of the cluster initialized from the plan of %s: memory %s, cores %s, disk %s, iops %s, agents %s", app.Name, cluster.Conf.ProvMem, cluster.Conf.ProvCores, cluster.Conf.ProvDisk, cluster.Conf.ProvIops, cluster.Conf.ProvAgents)
 }
