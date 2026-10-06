@@ -155,13 +155,24 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	if !svc.IsV3() {
 		return fmt.Errorf("update-opensvc-template requires OpenSVC v3 API")
 	}
-	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
-	if err != nil {
-		return err
-	}
-	res, err := s.GenerateDBTemplateV3()
-	if err != nil {
-		return err
+	var res []byte
+	var err error
+	if app := cluster.engineAppOfServer(s); app != nil {
+		// an engine server: its definition is the one its template renders (the same
+		// object, the server's service); refreshed here like any server's, so the rolling
+		// restart and the restart carry a changed mount or container without reprovisioning
+		res, err = cluster.OpenSVCGetAppTemplateV3(app)
+		if err != nil {
+			return err
+		}
+	} else {
+		if _, err = cluster.OpenSVCFoundDatabaseAgent(s); err != nil {
+			return err
+		}
+		res, err = s.GenerateDBTemplateV3()
+		if err != nil {
+			return err
+		}
 	}
 	svcparts := strings.SplitN(s.ServiceName, "/", 3)
 	if len(svcparts) != 3 {
