@@ -1257,6 +1257,22 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 // @Success 200 {object} map[string]interface{} "Replication manager runtime state (dynamic)"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/monitor [get]
+// GetToolsVersions returns the command line tools found on this replication-manager host
+// with their versions. The detection runs per cluster (the binaries are the same for every
+// cluster of the host; a cluster may only point sysbench elsewhere with sysbench-binary-path),
+// so the union over the clusters is the host's view.
+func (repman *ReplicationManager) GetToolsVersions() map[string]string {
+	out := map[string]string{}
+	for _, cl := range repman.Clusters {
+		for tool, v := range cl.GetToolsVersions() {
+			if _, seen := out[tool]; !seen {
+				out[tool] = v
+			}
+		}
+	}
+	return out
+}
+
 func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	repman.RefreshGlobalInterventionState()
@@ -1267,6 +1283,7 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 			cl = append(cl, cluster.Name)
 		}
 	}
+	repman.ToolsVersions = repman.GetToolsVersions()
 
 	res, err := json.Marshal(repman)
 	if err != nil {

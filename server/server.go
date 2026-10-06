@@ -80,6 +80,7 @@ type ReplicationManager struct {
 	OpenSVC                      opensvc.Collector                  `json:"-"`
 	Version                      string                             `json:"version"`
 	Fullversion                  string                             `json:"fullVersion"`
+	ToolsVersions                map[string]string                  `json:"toolsVersions"` // local tools of this replication-manager host, from the clusters' detection
 	Os                           string                             `json:"os"`
 	OsUser                       *user.User                         `json:"osUser" swaggerignore:"true"`
 	Arch                         string                             `json:"arch"`
