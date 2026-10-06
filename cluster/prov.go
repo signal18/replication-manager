@@ -1308,8 +1308,8 @@ func (cluster *Cluster) FreezeDatabaseService(server *ServerMonitor) error {
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"OpenSVC V3 instance freeze for %s on node %s (rolling operation)", server.URL, server.Agent)
-	return svc.FreezeInstanceV3(server.Agent, server.ServiceName)
+		"OpenSVC V3 instance freeze for %s on node %s (rolling operation)", server.URL, server.placementNode())
+	return svc.FreezeInstanceV3(server.placementNode(), server.ServiceName)
 }
 
 // UnfreezeDatabaseService gives the instance back to the orchestration after the start.
@@ -1322,8 +1322,8 @@ func (cluster *Cluster) UnfreezeDatabaseService(server *ServerMonitor) error {
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"OpenSVC V3 instance unfreeze for %s on node %s", server.URL, server.Agent)
-	return svc.UnfreezeInstanceV3(server.Agent, server.ServiceName)
+		"OpenSVC V3 instance unfreeze for %s on node %s", server.URL, server.placementNode())
+	return svc.UnfreezeInstanceV3(server.placementNode(), server.ServiceName)
 }
 
 // xtrabackupImageRe is the character set of a docker image reference (registry, path,
@@ -1507,4 +1507,14 @@ func (cluster *Cluster) dbIdentityManaged() bool {
 	_, _, runAsSet := cluster.dbRunAs()
 	_, _, chownManaged := cluster.dbVolumeOwner()
 	return runAsSet || chownManaged
+}
+
+// placementNode is the node an instance action (freeze, stop, start) must target: where the
+// service RUNS when the monitor knows it (a service placed on several agents runs on any of
+// them), else the agent the configuration assigned.
+func (server *ServerMonitor) placementNode() string {
+	if wa := server.GetWorkingAgent(); wa != "" {
+		return wa
+	}
+	return server.Agent
 }

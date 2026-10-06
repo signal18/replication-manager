@@ -304,10 +304,7 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		// agents (an engine app in failover topology) runs on any of them, not on the
 		// agent the round robin assigned (pg2 of pg-stream: the stop went to an idle node
 		// and nothing stopped, 2026-10-06)
-		agent := server.Agent
-		if wa := server.GetWorkingAgent(); wa != "" {
-			agent = wa
-		}
+		agent := server.placementNode()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"OpenSVC V3 instance stop for %s on node %s", server.URL, agent)
 		err := svc.StopInstanceV3(agent, server.ServiceName)
@@ -372,10 +369,7 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 				}
 				return nil
 			}
-			agent := server.Agent
-			if wa := server.GetWorkingAgent(); wa != "" {
-				agent = wa
-			}
+			agent := server.placementNode()
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 				"OpenSVC V3 instance start for %s on node %s", server.URL, agent)
 			err := svc.StartInstanceV3(agent, server.ServiceName)

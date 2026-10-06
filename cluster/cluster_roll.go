@@ -923,6 +923,16 @@ func (cluster *Cluster) waitRollingReseed(server *ServerMonitor, since int64) er
 // back. The service interruption is the restart itself; there is nothing to switch to.
 func (cluster *Cluster) rollingRestartMasterInPlace(master *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling restart: no replica, master %s restarts in place", master.URL)
+	// frozen first, as the replicas are: an orchestrated (ha) service is restarted by the
+	// orchestrator the second it stops, before the monitor sees it down
+	if ferr := cluster.FreezeDatabaseService(master); ferr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze of %s failed: %s", master.URL, ferr)
+	}
+	defer func() {
+		if uerr := cluster.UnfreezeDatabaseService(master); uerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze of %s failed: %s", master.URL, uerr)
+		}
+	}()
 	if err := cluster.StopDatabaseService(master); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on master %s %s", master.URL, err)
 		return err
