@@ -8,12 +8,14 @@ package cluster
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // PostgreSQL backups (#1850). The tools run in the jobs sidecar of the PostgreSQL service
@@ -225,4 +227,47 @@ func (server *ServerMonitor) armPostgresNextStart(task config.TaskName, primary 
 	}
 	server.delCookie(cookie)
 	return fmt.Errorf("the jobs sidecar of %s did not complete the %s task within %s", server.URL, name, postgresJobPickupTimeout)
+}
+
+// checkPostgresJobsVersion is CheckJobsVersion for a PostgreSQL server: its jobs sidecar
+// runs the script delivered as the config key APP_JOBS_SCRIPT of its service. The key is
+// compared with the embedded postgres_job.sh; a difference raises WARN0147 like a MariaDB
+// dbjobs mismatch, the key is refreshed and the sidecar alone restarted (container#jobs,
+// the restart-container cookie, as the MariaDB jobs upgrade does), nothing else touched.
+func (server *ServerMonitor) checkPostgresJobsVersion() error {
+	cluster := server.ClusterGroup
+	if !server.HasProvisionCookie() || cluster.IsInFailover() || cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+		return nil
+	}
+	app := cluster.engineAppOfServer(server)
+	if app == nil {
+		return nil
+	}
+	embedded := appJobsScript(app)
+	if embedded == "" {
+		return nil
+	}
+	newsum := fmt.Sprintf("%x", sha256.Sum256([]byte(embedded)))
+	if server.pgJobsScriptSum == "" {
+		// read once from the orchestrator; kept in memory until a refresh changes it
+		svc := cluster.OpenSVCConnect()
+		delivered, err := svc.GetConfigKeyValueV3(cluster.Name, app.Name, appJobsScriptKey)
+		if err != nil {
+			return err
+		}
+		server.pgJobsScriptSum = fmt.Sprintf("%x", sha256.Sum256(delivered))
+	}
+	if server.pgJobsScriptSum == newsum {
+		return nil
+	}
+	cluster.SetState("WARN0147", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0147"], server.URL, newsum, server.pgJobsScriptSum, "jobs script changed"), ErrFrom: "JOB", ServerUrl: server.URL})
+	svc := cluster.OpenSVCConnect()
+	if err := svc.CreateConfigKeyValue(cluster.Name, app.Name, appJobsScriptKey, embedded); err != nil { // create updates an existing key (409)
+		return fmt.Errorf("jobs script refresh on %s: %w", server.URL, err)
+	}
+	server.pgJobsScriptSum = newsum
+	server.RestartNode = ""
+	server.RestartRid = RestartRidJobsContainer
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Jobs script of %s refreshed, its sidecar restarts", server.URL)
+	return server.SetRestartContainerCookie()
 }

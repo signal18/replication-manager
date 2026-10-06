@@ -247,6 +247,7 @@ type ServerMonitor struct {
 	ReplicationTags                 string           `json:"replicationTags"`
 	JobResults                      *config.TasksMap `json:"jobResults"`
 	streamTasks                     sync.Map         // task -> chan struct{} closed when the stream of a sidecar task ends (srv_job_postgres.go)
+	pgJobsScriptSum                 string           // sha256 of the jobs script delivered to the PostgreSQL sidecar (srv_job_postgres.go)
 	IsInSlowQueryCapture            bool
 	IsInPFSQueryCapture             bool
 	PFSLastSnapshot                 time.Time                   // timestamp of last periodic PFS digest snapshot flush

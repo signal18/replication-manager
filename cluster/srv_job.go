@@ -684,7 +684,7 @@ func (server *ServerMonitor) delTaskCookie(task string) error {
 }
 
 func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {
-	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
+	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" || server.IsPostgreSQLHost() {
 		return false, nil
 	}
 	if server.Conn == nil {
@@ -1778,13 +1778,12 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 	var checkerr error
 	cluster := server.ClusterGroup
 
-	if server.IsPostgreSQLHost() {
-		// the PostgreSQL sidecar script is delivered with the app, not by the jobs upgrade
+	if server.IsIgnored() {
 		return nil
 	}
 
-	if server.IsIgnored() {
-		return nil
+	if server.IsPostgreSQLHost() {
+		return server.checkPostgresJobsVersion()
 	}
 
 	if !server.HasProvisionCookie() {
