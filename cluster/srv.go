@@ -1179,6 +1179,15 @@ func (server *ServerMonitor) Refresh() error {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database version %s %s", server.URL, err)
 
 		vars, logs, err := dbhelper.GetVariables(server.Conn, server.DBVersion)
+		if err == nil && server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+			if _, ok := vars["HOSTNAME"]; !ok {
+				// PostgreSQL has no hostname setting: the graphite series of the server
+				// (mysql.<hostname>.*) and the dashboard graphs key on it, so the monitored
+				// name stands for it; without it every metric was named mysql..* and no
+				// graph ever showed for a PostgreSQL server
+				vars["HOSTNAME"] = server.Host
+			}
+		}
 		server.Variables = config.FromNormalStringMap(server.Variables, vars)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database variables %s %s", server.URL, err)
 		if err != nil {

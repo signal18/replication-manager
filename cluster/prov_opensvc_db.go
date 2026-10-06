@@ -664,7 +664,7 @@ func (server *ServerMonitor) openSVCGetJobsContainerSection(xtrabackupImage stri
 			// shared host). {namespace}/{svcname} are substituted by OpenSVC like
 			// {name} above. On by default; the flag is the off-switch (T14) if a
 			// bad bind blocks container start on an unexpected cgroup layout.
-			svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+			svccontainer["volume_mounts"] += " " + openSVCServiceCgroupMount(server.ClusterGroup.Name, server.Name)
 		}
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		if bundlePath := server.ClusterGroup.xtrabackupBundlePathForImage(xtrabackupImage); bundlePath != "" {
@@ -753,7 +753,7 @@ func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name strin
 	}
 	// Bind ONLY this service's cgroup slice read-only -- NOT --cgroupns=host, which would
 	// expose every co-tenant on a shared node. {namespace}/{svcname} substituted by OpenSVC.
-	svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+	svccontainer["volume_mounts"] += " " + openSVCServiceCgroupMount(cluster.Name, name)
 	svccontainer["secrets_environment"] = "env/SENSOR_API_KEY"
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL"
 	svccontainer["environment"] = "MRM_CLUSTER={namespace} SENSOR_KIND=" + kind + " SENSOR_NAME=" + name + " SENSOR_INTERVAL=60"
@@ -775,8 +775,7 @@ func (cluster *Cluster) OpenSVCGetAppSensorContainerSection(app *App, scriptKey 
 	if len(svccontainer) == 0 {
 		return svccontainer
 	}
-	svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro" +
-		" /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+	svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro " + openSVCServiceCgroupMount(cluster.Name, app.Name)
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL env/" + scriptKey
 	svccontainer["command"] = "-c 'printf \"%s\\n\" \"$" + scriptKey + "\" > /tmp/app_job; exec sh /tmp/app_job'"
 	return svccontainer
