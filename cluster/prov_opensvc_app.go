@@ -448,9 +448,9 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	containernum := 1
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = cluster.OpenSVCGetAppDefaultSection(app)
-	if cluster.engineServerOfApp(app) != nil && !cluster.Conf.ProvDBDockerRunArgsLimit {
-		// a monitored engine without the docker limit: its cap lives on the om3 PG slice
-		// like a database server's (GenerateDBTemplateV3), moved live by the dynamic resize
+	if cluster.engineServerOfApp(app) != nil {
+		// a monitored engine: its cap lives on the om3 PG slice like a database server's
+		// (GenerateDBTemplateV3), from prov-db-*, moved live by the dynamic resize
 		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(cluster.GetDBContainerMemoryCapMB())*1024*1024, 10)
 		if cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64); err == nil {
 			if q := OpenSVCCPUQuotaKeyword(cores); q != "" {
@@ -869,19 +869,14 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 			svccontainer["run_command"], _ = app.ClusterGroup.ParseAppTemplate(app.AppConfig.ProvAppDockerCmd, app.AppClusterSubstitute)
 		}
 
-		if cluster.Conf.ProvDBDockerRunArgsLimit {
-			if cluster.engineServerOfApp(app) != nil {
-				// a monitored engine (PostgreSQL) is capped like a database server: the
-				// container memory cap of the DBU tier and prov-db-cpu-cores, never the app
-				// plan (pg1 ran at 1 CPU / 1 GB under a 4 GB configuration, 2026-10-06).
-				// Without the docker limit the cap lives on the PG slice (DEFAULT section).
-				memStr := strconv.Itoa(cluster.GetDBContainerMemoryCapMB()) + "m"
-				svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + memStr + " --memory-swap=" + memStr + " --cpus=" + cluster.Conf.ProvCores + ".0"
-			} else {
-				appMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true)
-				appMemStr := strconv.Itoa(appMemMB) + "m"
-				svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + appMemStr + " --memory-swap=" + appMemStr + " --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
-			}
+		if cluster.Conf.ProvDBDockerRunArgsLimit && cluster.engineServerOfApp(app) == nil {
+			// a plain app keeps the docker limit of its own plan; a monitored engine
+			// (PostgreSQL) never carries one: its cap lives on the om3 PG slice like a
+			// MariaDB server's (DEFAULT section), moved live by the dynamic resize (pg1 ran
+			// at 1 CPU / 1 GB under a 4 GB configuration with the app plan's docker cap)
+			appMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true)
+			appMemStr := strconv.Itoa(appMemMB) + "m"
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + appMemStr + " --memory-swap=" + appMemStr + " --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
 		}
 
 		svccontainer["volume_mounts"] = strings.TrimSpace(cluster.GetOpenSVCDeploymentPathMapping(app) + " " + postgresWalArchiveMount(app))
