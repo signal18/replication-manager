@@ -104,14 +104,32 @@ run_task() {
 }
 
 # report_usage: the thin resource sensor of the MariaDB jobs (collect_dbu), for PostgreSQL.
-# Reads this service's cgroup (bound read-only at /svc-cgroup), the data directory size and
+# Reads this service's cgroup (found under the OpenSVC tree bound at /svc-cgroup-root), the data directory size and
 # the network counters of the shared namespace, and posts the window since the last report.
 USAGE_INTERVAL="${PG_JOB_USAGE_INTERVAL:-60}"
 USAGE_CKPT=/tmp/postgres_job.usage
 last_usage=0
+# service_cgroup: this service's cgroup slice under the OpenSVC tree bound at /svc-cgroup-root.
+# The container has its own cgroup namespace (/proc/self/cgroup says "/"), so the slice is
+# found by name: systemd spells a dash as \x2d (pg-logical -> pg\x2dlogical), the directory
+# names are decoded before comparing with the cluster (namespace) and service names.
+service_cgroup() {
+    local root=/svc-cgroup-root ns="${REPLICATION_MANAGER_CLUSTER_NAME:-}" svc="${REPLICATION_MANAGER_HOST_NAME%%.*}" d name
+    [ -n "$ns" ] && [ -n "$svc" ] && [ -d "$root" ] || return 1
+    for d in "$root"/opensvc-ns.*.slice; do
+        name=$(printf '%s' "${d##*/}" | sed 's/\\x2d/-/g')
+        [ "$name" = "opensvc-ns.$ns.slice" ] || continue
+        for d in "$d"/opensvc-ns.*-svc.*.slice; do
+            name=$(printf '%s' "${d##*/}" | sed 's/\\x2d/-/g')
+            [ "$name" = "opensvc-ns.$ns-svc.$svc.slice" ] && { echo "$d"; return 0; }
+        done
+    done
+    return 1
+}
 report_usage() {
-    local cg=/svc-cgroup now mem cpu io disk rx tx
-    [ -r "$cg/memory.current" ] || return 0
+    local cg now mem cpu io disk rx tx
+    cg=$(service_cgroup) || return 0
+    [ -n "$cg" ] && [ -r "$cg/memory.current" ] || return 0
     now=$(date +%s)
     [ $((now - last_usage)) -ge "$USAGE_INTERVAL" ] || return 0
     last_usage=$now

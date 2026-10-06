@@ -144,10 +144,12 @@ func (cluster *Cluster) openSVCAddAppJobsSections(svcsection map[string]map[stri
 		// the monitor knows it by (the service name in the cluster namespace)
 		"environment": "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={svcname}.{namespace}.svc.{clustername} REPLICATION_MANAGER_HOST_PORT=" + app.Port,
 		// the client, the app's own mounts read-only use (the data directory, for its size)
-		// and ONLY this service's cgroup slice, read-only, like the database jobs container:
-		// the script reports memory, cpu, io, disk and network from it
+		// and the OpenSVC cgroup tree read-only: the script finds its service's slice from
+		// /proc/self/cgroup. Not the slice path spelled from {namespace}: systemd escapes a
+		// dash as \x2d (pg-logical -> pg\x2dlogical), the spelled path did not exist and the
+		// bind mount created an empty cgroup there, no usage was ever reported.
 		"volume_mounts": strings.TrimSpace("/etc/localtime:/etc/localtime:ro " + mount + " " + cluster.GetOpenSVCDeploymentPathMapping(app) +
-			" /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"),
+			" /sys/fs/cgroup/opensvc.slice:/svc-cgroup-root:ro"),
 		"command": "-c 'printenv " + appJobsScriptKey + " > /tmp/app_jobs; exec bash /tmp/app_jobs'",
 	}
 	if app.AppConfig.ProvAppHATopology == "failover" {
