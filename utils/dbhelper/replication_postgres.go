@@ -335,12 +335,14 @@ ALTER TABLE replication_manager_schema.ddl_log ENABLE ALWAYS TRIGGER replication
 -- read-only transaction ("cannot set transaction read-write mode inside a read-only
 -- transaction"): the subscriptions are owned by a dedicated role, the only one exempt from
 -- the read-only default, as a SUPER user is from read_only on MySQL (PostgresOwnSubscription).
--- The monitor's own role and the application roles keep the default. No login: the worker
--- is a background process, nobody connects as this role.
+-- The monitor's own role and the application roles keep the default. The role has the LOGIN
+-- attribute (the worker is refused otherwise: "role is not permitted to log in") but no
+-- password, so no password authentication can ever succeed for it.
 DO $d$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'replication_manager') THEN
-        CREATE ROLE replication_manager SUPERUSER NOLOGIN;
+        CREATE ROLE replication_manager SUPERUSER LOGIN PASSWORD NULL;
     END IF;
+    ALTER ROLE replication_manager LOGIN PASSWORD NULL;
     EXECUTE format('ALTER ROLE %I RESET default_transaction_read_only', session_user);
 END $d$;
 ALTER ROLE replication_manager SET default_transaction_read_only = off;
