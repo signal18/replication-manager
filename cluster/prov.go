@@ -1309,7 +1309,15 @@ func (cluster *Cluster) FreezeDatabaseService(server *ServerMonitor) error {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"OpenSVC V3 instance freeze for %s on node %s (rolling operation)", server.URL, server.placementNode())
-	return svc.FreezeInstanceV3(server.placementNode(), server.ServiceName)
+	if err := svc.FreezeInstanceV3(server.placementNode(), server.ServiceName); err != nil {
+		return err
+	}
+	// The freeze is an asynchronous daemon action: a stop posted right behind it races it
+	// (om3 logs "progress instance monitor for wrong session_id", the stop lands while the
+	// instance is still "freezing", the daemon then sees the instance up and idle and
+	// restarts the resources, opensvc/om3#1142). Let the freeze settle before the stop.
+	time.Sleep(5 * time.Second)
+	return nil
 }
 
 // UnfreezeDatabaseService gives the instance back to the orchestration after the start.
