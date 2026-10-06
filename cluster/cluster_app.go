@@ -1047,7 +1047,56 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		}
 	}
 	appAdded = false
+	// An engine (a database with a monitor) added this way is a CLUSTER change: it becomes
+	// a monitored server and its agents join prov-db-agents; the template only gives the
+	// deployment definition and the placement.
+	cluster.registerEngineAppAsServer(appcnf)
 	return nil
+}
+
+// registerEngineAppAsServer adds an engine app to the cluster's monitored servers
+// (db-servers-hosts) and its agents to prov-db-agents. Anything that has a monitor is a
+// server of the cluster, never only an app: one monitor, the database plan, the server
+// actions. PostgreSQL servers are declared host:port/database.
+func (cluster *Cluster) registerEngineAppAsServer(appcnf *config.AppConfig) {
+	engine := strings.TrimSpace(appcnf.ProvAppConfigurator)
+	if engine == "" {
+		return
+	}
+	host := appcnf.AppHost + ":" + appcnf.AppPort
+	if engine == "postgres" {
+		host += "/postgres"
+	}
+	if !strings.Contains(","+cluster.Conf.Hosts+",", ","+host+",") {
+		if err := cluster.AddSeededServer(host); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Engine app %s not added to the cluster servers: %s", appcnf.AppHost, err)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Engine app %s is a server of the cluster: %s", appcnf.AppHost, host)
+		}
+	}
+	agents := strings.Split(cluster.Conf.ProvAgents, ",")
+	for _, a := range strings.Split(cluster.GetAppAgents(appcnf), ",") {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		known := false
+		for _, k := range agents {
+			if strings.TrimSpace(k) == a {
+				known = true
+			}
+		}
+		if !known {
+			agents = append(agents, a)
+		}
+	}
+	cleaned := []string{}
+	for _, a := range agents {
+		if a = strings.TrimSpace(a); a != "" {
+			cleaned = append(cleaned, a)
+		}
+	}
+	cluster.SetProvDbAgents(strings.Join(cleaned, ","))
 }
 
 func (cluster *Cluster) GetAppByHostPort(host, port string) (*App, int) {
