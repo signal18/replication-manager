@@ -284,6 +284,8 @@ func PostgresDropReplicationSlot(db *sqlx.DB, slot string) (string, error) {
 // subscriber is a WARNING in its log, never a stopped apply. A table a statement creates
 // joins the subscription at the next refresh (the monitor runs it, PostgresRefreshSubscription).
 const postgresDDLReplicationInstall = `
+-- the install is DDL itself: not logged (an earlier version of the event trigger may be live)
+SET replication_manager.applying_ddl = on;
 CREATE SCHEMA IF NOT EXISTS replication_manager_schema;
 CREATE TABLE IF NOT EXISTS replication_manager_schema.ddl_log (
     id          bigserial PRIMARY KEY,
@@ -298,6 +300,9 @@ LANGUAGE plpgsql SECURITY DEFINER AS $f$
 DECLARE q text;
 BEGIN
     IF current_setting('replication_manager.applying_ddl', true) = 'on' THEN RETURN; END IF;
+    -- a subscriber never logs: its DDL is local administration, and its log table is the
+    -- replicated copy of the publisher's (its own sequence would collide with the ids)
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_subscription) THEN RETURN; END IF;
     IF tg_tag IN ('CREATE SUBSCRIPTION', 'ALTER SUBSCRIPTION', 'DROP SUBSCRIPTION', 'CREATE PUBLICATION', 'ALTER PUBLICATION', 'DROP PUBLICATION', 'CREATE EVENT TRIGGER', 'ALTER EVENT TRIGGER', 'DROP EVENT TRIGGER') THEN RETURN; END IF;
     q := current_query();
     IF q IS NULL OR q ~* 'replication_manager_schema\.ddl_log' OR q ~* '^\s*(create|alter|drop)\s+(temp|temporary)\s' THEN RETURN; END IF;
@@ -326,6 +331,12 @@ DROP TRIGGER IF EXISTS replication_manager_apply_ddl ON replication_manager_sche
 CREATE TRIGGER replication_manager_apply_ddl AFTER INSERT ON replication_manager_schema.ddl_log
     FOR EACH ROW EXECUTE FUNCTION replication_manager_schema.apply_ddl();
 ALTER TABLE replication_manager_schema.ddl_log ENABLE ALWAYS TRIGGER replication_manager_apply_ddl;
+-- The replication role (the subscription owner, the monitor's user) is exempt from the
+-- read-only default, as a SUPER user is from read_only on MySQL: the apply worker runs as
+-- that role and a replicated DDL cannot run in a read-only transaction ("cannot set
+-- transaction read-write mode inside a read-only transaction"). Application roles keep it.
+DO $d$ BEGIN EXECUTE format('ALTER ROLE %I SET default_transaction_read_only = off', session_user); END $d$;
+RESET replication_manager.applying_ddl;
 `
 
 // PostgresInstallDDLReplication installs the DDL replication objects on a server, idempotent;
