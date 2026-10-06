@@ -522,10 +522,18 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 	if agents == nil {
 		return agent, errors.New("Error getting OpenSVC node list")
 	}
+	names := cluster.GetDatabaseAgentNames(server)
 	for _, node := range agents {
-		// prov-db-agents, or every orchestrator node when the list is empty
-		if strings.TrimSpace(svc.ProvAgents) == "" || strings.Contains(svc.ProvAgents, node.Node_name) {
+		// the server's agent list (engine app, prov-db-agents), every node when none
+		if len(names) == 0 {
 			clusteragents = append(clusteragents, node)
+			continue
+		}
+		for _, n := range names {
+			if n == node.Node_name {
+				clusteragents = append(clusteragents, node)
+				break
+			}
 		}
 	}
 	for i, srv := range cluster.Servers {
