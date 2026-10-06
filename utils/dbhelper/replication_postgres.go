@@ -331,11 +331,19 @@ DROP TRIGGER IF EXISTS replication_manager_apply_ddl ON replication_manager_sche
 CREATE TRIGGER replication_manager_apply_ddl AFTER INSERT ON replication_manager_schema.ddl_log
     FOR EACH ROW EXECUTE FUNCTION replication_manager_schema.apply_ddl();
 ALTER TABLE replication_manager_schema.ddl_log ENABLE ALWAYS TRIGGER replication_manager_apply_ddl;
--- The replication role (the subscription owner, the monitor's user) is exempt from the
--- read-only default, as a SUPER user is from read_only on MySQL: the apply worker runs as
--- that role and a replicated DDL cannot run in a read-only transaction ("cannot set
--- transaction read-write mode inside a read-only transaction"). Application roles keep it.
-DO $d$ BEGIN EXECUTE format('ALTER ROLE %I SET default_transaction_read_only = off', session_user); END $d$;
+-- The apply worker runs as the subscription's owner and a replicated DDL cannot run in a
+-- read-only transaction ("cannot set transaction read-write mode inside a read-only
+-- transaction"): the subscriptions are owned by a dedicated role, the only one exempt from
+-- the read-only default, as a SUPER user is from read_only on MySQL (PostgresOwnSubscription).
+-- The monitor's own role and the application roles keep the default. No login: the worker
+-- is a background process, nobody connects as this role.
+DO $d$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'replication_manager') THEN
+        CREATE ROLE replication_manager SUPERUSER NOLOGIN;
+    END IF;
+    EXECUTE format('ALTER ROLE %I RESET default_transaction_read_only', session_user);
+END $d$;
+ALTER ROLE replication_manager SET default_transaction_read_only = off;
 RESET replication_manager.applying_ddl;
 `
 
@@ -381,4 +389,11 @@ func PostgresSubscriptionNeedsRefresh(publisher, subscriber *sqlx.DB, publicatio
 		return false, q2, err
 	}
 	return published != subscribed, q1 + "; " + q2, nil
+}
+
+// PostgresOwnSubscription hands the subscription to the replication_manager role created by
+// the DDL replication install: its apply worker then runs exempt from the read-only default.
+func PostgresOwnSubscription(db *sqlx.DB, name string) (string, error) {
+	stmt := "ALTER SUBSCRIPTION " + QuotePostgreSQLIdentifier(name) + " OWNER TO replication_manager"
+	return stmt, PostgresExecReadWrite(db, stmt)
 }

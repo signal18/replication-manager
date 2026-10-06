@@ -158,6 +158,13 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 	if myver.IsPostgreSQL() {
 		// a subscriber keeps a read-only default: the monitor's session is switched
 		err = PostgresExecReadWrite(db, cm)
+		if err == nil {
+			// the apply worker runs as the owner: the role exempt from the read-only default
+			var logs string
+			if logs, err = PostgresOwnSubscription(db, opt.Channel); err != nil {
+				cm += "; " + logs
+			}
+		}
 	} else {
 		_, err = db.Exec(cm)
 	}
