@@ -84,7 +84,8 @@ run_task() {
         args=""; for t in $missing; do args="$args -t $t"; done
         log "$task: creating from $addr:$(echo $missing | tr '\n' ' ')"
         # shellcheck disable=SC2086
-        if PGHOST="$phost" PGPORT="$pport" pg_dump --schema-only --no-owner --no-privileges $args 2>"$ERR" | psql -X -v ON_ERROR_STOP=0 -q >>"$ERR" 2>&1 \
+        # the subscriber keeps a read-only default: this session is switched to read-write first
+        if { echo "SET default_transaction_read_only = off;"; PGHOST="$phost" PGPORT="$pport" pg_dump --schema-only --no-owner --no-privileges $args 2>"$ERR"; } | psql -X -v ON_ERROR_STOP=0 -q >>"$ERR" 2>&1 \
             && psql -X -At -c "SET default_transaction_read_only = off" -c "ALTER SUBSCRIPTION ${sub:-alltables} REFRESH PUBLICATION" >>"$ERR" 2>&1; then
             log "$task: done, subscription refreshed"
             job state "$task" done || log "$task: cannot report done"
