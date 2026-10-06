@@ -5496,6 +5496,9 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	cluster.SetInBinlogBackupState(true)
 	defer cluster.SetInBinlogBackupState(false)
 
+	if !strings.Contains(binlogfile, ".") {
+		return fmt.Errorf("not a binary log file name: %q", binlogfile)
+	}
 	binlogfilestart, _ := strconv.Atoi(strings.Split(binlogfile, ".")[1])
 	prefix := strings.Split(binlogfile, ".")[0]
 	binlogfilestop := binlogfilestart - cluster.Conf.BackupBinlogsKeep

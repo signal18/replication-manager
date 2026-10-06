@@ -337,6 +337,12 @@ func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 		err = errors.New("Server is ignored")
 		return err
 	}
+	// PostgreSQL has no binary log: its transaction log archive is the WAL archive shipped
+	// by its jobs sidecar (srv_wal_archive.go). The binlog purge parsed "" as a binlog
+	// name and crashed the process (preprod, 2026-10-06).
+	if server.IsPostgreSQLHost() {
+		return nil
+	}
 
 	if server.BinaryLogFilesCount == 0 {
 		server.WaitForRefresh()
