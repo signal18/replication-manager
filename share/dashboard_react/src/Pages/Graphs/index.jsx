@@ -75,6 +75,8 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // filters by cluster ALWAYS, with NO dependency on the (possibly not-yet-loaded) server
   // list, so it never falls back to the unscoped whole-fleet '*' that mixes clusters.
   const clusterToken = carbonHost(selectedCluster?.name || '')
+  // a PostgreSQL cluster: its own workload charts, no InnoDB/mutex/memory sections
+  const isPostgres = !!selectedCluster?.isPostgres
   // mysql.* (DB stats) keeps the old scheme (cluster embedded in the host id -> mysql.*-<CLUSTER>-*).
   // dbu.* (DB resource) and apu.* (Compute) use the newer scheme: cluster as its own segment with
   // the RAW cluster name, matching what repman emits (dbu.<cluster>.<host> / apu.<cluster>.<unit>)
@@ -177,6 +179,91 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           panel in the DOM), so the cubism contexts are not re-created on toggle. */}
       { context && (
       <>
+      {isPostgres ? (
+      <GraphSection heading='Workload (PostgreSQL)'>
+        {/* PostgreSQL has no query counter: QUERIES is transactions committed + rolled back
+            (pg_stat_database xact_commit + xact_rollback), the series a sysbench run moves. */}
+        <ChartTimeSeriesLine
+          title='Transactions/s — commits vs rollbacks'
+          yLabel='transactions/s'
+          logScale
+          cap={1e6}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_com_commit))'), label: 'Commits' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_com_rollback))'), label: 'Rollbacks' }
+          ]}
+          className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Tuples/s — inserted, updated, deleted, returned'
+          yLabel='tuples/s'
+          logScale
+          cap={1e7}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_com_insert))'), label: 'Inserted' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_com_update))'), label: 'Updated' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_com_delete))'), label: 'Deleted' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_rows_sent))'), label: 'Returned' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Backends — active / connected'
+          yLabel='backends'
+          logScale
+          logBase={2}
+          cap={1024}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(mysql.*.mysql_global_status_threads_running)'), label: 'Active' },
+            { target: scope('sumSeries(mysql.*.mysql_global_status_threads_connected)'), label: 'Connected' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Buffer cache — blocks hit vs read from disk, per second'
+          yLabel='blocks/s'
+          logScale
+          cap={1e7}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_blks_hit))'), label: 'Cache hit' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_blks_read))'), label: 'Disk read' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Temp files bytes/s and deadlocks'
+          yLabel='per second'
+          logScale
+          cap={1e9}
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_temp_bytes))'), label: 'Temp bytes' },
+            { target: scope('sumSeries(perSecond(mysql.*.mysql_global_status_deadlocks))'), label: 'Deadlocks' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+        <ChartTimeSeriesLine
+          title='Schema size'
+          yLabel='GB'
+          windowSec={windowSec}
+          refreshMs={refreshMs}
+          targets={[
+            { target: scope('scale(maxSeries(mysql.*.workload_table_size_bytes), 9.313225746154785e-10)'), label: 'Tables' },
+            { target: scope('scale(maxSeries(mysql.*.workload_index_size_bytes), 9.313225746154785e-10)'), label: 'Indexes' }
+          ]}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
+      </GraphSection>
+      ) : (
       <GraphSection heading='Workload'>
         <ChartTimeSeriesLine
           title='Qps'
@@ -291,6 +378,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          title="Transactions — per tick (Top page: Transactions)"
        />
       </GraphSection>
+      )}
 
       <GraphSection heading='Replication'>
         <ChartTimeSeriesLine
@@ -308,6 +396,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         {/* Replication parallelism: the binlog group commit size is the concurrency the master's
             binlog offers to conservative/optimistic parallel replication (1.0 = commits never
             overlap, nothing to parallelise) against the workers configured to consume it. */}
+        {!isPostgres && (
         <ChartMultiMetric
          context={context}
          metricPaths={scopeAll([
@@ -318,6 +407,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Replication parallelism — binlog group commit size (commit concurrency, MariaDB only) vs parallel workers"
        />
+        )}
       </GraphSection>
 
       <GraphSection heading='Resources'>
@@ -455,6 +545,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
         />
       </GraphSection>
 
+      {!isPostgres && (
       <GraphSection heading='InnoDB'>
         <ChartMultiMetric
          context={context}
@@ -515,7 +606,9 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           isVisible={selectedCluster.config.monitoringPerformanceSchemaLatch}
         />
       </GraphSection>
+      )}
 
+      {!isPostgres && (
       <GraphSection heading='Memory'>
         <ChartMultiMetric
          context={context}
@@ -552,6 +645,7 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
       </GraphSection>
+      )}
       </>
       )}
     </Flex>

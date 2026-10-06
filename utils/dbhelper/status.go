@@ -120,6 +120,14 @@ func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool, pfs_latch bo
 			UNION ALL SELECT 'ROWS_SENT' as "variable_name",SUM(tup_returned)::text as  "value" FROM pg_stat_database
 			UNION ALL SELECT 'UPTIME' as "variable_name", EXTRACT(EPOCH FROM pg_postmaster_start_time())::bigint::text  as  "value"
 			UNION ALL SELECT 'THREADS_CONNECTED' as "VARIABLE_NAME",  sum(numbackends)::text  as  "value" FROM pg_stat_database
+			UNION ALL SELECT 'QUERIES' as "variable_name",  SUM(xact_commit + xact_rollback)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'COM_COMMIT' as "variable_name",  SUM(xact_commit)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'COM_SELECT' as "variable_name",  SUM(tup_returned)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'THREADS_RUNNING' as "variable_name", count(*)::text as "value" FROM pg_stat_activity WHERE state = 'active' AND backend_type = 'client backend'
+			UNION ALL SELECT 'BLKS_HIT' as "variable_name",  SUM(blks_hit)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'BLKS_READ' as "variable_name",  SUM(blks_read)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'TEMP_BYTES' as "variable_name",  SUM(temp_bytes)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'DEADLOCKS' as "variable_name",  SUM(deadlocks)::text as "value" FROM pg_stat_database
 			 `
 	}
 	rows, err := db.Queryx(query)
