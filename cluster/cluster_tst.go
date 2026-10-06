@@ -847,8 +847,25 @@ func (cluster *Cluster) ForgetTopology() error {
 // database flavor, through the proxy's write port. PostgreSQL has databases, not schemas
 // to create on the fly: the benchmark tables go to the monitored database.
 func (cluster *Cluster) sysbenchConnectionArgs(prx DatabaseProxy) []string {
-	if m := cluster.GetMaster(); m != nil && m.IsPostgreSQLHost() {
-		return []string{"--db-driver=pgsql", "--pgsql-db=" + m.PostgressDB, "--pgsql-user=" + cluster.GetDbUser(), "--pgsql-password=" + cluster.GetDbPass(), "--pgsql-host=" + prx.GetHost(), "--pgsql-port=" + strconv.Itoa(prx.GetWritePort())}
+	// the cluster's flavor, not the master pointer: a benchmark may be launched while the
+	// master is being rediscovered (right after a rolling restart the cleanup ran with the
+	// mysql driver against PostgreSQL, 2026-10-06)
+	if pg := cluster.postgresServer(); pg != nil {
+		return []string{"--db-driver=pgsql", "--pgsql-db=" + pg.PostgressDB, "--pgsql-user=" + cluster.GetDbUser(), "--pgsql-password=" + cluster.GetDbPass(), "--pgsql-host=" + prx.GetHost(), "--pgsql-port=" + strconv.Itoa(prx.GetWritePort())}
 	}
 	return []string{"--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user=" + cluster.GetDbUser(), "--mysql-password=" + cluster.GetDbPass(), "--mysql-host=" + prx.GetHost(), "--mysql-port=" + strconv.Itoa(prx.GetWritePort())}
+}
+
+// postgresServer returns a PostgreSQL server of the cluster (the master when known), nil
+// when the cluster is not PostgreSQL.
+func (cluster *Cluster) postgresServer() *ServerMonitor {
+	if m := cluster.GetMaster(); m != nil && m.IsPostgreSQLHost() {
+		return m
+	}
+	for _, s := range cluster.Servers {
+		if s != nil && s.IsPostgreSQLHost() {
+			return s
+		}
+	}
+	return nil
 }
