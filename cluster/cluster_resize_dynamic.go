@@ -1664,12 +1664,22 @@ func (server *ServerMonitor) ArmOpenSVCPGCap() {
 }
 
 // ApplyOpenSVCPGCapIfPending runs the pg update armed by ArmOpenSVCPGCap on a connected
-// server, then drops the cookie; a failure keeps it for the next tick.
+// server, then drops the cookie; a failure keeps it for the next tick. It also reconciles
+// the keywords themselves: when the object's pg_cpu_quota/pg_mem_limit differ from what
+// prov-db-* say (a renderer change, a plan change applied elsewhere, a hand edit), they are
+// rewritten and applied -- no definition stays stale until the next restart (mahebourg kept
+// "200%@all" = 64 cores after the quota unit fix, 2026-10-07). Checked once a minute.
 func (server *ServerMonitor) ApplyOpenSVCPGCapIfPending() {
-	if !server.hasCookie(cookiePGCapPending) || server.IsDown() {
+	cluster := server.ClusterGroup
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI || server.IsDown() {
 		return
 	}
-	cluster := server.ClusterGroup
+	if !server.hasCookie(cookiePGCapPending) {
+		if cluster.StateMachine.GetHeartbeats()%30 == 0 {
+			server.reconcileOpenSVCPGCap()
+		}
+		return
+	}
 	svc := cluster.OpenSVCConnect()
 	if !svc.IsV3() {
 		server.delCookie(cookiePGCapPending)
@@ -1682,4 +1692,57 @@ func (server *ServerMonitor) ApplyOpenSVCPGCapIfPending() {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC pg update after start on %s (node %s): container cap applied on the PG slice", server.URL, node)
 	server.delCookie(cookiePGCapPending)
+}
+
+// openSVCDesiredPGCap is the cap the server's definition must carry when it lives on the
+// PG slice: the same values GenerateDBTemplateV3 and the engine app template render.
+func (cluster *Cluster) openSVCDesiredPGCap() map[string]string {
+	kv := map[string]string{"pg_mem_limit": strconv.FormatInt(int64(cluster.GetDBContainerMemoryCapMB())*1024*1024, 10)}
+	if cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64); err == nil {
+		if q := OpenSVCCPUQuotaKeyword(cores); q != "" {
+			kv["pg_cpu_quota"] = q
+		}
+	}
+	return kv
+}
+
+// reconcileOpenSVCPGCap compares the object's pg keywords with the desired cap and, when
+// they differ, writes and applies them live (openSVCApplyPGKeywords). Servers whose cap is
+// a docker limit (plain database servers with prov-db-docker-run-args-limit) are left alone.
+func (server *ServerMonitor) reconcileOpenSVCPGCap() {
+	cluster := server.ClusterGroup
+	if cluster.Conf.ProvDBDockerRunArgsLimit && cluster.engineAppOfServer(server) == nil {
+		return
+	}
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return
+	}
+	svcparts := strings.SplitN(server.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return
+	}
+	raw, err := svc.GetObjectConfigFileV3(svcparts[0], svcparts[1], svcparts[2])
+	if err != nil {
+		return
+	}
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
+	if err != nil {
+		return
+	}
+	desired := cluster.openSVCDesiredPGCap()
+	stale := map[string]string{}
+	for k, v := range desired {
+		if cur := strings.TrimSpace(cfg.Section("DEFAULT").Key(k).String()); cur != v {
+			stale[k] = cur
+		}
+	}
+	if len(stale) == 0 {
+		return
+	}
+	if err := cluster.openSVCApplyPGKeywords(server, desired); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OpenSVC PG cap of %s could not be reconciled: %s", server.URL, err)
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC PG cap of %s reconciled to %v (was %v)", server.URL, desired, stale)
 }
