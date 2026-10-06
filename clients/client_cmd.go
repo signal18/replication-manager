@@ -323,7 +323,7 @@ func initServerFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliServerHost, "srv-host", "", "server host")
 	cmd.Flags().StringVar(&cliServerPort, "srv-port", "", "server host")
 	cmd.Flags().StringVar(&cliServerSet, "set", "", "maintenance=on|maintenance=off|maintenance=switch|ignored=switch|prefered=switch")
-	cmd.Flags().StringVar(&cliServerGet, "get", "", "processlist|slow-query|digest-statements-pfs|errors|status-delta|innodb-status|variables|meta-data-locks|query-response-time")
+	cmd.Flags().StringVar(&cliServerGet, "get", "", "processlist|slow-query|digest-statements-pfs|errors|status-delta|innodb-status|variables|meta-data-locks|query-response-time|events")
 	cmd.Flags().StringVar(&cliServerAction, "action", "", "stop|start")
 
 	viper.BindPFlags(cmd.Flags())

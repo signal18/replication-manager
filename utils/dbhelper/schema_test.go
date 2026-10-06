@@ -6,7 +6,9 @@ package dbhelper
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"hash/crc64"
 	"regexp"
 	"strings"
@@ -575,5 +577,133 @@ func TestGetUserAuthConnQueryErrorIsWrapped(t *testing.T) {
 	}
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected the wrapped error to unwrap to context.DeadlineExceeded, got: %v", err)
+	}
+}
+
+// eventListColumns are the columns ListEvents and GetEventDefinition read.
+var eventListColumns = []string{"db", "name", "definer", "definition_bytes", "event_type", "execute_at", "interval_value", "interval_field",
+	"starts", "ends", "on_completion", "last_executed", "time_zone", "comment"}
+
+func TestListEvents(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	// every schema: no filter, page bound as parameters, deterministic order, no body
+	mock.ExpectQuery(`FROM information_schema\.EVENTS ORDER BY EVENT_SCHEMA, EVENT_NAME LIMIT \? OFFSET \?$`).WithArgs(2, 4).
+		WillReturnRows(sqlmock.NewRows(eventListColumns).
+			AddRow("app", "ev", "root@%", 17, "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "2030-01-02 00:00:00", "SYSTEM", "daily").
+			AddRow("crm", "purge", "app@%", 5, "ONE TIME", "2030-06-01 00:00:00", "", "", "", "", "NOT PRESERVE", "", "+00:00", ""))
+	events, query, err := ListEvents(sqlxdb, "", 2, 4)
+	if err != nil || len(events) != 2 || strings.Contains(query, "WHERE") || strings.Contains(query, "EVENT_DEFINITION AS") {
+		t.Fatalf("ListEvents(all) = %+v, %q, %v", events, query, err)
+	}
+	if e := events[0]; e != (EventDefinition{Db: "app", Name: "ev", Definer: "root@%", DefinitionBytes: 17, EventType: "RECURRING", IntervalValue: "1",
+		IntervalField: "DAY", Starts: "2030-01-01 00:00:00", OnCompletion: "PRESERVE", LastExecuted: "2030-01-02 00:00:00", TimeZone: "SYSTEM", Comment: "daily"}) {
+		t.Fatalf("a list row = %+v", e)
+	}
+	if events[1].Definition != "" || events[1].ExecuteAt != "2030-06-01 00:00:00" {
+		t.Fatalf("a list row carries no body: %+v", events[1])
+	}
+
+	// one schema: bound before the page
+	mock.ExpectQuery(regexp.QuoteMeta("WHERE EVENT_SCHEMA = ? ORDER BY EVENT_SCHEMA, EVENT_NAME LIMIT ? OFFSET ?")).WithArgs("app", 500, 0).
+		WillReturnRows(sqlmock.NewRows(eventListColumns))
+	if events, _, err := ListEvents(sqlxdb, "app", 500, 0); err != nil || len(events) != 0 {
+		t.Fatalf("ListEvents(app) of no event = %+v, %v", events, err)
+	}
+
+	// no unbounded page: refused before any query
+	for _, page := range [][2]int{{0, 0}, {-1, 0}, {10, -1}} {
+		if _, _, err := ListEvents(sqlxdb, "", page[0], page[1]); err == nil {
+			t.Fatalf("ListEvents with limit %d offset %d must be refused", page[0], page[1])
+		}
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta("FROM information_schema.EVENTS")).WithArgs(1, 0).WillReturnError(errors.New("events down"))
+	if _, _, err := ListEvents(sqlxdb, "", 1, 0); err == nil || !strings.Contains(err.Error(), "events down") {
+		t.Fatalf("a failed query must be returned, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestCountEvents(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+
+	mock.ExpectQuery(`SELECT /\*replication-manager\*/ COUNT\(\*\) FROM information_schema\.EVENTS$`).WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(7))
+	if n, _, err := CountEvents(sqlxdb, ""); err != nil || n != 7 {
+		t.Fatalf("CountEvents(all) = %d, %v", n, err)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta("COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ?")).WithArgs("app").WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(2))
+	if n, _, err := CountEvents(sqlxdb, "app"); err != nil || n != 2 {
+		t.Fatalf("CountEvents(app) = %d, %v", n, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetEventDefinition(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	meta := func(size int) *sqlmock.Rows {
+		return sqlmock.NewRows(eventListColumns).AddRow("app", "ev", "root@%", size, "ONE TIME", "2030-06-01 00:00:00", "", "", "", "", "PRESERVE", "", "SYSTEM", "")
+	}
+	metaQuery := regexp.QuoteMeta("FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?")
+	bodyQuery := regexp.QuoteMeta("SELECT /*replication-manager*/ COALESCE(LENGTH(EVENT_DEFINITION), 0), COALESCE(LEFT(CAST(EVENT_DEFINITION AS BINARY), ?), '') FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?")
+
+	// Within the maximum: metadata, then the current body read with a hard
+	// byte cap of maximum + 1.
+	mock.ExpectQuery(metaQuery).WithArgs("app", "ev").WillReturnRows(meta(17))
+	mock.ExpectQuery(bodyQuery).WithArgs(1025, "app", "ev").WillReturnRows(sqlmock.NewRows([]string{"size", "d"}).AddRow(17, "delete from audit"))
+	ev, _, err := GetEventDefinition(sqlxdb, "app", "ev", 1024)
+	if err != nil || ev == nil || ev.Definition != "delete from audit" || ev.DefinitionBytes != 17 || ev.ExecuteAt != "2030-06-01 00:00:00" {
+		t.Fatalf("GetEventDefinition = %+v, %v", ev, err)
+	}
+
+	// larger than the maximum: refused, the body is never read (no body query expected)
+	mock.ExpectQuery(metaQuery).WithArgs("app", "ev").WillReturnRows(meta(5000))
+	ev, _, err = GetEventDefinition(sqlxdb, "app", "ev", 1024)
+	if !errors.Is(err, ErrEventDefinitionTooLarge) || ev == nil || ev.Definition != "" || ev.DefinitionBytes != 5000 {
+		t.Fatalf("an oversized definition must be refused without its body: %+v, %v", ev, err)
+	}
+
+	// Grown between the two queries: the second query returns no more than
+	// maximum + 1 bytes, but its current byte length still refuses the body.
+	mock.ExpectQuery(metaQuery).WithArgs("app", "ev").WillReturnRows(meta(10))
+	mock.ExpectQuery(bodyQuery).WithArgs(1025, "app", "ev").WillReturnRows(sqlmock.NewRows([]string{"size", "d"}).AddRow(2000, strings.Repeat("x", 1025)))
+	ev, _, err = GetEventDefinition(sqlxdb, "app", "ev", 1024)
+	if !errors.Is(err, ErrEventDefinitionTooLarge) || ev == nil || ev.Definition != "" || ev.DefinitionBytes != 2000 {
+		t.Fatalf("a definition that grew past the maximum must not be returned: %+v, %v", ev, err)
+	}
+
+	// A dropped event can surface a wrapped sql.ErrNoRows from the body query.
+	mock.ExpectQuery(metaQuery).WithArgs("app", "ev").WillReturnRows(meta(10))
+	mock.ExpectQuery(bodyQuery).WithArgs(1025, "app", "ev").WillReturnError(fmt.Errorf("event dropped: %w", sql.ErrNoRows))
+	if ev, _, err := GetEventDefinition(sqlxdb, "app", "ev", 1024); err != nil || ev != nil {
+		t.Fatalf("a body query that loses the event = %+v, %v", ev, err)
+	}
+
+	// no such event: nil, no error
+	mock.ExpectQuery(metaQuery).WithArgs("app", "none").WillReturnRows(sqlmock.NewRows(eventListColumns))
+	if ev, _, err := GetEventDefinition(sqlxdb, "app", "none", 1024); err != nil || ev != nil {
+		t.Fatalf("a missing event = %+v, %v", ev, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
 	}
 }

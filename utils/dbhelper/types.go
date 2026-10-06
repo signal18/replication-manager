@@ -69,7 +69,7 @@ type ResponseTime struct {
 type PFSQuery struct {
 	Digest           string          `json:"digest"`
 	Query            string          `json:"query"`
-	Sample_query     string          `json:"sampleQuery"`  // one concrete SQL example for this digest (for EXPLAIN)
+	Sample_query     string          `json:"sampleQuery"` // one concrete SQL example for this digest (for EXPLAIN)
 	Digest_text      string          `json:"digestText"`
 	Schema_name      string          `json:"shemaName"`
 	Last_seen        string          `json:"lastSeen"`
@@ -443,6 +443,30 @@ type Event struct {
 	Status  int64  `json:"status"`
 }
 
+// EventDefinition is a scheduled event with its schedule (ListEvents) and, for
+// one event read by GetEventDefinition, its definition body, as
+// information_schema.EVENTS reports them; a field that does not apply
+// (EXECUTE_AT of a recurring event, ENDS without an end, ...) is empty.
+// DefinitionBytes is the size of the body, always filled. Event carries the
+// status instead (GetEventStatus).
+type EventDefinition struct {
+	Db              string `db:"db" json:"db"`
+	Name            string `db:"name" json:"name"`
+	Definer         string `db:"definer" json:"definer"`
+	Definition      string `db:"-" json:"definition,omitempty"`
+	DefinitionBytes int64  `db:"definition_bytes" json:"definitionBytes"`
+	EventType       string `db:"event_type" json:"eventType"`         // ONE TIME or RECURRING
+	ExecuteAt       string `db:"execute_at" json:"executeAt"`         // one-time event: when it runs
+	IntervalValue   string `db:"interval_value" json:"intervalValue"` // recurring event: every <value> <field>
+	IntervalField   string `db:"interval_field" json:"intervalField"`
+	Starts          string `db:"starts" json:"starts"`
+	Ends            string `db:"ends" json:"ends"`
+	OnCompletion    string `db:"on_completion" json:"onCompletion"` // PRESERVE or NOT PRESERVE
+	LastExecuted    string `db:"last_executed" json:"lastExecuted"`
+	TimeZone        string `db:"time_zone" json:"timeZone"`
+	Comment         string `db:"comment" json:"comment"`
+}
+
 // Processlist represents a process/connection in the database
 type Processlist struct {
 	Id                 uint64          `json:"id" db:"Id"`
@@ -594,69 +618,69 @@ func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
 
 // ReplicaStatus represents replica replication status (MySQL 8.4+)
 type ReplicaStatus struct {
-	ReplicaIOState                 sql.NullString `db:"Replica_IO_State" json:"replicaIoState"`
-	SourceHost                     sql.NullString `db:"Source_Host" json:"sourceHost"`
-	SourceUser                     sql.NullString `db:"Source_User" json:"sourceUser"`
-	SourcePort                     sql.NullString `db:"Source_Port" json:"sourcePort"`
-	ConnectRetry                   sql.NullInt64  `db:"Connect_Retry" json:"connectRetry"`
-	SourceLogFile                  sql.NullString `db:"Source_Log_File" json:"sourceLogFile"`
-	ReadSourceLogPos               sql.NullString `db:"Read_Source_Log_Pos" json:"readSourceLogPos"`
-	RelayLogFile                   sql.NullString `db:"Relay_Log_File" json:"relayLogFile"`
-	RelayLogPos                    sql.NullString `db:"Relay_Log_Pos" json:"relayLogPos"`
-	RelaySourceLogFile             sql.NullString `db:"Relay_Source_Log_File" json:"relaySourceLogFile"`
-	ReplicaIORunning               sql.NullString `db:"Replica_IO_Running" json:"replicaIoRunning"`
-	ReplicaSQLRunning              sql.NullString `db:"Replica_SQL_Running" json:"replicaSqlRunning"`
-	ReplicateDoDB                  sql.NullString `db:"Replicate_Do_DB" json:"replicateDoDb"`
-	ReplicateIgnoreDB              sql.NullString `db:"Replicate_Ignore_DB" json:"replicateIgnoreDb"`
-	ReplicateDoTable               sql.NullString `db:"Replicate_Do_Table" json:"replicateDoTable"`
-	ReplicateIgnoreTable           sql.NullString `db:"Replicate_Ignore_Table" json:"replicateIgnoreTable"`
-	ReplicateWildDoTable           sql.NullString `db:"Replicate_Wild_Do_Table" json:"replicateWildDoTable"`
-	ReplicateWildIgnoreTable       sql.NullString `db:"Replicate_Wild_Ignore_Table" json:"replicateWildIgnoreTable"`
-	LastErrno                      sql.NullString `db:"Last_Errno" json:"lastErrno"`
-	LastError                      sql.NullString `db:"Last_Error" json:"lastError"`
-	SkipCounter                    sql.NullInt64  `db:"Skip_Counter" json:"skipCounter"`
-	ExecSourceLogPos               sql.NullString `db:"Exec_Source_Log_Pos" json:"execSourceLogPos"`
+	ReplicaIOState           sql.NullString `db:"Replica_IO_State" json:"replicaIoState"`
+	SourceHost               sql.NullString `db:"Source_Host" json:"sourceHost"`
+	SourceUser               sql.NullString `db:"Source_User" json:"sourceUser"`
+	SourcePort               sql.NullString `db:"Source_Port" json:"sourcePort"`
+	ConnectRetry             sql.NullInt64  `db:"Connect_Retry" json:"connectRetry"`
+	SourceLogFile            sql.NullString `db:"Source_Log_File" json:"sourceLogFile"`
+	ReadSourceLogPos         sql.NullString `db:"Read_Source_Log_Pos" json:"readSourceLogPos"`
+	RelayLogFile             sql.NullString `db:"Relay_Log_File" json:"relayLogFile"`
+	RelayLogPos              sql.NullString `db:"Relay_Log_Pos" json:"relayLogPos"`
+	RelaySourceLogFile       sql.NullString `db:"Relay_Source_Log_File" json:"relaySourceLogFile"`
+	ReplicaIORunning         sql.NullString `db:"Replica_IO_Running" json:"replicaIoRunning"`
+	ReplicaSQLRunning        sql.NullString `db:"Replica_SQL_Running" json:"replicaSqlRunning"`
+	ReplicateDoDB            sql.NullString `db:"Replicate_Do_DB" json:"replicateDoDb"`
+	ReplicateIgnoreDB        sql.NullString `db:"Replicate_Ignore_DB" json:"replicateIgnoreDb"`
+	ReplicateDoTable         sql.NullString `db:"Replicate_Do_Table" json:"replicateDoTable"`
+	ReplicateIgnoreTable     sql.NullString `db:"Replicate_Ignore_Table" json:"replicateIgnoreTable"`
+	ReplicateWildDoTable     sql.NullString `db:"Replicate_Wild_Do_Table" json:"replicateWildDoTable"`
+	ReplicateWildIgnoreTable sql.NullString `db:"Replicate_Wild_Ignore_Table" json:"replicateWildIgnoreTable"`
+	LastErrno                sql.NullString `db:"Last_Errno" json:"lastErrno"`
+	LastError                sql.NullString `db:"Last_Error" json:"lastError"`
+	SkipCounter              sql.NullInt64  `db:"Skip_Counter" json:"skipCounter"`
+	ExecSourceLogPos         sql.NullString `db:"Exec_Source_Log_Pos" json:"execSourceLogPos"`
 	// RelayLogSpace uses sql.Null[uint64] (not sql.NullInt64) because Percona/MySQL 8.4 can
 	// return values exceeding int64 max, causing a scan overflow. JSON encoding changes from
 	// {"Int64":…,"Valid":…} (sql.NullInt64) to {"V":…,"Valid":…} (sql.Null[uint64]).
-	RelayLogSpace sql.Null[uint64] `db:"Relay_Log_Space" json:"relayLogSpace"`
-	UntilCondition                 sql.NullString `db:"Until_Condition" json:"untilCondition"`
-	UntilLogFile                   sql.NullString `db:"Until_Log_File" json:"untilLogFile"`
-	UntilLogPos                    sql.NullString `db:"Until_Log_Pos" json:"untilLogPos"`
-	SourceSSLAllowed               sql.NullString `db:"Source_SSL_Allowed" json:"sourceSslAllowed"`
-	SourceSSLCaFile                sql.NullString `db:"Source_SSL_CA_File" json:"sourceSslCaFile"`
-	SourceSSLCaPath                sql.NullString `db:"Source_SSL_CA_Path" json:"sourceSslCaPath"`
-	SourceSSLCert                  sql.NullString `db:"Source_SSL_Cert" json:"sourceSslCert"`
-	SourceSSLCipher                sql.NullString `db:"Source_SSL_Cipher" json:"sourceSslCipher"`
-	SourceSSLKey                   sql.NullString `db:"Source_SSL_Key" json:"sourceSslKey"`
-	SecondsBehindSource            sql.NullInt64  `db:"Seconds_Behind_Source" json:"secondsBehindSource"`
-	SourceSSLVerifyServerCert      sql.NullString `db:"Source_SSL_Verify_Server_Cert" json:"sourceSslVerifyServerCert"`
-	LastIOErrno                    sql.NullString `db:"Last_IO_Errno" json:"lastIoErrno"`
-	LastIOError                    sql.NullString `db:"Last_IO_Error" json:"lastIoError"`
-	LastSQLErrno                   sql.NullString `db:"Last_SQL_Errno" json:"lastSqlErrno"`
-	LastSQLError                   sql.NullString `db:"Last_SQL_Error" json:"lastSqlError"`
-	ReplicateIgnoreServerIds       sql.NullString `db:"Replicate_Ignore_Server_Ids" json:"replicateIgnoreServerIds"`
-	SourceServerID                 uint64         `db:"Source_Server_Id" json:"sourceServerId"`
-	SourceUUID                     sql.NullString `db:"Source_UUID" json:"sourceUuid"`
-	SourceInfoFile                 sql.NullString `db:"Source_Info_File" json:"sourceInfoFile"`
-	SQLDelay                       sql.NullInt64  `db:"SQL_Delay" json:"sqlDelay"`
-	SQLRemainingDelay              sql.NullInt64  `db:"SQL_Remaining_Delay" json:"sqlRemainingDelay"`
-	ReplicaSQLRunningState         sql.NullString `db:"Replica_SQL_Running_State" json:"replicaSqlRunningState"`
-	SourceRetryCount               sql.NullInt64  `db:"Source_Retry_Count" json:"sourceRetryCount"`
-	SourceBind                     sql.NullString `db:"Source_Bind" json:"sourceBind"`
-	LastIOErrorTimestamp           sql.NullString `db:"Last_IO_Error_Timestamp" json:"lastIoErrorTimestamp"`
-	LastSQLExceptionErrorTimestamp sql.NullString `db:"Last_SQL_Error_Timestamp" json:"lastSqlErrorTimestamp"`
-	SourceSSLCrl                   sql.NullString `db:"Source_SSL_Crl" json:"sourceSslCrl"`
-	SourceSSLCrlpath               sql.NullString `db:"Source_SSL_Crlpath" json:"sourceSslCrlpath"`
-	RetrievedGtidSet               sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
-	ExecutedGtidSet                sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
-	AutoPosition                   int            `db:"Auto_Position" json:"autoPosition"`
-	ReplicateRewriteDB             sql.NullString `db:"Replicate_Rewrite_DB" json:"replicateRewriteDb"`
-	ChannelName                    sql.NullString `db:"Channel_Name" json:"channelName"`
-	SourceTLSVersion               sql.NullString `db:"Source_TLS_Version" json:"sourceTlsVersion"`
-	SourcePublicKeyPath            sql.NullString `db:"Source_public_key_path" json:"sourcePublicKeyPath"`
-	GetSourcePublicKey             sql.NullString `db:"Get_Source_public_key" json:"getSourcePublicKey"`
-	NetworkNamespace               sql.NullString `db:"Network_Namespace" json:"networkNamespace"`
+	RelayLogSpace                  sql.Null[uint64] `db:"Relay_Log_Space" json:"relayLogSpace"`
+	UntilCondition                 sql.NullString   `db:"Until_Condition" json:"untilCondition"`
+	UntilLogFile                   sql.NullString   `db:"Until_Log_File" json:"untilLogFile"`
+	UntilLogPos                    sql.NullString   `db:"Until_Log_Pos" json:"untilLogPos"`
+	SourceSSLAllowed               sql.NullString   `db:"Source_SSL_Allowed" json:"sourceSslAllowed"`
+	SourceSSLCaFile                sql.NullString   `db:"Source_SSL_CA_File" json:"sourceSslCaFile"`
+	SourceSSLCaPath                sql.NullString   `db:"Source_SSL_CA_Path" json:"sourceSslCaPath"`
+	SourceSSLCert                  sql.NullString   `db:"Source_SSL_Cert" json:"sourceSslCert"`
+	SourceSSLCipher                sql.NullString   `db:"Source_SSL_Cipher" json:"sourceSslCipher"`
+	SourceSSLKey                   sql.NullString   `db:"Source_SSL_Key" json:"sourceSslKey"`
+	SecondsBehindSource            sql.NullInt64    `db:"Seconds_Behind_Source" json:"secondsBehindSource"`
+	SourceSSLVerifyServerCert      sql.NullString   `db:"Source_SSL_Verify_Server_Cert" json:"sourceSslVerifyServerCert"`
+	LastIOErrno                    sql.NullString   `db:"Last_IO_Errno" json:"lastIoErrno"`
+	LastIOError                    sql.NullString   `db:"Last_IO_Error" json:"lastIoError"`
+	LastSQLErrno                   sql.NullString   `db:"Last_SQL_Errno" json:"lastSqlErrno"`
+	LastSQLError                   sql.NullString   `db:"Last_SQL_Error" json:"lastSqlError"`
+	ReplicateIgnoreServerIds       sql.NullString   `db:"Replicate_Ignore_Server_Ids" json:"replicateIgnoreServerIds"`
+	SourceServerID                 uint64           `db:"Source_Server_Id" json:"sourceServerId"`
+	SourceUUID                     sql.NullString   `db:"Source_UUID" json:"sourceUuid"`
+	SourceInfoFile                 sql.NullString   `db:"Source_Info_File" json:"sourceInfoFile"`
+	SQLDelay                       sql.NullInt64    `db:"SQL_Delay" json:"sqlDelay"`
+	SQLRemainingDelay              sql.NullInt64    `db:"SQL_Remaining_Delay" json:"sqlRemainingDelay"`
+	ReplicaSQLRunningState         sql.NullString   `db:"Replica_SQL_Running_State" json:"replicaSqlRunningState"`
+	SourceRetryCount               sql.NullInt64    `db:"Source_Retry_Count" json:"sourceRetryCount"`
+	SourceBind                     sql.NullString   `db:"Source_Bind" json:"sourceBind"`
+	LastIOErrorTimestamp           sql.NullString   `db:"Last_IO_Error_Timestamp" json:"lastIoErrorTimestamp"`
+	LastSQLExceptionErrorTimestamp sql.NullString   `db:"Last_SQL_Error_Timestamp" json:"lastSqlErrorTimestamp"`
+	SourceSSLCrl                   sql.NullString   `db:"Source_SSL_Crl" json:"sourceSslCrl"`
+	SourceSSLCrlpath               sql.NullString   `db:"Source_SSL_Crlpath" json:"sourceSslCrlpath"`
+	RetrievedGtidSet               sql.NullString   `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
+	ExecutedGtidSet                sql.NullString   `db:"Executed_Gtid_Set" json:"executedGtidSet"`
+	AutoPosition                   int              `db:"Auto_Position" json:"autoPosition"`
+	ReplicateRewriteDB             sql.NullString   `db:"Replicate_Rewrite_DB" json:"replicateRewriteDb"`
+	ChannelName                    sql.NullString   `db:"Channel_Name" json:"channelName"`
+	SourceTLSVersion               sql.NullString   `db:"Source_TLS_Version" json:"sourceTlsVersion"`
+	SourcePublicKeyPath            sql.NullString   `db:"Source_public_key_path" json:"sourcePublicKeyPath"`
+	GetSourcePublicKey             sql.NullString   `db:"Get_Source_public_key" json:"getSourcePublicKey"`
+	NetworkNamespace               sql.NullString   `db:"Network_Namespace" json:"networkNamespace"`
 }
 
 // Privileges represents user privileges

@@ -1913,3 +1913,33 @@ func (server *ServerMonitor) ApplyPFSJoinLinksToSchema(tablemap map[string]*dbhe
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"PFS join links: enriched table graph from %d explain records on %s", len(records), server.URL)
 }
+
+// ListEventDefinitions reads one page of the events of the server (limit rows
+// from offset, of schema or of every schema) with their schedule but not their
+// body, and the total number of events, on demand for the Events API
+// (dbhelper.CountEvents, dbhelper.ListEvents, bounded by their metadata
+// timeout). The event status comes from the monitored EventStatus.
+func (server *ServerMonitor) ListEventDefinitions(schema string, limit, offset int) ([]dbhelper.EventDefinition, int, error) {
+	total, logs, err := dbhelper.CountEvents(server.Conn, schema)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Events", config.LvlErr, "Could not count events on %s: %s", server.URL, err)
+	if err != nil {
+		return nil, 0, err
+	}
+	events, logs, err := dbhelper.ListEvents(server.Conn, schema, limit, offset)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Events", config.LvlErr, "Could not list events on %s: %s", server.URL, err)
+	return events, total, err
+}
+
+// GetEventDefinition reads the event schema.name of the server with its
+// schedule and definition body, nil when there is no such event. A body larger
+// than monitoring-event-status-max-definition-bytes is not returned; the
+// dbhelper body read remains capped if the event changes between size and body
+// queries. dbhelper.ErrEventDefinitionTooLarge is returned with the event.
+func (server *ServerMonitor) GetEventDefinition(schema, name string) (*dbhelper.EventDefinition, error) {
+	maxBytes := config.EffectiveMonitorEventStatusMaxDefinitionBytes(server.ClusterGroup.Conf.MonitorEventStatusMaxDefinitionBytes)
+	ev, logs, err := dbhelper.GetEventDefinition(server.Conn, schema, name, int64(maxBytes))
+	if !errors.Is(err, dbhelper.ErrEventDefinitionTooLarge) {
+		server.ClusterGroup.LogSQL(logs, err, server.URL, "Events", config.LvlErr, "Could not read event %s.%s on %s: %s", schema, name, server.URL, err)
+	}
+	return ev, err
+}

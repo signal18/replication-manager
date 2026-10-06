@@ -46,6 +46,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.SimulatePeerFailure = repman.SimulatePeerSplitBrain
 	regtest.SimulatePeerRestore = repman.SimulatePeerRestore
 	regtest.GetPeerIsActive = repman.PeerIsActive
+	regtest.APIToken = repman.regtestAPIToken
+	regtest.APIRequest = repman.regtestAPIRequest
+	regtest.APIAddress = repman.regtestAPIAddress
 	regtest := new(regtest.RegTest)
 	var allTests map[string]cluster.Test
 	pathdefault := cl.GetShareDir() + "/tests/" + cl.GetOrchestrator() + "/config/masterslave/mariadb/without_traffic/10.5/x2/semisync"
@@ -310,6 +313,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		}
 		if test.Name == "testPhysicalReseedRestore" {
 			res = regtest.TestPhysicalReseedRestore(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testEventsReadOnlyAPI" {
+			res = regtest.TestEventsReadOnlyAPI(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testHaproxyRuntimeAPIDynamicServerLifecycle" {
 			res = regtest.TestHaproxyRuntimeAPIDynamicServerLifecycle(cl, test.ConfigFile, &test)
