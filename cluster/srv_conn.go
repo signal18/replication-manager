@@ -173,6 +173,10 @@ func (server *ServerMonitor) GetJobCount(conn *sqlx.Conn, task string, state int
 func (server *ServerMonitor) GetTasksByState(conn *sqlx.Conn, args ...interface{}) ([]DBTask, error) {
 	cluster := server.ClusterGroup
 	tasks := make([]DBTask, 0)
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return tasks, nil
+	}
 	params := len(args)
 	if params > 2 {
 		return tasks, fmt.Errorf("Too many arguments for this function. Only state(int) and done(int) allowed. Received: %d", params)

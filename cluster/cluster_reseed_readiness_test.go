@@ -116,29 +116,38 @@ func TestReseedReadinessPostgreSQLHasNoBinaryLogWarning(t *testing.T) {
 	}
 }
 
-// WARN0223 (no backup-based reseed method) is raised on PostgreSQL only where a node can
-// be reseeded: the logical replication topology, not a single active-passive instance.
+// The missing backup-based reseed method is WARN0223 on MariaDB/MySQL and WARN0231 on
+// PostgreSQL (its own words: no mysqldump there, only the logical backup crosses a major
+// release), raised only where a node can be reseeded: the logical replication topology, not
+// a single active-passive instance.
 func TestReseedReadinessPostgreSQLReseedMethodByTopology(t *testing.T) {
 	cl, m := readinessCluster(t)
 	cl.Conf.AutorejoinLogicalBackup = false
-	has := func() bool {
+	has := func(code string) bool {
 		for _, issue := range cl.GetReseedReadiness().Issues {
-			if issue.Code == "WARN0223" {
+			if issue.Code == code {
 				return true
 			}
 		}
 		return false
 	}
-	if !has() {
+	if !has("WARN0223") {
 		t.Fatal("MariaDB without a backup-based reseed method raises WARN0223")
 	}
 	m.DBVersion, _ = version.NewVersion("PostgreSQL", 17, 11, 0)
 	cl.Topology = config.TopoActivePassive
-	if has() {
+	if has("WARN0223") || has("WARN0231") {
 		t.Fatal("a single active-passive PostgreSQL instance has nothing to reseed")
 	}
 	cl.Topology = config.TopoMasterSlavePgLog
-	if !has() {
-		t.Fatal("PostgreSQL logical replication raises WARN0223")
+	if has("WARN0223") {
+		t.Fatal("WARN0223 speaks of mysqldump: not on PostgreSQL")
+	}
+	if !has("WARN0231") {
+		t.Fatal("PostgreSQL logical replication without autorejoin-logical-backup raises WARN0231")
+	}
+	cl.Conf.AutorejoinLogicalBackup = true
+	if has("WARN0231") {
+		t.Fatal("the logical backup is the reseed method that crosses a major release on PostgreSQL")
 	}
 }

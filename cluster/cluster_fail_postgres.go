@@ -40,6 +40,12 @@ func (cluster *Cluster) isPostgresStreaming() bool {
 //
 // Switchover goes the same way, see postgresSwitchover.
 func (cluster *Cluster) postgresFailover(fail bool) bool {
+	if cluster.isPostgresLogical() {
+		if fail {
+			return cluster.postgresLogicalFailover()
+		}
+		return cluster.postgresLogicalSwitchover()
+	}
 	if !fail {
 		return cluster.postgresSwitchover()
 	}
@@ -345,6 +351,9 @@ func (server *ServerMonitor) postgresRejoin() error {
 	if err := server.Conn.Get(&inRecovery, "SELECT pg_is_in_recovery()"); err != nil || inRecovery {
 		// not reachable yet, or already a standby
 		return err
+	}
+	if cluster.isPostgresLogical() {
+		return server.postgresLogicalRejoin()
 	}
 	// Only the RECORDED former primary of the last master change is re-seeded, and only
 	// from the primary that change elected, which must be up and really a primary. A master

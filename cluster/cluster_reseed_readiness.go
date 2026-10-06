@@ -18,10 +18,10 @@ import (
 // ReseedReadiness is what a rolling reprov across a major release needs before it may
 // start (Stéphane 2026-10-02): binary logs monitored, a backup-based reseed method, and
 // a backup newer than the binary log retention so the reseeded node can catch up.
-// Each missing condition is one tracked state (WARN0222 backup, WARN0223 method,
+// Each missing condition is one tracked state (WARN0222 backup, WARN0223/WARN0231 method,
 // WARN0224 binlog), open while it holds, resolved when it no longer does.
 type ReseedIssue struct {
-	Code string // WARN0222 (no usable backup), WARN0223 (reseed method), WARN0224 (binary logs), "" (no primary)
+	Code string // WARN0222 (no usable backup), WARN0223 / WARN0231 on PostgreSQL (reseed method), WARN0224 (binary logs), "" (no primary)
 	Text string
 }
 
@@ -86,8 +86,14 @@ func (cluster *Cluster) GetReseedReadiness() ReseedReadiness {
 	}
 	// The reseed method matters where a node can be reseeded: on PostgreSQL that is the
 	// logical replication topology only (a single active-passive instance has no replica).
-	reseedable := master.DBVersion == nil || !master.DBVersion.IsPostgreSQL() || cluster.GetTopology() == config.TopoMasterSlavePgLog
-	if reseedable && !cluster.Conf.AutorejoinLogicalBackup && !cluster.Conf.AutorejoinPhysicalBackup {
+	switch {
+	case master.DBVersion != nil && master.DBVersion.IsPostgreSQL():
+		// PostgreSQL: its own words (no mysqldump there) and only the logical backup helps
+		// across a major release
+		if cluster.GetTopology() == config.TopoMasterSlavePgLog && !cluster.Conf.AutorejoinLogicalBackup {
+			r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0231", Text: clusterError["WARN0231"]})
+		}
+	case !cluster.Conf.AutorejoinLogicalBackup && !cluster.Conf.AutorejoinPhysicalBackup:
 		r.Issues = append(r.Issues, ReseedIssue{Code: "WARN0223", Text: clusterError["WARN0223"]})
 	}
 	r.Retention = binlogRetention(master)

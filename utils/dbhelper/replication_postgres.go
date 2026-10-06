@@ -168,3 +168,82 @@ func PostgresEnsurePublication(db *sqlx.DB, name string) (string, error) {
 	_, err := db.Exec(stmt)
 	return stmt, err
 }
+
+// Logical replication (publication / subscription) helpers of a master change.
+
+// PostgresSubscriptionName returns the subscription of a subscriber, "" when none.
+func PostgresSubscriptionName(db *sqlx.DB) (string, string, error) {
+	query := "SELECT COALESCE((SELECT subname FROM pg_catalog.pg_subscription ORDER BY oid LIMIT 1), '')"
+	var name string
+	err := db.Get(&name, query)
+	return name, query, err
+}
+
+// PostgresDropSubscription removes a subscriber's subscription. When the publisher is gone
+// the replication slot there cannot be dropped: the subscription is detached from it first.
+func PostgresDropSubscription(db *sqlx.DB, name string, publisherAlive bool) (string, error) {
+	id := QuotePostgreSQLIdentifier(name)
+	logs := ""
+	if !publisherAlive {
+		for _, stmt := range []string{"ALTER SUBSCRIPTION " + id + " DISABLE", "ALTER SUBSCRIPTION " + id + " SET (slot_name = NONE)"} {
+			logs += stmt + "\n"
+			if _, err := db.Exec(stmt); err != nil {
+				return logs, err
+			}
+		}
+	}
+	stmt := "DROP SUBSCRIPTION " + id
+	logs += stmt
+	_, err := db.Exec(stmt)
+	return logs, err
+}
+
+// PostgresRefreshSubscription makes a subscription cover the tables its publication has now
+// (tables added after the subscription are not followed until then), without copying data.
+// It cannot run inside a transaction block nor a read-only session.
+func PostgresRefreshSubscription(db *sqlx.DB, name string) (string, error) {
+	stmt := "SET default_transaction_read_only = off; ALTER SUBSCRIPTION " + QuotePostgreSQLIdentifier(name) + " REFRESH PUBLICATION WITH (copy_data = false)"
+	_, err := db.Exec(stmt)
+	return stmt, err
+}
+
+// PostgresSetDefaultReadOnly is the PostgreSQL freeze: new transactions of every session are
+// read-only (default_transaction_read_only), applied live. The logical replication apply
+// worker is not affected (verified on PostgreSQL 17), superusers can lift it per session.
+func PostgresSetDefaultReadOnly(db *sqlx.DB, readOnly bool) (string, error) {
+	stmt := "ALTER SYSTEM RESET default_transaction_read_only"
+	if readOnly {
+		stmt = "ALTER SYSTEM SET default_transaction_read_only = on"
+	}
+	if _, err := db.Exec(stmt); err != nil {
+		return stmt, err
+	}
+	reload := "SELECT pg_reload_conf()"
+	_, err := db.Exec(reload)
+	return stmt + "\n" + reload, err
+}
+
+// PostgresTerminateClientBackends ends the client sessions other than this one: with the
+// read-only default in place, what they held open cannot write any more.
+func PostgresTerminateClientBackends(db *sqlx.DB) (int, string, error) {
+	query := "SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid()"
+	var n int
+	err := db.Get(&n, query)
+	return n, query, err
+}
+
+// PostgresSubscriberCaughtUp tells, from the PUBLISHER, whether the subscriber's slot has
+// confirmed everything the publisher wrote.
+func PostgresSubscriberCaughtUp(db *sqlx.DB, slot string) (bool, string, error) {
+	query := "SELECT COALESCE((SELECT confirmed_flush_lsn >= pg_current_wal_lsn() FROM pg_catalog.pg_replication_slots WHERE slot_name = $1), false)"
+	var ok bool
+	err := db.Get(&ok, query, slot)
+	return ok, query, err
+}
+
+// PostgresDropReplicationSlot drops a leftover slot (a former subscriber's) on a publisher.
+func PostgresDropReplicationSlot(db *sqlx.DB, slot string) (string, error) {
+	query := "SELECT pg_drop_replication_slot(slot_name) FROM pg_catalog.pg_replication_slots WHERE slot_name = $1 AND NOT active"
+	_, err := db.Exec(query, slot)
+	return query, err
+}

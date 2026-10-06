@@ -55,7 +55,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	cluster.StateMachine.SetFailoverState()
 	defer cluster.StateMachine.RemoveFailoverState()
-	if cluster.isPostgresStreaming() {
+	if cluster.isPostgresStreaming() || cluster.isPostgresLogical() {
 		// its own failover: none of the statements below exists on PostgreSQL
 		return cluster.postgresFailover(fail)
 	}

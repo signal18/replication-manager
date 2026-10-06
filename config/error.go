@@ -326,6 +326,7 @@ var ClusterError = map[string]string{
 	"WARN0225":  "Cluster %s: local backup storage %.2f BKU over its BKU plan of %d (%s on the infrastructure); monitored as over-commit, never blocked",
 	"WARN0227":  "Server %s: binlog event scanner stream reset %d times in %s (last: %s); another binlog consumer presents the same replica server-id %d to this server (a replica, another replication manager instance, or a mysqlbinlog fetch such as a binlog backup or a rejoin); %s",
 	"WARN0228":  "Server %s: binlog event scanner has no replica server-id to use: %s -- scan skipped",
+	"WARN0231":  "PostgreSQL cluster: no backup-based reseed method is armed; a rolling reprov across a major release needs autorejoin-logical-backup (the pg_dumpall of the primary, the one that crosses a major release, a pg_basebackup cannot)",
 	"WARN0230":  "Cluster: traffic injection runs in pseudo-GTID DDL mode (CREATE OR REPLACE VIEW replication_manager_schema.pseudo_gtid_v): meant for testing and for positional (no-GTID) replication only, every marker is a binlog event that flashback cannot reverse%s; set inject-traffic-mode to dml for safe traffic",
 	"WARN0229":  "Cluster: the traffic marker injection started %s ago (at %s) is still running, probably waiting for a metadata lock on the primary (backup in progress?); no new marker until it returns, the monitoring tick is not affected",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
