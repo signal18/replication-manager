@@ -300,7 +300,14 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
+		// the instance to stop is where the service RUNS: a service placed on several
+		// agents (an engine app in failover topology) runs on any of them, not on the
+		// agent the round robin assigned (pg2 of pg-stream: the stop went to an idle node
+		// and nothing stopped, 2026-10-06)
 		agent := server.Agent
+		if wa := server.GetWorkingAgent(); wa != "" {
+			agent = wa
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"OpenSVC V3 instance stop for %s on node %s", server.URL, agent)
 		err := svc.StopInstanceV3(agent, server.ServiceName)
@@ -353,7 +360,22 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 			// Default: instance-level start (om start --local). Bypasses the
 			// orchestrator's global monitor state check so it works even when the
 			// service is in warn state. Does not coordinate failover volumes.
+			if app := cluster.engineAppOfServer(server); app != nil && app.AppConfig != nil && app.AppConfig.ProvAppHATopology == "failover" {
+				// a service placed on several agents: the orchestrator picks the node, an
+				// instance start on one node would fight its placement
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"OpenSVC V3 orchestrated start for %s (failover placement)", server.URL)
+				if err := svc.StartServiceV3(cluster.Name, server.ServiceName); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+						"OpenSVC V3 start failed for %s: %s", server.URL, err)
+					return err
+				}
+				return nil
+			}
 			agent := server.Agent
+			if wa := server.GetWorkingAgent(); wa != "" {
+				agent = wa
+			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 				"OpenSVC V3 instance start for %s on node %s", server.URL, agent)
 			err := svc.StartInstanceV3(agent, server.ServiceName)
