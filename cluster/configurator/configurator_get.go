@@ -466,12 +466,22 @@ func (configurator *Configurator) GetConfigInnoDBPurgeThreads() string {
 // defaults thread_pool_size to the HOST core count (sysconf _SC_NPROCESSORS_ONLN,
 // which is NOT cgroup-aware), oversizing the pool in a cpu-limited container.
 // thread_pool_size is a dynamic GLOBAL, so it is applied live on a CPU resize.
+// GetConfigThreadPoolSize is thread_pool_size for pool-of-threads: one group per core,
+// four per core under semi-synchronous replication. A group whose thread waits for the
+// replica's acknowledgment (2.8 ms per commit measured) blocks its lane until the stall
+// limit, so one group per core serializes the commits: 16 clients on a 1-core cgroup gave
+// 114 tps at 1 group, 329 at 2, 334 at 4 and 147 at 8 (the groups then contend for the core
+// and the acknowledgment itself slows down) -- mahebourg, 2026-10-06.
 func (configurator *Configurator) GetConfigThreadPoolSize() string {
 	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
 	if err != nil || cores < 1 {
-		return "1"
+		cores = 1
 	}
-	return strconv.Itoa(int(cores))
+	size := int(cores)
+	if configurator.ClusterConfig.ForceSlaveSemisync {
+		size = int(cores * 4)
+	}
+	return strconv.Itoa(size)
 }
 
 func (configurator *Configurator) GetConfigInnoDBLruFlushSize() string {
