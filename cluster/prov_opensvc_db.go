@@ -1196,10 +1196,8 @@ func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 		// headroom) plus the cpu quota, so a live pg update can move BOTH axes.
 		// om3 syntax only (v3 template): "<cores*100>%@all" -- see OpenSVCCPUQuotaKeyword.
 		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(server.ClusterGroup.GetDBContainerMemoryCapMB())*1024*1024, 10)
-		if cores, err := strconv.ParseFloat(server.ClusterGroup.Conf.ProvCores, 64); err == nil {
-			if q := OpenSVCCPUQuotaKeyword(cores); q != "" {
-				svcsection["DEFAULT"]["pg_cpu_quota"] = q
-			}
+		if q := OpenSVCCPUQuotaKeyword(server.ClusterGroup.GetDBContainerCPUCapCores()); q != "" {
+			svcsection["DEFAULT"]["pg_cpu_quota"] = q
 		}
 	}
 

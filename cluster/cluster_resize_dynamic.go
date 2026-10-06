@@ -335,10 +335,12 @@ func (cluster *Cluster) openSVCResize(server *ServerMonitor, grow bool) (bool, e
 // the slice (prov-db-docker-run-args-limit off, see WARN0214): under a docker --cpus
 // cap the tighter docker scope binds and the slice change has no effect.
 func (cluster *Cluster) openSVCResizeCPU(server *ServerMonitor) error {
-	cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
-	if err != nil || cores <= 0 {
+	if _, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64); err != nil {
 		return fmt.Errorf("invalid prov-db-cpu-cores %q", cluster.Conf.ProvCores)
 	}
+	// the slice cap is the plan's contract (tier x cores per DBU), never below the
+	// technical cores the resize just moved (GetDBContainerCPUCapCores)
+	cores := cluster.GetDBContainerCPUCapCores()
 	q := OpenSVCCPUQuotaKeyword(cores)
 	if err := cluster.openSVCApplyPGKeywords(server, map[string]string{"pg_cpu_quota": q}); err != nil {
 		return err
@@ -1698,10 +1700,8 @@ func (server *ServerMonitor) ApplyOpenSVCPGCapIfPending() {
 // PG slice: the same values GenerateDBTemplateV3 and the engine app template render.
 func (cluster *Cluster) openSVCDesiredPGCap() map[string]string {
 	kv := map[string]string{"pg_mem_limit": strconv.FormatInt(int64(cluster.GetDBContainerMemoryCapMB())*1024*1024, 10)}
-	if cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64); err == nil {
-		if q := OpenSVCCPUQuotaKeyword(cores); q != "" {
-			kv["pg_cpu_quota"] = q
-		}
+	if q := OpenSVCCPUQuotaKeyword(cluster.GetDBContainerCPUCapCores()); q != "" {
+		kv["pg_cpu_quota"] = q
 	}
 	return kv
 }

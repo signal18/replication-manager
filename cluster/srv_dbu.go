@@ -562,6 +562,25 @@ func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
 	return capMB
 }
 
+// GetDBContainerCPUCapCores returns the cgroup CPU cap (cores) for the DB container: the
+// per-node DBU tier × cores-ratio, i.e. the plan's contract (2 DBU = 2 cores), never below
+// prov-db-cpu-cores. The technical cores (prov-db-cpu-cores, thread pool, io threads) move
+// INSIDE that envelope with the dynamic resize; the cap itself is the contract (the quota was
+// rendered from the technical cores and capped a 2-DBU server at 1 core, 2026-10-07). Falls
+// back to prov-db-cpu-cores when alignment is off.
+func (cluster *Cluster) GetDBContainerCPUCapCores() float64 {
+	provCores, _ := strconv.ParseFloat(strings.TrimSpace(cluster.Conf.ProvCores), 64)
+	tier := cluster.GetDBTierDbuPerNode()
+	if tier <= 0 {
+		return provCores
+	}
+	capCores := tier * cluster.resources.DBCoresPerUnit()
+	if capCores < provCores {
+		capCores = provCores
+	}
+	return capCores
+}
+
 // RestoreDBUConsumed reloads this server's last reading from the repman-side manager
 // into the (freshly recreated) ServerMonitor, so a config reload does not blank the
 // DBU metric. No entry (never pushed) leaves DBUConsumed nil.
