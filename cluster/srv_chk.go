@@ -282,6 +282,14 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
 		logs, err := dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
 		cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlErr, "Could not enforce semisync on %s: %s", sl.URL, err)
+		if err == nil {
+			// a running replica registers as a semi-sync client only when its IO thread
+			// connects: enabled on the fly, it stayed asynchronous (mahebourg 2026-10-06)
+			logs, err = sl.StopSlave()
+			cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlErr, "Could not stop replication on %s to register semisync: %s", sl.URL, err)
+			logs, err = sl.StartSlave()
+			cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlErr, "Could not start replication on %s after enabling semisync: %s", sl.URL, err)
+		}
 	} else if !sl.IsIgnored() && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.SetState("WARN0048", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
