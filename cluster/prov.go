@@ -1513,6 +1513,13 @@ func (cluster *Cluster) dbIdentityManaged() bool {
 // service RUNS when the monitor knows it (a service placed on several agents runs on any of
 // them), else the agent the configuration assigned.
 func (server *ServerMonitor) placementNode() string {
+	if server.GetWorkingAgent() == "" {
+		// known only through the periodic agent check, which skips servers without a
+		// provision cookie (an engine app): asked to the orchestrator now
+		if err := server.GetWorkingOrchestratorNode(); err != nil {
+			server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Working node of %s unknown: %s", server.URL, err)
+		}
+	}
 	if wa := server.GetWorkingAgent(); wa != "" {
 		return wa
 	}
