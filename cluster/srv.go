@@ -1186,7 +1186,9 @@ func (server *ServerMonitor) Refresh() error {
 				// (mysql.<hostname>.*) and the dashboard graphs key on it, so the monitored
 				// name stands for it; without it every metric was named mysql..* and no
 				// graph ever showed for a PostgreSQL server
-				vars["HOSTNAME"] = server.Host
+				// uppercased like every value GetVariables returns (the graphs look up the
+				// uppercased host: PG1-PG-LOGICAL-SVC-CLOUD18)
+				vars["HOSTNAME"] = strings.ToUpper(server.Host)
 			}
 		}
 		server.Variables = config.FromNormalStringMap(server.Variables, vars)
@@ -1283,6 +1285,14 @@ func (server *ServerMonitor) Refresh() error {
 			server.CheckDBConfigPath()
 		}
 
+		if server.DBVersion.IsPostgreSQL() {
+			// PostgreSQL's read_only: default_transaction_read_only, or the standby's recovery
+			server.HaveReadOnly = server.HasReadOnly()
+			server.ReadOnly = "OFF"
+			if server.HaveReadOnly {
+				server.ReadOnly = "ON"
+			}
+		}
 		if !server.DBVersion.IsPostgreSQL() {
 			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
 			server.HaveEventScheduler = server.HasEventScheduler()
