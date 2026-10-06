@@ -1042,8 +1042,11 @@ func GetBinlogDumpThreads(db *sqlx.DB, myver *version.Version) (int, string, err
 	var i int
 	query := "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'"
 	if myver.IsPostgreSQL() {
-		// WAL senders: one per attached standby or subscriber
-		query = "SELECT COUNT(*) AS n FROM pg_stat_replication"
+		// the replicas of this server: the attached WAL senders (standbys, subscribers)
+		// plus the replication slots no sender holds right now -- a subscriber whose apply
+		// worker is down (a DDL it misses, a restart) keeps its slot and comes back; the
+		// primary must stay designated meanwhile
+		query = "SELECT (SELECT COUNT(*) FROM pg_stat_replication) + (SELECT COUNT(*) FROM pg_replication_slots WHERE NOT active) AS n"
 	}
 	err := db.Get(&i, query)
 	return i, query, err
