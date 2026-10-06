@@ -181,6 +181,33 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 	return nil
 }
 
+// OpenSVCUpdateAppTemplate regenerates the service definition of an app and pushes it to
+// OpenSVC in place (UpdateObjectV3), as OpenSVCUpdateDatabaseTemplate does for a database
+// server before a rolling restart: a changed mount, environment or container reaches the
+// live object without a reprovisioning, the next restart runs the new definition. Returns
+// once the node has loaded it (#1792).
+func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return fmt.Errorf("the service definition update requires the OpenSVC v3 API")
+	}
+	res, err := cluster.OpenSVCGetAppTemplateV3(app)
+	if err != nil {
+		return err
+	}
+	svcparts := strings.SplitN(app.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service name format %q, expected namespace/kind/name", app.ServiceName)
+	}
+	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Refreshing OpenSVC template for %s", app.ServiceName)
+	if _, err = svc.UpdateObjectV3(ns, kind, svcname, res); err != nil {
+		return err
+	}
+	app.TemplateMD5 = misc.GetMD5HashFromBytes(res)
+	return svc.WaitObjectConfigSettledV3(app.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
+}
+
 func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
 	if err := ValidateAppRestartRid(rid); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App restart validation failed: %s", err)
@@ -189,6 +216,10 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 
 	svc := cluster.OpenSVCConnect()
 	if svc.IsV3() {
+		// like the database rolling restart: the definition first, then the restart
+		if err := cluster.OpenSVCUpdateAppTemplate(app); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s restarts on its current definition, the refresh failed: %s", app.Name, err)
+		}
 		if rid != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
 		}

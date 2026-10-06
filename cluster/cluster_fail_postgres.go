@@ -153,17 +153,6 @@ func (cluster *Cluster) postgresPointStandbysToMaster() {
 	}
 }
 
-// postgresAppOfServer returns the app that runs a monitored PostgreSQL server: the service
-// replication-manager stops and starts to change the server's role.
-func (cluster *Cluster) postgresAppOfServer(s *ServerMonitor) *App {
-	for _, a := range cluster.Apps {
-		if a != nil && a.Port == s.Port && (a.Host == s.Host || a.Name == s.Name) {
-			return a
-		}
-	}
-	return nil
-}
-
 // postgresSwitchover is the switchover of a WAL streaming topology. PostgreSQL cannot
 // demote a running primary, so the primary is restarted as a standby:
 //
@@ -205,7 +194,7 @@ func (cluster *Cluster) postgresSwitchover() bool {
 
 	// 2. stop the primary
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping primary %s", old.URL)
-	if err := cluster.postgresStopServer(old); err != nil {
+	if err := cluster.StopDatabaseService(old); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not stop primary %s: %s. Its next start is armed as a standby of %s", old.URL, err, candidate.URL)
 		return false
 	}
@@ -273,27 +262,13 @@ func (cluster *Cluster) postgresSwitchover() bool {
 	return true
 }
 
-// postgresStopServer and postgresStartServer stop and start a PostgreSQL server's service the
-// way the cluster's servers are stopped and started (orchestrator, or the ssh jobs on
-// premise, as for MariaDB); a server that is an app of the cluster on OpenSVC goes through
-// its app service. The start is retried while the orchestrator still runs the stop that
-// preceded (409, orchestration in progress).
-func (cluster *Cluster) postgresStopServer(server *ServerMonitor) error {
-	if app := cluster.postgresAppOfServer(server); app != nil && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
-		return cluster.OpenSVCStopAppService(app, "")
-	}
-	return cluster.StopDatabaseService(server)
-}
-
+// postgresStartServer starts a PostgreSQL server's service through the cluster's server
+// method, as any database server (orchestrator, or the ssh jobs on premise), retrying while
+// the orchestrator still runs the stop that preceded (409, orchestration in progress).
 func (cluster *Cluster) postgresStartServer(server *ServerMonitor) error {
 	deadline := time.Now().Add(3 * time.Minute)
 	for {
-		var err error
-		if app := cluster.postgresAppOfServer(server); app != nil && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
-			err = cluster.OpenSVCStartAppService(app, "")
-		} else {
-			err = cluster.StartDatabaseService(server)
-		}
+		err := cluster.StartDatabaseService(server)
 		if err == nil {
 			return nil
 		}
@@ -304,13 +279,6 @@ func (cluster *Cluster) postgresStartServer(server *ServerMonitor) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Orchestrator still busy with %s, start retried in 5 s", server.URL)
 		time.Sleep(5 * time.Second)
 	}
-}
-
-func (cluster *Cluster) postgresRestartServer(server *ServerMonitor) error {
-	if app := cluster.postgresAppOfServer(server); app != nil && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
-		return cluster.OpenSVCRestartAppService(app, "", "")
-	}
-	return cluster.RestartDatabaseService(server, "", "")
 }
 
 // postgresWaitWalReceiverGone waits until a standby no longer receives from its primary:
@@ -396,7 +364,7 @@ func (server *ServerMonitor) postgresRejoin() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rejoin of %s failed: %s", server.URL, err)
 		return err
 	}
-	if err := cluster.postgresRestartServer(server); err != nil {
+	if err := cluster.RestartDatabaseService(server, "", ""); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rejoin of %s: could not restart its service: %s", server.URL, err)
 		return err
 	}
