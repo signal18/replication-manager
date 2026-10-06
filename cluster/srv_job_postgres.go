@@ -271,3 +271,67 @@ func (server *ServerMonitor) checkPostgresJobsVersion() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Jobs script of %s refreshed, its sidecar restarts", server.URL)
 	return server.SetRestartContainerCookie()
 }
+
+// postgresReseedFromBackup restores a PostgreSQL server from the cluster's stored backup,
+// the way a MariaDB server is reseeded from one: the server's jobs sidecar is asked to
+// receive the backup (task pgrestore for the physical pg_basebackup tar, pgrestorelogical for
+// the pg_dumpall), it listens on the server's SST port and reports processing, and
+// WaitAndSendSST streams the file to it as it does to a dbjobs listener.
+//
+// Physical: the sidecar stores the tar on the data volume and arms the next start to
+// restore it (the data directory is replaced, the server comes back as a standby of the
+// current primary when it is not the primary itself); the service restarts when the sidecar
+// reports done. Logical: the dump is replayed on the running server (pg_dumpall --clean).
+func (server *ServerMonitor) postgresReseedFromBackup(task config.TaskName) error {
+	cluster := server.ClusterGroup
+	if !cluster.IsDiscovered() {
+		return errors.New("Cluster not discovered yet")
+	}
+	master := cluster.GetMaster()
+	if master == nil {
+		return errors.New("No master found. Cancel reseed")
+	}
+	master.backupMetaMutex.Lock()
+	meta := master.LastBackupMeta.Physical
+	if task == config.ConstTaskPgRestoreLogical {
+		meta = master.LastBackupMeta.Logical
+	}
+	master.backupMetaMutex.Unlock()
+	if meta == nil || !meta.Completed || meta.Dest == "" {
+		return fmt.Errorf("no completed %s backup of the primary to restore from", map[bool]string{true: "logical", false: "physical"}[task == config.ConstTaskPgRestoreLogical])
+	}
+	if _, err := os.Stat(meta.Dest); err != nil {
+		return fmt.Errorf("backup file %s: %w", meta.Dest, err)
+	}
+	if server.HasAnyReseedingState() {
+		return errors.New("a reseed is already in progress on " + server.URL)
+	}
+	if task == config.ConstTaskPgRestoreLogical && master.URL != server.URL && cluster.isPostgresLogical() {
+		// the dump would drop and recreate the subscribed tables under the subscription
+		return errors.New("a logical replication subscriber is reseeded from the primary (initial copy), not from the dump")
+	}
+	if task == config.ConstTaskPgRestoreLogical && master.URL != server.URL && !cluster.isPostgresLogical() {
+		return errors.New("a WAL streaming standby is read-only: the dump can only be replayed on the primary")
+	}
+	name := string(task)
+	// the primary the restored server follows: none when it is the primary itself
+	target := ""
+	if master.URL != server.URL {
+		target = master.Host + ":" + master.Port
+	}
+	server.streamTasks.Store(postgresNextStartTargetKey(name), target)
+	server.SetInReseedBackup(name)
+	if err := server.setTaskCookie(name); err != nil {
+		server.SetInReseedBackup("")
+		return fmt.Errorf("can not arm the %s task: %w", name, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restore of %s from %s (%s) requested from its jobs sidecar", server.URL, meta.Dest, meta.BackupTool)
+	go func() {
+		if err := server.WaitAndSendSST(name, meta.Dest, false, 0); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restore of %s: %s", server.URL, err)
+			server.delCookie(postgresJobCookie(name))
+			server.SetInReseedBackup("")
+		}
+	}()
+	return nil
+}

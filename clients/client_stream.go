@@ -18,6 +18,8 @@ import (
 )
 
 var (
+	cliStreamListen           string
+	cliStreamAcceptTimeout    int
 	cliStreamTo               string
 	cliStreamTLS              bool
 	cliStreamTLSSkipVerify    bool
@@ -34,6 +36,16 @@ var streamCmd = &cobra.Command{
 	Short: "Send stdin to a TCP receiver",
 	Long:  `Send the standard input to host:port, optionally through TLS and parallel gzip. Used by the database jobs to stream a backup to replication-manager without socat.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		if cliStreamListen != "" {
+			// the receiving side: one connection, its bytes to stdout
+			n, err := netstream.Receive(cliStreamListen, os.Stdout, time.Duration(cliStreamAcceptTimeout)*time.Second)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "stream: %v (%d bytes received)\n", err, n)
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stderr, "stream: %d bytes received on %s\n", n, cliStreamListen)
+			return
+		}
 		n, err := netstream.Send(os.Stdin, cliStreamTo, netstream.Options{
 			TLS:              cliStreamTLS,
 			TLSSkipVerify:    cliStreamTLSSkipVerify,
@@ -51,6 +63,8 @@ var streamCmd = &cobra.Command{
 
 func initStreamFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliStreamTo, "to", "", "Receiver address host:port")
+	cmd.Flags().StringVar(&cliStreamListen, "listen", "", "Receive instead: listen on host:port for one connection and write what it sends to stdout")
+	cmd.Flags().IntVar(&cliStreamAcceptTimeout, "accept-timeout", 600, "Seconds to wait for the sender when listening")
 	cmd.Flags().BoolVar(&cliStreamTLS, "tls", false, "Connect to the receiver through TLS")
 	cmd.Flags().BoolVar(&cliStreamTLSSkipVerify, "tls-skip-verify", false, "Accept the receiver certificate unchecked")
 	cmd.Flags().BoolVar(&cliStreamGzip, "gzip", false, "Compress the stream on the sender with parallel gzip")

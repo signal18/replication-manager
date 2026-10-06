@@ -10,6 +10,8 @@
 #   pgstandby      arm the next start as a standby of the primary replication-manager names
 #   pgreseed       arm the next start to copy the data again from that primary
 #   pgschemasync   create the published tables this subscriber misses (DDL is not replicated)
+#   pgrestore      receive the stored physical backup, arm the next start to restore it
+#   pgrestorelogical  receive the stored logical backup and replay it on this server
 #   pgbasebackup   pg_basebackup as a tar stream with the WAL it needs (physical backup,
 #                  online, it blocks neither reads nor writes)
 #   optimize       vacuumdb --all --analyze: reclaims dead rows and refreshes the planner
@@ -36,7 +38,9 @@ export PGCONNECT_TIMEOUT=5
 INTERVAL="${PG_JOB_INTERVAL:-10}"
 CLI="${REPMAN_CLIENT:-/jobs/replication-manager-cli}"
 ERR=/tmp/postgres_job.err
-TASKS="pgdump pgbasebackup optimize pgstandby pgreseed pgschemasync"
+TASKS="pgdump pgbasebackup optimize pgstandby pgreseed pgschemasync pgrestore pgrestorelogical"
+# where the received physical backup waits for the next start (kept by the restore wipe)
+RESTORE_DIR="${PGDATA:-/var/lib/postgresql/data}/replication-manager.restore"
 # what the next start of PostgreSQL must do, read by the start script (postgres_start.sh)
 NEXT_START="${PGDATA:-/var/lib/postgresql/data}/replication-manager.next_start"
 
@@ -106,6 +110,68 @@ run_task() {
             job state "$task" done || log "$task: cannot report done"
         else
             log "$task: cannot write $NEXT_START"
+            job state "$task" error || log "$task: cannot report error"
+        fi
+        return
+        ;;
+    pgrestore|pgrestorelogical)
+        # Restore from the backup replication-manager keeps, the way a MariaDB server is
+        # reseeded from one: this side listens on the server's SST port, reports waiting, and
+        # replication-manager streams the file (gzip or not, as stored).
+        #   pgrestore         the pg_basebackup tar goes to $RESTORE_DIR and the next start
+        #                     replaces the data directory with it (then follows TARGET as a
+        #                     standby when there is one); replication-manager restarts the service
+        #   pgrestorelogical  the pg_dumpall is replayed on this running server
+        local port target file pid rc_sql
+        port=$(printf '%s' "$addr" | sed -n 's/^LISTEN=\([0-9]*\).*/\1/p')
+        target=$(printf '%s' "$addr" | sed -n 's/.*TARGET=\(.*\)$/\1/p')
+        if [ -z "$port" ]; then
+            log "$task: no port to listen on in '$addr'"
+            job state "$task" error
+            return
+        fi
+        if [ "$task" = pgrestore ]; then
+            mkdir -p "$RESTORE_DIR" && file="$RESTORE_DIR/pgbasebackup.tar"
+        else
+            file="/tmp/pgrestorelogical.dump"
+        fi
+        rm -f "$file"
+        log "$task: listening on :$port"
+        "$CLI" stream --listen ":$port" --accept-timeout 900 > "$file" 2>"$ERR" &
+        pid=$!
+        sleep 1
+        job state "$task" waiting || log "$task: cannot report waiting"
+        if ! wait "$pid" || [ ! -s "$file" ]; then
+            log "$task: receive failed: $(tail -c 300 "$ERR")"
+            rm -f "$file"
+            job state "$task" error || log "$task: cannot report error"
+            return
+        fi
+        log "$task: received $(stat -c %s "$file") bytes"
+        if [ "$task" = pgrestore ]; then
+            if printf 'restore %s %s\n' "${target%:*}" "${target##*:}" > "$NEXT_START.tmp" && mv "$NEXT_START.tmp" "$NEXT_START"; then
+                log "$task: next start armed: restore${target:+, then standby of $target}"
+                job state "$task" done || log "$task: cannot report done"
+            else
+                log "$task: cannot write $NEXT_START"
+                job state "$task" error || log "$task: cannot report error"
+            fi
+            return
+        fi
+        # logical: a gzip stream or plain SQL; the dump drops and recreates what it holds, the
+        # roles and databases in use cannot be dropped (errors expected, the run goes on)
+        if [ "$(head -c 2 "$file" | od -An -tx1 | tr -d ' ')" = "1f8b" ]; then
+            { echo "SET default_transaction_read_only = off;"; gunzip -c "$file"; } | psql -X -v ON_ERROR_STOP=0 -q -d postgres >"$ERR" 2>&1
+        else
+            { echo "SET default_transaction_read_only = off;"; cat "$file"; } | psql -X -v ON_ERROR_STOP=0 -q -d postgres >"$ERR" 2>&1
+        fi
+        rc_sql=$?
+        rm -f "$file"
+        if [ "$rc_sql" -eq 0 ]; then
+            log "$task: replayed ($(grep -c '^ERROR' "$ERR" 2>/dev/null || echo 0) statements refused, see $ERR)"
+            job state "$task" done || log "$task: cannot report done"
+        else
+            log "$task: psql failed: $(tail -c 300 "$ERR")"
             job state "$task" error || log "$task: cannot report error"
         fi
         return

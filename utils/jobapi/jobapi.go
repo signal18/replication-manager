@@ -121,6 +121,10 @@ func (c *Client) Receiver(task string) (string, error) {
 		// not a receiver: the address the task works against (the primary to follow)
 		return target, nil
 	}
+	if strings.HasPrefix(body, "LISTEN=") {
+		// "LISTEN=<port> TARGET=<host:port>": the task receives, the script parses
+		return body, nil
+	}
 	port := strings.TrimPrefix(body, "RECEIVER_PORT=")
 	if port == body || port == "" {
 		return "", fmt.Errorf("receiver for %s: unexpected answer %q", task, body)

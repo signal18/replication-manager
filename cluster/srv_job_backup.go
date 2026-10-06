@@ -576,6 +576,9 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	cluster := server.ClusterGroup
+	if server.IsPostgreSQLHost() {
+		return server.postgresReseedFromBackup(config.ConstTaskPgRestore)
+	}
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupPhysicalType
 	}
@@ -1170,6 +1173,9 @@ func snapshotLogicalBackupMeta(server *ServerMonitor) *backupmgr.BackupMetadata 
 }
 
 func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtype string) error {
+	if server.IsPostgreSQLHost() {
+		return server.postgresReseedFromBackup(config.ConstTaskPgRestoreLogical)
+	}
 	_, err := server.JobReseedLogicalBackupPrepare(ctx, backtype)
 	return err
 }

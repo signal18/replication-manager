@@ -70,7 +70,8 @@ arm_standby() {
 }
 
 # 2b. role change armed by the jobs sidecar on request of replication-manager
-#     (switchover, rejoin of a former primary): "<standby|reseed> <host> <port>"
+#     (switchover, rejoin of a former primary, restore of a stored backup):
+#     "<standby|reseed|restore> <host> <port>"
 NEXT_START="$PGDATA/replication-manager.next_start"
 if [ -s "$NEXT_START" ]; then
     read -r next_mode next_host next_port < "$NEXT_START" || true
@@ -101,6 +102,36 @@ if [ -s "$NEXT_START" ]; then
     standby)
         log "armed: start as a standby of $next_host:$next_port, data kept"
         arm_standby "$next_host" "$next_port"
+        ;;
+    restore)
+        # The stored physical backup received by the jobs sidecar (replication-manager.restore/
+        # pgbasebackup.tar, gzip or not) replaces the data directory. With a primary given the
+        # server comes back as its standby and streams what happened since the backup (the
+        # primary must still have that WAL); without, it comes back as the primary.
+        restore_dir="$PGDATA/replication-manager.restore"
+        tarball="$restore_dir/pgbasebackup.tar"
+        if [ ! -s "$tarball" ]; then
+            log "armed restore ignored: no backup at $tarball"
+        else
+            log "armed: restore of the stored backup ($(stat -c %s "$tarball") bytes), the data directory is replaced"
+            find "${PGDATA:?}" -mindepth 1 -maxdepth 1 ! -name replication-manager.restore -exec rm -rf {} +
+            if [ "$(head -c 2 "$tarball" | od -An -tx1 | tr -d ' ')" = "1f8b" ]; then
+                tar -xzf "$tarball" -C "$PGDATA"
+            else
+                tar -xf "$tarball" -C "$PGDATA"
+            fi
+            rm -rf "$restore_dir"
+            rm -f "$PGDATA/standby.signal" "$PGDATA/recovery.signal" "$PGDATA/postmaster.pid"
+            mkdir -p "$PGDATA/pg_wal"
+            chown -R postgres:postgres "$PGDATA"
+            chmod 700 "$PGDATA"
+            if [ -n "${next_host:-}" ]; then
+                log "restored, starting as a standby of $next_host:$next_port"
+                arm_standby "$next_host" "$next_port"
+            else
+                log "restored, starting as the primary"
+            fi
+        fi
         ;;
     *)
         log "armed start ignored, unknown mode: ${next_mode:-}"

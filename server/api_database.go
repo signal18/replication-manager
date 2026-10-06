@@ -5389,6 +5389,13 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		w.WriteHeader(200)
 		w.Write([]byte("TARGET=" + target))
 		return
+	case config.ConstTaskPgRestore, config.ConstTaskPgRestoreLogical:
+		// the stored backup goes the other way: the sidecar listens on the server's SST
+		// port (WaitAndSendSST streams the file to it as to a dbjobs listener) and learns
+		// the primary the restored server follows, none when it is the primary itself
+		w.WriteHeader(200)
+		w.Write([]byte("LISTEN=" + node.SSTPort + " TARGET=" + node.PostgresNextStartTarget(taskname)))
+		return
 	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 		dest = node.GetMyBackupDirectory() + taskname
 		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
@@ -5468,6 +5475,19 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 	case "done":
 		result := "completed"
 		state := cluster.JobStateSuccess
+		if taskname == string(config.ConstTaskPgRestore) {
+			// the stored physical backup is on the data volume and the next start armed to
+			// restore it: the service restarts, the start script does the rest
+			node.SetInReseedBackup("")
+			go func(n *cluster.ServerMonitor) {
+				if err := mycluster.RestartDatabaseService(n, "", ""); err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restore of %s received, its service could not be restarted: %s", n.URL, err)
+				}
+			}(node)
+		}
+		if taskname == string(config.ConstTaskPgRestoreLogical) {
+			node.SetInReseedBackup("")
+		}
 		if physicalRestoreJobTasks[taskname] {
 			// RecoverPhysicalRestore is the same vendor/topology-aware
 			// GTID-apply and channel-restart owner SQL mode's

@@ -86,3 +86,27 @@ func Send(in io.Reader, addr string, opts Options) (int64, error) {
 	}
 	return n, nil
 }
+
+// Receive listens on addr, accepts ONE connection and copies what it sends to out until the
+// sender closes: the receiving side of Send, for a jobs script that has no socat (the
+// stored backup streamed by replication-manager to a PostgreSQL sidecar). The listener
+// waits at most accept for the connection.
+func Receive(addr string, out io.Writer, accept time.Duration) (int64, error) {
+	if accept <= 0 {
+		accept = 10 * time.Minute
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer ln.Close()
+	if tl, ok := ln.(*net.TCPListener); ok {
+		tl.SetDeadline(time.Now().Add(accept))
+	}
+	conn, err := ln.Accept()
+	if err != nil {
+		return 0, err
+	}
+	defer conn.Close()
+	return io.Copy(out, conn)
+}
