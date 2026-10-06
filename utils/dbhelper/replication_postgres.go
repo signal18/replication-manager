@@ -8,6 +8,7 @@ package dbhelper
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"regexp"
@@ -271,3 +272,102 @@ func PostgresDropReplicationSlot(db *sqlx.DB, slot string) (string, error) {
 	return query, PostgresExecReadWrite(db, query)
 }
 
+// DDL replication for logical replication, trigger based, no extension (PostgreSQL
+// replicates rows, never DDL): an event trigger logs every DDL statement of the publisher
+// into replication_manager_schema.ddl_log, a published table like any other, so the
+// statement travels to the subscribers as a row; there a trigger that fires on replicated
+// rows too (ENABLE ALWAYS) executes it with the publisher's search_path.
+//
+// Guards: a statement executed by the apply trigger is not logged again
+// (replication_manager.applying_ddl); logical replication objects, event triggers, the log
+// table itself and TEMP objects are never replicated; a statement that fails on the
+// subscriber is a WARNING in its log, never a stopped apply. A table a statement creates
+// joins the subscription at the next refresh (the monitor runs it, PostgresRefreshSubscription).
+const postgresDDLReplicationInstall = `
+CREATE SCHEMA IF NOT EXISTS replication_manager_schema;
+CREATE TABLE IF NOT EXISTS replication_manager_schema.ddl_log (
+    id          bigserial PRIMARY KEY,
+    issued_at   timestamptz NOT NULL DEFAULT now(),
+    issued_by   text NOT NULL,
+    tag         text NOT NULL,
+    search_path text NOT NULL,
+    command     text NOT NULL
+);
+CREATE OR REPLACE FUNCTION replication_manager_schema.log_ddl() RETURNS event_trigger
+LANGUAGE plpgsql SECURITY DEFINER AS $f$
+DECLARE q text;
+BEGIN
+    IF current_setting('replication_manager.applying_ddl', true) = 'on' THEN RETURN; END IF;
+    IF tg_tag IN ('CREATE SUBSCRIPTION', 'ALTER SUBSCRIPTION', 'DROP SUBSCRIPTION', 'CREATE PUBLICATION', 'ALTER PUBLICATION', 'DROP PUBLICATION', 'CREATE EVENT TRIGGER', 'ALTER EVENT TRIGGER', 'DROP EVENT TRIGGER') THEN RETURN; END IF;
+    q := current_query();
+    IF q IS NULL OR q ~* 'replication_manager_schema\.ddl_log' OR q ~* '^\s*(create|alter|drop)\s+(temp|temporary)\s' THEN RETURN; END IF;
+    INSERT INTO replication_manager_schema.ddl_log (issued_by, tag, search_path, command)
+    VALUES (session_user, tg_tag, current_setting('search_path'), q);
+END $f$;
+DROP EVENT TRIGGER IF EXISTS replication_manager_log_ddl;
+CREATE EVENT TRIGGER replication_manager_log_ddl ON ddl_command_end EXECUTE FUNCTION replication_manager_schema.log_ddl();
+DROP EVENT TRIGGER IF EXISTS replication_manager_log_ddl_drop;
+CREATE EVENT TRIGGER replication_manager_log_ddl_drop ON sql_drop EXECUTE FUNCTION replication_manager_schema.log_ddl();
+CREATE OR REPLACE FUNCTION replication_manager_schema.apply_ddl() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER AS $f$
+BEGIN
+    IF current_setting('session_replication_role') <> 'replica' THEN RETURN NEW; END IF;
+    PERFORM set_config('replication_manager.applying_ddl', 'on', true);
+    PERFORM set_config('search_path', NEW.search_path, true);
+    BEGIN
+        EXECUTE NEW.command;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE WARNING 'replication-manager: replicated DDL #% failed: % -- %', NEW.id, SQLERRM, left(NEW.command, 200);
+    END;
+    PERFORM set_config('replication_manager.applying_ddl', 'off', true);
+    RETURN NEW;
+END $f$;
+DROP TRIGGER IF EXISTS replication_manager_apply_ddl ON replication_manager_schema.ddl_log;
+CREATE TRIGGER replication_manager_apply_ddl AFTER INSERT ON replication_manager_schema.ddl_log
+    FOR EACH ROW EXECUTE FUNCTION replication_manager_schema.apply_ddl();
+ALTER TABLE replication_manager_schema.ddl_log ENABLE ALWAYS TRIGGER replication_manager_apply_ddl;
+`
+
+// PostgresInstallDDLReplication installs the DDL replication objects on a server, idempotent;
+// on every server of a logical replication cluster, whatever its role (a switchover changes
+// nothing).
+func PostgresInstallDDLReplication(db *sqlx.DB) (string, error) {
+	return "DDL replication objects (replication_manager_schema.ddl_log, event trigger, apply trigger)", PostgresExecReadWrite(db, postgresDDLReplicationInstall)
+}
+
+// PostgresDropDDLReplication removes the publisher-side logging (the off-switch); the log
+// table and the apply trigger stay, harmless without new rows.
+func PostgresDropDDLReplication(db *sqlx.DB) (string, error) {
+	stmt := "DROP EVENT TRIGGER IF EXISTS replication_manager_log_ddl; DROP EVENT TRIGGER IF EXISTS replication_manager_log_ddl_drop"
+	return stmt, PostgresExecReadWrite(db, "DROP EVENT TRIGGER IF EXISTS replication_manager_log_ddl", "DROP EVENT TRIGGER IF EXISTS replication_manager_log_ddl_drop")
+}
+
+// PostgresDDLLogMaxID is the id of the last DDL logged (replicated) on a server, 0 when none
+// or when the log does not exist: an index lookup the monitor can afford every tick.
+func PostgresDDLLogMaxID(db *sqlx.DB) (int64, string, error) {
+	query := "SELECT COALESCE((SELECT max(id) FROM replication_manager_schema.ddl_log), 0) WHERE to_regclass('replication_manager_schema.ddl_log') IS NOT NULL"
+	var id int64
+	err := db.Get(&id, query)
+	if err == sql.ErrNoRows {
+		return 0, query, nil
+	}
+	return id, query, err
+}
+
+// PostgresSubscriptionNeedsRefresh tells, from the PUBLISHER's table count and the
+// subscriber's subscribed count, whether a REFRESH PUBLICATION would add tables.
+func PostgresSubscriptionNeedsRefresh(publisher, subscriber *sqlx.DB, publication string) (bool, string, error) {
+	if publication == "" {
+		publication = "alltables"
+	}
+	var published, subscribed int
+	q1 := "SELECT count(*) FROM pg_catalog.pg_publication_tables WHERE pubname = $1"
+	if err := publisher.Get(&published, q1, publication); err != nil {
+		return false, q1, err
+	}
+	q2 := "SELECT count(*) FROM pg_catalog.pg_subscription_rel"
+	if err := subscriber.Get(&subscribed, q2); err != nil {
+		return false, q2, err
+	}
+	return published != subscribed, q1 + "; " + q2, nil
+}

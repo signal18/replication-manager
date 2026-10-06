@@ -195,6 +195,10 @@ while [ ! -x "$CLI" ]; do
     log "waiting for $CLI"
     sleep "$INTERVAL"
 done
+until psql -X -At -c "SELECT 1" >/dev/null 2>&1; do
+    log "waiting for PostgreSQL"
+    sleep "$INTERVAL"
+done
 while true; do
     for task in $TASKS; do
         job needs "$task" 2>"$ERR"

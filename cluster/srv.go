@@ -248,6 +248,7 @@ type ServerMonitor struct {
 	JobResults                      *config.TasksMap `json:"jobResults"`
 	streamTasks                     sync.Map         // task -> chan struct{} closed when the stream of a sidecar task ends (srv_job_postgres.go)
 	pgJobsScriptSum                 string           // sha256 of the jobs script delivered to the PostgreSQL sidecar (srv_job_postgres.go)
+	pgDDLLogSeen                    int64            // last id of the replicated DDL log seen on this subscriber (cluster_fail_postgres_logical.go)
 	IsInSlowQueryCapture            bool
 	IsInPFSQueryCapture             bool
 	PFSLastSnapshot                 time.Time                   // timestamp of last periodic PFS digest snapshot flush
@@ -1517,6 +1518,8 @@ func (server *ServerMonitor) Refresh() error {
 		// topology discovery, as the binlog dump threads do on MariaDB/MySQL
 		server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get WAL senders %s %s", server.URL, err)
+		// a logical subscriber that received a replicated DDL may have a new table to subscribe
+		server.postgresRefreshSubscriptionOnDDL()
 	}
 
 	// Set channel source name is dangerous with multi cluster

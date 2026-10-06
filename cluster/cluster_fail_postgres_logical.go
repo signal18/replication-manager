@@ -62,6 +62,7 @@ func (cluster *Cluster) electPostgresLogicalCandidate() (*ServerMonitor, string)
 // postgresLogicalPromote turns a subscriber into the publisher: publication first, then the
 // subscription goes, then writes are allowed.
 func (cluster *Cluster) postgresLogicalPromote(candidate *ServerMonitor, subscription string, publisherAlive bool) error {
+	cluster.postgresInstallDDLReplication(candidate)
 	logs, err := dbhelper.PostgresEnsurePublication(candidate.Conn, cluster.Conf.MasterConn)
 	cluster.LogSQL(logs, err, candidate.URL, "MasterFailover", config.LvlErr, "Could not create the publication on %s: %s", candidate.URL, err)
 	if err != nil {
@@ -78,6 +79,9 @@ func (cluster *Cluster) postgresLogicalPromote(candidate *ServerMonitor, subscri
 // postgresLogicalSubscribe makes a server follow the new primary: a subscription without
 // data copy (it has the data up to the switch), and the read-only default as a replica.
 func (cluster *Cluster) postgresLogicalSubscribe(server *ServerMonitor, primary *ServerMonitor) error {
+	// the DDL replication objects before the subscription: the log table must exist here
+	// for its rows to be applied, and the apply trigger with it
+	cluster.postgresInstallDDLReplication(server)
 	if err := server.ChangeMasterTo(primary, "SLAVE_POS"); err != nil {
 		return err
 	}
@@ -319,4 +323,48 @@ func (cluster *Cluster) postgresSchemaSyncOnDiff(sl *ServerMonitor) {
 	if err := sl.setTaskCookie(string(config.ConstTaskPgSchemaSync)); err == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Schema sync requested from the jobs sidecar of %s: the subscriber differs from the publication", sl.URL)
 	}
+}
+
+// postgresInstallDDLReplication installs (or, with replication-pg-logical-ddl off, disables)
+// the trigger-based DDL replication on a server of a logical replication cluster: idempotent,
+// run at bootstrap, when a server subscribes and when one is promoted.
+func (cluster *Cluster) postgresInstallDDLReplication(server *ServerMonitor) {
+	if server == nil || server.Conn == nil {
+		return
+	}
+	if !cluster.Conf.PgLogicalDDLReplication {
+		logs, err := dbhelper.PostgresDropDDLReplication(server.Conn)
+		cluster.LogSQL(logs, err, server.URL, "Bootstrap", config.LvlWarn, "Could not disable the DDL replication on %s: %s", server.URL, err)
+		return
+	}
+	logs, err := dbhelper.PostgresInstallDDLReplication(server.Conn)
+	cluster.LogSQL(logs, err, server.URL, "Bootstrap", config.LvlErr, "Could not install the DDL replication on %s: %s", server.URL, err)
+}
+
+// postgresRefreshSubscriptionOnDDL runs every tick on a logical subscriber: when a replicated
+// DDL arrived (the DDL log grew, an index lookup) and the publication has tables the
+// subscription has not, the subscription is refreshed once for the whole batch, so a table
+// a replicated DDL created joins the subscription with its rows copied (REFRESH cannot run
+// in the apply transaction that executed the DDL).
+func (server *ServerMonitor) postgresRefreshSubscriptionOnDDL() {
+	cluster := server.ClusterGroup
+	if !cluster.isPostgresLogical() || !server.IsSlave || server.Conn == nil {
+		return
+	}
+	id, _, err := dbhelper.PostgresDDLLogMaxID(server.Conn)
+	if err != nil || id == server.pgDDLLogSeen {
+		return
+	}
+	server.pgDDLLogSeen = id
+	master := cluster.GetMaster()
+	if master == nil || master.Conn == nil {
+		return
+	}
+	name := cluster.postgresSubscriptionNameFor()
+	needed, _, err := dbhelper.PostgresSubscriptionNeedsRefresh(master.Conn, server.Conn, name)
+	if err != nil || !needed {
+		return
+	}
+	logs, err := dbhelper.PostgresRefreshSubscription(server.Conn, name)
+	cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlInfo, "Subscription of %s refreshed after a replicated DDL: %s", server.URL, err)
 }

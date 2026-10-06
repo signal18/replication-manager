@@ -967,7 +967,9 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 			}
 			if key == masterKey {
 				if server.IsPostgreSQLHost() {
-					// logical replication: the subscribers follow a publication of all tables
+					// logical replication: the subscribers follow a publication of all tables;
+					// the DDL replication objects first, so the DDL log is published too
+					cluster.postgresInstallDDLReplication(server)
 					logs, err := dbhelper.PostgresEnsurePublication(server.Conn, cluster.Conf.MasterConn)
 					cluster.LogSQL(logs, err, server.URL, "Bootstrap", config.LvlErr, "Could not create the publication on %s: %s", server.URL, err)
 					continue

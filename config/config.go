@@ -270,6 +270,7 @@ type Config struct {
 	MultiTierSlave                           bool                         `mapstructure:"replication-multi-tier-slave" toml:"replication-multi-tier-slave" json:"replicationMultiTierSlave"`
 	MasterSlavePgStream                      bool                         `mapstructure:"replication-master-slave-pg-stream" toml:"replication-master-slave-pg-stream" json:"replicationMasterSlavePgStream"`
 	MasterSlavePgLogical                     bool                         `mapstructure:"replication-master-slave-pg-logical" toml:"replication-master-slave-pg-logical" json:"replicationMasterSlavePgLogical"`
+	PgLogicalDDLReplication                  bool                         `mapstructure:"replication-pg-logical-ddl" toml:"replication-pg-logical-ddl" json:"replicationPgLogicalDdl"`
 	ReplicationNoRelay                       bool                         `mapstructure:"replication-master-slave-never-relay" toml:"replication-master-slave-never-relay" json:"replicationMasterSlaveNeverRelay"`
 	ReplicationRestartOnSQLErrorMatch        string                       `mapstructure:"replication-restart-on-sqlerror-match" toml:"replication-restart-on-sqlerror-match" json:"eeplicationRestartOnSqlLErrorMatch"`
 	SwitchWaitKill                           int64                        `mapstructure:"switchover-wait-kill" toml:"switchover-wait-kill" json:"switchoverWaitKill"`
