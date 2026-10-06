@@ -301,15 +301,18 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
 		if len(cluster.GetDatabaseAgentNames(server)) > 1 {
-			// a service placed on several agents (an engine app in failover topology) is
-			// frozen first, as the rolling restart does: a bare instance stop is undone by
-			// om3, which re-places the service on another node (pg1 of pg-logical moved
-			// from s18-fr-4 to s18-fr-5 instead of stopping, 2026-10-06). The start
-			// unfreezes it (OpenSVCStartDatabaseService).
-			if err := cluster.FreezeDatabaseService(server); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not freeze %s before its stop: %s", server.URL, err)
+			// a service placed on several agents (its prov-db-agents) is stopped by the
+			// orchestration, which holds it down on every node, frozen or not (verified on
+			// om3, 2026-10-06): an instance stop is undone by om3, which re-places the
+			// service on another node (pg1 of pg-logical moved from s18-fr-4 to s18-fr-5,
+			// then back, instead of stopping)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"OpenSVC V3 orchestrated stop for %s (placed on several nodes)", server.URL)
+			if err := svc.StopServiceV3(cluster.Name, server.ServiceName); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database: %s", err)
 				return err
 			}
+			return nil
 		}
 		// the instance to stop is where the service RUNS: not necessarily the agent the
 		// round robin assigned (pg2 of pg-stream: the stop went to an idle node and
@@ -377,11 +380,6 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 				for {
 					err := svc.StartServiceV3(cluster.Name, server.ServiceName)
 					if err == nil {
-						// the stop froze the instance so that om3 would not re-place the
-						// service (OpenSVCStopDatabaseService): give it back once started
-						if uerr := cluster.UnfreezeDatabaseService(server); uerr != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Could not unfreeze %s after its start: %s", server.URL, uerr)
-						}
 						return nil
 					}
 					if !(strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "in progress")) || time.Now().After(deadline) {
