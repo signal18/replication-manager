@@ -7,8 +7,8 @@ import (
 )
 
 // TestOpenSVCCPUQuotaKeyword pins the om3 pg_cpu_quota syntax that means "N cores" on
-// any node: pct = cores × 100 with the "@all" suffix (om3 divides by maxCpus, which
-// "@all" cancels). A bare "300%" would be 3/maxCpus of one core -- the dev3 surprise.
+// any node: pct = cores × 100 of one core, no "@" multiplier (om3 rc43 measured: "200%" =
+// 2 cores, "@all" multiplies by the node's thread count and capped nothing on 32 cores).
 func TestOpenSVCCPUQuotaKeyword(t *testing.T) {
 	cases := []struct {
 		cores float64
@@ -16,11 +16,11 @@ func TestOpenSVCCPUQuotaKeyword(t *testing.T) {
 	}{
 		{0, ""},
 		{-1, ""},
-		{1, "100%@all"},
-		{3, "300%@all"},
-		{0.5, "50%@all"},
-		{2.25, "225%@all"},
-		{24, "2400%@all"},
+		{1, "100%"},
+		{3, "300%"},
+		{0.5, "50%"},
+		{2.25, "225%"},
+		{24, "2400%"},
 	}
 	for _, c := range cases {
 		if got := OpenSVCCPUQuotaKeyword(c.cores); got != c.want {
