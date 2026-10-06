@@ -362,12 +362,20 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 				// instance start on one node would fight its placement
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 					"OpenSVC V3 orchestrated start for %s (failover placement)", server.URL)
-				if err := svc.StartServiceV3(cluster.Name, server.ServiceName); err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-						"OpenSVC V3 start failed for %s: %s", server.URL, err)
-					return err
+				// retried while the orchestrator still runs the stop that preceded (409)
+				deadline := time.Now().Add(3 * time.Minute)
+				for {
+					err := svc.StartServiceV3(cluster.Name, server.ServiceName)
+					if err == nil {
+						return nil
+					}
+					if !(strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "in progress")) || time.Now().After(deadline) {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+							"OpenSVC V3 start failed for %s: %s", server.URL, err)
+						return err
+					}
+					time.Sleep(5 * time.Second)
 				}
-				return nil
 			}
 			agent := server.placementNode()
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
