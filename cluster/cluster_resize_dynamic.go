@@ -12,6 +12,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -1666,7 +1667,7 @@ func (cluster *Cluster) recordDynamicGrow(axis string, qps float64) {
 // written as pg_mem_limit/pg_cpu_quota) and rolling-restart to recreate the container
 // resize-ready. The state is config-derived (stable, no flap) and clears when the
 // deployment is reconciled. The v3 template now writes the PG-slice cap on both axes
-// (pg_mem_limit + pg_cpu_quota in the om3 "<cores*100>%@all" syntax, see
+// (pg_mem_limit + pg_cpu_quota in the om3 "<cores*100>%" syntax, see
 // OpenSVCCPUQuotaKeyword) when the docker cap is off, so a rolling restart lands a
 // resize-ready container. It is still NOT auto-triggered: that is an operator decision
 // (two switchovers per cluster), and the restart must be issued only after the pushed
@@ -1715,11 +1716,28 @@ func (server *ServerMonitor) ApplyOpenSVCPGCapIfPending() {
 		return
 	}
 	if !server.hasCookie(cookiePGCapPending) {
-		if cluster.StateMachine.GetHeartbeats()%30 == 0 {
-			server.reconcileOpenSVCPGCap()
+		if cluster.StateMachine.GetHeartbeats()%30 == 0 && atomic.CompareAndSwapInt32(&server.pgCapInFlight, 0, 1) {
+			go func() {
+				defer atomic.StoreInt32(&server.pgCapInFlight, 0)
+				server.reconcileOpenSVCPGCap()
+			}()
 		}
 		return
 	}
+	// Off the monitor tick: the om3 calls are bounded by the client's context timeout but a
+	// slow daemon must not stall this server's refresh (PR #1899 review); one run at a time.
+	if !atomic.CompareAndSwapInt32(&server.pgCapInFlight, 0, 1) {
+		return
+	}
+	go func() {
+		defer atomic.StoreInt32(&server.pgCapInFlight, 0)
+		server.applyOpenSVCPGCap()
+	}()
+}
+
+// applyOpenSVCPGCap is the pg update of a pending cap, run off the tick.
+func (server *ServerMonitor) applyOpenSVCPGCap() {
+	cluster := server.ClusterGroup
 	svc := cluster.OpenSVCConnect()
 	if !svc.IsV3() {
 		server.delCookie(cookiePGCapPending)

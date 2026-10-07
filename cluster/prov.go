@@ -753,6 +753,9 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	cluster.StartDatabaseScript(server)
 	if err == nil {
 		server.DelRestartCookie()
+		// om3 applies the PG slice keywords only on an instance pg update: a started
+		// server is re-capped once it is up, like a provisioned one (PR #1899 review)
+		server.ArmOpenSVCPGCap()
 	}
 	server.SetConfigRefreshCookie()
 	return err
@@ -769,6 +772,7 @@ func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node strin
 			server.DelRestartContainerCookie()
 			server.RestartNode = ""
 			server.RestartRid = ""
+			server.ArmOpenSVCPGCap() // the restarted container is re-capped once up
 		}
 		return err
 	}

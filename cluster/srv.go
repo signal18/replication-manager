@@ -235,6 +235,7 @@ type ServerMonitor struct {
 	// ref x (cap-shrink-pct/100); dead-band between = status quo. Config ref = THIS server's
 	// resources (raise/shrink this server); plan ref = the cap. The cluster composes cap-up/down
 	// from the *Plan* axes across servers (see Cluster.CheckResourceCapPlan).
+	pgCapInFlight                   int32            // ApplyOpenSVCPGCapIfPending: one om3 call at a time, off the tick
 	Wait                            *WaitReading     `json:"wait,omitempty"`                  // cgroup waits of the last sensor window (srv_wait.go)
 	ResourceConsumedOverConfigAxes  []string         `json:"resourceConsumedOverConfigAxes"`  // saturates its config -> raise this server's resources
 	ResourceConsumedUnderConfigAxes []string         `json:"resourceConsumedUnderConfigAxes"` // under-uses its config -> shrink this server's resources

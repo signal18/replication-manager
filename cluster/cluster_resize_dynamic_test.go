@@ -252,3 +252,23 @@ func TestProvProxyDiskSizeForOpenSVC(t *testing.T) {
 		}
 	}
 }
+
+// ArmOpenSVCPGCap arms the cookie only where the cap lives on the om3 PG slice: OpenSVC
+// without the collector API and without the docker run-arg limit (PR #1899 review).
+func TestArmOpenSVCPGCap(t *testing.T) {
+	mk := func(orch string, dockerLimit bool) *ServerMonitor {
+		cl := &Cluster{Name: "t", Conf: &config.Config{ProvOrchestrator: orch, ProvDBDockerRunArgsLimit: dockerLimit}}
+		return &ServerMonitor{URL: "db:3306", ClusterGroup: cl, Datadir: t.TempDir()}
+	}
+	s := mk(config.ConstOrchestratorOpenSVC, false)
+	s.ArmOpenSVCPGCap()
+	if !s.hasCookie(cookiePGCapPending) {
+		t.Fatalf("om3 with the cap on the slice: the cookie must be armed")
+	}
+	for _, s := range []*ServerMonitor{mk(config.ConstOrchestratorOpenSVC, true), mk(config.ConstOrchestratorKubernetes, false)} {
+		s.ArmOpenSVCPGCap()
+		if s.hasCookie(cookiePGCapPending) {
+			t.Fatalf("docker run-arg limit or another orchestrator: never armed")
+		}
+	}
+}
