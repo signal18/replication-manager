@@ -49,31 +49,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Event definition reads must always be bounded. These defaults apply when a
-// legacy or hand-written TOML value is zero or negative.
-const (
-	DefaultMonitorEventStatusMaxDefinitions     = 100
-	DefaultMonitorEventStatusMaxDefinitionBytes = 1 << 20
-)
-
-// EffectiveMonitorEventStatusMaxDefinitions returns a non-zero per-request
-// page bound for the on-demand Events API.
-func EffectiveMonitorEventStatusMaxDefinitions(value int) int {
-	if value > 0 {
-		return value
-	}
-	return DefaultMonitorEventStatusMaxDefinitions
-}
-
-// EffectiveMonitorEventStatusMaxDefinitionBytes returns a non-zero bound for
-// one on-demand event definition body.
-func EffectiveMonitorEventStatusMaxDefinitionBytes(value int) int {
-	if value > 0 {
-		return value
-	}
-	return DefaultMonitorEventStatusMaxDefinitionBytes
-}
-
 type Config struct {
 	Version                                  string                       `mapstructure:"-" toml:"-" json:"version"`
 	FullVersion                              string                       `mapstructure:"-" toml:"-" json:"fullVersion"`
@@ -122,6 +97,9 @@ type Config struct {
 	MonitorSchemaChange                      bool                         `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
 	MonitorSchemaColumns                     bool                         `mapstructure:"monitoring-schema-columns" toml:"monitoring-schema-columns" json:"monitoringSchemaColumns"`
 	MonitorSchemaIndexes                     bool                         `mapstructure:"monitoring-schema-indexes" toml:"monitoring-schema-indexes" json:"monitoringSchemaIndexes"`
+	MonitorSchemaEvents                      bool                         `mapstructure:"monitoring-schema-events" toml:"monitoring-schema-events" json:"monitoringSchemaEvents"`
+	MonitorSchemaEventsPageSize              int                          `mapstructure:"monitoring-schema-events-page-size" toml:"monitoring-schema-events-page-size" json:"monitoringSchemaEventsPageSize"`
+	MonitorSchemaEventsMax                   int                          `mapstructure:"monitoring-schema-events-max" toml:"monitoring-schema-events-max" json:"monitoringSchemaEventsMax"`
 	MonitorSchemaOnReplicas                  bool                         `mapstructure:"monitoring-schema-on-replicas" toml:"monitoring-schema-on-replicas" json:"monitoringSchemaOnReplicas"`
 	MonitorSchemaIgnoreTables                string                       `mapstructure:"monitoring-schema-ignore-tables" toml:"monitoring-schema-ignore-tables" json:"monitoringSchemaIgnoreTables"`
 	MonitorSchemaScheduler                   bool                         `mapstructure:"monitoring-schema-scheduler" toml:"monitoring-schema-scheduler" json:"monitoringSchemaScheduler"`
@@ -155,9 +133,6 @@ type Config struct {
 	MonitorPFSQueriesExplainDelay            int                          `mapstructure:"monitoring-performance-schema-queries-explain-delay" toml:"monitoring-performance-schema-queries-explain-delay" json:"monitoringPerformanceSchemaQueriesExplainDelay"`
 	MonitorPFSQueriesExplainPurgePeriod      int                          `mapstructure:"monitoring-performance-schema-queries-explain-purge-period" toml:"monitoring-performance-schema-queries-explain-purge-period" json:"monitoringPerformanceSchemaQueriesExplainPurgePeriod"`
 	MonitorPlugins                           bool                         `mapstructure:"monitoring-plugins" toml:"monitoring-plugins" json:"monitoringPlugins"`
-	MonitorEventStatus                       bool                         `mapstructure:"monitoring-event-status" toml:"monitoring-event-status" json:"monitoringEventStatus"`
-	MonitorEventStatusMaxDefinitions         int                          `mapstructure:"monitoring-event-status-max-definitions" toml:"monitoring-event-status-max-definitions" json:"monitoringEventStatusMaxDefinitions"`
-	MonitorEventStatusMaxDefinitionBytes     int                          `mapstructure:"monitoring-event-status-max-definition-bytes" toml:"monitoring-event-status-max-definition-bytes" json:"monitoringEventStatusMaxDefinitionBytes"`
 	MonitorInnoDBStatus                      bool                         `mapstructure:"monitoring-innodb-status" toml:"monitoring-innodb-status" json:"monitoringInnoDBStatus"`
 	MonitorLongQueryWithProcess              bool                         `mapstructure:"monitoring-long-query-with-process" toml:"monitoring-long-query-with-process" json:"monitoringLongQueryWithProcess"`
 	MonitorLongQueryTime                     int                          `mapstructure:"monitoring-long-query-time" toml:"monitoring-long-query-time" json:"monitoringLongQueryTime"`

@@ -3245,6 +3245,7 @@ func (cluster *Cluster) MonitorTableSchemaDiff() {
 		}
 
 		diffs, _ := cluster.CompareSchemaBetweenMasterAndSlave(sl)
+		diffs = append(diffs, cluster.eventSchemaDiffLines(sl)...)
 		if len(diffs) > 0 {
 			cluster.postgresSchemaSyncOnDiff(sl) // logical replication: the subscriber gets the DDL
 			cluster.SchemaStateMachine.AddState("WARN0164", state.State{ErrType: "WARNING", ErrKey: "WARN0164", ErrDesc: fmt.Sprintf(clusterError["WARN0164"], sl.URL, strings.Join(diffs, "\n")), ErrFrom: "MON", ServerUrl: sl.URL})
@@ -3287,6 +3288,7 @@ func (cluster *Cluster) MonitorSchema() {
 	if cluster.Conf.MonitorSchemaOnReplicas {
 		cluster.MonitorAllSlavesTableSchema()
 	}
+	cluster.MonitorEventSchema()
 }
 
 func (cluster *Cluster) MonitorQueryRules() {

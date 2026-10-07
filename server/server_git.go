@@ -1346,10 +1346,12 @@ func (repman *ReplicationManager) AddTempDirToGitignore() {
 	}
 }
 
-// AddDictTablesToGitignore ensures "dicttables.json" is in .gitignore so
-// table size changes do not generate git diffs on every monitoring tick.
+// AddDictTablesToGitignore ensures "dicttables.json" and "eventschema.json"
+// are in .gitignore so table size changes and schema scans do not generate
+// git diffs.
 func (repman *ReplicationManager) AddDictTablesToGitignore() {
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "dicttables.json")
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "eventschema.json")
 }
 
 // addLineToGitignore ensures a given line is present in the .gitignore file

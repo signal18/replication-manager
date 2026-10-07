@@ -1,154 +1,81 @@
-// Pure helpers of the Events tab: they turn the monitored eventStatus and
-// eventScheduler of every server (GET /api/clusters/{cluster}/topology/servers)
-// into a matrix event x server. The page is read-only: it reports what the
-// servers hold, it changes nothing.
+// Display helpers of the Scheduled Database Events section: they lay out the
+// answer of GET /api/clusters/{cluster}/schema/events as a matrix event x
+// server. The comparison is done by repman (the drifts and the per-server
+// comparison come with the answer); nothing here decides whether two events
+// differ.
 
-// Event status values, as repman reads them (the ordinal of the status enum:
-// mysql.event on MariaDB, the data dictionary behind information_schema.EVENTS
-// on MySQL 8).
-export const EVENT_STATUS = {
-  ENABLED: 1,
-  DISABLED: 2,
-  REPLICA_SIDE_DISABLED: 3
+// Collection state of a server, as the answer names it.
+export const COLLECTION_LABELS = {
+  checked: 'checked',
+  unavailable: 'not readable at the last schema scan',
+  unsupported: 'not supported for PostgreSQL',
+  'not-checked': 'not checked yet'
 }
 
-// isMySQLFamily tells MySQL and Percona Server from MariaDB by the server's
-// dbVersion.flavor.
-export const isMySQLFamily = (flavor) => /mysql|percona/i.test(flavor || '')
+// Drift kinds, as the answer names them, in the order they are shown.
+export const DRIFT_LABELS = {
+  missing: 'missing on the replica',
+  extra: 'only on the replica',
+  definition: 'definition differs',
+  definer: 'definer differs',
+  status: 'enabled on one side, disabled on the other'
+}
 
-// eventStatusLabel is the name the server itself gives the status: state 3 is
-// SLAVESIDE_DISABLED on MariaDB and REPLICA_SIDE_DISABLED on MySQL 8.
-export const eventStatusLabel = (status, flavor) => {
-  switch (status) {
-    case EVENT_STATUS.ENABLED:
-      return 'ENABLED'
-    case EVENT_STATUS.DISABLED:
-      return 'DISABLED'
-    case EVENT_STATUS.REPLICA_SIDE_DISABLED:
-      return isMySQLFamily(flavor) ? 'REPLICA_SIDE_DISABLED' : 'SLAVESIDE_DISABLED'
-    default:
-      return `UNKNOWN (${status})`
+export const DRIFT_ORDER = Object.keys(DRIFT_LABELS)
+
+// shortCrc shows a definition CRC64 (a decimal string: it does not fit a JS
+// number) as its first 8 hex digits, enough to tell two definitions apart by eye.
+export const shortCrc = (crc) => {
+  if (!crc) return ''
+  try {
+    return BigInt(crc).toString(16).padStart(16, '0').slice(0, 8)
+  } catch {
+    return ''
   }
 }
 
-export const eventKey = (db, name) => `${db}.${name}`
-
-// cellNote returns the observation for one event on one server, or '':
-// - missing: other servers have the event, this one does not;
-// - running-on-replica: ENABLED on a replica whose event scheduler is ON, so it
-//   runs there;
-// - enabled-on-replica: ENABLED on a replica whose scheduler is OFF, so it runs
-//   as soon as the scheduler is turned on.
-export const cellNote = (cell, server) => {
-  if (!cell) return 'missing'
-  if (!server.isMaster && cell.status === EVENT_STATUS.ENABLED) {
-    return server.scheduler ? 'running-on-replica' : 'enabled-on-replica'
-  }
-  return ''
-}
-
-// buildEventMatrix returns { servers, rows }: servers in the order given, the
-// master first, and one row per event found on any server, sorted by schema
-// and name, with each server's cell (status, label, note) and the notes found
-// on the row.
-export const buildEventMatrix = (clusterServers, masterId) => {
-  const servers = (clusterServers || [])
-    .map((s) => ({
-      id: s.id,
-      name: `${s.host}:${s.port}`,
-      isMaster: s.id === masterId,
-      flavor: s.dbVersion?.flavor || '',
-      scheduler: !!s.eventScheduler,
-      state: s.state,
-      events: Array.isArray(s.eventStatus) ? s.eventStatus : []
-    }))
-    .sort((a, b) => (a.isMaster === b.isMaster ? 0 : a.isMaster ? -1 : 1))
-
-  const rowsByKey = new Map()
-  servers.forEach((server) => {
-    server.events.forEach((ev) => {
-      const key = eventKey(ev.db, ev.name)
-      if (!rowsByKey.has(key)) {
-        rowsByKey.set(key, { key, db: ev.db, name: ev.name, definer: ev.definer, cells: {} })
+// buildEventRows returns { servers, rows } from the answer: the servers in the
+// order given (the master first), and one row per event with, per server, a
+// cell: 'present' (status class, short CRC), 'absent' (the server was checked
+// and does not hold it) or 'not-checked' (the server's events were not read:
+// nothing is known), and the drift kinds the answer reports on that server.
+export const buildEventRows = (view) => {
+  const servers = Array.isArray(view?.servers) ? view.servers : []
+  const rows = (Array.isArray(view?.events) ? view.events : []).map((ev) => {
+    const drifts = Array.isArray(ev.drifts) ? ev.drifts : []
+    const cells = {}
+    servers.forEach((srv) => {
+      const node = ev.nodes?.[srv.id]
+      const cellDrifts = drifts.filter((d) => d.serverId === srv.id).map((d) => d.drift)
+      if (!node) {
+        cells[srv.id] = { state: 'not-checked', drifts: cellDrifts }
+      } else if (!node.present) {
+        cells[srv.id] = { state: 'absent', drifts: cellDrifts }
+      } else {
+        cells[srv.id] = { state: 'present', status: node.status, crc: shortCrc(node.definitionCrc64), drifts: cellDrifts }
       }
-      rowsByKey.get(key).cells[server.id] = { status: ev.status, label: eventStatusLabel(ev.status, server.flavor) }
     })
-  })
-
-  const rows = [...rowsByKey.values()].sort((a, b) => a.key.localeCompare(b.key))
-  rows.forEach((row) => {
-    row.notes = []
-    servers.forEach((server) => {
-      const note = cellNote(row.cells[server.id], server)
-      if (row.cells[server.id]) row.cells[server.id].note = note
-      if (note) row.notes.push({ serverId: server.id, serverName: server.name, note })
-    })
+    return { key: `${ev.db}.${ev.name}`, db: ev.db, name: ev.name, cells, drifts }
   })
   return { servers, rows }
 }
 
-// Status filter values of the matrix; a row matches when the event has that
-// status on at least one server ('missing': absent from at least one server).
-export const STATUS_FILTERS = [
-  { value: '', label: 'Any status' },
-  { value: 'enabled', label: 'ENABLED' },
-  { value: 'disabled', label: 'DISABLED' },
-  { value: 'replica-side-disabled', label: 'Replica-side disabled' },
-  { value: 'missing', label: 'Missing' }
-]
+// driftKinds returns the drift kinds of a row, once each, in DRIFT_ORDER.
+export const driftKinds = (row) => DRIFT_ORDER.filter((k) => (row?.drifts || []).some((d) => d.drift === k))
 
-const statusOfFilter = {
-  enabled: EVENT_STATUS.ENABLED,
-  disabled: EVENT_STATUS.DISABLED,
-  'replica-side-disabled': EVENT_STATUS.REPLICA_SIDE_DISABLED
-}
-
-// eventSchemas returns the schemas that hold events, sorted, for the schema
-// filter.
+// eventSchemas returns the schemas that hold events, sorted, for the schema filter.
 export const eventSchemas = (rows) => [...new Set((rows || []).map((r) => r.db))].sort((a, b) => a.localeCompare(b))
 
 // filterEventRows keeps the rows that match every given filter: search (schema
-// or event name, case-insensitive), schema (exact), status (see STATUS_FILTERS)
-// and observationsOnly.
-export const filterEventRows = (rows, servers, { search = '', schema = '', status = '', observationsOnly = false } = {}) => {
+// or event name, case-insensitive), schema (exact), drift (a drift kind, or
+// 'any' for a row with at least one drift).
+export const filterEventRows = (rows, { search = '', schema = '', drift = '' } = {}) => {
   const term = search.trim().toLowerCase()
   return (rows || []).filter((r) => {
-    if (observationsOnly && r.notes.length === 0) return false
     if (schema && r.db !== schema) return false
     if (term && !r.db.toLowerCase().includes(term) && !r.name.toLowerCase().includes(term)) return false
-    if (status === 'missing') return (servers || []).some((s) => !r.cells[s.id])
-    if (status) return Object.values(r.cells).some((c) => c.status === statusOfFilter[status])
+    if (drift === 'any') return r.drifts.length > 0
+    if (drift) return r.drifts.some((d) => d.drift === drift)
     return true
   })
-}
-
-// eventSchedule describes when an event runs, from the schedule fields of its
-// definition (GET .../events): "Once, at <time>" or "Every <n> <unit>, starting
-// <time>[, until <time>]". Unknown or empty fields are left out.
-export const eventSchedule = (ev) => {
-  if (!ev) return ''
-  if (ev.eventType === 'ONE TIME') {
-    return ev.executeAt ? `Once, at ${ev.executeAt}` : 'Once'
-  }
-  if (ev.eventType === 'RECURRING') {
-    const unit = (ev.intervalField || '').replace(/_/g, ' ')
-    let text = ev.intervalValue ? `Every ${ev.intervalValue} ${unit}`.trim() : 'Recurring'
-    if (ev.starts) text += `, starting ${ev.starts}`
-    if (ev.ends) text += `, until ${ev.ends}`
-    return text
-  }
-  return ev.eventType || ''
-}
-
-// eventOnCompletion explains ON COMPLETION: what happens to the event after its
-// last run.
-export const eventOnCompletion = (onCompletion) => {
-  switch (onCompletion) {
-    case 'PRESERVE':
-      return 'kept after its last run (ON COMPLETION PRESERVE)'
-    case 'NOT PRESERVE':
-      return 'dropped after its last run (ON COMPLETION NOT PRESERVE)'
-    default:
-      return onCompletion || ''
-  }
 }

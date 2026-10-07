@@ -38,6 +38,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/releases"
@@ -673,6 +674,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchema)),
 	))
+
+	router.Handle("/api/clusters/{clusterName}/schema/events", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaEvents)),
+	)).Methods(http.MethodGet)
 
 	router.Handle("/api/clusters/{clusterName}/graphite-filterlist", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2983,6 +2989,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringSchemaColumns()
 	case "monitoring-schema-indexes":
 		mycluster.SwitchMonitoringSchemaIndexes()
+	case "monitoring-schema-events":
+		mycluster.SwitchMonitoringSchemaEvents()
 	case "monitoring-schema-scheduler":
 		mycluster.SwitchMonitoringSchemaScheduler()
 	case "monitoring-checksum-scheduler":
@@ -3133,8 +3141,6 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.RestartDBLogTailers()
 	case "monitoring-binlog-events":
 		mycluster.SwitchMonitorBinlogEvents()
-	case "monitoring-event-status":
-		mycluster.SwitchMonitorEventStatus()
 	default:
 		return errors.New("setting not found")
 	}
@@ -4015,6 +4021,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitoringChecksumSchedulerCron(value)
 	case "monitoring-schema-ignore-tables":
 		mycluster.SetMonitoringSchemaIgnoreTables(value)
+	case "monitoring-schema-events-page-size":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 || val > dbhelper.MaxEventChecksumPageSize {
+			return fmt.Errorf("invalid value for %s: %q, expected an integer from 1 to %d", name, value, dbhelper.MaxEventChecksumPageSize)
+		}
+		mycluster.Conf.MonitorSchemaEventsPageSize = val
+	case "monitoring-schema-events-max":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 || val > dbhelper.MaxEventChecksumMaxEvents {
+			return fmt.Errorf("invalid value for %s: %q, expected an integer from 1 to %d", name, value, dbhelper.MaxEventChecksumMaxEvents)
+		}
+		mycluster.Conf.MonitorSchemaEventsMax = val
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
 	case "delay-stat-rotate":
@@ -4132,17 +4150,6 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorVariableChangeScript = value
 	case "monitoring-variable-change-ignore":
 		mycluster.Conf.MonitorVariableChangeIgnore = value
-	case "monitoring-event-status-max-definitions", "monitoring-event-status-max-definition-bytes":
-		// a bound of the event definitions API: 0 or less would mean no bound
-		val, convErr := strconv.Atoi(value)
-		if convErr != nil || val < 1 {
-			return fmt.Errorf("invalid value for %s: %q, expected an integer of 1 or more", name, value)
-		}
-		if name == "monitoring-event-status-max-definitions" {
-			mycluster.Conf.MonitorEventStatusMaxDefinitions = val
-		} else {
-			mycluster.Conf.MonitorEventStatusMaxDefinitionBytes = val
-		}
 	case "monitoring-schema-change-script":
 		mycluster.Conf.MonitorSchemaChangeScript = value
 	case "monitoring-add-monitor-script":
@@ -4922,6 +4929,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorSchemaColumns = applyIsActive(mycluster.Conf.MonitorSchemaColumns, isactive)
 	case "monitoring-schema-indexes":
 		mycluster.Conf.MonitorSchemaIndexes = applyIsActive(mycluster.Conf.MonitorSchemaIndexes, isactive)
+	case "monitoring-schema-events":
+		mycluster.Conf.MonitorSchemaEvents = applyIsActive(mycluster.Conf.MonitorSchemaEvents, isactive)
 	case "monitoring-schema-on-replicas":
 		mycluster.Conf.MonitorSchemaOnReplicas = applyIsActive(mycluster.Conf.MonitorSchemaOnReplicas, isactive)
 	case "monitoring-capture":
@@ -4932,8 +4941,6 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorVariableDiff = applyIsActive(mycluster.Conf.MonitorVariableDiff, isactive)
 	case "monitoring-processlist":
 		mycluster.Conf.MonitorProcessList = applyIsActive(mycluster.Conf.MonitorProcessList, isactive)
-	case "monitoring-event-status":
-		mycluster.Conf.MonitorEventStatus = applyIsActive(mycluster.Conf.MonitorEventStatus, isactive)
 	case "monitoring-performance-schema-queries":
 		mycluster.Conf.MonitorPFSQueries = applyIsActive(mycluster.Conf.MonitorPFSQueries, isactive)
 	case "monitoring-performance-schema-queries-period":
@@ -7368,6 +7375,38 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterSchemaEvents handles the retrieval of the scheduled database event consistency of a cluster.
+// @Summary Retrieve the scheduled database event consistency of a specific cluster
+// @Description Scheduled database events (MySQL/MariaDB EVENT objects) as the last schema scan collected them on the master and the replicas (monitoring-schema-events), compared with the master: per server the collection state (checked, unavailable, unsupported, not-checked) and, for a replica, the comparison (consistent, different, not-checked); per event its presence, status class (active, disabled, unknown) and definition CRC64 on each checked server, and its drifts (missing, extra, definition, definer, status). A server absent from an event's nodes was not checked: it is never reported missing. It never carries an event definition, schedule, comment or definer. Observational only: the schema drift signal is WARN0164. enabled is false, with no server and no event, when monitoring-schema-events is off. Requires db-show-schema (or cluster-sharding, through /schema).
+// @Tags ClusterSchema
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.EventSchemaView "Scheduled database event consistency"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/schema/events [get]
+func (repman *ReplicationManager) handlerMuxClusterSchemaEvents(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(mycluster.GetEventSchemaView()); err != nil {
+		http.Error(w, "Encoding error in schema events", http.StatusInternalServerError)
 	}
 }
 

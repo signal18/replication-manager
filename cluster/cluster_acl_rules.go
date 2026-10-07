@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"fmt"
-	"path"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -16,7 +15,7 @@ import (
 
 // ACLRule represents an access control rule for a URL pattern
 type ACLRule struct {
-	URLPattern     string   // Literal patterns use strings.Contains; patterns with * use a full path.Match.
+	URLPattern     string   // The URL pattern to match (uses strings.Contains)
 	RequiredGrants []string // All grants in this list are required (AND logic)
 	AllowedGrants  []string // Any grant in this list is sufficient (OR logic)
 }
@@ -75,9 +74,6 @@ var databaseACLRules = []ACLRule{
 
 	// Read-only toggle
 	{"actions/toggle-read-only", nil, []string{config.GrantDBReadOnly}},
-
-	// Events page (monitoring-event-status): read-only event definitions
-	{"/api/clusters/*/servers/*/events", nil, []string{config.GrantDBShowStatus}},
 
 	// Config actions
 	{"/config", nil, []string{config.GrantDBConfigFlag}},
@@ -179,6 +175,11 @@ var clusterACLRules = []ACLRule{
 	// Sharding
 	{"/actions/monitor-schemas", nil, []string{config.GrantClusterSharding}},
 	{"/schema", nil, []string{config.GrantClusterSharding}},
+	// Scheduled database event consistency (monitoring-schema-events): read-only
+	// schema metadata, so db-show-schema as /tables and /schemas. Not an exclusive
+	// override: matchACLRules falls back to the shorter /schema rule above when
+	// this one denies, so cluster-sharding also reads it.
+	{"/schema/events", nil, []string{config.GrantDBShowSchema}},
 	{"/shardclusters", nil, []string{config.GrantClusterSharding}},
 
 	// Process and Jobs
@@ -404,6 +405,7 @@ func (cluster *Cluster) checkACLRule(strUser string, rule ACLRule, URL string) (
 // Logs detailed information about permission denials
 // Matches are checked in order of specificity (longer patterns first) to ensure
 // more specific rules take precedence, but all matching patterns are tried (hierarchical fallback)
+// URL patterns are literal substrings; this matcher does not implement wildcards.
 func (cluster *Cluster) matchACLRules(strUser string, URL string, rules []ACLRule) bool {
 	// First pass: collect all matching rules with their pattern lengths
 	type matchedRule struct {
@@ -413,11 +415,7 @@ func (cluster *Cluster) matchACLRules(strUser string, URL string, rules []ACLRul
 	var matches []matchedRule
 
 	for _, rule := range rules {
-		matched := strings.Contains(URL, rule.URLPattern)
-		if strings.Contains(rule.URLPattern, "*") {
-			matched, _ = path.Match(rule.URLPattern, URL)
-		}
-		if matched {
+		if strings.Contains(URL, rule.URLPattern) {
 			matches = append(matches, matchedRule{
 				rule:          rule,
 				patternLength: len(rule.URLPattern),
