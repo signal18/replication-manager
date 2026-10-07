@@ -811,100 +811,107 @@ func GetEventStatus(db *sqlx.DB, version *version.Version) ([]Event, string, err
 	return ss, query, err
 }
 
-// eventColumns is what ListEvents and GetEventDefinition read of an event:
-// identity, definer, schedule and the size of the body, not the body itself.
-const eventColumns = "EVENT_SCHEMA AS db, EVENT_NAME AS name, DEFINER AS definer, COALESCE(LENGTH(EVENT_DEFINITION), 0) AS definition_bytes," +
-	" COALESCE(EVENT_TYPE, '') AS event_type, COALESCE(CAST(EXECUTE_AT AS CHAR), '') AS execute_at," +
-	" COALESCE(CAST(INTERVAL_VALUE AS CHAR), '') AS interval_value, COALESCE(INTERVAL_FIELD, '') AS interval_field," +
-	" COALESCE(CAST(STARTS AS CHAR), '') AS starts, COALESCE(CAST(ENDS AS CHAR), '') AS ends, COALESCE(ON_COMPLETION, '') AS on_completion," +
-	" COALESCE(CAST(LAST_EXECUTED AS CHAR), '') AS last_executed, COALESCE(TIME_ZONE, '') AS time_zone, COALESCE(EVENT_COMMENT, '') AS comment"
+// ErrEventsUnsupported is returned by GetEventChecksums for an engine without
+// MySQL/MariaDB EVENT objects (PostgreSQL).
+var ErrEventsUnsupported = errors.New("scheduled database events are not supported by this engine")
 
-// ErrEventDefinitionTooLarge is returned by GetEventDefinition when the body
-// of the event is larger than the maximum asked for; the body is not read.
-var ErrEventDefinitionTooLarge = errors.New("event definition larger than the maximum")
+// eventChecksumQuery reads, per event, what GetEventChecksums compares: the
+// identity, the definer, the status and the fields of the definition
+// (HashEventDefinition), in a stable order. The body is read only to be
+// hashed; it is never kept.
+const eventChecksumQuery = "SELECT /*replication-manager*/ EVENT_SCHEMA, EVENT_NAME, COALESCE(DEFINER, ''), COALESCE(STATUS, '')," +
+	" COALESCE(EVENT_TYPE, ''), COALESCE(CAST(EXECUTE_AT AS CHAR), ''), COALESCE(CAST(INTERVAL_VALUE AS CHAR), ''), COALESCE(INTERVAL_FIELD, '')," +
+	" COALESCE(CAST(STARTS AS CHAR), ''), COALESCE(CAST(ENDS AS CHAR), ''), COALESCE(ON_COMPLETION, ''), COALESCE(SQL_MODE, ''), COALESCE(TIME_ZONE, '')," +
+	" COALESCE(EVENT_DEFINITION, '') FROM information_schema.EVENTS ORDER BY EVENT_SCHEMA, EVENT_NAME"
 
-// CountEvents returns the number of events of schema, or of every schema when
-// schema is empty. schema is bound as a parameter.
-func CountEvents(db *sqlx.DB, schema string) (int, string, error) {
-	query := "SELECT /*replication-manager*/ COUNT(*) FROM information_schema.EVENTS"
-	var args []any
-	if schema != "" {
-		query += " WHERE EVENT_SCHEMA = ?"
-		args = append(args, schema)
-	}
-	ctx, cancel := scanContext(defaultSchemaScanTimeout)
-	defer cancel()
-	var n int
-	err := db.QueryRowxContext(ctx, query, args...).Scan(&n)
-	return n, query, err
+// EventDefinitionFields are the fields of an event that make its definition,
+// as information_schema.EVENTS reports them: what HashEventDefinition hashes.
+// Status, definer, originator (server_id), created / last altered / last
+// executed times, comment and character set columns are not part of it.
+type EventDefinitionFields struct {
+	EventType     string
+	ExecuteAt     string
+	IntervalValue string
+	IntervalField string
+	Starts        string
+	Ends          string
+	OnCompletion  string
+	SQLMode       string
+	TimeZone      string
+	Body          string
 }
 
-// ListEvents returns one page of events, limit rows from offset, ordered by
-// schema and name: the events of schema, or of every schema when schema is
-// empty. A row carries the identity, definer, schedule and body size of the
-// event, not the body (GetEventDefinition reads it). limit must be 1 or more:
-// the caller bounds it. It is read on demand, never by the monitoring loop,
-// and bounded by defaultSchemaScanTimeout. schema, limit and offset are bound
-// as parameters.
-func ListEvents(db *sqlx.DB, schema string, limit, offset int) ([]EventDefinition, string, error) {
-	events := []EventDefinition{}
-	if limit < 1 || offset < 0 {
-		return events, "", fmt.Errorf("invalid page: limit %d, offset %d", limit, offset)
+// HashEventDefinition returns the CRC64 (ECMA, as GetTables) of the fields, in
+// the order of EventDefinitionFields, separated by a NUL byte. The body is
+// trimmed of leading and trailing white space; it is not otherwise normalized
+// (the server keeps the body as it was written, and a dump reloads it as is).
+func HashEventDefinition(f EventDefinitionFields) uint64 {
+	var b strings.Builder
+	for _, v := range []string{f.EventType, f.ExecuteAt, f.IntervalValue, f.IntervalField, f.Starts, f.Ends, f.OnCompletion, f.SQLMode, f.TimeZone, strings.TrimSpace(f.Body)} {
+		b.WriteString(v)
+		b.WriteByte(0)
 	}
-	query := "SELECT /*replication-manager*/ " + eventColumns + " FROM information_schema.EVENTS"
-	var args []any
-	if schema != "" {
-		query += " WHERE EVENT_SCHEMA = ?"
-		args = append(args, schema)
-	}
-	query += " ORDER BY EVENT_SCHEMA, EVENT_NAME LIMIT ? OFFSET ?"
-	args = append(args, limit, offset)
-	ctx, cancel := scanContext(defaultSchemaScanTimeout)
-	defer cancel()
-	err := db.SelectContext(ctx, &events, query, args...)
-	return events, query, err
+	return crc64.Checksum([]byte(b.String()), crc64.MakeTable(crc64.ECMA))
 }
 
-// GetEventDefinition returns the event schema.name with its schedule and its
-// definition body, or nil when there is no such event. The size of the body is
-// read first: when it is larger than maxBytes, the event is returned without
-// its body together with ErrEventDefinitionTooLarge. The later body query is
-// byte-capped at maxBytes+1 too, in case the event grows between the queries.
-// Bounded by defaultSchemaScanTimeout per query; schema and name are bound as
-// parameters.
-func GetEventDefinition(db *sqlx.DB, schema, name string, maxBytes int64) (*EventDefinition, string, error) {
-	if maxBytes < 0 || maxBytes == int64(^uint64(0)>>1) {
-		return nil, "", fmt.Errorf("invalid maximum event definition size %d", maxBytes)
+// EventStatusClass maps the status information_schema.EVENTS reports to what
+// matters for a comparison between servers: whether the event is meant to run
+// where it is primary. ENABLED and the replica-side disabled status (MariaDB
+// and MySQL before 8.4: SLAVESIDE_DISABLED, MySQL 8.4: REPLICA_SIDE_DISABLED,
+// the status a replicated event takes on a replica) are "active"; DISABLED is
+// "disabled"; anything else is "unknown".
+func EventStatusClass(status string) string {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "ENABLED", "SLAVESIDE_DISABLED", "REPLICA_SIDE_DISABLED":
+		return EventStatusActive
+	case "DISABLED":
+		return EventStatusDisabled
+	default:
+		return EventStatusUnknown
 	}
-	query := "SELECT /*replication-manager*/ " + eventColumns + " FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?"
-	ctx, cancel := scanContext(defaultSchemaScanTimeout)
+}
+
+// GetEventChecksums returns the events of the server, ordered by schema and
+// name, each with its status class and the CRC64 of its definition, for the
+// schema drift detection. The body of each event is hashed as its row is read
+// and dropped. It reads information_schema.EVENTS, which lists the events of
+// the schemas where the user has the EVENT privilege, bounded by
+// timeoutSeconds (defaultSchemaScanTimeout when 0 or less), as GetTables.
+// PostgreSQL has no EVENT objects: ErrEventsUnsupported, without a query.
+func GetEventChecksums(db *sqlx.DB, myver *version.Version, timeoutSeconds int) ([]EventChecksum, string, error) {
+	if myver != nil && myver.IsPostgreSQL() {
+		return nil, "", ErrEventsUnsupported
+	}
+	timeout := defaultSchemaScanTimeout
+	if timeoutSeconds > 0 {
+		timeout = time.Duration(timeoutSeconds) * time.Second
+	}
+	ctx, cancel := scanContext(timeout)
 	defer cancel()
-	events := []EventDefinition{}
-	if err := db.SelectContext(ctx, &events, query, schema, name); err != nil {
-		return nil, query, err
+	rows, err := db.QueryContext(ctx, eventChecksumQuery)
+	if err != nil {
+		return nil, eventChecksumQuery, err
 	}
-	if len(events) == 0 {
-		return nil, query, nil
-	}
-	ev := events[0]
-	if ev.DefinitionBytes > maxBytes {
-		return &ev, query, ErrEventDefinitionTooLarge
-	}
-	bodyQuery := "SELECT /*replication-manager*/ COALESCE(LENGTH(EVENT_DEFINITION), 0), COALESCE(LEFT(CAST(EVENT_DEFINITION AS BINARY), ?), '') FROM information_schema.EVENTS WHERE EVENT_SCHEMA = ? AND EVENT_NAME = ?"
-	ctx2, cancel2 := scanContext(defaultSchemaScanTimeout)
-	defer cancel2()
-	var definition []byte
-	if err := db.QueryRowxContext(ctx2, bodyQuery, maxBytes+1, schema, name).Scan(&ev.DefinitionBytes, &definition); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, bodyQuery, nil // dropped in between
+	defer rows.Close()
+	events := []EventChecksum{}
+	for rows.Next() {
+		var ev EventChecksum
+		var status string
+		var f EventDefinitionFields
+		var body []byte
+		if err := rows.Scan(&ev.Db, &ev.Name, &ev.Definer, &status, &f.EventType, &f.ExecuteAt, &f.IntervalValue, &f.IntervalField,
+			&f.Starts, &f.Ends, &f.OnCompletion, &f.SQLMode, &f.TimeZone, &body); err != nil {
+			return nil, eventChecksumQuery, err
 		}
-		return nil, bodyQuery, err
+		f.Body = string(body)
+		ev.Status = EventStatusClass(status)
+		ev.DefinitionCrc64 = HashEventDefinition(f)
+		events = append(events, ev)
 	}
-	if ev.DefinitionBytes > maxBytes || int64(len(definition)) > maxBytes {
-		return &ev, bodyQuery, ErrEventDefinitionTooLarge
+	if err := rows.Err(); err != nil {
+		return nil, eventChecksumQuery, err
 	}
-	ev.Definition = string(definition)
-	return &ev, bodyQuery, nil
+	return events, eventChecksumQuery, nil
 }
 
 // IsGroupReplicationMaster checks if server is a group replication master

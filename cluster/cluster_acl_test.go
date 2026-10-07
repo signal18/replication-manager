@@ -1285,24 +1285,27 @@ func TestIsURLPassACLDatabaseServiceRoute(t *testing.T) {
 	}
 }
 
-// TestEventsACL tests the exact read-only Events route: reading the definitions
-// needs db-show-status, without granting a future Events action route.
-func TestEventsACL(t *testing.T) {
+// TestSchemaEventsACL tests /schema/events: db-show-schema reads it without
+// reaching /schema; cluster-sharding reads it through the /schema rule
+// (matchACLRules falls back to less specific rules); neither grant is denied.
+func TestSchemaEventsACL(t *testing.T) {
 	cluster := setupACLTestCluster()
-	cluster.APIUsers["user_show_status"] = APIUser{User: "user_show_status", Grants: map[string]bool{config.GrantDBShowStatus: true}}
-	url := "/api/clusters/testcluster/servers/db1/events"
-	if !cluster.IsURLPassDatabasesACL("user_show_status", url) {
-		t.Errorf("db-show-status must read %s", url)
-	}
-	if cluster.IsURLPassDatabasesACL("user_start_only", url) {
-		t.Errorf("a user without db-show-status must not read %s", url)
-	}
-	for _, futureURL := range []string{
-		"/api/clusters/testcluster/servers/db1/events/actions/future-action",
-		"/api/clusters/testcluster/servers/db1/some-events",
+	cluster.APIUsers["schema_reader"] = APIUser{User: "schema_reader", Grants: map[string]bool{config.GrantDBShowSchema: true}}
+	cluster.APIUsers["sharding_user"] = APIUser{User: "sharding_user", Grants: map[string]bool{config.GrantClusterSharding: true}}
+	events := "/api/clusters/test/schema/events"
+	for _, tt := range []struct {
+		name, user, url string
+		expected        bool
+	}{
+		{"db-show-schema reads schema events", "schema_reader", events, true},
+		{"db-show-schema does not reach /schema", "schema_reader", "/api/clusters/test/schema", false},
+		{"cluster-sharding reads schema events through /schema", "sharding_user", events, true},
+		{"neither grant is denied", "user_start_only", events, false},
 	} {
-		if cluster.IsURLPassDatabasesACL("user_show_status", futureURL) {
-			t.Errorf("db-show-status must not be granted by the Events rule for %s", futureURL)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cluster.IsURLPassACL(tt.user, tt.url, false); got != tt.expected {
+				t.Errorf("IsURLPassACL(%s, %s) = %v, want %v", tt.user, tt.url, got, tt.expected)
+			}
+		})
 	}
 }

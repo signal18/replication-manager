@@ -509,6 +509,10 @@ func (cluster *Cluster) SwitchMonitoringSchemaIndexes() {
 	cluster.Conf.MonitorSchemaIndexes = !cluster.Conf.MonitorSchemaIndexes
 }
 
+func (cluster *Cluster) SwitchMonitoringSchemaEvents() {
+	cluster.Conf.MonitorSchemaEvents = !cluster.Conf.MonitorSchemaEvents
+}
+
 func (cluster *Cluster) SwitchMonitoringSchemaOnReplicas() {
 	cluster.Conf.MonitorSchemaOnReplicas = !cluster.Conf.MonitorSchemaOnReplicas
 }
@@ -812,10 +816,6 @@ func (cluster *Cluster) SwitchCloud18OpenSysops() {
 
 func (cluster *Cluster) SwitchTopologyStaging() {
 	cluster.Conf.TopologyStaging = !cluster.Conf.TopologyStaging
-}
-
-func (cluster *Cluster) SwitchMonitorEventStatus() {
-	cluster.Conf.MonitorEventStatus = !cluster.Conf.MonitorEventStatus
 }
 
 func (cluster *Cluster) SwitchMonitorBinlogEvents() {

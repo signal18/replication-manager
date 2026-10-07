@@ -796,6 +796,66 @@ definitions:
       variableValue:
         type: string
     type: object
+  cluster.EventSchemaDriftView:
+    properties:
+      drift:
+        type: string
+      serverId:
+        type: string
+    type: object
+  cluster.EventSchemaEventView:
+    properties:
+      db:
+        type: string
+      drifts:
+        items:
+          $ref: '#/definitions/cluster.EventSchemaDriftView'
+        type: array
+      name:
+        type: string
+      nodes:
+        additionalProperties:
+          $ref: '#/definitions/cluster.EventSchemaNodeView'
+        type: object
+    type: object
+  cluster.EventSchemaNodeView:
+    properties:
+      definitionCrc64:
+        example: "0"
+        type: string
+      present:
+        type: boolean
+      status:
+        type: string
+    type: object
+  cluster.EventSchemaServerView:
+    properties:
+      collectedAt:
+        type: integer
+      collection:
+        type: string
+      comparison:
+        type: string
+      id:
+        type: string
+      isMaster:
+        type: boolean
+      url:
+        type: string
+    type: object
+  cluster.EventSchemaView:
+    properties:
+      enabled:
+        type: boolean
+      events:
+        items:
+          $ref: '#/definitions/cluster.EventSchemaEventView'
+        type: array
+      servers:
+        items:
+          $ref: '#/definitions/cluster.EventSchemaServerView'
+        type: array
+    type: object
   cluster.GraphiteFilterList:
     properties:
       blacklist:
@@ -1531,43 +1591,6 @@ definitions:
           non-root user (rustfs 10001, frappe 1000) cannot write a root-owned directory (#1870).
         type: string
       volumedir:
-        type: string
-    type: object
-  dbhelper.EventDefinition:
-    properties:
-      comment:
-        type: string
-      db:
-        type: string
-      definer:
-        type: string
-      definition:
-        type: string
-      definitionBytes:
-        type: integer
-      ends:
-        type: string
-      eventType:
-        description: ONE TIME or RECURRING
-        type: string
-      executeAt:
-        description: 'one-time event: when it runs'
-        type: string
-      intervalField:
-        type: string
-      intervalValue:
-        description: 'recurring event: every <value> <field>'
-        type: string
-      lastExecuted:
-        type: string
-      name:
-        type: string
-      onCompletion:
-        description: PRESERVE or NOT PRESERVE
-        type: string
-      starts:
-        type: string
-      timeZone:
         type: string
     type: object
   github_com_signal18_replication-manager_config.Config:
@@ -2684,12 +2707,6 @@ definitions:
         type: string
       monitoringErrorLogLength:
         type: integer
-      monitoringEventStatus:
-        type: boolean
-      monitoringEventStatusMaxDefinitionBytes:
-        type: integer
-      monitoringEventStatusMaxDefinitions:
-        type: integer
       monitoringGlobalHeartbeatStallThreshold:
         type: integer
       monitoringGlobalHeartbeatSupervision:
@@ -2783,6 +2800,8 @@ definitions:
       monitoringSchemaChangeScript:
         type: string
       monitoringSchemaColumns:
+        type: boolean
+      monitoringSchemaEvents:
         type: boolean
       monitoringSchemaIgnoreTables:
         type: string
@@ -10839,6 +10858,53 @@ paths:
       summary: Calculate checksum for a specific schema in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/schema/events:
+    get:
+      description: 'Scheduled database events (MySQL/MariaDB EVENT objects) as the
+        last schema scan collected them on the master and the replicas (monitoring-schema-events),
+        compared with the master: per server the collection state (checked, unavailable,
+        unsupported, not-checked) and, for a replica, the comparison (consistent,
+        different, not-checked); per event its presence, status class (active, disabled,
+        unknown) and definition CRC64 on each checked server, and its drifts (missing,
+        extra, definition, definer, status). A server absent from an event''s nodes
+        was not checked: it is never reported missing. It never carries an event definition,
+        schedule, comment or definer. Observational only: the schema drift signal
+        is WARN0164. enabled is false, with no server and no event, when monitoring-schema-events
+        is off. Requires db-show-schema (or cluster-sharding, through /schema).'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Scheduled database event consistency
+          schema:
+            $ref: '#/definitions/cluster.EventSchemaView'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "405":
+          description: Method Not Allowed
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve the scheduled database event consistency of a specific cluster
+      tags:
+      - ClusterSchema
   /api/clusters/{clusterName}/security/apply-fix:
     post:
       consumes:
@@ -14641,91 +14707,6 @@ paths:
       summary: Get error log of a server
       tags:
       - DatabaseLogs
-  /api/clusters/{clusterName}/servers/{serverName}/events:
-    get:
-      description: Reads the events of the server, on demand (not collected by the
-        monitoring loop). Without name, a page of events (all, or those of one schema)
-        with their schema, name, definer, schedule and definitionBytes, without the
-        SQL body; X-Total-Count gives the number of events. With schema and name,
-        that one event with its SQL body. The status of each event is in the server's
-        eventStatus. Requires the db-show-status grant. Refused when monitoring-event-status
-        is off.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Server Name
-        in: path
-        name: serverName
-        required: true
-        type: string
-      - description: Only the events of this schema
-        in: query
-        name: schema
-        type: string
-      - description: Only this event, with its SQL body (requires schema)
-        in: query
-        name: name
-        type: string
-      - description: Events per page, 1 to monitoring-event-status-max-definitions;
-          omitted or 0 is that maximum
-        in: query
-        name: limit
-        type: integer
-      - description: Events to skip, default 0
-        in: query
-        name: offset
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Events; the definition body only for schema and name
-          headers:
-            X-Total-Count:
-              description: Number of events matching the request (list mode)
-              type: integer
-          schema:
-            items:
-              $ref: '#/definitions/dbhelper.EventDefinition'
-            type: array
-        "400":
-          description: name requires schema" or an invalid limit or offset
-          schema:
-            type: string
-        "403":
-          description: No valid ACL" or "monitoring-event-status is disabled for this
-            cluster
-          schema:
-            type: string
-        "405":
-          description: Method Not Allowed
-          schema:
-            type: string
-        "413":
-          description: The definition is larger than monitoring-event-status-max-definition-bytes
-          schema:
-            type: string
-        "500":
-          description: Cluster Not Found" or "Server Not Found" or "Could not read
-            events
-          schema:
-            type: string
-        "503":
-          description: Server is down
-          schema:
-            type: string
-      summary: Get the events of a server
-      tags:
-      - Database
   /api/clusters/{clusterName}/servers/{serverName}/is-failed:
     get:
       description: Checks if a specified server within a cluster is in a failed state.

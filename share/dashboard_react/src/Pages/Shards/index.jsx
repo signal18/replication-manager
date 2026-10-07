@@ -784,11 +784,11 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
         />
       )}
 
-      {/* ── Events (read-only, monitoring-event-status) ───────────────────── */}
-      {user?.grants['db-show-status'] && selectedCluster?.config?.monitoringEventStatus !== false && (
+      {/* ── Scheduled database events (monitoring-schema-events) ──────────── */}
+      {selectedCluster?.config?.monitoringSchemaEvents !== false && (
         <AccordionComponent
           className={styles.accordion}
-          heading="Events"
+          heading="Scheduled Database Events (consistency)"
           headerActions={onOpenMonitoringSettings ? <RMIconButton icon={HiCog} tooltip='Monitoring Settings' onClick={onOpenMonitoringSettings} size='xs' variant='ghost' /> : null}
           body={<Events clusterName={selectedCluster?.name} />}
         />

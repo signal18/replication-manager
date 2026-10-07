@@ -8795,6 +8795,61 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/schema/events": {
+            "get": {
+                "description": "Scheduled database events (MySQL/MariaDB EVENT objects) as the last schema scan collected them on the master and the replicas (monitoring-schema-events), compared with the master: per server the collection state (checked, unavailable, unsupported, not-checked) and, for a replica, the comparison (consistent, different, not-checked); per event its presence, status class (active, disabled, unknown) and definition CRC64 on each checked server, and its drifts (missing, extra, definition, definer, status). A server absent from an event's nodes was not checked: it is never reported missing. It never carries an event definition, schedule, comment or definer. Observational only: the schema drift signal is WARN0164. enabled is false, with no server and no event, when monitoring-schema-events is off. Requires db-show-schema (or cluster-sharding, through /schema).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSchema"
+                ],
+                "summary": "Retrieve the scheduled database event consistency of a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Scheduled database event consistency",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.EventSchemaView"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method Not Allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/schema/{schemaName}/all/actions/analyze-schema/{persistent}": {
             "post": {
                 "description": "This endpoint triggers the analyze calculation for all tables in a schema in the specified cluster.",
@@ -12983,119 +13038,6 @@
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/servers/{serverName}/events": {
-            "get": {
-                "description": "Reads the events of the server, on demand (not collected by the monitoring loop). Without name, a page of events (all, or those of one schema) with their schema, name, definer, schedule and definitionBytes, without the SQL body; X-Total-Count gives the number of events. With schema and name, that one event with its SQL body. The status of each event is in the server's eventStatus. Requires the db-show-status grant. Refused when monitoring-event-status is off.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Database"
-                ],
-                "summary": "Get the events of a server",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "serverName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Only the events of this schema",
-                        "name": "schema",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Only this event, with its SQL body (requires schema)",
-                        "name": "name",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Events per page, 1 to monitoring-event-status-max-definitions; omitted or 0 is that maximum",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Events to skip, default 0",
-                        "name": "offset",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Events; the definition body only for schema and name",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/dbhelper.EventDefinition"
-                            }
-                        },
-                        "headers": {
-                            "X-Total-Count": {
-                                "type": "integer",
-                                "description": "Number of events matching the request (list mode)"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "name requires schema\" or an invalid limit or offset",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL\" or \"monitoring-event-status is disabled for this cluster",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "413": {
-                        "description": "The definition is larger than monitoring-event-status-max-definition-bytes",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Could not read events",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "Server is down",
                         "schema": {
                             "type": "string"
                         }
@@ -24259,6 +24201,98 @@
                 }
             }
         },
+        "cluster.EventSchemaDriftView": {
+            "type": "object",
+            "properties": {
+                "drift": {
+                    "type": "string"
+                },
+                "serverId": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaEventView": {
+            "type": "object",
+            "properties": {
+                "db": {
+                    "type": "string"
+                },
+                "drifts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaDriftView"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.EventSchemaNodeView"
+                    }
+                }
+            }
+        },
+        "cluster.EventSchemaNodeView": {
+            "type": "object",
+            "properties": {
+                "definitionCrc64": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "present": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaServerView": {
+            "type": "object",
+            "properties": {
+                "collectedAt": {
+                    "type": "integer"
+                },
+                "collection": {
+                    "type": "string"
+                },
+                "comparison": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isMaster": {
+                    "type": "boolean"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaView": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaEventView"
+                    }
+                },
+                "servers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaServerView"
+                    }
+                }
+            }
+        },
         "cluster.GraphiteFilterList": {
             "type": "object",
             "properties": {
@@ -25333,60 +25367,6 @@
                     "type": "string"
                 },
                 "volumedir": {
-                    "type": "string"
-                }
-            }
-        },
-        "dbhelper.EventDefinition": {
-            "type": "object",
-            "properties": {
-                "comment": {
-                    "type": "string"
-                },
-                "db": {
-                    "type": "string"
-                },
-                "definer": {
-                    "type": "string"
-                },
-                "definition": {
-                    "type": "string"
-                },
-                "definitionBytes": {
-                    "type": "integer"
-                },
-                "ends": {
-                    "type": "string"
-                },
-                "eventType": {
-                    "description": "ONE TIME or RECURRING",
-                    "type": "string"
-                },
-                "executeAt": {
-                    "description": "one-time event: when it runs",
-                    "type": "string"
-                },
-                "intervalField": {
-                    "type": "string"
-                },
-                "intervalValue": {
-                    "description": "recurring event: every \u003cvalue\u003e \u003cfield\u003e",
-                    "type": "string"
-                },
-                "lastExecuted": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "onCompletion": {
-                    "description": "PRESERVE or NOT PRESERVE",
-                    "type": "string"
-                },
-                "starts": {
-                    "type": "string"
-                },
-                "timeZone": {
                     "type": "string"
                 }
             }
@@ -27041,15 +27021,6 @@
                 "monitoringErrorLogLength": {
                     "type": "integer"
                 },
-                "monitoringEventStatus": {
-                    "type": "boolean"
-                },
-                "monitoringEventStatusMaxDefinitionBytes": {
-                    "type": "integer"
-                },
-                "monitoringEventStatusMaxDefinitions": {
-                    "type": "integer"
-                },
                 "monitoringGlobalHeartbeatStallThreshold": {
                     "type": "integer"
                 },
@@ -27189,6 +27160,9 @@
                     "type": "string"
                 },
                 "monitoringSchemaColumns": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaEvents": {
                     "type": "boolean"
                 },
                 "monitoringSchemaIgnoreTables": {
