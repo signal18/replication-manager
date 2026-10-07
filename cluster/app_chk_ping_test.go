@@ -59,3 +59,29 @@ func TestSetAppMonitorMode(t *testing.T) {
 		t.Fatalf("a refused value must not be stored, got %q", app.AppConfig.AppMonitorMode)
 	}
 }
+
+// The no-route probe picks the error key of its mode and renders the state text with the
+// host (ping) or host:port (TCP); the TCP mode on a closed port fails with APPERR003 (#1919).
+func TestProbeNoRouteErrKeyAndDesc(t *testing.T) {
+	cl := &Cluster{}
+	cl.Conf.Timeout = 1
+	app := &App{Id: "ap1", Name: "worker", Host: "127.0.0.1", Port: "1", ClusterGroup: cl, AppConfig: &config.AppConfig{AppPort: "1"}}
+	key, err := app.probeNoRoute(time.Second)
+	if key != ErrAppTCPConnectFailed || err == nil {
+		t.Fatalf("port mode on a closed port: want APPERR003 with an error, got %s %v", key, err)
+	}
+	desc := app.noRouteProbeErrDesc(key, err)
+	if !strings.Contains(desc, "127.0.0.1:1") || !strings.Contains(desc, "ap1") {
+		t.Fatalf("TCP desc must carry host:port and the app id: %q", desc)
+	}
+	app.AppConfig.AppMonitorMode = "ping"
+	app.Host = "no-such-host.invalid"
+	key, err = app.probeNoRoute(time.Second)
+	if key != ErrAppPingFailed || err == nil {
+		t.Fatalf("ping mode on an unresolvable host: want APPERR009 with an error, got %s %v", key, err)
+	}
+	desc = app.noRouteProbeErrDesc(key, err)
+	if !strings.Contains(desc, "no-such-host.invalid") || !strings.Contains(desc, "ap1") || strings.Contains(desc, ":1:") {
+		t.Fatalf("ping desc must carry the host and the app id, no port: %q", desc)
+	}
+}
