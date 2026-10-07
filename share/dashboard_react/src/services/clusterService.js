@@ -19,6 +19,7 @@ export const clusterService = {
   deleteBackup,
   getJobs,
   getShardSchema,
+  getSchemaEvents,
   getQueryRules,
   getServerLostEvents,
   rejoinCluster,
@@ -336,6 +337,10 @@ function getJobs(clusterName, baseURL) {
 
 function getShardSchema(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema`)
+}
+
+function getSchemaEvents(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/schema/events`)
 }
 
 function getQueryRules(clusterName, baseURL) {

@@ -65,6 +65,7 @@ import (
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -435,6 +436,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorChecksumSchedulerCron, "monitoring-checksum-scheduler-cron", "0 42 3 * * 5", "Cron format schedule for checksum all tables, using 6 space-separated fields")
 	flags.BoolVar(&conf.MonitorSchemaColumns, "monitoring-schema-columns", true, "Monitor schema columns changes")
 	flags.BoolVar(&conf.MonitorSchemaIndexes, "monitoring-schema-indexes", true, "Monitor schema indexes changes")
+	flags.BoolVar(&conf.MonitorSchemaEvents, "monitoring-schema-events", true, "Monitor scheduled database events (MySQL/MariaDB EVENT) changes: compare their definition checksum, definer and status between master and replicas")
+	flags.IntVar(&conf.MonitorSchemaEventsPageSize, "monitoring-schema-events-page-size", dbhelper.DefaultEventChecksumPageSize, "Scheduled database event rows per schema scan query (0 or less uses 1000; values above 10000 are capped)")
+	flags.IntVar(&conf.MonitorSchemaEventsMax, "monitoring-schema-events-max", dbhelper.DefaultEventChecksumMaxEvents, "Maximum scheduled database events retained per server for schema drift detection (1 to 10000; over-limit servers are unavailable and not compared)")
 	flags.BoolVar(&conf.MonitorSchemaOnReplicas, "monitoring-schema-on-replicas", true, "Also monitor schema changes on replicas")
 	flags.StringVar(&conf.MonitorSchemaIgnoreTables, "monitoring-schema-ignore-tables", "", "Comma separated list of tables to ignore for schema change monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorChecksumIgnoreTables, "monitoring-checksum-ignore-tables", "replication_manager_schema.jobs,replication_manager_schema.table_checksum", "Comma separated list of tables to ignore for data checksum monitoring. Use db_name.table_name pattern")
@@ -447,9 +451,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitoringKeyPathGitOverwrite, "monitoring-key-path-git-overwrite", false, "Force overwrite old secret key in git repo")
 	flags.BoolVar(&conf.MonitorQueries, "monitoring-queries", true, "Monitor long queries")
 	flags.BoolVar(&conf.MonitorPlugins, "monitoring-plugins", true, "Monitor installed plugins")
-	flags.BoolVar(&conf.MonitorEventStatus, "monitoring-event-status", true, "Expose the read-only Events UI, definitions API, and CLI getter. Disabling it gates only those surfaces; it does not stop event-status monitoring or reduce its monitoring work")
-	flags.IntVar(&conf.MonitorEventStatusMaxDefinitions, "monitoring-event-status-max-definitions", config.DefaultMonitorEventStatusMaxDefinitions, "Maximum number of events the event definitions API returns per page (also the page size when none is asked)")
-	flags.IntVar(&conf.MonitorEventStatusMaxDefinitionBytes, "monitoring-event-status-max-definition-bytes", config.DefaultMonitorEventStatusMaxDefinitionBytes, "Largest event definition body, in bytes, the event definitions API returns; a larger one is refused, never truncated")
 	flags.IntVar(&conf.MonitorLongQueryTime, "monitoring-long-query-time", 10000, "Long query time in ms")
 	flags.BoolVar(&conf.MonitorQueryRules, "monitoring-query-rules", true, "Monitor query routing from proxies")
 	flags.StringVar(&conf.MonitorLongQueryScript, "monitoring-long-query-script", "", "long query time external script")

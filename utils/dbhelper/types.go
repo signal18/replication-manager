@@ -443,28 +443,24 @@ type Event struct {
 	Status  int64  `json:"status"`
 }
 
-// EventDefinition is a scheduled event with its schedule (ListEvents) and, for
-// one event read by GetEventDefinition, its definition body, as
-// information_schema.EVENTS reports them; a field that does not apply
-// (EXECUTE_AT of a recurring event, ENDS without an end, ...) is empty.
-// DefinitionBytes is the size of the body, always filled. Event carries the
-// status instead (GetEventStatus).
-type EventDefinition struct {
-	Db              string `db:"db" json:"db"`
-	Name            string `db:"name" json:"name"`
-	Definer         string `db:"definer" json:"definer"`
-	Definition      string `db:"-" json:"definition,omitempty"`
-	DefinitionBytes int64  `db:"definition_bytes" json:"definitionBytes"`
-	EventType       string `db:"event_type" json:"eventType"`         // ONE TIME or RECURRING
-	ExecuteAt       string `db:"execute_at" json:"executeAt"`         // one-time event: when it runs
-	IntervalValue   string `db:"interval_value" json:"intervalValue"` // recurring event: every <value> <field>
-	IntervalField   string `db:"interval_field" json:"intervalField"`
-	Starts          string `db:"starts" json:"starts"`
-	Ends            string `db:"ends" json:"ends"`
-	OnCompletion    string `db:"on_completion" json:"onCompletion"` // PRESERVE or NOT PRESERVE
-	LastExecuted    string `db:"last_executed" json:"lastExecuted"`
-	TimeZone        string `db:"time_zone" json:"timeZone"`
-	Comment         string `db:"comment" json:"comment"`
+// Status classes of an event (EventStatusClass).
+const (
+	EventStatusActive      = "active"
+	EventStatusDisabled    = "disabled"
+	EventStatusReplicaSide = "replica-side-disabled"
+	EventStatusUnknown     = "unknown"
+)
+
+// EventChecksum is one scheduled event as the schema drift detection compares
+// it (GetEventChecksums): its identity, its status class and the CRC64 of its
+// definition (HashEventDefinition), never the definition itself. The definer
+// is compared on its own and is not serialized (Event carries it).
+type EventChecksum struct {
+	Db              string `json:"db"`
+	Name            string `json:"name"`
+	Status          string `json:"status"` // EventStatusActive, EventStatusDisabled, EventStatusReplicaSide or EventStatusUnknown
+	DefinitionCrc64 uint64 `json:"definitionCrc64,string"`
+	Definer         string `json:"-"`
 }
 
 // Processlist represents a process/connection in the database

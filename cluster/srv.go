@@ -277,6 +277,7 @@ type ServerMonitor struct {
 	DiskResizeRefused               *DiskResizeRefusal                   `json:"diskResizeRefused"`     // tracked: the last volume grow the orchestrator refused on this server (WARN0226), nil once one goes through
 	PendingCgroupShrink             bool                                 `json:"-"`                     // a memory live-shrink lowered the buffer pool and is waiting for the async InnoDB resize to complete before shrinking the cgroup (anti-OOM)
 	pendingK8sMemoryResize          atomic.Pointer[K8sMemoryResizeState] // a native Kubernetes Pod memory resize was requested and is awaiting kubelet confirmation (see cluster_resize_k8s.go); written from the resize-dispatch path, read/cleared from the monitor tick -- different goroutines, so atomic not a plain pointer (GetPendingK8sMemoryResize/SetPendingK8sMemoryResize below)
+	eventSchema                     atomic.Pointer[EventSchema]          // the scheduled database events of the last schema scan (schema_events.go); written by the scan, read by the schema diff and the /schema/events view -- different goroutines, so atomic
 	RestartNode                     string                               // RestartNode stores node parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	RestartRid                      string                               // RestartRid stores rid parameter for restart container cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                        sync.Mutex                           // protects IsRunningJobs flag
@@ -2101,6 +2102,7 @@ func (server *ServerMonitor) SaveInfos() error {
 		return errors.New("SaveInfos" + err.Error())
 	}
 	server.SaveDictTables()
+	server.SaveEventSchema()
 	return nil
 }
 
@@ -2199,6 +2201,9 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 	// on restart before the first MonitorSchema cycle runs, and preserves
 	// checksum state (TableSync, TableChunksError) across restarts.
 	server.ReloadDictTables(clsave.DictTables)
+	// Restore the scheduled database events of the last schema scan
+	// (eventschema.json), as the table dictionary.
+	server.ReloadEventSchema()
 	// Restore job results — preserves last task states across restarts so
 	// the maintenance tab shows history and in-progress detection works.
 	if len(clsave.JobResults) > 0 {

@@ -177,6 +177,57 @@ func TestSetClusterSetting_GraphiteMetricsQueueLimit(t *testing.T) {
 	}
 }
 
+// TestSetClusterSetting_MonitorSchemaEventsPageSize guards the dynamic
+// settings dispatcher for the event-query page size. This is a per-query
+// LIMIT, not a cap on the complete event catalog.
+func TestSetClusterSetting_MonitorSchemaEventsPageSize(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	for _, value := range []string{"1", "10000"} {
+		if err := repman.setClusterSetting(cl, "monitoring-schema-events-page-size", value); err != nil {
+			t.Fatalf("setClusterSetting(monitoring-schema-events-page-size, %q): unexpected error: %v", value, err)
+		}
+	}
+	if cl.Conf.MonitorSchemaEventsPageSize != 10000 {
+		t.Fatalf("expected MonitorSchemaEventsPageSize=10000, got %d", cl.Conf.MonitorSchemaEventsPageSize)
+	}
+
+	for _, value := range []string{"0", "-1", "not-a-number", "10001"} {
+		err := repman.setClusterSetting(cl, "monitoring-schema-events-page-size", value)
+		want := fmt.Sprintf("invalid value for monitoring-schema-events-page-size: %q, expected an integer from 1 to 10000", value)
+		if err == nil || err.Error() != want {
+			t.Fatalf("setClusterSetting(monitoring-schema-events-page-size, %q) error = %v, want %q", value, err, want)
+		}
+	}
+}
+
+func TestSetClusterSetting_MonitorSchemaEventsMax(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	for _, value := range []string{"1", "10000"} {
+		if err := repman.setClusterSetting(cl, "monitoring-schema-events-max", value); err != nil {
+			t.Fatalf("setClusterSetting(monitoring-schema-events-max, %q): unexpected error: %v", value, err)
+		}
+	}
+	if cl.Conf.MonitorSchemaEventsMax != 10000 {
+		t.Fatalf("expected MonitorSchemaEventsMax=10000, got %d", cl.Conf.MonitorSchemaEventsMax)
+	}
+
+	for _, value := range []string{"0", "-1", "not-a-number", "10001"} {
+		err := repman.setClusterSetting(cl, "monitoring-schema-events-max", value)
+		want := fmt.Sprintf("invalid value for monitoring-schema-events-max: %q, expected an integer from 1 to 10000", value)
+		if err == nil || err.Error() != want {
+			t.Fatalf("setClusterSetting(monitoring-schema-events-max, %q) error = %v, want %q", value, err, want)
+		}
+	}
+}
+
 // TestSetClusterSetting_GraphiteMetricsQueueLimit_IndependentPerCluster proves
 // two clusters monitored by the same repman instance can hold different
 // queue-limit values — the actual reason the field is cluster-scoped rather

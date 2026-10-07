@@ -588,6 +588,18 @@ export const getShardSchema = createGuardedAsyncThunk('cluster/getShardSchema', 
   }
 })
 
+// getSchemaEvents reads the scheduled database event consistency of the
+// cluster (GET .../schema/events); the Events section keeps it locally.
+export const getSchemaEvents = createGuardedAsyncThunk('cluster/getSchemaEvents', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getSchemaEvents(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const getQueryRules = createGuardedAsyncThunk('cluster/getQueryRules', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
