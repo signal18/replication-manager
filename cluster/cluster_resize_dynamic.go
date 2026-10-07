@@ -1167,6 +1167,9 @@ func (cluster *Cluster) driveDynamicShrink() {
 	if !cluster.lastDynamicResize.IsZero() && time.Since(cluster.lastDynamicResize) < d {
 		return // one move per scale-down window, up or down
 	}
+	if cluster.raiseCPUToPlan() {
+		return
+	}
 	cpuUnder, memUnder, diskUnder, ioUnder := true, true, true, true
 	live := 0
 	for _, s := range cluster.Servers {
@@ -1200,6 +1203,32 @@ func (cluster *Cluster) driveDynamicShrink() {
 	if ioUnder {
 		cluster.shrinkAxisInPlan("io")
 	}
+}
+
+// raiseCPUToPlan brings prov-db-cpu-cores up to the plan's cores (per-node plan DBU x cores
+// per DBU) when the config sits under it, after a past shrink or a manual set. The om3 slice
+// already holds the plan's cores (GetDBContainerCPUCapCores): the config is what sizes
+// thread_pool_size and the IO threads, so under the plan the engine is throttled inside a
+// cgroup it paid for (belair at 1 core under a 2-core plan, 2026-10-07, #1903). The raise is
+// the symmetric of the shrink floor and goes through the same setter (live resize, one move
+// per scale-down window). The cores above the plan are the grow path's business.
+func (cluster *Cluster) raiseCPUToPlan() bool {
+	planDbu := cluster.GetPlanDBUPerNode().Dbu
+	if planDbu <= 0 {
+		return false
+	}
+	coresPerDBU, _ := cluster.dbuRatioInts()
+	planCores := int(math.Ceil(planDbu-1e-9)) * coresPerDBU
+	cur, _ := strconv.Atoi(strings.TrimSpace(cluster.Conf.ProvCores))
+	if planCores <= 0 || cur >= planCores {
+		return false
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Dynamic CPU raise to the plan (the slice already holds the plan's cores): prov-db-cpu-cores %d -> %d", cur, planCores)
+	cluster.lastDynamicResize = time.Now()
+	cluster.lastDynamicGrowAxis = ""
+	cluster.SetDBCores(strconv.Itoa(planCores))
+	return true
 }
 
 // dbuRatioInts is the Database (DBU) ratio as whole cores / MB per unit for the dynamic
@@ -1257,6 +1286,14 @@ func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bo
 	}
 	switch axis {
 	case "cpu":
+		// The cores never shrink under the PLAN: the container cap on the om3 slice is the
+		// plan's contract (tier x cores per DBU, GetDBContainerCPUCapCores) and stays there,
+		// so a config under it frees nothing and only lowers thread_pool_size and the IO
+		// threads inside a cgroup that keeps the plan's cores (belair 2 -> 1 twice on
+		// 2026-10-07, #1903). Same clamp as the io axis.
+		if planDbu := cluster.GetPlanDBUPerNode().Dbu; targetDbu < planDbu {
+			targetDbu = math.Ceil(planDbu - 1e-9)
+		}
 		cur, _ := strconv.Atoi(cluster.Conf.ProvCores)
 		coresPerDBU, _ := cluster.dbuRatioInts()
 		newC := int(targetDbu) * coresPerDBU
