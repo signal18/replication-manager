@@ -21,12 +21,16 @@ For each replica, compared with the master:
 | `extra`      | the event exists on the replica, not on the master                    |
 | `definition` | same name, different definition (schedule, body, SQL mode, time zone) |
 | `definer`    | same name, different definer (the account the event runs as)          |
-| `status`     | enabled on one side, disabled on the other                            |
+| `status`     | ENABLED on one side, DISABLED on the other                            |
 
-The status is compared by meaning, not by name: `ENABLED` and the status a
-replicated event takes on a replica (`SLAVESIDE_DISABLED` on MariaDB and MySQL
-before 8.4, `REPLICA_SIDE_DISABLED` on MySQL 8.4) are both **active**;
-`DISABLED` is **disabled**. A replicated event is therefore *not* a drift.
+A replica gives every replicated event the replica-side disabled status
+(`SLAVESIDE_DISABLED` on MariaDB, `REPLICA_SIDE_DISABLED` on MySQL), whether the
+event is ENABLED or DISABLED on the master: the replica cannot show the master's
+status. A replica-side disabled event is therefore never a `status` drift; a
+`status` drift is reported only when both servers carry an explicit status
+that differs (for example ENABLED on the master, DISABLED on the replica). The
+API shows the status as `active` (ENABLED), `disabled` (DISABLED),
+`replica-side-disabled` or `unknown`.
 
 Example:
 
@@ -56,22 +60,24 @@ Events differ on slave db2:3306 -> missing: app.cleanup_history; definition: app
 
 With the rest of the schema: by the schema scan (`monitoring-schema-scheduler`
 cron, or an on-demand schema scan), not on every monitoring tick. The
-comparison is refreshed every 10 ticks from the last scan.
+comparison is refreshed every 10 ticks from the last scan. The events of the
+last scan are kept across a replication-manager restart (like the table
+schema), with the time they were collected.
 
 ## Not checked is not missing
 
 A server whose events could not be read at the last scan (server down, access
 denied, timeout) is
 **unavailable**: it is not compared, and none of its events is reported missing
-or extra. Until the first scan a server is **not checked**. The Schema tab shows
+or extra. Until its first scan a server is **not checked**. The Schema tab shows
 both, per server.
 
 ## What it does not do
 
 It is not a browser of database code. replication-manager never shows or
 returns the body of an event, its schedule, its comment or its definer: the
-definitions are compared by a checksum, computed when they are read and never
-kept.
+definitions are compared by a checksum. The database computes the checksum of
+each body itself (MD5), so the body never leaves the database server.
 
 ## API
 

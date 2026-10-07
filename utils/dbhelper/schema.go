@@ -817,12 +817,13 @@ var ErrEventsUnsupported = errors.New("scheduled database events are not support
 
 // eventChecksumQuery reads, per event, what GetEventChecksums compares: the
 // identity, the definer, the status and the fields of the definition
-// (HashEventDefinition), in a stable order. The body is read only to be
-// hashed; it is never kept.
+// (HashEventDefinition), in a stable order. The body never leaves the server:
+// only its MD5, of its utf8mb4 bytes so MariaDB and MySQL hash the same text
+// alike.
 const eventChecksumQuery = "SELECT /*replication-manager*/ EVENT_SCHEMA, EVENT_NAME, COALESCE(DEFINER, ''), COALESCE(STATUS, '')," +
 	" COALESCE(EVENT_TYPE, ''), COALESCE(CAST(EXECUTE_AT AS CHAR), ''), COALESCE(CAST(INTERVAL_VALUE AS CHAR), ''), COALESCE(INTERVAL_FIELD, '')," +
 	" COALESCE(CAST(STARTS AS CHAR), ''), COALESCE(CAST(ENDS AS CHAR), ''), COALESCE(ON_COMPLETION, ''), COALESCE(SQL_MODE, ''), COALESCE(TIME_ZONE, '')," +
-	" COALESCE(EVENT_DEFINITION, '') FROM information_schema.EVENTS ORDER BY EVENT_SCHEMA, EVENT_NAME"
+	" COALESCE(MD5(CONVERT(EVENT_DEFINITION USING utf8mb4)), '') FROM information_schema.EVENTS ORDER BY EVENT_SCHEMA, EVENT_NAME"
 
 // EventDefinitionFields are the fields of an event that make its definition,
 // as information_schema.EVENTS reports them: what HashEventDefinition hashes.
@@ -838,32 +839,35 @@ type EventDefinitionFields struct {
 	OnCompletion  string
 	SQLMode       string
 	TimeZone      string
-	Body          string
+	BodyMD5       string // MD5 of EVENT_DEFINITION, computed by the server
 }
 
 // HashEventDefinition returns the CRC64 (ECMA, as GetTables) of the fields, in
-// the order of EventDefinitionFields, separated by a NUL byte. The body is
-// trimmed of leading and trailing white space; it is not otherwise normalized
-// (the server keeps the body as it was written, and a dump reloads it as is).
+// the order of EventDefinitionFields, separated by a NUL byte. The body enters
+// as its MD5 and is not normalized (the server keeps the body as it was
+// written, and a dump reloads it as is).
 func HashEventDefinition(f EventDefinitionFields) uint64 {
 	var b strings.Builder
-	for _, v := range []string{f.EventType, f.ExecuteAt, f.IntervalValue, f.IntervalField, f.Starts, f.Ends, f.OnCompletion, f.SQLMode, f.TimeZone, strings.TrimSpace(f.Body)} {
+	for _, v := range []string{f.EventType, f.ExecuteAt, f.IntervalValue, f.IntervalField, f.Starts, f.Ends, f.OnCompletion, f.SQLMode, f.TimeZone, f.BodyMD5} {
 		b.WriteString(v)
 		b.WriteByte(0)
 	}
 	return crc64.Checksum([]byte(b.String()), crc64.MakeTable(crc64.ECMA))
 }
 
-// EventStatusClass maps the status information_schema.EVENTS reports to what
-// matters for a comparison between servers: whether the event is meant to run
-// where it is primary. ENABLED and the replica-side disabled status (MariaDB
-// and MySQL before 8.4: SLAVESIDE_DISABLED, MySQL 8.4: REPLICA_SIDE_DISABLED,
-// the status a replicated event takes on a replica) are "active"; DISABLED is
-// "disabled"; anything else is "unknown".
+// EventStatusClass maps the status information_schema.EVENTS reports to a
+// class for the comparison between servers: ENABLED is "active", DISABLED is
+// "disabled", and the replica-side disabled status (MariaDB:
+// SLAVESIDE_DISABLED, MySQL 8.4: REPLICA_SIDE_DISABLED) is
+// "replica-side-disabled": a replica gives it to every replicated event,
+// whatever its status on the master, so it says nothing about that status.
+// Anything else is "unknown".
 func EventStatusClass(status string) string {
 	switch strings.ToUpper(strings.TrimSpace(status)) {
-	case "ENABLED", "SLAVESIDE_DISABLED", "REPLICA_SIDE_DISABLED":
+	case "ENABLED":
 		return EventStatusActive
+	case "SLAVESIDE_DISABLED", "REPLICA_SIDE_DISABLED":
+		return EventStatusReplicaSide
 	case "DISABLED":
 		return EventStatusDisabled
 	default:
@@ -873,8 +877,8 @@ func EventStatusClass(status string) string {
 
 // GetEventChecksums returns the events of the server, ordered by schema and
 // name, each with its status class and the CRC64 of its definition, for the
-// schema drift detection. The body of each event is hashed as its row is read
-// and dropped. It reads information_schema.EVENTS, which lists the events of
+// schema drift detection. The server returns the MD5 of each body, never the
+// body. It reads information_schema.EVENTS, which lists the events of
 // the schemas where the user has the EVENT privilege, bounded by
 // timeoutSeconds (defaultSchemaScanTimeout when 0 or less), as GetTables.
 // PostgreSQL has no EVENT objects: ErrEventsUnsupported, without a query.
@@ -898,12 +902,10 @@ func GetEventChecksums(db *sqlx.DB, myver *version.Version, timeoutSeconds int) 
 		var ev EventChecksum
 		var status string
 		var f EventDefinitionFields
-		var body []byte
 		if err := rows.Scan(&ev.Db, &ev.Name, &ev.Definer, &status, &f.EventType, &f.ExecuteAt, &f.IntervalValue, &f.IntervalField,
-			&f.Starts, &f.Ends, &f.OnCompletion, &f.SQLMode, &f.TimeZone, &body); err != nil {
+			&f.Starts, &f.Ends, &f.OnCompletion, &f.SQLMode, &f.TimeZone, &f.BodyMD5); err != nil {
 			return nil, eventChecksumQuery, err
 		}
-		f.Body = string(body)
 		ev.Status = EventStatusClass(status)
 		ev.DefinitionCrc64 = HashEventDefinition(f)
 		events = append(events, ev)

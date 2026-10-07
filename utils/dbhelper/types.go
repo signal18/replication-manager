@@ -445,9 +445,10 @@ type Event struct {
 
 // Status classes of an event (EventStatusClass).
 const (
-	EventStatusActive   = "active"
-	EventStatusDisabled = "disabled"
-	EventStatusUnknown  = "unknown"
+	EventStatusActive      = "active"
+	EventStatusDisabled    = "disabled"
+	EventStatusReplicaSide = "replica-side-disabled"
+	EventStatusUnknown     = "unknown"
 )
 
 // EventChecksum is one scheduled event as the schema drift detection compares
@@ -457,7 +458,7 @@ const (
 type EventChecksum struct {
 	Db              string `json:"db"`
 	Name            string `json:"name"`
-	Status          string `json:"status"` // EventStatusActive, EventStatusDisabled or EventStatusUnknown
+	Status          string `json:"status"` // EventStatusActive, EventStatusDisabled, EventStatusReplicaSide or EventStatusUnknown
 	DefinitionCrc64 uint64 `json:"definitionCrc64,string"`
 	Definer         string `json:"-"`
 }

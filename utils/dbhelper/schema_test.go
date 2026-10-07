@@ -580,7 +580,7 @@ func TestGetUserAuthConnQueryErrorIsWrapped(t *testing.T) {
 
 // eventChecksumColumns are the columns of eventChecksumQuery.
 var eventChecksumColumns = []string{"schema", "name", "definer", "status", "event_type", "execute_at", "interval_value", "interval_field",
-	"starts", "ends", "on_completion", "sql_mode", "time_zone", "body"}
+	"starts", "ends", "on_completion", "sql_mode", "time_zone", "body_md5"}
 
 func TestGetEventChecksums(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -592,9 +592,12 @@ func TestGetEventChecksums(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
 
 	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
-		AddRow("app", "purge", "root@%", "ENABLED", "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "STRICT_TRANS_TABLES", "SYSTEM", "DELETE FROM audit").
-		AddRow("app", "purge_copy", "root@%", "SLAVESIDE_DISABLED", "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "STRICT_TRANS_TABLES", "SYSTEM", "\n DELETE FROM audit \n").
-		AddRow("app", "off", "app@%", "DISABLED", "ONE TIME", "2030-06-01 00:00:00", "", "", "", "", "NOT PRESERVE", "", "+00:00", "DO 1"))
+		AddRow("app", "purge", "root@%", "ENABLED", "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "STRICT_TRANS_TABLES", "SYSTEM", "3c2a8f0e6c0d5e0f1b2a3c4d5e6f7a8b").
+		AddRow("app", "purge_copy", "root@%", "SLAVESIDE_DISABLED", "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "STRICT_TRANS_TABLES", "SYSTEM", "3c2a8f0e6c0d5e0f1b2a3c4d5e6f7a8b").
+		AddRow("app", "off", "app@%", "DISABLED", "ONE TIME", "2030-06-01 00:00:00", "", "", "", "", "NOT PRESERVE", "", "+00:00", "9e1f8c2b7a6d5e4f3a2b1c0d9e8f7a6b"))
+	if !strings.Contains(eventChecksumQuery, "MD5(CONVERT(EVENT_DEFINITION USING utf8mb4))") || strings.Contains(strings.ReplaceAll(eventChecksumQuery, "MD5(CONVERT(EVENT_DEFINITION", ""), "EVENT_DEFINITION") {
+		t.Fatalf("the body must only be read as its server-side MD5: %s", eventChecksumQuery)
+	}
 	events, _, err := GetEventChecksums(sqlxdb, mariadb, 5)
 	if err != nil || len(events) != 3 {
 		t.Fatalf("GetEventChecksums = %+v, %v", events, err)
@@ -602,8 +605,8 @@ func TestGetEventChecksums(t *testing.T) {
 	if events[0].Db != "app" || events[0].Name != "purge" || events[0].Definer != "root@%" || events[0].Status != EventStatusActive || events[0].DefinitionCrc64 == 0 {
 		t.Fatalf("first event = %+v", events[0])
 	}
-	// the replica-side disabled status is active, and white space around the body does not count
-	if events[1].Status != EventStatusActive || events[1].DefinitionCrc64 != events[0].DefinitionCrc64 {
+	// a replicated copy: its own replica-side disabled class, the same definition
+	if events[1].Status != EventStatusReplicaSide || events[1].DefinitionCrc64 != events[0].DefinitionCrc64 {
 		t.Fatalf("a replicated copy of the same event must compare equal: %+v vs %+v", events[1], events[0])
 	}
 	if events[2].Status != EventStatusDisabled || events[2].DefinitionCrc64 == events[0].DefinitionCrc64 {
@@ -626,16 +629,13 @@ func TestGetEventChecksums(t *testing.T) {
 
 func TestHashEventDefinition(t *testing.T) {
 	base := EventDefinitionFields{EventType: "RECURRING", IntervalValue: "1", IntervalField: "HOUR", Starts: "2030-01-01 00:00:00",
-		OnCompletion: "PRESERVE", SQLMode: "STRICT_TRANS_TABLES", TimeZone: "SYSTEM", Body: "DELETE FROM t"}
+		OnCompletion: "PRESERVE", SQLMode: "STRICT_TRANS_TABLES", TimeZone: "SYSTEM", BodyMD5: "3c2a8f0e6c0d5e0f1b2a3c4d5e6f7a8b"}
 	h := HashEventDefinition(base)
-	same := base
-	same.Body = "  DELETE FROM t\n"
-	if HashEventDefinition(same) != h {
-		t.Fatalf("leading and trailing white space must not change the hash")
+	if same := base; HashEventDefinition(same) != h {
+		t.Fatalf("the same fields must give the same hash")
 	}
 	for name, change := range map[string]func(*EventDefinitionFields){
-		"body":          func(f *EventDefinitionFields) { f.Body = "DELETE FROM t2" },
-		"inner spacing": func(f *EventDefinitionFields) { f.Body = "DELETE  FROM t" },
+		"body":          func(f *EventDefinitionFields) { f.BodyMD5 = "9e1f8c2b7a6d5e4f3a2b1c0d9e8f7a6b" },
 		"interval":      func(f *EventDefinitionFields) { f.IntervalValue = "2" },
 		"interval unit": func(f *EventDefinitionFields) { f.IntervalField = "DAY" },
 		"starts":        func(f *EventDefinitionFields) { f.Starts = "2031-01-01 00:00:00" },
@@ -657,7 +657,7 @@ func TestHashEventDefinition(t *testing.T) {
 
 func TestEventStatusClass(t *testing.T) {
 	for status, want := range map[string]string{
-		"ENABLED": EventStatusActive, "SLAVESIDE_DISABLED": EventStatusActive, "REPLICA_SIDE_DISABLED": EventStatusActive,
+		"ENABLED": EventStatusActive, "SLAVESIDE_DISABLED": EventStatusReplicaSide, "REPLICA_SIDE_DISABLED": EventStatusReplicaSide,
 		"enabled": EventStatusActive, "DISABLED": EventStatusDisabled, "": EventStatusUnknown, "WHATEVER": EventStatusUnknown,
 	} {
 		if got := EventStatusClass(status); got != want {

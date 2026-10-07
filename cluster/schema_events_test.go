@@ -7,6 +7,9 @@ package cluster
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -32,12 +35,18 @@ func TestCompareEventSchema(t *testing.T) {
 		ev("app", "run_as", active, 5, "root@%"),
 	)
 
-	t.Run("consistent, replica-side disabled is active", func(t *testing.T) {
+	t.Run("consistent: replica-side disabled copies of enabled and disabled events", func(t *testing.T) {
 		// what a replica reports for replicated events: the same definitions,
-		// SLAVESIDE_DISABLED normalized to active by dbhelper.EventStatusClass
-		replica := checked(master.Events...)
-		if d := compareEventSchema(master, replica); d.Comparison != EventComparisonConsistent || len(d.Drifts) != 0 {
+		// all replica-side disabled, whatever their status on the master
+		const replicaSide = dbhelper.EventStatusReplicaSide
+		m := checked(ev("app", "on", active, 1, "root@%"), ev("app", "off", disabled, 2, "root@%"))
+		r := checked(ev("app", "on", replicaSide, 1, "root@%"), ev("app", "off", replicaSide, 2, "root@%"))
+		if d := compareEventSchema(m, r); d.Comparison != EventComparisonConsistent || len(d.Drifts) != 0 {
 			t.Fatalf("got %+v", d)
+		}
+		// same on a promoted master whose events are still replica-side disabled
+		if d := compareEventSchema(r, m); d.Comparison != EventComparisonConsistent || len(d.Drifts) != 0 {
+			t.Fatalf("reversed: got %+v", d)
 		}
 	})
 
@@ -161,5 +170,72 @@ func TestEventSchemaDiffLinesDisabled(t *testing.T) {
 	cl.Conf.MonitorSchemaEvents = true
 	if lines := cl.eventSchemaDiffLines(r1); len(lines) != 1 || !strings.Contains(lines[0], "missing: app.a") {
 		t.Fatalf("lines = %v", lines)
+	}
+}
+
+// TestEventSchemaSaveReload: the events of the last scan survive a restart
+// (eventschema.json) with their collection time and definer, so a reloaded
+// snapshot compares with a fresh one without false definer drift.
+func TestEventSchemaSaveReload(t *testing.T) {
+	dir := t.TempDir()
+	cl := &Cluster{Conf: &config.Config{MonitorSchemaEvents: true}}
+	src := &ServerMonitor{URL: "db1:3306", Datadir: dir, ClusterGroup: cl}
+	want := &EventSchema{Collection: EventCollectionChecked, CollectedAt: 1759800000,
+		Events: []dbhelper.EventChecksum{ev("app", "purge", dbhelper.EventStatusActive, 18446744073709551615, "root@localhost")}}
+	src.eventSchema.Store(want)
+	src.SaveEventSchema()
+
+	dst := &ServerMonitor{URL: "db1:3306", Datadir: dir, ClusterGroup: cl}
+	dst.ReloadEventSchema()
+	if got := dst.GetEventSchema(); got == nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("reloaded %+v, want %+v", got, want)
+	}
+	if d := compareEventSchema(dst.GetEventSchema(), checked(want.Events...)); d.Comparison != EventComparisonConsistent {
+		t.Fatalf("a reloaded snapshot must compare consistent with the same fresh one, got %+v", d)
+	}
+
+	// monitoring-schema-events off: nothing restored
+	cl.Conf.MonitorSchemaEvents = false
+	off := &ServerMonitor{URL: "db1:3306", Datadir: dir, ClusterGroup: cl}
+	off.ReloadEventSchema()
+	if off.GetEventSchema() != nil {
+		t.Fatalf("nothing must be restored with monitoring-schema-events off")
+	}
+
+	// no snapshot (off): the file is removed
+	src.eventSchema.Store(nil)
+	src.SaveEventSchema()
+	if _, err := os.Stat(filepath.Join(dir, eventSchemaFile)); !os.IsNotExist(err) {
+		t.Fatalf("the file must be removed when there is no snapshot, stat err %v", err)
+	}
+
+	// an unreadable file restores nothing
+	cl.Conf.MonitorSchemaEvents = true
+	os.WriteFile(filepath.Join(dir, eventSchemaFile), []byte("{not json"), 0644)
+	bad := &ServerMonitor{URL: "db1:3306", Datadir: dir, ClusterGroup: cl}
+	bad.ReloadEventSchema()
+	if bad.GetEventSchema() != nil {
+		t.Fatalf("a corrupt file must not restore a snapshot")
+	}
+}
+
+// TestCompareEventSchemaDottedNames: `a.b`.`c` and `a`.`b.c` are two events,
+// never one.
+func TestCompareEventSchemaDottedNames(t *testing.T) {
+	const active = dbhelper.EventStatusActive
+	master := checked(ev("a.b", "c", active, 1, "root@%"))
+	replica := checked(ev("a", "b.c", active, 1, "root@%"))
+	d := compareEventSchema(master, replica)
+	if d.Comparison != EventComparisonDifferent || len(d.Drifts) != 2 ||
+		d.Drifts[0] != (EventDrift{"a", "b.c", EventDriftExtra}) || d.Drifts[1] != (EventDrift{"a.b", "c", EventDriftMissing}) {
+		t.Fatalf("got %+v", d)
+	}
+	cl := &Cluster{Conf: &config.Config{MonitorSchemaEvents: true}}
+	m, r := &ServerMonitor{Id: "m"}, &ServerMonitor{Id: "r"}
+	cl.master, cl.slaves = m, serverList{r}
+	m.eventSchema.Store(master)
+	r.eventSchema.Store(replica)
+	if v := cl.GetEventSchemaView(); len(v.Events) != 2 {
+		t.Fatalf("the view must keep two events, got %+v", v.Events)
 	}
 }

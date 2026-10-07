@@ -237,7 +237,7 @@ function Events({ clusterName }) {
       <Text fontSize='xs' color='gray.500' px={2}>
         Collected by the schema scan
         {servers.find((s) => s.isMaster)?.collectedAt ? ` (master: ${formatTime(servers.find((s) => s.isMaster).collectedAt)})` : ''}. Each event shows its
-        status (active: enabled, or disabled on a replica because it is replicated; disabled) and the start of the CRC64 of its definition; the
+        status (active, disabled, or replica-side-disabled: the status a replica gives every replicated event, never a drift) and the start of the CRC64 of its definition; the
         definition itself is never shown.
       </Text>
     </VStack>

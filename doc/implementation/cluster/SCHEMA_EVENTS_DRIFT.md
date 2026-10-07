@@ -13,8 +13,9 @@ observational view, `GET /api/clusters/{clusterName}/schema/events`.
 MonitorSchema (scheduler / on demand)
   └─ MonitorEventSchema                       cluster/schema_events.go
        └─ collectEventSchema(server)          master; replicas with monitoring-schema-on-replicas
-            └─ dbhelper.GetEventChecksums     information_schema.EVENTS, body hashed then dropped
+            └─ dbhelper.GetEventChecksums     information_schema.EVENTS, body as server-side MD5
        → ServerMonitor.eventSchema            atomic.Pointer[EventSchema], immutable snapshot
+       ↔ eventschema.json                     SaveInfos / ReloadSaveInfosVariables, as dicttables.json
 
 MonitorTableSchemaDiff (every 10 ticks)
   └─ CompareSchemaBetweenMasterAndSlave       tables (unchanged)
@@ -49,11 +50,19 @@ GET /schema/events
   (`LogSQL`, general module as the rest of the schema scan) and the server is
   `unavailable` until the next scan. The table scan raises no collection-error
   state either; the scan runs on the schema scheduler, so it cannot flap per tick.
+- **Kept across restarts, as tables.** `SaveInfos` writes the snapshot to
+  `eventschema.json` next to `dicttables.json` (`SaveEventSchema`; the file
+  is removed when there is no snapshot) and `ReloadSaveInfosVariables`
+  restores it at startup (`ReloadEventSchema`), with its original
+  `collectedAt`. The file keeps the definer (the API does not), so a reloaded
+  snapshot compares with a fresh one without a false `definer` drift. Nothing
+  is restored with `monitoring-schema-events` off. `eventschema.json` is in
+  `.gitignore` with `dicttables.json`.
 - **Concurrency.** The scan, the 10-tick diff and the API run in different
   goroutines: a snapshot is stored whole through `atomic.Pointer` and never
   modified afterwards.
 - **Same bounds as tables.** Like `GetTables`, the scan keeps every event (one
-  short summary each, the body is never kept), bounded by
+  short summary each; the body is never read, only its MD5), bounded by
   `monitoring-schema-scan-timeout`; no separate count limit.
 - **Off-switch (T14).** `monitoring-schema-events`: off, the scan drops the
   snapshots, the diff adds no line and the view answers `enabled: false`.
@@ -81,8 +90,11 @@ explicit `localhost` definer, which the failover event handling accepts.
 in this order, NUL-separated:
 
 `EVENT_TYPE`, `EXECUTE_AT`, `INTERVAL_VALUE`, `INTERVAL_FIELD`, `STARTS`, `ENDS`,
-`ON_COMPLETION`, `SQL_MODE`, `TIME_ZONE`, `EVENT_DEFINITION` (trimmed of leading
-and trailing white space).
+`ON_COMPLETION`, `SQL_MODE`, `TIME_ZONE`, and the body as
+`MD5(CONVERT(EVENT_DEFINITION USING utf8mb4))`, computed by the server: the body
+never leaves the database, and converting to utf8mb4 first makes MariaDB and
+MySQL hash the same text alike. Every server runs the same query, so both sides
+of a comparison use the same scheme.
 
 Left out: `STATUS` (compared by class), `DEFINER` (compared on its own, so the
 drift says *definer* rather than an opaque *definition*), `ORIGINATOR`
@@ -90,15 +102,24 @@ drift says *definer* rather than an opaque *definition*), `ORIGINATOR`
 `EVENT_COMMENT`, `CHARACTER_SET_CLIENT`, `COLLATION_CONNECTION`,
 `DATABASE_COLLATION` (client/session metadata). No SQL normalization: the
 server stores the body as written and a dump reloads it as is; the NUL
-separator keeps a value from shifting between fields.
+separator keeps a value from shifting between fields. Map keys are a
+`(schema, name)` struct, not `schema.name`, since either may contain a dot.
 
 ## Status classes
 
-`dbhelper.EventStatusClass`: `ENABLED`, `SLAVESIDE_DISABLED`,
-`REPLICA_SIDE_DISABLED` → `active`; `DISABLED` → `disabled`; anything else →
-`unknown` (equal only to itself). A replicated event (ENABLED on the master,
-replica-side disabled on the replica) is consistent; active vs disabled is a
-`status` drift.
+`dbhelper.EventStatusClass`: `ENABLED` → `active`; `DISABLED` → `disabled`;
+`SLAVESIDE_DISABLED` (MariaDB) / `REPLICA_SIDE_DISABLED` (MySQL) →
+`replica-side-disabled`; anything else → `unknown`.
+
+A replica sets every replicated event to replica-side disabled whatever its
+status on the master (MySQL documents it; lab-verified on MariaDB 10.11 and
+Percona 8.4: an ENABLED and a DISABLED master event are both
+`SLAVESIDE_DISABLED`/`REPLICA_SIDE_DISABLED` on the replica). The replica-side
+class therefore carries no information about the master's status, and
+`compareEventSchema` reports a `status` drift only when both sides have an
+explicit class that differs: `replica-side-disabled` on either side is never a
+drift. Consequence: the comparison cannot tell, from a replica, whether a
+master event is ENABLED or DISABLED.
 
 ## Engines
 
@@ -120,11 +141,12 @@ tested (`TestSchemaEventsACL`): db-show-schema reads `/schema/events` but not
 ## Tests
 
 - `utils/dbhelper/schema_test.go`: `TestGetEventChecksums` (status class,
-  white space, error returns no list, PostgreSQL unsupported),
+  body only as server-side MD5, error returns no list, PostgreSQL unsupported),
   `TestHashEventDefinition`, `TestEventStatusClass`.
 - `cluster/schema_events_test.go`: every drift kind, not-checked is never
   missing, `WARN0164` line format and cap, the view (no definer in the JSON,
-  CRC as string), the off-switch.
+  CRC as string), the off-switch, the save/reload round trip
+  (`TestEventSchemaSaveReload`), dotted names (`TestCompareEventSchemaDottedNames`).
 - `cluster/cluster_acl_test.go`: `TestSchemaEventsACL`.
 - `eventsMatrix.test.js`: display helpers.
 - `cluster/schema_events_failover_test.go`: the failover boundary (above).
@@ -141,3 +163,9 @@ tested (`TestSchemaEventsACL`): db-show-schema reads `/schema/events` but not
 - A replica is compared with the master only: replicas are not compared with
   each other, and servers outside the master/replicas are not shown.
 - `unavailable` stays until the next schema scan.
+- Across engines, the checksum inputs of the same event are identical
+  (lab-verified, MariaDB 10.11 vs Percona 8.4: schedule formatting, time zone,
+  body MD5), except `SQL_MODE`: an event takes the creating session's mode, and
+  the engines' defaults differ (MariaDB adds `NO_AUTO_CREATE_USER`). Events
+  created with each engine's default mode on a MariaDB/MySQL pair compare as a
+  `definition` drift.

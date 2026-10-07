@@ -36,8 +36,9 @@ const schemaEventsBodyMarker = "@regtest_schema_events_body"
 
 // TestSchemaEventsDrift validates the scheduled database event drift detection
 // (monitoring-schema-events) against a real MariaDB or MySQL-family cluster:
-// events created on the master replicate and compare consistent (a replicated
-// event is replica-side disabled there, which is active); then, on one replica
+// events created on the master replicate and compare consistent (a replica
+// gives every replicated event the replica-side disabled status, also to one
+// DISABLED on the master, and that is never a status drift); then, on one replica
 // only (sql_log_bin=0), an event is dropped, one body changed, one event
 // disabled and one added, and the schema scan must report each drift kind in
 // GET /schema/events and in the replica's WARN0164, never an event body. With
@@ -128,6 +129,9 @@ func (regtest *RegTest) TestSchemaEventsDrift(cl *clusterpkg.Cluster, conf strin
 	defer rdb.Close()
 	rdb.SetMaxOpenConns(1)
 	rdb.SetMaxIdleConns(1)
+	// Runs last, after the cleanup below and the switch restore: collect the
+	// events again so the view shows the cluster's own events, not none.
+	defer cl.MonitorEventSchema()
 	defer func() {
 		if err := dbhelper.ExecStatements(mdb, "DROP DATABASE IF EXISTS "+quote(schemaEventsDB)); err != nil {
 			step("cleanup on the master failed: %s", err)
@@ -138,11 +142,12 @@ func (regtest *RegTest) TestSchemaEventsDrift(cl *clusterpkg.Cluster, conf strin
 		}
 	}()
 
-	step("create four events (scheduled at the end of 2037, none runs) on the master %s", master.URL)
+	step("create five events (scheduled at the end of 2037, none runs; ev_master_disabled DISABLED) on the master %s", master.URL)
 	stmts := []string{"DROP DATABASE IF EXISTS " + quote(schemaEventsDB), "CREATE DATABASE " + quote(schemaEventsDB)}
 	for i, name := range []string{"ev_same", "ev_body", "ev_status", "ev_missing"} {
 		stmts = append(stmts, fmt.Sprintf("CREATE EVENT %s ON SCHEDULE AT '2037-12-31 00:00:00' ON COMPLETION PRESERVE ENABLE DO SET %s = %d", event(name), schemaEventsBodyMarker, i))
 	}
+	stmts = append(stmts, fmt.Sprintf("CREATE EVENT %s ON SCHEDULE AT '2037-12-31 00:00:00' ON COMPLETION PRESERVE DISABLE DO SET %s = 9", event("ev_master_disabled"), schemaEventsBodyMarker))
 	if err := dbhelper.ExecStatements(mdb, stmts...); err != nil {
 		return fail("fixture: %s", err)
 	}
@@ -159,11 +164,11 @@ func (regtest *RegTest) TestSchemaEventsDrift(cl *clusterpkg.Cluster, conf strin
 		}
 		return n
 	}
-	if !physReseedWait(2*time.Minute, func() bool { return countOn(replica) == 4 }) {
+	if !physReseedWait(2*time.Minute, func() bool { return countOn(replica) == 5 }) {
 		return fail("the events did not replicate to %s", replica.URL)
 	}
 
-	step("schema scan: the replicated events are consistent (ENABLED on the master, replica-side disabled on the replica)")
+	step("schema scan: the replicated events are consistent (ENABLED or DISABLED on the master, replica-side disabled on the replica)")
 	cl.MonitorEventSchema()
 	view, raw, err := getView()
 	if err != nil {
@@ -176,7 +181,11 @@ func (regtest *RegTest) TestSchemaEventsDrift(cl *clusterpkg.Cluster, conf strin
 		return fail("replicated events must not drift, got %v", d)
 	}
 	for _, e := range view.Events {
-		if e.Db == schemaEventsDB && (e.Nodes[replica.Id].Status != dbhelper.EventStatusActive || e.Nodes[replica.Id].DefinitionCrc64 != e.Nodes[master.Id].DefinitionCrc64) {
+		wantMaster := dbhelper.EventStatusActive
+		if e.Name == "ev_master_disabled" {
+			wantMaster = dbhelper.EventStatusDisabled
+		}
+		if e.Db == schemaEventsDB && (e.Nodes[master.Id].Status != wantMaster || e.Nodes[replica.Id].Status != dbhelper.EventStatusReplicaSide || e.Nodes[replica.Id].DefinitionCrc64 != e.Nodes[master.Id].DefinitionCrc64) {
 			return fail("%s on the replica: %+v, master %+v", e.Name, e.Nodes[replica.Id], e.Nodes[master.Id])
 		}
 	}

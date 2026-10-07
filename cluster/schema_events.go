@@ -5,8 +5,10 @@
 package cluster
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -77,6 +79,80 @@ func (server *ServerMonitor) GetEventSchema() *EventSchema {
 	return server.eventSchema.Load()
 }
 
+// eventSchemaFile is the file the events of the last schema scan are kept in,
+// next to dicttables.json, so they survive a restart as the tables do.
+const eventSchemaFile = "eventschema.json"
+
+// eventSchemaSaved is the saved form of an EventSchema. Unlike the API, it
+// keeps the definer: a reloaded snapshot is compared with fresh ones.
+type eventSchemaSaved struct {
+	Collection  string                  `json:"collection"`
+	CollectedAt int64                   `json:"collectedAt"`
+	Events      []eventSchemaSavedEvent `json:"events"`
+}
+
+type eventSchemaSavedEvent struct {
+	Db              string `json:"db"`
+	Name            string `json:"name"`
+	Status          string `json:"status"`
+	Definer         string `json:"definer"`
+	DefinitionCrc64 uint64 `json:"definitionCrc64,string"`
+}
+
+// SaveEventSchema writes the events of the last schema scan to
+// eventschema.json (SaveInfos, as SaveDictTables), or removes the file when
+// there is none (monitoring-schema-events off).
+func (server *ServerMonitor) SaveEventSchema() {
+	path := server.Datadir + "/" + eventSchemaFile
+	snap := server.GetEventSchema()
+	if snap == nil {
+		os.Remove(path)
+		return
+	}
+	saved := eventSchemaSaved{Collection: snap.Collection, CollectedAt: snap.CollectedAt, Events: make([]eventSchemaSavedEvent, 0, len(snap.Events))}
+	for _, e := range snap.Events {
+		saved.Events = append(saved.Events, eventSchemaSavedEvent{Db: e.Db, Name: e.Name, Status: e.Status, Definer: e.Definer, DefinitionCrc64: e.DefinitionCrc64})
+	}
+	data, err := json.MarshalIndent(saved, "", "\t")
+	if err != nil {
+		return
+	}
+	os.WriteFile(path, data, 0644)
+}
+
+// ReloadEventSchema restores the events of the last schema scan from
+// eventschema.json at startup (ReloadSaveInfosVariables, as ReloadDictTables),
+// with their original collection time. Nothing is restored with
+// monitoring-schema-events off, or from an unreadable file.
+func (server *ServerMonitor) ReloadEventSchema() {
+	cluster := server.ClusterGroup
+	if !cluster.Conf.MonitorSchemaEvents {
+		return
+	}
+	data, err := os.ReadFile(server.Datadir + "/" + eventSchemaFile)
+	if err != nil {
+		return
+	}
+	var saved eventSchemaSaved
+	if err := json.Unmarshal(data, &saved); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Error parsing %s for server %s: %v", eventSchemaFile, server.URL, err)
+		return
+	}
+	switch saved.Collection {
+	case EventCollectionChecked, EventCollectionUnavailable, EventCollectionUnsupported:
+	default:
+		return
+	}
+	snap := &EventSchema{Collection: saved.Collection, CollectedAt: saved.CollectedAt, Events: make([]dbhelper.EventChecksum, 0, len(saved.Events))}
+	for _, e := range saved.Events {
+		snap.Events = append(snap.Events, dbhelper.EventChecksum{Db: e.Db, Name: e.Name, Status: e.Status, Definer: e.Definer, DefinitionCrc64: e.DefinitionCrc64})
+	}
+	server.eventSchema.Store(snap)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Restored %d scheduled database events from cache for server %s", len(snap.Events), server.URL)
+}
+
 // MonitorEventSchema collects the scheduled database events of the master and,
 // with monitoring-schema-on-replicas, of the replicas. Called by MonitorSchema;
 // with monitoring-schema-events off it drops the collected events instead.
@@ -130,21 +206,26 @@ func (cluster *Cluster) collectEventSchema(server *ServerMonitor) {
 	server.eventSchema.Store(snap)
 }
 
+// eventKey identifies an event: a struct, not "schema.name", since either
+// identifier may contain a dot.
+type eventKey struct{ db, name string }
+
 // compareEventSchema compares the events of a replica with those of the
 // master: the drift rules of monitoring-schema-events. When either side is not
 // checked, nothing is concluded (never "missing"). The status is compared by
-// class: ENABLED on the master and replica-side disabled on the replica are
-// both active.
+// class, and only when both sides carry their own status: replica-side
+// disabled (what a replica gives every replicated event, whether the master
+// has it enabled or disabled) is never a status drift.
 func compareEventSchema(master, replica *EventSchema) EventSchemaDiff {
 	if master == nil || replica == nil || master.Collection != EventCollectionChecked || replica.Collection != EventCollectionChecked {
 		return EventSchemaDiff{Comparison: EventComparisonNotChecked}
 	}
-	key := func(e dbhelper.EventChecksum) string { return e.Db + "." + e.Name }
-	onReplica := make(map[string]dbhelper.EventChecksum, len(replica.Events))
+	key := func(e dbhelper.EventChecksum) eventKey { return eventKey{e.Db, e.Name} }
+	onReplica := make(map[eventKey]dbhelper.EventChecksum, len(replica.Events))
 	for _, e := range replica.Events {
 		onReplica[key(e)] = e
 	}
-	onMaster := make(map[string]bool, len(master.Events))
+	onMaster := make(map[eventKey]bool, len(master.Events))
 	var drifts []EventDrift
 	for _, m := range master.Events {
 		onMaster[key(m)] = true
@@ -159,7 +240,7 @@ func compareEventSchema(master, replica *EventSchema) EventSchemaDiff {
 		if m.Definer != r.Definer {
 			drifts = append(drifts, EventDrift{m.Db, m.Name, EventDriftDefiner})
 		}
-		if m.Status != r.Status {
+		if m.Status != r.Status && m.Status != dbhelper.EventStatusReplicaSide && r.Status != dbhelper.EventStatusReplicaSide {
 			drifts = append(drifts, EventDrift{m.Db, m.Name, EventDriftStatus})
 		}
 	}
@@ -169,9 +250,11 @@ func compareEventSchema(master, replica *EventSchema) EventSchemaDiff {
 		}
 	}
 	sort.SliceStable(drifts, func(i, j int) bool {
-		a, b := drifts[i].Db+"."+drifts[i].Name, drifts[j].Db+"."+drifts[j].Name
-		if a != b {
-			return a < b
+		if drifts[i].Db != drifts[j].Db {
+			return drifts[i].Db < drifts[j].Db
+		}
+		if drifts[i].Name != drifts[j].Name {
+			return drifts[i].Name < drifts[j].Name
 		}
 		return driftRank(drifts[i].Drift) < driftRank(drifts[j].Drift)
 	})
@@ -307,9 +390,9 @@ func (cluster *Cluster) GetEventSchemaView() EventSchemaView {
 		}
 	}
 
-	byKey := map[string]*EventSchemaEventView{}
+	byKey := map[eventKey]*EventSchemaEventView{}
 	event := func(db, name string) *EventSchemaEventView {
-		k := db + "." + name
+		k := eventKey{db, name}
 		if byKey[k] == nil {
 			byKey[k] = &EventSchemaEventView{Db: db, Name: name, Nodes: map[string]EventSchemaNodeView{}, Drifts: []EventSchemaDriftView{}}
 		}

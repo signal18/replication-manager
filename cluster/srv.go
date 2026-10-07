@@ -2102,6 +2102,7 @@ func (server *ServerMonitor) SaveInfos() error {
 		return errors.New("SaveInfos" + err.Error())
 	}
 	server.SaveDictTables()
+	server.SaveEventSchema()
 	return nil
 }
 
@@ -2200,6 +2201,9 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 	// on restart before the first MonitorSchema cycle runs, and preserves
 	// checksum state (TableSync, TableChunksError) across restarts.
 	server.ReloadDictTables(clsave.DictTables)
+	// Restore the scheduled database events of the last schema scan
+	// (eventschema.json), as the table dictionary.
+	server.ReloadEventSchema()
 	// Restore job results — preserves last task states across restarts so
 	// the maintenance tab shows history and in-progress detection works.
 	if len(clsave.JobResults) > 0 {

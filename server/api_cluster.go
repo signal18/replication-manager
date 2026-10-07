@@ -7345,7 +7345,6 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {object} cluster.EventSchemaView "Scheduled database event consistency"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 405 {string} string "Method Not Allowed"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/schema/events [get]
 func (repman *ReplicationManager) handlerMuxClusterSchemaEvents(w http.ResponseWriter, r *http.Request) {

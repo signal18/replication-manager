@@ -8846,12 +8846,6 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
-                    "405": {
-                        "description": "Method Not Allowed",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
                     "500": {
                         "description": "No cluster",
                         "schema": {
