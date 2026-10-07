@@ -726,7 +726,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 		cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
 		cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
 		cluster.assertToolsVersionsConfigState()
-	cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
+		cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
 		return
 	}
 	// Clear WARN0314 if log-plugin was just enabled.
