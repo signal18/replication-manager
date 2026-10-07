@@ -63,7 +63,7 @@ function ChartMultiMetric({
     // concurrency under semi-sync (mysql.<host>.*): the thread pool and the ack wait
     concurrency_thread_pool_size: 'thread_pool_size', concurrency_threadpool_threads: 'pool threads',
     concurrency_threadpool_idle_threads: 'pool idle threads',
-    semisync_net_avg_wait_us: 'semi-sync avg wait (us/commit)', semisync_wait_cores: 'semi-sync wait (cores)',
+    semisync_tx_avg_wait_us: 'semi-sync avg wait (us/commit)', semisync_wait_cores: 'semi-sync wait (cores)',
   };
   const getDisplayName = (metricPath) => {
     // aliasByNode(path, n): the leaf is in the path argument, not after the last comma

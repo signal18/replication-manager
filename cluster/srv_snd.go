@@ -68,7 +68,7 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	// from (GetConfigThreadPoolSize: cores x 4 under semi-sync, #1902): the pool size the
 	// engine runs with, the threads the pool holds, and the semi-sync acknowledgment wait
 	// as the cgroup can never see it (a task asleep on a socket is no stall for PSI or the
-	// quota, #1904): the master's cumulative Rpl_semi_sync_master_net_wait_time rated over
+	// quota, #1904): the master's cumulative Rpl_semi_sync_master_tx_wait_time rated over
 	// the tick = seconds of wait per second, a cores-equivalent, next to the engine's own
 	// average per transaction. First-class for the same reason as above.
 	if v := server.Variables.Get("THREAD_POOL_SIZE"); v != "" {
@@ -81,8 +81,11 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.concurrency_threadpool_idle_threads", hostname), v, time.Now().Unix()))
 	}
 	if server.IsSemiSyncMaster() {
-		if v := server.Status.Get("RPL_SEMI_SYNC_MASTER_NET_AVG_WAIT_TIME"); v != "" {
-			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.semisync_net_avg_wait_us", hostname), v, time.Now().Unix()))
+		// TX wait, not NET wait: MariaDB keeps Rpl_semi_sync_master_net_* at 0 and accounts
+		// the acknowledgment wait in Rpl_semi_sync_master_tx_* (belair: net 0, tx avg 12317 us
+		// over 91833 waits, 2026-10-07)
+		if v := server.Status.Get("RPL_SEMI_SYNC_MASTER_TX_AVG_WAIT_TIME"); v != "" {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.semisync_tx_avg_wait_us", hostname), v, time.Now().Unix()))
 		}
 		if cores, ok := server.semiSyncWaitCores(); ok {
 			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.semisync_wait_cores", hostname), fmt.Sprintf("%.4f", cores), time.Now().Unix()))
@@ -246,14 +249,14 @@ func topMetricToken(name string) string {
 
 // semiSyncWaitCores is the master's semi-synchronous acknowledgment wait over the last
 // monitor tick as seconds of wait per second (a cores-equivalent, like the cgroup wait
-// fractions): the increase of Rpl_semi_sync_master_net_wait_time (microseconds, cumulative)
+// fractions): the increase of Rpl_semi_sync_master_tx_wait_time (microseconds, cumulative)
 // over the tick. Not available on the first tick, on a counter reset, or without a tick.
 func (server *ServerMonitor) semiSyncWaitCores() (float64, bool) {
-	prev, ok := server.PrevStatus.CheckAndGet("RPL_SEMI_SYNC_MASTER_NET_WAIT_TIME")
+	prev, ok := server.PrevStatus.CheckAndGet("RPL_SEMI_SYNC_MASTER_TX_WAIT_TIME")
 	if !ok {
 		return 0, false
 	}
-	cur, err := strconv.ParseFloat(server.Status.Get("RPL_SEMI_SYNC_MASTER_NET_WAIT_TIME"), 64)
+	cur, err := strconv.ParseFloat(server.Status.Get("RPL_SEMI_SYNC_MASTER_TX_WAIT_TIME"), 64)
 	if err != nil {
 		return 0, false
 	}
