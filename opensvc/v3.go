@@ -68,6 +68,17 @@ func (collector *Collector) GetClientV3() (*clientv3.T, error) {
 	return client, nil
 }
 
+// waitLocalV3 adds the om3 rc46 query parameter wait_local=true to a request: the daemon
+// answers once the object the request creates is initialised locally.
+func waitLocalV3() apiv3.RequestEditorFn {
+	return func(ctx context.Context, req *http.Request) error {
+		q := req.URL.Query()
+		q.Set("wait_local", "true")
+		req.URL.RawQuery = q.Encode()
+		return nil
+	}
+}
+
 func (collector *Collector) RequestCloserV3() apiv3.RequestEditorFn {
 	return func(ctx context.Context, req *http.Request) error {
 		req.Close = true
@@ -282,7 +293,11 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
+	// om3 rc46: POST config/file no longer waits by default; wait_local=true asks the daemon
+	// to return once the new object is initialised on the node, so the provisioning that
+	// follows does not race an object the daemon has not finished creating. Older daemons
+	// ignore the parameter (the rc40 client knows no params struct for this route).
+	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3(), waitLocalV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create object in %s/%s/%s: %w", namespace, kind, service, err)
 	}
