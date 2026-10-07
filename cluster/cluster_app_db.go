@@ -212,7 +212,9 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 	if master == nil || master.Conn == nil {
 		return fail(errors.New("no primary to create the database on"))
 	}
-	schemas, _, err := dbhelper.GetSchemas(master.Conn)
+	// databases, users, grants through the flavour-aware helpers: PostgreSQL gets one role
+	// that owns its database, MySQL and MariaDB keep their user@host grants (#1908)
+	schemas, _, err := dbhelper.ListDatabases(master.Conn, master.DBVersion)
 	if err != nil {
 		return fail(fmt.Errorf("listing schemas on %s: %w", master.URL, err))
 	}
@@ -245,7 +247,7 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 	defer conn.Close()
 
 	if !schemaExists {
-		logs, err := dbhelper.CreateDatabaseIfNotExists(conn, schema)
+		logs, err := dbhelper.CreateAppDatabase(conn, master.DBVersion, schema)
 		cluster.LogSQL(logs, err, master.URL, "App", config.LvlErr, "Create app schema: %s", err)
 		if err != nil {
 			return fail(fmt.Errorf("creating schema %q: %w", schema, err))
@@ -261,14 +263,14 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 			// Owned and already there: the stored password is re-applied, since a drop
 			// and re-add of the app generates a new one while the account keeps the old
 			// (never on a foreign account: the decision above refused those).
-			logs, err := dbhelper.SetUserPassword(conn, master.DBVersion, h, user, pass)
+			logs, err := dbhelper.SetAppUserPassword(conn, master.DBVersion, h, user, pass)
 			cluster.LogSQL(logs, err, master.URL, "App", config.LvlErr, "Set app user password: %s", err)
 			if err != nil {
 				return fail(fmt.Errorf("setting the password of %q@%q: %w", user, h, err))
 			}
 			continue
 		}
-		logs, err := dbhelper.CreateUser(conn, master.DBVersion, h, user, pass)
+		logs, err := dbhelper.CreateAppUser(conn, master.DBVersion, h, user, pass)
 		cluster.LogSQL(strings.ReplaceAll(logs, pass, "*.*"), err, master.URL, "App", config.LvlErr, "Create app user: %s", err)
 		if err != nil {
 			return fail(fmt.Errorf("creating user %q@%q: %w", user, h, err))
@@ -281,9 +283,8 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 		return fail(fmt.Errorf("connecting to %s: %w", master.URL, err))
 	}
 	defer connx.Close()
-	grant := fmt.Sprintf("ALL PRIVILEGES ON %s.*", dbhelper.QuoteMySQLIdentifier(schema))
 	for _, h := range hosts {
-		logs, err := dbhelper.SetUserGrants(ctx, connx, master.DBVersion, h, user, grant)
+		logs, err := dbhelper.GrantAppDatabase(ctx, conn, connx, master.DBVersion, h, user, schema)
 		cluster.LogSQL(logs, err, master.URL, "App", config.LvlErr, "Grant app user: %s", err)
 		if err != nil {
 			return fail(fmt.Errorf("granting %q@%q on %q: %w", user, h, schema, err))
@@ -322,7 +323,7 @@ func (cluster *Cluster) RotateAppDatabasePassword(app *App) error {
 		if u == nil || u.User != cnf.AppDbUser {
 			continue
 		}
-		logs, err := dbhelper.SetUserPassword(conn, master.DBVersion, u.Host, u.User, pass)
+		logs, err := dbhelper.SetAppUserPassword(conn, master.DBVersion, u.Host, u.User, pass)
 		cluster.LogSQL(strings.ReplaceAll(logs, pass, "*.*"), err, master.URL, "App", config.LvlErr, "Rotate app user password: %s", err)
 		if err != nil {
 			return err
