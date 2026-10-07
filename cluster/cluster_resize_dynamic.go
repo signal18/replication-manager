@@ -645,7 +645,7 @@ func (cluster *Cluster) resourceManagerAllowsGrowTo(server *ServerMonitor, targe
 }
 
 // resourceManagerGrowCheck is the DECISION half of the over-plan gate, side-effect free:
-// the overcommit envelope and the node's free pool for one server. The client hook is the
+// the overcommit envelope and the node's free pool for one server (never the plan ledger). The client hook is the
 // ACT half (RunResourceRaisedOverPlanScript) and must only fire once the whole cluster is
 // known to pass -- see overPlanGrowAllowed.
 func (cluster *Cluster) resourceManagerGrowCheck(server *ServerMonitor, target float64) (bool, string) {
@@ -660,11 +660,12 @@ func (cluster *Cluster) resourceManagerGrowCheck(server *ServerMonitor, target f
 	if ok, reason := cluster.resources.CanGrowBeyondPlan(target, plan, cluster.Conf.ProvDBOvercommitPct); !ok {
 		return false, reason
 	}
-	// Physical ledger: the step is a BORROW above the plan, it must fit the over-commit pot
-	// (capacity minus every plan minus what is already borrowed); plans take precedence.
-	if ok, reason := cluster.resources.CanBorrow(ProfileDatabase, target-plan); !ok {
-		return false, reason
-	}
+	// The physical ledger does NOT gate a resource grow: it gates a PLAN increase (a sale,
+	// CanPlanIncrease). A step above the plan is a loan the running node can afford or not,
+	// which the free-pool check below answers from real consumption; the sum of every plan
+	// sold on the infrastructure says nothing about that (preprod had 85 cores of plans on 64
+	// and the pot at -49 refused a 0.3 DBU IO grow belair could run, 2026-10-07; Stéphane:
+	// "gate the plan grow, not the resource"). The ledger still shows what is borrowed.
 	// Physical free pool on the node -- only gate when the agent capacity is known.
 	if ceiling, ok := cluster.resources.UsableCeilingDBU(server.Agent); ok {
 		used := cluster.resources.ConsumedByAgent(server.Agent).Dbu

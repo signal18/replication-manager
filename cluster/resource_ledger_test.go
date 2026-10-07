@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"github.com/signal18/replication-manager/config"
 	"testing"
 	"time"
 )
@@ -104,5 +105,23 @@ func TestLedgerGates(t *testing.T) {
 	m.SetInfraCapacity(nil)
 	if ok, _ := m.CanPlanIncrease(ProfileDatabase, 100); !ok {
 		t.Fatalf("unknown capacity cannot gate")
+	}
+}
+
+// An overdrawn ledger (plans sold beyond the capacity) refuses a PLAN increase but never a
+// RESOURCE grow above the plan: the grow answers to the overcommit envelope and the node's
+// free pool, not to the sum of plans sold (#1905).
+func TestOverdrawnLedgerDoesNotGateResourceGrow(t *testing.T) {
+	m := ledgerFixture(t)
+	if ok, _ := m.CanBorrow(ProfileDatabase, 0.5); ok {
+		t.Fatalf("fixture: the over-commit pot must be exhausted for the test to mean anything")
+	}
+	cl := &Cluster{Name: "t", resources: m, Conf: &config.Config{ProvDbDbu: 2, ProvDBOvercommitPct: 50}}
+	cl.Servers = []*ServerMonitor{{URL: "db:3306", ClusterGroup: cl}} // no agent: the node pool check is skipped
+	if ok, why := cl.resourceManagerGrowCheck(cl.Servers[0], 2.3); !ok {
+		t.Fatalf("a 0.3 DBU grow over a 2 DBU plan must not be refused by the ledger: %s", why)
+	}
+	if ok, _ := cl.resourceManagerGrowCheck(cl.Servers[0], 3.5); ok {
+		t.Fatalf("the overcommit envelope (2 x 1.5 = 3) still gates")
 	}
 }
