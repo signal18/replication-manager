@@ -27170,6 +27170,12 @@ const docTemplate = `{
                 "monitoringSchemaEvents": {
                     "type": "boolean"
                 },
+                "monitoringSchemaEventsMax": {
+                    "type": "integer"
+                },
+                "monitoringSchemaEventsPageSize": {
+                    "type": "integer"
+                },
                 "monitoringSchemaIgnoreTables": {
                     "type": "string"
                 },

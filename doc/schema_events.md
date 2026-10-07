@@ -10,6 +10,15 @@ Setting: `monitoring-schema-events` (default `true`). It works inside the
 schema monitoring: it needs `monitoring-schema-change`, and replicas are only
 compared with `monitoring-schema-on-replicas`.
 
+`monitoring-schema-events-page-size` controls how many event metadata rows one
+database query can return (default `1000`, maximum `10000`).
+`monitoring-schema-events-max` is the always-on maximum number of events kept
+for one server (default and maximum `10000`). If another event exists after the
+maximum, replication-manager discards the whole scan and marks the server
+**unavailable** rather than comparing a partial list. A timeout or error on any
+page has the same result. This bounds replication-manager memory and its
+`eventschema.json` cache.
+
 
 ## What it reports
 
@@ -126,3 +135,19 @@ The events are read from `information_schema.EVENTS`. It only lists the events
 of the schemas where the monitoring user has the `EVENT` privilege (granted
 globally, or by `ALL PRIVILEGES`). Give the monitoring user the same privileges
 on every server: an event it cannot see on one server looks absent there.
+
+When a MariaDB and MySQL/Percona server use different `SQL_MODE` defaults, the
+same event can correctly appear as a `definition` drift: event metadata retains
+the creating session's SQL mode. In particular, MariaDB can include
+`NO_AUTO_CREATE_USER` where MySQL/Percona does not. The exact database-rendered
+`STARTS` and `EXECUTE_AT` values are also compared, so mixed-version formatting
+differences can appear as definition drift. Create the event with matching
+explicit SQL mode and verify the schedule representation on both sides when
+cross-engine equality is required.
+
+## Upgrade note
+
+The previously proposed event-definition browser API, CLI commands and
+`monitoring-event-status*` settings existed only on unreleased `develop`; they
+were never part of a released compatibility surface. Existing TOML files that
+still contain those old settings continue to load, but the keys are ignored.

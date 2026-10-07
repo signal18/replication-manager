@@ -152,7 +152,7 @@ func (regtest *RegTest) TestSchemaEventsDrift(cl *clusterpkg.Cluster, conf strin
 		return fail("fixture: %s", err)
 	}
 	countOn := func(srv *clusterpkg.ServerMonitor) int {
-		events, _, err := dbhelper.GetEventChecksums(srv.Conn, srv.DBVersion, cl.Conf.MonitorSchemaScanTimeout)
+		events, _, err := dbhelper.GetEventChecksums(srv.Conn, srv.DBVersion, cl.Conf.MonitorSchemaScanTimeout, cl.Conf.MonitorSchemaEventsPageSize, cl.Conf.MonitorSchemaEventsMax)
 		if err != nil {
 			return -1
 		}

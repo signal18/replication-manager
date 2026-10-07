@@ -191,7 +191,7 @@ func (cluster *Cluster) collectEventSchema(server *ServerMonitor) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
 			"Scheduled database events not collected on %s: server state %s", server.URL, server.State)
 	default:
-		events, logs, err := dbhelper.GetEventChecksums(server.Conn, server.DBVersion, cluster.Conf.MonitorSchemaScanTimeout)
+		events, logs, err := dbhelper.GetEventChecksums(server.Conn, server.DBVersion, cluster.Conf.MonitorSchemaScanTimeout, cluster.Conf.MonitorSchemaEventsPageSize, cluster.Conf.MonitorSchemaEventsMax)
 		switch {
 		case errors.Is(err, dbhelper.ErrEventsUnsupported):
 			snap.Collection = EventCollectionUnsupported

@@ -65,6 +65,7 @@ import (
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -436,6 +437,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorSchemaColumns, "monitoring-schema-columns", true, "Monitor schema columns changes")
 	flags.BoolVar(&conf.MonitorSchemaIndexes, "monitoring-schema-indexes", true, "Monitor schema indexes changes")
 	flags.BoolVar(&conf.MonitorSchemaEvents, "monitoring-schema-events", true, "Monitor scheduled database events (MySQL/MariaDB EVENT) changes: compare their definition checksum, definer and status between master and replicas")
+	flags.IntVar(&conf.MonitorSchemaEventsPageSize, "monitoring-schema-events-page-size", dbhelper.DefaultEventChecksumPageSize, "Scheduled database event rows per schema scan query (0 or less uses 1000; values above 10000 are capped)")
+	flags.IntVar(&conf.MonitorSchemaEventsMax, "monitoring-schema-events-max", dbhelper.DefaultEventChecksumMaxEvents, "Maximum scheduled database events retained per server for schema drift detection (1 to 10000; over-limit servers are unavailable and not compared)")
 	flags.BoolVar(&conf.MonitorSchemaOnReplicas, "monitoring-schema-on-replicas", true, "Also monitor schema changes on replicas")
 	flags.StringVar(&conf.MonitorSchemaIgnoreTables, "monitoring-schema-ignore-tables", "", "Comma separated list of tables to ignore for schema change monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorChecksumIgnoreTables, "monitoring-checksum-ignore-tables", "replication_manager_schema.jobs,replication_manager_schema.table_checksum", "Comma separated list of tables to ignore for data checksum monitoring. Use db_name.table_name pattern")

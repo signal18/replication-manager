@@ -58,6 +58,16 @@ type schemaExecutor interface {
 // Short timeout to avoid long metadata lock waits during scans.
 const defaultSchemaScanTimeout = 5 * time.Second
 
+// Event checksum pages and snapshots have independent hard bounds:
+// GetEventChecksums follows pages until it reaches the end or detects that the
+// complete catalog exceeds the snapshot maximum.
+const (
+	DefaultEventChecksumPageSize  = 1000
+	MaxEventChecksumPageSize      = 10000
+	DefaultEventChecksumMaxEvents = 10000
+	MaxEventChecksumMaxEvents     = 10000
+)
+
 // SetEventStatus enables or disables a database event
 func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
 	definer := strings.Split(ev.Definer, "@")
@@ -610,7 +620,7 @@ func LockDBUser(db *sqlx.DB, user, host string) (string, error) {
 
 // DropDBUser removes a database account.
 // Uses DROP USER IF EXISTS to be idempotent.
-// user may be empty string (anonymous accounts have user='').
+// user may be empty string (anonymous accounts have user=”).
 func DropDBUser(db *sqlx.DB, user, host string) (string, error) {
 	if user != "" {
 		if err := ValidateIdentifier(user); err != nil {
@@ -815,6 +825,11 @@ func GetEventStatus(db *sqlx.DB, version *version.Version) ([]Event, string, err
 // MySQL/MariaDB EVENT objects (PostgreSQL).
 var ErrEventsUnsupported = errors.New("scheduled database events are not supported by this engine")
 
+// ErrEventChecksumLimitExceeded is returned when a server has more scheduled
+// events than the bounded snapshot may retain. Callers must treat it as an
+// unavailable collection, never compare the partial result.
+var ErrEventChecksumLimitExceeded = errors.New("scheduled database event limit exceeded")
+
 // eventChecksumQuery reads, per event, what GetEventChecksums compares: the
 // identity, the definer, the status and the fields of the definition
 // (HashEventDefinition), in a stable order. The body never leaves the server:
@@ -823,7 +838,8 @@ var ErrEventsUnsupported = errors.New("scheduled database events are not support
 const eventChecksumQuery = "SELECT /*replication-manager*/ EVENT_SCHEMA, EVENT_NAME, COALESCE(DEFINER, ''), COALESCE(STATUS, '')," +
 	" COALESCE(EVENT_TYPE, ''), COALESCE(CAST(EXECUTE_AT AS CHAR), ''), COALESCE(CAST(INTERVAL_VALUE AS CHAR), ''), COALESCE(INTERVAL_FIELD, '')," +
 	" COALESCE(CAST(STARTS AS CHAR), ''), COALESCE(CAST(ENDS AS CHAR), ''), COALESCE(ON_COMPLETION, ''), COALESCE(SQL_MODE, ''), COALESCE(TIME_ZONE, '')," +
-	" COALESCE(MD5(CONVERT(EVENT_DEFINITION USING utf8mb4)), '') FROM information_schema.EVENTS ORDER BY EVENT_SCHEMA, EVENT_NAME"
+	" COALESCE(MD5(CONVERT(EVENT_DEFINITION USING utf8mb4)), '') FROM information_schema.EVENTS" +
+	" WHERE EVENT_SCHEMA > ? OR (EVENT_SCHEMA = ? AND EVENT_NAME > ?) ORDER BY EVENT_SCHEMA, EVENT_NAME LIMIT ?"
 
 // EventDefinitionFields are the fields of an event that make its definition,
 // as information_schema.EVENTS reports them: what HashEventDefinition hashes.
@@ -879,12 +895,27 @@ func EventStatusClass(status string) string {
 // name, each with its status class and the CRC64 of its definition, for the
 // schema drift detection. The server returns the MD5 of each body, never the
 // body. It reads information_schema.EVENTS, which lists the events of
-// the schemas where the user has the EVENT privilege, bounded by
-// timeoutSeconds (defaultSchemaScanTimeout when 0 or less), as GetTables.
-// PostgreSQL has no EVENT objects: ErrEventsUnsupported, without a query.
-func GetEventChecksums(db *sqlx.DB, myver *version.Version, timeoutSeconds int) ([]EventChecksum, string, error) {
+// the schemas where the user has the EVENT privilege. pageSize bounds each SQL
+// result page (defaultEventChecksumPageSize when 0 or less; capped at
+// MaxEventChecksumPageSize). maxEvents bounds the complete in-memory and
+// persisted snapshot (defaultEventChecksumMaxEvents when 0 or less; capped at
+// MaxEventChecksumMaxEvents). A server with more events is unavailable: no
+// partial list is returned or compared. The one timeout context covers the
+// whole page loop. PostgreSQL has no EVENT objects: ErrEventsUnsupported,
+// without a query.
+func GetEventChecksums(db *sqlx.DB, myver *version.Version, timeoutSeconds, pageSize, maxEvents int) ([]EventChecksum, string, error) {
 	if myver != nil && myver.IsPostgreSQL() {
 		return nil, "", ErrEventsUnsupported
+	}
+	if pageSize <= 0 {
+		pageSize = DefaultEventChecksumPageSize
+	} else if pageSize > MaxEventChecksumPageSize {
+		pageSize = MaxEventChecksumPageSize
+	}
+	if maxEvents <= 0 {
+		maxEvents = DefaultEventChecksumMaxEvents
+	} else if maxEvents > MaxEventChecksumMaxEvents {
+		maxEvents = MaxEventChecksumMaxEvents
 	}
 	timeout := defaultSchemaScanTimeout
 	if timeoutSeconds > 0 {
@@ -892,26 +923,49 @@ func GetEventChecksums(db *sqlx.DB, myver *version.Version, timeoutSeconds int) 
 	}
 	ctx, cancel := scanContext(timeout)
 	defer cancel()
-	rows, err := db.QueryContext(ctx, eventChecksumQuery)
-	if err != nil {
-		return nil, eventChecksumQuery, err
-	}
-	defer rows.Close()
-	events := []EventChecksum{}
-	for rows.Next() {
-		var ev EventChecksum
-		var status string
-		var f EventDefinitionFields
-		if err := rows.Scan(&ev.Db, &ev.Name, &ev.Definer, &status, &f.EventType, &f.ExecuteAt, &f.IntervalValue, &f.IntervalField,
-			&f.Starts, &f.Ends, &f.OnCompletion, &f.SQLMode, &f.TimeZone, &f.BodyMD5); err != nil {
+	events := make([]EventChecksum, 0, min(pageSize, maxEvents))
+	lastSchema, lastName := "", ""
+	for {
+		limit := min(pageSize, maxEvents-len(events))
+		if limit == 0 {
+			// The snapshot is full. Read one more ordered row to distinguish an
+			// exact-limit catalog from an over-limit one without collecting it.
+			limit = 1
+		}
+		rows, err := db.QueryContext(ctx, eventChecksumQuery, lastSchema, lastSchema, lastName, limit)
+		if err != nil {
 			return nil, eventChecksumQuery, err
 		}
-		ev.Status = EventStatusClass(status)
-		ev.DefinitionCrc64 = HashEventDefinition(f)
-		events = append(events, ev)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, eventChecksumQuery, err
+		count := 0
+		for rows.Next() {
+			var ev EventChecksum
+			var status string
+			var f EventDefinitionFields
+			if err := rows.Scan(&ev.Db, &ev.Name, &ev.Definer, &status, &f.EventType, &f.ExecuteAt, &f.IntervalValue, &f.IntervalField,
+				&f.Starts, &f.Ends, &f.OnCompletion, &f.SQLMode, &f.TimeZone, &f.BodyMD5); err != nil {
+				rows.Close()
+				return nil, eventChecksumQuery, err
+			}
+			if len(events) == maxEvents {
+				rows.Close()
+				return nil, eventChecksumQuery, fmt.Errorf("%w: maximum %d events", ErrEventChecksumLimitExceeded, maxEvents)
+			}
+			ev.Status = EventStatusClass(status)
+			ev.DefinitionCrc64 = HashEventDefinition(f)
+			events = append(events, ev)
+			lastSchema, lastName = ev.Db, ev.Name
+			count++
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, eventChecksumQuery, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, eventChecksumQuery, err
+		}
+		if count < limit {
+			break
+		}
 	}
 	return events, eventChecksumQuery, nil
 }
@@ -1564,7 +1618,9 @@ func loadFKLinks(ext schemaExecutor, myver *version.Version, tablemap map[string
 //  3. No explicit FOREIGN KEY already exists between the pair.
 //
 // Result columns: child_schema, child_table, parent_schema, parent_table,
-//   shared_cols (csv), child_pk_cols (int), child_fk_count (int), child_extra_cols (int)
+//
+//	shared_cols (csv), child_pk_cols (int), child_fk_count (int), child_extra_cols (int)
+//
 // loadColumnMatchLinks detects implicit FK-like relationships from the
 // already-loaded tablemap — zero additional SQL queries.
 //
@@ -1965,8 +2021,8 @@ func parentIndexColsFor(t *Table, colName string) []string {
 // cluster.ApplyPFSJoinLinksToSchema converts []cluster.PFSExplainRecord into
 // []PFSQueryPlan before calling this function.
 type PFSQueryPlan struct {
-	Digest     string  // PFS digest hash — key into execCounts
-	SchemaName string  // default schema for unqualified table names
+	Digest     string    // PFS digest hash — key into execCounts
+	SchemaName string    // default schema for unqualified table names
 	Plan       []Explain // EXPLAIN rows in driving order
 }
 

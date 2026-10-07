@@ -2803,6 +2803,10 @@ definitions:
         type: boolean
       monitoringSchemaEvents:
         type: boolean
+      monitoringSchemaEventsMax:
+        type: integer
+      monitoringSchemaEventsPageSize:
+        type: integer
       monitoringSchemaIgnoreTables:
         type: string
       monitoringSchemaIndexes:

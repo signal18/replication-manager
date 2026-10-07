@@ -98,6 +98,8 @@ type Config struct {
 	MonitorSchemaColumns                     bool                         `mapstructure:"monitoring-schema-columns" toml:"monitoring-schema-columns" json:"monitoringSchemaColumns"`
 	MonitorSchemaIndexes                     bool                         `mapstructure:"monitoring-schema-indexes" toml:"monitoring-schema-indexes" json:"monitoringSchemaIndexes"`
 	MonitorSchemaEvents                      bool                         `mapstructure:"monitoring-schema-events" toml:"monitoring-schema-events" json:"monitoringSchemaEvents"`
+	MonitorSchemaEventsPageSize              int                          `mapstructure:"monitoring-schema-events-page-size" toml:"monitoring-schema-events-page-size" json:"monitoringSchemaEventsPageSize"`
+	MonitorSchemaEventsMax                   int                          `mapstructure:"monitoring-schema-events-max" toml:"monitoring-schema-events-max" json:"monitoringSchemaEventsMax"`
 	MonitorSchemaOnReplicas                  bool                         `mapstructure:"monitoring-schema-on-replicas" toml:"monitoring-schema-on-replicas" json:"monitoringSchemaOnReplicas"`
 	MonitorSchemaIgnoreTables                string                       `mapstructure:"monitoring-schema-ignore-tables" toml:"monitoring-schema-ignore-tables" json:"monitoringSchemaIgnoreTables"`
 	MonitorSchemaScheduler                   bool                         `mapstructure:"monitoring-schema-scheduler" toml:"monitoring-schema-scheduler" json:"monitoringSchemaScheduler"`

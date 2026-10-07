@@ -404,6 +404,7 @@ func (cluster *Cluster) checkACLRule(strUser string, rule ACLRule, URL string) (
 // Logs detailed information about permission denials
 // Matches are checked in order of specificity (longer patterns first) to ensure
 // more specific rules take precedence, but all matching patterns are tried (hierarchical fallback)
+// URL patterns are literal substrings; this matcher does not implement wildcards.
 func (cluster *Cluster) matchACLRules(strUser string, URL string, rules []ACLRule) bool {
 	// First pass: collect all matching rules with their pattern lengths
 	type matchedRule struct {

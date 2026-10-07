@@ -61,9 +61,18 @@ GET /schema/events
 - **Concurrency.** The scan, the 10-tick diff and the API run in different
   goroutines: a snapshot is stored whole through `atomic.Pointer` and never
   modified afterwards.
-- **Same bounds as tables.** Like `GetTables`, the scan keeps every event (one
-  short summary each; the body is never read, only its MD5), bounded by
-  `monitoring-schema-scan-timeout`; no separate count limit.
+- **Bounded pages and snapshot (F3/F4/T18).** Like `GetTables`, the scan keeps
+  a short event summary only; the body is never read, only its MD5.
+  `GetEventChecksums` fetches ordered `information_schema.EVENTS` rows with
+  `(EVENT_SCHEMA, EVENT_NAME)` keyset pagination. The query page is bounded by
+  `monitoring-schema-events-page-size` (default 1000, maximum 10000) and the
+  complete retained snapshot by `monitoring-schema-events-max` (default and
+  maximum 10000). Once the snapshot is full, one additional ordered row checks
+  whether the server exceeds its cap. An over-limit server returns no list and
+  is `unavailable`, never partially compared or saved. One
+  `monitoring-schema-scan-timeout` context covers the entire loop; an error,
+  scan error or deadline on any page has the same all-or-nothing outcome, so
+  partial data can never create missing/extra drift or fill repman's disk.
 - **Off-switch (T14).** `monitoring-schema-events`: off, the scan drops the
   snapshots, the diff adds no line and the view answers `enabled: false`.
 
@@ -142,7 +151,15 @@ tested (`TestSchemaEventsACL`): db-show-schema reads `/schema/events` but not
 
 - `utils/dbhelper/schema_test.go`: `TestGetEventChecksums` (status class,
   body only as server-side MD5, error returns no list, PostgreSQL unsupported),
+  `TestGetEventChecksumsPages` (keyset traversal) and
+  `TestGetEventChecksumsPageFailureReturnsNoList` (all-or-nothing pages),
+  `TestGetEventChecksumsLimitExceededReturnsNoList` and
+  `TestGetEventChecksumsExactLimitSucceeds` (bounded snapshot),
   `TestHashEventDefinition`, `TestEventStatusClass`.
+- `config/config_events_legacy_test.go`: unreleased legacy
+  `monitoring-event-status*` TOML keys are ignored while supported settings
+  still decode.
+- `server/api_cluster_test.go`: page-size dynamic-setting validation.
 - `cluster/schema_events_test.go`: every drift kind, not-checked is never
   missing, `WARN0164` line format and cap, the view (no definer in the JSON,
   CRC as string), the off-switch, the save/reload round trip
@@ -164,8 +181,10 @@ tested (`TestSchemaEventsACL`): db-show-schema reads `/schema/events` but not
   each other, and servers outside the master/replicas are not shown.
 - `unavailable` stays until the next schema scan.
 - Across engines, the checksum inputs of the same event are identical
-  (lab-verified, MariaDB 10.11 vs Percona 8.4: schedule formatting, time zone,
-  body MD5), except `SQL_MODE`: an event takes the creating session's mode, and
-  the engines' defaults differ (MariaDB adds `NO_AUTO_CREATE_USER`). Events
-  created with each engine's default mode on a MariaDB/MySQL pair compare as a
-  `definition` drift.
+   (lab-verified, MariaDB 10.11 vs Percona 8.4: schedule formatting, time zone,
+   body MD5), except `SQL_MODE`: an event takes the creating session's mode, and
+   the engines' defaults differ (MariaDB adds `NO_AUTO_CREATE_USER`). Events
+   created with each engine's default mode on a MariaDB/MySQL pair compare as a
+   `definition` drift. The hash deliberately uses the exact `CAST(... AS CHAR)`
+   values returned for `STARTS` and `EXECUTE_AT`; a mixed-version pair whose
+   rendered schedule values differ can therefore also report a definition drift.

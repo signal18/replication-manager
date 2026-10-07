@@ -38,6 +38,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/releases"
@@ -3991,6 +3992,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitoringChecksumSchedulerCron(value)
 	case "monitoring-schema-ignore-tables":
 		mycluster.SetMonitoringSchemaIgnoreTables(value)
+	case "monitoring-schema-events-page-size":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 || val > dbhelper.MaxEventChecksumPageSize {
+			return fmt.Errorf("invalid value for %s: %q, expected an integer from 1 to %d", name, value, dbhelper.MaxEventChecksumPageSize)
+		}
+		mycluster.Conf.MonitorSchemaEventsPageSize = val
+	case "monitoring-schema-events-max":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 || val > dbhelper.MaxEventChecksumMaxEvents {
+			return fmt.Errorf("invalid value for %s: %q, expected an integer from 1 to %d", name, value, dbhelper.MaxEventChecksumMaxEvents)
+		}
+		mycluster.Conf.MonitorSchemaEventsMax = val
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
 	case "delay-stat-rotate":

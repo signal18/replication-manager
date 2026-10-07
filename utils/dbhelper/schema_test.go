@@ -591,14 +591,14 @@ func TestGetEventChecksums(t *testing.T) {
 	sqlxdb := sqlx.NewDb(db, "sqlmock")
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
 
-	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 10000).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
 		AddRow("app", "purge", "root@%", "ENABLED", "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "STRICT_TRANS_TABLES", "SYSTEM", "3c2a8f0e6c0d5e0f1b2a3c4d5e6f7a8b").
 		AddRow("app", "purge_copy", "root@%", "SLAVESIDE_DISABLED", "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "STRICT_TRANS_TABLES", "SYSTEM", "3c2a8f0e6c0d5e0f1b2a3c4d5e6f7a8b").
 		AddRow("app", "off", "app@%", "DISABLED", "ONE TIME", "2030-06-01 00:00:00", "", "", "", "", "NOT PRESERVE", "", "+00:00", "9e1f8c2b7a6d5e4f3a2b1c0d9e8f7a6b"))
 	if !strings.Contains(eventChecksumQuery, "MD5(CONVERT(EVENT_DEFINITION USING utf8mb4))") || strings.Contains(strings.ReplaceAll(eventChecksumQuery, "MD5(CONVERT(EVENT_DEFINITION", ""), "EVENT_DEFINITION") {
 		t.Fatalf("the body must only be read as its server-side MD5: %s", eventChecksumQuery)
 	}
-	events, _, err := GetEventChecksums(sqlxdb, mariadb, 5)
+	events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 10000, 10000)
 	if err != nil || len(events) != 3 {
 		t.Fatalf("GetEventChecksums = %+v, %v", events, err)
 	}
@@ -613,8 +613,8 @@ func TestGetEventChecksums(t *testing.T) {
 		t.Fatalf("third event = %+v", events[2])
 	}
 
-	mock.ExpectQuery(regexp.QuoteMeta("FROM information_schema.EVENTS")).WillReturnError(errors.New("access denied"))
-	if events, _, err := GetEventChecksums(sqlxdb, mariadb, 5); err == nil || events != nil {
+	mock.ExpectQuery(regexp.QuoteMeta("FROM information_schema.EVENTS")).WithArgs("", "", "", 10000).WillReturnError(errors.New("access denied"))
+	if events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 10000, 10000); err == nil || events != nil {
 		t.Fatalf("a failed read must return the error and no list (never an empty one): %+v, %v", events, err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -622,8 +622,104 @@ func TestGetEventChecksums(t *testing.T) {
 	}
 
 	// PostgreSQL: unsupported, no query sent
-	if _, _, err := GetEventChecksums(sqlxdb, &version.Version{Flavor: "PostgreSQL", Major: 16}, 5); !errors.Is(err, ErrEventsUnsupported) {
+	if _, _, err := GetEventChecksums(sqlxdb, &version.Version{Flavor: "PostgreSQL", Major: 16}, 5, 10000, 10000); !errors.Is(err, ErrEventsUnsupported) {
 		t.Fatalf("PostgreSQL must be unsupported, got %v", err)
+	}
+}
+
+func TestGetEventChecksumsPages(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	// The second page starts strictly after app.b: every event is returned,
+	// while no one database result set exceeds the page size.
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "a", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "a").
+		AddRow("app", "b", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "b"))
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("app", "app", "b", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "c", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "c"))
+
+	events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 2, 10000)
+	if err != nil || len(events) != 3 || events[0].Name != "a" || events[1].Name != "b" || events[2].Name != "c" {
+		t.Fatalf("GetEventChecksums pages = %+v, %v", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetEventChecksumsPageFailureReturnsNoList(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "a", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "a").
+		AddRow("app", "b", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "b"))
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("app", "app", "b", 2).WillReturnError(errors.New("page two unavailable"))
+
+	if events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 2, 10000); err == nil || events != nil {
+		t.Fatalf("a failed page must return no partial list, got %+v, %v", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetEventChecksumsLimitExceededReturnsNoList(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	// The first query fills the two-event snapshot. The next one asks for only
+	// one row so an exact-limit catalog succeeds while a larger one is rejected.
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "a", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "a").
+		AddRow("app", "b", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "b"))
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("app", "app", "b", 1).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "c", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "c"))
+
+	if events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 2, 2); events != nil || !errors.Is(err, ErrEventChecksumLimitExceeded) {
+		t.Fatalf("over-limit collection = %+v, %v; want no list and ErrEventChecksumLimitExceeded", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetEventChecksumsExactLimitSucceeds(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "a", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "a").
+		AddRow("app", "b", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "b"))
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("app", "app", "b", 1).WillReturnRows(sqlmock.NewRows(eventChecksumColumns))
+
+	events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 2, 2)
+	if err != nil || len(events) != 2 {
+		t.Fatalf("exact-limit collection = %+v, %v", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
 	}
 }
 
