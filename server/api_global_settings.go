@@ -320,6 +320,36 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
 		}
 		repman.Conf.Cloud18MarketplaceAPUPrice = price
+	case "resource-manager-infra-quota-pct", "resource-manager-infra-cpu-cores", "resource-manager-infra-memory-mb",
+		"resource-manager-infra-disk-gb", "resource-manager-infra-iops", "resource-manager-infra-network-mbps":
+		// scope:"server", persisted to default.toml by SaveConfig. The capacity is reassembled
+		// from the configuration every tick (ProduceContractedCapacityState), so the ledger
+		// follows without a restart: an admin changed the metal or the quota in the system
+		// config and had to restart replication-manager for it (preprod 2026-10-07, #1906).
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("invalid value for %s: %q (a number, 0 = unset)", name, value)
+		}
+		switch name {
+		case "resource-manager-infra-quota-pct":
+			if f > 100 {
+				return fmt.Errorf("invalid value for %s: %q (0-100)", name, value)
+			}
+			repman.Conf.ResourceManagerInfraQuotaPct = f
+			if repman.resourceManager != nil {
+				repman.resourceManager.SetQuotaPct(f)
+			}
+		case "resource-manager-infra-cpu-cores":
+			repman.Conf.ResourceManagerInfraCpuCores = f
+		case "resource-manager-infra-memory-mb":
+			repman.Conf.ResourceManagerInfraMemoryMB = f
+		case "resource-manager-infra-disk-gb":
+			repman.Conf.ResourceManagerInfraDiskGB = f
+		case "resource-manager-infra-iops":
+			repman.Conf.ResourceManagerInfraIops = f
+		case "resource-manager-infra-network-mbps":
+			repman.Conf.ResourceManagerInfraNetworkMbps = f
+		}
 	case "api-bind":
 		repman.Conf.APIBind = value
 	case "api-port":

@@ -1046,12 +1046,56 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			}
 		}
 	}
+	// The app's reservation is a PLAN increase (its APU, or DBU for a stateful app, at
+	// least one unit, times its instances) and must pass the same gate as ChangePlanUnits:
+	// added unconditionally, apps were provisioned over the reservation until the plan pot
+	// went negative and every plan change was refused (preprod 2026-10-07, 53 APU on 64
+	// cores; MCP app-add, #1906). A refusal leaves nothing behind.
+	if ok, reason := cluster.appPlanIncreaseAllowed(appcnf, app); !ok {
+		rollbackAddedApp()
+		return fmt.Errorf("app %s refused: %s", srv, reason)
+	}
 	appAdded = false
 	// An engine (a database with a monitor) added this way is a CLUSTER change: it becomes
 	// a monitored server and its agents join prov-db-agents; the template only gives the
 	// deployment definition and the placement.
 	cluster.registerEngineAppAsServer(appcnf)
 	return nil
+}
+
+// appPlanIncreaseAllowed asks the physical ledger whether the reservation this app will
+// register (RefreshComputePlanAPU: Compute profile from its memory, cores and disk, at
+// least 1 APU; Database profile for a stateful app, at least 1 DBU; times its instances)
+// fits the plan pot. A monitored engine server (PostgreSQL app) reserves through the
+// cluster's DBU plan, not here. Unknown capacity never gates.
+func (cluster *Cluster) appPlanIncreaseAllowed(appcnf *config.AppConfig, app *App) (bool, string) {
+	if cluster.resources == nil || appcnf == nil {
+		return true, ""
+	}
+	if app != nil && cluster.engineServerOfApp(app) != nil {
+		return true, ""
+	}
+	n := 1.0
+	if app != nil {
+		if c := cluster.appInstanceCount(app); c > 1 {
+			n = float64(c)
+		}
+	}
+	now := time.Now()
+	if appcnf.AppStateful {
+		d := cluster.computePlanDBUReading(now, cluster.GetAppMemory(appcnf), cluster.GetAppCores(appcnf), cluster.GetAppDisk(appcnf))
+		units := d.Dbu
+		if units < 1 {
+			units = 1
+		}
+		return cluster.resources.CanPlanIncrease(ProfileDatabase, units*n)
+	}
+	r := cluster.computePlanAPUReading(now, cluster.GetAppMemory(appcnf), cluster.GetAppCores(appcnf), cluster.GetAppDisk(appcnf))
+	units := r.Apu
+	if units < 1 {
+		units = 1
+	}
+	return cluster.resources.CanPlanIncrease(ProfileCompute, units*n)
 }
 
 // registerEngineAppAsServer adds an engine app to the cluster's monitored servers

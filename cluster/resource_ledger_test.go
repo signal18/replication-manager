@@ -125,3 +125,17 @@ func TestOverdrawnLedgerDoesNotGateResourceGrow(t *testing.T) {
 		t.Fatalf("the overcommit envelope (2 x 1.5 = 3) still gates")
 	}
 }
+
+// Adding an app is a plan increase of its APU and passes the plan gate (#1906): on the
+// exhausted fixture pot a one-APU app is refused; with no manager wired nothing gates.
+func TestAppPlanIncreaseAllowed(t *testing.T) {
+	m := ledgerFixture(t)
+	cl := &Cluster{Name: "t", resources: m, Conf: &config.Config{}}
+	cnf := &config.AppConfig{AppHost: "app1", AppPort: "80", ProvAppMem: "1024", ProvAppCpuCores: "1", ProvAppDisk: "10"}
+	if ok, why := cl.appPlanIncreaseAllowed(cnf, nil); ok || why == "" {
+		t.Fatalf("the plan pot is negative on cpu: a 1 APU app must be refused with a reason")
+	}
+	if ok, _ := (&Cluster{Name: "t", Conf: &config.Config{}}).appPlanIncreaseAllowed(cnf, nil); !ok {
+		t.Fatalf("no ledger: never gated")
+	}
+}
