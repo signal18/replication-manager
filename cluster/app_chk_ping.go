@@ -100,8 +100,9 @@ func pingHost(host string, timeout time.Duration) error {
 		if err != nil || rm.Type != replyType {
 			continue
 		}
-		if echo, ok := rm.Body.(*icmp.Echo); ok && echo.Seq != seq {
-			continue
+		echo, ok := rm.Body.(*icmp.Echo)
+		if !ok || echo.Seq != seq {
+			continue // a reply without an echo body, or another probe's sequence
 		}
 		return nil
 	}
