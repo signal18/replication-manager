@@ -1101,7 +1101,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 // the unconnected (StandAlone) state a return from Failed leaves behind (#1910).
 func (server *ServerMonitor) isDesignatedMasterShownUnconnected() bool {
 	cluster := server.ClusterGroup
-	if cluster == nil || server.State != stateUnconn || server.IsDown() || server.IsMaintenance {
+	if cluster == nil || cluster.GetTopology() != config.TopoActivePassive {
+		return false // the designated master exists in this topology only
+	}
+	if server.State != stateUnconn || server.IsDown() || server.IsMaintenance {
 		return false
 	}
 	m := cluster.GetMaster()
