@@ -27,9 +27,10 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
 
   One deadline
   (`timeout`) covers the name resolution, the send and the wait: the probe runs inline in
-  the monitor tick and never blocks longer. IPv4 only. On the unprivileged socket the
-  kernel rewrites the echo identifier, so a reply is matched on its source address and
-  sequence number.
+  the monitor tick and never blocks longer. An IPv4 address is preferred when the name has
+  one, else the IPv6 address is pinged over ICMPv6 (the product runs IPv6 everywhere). On
+  the unprivileged sockets the kernel rewrites the echo identifier, so a reply is matched
+  on its source address and sequence number.
 
   Container runtimes: the monitor's container needs `net.ipv4.ping_group_range` to cover
   its group (`0 2147483647` on the preprod image; Docker's default is `1 0`, nothing

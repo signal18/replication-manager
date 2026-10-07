@@ -16,6 +16,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 // appMonitorModeIsPing: the app asked to be probed with an ICMP echo instead of a TCP
@@ -26,12 +27,13 @@ func appMonitorModeIsPing(cnf *config.AppConfig) bool {
 
 // pingHost resolves the host and sends one ICMP echo request, one deadline shared by the
 // resolution, the send and the wait for the reply (the probe runs inline in the monitor
-// tick: it must never block longer than timeout, F2/F3). It uses the unprivileged ICMP
-// socket (SOCK_DGRAM, net.ipv4.ping_group_range) so the monitor needs no capability; when
-// the kernel refuses that socket the error says so, and the app is NOT reported up on a
-// probe that could not run. IPv4 only: the cluster networks are IPv4, a host with only an
-// AAAA record is reported unreachable. On the unprivileged socket the kernel rewrites the
-// echo identifier, so a reply is matched on its source address (and sequence), not on it.
+// tick: it must never block longer than timeout, F2/F3). An IPv4 address is preferred when
+// the name has one, else the IPv6 address is pinged over ICMPv6: the product runs IPv6
+// everywhere. The unprivileged ICMP sockets (SOCK_DGRAM, net.ipv4.ping_group_range, the
+// same range applies to ICMPv6) need no capability; when the kernel refuses the socket the
+// error says so, and the app is NOT reported up on a probe that could not run. On these
+// sockets the kernel rewrites the echo identifier, so a reply is matched on its source
+// address and sequence number, never on the identifier.
 func pingHost(host string, timeout time.Duration) error {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
@@ -51,18 +53,32 @@ func pingHost(host string, timeout time.Duration) error {
 		}
 	}
 	if target == nil {
-		return fmt.Errorf("resolve %s: no IPv4 address", host)
+		for _, a := range addrs {
+			if a.IP.To4() == nil && a.IP.To16() != nil {
+				target = a.IP
+				break
+			}
+		}
 	}
-	conn, err := icmp.ListenPacket("udp4", "0.0.0.0")
+	if target == nil {
+		return fmt.Errorf("resolve %s: no address", host)
+	}
+	network, listen := "udp4", "0.0.0.0"
+	echoType, replyType, proto := icmp.Type(ipv4.ICMPTypeEcho), icmp.Type(ipv4.ICMPTypeEchoReply), ipv4.ICMPTypeEchoReply.Protocol()
+	if target.To4() == nil {
+		network, listen = "udp6", "::"
+		echoType, replyType, proto = ipv6.ICMPTypeEchoRequest, ipv6.ICMPTypeEchoReply, ipv6.ICMPTypeEchoReply.Protocol()
+	}
+	conn, err := icmp.ListenPacket(network, listen)
 	if err != nil {
-		return fmt.Errorf("icmp socket: %w (net.ipv4.ping_group_range must cover the monitor's group)", err)
+		return fmt.Errorf("icmp socket (%s): %w (net.ipv4.ping_group_range must cover the monitor's group)", network, err)
 	}
 	defer conn.Close()
 	if err := conn.SetDeadline(deadline); err != nil {
 		return err
 	}
 	const seq = 1
-	msg := icmp.Message{Type: ipv4.ICMPTypeEcho, Code: 0, Body: &icmp.Echo{ID: 0, Seq: seq, Data: []byte("replication-manager app probe")}}
+	msg := icmp.Message{Type: echoType, Code: 0, Body: &icmp.Echo{ID: 0, Seq: seq, Data: []byte("replication-manager app probe")}}
 	wb, err := msg.Marshal(nil)
 	if err != nil {
 		return fmt.Errorf("icmp marshal: %w", err)
@@ -80,8 +96,8 @@ func pingHost(host string, timeout time.Duration) error {
 		if !ok || !pa.IP.Equal(target) {
 			continue // another host's reply on the shared socket
 		}
-		rm, err := icmp.ParseMessage(ipv4.ICMPTypeEchoReply.Protocol(), rb[:n])
-		if err != nil || rm.Type != ipv4.ICMPTypeEchoReply {
+		rm, err := icmp.ParseMessage(proto, rb[:n])
+		if err != nil || rm.Type != replyType {
 			continue
 		}
 		if echo, ok := rm.Body.(*icmp.Echo); ok && echo.Seq != seq {

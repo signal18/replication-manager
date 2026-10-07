@@ -38,6 +38,14 @@ func TestPingHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loopback echo: %v", err)
 	}
+	// IPv6 loopback goes through the ICMPv6 socket
+	err = pingHost("::1", 2*time.Second)
+	if err != nil && (strings.Contains(err.Error(), "icmp socket") || strings.Contains(err.Error(), "no route")) {
+		t.Skipf("unprivileged ICMPv6 not available here: %v", err)
+	}
+	if err != nil {
+		t.Fatalf("IPv6 loopback echo: %v", err)
+	}
 }
 
 // The setting accepts port, ping and empty, refuses anything else, and never leaves the
@@ -63,9 +71,8 @@ func TestSetAppMonitorMode(t *testing.T) {
 // The no-route probe picks the error key of its mode and renders the state text with the
 // host (ping) or host:port (TCP); the TCP mode on a closed port fails with APPERR003 (#1919).
 func TestProbeNoRouteErrKeyAndDesc(t *testing.T) {
-	cl := &Cluster{}
-	cl.Conf.Timeout = 1
-	app := &App{Id: "ap1", Name: "worker", Host: "127.0.0.1", Port: "1", ClusterGroup: cl, AppConfig: &config.AppConfig{AppPort: "1"}}
+	cl := &Cluster{Conf: &config.Config{Timeout: 1}}
+	app := &App{Id: "ap1", Name: "worker", Host: "127.0.0.1", Port: "1", ClusterGroup: cl, AppConfig: &config.AppConfig{AppHost: "127.0.0.1", AppPort: "1"}}
 	key, err := app.probeNoRoute(time.Second)
 	if key != ErrAppTCPConnectFailed || err == nil {
 		t.Fatalf("port mode on a closed port: want APPERR003 with an error, got %s %v", key, err)
@@ -76,6 +83,7 @@ func TestProbeNoRouteErrKeyAndDesc(t *testing.T) {
 	}
 	app.AppConfig.AppMonitorMode = "ping"
 	app.Host = "no-such-host.invalid"
+	app.AppConfig.AppHost = "no-such-host.invalid"
 	key, err = app.probeNoRoute(time.Second)
 	if key != ErrAppPingFailed || err == nil {
 		t.Fatalf("ping mode on an unresolvable host: want APPERR009 with an error, got %s %v", key, err)
