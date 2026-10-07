@@ -125,6 +125,10 @@ WHERE table_schema = 'replication_manager_schema'
 
 func (server *ServerMonitor) JobsCreateTable() error {
 	cluster := server.ClusterGroup
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	// In API mode the jobs table is not used — but still ensure the
 	// replication_manager_schema database exists (needed by checksum, benchmarks, etc.)
 	if cluster.Conf.SchedulerJobsMode == "api" {
@@ -335,6 +339,10 @@ func shouldUpdateCachedJobTask(cached *config.Task, dbTask *config.Task) bool {
 }
 
 func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	query := "SELECT id, task, port, server, done, state, result, payload, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
 
 	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
@@ -457,7 +465,7 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 	// In API mode, dispatch depends on the task's execution mode.
 	// Remote tasks: set a cookie so the dbjobs script discovers them via the needs API.
 	// Local tasks (mysqldump, mydumper): only track state in memory — repman runs them directly.
-	if cluster.Conf.SchedulerJobsMode == "api" {
+	if cluster.Conf.SchedulerJobsMode == "api" || server.IsPostgreSQLHost() {
 		newTask := &config.Task{Task: task, Start: time.Now().Unix(), State: JobStateAvailable}
 		if payload != nil {
 			newTask.Payload = *payload
@@ -588,6 +596,9 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 		server.DelWaitXtrabackupCookie()
 		server.delLegacyPhysicalBackupCookie()
 		return server.SetWaitMariabackupCookie()
+	// PostgreSQL tools — the jobs sidecar runs them
+	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup, config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync, config.ConstTaskPgRestore, config.ConstTaskPgRestoreLogical, config.ConstTaskPgReseedLogical:
+		return server.createCookie(postgresJobCookie(task))
 	// Optimize — dbjobs runs mysqlcheck on DB host
 	case config.ConstTaskOptimize:
 		return server.SetWaitOptimizeCookie()
@@ -673,7 +684,7 @@ func (server *ServerMonitor) delTaskCookie(task string) error {
 }
 
 func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {
-	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
+	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" || server.IsPostgreSQLHost() {
 		return false, nil
 	}
 	if server.Conn == nil {
@@ -944,6 +955,10 @@ func (server *ServerMonitor) ReconcileRestoredAPIJobs() {
 }
 
 func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	if server.ClusterGroup.Conf.SchedulerJobsMode == "api" {
 		return nil
 	}
@@ -991,6 +1006,10 @@ func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
 }
 
 func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	var err error
 	cluster := server.ClusterGroup
 
@@ -1396,6 +1415,10 @@ func (server *ServerMonitor) JobsReconcileSQL() error {
 }
 
 func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
+	if server.IsPostgreSQLHost() {
+		// no jobs table on PostgreSQL: its sidecar is driven through the API
+		return nil
+	}
 	var err error
 	cluster := server.ClusterGroup
 
@@ -1527,7 +1550,8 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 // with the scheduler disabled.
 func (server *ServerMonitor) JobsUpdateState(task, result string, state, done int) error {
 	cluster := server.ClusterGroup
-	return server.jobsUpdateState(task, result, state, done, cluster.Conf.SchedulerJobsMode == "api")
+	// a PostgreSQL server has no jobs table (its SQL is MySQL dialect): runtime only, like the API mode
+	return server.jobsUpdateState(task, result, state, done, cluster.Conf.SchedulerJobsMode == "api" || server.IsPostgreSQLHost())
 }
 
 // JobsUpdateStateRuntimeOnly behaves like JobsUpdateState but always stamps
@@ -1756,6 +1780,10 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 
 	if server.IsIgnored() {
 		return nil
+	}
+
+	if server.IsPostgreSQLHost() {
+		return server.checkPostgresJobsVersion()
 	}
 
 	if !server.HasProvisionCookie() {

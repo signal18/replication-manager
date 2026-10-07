@@ -120,7 +120,35 @@ func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool, pfs_latch bo
 			UNION ALL SELECT 'ROWS_SENT' as "variable_name",SUM(tup_returned)::text as  "value" FROM pg_stat_database
 			UNION ALL SELECT 'UPTIME' as "variable_name", EXTRACT(EPOCH FROM pg_postmaster_start_time())::bigint::text  as  "value"
 			UNION ALL SELECT 'THREADS_CONNECTED' as "VARIABLE_NAME",  sum(numbackends)::text  as  "value" FROM pg_stat_database
+			UNION ALL SELECT 'QUERIES' as "variable_name",  SUM(xact_commit + xact_rollback)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'COM_COMMIT' as "variable_name",  SUM(xact_commit)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'COM_SELECT' as "variable_name",  SUM(tup_returned)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'THREADS_RUNNING' as "variable_name", count(*)::text as "value" FROM pg_stat_activity WHERE state = 'active' AND backend_type = 'client backend'
+			UNION ALL SELECT 'BLKS_HIT' as "variable_name",  SUM(blks_hit)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'BLKS_READ' as "variable_name",  SUM(blks_read)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'TEMP_BYTES' as "variable_name",  SUM(temp_bytes)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'DEADLOCKS' as "variable_name",  SUM(deadlocks)::text as "value" FROM pg_stat_database
+			UNION ALL SELECT 'WAL_BYTES' as "variable_name", wal_bytes::text as "value" FROM pg_stat_wal
+			UNION ALL SELECT 'WAL_RECORDS' as "variable_name", wal_records::text as "value" FROM pg_stat_wal
+			UNION ALL SELECT 'WAL_FPI' as "variable_name", wal_fpi::text as "value" FROM pg_stat_wal
+			UNION ALL SELECT 'WAL_BUFFERS_FULL' as "variable_name", wal_buffers_full::text as "value" FROM pg_stat_wal
+			UNION ALL SELECT 'N_DEAD_TUP' as "variable_name", COALESCE(SUM(n_dead_tup), 0)::text as "value" FROM pg_stat_all_tables
+			UNION ALL SELECT 'N_LIVE_TUP' as "variable_name", COALESCE(SUM(n_live_tup), 0)::text as "value" FROM pg_stat_all_tables
+			UNION ALL SELECT 'VACUUM_COUNT' as "variable_name", COALESCE(SUM(vacuum_count), 0)::text as "value" FROM pg_stat_all_tables
+			UNION ALL SELECT 'AUTOVACUUM_COUNT' as "variable_name", COALESCE(SUM(autovacuum_count), 0)::text as "value" FROM pg_stat_all_tables
+			UNION ALL SELECT 'ANALYZE_COUNT' as "variable_name", COALESCE(SUM(analyze_count), 0)::text as "value" FROM pg_stat_all_tables
+			UNION ALL SELECT 'AUTOANALYZE_COUNT' as "variable_name", COALESCE(SUM(autoanalyze_count), 0)::text as "value" FROM pg_stat_all_tables
 			 `
+		// checkpoints: pg_stat_checkpointer since 17, pg_stat_bgwriter before
+		if myver.GreaterEqual("17.0") {
+			query += ` UNION ALL SELECT 'CHECKPOINTS_TIMED' as "variable_name", num_timed::text as "value" FROM pg_stat_checkpointer
+			UNION ALL SELECT 'CHECKPOINTS_REQ' as "variable_name", num_requested::text as "value" FROM pg_stat_checkpointer
+			UNION ALL SELECT 'CHECKPOINT_BUFFERS_WRITTEN' as "variable_name", buffers_written::text as "value" FROM pg_stat_checkpointer `
+		} else {
+			query += ` UNION ALL SELECT 'CHECKPOINTS_TIMED' as "variable_name", checkpoints_timed::text as "value" FROM pg_stat_bgwriter
+			UNION ALL SELECT 'CHECKPOINTS_REQ' as "variable_name", checkpoints_req::text as "value" FROM pg_stat_bgwriter
+			UNION ALL SELECT 'CHECKPOINT_BUFFERS_WRITTEN' as "variable_name", buffers_checkpoint::text as "value" FROM pg_stat_bgwriter `
+		}
 	}
 	rows, err := db.Queryx(query)
 
@@ -213,9 +241,9 @@ func GetVariablesCase(db *sqlx.DB, myver *version.Version, vcase string) (map[st
 		query = "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_variables"
 	}
 	if myver.IsPostgreSQL() {
-		query = "SELECT upper(name) AS variable_name, setting AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
+		query = "SELECT upper(name) AS variable_name, regexp_replace(setting, 'password=(''(\\\\.|[^''])*''|\\S+)', 'password=<hidden>') AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
 		if vcase == "UPPER" {
-			query = "SELECT upper(name) AS variable_name, upper(setting) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
+			query = "SELECT upper(name) AS variable_name, upper(regexp_replace(setting, 'password=(''(\\\\.|[^''])*''|\\S+)', 'password=<hidden>')) AS value FROM pg_catalog.pg_settings UNION ALL Select 'SERVER_ID' as variable_name, system_identifier::text as value FROM pg_control_system()"
 		}
 	}
 	rows, err := db.Queryx(query)

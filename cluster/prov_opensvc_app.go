@@ -181,6 +181,33 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 	return nil
 }
 
+// OpenSVCUpdateAppTemplate regenerates the service definition of an app and pushes it to
+// OpenSVC in place (UpdateObjectV3), as OpenSVCUpdateDatabaseTemplate does for a database
+// server before a rolling restart: a changed mount, environment or container reaches the
+// live object without a reprovisioning, the next restart runs the new definition. Returns
+// once the node has loaded it (#1792).
+func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return fmt.Errorf("the service definition update requires the OpenSVC v3 API")
+	}
+	res, err := cluster.OpenSVCGetAppTemplateV3(app)
+	if err != nil {
+		return err
+	}
+	svcparts := strings.SplitN(app.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service name format %q, expected namespace/kind/name", app.ServiceName)
+	}
+	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Refreshing OpenSVC template for %s", app.ServiceName)
+	if _, err = svc.UpdateObjectV3(ns, kind, svcname, res); err != nil {
+		return err
+	}
+	app.TemplateMD5 = misc.GetMD5HashFromBytes(res)
+	return svc.WaitObjectConfigSettledV3(app.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
+}
+
 func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
 	if err := ValidateAppRestartRid(rid); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App restart validation failed: %s", err)
@@ -189,6 +216,10 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 
 	svc := cluster.OpenSVCConnect()
 	if svc.IsV3() {
+		// like the database rolling restart: the definition first, then the restart
+		if err := cluster.OpenSVCUpdateAppTemplate(app); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s restarts on its current definition, the refresh failed: %s", app.Name, err)
+		}
 		if rid != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
 		}
@@ -284,10 +315,13 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 		return err
 	}
 
+	// a database engine app that is a monitored server brings the cluster its credential
+	cluster.adoptEngineAppCredential(app)
 	err := cluster.OpenSVCCreateAppVariableMaps(agent.Node_name, app)
 	if err != nil {
 		return err
 	}
+	cluster.openSVCEnsureAppNamespaceEnv(svc, agent.Node_name)
 	if err := cluster.openSVCEnsureSensorPrerequisites(svc); err != nil {
 		// The sidecar is monitoring, never a reason to refuse the app: log and go on, a
 		// later provision publishes what is missing.
@@ -414,6 +448,14 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	containernum := 1
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = cluster.OpenSVCGetAppDefaultSection(app)
+	if cluster.engineServerOfApp(app) != nil {
+		// a monitored engine: its cap lives on the om3 PG slice like a database server's
+		// (GenerateDBTemplateV3), from prov-db-*, moved live by the dynamic resize
+		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(cluster.GetDBContainerMemoryCapMB())*1024*1024, 10)
+		if q := OpenSVCCPUQuotaKeyword(cluster.GetDBContainerCPUCapCores()); q != "" {
+			svcsection["DEFAULT"]["pg_cpu_quota"] = q
+		}
+	}
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection, err := cluster.OpenSVCGetAppVolumeSections(svcsection, app)
 	if err != nil {
@@ -453,10 +495,13 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	}
 
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
+	cluster.openSVCAddAppJobsSections(svcsection, app, &containernum)
 	// APU (Compute) + internal network sensor sidecar, same gate as the proxy one (the
 	// monitoring-system-resources off-switch, T14). Needs the script key published in the
 	// namespace `env` object (openSVCPublishAppJobScript, done by the V3 provision).
-	if cluster.Conf.MonitoringSystemResources {
+	if cluster.Conf.MonitoringSystemResources && cluster.engineServerOfApp(app) == nil {
+		// an engine that is a monitored server reports DBU through its jobs sidecar: no
+		// APU sensor, the service is counted once
 		svcsection["container#sensor"] = cluster.OpenSVCGetAppSensorContainerSection(app, appJobScriptKey())
 	}
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
@@ -494,6 +539,26 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 		}
 	}
 	return cluster.openSVCPublishAppJobScript(svc)
+}
+
+// openSVCEnsureAppNamespaceEnv makes sure the namespace `env` config and secret objects
+// exist and tell where replication-manager is. The database provisioning creates them
+// (OpenSVCCreateMaps); a namespace that only ever had apps never got them, so the sensor
+// sidecar and the jobs init container started without REPLICATION_MANAGER_URL (live
+// pgtest 2026-10-05: wget "bad address", an empty URL). Idempotent; an error is logged, the app
+// provisioning goes on.
+func (cluster *Cluster) openSVCEnsureAppNamespaceEnv(svc opensvc.Collector, agent string) {
+	if err := svc.CreateConfig(cluster.Name, "env", agent); err != nil && !isOpenSVCAlreadyExists(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not create the namespace env config: %s", err)
+		return
+	}
+	if err := svc.CreateSecret(cluster.Name, "env", agent); err != nil && !isOpenSVCAlreadyExists(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not create the namespace env secret: %s", err)
+	}
+	url := "https://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.APIPort
+	if err := svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_URL", url); err != nil && !isOpenSVCAlreadyExists(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
+	}
 }
 
 // openSVCPublishAppJobScript makes sure the namespace `env` config object holds the current
@@ -802,13 +867,17 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 			svccontainer["run_command"], _ = app.ClusterGroup.ParseAppTemplate(app.AppConfig.ProvAppDockerCmd, app.AppClusterSubstitute)
 		}
 
-		if cluster.Conf.ProvDBDockerRunArgsLimit {
+		if cluster.Conf.ProvDBDockerRunArgsLimit && cluster.engineServerOfApp(app) == nil {
+			// a plain app keeps the docker limit of its own plan; a monitored engine
+			// (PostgreSQL) never carries one: its cap lives on the om3 PG slice like a
+			// MariaDB server's (DEFAULT section), moved live by the dynamic resize (pg1 ran
+			// at 1 CPU / 1 GB under a 4 GB configuration with the app plan's docker cap)
 			appMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.GetAppMemory(app.AppConfig), true)
 			appMemStr := strconv.Itoa(appMemMB) + "m"
 			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + appMemStr + " --memory-swap=" + appMemStr + " --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
 		}
 
-		svccontainer["volume_mounts"] = cluster.GetOpenSVCDeploymentPathMapping(app)
+		svccontainer["volume_mounts"] = strings.TrimSpace(cluster.GetOpenSVCDeploymentPathMapping(app) + " " + postgresWalArchiveMount(app))
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv("env")
 		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv("secret")
 	}
@@ -1130,8 +1199,10 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 	}
 
 	// App configurator (app_configurator.go): the engine's moduleset files, rendered from
-	// the app plan, travel as one config key the container start command writes out.
+	// the database plan (initialized from the app plan the first time), travel as one config
+	// key the container start command writes out.
 	if app.AppConfig.ProvAppConfigurator != "" {
+		cluster.initDBSizingFromEngineApp(app)
 		script, err := cluster.AppConfiguratorScript(app)
 		if err != nil {
 			return err
@@ -1140,6 +1211,36 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appConfiguratorScriptKey, err)
 			addKeyErr(fmt.Errorf("config key %q: %w", appConfiguratorScriptKey, err))
+		}
+	}
+
+	// PostgreSQL WAL archive (the binlog copy of PostgreSQL): follows backup-binlogs, read by
+	// the start script (archive_mode, archive_command into the shared archive directory)
+	if postgresWalArchiveMount(app) != "" {
+		v := "off"
+		if cluster.Conf.BackupBinlogs {
+			v = "on"
+		}
+		if err = svc.CreateConfigKeyValue(cluster.Name, app.Name, "PG_WAL_ARCHIVE", v); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: PG_WAL_ARCHIVE %s ", err)
+			addKeyErr(fmt.Errorf("config key PG_WAL_ARCHIVE: %w", err))
+		}
+	}
+
+	// Engine start script (app_jobs.go), run by the template's start command.
+	if script := appStartScript(app); script != "" {
+		err = svc.CreateConfigKeyValue(cluster.Name, app.Name, appStartScriptKey, script)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appStartScriptKey, err)
+			addKeyErr(fmt.Errorf("config key %q: %w", appStartScriptKey, err))
+		}
+	}
+	// Jobs sidecar (app_jobs.go): the engine's jobs script travels the same way.
+	if script := appJobsScript(app); script != "" {
+		err = svc.CreateConfigKeyValue(cluster.Name, app.Name, appJobsScriptKey, script)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", appJobsScriptKey, err)
+			addKeyErr(fmt.Errorf("config key %q: %w", appJobsScriptKey, err))
 		}
 	}
 

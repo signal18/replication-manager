@@ -39,6 +39,33 @@ KIND="${SENSOR_KIND:-app}"
 NAME="${SENSOR_NAME:-}"
 INTERVAL="${SENSOR_INTERVAL:-60}"
 CG=/svc-cgroup
+CG_NS="${MRM_CLUSTER:-}"
+CG_SVC="${SENSOR_NAME:-}"
+# resolve_cgroup: this service's cgroup v2 directory. /svc-cgroup when the orchestrator
+# bound the exact slice there; else, under the OpenSVC tree bound at /svc-cgroup-root, the
+# slice found by NAME: systemd spells a dash as \x2d (pg-logical -> pg\x2dlogical) and a
+# backslash cannot travel in a bind mount, so the directory names are decoded before they
+# are compared with the cluster (namespace) and service names.
+resolve_cgroup() {
+    if [ -r /svc-cgroup/memory.current ]; then echo /svc-cgroup; return 0; fi
+    [ -n "${CG_NS:-}" ] && [ -n "${CG_SVC:-}" ] && [ -d /svc-cgroup-root ] || return 1
+    # the REAL slice is the systemd-escaped spelling (a dash is \x2d, literally in the
+    # directory name); the tree may hold EMPTY look-alikes next to it (plain dashed name,
+    # backslash-less name: a bind that cannot be spelled still creates the cgroup it
+    # names) with no memory controller -- matched by decoded name the phantom came first
+    # and the sensor reported nothing (preprod 2026-10-07): escaped path first, then a
+    # decoded match that carries a readable memory.current
+    ens=$(printf '%s' "$CG_NS" | sed 's/-/\\x2d/g'); esvc=$(printf '%s' "$CG_SVC" | sed 's/-/\\x2d/g')
+    s="/svc-cgroup-root/opensvc-ns.$ens.slice/opensvc-ns.$ens-svc.$esvc.slice"
+    [ -r "$s/memory.current" ] && { printf '%s\n' "$s"; return 0; }
+    for d in /svc-cgroup-root/opensvc-ns.*.slice; do
+        [ "$(printf '%s' "${d##*/}" | sed 's/\\x2d/-/g')" = "opensvc-ns.$CG_NS.slice" ] || continue
+        for s in "$d"/opensvc-ns.*-svc.*.slice; do
+            [ "$(printf '%s' "${s##*/}" | sed 's/\\x2d/-/g')" = "opensvc-ns.$CG_NS-svc.$CG_SVC.slice" ] && [ -r "$s/memory.current" ] && { printf '%s\n' "$s"; return 0; }
+        done
+    done
+    return 1
+}
 CKPT=/tmp/apu.checkpoint
 
 log() { echo "[app_job] $*" >&2; }
@@ -60,6 +87,7 @@ system_login() {
 
 # One sample: read the cgroup, compute the cpu rate from the checkpoint, push /apu.
 collect_apu() {
+    CG=$(resolve_cgroup) || CG=/svc-cgroup
     [ -r "$CG/memory.current" ] || { log "no readable cgroup at $CG; skip"; return 0; }
 
     now=$(date +%s)

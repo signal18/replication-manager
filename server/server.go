@@ -81,6 +81,7 @@ type ReplicationManager struct {
 	OpenSVC                      opensvc.Collector                  `json:"-"`
 	Version                      string                             `json:"version"`
 	Fullversion                  string                             `json:"fullVersion"`
+	ToolsVersions                map[string]string                  `json:"toolsVersions"` // local tools of this replication-manager host, from the clusters' detection
 	Os                           string                             `json:"os"`
 	OsUser                       *user.User                         `json:"osUser" swaggerignore:"true"`
 	Arch                         string                             `json:"arch"`
@@ -605,6 +606,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MultiTierSlave, "replication-multi-tier-slave", false, "Relay slaves topology")
 	flags.BoolVar(&conf.MasterSlavePgStream, "replication-master-slave-pg-stream", false, "Postgres streaming replication")
 	flags.BoolVar(&conf.MasterSlavePgLogical, "replication-master-slave-pg-logical", false, "Postgres logical replication")
+	flags.BoolVar(&conf.PgLogicalDDLReplication, "replication-pg-logical-ddl", true, "PostgreSQL logical replication: replicate DDL through an event trigger that logs each statement in a published table, applied by the subscribers (PostgreSQL does not replicate DDL)")
 	flags.BoolVar(&conf.ReplicationNoRelay, "replication-master-slave-never-relay", true, "Do not allow relay server MSS MXS XXM RSM")
 	flags.StringVar(&conf.ReplicationErrorScript, "replication-error-script", "", "Replication error script")
 	flags.StringVar(&conf.ReplicationRestartOnSQLErrorMatch, "replication-restart-on-sqlerror-match", "", "Auto restart replication on SQL Error regexep")

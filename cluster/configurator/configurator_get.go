@@ -466,12 +466,33 @@ func (configurator *Configurator) GetConfigInnoDBPurgeThreads() string {
 // defaults thread_pool_size to the HOST core count (sysconf _SC_NPROCESSORS_ONLN,
 // which is NOT cgroup-aware), oversizing the pool in a cpu-limited container.
 // thread_pool_size is a dynamic GLOBAL, so it is applied live on a CPU resize.
-func (configurator *Configurator) GetConfigThreadPoolSize() string {
+// IsSemiSync reports whether the cluster replicates semi-synchronously for the sizing
+// rules: enforced by force-slave-semisync, declared by the configurator tag "semisync"
+// (prov-db-tags, also set by ConfigDiscovery from RPL_SEMI_SYNC_MASTER_ENABLED), or
+// observed live on the servers (observed = what the monitor tracks, Cluster.HasSemiSyncObserved).
+// belair ran semi-sync from its compliance configuration with the flag off and got a pool
+// sized for asynchronous replication (2026-10-07, #1902).
+func (configurator *Configurator) IsSemiSync(observed bool) bool {
+	return configurator.ClusterConfig.ForceSlaveSemisync || configurator.HaveDBTag("semisync") || observed
+}
+
+// GetConfigThreadPoolSize is thread_pool_size for pool-of-threads: one group per core,
+// four per core under semi-synchronous replication (IsSemiSync: flag, tag or observed).
+// A group whose thread waits for the replica's acknowledgment (2.8 ms per commit measured)
+// blocks its lane until the stall limit, so one group per core serializes the commits:
+// 16 clients on a 1-core cgroup gave 114 tps at 1 group, 329 at 2, 334 at 4 and 147 at 8
+// (the groups then contend for the core and the acknowledgment itself slows down) --
+// mahebourg, 2026-10-06.
+func (configurator *Configurator) GetConfigThreadPoolSize(semiSyncObserved bool) string {
 	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
 	if err != nil || cores < 1 {
-		return "1"
+		cores = 1
 	}
-	return strconv.Itoa(int(cores))
+	size := int(cores)
+	if configurator.IsSemiSync(semiSyncObserved) {
+		size = int(cores * 4)
+	}
+	return strconv.Itoa(size)
 }
 
 func (configurator *Configurator) GetConfigInnoDBLruFlushSize() string {

@@ -111,6 +111,7 @@ var toolACLPaths = map[string]string{
 	"get-cloud18-cluster-price":         globalPrefix,
 	"cloud18-create-cluster-token":      globalPrefix + "global-admin-show",
 	"get-cluster-health":                "",
+	"get-cluster-tools":                 "/tools",
 	"get-cluster-topology":              "",
 	"get-cluster-settings":              "",
 	"get-cluster-price":                 "/price",

@@ -303,6 +303,11 @@ func (cluster *Cluster) RollingRestart() error {
 			slave.SwitchMaintenance()
 		}
 	}
+	if len(cluster.slaves) == 0 {
+		// no replica to switch to (active-passive, a single server): the master restarts in
+		// place, the orchestrator brings it back where its placement says
+		return cluster.rollingRestartMasterInPlace(master)
+	}
 	cluster.SwitchoverWaitTest()
 	master = cluster.GetServerFromName(masterID)
 	if cluster.master == nil {
@@ -390,6 +395,21 @@ func (cluster *Cluster) RollingRestart() error {
 }
 
 func (cluster *Cluster) RollingOptimize() {
+	// PostgreSQL: the optimize is a VACUUM (ANALYZE) run by the jobs sidecar of the PRIMARY.
+	// It blocks neither reads nor writes, and a standby cannot be vacuumed: it replays the
+	// primary's. The MariaDB rule below (replicas only, one after the other) does not apply.
+	if m := cluster.GetMaster(); m != nil && m.DBVersion != nil && m.DBVersion.IsPostgreSQL() {
+		if m.IsDown() || m.IsIgnored() {
+			return
+		}
+		jobid, err := m.JobOptimize()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Optimize request failed on %s: %s", m.URL, err)
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Optimize job id %d on %s ", jobid, m.URL)
+		return
+	}
 	for _, s := range cluster.slaves {
 		if s == nil || s.IsIgnored() || s.IsDown() {
 			continue
@@ -896,4 +916,42 @@ func (cluster *Cluster) waitRollingReseed(server *ServerMonitor, since int64) er
 		}
 		time.Sleep(5 * time.Second)
 	}
+}
+
+// rollingRestartMasterInPlace restarts a master that has no replica (active-passive): stop,
+// wait for the monitor to see it down, start with the refreshed definition, wait for it
+// back. The service interruption is the restart itself; there is nothing to switch to.
+func (cluster *Cluster) rollingRestartMasterInPlace(master *ServerMonitor) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling restart: no replica, master %s restarts in place", master.URL)
+	// frozen first, as the replicas are: an orchestrated (ha) service is restarted by the
+	// orchestrator the second it stops, before the monitor sees it down
+	if ferr := cluster.FreezeDatabaseService(master); ferr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze of %s failed: %s", master.URL, ferr)
+	}
+	defer func() {
+		if uerr := cluster.UnfreezeDatabaseService(master); uerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze of %s failed: %s", master.URL, uerr)
+		}
+	}()
+	if err := cluster.StopDatabaseService(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on master %s %s", master.URL, err)
+		return err
+	}
+	if err := cluster.WaitDatabaseFailed(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart master does not transit Failed %s %s", master.URL, err)
+		return err
+	}
+	if err := cluster.UpgradeDatabaseDeploymentOnStart(master, true); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: definition refresh failed on %s: %s", master.URL, err)
+	}
+	if err := cluster.StartDatabaseService(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart start failed on master %s %s", master.URL, err)
+		return err
+	}
+	if err := cluster.WaitDatabaseStart(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling restart: master %s did not come back: %s", master.URL, err)
+		return err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling restart: master %s is back", master.URL)
+	return nil
 }

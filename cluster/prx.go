@@ -308,6 +308,9 @@ func (cluster *Cluster) injectTrafficUsesDDL() bool {
 
 func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKey string) error {
 	uuid := misc.GetUUID()
+	if cluster.isPostgresMaster() {
+		return cluster.postgresInjectTrafficMarker(db, uuid, readyKey)
+	}
 	if cluster.injectTrafficUsesDDL() {
 		_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + uuid + "' from dual")
 		return err
@@ -421,6 +424,17 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 				return false
 			}
 			defer db.Close()
+			if cluster.isPostgresMaster() {
+				ok, err := cluster.postgresProxyServesMaster(db)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Can't check the master through the proxy: %s", err)
+					return false
+				}
+				if ok {
+					return true
+				}
+				continue
+			}
 			var sv map[string]string
 			sv, _, err = dbhelper.GetVariables(db, cluster.GetMaster().DBVersion)
 			if err != nil {

@@ -620,7 +620,7 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx DatabasePr
 	svcenv := make(map[string]string)
 	svcenv["nodes"] = prx.GetAgent()
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-	svcenv["size"] = cluster.Conf.ProvProxDisk + "g"
+	svcenv["size"] = cluster.provProxyDiskSizeForOpenSVC()
 	svcenv["ip_pod01"] = prx.GetHost()
 	svcenv["port_pod01"] = prx.GetPort()
 	svcenv["network"] = network
@@ -750,4 +750,17 @@ func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {
 
 	}
 	return svcdefault
+}
+
+// provProxyDiskSizeForOpenSVC is prov-proxy-disk-size as an OpenSVC size, the proxy side of
+// #1897: the setting carries its unit ("20G"), a hard-coded "g" gave "20Gg", a volume of
+// size 0 and "fs#0: provision: create: exit status 1" on every HAProxy of a cluster created
+// through the API (tamarin, pg-active-passive, 2026-10-07). Gigabytes, rounded down, at least 1.
+func (cluster *Cluster) provProxyDiskSizeForOpenSVC() string {
+	gb, err := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvProxDisk, true)
+	if err != nil || gb < 1 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "prov-proxy-disk-size %q is not a size (%v): 1g used", cluster.Conf.ProvProxDisk, err)
+		gb = 1
+	}
+	return strconv.Itoa(gb) + "g"
 }

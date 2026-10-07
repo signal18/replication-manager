@@ -983,6 +983,15 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			}
 			app.AppClusterSubstitute = ""
 		}
+		// Generated password: a template referencing {{app.randompassword}} gets one,
+		// generated here and stored encrypted, before the substitution runs.
+		if appRandomPasswordWanted(content) {
+			if err := cluster.ApplyAppRandomPassword(appcnf); err != nil {
+				rollbackAddedApp()
+				return err
+			}
+			app.AppClusterSubstitute = ""
+		}
 		resolvedContent, err := cluster.ParseTemplateContent(app, content)
 		if err != nil {
 			rollbackAddedApp()
@@ -1037,8 +1046,105 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 			}
 		}
 	}
+	// The app's reservation is a PLAN increase (its APU, or DBU for a stateful app, at
+	// least one unit, times its instances) and must pass the same gate as ChangePlanUnits:
+	// added unconditionally, apps were provisioned over the reservation until the plan pot
+	// went negative and every plan change was refused (preprod 2026-10-07, 53 APU on 64
+	// cores; MCP app-add, #1906). A refusal leaves nothing behind.
+	if ok, reason := cluster.appPlanIncreaseAllowed(appcnf, app); !ok {
+		rollbackAddedApp()
+		return fmt.Errorf("app %s refused: %s", srv, reason)
+	}
 	appAdded = false
+	// An engine (a database with a monitor) added this way is a CLUSTER change: it becomes
+	// a monitored server and its agents join prov-db-agents; the template only gives the
+	// deployment definition and the placement.
+	cluster.registerEngineAppAsServer(appcnf)
 	return nil
+}
+
+// appPlanIncreaseAllowed asks the physical ledger whether the reservation this app will
+// register (RefreshComputePlanAPU: Compute profile from its memory, cores and disk, at
+// least 1 APU; Database profile for a stateful app, at least 1 DBU; times its instances)
+// fits the plan pot. A monitored engine server (PostgreSQL app) reserves through the
+// cluster's DBU plan, not here. Unknown capacity never gates.
+func (cluster *Cluster) appPlanIncreaseAllowed(appcnf *config.AppConfig, app *App) (bool, string) {
+	if cluster.resources == nil || appcnf == nil {
+		return true, ""
+	}
+	if app != nil && cluster.engineServerOfApp(app) != nil {
+		return true, ""
+	}
+	n := 1.0
+	if app != nil {
+		if c := cluster.appInstanceCount(app); c > 1 {
+			n = float64(c)
+		}
+	}
+	now := time.Now()
+	if appcnf.AppStateful {
+		d := cluster.computePlanDBUReading(now, cluster.GetAppMemory(appcnf), cluster.GetAppCores(appcnf), cluster.GetAppDisk(appcnf))
+		units := d.Dbu
+		if units < 1 {
+			units = 1
+		}
+		return cluster.resources.CanPlanIncrease(ProfileDatabase, units*n)
+	}
+	r := cluster.computePlanAPUReading(now, cluster.GetAppMemory(appcnf), cluster.GetAppCores(appcnf), cluster.GetAppDisk(appcnf))
+	units := r.Apu
+	if units < 1 {
+		units = 1
+	}
+	return cluster.resources.CanPlanIncrease(ProfileCompute, units*n)
+}
+
+// registerEngineAppAsServer adds an engine app to the cluster's monitored servers
+// (db-servers-hosts) and its agents to prov-db-agents. Anything that has a monitor is a
+// server of the cluster, never only an app: one monitor, the database plan, the server
+// actions. PostgreSQL servers are declared host:port/database.
+func (cluster *Cluster) registerEngineAppAsServer(appcnf *config.AppConfig) {
+	engine := strings.TrimSpace(appcnf.ProvAppConfigurator)
+	if engine == "" {
+		return
+	}
+	host := appcnf.AppHost + ":" + appcnf.AppPort
+	if engine == "postgres" {
+		host += "/postgres"
+	}
+	if !strings.Contains(","+cluster.Conf.Hosts+",", ","+host+",") {
+		if err := cluster.AddSeededServer(host); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Engine app %s not added to the cluster servers: %s", appcnf.AppHost, err)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Engine app %s is a server of the cluster: %s", appcnf.AppHost, host)
+		}
+	}
+	if cluster.IsVariableImmutable("prov-db-agents") {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "prov-db-agents is defined in the cluster configuration file: kept, the agents of %s (%s) are not added to it", appcnf.AppHost, cluster.GetAppAgents(appcnf))
+		return
+	}
+	agents := strings.Split(cluster.Conf.ProvAgents, ",")
+	for _, a := range strings.Split(cluster.GetAppAgents(appcnf), ",") {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		known := false
+		for _, k := range agents {
+			if strings.TrimSpace(k) == a {
+				known = true
+			}
+		}
+		if !known {
+			agents = append(agents, a)
+		}
+	}
+	cleaned := []string{}
+	for _, a := range agents {
+		if a = strings.TrimSpace(a); a != "" {
+			cleaned = append(cleaned, a)
+		}
+	}
+	cluster.SetProvDbAgents(strings.Join(cleaned, ","))
 }
 
 func (cluster *Cluster) GetAppByHostPort(host, port string) (*App, int) {
@@ -1269,6 +1375,11 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 	}
 	for _, app := range cluster.Apps {
 		if app == nil {
+			continue
+		}
+		if cluster.engineServerOfApp(app) != nil {
+			// an engine that is a monitored SERVER: its plan is the database plan (prov-db-*)
+			// and its DBU the server's, nothing is counted on the app side
 			continue
 		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}

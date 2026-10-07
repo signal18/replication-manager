@@ -86,6 +86,11 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			opt.Channel = "alltables"
 		}
 		cm += "CREATE SUBSCRIPTION " + opt.Channel + " CONNECTION 'dbname=" + opt.PostgressDB + " host=" + misc.Unbracket(opt.Host) + " user=" + opt.User + " port=" + opt.Port + " password=" + opt.Password + " ' PUBLICATION  " + opt.Channel + " WITH (enabled=false, copy_data=false, create_slot=true)"
+		if opt.PostgresExistingSlot {
+			// the slot created on the publisher with the snapshot the data was dumped at:
+			// streaming resumes exactly where the dump stopped
+			cm = strings.TrimSuffix(cm, "create_slot=true)") + "create_slot=false, slot_name='" + strings.ReplaceAll(opt.Channel, "'", "''") + "')"
+		}
 	} else {
 		if myver.IsMariaDB() && opt.Channel != "" {
 			cm += "CHANGE " + masterOrSource + " '" + opt.Channel + "' TO "
@@ -149,7 +154,20 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			cm += " FOR CHANNEL '" + opt.Channel + "'"
 		}
 	}
-	_, err := db.Exec(cm)
+	var err error
+	if myver.IsPostgreSQL() {
+		// a subscriber keeps a read-only default: the monitor's session is switched
+		err = PostgresExecReadWrite(db, cm)
+		if err == nil {
+			// the apply worker runs as the owner: the role exempt from the read-only default
+			var logs string
+			if logs, err = PostgresOwnSubscription(db, opt.Channel); err != nil {
+				cm += "; " + logs
+			}
+		}
+	} else {
+		_, err = db.Exec(cm)
+	}
 	cm = strings.Replace(cm, opt.Password, "XXX", -1)
 	if err != nil {
 		return cm, fmt.Errorf("Change "+masterOrSource+" statement %s failed, reason: %s", cm, err)
@@ -476,6 +494,10 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveS
 										ON ss.subname =s.subname
 								) ON ros.external_id='pg_' || ss.subid::text ,
 								(SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
+				if postgresInRecovery(db) {
+					// a physical standby: WAL receiver, not subscriptions
+					query = postgresStandbyStatusQuery
+				}
 			}
 
 			err = udb.Get(&ss, query)
@@ -674,6 +696,10 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, str
 									  ON ss.subname =s.subname
 								) ON ros.external_id='pg_' || ss.subid::text ,
 							  (SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
+		if postgresInRecovery(db) {
+			// a physical standby: WAL receiver, not subscriptions
+			query = postgresStandbyStatusQuery
+		}
 	}
 	err = udb.Select(&ss, query)
 	return ss, query, err
@@ -709,25 +735,32 @@ func SetMultiSourceRepl(db *sqlx.DB, master_host string, master_port string, mas
 }
 
 func InstallSemiSync(db *sqlx.DB, myver *version.Version) (string, error) {
-	stmt := "INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so'"
-	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
-		stmt = "INSTALL PLUGIN rpl_semi_sync_replica SONAME 'semisync_replica.so'"
+	logs := ""
+	var err error
+	// MariaDB 10.3.3+ has semi-sync built into the server: INSTALL PLUGIN fails there and
+	// the enable statements were never reached (the enforcement logged "Enforce semisync"
+	// every tick and nothing changed, mahebourg 2026-10-06)
+	if !(myver.IsMariaDB() && myver.GreaterEqual("10.3")) {
+		stmt := "INSTALL PLUGIN rpl_semi_sync_slave SONAME 'semisync_slave.so'"
+		if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+			stmt = "INSTALL PLUGIN rpl_semi_sync_replica SONAME 'semisync_replica.so'"
+		}
+		logs = stmt
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return logs, err
+		}
+		stmt = "INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'"
+		if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
+			stmt = "INSTALL PLUGIN rpl_semi_sync_source SONAME 'semisync_source.so';"
+		}
+		logs += "\n" + stmt
+		_, err = db.Exec(stmt)
+		if err != nil {
+			return logs, err
+		}
 	}
-	logs := stmt
-	_, err := db.Exec(stmt)
-	if err != nil {
-		return logs, err
-	}
-	stmt = "INSTALL PLUGIN rpl_semi_sync_master SONAME 'semisync_master.so'"
-	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
-		stmt = "INSTALL PLUGIN rpl_semi_sync_source SONAME 'semisync_source.so';"
-	}
-	logs += "\n" + stmt
-	_, err = db.Exec(stmt)
-	if err != nil {
-		return logs, err
-	}
-	stmt = "set global rpl_semi_sync_master_enabled='ON'"
+	stmt := "set global rpl_semi_sync_master_enabled='ON'"
 	if myver.IsMySQLOrPercona() && ((myver.Major >= 8 && myver.Minor > 0) || (myver.Major >= 8 && myver.Minor == 0 && myver.Release >= 26)) {
 		stmt = "SET GLOBAL rpl_semi_sync_source_enabled=ON"
 	}
@@ -792,11 +825,7 @@ func GetMasterStatus(db *sqlx.DB, myver *version.Version) (MasterStatus, string,
 	udb := db.Unsafe()
 	query := "SHOW MASTER STATUS"
 	if myver.IsPostgreSQL() {
-		query = `select
-		 	 'master.' ||	pg_walfile_name(pg_current_wal_lsn()) as "File" ,
-				(SELECT file_offset  FROM pg_walfile_name_offset(pg_current_wal_lsn())) as "Position" ,
-				'' as Binlog_Do_DB ,
-				'' as "Binlog_Ignore_DB"`
+		query = postgresMasterStatusQuery
 
 	} else if myver.IsMySQLOrPerconaGreater84() {
 		query = "SHOW BINARY LOG STATUS"
@@ -872,6 +901,9 @@ func StopSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, err
 		if myver.IsMySQLOrPercona() && Channel != "" {
 			cmd += " FOR CHANNEL '" + Channel + "'"
 		}
+	}
+	if myver.IsPostgreSQL() {
+		return cmd, PostgresExecReadWrite(db, cmd) // a subscriber keeps a read-only default
 	}
 	_, err := db.Exec(cmd)
 	return cmd, err
@@ -1031,6 +1063,13 @@ func SetGTIDSlavePos(db *sqlx.DB, gtid string) (string, error) {
 func GetBinlogDumpThreads(db *sqlx.DB, myver *version.Version) (int, string, error) {
 	var i int
 	query := "SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command LIKE 'binlog dump%'"
+	if myver.IsPostgreSQL() {
+		// the replicas of this server: the attached WAL senders (standbys, subscribers)
+		// plus the replication slots no sender holds right now -- a subscriber whose apply
+		// worker is down (a DDL it misses, a restart) keeps its slot and comes back; the
+		// primary must stay designated meanwhile
+		query = "SELECT (SELECT COUNT(*) FROM pg_stat_replication) + (SELECT COUNT(*) FROM pg_replication_slots WHERE NOT active) AS n"
+	}
 	err := db.Get(&i, query)
 	return i, query, err
 }
@@ -1124,7 +1163,12 @@ func StartSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, er
 			cmd += " FOR CHANNEL '" + Channel + "'"
 		}
 	}
-	_, err := db.Exec(cmd)
+	var err error
+	if myver.IsPostgreSQL() {
+		err = PostgresExecReadWrite(db, cmd)
+	} else {
+		_, err = db.Exec(cmd)
+	}
 	return cmd, err
 }
 
@@ -1151,6 +1195,9 @@ func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *version.Version) (
 			}
 		}
 	}
+	if myver.IsPostgreSQL() {
+		return stmt, PostgresExecReadWrite(db, stmt) // a read-only default may be in place
+	}
 	_, err := db.Exec(stmt)
 	return stmt, err
 }
@@ -1166,6 +1213,9 @@ func ResetMaster(db *sqlx.DB, Channel string, myver *version.Version) (string, e
 		stmt += "RESET BINARY LOGS AND GTIDS"
 	} else {
 		stmt += "RESET MASTER"
+	}
+	if myver.IsPostgreSQL() {
+		return stmt, PostgresExecReadWrite(db, stmt) // a read-only default may be in place
 	}
 	_, err := db.Exec(stmt)
 

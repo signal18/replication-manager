@@ -10,6 +10,8 @@ import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
 import Apps from './components/Apps/index.jsx'
 import RMIconButton from '../../components/RMIconButton'
+import TableType2 from '../../components/TableType2'
+import styles from './styles.module.scss'
 import { HiCog } from 'react-icons/hi'
 // Accordion heading with a "?" tooltip explaining log content
 function LogHeading({ title, description }) {
@@ -38,6 +40,16 @@ function LogHeading({ title, description }) {
     </HStack>
   )
 }
+
+const toolLabels = {
+  client: 'Database client',
+  'client-dump': 'Dump client',
+  'client-binlog': 'Binlog client',
+  mydumper: 'mydumper',
+  sysbench: 'sysbench',
+  restic: 'restic'
+}
+
 
 function Dashboard({ selectedCluster, user, openSettings = {} }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)

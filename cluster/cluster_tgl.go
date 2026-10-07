@@ -184,6 +184,13 @@ func (cluster *Cluster) SwitchBackupBinlogs() {
 			go sv.CheckBinaryLogs(true)
 		}
 	}
+	// the PostgreSQL servers read it at start (PG_WAL_ARCHIVE): the key follows, the
+	// rolling restart applies it
+	for _, sv := range cluster.GetServers() {
+		if sv.IsPostgreSQLHost() {
+			go sv.postgresRefreshWalArchiveKey()
+		}
+	}
 }
 
 func (cluster *Cluster) SwitchCompressBackups() {

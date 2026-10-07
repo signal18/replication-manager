@@ -46,6 +46,19 @@ func (s *MCPServer) registerClusterReadTools() {
 	)
 
 	s.addTool(
+		mcp.NewTool("get-cluster-tools",
+			mcp.WithDescription("Get the command line tools this replication-manager found for a cluster with their versions: the database client, dump and binlog clients, mydumper, sysbench and restic. Tools are a property of the replication-manager host; a tool not found is absent."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			return mcp.NewToolResultText(toJSON(map[string]any{"cluster": cl.Name, "tools": cl.GetToolsVersions()})), nil
+		},
+	)
+	s.addTool(
 		mcp.NewTool("get-cluster-health",
 			mcp.WithDescription("Get the high-level health status of a cluster. Returns: isDown (no master), isMasterDown (master unreachable), isFailable (a replica can be promoted), isProvisioned (replication bootstrapped). Use this as the first diagnostic step."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),

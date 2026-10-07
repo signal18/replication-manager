@@ -92,3 +92,62 @@ func TestPlanRollingUpgradeGate(t *testing.T) {
 		t.Fatalf("downgrade with a fresh logical backup is planned: err=%v plan=%+v", err, p)
 	}
 }
+
+// PostgreSQL has no binary logs: the readiness never raises WARN0224 for it, and listing
+// binary logs is skipped (no ERR00014). The backup issues stay: no backup is no backup.
+func TestReseedReadinessPostgreSQLHasNoBinaryLogWarning(t *testing.T) {
+	cl, m := readinessCluster(t)
+	m.HaveBinlog = false
+	if r := cl.GetReseedReadiness(); len(r.Issues) == 0 || r.Issues[0].Code != "WARN0224" {
+		t.Fatalf("MariaDB without log_bin raises WARN0224: %+v", r)
+	}
+	m.DBVersion, _ = version.NewVersion("PostgreSQL", 17, 11, 0)
+	r := cl.GetReseedReadiness()
+	for _, issue := range r.Issues {
+		if issue.Code == "WARN0224" {
+			t.Fatalf("WARN0224 must not be raised on PostgreSQL: %+v", r)
+		}
+	}
+	if len(r.Issues) != 1 || !strings.Contains(r.Issues[0].Text, "no backup usable") {
+		t.Fatalf("the missing backup is still reported: %+v", r)
+	}
+	if err := m.RefreshBinaryLogs(); err != nil {
+		t.Fatalf("listing binary logs is a no-op on PostgreSQL: %v", err)
+	}
+}
+
+// The missing backup-based reseed method is WARN0223 on MariaDB/MySQL and WARN0231 on
+// PostgreSQL (its own words: no mysqldump there, only the logical backup crosses a major
+// release), raised only where a node can be reseeded: the logical replication topology, not
+// a single active-passive instance.
+func TestReseedReadinessPostgreSQLReseedMethodByTopology(t *testing.T) {
+	cl, m := readinessCluster(t)
+	cl.Conf.AutorejoinLogicalBackup = false
+	has := func(code string) bool {
+		for _, issue := range cl.GetReseedReadiness().Issues {
+			if issue.Code == code {
+				return true
+			}
+		}
+		return false
+	}
+	if !has("WARN0223") {
+		t.Fatal("MariaDB without a backup-based reseed method raises WARN0223")
+	}
+	m.DBVersion, _ = version.NewVersion("PostgreSQL", 17, 11, 0)
+	cl.Topology = config.TopoActivePassive
+	if has("WARN0223") || has("WARN0231") {
+		t.Fatal("a single active-passive PostgreSQL instance has nothing to reseed")
+	}
+	cl.Topology = config.TopoMasterSlavePgLog
+	if has("WARN0223") {
+		t.Fatal("WARN0223 speaks of mysqldump: not on PostgreSQL")
+	}
+	if !has("WARN0231") {
+		t.Fatal("PostgreSQL logical replication without autorejoin-logical-backup raises WARN0231")
+	}
+	cl.Conf.AutorejoinLogicalBackup = true
+	if has("WARN0231") {
+		t.Fatal("the logical backup is the reseed method that crosses a major release on PostgreSQL")
+	}
+}

@@ -178,11 +178,11 @@ func (cluster *Cluster) previousBackupSize(server *ServerMonitor, kind string) i
 // the receiver counts them; an older entry serves only when its artifact IS the stream
 // (neither compressed nor encrypted), else it is not comparable and the estimate applies.
 func backupProgressComparableSize(m *backupmgr.BackupMetadata) int64 {
+	if m.StreamSize > 0 {
+		return m.StreamSize // a streamed backup is counted in stream bytes, whatever its method
+	}
 	if m.BackupMethod != backupmgr.BackupMethodPhysical {
 		return m.Size
-	}
-	if m.StreamSize > 0 {
-		return m.StreamSize
 	}
 	if !m.Compressed && !m.Encrypted {
 		return m.Size
@@ -269,8 +269,11 @@ func (p *BackupProgress) refreshLocked(now time.Time) {
 // receiver task is its stream (the receivers also carry logs and other files).
 func (cluster *Cluster) physicalBackupProgressForTask(server *ServerMonitor, task string) *BackupProgress {
 	switch task {
-	case config.ConstBackupPhysicalTypeMariaBackup, config.ConstBackupPhysicalTypeXtrabackup:
+	case config.ConstBackupPhysicalTypeMariaBackup, config.ConstBackupPhysicalTypeXtrabackup, string(config.ConstTaskPgBaseBackup):
 		return cluster.backupProgressFor(server, "physical")
+	case string(config.ConstTaskPgDump):
+		// a PostgreSQL dump is streamed by the jobs sidecar: the receiver counts it too
+		return cluster.backupProgressFor(server, "logical")
 	}
 	return nil
 }

@@ -273,6 +273,7 @@ type Config struct {
 	MultiTierSlave                           bool                         `mapstructure:"replication-multi-tier-slave" toml:"replication-multi-tier-slave" json:"replicationMultiTierSlave"`
 	MasterSlavePgStream                      bool                         `mapstructure:"replication-master-slave-pg-stream" toml:"replication-master-slave-pg-stream" json:"replicationMasterSlavePgStream"`
 	MasterSlavePgLogical                     bool                         `mapstructure:"replication-master-slave-pg-logical" toml:"replication-master-slave-pg-logical" json:"replicationMasterSlavePgLogical"`
+	PgLogicalDDLReplication                  bool                         `mapstructure:"replication-pg-logical-ddl" toml:"replication-pg-logical-ddl" json:"replicationPgLogicalDdl"`
 	ReplicationNoRelay                       bool                         `mapstructure:"replication-master-slave-never-relay" toml:"replication-master-slave-never-relay" json:"replicationMasterSlaveNeverRelay"`
 	ReplicationRestartOnSQLErrorMatch        string                       `mapstructure:"replication-restart-on-sqlerror-match" toml:"replication-restart-on-sqlerror-match" json:"eeplicationRestartOnSqlLErrorMatch"`
 	SwitchWaitKill                           int64                        `mapstructure:"switchover-wait-kill" toml:"switchover-wait-kill" json:"switchoverWaitKill"`
@@ -1143,7 +1144,8 @@ type AppConfig struct {
 	ProvAppHATopology     string `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
 	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	ProvAppSizingMode     string `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode"`
-	ProvAppConfigurator   string `mapstructure:"prov-app-configurator" toml:"prov-app-configurator" json:"provAppConfigurator"` // engine whose moduleset (share/opensvc/moduleset_<engine>.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none
+	ProvAppConfigurator   string `mapstructure:"prov-app-configurator" toml:"prov-app-configurator" json:"provAppConfigurator" groups:"apps"` // engine whose moduleset (share/opensvc/moduleset_<engine>.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none
+	AppRandomPassword     string `mapstructure:"app-random-password" toml:"app-random-password" json:"appRandomPassword" groups:"apps"` // generated when the template references {{app.randompassword}}, stored encrypted
 	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppPort               string `mapstructure:"app-port" toml:"app-port" json:"appPort"`
@@ -1675,6 +1677,15 @@ const (
 	ConstTaskMydumper           TaskName = "mydumper"
 	ConstTaskXB                 TaskName = "xtrabackup"
 	ConstTaskMB                 TaskName = "mariabackup"
+	ConstTaskPgDump             TaskName = "pgdump"       // PostgreSQL logical backup, pg_dumpall run by the jobs sidecar
+	ConstTaskPgBaseBackup       TaskName = "pgbasebackup" // PostgreSQL physical backup, pg_basebackup run by the jobs sidecar
+	ConstTaskPgStandby          TaskName = "pgstandby"    // PostgreSQL: the jobs sidecar arms the next start as a standby of the given primary
+	ConstTaskPgReseed           TaskName = "pgreseed"     // PostgreSQL: the jobs sidecar arms the next start to re-seed from the given primary
+	ConstTaskPgSchemaSync       TaskName = "pgschemasync" // PostgreSQL logical replication: the jobs sidecar creates on this subscriber the published tables it misses
+	ConstTaskPgRestore          TaskName = "pgrestore"        // PostgreSQL: the jobs sidecar receives the stored physical backup and arms the next start to restore it
+	ConstTaskPgReseedLogical    TaskName = "pgreseedlogical"  // PostgreSQL logical replication: the jobs sidecar re-copies this server from the primary at the snapshot of a new slot
+	ConstTaskPgWalArchive       TaskName = "pgwalarchive"     // PostgreSQL: the jobs sidecar ships an archived WAL segment to replication-manager (the binlog copy of PostgreSQL)
+	ConstTaskPgRestoreLogical   TaskName = "pgrestorelogical" // PostgreSQL: the jobs sidecar receives the stored logical backup and replays it
 	ConstTaskError              TaskName = "errorlog"
 	ConstTaskSlowQuery          TaskName = "slowquery"
 	ConstTaskSqlError           TaskName = "sqlerrorlog"
@@ -1721,6 +1732,16 @@ var TaskRegistry = map[TaskName]TaskDef{
 	// RemoteOnly — requires DB host filesystem or system access
 	ConstTaskXB:       {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
 	ConstTaskMB:       {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
+	// PostgreSQL tools run in the jobs sidecar of the PostgreSQL service
+	ConstTaskPgDump:       {Name: ConstTaskPgDump, Capability: TaskCapRemoteOnly},
+	ConstTaskPgBaseBackup: {Name: ConstTaskPgBaseBackup, Capability: TaskCapRemoteOnly},
+	ConstTaskPgStandby:    {Name: ConstTaskPgStandby, Capability: TaskCapRemoteOnly},
+	ConstTaskPgReseed:     {Name: ConstTaskPgReseed, Capability: TaskCapRemoteOnly},
+	ConstTaskPgSchemaSync: {Name: ConstTaskPgSchemaSync, Capability: TaskCapRemoteOnly},
+	ConstTaskPgRestore:        {Name: ConstTaskPgRestore, Capability: TaskCapRemoteOnly},
+	ConstTaskPgReseedLogical:  {Name: ConstTaskPgReseedLogical, Capability: TaskCapRemoteOnly},
+	ConstTaskPgWalArchive:     {Name: ConstTaskPgWalArchive, Capability: TaskCapRemoteOnly},
+	ConstTaskPgRestoreLogical: {Name: ConstTaskPgRestoreLogical, Capability: TaskCapRemoteOnly},
 	ConstTaskReseedXB: {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
 	ConstTaskReseedMB: {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
 	ConstTaskFlashXB:  {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},

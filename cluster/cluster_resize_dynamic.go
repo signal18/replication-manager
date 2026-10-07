@@ -161,18 +161,18 @@ func (cluster *Cluster) resourceResizer() ResourceResizer {
 const openSVCConfigSettleTimeout = 30 * time.Second
 
 // OpenSVCCPUQuotaKeyword renders `cores` as an om3 pg_cpu_quota value meaning exactly
-// that many cores on ANY node. om3 (rc20 through rc36, util/pg CPUQuota.Convert)
-// computes quota = pct × period × cpus / maxCpus / 100 with cpus = 1 when no "@" is
-// given, so a bare "300%" is 3/maxCpus of ONE core -- 0.125 core on a 24-thread node,
-// the dev3 "300% -> 0.09 core" surprise. With "@all", cpus = maxCpus cancels out and pct
-// is simply cores × 100: "300%@all" = 3 cores everywhere. (The 2.1 agent has the opposite
-// convention -- "300%" = 3 cores, "@all" multiplies by the thread count -- so this helper
-// is for the v3 API path only.) Returns "" for a non-positive value.
+// that many cores. Measured on om3 rc43 (s18-fr-4, 32 threads, 2026-10-06, systemd
+// CPUQuotaPerSecUSec read back after `instance pg update`): "200%" = 2 cores, "100%@2" =
+// 2 cores, "200%@1" = 2 cores, "100%@all" = 32 cores, "200%@all" = 64 cores -- the percent
+// is of ONE core and "@N" multiplies it by N, "@all" by the node's thread count. The
+// previous rendering "<cores*100>%@all" (written against the rc20-rc36 convention, where
+// "@all" cancelled a division by maxCpus) therefore capped nothing on a 32-core node: belair
+// and mahebourg ran uncapped on preprod. Returns "" for a non-positive value.
 func OpenSVCCPUQuotaKeyword(cores float64) string {
 	if cores <= 0 {
 		return ""
 	}
-	return fmt.Sprintf("%d%%@all", int(math.Round(cores*100)))
+	return fmt.Sprintf("%d%%", int(math.Round(cores*100)))
 }
 
 // openSVCApplyPGKeywords writes process-group (cgroup) keywords into the service
@@ -335,10 +335,12 @@ func (cluster *Cluster) openSVCResize(server *ServerMonitor, grow bool) (bool, e
 // the slice (prov-db-docker-run-args-limit off, see WARN0214): under a docker --cpus
 // cap the tighter docker scope binds and the slice change has no effect.
 func (cluster *Cluster) openSVCResizeCPU(server *ServerMonitor) error {
-	cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
-	if err != nil || cores <= 0 {
+	if _, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64); err != nil {
 		return fmt.Errorf("invalid prov-db-cpu-cores %q", cluster.Conf.ProvCores)
 	}
+	// the slice cap is the plan's contract (tier x cores per DBU), never below the
+	// technical cores the resize just moved (GetDBContainerCPUCapCores)
+	cores := cluster.GetDBContainerCPUCapCores()
 	q := OpenSVCCPUQuotaKeyword(cores)
 	if err := cluster.openSVCApplyPGKeywords(server, map[string]string{"pg_cpu_quota": q}); err != nil {
 		return err
@@ -553,7 +555,7 @@ func (server *ServerMonitor) resizeCPUSQL() []string {
 	cfg := &server.ClusterGroup.Configurator
 	if server.IsMariaDB() {
 		return []string{
-			fmt.Sprintf("SET GLOBAL thread_pool_size = %s", cfg.GetConfigThreadPoolSize()),
+			fmt.Sprintf("SET GLOBAL thread_pool_size = %s", cfg.GetConfigThreadPoolSize(server.ClusterGroup.HasSemiSyncObserved())),
 			fmt.Sprintf("SET GLOBAL innodb_read_io_threads = %s", cfg.GetConfigInnoDBReadIoThreads()),
 		}
 	}
@@ -643,7 +645,7 @@ func (cluster *Cluster) resourceManagerAllowsGrowTo(server *ServerMonitor, targe
 }
 
 // resourceManagerGrowCheck is the DECISION half of the over-plan gate, side-effect free:
-// the overcommit envelope and the node's free pool for one server. The client hook is the
+// the overcommit envelope and the node's free pool for one server (never the plan ledger). The client hook is the
 // ACT half (RunResourceRaisedOverPlanScript) and must only fire once the whole cluster is
 // known to pass -- see overPlanGrowAllowed.
 func (cluster *Cluster) resourceManagerGrowCheck(server *ServerMonitor, target float64) (bool, string) {
@@ -658,11 +660,12 @@ func (cluster *Cluster) resourceManagerGrowCheck(server *ServerMonitor, target f
 	if ok, reason := cluster.resources.CanGrowBeyondPlan(target, plan, cluster.Conf.ProvDBOvercommitPct); !ok {
 		return false, reason
 	}
-	// Physical ledger: the step is a BORROW above the plan, it must fit the over-commit pot
-	// (capacity minus every plan minus what is already borrowed); plans take precedence.
-	if ok, reason := cluster.resources.CanBorrow(ProfileDatabase, target-plan); !ok {
-		return false, reason
-	}
+	// The physical ledger does NOT gate a resource grow: it gates a PLAN increase (a sale,
+	// CanPlanIncrease). A step above the plan is a loan the running node can afford or not,
+	// which the free-pool check below answers from real consumption; the sum of every plan
+	// sold on the infrastructure says nothing about that (preprod had 85 cores of plans on 64
+	// and the pot at -49 refused a 0.3 DBU IO grow belair could run, 2026-10-07; Stéphane:
+	// "gate the plan grow, not the resource"). The ledger still shows what is borrowed.
 	// Physical free pool on the node -- only gate when the agent capacity is known.
 	if ceiling, ok := cluster.resources.UsableCeilingDBU(server.Agent); ok {
 		used := cluster.resources.ConsumedByAgent(server.Agent).Dbu
@@ -1165,6 +1168,9 @@ func (cluster *Cluster) driveDynamicShrink() {
 	if !cluster.lastDynamicResize.IsZero() && time.Since(cluster.lastDynamicResize) < d {
 		return // one move per scale-down window, up or down
 	}
+	if cluster.raiseCPUToPlan() {
+		return
+	}
 	cpuUnder, memUnder, diskUnder, ioUnder := true, true, true, true
 	live := 0
 	for _, s := range cluster.Servers {
@@ -1198,6 +1204,32 @@ func (cluster *Cluster) driveDynamicShrink() {
 	if ioUnder {
 		cluster.shrinkAxisInPlan("io")
 	}
+}
+
+// raiseCPUToPlan brings prov-db-cpu-cores up to the plan's cores (per-node plan DBU x cores
+// per DBU) when the config sits under it, after a past shrink or a manual set. The om3 slice
+// already holds the plan's cores (GetDBContainerCPUCapCores): the config is what sizes
+// thread_pool_size and the IO threads, so under the plan the engine is throttled inside a
+// cgroup it paid for (belair at 1 core under a 2-core plan, 2026-10-07, #1903). The raise is
+// the symmetric of the shrink floor and goes through the same setter (live resize, one move
+// per scale-down window). The cores above the plan are the grow path's business.
+func (cluster *Cluster) raiseCPUToPlan() bool {
+	planDbu := cluster.GetPlanDBUPerNode().Dbu
+	if planDbu <= 0 {
+		return false
+	}
+	coresPerDBU, _ := cluster.dbuRatioInts()
+	planCores := int(math.Ceil(planDbu-1e-9)) * coresPerDBU
+	cur, _ := strconv.Atoi(strings.TrimSpace(cluster.Conf.ProvCores))
+	if planCores <= 0 || cur >= planCores {
+		return false
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+		"Dynamic CPU raise to the plan (the slice already holds the plan's cores): prov-db-cpu-cores %d -> %d", cur, planCores)
+	cluster.lastDynamicResize = time.Now()
+	cluster.lastDynamicGrowAxis = ""
+	cluster.SetDBCores(strconv.Itoa(planCores))
+	return true
 }
 
 // dbuRatioInts is the Database (DBU) ratio as whole cores / MB per unit for the dynamic
@@ -1255,6 +1287,14 @@ func (cluster *Cluster) dynamicShrinkTarget(axis string) (from, to string, ok bo
 	}
 	switch axis {
 	case "cpu":
+		// The cores never shrink under the PLAN: the container cap on the om3 slice is the
+		// plan's contract (tier x cores per DBU, GetDBContainerCPUCapCores) and stays there,
+		// so a config under it frees nothing and only lowers thread_pool_size and the IO
+		// threads inside a cgroup that keeps the plan's cores (belair 2 -> 1 twice on
+		// 2026-10-07, #1903). Same clamp as the io axis.
+		if planDbu := cluster.GetPlanDBUPerNode().Dbu; targetDbu < planDbu {
+			targetDbu = math.Ceil(planDbu - 1e-9)
+		}
 		cur, _ := strconv.Atoi(cluster.Conf.ProvCores)
 		coresPerDBU, _ := cluster.dbuRatioInts()
 		newC := int(targetDbu) * coresPerDBU
@@ -1643,4 +1683,104 @@ func (cluster *Cluster) CheckDynamicResourceDeploymentReady() {
 			ErrFrom: "PROV",
 		})
 	}
+}
+
+// The container cap on the om3 PG slice (prov-db-docker-run-args-limit = false) is written
+// as pg_cpu_quota/pg_mem_limit keywords, but om3 (rc43) applies them to the systemd slice
+// ONLY on an `instance pg update`, never at instance start: belair and mahebourg ran with
+// CPUQuotaPerSecUSec=infinity on preprod although their definitions carried the keywords
+// (2026-10-06). A start or provision therefore arms this cookie, and the first tick that
+// sees the server connected runs the pg update on its node.
+const cookiePGCapPending = "cookie_pgcap"
+
+// ArmOpenSVCPGCap marks the server for a pg update once it is up (no-op when the cap lives
+// in the docker run args or outside OpenSVC v3).
+func (server *ServerMonitor) ArmOpenSVCPGCap() {
+	cluster := server.ClusterGroup
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI || cluster.Conf.ProvDBDockerRunArgsLimit {
+		return
+	}
+	server.createCookie(cookiePGCapPending)
+}
+
+// ApplyOpenSVCPGCapIfPending runs the pg update armed by ArmOpenSVCPGCap on a connected
+// server, then drops the cookie; a failure keeps it for the next tick. It also reconciles
+// the keywords themselves: when the object's pg_cpu_quota/pg_mem_limit differ from what
+// prov-db-* say (a renderer change, a plan change applied elsewhere, a hand edit), they are
+// rewritten and applied -- no definition stays stale until the next restart (mahebourg kept
+// "200%@all" = 64 cores after the quota unit fix, 2026-10-07). Checked once a minute.
+func (server *ServerMonitor) ApplyOpenSVCPGCapIfPending() {
+	cluster := server.ClusterGroup
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC || cluster.Conf.ProvOpensvcUseCollectorAPI || server.IsDown() {
+		return
+	}
+	if !server.hasCookie(cookiePGCapPending) {
+		if cluster.StateMachine.GetHeartbeats()%30 == 0 {
+			server.reconcileOpenSVCPGCap()
+		}
+		return
+	}
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		server.delCookie(cookiePGCapPending)
+		return
+	}
+	node := server.placementNode()
+	if err := svc.PGUpdateInstanceV3(node, server.ServiceName, ""); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OpenSVC pg update after start failed on %s (node %s), retried next tick: %s", server.URL, node, err)
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC pg update after start on %s (node %s): container cap applied on the PG slice", server.URL, node)
+	server.delCookie(cookiePGCapPending)
+}
+
+// openSVCDesiredPGCap is the cap the server's definition must carry when it lives on the
+// PG slice: the same values GenerateDBTemplateV3 and the engine app template render.
+func (cluster *Cluster) openSVCDesiredPGCap() map[string]string {
+	kv := map[string]string{"pg_mem_limit": strconv.FormatInt(int64(cluster.GetDBContainerMemoryCapMB())*1024*1024, 10)}
+	if q := OpenSVCCPUQuotaKeyword(cluster.GetDBContainerCPUCapCores()); q != "" {
+		kv["pg_cpu_quota"] = q
+	}
+	return kv
+}
+
+// reconcileOpenSVCPGCap compares the object's pg keywords with the desired cap and, when
+// they differ, writes and applies them live (openSVCApplyPGKeywords). Servers whose cap is
+// a docker limit (plain database servers with prov-db-docker-run-args-limit) are left alone.
+func (server *ServerMonitor) reconcileOpenSVCPGCap() {
+	cluster := server.ClusterGroup
+	if cluster.Conf.ProvDBDockerRunArgsLimit && cluster.engineAppOfServer(server) == nil {
+		return
+	}
+	svc := cluster.OpenSVCConnect()
+	if !svc.IsV3() {
+		return
+	}
+	svcparts := strings.SplitN(server.ServiceName, "/", 3)
+	if len(svcparts) != 3 {
+		return
+	}
+	raw, err := svc.GetObjectConfigFileV3(svcparts[0], svcparts[1], svcparts[2])
+	if err != nil {
+		return
+	}
+	cfg, err := ini.LoadSources(ini.LoadOptions{IgnoreInlineComment: true}, bytes.NewReader(raw))
+	if err != nil {
+		return
+	}
+	desired := cluster.openSVCDesiredPGCap()
+	stale := map[string]string{}
+	for k, v := range desired {
+		if cur := strings.TrimSpace(cfg.Section("DEFAULT").Key(k).String()); cur != v {
+			stale[k] = cur
+		}
+	}
+	if len(stale) == 0 {
+		return
+	}
+	if err := cluster.openSVCApplyPGKeywords(server, desired); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OpenSVC PG cap of %s could not be reconciled: %s", server.URL, err)
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC PG cap of %s reconciled to %v (was %v)", server.URL, desired, stale)
 }

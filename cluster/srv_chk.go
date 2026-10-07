@@ -278,9 +278,12 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		return
 	}
 	master := cluster.GetMaster()
-	if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
+	if sl.IsPostgreSQLHost() {
+		// PostgreSQL has no semi-sync plugin: nothing to enforce, nothing to warn about
+	} else if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
-		dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
+		logs, err := dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
+		cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlErr, "Could not enforce semisync on %s: %s", sl.URL, err)
 	} else if !sl.IsIgnored() && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.SetState("WARN0048", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
@@ -425,7 +428,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if !sl.IsIgnored() && !sl.HaveBinlogCompress && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 		cluster.SetState("WARN0056", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0056"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if !sl.IsIgnored() && !sl.HaveBinlogSlaveUpdates {
+	if !sl.IsIgnored() && !sl.HaveBinlogSlaveUpdates && !sl.IsPostgreSQLHost() {
 		cluster.SetState("WARN0057", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
@@ -444,9 +447,12 @@ func (server *ServerMonitor) CheckMasterSettings() {
 		return
 	}
 	cluster := server.ClusterGroup
-	if cluster.Conf.ForceSlaveSemisync && !server.HaveSemiSync {
+	if server.IsPostgreSQLHost() {
+		// PostgreSQL has no semi-sync plugin: nothing to enforce, nothing to warn about
+	} else if cluster.Conf.ForceSlaveSemisync && !server.HaveSemiSync {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce semisync on Master %s", server.URL)
-		dbhelper.InstallSemiSync(server.Conn, server.DBVersion)
+		logs, err := dbhelper.InstallSemiSync(server.Conn, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not enforce semisync on %s: %s", server.URL, err)
 	} else if !server.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 		cluster.SetState("WARN0060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0060"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
@@ -486,7 +492,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	} else if !server.HaveBinlogCompress && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
 		cluster.SetState("WARN0068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0068"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if !server.HaveBinlogSlaveUpdates {
+	if !server.HaveBinlogSlaveUpdates && !server.IsPostgreSQLHost() {
 		cluster.SetState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if !server.HaveGtidStrictMode && server.DBVersion.Flavor == "MariaDB" && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
@@ -657,6 +663,12 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 	case config.ConstTaskMB:
 		if server.HasWaitMariabackupCookie() {
 			server.DelWaitMariabackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup, config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync, config.ConstTaskPgRestore, config.ConstTaskPgRestoreLogical, config.ConstTaskPgReseedLogical:
+		// PostgreSQL tasks run in the jobs sidecar (srv_job_postgres.go)
+		if server.hasCookie(postgresJobCookie(checktype)) {
+			server.delCookie(postgresJobCookie(checktype))
 			return true, nil
 		}
 	case config.ConstTaskOptimize:

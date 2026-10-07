@@ -349,15 +349,21 @@ function Navbar({ username, user }) {
                 colorScheme={
                   (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR')
                     ? 'red'
-                    : (clusterData?.configStates || []).length > 0
+                    : (clusterData?.configStates || []).some((s) => s.ErrType === 'WARNING')
                       ? 'yellow'
-                      : 'gray'
+                      : (clusterData?.configStates || []).length > 0
+                        ? 'blue'
+                        : 'gray'
                 }
                 icon={MdSettings}
                 text='Config'
                 count={(clusterData?.configStates || []).length}
                 bubbleStyle={{
-                  background: `var(--chakra-colors-${(clusterData?.configStates || []).length > 0 ? 'yellow' : 'gray'}-600)`,
+                  background: `var(--chakra-colors-${
+                    (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR') ? 'red'
+                      : (clusterData?.configStates || []).some((s) => s.ErrType === 'WARNING') ? 'yellow'
+                        : (clusterData?.configStates || []).length > 0 ? 'blue' : 'gray'
+                  }-600)`,
                   color: 'white',
                 }}
                 onClick={() => setIsConfigModalOpen(true)}

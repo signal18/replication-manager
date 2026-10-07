@@ -41,6 +41,9 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 	if prx.GetHost() == "" {
 		return nil, errors.New("No proxies definition")
 	}
+	if cluster.isPostgresMaster() {
+		return cluster.postgresProxyConnection(prx.GetHost(), prx.GetWritePort())
+	}
 
 	buildDSN := func(tls bool) string {
 		params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
@@ -81,6 +84,13 @@ func (cluster *Cluster) GetClusterProxyConn() (*sqlx.DB, error) {
 
 func (prx *Proxy) GetClusterConnection() (*sqlx.DB, error) {
 	cluster := prx.ClusterGroup
+	if cluster.isPostgresMaster() {
+		host, port := prx.Host, prx.WritePort
+		if prx.Tunnel {
+			host, port = "localhost", prx.TunnelWritePort
+		}
+		return cluster.postgresProxyConnection(host, port)
+	}
 
 	buildDSN := func(tls bool) string {
 		params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)

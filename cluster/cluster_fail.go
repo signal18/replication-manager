@@ -55,6 +55,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	cluster.StateMachine.SetFailoverState()
 	defer cluster.StateMachine.RemoveFailoverState()
+	if cluster.isPostgresStreaming() || cluster.isPostgresLogical() {
+		// its own failover: none of the statements below exists on PostgreSQL
+		return cluster.postgresFailover(fail)
+	}
 	// Phase 1: Cleanup and election
 	var err error
 	if !fail {
@@ -809,7 +813,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			cluster.SetState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
-		if !sl.HasBinlog() && !sl.IsIgnored() {
+		if !sl.HasBinlog() && !sl.IsIgnored() && !sl.IsPostgreSQLHost() {
 			cluster.SetState("ERR00013", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			continue
 		}
@@ -966,7 +970,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 			cluster.SetState("ERR00084", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00084"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
-		if !sl.HasBinlog() && !sl.IsIgnored() {
+		if !sl.HasBinlog() && !sl.IsIgnored() && !sl.IsPostgreSQLHost() {
 			cluster.SetState("ERR00013", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			continue
 		}

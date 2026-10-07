@@ -302,12 +302,19 @@ func getAllTables(ext schemaExecutor, myver *version.Version, timeout time.Durat
 
 func tablesQueryAll(myver *version.Version) string {
 	if myver.IsPostgreSQL() {
-		return `SELECT table_schema, table_name, 'BASE TABLE' AS engine, table_type,
-			'' AS row_format, '' AS table_collation, '' AS create_options, '' AS table_comment,
-			0::bigint AS auto_increment, 0::bigint AS table_rows, 0::bigint AS data_length,
-			0::bigint AS index_length, 0::bigint AS data_free, 0::bigint AS avg_row_length
-			FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-			ORDER BY table_schema, table_name`
+		// pg_class statistics: the planner's row estimate and the on-disk sizes (heap + toast
+		// for the data, every index for the indexes); every user schema of the database
+		return `SELECT n.nspname AS table_schema, c.relname AS table_name, 'heap' AS engine, 'BASE TABLE' AS table_type,
+			'' AS row_format, '' AS table_collation, '' AS create_options,
+			COALESCE(obj_description(c.oid, 'pg_class'), '') AS table_comment,
+			0::bigint AS auto_increment, GREATEST(c.reltuples, 0)::bigint AS table_rows,
+			pg_table_size(c.oid)::bigint AS data_length, pg_indexes_size(c.oid)::bigint AS index_length,
+			0::bigint AS data_free,
+			CASE WHEN c.reltuples > 0 THEN (pg_table_size(c.oid) / c.reltuples)::bigint ELSE 0 END AS avg_row_length
+			FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+			AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
+			ORDER BY n.nspname, c.relname`
 	}
 	return `SELECT table_schema, table_name, engine, table_type,
 		COALESCE(row_format, ''), COALESCE(table_collation, ''), COALESCE(create_options, ''),
@@ -519,7 +526,32 @@ func normalizeExtraStr(e string) string {
 }
 
 // AnalyzeTable performs table analysis
+// postgresAnalyzeQuery builds ANALYZE "schema"."table" from a schema.table name, each
+// part quoted as a PostgreSQL identifier.
+func postgresAnalyzeQuery(table string) (string, error) {
+	parts := strings.Split(table, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("invalid table name %q, schema.table expected", table)
+	}
+	for _, part := range parts {
+		if strings.ContainsAny(part, "\x00") {
+			return "", fmt.Errorf("invalid table name %q", table)
+		}
+	}
+	quote := func(id string) string { return `"` + strings.ReplaceAll(id, `"`, `""`) + `"` }
+	return "ANALYZE " + quote(parts[0]) + "." + quote(parts[1]), nil
+}
+
 func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, persistent bool, columns string, indexes string) (string, error) {
+	if myver.IsPostgreSQL() {
+		// ANALYZE schema.table: statistics for the planner, no lock that blocks reads or writes
+		query, err := postgresAnalyzeQuery(table)
+		if err != nil {
+			return "", err
+		}
+		_, err = db.Exec(query)
+		return query, err
+	}
 	quotedTable, err := QuoteMySQLTableIdentifier(table)
 	if err != nil {
 		return "", err

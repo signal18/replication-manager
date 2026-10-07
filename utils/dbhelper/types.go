@@ -770,6 +770,9 @@ type ChangeMasterOpt struct {
 	DoDomainIds     string
 	IgnoreDomainIds string
 	IgnoreServerIds string
+	// PostgreSQL: the subscription takes the slot of its name already created on the publisher
+	// (with the exported snapshot the subscriber's data was dumped at) instead of a new one
+	PostgresExistingSlot bool
 }
 
 // BinaryLogMetadata represents metadata about a binary log file

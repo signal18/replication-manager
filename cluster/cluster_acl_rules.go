@@ -203,6 +203,7 @@ var clusterACLRules = []ACLRule{
 	// Routes and Certificates
 	{"/queryrules", nil, []string{config.GrantClusterShowRoutes}},
 	{"/certificates", nil, []string{config.GrantClusterShowCertificates}},
+	{"/tools", nil, []string{config.GrantClusterShowAgents}}, // local tools versions: what runs on the monitor host, like the agents view
 	{"/actions/certificates-reload", nil, []string{config.GrantClusterCertificatesReload}},
 	{"/actions/certificates-rotate", nil, []string{config.GrantClusterCertificatesRotate}},
 

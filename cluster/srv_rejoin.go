@@ -57,6 +57,12 @@ func (server *ServerMonitor) RejoinMaster() error {
 		cluster.rejoinCond.Send <- true
 	}()
 
+	if server.IsPostgreSQLHost() {
+		// A former PostgreSQL primary rejoins on its data directory (re-seed armed by the
+		// jobs sidecar, applied at restart): none of the statements below exists there.
+		return server.postgresRejoin()
+	}
+
 	if cluster.Conf.ActivePassive {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining %s ignored caused by active-passive mode", server.URL)
 		return nil
@@ -804,6 +810,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		cluster.rejoinCond.Send <- true
 	}()
 
+	if server.IsPostgreSQLHost() {
+		// a PostgreSQL standby follows whom its primary_conninfo names: nothing to repoint here
+		return nil
+	}
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep {
 		if cluster.GetTopology() == config.TopoMultiMasterRing {
 			server.RejoinLoop()

@@ -7,8 +7,8 @@ import (
 )
 
 // TestOpenSVCCPUQuotaKeyword pins the om3 pg_cpu_quota syntax that means "N cores" on
-// any node: pct = cores × 100 with the "@all" suffix (om3 divides by maxCpus, which
-// "@all" cancels). A bare "300%" would be 3/maxCpus of one core -- the dev3 surprise.
+// any node: pct = cores × 100 of one core, no "@" multiplier (om3 rc43 measured: "200%" =
+// 2 cores, "@all" multiplies by the node's thread count and capped nothing on 32 cores).
 func TestOpenSVCCPUQuotaKeyword(t *testing.T) {
 	cases := []struct {
 		cores float64
@@ -16,11 +16,11 @@ func TestOpenSVCCPUQuotaKeyword(t *testing.T) {
 	}{
 		{0, ""},
 		{-1, ""},
-		{1, "100%@all"},
-		{3, "300%@all"},
-		{0.5, "50%@all"},
-		{2.25, "225%@all"},
-		{24, "2400%@all"},
+		{1, "100%"},
+		{3, "300%"},
+		{0.5, "50%"},
+		{2.25, "225%"},
+		{24, "2400%"},
 	}
 	for _, c := range cases {
 		if got := OpenSVCCPUQuotaKeyword(c.cores); got != c.want {
@@ -153,10 +153,21 @@ func TestDynamicShrinkTargetAlignsToTheDBU(t *testing.T) {
 	if _, _, ok := cl.dynamicShrinkTarget("cpu"); ok {
 		t.Fatalf("2 cores with a 1.0-core peak must not move (1 core would be saturated)")
 	}
-	// undercommit floor: 4 DBU plan at 50% -> floor 2; 4 cores at 0.2 used land on 2, not 1
+	// cpu never under the PLAN (#1903): 4 DBU plan at 50% undercommit, 4 cores at 0.2 used
+	// stay at 4 (the slice keeps the plan's cores; memory below still floors at 2)
 	cl = newCluster("4", "768", 4, 50, []float64{0.2}, []float64{0.1})
-	if _, to, ok := cl.dynamicShrinkTarget("cpu"); !ok || to != "2" {
-		t.Fatalf("4 DBU plan at 50%% undercommit must floor the move at 2 cores, got %s ok=%v", to, ok)
+	if _, _, ok := cl.dynamicShrinkTarget("cpu"); ok {
+		t.Fatalf("cpu must never shrink under the plan (4 DBU), got a move")
+	}
+	// over the plan it still aligns down to the plan, not under: 8 cores over a 4 DBU plan -> 4
+	cl = newCluster("8", "768", 4, 50, []float64{0.2}, []float64{0.1})
+	if _, to, ok := cl.dynamicShrinkTarget("cpu"); !ok || to != "4" {
+		t.Fatalf("8 cores over a 4 DBU plan must align to 4, got %s ok=%v", to, ok)
+	}
+	// memory keeps the undercommit floor: 4 DBU plan at 50% -> 2 DBU = 8192MB
+	cl = newCluster("4", "16384", 4, 50, []float64{0.2}, []float64{0.1})
+	if _, to, ok := cl.dynamicShrinkTarget("mem"); !ok || to != "8192" {
+		t.Fatalf("memory keeps the undercommit floor (2 DBU = 8192MB), got %s ok=%v", to, ok)
 	}
 	// undercommit 0%: never under the plan (4)
 	cl = newCluster("4", "768", 4, 0, []float64{0.2}, []float64{0.1})
@@ -186,6 +197,36 @@ func TestDynamicShrinkTargetAlignsToTheDBU(t *testing.T) {
 	}
 }
 
+// TestRaiseCPUToPlan: a config under the plan's cores is raised to the plan (and only to it),
+// a config at or over the plan is left to the shrink / grow paths (#1903).
+func TestRaiseCPUToPlan(t *testing.T) {
+	newCluster := func(cores string, planDbu int) *Cluster {
+		cl := &Cluster{Name: "t", resources: NewResourceManager(), Conf: &config.Config{}}
+		cl.Conf.ProvCores = cores
+		cl.Conf.ProvMem = "768"
+		cl.Conf.ProvDbDbu = planDbu
+		// SetDBCores without the live resize stamps a reprov cookie in each datadir
+		cl.Servers = []*ServerMonitor{{URL: "db:3306", State: stateMaster, ClusterGroup: cl, Datadir: t.TempDir()}}
+		return cl
+	}
+	cl := newCluster("1", 2)
+	if !cl.raiseCPUToPlan() || cl.Conf.ProvCores != "2" || cl.lastDynamicResize.IsZero() {
+		t.Fatalf("1 core under a 2 DBU plan must be raised to 2, got %s", cl.Conf.ProvCores)
+	}
+	cl = newCluster("2", 2)
+	if cl.raiseCPUToPlan() || cl.Conf.ProvCores != "2" {
+		t.Fatalf("at the plan: no move")
+	}
+	cl = newCluster("4", 2)
+	if cl.raiseCPUToPlan() || cl.Conf.ProvCores != "4" {
+		t.Fatalf("over the plan: the raise never touches it (shrink aligns it down to the plan)")
+	}
+	cl = newCluster("1", 0)
+	if cl.raiseCPUToPlan() {
+		t.Fatalf("no plan: no move")
+	}
+}
+
 // TestUndercommitFloorDBU pins the floor formula next to the ceiling one.
 func TestUndercommitFloorDBU(t *testing.T) {
 	cases := []struct {
@@ -198,6 +239,16 @@ func TestUndercommitFloorDBU(t *testing.T) {
 	for _, c := range cases {
 		if got := UndercommitFloorDBU(c.plan, c.pct); got != c.want {
 			t.Errorf("UndercommitFloorDBU(%v, %d) = %v, want %v", c.plan, c.pct, got, c.want)
+		}
+	}
+}
+
+// prov-proxy-disk-size carries its unit: "20G" renders 20g, a bare "20" too, junk 1g (#1897, proxy side).
+func TestProvProxyDiskSizeForOpenSVC(t *testing.T) {
+	for in, want := range map[string]string{"20G": "20g", "20": "20g", "1536M": "1g", "x": "1g", "": "1g"} {
+		cl := &Cluster{Name: "t", Conf: &config.Config{ProvProxDisk: in}}
+		if got := cl.provProxyDiskSizeForOpenSVC(); got != want {
+			t.Errorf("%q: got %s want %s", in, got, want)
 		}
 	}
 }

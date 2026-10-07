@@ -277,6 +277,9 @@ func (app *App) SetSetting(key, value string) error {
 		if err := app.ClusterGroup.RotateAppDatabasePassword(app); err != nil {
 			return err
 		}
+	case "app-random-password":
+		// stored encrypted; the app's containers read it at their next provisioning
+		app.AppConfig.AppRandomPassword = app.ClusterGroup.Conf.GetEncryptedString(app.ClusterGroup.Conf.GetDecryptedPassword("app-random-password", value))
 	case "app-db-auto-create":
 		app.AppConfig.AppDbAutoCreate = value == "true" || value == "1" || value == "on"
 		if err := app.ClusterGroup.ApplyAppDbDefaults(app.AppConfig); err != nil {
@@ -288,6 +291,10 @@ func (app *App) SetSetting(key, value string) error {
 	case "app-db-schema":
 		app.AppConfig.AppDbSchema = value
 	case "prov-app-units":
+		if app.ClusterGroup != nil && app.ClusterGroup.engineServerOfApp(app) != nil {
+			// a monitored server is sized by the database plan: resize it there
+			return errors.New("this app is a database server of the cluster: resize it with the database settings (prov-db-memory, prov-db-cpu-cores, prov-db-disk-size), not with app units")
+		}
 		// The unit sizing HELPER, not a store (Stéphane 2026-09-29: the unit count is derived,
 		// tracked in graphite, never a field): N whole units per instance -> the three declared
 		// prov-app-* values at the manager's ratio of the app's profile (Compute, or Database

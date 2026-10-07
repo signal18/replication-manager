@@ -27,6 +27,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 
 	return map[string]string{
 		"%%ENV:NODES_CPU_CORES%%":                                   server.ClusterGroup.Configurator.GetConfigDBCores(),
+		"%%ENV:SVC_CONF_ENV_THREAD_POOL_SIZE%%":                     server.ClusterGroup.Configurator.GetConfigThreadPoolSize(server.ClusterGroup.HasSemiSyncObserved()),
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                            server.ClusterGroup.Configurator.GetConfigDBCores(),
 		"%%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%":                      server.ClusterGroup.Configurator.GetConfigMaxConnections(),
 		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                             string(server.Id[2:10]),

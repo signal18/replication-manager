@@ -138,7 +138,8 @@ func (cluster *Cluster) RefreshComputeBilling() {
 	units := make([]apuBillingUnit, 0, len(cluster.Apps)+len(cluster.Proxies))
 	stateful := make([]apuBillingUnit, 0)
 	for _, app := range cluster.Apps {
-		if app == nil {
+		if app == nil || cluster.engineServerOfApp(app) != nil {
+			// an engine that is a monitored server is the server's DBU, never an app unit
 			continue
 		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}

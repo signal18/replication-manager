@@ -195,10 +195,26 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// promote that server as the designated master.
 	if len(cluster.Servers) == 1 {
 		cluster.Topology = config.TopoActivePassive
-		if cluster.GetMaster() == nil && cluster.Servers[0] != nil {
+		// Only a REACHABLE lone server is designated: an unreachable one (not provisioned
+		// yet, failed) stayed "Master" and the discovery answered "already has a
+		// master/slave setup" to the provisioning of a cluster created through the API
+		// (tamarin, 2026-10-07): no master is the truth until the server answers.
+		if cluster.GetMaster() == nil && cluster.Servers[0] != nil && !cluster.Servers[0].IsDown() && cluster.Servers[0].State != stateFailed {
 			cluster.master = cluster.Servers[0]
 			cluster.vmaster = cluster.Servers[0]
 			cluster.master.SetMaster()
+		}
+		if cluster.GetMaster() == nil {
+			return errors.New("the only server of the cluster is unreachable")
+		}
+		// the lone server is the master: a read-only default left by a restart under
+		// force-slave-readonly would refuse every write forever (the PostgreSQL primary of
+		// pg-active-passive after its rolling restart, 2026-10-07), like the multi-server
+		// path's "disable read only as last non slave"
+		if m := cluster.GetMaster(); m != nil && cluster.IsActive() && m.IsReadOnly() && !m.IsDown() {
+			if err := m.SetReadWrite(); err == nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s disable read only as single server master", m.URL)
+			}
 		}
 		return nil
 	}
@@ -463,6 +479,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// active-passive was configured explicitly.
 	if !hasRelay && !hasCycling && !cluster.HasConfigTopoActivePassive() {
 		cluster.Topology = config.TopoMasterSlave
+		if pgTopology := cluster.postgresReplicationTopology(); pgTopology != "" {
+			cluster.Topology = pgTopology
+		}
 	}
 
 	if cluster.GetTopology() == config.TopoMultiMaster || cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterGrouprep {
@@ -824,7 +843,22 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 }
 
 func (cluster *Cluster) BootstrapTopology(topology string) error {
+	// the PostgreSQL replication topologies are exclusive of each other and of active-passive
+	cluster.Conf.MasterSlavePgStream = false
+	cluster.Conf.MasterSlavePgLogical = false
 	switch topology {
+	case config.TopoMasterSlavePgStream, config.TopoMasterSlavePgLog:
+		// PostgreSQL: WAL streaming (physical standbys) or logical replication
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
+		cluster.Conf.MasterSlavePgStream = topology == config.TopoMasterSlavePgStream
+		cluster.Conf.MasterSlavePgLogical = topology == config.TopoMasterSlavePgLog
 	case "active-passive":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -909,7 +943,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetMultiMasterGroupRep(true)
 		cluster.SetActivePassive(false)
 	default:
-		return errors.New("Invalid topology type, supported types are: master-slave, master-slave-no-gtid, multi-master, multi-tier-slave, maxscale-binlog, multi-master-ring, multi-master-wsrep, multi-master-grprep, active-passive")
+		return errors.New("Invalid topology type, supported types are: master-slave, master-slave-no-gtid, multi-master, multi-tier-slave, maxscale-binlog, multi-master-ring, multi-master-wsrep, multi-master-grprep, active-passive, master-slave-pg-stream, master-slave-pg-logical")
 	}
 	cluster.SetTopologyTarget(topology)
 	return nil

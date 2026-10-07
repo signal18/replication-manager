@@ -4884,6 +4884,9 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 		// interfaces, optional -- an older dbjobs_new.sh omits them.
 		NetRxBytes *uint64 `json:"netRxBytes,omitempty"`
 		NetTxBytes *uint64 `json:"netTxBytes,omitempty"`
+		// cgroup wait counters (cpu.stat throttling, PSI totals): optional, a sensor
+		// without them pushes the DBU maxima alone (srv_wait.go)
+		Wait *cluster.WaitCounters `json:"wait,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Decode error: "+err.Error(), http.StatusBadRequest)
@@ -4891,6 +4894,9 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 	}
 	if req.NetRxBytes != nil && req.NetTxBytes != nil {
 		mycluster.IngestNetCounters(cluster.NetUnitDatabase, node.Name, req.WindowEnd, *req.NetRxBytes, *req.NetTxBytes)
+	}
+	if req.Wait != nil {
+		node.IngestWaitCounters(req.WindowEnd, *req.Wait)
 	}
 
 	// The handler stays dumb: forward the raw maxima; the cluster's ResourceManager
@@ -5366,6 +5372,55 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 			return
 		}
 		rcvPort, err = mycluster.SSTRunReceiverToDBLogFile(node, kind, taskname)
+	case config.ConstTaskPgDump:
+		// PostgreSQL logical backup streamed by the jobs sidecar, compressed here
+		dest = node.PostgresStreamDest(taskname)
+		rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
+	case config.ConstTaskPgBaseBackup:
+		// PostgreSQL physical backup (tar stream of pg_basebackup), compressed here when the
+		// running backup asked for it
+		dest = node.PostgresStreamDest(taskname)
+		if strings.HasSuffix(strings.TrimSuffix(dest, cluster.BackupStagingSuffix()), ".gz") {
+			rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
+		} else {
+			rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+		}
+	case config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync, config.ConstTaskPgReseedLogical:
+		// nothing to stream: the sidecar asks which primary the task works against
+		target := node.PostgresNextStartTarget(taskname)
+		if target == "" {
+			http.Error(w, "No primary to follow for "+taskname, 500)
+			return
+		}
+		if taskname == string(config.ConstTaskPgReseedLogical) {
+			// and the name of the slot (the subscription's) it creates there
+			target += " SLOT=" + mycluster.PostgresSubscriptionNameFor()
+		}
+		w.WriteHeader(200)
+		w.Write([]byte("TARGET=" + target))
+		return
+	case config.ConstTaskPgWalArchive:
+		// an archived WAL segment (or timeline history / backup label file) shipped by the
+		// jobs sidecar: one receiver per file, stored with the server's backups
+		name := r.URL.Query().Get("name")
+		if !cluster.PostgresWalArchiveFileRe.MatchString(name) {
+			http.Error(w, "not a WAL archive file name: "+name, 400)
+			return
+		}
+		dest = node.PostgresWalArchiveDir() + name
+		if err := os.MkdirAll(node.PostgresWalArchiveDir(), 0750); err != nil {
+			http.Error(w, "WAL archive directory: "+err.Error(), 500)
+			return
+		}
+		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
+		go node.PostgresPurgeWalArchive()
+	case config.ConstTaskPgRestore, config.ConstTaskPgRestoreLogical:
+		// the stored backup goes the other way: the sidecar listens on the server's SST
+		// port (WaitAndSendSST streams the file to it as to a dbjobs listener) and learns
+		// the primary the restored server follows, none when it is the primary itself
+		w.WriteHeader(200)
+		w.Write([]byte("LISTEN=" + node.SSTPort + " TARGET=" + node.PostgresNextStartTarget(taskname)))
+		return
 	case config.ConstTaskReseedXB, config.ConstTaskReseedMB, config.ConstTaskFlashXB, config.ConstTaskFlashMB:
 		dest = node.GetMyBackupDirectory() + taskname
 		rcvPort, err = mycluster.SSTRunReceiverToFile(node, dest, cluster.ConstJobCreateFile, taskname)
@@ -5445,6 +5500,23 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 	case "done":
 		result := "completed"
 		state := cluster.JobStateSuccess
+		if taskname == string(config.ConstTaskPgRestore) {
+			// the stored physical backup is on the data volume and the next start armed to
+			// restore it: the service restarts, the start script does the rest
+			node.SetInReseedBackup("")
+			go func(n *cluster.ServerMonitor) {
+				if err := mycluster.RestartDatabaseService(n, "", ""); err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restore of %s received, its service could not be restarted: %s", n.URL, err)
+				}
+			}(node)
+		}
+		if taskname == string(config.ConstTaskPgRestoreLogical) {
+			node.SetInReseedBackup("")
+		}
+		if taskname == string(config.ConstTaskPgReseedLogical) {
+			// the data is in place at the snapshot of the slot: subscribe on that slot
+			go node.PostgresLogicalReseedFinish()
+		}
 		if physicalRestoreJobTasks[taskname] {
 			// RecoverPhysicalRestore is the same vendor/topology-aware
 			// GTID-apply and channel-restart owner SQL mode's
@@ -5483,6 +5555,10 @@ func (repman *ReplicationManager) handlerMuxServerJobState(w http.ResponseWriter
 		node.MarkBackupPhysicalDone(taskname)
 		node.JobsUpdateState(taskname, result, state, 1)
 	case "error":
+		if strings.HasPrefix(taskname, "pg") && node.HasReseedingState(taskname) {
+			// a PostgreSQL reseed or restore that failed in the sidecar releases the state
+			node.SetInReseedBackup("")
+		}
 		if physicalRestoreJobTasks[taskname] {
 			// Mirrors JobsCheckErrors' SQL-mode error path (cluster/srv_job.go):
 			// a reseed/flashback that ends in error must release the reseeding

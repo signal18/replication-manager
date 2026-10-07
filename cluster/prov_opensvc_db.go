@@ -155,13 +155,42 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	if !svc.IsV3() {
 		return fmt.Errorf("update-opensvc-template requires OpenSVC v3 API")
 	}
-	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
-	if err != nil {
-		return err
-	}
-	res, err := s.GenerateDBTemplateV3()
-	if err != nil {
-		return err
+	var res []byte
+	var err error
+	if app := cluster.engineAppOfServer(s); app != nil {
+		// an engine server: its definition is the one its template renders (the same
+		// object, the server's service); refreshed here like any server's, so the rolling
+		// restart and the restart carry a changed mount or container without reprovisioning
+		res, err = cluster.OpenSVCGetAppTemplateV3(app)
+		if err != nil {
+			return err
+		}
+		// and the scripts its containers run from config keys: the start script and the
+		// configurator render, written at provision, follow the build like the definition
+		// (pg1 of pg-active-passive restarted on an old start script, 2026-10-06); the
+		// jobs script has its own upgrade (checkPostgresJobsVersion)
+		if script := appStartScript(app); script != "" {
+			if err := svc.CreateConfigKeyValue(cluster.Name, app.Name, appStartScriptKey, script); err != nil { // create updates an existing key
+				return fmt.Errorf("config key %s of %s: %w", appStartScriptKey, app.Name, err)
+			}
+		}
+		if app.AppConfig != nil && app.AppConfig.ProvAppConfigurator != "" {
+			script, err := cluster.AppConfiguratorScript(app)
+			if err != nil {
+				return err
+			}
+			if err := svc.CreateConfigKeyValue(cluster.Name, app.Name, appConfiguratorScriptKey, script); err != nil {
+				return fmt.Errorf("config key %s of %s: %w", appConfiguratorScriptKey, app.Name, err)
+			}
+		}
+	} else {
+		if _, err = cluster.OpenSVCFoundDatabaseAgent(s); err != nil {
+			return err
+		}
+		res, err = s.GenerateDBTemplateV3()
+		if err != nil {
+			return err
+		}
 	}
 	svcparts := strings.SplitN(s.ServiceName, "/", 3)
 	if len(svcparts) != 3 {
@@ -289,7 +318,24 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
-		agent := server.Agent
+		if len(cluster.GetDatabaseAgentNames(server)) > 1 {
+			// a service placed on several agents (its prov-db-agents) is stopped by the
+			// orchestration, which holds it down on every node, frozen or not (verified on
+			// om3, 2026-10-06): an instance stop is undone by om3, which re-places the
+			// service on another node (pg1 of pg-logical moved from s18-fr-4 to s18-fr-5,
+			// then back, instead of stopping)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"OpenSVC V3 orchestrated stop for %s (placed on several nodes)", server.URL)
+			if err := svc.StopServiceV3(cluster.Name, server.ServiceName); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database: %s", err)
+				return err
+			}
+			return nil
+		}
+		// the instance to stop is where the service RUNS: not necessarily the agent the
+		// round robin assigned (pg2 of pg-stream: the stop went to an idle node and
+		// nothing stopped, 2026-10-06)
+		agent := server.placementNode()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"OpenSVC V3 instance stop for %s on node %s", server.URL, agent)
 		err := svc.StopInstanceV3(agent, server.ServiceName)
@@ -342,7 +388,27 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 			// Default: instance-level start (om start --local). Bypasses the
 			// orchestrator's global monitor state check so it works even when the
 			// service is in warn state. Does not coordinate failover volumes.
-			agent := server.Agent
+			if len(cluster.GetDatabaseAgentNames(server)) > 1 {
+				// a service placed on several agents (its prov-db-agents): the orchestrator
+				// picks the node, an instance start on one node would fight its placement
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"OpenSVC V3 orchestrated start for %s (failover placement)", server.URL)
+				// retried while the orchestrator still runs the stop that preceded (409)
+				deadline := time.Now().Add(3 * time.Minute)
+				for {
+					err := svc.StartServiceV3(cluster.Name, server.ServiceName)
+					if err == nil {
+						return nil
+					}
+					if !(strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "in progress")) || time.Now().After(deadline) {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+							"OpenSVC V3 start failed for %s: %s", server.URL, err)
+						return err
+					}
+					time.Sleep(5 * time.Second)
+				}
+			}
+			agent := server.placementNode()
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 				"OpenSVC V3 instance start for %s on node %s", server.URL, agent)
 			err := svc.StartInstanceV3(agent, server.ServiceName)
@@ -511,9 +577,18 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 	if agents == nil {
 		return agent, errors.New("Error getting OpenSVC node list")
 	}
+	names := cluster.GetDatabaseAgentNames(server)
 	for _, node := range agents {
-		if strings.Contains(svc.ProvAgents, node.Node_name) {
+		// the server's agent list (engine app, prov-db-agents), every node when none
+		if len(names) == 0 {
 			clusteragents = append(clusteragents, node)
+			continue
+		}
+		for _, n := range names {
+			if n == node.Node_name {
+				clusteragents = append(clusteragents, node)
+				break
+			}
 		}
 	}
 	for i, srv := range cluster.Servers {
@@ -664,7 +739,7 @@ func (server *ServerMonitor) openSVCGetJobsContainerSection(xtrabackupImage stri
 			// shared host). {namespace}/{svcname} are substituted by OpenSVC like
 			// {name} above. On by default; the flag is the off-switch (T14) if a
 			// bad bind blocks container start on an unexpected cgroup layout.
-			svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+			svccontainer["volume_mounts"] += " " + openSVCServiceCgroupMount(server.ClusterGroup.Name, server.Name)
 		}
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		if bundlePath := server.ClusterGroup.xtrabackupBundlePathForImage(xtrabackupImage); bundlePath != "" {
@@ -753,7 +828,7 @@ func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name strin
 	}
 	// Bind ONLY this service's cgroup slice read-only -- NOT --cgroupns=host, which would
 	// expose every co-tenant on a shared node. {namespace}/{svcname} substituted by OpenSVC.
-	svccontainer["volume_mounts"] += " /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+	svccontainer["volume_mounts"] += " " + openSVCServiceCgroupMount(cluster.Name, name)
 	svccontainer["secrets_environment"] = "env/SENSOR_API_KEY"
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL"
 	svccontainer["environment"] = "MRM_CLUSTER={namespace} SENSOR_KIND=" + kind + " SENSOR_NAME=" + name + " SENSOR_INTERVAL=60"
@@ -775,8 +850,7 @@ func (cluster *Cluster) OpenSVCGetAppSensorContainerSection(app *App, scriptKey 
 	if len(svccontainer) == 0 {
 		return svccontainer
 	}
-	svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro" +
-		" /sys/fs/cgroup/opensvc.slice/opensvc-ns.{namespace}.slice/opensvc-ns.{namespace}-svc.{svcname}.slice:/svc-cgroup:ro"
+	svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro " + openSVCServiceCgroupMount(cluster.Name, app.Name)
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL env/" + scriptKey
 	svccontainer["command"] = "-c 'printf \"%s\\n\" \"$" + scriptKey + "\" > /tmp/app_job; exec sh /tmp/app_job'"
 	return svccontainer
@@ -1122,10 +1196,8 @@ func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 		// headroom) plus the cpu quota, so a live pg update can move BOTH axes.
 		// om3 syntax only (v3 template): "<cores*100>%@all" -- see OpenSVCCPUQuotaKeyword.
 		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(server.ClusterGroup.GetDBContainerMemoryCapMB())*1024*1024, 10)
-		if cores, err := strconv.ParseFloat(server.ClusterGroup.Conf.ProvCores, 64); err == nil {
-			if q := OpenSVCCPUQuotaKeyword(cores); q != "" {
-				svcsection["DEFAULT"]["pg_cpu_quota"] = q
-			}
+		if q := OpenSVCCPUQuotaKeyword(server.ClusterGroup.GetDBContainerCPUCapCores()); q != "" {
+			svcsection["DEFAULT"]["pg_cpu_quota"] = q
 		}
 	}
 

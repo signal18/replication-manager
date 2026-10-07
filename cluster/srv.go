@@ -212,6 +212,7 @@ type ServerMonitor struct {
 	Datadir                     string                      `json:"datadir"`
 	SlapOSDatadir               string                      `json:"slaposDatadir"`
 	PostgressDB                 string                      `json:"postgressDB"`
+	postgresDeclared            bool                        // the host entry names a database (host:port/database): a PostgreSQL instance, whatever the cluster topology
 	TLSConfigUsed               string                      `json:"tlsConfigUsed"`      //used to track TLS config during key rotation
 	LastTLSConfig               string                      `json:"lastTLSConfig"`      //used to track last working TLS config
 	ForceTLSSkipVerify          bool                        `json:"forceTLSSkipVerify"` // auto-detected when server returns error 3159 (require_secure_transport=ON)
@@ -234,6 +235,7 @@ type ServerMonitor struct {
 	// ref x (cap-shrink-pct/100); dead-band between = status quo. Config ref = THIS server's
 	// resources (raise/shrink this server); plan ref = the cap. The cluster composes cap-up/down
 	// from the *Plan* axes across servers (see Cluster.CheckResourceCapPlan).
+	Wait                            *WaitReading     `json:"wait,omitempty"`                  // cgroup waits of the last sensor window (srv_wait.go)
 	ResourceConsumedOverConfigAxes  []string         `json:"resourceConsumedOverConfigAxes"`  // saturates its config -> raise this server's resources
 	ResourceConsumedUnderConfigAxes []string         `json:"resourceConsumedUnderConfigAxes"` // under-uses its config -> shrink this server's resources
 	ResourceConsumedOverPlanAxes    []string         `json:"resourceConsumedOverPlanAxes"`    // hits the plan/cap -> contributes to cap-up
@@ -245,6 +247,9 @@ type ServerMonitor struct {
 	IsReseeding                     string           `json:"isReseeding"`
 	ReplicationTags                 string           `json:"replicationTags"`
 	JobResults                      *config.TasksMap `json:"jobResults"`
+	streamTasks                     sync.Map         // task -> chan struct{} closed when the stream of a sidecar task ends (srv_job_postgres.go)
+	pgJobsScriptSum                 string           // sha256 of the jobs script delivered to the PostgreSQL sidecar (srv_job_postgres.go)
+	pgDDLLogSeen                    int64            // last id of the replicated DDL log seen on this subscriber (cluster_fail_postgres_logical.go)
 	IsInSlowQueryCapture            bool
 	IsInPFSQueryCapture             bool
 	PFSLastSnapshot                 time.Time                   // timestamp of last periodic PFS digest snapshot flush
@@ -387,6 +392,19 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.ClusterGroup = cluster
 	server.DBVersion, _ = version.NewMySQLVersion("Unknowed-0.0.0", "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
+	if server.PostgressDB != "" {
+		// host:port/database is the PostgreSQL form of a host entry: this server is opened
+		// with the PostgreSQL driver even when the cluster declares no PostgreSQL replication
+		// topology (a single instance monitored active-passive)
+		server.postgresDeclared = true
+		cluster.IsPostgres = true
+	}
+	if server.IsPostgreSQLHost() {
+		// known before the first connection: until the real version is read, every check
+		// keyed on the flavour must already take the PostgreSQL branch (the schema monitor
+		// ran its MySQL query at start: column "engine" does not exist)
+		server.DBVersion.Flavor = "PostgreSQL"
+	}
 	server.ServiceName = cluster.Name + "/svc/" + server.Name
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
@@ -1165,6 +1183,17 @@ func (server *ServerMonitor) Refresh() error {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database version %s %s", server.URL, err)
 
 		vars, logs, err := dbhelper.GetVariables(server.Conn, server.DBVersion)
+		if err == nil && server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+			if _, ok := vars["HOSTNAME"]; !ok {
+				// PostgreSQL has no hostname setting: the graphite series of the server
+				// (mysql.<hostname>.*) and the dashboard graphs key on it, so the monitored
+				// name stands for it; without it every metric was named mysql..* and no
+				// graph ever showed for a PostgreSQL server
+				// uppercased like every value GetVariables returns (the graphs look up the
+				// uppercased host: PG1-PG-LOGICAL-SVC-CLOUD18)
+				vars["HOSTNAME"] = strings.ToUpper(server.Host)
+			}
+		}
 		server.Variables = config.FromNormalStringMap(server.Variables, vars)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database variables %s %s", server.URL, err)
 		if err != nil {
@@ -1259,6 +1288,14 @@ func (server *ServerMonitor) Refresh() error {
 			server.CheckDBConfigPath()
 		}
 
+		if server.DBVersion.IsPostgreSQL() {
+			// PostgreSQL's read_only: default_transaction_read_only, or the standby's recovery
+			server.HaveReadOnly = server.HasReadOnly()
+			server.ReadOnly = "OFF"
+			if server.HaveReadOnly {
+				server.ReadOnly = "ON"
+			}
+		}
 		if !server.DBVersion.IsPostgreSQL() {
 			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
 			server.HaveEventScheduler = server.HasEventScheduler()
@@ -1478,6 +1515,20 @@ func (server *ServerMonitor) Refresh() error {
 
 	} // End not PG
 
+	if server.DBVersion.IsPostgreSQL() {
+		// the replicas attached to this server (WAL senders): what designates a primary in
+		// topology discovery, as the binlog dump threads do on MariaDB/MySQL
+		server.BinlogDumpThreads, logs, err = dbhelper.GetBinlogDumpThreads(server.Conn, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get WAL senders %s %s", server.URL, err)
+		// a logical subscriber that received a replicated DDL may have a new table to subscribe
+		server.postgresRefreshSubscriptionOnDDL()
+		// the WAL archive (backup-binlogs) must not pile segments up in pg_wal
+		server.postgresCheckWalArchiver()
+	}
+
+	// a container cap armed by a start or a provision is applied once the server is up
+	server.ApplyOpenSVCPGCapIfPending()
+
 	// Set channel source name is dangerous with multi cluster
 
 	// SHOW SLAVE STATUS
@@ -1511,6 +1562,12 @@ func (server *ServerMonitor) Refresh() error {
 			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), cluster.GetCrcTable()), 10), 10, 64)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PG Could not assign server_id s", err)
+			}
+			// the primary is one of the monitored servers: use ITS internal id, which is
+			// built from its monitored address (name + domain + port) and is what the
+			// master lookup by server id compares with
+			if src := cluster.GetServerFromURL(server.SlaveStatus.MasterHost.String + ":" + server.SlaveStatus.MasterPort.String); src != nil {
+				sid = src.ServerID
 			}
 			server.SlaveStatus.MasterServerID = sid
 			for i := range server.Replications {
@@ -1758,6 +1815,10 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 func (server *ServerMonitor) LogReplPostion() {
 	cluster := server.ClusterGroup
 	server.Refresh()
+	if server.CurrentGtid == nil || server.SlaveGtid == nil || server.GTIDBinlogPos == nil {
+		// no GTID lists on PostgreSQL (nil dereference killed the monitor in a rolling restart, 2026-10-06)
+		return
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.GTIDBinlogPos.Sprint())
 }
 
@@ -2323,9 +2384,11 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 		return 0, err
 	}
 
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "set sql_log_bin=0")
-	if err != nil {
-		return 0, err
+	if !server.IsPostgreSQLHost() {
+		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "set sql_log_bin=0")
+		if err != nil {
+			return 0, err
+		}
 	}
 
 	cleantables := []string{}

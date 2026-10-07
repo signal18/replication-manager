@@ -55,11 +55,22 @@ function ChartMultiMetric({
     dbu: 'DBU', dbu_cpu: 'CPU', dbu_mem: 'Mem', dbu_io: 'IO', dbu_disk: 'Disk',
     dbu_plan: 'Plan',
     service_cpu: 'CPU', service_mem: 'Mem', service_io: 'IO', service_disk: 'Disk',
+    // cgroup waits (dbu.<cluster>.<host>.wait_*): fractions of wall time, per server
+    wait_cpu_throttled: 'CPU throttled (cores)', wait_cpu_throttled_periods: 'periods throttled',
+    wait_cpu_psi_some: 'CPU stall some', wait_cpu_psi_full: 'CPU stall full',
+    wait_io_psi_some: 'IO stall some', wait_io_psi_full: 'IO stall full',
+    wait_mem_psi_some: 'Mem stall some', wait_mem_psi_full: 'Mem stall full',
+    // concurrency under semi-sync (mysql.<host>.*): the thread pool and the ack wait
+    concurrency_thread_pool_size: 'thread_pool_size', concurrency_threadpool_threads: 'pool threads',
+    concurrency_threadpool_idle_threads: 'pool idle threads',
+    semisync_tx_avg_wait_us: 'semi-sync avg wait (us/commit)', semisync_wait_cores: 'semi-sync wait (cores)',
   };
   const getDisplayName = (metricPath) => {
-    const parts = metricPath.split('.');
+    // aliasByNode(path, n): the leaf is in the path argument, not after the last comma
+    const bare = metricPath.replace(/^aliasByNode\((.*),\s*\d+\)$/, '$1');
+    const parts = bare.split('.');
     // leaf = last dotted segment, minus any trailing ')' from maxSeries(...) wrappers
-    const leaf = (parts[parts.length - 1] || metricPath).replace(/\)+$/, '');
+    const leaf = (parts[parts.length - 1] || bare).replace(/\)+$/, '');
 
     if (FRIENDLY[leaf]) return FRIENDLY[leaf];
 
@@ -82,15 +93,17 @@ function ChartMultiMetric({
     const k = 1024;
     const sizes = ['', 'K', 'M', 'G', 'T', 'P', 'E'];
 
-    // Find the right unit
-    const i = Math.floor(Math.log(Math.abs(value)) / Math.log(k));
+    // Find the right unit. A value under 1 (the wait fractions, 0.0001) gave a NEGATIVE
+    // index, sizes[-2] = undefined and a "104.9undefined" tick: it has no unit and keeps
+    // its decimals.
+    const i = Math.max(0, Math.floor(Math.log(Math.abs(value)) / Math.log(k)));
 
     // Don't go beyond our available units
     const unitIndex = Math.min(i, sizes.length - 1);
 
     // Format with the appropriate unit
     if (unitIndex === 0) {
-      return d3.format(',.1f')(value);
+      return Math.abs(value) < 1 ? d3.format(',.4~f')(value) : d3.format(',.1f')(value);
     } else {
       return d3.format(',.1f')(value / Math.pow(k, unitIndex)) + sizes[unitIndex];
     }
@@ -105,8 +118,13 @@ function ChartMultiMetric({
       const from = now - (size * step);
       const until = now;
 
-      // Encode the metric path for the URL
-      const encodedTarget = encodeURIComponent(`alias(${metricPath},'')`);
+      // Encode the metric path for the URL. A path the page already named (alias* wrapper)
+      // keeps its name: the raw response then carries it, one line per series, and a
+      // wildcard target (dbu.<cluster>.*.wait_* = one line per server) is drawn as that
+      // many lines labelled "<leaf label> <name>". An unnamed path is blanked as before
+      // and expected to be ONE series.
+      const named = /^alias/.test(metricPath);
+      const encodedTarget = encodeURIComponent(named ? metricPath : `alias(${metricPath},'')`);
 
       // Create the API URL similar to your working examples
       const url = `/graphite/render?format=raw&target=${encodedTarget}&from=${from}&until=${until}`;
@@ -121,45 +139,54 @@ function ChartMultiMetric({
 
       const text = await response.text();
 
-      // Parse the response - format is expected to be something like:
-      // ,startTime,endTime,step|value1,value2,value3,...
-      const parts = text.split('|');
-      if (parts.length !== 2) {
-        console.error(`Unexpected response format for ${metricPath}`);
-        return null;
+      // Parse the response - raw format, one line per series:
+      // name,startTime,endTime,step|value1,value2,value3,...
+      const lines = text.split('\n').filter(l => l.includes('|'));
+      if (!lines.length) {
+        return [];
       }
+      const series = [];
+      for (const line of lines) {
+        const parts = line.split('|');
+        if (parts.length !== 2) {
+          console.error(`Unexpected response format for ${metricPath}`);
+          continue;
+        }
+        // the name itself may hold commas only when the page aliased it; the last three
+        // fields are always start, end, step
+        const timeInfo = parts[0].split(',');
+        if (timeInfo.length < 4) {
+          console.error(`Unexpected time format for ${metricPath}`);
+          continue;
+        }
+        const name = timeInfo.slice(0, timeInfo.length - 3).join(',');
+        const startTime = parseInt(timeInfo[timeInfo.length - 3]) * 1000; // Convert to ms
+        const stepTime = parseInt(timeInfo[timeInfo.length - 1]) * 1000;  // Convert to ms
 
-      const timeInfo = parts[0].split(',');
-      if (timeInfo.length !== 4) {
-        console.error(`Unexpected time format for ${metricPath}`);
-        return null;
+        const values = parts[1].split(',');
+
+        // Create data points
+        const data = values.map((value, i) => {
+          // Graphite sends 'None' for a gap (no datapoint that period). Keep it as
+          // NaN -- NOT 0 -- so the filter below drops it and the line connects
+          // across the gap instead of dipping to 0 (the "flapping"). 0 is a real
+          // value (an idle-but-measured DB), nil means "not measured": they must
+          // not render the same.
+          const val = value === 'None' ? NaN : parseFloat(value);
+          return {
+            date: new Date(startTime + (i * stepTime)),
+            value: val
+          };
+        }).filter(d => !isNaN(d.value));
+
+        const label = getDisplayName(metricPath);
+        series.push({
+          path: name ? `${metricPath}#${name}` : metricPath,
+          displayName: name ? `${label} ${name}` : label,
+          data
+        });
       }
-
-      const startTime = parseInt(timeInfo[1]) * 1000; // Convert to ms
-      const endTime = parseInt(timeInfo[2]) * 1000;   // Convert to ms
-      const stepTime = parseInt(timeInfo[3]) * 1000;  // Convert to ms
-
-      const values = parts[1].split(',');
-
-      // Create data points
-      const data = values.map((value, i) => {
-        // Graphite sends 'None' for a gap (no datapoint that period). Keep it as
-        // NaN -- NOT 0 -- so the filter below drops it and the line connects
-        // across the gap instead of dipping to 0 (the "flapping"). 0 is a real
-        // value (an idle-but-measured DB), nil means "not measured": they must
-        // not render the same.
-        const val = value === 'None' ? NaN : parseFloat(value);
-        return {
-          date: new Date(startTime + (i * stepTime)),
-          value: val
-        };
-      }).filter(d => !isNaN(d.value));
-
-      return {
-        path: metricPath,
-        displayName: getDisplayName(metricPath),
-        data
-      };
+      return series;
     } catch (error) {
       if (error.name !== 'AbortError') {
         console.error(`Error fetching data for ${metricPath}:`, error);
@@ -182,9 +209,9 @@ function ChartMultiMetric({
     dataFetchInProgress.current = true;
 
     try {
-      const data = await Promise.all(
+      const data = (await Promise.all(
         metricPaths.map(path => fetchMetricData(path))
-      );
+      )).flat();
 
       const dataMap = data.reduce((acc, curr) => {
         if (curr) acc[curr.path] = curr;
@@ -318,8 +345,12 @@ function ChartMultiMetric({
     const g = svg.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const startTime = d3.min(allData, d => d.date);
-    const endTime = d3.max(allData, d => d.date);
+    // The time axis is the REQUESTED window (context size x step up to now), the same on
+    // every chart of the page, not the extent of the data: a series that began minutes ago
+    // drew a nine-minute axis under a forty-minute one and read as a clock shift
+    // (2026-10-07). The points keep their own times inside it.
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - context.size() * context.step());
 
     // Scales
     const xScale = d3.scaleTime()

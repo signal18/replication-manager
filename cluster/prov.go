@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -169,6 +170,7 @@ func (cluster *Cluster) ProvisionServices() error {
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+server.Name)
 			server.SetProvisionCookie()
+			server.ArmOpenSVCPGCap()
 			server.DelReprovisionCookie()
 			server.DelRestartCookie()
 		}
@@ -965,6 +967,14 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 				continue
 			}
 			if key == masterKey {
+				if server.IsPostgreSQLHost() {
+					// logical replication: the subscribers follow a publication of all tables;
+					// the DDL replication objects first, so the DDL log is published too
+					cluster.postgresInstallDDLReplication(server)
+					logs, err := dbhelper.PostgresEnsurePublication(server.Conn, cluster.Conf.MasterConn)
+					cluster.LogSQL(logs, err, server.URL, "Bootstrap", config.LvlErr, "Could not create the publication on %s: %s", server.URL, err)
+					continue
+				}
 				dbhelper.FlushTables(server.Conn)
 				server.SetReadWrite()
 
@@ -997,9 +1007,15 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 					_ = server.ChangeMasterTo(server, "SLAVE_POS")
 					server.StartGroupReplication()
 				} else {
+					if server.IsPostgreSQLHost() {
+						// the DDL replication objects before the subscription: the log table
+						// must exist here for its rows to be applied, the apply trigger with it
+						cluster.postgresInstallDDLReplication(server)
+					}
 					_ = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
 				}
-				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
+				if !server.ClusterGroup.IsInIgnoredReadonly(server) && !server.IsPostgreSQLHost() {
+					// a logical replication subscriber stays writable: no read_only on PostgreSQL
 					server.SetReadOnly()
 				}
 			}
@@ -1156,11 +1172,42 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 	return nil
 }
 
+// GetDatabaseAgentNames is the agent list a database server is placed on: the agents of
+// its engine app when it is one (the app definition carries the placement, prov-db-agents
+// may be the operator's and immutable), else prov-db-agents, else every agent of the
+// orchestrator (OpenSVC nodes, Kubernetes nodes...), so a cluster without an explicit list
+// is placed on the whole infrastructure.
+func (cluster *Cluster) GetDatabaseAgentNames(server *ServerMonitor) []string {
+	names := []string{}
+	list := cluster.Conf.ProvAgents
+	if server != nil {
+		if app := cluster.engineAppOfServer(server); app != nil && strings.TrimSpace(cluster.GetAppAgents(app.AppConfig)) != "" {
+			list = cluster.GetAppAgents(app.AppConfig)
+		}
+	}
+	for _, a := range strings.Split(list, ",") {
+		if a = strings.TrimSpace(a); a != "" {
+			names = append(names, a)
+		}
+	}
+	if len(names) > 0 {
+		return names
+	}
+	cluster.Lock()
+	defer cluster.Unlock()
+	for _, node := range cluster.Agents {
+		if node.HostName != "" {
+			names = append(names, node.HostName)
+		}
+	}
+	return names
+}
+
 func (cluster *Cluster) GetDatabaseAgent(server *ServerMonitor) (Agent, error) {
 	var agent Agent
-	agents := strings.Split(cluster.Conf.ProvAgents, ",")
+	agents := cluster.GetDatabaseAgentNames(server)
 	if len(agents) == 0 {
-		return agent, errors.New("No databases agent list provided")
+		return agent, errors.New("No databases agent list provided and no agent known from the orchestrator")
 	}
 	for i, srv := range cluster.Servers {
 
@@ -1270,8 +1317,16 @@ func (cluster *Cluster) FreezeDatabaseService(server *ServerMonitor) error {
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"OpenSVC V3 instance freeze for %s on node %s (rolling operation)", server.URL, server.Agent)
-	return svc.FreezeInstanceV3(server.Agent, server.ServiceName)
+		"OpenSVC V3 instance freeze for %s on node %s (rolling operation)", server.URL, server.placementNode())
+	if err := svc.FreezeInstanceV3(server.placementNode(), server.ServiceName); err != nil {
+		return err
+	}
+	// The freeze is an asynchronous daemon action: a stop posted right behind it races it
+	// (om3 logs "progress instance monitor for wrong session_id", the stop lands while the
+	// instance is still "freezing", the daemon then sees the instance up and idle and
+	// restarts the resources, opensvc/om3#1142). Let the freeze settle before the stop.
+	time.Sleep(5 * time.Second)
+	return nil
 }
 
 // UnfreezeDatabaseService gives the instance back to the orchestration after the start.
@@ -1284,8 +1339,8 @@ func (cluster *Cluster) UnfreezeDatabaseService(server *ServerMonitor) error {
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"OpenSVC V3 instance unfreeze for %s on node %s", server.URL, server.Agent)
-	return svc.UnfreezeInstanceV3(server.Agent, server.ServiceName)
+		"OpenSVC V3 instance unfreeze for %s on node %s", server.URL, server.placementNode())
+	return svc.UnfreezeInstanceV3(server.placementNode(), server.ServiceName)
 }
 
 // xtrabackupImageRe is the character set of a docker image reference (registry, path,
@@ -1469,4 +1524,21 @@ func (cluster *Cluster) dbIdentityManaged() bool {
 	_, _, runAsSet := cluster.dbRunAs()
 	_, _, chownManaged := cluster.dbVolumeOwner()
 	return runAsSet || chownManaged
+}
+
+// placementNode is the node an instance action (freeze, stop, start) must target: where the
+// service RUNS when the monitor knows it (a service placed on several agents runs on any of
+// them), else the agent the configuration assigned.
+func (server *ServerMonitor) placementNode() string {
+	if server.GetWorkingAgent() == "" {
+		// known only through the periodic agent check, which skips servers without a
+		// provision cookie (an engine app): asked to the orchestrator now
+		if err := server.GetWorkingOrchestratorNode(); err != nil {
+			server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Working node of %s unknown: %s", server.URL, err)
+		}
+	}
+	if wa := server.GetWorkingAgent(); wa != "" {
+		return wa
+	}
+	return server.Agent
 }

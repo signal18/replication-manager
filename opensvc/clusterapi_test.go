@@ -1179,3 +1179,28 @@ func TestWaitObjectConfigSettledV3_FallsBackToTheProxiedRead(t *testing.T) {
 		t.Fatalf("fallback to the proxied read must succeed: %v", err)
 	}
 }
+
+// TestCreateObjectV3_WaitsLocal: om3 rc46 made POST config/file return before the object is
+// initialised unless wait_local=true is asked; the create must carry it so the provisioning
+// that follows does not race the daemon.
+func TestCreateObjectV3_WaitsLocal(t *testing.T) {
+	var got string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/object/path/ns/svc/db1/config/file", func(w http.ResponseWriter, r *http.Request) {
+		got = r.Method + " wait_local=" + r.URL.Query().Get("wait_local")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	server := httptest.NewUnstartedServer(mux)
+	server.EnableHTTP2 = true
+	server.TLS = &tls.Config{NextProtos: []string{"h2"}}
+	server.StartTLS()
+	defer server.Close()
+	collector := newTestCollector(t, server)
+	collector.ContextTimeoutSecond = 5
+	if _, err := collector.CreateObjectV3("ns", "svc", "db1", []byte("[DEFAULT]\nnodes = n1\n")); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if got != "POST wait_local=true" {
+		t.Fatalf("the create must ask the daemon to wait for the local object: got %q", got)
+	}
+}

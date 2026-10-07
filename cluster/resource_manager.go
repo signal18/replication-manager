@@ -159,6 +159,12 @@ func (m *ResourceManager) DBMemMBPerUnit() float64 {
 	return m.ratios[ProfileDatabase].MemMBPerUnit
 }
 
+// DBCoresPerUnit is the Database-profile CPU ratio (cores per DBU), the single source used
+// to size the DBU-aligned container CPU cap.
+func (m *ResourceManager) DBCoresPerUnit() float64 {
+	return m.ratios[ProfileDatabase].CoresPerUnit
+}
+
 // SetProfileRatios reconfigures one workload profile's unit ratios -- the operator's
 // rule for that profile. The product does not lock these; nothing is contracted or
 // billed outside the ratios the operator sets here.

@@ -111,6 +111,7 @@ type Cluster struct {
 	IsAllDbUp                     bool                           `json:"isAllDbUp" groups:"web"`
 	IsFailable                    bool                           `json:"isFailable" groups:"web"`
 	IsPostgres                    bool                           `json:"isPostgres" groups:"web"`
+	ToolsVersions                 map[string]string              `json:"toolsVersions" groups:"web"` // local tools found by RefreshToolVersions, tool -> version
 	IsProvision                   bool                           `json:"isProvision" groups:"web"`
 	IsNeedProxiesRestart          bool                           `json:"isNeedProxiesRestart" groups:"web"`
 	IsNeedProxiesReprov           bool                           `json:"isNeedProxiesReprov" groups:"web"`
@@ -338,6 +339,8 @@ type Cluster struct {
 	errorChan                   chan error           `json:"-"`
 	net                         *netStore            `json:"-"` // internal network readings per unit (cluster_net.go); on the cluster so a reload never wipes the counters
 	netOnce                     sync.Once            `json:"-"`
+	wait                        *waitStore           `json:"-"` // cgroup wait readings per server (srv_wait.go)
+	waitOnce                    sync.Once            `json:"-"`
 	backupProgress              sync.Map             `json:"-"` // key server/kind -> *BackupProgress (cluster_backup_progress.go)
 	injectTrafficInFlight       atomic.Bool          `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
 	injectTrafficSince          atomic.Int64         `json:"-"` // unix time the running injection started
@@ -2718,39 +2721,44 @@ func (cluster *Cluster) buildVariableChangeIgnoreSet(srv *ServerMonitor) map[str
 // variableExceptions lists variables that legitimately differ between servers
 // and should be excluded from cross-server diff (MonitorVariablesDiff).
 var variableExceptions = map[string]bool{
-	"PORT":                true,
-	"SERVER_ID":           true,
-	"PID_FILE":            true,
-	"WSREP_NODE_NAME":     true,
-	"LOG_BIN_INDEX":       true,
-	"LOG_BIN_BASENAME":    true,
-	"LOG_ERROR":           true,
-	"READ_ONLY":           true,
-	"IN_TRANSACTION":      true,
-	"GTID_SLAVE_POS":      true,
-	"GTID_CURRENT_POS":    true,
-	"GTID_BINLOG_POS":     true,
-	"GTID_BINLOG_STATE":   true,
-	"GENERAL_LOG_FILE":    true,
-	"TIMESTAMP":           true,
-	"SLOW_QUERY_LOG_FILE": true,
-	"REPORT_HOST":         true,
-	"SERVER_UUID":         true,
-	"GTID_PURGED":         true,
-	"HOSTNAME":            true,
-	"SUPER_READ_ONLY":     true,
-	"GTID_EXECUTED":       true,
-	"WSREP_DATA_HOME_DIR": true,
-	"REPORT_PORT":         true,
-	"SOCKET":              true,
-	"DATADIR":             true,
-	"THREAD_POOL_SIZE":    true,
-	"RELAY_LOG":           true,
-	"RELAY_LOG_BASENAME":  true,
-	"RELAY_LOG_INDEX":     true,
-	"LOG_SLOW_QUERY_FILE": true,
-	"PLUGIN_DIR":          true,
-	"SERVER_UID":          true,
+	// PostgreSQL: what differs by ROLE between a primary and its standbys
+	"IN_HOT_STANDBY":        true,
+	"PRIMARY_CONNINFO":      true,
+	"PRIMARY_SLOT_NAME":     true,
+	"TRANSACTION_READ_ONLY": true,
+	"PORT":                  true,
+	"SERVER_ID":             true,
+	"PID_FILE":              true,
+	"WSREP_NODE_NAME":       true,
+	"LOG_BIN_INDEX":         true,
+	"LOG_BIN_BASENAME":      true,
+	"LOG_ERROR":             true,
+	"READ_ONLY":             true,
+	"IN_TRANSACTION":        true,
+	"GTID_SLAVE_POS":        true,
+	"GTID_CURRENT_POS":      true,
+	"GTID_BINLOG_POS":       true,
+	"GTID_BINLOG_STATE":     true,
+	"GENERAL_LOG_FILE":      true,
+	"TIMESTAMP":             true,
+	"SLOW_QUERY_LOG_FILE":   true,
+	"REPORT_HOST":           true,
+	"SERVER_UUID":           true,
+	"GTID_PURGED":           true,
+	"HOSTNAME":              true,
+	"SUPER_READ_ONLY":       true,
+	"GTID_EXECUTED":         true,
+	"WSREP_DATA_HOME_DIR":   true,
+	"REPORT_PORT":           true,
+	"SOCKET":                true,
+	"DATADIR":               true,
+	"THREAD_POOL_SIZE":      true,
+	"RELAY_LOG":             true,
+	"RELAY_LOG_BASENAME":    true,
+	"RELAY_LOG_INDEX":       true,
+	"LOG_SLOW_QUERY_FILE":   true,
+	"PLUGIN_DIR":            true,
+	"SERVER_UID":            true,
 }
 
 func (cluster *Cluster) MonitorVariablesDiff() {
@@ -3239,6 +3247,7 @@ func (cluster *Cluster) MonitorTableSchemaDiff() {
 		diffs, _ := cluster.CompareSchemaBetweenMasterAndSlave(sl)
 		diffs = append(diffs, cluster.eventSchemaDiffLines(sl)...)
 		if len(diffs) > 0 {
+			cluster.postgresSchemaSyncOnDiff(sl) // logical replication: the subscriber gets the DDL
 			cluster.SchemaStateMachine.AddState("WARN0164", state.State{ErrType: "WARNING", ErrKey: "WARN0164", ErrDesc: fmt.Sprintf(clusterError["WARN0164"], sl.URL, strings.Join(diffs, "\n")), ErrFrom: "MON", ServerUrl: sl.URL})
 		}
 	}

@@ -110,6 +110,11 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 		return err
 	}
 
+	// PostgreSQL has no binary logs: nothing to list, and no ERR00014 to raise for it
+	if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
+		return nil
+	}
+
 	if server.IsRefreshingBinlog {
 		return errors.New("Server is refreshing binlogs")
 	}
@@ -331,6 +336,12 @@ func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 	if server.IsIgnored() {
 		err = errors.New("Server is ignored")
 		return err
+	}
+	// PostgreSQL has no binary log: its transaction log archive is the WAL archive shipped
+	// by its jobs sidecar (srv_wal_archive.go). The binlog purge parsed "" as a binlog
+	// name and crashed the process (preprod, 2026-10-06).
+	if server.IsPostgreSQLHost() {
+		return nil
 	}
 
 	if server.BinaryLogFilesCount == 0 {
