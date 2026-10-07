@@ -1068,6 +1068,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				} else {
 					server.SetState(stateUnconn)
 				}
+			} else if server.isDesignatedMasterShownUnconnected() {
+				// Back from Failed (not Suspect): the previous tick re-introduced it as
+				// unconnected and nothing designated it again -- the single-server block of
+				// TopologyDiscover keeps its master pointer, so the lone PostgreSQL primary
+				// of pg-active-passive and tamarin's db1 stayed "StandAlone" for good after
+				// a 15 s DNS blip (2026-10-07, #1910). The designated master is the master.
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s is the designated master of the active-passive topology, back from unconnected to master", server.URL)
+				server.SetState(stateMaster)
 			}
 		} else if server.State != stateMaster && server.PrevState == stateSlaveErr { // if not master and was slave error
 			server.SetState(stateUnconn)
@@ -1086,6 +1094,18 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.SendAlert()
 		}
 	}
+}
+
+// isDesignatedMasterShownUnconnected: the server is the cluster's designated master (the
+// lone server, or the active-passive vmaster), reachable, not in maintenance, and shows
+// the unconnected (StandAlone) state a return from Failed leaves behind (#1910).
+func (server *ServerMonitor) isDesignatedMasterShownUnconnected() bool {
+	cluster := server.ClusterGroup
+	if cluster == nil || server.State != stateUnconn || server.IsDown() || server.IsMaintenance {
+		return false
+	}
+	m := cluster.GetMaster()
+	return m != nil && m.Id == server.Id
 }
 
 func (server *ServerMonitor) ProcessFailedSlave() {
