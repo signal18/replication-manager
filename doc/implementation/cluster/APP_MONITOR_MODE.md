@@ -16,7 +16,16 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
   `timeout` seconds for the reply; a failure opens **APPERR009** with the host and the
   error. When the kernel refuses the unprivileged socket (`net.ipv4.ping_group_range` not
   covering the monitor's group) the error says so and the app is **not** reported up on
-  a probe that could not run. `app-port` keeps its role as the app's identity. One deadline
+  a probe that could not run. `app-port` keeps its role as the app's identity.
+
+  What the echo proves: the instance's network is up. On OpenSVC the address belongs to
+  the pause container (`container#01`) that owns the network namespace, which `container#app`
+  joins, so the echo is answered while the pause container runs, even after the process
+  container exited. The mode is accepted as good enough for background processes
+  (Stéphane, 2026-10-07); a stricter probe would read the `container#app` resource status
+  from the orchestrator.
+
+  One deadline
   (`timeout`) covers the name resolution, the send and the wait: the probe runs inline in
   the monitor tick and never blocks longer. IPv4 only. On the unprivileged socket the
   kernel rewrites the echo identifier, so a reply is matched on its source address and
