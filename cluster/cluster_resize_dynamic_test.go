@@ -242,3 +242,13 @@ func TestUndercommitFloorDBU(t *testing.T) {
 		}
 	}
 }
+
+// prov-proxy-disk-size carries its unit: "20G" renders 20g, a bare "20" too, junk 1g (#1897, proxy side).
+func TestProvProxyDiskSizeForOpenSVC(t *testing.T) {
+	for in, want := range map[string]string{"20G": "20g", "20": "20g", "1536M": "1g", "x": "1g", "": "1g"} {
+		cl := &Cluster{Name: "t", Conf: &config.Config{ProvProxDisk: in}}
+		if got := cl.provProxyDiskSizeForOpenSVC(); got != want {
+			t.Errorf("%q: got %s want %s", in, got, want)
+		}
+	}
+}

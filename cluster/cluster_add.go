@@ -112,6 +112,13 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 		if strings.Contains(cluster.Conf.HaproxyHosts, srv) {
 			return errors.New("Proxy already exists")
 		}
+		// The flag default "127.0.0.1" is the on-premise local proxy, a placeholder for a
+		// cluster created through the API (it inherits the global configuration): the first
+		// real proxy REPLACES it, else the orchestrator refuses the name ("invalid name
+		// 127.0.0.1 (rfc952)") and the real one is never provisioned (tamarin, 2026-10-07).
+		if strings.TrimSpace(cluster.Conf.HaproxyHosts) == "127.0.0.1" {
+			cluster.Conf.HaproxyHosts = ""
+		}
 		if cluster.Conf.HaproxyHosts != "" {
 			cluster.Conf.HaproxyHosts = cluster.Conf.HaproxyHosts + "," + srv
 		} else {
