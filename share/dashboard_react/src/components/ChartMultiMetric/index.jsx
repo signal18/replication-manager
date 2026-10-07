@@ -89,15 +89,17 @@ function ChartMultiMetric({
     const k = 1024;
     const sizes = ['', 'K', 'M', 'G', 'T', 'P', 'E'];
 
-    // Find the right unit
-    const i = Math.floor(Math.log(Math.abs(value)) / Math.log(k));
+    // Find the right unit. A value under 1 (the wait fractions, 0.0001) gave a NEGATIVE
+    // index, sizes[-2] = undefined and a "104.9undefined" tick: it has no unit and keeps
+    // its decimals.
+    const i = Math.max(0, Math.floor(Math.log(Math.abs(value)) / Math.log(k)));
 
     // Don't go beyond our available units
     const unitIndex = Math.min(i, sizes.length - 1);
 
     // Format with the appropriate unit
     if (unitIndex === 0) {
-      return d3.format(',.1f')(value);
+      return Math.abs(value) < 1 ? d3.format(',.4~f')(value) : d3.format(',.1f')(value);
     } else {
       return d3.format(',.1f')(value / Math.pow(k, unitIndex)) + sizes[unitIndex];
     }

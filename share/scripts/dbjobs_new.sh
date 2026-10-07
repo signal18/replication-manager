@@ -685,10 +685,19 @@ resolve_dbu_cgroup() {
     # escapes, a dash is \x2d, cannot be bound as the exact slice): the slice by decoded name
     if [[ -d /svc-cgroup-root && -n "${REPLICATION_MANAGER_CLUSTER_NAME:-}" ]]; then
         local ns="$REPLICATION_MANAGER_CLUSTER_NAME" svc="${REPLICATION_MANAGER_HOST_NAME%%.*}" d s
+        # The REAL slice is the systemd-escaped spelling (a dash is \x2d, kept literally in
+        # the directory name). Next to it the tree may hold EMPTY look-alikes -- the plain
+        # dashed name and the backslash-less one (om3 drops the backslash of a bind it
+        # cannot spell, and a bind creates the cgroup it names): no processes, no memory
+        # controller, cpu.stat at zero. Matched by decoded name the phantom came first and
+        # the PostgreSQL sensors reported nothing (preprod 2026-10-07). The escaped path is
+        # tried first; a decoded match must carry a readable memory.current.
+        s="/svc-cgroup-root/opensvc-ns.${ns//-/\\x2d}.slice/opensvc-ns.${ns//-/\\x2d}-svc.${svc//-/\\x2d}.slice"
+        [[ -r "$s/memory.current" ]] && { printf '%s\n' "$s"; return 0; }
         for d in /svc-cgroup-root/opensvc-ns.*.slice; do
             [[ "${d##*/}" == "opensvc-ns.${ns//-/\\x2d}.slice" ]] || continue
             for s in "$d"/opensvc-ns.*-svc.*.slice; do
-                [[ "${s##*/}" == "opensvc-ns.${ns//-/\\x2d}-svc.${svc//-/\\x2d}.slice" && -r "$s/memory.current" ]] && { echo "$s"; return 0; }
+                [[ "${s##*/}" == "opensvc-ns.${ns//-/\\x2d}-svc.${svc//-/\\x2d}.slice" && -r "$s/memory.current" ]] && { printf '%s\n' "$s"; return 0; }
             done
         done
     fi

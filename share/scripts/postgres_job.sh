@@ -268,10 +268,19 @@ resolve_cgroup() {
         done
     fi
     [ -n "${CG_NS:-}" ] && [ -n "${CG_SVC:-}" ] && [ -d /svc-cgroup-root ] || return 1
+    # the REAL slice is the systemd-escaped spelling (a dash is \x2d, literally in the
+    # directory name); the tree may hold EMPTY look-alikes next to it (plain dashed name,
+    # backslash-less name: a bind that cannot be spelled still creates the cgroup it
+    # names) with no memory controller -- matched by decoded name the phantom came first
+    # and the sensor reported nothing (preprod 2026-10-07): escaped path first, then a
+    # decoded match that carries a readable memory.current
+    ens=$(printf '%s' "$CG_NS" | sed 's/-/\\x2d/g'); esvc=$(printf '%s' "$CG_SVC" | sed 's/-/\\x2d/g')
+    s="/svc-cgroup-root/opensvc-ns.$ens.slice/opensvc-ns.$ens-svc.$esvc.slice"
+    [ -r "$s/memory.current" ] && { printf '%s\n' "$s"; return 0; }
     for d in /svc-cgroup-root/opensvc-ns.*.slice; do
         [ "$(printf '%s' "${d##*/}" | sed 's/\\x2d/-/g')" = "opensvc-ns.$CG_NS.slice" ] || continue
         for s in "$d"/opensvc-ns.*-svc.*.slice; do
-            [ "$(printf '%s' "${s##*/}" | sed 's/\\x2d/-/g')" = "opensvc-ns.$CG_NS-svc.$CG_SVC.slice" ] && { echo "$s"; return 0; }
+            [ "$(printf '%s' "${s##*/}" | sed 's/\\x2d/-/g')" = "opensvc-ns.$CG_NS-svc.$CG_SVC.slice" ] && [ -r "$s/memory.current" ] && { printf '%s\n' "$s"; return 0; }
         done
     done
     return 1
