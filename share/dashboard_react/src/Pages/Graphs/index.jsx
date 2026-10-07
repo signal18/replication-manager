@@ -635,6 +635,21 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="IO and memory waits — pressure stalls (fraction of time, per server)"
        />
+        {/* Concurrency under semi-sync (mysql.<host>.concurrency_* / semisync_*): the thread
+            pool the engine runs with and the acknowledgment wait the cgroup cannot see (a task
+            asleep on a socket is no stall), per server -- the pair the thread pool rule sizes
+            from (#1902), to read a pool change against the wait it is meant to overlap. */}
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'aliasByNode(mysql.*.concurrency_thread_pool_size, 1)',
+           'aliasByNode(mysql.*.concurrency_threadpool_threads, 1)',
+           'aliasByNode(mysql.*.semisync_wait_cores, 1)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="Concurrency under semi-sync — thread pool size, pool threads, acknowledgment wait in cores (per server)"
+       />
       </GraphSection>
 
       {!isPostgres && (

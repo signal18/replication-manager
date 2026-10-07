@@ -64,6 +64,30 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 		}
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_cpu_user_stats", hostname), fmt.Sprintf("%.2f", wl.CpuUserStats), time.Now().Unix()))
 	}
+	// Concurrency under semi-synchronous replication, the pair the thread pool rule sizes
+	// from (GetConfigThreadPoolSize: cores x 4 under semi-sync, #1902): the pool size the
+	// engine runs with, the threads the pool holds, and the semi-sync acknowledgment wait
+	// as the cgroup can never see it (a task asleep on a socket is no stall for PSI or the
+	// quota, #1904): the master's cumulative Rpl_semi_sync_master_net_wait_time rated over
+	// the tick = seconds of wait per second, a cores-equivalent, next to the engine's own
+	// average per transaction. First-class for the same reason as above.
+	if v := server.Variables.Get("THREAD_POOL_SIZE"); v != "" {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.concurrency_thread_pool_size", hostname), v, time.Now().Unix()))
+	}
+	if v := server.Status.Get("THREADPOOL_THREADS"); v != "" {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.concurrency_threadpool_threads", hostname), v, time.Now().Unix()))
+	}
+	if v := server.Status.Get("THREADPOOL_IDLE_THREADS"); v != "" {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.concurrency_threadpool_idle_threads", hostname), v, time.Now().Unix()))
+	}
+	if server.IsSemiSyncMaster() {
+		if v := server.Status.Get("RPL_SEMI_SYNC_MASTER_NET_AVG_WAIT_TIME"); v != "" {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.semisync_net_avg_wait_us", hostname), v, time.Now().Unix()))
+		}
+		if cores, ok := server.semiSyncWaitCores(); ok {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.semisync_wait_cores", hostname), fmt.Sprintf("%.4f", cores), time.Now().Unix()))
+		}
+	}
 	// The Top page per-instance header graphs (TopHeader: Queries, Rows, Swap, Transactions,
 	// Cache Miss), one series per bar, same per-tick delta the page shows. First-class for the
 	// same reason as above.
@@ -218,4 +242,28 @@ func (server *ServerMonitor) SendAlert() error {
 // leaf token (cache_miss, binlog_group).
 func topMetricToken(name string) string {
 	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), " ", "_"))
+}
+
+// semiSyncWaitCores is the master's semi-synchronous acknowledgment wait over the last
+// monitor tick as seconds of wait per second (a cores-equivalent, like the cgroup wait
+// fractions): the increase of Rpl_semi_sync_master_net_wait_time (microseconds, cumulative)
+// over the tick. Not available on the first tick, on a counter reset, or without a tick.
+func (server *ServerMonitor) semiSyncWaitCores() (float64, bool) {
+	prev, ok := server.PrevStatus.CheckAndGet("RPL_SEMI_SYNC_MASTER_NET_WAIT_TIME")
+	if !ok {
+		return 0, false
+	}
+	cur, err := strconv.ParseFloat(server.Status.Get("RPL_SEMI_SYNC_MASTER_NET_WAIT_TIME"), 64)
+	if err != nil {
+		return 0, false
+	}
+	p, err := strconv.ParseFloat(prev, 64)
+	if err != nil || cur < p {
+		return 0, false
+	}
+	seconds := float64(server.MonitorTime - server.PrevMonitorTime)
+	if seconds <= 0 {
+		return 0, false
+	}
+	return (cur - p) / 1e6 / seconds, true
 }

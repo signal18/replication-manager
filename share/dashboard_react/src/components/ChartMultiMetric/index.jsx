@@ -60,6 +60,10 @@ function ChartMultiMetric({
     wait_cpu_psi_some: 'CPU stall some', wait_cpu_psi_full: 'CPU stall full',
     wait_io_psi_some: 'IO stall some', wait_io_psi_full: 'IO stall full',
     wait_mem_psi_some: 'Mem stall some', wait_mem_psi_full: 'Mem stall full',
+    // concurrency under semi-sync (mysql.<host>.*): the thread pool and the ack wait
+    concurrency_thread_pool_size: 'thread_pool_size', concurrency_threadpool_threads: 'pool threads',
+    concurrency_threadpool_idle_threads: 'pool idle threads',
+    semisync_net_avg_wait_us: 'semi-sync avg wait (us/commit)', semisync_wait_cores: 'semi-sync wait (cores)',
   };
   const getDisplayName = (metricPath) => {
     // aliasByNode(path, n): the leaf is in the path argument, not after the last comma
