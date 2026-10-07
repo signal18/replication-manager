@@ -16,7 +16,16 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
   `timeout` seconds for the reply; a failure opens **APPERR009** with the host and the
   error. When the kernel refuses the unprivileged socket (`net.ipv4.ping_group_range` not
   covering the monitor's group) the error says so and the app is **not** reported up on
-  a probe that could not run. `app-port` keeps its role as the app's identity.
+  a probe that could not run. `app-port` keeps its role as the app's identity. One deadline
+  (`timeout`) covers the name resolution, the send and the wait: the probe runs inline in
+  the monitor tick and never blocks longer. IPv4 only. On the unprivileged socket the
+  kernel rewrites the echo identifier, so a reply is matched on its source address and
+  sequence number.
+
+  Container runtimes: the monitor's container needs `net.ipv4.ping_group_range` to cover
+  its group (`0 2147483647` on the preprod image; Docker's default is `1 0`, nothing
+  allowed, set it with `--sysctl net.ipv4.ping_group_range="0 2147483647"` or in the
+  service definition).
 
 Apps with routes are unaffected: their routes are probed as before.
 
