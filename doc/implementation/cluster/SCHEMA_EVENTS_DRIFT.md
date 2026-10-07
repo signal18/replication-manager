@@ -73,6 +73,16 @@ GET /schema/events
   `monitoring-schema-scan-timeout` context covers the entire loop; an error,
   scan error or deadline on any page has the same all-or-nothing outcome, so
   partial data can never create missing/extra drift or fill repman's disk.
+- **Concurrent DDL.** `information_schema.EVENTS` does not provide one
+  transaction snapshot across the keyset-page queries. The database column
+  collation orders each `(EVENT_SCHEMA, EVENT_NAME)` page boundary; Go ordering
+  is not involved. An event created, dropped or altered between pages can make
+  one scan transiently inconsistent, and the next schema scan reconciles it.
+- **Unavailable is visible, not drift.** `unavailable` remains outside
+  `WARN0164`, because it means no trustworthy observation rather than a schema
+  difference. The dashboard gives it a low-severity warning naming the affected
+  servers and states that their consistency is unknown; the matrix headers and
+  cells remain `not checked` rather than `missing`.
 - **Off-switch (T14).** `monitoring-schema-events`: off, the scan drops the
   snapshots, the diff adds no line and the view answers `enabled: false`.
 

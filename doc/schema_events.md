@@ -73,13 +73,19 @@ comparison is refreshed every 10 ticks from the last scan. The events of the
 last scan are kept across a replication-manager restart (like the table
 schema), with the time they were collected.
 
+The event catalogue is read in ordered pages, not in a cross-page database
+snapshot. An event created, dropped or altered while a scan is running can be
+observed transiently; the next schema scan reconciles it.
+
 ## Not checked is not missing
 
 A server whose events could not be read at the last scan (server down, access
 denied, timeout) is
 **unavailable**: it is not compared, and none of its events is reported missing
 or extra. Until its first scan a server is **not checked**. The Schema tab shows
-both, per server.
+both, per server. An **unavailable** server also produces a warning in the
+Scheduled Database Events matrix: its event consistency is unknown, not
+drift-free.
 
 ## What it does not do
 

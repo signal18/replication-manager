@@ -96,7 +96,8 @@ function Events({ clusterName }) {
   const rows = useMemo(() => filterEventRows(allRows, { search, schema: schemaFilter, drift: driftFilter }), [allRows, search, schemaFilter, driftFilter])
   const driftedRows = allRows.filter((r) => r.drifts.length > 0).length
   const differentReplicas = servers.filter((s) => s.comparison === 'different')
-  const uncheckedServers = servers.filter((s) => s.collection !== 'checked')
+  const unavailableServers = servers.filter((s) => s.collection === 'unavailable')
+  const otherUncheckedServers = servers.filter((s) => s.collection !== 'checked' && s.collection !== 'unavailable')
 
   const columns = useMemo(
     () => [
@@ -173,11 +174,23 @@ function Events({ clusterName }) {
           </Box>
         </Alert>
       )}
-      {uncheckedServers.length > 0 && (
+      {unavailableServers.length > 0 && (
+        <Alert status='warning' color='gray.800'>
+          <AlertIcon color='orange.500' />
+          <Box flex='1'>
+            <AlertTitle>Scheduled database event consistency is unknown</AlertTitle>
+            <AlertDescription>
+              {`${unavailableServers.map((s) => shortName(s.url)).join(', ')} could not be collected at the last schema scan and was not compared with the master. `}
+              This is not a schema drift; check database access, connectivity, scan timeout, and the configured event maximum.
+            </AlertDescription>
+          </Box>
+        </Alert>
+      )}
+      {otherUncheckedServers.length > 0 && (
         <Alert status='info' color='gray.800'>
           <AlertIcon color='blue.500' />
           <AlertDescription>
-            {uncheckedServers.map((s) => `${shortName(s.url)}: ${COLLECTION_LABELS[s.collection] || s.collection}`).join('; ')}. A server that is not
+            {otherUncheckedServers.map((s) => `${shortName(s.url)}: ${COLLECTION_LABELS[s.collection] || s.collection}`).join('; ')}. A server that is not
             checked is not compared: its events are unknown, not missing.
           </AlertDescription>
         </Alert>
