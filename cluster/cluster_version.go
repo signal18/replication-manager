@@ -3,6 +3,7 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -39,6 +40,21 @@ func (cluster *Cluster) RefreshToolVersions() {
 		}
 	}
 	cluster.ToolsVersions = cluster.GetToolsVersions()
+	// The versions are an INFO state of the Config pill, not a block of the cluster
+	// dashboard (Stéphane, 2026-10-07): one line, tool by tool, sorted.
+	if len(cluster.ToolsVersions) > 0 {
+		names := make([]string, 0, len(cluster.ToolsVersions))
+		for n := range cluster.ToolsVersions {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		parts := make([]string, 0, len(names))
+		for _, n := range names {
+			parts = append(parts, n+" "+cluster.ToolsVersions[n])
+		}
+		cluster.ConfigStateMachine.AddState("CINF0012", state.State{ErrType: "INFO", ErrFrom: "CONF",
+			ErrDesc: fmt.Sprintf(clusterError["CINF0012"], strings.Join(parts, ", "))})
+	}
 }
 
 // GetToolsVersions returns the local tools found on this replication-manager, tool name

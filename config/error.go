@@ -309,6 +309,7 @@ var ClusterError = map[string]string{
 	"CINF0006":  "Schema monitoring in progress",
 	"CINF0007":  "Server %s: consumption of axes %s reached its config limit, scale UP needed (in-plan, prov-db-scale-up-config-in-plan-speed %s time)",
 	"CINF0008":  "Server %s: consumption of axes %s well under its config, scale DOWN possible (in-plan, prov-db-scale-down-config-in-plan-speed %s time)",
+	"CINF0012":  "Local tools of this replication-manager for the cluster: %s",
 	"CINF0010":  "Server %s: memory configured %.2f DBU over its plan %.2f with no buffer-pool pressure, memory scale DOWN possible (in-plan, prov-db-scale-down-config-in-plan-speed %s time)",
 	"CINF0009":  "Server %s: consumption of axes %s well under the plan, plan cap-down possible (prov-db-scale-down-plan-speed %s time)",
 	"WARN0213":  "Server %s: consumption of axes %s reached the plan cap, plan cap-UP needed -- raise the plan (prov-db-scale-up-plan-speed %s time)",
