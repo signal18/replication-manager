@@ -3485,6 +3485,7 @@ func (cluster *Cluster) ResetStates() {
 	//cluster.clusterList = nil
 	cluster.proxyList = nil
 	cluster.ProxyIdList = nil
+	cluster.AppIdList = nil
 	//cluster.FailoverCtr = 0
 	cluster.SetFailoverCtr(0)
 	//cluster.FailoverTs = 0

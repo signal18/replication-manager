@@ -106,6 +106,7 @@ function ClusterList({ onClick }) {
     )
 
   const hasArbitration = clusterList?.some((c) => c.config?.arbitrationExternal)
+  const isCloud18 = !!monitor?.config?.cloud18
 
   const columns = useMemo(
     () => [
@@ -159,6 +160,15 @@ function ClusterList({ onClick }) {
         header: 'Proxies',
         id: 'proxies'
       }),
+      ...(isCloud18
+        ? [
+            columnHelper.accessor((row) => row.appServers?.length ?? 0, {
+              cell: (info) => info.getValue(),
+              header: 'Apps',
+              id: 'apps'
+            })
+          ]
+        : []),
       columnHelper.accessor((row) => healthCell(row), {
         cell: (info) => info.getValue(),
         header: 'Healthy',
@@ -191,7 +201,7 @@ function ClusterList({ onClick }) {
           ]
         : [])
     ],
-    [hasArbitration, canAddUser, clusterList]
+    [hasArbitration, canAddUser, clusterList, isCloud18]
   )
 
   return (
