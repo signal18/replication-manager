@@ -274,8 +274,11 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					cluster.master.SetReadWrite()
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Group replication server %s disable read only ", cluster.master.URL)
 				}
-			} else if sv.BinlogDumpThreads == 0 && sv.State != stateMaster {
-				// No slave and no binlog dump threads
+			} else if sv.BinlogDumpThreads == 0 && sv.State != stateMaster && len(cluster.Servers) > 1 {
+				// No slave and no binlog dump threads. A single-server cluster never has
+				// dump threads: its server IS the master (the lone PostgreSQL primary of
+				// pg-active-passive came back from a rolling restart as StandAlone with the
+				// replica read-only default and nothing ever opened it to writes, 2026-10-07)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Server %s has no slaves ", sv.URL)
 			} else {
 				// Server has binlog dump threads or is master
