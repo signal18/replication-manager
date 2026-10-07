@@ -75,7 +75,7 @@ func buildLocalCheckKey(appHost string, route config.Route) string {
 func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed}
 	errStates := make(map[string]state.State)
 
 	// Database auto-create (#1870): a refused provision stays visible until one goes through.
@@ -126,13 +126,23 @@ func (app *App) GetMonitoringStatus() string {
 
 	if len(routes) == 0 {
 		// No route: the app lives on the cluster network only (a database, a cache). It
-		// is up when its port answers, probed over TCP on the app host.
-		probe := config.Route{Name: "app-port", Protocol: "tcp", Port: app.AppConfig.AppPort}
+		// is up when its port answers, probed over TCP on the app host; a process that
+		// listens on nothing (app-monitor-mode = ping, #1919) is up when its host answers
+		// an ICMP echo.
 		app.ResetAppErrConsecutiveCntExcept("app-port") // routes gone: their debounce counters go with them
-		if err := app.GetAppLocalTCPStatus(probe); err != nil {
-			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), app.GetHost()+":"+app.AppConfig.AppPort+": "+err.Error()), ServerUrl: app.Host}}, err)
+		if appMonitorModeIsPing(app.AppConfig) {
+			if err := pingHost(app.GetHost(), time.Duration(cluster.Conf.Timeout)*time.Second); err != nil {
+				debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: ErrAppPingFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppPingFailed], app.GetId(), app.GetHost(), err.Error()), ServerUrl: app.Host}}, err)
+			} else {
+				app.ResetAppErrConsecutiveCnt("app-port")
+			}
 		} else {
-			app.ResetAppErrConsecutiveCnt("app-port")
+			probe := config.Route{Name: "app-port", Protocol: "tcp", Port: app.AppConfig.AppPort}
+			if err := app.GetAppLocalTCPStatus(probe); err != nil {
+				debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: ErrAppTCPConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), app.GetHost()+":"+app.AppConfig.AppPort+": "+err.Error()), ServerUrl: app.Host}}, err)
+			} else {
+				app.ResetAppErrConsecutiveCnt("app-port")
+			}
 		}
 		for _, key := range appErrKeys {
 			if st, ok := errStates[key]; ok {

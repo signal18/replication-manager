@@ -1165,6 +1165,10 @@ type AppConfig struct {
 	// as APU. A template default (cloud18-templates minio) inherited at creation, overridable
 	// per app in the GUI.
 	AppStateful bool `mapstructure:"app-stateful" toml:"app-stateful" json:"appStateful"`
+	// AppMonitorMode: how an app without a route is probed. "port" (default) connects to
+	// app-port over TCP; "ping" sends an ICMP echo to the app host, for a process that
+	// listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
+	AppMonitorMode string `mapstructure:"app-monitor-mode" toml:"app-monitor-mode" json:"appMonitorMode"`
 	// AppConfigVersion is the explicit persisted migration marker stamped by
 	// cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
 	// content; AppConfigVersionV2 means content already matches the V1 -> V2

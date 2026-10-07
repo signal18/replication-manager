@@ -759,9 +759,18 @@ func (r Route) Clone() Route {
 
 // Label returns a compact human-readable identifier for the route.
 // Host routes: "cname:destPort". Port routes: "cname:sourcePort -> destPort".
+// Label names the route the way traffic sees it: a port route by its gateway listener
+// and its destination, a host route by its public URL (TLS on 443 at the gateway for
+// https, 80 for http) and the destination port behind it. The old "cname:8080" read as a
+// public port that does not exist (Stéphane, 2026-10-07: "the gateway has TLS, all is
+// incoming as 443").
 func (r Route) Label() string {
 	if r.Mode == "port" {
 		return r.CName + ":" + r.SourcePort + " -> " + r.DestinationPort
+	}
+	switch strings.ToLower(r.Protocol) {
+	case "https", "http":
+		return strings.ToLower(r.Protocol) + "://" + r.CName + " -> :" + r.DestinationPort
 	}
 	return r.CName + ":" + r.DestinationPort
 }
