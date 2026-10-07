@@ -345,8 +345,12 @@ function ChartMultiMetric({
     const g = svg.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const startTime = d3.min(allData, d => d.date);
-    const endTime = d3.max(allData, d => d.date);
+    // The time axis is the REQUESTED window (context size x step up to now), the same on
+    // every chart of the page, not the extent of the data: a series that began minutes ago
+    // drew a nine-minute axis under a forty-minute one and read as a clock shift
+    // (2026-10-07). The points keep their own times inside it.
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - context.size() * context.step());
 
     // Scales
     const xScale = d3.scaleTime()
