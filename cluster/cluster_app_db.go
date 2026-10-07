@@ -271,7 +271,7 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 			continue
 		}
 		logs, err := dbhelper.CreateAppUser(conn, master.DBVersion, h, user, pass)
-		cluster.LogSQL(strings.ReplaceAll(logs, pass, "*.*"), err, master.URL, "App", config.LvlErr, "Create app user: %s", err)
+		cluster.LogSQL(logs, err, master.URL, "App", config.LvlErr, "Create app user: %s", err)
 		if err != nil {
 			return fail(fmt.Errorf("creating user %q@%q: %w", user, h, err))
 		}
@@ -324,7 +324,7 @@ func (cluster *Cluster) RotateAppDatabasePassword(app *App) error {
 			continue
 		}
 		logs, err := dbhelper.SetAppUserPassword(conn, master.DBVersion, u.Host, u.User, pass)
-		cluster.LogSQL(strings.ReplaceAll(logs, pass, "*.*"), err, master.URL, "App", config.LvlErr, "Rotate app user password: %s", err)
+		cluster.LogSQL(logs, err, master.URL, "App", config.LvlErr, "Rotate app user password: %s", err)
 		if err != nil {
 			return err
 		}
