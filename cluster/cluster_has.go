@@ -871,3 +871,16 @@ func (cluster *Cluster) IsInSchemaTableList(tablelist string, schema string, tab
 
 	return false
 }
+
+// HasSemiSyncObserved reports semi-synchronous replication as the monitor sees it on the
+// servers (master or replica semi-sync status ON), whatever the configuration says. The
+// sizing rules that depend on semi-sync (thread pool, #1902) compose it with the flag and
+// the configurator tag through Configurator.IsSemiSync.
+func (cluster *Cluster) HasSemiSyncObserved() bool {
+	for _, s := range cluster.Servers {
+		if s != nil && s.HasSemiSync() {
+			return true
+		}
+	}
+	return false
+}

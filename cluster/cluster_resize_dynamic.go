@@ -555,7 +555,7 @@ func (server *ServerMonitor) resizeCPUSQL() []string {
 	cfg := &server.ClusterGroup.Configurator
 	if server.IsMariaDB() {
 		return []string{
-			fmt.Sprintf("SET GLOBAL thread_pool_size = %s", cfg.GetConfigThreadPoolSize()),
+			fmt.Sprintf("SET GLOBAL thread_pool_size = %s", cfg.GetConfigThreadPoolSize(server.ClusterGroup.HasSemiSyncObserved())),
 			fmt.Sprintf("SET GLOBAL innodb_read_io_threads = %s", cfg.GetConfigInnoDBReadIoThreads()),
 		}
 	}
