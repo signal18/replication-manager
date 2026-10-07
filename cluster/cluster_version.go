@@ -40,8 +40,13 @@ func (cluster *Cluster) RefreshToolVersions() {
 		}
 	}
 	cluster.ToolsVersions = cluster.GetToolsVersions()
-	// The versions are an INFO state of the Config pill, not a block of the cluster
-	// dashboard (Stéphane, 2026-10-07): one line, tool by tool, sorted.
+}
+
+// assertToolsVersionsConfigState is the local tools line of the Config pill (CINF0012,
+// INFO), not a block of the cluster dashboard (Stéphane, 2026-10-07): one line, tool by
+// tool, sorted. Asserted where the config states are flushed each tick, the config state
+// machine being cleared every tick.
+func (cluster *Cluster) assertToolsVersionsConfigState() {
 	if len(cluster.ToolsVersions) > 0 {
 		names := make([]string, 0, len(cluster.ToolsVersions))
 		for n := range cluster.ToolsVersions {
