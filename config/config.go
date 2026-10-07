@@ -2082,9 +2082,9 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 }
 
 // encryptedTokenRe matches one encrypted value as GetEncryptedString writes it, anywhere
-// in a string: "hash_" and the hex ciphertext. The ciphertext carries a 16-byte nonce
-// before the data, so a real token has at least 34 hex digits; shorter matches are not
-// ours and are never handed to the decryptor (it panics on a short input).
+// in a string: "hash_" and the hex ciphertext. The ciphertext carries a 16-byte IV before
+// the data, so a real token has at least 34 hex digits; shorter matches are not ours and
+// are never handed to the decryptor (it panics on a short input).
 var encryptedTokenRe = regexp.MustCompile(`hash_[0-9a-fA-F]{34,}`)
 
 // GetDecryptedEmbedded decrypts a value that IS an encrypted string, like
@@ -2092,16 +2092,26 @@ var encryptedTokenRe = regexp.MustCompile(`hash_[0-9a-fA-F]{34,}`)
 // template renders {{app.db.password}} inside a connection string
 // (postgres://user:hash_...@proxy:5432/db), and the whole-value decryption left the
 // ciphertext in the application's DSN ("password authentication failed", Mattermost on
-// pg-active-passive, 2026-10-07). A token that does not decrypt is left as it is.
+// pg-active-passive, 2026-10-07).
+//
+// The cipher is AES-CFB without authentication: any token of a valid length decrypts to
+// SOMETHING, a foreign token cannot be told from ours, so the only guard is the length
+// (a shorter or odd-length token is left as it is). A value that carries "hash_" plus 34
+// hex digits is always treated as one of our secrets.
 func (conf *Config) GetDecryptedEmbedded(key string, value string) string {
 	if conf.SecretKey == nil || !strings.Contains(value, "hash_") {
 		return value
 	}
 	return encryptedTokenRe.ReplaceAllStringFunc(value, func(tok string) string {
-		if len(tok[len("hash_"):])%2 != 0 {
+		hexPart := tok[len("hash_"):]
+		if len(hexPart)%2 != 0 {
 			return tok
 		}
-		return conf.GetDecryptedPassword(key, tok)
+		p := crypto.Password{Key: conf.SecretKey, CipherText: hexPart}
+		if err := p.Decrypt(); err != nil {
+			return tok
+		}
+		return p.PlainText
 	})
 }
 

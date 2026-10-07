@@ -66,24 +66,52 @@ func ListDatabases(db *sqlx.DB, myver *version.Version) ([]string, string, error
 	return GetSchemas(db)
 }
 
+// appPasswordMask replaces the password in a logged statement. The password is
+// masked in every spelling the statement can carry: raw, the SQL literal with its
+// quotes doubled, and the backslash-escaped form.
+const appPasswordMask = "*.*"
+
+// MaskAppPassword returns the statement with the password masked, for the log. An
+// empty password masks nothing (ReplaceAll would insert the mask between every byte).
+func MaskAppPassword(statement, password string) string {
+	if password == "" {
+		return statement
+	}
+	out := statement
+	for _, spelling := range []string{
+		strings.ReplaceAll(strings.ReplaceAll(password, "\\", "\\\\"), "'", "\\'"),
+		strings.ReplaceAll(password, "'", "''"),
+		password,
+	} {
+		if spelling != "" {
+			out = strings.ReplaceAll(out, spelling, appPasswordMask)
+		}
+	}
+	return out
+}
+
 // CreateAppUser creates the application's user (MySQL user@host) or role (PostgreSQL).
+// The returned statement is the LOGGED one: the password is masked.
 func CreateAppUser(db *sqlx.DB, myver *version.Version, host, user, password string) (string, error) {
 	if myver != nil && myver.IsPostgreSQL() {
 		q := PostgresCreateRoleSQL(user, password)
 		_, err := db.Exec(q)
-		return q, err
+		return PostgresCreateRoleSQL(user, appPasswordMask), err
 	}
-	return CreateUser(db, myver, host, user, password)
+	logs, err := CreateUser(db, myver, host, user, password)
+	return MaskAppPassword(logs, password), err
 }
 
-// SetAppUserPassword sets the password of the application's user or role.
+// SetAppUserPassword sets the password of the application's user or role. The returned
+// statement is the LOGGED one: the password is masked.
 func SetAppUserPassword(db *sqlx.DB, myver *version.Version, host, user, password string) (string, error) {
 	if myver != nil && myver.IsPostgreSQL() {
 		q := PostgresSetRolePasswordSQL(user, password)
 		_, err := db.Exec(q)
-		return q, err
+		return PostgresSetRolePasswordSQL(user, appPasswordMask), err
 	}
-	return SetUserPassword(db, myver, host, user, password)
+	logs, err := SetUserPassword(db, myver, host, user, password)
+	return MaskAppPassword(logs, password), err
 }
 
 // CreateAppDatabase creates the application's database (a schema on MySQL and MariaDB).
