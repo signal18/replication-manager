@@ -82,6 +82,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const [resetImpactForceRefresh, setResetImpactForceRefresh] = useState(false)
   const [resetImpactChanges, setResetImpactChanges] = useState([])
   const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);
+  const monitorModeOptions = useMemo(() => ([{ value: 'port', name: 'Port (TCP connect to app-port)' }, { value: 'ping', name: 'Ping (ICMP echo to the host)' }]), []);
   const templateOptions = useMemo(() => {
     const templateList = Array.isArray(dockerTemplates) ? dockerTemplates : []
     return [{ name: 'Select Template', value: '' }, ...templateList.map(item => ({ name: item, value: item }))]
@@ -90,7 +91,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppStartTimeout = '',
     provAppAgents = '', provAppHaTopology = '',
     provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
-    appS3Provider = false, appStateful = false,
+    appS3Provider = false, appStateful = false, appMonitorMode = '',
     appDbAutoCreate = false, appDbOwned = false, appDbSchema = '', appDbUser = ''
   } = appConfig;
 
@@ -194,6 +195,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: newList.join(',') }))
   }, [clusterName, appId, dispatch])
 
+  const onMonitorModeChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-mode', value: value })) }, [clusterName, appId, dispatch])
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
   const onS3ProviderChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-s3-provider', value: appS3Provider ? 'false' : 'true' })) }, [clusterName, appId, appS3Provider, dispatch])
   const onDbAutoCreateChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-db-auto-create', value: appDbAutoCreate ? 'false' : 'true' })) }, [clusterName, appId, appDbAutoCreate, dispatch])
@@ -341,6 +343,19 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
             onChange={onHATopologyChange}
             options={haTopologyOptions}
             selectedValue={provAppHaTopology}
+          />
+        )
+      },
+      {
+        key: 'Monitor mode (no route)',
+        value: (
+          <Dropdown
+            confirmTitle="App monitor mode change"
+            confirmBody='Are you sure you want to change "app-monitor-mode" to: '
+            isMenuPortalTarget={true}
+            onChange={onMonitorModeChange}
+            options={monitorModeOptions}
+            selectedValue={appMonitorMode || 'port'}
           />
         )
       },
@@ -547,7 +562,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd,
     onSaveAppAsTemplate, templateOptions, provAppTemplate, onPreviewTemplate,
     onResetAppFromTemplate, onRefreshAndResetAppFromTemplate,
-    agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions,
+    agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, onMonitorModeChange, appMonitorMode, monitorModeOptions,
     appS3Provider, onS3ProviderChange, appStateful, onStatefulChange,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,

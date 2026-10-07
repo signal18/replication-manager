@@ -385,6 +385,14 @@ func (app *App) SetSetting(key, value string) error {
 		}
 	case "prov-app-ha-topology":
 		app.AppConfig.ProvAppHATopology = value
+	case "app-monitor-mode":
+		// How an app without a route is probed: port (TCP connect to app-port) or ping
+		// (ICMP echo to the host, for a process that listens on nothing, #1919).
+		mode := strings.ToLower(strings.TrimSpace(value))
+		if mode != "" && mode != "port" && mode != "ping" {
+			return fmt.Errorf("app-monitor-mode: %q is not port or ping", value)
+		}
+		app.AppConfig.AppMonitorMode = mode
 	case "app-stateful":
 		// Stateful app (minio and the like): accounted as DBU, not APU. The plan and the
 		// billing re-project on the spot; the sensor's next push lands on the DBU track.
