@@ -55,6 +55,11 @@ function ChartMultiMetric({
     dbu: 'DBU', dbu_cpu: 'CPU', dbu_mem: 'Mem', dbu_io: 'IO', dbu_disk: 'Disk',
     dbu_plan: 'Plan',
     service_cpu: 'CPU', service_mem: 'Mem', service_io: 'IO', service_disk: 'Disk',
+    // cgroup waits (dbu.<cluster>.<host>.wait_*): fractions of wall time, per server
+    wait_cpu_throttled: 'CPU throttled (cores)', wait_cpu_throttled_periods: 'periods throttled',
+    wait_cpu_psi_some: 'CPU stall some', wait_cpu_psi_full: 'CPU stall full',
+    wait_io_psi_some: 'IO stall some', wait_io_psi_full: 'IO stall full',
+    wait_mem_psi_some: 'Mem stall some', wait_mem_psi_full: 'Mem stall full',
   };
   const getDisplayName = (metricPath) => {
     const parts = metricPath.split('.');

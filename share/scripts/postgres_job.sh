@@ -297,9 +297,20 @@ report_usage() {
     local cores iops
     cores=$(awk -v c="${cpu:-0}" -v p="$p_cpu" -v dt="$dt" 'BEGIN{v=(c-p)/(dt*1000000); if(v<0)v=0; printf "%.4f", v}')
     iops=$(awk -v c="${io:-0}" -v p="$p_io" -v dt="$dt" 'BEGIN{v=(c-p)/dt; if(v<0)v=0; printf "%.4f", v}')
-    printf '{"windowStart":"%s","windowEnd":"%s","memMaxBytes":%s,"cpuMaxCores":%s,"ioMaxIops":%s,"diskMaxBytes":%s,"netRxBytes":%s,"netTxBytes":%s}' \
+    # cgroup waits (quota throttling, PSI totals), raw cumulative: rated and graphed by
+    # replication-manager (srv_cgroup_wait.go), the same counters as the MariaDB sensor
+    local np nt tu cs cf is if_ ms mf
+    np=$(awk '/^nr_periods/{print $2}' "$cg/cpu.stat" 2>/dev/null)
+    nt=$(awk '/^nr_throttled/{print $2}' "$cg/cpu.stat" 2>/dev/null)
+    tu=$(awk '/^throttled_usec/{print $2}' "$cg/cpu.stat" 2>/dev/null)
+    psi() { awk -v k="$2" '$1==k {for(i=2;i<=NF;i++) if($i ~ /^total=/){sub("total=","",$i); print $i}}' "$1" 2>/dev/null; }
+    cs=$(psi "$cg/cpu.pressure" some); cf=$(psi "$cg/cpu.pressure" full)
+    is=$(psi "$cg/io.pressure" some);  if_=$(psi "$cg/io.pressure" full)
+    ms=$(psi "$cg/memory.pressure" some); mf=$(psi "$cg/memory.pressure" full)
+    printf '{"windowStart":"%s","windowEnd":"%s","memMaxBytes":%s,"cpuMaxCores":%s,"ioMaxIops":%s,"diskMaxBytes":%s,"netRxBytes":%s,"netTxBytes":%s,"wait":{"cpuNrPeriods":%d,"cpuNrThrottled":%d,"cpuThrottledUsec":%d,"cpuPressureSomeUsec":%d,"cpuPressureFullUsec":%d,"ioPressureSomeUsec":%d,"ioPressureFullUsec":%d,"memPressureSomeUsec":%d,"memPressureFullUsec":%d}}' \
         "$(date -u -d "@$p_epoch" +%Y-%m-%dT%H:%M:%SZ)" "$(date -u -d "@$now" +%Y-%m-%dT%H:%M:%SZ)" \
         "${mem:-0}" "$cores" "$iops" "${disk:-0}" "${rx:-0}" "${tx:-0}" \
+        "${np:-0}" "${nt:-0}" "${tu:-0}" "${cs:-0}" "${cf:-0}" "${is:-0}" "${if_:-0}" "${ms:-0}" "${mf:-0}" \
         | job usage 2>"$ERR" || log "usage report: $(head -c 200 "$ERR")"
 }
 

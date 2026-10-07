@@ -339,6 +339,8 @@ type Cluster struct {
 	errorChan                   chan error           `json:"-"`
 	net                         *netStore            `json:"-"` // internal network readings per unit (cluster_net.go); on the cluster so a reload never wipes the counters
 	netOnce                     sync.Once            `json:"-"`
+	wait                        *waitStore           `json:"-"` // cgroup wait readings per server (srv_wait.go)
+	waitOnce                    sync.Once            `json:"-"`
 	backupProgress              sync.Map             `json:"-"` // key server/kind -> *BackupProgress (cluster_backup_progress.go)
 	injectTrafficInFlight       atomic.Bool          `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
 	injectTrafficSince          atomic.Int64         `json:"-"` // unix time the running injection started

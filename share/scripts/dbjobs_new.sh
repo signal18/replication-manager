@@ -728,6 +728,25 @@ read_net_counters() {
 # cadence). cpu/io are rates vs the previous run's cumulative counters, persisted
 # in a checkpoint. Fail-soft: any missing piece just skips the push, never breaks
 # the job run.
+# read_cgroup_wait_counters <cgroup dir>: the cumulative wait counters of the service's
+# cgroup v2 as one JSON object -- cpu.stat nr_periods/nr_throttled/throttled_usec (the
+# quota refusing cycles) and the "some"/"full" totals (microseconds) of cpu.pressure,
+# io.pressure, memory.pressure (PSI: time tasks were stalled). A missing file reads as 0.
+read_cgroup_wait_counters() {
+    local cg="$1"
+    local np nt tu
+    np=$(awk '/^nr_periods/{print $2}' "$cg/cpu.stat" 2>/dev/null)
+    nt=$(awk '/^nr_throttled/{print $2}' "$cg/cpu.stat" 2>/dev/null)
+    tu=$(awk '/^throttled_usec/{print $2}' "$cg/cpu.stat" 2>/dev/null)
+    psi() { awk -v k="$2" '$1==k {for(i=2;i<=NF;i++) if($i ~ /^total=/){sub("total=","",$i); print $i}}' "$1" 2>/dev/null; }
+    local cs cf is if_ ms mf
+    cs=$(psi "$cg/cpu.pressure" some); cf=$(psi "$cg/cpu.pressure" full)
+    is=$(psi "$cg/io.pressure" some);  if_=$(psi "$cg/io.pressure" full)
+    ms=$(psi "$cg/memory.pressure" some); mf=$(psi "$cg/memory.pressure" full)
+    printf '{"cpuNrPeriods":%d,"cpuNrThrottled":%d,"cpuThrottledUsec":%d,"cpuPressureSomeUsec":%d,"cpuPressureFullUsec":%d,"ioPressureSomeUsec":%d,"ioPressureFullUsec":%d,"memPressureSomeUsec":%d,"memPressureFullUsec":%d}' \
+        "${np:-0}" "${nt:-0}" "${tu:-0}" "${cs:-0}" "${cf:-0}" "${is:-0}" "${if_:-0}" "${ms:-0}" "${mf:-0}"
+}
+
 collect_dbu() {
     local cg
     cg=$(resolve_dbu_cgroup)
@@ -767,7 +786,13 @@ collect_dbu() {
     # Raw counters only -- repman derives the Mb/s and absorbs resets (cluster_net.go).
     local net_rx net_tx
     read -r net_rx net_tx < <(read_net_counters)
-    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk,\"netRxBytes\":${net_rx:-0},\"netTxBytes\":${net_tx:-0}}"
+    # cgroup waits: cpu.stat quota throttling and the PSI some/full totals (cpu, io,
+    # memory), raw cumulative counters -- repman rates them against its previous sample
+    # (srv_cgroup_wait.go) and graphs them as dbu.<cluster>.<host>.wait_*. They say
+    # whether the service WAITED, what the CPU usage alone never shows. Engine-agnostic.
+    local wait_json
+    wait_json=$(read_cgroup_wait_counters "$cg")
+    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk,\"wait\":$wait_json,\"netRxBytes\":${net_rx:-0},\"netTxBytes\":${net_tx:-0}}"
     local endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/dbu"
     send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$TOKEN" >/dev/null 2>&1 || true
 }

@@ -5021,6 +5021,9 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 		// interfaces, optional -- an older dbjobs_new.sh omits them.
 		NetRxBytes *uint64 `json:"netRxBytes,omitempty"`
 		NetTxBytes *uint64 `json:"netTxBytes,omitempty"`
+		// cgroup wait counters (cpu.stat throttling, PSI totals): optional, a sensor
+		// without them pushes the DBU maxima alone (srv_wait.go)
+		Wait *cluster.WaitCounters `json:"wait,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Decode error: "+err.Error(), http.StatusBadRequest)
@@ -5028,6 +5031,9 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 	}
 	if req.NetRxBytes != nil && req.NetTxBytes != nil {
 		mycluster.IngestNetCounters(cluster.NetUnitDatabase, node.Name, req.WindowEnd, *req.NetRxBytes, *req.NetTxBytes)
+	}
+	if req.Wait != nil {
+		node.IngestWaitCounters(req.WindowEnd, *req.Wait)
 	}
 
 	// The handler stays dumb: forward the raw maxima; the cluster's ResourceManager
