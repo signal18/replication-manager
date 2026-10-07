@@ -264,7 +264,7 @@ func (cluster *Cluster) ProvisionAppDatabase(app *App) error {
 			// and re-add of the app generates a new one while the account keeps the old
 			// (never on a foreign account: the decision above refused those).
 			logs, err := dbhelper.SetAppUserPassword(conn, master.DBVersion, h, user, pass)
-			cluster.LogSQL(logs, err, master.URL, "App", config.LvlErr, "Set app user password: %s", err)
+			cluster.LogSQL(strings.ReplaceAll(logs, pass, "*.*"), err, master.URL, "App", config.LvlErr, "Set app user password: %s", err)
 			if err != nil {
 				return fail(fmt.Errorf("setting the password of %q@%q: %w", user, h, err))
 			}
