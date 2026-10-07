@@ -495,35 +495,6 @@ function Graphs({ selectedCluster, onOpenSettings }) {
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="Consumed DBU — real → DBU per axis (plan = service plan, configured = prov-db-*)"
        />
-        {/* cgroup waits (dbu.<cluster>.<host>.wait_*): what the consumption above never shows,
-            whether the service WAITED -- the quota refusing cycles (cpu.stat throttling) and
-            the PSI stalls on cpu, io, memory -- as fractions of wall time, one line per server
-            (no sumSeries: the primary and its replica read apart). Collected to decide the
-            SQL-side concurrency before any cgroup grow (#1904). */}
-        <ChartMultiMetric
-         context={context}
-         metricPaths={scopeAll([
-           'dbu.*.wait_cpu_throttled',
-           'dbu.*.wait_cpu_throttled_periods',
-           'dbu.*.wait_cpu_psi_some',
-           'dbu.*.wait_cpu_psi_full'
-         ])}
-         height={300}
-         className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="CPU waits — quota throttling and CPU pressure (fraction of time, per server)"
-       />
-        <ChartMultiMetric
-         context={context}
-         metricPaths={scopeAll([
-           'dbu.*.wait_io_psi_some',
-           'dbu.*.wait_io_psi_full',
-           'dbu.*.wait_mem_psi_some',
-           'dbu.*.wait_mem_psi_full'
-         ])}
-         height={300}
-         className={`${styles.graph} ${styles.multiMetricGraph}`}
-         title="IO and memory waits — pressure stalls (fraction of time, per server)"
-       />
         {/* Compute (APU) — proxies + apps. Reuses the grouped-unit chart: the apu_* series
             already carry the server-side Compute projection, so we pass them as the billed
             bars and leave servicePaths empty (the real→unit overlay uses DBU ratios, N/A here).
@@ -634,6 +605,36 @@ function Graphs({ selectedCluster, onOpenSettings }) {
           ]}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
+        {/* cgroup waits (dbu.<cluster>.<host>.wait_*): what the consumption above never shows,
+            whether the service WAITED -- the quota refusing cycles (cpu.stat throttling) and
+            the PSI stalls on cpu, io, memory -- as fractions of wall time, one line per server
+            (aliasByNode on the host segment, no sumSeries: the primary and its replica read
+            apart, the chart draws one line per server). Collected to decide the
+            SQL-side concurrency before any cgroup grow (#1904). */}
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'aliasByNode(dbu.*.wait_cpu_throttled, 2)',
+           'aliasByNode(dbu.*.wait_cpu_throttled_periods, 2)',
+           'aliasByNode(dbu.*.wait_cpu_psi_some, 2)',
+           'aliasByNode(dbu.*.wait_cpu_psi_full, 2)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="CPU waits — quota throttling and CPU pressure (fraction of time, per server)"
+       />
+        <ChartMultiMetric
+         context={context}
+         metricPaths={scopeAll([
+           'aliasByNode(dbu.*.wait_io_psi_some, 2)',
+           'aliasByNode(dbu.*.wait_io_psi_full, 2)',
+           'aliasByNode(dbu.*.wait_mem_psi_some, 2)',
+           'aliasByNode(dbu.*.wait_mem_psi_full, 2)'
+         ])}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="IO and memory waits — pressure stalls (fraction of time, per server)"
+       />
       </GraphSection>
 
       {!isPostgres && (

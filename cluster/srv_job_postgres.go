@@ -269,6 +269,13 @@ func (server *ServerMonitor) checkPostgresJobsVersion() error {
 	server.pgJobsScriptSum = newsum
 	server.RestartNode = ""
 	server.RestartRid = RestartRidJobsContainer
+	// The rolling jobs upgrade waits for this cookie: a MariaDB server clears it once the
+	// dbjobs file is sent (srv_job.go); here the refreshed key and the sidecar restart ARE
+	// the upgrade, so the wait ended in "Timeout waiting for jobs upgrade" on every
+	// PostgreSQL server (preprod 2026-10-07) although the sidecar had restarted.
+	if server.HasRollingJobsUpgradeCookie() {
+		server.DelRollingJobsUpgradeCookie()
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Jobs script of %s refreshed, its sidecar restarts", server.URL)
 	return server.SetRestartContainerCookie()
 }
