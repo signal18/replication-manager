@@ -307,7 +307,10 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 		case "database":
 			_, err = sess.mustOK(http.MethodGet, cpath+"/actions/addserver/"+h["host"]+"/"+h["port"], nil)
 		case "app":
-			_, err = sess.mustOK(http.MethodPost, cpath+"/actions/addserver/"+h["host"]+"/"+h["port"]+"/app/"+url.PathEscape(h["template"]), map[string]any{})
+			// the route takes a docker IMAGE in the path and the template in the body: sent in
+			// the path, "phpmyadmin/phpmyadmin" became the image of a template-less app
+			// (preprod 2026-10-07, #1907)
+			_, err = sess.mustOK(http.MethodPost, cpath+"/actions/addserver/"+h["host"]+"/"+h["port"]+"/app", map[string]any{"template": h["template"]})
 		default:
 			_, err = sess.mustOK(http.MethodGet, cpath+"/actions/addserver/"+h["host"]+"/"+h["port"]+"/"+h["type"], nil)
 		}
