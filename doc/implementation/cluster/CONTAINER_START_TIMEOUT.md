@@ -36,3 +36,16 @@ services (dns at 5) stay first. **The key is honoured only for an API identity h
 orchestrator's `prioritizer` grant and silently dropped otherwise**: after a template
 refresh, read `om <svc> config get --eval --kw DEFAULT.priority` once to confirm the grant
 (preprod's identity has it, verified 2026-10-08).
+
+## Image pull timeout and a stuck orchestration (PR #1937)
+
+`pull_timeout` is rendered beside every `start_timeout` from the same setting: om3's own
+default of 2 m was not enough for `frappe/erpnext` after an image purge (erpnext-backend
+failed every start on s18-fr-5, 2026-10-08). One budget per kind: `prov-db-start-timeout`,
+`prov-proxy-start-timeout`, the app's `prov-app-start-timeout` (raise it per app for a large
+image, 10m on the ERPNext processes).
+
+When an orchestration the daemon keeps retrying (a `restarted` global expect on a start that
+fails every time) makes every object action answer 409 `already in progress`, the app
+start, unprovision and provision abort it and retry until it settles
+(`openSVCStartOrRecoverV3`, `openSVCActionWhenIdleV3`, `retryWhenIdle`, 45 s).

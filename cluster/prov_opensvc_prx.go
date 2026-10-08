@@ -522,6 +522,7 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 	// being 5s (#1924). Here, on the section map, so the v2 and v3 templates both carry it.
 	if c, ok := svcsection["container#prx"]; ok {
 		c["start_timeout"] = cluster.proxyStartTimeout()
+		c["pull_timeout"] = cluster.proxyStartTimeout() // the image pull after a purge, same budget
 	}
 
 	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, pri)

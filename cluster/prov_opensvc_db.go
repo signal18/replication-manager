@@ -673,6 +673,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["pull_timeout"] = server.ClusterGroup.dbStartTimeout()  // the image pull after a purge, same budget
 		svccontainer["start_timeout"] = server.ClusterGroup.dbStartTimeout() // the orchestrator default is 5s (#1924)
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 
@@ -745,6 +746,7 @@ func (server *ServerMonitor) openSVCGetJobsContainerSection(xtrabackupImage stri
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["pull_timeout"] = server.ClusterGroup.dbStartTimeout()  // the image pull after a purge, same budget
 		svccontainer["start_timeout"] = server.ClusterGroup.dbStartTimeout() // the orchestrator default is 5s (#1924)
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
@@ -848,6 +850,7 @@ func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name strin
 	svccontainer["type"] = "docker"
 	svccontainer["image"] = "busybox"
 	svccontainer["start_timeout"] = cluster.sensorStartTimeout(kind)
+	svccontainer["pull_timeout"] = cluster.sensorStartTimeout(kind)
 	svccontainer["netns"] = "container#01"
 	svccontainer["detach"] = "true"
 	svccontainer["rm"] = "true"
@@ -882,6 +885,7 @@ func (cluster *Cluster) OpenSVCGetAppSensorContainerSection(app *App, scriptKey 
 		return svccontainer
 	}
 	svccontainer["start_timeout"] = app.GetStartTimeout() // the app's own timeout, like its pause and main containers
+	svccontainer["pull_timeout"] = app.GetStartTimeout()
 	svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro " + openSVCServiceCgroupMount(cluster.Name, app.Name)
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL env/" + scriptKey
 	svccontainer["command"] = "-c 'printf \"%s\\n\" \"$" + scriptKey + "\" > /tmp/app_job; exec sh /tmp/app_job'"
@@ -898,6 +902,7 @@ func (cluster *Cluster) OpenSVCGetNamespaceContainerSection(startTimeout string)
 		svccontainer["type"] = "docker"
 		svccontainer["image"] = "ghcr.io/opensvc/pause"
 		svccontainer["start_timeout"] = startTimeoutOrDefault(startTimeout)
+		svccontainer["pull_timeout"] = startTimeoutOrDefault(startTimeout)
 		svccontainer["hostname"] = "{svcname}.{namespace}.svc.{clustername}"
 		svccontainer["rm"] = "true"
 		svccontainer["run_args"] = cluster.Conf.ProvNetDockerRunArgs

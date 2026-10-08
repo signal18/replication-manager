@@ -50,6 +50,9 @@ func TestOpenSVCProxyTemplateCarriesStartTimeout(t *testing.T) {
 	if got := prx["start_timeout"]; got != "3m" {
 		t.Fatalf("container#prx start_timeout: want 3m, got %q", got)
 	}
+	if got := prx["pull_timeout"]; got != "3m" {
+		t.Fatalf("container#prx pull_timeout: want 3m, got %q", got)
+	}
 }
 
 // The pause container of every kind carries its kind's start timeout, and every service a
@@ -66,6 +69,9 @@ func TestOpenSVCPauseContainerTimeoutAndPriority(t *testing.T) {
 	}
 	if got := cluster.OpenSVCGetNamespaceContainerSection("")["start_timeout"]; got != "2m" {
 		t.Fatalf("unset timeout falls back to 2m, got %q", got)
+	}
+	if got := cluster.OpenSVCGetNamespaceContainerSection(cluster.dbStartTimeout())["pull_timeout"]; got != "3m" {
+		t.Fatalf("pause container pull_timeout follows the start timeout: want 3m, got %q", got)
 	}
 	srv := cluster.Servers[0]
 	srv.ClusterGroup = cluster
