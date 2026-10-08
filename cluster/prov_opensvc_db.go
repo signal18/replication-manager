@@ -546,10 +546,12 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
 			opErr = errors.Join(opErr, err)
 		}
-		err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+server.Name)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
-			opErr = errors.Join(opErr, err)
+		for _, volumename := range cluster.databaseVolumeObjects(server) {
+			err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+volumename)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume %s:  %s ", volumename, err)
+				opErr = errors.Join(opErr, err)
+			}
 		}
 	} else {
 		err := svc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
@@ -557,13 +559,28 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
 			opErr = errors.Join(opErr, err)
 		}
-		err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+server.Name, server.Agent)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
-			opErr = errors.Join(opErr, err)
+		for _, volumename := range cluster.databaseVolumeObjects(server) {
+			err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+volumename, server.Agent)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume %s:  %s ", volumename, err)
+				opErr = errors.Join(opErr, err)
+			}
 		}
 	}
 	cluster.errorChan <- opErr
+}
+
+// databaseVolumeObjects names the volume objects a server's unprovision purges: the
+// database volume named after the server, or, for an engine server rendered from an app
+// template, the volumes of that template (pg1-drbd, not pg1): the database name answered
+// 404 and the member's DRBD volumes stayed provisioned on every node (pg-logical, 2026-10-08).
+func (cluster *Cluster) databaseVolumeObjects(server *ServerMonitor) []string {
+	if app := cluster.engineAppOfServer(server); app != nil {
+		if vols := app.GetVolumes(true); len(vols) > 0 {
+			return vols
+		}
+	}
+	return []string{server.Name}
 }
 
 func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensvc.Host, error) {
