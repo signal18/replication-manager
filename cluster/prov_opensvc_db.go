@@ -386,7 +386,7 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
 					"OpenSVC V3 abort before start failed for %s: %s (proceeding)", server.URL, abortErr)
 			}
-			err := svc.RestartServiceV3(cluster.Name, server.ServiceName)
+			err := cluster.openSVCRestartWhenIdleV3(svc, server.ServiceName)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"OpenSVC V3 orchestrated restart failed for %s: %s", server.URL, err)

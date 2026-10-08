@@ -197,10 +197,34 @@ func (cluster *Cluster) openSVCStartOrRecoverV3(svc opensvc.Collector, service s
 	if abortErr := svc.AbortServiceV3(cluster.Name, service); abortErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Abort of %s before restart failed: %s (proceeding)", service, abortErr)
 	}
-	if restartErr := svc.RestartServiceV3(cluster.Name, service); restartErr != nil {
+	if restartErr := cluster.openSVCRestartWhenIdleV3(svc, service); restartErr != nil {
 		return fmt.Errorf("start refused (%w), restart after abort failed: %v", err, restartErr)
 	}
 	return nil
+}
+
+// openSVCRestartWhenIdleV3 restarts a service by orchestration, retrying while the
+// orchestrator answers that another orchestration (the abort just sent) is still in
+// progress: the abort is asynchronous, a restart sent right behind it is refused with
+// 409 "orchestration ... already in progress" (pg1.curepipe, 2026-10-08).
+func (cluster *Cluster) openSVCRestartWhenIdleV3(svc opensvc.Collector, service string) error {
+	var err error
+	deadline := time.Now().Add(orchestrationSettleTimeout)
+	for {
+		err = svc.RestartServiceV3(cluster.Name, service)
+		if err == nil || !isOrchestrationInProgress(err) || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// orchestrationSettleTimeout bounds the wait for a previous orchestration to end.
+const orchestrationSettleTimeout = 45 * time.Second
+
+// isOrchestrationInProgress: the orchestrator's 409 while a previous orchestration runs.
+func isOrchestrationInProgress(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already in progress")
 }
 
 // isWarnObjectRefusal: the orchestrator's 409 on a start of an object in warn state.

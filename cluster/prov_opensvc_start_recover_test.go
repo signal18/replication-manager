@@ -16,3 +16,13 @@ func TestIsWarnObjectRefusal(t *testing.T) {
 		}
 	}
 }
+
+// The restart after an abort waits only on the orchestrator's "already in progress".
+func TestIsOrchestrationInProgress(t *testing.T) {
+	if !isOrchestrationInProgress(errors.New(`unexpected status code: 409, body: {"detail":"orchestration f965d4dc (>aborted) already in progress","status":409}`)) {
+		t.Fatal("the in-progress refusal must be recognised")
+	}
+	if isOrchestrationInProgress(nil) || isOrchestrationInProgress(errors.New("failover object is warn state")) {
+		t.Fatal("other errors are not an orchestration in progress")
+	}
+}
