@@ -618,6 +618,18 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 	return agent, errors.New("Indice not found in database node list")
 }
 
+// Start priority of the services in the orchestrator (DEFAULT.priority, smaller first,
+// default 50): when a node boots and hits node.max_parallel, databases are served before
+// the proxies that route to them and before the apps that connect through the proxies;
+// the cluster's system services (dns at 5) keep going first. An engine server rendered
+// from an app template is a database. The key is honoured only for an API identity holding
+// the orchestrator's "prioritizer" grant (silently dropped otherwise).
+const (
+	openSVCPriorityDatabase = "10"
+	openSVCPriorityProxy    = "20"
+	openSVCPriorityApp      = "30"
+)
+
 func (server *ServerMonitor) OpenSVCGetDBDefaultSection() map[string]string {
 	svcdefault := make(map[string]string)
 	svcdefault["nodes"] = server.Agent
@@ -630,6 +642,7 @@ func (server *ServerMonitor) OpenSVCGetDBDefaultSection() map[string]string {
 		svcdefault["orchestrate"] = "ha"
 	}
 	svcdefault["app"] = server.ClusterGroup.Conf.ProvCodeApp
+	svcdefault["priority"] = openSVCPriorityDatabase
 	if server.ClusterGroup.Conf.ProvType == "docker" {
 		if server.ClusterGroup.Conf.ProvDockerDaemonPrivate {
 			svcdefault["docker_daemon_private"] = "true"
@@ -834,6 +847,7 @@ func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name strin
 	}
 	svccontainer["type"] = "docker"
 	svccontainer["image"] = "busybox"
+	svccontainer["start_timeout"] = cluster.sensorStartTimeout(kind)
 	svccontainer["netns"] = "container#01"
 	svccontainer["detach"] = "true"
 	svccontainer["rm"] = "true"
@@ -873,11 +887,16 @@ func (cluster *Cluster) OpenSVCGetAppSensorContainerSection(app *App, scriptKey 
 	return svccontainer
 }
 
-func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string {
+// OpenSVCGetNamespaceContainerSection is the pause container that holds the pod's network
+// namespace; startTimeout is the kind's container start timeout: om3 defaults it to 5 s,
+// which the pause container itself exceeded on a node restarting everything after the
+// s18-fr-4 crash (pg1.curepipe stayed down for hours, 2026-10-08).
+func (cluster *Cluster) OpenSVCGetNamespaceContainerSection(startTimeout string) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["type"] = "docker"
 		svccontainer["image"] = "ghcr.io/opensvc/pause"
+		svccontainer["start_timeout"] = startTimeoutOrDefault(startTimeout)
 		svccontainer["hostname"] = "{svcname}.{namespace}.svc.{clustername}"
 		svccontainer["rm"] = "true"
 		svccontainer["run_args"] = cluster.Conf.ProvNetDockerRunArgs
@@ -1289,7 +1308,7 @@ func (server *ServerMonitor) GenerateDBTemplateMap() map[string]map[string]strin
 		//	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetVolumeSystemSection()
 		//	svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
 	}
-	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
+	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection(server.ClusterGroup.dbStartTimeout())
 	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetDBInitContainerSection(server.Port)
 	// only a complete section: an empty one would leave a resource without a type in the service
 	if section := server.ClusterGroup.openSVCGetXtrabackupBundleContainerSection(xtrabackupImage); len(section) > 0 {
@@ -1488,6 +1507,17 @@ func startTimeoutOrDefault(v string) string {
 // pull_timeout in the orchestrator (2m by default).
 func (cluster *Cluster) dbStartTimeout() string {
 	return startTimeoutOrDefault(cluster.Conf.ProvDbStartTimeout)
+}
+
+// sensorStartTimeout: the sensor sidecar follows its kind's container start timeout.
+func (cluster *Cluster) sensorStartTimeout(kind string) string {
+	switch kind {
+	case string(KindProxy):
+		return cluster.proxyStartTimeout()
+	case string(KindApp):
+		return startTimeoutOrDefault(cluster.Conf.ProvAppStartTimeout)
+	}
+	return cluster.dbStartTimeout()
 }
 
 // proxyStartTimeout is the same for the proxy containers: prov-proxy-start-timeout (#1924).

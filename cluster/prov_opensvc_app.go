@@ -462,7 +462,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 	if err != nil {
 		return nil, err
 	}
-	svcsection[fmt.Sprintf("container#%02d", containernum)] = cluster.OpenSVCGetNamespaceContainerSection()
+	svcsection[fmt.Sprintf("container#%02d", containernum)] = cluster.OpenSVCGetNamespaceContainerSection(app.GetStartTimeout())
 
 	for _, gc := range deployment.Storages.GitClones {
 		if gc.Volume == nil {
@@ -865,6 +865,10 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 
 	svcdefault["orchestrate"] = "ha"
 	svcdefault["app"] = cluster.Conf.ProvCodeApp
+	svcdefault["priority"] = openSVCPriorityApp
+	if appcnf != nil && strings.TrimSpace(appcnf.ProvAppConfigurator) != "" {
+		svcdefault["priority"] = openSVCPriorityDatabase // an engine server is a database
+	}
 	return svcdefault
 }
 
