@@ -60,7 +60,7 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 			}
 		}
 	} else if svc.IsV3() {
-		err := svc.PurgeServiceV3(cluster.Name, app.GetServiceName())
+		err := cluster.openSVCActionWhenIdleV3(svc, app.GetServiceName(), func() error { return svc.PurgeServiceV3(cluster.Name, app.GetServiceName()) })
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app service:  %s ", err)
 			opErr = errors.Join(opErr, err)
@@ -184,16 +184,21 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 
 // openSVCStartOrRecoverV3 starts a service by orchestration and, when the orchestrator
 // refuses because the failover object sits in warn state (an instance whose last start
-// failed: 409 "failover object is warn state"), recovers the way OpenSVC advises: abort
-// (clears the warn and any pending orchestration) then restart (atomic). A start from the
+// failed: 409 "failover object is warn state") or because an orchestration is already in
+// progress (a restart the daemon keeps retrying), recovers the way OpenSVC advises: abort
+// (clears the warn and the pending orchestration) then restart (atomic). A start from the
 // GUI on pg1.curepipe was refused for hours after a 5 s pause-container timeout at boot
 // (2026-10-08); clear alone does not lift the warn.
 func (cluster *Cluster) openSVCStartOrRecoverV3(svc opensvc.Collector, service string) error {
 	err := svc.StartServiceV3(cluster.Name, service)
-	if err == nil || !isWarnObjectRefusal(err) {
+	if err == nil || !(isWarnObjectRefusal(err) || isOrchestrationInProgress(err)) {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Start of %s refused, object in warn state: abort then restart", service)
+	// A warn-state object, or an orchestration the daemon keeps retrying on a start that
+	// fails every time (a "restarted" global expect stuck on a 5 s pause timeout kept
+	// mattermost2 and erpnext-backend refusing every action, 2026-10-08): abort it, then
+	// restart once the abort has settled.
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Start of %s refused (%s): abort then restart", service, strings.TrimSpace(err.Error()))
 	if abortErr := svc.AbortServiceV3(cluster.Name, service); abortErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Abort of %s before restart failed: %s (proceeding)", service, abortErr)
 	}
@@ -216,6 +221,33 @@ func (cluster *Cluster) openSVCRestartWhenIdleV3(svc opensvc.Collector, service 
 			return err
 		}
 		time.Sleep(2 * time.Second)
+	}
+}
+
+// openSVCActionWhenIdleV3 runs an object action (purge, create) and, when the orchestrator
+// answers that an orchestration is already in progress (a restart the daemon keeps
+// retrying), aborts it and retries the action until it settles (orchestrationSettleTimeout).
+// erpnext-frontend could be neither unprovisioned nor provisioned behind a stuck restart
+// (2026-10-08).
+func (cluster *Cluster) openSVCActionWhenIdleV3(svc opensvc.Collector, service string, action func() error) error {
+	return retryWhenIdle(func() error { return svc.AbortServiceV3(cluster.Name, service) }, action, orchestrationSettleTimeout)
+}
+
+// retryWhenIdle: run the action; on "already in progress" abort once, then retry every 2 s
+// until the action is accepted or the deadline passes. Any other error is returned as is.
+func retryWhenIdle(abort func() error, action func() error, settle time.Duration) error {
+	err := action()
+	if err == nil || !isOrchestrationInProgress(err) {
+		return err
+	}
+	_ = abort()
+	deadline := time.Now().Add(settle)
+	for {
+		time.Sleep(2 * time.Second)
+		err = action()
+		if err == nil || !isOrchestrationInProgress(err) || time.Now().After(deadline) {
+			return err
+		}
 	}
 }
 
@@ -397,7 +429,12 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 	app.TemplateMD5Prov = misc.GetMD5HashFromBytes(res)
 	app.TemplateMD5 = app.TemplateMD5Prov
 
-	body, err := svc.CreateTemplateV3(cluster.Name, app.ServiceName, app.Agent, res)
+	var body []byte
+	err = cluster.openSVCActionWhenIdleV3(svc, app.ServiceName, func() error {
+		var cerr error
+		body, cerr = svc.CreateTemplateV3(cluster.Name, app.ServiceName, app.Agent, res)
+		return cerr
+	})
 	if err != nil {
 		if !isOpenSVCAlreadyExists(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision app:  %s ", err)
@@ -936,6 +973,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		// The orchestrator's own start timeout is short for a large image: the app's
 		// prov-app-start-timeout (else the cluster default) bounds both the pull and the start.
 		svccontainer["start_timeout"] = app.GetStartTimeout()
+		svccontainer["pull_timeout"] = app.GetStartTimeout() // the image pull after a purge, same budget (frappe/erpnext exceeded the 2m default, 2026-10-08)
 		svccontainer["pull_timeout"] = app.GetStartTimeout()
 		if app.AppConfig.ProvAppHATopology == "failover" {
 			svccontainer["shared"] = "true"
@@ -971,6 +1009,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitDefaultSection(app *App) map[string]
 		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
 		svccontainer["start_timeout"] = "300s"
+		svccontainer["pull_timeout"] = app.GetStartTimeout()
 		svccontainer["optional"] = "true"
 		svccontainer["entrypoint"] = "/bin/sh"
 	}

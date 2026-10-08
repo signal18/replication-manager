@@ -100,6 +100,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateOpenSVCConfig)),
 	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-template", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateOpenSVCTemplate)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
@@ -1097,6 +1101,47 @@ func (repman *ReplicationManager) handlerMuxAppUpdateOpenSVCConfig(w http.Respon
 		return
 	}
 	fmt.Fprintf(w, "App config/secret maps updated")
+}
+
+// @Summary Refresh the OpenSVC service definition of an app
+// @Description Re-renders the app's service definition from its template and settings (timeouts, priority, volumes, routes) and pushes it to the live OpenSVC object without restarting it; the next start uses it. The database counterpart is servers/{serverName}/actions/update-opensvc-template.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "App service definition updated"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "App Not Found"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-template [post]
+func (repman *ReplicationManager) handlerMuxAppUpdateOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if mycluster.GetOrchestrator() != "opensvc" {
+		http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
+		return
+	}
+	app := mycluster.GetAppFromName(vars["appName"])
+	if app == nil {
+		http.Error(w, "App Not Found", http.StatusNotFound)
+		return
+	}
+	if err := mycluster.OpenSVCUpdateAppTemplate(app); err != nil {
+		http.Error(w, "Failed to update app service definition: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprintf(w, "App service definition updated")
 }
 
 // @Summary Unprovision App Service
