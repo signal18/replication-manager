@@ -325,6 +325,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testProxyReadBackendReconciliation" {
 			res = regtest.TestProxyReadBackendReconciliation(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testProxySQLPostgresRouting" {
+			res = regtest.TestProxySQLPostgresRouting(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testMaintenancePersistReload" {
 			res = regtest.TestMaintenancePersistReload(cl, test.ConfigFile, &test)
 		}
