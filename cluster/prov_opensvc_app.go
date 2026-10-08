@@ -198,7 +198,7 @@ func (cluster *Cluster) openSVCStartOrRecoverV3(svc opensvc.Collector, service s
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Abort of %s before restart failed: %s (proceeding)", service, abortErr)
 	}
 	if restartErr := cluster.openSVCRestartWhenIdleV3(svc, service); restartErr != nil {
-		return fmt.Errorf("start refused (%w), restart after abort failed: %v", err, restartErr)
+		return fmt.Errorf("start refused (%w), restart after abort failed: %w", err, restartErr)
 	}
 	return nil
 }
@@ -232,8 +232,7 @@ func isWarnObjectRefusal(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "warn state") || (strings.Contains(msg, "409") && strings.Contains(msg, "set instance monitor"))
+	return strings.Contains(strings.ToLower(err.Error()), "warn state")
 }
 
 // OpenSVCUpdateAppTemplate regenerates the service definition of an app and pushes it to
