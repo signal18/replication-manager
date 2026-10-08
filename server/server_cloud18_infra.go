@@ -32,8 +32,17 @@ const peerCallTimeout = 45 * time.Second
 
 // peerSession is an authenticated session on a partner infrastructure.
 type peerSession struct {
-	base  string
-	token string
+	base     string // the infrastructure's public API URL, as shown in answers
+	callBase string // where requests go: base, or the loopback API when the infrastructure is this instance
+	token    string
+}
+
+// endpoint is where a request to the session goes.
+func (s *peerSession) endpoint() string {
+	if s.callBase != "" {
+		return s.callBase
+	}
+	return s.base
 }
 
 // peerLogin authenticates on the infrastructure as the Cloud18 GitLab identity.
@@ -83,7 +92,7 @@ func (s *peerSession) callWithTimeout(method, path string, payload any, timeout 
 		}
 		body = bytes.NewReader(b)
 	}
-	req, err := http.NewRequest(method, s.base+path, body)
+	req, err := http.NewRequest(method, s.endpoint()+path, body)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -210,12 +219,12 @@ const provisionTimeout = 20 * time.Minute
 
 // Cloud18CreateCluster plans (confirm=false) or creates (confirm=true) a cluster
 // on an infrastructure, as this instance's Cloud18 identity.
-func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error) {
+func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, spec Cloud18ClusterSpec, confirm bool) (map[string]any, error) {
 	spec, err := normalizeSpec(spec)
 	if err != nil {
 		return nil, err
 	}
-	sess, err := repman.peerLogin(spec.Infrastructure)
+	sess, _, err := repman.peerLoginAs(p, spec.Infrastructure)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +392,7 @@ func (repman *ReplicationManager) Cloud18CreateCluster(spec Cloud18ClusterSpec, 
 // an assistant can be pointed at the infrastructure's own MCP endpoint for that
 // cluster. The token is the sponsor's grants narrowed to what the form asks;
 // it is returned once and never stored here.
-func (repman *ReplicationManager) Cloud18CreateClusterToken(infra, clusterName, label, grants string, expireDays int) (map[string]any, error) {
+func (repman *ReplicationManager) Cloud18CreateClusterToken(p *repmanmcp.Principal, infra, clusterName, label, grants string, expireDays int) (map[string]any, error) {
 	clusterName = strings.TrimSpace(clusterName)
 	if clusterName == "" {
 		return nil, errors.New("cluster_name is required")
@@ -391,7 +400,7 @@ func (repman *ReplicationManager) Cloud18CreateClusterToken(infra, clusterName, 
 	if strings.TrimSpace(label) == "" {
 		label = "assistant-" + clusterName
 	}
-	sess, err := repman.peerLogin(infra)
+	sess, _, err := repman.peerLoginAs(p, infra)
 	if err != nil {
 		return nil, err
 	}
@@ -424,12 +433,170 @@ func (repman *ReplicationManager) Cloud18CreateClusterToken(infra, clusterName, 
 }
 
 // Cloud18GetCluster reads a cluster on an infrastructure: state, servers, proxies, apps.
-func (repman *ReplicationManager) Cloud18GetCluster(infra, clusterName string) (map[string]any, error) {
+// peerIdentity is who an infrastructure is asked to act for.
+type peerIdentity struct {
+	user     string
+	password string
+	mode     string // "caller" (the SSO user), "instance" (the registered identity), "refused"
+	reason   string
+}
+
+// peerIdentityFor decides whose credentials reach an infrastructure, the same door as the
+// dashboard's "Enter" on a peer (DynamicPeerHandler): a user logged in with the Cloud18
+// (GitLab) account is themselves everywhere, so the infrastructure sees them and they
+// sponsor what they create; a local admin without that identity acts as the instance's
+// registered identity; anyone else (a local user, an API token: no Cloud18 identity to
+// carry) is refused with the way in. Pure, for tests.
+func peerIdentityFor(p *repmanmcp.Principal, decrypt func(string) string, isAdmin bool, instanceUser, instancePassword string) peerIdentity {
+	if p == nil {
+		return peerIdentity{mode: "refused", reason: "unauthenticated"}
+	}
+	switch p.AuthMethod {
+	case "oidc":
+		pwd, _ := p.Auth.(string)
+		if pwd = decrypt(pwd); pwd == "" {
+			return peerIdentity{mode: "refused", reason: "your Cloud18 session carries no credential: log in again with your Cloud18 (GitLab) account"}
+		}
+		return peerIdentity{user: p.User, password: pwd, mode: "caller"}
+	case "token":
+		return peerIdentity{mode: "refused", reason: "an API token carries no Cloud18 identity: log in with your Cloud18 (GitLab) account to act on an infrastructure"}
+	}
+	if isAdmin && instanceUser != "" {
+		return peerIdentity{user: instanceUser, password: instancePassword, mode: "instance"}
+	}
+	return peerIdentity{mode: "refused", reason: "log in with your Cloud18 (GitLab) account to act on an infrastructure: a local user has no identity there"}
+}
+
+// peerSessionTTL bounds the reuse of a login on an infrastructure: one login per user and
+// infrastructure per interval, not one per tool call.
+const peerSessionTTL = 10 * time.Minute
+
+type peerSessionEntry struct {
+	sess *peerSession
+	at   time.Time
+}
+
+// peerLoginAs authenticates on the infrastructure as the principal (peerIdentityFor) and
+// reuses the session within peerSessionTTL.
+func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra string) (*peerSession, string, error) {
+	base := strings.TrimRight(strings.TrimSpace(infra), "/")
+	self := strings.TrimRight(strings.TrimSpace(repman.Conf.APIPublicURL), "/")
+	if base == "" || (self != "" && strings.EqualFold(base, self)) {
+		// This instance, as the caller: the tool runs on the infrastructure's own MCP
+		// (the assistant connected here with the caller's session or token) and its REST
+		// is called over the loopback with that very credential, so every self-service
+		// rule applies to the caller exactly as over REST.
+		if p == nil || p.Bearer == "" {
+			return nil, "", errors.New("no credential on this request to act as you on this instance")
+		}
+		return &peerSession{base: self, callBase: "http://localhost:" + repman.Conf.HttpPort, token: p.Bearer}, p.User, nil
+	}
+	if repman.PeerManager == nil || !repman.PeerManager.HasPeerURL(base) {
+		return nil, "", fmt.Errorf("%s is not a known Cloud18 infrastructure: pick one from list-cloud18-infrastructures", base)
+	}
+	id := peerIdentityFor(p, func(v string) string { return repman.Conf.GetDecryptedPassword("peer-login", v) },
+		p != nil && repman.isAdminUser(p.User), repman.Conf.Cloud18GitUser,
+		repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets["cloud18-gitlab-password"].Value))
+	if id.mode == "refused" {
+		return nil, "", errors.New(id.reason)
+	}
+	key := id.user + "|" + base
+	repman.peerSessionMu.Lock()
+	if e, ok := repman.peerSessions[key]; ok && time.Since(e.at) < peerSessionTTL {
+		repman.peerSessionMu.Unlock()
+		return e.sess, id.user, nil
+	}
+	repman.peerSessionMu.Unlock()
+	loginURL, err := url.Parse(base + "/api/login")
+	if err != nil {
+		return nil, "", err
+	}
+	status, body := repman.PeerLogin(loginURL, userCredentials{Username: id.user, Password: id.password})
+	if status != http.StatusOK {
+		return nil, "", fmt.Errorf("login on %s as %s refused (HTTP %d): %s", base, id.user, status, strings.TrimSpace(string(body)))
+	}
+	var resp struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil || resp.Token == "" {
+		return nil, "", fmt.Errorf("login on %s returned no token", base)
+	}
+	sess := &peerSession{base: base, token: resp.Token}
+	repman.peerSessionMu.Lock()
+	if repman.peerSessions == nil {
+		repman.peerSessions = map[string]peerSessionEntry{}
+	}
+	if len(repman.peerSessions) >= 1024 {
+		repman.peerSessions = map[string]peerSessionEntry{}
+	}
+	repman.peerSessions[key] = peerSessionEntry{sess: sess, at: time.Now()}
+	repman.peerSessionMu.Unlock()
+	return sess, id.user, nil
+}
+
+// selfServiceStatusOf reads the caller's self-service status on the session's
+// infrastructure (served there from its snapshot) and keeps the fields an assistant
+// decides on.
+func selfServiceStatusOf(sess *peerSession) (map[string]any, error) {
+	body, err := sess.mustOK(http.MethodGet, "/api/cloud18/self-service", nil)
+	if err != nil {
+		return nil, fmt.Errorf("the infrastructure does not expose self-service (older release?): %w", err)
+	}
+	var ss map[string]any
+	if err := json.Unmarshal(body, &ss); err != nil {
+		return nil, fmt.Errorf("self-service status of %s: %w", sess.base, err)
+	}
+	out := map[string]any{}
+	for _, k := range []string{"enabled", "reason", "orchestrator", "maxClustersPerUser", "used", "remaining", "defaultDbu", "defaultApu", "defaultBku", "neededDbu", "neededApu", "pool", "poolOk", "poolNote", "borrowed", "appTemplates"} {
+		if v, ok := ss[k]; ok {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+
+// Cloud18InfrastructuresAccess logs the caller in, as themselves, on every infrastructure
+// of the marketplace and returns one MCP server entry per infrastructure carrying that
+// session, with the caller's self-service status there. Nothing is written on the
+// infrastructures: the session is the login the dashboard would get, it expires with
+// api-token-timeout. An infrastructure that refuses the caller is listed with the reason.
+func (repman *ReplicationManager) Cloud18InfrastructuresAccess(p *repmanmcp.Principal) ([]repmanmcp.Cloud18InfrastructureAccess, error) {
+	list, err := repman.Cloud18Infrastructures()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]repmanmcp.Cloud18InfrastructureAccess, 0, len(list))
+	for _, infra := range list {
+		entry := repmanmcp.Cloud18InfrastructureAccess{ApiPublicUrl: infra.ApiPublicUrl}
+		sess, as, err := repman.peerLoginAs(p, infra.ApiPublicUrl)
+		if err != nil {
+			entry.Error = err.Error()
+			out = append(out, entry)
+			continue
+		}
+		entry.Identity = as
+		entry.MCPServerConfig = map[string]any{
+			"type":    "sse",
+			"url":     sess.base + "/api/mcp/sse",
+			"headers": map[string]string{"Authorization": "Bearer " + sess.token},
+			"note":    "your session on this infrastructure, as " + as + ": a secret like a token, it expires with the login; create your cluster there with cloud18-create-cluster, then mint a durable token with cloud18-create-cluster-token",
+		}
+		if ss, err := selfServiceStatusOf(sess); err != nil {
+			entry.Error = err.Error()
+		} else {
+			entry.SelfService = ss
+		}
+		out = append(out, entry)
+	}
+	return out, nil
+}
+
+func (repman *ReplicationManager) Cloud18GetCluster(p *repmanmcp.Principal, infra, clusterName string) (map[string]any, error) {
 	clusterName = strings.TrimSpace(clusterName)
 	if clusterName == "" {
 		return nil, errors.New("cluster_name is required")
 	}
-	sess, err := repman.peerLogin(infra)
+	sess, _, err := repman.peerLoginAs(p, infra)
 	if err != nil {
 		return nil, err
 	}
@@ -471,12 +638,12 @@ func (repman *ReplicationManager) ClusterPrice(clusterName string) (map[string]a
 
 // Cloud18GetClusterPrice reads a cluster's month statement on an infrastructure, as this
 // instance's Cloud18 identity: what the infrastructure's resource manager integrated.
-func (repman *ReplicationManager) Cloud18GetClusterPrice(infra, clusterName string) (map[string]any, error) {
+func (repman *ReplicationManager) Cloud18GetClusterPrice(p *repmanmcp.Principal, infra, clusterName string) (map[string]any, error) {
 	clusterName = strings.TrimSpace(clusterName)
 	if clusterName == "" {
 		return nil, errors.New("cluster_name is required")
 	}
-	sess, err := repman.peerLogin(infra)
+	sess, _, err := repman.peerLoginAs(p, infra)
 	if err != nil {
 		return nil, err
 	}

@@ -78,6 +78,10 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
+	selfServiceMu   sync.Mutex           // guards selfServiceSnap and its script verdicts
+	peerSessionMu   sync.Mutex                  // guards peerSessions
+	peerSessions    map[string]peerSessionEntry // user|infrastructure -> login on that infrastructure, see server_cloud18_infra.go
+	selfServiceSnap *selfServiceSnapshot // cached self-service status, see server_selfservice.go
 	OpenSVC                      opensvc.Collector                  `json:"-"`
 	Version                      string                             `json:"version"`
 	Fullversion                  string                             `json:"fullVersion"`
@@ -1257,6 +1261,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Cloud18MarketplaceBAUClientStorage, "cloud18-marketplace-bau-client-storage", false, "The cluster's remote backup repository (S3/SFTP) is the client's own storage: its BAU are tracked but never priced")
 	flags.BoolVar(&conf.Cloud18SelfServiceClusters, "cloud18-self-service-clusters", false, "Let registered Cloud18 users reaching this instance through peering create clusters here without subscription acceptance; the partner is only informed (OpenSVC and Kubernetes orchestrators)")
 	flags.IntVar(&conf.Cloud18SelfServiceMaxClustersPerUser, "cloud18-self-service-max-clusters-per-user", 3, "Clusters a Cloud18 user may sponsor on this instance through self-service")
+	flags.IntVar(&conf.Cloud18SelfServiceCacheSeconds, "cloud18-self-service-cache-seconds", 10, "Seconds the self-service status (pool, templates, enabled-script verdict) is served from a snapshot: one computation per interval whatever the request rate on /api/cloud18/self-service; 0 computes at every request")
 	flags.StringVar(&conf.Cloud18SelfServiceClustersEnabledScript, "cloud18-self-service-clusters-enabled-script", "", "Script run before a self-service cluster creation (argv: identity, orchestrator; env REPMAN_IDENTITY, REPMAN_SPONSORED_CLUSTERS, REPMAN_NEEDED_DBU/APU, REPMAN_FREE_DBU/APU, REPMAN_BORROW_DBU/APU); a non-zero exit vetoes it, its first output line is the reason")
 	flags.BoolVar(&conf.Cloud18SelfServiceClustersCanBorrow, "cloud18-self-service-clusters-can-borrow", false, "Let a self-service cluster be created on borrowed capacity (the over-commit pot) when the plan pot cannot guarantee its default units")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 gateway VIP domain(s), comma-separated and aligned with cloud18-gateway-service; the first one is where the app CNAMEs point (the DNS round-robins the VIPs)")

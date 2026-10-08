@@ -5,7 +5,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -297,5 +299,67 @@ func TestSelfServiceBornDynamic(t *testing.T) {
 	repman.selfServiceBornDynamic(cl)
 	if cl.Conf.ProvDBApplyDynamicConfig || cl.Conf.ProvDBDynamicResource {
 		t.Fatalf("another orchestrator must be left as the defaults say")
+	}
+}
+
+// cloud18-self-service-cache-seconds: within the TTL the status is served from the snapshot
+// (a plan change is not seen until it expires), with 0 every call recomputes; the enabled
+// script runs once per identity per TTL, not per request.
+func TestSelfServiceStatusCache(t *testing.T) {
+	repman, cl := newTokenTestManager(t)
+	repman.Conf.Cloud18 = true
+	repman.Conf.Cloud18SelfServiceClusters = true
+	repman.Conf.Cloud18SelfServiceMaxClustersPerUser = 3
+	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	repman.Conf.ProvDbDbu = 1
+	repman.Conf.ProvServicePlanApu = 1
+	repman.resourceManager = cluster.NewResourceManager()
+	repman.Conf.ResourceManagerInfraCpuCores = 3
+	repman.Conf.ResourceManagerInfraMemoryMB = 12288
+
+	repman.Conf.Cloud18SelfServiceCacheSeconds = 0
+	st := repman.selfServiceStatusFor("u@x.io")
+	if !st.Pool.Known || st.Pool.FreeDbu != 3 {
+		t.Fatalf("fresh pool must be 3 DBU free: %+v", st.Pool)
+	}
+	cl.IsProvision = true
+	cl.Conf.ProvServicePlanDbu = 2
+	if st = repman.selfServiceStatusFor("u@x.io"); st.Pool.FreeDbu != 1 {
+		t.Fatalf("TTL 0 recomputes at every call, want 1 free, got %v", st.Pool.FreeDbu)
+	}
+
+	repman.Conf.Cloud18SelfServiceCacheSeconds = 300
+	repman.selfServiceSnap = nil
+	st = repman.selfServiceStatusFor("u@x.io")
+	if st.Pool.FreeDbu != 1 {
+		t.Fatalf("first call under TTL computes, want 1 free, got %v", st.Pool.FreeDbu)
+	}
+	cl.Conf.ProvServicePlanDbu = 0
+	if st = repman.selfServiceStatusFor("u@x.io"); st.Pool.FreeDbu != 1 {
+		t.Fatalf("within the TTL the snapshot is served, want 1 free still, got %v", st.Pool.FreeDbu)
+	}
+	repman.selfServiceSnap.at = time.Now().Add(-10 * time.Minute)
+	if st = repman.selfServiceStatusFor("u@x.io"); st.Pool.FreeDbu != 3 {
+		t.Fatalf("an expired snapshot is recomputed, want 3 free, got %v", st.Pool.FreeDbu)
+	}
+
+	// the enabled script runs once per identity within the TTL
+	dir := t.TempDir()
+	counter := filepath.Join(dir, "calls")
+	script := filepath.Join(dir, "enabled.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho x >> "+counter+"\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	repman.Conf.Cloud18SelfServiceClustersEnabledScript = script
+	repman.selfServiceSnap = nil
+	for i := 0; i < 5; i++ {
+		if st = repman.selfServiceStatusFor("u@x.io"); !st.Enabled {
+			t.Fatalf("script allows: %+v", st)
+		}
+	}
+	repman.selfServiceStatusFor("v@x.io")
+	b, _ := os.ReadFile(counter)
+	if n := strings.Count(string(b), "x"); n != 2 {
+		t.Fatalf("script must run once per identity within the TTL (2 identities), ran %d times", n)
 	}
 }

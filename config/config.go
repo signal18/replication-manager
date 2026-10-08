@@ -1048,6 +1048,7 @@ type Config struct {
 	Cloud18DisablePeers                     bool                   `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
 	Cloud18SelfServiceClusters              bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
 	Cloud18SelfServiceMaxClustersPerUser    int                    `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
+	Cloud18SelfServiceCacheSeconds          int                    `scope:"server" mapstructure:"cloud18-self-service-cache-seconds" toml:"cloud18-self-service-cache-seconds" json:"cloud18SelfServiceCacheSeconds"`
 	Cloud18SelfServiceClustersEnabledScript string                 `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
 	Cloud18SelfServiceClustersCanBorrow     bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
 	Cloud18DisableForSale                   bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`

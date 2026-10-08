@@ -152,7 +152,7 @@ func (s *MCPServer) registerCloud18Tools() {
 	s.addTool(
 		mcp.NewTool("cloud18-create-cluster",
 			mcp.WithDescription("Create a database cluster on a Cloud18 infrastructure (self-service): as this instance's Cloud18 identity, on the partner's replication-manager, create the cluster on the infrastructure's default unit plan (DBU/APU/BKU, no service plan), set the database image, add the database nodes, the proxy and the apps from their templates, and provision. Without confirm=true it only returns the plan: services to create, the infrastructure's self-service status for this identity (enabled, per-user limit, remaining slots). With confirm=true it creates: this is billable consumption on the infrastructure; the partner is informed. The partner enforces a per-user limit (3 by default). Needs the global-admin-show grant here; a token also needs the every-cluster scope."),
-			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure, from list-cloud18-infrastructures")),
+			mcp.WithString("infrastructure", mcp.Description("api-public-url of the infrastructure, from list-cloud18-infrastructures; empty = this instance, as yourself")),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the new cluster (letters, digits, dashes)")),
 			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts (latest MariaDB long-term-support release)")),
 			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5")),
@@ -171,7 +171,7 @@ func (s *MCPServer) registerCloud18Tools() {
 			if apps := req.GetString("apps", ""); apps != "" {
 				spec.Apps = strings.Split(apps, ",")
 			}
-			out, err := s.repman.Cloud18CreateCluster(spec, req.GetBool("confirm", false))
+			out, err := s.repman.Cloud18CreateCluster(principalFrom(ctx), spec, req.GetBool("confirm", false))
 			if err != nil {
 				return mcp.NewToolResultErrorf("%s\n%s", err.Error(), toJSON(out)), nil
 			}
@@ -180,13 +180,26 @@ func (s *MCPServer) registerCloud18Tools() {
 	)
 
 	s.addTool(
+		mcp.NewTool("get-cloud18-infrastructures",
+			mcp.WithDescription("Your access to every infrastructure of the Cloud18 marketplace, as yourself: for each one, an MCP server entry carrying your session there (your Cloud18 identity is valid on every public instance: this instance logs you in there as you, the same door as Enter in the dashboard; nothing is written on the infrastructure), and your self-service status there: whether you may create a cluster and why not, the free, usable and planned DBU and APU, the default plan a cluster takes, the clusters you may still sponsor. Connect the assistant to the infrastructure's entry, create the cluster there with cloud18-create-cluster (you become its sponsor), then mint your durable token with cloud18-create-cluster-token. A local admin without a Cloud18 account acts as this instance's registered identity; a local user or an API token is refused with the way in. The session expires with the login (api-token-timeout hours) and is a secret like a token."),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			out, err := s.repman.Cloud18InfrastructuresAccess(principalFrom(ctx))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
 		mcp.NewTool("get-cloud18-cluster",
 			mcp.WithDescription("Read a cluster on a Cloud18 infrastructure as this instance's Cloud18 identity: provisioning state, health flags, servers, proxies and apps. Use it after cloud18-create-cluster to follow the provisioning."),
-			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure")),
+			mcp.WithString("infrastructure", mcp.Description("api-public-url of the infrastructure; empty = this instance, as yourself")),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster on that infrastructure")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			out, err := s.repman.Cloud18GetCluster(req.GetString("infrastructure", ""), req.GetString("cluster_name", ""))
+			out, err := s.repman.Cloud18GetCluster(principalFrom(ctx), req.GetString("infrastructure", ""), req.GetString("cluster_name", ""))
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -197,11 +210,11 @@ func (s *MCPServer) registerCloud18Tools() {
 	s.addTool(
 		mcp.NewTool("get-cloud18-cluster-price",
 			mcp.WithDescription("Get what a cluster costs this month on a Cloud18 infrastructure, in EUR, as that infrastructure's resource manager integrates it per monitoring period: the partner and the sponsors, and per unit family (database plan in DBU, stateful applications in DBU, applications and proxies in APU, local backups in BKU, archives in BAU) the plan, the over-commit and the under-commit in unit-months, the unit price, the EUR accrued, the current rate and the projection to the end of the month. Use it after cloud18-create-cluster or a plan change to tell the user what they will pay."),
-			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure")),
+			mcp.WithString("infrastructure", mcp.Description("api-public-url of the infrastructure; empty = this instance, as yourself")),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster on that infrastructure")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			out, err := s.repman.Cloud18GetClusterPrice(req.GetString("infrastructure", ""), req.GetString("cluster_name", ""))
+			out, err := s.repman.Cloud18GetClusterPrice(principalFrom(ctx), req.GetString("infrastructure", ""), req.GetString("cluster_name", ""))
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -212,14 +225,14 @@ func (s *MCPServer) registerCloud18Tools() {
 	s.addTool(
 		mcp.NewTool("cloud18-create-cluster-token",
 			mcp.WithDescription("Mint, on a Cloud18 infrastructure and as this instance's Cloud18 identity (the sponsor of the cluster), an API token scoped to one cluster there, and return the infrastructure's MCP endpoint configuration to add as a second MCP server. This is how an assistant gets to operate a cluster created with cloud18-create-cluster: tokens never cross infrastructures, the sponsor mints one on the infrastructure that hosts the cluster. The token carries the sponsor's grants on that cluster, narrowed to 'grants' if given; it is returned once and not stored. Needs the global-admin-show grant here; a token also needs the every-cluster scope."),
-			mcp.WithString("infrastructure", mcp.Required(), mcp.Description("api-public-url of the infrastructure hosting the cluster")),
+			mcp.WithString("infrastructure", mcp.Description("empty = this instance, as yourself; else the api-public-url of the infrastructure hosting the cluster")),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster on that infrastructure")),
 			mcp.WithString("label", mcp.Description("Token label, default assistant-<cluster>")),
 			mcp.WithString("grants", mcp.Description("Compact grant prefixes to narrow to, space separated, e.g. 'db-show cluster-show'; empty = all the sponsor's grants on the cluster")),
 			mcp.WithNumber("expire_days", mcp.Description("Validity in days; 0 = the infrastructure's default (120), -1 = never")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			out, err := s.repman.Cloud18CreateClusterToken(req.GetString("infrastructure", ""), req.GetString("cluster_name", ""), req.GetString("label", ""), req.GetString("grants", ""), req.GetInt("expire_days", 0))
+			out, err := s.repman.Cloud18CreateClusterToken(principalFrom(ctx), req.GetString("infrastructure", ""), req.GetString("cluster_name", ""), req.GetString("label", ""), req.GetString("grants", ""), req.GetInt("expire_days", 0))
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}

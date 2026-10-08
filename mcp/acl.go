@@ -38,6 +38,10 @@ type Principal struct {
 	TokenID    string // API token id, when AuthMethod is "token"
 	TokenLabel string
 	Remote     string // client address, for the security log
+	// Bearer is the credential the request came with (login JWT or API token): the
+	// infrastructure tools call THIS instance's own API as the caller (loopback) when the
+	// infrastructure is this instance. Never logged.
+	Bearer string
 	// Auth carries what the server needs to re-run the cluster ACL for this
 	// principal (the login's password claim, or the token record). Opaque here.
 	Auth any
@@ -101,15 +105,16 @@ var toolACLPaths = map[string]string{
 	"get-cloud18-subscription":          globalPrefix,
 	"list-cloud18-subscription-plans":   globalPrefix,
 	"list-cloud18-infrastructures":      globalPrefix,
+	"get-cloud18-infrastructures":       globalPrefix,
 	"list-cloud18-clusters-for-sale":    globalPrefix,
 	"cloud18-register":                  globalPrefix + "global-admin-show",
 	"cloud18-register-confirm":          globalPrefix + "global-admin-show",
 	"cloud18-change-subscription":       globalPrefix + "global-admin-show",
 	"cloud18-unregister":                globalPrefix + "global-admin-show",
-	"cloud18-create-cluster":            globalPrefix + "global-admin-show",
+	"cloud18-create-cluster":            globalPrefix,
 	"get-cloud18-cluster":               globalPrefix,
 	"get-cloud18-cluster-price":         globalPrefix,
-	"cloud18-create-cluster-token":      globalPrefix + "global-admin-show",
+	"cloud18-create-cluster-token":      globalPrefix,
 	"get-cluster-health":                "",
 	"get-cluster-tools":                 "/tools",
 	"get-cluster-topology":              "",

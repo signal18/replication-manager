@@ -103,38 +103,126 @@ type SelfServiceStatus struct {
 	Borrowed bool `json:"borrowed"`
 }
 
+// selfServiceSnapshot is the identity-independent part of the self-service status, computed
+// at most once per cloud18-self-service-cache-seconds and served to every caller: the pool
+// walks every cluster and the ledger, the template list reads the repositories, and the
+// enabled script is a process. A flood of GET /api/cloud18/self-service (every Cloud18 peer
+// reaches it, a brute force reaches it) therefore costs one computation per interval.
+type selfServiceSnapshot struct {
+	at          time.Time
+	capable     bool
+	reason      string
+	pool        InfraUnitPool
+	poolNote    string
+	poolErr     error
+	templates   []string
+	neededDBU   float64
+	neededAPU   float64
+	scriptSeen  map[string]time.Time // identity -> when its verdict was taken
+	scriptVerdt map[string]error     // identity -> enabled-script verdict (nil = allowed)
+}
+
+// selfServiceScriptCacheMax bounds the per-identity verdict map: beyond it the map is
+// dropped, never grown (an identity is an authenticated caller, the bound is defensive).
+const selfServiceScriptCacheMax = 1024
+
+func (repman *ReplicationManager) selfServiceCacheTTL() time.Duration {
+	if repman.Conf == nil || repman.Conf.Cloud18SelfServiceCacheSeconds <= 0 {
+		return 0
+	}
+	return time.Duration(repman.Conf.Cloud18SelfServiceCacheSeconds) * time.Second
+}
+
+// selfServiceSnapshotNow returns the current snapshot, recomputed when older than the TTL
+// (or at every call when the TTL is 0). One computation at a time: concurrent callers wait
+// for it instead of computing their own.
+func (repman *ReplicationManager) selfServiceSnapshotNow() *selfServiceSnapshot {
+	ttl := repman.selfServiceCacheTTL()
+	repman.selfServiceMu.Lock()
+	defer repman.selfServiceMu.Unlock()
+	if snap := repman.selfServiceSnap; snap != nil && ttl > 0 && time.Since(snap.at) < ttl {
+		return snap
+	}
+	snap := &selfServiceSnapshot{at: time.Now(), scriptSeen: map[string]time.Time{}, scriptVerdt: map[string]error{}}
+	snap.capable, snap.reason = repman.selfServiceCapable()
+	snap.pool = repman.infraUnitPool()
+	snap.templates = repman.ListAppTemplates(nil)
+	snap.neededDBU, snap.neededAPU = repman.selfServiceUnitsNeeded()
+	if snap.pool.Known {
+		snap.poolNote, snap.poolErr = repman.selfServicePoolCheck()
+	}
+	if ttl > 0 && repman.selfServiceSnap != nil {
+		// keep the script verdicts still inside their TTL across a snapshot refresh
+		for id, seen := range repman.selfServiceSnap.scriptSeen {
+			if time.Since(seen) < ttl {
+				snap.scriptSeen[id] = seen
+				snap.scriptVerdt[id] = repman.selfServiceSnap.scriptVerdt[id]
+			}
+		}
+	}
+	repman.selfServiceSnap = snap
+	return snap
+}
+
+// selfServiceScriptVerdict runs the enabled script for an identity, or serves the verdict
+// taken within the TTL: the script is a process, it must not run per request.
+func (repman *ReplicationManager) selfServiceScriptVerdict(snap *selfServiceSnapshot, identity string, used int, needDbu, needApu float64) error {
+	ttl := repman.selfServiceCacheTTL()
+	if ttl > 0 {
+		repman.selfServiceMu.Lock()
+		if seen, ok := snap.scriptSeen[identity]; ok && time.Since(seen) < ttl {
+			v := snap.scriptVerdt[identity]
+			repman.selfServiceMu.Unlock()
+			return v
+		}
+		repman.selfServiceMu.Unlock()
+	}
+	err := repman.runSelfServiceEnabledScript(identity, used, needDbu, needApu)
+	if ttl > 0 {
+		repman.selfServiceMu.Lock()
+		if len(snap.scriptSeen) >= selfServiceScriptCacheMax {
+			snap.scriptSeen = map[string]time.Time{}
+			snap.scriptVerdt = map[string]error{}
+		}
+		snap.scriptSeen[identity] = time.Now()
+		snap.scriptVerdt[identity] = err
+		repman.selfServiceMu.Unlock()
+	}
+	return err
+}
+
 func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServiceStatus {
-	ok, reason := repman.selfServiceCapable()
+	snap := repman.selfServiceSnapshotNow()
 	used, names := repman.countSponsoredClusters(identity)
 	remaining := repman.Conf.Cloud18SelfServiceMaxClustersPerUser - used
 	if remaining < 0 {
 		remaining = 0
 	}
 	st := SelfServiceStatus{
-		Enabled: ok, Reason: reason, Orchestrator: repman.Conf.ProvOrchestrator,
+		Enabled: snap.capable, Reason: snap.reason, Orchestrator: repman.Conf.ProvOrchestrator,
 		MaxPerUser: repman.Conf.Cloud18SelfServiceMaxClustersPerUser,
 		Identity:   identity, Used: used, Clusters: names, Remaining: remaining,
 		DefaultDBU: repman.Conf.ProvDbDbu, DefaultAPU: repman.Conf.ProvServicePlanApu, DefaultBKU: repman.Conf.ProvServicePlanBku,
-		Pool: repman.infraUnitPool(), PoolOK: true,
+		Pool: snap.pool, PoolOK: true,
 		Domain: repman.Conf.Cloud18Domain, SubDomain: repman.Conf.Cloud18SubDomain, Zone: repman.Conf.Cloud18SubDomainZone,
-		GatewayDomain: repman.Conf.PrimaryGatewayDomain(), AppTemplates: repman.ListAppTemplates(nil),
+		GatewayDomain: repman.Conf.PrimaryGatewayDomain(), AppTemplates: snap.templates,
+		NeededDBU: snap.neededDBU, NeededAPU: snap.neededAPU,
 	}
-	st.NeededDBU, st.NeededAPU = repman.selfServiceUnitsNeeded()
 	if !st.Pool.Known {
 		st.PoolNote = "infrastructure capacity unknown (no agent observed, no resource-manager-infra-* declared): the pool does not gate"
-	} else if note, err := repman.selfServicePoolCheck(); err != nil {
+	} else if snap.poolErr != nil {
 		st.PoolOK = false
-		st.PoolNote = err.Error()
+		st.PoolNote = snap.poolErr.Error()
 		if st.Enabled {
 			st.Enabled = false
-			st.Reason = err.Error()
+			st.Reason = snap.poolErr.Error()
 		}
-	} else if note != "" {
+	} else if snap.poolNote != "" {
 		st.Borrowed = true
-		st.PoolNote = note
+		st.PoolNote = snap.poolNote
 	}
 	if st.Enabled {
-		if err := repman.runSelfServiceEnabledScript(identity, used, st.NeededDBU, st.NeededAPU); err != nil {
+		if err := repman.selfServiceScriptVerdict(snap, identity, used, st.NeededDBU, st.NeededAPU); err != nil {
 			st.Enabled = false
 			st.Reason = err.Error()
 		}
