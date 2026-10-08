@@ -210,6 +210,14 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
+	if app := cluster.engineAppOfServer(s); app != nil {
+		// An engine server (PostgreSQL member rendered from an app template): its service
+		// is the app's, provisioned from that template; the database template would deploy
+		// the cluster's default image under the member's name (MariaDB 13 answering on
+		// pg1:5432, pg-logical 2026-10-08). The app provision reports on errorChan itself.
+		cluster.OpenSVCProvisionAppService(app)
+		return
+	}
 	cluster.warnDBRunAsVolumeMismatch()
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
@@ -515,6 +523,13 @@ func (cluster *Cluster) OpenSVCClearDatabaseInstanceState(server *ServerMonitor,
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor) {
+	if app := cluster.engineAppOfServer(server); app != nil {
+		// An engine server: the app unprovision purges its service and the volume objects
+		// of its template (pg1-drbd, not a database volume named pg1 that answers 404 and
+		// leaves the member's DRBD volumes provisioned on every node, pg-logical 2026-10-08).
+		cluster.errorChan <- cluster.OpenSVCUnprovisionAppService(app)
+		return
+	}
 	svc := cluster.OpenSVCConnect()
 	var opErr error
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
