@@ -151,7 +151,7 @@ func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
 func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 	svc := cluster.OpenSVCConnect()
 	if svc.IsV3() {
-		err := svc.StartServiceV3(cluster.Name, app.GetServiceName())
+		err := cluster.openSVCStartOrRecoverV3(svc, app.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start app:  %s ", err)
 			return err
@@ -180,6 +180,59 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 		return nil
 	}
 	return nil
+}
+
+// openSVCStartOrRecoverV3 starts a service by orchestration and, when the orchestrator
+// refuses because the failover object sits in warn state (an instance whose last start
+// failed: 409 "failover object is warn state"), recovers the way OpenSVC advises: abort
+// (clears the warn and any pending orchestration) then restart (atomic). A start from the
+// GUI on pg1.curepipe was refused for hours after a 5 s pause-container timeout at boot
+// (2026-10-08); clear alone does not lift the warn.
+func (cluster *Cluster) openSVCStartOrRecoverV3(svc opensvc.Collector, service string) error {
+	err := svc.StartServiceV3(cluster.Name, service)
+	if err == nil || !isWarnObjectRefusal(err) {
+		return err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Start of %s refused, object in warn state: abort then restart", service)
+	if abortErr := svc.AbortServiceV3(cluster.Name, service); abortErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Abort of %s before restart failed: %s (proceeding)", service, abortErr)
+	}
+	if restartErr := cluster.openSVCRestartWhenIdleV3(svc, service); restartErr != nil {
+		return fmt.Errorf("start refused (%w), restart after abort failed: %w", err, restartErr)
+	}
+	return nil
+}
+
+// openSVCRestartWhenIdleV3 restarts a service by orchestration, retrying while the
+// orchestrator answers that another orchestration (the abort just sent) is still in
+// progress: the abort is asynchronous, a restart sent right behind it is refused with
+// 409 "orchestration ... already in progress" (pg1.curepipe, 2026-10-08).
+func (cluster *Cluster) openSVCRestartWhenIdleV3(svc opensvc.Collector, service string) error {
+	var err error
+	deadline := time.Now().Add(orchestrationSettleTimeout)
+	for {
+		err = svc.RestartServiceV3(cluster.Name, service)
+		if err == nil || !isOrchestrationInProgress(err) || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// orchestrationSettleTimeout bounds the wait for a previous orchestration to end.
+const orchestrationSettleTimeout = 45 * time.Second
+
+// isOrchestrationInProgress: the orchestrator's 409 while a previous orchestration runs.
+func isOrchestrationInProgress(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "already in progress")
+}
+
+// isWarnObjectRefusal: the orchestrator's 409 on a start of an object in warn state.
+func isWarnObjectRefusal(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "warn state")
 }
 
 // OpenSVCUpdateAppTemplate regenerates the service definition of an app and pushes it to
