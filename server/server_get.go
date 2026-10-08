@@ -206,7 +206,7 @@ func (repman *ReplicationManager) GetName() string {
 // the cluster ACL exactly as IsValidClusterACL does.
 func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.Principal, error) {
 	if t, isAPIToken, ok := repman.apiTokenFromRequest(r); ok {
-		return &repmanmcp.Principal{User: t.User, AuthMethod: "token", TokenID: t.ID, TokenLabel: t.Label, Remote: r.RemoteAddr, Auth: t}, nil
+		return &repmanmcp.Principal{User: t.User, AuthMethod: "token", TokenID: t.ID, TokenLabel: t.Label, Remote: r.RemoteAddr, Auth: t, Bearer: bearerOf(r)}, nil
 	} else if isAPIToken {
 		return nil, fmt.Errorf("API token invalid, revoked, expired or disabled")
 	}
@@ -235,7 +235,7 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 	if user == "" {
 		return nil, fmt.Errorf("JWT carries no user name")
 	}
-	return &repmanmcp.Principal{User: user, AuthMethod: method, Remote: r.RemoteAddr, Auth: password}, nil
+	return &repmanmcp.Principal{User: user, AuthMethod: method, Remote: r.RemoteAddr, Auth: password, Bearer: bearerOf(r)}, nil
 }
 
 // AuthorizeMCP runs the cluster ACL for a principal on the REST URL an MCP tool
@@ -271,4 +271,13 @@ func (repman *ReplicationManager) AuthorizeMCP(p *repmanmcp.Principal, clusterNa
 // LogSecurityEvent exposes the security log to the MCP package.
 func (repman *ReplicationManager) LogSecurityEvent(event, user, remoteAddr, msg string) {
 	repman.logSecurityEvent(event, user, remoteAddr, msg)
+}
+
+// bearerOf returns the bearer credential of a request, empty when none.
+func bearerOf(r *http.Request) string {
+	h := strings.TrimSpace(r.Header.Get("Authorization"))
+	if len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
+		return strings.TrimSpace(h[7:])
+	}
+	return ""
 }

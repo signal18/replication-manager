@@ -66,20 +66,23 @@ func (f *fakeRepman) Cloud18ChangeSubscription(p string) (map[string]any, error)
 	return map[string]any{"plan": p}, nil
 }
 func (f *fakeRepman) Cloud18ClustersForSale() ([]*peer.PeerCluster, error) { return nil, nil }
-func (f *fakeRepman) Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error) {
+func (f *fakeRepman) Cloud18CreateCluster(p *Principal, spec Cloud18ClusterSpec, confirm bool) (map[string]any, error) {
 	return map[string]any{"cluster": spec.ClusterName, "confirm": confirm}, nil
 }
-func (f *fakeRepman) Cloud18CreateClusterToken(infra, name, label, grants string, days int) (map[string]any, error) {
+func (f *fakeRepman) Cloud18CreateClusterToken(p *Principal, infra, name, label, grants string, days int) (map[string]any, error) {
 	return map[string]any{"cluster": name, "token": "x"}, nil
 }
-func (f *fakeRepman) Cloud18GetCluster(infra, name string) (map[string]any, error) {
+func (f *fakeRepman) Cloud18GetCluster(p *Principal, infra, name string) (map[string]any, error) {
 	return map[string]any{"cluster": name}, nil
 }
 func (f *fakeRepman) ClusterPrice(name string) (map[string]any, error) {
 	return map[string]any{"cluster": name, "monthCost": 0.0}, nil
 }
-func (f *fakeRepman) Cloud18GetClusterPrice(infra, name string) (map[string]any, error) {
+func (f *fakeRepman) Cloud18GetClusterPrice(p *Principal, infra, name string) (map[string]any, error) {
 	return map[string]any{"cluster": name, "monthCost": 0.0}, nil
+}
+func (f *fakeRepman) Cloud18InfrastructuresAccess(p *Principal) ([]Cloud18InfrastructureAccess, error) {
+	return []Cloud18InfrastructureAccess{{ApiPublicUrl: "https://infra.example:10005", Identity: p.User, MCPServerConfig: map[string]any{"type": "sse", "url": "https://infra.example:10005/api/mcp/sse"}}}, nil
 }
 func (f *fakeRepman) Cloud18Infrastructures() ([]Cloud18Infrastructure, error) {
 	return []Cloud18Infrastructure{{ApiPublicUrl: "https://infra.example:10005", Clusters: 2}}, nil

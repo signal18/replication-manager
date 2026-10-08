@@ -58,13 +58,18 @@ type RepmanProvider interface {
 	Cloud18ChangeSubscription(plan string) (map[string]any, error)
 	Cloud18ClustersForSale() ([]*peer.PeerCluster, error)
 	Cloud18Infrastructures() ([]Cloud18Infrastructure, error)
-	// Self-service clusters on an infrastructure, see server_cloud18_infra.go.
-	Cloud18CreateCluster(spec Cloud18ClusterSpec, confirm bool) (map[string]any, error)
-	Cloud18GetCluster(infra, clusterName string) (map[string]any, error)
+	// Acting on an infrastructure AS THE PRINCIPAL: a Cloud18 (SSO) user is themselves on
+	// every public instance and sponsors what they create there; a local admin acts as the
+	// instance's registered identity; a local user or an API token is refused with the way
+	// in. An empty infrastructure means this instance, reached as the caller. See
+	// server_cloud18_infra.go.
+	Cloud18InfrastructuresAccess(p *Principal) ([]Cloud18InfrastructureAccess, error)
+	Cloud18CreateCluster(p *Principal, spec Cloud18ClusterSpec, confirm bool) (map[string]any, error)
+	Cloud18GetCluster(p *Principal, infra, clusterName string) (map[string]any, error)
 	// Billing (resource manager month statement): local cluster, and a cluster on an infrastructure.
 	ClusterPrice(clusterName string) (map[string]any, error)
-	Cloud18GetClusterPrice(infra, clusterName string) (map[string]any, error)
-	Cloud18CreateClusterToken(infra, clusterName, label, grants string, expireDays int) (map[string]any, error)
+	Cloud18GetClusterPrice(p *Principal, infra, clusterName string) (map[string]any, error)
+	Cloud18CreateClusterToken(p *Principal, infra, clusterName, label, grants string, expireDays int) (map[string]any, error)
 }
 
 // Cloud18ClusterSpec is a self-service cluster request on an infrastructure.
@@ -86,6 +91,17 @@ type Cloud18Infrastructure struct {
 	ClusterNames  []string `json:"clusterNames"`
 	Orchestrators []string `json:"orchestrators"`
 	ServicePlans  []string `json:"servicePlans"`
+}
+
+// Cloud18InfrastructureAccess is one marketplace infrastructure as the caller may reach
+// it: the MCP server entry carrying the caller's SESSION there (the login the dashboard
+// would get, nothing written on the infrastructure), and the caller's self-service status.
+type Cloud18InfrastructureAccess struct {
+	ApiPublicUrl    string         `json:"apiPublicUrl"`
+	Identity        string         `json:"identity,omitempty"`
+	MCPServerConfig map[string]any `json:"mcpServerConfig,omitempty"`
+	SelfService     map[string]any `json:"selfService,omitempty"`
+	Error           string         `json:"error,omitempty"`
 }
 
 // MCPServer encapsulates the MCP server and its configuration.
