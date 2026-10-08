@@ -260,7 +260,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 	// load the grants
 	s := proxy.GetCluster().GetMaster()
 	if s != nil {
-		myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection)
+		myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection, "mysql_users")
 		if err != nil {
 			cluster.SetState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 		}

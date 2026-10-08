@@ -26,6 +26,17 @@ func (cluster *Cluster) isPostgresMaster() bool {
 	return m != nil && m.IsPostgreSQLHost()
 }
 
+// isPostgresCluster: the cluster's servers are PostgreSQL, declared or
+// discovered, so its proxies are configured for PostgreSQL.
+func (cluster *Cluster) isPostgresCluster() bool {
+	for _, s := range cluster.Servers {
+		if s != nil && s.IsPostgreSQLHost() {
+			return true
+		}
+	}
+	return false
+}
+
 // postgresProxyConnection connects through a proxy's write port with the credential and
 // database the monitor uses on the master (lib/pq form).
 func (cluster *Cluster) postgresProxyConnection(host string, port int) (*sqlx.DB, error) {
@@ -37,12 +48,39 @@ func (cluster *Cluster) postgresProxyConnection(host string, port int) (*sqlx.DB
 	if cluster.HaveDBTLSCert {
 		sslmode = "require"
 	}
-	user, pass := cluster.GetDbUser(), cluster.GetDbPass()
-	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
-		user, pass = splitCredential(cluster.Conf.GetDecryptedValue("monitoring-write-heartbeat-credential"))
-	}
+	user, pass := cluster.postgresProxyCredential()
 	dsn := fmt.Sprintf("sslmode=%s host=%s port=%d user=%s dbname=%s connect_timeout=%d password=%s", sslmode, host, port, user, m.PostgressDB, cluster.Conf.Timeout, pass)
 	return sqlx.Open("postgres", dsn)
+}
+
+// postgresProxyCredential is the user ProxySQL must accept for PostgreSQL
+// traffic injected through its write port.
+func (cluster *Cluster) postgresProxyCredential() (string, string) {
+	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
+		return splitCredential(cluster.Conf.GetDecryptedValue("monitoring-write-heartbeat-credential"))
+	}
+	return cluster.GetDbUser(), cluster.GetDbPass()
+}
+
+// postgresProxySQLUsers is the credential set the PostgreSQL user sync loads in
+// pgsql_users: the cluster credential, and the write heartbeat credential when
+// one is configured, since postgresProxyConnection connects with it. ProxySQL
+// holds one password per username: when both credentials share a username with
+// different passwords, the heartbeat one is kept and conflict is true.
+func (cluster *Cluster) postgresProxySQLUsers() (users []*dbhelper.Grant, conflict bool) {
+	dbUser, dbPass := cluster.GetDbUser(), cluster.GetDbPass()
+	if cluster.Conf.MonitorWriteHeartbeatCredential == "" {
+		return []*dbhelper.Grant{{User: dbUser, Password: dbPass}}, false
+	}
+	hbUser, hbPass := cluster.postgresProxyCredential()
+	switch {
+	case hbUser != dbUser:
+		return []*dbhelper.Grant{{User: dbUser, Password: dbPass}, {User: hbUser, Password: hbPass}}, false
+	case hbPass == dbPass:
+		return []*dbhelper.Grant{{User: dbUser, Password: dbPass}}, false
+	default:
+		return []*dbhelper.Grant{{User: hbUser, Password: hbPass}}, true
+	}
 }
 
 func splitCredential(credential string) (string, string) {
