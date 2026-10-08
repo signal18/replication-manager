@@ -30,6 +30,7 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 		// the MySQL default means nothing to a PostgreSQL client: ProxySQL's
 		// own PostgreSQL port, unless proxysql-port says otherwise (5432)
 		port = "6133"
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "ProxySQL %s: proxysql-port 3306 is the MySQL default, PostgreSQL clients use 6133", proxyHost)
 	}
 	prx.ReadWritePort, _ = strconv.Atoi(port)
 	prx.User = cluster.Conf.ProxysqlUser

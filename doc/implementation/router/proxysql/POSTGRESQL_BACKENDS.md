@@ -20,9 +20,11 @@ cluster could not reach its backends.
   user sync, password rotation and monitoring are the existing functions of
   `cluster/prx_proxysql.go`; the flavour only changes the object names.
 - Only the functions a PostgreSQL cluster reaches are flavoured. The
-  ProxyJanitor (`cluster/prx_janitor.go`), the Spider shard path
-  (`AddShardServer`, `AddFastRouting`, `AddQueryRules`) and unused helpers
-  (`GetHostsRuntime`, `Truncate`) keep the MySQL objects.
+  ProxyJanitor (`cluster/prx_janitor.go`, `GetHostgroupFromJanitorDomain`),
+  the Spider shard path (`AddShardServer`, `AddFastRouting`, `AddQueryRules`)
+  and unused helpers (`GetHostsRuntime`, `Truncate`) keep the MySQL objects.
+  So `GetQueryRulesRuntime` is flavoured (every `Refresh` reads the rules) and
+  `AddQueryRules` is not (only the shard path writes rules).
 
 ## Driver flavour (`router/proxysql`)
 
@@ -58,7 +60,8 @@ PostgreSQL version, or a pg-stream/pg-logical topology. It is used by:
 
 - `ProxySQLProxy.Connect()`: sets `Flavor = FlavorPgSQL`.
 - `NewProxySQLProxy()`: a `proxysql-port` left at the MySQL default `3306`
-  becomes ProxySQL's PostgreSQL default `6133`; any other value (5432) is kept.
+  becomes ProxySQL's PostgreSQL default `6133`, with an INFO line in the
+  ProxySQL log module; any other value (5432) is kept.
 
 ## Users
 
