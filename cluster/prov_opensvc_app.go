@@ -672,9 +672,9 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	}
 
 	seq := 1
-	memberPool := cluster.engineMemberVolumePool(appcnf) // a replicated engine member: the local data pool (#1925)
+	memberPool := cluster.engineMemberVolumePool(appcnf) // a replicated engine member: its DRBD volumes on the local data pool (#1925)
 	for _, vol := range deployment.Storages.Volumes {
-		if memberPool != "" && vol.PoolName != memberPool {
+		if memberPool != "" && isFailoverPool(poolSet, vol.PoolName) && vol.PoolName != memberPool {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Volume %s of engine server %s: pool %s of the template replaced by the cluster's data pool %s (replicated member, own data, no failover move)", vol.Name, app.Name, vol.PoolName, memberPool)
 			v := *vol
 			v.PoolName = memberPool
@@ -690,6 +690,19 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	}
 
 	return basemap, nil
+}
+
+// isFailoverPool: a pool whose volumes move with an instance (drbd), by the capabilities
+// the orchestrator reports for it when known, else by its name.
+func isFailoverPool(poolSet map[string]opensvc.PoolInfo, name string) bool {
+	if p, ok := poolSet[name]; ok {
+		for _, c := range p.Capabilities {
+			if strings.EqualFold(c, "drbd") {
+				return true
+			}
+		}
+	}
+	return strings.Contains(strings.ToLower(name), "drbd")
 }
 
 // openSVCAppVolumeSection builds the OpenSVC "volume#N" section for a single

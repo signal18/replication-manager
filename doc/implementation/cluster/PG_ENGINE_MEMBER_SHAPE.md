@@ -17,12 +17,15 @@ s18-fr-4 crash of 2026-10-08.
 
 - `isReplicatedEngineMember(appcnf)`: an engine app of a replicated cluster.
 - `placeReplicatedEngineMember(appcnf)`, called by `AddSeededApp` before the engine is
-  registered as a server: when the template left the member on the whole agent list, it
-  gets ONE agent, round-robin over `prov-db-agents` by the engine servers already placed
-  (`engineMemberAgent`), the database servers' own placement rule. A member already on one
-  agent keeps it.
-- `engineMemberVolumePool(appcnf)`: at render (`OpenSVCGetAppVolumeSections`) the volume of
-  a replicated member goes to `prov-db-volume-data` whatever the template's pool; the
+  registered as a server: when the template left the member on several agents (or none),
+  it gets ONE: the least loaded of `prov-db-agents` (else the app agents), counting the
+  agents the other engine servers hold, ties by list order (`engineMemberAgent`). The
+  member being placed is excluded from the count (it is already in the app list at that
+  point), and a deletion does not drift the choice. A member already on one agent keeps it.
+  The app list is read as a snapshot under the cluster lock.
+- `engineMemberVolumePool(appcnf)`: at render (`OpenSVCGetAppVolumeSections`) a DRBD volume
+  of a replicated member (pool with the `drbd` capability, or named so) goes to
+  `prov-db-volume-data`; a volume on any other pool keeps the template's choice; the
   override is logged. An active-passive engine keeps the template's DRBD volume and every
   agent.
 
@@ -30,4 +33,6 @@ Templates stay plain defaults (`poolname = "drbd"`, every agent): the rule lives
 cluster, which alone knows its topology. Existing services keep their shape until
 reprovisioned.
 
-Test: `cluster/app_engine_member_test.go`.
+Tests: `cluster/app_engine_member_test.go` (placement in production order, least loaded
+after a deletion, pinned member, agent list fallbacks, active-passive untouched, DRBD pool
+detection).
