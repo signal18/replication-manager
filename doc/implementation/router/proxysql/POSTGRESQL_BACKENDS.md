@@ -56,12 +56,13 @@ as a placeholder the ProxySQL admin never substituted.
 
 `cluster.isPostgresCluster()` (`cluster/prx_postgres.go`) is true when a server
 of the cluster is `IsPostgreSQLHost()`: declared `host:port/database`, a
-PostgreSQL version, or a pg-stream/pg-logical topology. It is used by:
+PostgreSQL version, or a pg-stream/pg-logical topology.
+`ProxySQLProxy.Connect()` uses it to set `Flavor = FlavorPgSQL`.
 
-- `ProxySQLProxy.Connect()`: sets `Flavor = FlavorPgSQL`.
-- `NewProxySQLProxy()`: a `proxysql-port` left at the MySQL default `3306`
-  becomes ProxySQL's PostgreSQL default `6133`, with an INFO line in the
-  ProxySQL log module; any other value (5432) is kept.
+The client port stays `proxysql-port` for both flavours (default `3306`): the
+generated `proxysql.cnf` listens on it and replication-manager connects to it.
+On a PostgreSQL cluster the operator sets it, e.g. to ProxySQL's PostgreSQL
+default `6133`.
 
 ## Users
 

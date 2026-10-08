@@ -25,20 +25,13 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	prx.Host = proxyHost
 	prx.Type = config.ConstProxySqlproxy
 	prx.Port = conf.ProxysqlAdminPort
-	port := conf.ProxysqlPort
-	if port == "3306" && cluster.isPostgresCluster() {
-		// the MySQL default means nothing to a PostgreSQL client: ProxySQL's
-		// own PostgreSQL port, unless proxysql-port says otherwise (5432)
-		port = "6133"
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "ProxySQL %s: proxysql-port 3306 is the MySQL default, PostgreSQL clients use 6133", proxyHost)
-	}
-	prx.ReadWritePort, _ = strconv.Atoi(port)
+	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
 	prx.User = cluster.Conf.ProxysqlUser
 	prx.Pass = cluster.Conf.Secrets["proxysql-password"].Value
 	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
 	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
-	prx.WritePort, _ = strconv.Atoi(port)
-	prx.ReadPort, _ = strconv.Atoi(port)
+	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
+	prx.ReadPort, _ = strconv.Atoi(conf.ProxysqlPort)
 
 	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6, conf.ProxysqlJanitorWeights)
 

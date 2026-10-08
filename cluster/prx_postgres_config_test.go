@@ -1,32 +1,11 @@
 package cluster
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
 )
-
-// A PostgreSQL cluster's ProxySQL listens on ProxySQL's own PostgreSQL port
-// while proxysql-port keeps the MySQL default; any other port is kept.
-func TestProxySQLPortForPostgres(t *testing.T) {
-	for _, c := range []struct {
-		pg         bool
-		port, want string
-	}{
-		{true, "3306", "6133"},
-		{true, "5432", "5432"},
-		{false, "3306", "3306"},
-	} {
-		cl := &Cluster{Name: "pxtest", Conf: &config.Config{ProxysqlPort: c.port}}
-		cl.Servers = []*ServerMonitor{{ClusterGroup: cl, postgresDeclared: c.pg}}
-		prx := NewProxySQLProxy(0, cl, "proxysql1")
-		if got := strconv.Itoa(prx.WritePort); got != c.want || prx.ReadPort != prx.WritePort || prx.ReadWritePort != prx.WritePort {
-			t.Errorf("pg=%v proxysql-port=%s: ports %d/%d/%d, want %s", c.pg, c.port, prx.WritePort, prx.ReadPort, prx.ReadWritePort, c.want)
-		}
-	}
-}
 
 func TestPostgresProxyCredential(t *testing.T) {
 	for _, tc := range []struct {
