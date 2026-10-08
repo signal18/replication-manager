@@ -1056,6 +1056,8 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		return fmt.Errorf("app %s refused: %s", srv, reason)
 	}
 	appAdded = false
+	// A member of a replicated engine cluster belongs to one agent (#1925).
+	cluster.placeReplicatedEngineMember(appcnf)
 	// An engine (a database with a monitor) added this way is a CLUSTER change: it becomes
 	// a monitored server and its agents join prov-db-agents; the template only gives the
 	// deployment definition and the placement.

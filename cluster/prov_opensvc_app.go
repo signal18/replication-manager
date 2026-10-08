@@ -672,7 +672,14 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	}
 
 	seq := 1
+	memberPool := cluster.engineMemberVolumePool(appcnf) // a replicated engine member: the local data pool (#1925)
 	for _, vol := range deployment.Storages.Volumes {
+		if memberPool != "" && vol.PoolName != memberPool {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Volume %s of engine server %s: pool %s of the template replaced by the cluster's data pool %s (replicated member, own data, no failover move)", vol.Name, app.Name, vol.PoolName, memberPool)
+			v := *vol
+			v.PoolName = memberPool
+			vol = &v
+		}
 		poolInfo, ok := poolSet[vol.PoolName]
 		if !ok {
 			return nil, fmt.Errorf("OpenSVC pool %q not found in runtime pool list", vol.PoolName)
