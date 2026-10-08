@@ -5,6 +5,10 @@
 package dbhelper
 
 import (
+	"database/sql"
+	"errors"
+	"fmt"
+
 	"github.com/jmoiron/sqlx"
 	log "github.com/sirupsen/logrus"
 )
@@ -172,13 +176,23 @@ func ReleaseElected(db *sqlx.DB, secret string, cluster string, uid int) error {
 // freshness (the lease persists through the holder's peace-time silence),
 // plus whether the holder's row is FRESH (holder actively reporting).
 func GetElectedAny(db *sqlx.DB, secret string, cluster string) (uid int, fresh bool, found bool) {
+	uid, fresh, found, _ = GetElectedAnyErr(db, secret, cluster)
+	return uid, fresh, found
+}
+
+// GetElectedAnyErr is GetElectedAny with the store error: a lease the arbitrator could
+// not read is not an absent lease (#1929).
+func GetElectedAnyErr(db *sqlx.DB, secret string, cluster string) (uid int, fresh bool, found bool, err error) {
 	tbl := heartbeatTable(db)
 	stmt := "SELECT uid, CASE WHEN date > " + tenSecondsAgoExpr(db) + " THEN 1 ELSE 0 END FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' ORDER BY arbitration_date ASC, uid ASC LIMIT 1"
 	var freshInt int
 	if err := db.QueryRowx(stmt, cluster, secret).Scan(&uid, &freshInt); err != nil {
-		return 0, false, false
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, false, false, nil
+		}
+		return 0, false, false, fmt.Errorf("arbitration store: %w", err)
 	}
-	return uid, freshInt == 1, true
+	return uid, freshInt == 1, true, nil
 }
 
 // DemoteOtherElected clears every Elected row except the given winner's —
@@ -234,21 +248,35 @@ func ForgetArbitration(db *sqlx.DB, secret string) error {
 	return nil
 }
 
+// RequestArbitration keeps its boolean contract; a store error reads as a lost election.
+// RequestArbitrationErr tells a lost election from a store the arbitrator could not read:
+// the latter must never reach a replication-manager as a "looser" verdict (#1929).
 func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) bool {
+	won, _ := RequestArbitrationErr(db, uuid, secret, cluster, master, uid, hosts, failed)
+	return won
+}
+
+// RequestArbitrationErr runs the election transaction and returns the verdict, or the
+// store error when the transaction could not run.
+func RequestArbitrationErr(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) (bool, error) {
 	log.SetLevel(log.DebugLevel)
 	var count int
 	tx, err := db.Beginx()
 	if err != nil {
 		log.Error("(dbhelper.RequestArbitration) Error opening transaction: ", err)
-		return false
+		return false, fmt.Errorf("arbitration store: %w", err)
 	}
 	tbl := heartbeatTable(db)
 	lockSuffix := forUpdateSuffix(db)
 	// count the number of replication manager Elected that is not me for this cluster
 	stmt := "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status='E' AND uid<>? AND date > " + tenSecondsAgoExpr(db) + lockSuffix
 	err = tx.QueryRowx(stmt, cluster, secret, uid).Scan(&count)
+	if err != nil {
+		tx.Rollback()
+		return false, fmt.Errorf("arbitration store: %w", err)
+	}
 	// If none i can consider myself the elected replication-manager
-	if err == nil && count == 0 {
+	if count == 0 {
 		log.Info("No elected managers found for this cluster")
 		// A non elected replication-manager may see more nodes than me than in this case lose the election.
 		// FRESH rows only: a partitioned peer cannot reach the arbitrator, so its
@@ -259,7 +287,11 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 		// the count by going stale (10s), exactly like the Elected-row check above.
 		stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' and uid <> ?  and failed < ? AND date > " + tenSecondsAgoExpr(db) + lockSuffix
 		err = tx.QueryRowx(stmt, cluster, secret, uid, failed).Scan(&count)
-		if err == nil && count == 0 {
+		if err != nil {
+			tx.Rollback()
+			return false, fmt.Errorf("arbitration store: %w", err)
+		}
+		if count == 0 {
 			// Equal candidates: the LOWEST uid wins. The main repman carries the
 			// lower arbitration-external-unique-id and is the URL users face; the
 			// DR must only take over when the main stops reporting (its heartbeat
@@ -267,8 +299,12 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 			// main cannot block the DR forever.
 			stmt = "SELECT count(*) FROM " + tbl + " WHERE cluster=? AND secret=? AND status = 'U' AND uid < ? AND failed <= ? AND date > " + tenSecondsAgoExpr(db) + lockSuffix
 			err = tx.QueryRowx(stmt, cluster, secret, uid, failed).Scan(&count)
+			if err != nil {
+				tx.Rollback()
+				return false, fmt.Errorf("arbitration store: %w", err)
+			}
 		}
-		if err == nil && count == 0 {
+		if count == 0 {
 			log.Info("Node won election")
 			// stmt = "INSERT INTO heartbeat(secret,uuid,uid,master,date,arbitration_date,cluster, hosts, failed ) VALUES('" + secret + "','" + uuid + "'," + uid + ",'" + master + "', DATETIME('now'), DATETIME('now'),'" + cluster + "'," + hosts + "," + failed + ") ON DUPLICATE KEY UPDATE arbitration_date=DATETIME('now'),date=DATETIME('now'),master='" + master + "',status='E', uuid='" + uuid + "',hosts=" + hosts + ",failed=" + failed
 			now := nowExpr(db)
@@ -277,21 +313,21 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 			if err != nil {
 				log.Error("(dbhelper.RequestArbitration) Error executing transaction: ", err)
 				tx.Rollback()
-				return false
+				return false, fmt.Errorf("arbitration store: %w", err)
 			}
 			err = tx.Commit()
 			if err != nil {
 				log.Error("(dbhelper.RequestArbitration) Error committing transaction: ", err)
 				tx.Rollback()
-				return false
+				return false, fmt.Errorf("arbitration store: %w", err)
 			}
-			return true
+			return true, nil
 		}
-		tx.Commit()
-		return false
+		tx.Rollback()
+		return false, nil
 	}
-	tx.Commit()
-	return false
+	tx.Rollback()
+	return false, nil
 }
 
 func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {

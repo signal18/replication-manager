@@ -381,6 +381,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "arbitration-read-timeout":
 		v, _ = strconv.Atoi(value)
 		repman.Conf.ArbitrationReadTimout = v
+	case "arbitration-verdict-streak":
+		v, _ = strconv.Atoi(value)
+		if v < 1 {
+			return fmt.Errorf("arbitration-verdict-streak: %q is not a count of ticks (1 or more)", value)
+		}
+		repman.Conf.ArbitrationVerdictStreak = v
 	case "git-acces-token":
 		repman.Conf.GitAccesToken = value
 	case "git-monitoring-ticker":

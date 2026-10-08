@@ -383,8 +383,12 @@ func (cl *Cluster) arbitratorElection() error {
 	if err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Could not receive http response from arbitration: %s", err)
 		cl.IsFailedArbitrator = true
-		// Real arbitrator loss during split brain: can't confirm authority → yield.
-		cl.arbitratorMinorityFailSafe("arbitrator unreachable")
+		cl.arbLoserStreak = 0
+		// Real arbitrator loss during split brain: can't confirm authority → yield,
+		// once the loss has lasted the verdict streak (#1929).
+		if cl.arbitrationUnreachableAccepted() {
+			cl.arbitratorMinorityFailSafe("arbitrator unreachable")
+		}
 		return err
 	}
 	defer resp.Body.Close()
@@ -393,16 +397,40 @@ func (cl *Cluster) arbitratorElection() error {
 	type response struct {
 		Arbitration string `json:"arbitration"`
 		Master      string `json:"master"`
+		Error       string `json:"error"`
 	}
 	var r response
+	if resp.StatusCode >= 500 {
+		// The arbitrator could not read its store (503 JSON), or the gateway has no
+		// instance left in rotation (its own HTML 503): no verdict was given, nothing
+		// moves (an instance cut from its store used to answer "looser", #1929).
+		_ = json.Unmarshal(body, &r)
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Arbitrator could not decide (HTTP %d): %s", resp.StatusCode, r.Error)
+		cl.IsFailedArbitrator = true
+		cl.arbLoserStreak = 0
+		if cl.arbitrationUnreachableAccepted() {
+			cl.arbitratorMinorityFailSafe("arbitrator without its store")
+		}
+		return fmt.Errorf("arbitrator could not decide: HTTP %d", resp.StatusCode)
+	}
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Arbitrator sent back invalid JSON, %s", body)
 		cl.IsFailedArbitrator = true
 		return err
 	}
+	if r.Arbitration == "error" {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Arbitrator could not decide: %s", r.Error)
+		cl.IsFailedArbitrator = true
+		cl.arbLoserStreak = 0
+		if cl.arbitrationUnreachableAccepted() {
+			cl.arbitratorMinorityFailSafe("arbitrator without its store")
+		}
+		return fmt.Errorf("arbitrator could not decide: %s", r.Error)
+	}
 
 	cl.IsFailedArbitrator = false
+	cl.arbUnreachableStreak = 0
 	// Per-tick RECEIVE trace: the arbitrator's verdict every tick (debug only),
 	// so a flapping winner/looser reply is visible without a status transition.
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlDbg, "arbitratorElection: reply arbitration=%s winner-master=%s (my status=%s)", r.Arbitration, r.Master, cl.Status)
@@ -410,12 +438,20 @@ func (cl *Cluster) arbitratorElection() error {
 	// outcome only on an actual status transition — the state machine keeps
 	// WARN0083/ERR00068 visible in between.
 	if r.Arbitration == "winner" {
+		cl.arbLoserStreak = 0
 		if cl.Status != ConstMonitorActif {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Arbitrator election won for cluster %s, switching to active", cl.GetName())
 		}
 		cl.SetActiveStatus(ConstMonitorActif)
 		cl.SetState("WARN0083", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0083"], ErrFrom: "ARB"})
 	} else {
+		if !cl.arbitrationLossAccepted() {
+			// One looser among winners moves nothing: the verdict must hold for the
+			// streak (two arbitrator instances disagreeing flipped every cluster on
+			// each turn, 2026-10-08, #1929).
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Arbitrator election lost for cluster %s (%d of %d consecutive): status kept", cl.GetName(), cl.arbLoserStreak, cl.arbitrationVerdictStreak())
+			return nil
+		}
 		if cl.Status != ConstMonitorStandby {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlInfo, "Arbitrator election lost for cluster %s, switching to standby", cl.GetName())
 		}
@@ -430,4 +466,35 @@ func (cl *Cluster) arbitratorElection() error {
 		}
 	}
 	return nil
+}
+
+// arbitrationVerdictStreak is how many consecutive identical arbitrator answers move a
+// cluster (arbitration-verdict-streak, 3 by default, 1 = every answer as before).
+func (cl *Cluster) arbitrationVerdictStreak() int {
+	if cl.Conf == nil || cl.Conf.ArbitrationVerdictStreak < 1 {
+		return 1
+	}
+	return cl.Conf.ArbitrationVerdictStreak
+}
+
+// arbitrationLossAccepted counts one looser verdict and tells whether the loss has held
+// for the streak. A winner resets the count.
+func (cl *Cluster) arbitrationLossAccepted() bool {
+	cl.arbLoserStreak++
+	if cl.arbLoserStreak >= cl.arbitrationVerdictStreak() {
+		cl.arbLoserStreak = cl.arbitrationVerdictStreak()
+		return true
+	}
+	return false
+}
+
+// arbitrationUnreachableAccepted counts one unreachable (or store-less) arbitrator answer
+// and tells whether the loss has held for the streak. A verdict resets the count.
+func (cl *Cluster) arbitrationUnreachableAccepted() bool {
+	cl.arbUnreachableStreak++
+	if cl.arbUnreachableStreak >= cl.arbitrationVerdictStreak() {
+		cl.arbUnreachableStreak = cl.arbitrationVerdictStreak()
+		return true
+	}
+	return false
 }

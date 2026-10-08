@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1355,10 +1356,44 @@ backend %s
     timeout connect 10s
     timeout server 5m
     timeout tunnel 1h
-    server-template srv %d %s:%s resolvers cluster check init-addr none
-`, frontendLines.String(), backend, numBE, opensvcDNS, destPort)
+%s    server-template srv %d %s:%s resolvers cluster check init-addr none
+`, frontendLines.String(), backend, routeHealthCheckLines(routes[0]), numBE, opensvcDNS, destPort)
 	return fragmentKey, haproxyfragment, nil
 }
+
+// routeHealthCheckLines turns the route's monitor, when it has a path, into the gateway's
+// own health check on the backend: an instance whose health path stops answering the
+// expected status leaves the rotation instead of answering in turn with the healthy ones
+// (the arbitrator instance cut from its store kept answering "looser" for 75 minutes
+// behind an L4 check, #1929). No monitor, or no path: the L4 check as before.
+func routeHealthCheckLines(r config.Route) string {
+	if r.Monitor == nil {
+		return ""
+	}
+	m := *r.Monitor
+	m.Normalize()
+	path := strings.TrimSpace(m.Path)
+	if path == "" || path == "/" {
+		return ""
+	}
+	if !healthCheckPathRe.MatchString(path) {
+		return "" // a path that could carry a directive never reaches the gateway config
+	}
+	status := strings.TrimSpace(m.ExpectStatus)
+	if status == "" {
+		status = "200"
+	}
+	if !healthCheckStatusRe.MatchString(status) {
+		return ""
+	}
+	return fmt.Sprintf("    option httpchk GET %s\n    http-check expect status %s\n", path, status)
+}
+
+// A health path is a plain URL path (no whitespace, no quotes), a status three digits.
+var (
+	healthCheckPathRe   = regexp.MustCompile(`^/[A-Za-z0-9._~%/?=&:-]*$`)
+	healthCheckStatusRe = regexp.MustCompile(`^[1-5][0-9]{2}$`)
+)
 
 // buildRouteFragment generates the HAProxy config fragment and its gateway
 // fragment key for the given route.  It does not perform DNS provisioning.
@@ -1402,8 +1437,8 @@ backend %s
     timeout server 5m
     timeout tunnel 1h
     default-server inter 5s fastinter 2s downinter 10s fall 3 rise 2
-    server-template srv %d %s:%s resolvers cluster check init-addr none
-`, frontend, route.CName, route.SourcePort, backend, backend, numBE, opensvcDNS, route.DestinationPort)
+%s    server-template srv %d %s:%s resolvers cluster check init-addr none
+`, frontend, route.CName, route.SourcePort, backend, backend, routeHealthCheckLines(route), numBE, opensvcDNS, route.DestinationPort)
 		}
 	default:
 		return "", "", fmt.Errorf("buildRouteFragment: unsupported mode %q — host routes must use buildGroupedHostRouteFragment", route.Mode)
