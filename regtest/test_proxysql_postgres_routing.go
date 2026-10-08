@@ -188,8 +188,20 @@ func proxysqlPgProbeTable(cl *cluster.Cluster) error {
 	}
 	// let the table reach the replicas (logical replication: DDL replicated
 	// as a row) before rows are written to it
-	time.Sleep(5 * time.Second)
+	if !proxysqlPgWaitFor(60*time.Second, func() bool { return proxysqlPgProbeTableOnReplicas(cl) }) {
+		return fmt.Errorf("table regtest_proxysql_probe did not reach every replica")
+	}
 	return nil
+}
+
+func proxysqlPgProbeTableOnReplicas(cl *cluster.Cluster) bool {
+	for _, s := range cl.GetSlaves() {
+		var found bool
+		if s.Conn == nil || s.Conn.Get(&found, "SELECT to_regclass('public.regtest_proxysql_probe') IS NOT NULL") != nil || !found {
+			return false
+		}
+	}
+	return true
 }
 
 // proxysqlPgRouting sends a write, a SELECT ... FOR UPDATE and a plain SELECT

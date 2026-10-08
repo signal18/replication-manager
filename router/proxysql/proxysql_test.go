@@ -93,6 +93,19 @@ func TestCopyReaderToWriterColumns(t *testing.T) {
 	}
 }
 
+// A quote in a clear PostgreSQL password stays inside the literal.
+func TestAddUserQuotes(t *testing.T) {
+	psql, mock := newMock(t, FlavorPgSQL)
+	expectExec(mock, "REPLACE INTO pgsql_users(username,password,default_hostgroup) VALUES('app','it''s'');--','0')")
+	expectExec(mock, "LOAD PGSQL USERS TO RUNTIME")
+	if err := psql.AddUser("app", "it's');--"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The query rules name the database in schemaname (MySQL) or database
 // (PostgreSQL); the rule read back keeps one field for both.
 func TestQueryRulesDatabaseColumn(t *testing.T) {

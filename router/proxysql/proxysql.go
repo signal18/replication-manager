@@ -370,7 +370,10 @@ func (psql *ProxySQL) GetHostsRuntime() (string, error) {
 }
 
 func (psql *ProxySQL) AddUser(User string, Password string) error {
-	_, err := psql.Connection.Exec("REPLACE INTO " + psql.table("users") + "(username,password,default_hostgroup) VALUES('" + User + "','" + Password + "','" + psql.WriterHG + "')")
+	// a PostgreSQL password is the clear one from the config: a quote in it
+	// must not end the literal
+	quote := strings.NewReplacer("'", "''").Replace
+	_, err := psql.Connection.Exec("REPLACE INTO " + psql.table("users") + "(username,password,default_hostgroup) VALUES('" + quote(User) + "','" + quote(Password) + "','" + psql.WriterHG + "')")
 	if err != nil {
 		return err
 	}
