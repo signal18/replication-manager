@@ -881,6 +881,7 @@ func (cluster *Cluster) OpenSVCGetAppSensorContainerSection(app *App, scriptKey 
 	if len(svccontainer) == 0 {
 		return svccontainer
 	}
+	svccontainer["start_timeout"] = app.GetStartTimeout() // the app's own timeout, like its pause and main containers
 	svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro " + openSVCServiceCgroupMount(cluster.Name, app.Name)
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL env/" + scriptKey
 	svccontainer["command"] = "-c 'printf \"%s\\n\" \"$" + scriptKey + "\" > /tmp/app_job; exec sh /tmp/app_job'"

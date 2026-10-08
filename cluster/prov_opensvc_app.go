@@ -866,7 +866,7 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 	svcdefault["orchestrate"] = "ha"
 	svcdefault["app"] = cluster.Conf.ProvCodeApp
 	svcdefault["priority"] = openSVCPriorityApp
-	if appcnf != nil && strings.TrimSpace(appcnf.ProvAppConfigurator) != "" {
+	if strings.TrimSpace(appcnf.ProvAppConfigurator) != "" {
 		svcdefault["priority"] = openSVCPriorityDatabase // an engine server is a database
 	}
 	return svcdefault

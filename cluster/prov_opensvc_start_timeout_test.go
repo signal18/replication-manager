@@ -88,4 +88,17 @@ func TestOpenSVCPauseContainerTimeoutAndPriority(t *testing.T) {
 	if got := sections["container#01"]["start_timeout"]; got != "4m" {
 		t.Fatalf("proxy template pause container start_timeout: want 4m, got %q", got)
 	}
+	cluster.Conf.MonitoringSystemResources = true
+	if got := cluster.OpenSVCGetSensorContainerSection("database", "db1")["start_timeout"]; got != "3m" {
+		t.Fatalf("database sensor start_timeout: want 3m, got %q", got)
+	}
+	if got := cluster.OpenSVCGetSensorContainerSection(string(KindProxy), "prx1")["start_timeout"]; got != "4m" {
+		t.Fatalf("proxy sensor start_timeout: want 4m, got %q", got)
+	}
+	app.AppConfig.ProvAppStartTimeout = "7m"
+	if got := cluster.OpenSVCGetAppSensorContainerSection(app, "k")["start_timeout"]; got != "7m" {
+		t.Fatalf("app sensor follows the app's own timeout: want 7m, got %q", got)
+	}
+	// the database template's container#01 is this same section with dbStartTimeout
+	// (GenerateDBTemplateMap needs a live orchestrator for its pools and is not unit-tested)
 }
