@@ -504,33 +504,41 @@ func clearContest(secret string, clusterName string, uid int) {
 }
 
 // decideArbitration applies the lease semantics documented at the call site.
-func decideArbitration(db *sqlx.DB, h *server.Heartbeat) bool {
+// decideArbitration returns the verdict, or an error when the store could not be read or
+// written: an instance whose database is gone must not answer "looser" (on 2026-10-08
+// one instance of three, cut from its store, answered looser while the others answered
+// winner, and the active repman flipped every cluster on each turn, #1929).
+func decideArbitration(db *sqlx.DB, h *server.Heartbeat) (bool, error) {
 	holder, fresh, found := dbhelper.GetElectedAny(db, h.Secret, h.Cluster)
 	if found {
 		if holder == h.UID {
 			clearContest(h.Secret, h.Cluster, h.UID)
-			return true
+			return true, nil
 		}
 		if fresh {
-			return false
+			return false, nil
 		}
 		// Silent holder: the challenge must persist a full contest window.
 		if !challengerPersisted(h.Secret, h.Cluster, h.UID) {
 			arbLogf("/arbitrator cluster=%s uid=%d contesting silent lease holder %d (window %s)", h.Cluster, h.UID, holder, contestWindow)
-			return false
+			return false, nil
 		}
-		if dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed) {
+		won, err := dbhelper.RequestArbitrationErr(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+		if err != nil {
+			return false, err
+		}
+		if won {
 			if err := dbhelper.DemoteOtherElected(db, h.Secret, h.Cluster, h.UID); err != nil {
 				log.Error("Error demoting previous lease holder: ", err)
 			}
 			arbLogf("/arbitrator cluster=%s uid=%d WON contest against silent holder %d — lease transferred", h.Cluster, h.UID, holder)
 			clearContest(h.Secret, h.Cluster, h.UID)
-			return true
+			return true, nil
 		}
-		return false
+		return false, nil
 	}
 	// No lease at all: plain election, freshness-filtered rules.
-	return dbhelper.RequestArbitration(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
+	return dbhelper.RequestArbitrationErr(db, h.UUID, h.Secret, h.Cluster, h.Master, h.UID, h.Hosts, h.Failed)
 }
 
 func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
@@ -577,7 +585,15 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	//      the challenger's side heals long before the window closes — the
 	//      coordination cannot be stolen by one lost poll.
 	//   4. No lease at all           -> plain election (freshness-filtered).
-	res := decideArbitration(db, &h)
+	res, decideErr := decideArbitration(db, &h)
+	if decideErr != nil {
+		// The store is gone: say so with an error, never with a verdict (#1929).
+		arbLogf("/arbitrator cluster=%s uid=%d store error: %s", h.Cluster, h.UID, decideErr)
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"arbitration": "error", "error": decideErr.Error()})
+		return
+	}
 	send.ElectedMaster = dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)
 	if res {
 		send.Arbitration = "winner"

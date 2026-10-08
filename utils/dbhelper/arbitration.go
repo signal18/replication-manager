@@ -5,6 +5,7 @@
 package dbhelper
 
 import (
+	"fmt"
 	"github.com/jmoiron/sqlx"
 	log "github.com/sirupsen/logrus"
 )
@@ -234,13 +235,23 @@ func ForgetArbitration(db *sqlx.DB, secret string) error {
 	return nil
 }
 
+// RequestArbitration keeps its boolean contract; a store error reads as a lost election.
+// RequestArbitrationErr tells a lost election from a store the arbitrator could not read:
+// the latter must never reach a replication-manager as a "looser" verdict (#1929).
 func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) bool {
+	won, _ := RequestArbitrationErr(db, uuid, secret, cluster, master, uid, hosts, failed)
+	return won
+}
+
+// RequestArbitrationErr runs the election transaction and returns the verdict, or the
+// store error when the transaction could not run.
+func RequestArbitrationErr(db *sqlx.DB, uuid string, secret string, cluster string, master string, uid int, hosts int, failed int) (bool, error) {
 	log.SetLevel(log.DebugLevel)
 	var count int
 	tx, err := db.Beginx()
 	if err != nil {
 		log.Error("(dbhelper.RequestArbitration) Error opening transaction: ", err)
-		return false
+		return false, fmt.Errorf("arbitration store: %w", err)
 	}
 	tbl := heartbeatTable(db)
 	lockSuffix := forUpdateSuffix(db)
@@ -277,21 +288,21 @@ func RequestArbitration(db *sqlx.DB, uuid string, secret string, cluster string,
 			if err != nil {
 				log.Error("(dbhelper.RequestArbitration) Error executing transaction: ", err)
 				tx.Rollback()
-				return false
+				return false, fmt.Errorf("arbitration store: %w", err)
 			}
 			err = tx.Commit()
 			if err != nil {
 				log.Error("(dbhelper.RequestArbitration) Error committing transaction: ", err)
 				tx.Rollback()
-				return false
+				return false, fmt.Errorf("arbitration store: %w", err)
 			}
-			return true
+			return true, nil
 		}
 		tx.Commit()
-		return false
+		return false, nil
 	}
 	tx.Commit()
-	return false
+	return false, nil
 }
 
 func GetArbitrationMaster(db *sqlx.DB, secret string, cluster string) string {

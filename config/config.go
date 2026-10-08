@@ -568,6 +568,7 @@ type Config struct {
 	ArbitratorURICheckURL                    string                       `mapstructure:"arbitrator-uri-check-url" toml:"arbitrator-uri-check-url" json:"arbitratorUriCheckUrl"`
 	ArbitratorConnectTimeout                 int                          `mapstructure:"arbitrator-connect-timeout" toml:"arbitrator-connect-timeout" json:"arbitratorConnectTimeout"`
 	ArbitrationReadTimout                    int                          `scope:"server" mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
+	ArbitrationVerdictStreak                 int                          `mapstructure:"arbitration-verdict-streak" toml:"arbitration-verdict-streak" json:"arbitrationVerdictStreak"`
 	SwitchoverCopyOldLeaderGtid              bool                         `toml:"-" json:"-"` //suspicious code
 	Test                                     bool                         `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                        bool                         `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`

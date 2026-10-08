@@ -104,6 +104,8 @@ type Cluster struct {
 
 	injectTrafficTableReady       map[string]bool                `json:"-"` // dml marker schema created once per proxy target
 	IsFailedArbitrator            bool                           `json:"isFailedArbitrator" groups:"web"`
+	arbLoserStreak                int                            // consecutive looser verdicts, see arbitrationLossAccepted (#1929)
+	arbUnreachableStreak          int                            // consecutive unreachable arbitrator answers (#1929)
 	IsLostMajority                bool                           `json:"isLostMajority" groups:"web"`
 	IsDown                        bool                           `json:"isDown" groups:"web"`
 	IsClusterDown                 bool                           `json:"isClusterDown" groups:"web"`
