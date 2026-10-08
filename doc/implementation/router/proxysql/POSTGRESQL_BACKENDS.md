@@ -159,13 +159,14 @@ SHUNNED in the readers until it rejoins.
 - `cluster/configurator/configurator_proxysql_pgsql_test.go`: the embedded
   moduleset renders the MySQL file without tag, the PostgreSQL file with
   `pgsql`, the query rules with `pgsqlrwsplit`.
-- `cluster/prx_postgres_config_test.go`: port default, a Failed reader is not
-  available.
+- `cluster/prx_postgres_config_test.go`: PostgreSQL proxy credential selection
+  and a Failed reader is not available.
 - `regtest/test_proxysql_postgres_routing.go`: explicit real-cluster test of
-  placement and routing through port 6133 before and after two switchovers. It
-  creates its UUID-keyed probe table before the first switchover so the test
-  remains about ProxySQL; logical-replication DDL and sequence alignment are
-  tracked separately in #1921 and #1922. Run it by name:
+  placement and routing before and after two switchovers. Its cluster
+  configuration must set `proxysql-port = 6133`; the test uses that configured
+  proxy port. It creates its UUID-keyed probe table before the first
+  switchover so the test remains about ProxySQL; logical-replication DDL and
+  sequence alignment are tracked separately in #1921 and #1922. Run it by name:
   `/api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting`.
 - Manual, ProxySQL 3.0.11: local Docker (PostgreSQL 16 pg-logical) and OpenSVC
   lab (PostgreSQL 17 pg-stream, pg-logical, active-passive): placement,
