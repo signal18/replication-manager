@@ -2099,6 +2099,42 @@ func (cluster *Cluster) SetProvDbDiskFS(value string) error {
 	return nil
 }
 
+// containerStartTimeout validates a container start timeout setting: a positive duration
+// (2m, 90s). The orchestrator's default is 5s, too short for a container whose image was
+// purged (#1924).
+func containerStartTimeout(name, value string) (string, error) {
+	v := strings.TrimSpace(value)
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return "", fmt.Errorf("%s: %q is not a duration (2m, 90s): %w", name, value, err)
+	}
+	if d <= 0 {
+		return "", fmt.Errorf("%s: %q is not a positive duration (2m, 90s)", name, value)
+	}
+	return v, nil
+}
+
+// SetProvDbStartTimeout: the start timeout written on the database containers and their
+// jobs sidecar; the template refresh carries it, the next start uses it (#1924).
+func (cluster *Cluster) SetProvDbStartTimeout(value string) error {
+	v, err := containerStartTimeout("prov-db-start-timeout", value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.ProvDbStartTimeout = v
+	return nil
+}
+
+// SetProvProxyStartTimeout: the same for the proxy containers (#1924).
+func (cluster *Cluster) SetProvProxyStartTimeout(value string) error {
+	v, err := containerStartTimeout("prov-proxy-start-timeout", value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.ProvProxyStartTimeout = v
+	return nil
+}
+
 func (cluster *Cluster) SetProvDbDiskPool(value string) error {
 	cluster.Conf.ProvDiskPool = value
 	cluster.SetDBReprovCookie()

@@ -777,6 +777,8 @@ type Config struct {
 	AppRefreshConcurrency                     int               `mapstructure:"app-refresh-concurrency" toml:"app-refresh-concurrency" json:"appRefreshConcurrency"`
 	ProvAppMem                                string            `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory" groups:"apps"`
 	ProvAppStartTimeout                       string            `mapstructure:"prov-app-start-timeout" toml:"prov-app-start-timeout" json:"provAppStartTimeout" groups:"apps"`
+	ProvDbStartTimeout                        string            `mapstructure:"prov-db-start-timeout" toml:"prov-db-start-timeout" json:"provDbStartTimeout"`
+	ProvProxyStartTimeout                     string            `mapstructure:"prov-proxy-start-timeout" toml:"prov-proxy-start-timeout" json:"provProxyStartTimeout"`
 	ProvAppDisk                               string            `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize" groups:"apps"`
 	ProvAppCpuCores                           string            `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
 	ProvAppAgents                             string            `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`

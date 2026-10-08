@@ -518,6 +518,12 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 		svcsection["container#prx"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
 	}
 
+	// Every proxy family's container#prx: the start timeout, the orchestrator default
+	// being 5s (#1924). Here, on the section map, so the v2 and v3 templates both carry it.
+	if c, ok := svcsection["container#prx"]; ok {
+		c["start_timeout"] = cluster.proxyStartTimeout()
+	}
+
 	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, pri)
 
 	return svcsection

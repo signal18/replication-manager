@@ -3926,6 +3926,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvDbDiskFS(value)
 	case "prov-db-disk-pool":
 		mycluster.SetProvDbDiskPool(value)
+	case "prov-db-start-timeout":
+		if err := mycluster.SetProvDbStartTimeout(value); err != nil {
+			return err
+		}
+	case "prov-proxy-start-timeout":
+		if err := mycluster.SetProvProxyStartTimeout(value); err != nil {
+			return err
+		}
 	case "prov-db-disk-device":
 		mycluster.SetProvDbDiskDevice(value)
 	case "prov-db-service-type":

@@ -2,6 +2,7 @@ import { VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 
 import Dropdown from '../../../components/Dropdown'
+import TextForm from '../../../components/TextForm'
 import TableType2 from '../../../components/TableType2'
 import parentStyles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
@@ -31,6 +32,30 @@ function OrchestratorDbVM({ selectedCluster, user }) {
   }, [selectedCluster?.name, selectedCluster?.config?.provOrchestrator])
 
   const dataObject = [
+    {
+      key: 'Database Start Timeout',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.provDbStartTimeout}
+          placeholder='2m'
+          confirmTitle="Database Start Timeout Change"
+          confirmBody='Start and image pull timeout of the database containers in the orchestrator (the orchestrator default is 5s, too short for an image pull after a purge). Change "prov-db-start-timeout" to: '
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-timeout', value: value }))}
+        />
+      )
+    },
+    {
+      key: 'Proxy Start Timeout',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.provProxyStartTimeout}
+          placeholder='2m'
+          confirmTitle="Proxy Start Timeout Change"
+          confirmBody='Start and image pull timeout of the proxy containers in the orchestrator. Change "prov-proxy-start-timeout" to: '
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-proxy-start-timeout', value: value }))}
+        />
+      )
+    },
     {
       key: 'Database VM',
       value: (
