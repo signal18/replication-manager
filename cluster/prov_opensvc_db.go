@@ -1459,20 +1459,23 @@ func (cluster *Cluster) provDiskSizeForOpenSVC() string {
 	return strconv.Itoa(gb) + "g"
 }
 
-// dbStartTimeout is the start and image pull timeout written on the database containers:
-// prov-db-start-timeout, 2m when unset. The orchestrator's own default is 5s, which an
-// image pull after a purge exceeds (#1924).
-func (cluster *Cluster) dbStartTimeout() string {
-	if v := strings.TrimSpace(cluster.Conf.ProvDbStartTimeout); v != "" {
+// startTimeoutOrDefault: the configured container start timeout, 2m when unset.
+func startTimeoutOrDefault(v string) string {
+	if v = strings.TrimSpace(v); v != "" {
 		return v
 	}
 	return "2m"
 }
 
+// dbStartTimeout is the start timeout written on the database containers and their jobs
+// sidecar: prov-db-start-timeout, 2m when unset. The orchestrator's own default is 5s,
+// which a container whose image was purged exceeds (#1924). The image pull has its own
+// pull_timeout in the orchestrator (2m by default).
+func (cluster *Cluster) dbStartTimeout() string {
+	return startTimeoutOrDefault(cluster.Conf.ProvDbStartTimeout)
+}
+
 // proxyStartTimeout is the same for the proxy containers: prov-proxy-start-timeout (#1924).
 func (cluster *Cluster) proxyStartTimeout() string {
-	if v := strings.TrimSpace(cluster.Conf.ProvProxyStartTimeout); v != "" {
-		return v
-	}
-	return "2m"
+	return startTimeoutOrDefault(cluster.Conf.ProvProxyStartTimeout)
 }

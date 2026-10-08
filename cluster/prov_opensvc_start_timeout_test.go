@@ -25,10 +25,29 @@ func TestOpenSVCContainerStartTimeout(t *testing.T) {
 	if got := cluster.proxyStartTimeout(); got != "90s" {
 		t.Fatalf("proxy timeout follows prov-proxy-start-timeout: want 90s, got %q", got)
 	}
-	if err := cluster.SetProvDbStartTimeout("soon"); err == nil {
-		t.Fatal("a non-duration must be refused")
+	for _, bad := range []string{"soon", "0", "0s", "-5m", ""} {
+		if err := cluster.SetProvDbStartTimeout(bad); err == nil {
+			t.Fatalf("%q must be refused: not a positive duration", bad)
+		}
 	}
 	if err := cluster.SetProvProxyStartTimeout(" 3m "); err != nil || cluster.Conf.ProvProxyStartTimeout != "3m" {
 		t.Fatalf("a duration is stored trimmed: %v %q", err, cluster.Conf.ProvProxyStartTimeout)
+	}
+}
+
+// The proxy template's container#prx carries the timeout for every proxy family that goes
+// through the section map (all of them: OpenSVCGetProxyTemplateV2 and V3 build on it).
+func TestOpenSVCProxyTemplateCarriesStartTimeout(t *testing.T) {
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+	cluster.Conf = &config.Config{ProvProxType: "docker", ProvType: "docker", ProvProxDiskType: "volume", ProvProxyStartTimeout: "3m"}
+	proxy := &HaproxyProxy{Proxy: Proxy{ClusterGroup: cluster}}
+	sections := cluster.OpenSVCGetProxyTemplateSectionMap("db1:3306", proxy)
+	prx, ok := sections["container#prx"]
+	if !ok {
+		t.Fatal("the proxy template must carry a container#prx section")
+	}
+	if got := prx["start_timeout"]; got != "3m" {
+		t.Fatalf("container#prx start_timeout: want 3m, got %q", got)
 	}
 }
