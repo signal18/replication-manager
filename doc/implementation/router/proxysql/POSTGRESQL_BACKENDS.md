@@ -63,7 +63,21 @@ PostgreSQL version, or a pg-stream/pg-logical topology. It is used by:
 ## Users
 
 `Refresh()` copies the users of the master into ProxySQL (`proxysql-bootstrap-users`).
-On PostgreSQL it loads the cluster credential only:
+On PostgreSQL it loads an explicit credential set (`postgresProxySQLUsers`)
+instead of the master's users:
+
+- the cluster credential (`db-servers-credential`), always;
+- the write heartbeat credential (`monitoring-write-heartbeat-credential`) when
+  it is configured: `postgresProxyConnection` connects with it (traffic marker,
+  proxy-serves-master check, `GetClusterProxyConn`), so ProxySQL must accept it.
+
+ProxySQL holds one password per username. Both credentials with the same
+username and password make one entry; the same username with different
+passwords keeps the heartbeat one and raises `WARN0233` (no secret in it):
+clients using the cluster credential cannot authenticate through that proxy
+until the two are reconciled.
+
+The master's users are not copied:
 
 - `dbhelper.GetUsers` cannot read PostgreSQL passwords (`pg_user` masks them,
   the grant carries `"unknow"`).

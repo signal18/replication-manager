@@ -612,8 +612,17 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			if psql.Flavor == proxysql.FlavorPgSQL {
 				// PostgreSQL does not expose passwords and ProxySQL needs the
 				// clear one to authenticate on the backend: load the cluster
-				// credential only.
-				users = map[string]*dbhelper.Grant{cluster.GetDbUser(): {User: cluster.GetDbUser(), Password: cluster.GetDbPass()}}
+				// credential and the write heartbeat one only.
+				pgUsers, conflict := cluster.postgresProxySQLUsers()
+				if conflict {
+					cluster.SetState("WARN0233", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0233"], proxy.Name, cluster.GetDbUser()), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				}
+				for _, u := range pgUsers {
+					if u.Password != "" {
+						uniUsers[u.User+":"+u.Password] = u
+					}
+				}
+				users = nil
 			}
 			for _, u := range users {
 				user, ok := uniUsers[u.User+":"+u.Password]
