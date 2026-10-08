@@ -816,10 +816,11 @@ func GetUserAuthConn(ctx context.Context, conn *sqlx.Conn, user, host string, my
 	return hash, true, nil
 }
 
-// GetProxySQLUsers retrieves users from ProxySQL
-func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, string, error) {
+// GetProxySQLUsers retrieves users from the ProxySQL users table
+// (mysql_users or pgsql_users)
+func GetProxySQLUsers(db *sqlx.DB, table string) (map[string]Grant, string, error) {
 	vars := make(map[string]Grant)
-	query := "SELECT username, password FROM mysql_users"
+	query := "SELECT username, password FROM " + table
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return nil, query, errors.New("Could not get proxySQL user list")

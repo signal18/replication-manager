@@ -26,6 +26,17 @@ func (cluster *Cluster) isPostgresMaster() bool {
 	return m != nil && m.IsPostgreSQLHost()
 }
 
+// isPostgresCluster: the cluster's servers are PostgreSQL, declared or
+// discovered, so its proxies are configured for PostgreSQL.
+func (cluster *Cluster) isPostgresCluster() bool {
+	for _, s := range cluster.Servers {
+		if s != nil && s.IsPostgreSQLHost() {
+			return true
+		}
+	}
+	return false
+}
+
 // postgresProxyConnection connects through a proxy's write port with the credential and
 // database the monitor uses on the master (lib/pq form).
 func (cluster *Cluster) postgresProxyConnection(host string, port int) (*sqlx.DB, error) {
