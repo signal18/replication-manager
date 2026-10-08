@@ -118,7 +118,7 @@ func (cluster *Cluster) OpenSVCStartProxyService(server DatabaseProxy) error {
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
-		err := svc.StartServiceV3(cluster.Name, server.GetServiceName())
+		err := cluster.openSVCStartOrRecoverV3(svc, server.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start proxy:  %s ", err)
 			return err

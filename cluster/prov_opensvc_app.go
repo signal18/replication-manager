@@ -151,7 +151,7 @@ func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
 func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 	svc := cluster.OpenSVCConnect()
 	if svc.IsV3() {
-		err := svc.StartServiceV3(cluster.Name, app.GetServiceName())
+		err := cluster.openSVCStartOrRecoverV3(svc, app.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start app:  %s ", err)
 			return err
@@ -180,6 +180,36 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 		return nil
 	}
 	return nil
+}
+
+// openSVCStartOrRecoverV3 starts a service by orchestration and, when the orchestrator
+// refuses because the failover object sits in warn state (an instance whose last start
+// failed: 409 "failover object is warn state"), recovers the way OpenSVC advises: abort
+// (clears the warn and any pending orchestration) then restart (atomic). A start from the
+// GUI on pg1.curepipe was refused for hours after a 5 s pause-container timeout at boot
+// (2026-10-08); clear alone does not lift the warn.
+func (cluster *Cluster) openSVCStartOrRecoverV3(svc opensvc.Collector, service string) error {
+	err := svc.StartServiceV3(cluster.Name, service)
+	if err == nil || !isWarnObjectRefusal(err) {
+		return err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Start of %s refused, object in warn state: abort then restart", service)
+	if abortErr := svc.AbortServiceV3(cluster.Name, service); abortErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Abort of %s before restart failed: %s (proceeding)", service, abortErr)
+	}
+	if restartErr := svc.RestartServiceV3(cluster.Name, service); restartErr != nil {
+		return fmt.Errorf("start refused (%w), restart after abort failed: %v", err, restartErr)
+	}
+	return nil
+}
+
+// isWarnObjectRefusal: the orchestrator's 409 on a start of an object in warn state.
+func isWarnObjectRefusal(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "warn state") || (strings.Contains(msg, "409") && strings.Contains(msg, "set instance monitor"))
 }
 
 // OpenSVCUpdateAppTemplate regenerates the service definition of an app and pushes it to
