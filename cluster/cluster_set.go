@@ -2099,6 +2099,27 @@ func (cluster *Cluster) SetProvDbDiskFS(value string) error {
 	return nil
 }
 
+// SetProvDbStartTimeout: the start and image pull timeout written on the database
+// containers (#1924); the template refresh carries it, the next start uses it.
+func (cluster *Cluster) SetProvDbStartTimeout(value string) error {
+	v := strings.TrimSpace(value)
+	if _, err := time.ParseDuration(v); err != nil {
+		return fmt.Errorf("prov-db-start-timeout: %q is not a duration (2m, 90s): %w", value, err)
+	}
+	cluster.Conf.ProvDbStartTimeout = v
+	return nil
+}
+
+// SetProvProxyStartTimeout: the same for the proxy containers (#1924).
+func (cluster *Cluster) SetProvProxyStartTimeout(value string) error {
+	v := strings.TrimSpace(value)
+	if _, err := time.ParseDuration(v); err != nil {
+		return fmt.Errorf("prov-proxy-start-timeout: %q is not a duration (2m, 90s): %w", value, err)
+	}
+	cluster.Conf.ProvProxyStartTimeout = v
+	return nil
+}
+
 func (cluster *Cluster) SetProvDbDiskPool(value string) error {
 	cluster.Conf.ProvDiskPool = value
 	cluster.SetDBReprovCookie()

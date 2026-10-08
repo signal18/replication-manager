@@ -645,6 +645,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["start_timeout"] = server.ClusterGroup.dbStartTimeout() // the orchestrator default is 5s (#1924)
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 
 		if server.ClusterGroup.Conf.ProvDBDockerTmpfsSize != "0" {
@@ -716,6 +717,7 @@ func (server *ServerMonitor) openSVCGetJobsContainerSection(xtrabackupImage stri
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["start_timeout"] = server.ClusterGroup.dbStartTimeout() // the orchestrator default is 5s (#1924)
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
 		if server.ClusterGroup.dbIdentityManaged() {
@@ -1455,4 +1457,22 @@ func (cluster *Cluster) provDiskSizeForOpenSVC() string {
 		gb = 1
 	}
 	return strconv.Itoa(gb) + "g"
+}
+
+// dbStartTimeout is the start and image pull timeout written on the database containers:
+// prov-db-start-timeout, 2m when unset. The orchestrator's own default is 5s, which an
+// image pull after a purge exceeds (#1924).
+func (cluster *Cluster) dbStartTimeout() string {
+	if v := strings.TrimSpace(cluster.Conf.ProvDbStartTimeout); v != "" {
+		return v
+	}
+	return "2m"
+}
+
+// proxyStartTimeout is the same for the proxy containers: prov-proxy-start-timeout (#1924).
+func (cluster *Cluster) proxyStartTimeout() string {
+	if v := strings.TrimSpace(cluster.Conf.ProvProxyStartTimeout); v != "" {
+		return v
+	}
+	return "2m"
 }

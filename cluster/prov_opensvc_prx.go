@@ -530,6 +530,9 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 	if err != nil {
 		return []byte(""), err
 	}
+	if c, ok := svcsection["container#prx"]; ok {
+		c["start_timeout"] = cluster.proxyStartTimeout() // the orchestrator default is 5s (#1924)
+	}
 	return svcsectionJson, nil
 }
 

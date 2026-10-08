@@ -1401,6 +1401,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4G", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppStartTimeout, "prov-app-start-timeout", "2m", "Start and image pull timeout of an app container in the orchestrator service definition (om3 start_timeout and pull_timeout, e.g. 2m, 15m): the default of every app, a template or an app may set its own for a heavy image")
+	flags.StringVar(&conf.ProvDbStartTimeout, "prov-db-start-timeout", "2m", "Start and image pull timeout of a database container (and its jobs sidecar) in the orchestrator; the orchestrator's own default is 5s, too short for an image pull after a purge")
+	flags.StringVar(&conf.ProvProxyStartTimeout, "prov-proxy-start-timeout", "2m", "Start and image pull timeout of a proxy container in the orchestrator; the orchestrator's own default is 5s, too short for an image pull after a purge")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "App container memory, value with unit e.g. 256M, 1G. Base for 1 credit in cloud18")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
 	flags.StringVar(&conf.ProvAppSizingMode, "prov-app-sizing-mode", "", "Cluster-level app sizing policy: 'unit' (App Unit credit-based) or 'manual' (direct resource edit). Empty means legacy mode.")
