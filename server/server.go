@@ -701,7 +701,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")
 	flags.StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	flags.BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
-	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", false, "Need JWT token to download config tar.gz")
+	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", true , "Need JWT token to download config tar.gz")
 	flags.BoolVar(&conf.APIAutologin, "api-autologin", false, "Enable unauthenticated auto-login token endpoint (trusted networks only)")
 	flags.StringVar(&conf.APIAutologinUser, "api-autologin-user", "admin", "Username to generate a token for when api-autologin is enabled")
 	flags.StringVar(&conf.APIDashboardUser, "api-dashboard-user", "", "Read-only user for the /dashboard public endpoint (empty = disabled)")
