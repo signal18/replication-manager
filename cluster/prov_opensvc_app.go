@@ -184,16 +184,21 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 
 // openSVCStartOrRecoverV3 starts a service by orchestration and, when the orchestrator
 // refuses because the failover object sits in warn state (an instance whose last start
-// failed: 409 "failover object is warn state"), recovers the way OpenSVC advises: abort
-// (clears the warn and any pending orchestration) then restart (atomic). A start from the
+// failed: 409 "failover object is warn state") or because an orchestration is already in
+// progress (a restart the daemon keeps retrying), recovers the way OpenSVC advises: abort
+// (clears the warn and the pending orchestration) then restart (atomic). A start from the
 // GUI on pg1.curepipe was refused for hours after a 5 s pause-container timeout at boot
 // (2026-10-08); clear alone does not lift the warn.
 func (cluster *Cluster) openSVCStartOrRecoverV3(svc opensvc.Collector, service string) error {
 	err := svc.StartServiceV3(cluster.Name, service)
-	if err == nil || !isWarnObjectRefusal(err) {
+	if err == nil || !(isWarnObjectRefusal(err) || isOrchestrationInProgress(err)) {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Start of %s refused, object in warn state: abort then restart", service)
+	// A warn-state object, or an orchestration the daemon keeps retrying on a start that
+	// fails every time (a "restarted" global expect stuck on a 5 s pause timeout kept
+	// mattermost2 and erpnext-backend refusing every action, 2026-10-08): abort it, then
+	// restart once the abort has settled.
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Start of %s refused (%s): abort then restart", service, strings.TrimSpace(err.Error()))
 	if abortErr := svc.AbortServiceV3(cluster.Name, service); abortErr != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Abort of %s before restart failed: %s (proceeding)", service, abortErr)
 	}
