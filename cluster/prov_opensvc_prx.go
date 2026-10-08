@@ -486,7 +486,7 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 		svcsection["volume#01"] = cluster.OpenSVCGetProxyVolumeDataSection()
 	}
 
-	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
+	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection(cluster.proxyStartTimeout())
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
 
 	// APU (Compute) sensor sidecar: proxies are stateless and consume Compute, so they
@@ -736,6 +736,7 @@ func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {
 		svcdefault["orchestrate"] = "ha"
 	}
 	svcdefault["app"] = cluster.Conf.ProvCodeApp
+	svcdefault["priority"] = openSVCPriorityProxy
 	if cluster.Conf.ProvProxType == "docker" {
 		if cluster.Conf.ProvDockerDaemonPrivate {
 			svcdefault["docker_daemon_private"] = "true"

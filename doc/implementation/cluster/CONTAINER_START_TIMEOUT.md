@@ -20,3 +20,19 @@ carried `prov-app-start-timeout` (2 m); database and proxy containers carried no
 
 Tests: `cluster/prov_opensvc_start_timeout_test.go` (defaults, overrides, trimming,
 refusal of non-positive values, the proxy section map).
+
+## Pause container, sensor, and the start priority (PR #1934)
+
+The pause container (`container#01`, the pod's network namespace) and the sensor sidecar are
+rendered with their kind's timeout too: om3's 5 s default bit on the pause container itself
+when s18-fr-5 restarted everything after the s18-fr-4 crash (pg1.curepipe, 2026-10-08).
+An app's sidecar takes the app's own `prov-app-start-timeout`, like its main container.
+
+Every service also carries `DEFAULT.priority`: databases 10 (an engine server rendered from
+an app template is a database), proxies 20, apps 30. The orchestrator uses it as the sort
+key when a booting node reaches `node.max_parallel`, so databases come up before the
+proxies routing to them and the apps connecting through the proxies; the cluster's system
+services (dns at 5) stay first. **The key is honoured only for an API identity holding the
+orchestrator's `prioritizer` grant and silently dropped otherwise**: after a template
+refresh, read `om <svc> config get --eval --kw DEFAULT.priority` once to confirm the grant
+(preprod's identity has it, verified 2026-10-08).
