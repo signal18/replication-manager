@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1375,12 +1376,24 @@ func routeHealthCheckLines(r config.Route) string {
 	if path == "" || path == "/" {
 		return ""
 	}
+	if !healthCheckPathRe.MatchString(path) {
+		return "" // a path that could carry a directive never reaches the gateway config
+	}
 	status := strings.TrimSpace(m.ExpectStatus)
 	if status == "" {
 		status = "200"
 	}
+	if !healthCheckStatusRe.MatchString(status) {
+		return ""
+	}
 	return fmt.Sprintf("    option httpchk GET %s\n    http-check expect status %s\n", path, status)
 }
+
+// A health path is a plain URL path (no whitespace, no quotes), a status three digits.
+var (
+	healthCheckPathRe   = regexp.MustCompile(`^/[A-Za-z0-9._~%/?=&:-]*$`)
+	healthCheckStatusRe = regexp.MustCompile(`^[1-5][0-9]{2}$`)
+)
 
 // buildRouteFragment generates the HAProxy config fragment and its gateway
 // fragment key for the given route.  It does not perform DNS provisioning.

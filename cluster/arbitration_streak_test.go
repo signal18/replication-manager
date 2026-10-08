@@ -53,6 +53,11 @@ func TestRouteHealthCheckLines(t *testing.T) {
 	if !strings.Contains(got, "GET /api/method/ping") || !strings.Contains(got, "expect status 204") {
 		t.Fatalf("explicit status: %q", got)
 	}
+	for _, bad := range []config.RouteMonitor{{Path: "/health\n    option foo"}, {Path: "/he alth"}, {Path: "/health", ExpectStatus: "200 or 1"}, {Path: "/health", ExpectStatus: "ok"}} {
+		if got := routeHealthCheckLines(config.Route{Monitor: &bad}); got != "" {
+			t.Fatalf("a path or status that could carry a directive never reaches the config: %+v -> %q", bad, got)
+		}
+	}
 	_, frag, err := buildGroupedHostRouteFragment([]config.Route{{Mode: "host", Protocol: "https", CName: "arb.example", DestinationPort: "10001", Monitor: &config.RouteMonitor{Path: "/health"}}}, "arbitrator.crm.svc.cloud18", 3)
 	if err != nil || !strings.Contains(frag, "option httpchk GET /health\n") || !strings.Contains(frag, "server-template srv 3") {
 		t.Fatalf("host fragment carries the check before the servers: %v %q", err, frag)

@@ -400,22 +400,33 @@ func (cl *Cluster) arbitratorElection() error {
 		Error       string `json:"error"`
 	}
 	var r response
-	err = json.Unmarshal(body, &r)
-	if err != nil {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Arbitrator sent back invalid JSON, %s", body)
-		cl.IsFailedArbitrator = true
-		return err
-	}
-	if resp.StatusCode >= 500 || r.Arbitration == "error" {
-		// The arbitrator could not read its store: no verdict was given, nothing moves
-		// (an instance cut from its store used to answer "looser", #1929).
+	if resp.StatusCode >= 500 {
+		// The arbitrator could not read its store (503 JSON), or the gateway has no
+		// instance left in rotation (its own HTML 503): no verdict was given, nothing
+		// moves (an instance cut from its store used to answer "looser", #1929).
+		_ = json.Unmarshal(body, &r)
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Arbitrator could not decide (HTTP %d): %s", resp.StatusCode, r.Error)
 		cl.IsFailedArbitrator = true
 		cl.arbLoserStreak = 0
 		if cl.arbitrationUnreachableAccepted() {
 			cl.arbitratorMinorityFailSafe("arbitrator without its store")
 		}
-		return fmt.Errorf("arbitrator could not decide: HTTP %d %s", resp.StatusCode, r.Error)
+		return fmt.Errorf("arbitrator could not decide: HTTP %d", resp.StatusCode)
+	}
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Arbitrator sent back invalid JSON, %s", body)
+		cl.IsFailedArbitrator = true
+		return err
+	}
+	if r.Arbitration == "error" {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModArbitration, config.LvlErr, "Arbitrator could not decide: %s", r.Error)
+		cl.IsFailedArbitrator = true
+		cl.arbLoserStreak = 0
+		if cl.arbitrationUnreachableAccepted() {
+			cl.arbitratorMinorityFailSafe("arbitrator without its store")
+		}
+		return fmt.Errorf("arbitrator could not decide: %s", r.Error)
 	}
 
 	cl.IsFailedArbitrator = false

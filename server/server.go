@@ -889,7 +889,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.DBServersLocality, "db-servers-locality", "127.0.0.1", "List database servers that are in same network locality")
 		flags.StringVar(&conf.ArbitrationFailedMasterScript, "arbitration-failed-master-script", "", "External script when a master lost arbitration during split brain")
 		flags.IntVar(&conf.ArbitrationReadTimout, "arbitration-read-timeout", 800, "Read timeout for arbotration response in millisec don't woveload monitoring ticker in second")
-		flags.IntVar(&conf.ArbitrationVerdictStreak, "arbitration-verdict-streak", 3, "Consecutive arbitrator answers (looser, or unreachable) before a cluster changes status or the minority fail-safe fires; 1 = act on every answer, as before")
+		flags.IntVar(&conf.ArbitrationVerdictStreak, "arbitration-verdict-streak", 3, "Consecutive arbitrator answers of one kind, in monitoring ticks, before a cluster changes status (looser) or the minority fail-safe fires (unreachable, or an arbitrator without its store); a winner resets the count; 1 = act on every answer, as before; the default of 3 delays a real loss by that many ticks in exchange for immunity to one bad answer")
 	}
 
 	flags.StringVar(&conf.SchedulerReceiverPorts, "scheduler-db-servers-receiver-ports", "4444", "Scheduler TCP port to send data to db node, if list port affection is modulo db nodes")

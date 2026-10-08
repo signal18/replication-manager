@@ -351,3 +351,32 @@ func TestWriteHeartbeat_MySQL_SQL(t *testing.T) {
 		t.Errorf("unmet expectations: %v", err)
 	}
 }
+
+// A store the election cannot read or write is an error, never a lost election; a lease
+// that is simply absent is not an error (#1929).
+func TestRequestArbitrationErrSurfacesStoreErrors(t *testing.T) {
+	db, err := sqlx.Connect("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("sqlite connect: %v", err)
+	}
+	if err := SetHeartbeatTable(db); err != nil {
+		t.Fatalf("heartbeat table: %v", err)
+	}
+	if _, _, found, err := GetElectedAnyErr(db, "s", "c"); err != nil || found {
+		t.Fatalf("no lease is not an error: found=%v err=%v", found, err)
+	}
+	won, err := RequestArbitrationErr(db, "uuid", "s", "c", "m", 1, 2, 0)
+	if err != nil || !won {
+		t.Fatalf("a lone reporter wins on a healthy store: won=%v err=%v", won, err)
+	}
+	db.Close()
+	if _, err := RequestArbitrationErr(db, "uuid", "s", "c", "m", 1, 2, 0); err == nil {
+		t.Fatal("a closed store must be an error")
+	}
+	if _, _, _, err := GetElectedAnyErr(db, "s", "c"); err == nil {
+		t.Fatal("a lease read on a closed store must be an error")
+	}
+	if RequestArbitration(db, "uuid", "s", "c", "m", 1, 2, 0) {
+		t.Fatal("the boolean contract reads a store error as lost")
+	}
+}

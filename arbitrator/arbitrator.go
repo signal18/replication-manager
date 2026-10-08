@@ -509,7 +509,10 @@ func clearContest(secret string, clusterName string, uid int) {
 // one instance of three, cut from its store, answered looser while the others answered
 // winner, and the active repman flipped every cluster on each turn, #1929).
 func decideArbitration(db *sqlx.DB, h *server.Heartbeat) (bool, error) {
-	holder, fresh, found := dbhelper.GetElectedAny(db, h.Secret, h.Cluster)
+	holder, fresh, found, err := dbhelper.GetElectedAnyErr(db, h.Secret, h.Cluster)
+	if err != nil {
+		return false, err
+	}
 	if found {
 		if holder == h.UID {
 			clearContest(h.Secret, h.Cluster, h.UID)
@@ -589,9 +592,11 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 	if decideErr != nil {
 		// The store is gone: say so with an error, never with a verdict (#1929).
 		arbLogf("/arbitrator cluster=%s uid=%d store error: %s", h.Cluster, h.UID, decideErr)
+		log.Errorf("arbitration store error for cluster %s uid %d: %s", h.Cluster, h.UID, decideErr)
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]string{"arbitration": "error", "error": decideErr.Error()})
+		// a generic message: driver errors carry hosts and DSN details
+		_ = json.NewEncoder(w).Encode(map[string]string{"arbitration": "error", "error": "arbitration store unavailable"})
 		return
 	}
 	send.ElectedMaster = dbhelper.GetArbitrationMaster(db, h.Secret, h.Cluster)

@@ -35,8 +35,9 @@ check stays.
 
 ## 3. Monitor: a verdict must hold for a streak
 
-`arbitration-verdict-streak` (default 3, 1 = act on every answer as before). In
-`arbitratorElection`:
+`arbitration-verdict-streak` (default 3, in monitoring ticks, 1 = act on every answer as
+before; server scope, Global settings > Arbitration, `arbitration-verdict-streak` on the
+global settings route). In `arbitratorElection`:
 
 - a **looser** verdict increments `arbLoserStreak`; the cluster goes standby only when the
   streak is reached (`arbitrationLossAccepted`), a winner resets it;
@@ -46,9 +47,19 @@ check stays.
   (`arbitrationUnreachableAccepted`); a verdict resets it. A 503 is never read as a
   loser verdict.
 
-A single answer, or two instances disagreeing, no longer moves a cluster.
+A single answer, or two instances disagreeing, no longer moves a cluster. The trade-off:
+a real loss and the fail-safe act that many ticks later than with 1.
 
-Tests: `cluster/arbitration_streak_test.go` (streaks, health check lines, host fragment).
+The HTTP status is read before the body: a gateway's own HTML 503 (no instance left in
+rotation) takes the unreachable path, never the invalid-JSON path. `GetElectedAnyErr`
+tells an absent lease (no rows) from a lease the store could not read; the arbitrator
+answers a generic "arbitration store unavailable", driver details stay in its log. The
+health check lines accept a plain URL path and a three-digit status only.
+
+Tests: `cluster/arbitration_streak_test.go` (streaks, health check lines and their
+validation, host fragment), `cluster/arbitration_election_test.go` (the election against a
+scripted arbitrator: 503 JSON, 503 HTML, error verdict, looser streak, winner reset, streak
+1), `utils/dbhelper/arbitration_test.go` (store errors surface, an absent lease is not one).
 
 Design note left open: the arbitrator's store sits in the crm cluster behind a proxy on a
 node whose loss it is meant to arbitrate.
