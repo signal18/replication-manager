@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/singleflight"
 	"hash"
 	"hash/crc64"
 	"io"
@@ -78,10 +79,12 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
-	selfServiceMu   sync.Mutex           // guards selfServiceSnap and its script verdicts
-	peerSessionMu   sync.Mutex                  // guards peerSessions
-	peerSessions    map[string]peerSessionEntry // user|infrastructure -> login on that infrastructure, see server_cloud18_infra.go
-	selfServiceSnap *selfServiceSnapshot // cached self-service status, see server_selfservice.go
+	selfServiceMu                sync.Mutex                         // guards selfServiceSnap and selfServiceVerdicts
+	selfServiceVerdicts          map[string]selfServiceVerdict      // identity -> enabled-script verdict within the cache TTL
+	selfServiceFlight            singleflight.Group                 // one snapshot computation, one script run per identity, at a time
+	peerSessionMu                sync.Mutex                         // guards peerSessions
+	peerSessions                 map[string]peerSessionEntry        // user|infrastructure -> login on that infrastructure, see server_cloud18_infra.go
+	selfServiceSnap              *selfServiceSnapshot               // cached self-service status, see server_selfservice.go
 	OpenSVC                      opensvc.Collector                  `json:"-"`
 	Version                      string                             `json:"version"`
 	Fullversion                  string                             `json:"fullVersion"`

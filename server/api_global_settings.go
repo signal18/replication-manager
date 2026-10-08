@@ -635,6 +635,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("cloud18-self-service-max-clusters-per-user must be a positive integer, got %q", value)
 		}
 		repman.Conf.Cloud18SelfServiceMaxClustersPerUser = n
+	case "cloud18-self-service-cache-seconds":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("cloud18-self-service-cache-seconds must be 0 (no cache) or a number of seconds, got %q", value)
+		}
+		repman.Conf.Cloud18SelfServiceCacheSeconds = n
 	case "resource-manager-ratio-dbu", "resource-manager-ratio-apu", "resource-manager-ratio-bku":
 		if _, err := cluster.ParseUnitRatios(value); err != nil {
 			return fmt.Errorf("%s: %w (format cores=1,mem=4g,disk=20g,iops=1000)", name, err)

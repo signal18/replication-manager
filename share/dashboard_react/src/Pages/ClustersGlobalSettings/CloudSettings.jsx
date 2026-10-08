@@ -693,6 +693,18 @@ Start create an account in https://gitlab.signal18.io
       )
     },
     {
+      key: 'Self-Service Cache Seconds',
+      help: h(`**Self-Service Cache Seconds**\n\nHow long the self-service status (capacity pool, templates, enabled-script verdict per identity) is served from one computation before it is recomputed. A burst of calls on the public status route, or on the MCP infrastructure listing, costs one computation per interval instead of one per call. 0 recomputes at every call.\n\nConfig: \`cloud18-self-service-cache-seconds\``, 'Self-Service Cache Seconds'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18SelfServiceCacheSeconds ?? '')}
+          type='number'
+          confirmTitle='Confirm self-service cache seconds to '
+          onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-self-service-cache-seconds', value: v }))}
+        />
+      )
+    },
+    {
       key: 'Self-Service Enabled Script',
       help: h(`**Self-Service Enabled Script**\n\nYour own gate on every self-service creation, run after the switch and the orchestrator check, before the per-user limit and the pool. Arguments: the identity and the orchestrator. Environment: \`REPMAN_IDENTITY\`, \`REPMAN_ORCHESTRATOR\`, \`REPMAN_SPONSORED_CLUSTERS\`, \`REPMAN_NEEDED_DBU\`, \`REPMAN_NEEDED_APU\`, \`REPMAN_FREE_DBU\`, \`REPMAN_FREE_APU\`, \`REPMAN_BORROW_DBU\`, \`REPMAN_BORROW_APU\`.\n\nA non-zero exit refuses the creation and the first line printed is the reason shown to the user; a timeout (30 s) refuses too. The script can only refuse more than the switch, never open what it closes. Empty: no script.\n\nConfig: \`cloud18-self-service-clusters-enabled-script\``, 'Self-Service Enabled Script'),
       value: (

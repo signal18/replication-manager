@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	repmanmcp "github.com/signal18/replication-manager/mcp"
@@ -432,7 +433,6 @@ func (repman *ReplicationManager) Cloud18CreateClusterToken(p *repmanmcp.Princip
 	}, nil
 }
 
-// Cloud18GetCluster reads a cluster on an infrastructure: state, servers, proxies, apps.
 // peerIdentity is who an infrastructure is asked to act for.
 type peerIdentity struct {
 	user     string
@@ -476,6 +476,24 @@ type peerSessionEntry struct {
 	at   time.Time
 }
 
+// loopbackAPI is this instance's own API over the loopback: the plain-HTTP monitor port
+// (http-port, 10001 by default), always served, whatever the TLS API port is bound to.
+func (repman *ReplicationManager) loopbackAPI() string {
+	port := strings.TrimSpace(repman.Conf.HttpPort)
+	if port == "" {
+		port = "10001"
+	}
+	return "http://127.0.0.1:" + port
+}
+
+// forgetPeerSession drops a cached login on an infrastructure (after a 401: password
+// changed, session revoked), so the next call logs in again.
+func (repman *ReplicationManager) forgetPeerSession(user, base string) {
+	repman.peerSessionMu.Lock()
+	defer repman.peerSessionMu.Unlock()
+	delete(repman.peerSessions, user+"|"+base)
+}
+
 // peerLoginAs authenticates on the infrastructure as the principal (peerIdentityFor) and
 // reuses the session within peerSessionTTL.
 func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra string) (*peerSession, string, error) {
@@ -489,7 +507,7 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 		if p == nil || p.Bearer == "" {
 			return nil, "", errors.New("no credential on this request to act as you on this instance")
 		}
-		return &peerSession{base: self, callBase: "http://localhost:" + repman.Conf.HttpPort, token: p.Bearer}, p.User, nil
+		return &peerSession{base: self, callBase: repman.loopbackAPI(), token: p.Bearer}, p.User, nil
 	}
 	if repman.PeerManager == nil || !repman.PeerManager.HasPeerURL(base) {
 		return nil, "", fmt.Errorf("%s is not a known Cloud18 infrastructure: pick one from list-cloud18-infrastructures", base)
@@ -538,13 +556,23 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 // infrastructure (served there from its snapshot) and keeps the fields an assistant
 // decides on.
 func selfServiceStatusOf(sess *peerSession) (map[string]any, error) {
-	body, err := sess.mustOK(http.MethodGet, "/api/cloud18/self-service", nil)
+	ss, _, err := selfServiceStatusOfTimeout(sess, peerCallTimeout)
+	return ss, err
+}
+
+// selfServiceStatusOfTimeout is selfServiceStatusOf with its own deadline, returning the
+// HTTP status so a 401 can be told from the rest.
+func selfServiceStatusOfTimeout(sess *peerSession, timeout time.Duration) (map[string]any, int, error) {
+	status, body, err := sess.callWithTimeout(http.MethodGet, "/api/cloud18/self-service", nil, timeout)
 	if err != nil {
-		return nil, fmt.Errorf("the infrastructure does not expose self-service (older release?): %w", err)
+		return nil, 0, err
+	}
+	if status < 200 || status > 299 {
+		return nil, status, fmt.Errorf("the infrastructure does not expose self-service (older release?): GET /api/cloud18/self-service answered HTTP %d: %s", status, strings.TrimSpace(string(body)))
 	}
 	var ss map[string]any
 	if err := json.Unmarshal(body, &ss); err != nil {
-		return nil, fmt.Errorf("self-service status of %s: %w", sess.base, err)
+		return nil, status, fmt.Errorf("self-service status of %s: %w", sess.base, err)
 	}
 	out := map[string]any{}
 	for _, k := range []string{"enabled", "reason", "orchestrator", "maxClustersPerUser", "used", "remaining", "defaultDbu", "defaultApu", "defaultBku", "neededDbu", "neededApu", "pool", "poolOk", "poolNote", "borrowed", "appTemplates"} {
@@ -552,45 +580,77 @@ func selfServiceStatusOf(sess *peerSession) (map[string]any, error) {
 			out[k] = v
 		}
 	}
-	return out, nil
+	return out, status, nil
 }
+
+// accessStatusTimeout bounds the self-service status read of one infrastructure in
+// Cloud18InfrastructuresAccess; accessParallel bounds how many infrastructures are asked
+// at once: a few dead peers must not make the tool wait minutes.
+const (
+	accessStatusTimeout = 10 * time.Second
+	accessParallel      = 4
+)
 
 // Cloud18InfrastructuresAccess logs the caller in, as themselves, on every infrastructure
 // of the marketplace and returns one MCP server entry per infrastructure carrying that
-// session, with the caller's self-service status there. Nothing is written on the
-// infrastructures: the session is the login the dashboard would get, it expires with
-// api-token-timeout. An infrastructure that refuses the caller is listed with the reason.
+// session, with the caller's self-service status there. No account and no token are
+// written on the infrastructures: the session is the login the dashboard would get, it
+// expires with api-token-timeout. An infrastructure that refuses the caller is listed
+// with the reason. Infrastructures are asked accessParallel at a time; a cached session
+// an infrastructure answers 401 to is dropped and the login done again, once.
 func (repman *ReplicationManager) Cloud18InfrastructuresAccess(p *repmanmcp.Principal) ([]repmanmcp.Cloud18InfrastructureAccess, error) {
 	list, err := repman.Cloud18Infrastructures()
 	if err != nil {
 		return nil, err
 	}
-	out := make([]repmanmcp.Cloud18InfrastructureAccess, 0, len(list))
-	for _, infra := range list {
-		entry := repmanmcp.Cloud18InfrastructureAccess{ApiPublicUrl: infra.ApiPublicUrl}
-		sess, as, err := repman.peerLoginAs(p, infra.ApiPublicUrl)
-		if err != nil {
-			entry.Error = err.Error()
-			out = append(out, entry)
-			continue
-		}
-		entry.Identity = as
-		entry.MCPServerConfig = map[string]any{
-			"type":    "sse",
-			"url":     sess.base + "/api/mcp/sse",
-			"headers": map[string]string{"Authorization": "Bearer " + sess.token},
-			"note":    "your session on this infrastructure, as " + as + ": a secret like a token, it expires with the login; create your cluster there with cloud18-create-cluster, then mint a durable token with cloud18-create-cluster-token",
-		}
-		if ss, err := selfServiceStatusOf(sess); err != nil {
-			entry.Error = err.Error()
-		} else {
-			entry.SelfService = ss
-		}
-		out = append(out, entry)
+	out := make([]repmanmcp.Cloud18InfrastructureAccess, len(list))
+	sem := make(chan struct{}, accessParallel)
+	var wg sync.WaitGroup
+	for i, infra := range list {
+		wg.Add(1)
+		go func(i int, url string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			out[i] = repman.cloud18InfrastructureAccessOne(p, url)
+		}(i, infra.ApiPublicUrl)
 	}
+	wg.Wait()
 	return out, nil
 }
 
+// cloud18InfrastructureAccessOne is one infrastructure's entry of Cloud18InfrastructuresAccess.
+func (repman *ReplicationManager) cloud18InfrastructureAccessOne(p *repmanmcp.Principal, url string) repmanmcp.Cloud18InfrastructureAccess {
+	entry := repmanmcp.Cloud18InfrastructureAccess{ApiPublicUrl: url}
+	sess, as, err := repman.peerLoginAs(p, url)
+	if err != nil {
+		entry.Error = err.Error()
+		return entry
+	}
+	ss, status, err := selfServiceStatusOfTimeout(sess, accessStatusTimeout)
+	if status == http.StatusUnauthorized {
+		// a cached session the infrastructure no longer accepts: log in again, once
+		repman.forgetPeerSession(as, sess.base)
+		if sess, as, err = repman.peerLoginAs(p, url); err == nil {
+			ss, _, err = selfServiceStatusOfTimeout(sess, accessStatusTimeout)
+		}
+	}
+	if err != nil {
+		entry.Error = err.Error()
+		return entry
+	}
+	entry.Identity = as
+	entry.MCPServerConfig = map[string]any{
+		"type":    "sse",
+		"url":     sess.base + "/api/mcp/sse",
+		"headers": map[string]string{"Authorization": "Bearer " + sess.token},
+		"note":    "your session on this infrastructure, as " + as + ": a secret like a token, it expires with the login; create your cluster there with cloud18-create-cluster, then mint a durable token with cloud18-create-cluster-token",
+	}
+	entry.SelfService = ss
+	return entry
+}
+
+// Cloud18GetCluster reads a cluster on an infrastructure: state, servers, proxies, apps.
 func (repman *ReplicationManager) Cloud18GetCluster(p *repmanmcp.Principal, infra, clusterName string) (map[string]any, error) {
 	clusterName = strings.TrimSpace(clusterName)
 	if clusterName == "" {

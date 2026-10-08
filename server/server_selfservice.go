@@ -109,17 +109,24 @@ type SelfServiceStatus struct {
 // enabled script is a process. A flood of GET /api/cloud18/self-service (every Cloud18 peer
 // reaches it, a brute force reaches it) therefore costs one computation per interval.
 type selfServiceSnapshot struct {
-	at          time.Time
-	capable     bool
-	reason      string
-	pool        InfraUnitPool
-	poolNote    string
-	poolErr     error
-	templates   []string
-	neededDBU   float64
-	neededAPU   float64
-	scriptSeen  map[string]time.Time // identity -> when its verdict was taken
-	scriptVerdt map[string]error     // identity -> enabled-script verdict (nil = allowed)
+	at        time.Time
+	capable   bool
+	reason    string
+	pool      InfraUnitPool
+	poolNote  string
+	poolErr   error
+	templates []string
+	neededDBU float64
+	neededAPU float64
+}
+
+// selfServiceVerdict is one identity's enabled-script verdict (nil = allowed) and when it
+// was taken; kept on the manager, not on the snapshot, so a snapshot refresh never loses
+// or re-runs it and the snapshot itself stays immutable once published.
+type selfServiceVerdict struct {
+	seen   time.Time
+	script string // the script the verdict came from: a changed setting is a new verdict
+	err    error
 }
 
 // selfServiceScriptCacheMax bounds the per-identity verdict map: beyond it the map is
@@ -134,62 +141,87 @@ func (repman *ReplicationManager) selfServiceCacheTTL() time.Duration {
 }
 
 // selfServiceSnapshotNow returns the current snapshot, recomputed when older than the TTL
-// (or at every call when the TTL is 0). One computation at a time: concurrent callers wait
-// for it instead of computing their own.
+// (or at every call when the TTL is 0). The computation runs outside selfServiceMu (it
+// reads the clusters and the resource manager) and once at a time: concurrent callers
+// wait on the same single flight instead of computing their own.
 func (repman *ReplicationManager) selfServiceSnapshotNow() *selfServiceSnapshot {
 	ttl := repman.selfServiceCacheTTL()
-	repman.selfServiceMu.Lock()
-	defer repman.selfServiceMu.Unlock()
-	if snap := repman.selfServiceSnap; snap != nil && ttl > 0 && time.Since(snap.at) < ttl {
+	fresh := func() *selfServiceSnapshot {
+		repman.selfServiceMu.Lock()
+		defer repman.selfServiceMu.Unlock()
+		if snap := repman.selfServiceSnap; snap != nil && ttl > 0 && time.Since(snap.at) < ttl {
+			return snap
+		}
+		return nil
+	}
+	if snap := fresh(); snap != nil {
 		return snap
 	}
-	snap := &selfServiceSnapshot{at: time.Now(), scriptSeen: map[string]time.Time{}, scriptVerdt: map[string]error{}}
-	snap.capable, snap.reason = repman.selfServiceCapable()
-	snap.pool = repman.infraUnitPool()
-	snap.templates = repman.ListAppTemplates(nil)
-	snap.neededDBU, snap.neededAPU = repman.selfServiceUnitsNeeded()
-	if snap.pool.Known {
-		snap.poolNote, snap.poolErr = repman.selfServicePoolCheck()
-	}
-	if ttl > 0 && repman.selfServiceSnap != nil {
-		// keep the script verdicts still inside their TTL across a snapshot refresh
-		for id, seen := range repman.selfServiceSnap.scriptSeen {
-			if time.Since(seen) < ttl {
-				snap.scriptSeen[id] = seen
-				snap.scriptVerdt[id] = repman.selfServiceSnap.scriptVerdt[id]
+	v, _, _ := repman.selfServiceFlight.Do("snapshot", func() (any, error) {
+		if ttl > 0 {
+			if snap := fresh(); snap != nil {
+				return snap, nil // computed by the flight we waited on
 			}
 		}
-	}
-	repman.selfServiceSnap = snap
-	return snap
+		snap := &selfServiceSnapshot{at: time.Now()}
+		snap.capable, snap.reason = repman.selfServiceCapable()
+		snap.pool = repman.infraUnitPool()
+		snap.templates = repman.ListAppTemplates(nil)
+		snap.neededDBU, snap.neededAPU = repman.selfServiceUnitsNeeded()
+		if snap.pool.Known {
+			snap.poolNote, snap.poolErr = repman.selfServicePoolCheck()
+		}
+		repman.selfServiceMu.Lock()
+		repman.selfServiceSnap = snap
+		repman.selfServiceMu.Unlock()
+		return snap, nil
+	})
+	return v.(*selfServiceSnapshot)
 }
 
 // selfServiceScriptVerdict runs the enabled script for an identity, or serves the verdict
-// taken within the TTL: the script is a process, it must not run per request.
-func (repman *ReplicationManager) selfServiceScriptVerdict(snap *selfServiceSnapshot, identity string, used int, needDbu, needApu float64) error {
+// taken within the TTL: the script is a process, it must not run per request. One run per
+// identity at a time (single flight). A verdict is an allow or a veto of the script; a
+// script that could not run at all (missing, not executable) refuses the creation but is
+// not cached, so a repaired script answers at the next call.
+func (repman *ReplicationManager) selfServiceScriptVerdict(identity string, used int, needDbu, needApu float64) error {
+	script := strings.TrimSpace(repman.Conf.Cloud18SelfServiceClustersEnabledScript)
+	if script == "" {
+		return nil // no gate: nothing to run, nothing to cache
+	}
 	ttl := repman.selfServiceCacheTTL()
 	if ttl > 0 {
 		repman.selfServiceMu.Lock()
-		if seen, ok := snap.scriptSeen[identity]; ok && time.Since(seen) < ttl {
-			v := snap.scriptVerdt[identity]
+		v, ok := repman.selfServiceVerdicts[identity]
+		repman.selfServiceMu.Unlock()
+		if ok && v.script == script && time.Since(v.seen) < ttl {
+			return v.err
+		}
+	}
+	res, _, _ := repman.selfServiceFlight.Do("script:"+identity, func() (any, error) {
+		err := repman.runSelfServiceEnabledScript(identity, used, needDbu, needApu)
+		var veto *selfServiceVeto
+		if ttl > 0 && (err == nil || errors.As(err, &veto)) {
+			repman.selfServiceMu.Lock()
+			if repman.selfServiceVerdicts == nil || len(repman.selfServiceVerdicts) >= selfServiceScriptCacheMax {
+				repman.selfServiceVerdicts = map[string]selfServiceVerdict{}
+			}
+			repman.selfServiceVerdicts[identity] = selfServiceVerdict{seen: time.Now(), script: script, err: err}
 			repman.selfServiceMu.Unlock()
-			return v
 		}
-		repman.selfServiceMu.Unlock()
+		return err, nil
+	})
+	if res == nil {
+		return nil
 	}
-	err := repman.runSelfServiceEnabledScript(identity, used, needDbu, needApu)
-	if ttl > 0 {
-		repman.selfServiceMu.Lock()
-		if len(snap.scriptSeen) >= selfServiceScriptCacheMax {
-			snap.scriptSeen = map[string]time.Time{}
-			snap.scriptVerdt = map[string]error{}
-		}
-		snap.scriptSeen[identity] = time.Now()
-		snap.scriptVerdt[identity] = err
-		repman.selfServiceMu.Unlock()
-	}
-	return err
+	return res.(error)
 }
+
+// selfServiceVeto is the enabled script's own refusal (non-zero exit, or no answer in
+// time): a verdict, cached within the TTL like an allow.
+type selfServiceVeto struct{ msg string }
+
+func (v *selfServiceVeto) Error() string { return v.msg }
 
 func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServiceStatus {
 	snap := repman.selfServiceSnapshotNow()
@@ -222,7 +254,7 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 		st.PoolNote = snap.poolNote
 	}
 	if st.Enabled {
-		if err := repman.selfServiceScriptVerdict(snap, identity, used, st.NeededDBU, st.NeededAPU); err != nil {
+		if err := repman.selfServiceScriptVerdict(identity, used, st.NeededDBU, st.NeededAPU); err != nil {
 			st.Enabled = false
 			st.Reason = err.Error()
 		}
@@ -268,7 +300,12 @@ func (repman *ReplicationManager) runSelfServiceEnabledScript(identity string, s
 		return nil
 	}
 	if ctx.Err() == context.DeadlineExceeded {
-		return fmt.Errorf("cloud18-self-service-clusters-enabled-script did not answer within %s: creation refused", selfServiceScriptTimeout)
+		return &selfServiceVeto{fmt.Sprintf("cloud18-self-service-clusters-enabled-script did not answer within %s: creation refused", selfServiceScriptTimeout)}
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) {
+		// the script did not run (missing, not executable): refused, but no verdict to cache
+		return fmt.Errorf("cloud18-self-service-clusters-enabled-script could not run, creation refused: %w", err)
 	}
 	reason := strings.TrimSpace(string(out))
 	if i := strings.IndexByte(reason, '\n'); i >= 0 {
@@ -277,7 +314,7 @@ func (repman *ReplicationManager) runSelfServiceEnabledScript(identity string, s
 	if reason == "" {
 		reason = err.Error()
 	}
-	return fmt.Errorf("cloud18-self-service-clusters-enabled-script refused the creation for %s: %s", identity, reason)
+	return &selfServiceVeto{fmt.Sprintf("cloud18-self-service-clusters-enabled-script refused the creation for %s: %s", identity, reason)}
 }
 
 // selfServiceScriptTimeout bounds the enabled-script: a hang is a veto, never a stuck login.
