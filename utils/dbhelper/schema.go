@@ -1348,10 +1348,14 @@ func CreateUser(db *sqlx.DB, myver *version.Version, user_host string, user_name
 
 	// CREATE USER takes no bound parameter on MariaDB/MySQL (Error 1064 near '?', #1871):
 	// the password is a quoted literal; the returned query masks it for the SQL log.
-	query := fmt.Sprintf("CREATE USER %s@%s IDENTIFIED BY %s",
+	// IF NOT EXISTS: the statement replicates, and a replica that already holds the
+	// account (an app re-added, a replica reseeded after the first creation) stopped its
+	// SQL thread on "Operation CREATE USER failed" (curepipe db1, forgejo1, 2026-10-08).
+	// MariaDB 10.1.3+ and MySQL 5.7+ accept it.
+	query := fmt.Sprintf("CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY %s",
 		QuoteMySQLIdentifier(user_name),
 		QuoteMySQLIdentifier(user_host), QuoteMySQLString(new_password))
-	logged := fmt.Sprintf("CREATE USER %s@%s IDENTIFIED BY '*****'", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
+	logged := fmt.Sprintf("CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY '*****'", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
 
 	_, err := db.Exec(query)
 	return logged, err
