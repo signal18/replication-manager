@@ -3854,12 +3854,19 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 			repman.arbPeerScheme.Store(peer, other)
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Peer %s answers on %s only: set arbitration-peer-hosts to %s%s", peer, other, other, peer)
 			h, err, url = h2, nil, other+peer+"/api/heartbeat"
+		} else {
+			// both schemes failed: keep the second one's error, which may be the
+			// real cause (a certificate the system does not trust, for instance)
+			err = fmt.Errorf("%w; over %s: %v", err, other, err2)
 		}
 	}
 	if err != nil {
 		reason := err.Error()
 		if explicit && errors.Is(err, errPeerSchemeMismatch) {
 			reason += " -- the peer API does not serve " + strings.SplitN(peer, "://", 2)[0] + ", fix the scheme in arbitration-peer-hosts"
+		}
+		if repman.peerHeartbeatFailures == nil {
+			repman.peerHeartbeatFailures = make(map[string]string)
 		}
 		repman.peerHeartbeatFailures[peer] = url + ": " + reason
 		if !bcksplitbrain {

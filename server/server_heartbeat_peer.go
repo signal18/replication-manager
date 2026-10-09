@@ -64,7 +64,10 @@ func fetchPeerHeartbeat(url string, timeout time.Duration) (Heartbeat, error) {
 }
 
 // isSchemeMismatchError reports a transport error caused by talking https to
-// a plain http server (Go names it) or TLS to a non-TLS port.
+// a plain http server (Go names it) or TLS to a non-TLS port. It matches the
+// error text of Go's net/http and crypto/tls (and fetchPeerHeartbeat matches the
+// 400 body of net/http's TLS server): a Go upgrade that rewords them silently
+// disables the fallback, which the tests of server_heartbeat_peer_test.go catch.
 func isSchemeMismatchError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "server gave HTTP response to HTTPS client") ||
@@ -103,19 +106,29 @@ func (repman *ReplicationManager) raisePeerHeartbeatStates(arbPeerList []string)
 	sameUID := repman.peerHeartbeatSameUID
 	repman.Unlock()
 
+	// One GWARN018 for every failing peer: a state key holds one description,
+	// so the reasons of several peers are joined instead of overwriting each other.
+	var reasons []string
 	for _, peer := range arbPeerList {
 		if reason, ok := failures[peer]; ok {
-			repman.SetState("GWARN018", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN018"], reason), ErrFrom: "ARB"})
+			reasons = append(reasons, reason)
+		}
+	}
+	if len(reasons) > 0 {
+		repman.SetState("GWARN018", state.State{ErrType: "WARNING", ErrKey: "GWARN018", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN018"], strings.Join(reasons, "; ")), ErrFrom: "ARB"})
+	}
+	for _, peer := range arbPeerList {
+		if _, ok := failures[peer]; ok {
 			continue
 		}
 		if strings.HasPrefix(peer, "https://") || strings.HasPrefix(peer, "http://") {
 			continue
 		}
 		if scheme := repman.peerHeartbeatScheme(peer); scheme != "http://" {
-			repman.SetState("GWARN019", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN019"], peer, scheme, scheme+peer), ErrFrom: "ARB"})
+			repman.SetState("GWARN019", state.State{ErrType: "WARNING", ErrKey: "GWARN019", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN019"], peer, scheme, scheme+peer), ErrFrom: "ARB"})
 		}
 	}
 	if sameUID {
-		repman.SetState("GWARN020", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN020"], repman.Conf.ArbitrationSasUniqueId), ErrFrom: "ARB"})
+		repman.SetState("GWARN020", state.State{ErrType: "WARNING", ErrKey: "GWARN020", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN020"], repman.Conf.ArbitrationSasUniqueId), ErrFrom: "ARB"})
 	}
 }
