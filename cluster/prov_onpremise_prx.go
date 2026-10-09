@@ -29,14 +29,17 @@ func (cluster *Cluster) OnPremiseProvisionBootsrapProxy(server DatabaseProxy, cl
 	envs += " REPLICATION_MANAGER_HOST_NAME=\"" + server.GetHost() + "\""
 	envs += " REPLICATION_MANAGER_HOST_PORT=\"" + server.GetPort() + "\""
 	envs += " REPLICATION_MANAGER_CLUSTER_NAME=\"" + cluster.Name + "\""
-	cmd := envs + "&& "
-	cmd += "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + server.GetType() + "/bootstrap | sh"
+	envs += " REPLICATION_MANAGER_URL_DR=\"" + cluster.bootstrapDRURLs() + "\""
+	// One script path: the rpm and package variants used to be appended to the
+	// debian command instead of replacing it.
+	path := "repository/debian/" + server.GetType()
 	if cluster.Configurator.HaveDBTag("rpm") {
-		cmd += "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + server.GetType() + "/bootstrap | sh"
+		path = "repository/redhat/" + server.GetType()
 	}
 	if cluster.Configurator.HaveDBTag("package") {
-		cmd += "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + server.GetType() + "/bootstrap | sh"
+		path = "package/linux/" + server.GetType()
 	}
+	cmd := envs + " && " + onPremiseBootstrapCommand(path) // main URL, then the DR ones (bootstrap_dr.go)
 
 	out, err := client.Cmd(cmd).SmartOutput()
 	if err != nil {
