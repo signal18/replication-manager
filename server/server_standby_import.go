@@ -40,10 +40,18 @@ func (repman *ReplicationManager) standbyImportDue(now time.Time) bool {
 	if c == nil || !c.Cloud18 || !c.Arbitration || !c.GitConfigSyncStandby || c.GitUrl == "" {
 		return false
 	}
-	if repman.Status != ConstMonitorStandby {
+	if !repman.isStandbyNow() {
 		return false
 	}
 	return now.Unix()-repman.standbyImport.last.Load() >= int64(standbyImportInterval/time.Second)
+}
+
+// isStandbyNow reads the instance status under the repman lock (it is written by
+// the heartbeat and arbitration paths).
+func (repman *ReplicationManager) isStandbyNow() bool {
+	repman.Lock()
+	defer repman.Unlock()
+	return repman.Status == ConstMonitorStandby
 }
 
 // maybeImportClustersOnStandby runs the missing-only, never-overwrite import of
@@ -59,6 +67,11 @@ func (repman *ReplicationManager) maybeImportClustersOnStandby(now time.Time) {
 	}
 	go func() {
 		defer repman.standbyImport.inFlight.Store(false)
+		// a takeover between the decision and the run makes this instance the
+		// active one: it then owns its clusters and imports nothing as a standby
+		if !repman.isStandbyNow() {
+			return
+		}
 		res, err := run()
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn, "Standby import of new clusters from the config repository failed: %s", err)
