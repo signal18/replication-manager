@@ -1217,7 +1217,18 @@ func (cluster *Cluster) OpenSVCGetVolumeDockerSection() map[string]string {
 	return svcvol
 }
 
+// ensureBootstrapOTP delivers the service's first one-time password before its definition
+// is generated for the orchestrator; a failure keeps the admin login in the definition.
+func (server *ServerMonitor) ensureBootstrapOTP() {
+	cl := server.ClusterGroup
+	if err := cl.EnsureBootstrapOTP(server.ServiceName, server.Datadir); err != nil {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Bootstrap one-time password of %s not delivered (%s): its init container keeps the admin login", server.ServiceName, err)
+	}
+}
+
 func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
+	server.ensureBootstrapOTP()
 
 	svcsection := server.GenerateDBTemplateMap()
 
@@ -1230,6 +1241,7 @@ func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 }
 
 func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
+	server.ensureBootstrapOTP()
 
 	svcsection := server.GenerateDBTemplateMap()
 	if !server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
@@ -1316,6 +1328,9 @@ func (server *ServerMonitor) GenerateDBTemplateMap() map[string]map[string]strin
 	}
 	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection(server.ClusterGroup.dbStartTimeout())
 	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetDBInitContainerSection(server.Port)
+	if server.ClusterGroup.BootstrapOTPDelivered(server.Datadir) {
+		applyBootstrapOTPEnv(svcsection["container#02"], server.ServiceName) // one-time password, not the admin login
+	}
 	// only a complete section: an empty one would leave a resource without a type in the service
 	if section := server.ClusterGroup.openSVCGetXtrabackupBundleContainerSection(xtrabackupImage); len(section) > 0 {
 		svcsection["container#03"] = section

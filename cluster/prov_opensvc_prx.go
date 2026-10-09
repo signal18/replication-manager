@@ -488,6 +488,9 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection(cluster.proxyStartTimeout())
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
+	if cluster.BootstrapOTPDelivered(pri.GetDatadir()) {
+		applyBootstrapOTPEnv(svcsection["container#02"], pri.GetServiceName()) // one-time password, not the admin login
+	}
 
 	// APU (Compute) sensor sidecar: proxies are stateless and consume Compute, so they
 	// report their cgroup usage to the ResourceManager like the DB jobs container does.
@@ -531,6 +534,10 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 }
 
 func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabaseProxy) ([]byte, error) {
+	if err := cluster.EnsureBootstrapOTP(pri.GetServiceName(), pri.GetDatadir()); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Bootstrap one-time password of %s not delivered (%s): its init container keeps the admin login", pri.GetServiceName(), err)
+	}
 	svcsection := cluster.OpenSVCGetProxyTemplateSectionMap(servers, pri)
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
@@ -541,6 +548,10 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 }
 
 func (cluster *Cluster) OpenSVCGetProxyTemplateV3(servers string, pri DatabaseProxy) ([]byte, error) {
+	if err := cluster.EnsureBootstrapOTP(pri.GetServiceName(), pri.GetDatadir()); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Bootstrap one-time password of %s not delivered (%s): its init container keeps the admin login", pri.GetServiceName(), err)
+	}
 	svcsection := cluster.OpenSVCGetProxyTemplateSectionMap(servers, pri)
 
 	cfg := ini.Empty()

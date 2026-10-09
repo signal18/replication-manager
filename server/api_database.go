@@ -3534,7 +3534,26 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if mycluster.Conf.APISecureConfig {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+
+		// The service's own init container presents its one-time password (no admin
+		// login, cluster/bootstrap_otp.go): accepted once, for this service only, then
+		// rotated. A wrong one is refused outright, never retried as another credential.
+		if otp := r.Header.Get(cluster.BootstrapOTPHeader); otp != "" {
+			ok := false
+			if node != nil {
+				ok = mycluster.ConsumeBootstrapOTP(node.ServiceName, node.Datadir, otp)
+			} else if proxy != nil {
+				ok = mycluster.ConsumeBootstrapOTP(proxy.GetServiceName(), proxy.GetDatadir(), otp)
+			}
+			if !ok {
+				repman.logSecurityEvent("bootstrap_otp_denied", "", r.RemoteAddr,
+					fmt.Sprintf("invalid bootstrap one-time password for %s:%s on cluster %s", vars["serverName"], vars["serverPort"], mycluster.Name))
+				http.Error(w, "No valid ACL", http.StatusForbidden)
+				return
+			}
+		} else if mycluster.Conf.APISecureConfig {
 			valid, _ := repman.IsValidClusterACL(r, mycluster)
 			if !valid {
 				// Orchestrator-driven bootstrap (e.g. the K8s init-container
@@ -3550,8 +3569,6 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			}
 		}
 
-		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
 			if node.IsIgnored() {
 				http.Error(w, "Server is ignored, skipping config regeneration", 500)

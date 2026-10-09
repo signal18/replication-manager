@@ -1,26 +1,42 @@
 #!/bin/sh
 help() {
 	echo "Required Environment:" >&2
-	echo "  REPLICATION_MANAGER_USER" >&2
-	echo "  REPLICATION_MANAGER_PASSWORD" >&2
+	echo "  REPLICATION_MANAGER_OTP (the service's one-time password)" >&2
+	echo "    or REPLICATION_MANAGER_USER and REPLICATION_MANAGER_PASSWORD (legacy login)" >&2
 	echo "  REPLICATION_MANAGER_URL" >&2
 	echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
 	echo "  REPLICATION_MANAGER_HOST_NAME" >&2
 	echo "  REPLICATION_MANAGER_HOST_PORT" >&2
 }
-[ -z "$REPLICATION_MANAGER_USER" ] && help && exit 1
-[ -z "$REPLICATION_MANAGER_PASSWORD" ] && help && exit 1
+if [ -z "$REPLICATION_MANAGER_OTP" ]; then
+	[ -z "$REPLICATION_MANAGER_USER" ] && help && exit 1
+	[ -z "$REPLICATION_MANAGER_PASSWORD" ] && help && exit 1
+fi
 [ -z "$REPLICATION_MANAGER_URL" ] && help && exit 1
 [ -z "$REPLICATION_MANAGER_CLUSTER_NAME" ] && help && exit 1
 [ -z "$REPLICATION_MANAGER_HOST_NAME" ] && help && exit 1
 [ -z "$REPLICATION_MANAGER_HOST_PORT" ] && help && exit 1
 
 GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
-AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
-TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_URL/api/login)
-get() {
-	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" "$@"
-}
+if [ -n "$REPLICATION_MANAGER_OTP" ]; then
+	# The service's one-time password: valid once, on its own config download only;
+	# replication-manager rotates it for the next start. No admin login in this container.
+	get() {
+		$GET --header Accept:application/json "$@"
+	}
+	getconfig() {
+		$GET --header Accept:application/json --header "X-Replication-Manager-Bootstrap-Otp: $REPLICATION_MANAGER_OTP" "$@"
+	}
+else
+	AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
+	TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_URL/api/login)
+	get() {
+		$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" "$@"
+	}
+	getconfig() {
+		get "$@"
+	}
+fi
 
 mkdir -p /bootstrap
 
@@ -33,7 +49,7 @@ mkdir -p /bootstrap
 
 get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/need-config-fetch > need-config-fetch
 if [ $? -eq 0 ]; then
-	get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config > config.tar.gz
+	getconfig $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config > config.tar.gz
 	if [ $? -eq 0 ]; then
 		# Clear only replication-manager/conf files; preserve /bootstrap/etc and custom.d. to avoid breaking custom configuration
 		if [ -d /bootstrap/etc/mysql/replication-manager.d ]; then

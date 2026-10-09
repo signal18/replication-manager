@@ -361,54 +361,56 @@ type Cluster struct {
 	// sending on errorChan mid-flight instead of returning the error) is left
 	// to the Phase-2 per-operation-channel refactor. See
 	// doc/implementation/cluster/ERRORCHAN_PROVISIONING.md.
-	provisioningMutex                   sync.Mutex                  `json:"-"`
-	dbIdentityLog                       dbIdentityLogState          `json:"-"`
-	xbCatalog                           xtrabackupCatalogCache      `json:"-"` // what this cluster read of the image catalog for the xtrabackup injection
-	testStopCluster                     bool                        `json:"-"`
-	testStartCluster                    bool                        `json:"-"`
-	lastmaster                          *ServerMonitor              `json:"-"`
-	benchmarkType                       string                      `json:"-"`
-	HaveDBTLSCert                       bool                        `json:"haveDBTLSCert" groups:"web"`
-	HaveDBTLSOldCert                    bool                        `json:"haveDBTLSOldCert" groups:"web"`
-	HaveAutoTLS                         bool                        `json:"haveAutoTLS" groups:"web"` // set when any server auto-detected require_secure_transport=ON via error 3159
-	tlsconf                             *tls.Config                 `json:"-"`
-	tlsoldconf                          *tls.Config                 `json:"-"`
-	tunnel                              *ssh.Client                 `json:"-"`
-	QueryRules                          map[uint32]config.QueryRule `json:"-"`
-	BackupMetaMap                       *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
-	snapshotMetadata                    *snapshotMetadataManager    `json:"-"`
-	reconcileSnapshotMetadataInProgress int32                       `json:"-"`
-	SLAHistory                          []state.Sla                 `json:"slaHistory" groups:"web"`
-	APIUsers                            map[string]APIUser          `json:"apiUsers" groups:"web"`
-	Schedule                            map[string]cron.Entry       `json:"-"`
-	scheduler                           *cron.Cron                  `json:"-"`
-	debugLineMap                        map[string]int              `json:"-"`
-	WaitingRejoin                       int                         `json:"waitingRejoin" groups:"web"`
-	WaitingSwitchover                   int                         `json:"waitingSwitchover" groups:"web"`
-	WaitingFailover                     int                         `json:"waitingFailover" groups:"web"`
-	Configurator                        configurator.Configurator   `json:"configurator" groups:"web"`
-	DiffVariables                       []VariableDiff              `json:"diffVariables" groups:"web"`
-	inInitNodes                         bool                        `json:"-"`
-	initConfigDone                      atomic.Bool                 `json:"-"`
-	inOptimizeTables                    bool                        `json:"inOptimizeTables" groups:"web"`
-	inAnalyzeTables                     bool                        `json:"inAnalyzeTables" groups:"web"`
-	inConnectVault                      bool                        `json:"-"`
-	CanInitNodes                        bool                        `json:"canInitNodes" groups:"web"`
-	errorInitNodes                      error                       `json:"-"`
-	CanConnectVault                     bool                        `json:"canConnectVault"`
-	errorConnectVault                   error                       `json:"-"`
-	SqlErrorLog                         *logsql.Logger              `json:"-"`
-	SqlGeneralLog                       *logsql.Logger              `json:"-"`
-	ResourceResizeLog                   *logsql.Logger              `json:"-"`
-	SstAvailablePorts                   map[string]string           `json:"sstAvailablePorts" groups:"web"`
-	InPhysicalBackup                    bool                        `json:"inPhysicalBackup" groups:"web"`
-	InLogicalBackup                     bool                        `json:"inLogicalBackup" groups:"web"`
-	LastConfigSaveToDisk                time.Time                   `json:"lastConfigSaveToDisk" groups:"web"` // when the datadir <cluster>.toml was last actually written (config persistence observability)
-	InBinlogBackup                      bool                        `json:"inBinlogBackup" groups:"web"`
-	InResticLogicalBackup               bool                        `json:"inResticLogicalBackup" groups:"web"`
-	InResticPhysicalBackup              bool                        `json:"inResticPhysicalBackup" groups:"web"`
-	InResticBackup                      bool                        `json:"inResticBackup" groups:"web"`
-	InRollingRestart                    bool                        `json:"inRollingRestart" groups:"web"`
+	provisioningMutex                   sync.Mutex                    `json:"-"`
+	bootstrapOTPMu                      sync.Mutex                    `json:"-"` // guards the bootstrap one-time passwords (bootstrap_otp.go)
+	bootstrapOTPPusher                  func(key, value string) error `json:"-"` // test hook: where a one-time password is delivered
+	dbIdentityLog                       dbIdentityLogState            `json:"-"`
+	xbCatalog                           xtrabackupCatalogCache        `json:"-"` // what this cluster read of the image catalog for the xtrabackup injection
+	testStopCluster                     bool                          `json:"-"`
+	testStartCluster                    bool                          `json:"-"`
+	lastmaster                          *ServerMonitor                `json:"-"`
+	benchmarkType                       string                        `json:"-"`
+	HaveDBTLSCert                       bool                          `json:"haveDBTLSCert" groups:"web"`
+	HaveDBTLSOldCert                    bool                          `json:"haveDBTLSOldCert" groups:"web"`
+	HaveAutoTLS                         bool                          `json:"haveAutoTLS" groups:"web"` // set when any server auto-detected require_secure_transport=ON via error 3159
+	tlsconf                             *tls.Config                   `json:"-"`
+	tlsoldconf                          *tls.Config                   `json:"-"`
+	tunnel                              *ssh.Client                   `json:"-"`
+	QueryRules                          map[uint32]config.QueryRule   `json:"-"`
+	BackupMetaMap                       *backupmgr.BackupMetaMap      `json:"backupList" groups:"web"`
+	snapshotMetadata                    *snapshotMetadataManager      `json:"-"`
+	reconcileSnapshotMetadataInProgress int32                         `json:"-"`
+	SLAHistory                          []state.Sla                   `json:"slaHistory" groups:"web"`
+	APIUsers                            map[string]APIUser            `json:"apiUsers" groups:"web"`
+	Schedule                            map[string]cron.Entry         `json:"-"`
+	scheduler                           *cron.Cron                    `json:"-"`
+	debugLineMap                        map[string]int                `json:"-"`
+	WaitingRejoin                       int                           `json:"waitingRejoin" groups:"web"`
+	WaitingSwitchover                   int                           `json:"waitingSwitchover" groups:"web"`
+	WaitingFailover                     int                           `json:"waitingFailover" groups:"web"`
+	Configurator                        configurator.Configurator     `json:"configurator" groups:"web"`
+	DiffVariables                       []VariableDiff                `json:"diffVariables" groups:"web"`
+	inInitNodes                         bool                          `json:"-"`
+	initConfigDone                      atomic.Bool                   `json:"-"`
+	inOptimizeTables                    bool                          `json:"inOptimizeTables" groups:"web"`
+	inAnalyzeTables                     bool                          `json:"inAnalyzeTables" groups:"web"`
+	inConnectVault                      bool                          `json:"-"`
+	CanInitNodes                        bool                          `json:"canInitNodes" groups:"web"`
+	errorInitNodes                      error                         `json:"-"`
+	CanConnectVault                     bool                          `json:"canConnectVault"`
+	errorConnectVault                   error                         `json:"-"`
+	SqlErrorLog                         *logsql.Logger                `json:"-"`
+	SqlGeneralLog                       *logsql.Logger                `json:"-"`
+	ResourceResizeLog                   *logsql.Logger                `json:"-"`
+	SstAvailablePorts                   map[string]string             `json:"sstAvailablePorts" groups:"web"`
+	InPhysicalBackup                    bool                          `json:"inPhysicalBackup" groups:"web"`
+	InLogicalBackup                     bool                          `json:"inLogicalBackup" groups:"web"`
+	LastConfigSaveToDisk                time.Time                     `json:"lastConfigSaveToDisk" groups:"web"` // when the datadir <cluster>.toml was last actually written (config persistence observability)
+	InBinlogBackup                      bool                          `json:"inBinlogBackup" groups:"web"`
+	InResticLogicalBackup               bool                          `json:"inResticLogicalBackup" groups:"web"`
+	InResticPhysicalBackup              bool                          `json:"inResticPhysicalBackup" groups:"web"`
+	InResticBackup                      bool                          `json:"inResticBackup" groups:"web"`
+	InRollingRestart                    bool                          `json:"inRollingRestart" groups:"web"`
 	// rollingReprovMutex serialises RollingReprov against itself. RollingReprov
 	// pilots the shared Conf.Autoseed / Conf.AutorejoinMysqldump flags for its
 	// duration and restores them via defer; two overlapping runs would corrupt
