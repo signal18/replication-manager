@@ -68,6 +68,9 @@ func parsePeerUnit(raw json.RawMessage, tag string) (int64, error) {
 		return 0, err
 	}
 	v, err := config.ParseUnitMeasurementToInt(tag, s, true)
+	if err == nil && v < 0 {
+		return 0, fmt.Errorf("negative size %q", s)
+	}
 	return int64(v), err
 }
 
@@ -77,7 +80,11 @@ func parsePeerCount(raw json.RawMessage) (int64, error) {
 	if err != nil || s == "" {
 		return 0, err
 	}
-	return strconv.ParseInt(s, 10, 64)
+	v, err := strconv.ParseInt(s, 10, 64)
+	if err == nil && v < 0 {
+		return 0, fmt.Errorf("negative count %q", s)
+	}
+	return v, err
 }
 
 // DecodePeerList decodes peer.json entry by entry: an entry that cannot be read is

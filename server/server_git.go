@@ -1185,7 +1185,9 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	}
 
 	if len(PeerList) > 0 {
-		repman.PeerManager.BatchUpdateClusters(PeerList, true)
+		// A file with a skipped entry removes nothing: the clusters known from the
+		// previous file stay until a fully readable one arrives (#1948 review).
+		repman.PeerManager.BatchUpdateClusters(PeerList, len(skipped) == 0)
 	}
 
 	// peer.json content changed: refresh health immediately, but through the

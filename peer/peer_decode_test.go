@@ -44,3 +44,20 @@ func TestDecodePeerListSkipsABadEntry(t *testing.T) {
 		t.Fatal("a non-list peer.json must still be an error")
 	}
 }
+
+func TestPeerClusterLowercaseUnitAndNegativeRefused(t *testing.T) {
+	list, skipped, err := DecodePeerList([]byte(`[
+		{"cluster-name":"lower","prov-db-memory":"4g","prov-db-disk-size":"20g"},
+		{"cluster-name":"negcores","prov-db-cpu-cores":"-1"},
+		{"cluster-name":"negmem","prov-db-memory":"-4G"}
+	]`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ProvDbMemory != 4096 || list[0].ProvDbDiskSize != 20 {
+		t.Fatalf("lowercase units: %+v", list)
+	}
+	if len(skipped) != 2 {
+		t.Fatalf("skipped=%v, want both negative entries", skipped)
+	}
+}
