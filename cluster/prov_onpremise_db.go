@@ -76,13 +76,14 @@ func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor)
 		cluster.errorChan <- err
 	}
 	dbtype := "mariadb"
-	cmd := "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + dbtype + "/bootstrap | sh"
+	path := "repository/debian/" + dbtype
 	if cluster.Configurator.HaveDBTag("rpm") {
-		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + dbtype + "/bootstrap | sh"
+		path = "repository/redhat/" + dbtype
 	}
 	if cluster.Configurator.HaveDBTag("package") {
-		cmd = "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/package/linux/" + dbtype + "/bootstrap | sh"
+		path = "package/linux/" + dbtype
 	}
+	cmd := onPremiseBootstrapCommand(path) // main URL, then the DR ones (bootstrap_dr.go)
 
 	out, err := client.Cmd(cmd).SmartOutput()
 	if err != nil {
@@ -241,6 +242,7 @@ func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *Server
 		  REPLICATION_MANAGER_USER
 			REPLICATION_MANAGER_PASSWORD
 			REPLICATION_MANAGER_URL
+			REPLICATION_MANAGER_URL_DR
 			REPLICATION_MANAGER_CLUSTER_NAME
 			REPLICATION_MANAGER_HOST_NAME
 			REPLICATION_MANAGER_HOST_USER

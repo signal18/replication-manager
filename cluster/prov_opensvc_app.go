@@ -659,7 +659,7 @@ func (cluster *Cluster) openSVCEnsureAppNamespaceEnv(svc opensvc.Collector, agen
 	if err := svc.CreateSecret(cluster.Name, "env", agent); err != nil && !isOpenSVCAlreadyExists(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not create the namespace env secret: %s", err)
 	}
-	url := "https://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.APIPort
+	url := cluster.Conf.MonitorAPIURL()
 	if err := svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_URL", url); err != nil && !isOpenSVCAlreadyExists(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
 	}

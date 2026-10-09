@@ -344,7 +344,7 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
 	}
-	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
+	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_URL", cluster.Conf.MonitorAPIURL())
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
 	}
@@ -423,7 +423,7 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 	if err != nil {
 		errs["REPLICATION_MANAGER_USER"] = err
 	}
-	err = svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
+	err = svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_URL", cluster.Conf.MonitorAPIURL())
 	if err != nil {
 		errs["REPLICATION_MANAGER_URL"] = err
 	}
