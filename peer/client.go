@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -75,7 +76,9 @@ func (pc *PeerClient) SetHeader(key, value string) {
 
 // DoRequest sends an HTTP request with the specified method, endpoint, and body
 func (pc *PeerClient) DoRequest(method, endpoint string, body io.Reader) (int, []byte, error) {
-	url := pc.baseURL + "/" + endpoint
+	// one slash between the base URL and the endpoint: callers pass "/api/..." and a
+	// recent peer does not clean "//api/..." (#1953)
+	url := strings.TrimRight(pc.baseURL, "/") + "/" + strings.TrimLeft(endpoint, "/")
 
 	req, err := http.NewRequest(method, url, body)
 	if err != nil {

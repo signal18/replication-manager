@@ -137,6 +137,9 @@ func (repman *ReplicationManager) httpserver() {
 	}
 
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if redispatchLeadingSlashes(router, w, r) {
+			return
+		}
 		// Check if the path starts with "/api"
 		if len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" {
 			// Return 404 for /api paths
