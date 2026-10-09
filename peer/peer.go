@@ -14,6 +14,10 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
+// PeerCluster is one cluster entry of peer.json. Decoding goes through
+// UnmarshalJSON (peer_decode.go), which reads the resource sizes with the config's
+// own unit parser ("4G" or a bare number): the ",string" tags below only describe
+// how they are written. Keep that decoder when touching these fields (#1948).
 type PeerCluster struct {
 	ClusterName                            string    `json:"cluster-name"`
 	ApiPublicUrl                           string    `json:"api-public-url"`

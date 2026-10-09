@@ -697,6 +697,10 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		repman.syncPluginDataFromPull(pullDir)
 	}
 
+	// A standby also imports the clusters created on the active since it
+	// started (#1946); background, throttled, missing-only.
+	repman.maybeImportClustersOnStandby(time.Now())
+
 	if repman.Conf.Cloud18 {
 		//then to check new file pulled in working dir
 		files, err := os.ReadDir(repman.Conf.WorkingDir)
@@ -1174,14 +1178,20 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	}
 
 	// Decode JSON
-	var PeerList []*peer.PeerCluster
-	if err := json.Unmarshal(content, &PeerList); err != nil {
+	// Entry by entry: one unreadable cluster entry is skipped, never the whole list.
+	PeerList, skipped, err := peer.DecodePeerList(content)
+	if err != nil {
 		repman.Logrus.Errorf("failed to decode peer JSON: %v", err)
 		return err
 	}
+	for _, s := range skipped {
+		repman.Logrus.Warnf("peer JSON entry skipped: %s", s)
+	}
 
 	if len(PeerList) > 0 {
-		repman.PeerManager.BatchUpdateClusters(PeerList, true)
+		// A file with a skipped entry removes nothing: the clusters known from the
+		// previous file stay until a fully readable one arrives (#1948 review).
+		repman.PeerManager.BatchUpdateClusters(PeerList, len(skipped) == 0)
 	}
 
 	// peer.json content changed: refresh health immediately, but through the
