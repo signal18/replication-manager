@@ -1178,14 +1178,20 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	}
 
 	// Decode JSON
-	var PeerList []*peer.PeerCluster
-	if err := json.Unmarshal(content, &PeerList); err != nil {
+	// Entry by entry: one unreadable cluster entry is skipped, never the whole list.
+	PeerList, skipped, err := peer.DecodePeerList(content)
+	if err != nil {
 		repman.Logrus.Errorf("failed to decode peer JSON: %v", err)
 		return err
 	}
+	for _, s := range skipped {
+		repman.Logrus.Warnf("peer JSON entry skipped: %s", s)
+	}
 
 	if len(PeerList) > 0 {
-		repman.PeerManager.BatchUpdateClusters(PeerList, true)
+		// A file with a skipped entry removes nothing: the clusters known from the
+		// previous file stay until a fully readable one arrives (#1948 review).
+		repman.PeerManager.BatchUpdateClusters(PeerList, len(skipped) == 0)
 	}
 
 	// peer.json content changed: refresh health immediately, but through the
