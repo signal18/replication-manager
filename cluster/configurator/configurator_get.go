@@ -137,7 +137,9 @@ func engineMemMB(usableMB, pct int64) int64 {
 }
 
 // innodbChunkMB is InnoDB's default innodb_buffer_pool_chunk_size: the buffer pool is
-// allocated and resized in these units.
+// allocated and resized in these units. It assumes the defaults: with another chunk
+// size or several buffer pool instances, InnoDB itself rounds the pool up to a multiple
+// of chunk size x instances.
 const innodbChunkMB int64 = 128
 
 // innodbBufferPoolMB is the buffer pool share of the usable memory rounded down to a

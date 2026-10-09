@@ -197,3 +197,22 @@ func TestThreadedBuffers(t *testing.T) {
 		})
 	}
 }
+
+// innodbBufferPoolMB directly: disabled engine, floor, and values around a 128 MB multiple (#1950).
+func TestInnodbBufferPoolMB(t *testing.T) {
+	for _, tt := range []struct {
+		usable, pct, want int64
+	}{
+		{16384, 0, 0},     // disabled engine stays off
+		{256, 45, 128},    // 115 -> under the floor -> 128
+		{2843, 10, 256},   // 284 -> 256
+		{100000, 1, 896},  // 1000 -> 896
+		{1279, 100, 1152}, // just below a multiple
+		{1280, 100, 1280}, // exactly a multiple
+		{1281, 100, 1280}, // just above
+	} {
+		if got := innodbBufferPoolMB(tt.usable, tt.pct); got != tt.want {
+			t.Errorf("innodbBufferPoolMB(%d, %d) = %d, want %d", tt.usable, tt.pct, got, tt.want)
+		}
+	}
+}
