@@ -362,6 +362,9 @@ var GlobalError = map[string]string{
 	"GWARN015": "Offline license invalid — plan falls back to free: %s",
 	"GWARN016": "Total contracted capacity reached the resource limit: %s",
 	"GWARN017": "Borrowed resources exceed the unreserved capacity, plans take precedence and the borrowed part must give way: %s",
+	"GWARN018": "Peer heartbeat failed: %s",
+	"GWARN019": "Arbitration peer %s answers on %s only: set arbitration-peer-hosts to %s",
+	"GWARN020": "The arbitration peer has the same arbitration-external-unique-id %d: when both instances are Standby neither claims Active, give each instance its own id",
 	// GINF: informational operating modes (state-as-tag), never counted as alerts
 	"GINF001": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",
 	"GINF002": "ReplicationManager has %d unprovisioned cluster(s): %s",

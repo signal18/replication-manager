@@ -126,6 +126,15 @@ type ReplicationManager struct {
 	// to simulate this node being isolated from its peer — the server-level
 	// leg of the split-brain simulator (cluster_splitbrain_simulator.go). Runtime state only.
 	sbHeartbeatFailUntil atomic.Int64 `json:"-"`
+	// arbPeerScheme remembers, per arbitration peer written without a scheme,
+	// the scheme that answered (see HeartbeatPeerSplitBrain).
+	arbPeerScheme sync.Map `json:"-"`
+	// peerHeartbeatFailures holds, per peer, why its last heartbeat failed
+	// (URL and error) for GWARN018; peerHeartbeatSameUID is set when a peer
+	// answers with our own arbitration-external-unique-id (GWARN020). Both are
+	// written under the repman lock during Heartbeat.
+	peerHeartbeatFailures map[string]string `json:"-"`
+	peerHeartbeatSameUID  bool              `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -3826,63 +3835,60 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		}
 	*/
 
-	scheme := "http://"
-	if strings.HasPrefix(peer, "https://") || strings.HasPrefix(peer, "http://") {
-		scheme = ""
+	// A peer written without a scheme is called over the scheme that last
+	// answered (http first). On a scheme mismatch -- an https-only API answers
+	// plain http with a 400, an http API answers https with a malformed
+	// response -- the other scheme is tried once and kept for this peer, and
+	// GWARN019 tells which value to write. An explicit scheme is never changed.
+	explicit := strings.HasPrefix(peer, "https://") || strings.HasPrefix(peer, "http://")
+	scheme := ""
+	if !explicit {
+		scheme = repman.peerHeartbeatScheme(peer)
 	}
 	url := scheme + peer + "/api/heartbeat"
-	client := &http.Client{
-		Timeout: timeout,
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Sending peer request to node %s", url)
+	h, err := fetchPeerHeartbeat(url, timeout)
+	if err != nil && !explicit && errors.Is(err, errPeerSchemeMismatch) {
+		other := otherHeartbeatScheme(scheme)
+		if h2, err2 := fetchPeerHeartbeat(other+peer+"/api/heartbeat", timeout); err2 == nil {
+			repman.arbPeerScheme.Store(peer, other)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Peer %s answers on %s only: set arbitration-peer-hosts to %s%s", peer, other, other, peer)
+			h, err, url = h2, nil, other+peer+"/api/heartbeat"
+		}
 	}
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Sending peer request to node %s", peer)
-	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
+		reason := err.Error()
+		if explicit && errors.Is(err, errPeerSchemeMismatch) {
+			reason += " -- the peer API does not serve " + strings.SplitN(peer, "://", 2)[0] + ", fix the scheme in arbitration-peer-hosts"
+		}
+		repman.peerHeartbeatFailures[peer] = url + ": " + reason
 		if !bcksplitbrain {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Error building HTTP request: %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Peer heartbeat %s failed: %s", url, reason)
 		}
 		return true
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		if !bcksplitbrain {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not reach peer node, might be down or incorrect address")
-		}
-		return true
+	delete(repman.peerHeartbeatFailures, peer)
+	if h.UID == repman.Conf.ArbitrationSasUniqueId {
+		repman.peerHeartbeatSameUID = true
 	}
-	defer resp.Body.Close()
-	monjson, err := io.ReadAll(resp.Body)
-	if err != nil {
-		if !bcksplitbrain {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not read body from peer response")
-		}
-		return true
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
+	// CALM authority: the peer answered, so we can talk and are NOT split.
+	// Resolve to the anti-peer status; the cluster reinforce loop in
+	// Heartbeat() then pushes repman.Status down onto the clusters.
+	//   - peer Active and we are Active  -> dual-active: yield to Standby
+	//     (the peer keeps driving; failback is never automatic).
+	//   - both Standby (e.g. a node just (re)joined after a restart) -> the
+	//     main (lowest arbitration uid) claims Active; the higher-uid peer,
+	//     seeing us Active next tick, stays Standby. This un-sticks the
+	//     both-Standby startup case WITHOUT declaring a split brain.
+	if h.Status == ConstMonitorActif && repman.Status == ConstMonitorActif {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: peer is Active and so are we — yielding to Standby")
+		repman.Status = ConstMonitorStandby
+	} else if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby && repman.Conf.ArbitrationSasUniqueId < h.UID {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: both Standby and we are the main (uid %d < peer %d) — claiming Active", repman.Conf.ArbitrationSasUniqueId, h.UID)
+		repman.Status = ConstMonitorActif
 	}
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer response: %s", monjson)
-	// Use json.Decode for reading streams of JSON data
-	var h Heartbeat
-	if err := json.Unmarshal(monjson, &h); err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not unmarshal JSON from peer response %s", err)
-		return true
-	} else {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
-		// CALM authority: the peer answered, so we can talk and are NOT split.
-		// Resolve to the anti-peer status; the cluster reinforce loop in
-		// Heartbeat() then pushes repman.Status down onto the clusters.
-		//   - peer Active and we are Active  -> dual-active: yield to Standby
-		//     (the peer keeps driving; failback is never automatic).
-		//   - both Standby (e.g. a node just (re)joined after a restart) -> the
-		//     main (lowest arbitration uid) claims Active; the higher-uid peer,
-		//     seeing us Active next tick, stays Standby. This un-sticks the
-		//     both-Standby startup case WITHOUT declaring a split brain.
-		if h.Status == ConstMonitorActif && repman.Status == ConstMonitorActif {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: peer is Active and so are we — yielding to Standby")
-			repman.Status = ConstMonitorStandby
-		} else if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby && repman.Conf.ArbitrationSasUniqueId < h.UID {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: both Standby and we are the main (uid %d < peer %d) — claiming Active", repman.Conf.ArbitrationSasUniqueId, h.UID)
-			repman.Status = ConstMonitorActif
-		}
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
-	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 
 	return false
 }
@@ -4133,12 +4139,19 @@ func (repman *ReplicationManager) Heartbeat() {
 			cl.SetState("VSPLIT0002", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0002", ErrDesc: config.ClusterError["VSPLIT0002"], ErrFrom: "TEST"})
 		}
 	} else {
+		repman.Lock()
+		if repman.peerHeartbeatFailures == nil {
+			repman.peerHeartbeatFailures = make(map[string]string)
+		}
+		repman.peerHeartbeatSameUID = false
+		repman.Unlock()
 		for _, arbPeer := range arbPeerList {
 			repman.Lock()
 			repman.SplitBrain = repman.HeartbeatPeerSplitBrain(arbPeer, bcksplitbrain)
 			repman.Unlock()
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on arbitration peer %s", repman.SplitBrain, arbPeer)
 		} //end check all arbitration peers
+		repman.raisePeerHeartbeatStates(arbPeerList)
 	}
 
 	if bcksplitbrain != repman.SplitBrain {
