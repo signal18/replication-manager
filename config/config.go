@@ -3688,6 +3688,13 @@ func (conf *Config) SwitchCloud18() {
 	conf.Cloud18 = !conf.Cloud18
 }
 
+// MonitorAPIURL is the URL bootstraps reach this replication-manager at: the
+// REPLICATION_MANAGER_URL written into namespaces and SSH environments, and the
+// apiUrl its heartbeat advertises to its active/standby peer (#1942).
+func (conf *Config) MonitorAPIURL() string {
+	return "https://" + conf.MonitorAddress + ":" + conf.APIPort
+}
+
 func (conf *Config) IsEligibleForArbitration() bool {
 	if conf.Cloud18GitUser == "" {
 		return false

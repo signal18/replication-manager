@@ -277,6 +277,10 @@ func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
 	if !svc.IsV3() {
 		return fmt.Errorf("the service definition update requires the OpenSVC v3 API")
 	}
+	// the refreshed definition carries the sensor sidecar, whose keys only the
+	// provisioning published: lapasse/phpmyadmin (sagacita, 2026-10-09) got a sidecar
+	// without SENSOR_API_KEY nor its APP_JOB_SCRIPT key and the instance ended warn (#1944)
+	cluster.openSVCEnsureSensorPrerequisitesLogged(svc, app.ServiceName)
 	res, err := cluster.OpenSVCGetAppTemplateV3(app)
 	if err != nil {
 		return err
@@ -632,6 +636,15 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 	return cluster.openSVCPublishAppJobScript(svc)
 }
 
+// openSVCEnsureSensorPrerequisitesLogged runs openSVCEnsureSensorPrerequisites before a
+// definition refresh; a failure is reported and the refresh goes on, as at provision.
+func (cluster *Cluster) openSVCEnsureSensorPrerequisitesLogged(svc opensvc.Collector, serviceName string) {
+	if err := cluster.openSVCEnsureSensorPrerequisites(svc); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+			"Sensor prerequisites of %s not published: %s", serviceName, err)
+	}
+}
+
 // openSVCEnsureAppNamespaceEnv makes sure the namespace `env` config and secret objects
 // exist and tell where replication-manager is. The database provisioning creates them
 // (OpenSVCCreateMaps); a namespace that only ever had apps never got them, so the sensor
@@ -646,7 +659,7 @@ func (cluster *Cluster) openSVCEnsureAppNamespaceEnv(svc opensvc.Collector, agen
 	if err := svc.CreateSecret(cluster.Name, "env", agent); err != nil && !isOpenSVCAlreadyExists(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not create the namespace env secret: %s", err)
 	}
-	url := "https://" + cluster.Conf.MonitorAddress + ":" + cluster.Conf.APIPort
+	url := cluster.Conf.MonitorAPIURL()
 	if err := svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_URL", url); err != nil && !isOpenSVCAlreadyExists(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
 	}

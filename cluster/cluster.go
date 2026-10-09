@@ -343,6 +343,7 @@ type Cluster struct {
 	netOnce                     sync.Once            `json:"-"`
 	wait                        *waitStore           `json:"-"` // cgroup wait readings per server (srv_wait.go)
 	waitOnce                    sync.Once            `json:"-"`
+	bootstrapDR                 bootstrapDRState     `json:"-"` // DR replication-manager URL offered to init containers (bootstrap_dr.go)
 	backupProgress              sync.Map             `json:"-"` // key server/kind -> *BackupProgress (cluster_backup_progress.go)
 	injectTrafficInFlight       atomic.Bool          `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
 	injectTrafficSince          atomic.Int64         `json:"-"` // unix time the running injection started

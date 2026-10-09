@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -318,6 +320,25 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		noCheckCert = ""
 		authority = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	}
+	// Active/standby (#1942): with the pair's URLs known, the init container
+	// first picks the first of the main URL and the pair's URLs that answers
+	// the public /api/version, then uses it ($B) for every call below. Without
+	// them the command is unchanged (no pod restart for clusters without DR).
+	base := scheme + "://" + authority
+	baseRef := base
+	pickBase := ""
+	if cluster.Conf.ApiServ {
+		candidates := []string{base}
+		for _, u := range strings.Fields(cluster.bootstrapDRURLs()) {
+			if !slices.Contains(candidates, u) {
+				candidates = append(candidates, u)
+			}
+		}
+		if len(candidates) > 1 {
+			baseRef = "$B"
+			pickBase = "B=" + base + " ; for u in " + strings.Join(candidates, " ") + " ; do if wget" + noCheckCert + " -T 8 -qO /dev/null $u/api/version 2>/dev/null ; then B=$u ; break ; fi ; done ; "
+		}
+	}
 	authHeaderValue := k8sAPIAuthHeaderValue(cluster)
 	authHeader := ""
 	if authHeaderValue != "" {
@@ -343,7 +364,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	// aren't listed in busybox's own `wget --help`, and depending on
 	// undocumented behavior of a floating base image tag is fragile. "-T
 	// SEC" is documented and bounds both the connect and read phases.
-	remoteFetchCmd := "wget" + noCheckCert + " -T 8 -qO /tmp/config.tar.gz" + authHeader + " " + scheme + "://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/config"
+	remoteFetchCmd := "wget" + noCheckCert + " -T 8 -qO /tmp/config.tar.gz" + authHeader + " " + baseRef + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/config"
 
 	// need-config-fetch mirrors OpenSVC's own bootstrap gate exactly
 	// (share/dashboard/static/configurator/opensvc/bootstrap,
@@ -355,7 +376,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 	// endpoint's HTTP 500 ("no fetch needed") as a failure, so an
 	// unreachable repman and "fetch not needed" both skip the fetch the
 	// same way.
-	needFetchCmd := "wget" + noCheckCert + " -T 8 -qO /dev/null" + authHeader + " " + scheme + "://" + authority + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/need-config-fetch"
+	needFetchCmd := "wget" + noCheckCert + " -T 8 -qO /dev/null" + authHeader + " " + baseRef + "/api/clusters/" + cluster.Name + "/servers/" + serverPath + "/" + s.Port + "/need-config-fetch"
 
 	// Mirrors OpenSVC's own bootstrap script: fetch into a scratch dir, and
 	// only on a successful fetch *and* extract, clear the persisted
@@ -435,6 +456,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 		"sh", "-c",
 		"mkdir -p /tmp/cfg /docker-entrypoint-initdb.d " + systemDirs +
 			" ; MKDIR_STATUS=$? ; " +
+			pickBase +
 			applyConfig +
 			// replication-manager-cli persists across restarts like
 			// conf.d/init above -- a failed fetch just means it isn't
@@ -442,7 +464,7 @@ func (cluster *Cluster) k8sDatabaseDeployment(s *ServerMonitor, port int, nodeHo
 			// into place only on success: busybox wget's "-qO" has no
 			// atomic rename, so a connection dropped mid-transfer would
 			// otherwise corrupt a previously-good cached binary in place.
-			" ; wget" + noCheckCert + " -T 8 -qO /tmp/replication-manager-cli.new " + scheme + "://" + authority + "/static/configurator/bin/replication-manager-cli 2>/dev/null && cp /tmp/replication-manager-cli.new /docker-entrypoint-initdb.d/replication-manager-cli 2>/dev/null" +
+			" ; wget" + noCheckCert + " -T 8 -qO /tmp/replication-manager-cli.new " + baseRef + "/static/configurator/bin/replication-manager-cli 2>/dev/null && cp /tmp/replication-manager-cli.new /docker-entrypoint-initdb.d/replication-manager-cli 2>/dev/null" +
 			" ; chmod +x /docker-entrypoint-initdb.d/replication-manager-cli /docker-entrypoint-initdb.d/dbjobs_new /docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm 2>/dev/null" +
 			runtimeChown +
 			" ; exit \"$MKDIR_STATUS\"",

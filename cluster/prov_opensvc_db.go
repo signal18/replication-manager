@@ -155,6 +155,9 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	if !svc.IsV3() {
 		return fmt.Errorf("update-opensvc-template requires OpenSVC v3 API")
 	}
+	// the refreshed definition maps the sensor keys; a namespace provisioned before
+	// the sensor existed has none of them (#1944)
+	cluster.openSVCEnsureSensorPrerequisitesLogged(svc, s.ServiceName)
 	var res []byte
 	var err error
 	if app := cluster.engineAppOfServer(s); app != nil {
@@ -929,11 +932,14 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]s
 		} else {
 			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
 		}
-		svccontainer["command"] = "-c 'wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/opensvc/bootstrap | sh'"
+		svccontainer["command"] = bootstrapInitCommand // main URL, then the DR one (bootstrap_dr.go)
 	}
 	svccontainer["entrypoint"] = "/bin/sh"
 	svccontainer["secrets_environment"] = "env/REPLICATION_MANAGER_PASSWORD"
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_USER env/REPLICATION_MANAGER_URL"
+	if cluster.bootstrapDRURLMapped() {
+		svccontainer["configs_environment"] += " env/" + bootstrapDRURLKey
+	}
 	svccontainer["environment"] = "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={fqdn} REPLICATION_MANAGER_HOST_PORT=" + port
 	//	svccontainer["# Debug"] = ""
 	//	svccontainer["# interactive"] = "true"

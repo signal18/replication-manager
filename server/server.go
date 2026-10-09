@@ -126,6 +126,10 @@ type ReplicationManager struct {
 	// to simulate this node being isolated from its peer — the server-level
 	// leg of the split-brain simulator (cluster_splitbrain_simulator.go). Runtime state only.
 	sbHeartbeatFailUntil atomic.Int64 `json:"-"`
+	// peerAPIURL is the arbitration peer's API URL learned from its heartbeat
+	// answer; kept when the peer stops answering, since that is when the DR
+	// fallback matters. Written under the repman lock.
+	peerAPIURL string `json:"-"`
 	// arbPeerScheme remembers, per arbitration peer written without a scheme,
 	// the scheme that answered (see HeartbeatPeerSplitBrain).
 	arbPeerScheme sync.Map `json:"-"`
@@ -334,6 +338,10 @@ type Heartbeat struct {
 	Status    string    `json:"status"`
 	Hosts     int       `json:"hosts"`
 	Failed    int       `json:"failed"`
+	// APIURL is the answering instance's API URL, the one it writes as
+	// REPLICATION_MANAGER_URL: its peer offers it to init containers as the DR
+	// fallback (REPLICATION_MANAGER_URL_DR).
+	APIURL string `json:"apiUrl,omitempty"`
 }
 
 var confs = make(map[string]config.Config)
@@ -3879,6 +3887,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		repman.peerHeartbeatSameUID = true
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
+	repman.recordPeerAPIURL(peer, h)
 	// CALM authority: the peer answered, so we can talk and are NOT split.
 	// Resolve to the anti-peer status; the cluster reinforce loop in
 	// Heartbeat() then pushes repman.Status down onto the clusters.
@@ -4177,9 +4186,16 @@ func (repman *ReplicationManager) Heartbeat() {
 		}
 	}
 
-	// Propagate the split-brain flag to every cluster.
+	// Propagate the split-brain flag to every cluster, and the URLs of the
+	// active/standby pair as the init containers' fallback (#1942): this instance
+	// then its peer, since the namespace's REPLICATION_MANAGER_URL stays on the
+	// instance that provisioned, which may be the dead one.
+	repman.Lock()
+	drURL := repman.bootstrapPairURLs()
+	repman.Unlock()
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
+		cl.SetBootstrapDRURL(drURL)
 	}
 
 	// Authority direction depends on calm vs split-brain:

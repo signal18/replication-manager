@@ -303,6 +303,9 @@ func (repman *ReplicationManager) apiserver() {
 	))
 
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if redispatchLeadingSlashes(router, w, r) {
+			return
+		}
 		// Check if the path starts with "/api"
 		if len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" {
 			// Return 404 for /api paths
@@ -2175,6 +2178,7 @@ func (repman *ReplicationManager) handlerMuxMonitorHeartbeat(w http.ResponseWrit
 	send.UID = repman.Conf.ArbitrationSasUniqueId
 	send.Secret = repman.Conf.ArbitrationSasSecret
 	send.Status = repman.Status
+	send.APIURL = repman.selfAPIURL()
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		panic(err)

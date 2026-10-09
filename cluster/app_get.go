@@ -652,6 +652,7 @@ func (p *App) GetSshEnv() string {
 		REPLICATION_MANAGER_USER
 		REPLICATION_MANAGER_PASSWORD
 		REPLICATION_MANAGER_URL
+		REPLICATION_MANAGER_URL_DR
 		REPLICATION_MANAGER_CLUSTER_NAME
 		REPLICATION_MANAGER_HOST_NAME
 		REPLICATION_MANAGER_HOST_USER
@@ -664,7 +665,7 @@ func (p *App) GetSshEnv() string {
 	if user, ok := p.ClusterGroup.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
-	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"https://" + p.ClusterGroup.Conf.MonitorAddress + ":" + p.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"
+	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"" + p.ClusterGroup.Conf.MonitorAPIURL() + "\";export REPLICATION_MANAGER_URL_DR=\"" + p.ClusterGroup.bootstrapDRURLs() + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"
 }
 
 func (app *App) GetOpenSVCDeploymentAppEnv(vartype string) string {
