@@ -1174,10 +1174,14 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	}
 
 	// Decode JSON
-	var PeerList []*peer.PeerCluster
-	if err := json.Unmarshal(content, &PeerList); err != nil {
+	// Entry by entry: one unreadable cluster entry is skipped, never the whole list.
+	PeerList, skipped, err := peer.DecodePeerList(content)
+	if err != nil {
 		repman.Logrus.Errorf("failed to decode peer JSON: %v", err)
 		return err
+	}
+	for _, s := range skipped {
+		repman.Logrus.Warnf("peer JSON entry skipped: %s", s)
 	}
 
 	if len(PeerList) > 0 {
