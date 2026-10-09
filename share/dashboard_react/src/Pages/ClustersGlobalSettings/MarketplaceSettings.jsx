@@ -4,6 +4,7 @@ import styles from './styles.module.scss'
 import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setGlobalSetting, reloadClustersPlan, reloadClustersPlanInfo } from '../../redux/globalClustersSlice'
+import { globalClustersService } from '../../services/globalClustersService'
 import TextForm from '../../components/TextForm'
 import Dropdown from '../../components/Dropdown'
 import RMIconButton from '../../components/RMIconButton'
@@ -20,6 +21,8 @@ function MarketplaceSettings({ config }) {
   const [action, setAction] = useState({ title: '', body: <></> })
   const [isInfoModalOpen, setIsInfoModalOpen] = useState(false)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+  const [smtRunning, setSmtRunning] = useState(false)
+  const [smtResult, setSmtResult] = useState('')
   const [confirmAction, setConfirmAction] = useState(null)
   const [shouldRedownload, setShouldRedownload] = useState(true)
 
@@ -64,6 +67,18 @@ function MarketplaceSettings({ config }) {
   const hOverPct = `**Over-commit Price Ratio**\n\nSurcharge on a unit consumed **above** the plan, in percent of the unit price. 150 means an over-plan unit costs 2.5 times the unit price. Applies to every unit family with a plan (DBU, APU, BKU); the BAU has no plan and is pure usage, so it is never marked up. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-overcommit-price-pct\` (default 150)`
   const hUnderPct = `**Under-commit Price Ratio**\n\nReduction on a plan unit left **unconsumed**, in percent of the unit price. 80 means an unused plan unit costs 0.2 times the unit price; 0 bills the plan in full whatever is consumed. The pendant of the over-commit ratio, asymmetric on purpose. Global to this replication-manager instance.\n\nConfig: \`cloud18-marketplace-undercommit-price-pct\` (default 80)`
 
+  const hSmt = `**SMT gain (hyperthreading)**\n\nThroughput of a physical core with all its threads busy, relative to one thread (e.g. 1.15). A DBU core is a real core: on a node whose agent reports more threads than cores, the capacity counts cores x gain, and a DBU core gets threads-per-core / gain logical CPUs of quota. 1 or less = SMT not accounted.\n\n**Measure with sysbench** runs the embedded sysbench (cpu and random memory access, one thread per core then every thread, about a minute of full CPU load) on the host replication-manager runs on, and writes the measured gain. Representative when the nodes share the same hardware.\n\nConfig: \`resource-manager-smt-gain\``
+
+  const runSmtCalibration = () => {
+    setSmtRunning(true)
+    setSmtResult('')
+    globalClustersService
+      .calibrateSmtGain(true)
+      .then(({ data }) => setSmtResult(`${data?.message || ''}${data?.applied ? ' — applied' : ''}`))
+      .catch((e) => setSmtResult(`Failed: ${e?.response?.data || e?.message || e}`))
+      .finally(() => setSmtRunning(false))
+  }
+
   const hRatio = (unit, key) => `**${unit} ratio**\n\nWhat one ${unit} is made of, as \`cores=…,mem=…,disk=…,iops=…\` (mem in m or g, disk in g or t; a missing key excludes the axis). This is the ONE source of the ratio: the resource manager, the billing, the charts and the configurators all read it. Changing it re-projects every plan and consumption at the next tick; it does not resize anything.\n\nConfig: \`${key}\``
 
   const dataObject = [
@@ -81,6 +96,19 @@ function MarketplaceSettings({ config }) {
       key: 'BKU / BAU ratio',
       help: h(hRatio('BKU', 'resource-manager-ratio-bku'), 'BKU ratio'),
       value: (<TextForm value={config?.resourceManagerRatioBku} confirmTitle='Confirm BKU ratio to ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'resource-manager-ratio-bku', value }))} />)
+    },
+    {
+      key: 'SMT gain',
+      help: h(hSmt, 'SMT gain'),
+      value: (
+        <Flex align='center' gap={2} wrap='wrap'>
+          <TextForm value={config?.resourceManagerSmtGain} confirmTitle='Confirm SMT gain to ' onSave={(value) => dispatch(setGlobalSetting({ setting: 'resource-manager-smt-gain', value }))} />
+          <RMButton isLoading={smtRunning} loadingText='Measuring…' onClick={() => { setConfirmAction({ type: 'calibrate-smt' }); setIsConfirmModalOpen(true) }}>
+            Measure with sysbench
+          </RMButton>
+          {smtResult && <Box fontSize='sm'>{smtResult}</Box>}
+        </Flex>
+      )
     },
     {
       key: 'Marketplace Pricing Mode',
@@ -343,9 +371,11 @@ function MarketplaceSettings({ config }) {
         <ConfirmModal
           isOpen={isConfirmModalOpen}
           closeModal={() => setIsConfirmModalOpen(false)}
-          title={confirmAction?.type === 'reload-clusters-plan' ? 'Confirm reload all clusters plans?' : 'Confirm reload all clusters plan info?'}
+          title={confirmAction?.type === 'calibrate-smt' ? 'Measure the SMT gain with sysbench? About a minute of full CPU load on the replication-manager host.' : confirmAction?.type === 'reload-clusters-plan' ? 'Confirm reload all clusters plans?' : 'Confirm reload all clusters plan info?'}
           onConfirmClick={() => {
-            if (confirmAction?.type === 'reload-clusters-plan') {
+            if (confirmAction?.type === 'calibrate-smt') {
+              runSmtCalibration()
+            } else if (confirmAction?.type === 'reload-clusters-plan') {
               dispatch(reloadClustersPlan({ download: shouldRedownload }))
             } else {
               dispatch(reloadClustersPlanInfo({ download: shouldRedownload }))
