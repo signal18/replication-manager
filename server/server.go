@@ -130,6 +130,8 @@ type ReplicationManager struct {
 	// answer; kept when the peer stops answering, since that is when the DR
 	// fallback matters. Written under the repman lock.
 	peerAPIURL string `json:"-"`
+	// standbyImport throttles the standby import of new clusters (server_standby_import.go).
+	standbyImport standbyImportState `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
