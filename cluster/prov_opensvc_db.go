@@ -155,6 +155,9 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	if !svc.IsV3() {
 		return fmt.Errorf("update-opensvc-template requires OpenSVC v3 API")
 	}
+	// the refreshed definition maps the sensor keys; a namespace provisioned before
+	// the sensor existed has none of them (#1944)
+	cluster.openSVCEnsureSensorPrerequisitesLogged(svc, s.ServiceName)
 	var res []byte
 	var err error
 	if app := cluster.engineAppOfServer(s); app != nil {
