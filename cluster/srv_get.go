@@ -74,7 +74,7 @@ func (server *ServerMonitor) GetSshEnv() string {
 	env := shellExport("REPLICATION_MANAGER_HOST_USER", server.User) +
 		";" + shellExport("REPLICATION_MANAGER_HOST_PASSWORD", server.Pass) +
 		";" + shellExport("MYSQL_ROOT_PASSWORD", server.Pass) +
-		";" + shellExport("REPLICATION_MANAGER_URL", "https://"+server.ClusterGroup.Conf.MonitorAddress+":"+server.ClusterGroup.Conf.APIPort) +
+		";" + shellExport("REPLICATION_MANAGER_URL", server.ClusterGroup.Conf.MonitorAPIURL()) +
 		";" + shellExport("REPLICATION_MANAGER_URL_DR", server.ClusterGroup.bootstrapDRURLs()) +
 		";" + shellExport("REPLICATION_MANAGER_URL_HOST", server.ClusterGroup.Conf.MonitorAddress) +
 		";" + shellExport("REPLICATION_MANAGER_URL_PORT", server.ClusterGroup.Conf.APIPort) +

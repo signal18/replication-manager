@@ -3873,7 +3873,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		return true
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
-		repman.recordPeerAPIURL(h)
+		repman.recordPeerAPIURL(peer, h)
 		// CALM authority: the peer answered, so we can talk and are NOT split.
 		// Resolve to the anti-peer status; the cluster reinforce loop in
 		// Heartbeat() then pushes repman.Status down onto the clusters.

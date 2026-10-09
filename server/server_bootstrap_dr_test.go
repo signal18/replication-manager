@@ -20,18 +20,18 @@ import (
 func TestRecordPeerAPIURLIgnoresSelfAndEmpty(t *testing.T) {
 	repman := &ReplicationManager{Conf: &config.Config{MonitorAddress: "repman.s18.svc.cloud18", APIPort: "10005"}, UUID: "me"}
 
-	repman.recordPeerAPIURL(Heartbeat{UUID: "peer"}) // older peer, no URL
-	repman.recordPeerAPIURL(Heartbeat{UUID: "me", APIURL: "https://elsewhere:10005"})
-	repman.recordPeerAPIURL(Heartbeat{UUID: "other", APIURL: "https://repman.s18.svc.cloud18:10005"}) // our own URL
+	repman.recordPeerAPIURL("repman-dr.s18.svc.cloud18:10001", Heartbeat{UUID: "peer"}) // older peer, no URL
+	repman.recordPeerAPIURL("repman-dr.s18.svc.cloud18:10001", Heartbeat{UUID: "me", APIURL: "https://elsewhere:10005"})
+	repman.recordPeerAPIURL("repman-dr.s18.svc.cloud18:10001", Heartbeat{UUID: "other", APIURL: "https://repman.s18.svc.cloud18:10005"}) // our own URL
 	if repman.peerAPIURL != "" {
 		t.Fatalf("peerAPIURL = %q, want nothing recorded", repman.peerAPIURL)
 	}
-	repman.recordPeerAPIURL(Heartbeat{UUID: "peer", APIURL: "https://repman-dr.s18.svc.cloud18:10005"})
+	repman.recordPeerAPIURL("repman-dr.s18.svc.cloud18:10001", Heartbeat{UUID: "peer", APIURL: "https://repman-dr.s18.svc.cloud18:10005"})
 	if repman.peerAPIURL != "https://repman-dr.s18.svc.cloud18:10005" {
 		t.Fatalf("peerAPIURL = %q", repman.peerAPIURL)
 	}
 	// A later answer without URL (peer downgraded) keeps the last known one.
-	repman.recordPeerAPIURL(Heartbeat{UUID: "peer"})
+	repman.recordPeerAPIURL("repman-dr.s18.svc.cloud18:10001", Heartbeat{UUID: "peer"})
 	if repman.peerAPIURL == "" {
 		t.Fatal("last known peer URL lost")
 	}
@@ -63,5 +63,31 @@ func TestBootstrapPairURLsOnlyWithActiveStandby(t *testing.T) {
 	repman.peerAPIURL = ""
 	if got := repman.bootstrapPairURLs(); got != "" {
 		t.Fatalf("peer unknown: %q, want none", got)
+	}
+}
+
+// Only a plain https URL on the configured peer's host is offered to bootstraps.
+func TestValidPeerAPIURL(t *testing.T) {
+	peer := "repman-dr.s18.svc.cloud18:10001"
+	for _, c := range []struct {
+		url string
+		ok  bool
+	}{
+		{"https://repman-dr.s18.svc.cloud18:10005", true},
+		{"https://REPMAN-DR.s18.svc.cloud18:10005/", true},
+		{"http://repman-dr.s18.svc.cloud18:10001", false},
+		{"https://attacker.example:10005", false},
+		{"https://repman-dr.s18.svc.cloud18:10005 https://attacker.example", false},
+		{"https://repman-dr.s18.svc.cloud18:10005/x;sh", false},
+		{"https://u:p@repman-dr.s18.svc.cloud18:10005", false},
+		{"https://repman-dr.s18.svc.cloud18:10005?a=1", false},
+		{"https://repman-dr.s18.svc.cloud18$(id):10005", false},
+	} {
+		if err := validPeerAPIURL(peer, c.url); (err == nil) != c.ok {
+			t.Errorf("%q: err=%v, want ok=%v", c.url, err, c.ok)
+		}
+	}
+	if err := validPeerAPIURL("https://repman-dr.s18.svc.cloud18", "https://repman-dr.s18.svc.cloud18:10005"); err != nil {
+		t.Errorf("peer written with a scheme: %v", err)
 	}
 }

@@ -61,7 +61,7 @@ func (cluster *Cluster) bootstrapDRURLs() string {
 // REPLICATION_MANAGER_URL, then from each REPLICATION_MANAGER_URL_DR URL not
 // tried yet, and runs it with the URL that answered.
 func onPremiseBootstrapCommand(path string) string {
-	return `tried=; for u in $REPLICATION_MANAGER_URL $REPLICATION_MANAGER_URL_DR; do case " $tried " in *" $u "*) continue;; esac; tried="$tried $u"; ` +
+	return `tried=; for u in $REPLICATION_MANAGER_URL $REPLICATION_MANAGER_URL_DR; do case " $tried " in *" $u "*) continue;; esac; tried="$tried $u"; rm -f /tmp/replication-manager-bootstrap; ` +
 		`if wget --no-check-certificate -q -T 10 -O /tmp/replication-manager-bootstrap $u/static/configurator/onpremise/` + path + `/bootstrap; then ` +
 		`REPLICATION_MANAGER_URL=$u sh /tmp/replication-manager-bootstrap; exit $?; fi; echo "bootstrap: $u did not answer" >&2; done; exit 1`
 }
@@ -108,4 +108,4 @@ func (cluster *Cluster) writeBootstrapDRURL(url string) error {
 // bootstrapInitCommand fetches the bootstrap script from the main URL, then from
 // each DR URL not tried yet, and runs it with the URL that answered. busybox
 // wget: -T bounds each read, there is no retry count option.
-const bootstrapInitCommand = `-c 'tried=; for u in $REPLICATION_MANAGER_URL $REPLICATION_MANAGER_URL_DR; do case " $tried " in *" $u "*) continue;; esac; tried="$tried $u"; wget --no-check-certificate -q -T 10 -O /tmp/bootstrap $u/static/configurator/opensvc/bootstrap && REPLICATION_MANAGER_URL=$u exec sh /tmp/bootstrap; echo "bootstrap: $u did not answer" >&2; done; exit 1'`
+const bootstrapInitCommand = `-c 'tried=; for u in $REPLICATION_MANAGER_URL $REPLICATION_MANAGER_URL_DR; do case " $tried " in *" $u "*) continue;; esac; tried="$tried $u"; rm -f /tmp/bootstrap; wget --no-check-certificate -q -T 10 -O /tmp/bootstrap $u/static/configurator/opensvc/bootstrap && REPLICATION_MANAGER_URL=$u exec sh /tmp/bootstrap; echo "bootstrap: $u did not answer" >&2; done; exit 1'`
