@@ -81,6 +81,9 @@ func (f *fakeRepman) ClusterPrice(name string) (map[string]any, error) {
 func (f *fakeRepman) Cloud18GetClusterPrice(p *Principal, infra, name string) (map[string]any, error) {
 	return map[string]any{"cluster": name, "monthCost": 0.0}, nil
 }
+func (f *fakeRepman) Cloud18ClusterOptions(p *Principal, dimension, flavor, infra string) (map[string]any, error) {
+	return nil, nil
+}
 func (f *fakeRepman) Cloud18ClusterQuote(p *Principal, spec Cloud18ClusterSpec) ([]map[string]any, error) {
 	return nil, nil
 }

@@ -174,6 +174,22 @@ func (s *MCPServer) registerCloud18Tools() {
 	)
 
 	s.addTool(
+		mcp.NewTool("list-cloud18-cluster-options",
+			mcp.WithDescription("The possible values of a cluster request, dimension by dimension, before a quote or a creation: db_flavor (mariadb, mysql, percona, postgres), db_image (per flavor: the floating tags and every release line, LTS marked), topology (per flavor), proxy (and proxy_count), apps (the infrastructure's templates), dbu and apu (range, default, what is still free in the pool). Each value says whether cloud18-create-cluster can build it today (creatable) and why not. Filter one dimension with dimension and one flavor with db_flavor; apps, dbu and apu are read on the infrastructure, as yourself."),
+			mcp.WithString("dimension", mcp.Description("db_flavor, db_image, topology, proxy, apps, dbu or apu; empty = every dimension")),
+			mcp.WithString("db_flavor", mcp.Description("mariadb, mysql, percona or postgres; empty = every flavor")),
+			mcp.WithString("infrastructure", mcp.Description("api-public-url of the infrastructure for apps, dbu and apu; empty = this instance, as yourself")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			out, err := s.repman.Cloud18ClusterOptions(principalFrom(ctx), req.GetString("dimension", ""), req.GetString("db_flavor", ""), req.GetString("infrastructure", ""))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
 		mcp.NewTool("get-cloud18-cluster-quote",
 			mcp.WithDescription("Quote a database cluster on every infrastructure of the Cloud18 marketplace, as yourself, before creating it: per infrastructure, the units the request needs (DBU = db_count x dbu per database node, APU for the proxies and apps, the default BKU), whether they fit the free pool, whether you may create it there (or why not), and the MONTHLY PRICE AT FULL CAPACITY (the plan fully used the whole month) from that infrastructure's own unit prices, with its breakdown and the over-commit rate billed on top above the plan. Infrastructures where the creation is possible come first, cheapest first. Then create on the chosen one with cloud18-create-cluster and the same parameters."),
 			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts")),

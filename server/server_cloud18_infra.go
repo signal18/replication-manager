@@ -19,6 +19,7 @@ import (
 	"time"
 
 	repmanmcp "github.com/signal18/replication-manager/mcp"
+	"github.com/signal18/replication-manager/utils/releases"
 )
 
 // Consumer side of self-service clusters (issue #1838): from this instance, act
@@ -136,6 +137,13 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	}
 	if spec.DBImage == "" {
 		spec.DBImage = "mariadb:lts"
+	}
+	// only the flavors list-cloud18-cluster-options marks creatable are built (#1963)
+	fl := releases.FlavorOfImage(spec.DBImage)
+	for _, f := range cloud18Flavors {
+		if f.name == fl && !f.creatable {
+			return spec, fmt.Errorf("db_image %s: %s is %s (list-cloud18-cluster-options)", spec.DBImage, f.name, f.note)
+		}
 	}
 	if spec.DBCount <= 0 {
 		spec.DBCount = 2

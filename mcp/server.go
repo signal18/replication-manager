@@ -66,6 +66,7 @@ type RepmanProvider interface {
 	Cloud18InfrastructuresAccess(p *Principal) ([]Cloud18InfrastructureAccess, error)
 	Cloud18CreateCluster(p *Principal, spec Cloud18ClusterSpec, confirm bool) (map[string]any, error)
 	Cloud18ClusterQuote(p *Principal, spec Cloud18ClusterSpec) ([]map[string]any, error)
+	Cloud18ClusterOptions(p *Principal, dimension, flavor, infra string) (map[string]any, error)
 	Cloud18GetCluster(p *Principal, infra, clusterName string) (map[string]any, error)
 	// Billing (resource manager month statement): local cluster, and a cluster on an infrastructure.
 	ClusterPrice(clusterName string) (map[string]any, error)
