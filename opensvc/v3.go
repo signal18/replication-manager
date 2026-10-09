@@ -180,6 +180,7 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 			}
 			h.Node_id = val("node_id").String()
 			h.Cpu_cores = val("cpu_cores").Int()
+			h.Cpu_threads = val("cpu_threads").Int()
 			// VMs (QEMU, no dmidecode) report cpu_cores = 0 while cpu_threads is
 			// right; a vCPU is what the guest gets, so fall back to threads
 			// (issue #1844). Bare metal keeps physical cores.

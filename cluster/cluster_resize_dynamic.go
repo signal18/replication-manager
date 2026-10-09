@@ -341,7 +341,8 @@ func (cluster *Cluster) openSVCResizeCPU(server *ServerMonitor) error {
 	}
 	// the slice cap is the plan's contract (tier x cores per DBU), never below the
 	// technical cores the resize just moved (GetDBContainerCPUCapCores)
-	cores := cluster.GetDBContainerCPUCapCores()
+	// in logical CPUs on the server's node: an SMT node gets threads-per-core/gain per core (smt.go)
+	cores := cluster.cpuQuotaCoresOnNode(serverNode(server), cluster.GetDBContainerCPUCapCores())
 	q := OpenSVCCPUQuotaKeyword(cores)
 	if err := cluster.openSVCApplyPGKeywords(server, map[string]string{"pg_cpu_quota": q}); err != nil {
 		return err
@@ -1754,9 +1755,9 @@ func (server *ServerMonitor) applyOpenSVCPGCap() {
 
 // openSVCDesiredPGCap is the cap the server's definition must carry when it lives on the
 // PG slice: the same values GenerateDBTemplateV3 and the engine app template render.
-func (cluster *Cluster) openSVCDesiredPGCap() map[string]string {
+func (cluster *Cluster) openSVCDesiredPGCap(server *ServerMonitor) map[string]string {
 	kv := map[string]string{"pg_mem_limit": strconv.FormatInt(int64(cluster.GetDBContainerMemoryCapMB())*1024*1024, 10)}
-	if q := OpenSVCCPUQuotaKeyword(cluster.GetDBContainerCPUCapCores()); q != "" {
+	if q := OpenSVCCPUQuotaKeyword(cluster.cpuQuotaCoresOnNode(serverNode(server), cluster.GetDBContainerCPUCapCores())); q != "" {
 		kv["pg_cpu_quota"] = q
 	}
 	return kv
@@ -1786,7 +1787,7 @@ func (server *ServerMonitor) reconcileOpenSVCPGCap() {
 	if err != nil {
 		return
 	}
-	desired := cluster.openSVCDesiredPGCap()
+	desired := cluster.openSVCDesiredPGCap(server)
 	stale := map[string]string{}
 	for k, v := range desired {
 		if cur := strings.TrimSpace(cfg.Section("DEFAULT").Key(k).String()); cur != v {

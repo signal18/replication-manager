@@ -214,6 +214,7 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 		agent.OsName = n.Os_name
 		agent.OsKernel = n.Os_kernel
 		agent.CpuCores = n.Cpu_cores
+		agent.CpuThreads = n.Cpu_threads
 		agent.CpuFreq = n.Cpu_freq
 		agent.MemBytes = n.Mem_bytes
 		agent.HostName = n.Node_name

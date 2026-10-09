@@ -604,7 +604,7 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 				continue
 			}
 			seen[key] = true
-			capCores += float64(a.CpuCores)
+			capCores += a.CoreEquivalents(repman.Conf.ResourceManagerSmtGain) // real cores (cluster/smt.go)
 			capMemMB += float64(a.MemBytes) // stored in MB despite the name
 		}
 	}

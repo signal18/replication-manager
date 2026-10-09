@@ -547,7 +547,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateSectionMap(app *App) (map[string]ma
 		// a monitored engine: its cap lives on the om3 PG slice like a database server's
 		// (GenerateDBTemplateV3), from prov-db-*, moved live by the dynamic resize
 		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(cluster.GetDBContainerMemoryCapMB())*1024*1024, 10)
-		if q := OpenSVCCPUQuotaKeyword(cluster.GetDBContainerCPUCapCores()); q != "" {
+		if q := OpenSVCCPUQuotaKeyword(cluster.cpuQuotaCoresOnNode(serverNode(cluster.engineServerOfApp(app)), cluster.GetDBContainerCPUCapCores())); q != "" {
 			svcsection["DEFAULT"]["pg_cpu_quota"] = q
 		}
 	}

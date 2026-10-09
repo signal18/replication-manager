@@ -320,6 +320,17 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
 		}
 		repman.Conf.Cloud18MarketplaceAPUPrice = price
+	case "resource-manager-smt-gain":
+		// SMT gain (#1958): the capacity follows at the next tick; the clusters carry
+		// their own copy for the quota they render, so it is propagated to them too.
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 || f > 2 {
+			return fmt.Errorf("invalid resource-manager-smt-gain %q: a number between 0 and 2 (1 or less = SMT not accounted)", value)
+		}
+		repman.Conf.ResourceManagerSmtGain = f
+		for _, cl := range repman.Clusters {
+			cl.Conf.ResourceManagerSmtGain = f
+		}
 	case "resource-manager-infra-quota-pct", "resource-manager-infra-cpu-cores", "resource-manager-infra-memory-mb",
 		"resource-manager-infra-disk-gb", "resource-manager-infra-iops", "resource-manager-infra-network-mbps":
 		// scope:"server", persisted to default.toml by SaveConfig. The capacity is reassembled
