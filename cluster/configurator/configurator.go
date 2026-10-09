@@ -1371,6 +1371,12 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 			content = strings.ReplaceAll(content, "./.system", RemoteBasedir+"/var/lib/mysql/.system")
 		}
 
+		var stripped []string
+		content, stripped = FilterRootPassword(fpath, content, TemplateEnv["%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%"])
+		if len(stripped) > 0 {
+			configurator.Logger.Infof("Config %s: root password removed from %s (#1960)", fpath, strings.Join(stripped, ", "))
+		}
+
 		outFile, err := os.Create(fpath)
 		if err != nil {
 			return fmt.Errorf("Compliance create file failed %q: %s", fpath, err)

@@ -2252,3 +2252,34 @@ func CreateDatabaseIfNotExists(db *sqlx.DB, schema string) (string, error) {
 	_, err := db.Exec(query)
 	return query, err
 }
+
+// GaleraSSTPrivileges are the global privileges mariabackup/xtrabackup needs on the
+// donor of a Galera SST: BINLOG MONITOR replaced REPLICATION CLIENT in MariaDB 10.5.
+func GaleraSSTPrivileges(myver *version.Version) string {
+	if myver.IsMariaDB() && myver.GreaterEqual("10.5") {
+		return "RELOAD, PROCESS, LOCK TABLES, BINLOG MONITOR"
+	}
+	return "RELOAD, PROCESS, LOCK TABLES, REPLICATION CLIENT"
+}
+
+// CreateSocketAuthUser creates user@localhost authenticated by the OS user of the
+// connecting process (MariaDB unix_socket, MySQL auth_socket), so no password exists
+// to leak, and grants it privileges on *.* (#1960). IF NOT EXISTS: the statement
+// replicates (Galera TOI) and an existing account is kept as it is.
+func CreateSocketAuthUser(db *sqlx.DB, myver *version.Version, user_name string, privileges string) (string, error) {
+	if err := ValidateIdentifier(user_name); err != nil {
+		return "", fmt.Errorf("invalid username: %w", err)
+	}
+	via := "VIA unix_socket"
+	if !myver.IsMariaDB() {
+		via = "WITH auth_socket"
+	}
+	account := QuoteMySQLIdentifier(user_name) + "@'localhost'"
+	query := "CREATE USER IF NOT EXISTS " + account + " IDENTIFIED " + via
+	if _, err := db.Exec(query); err != nil {
+		return query, err
+	}
+	grant := "GRANT " + privileges + " ON *.* TO " + account
+	_, err := db.Exec(grant)
+	return query + ";" + grant, err
+}

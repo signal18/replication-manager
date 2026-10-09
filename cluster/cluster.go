@@ -78,6 +78,11 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
+	// Galera SST unix_socket account upkeep (#1960, CheckGaleraSSTAccount): last
+	// creation attempt and the open ERR00114 text while it fails
+	galeraSSTAccountLastTry time.Time
+	galeraSSTAccountErr     string
+
 	OsUser          *user.User `json:"-"`
 	Name            string     `json:"name" groups:"apps,web"`
 	Tenant          string     `json:"tenant" groups:"web"`
@@ -1388,6 +1393,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.IsFailable = cluster.GetStatus()
 		cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
 		cluster.CheckDBCredentials()
+		cluster.CheckGaleraSSTAccount()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// CheckFailed trigger failover code if passing all false positiv and constraints
