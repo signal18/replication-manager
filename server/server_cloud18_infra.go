@@ -143,6 +143,12 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	if spec.DBCount > 5 {
 		return spec, errors.New("db_count above 5 is not a self-service size")
 	}
+	if spec.DBU < 0 || spec.DBU > 64 {
+		return spec, errors.New("dbu (per database node) must be between 1 and 64, 0 = the infrastructure's default")
+	}
+	if spec.APU < 0 || spec.APU > 256 {
+		return spec, errors.New("apu must be between 1 and 256, 0 = the infrastructure's default")
+	}
 	spec.Proxy = strings.ToLower(strings.TrimSpace(spec.Proxy))
 	switch spec.Proxy {
 	case "", "haproxy", "proxysql", "none":
@@ -151,6 +157,14 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	}
 	if spec.Proxy == "" {
 		spec.Proxy = "haproxy"
+	}
+	switch {
+	case spec.Proxy == "none":
+		spec.ProxyCount = 0
+	case spec.ProxyCount <= 0:
+		spec.ProxyCount = 1
+	case spec.ProxyCount > 3:
+		return spec, errors.New("proxy_count above 3 is not a self-service size")
 	}
 	// phpMyAdmin is deployed by default; apps=none opts out.
 	apps := []string{}
@@ -180,8 +194,8 @@ func plannedHosts(spec Cloud18ClusterSpec) []map[string]string {
 	for i := 1; i <= spec.DBCount; i++ {
 		out = append(out, map[string]string{"type": "database", "host": fmt.Sprintf("db%d", i), "port": "3306", "image": spec.DBImage})
 	}
-	if spec.Proxy != "none" {
-		out = append(out, map[string]string{"type": spec.Proxy, "host": spec.Proxy + "1", "port": "3306"})
+	for i := 1; i <= spec.ProxyCount; i++ {
+		out = append(out, map[string]string{"type": spec.Proxy, "host": fmt.Sprintf("%s%d", spec.Proxy, i), "port": "3306"})
 	}
 	for i, app := range spec.Apps {
 		short := app
@@ -263,6 +277,11 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 		"selfService":    ss,
 		"unitPlan":       "the infrastructure's default DBU / APU / BKU (no service plan)",
 	}
+	quote := cloud18QuoteOf(spec, ss)
+	plan["quote"] = quote
+	if spec.DBU > 0 || spec.APU > 0 {
+		plan["unitPlan"] = "the requested plan, applied with change-plan-units (the infrastructure's ledger and plan-increase script decide)"
+	}
 	if len(unresolved) > 0 {
 		plan["refused"] = fmt.Sprintf("app template not available on the infrastructure: %s (templates: %s)", strings.Join(unresolved, ", "), strings.Join(templates, ", "))
 		if !confirm {
@@ -270,19 +289,14 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 		}
 		return plan, fmt.Errorf("%s", plan["refused"])
 	}
-	if enabled, _ := ss["enabled"].(bool); !enabled {
-		plan["refused"] = ss["reason"]
+	// The quote carries the infrastructure's verdict, its pool check re-taken for the
+	// requested units (the infrastructure's own pool verdict is for its default cluster).
+	if ok, _ := quote["canCreate"].(bool); !ok {
+		plan["refused"] = quote["reason"]
 		if !confirm {
 			return plan, nil
 		}
-		return plan, fmt.Errorf("self-service refused by %s: %v", sess.base, ss["reason"])
-	}
-	if rem, _ := ss["remaining"].(float64); rem <= 0 {
-		plan["refused"] = fmt.Sprintf("limit reached: %v clusters already sponsored there", ss["used"])
-		if !confirm {
-			return plan, nil
-		}
-		return plan, fmt.Errorf("self-service limit reached on %s", sess.base)
+		return plan, fmt.Errorf("self-service refused by %s: %v", sess.base, quote["reason"])
 	}
 	// Templates for the apps must exist on the infrastructure; checked once the
 	// cluster exists (the listing is per cluster), so only announced here.
@@ -302,6 +316,13 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 	}
 	steps = append(steps, "cluster created")
 	cpath := "/api/clusters/" + spec.ClusterName
+	// 1b. The requested plan, through change-plan-units: the infrastructure's ledger and
+	// plan-increase script authorise it, never a raw setting write.
+	if note, err := applyRequestedPlan(sess, cpath, spec); err != nil {
+		return fail("plan", err)
+	} else if note != "" {
+		steps = append(steps, note)
+	}
 	// 2. Database image, best effort: the infrastructure may pin it (immutable
 	// setting), in which case the cluster runs the infrastructure's image.
 	if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/prov-db-image/"+url.PathEscape(spec.DBImage), nil); err != nil {
@@ -647,6 +668,7 @@ func (repman *ReplicationManager) cloud18InfrastructureAccessOne(p *repmanmcp.Pr
 		"note":    "your session on this infrastructure, as " + as + ": a secret like a token, it expires with the login; create your cluster there with cloud18-create-cluster, then mint a durable token with cloud18-create-cluster-token",
 	}
 	entry.SelfService = ss
+	entry.DefaultRequest = defaultRequestOf(ss)
 	return entry
 }
 
@@ -717,4 +739,53 @@ func (repman *ReplicationManager) Cloud18GetClusterPrice(p *repmanmcp.Principal,
 	}
 	out["infrastructure"] = sess.base
 	return out, nil
+}
+
+// applyRequestedPlan moves the new cluster's reservations to the request (#1963): DBU per
+// database node (prov-db-dbu) and the APU total shared by the proxies (prov-proxy-apu), each app
+// keeping its own reservation (at least 1 APU, more when its template sizes it larger).
+// Each move is a change-plan-units delta from the cluster's current value.
+func applyRequestedPlan(sess *peerSession, cpath string, spec Cloud18ClusterSpec) (string, error) {
+	if spec.DBU <= 0 && spec.APU <= 0 {
+		return "", nil
+	}
+	body, err := sess.mustOK(http.MethodGet, cpath, nil)
+	if err != nil {
+		return "", err
+	}
+	var cl struct {
+		Config struct {
+			ProvDbDbu    int `json:"provDbDbu"`
+			ProvProxyApu int `json:"provProxyApu"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal(body, &cl); err != nil {
+		return "", fmt.Errorf("cannot read the new cluster's plan: %w", err)
+	}
+	notes := []string{}
+	move := func(unit string, cur, target int) error {
+		if target <= 0 || target == cur {
+			return nil
+		}
+		if _, err := sess.mustOK(http.MethodPost, fmt.Sprintf("%s/settings/actions/change-plan-units/%s/%d", cpath, unit, target-cur), nil); err != nil {
+			return fmt.Errorf("plan %s %d -> %d refused: %w", unit, cur, target, err)
+		}
+		notes = append(notes, fmt.Sprintf("plan %s %d -> %d", unit, cur, target))
+		return nil
+	}
+	if err := move("DBU", cl.Config.ProvDbDbu, spec.DBU); err != nil {
+		return "", err
+	}
+	if spec.APU > 0 && spec.ProxyCount > 0 {
+		// prov-proxy-apu is PER PROXY: the APU left once each app holds its 1-APU floor,
+		// shared by the proxies (rounded down, at least 1 each)
+		target := (spec.APU - len(spec.Apps)) / spec.ProxyCount
+		if target < 1 {
+			target = 1
+		}
+		if err := move("APU", cl.Config.ProvProxyApu, target); err != nil {
+			return "", err
+		}
+	}
+	return strings.Join(notes, ", "), nil
 }

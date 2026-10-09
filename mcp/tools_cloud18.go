@@ -157,20 +157,14 @@ func (s *MCPServer) registerCloud18Tools() {
 			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts (latest MariaDB long-term-support release)")),
 			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5")),
 			mcp.WithString("proxy", mcp.Description("haproxy (default), proxysql or none")),
+			mcp.WithNumber("proxy_count", mcp.Description("Number of proxies, default 1, max 3")),
 			mcp.WithString("apps", mcp.Description("Comma-separated app template names to deploy, resolved against the infrastructure's templates (phpmyadmin finds phpmyadmin/phpmyadmin); default phpmyadmin, none to deploy no app. The answer gives each app's URL, live once provisioned")),
-			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: create")),
+			mcp.WithNumber("dbu", mcp.Description("DBU per database node; default the infrastructure's (prov-db-dbu). The cluster plan is db_count x dbu")),
+			mcp.WithNumber("apu", mcp.Description("APU of the cluster's proxies and apps together; default the infrastructure's. Each app keeps at least 1 APU, the rest is shared by the proxies")),
+			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only, with the quote (monthly price at full capacity); true: create")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			spec := Cloud18ClusterSpec{
-				Infrastructure: req.GetString("infrastructure", ""),
-				ClusterName:    req.GetString("cluster_name", ""),
-				DBImage:        req.GetString("db_image", ""),
-				DBCount:        req.GetInt("db_count", 0),
-				Proxy:          req.GetString("proxy", ""),
-			}
-			if apps := req.GetString("apps", ""); apps != "" {
-				spec.Apps = strings.Split(apps, ",")
-			}
+			spec := cloud18SpecFrom(req)
 			out, err := s.repman.Cloud18CreateCluster(principalFrom(ctx), spec, req.GetBool("confirm", false))
 			if err != nil {
 				return mcp.NewToolResultErrorf("%s\n%s", err.Error(), toJSON(out)), nil
@@ -180,8 +174,28 @@ func (s *MCPServer) registerCloud18Tools() {
 	)
 
 	s.addTool(
+		mcp.NewTool("get-cloud18-cluster-quote",
+			mcp.WithDescription("Quote a database cluster on every infrastructure of the Cloud18 marketplace, as yourself, before creating it: per infrastructure, the units the request needs (DBU = db_count x dbu per database node, APU for the proxies and apps, the default BKU), whether they fit the free pool, whether you may create it there (or why not), and the MONTHLY PRICE AT FULL CAPACITY (the plan fully used the whole month) from that infrastructure's own unit prices, with its breakdown and the over-commit rate billed on top above the plan. Infrastructures where the creation is possible come first, cheapest first. Then create on the chosen one with cloud18-create-cluster and the same parameters."),
+			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts")),
+			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5")),
+			mcp.WithNumber("dbu", mcp.Description("DBU per database node; default each infrastructure's (prov-db-dbu)")),
+			mcp.WithString("proxy", mcp.Description("haproxy (default), proxysql or none")),
+			mcp.WithNumber("proxy_count", mcp.Description("Number of proxies, default 1, max 3")),
+			mcp.WithString("apps", mcp.Description("Comma-separated app template names, default phpmyadmin, none for no app")),
+			mcp.WithNumber("apu", mcp.Description("APU of the proxies and apps together; default each infrastructure's")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			out, err := s.repman.Cloud18ClusterQuote(principalFrom(ctx), cloud18SpecFrom(req))
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(toJSON(out)), nil
+		},
+	)
+
+	s.addTool(
 		mcp.NewTool("get-cloud18-infrastructures",
-			mcp.WithDescription("Your access to every infrastructure of the Cloud18 marketplace, as yourself: for each one, an MCP server entry carrying your session there (your Cloud18 identity is valid on every public instance: this instance logs you in there as you, the same door as Enter in the dashboard; no account and no token are written on the infrastructure, only a session that expires), and your self-service status there: whether you may create a cluster and why not, the free, usable and planned DBU and APU, the default plan a cluster takes, the clusters you may still sponsor. Connect the assistant to the infrastructure's entry, create the cluster there with cloud18-create-cluster (you become its sponsor), then mint your durable token with cloud18-create-cluster-token. A local admin without a Cloud18 account acts as this instance's registered identity; a local user or an API token is refused with the way in. The session expires with the login (api-token-timeout hours) and is a secret like a token."),
+			mcp.WithDescription("Your access to every infrastructure of the Cloud18 marketplace, as yourself: for each one, an MCP server entry carrying your session there (your Cloud18 identity is valid on every public instance: this instance logs you in there as you, the same door as Enter in the dashboard; no account and no token are written on the infrastructure, only a session that expires), and your self-service status there: whether you may create a cluster and why not, the free, usable and planned DBU and APU, the default plan a cluster takes, the clusters you may still sponsor, and the default request: the cluster an empty request gets there, every parameter resolved (db_image, db_count, dbu per node, proxy, proxy_count, apps, apu, bku), the starting point for get-cloud18-cluster-quote and cloud18-create-cluster. Connect the assistant to the infrastructure's entry, create the cluster there with cloud18-create-cluster (you become its sponsor), then mint your durable token with cloud18-create-cluster-token. A local admin without a Cloud18 account acts as this instance's registered identity; a local user or an API token is refused with the way in. The session expires with the login (api-token-timeout hours) and is a secret like a token."),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			out, err := s.repman.Cloud18InfrastructuresAccess(principalFrom(ctx))
@@ -276,4 +290,22 @@ func detail(out map[string]any) string {
 		return fmt.Sprintf(" (crm status %v)", st)
 	}
 	return ""
+}
+
+// cloud18SpecFrom reads a cluster request from the arguments the create and quote tools share.
+func cloud18SpecFrom(req mcp.CallToolRequest) Cloud18ClusterSpec {
+	spec := Cloud18ClusterSpec{
+		Infrastructure: req.GetString("infrastructure", ""),
+		ClusterName:    req.GetString("cluster_name", ""),
+		DBImage:        req.GetString("db_image", ""),
+		DBCount:        req.GetInt("db_count", 0),
+		Proxy:          req.GetString("proxy", ""),
+		ProxyCount:     req.GetInt("proxy_count", 0),
+		DBU:            req.GetInt("dbu", 0),
+		APU:            req.GetInt("apu", 0),
+	}
+	if apps := req.GetString("apps", ""); apps != "" {
+		spec.Apps = strings.Split(apps, ",")
+	}
+	return spec
 }
