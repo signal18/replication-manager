@@ -697,6 +697,10 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		repman.syncPluginDataFromPull(pullDir)
 	}
 
+	// A standby also imports the clusters created on the active since it
+	// started (#1946); background, throttled, missing-only.
+	repman.maybeImportClustersOnStandby(time.Now())
+
 	if repman.Conf.Cloud18 {
 		//then to check new file pulled in working dir
 		files, err := os.ReadDir(repman.Conf.WorkingDir)

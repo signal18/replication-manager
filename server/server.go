@@ -126,6 +126,8 @@ type ReplicationManager struct {
 	// to simulate this node being isolated from its peer — the server-level
 	// leg of the split-brain simulator (cluster_splitbrain_simulator.go). Runtime state only.
 	sbHeartbeatFailUntil atomic.Int64 `json:"-"`
+	// standbyImport throttles the standby import of new clusters (server_standby_import.go).
+	standbyImport standbyImportState `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
