@@ -136,13 +136,34 @@ func engineMemMB(usableMB, pct int64) int64 {
 	return minEngineMemMB
 }
 
+// innodbChunkMB is InnoDB's default innodb_buffer_pool_chunk_size: the buffer pool is
+// allocated and resized in these units.
+const innodbChunkMB int64 = 128
+
+// innodbBufferPoolMB is the buffer pool share of the usable memory rounded down to a
+// multiple of innodbChunkMB, not to a power of two like the other engine buffers
+// (#1950): with innodb_flush_method=O_DIRECT InnoDB data never goes through the page
+// cache, so what a power-of-two round-down drops (16 GB at 45%: 7372 MB -> 4096) is
+// lost for InnoDB, while a chunk multiple keeps the plan's share (-> 7296). Floor and
+// disabled engine as engineMemMB.
+func innodbBufferPoolMB(usableMB, pct int64) int64 {
+	if pct <= 0 {
+		return 0
+	}
+	v := usableMB * pct / 100
+	if v -= v % innodbChunkMB; v > minEngineMemMB {
+		return v
+	}
+	return minEngineMemMB
+}
+
 func (configurator *Configurator) GetConfigInnoDBBPSize() string {
 	usable, err := configurator.getUsableMemoryMB()
 	if err != nil {
 		return strconv.FormatInt(minEngineMemMB, 10)
 	}
 	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
-	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["innodb"])), 10)
+	return strconv.FormatInt(innodbBufferPoolMB(usable, int64(sharedmempcts["innodb"])), 10)
 }
 
 func (configurator *Configurator) GetConfigMyISAMKeyBufferSize() string {
