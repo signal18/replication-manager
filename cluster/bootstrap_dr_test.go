@@ -90,3 +90,53 @@ func TestBootstrapDRURLFailedWriteNotMapped(t *testing.T) {
 		t.Fatalf("retry after a failed write: mapped=%q writes=%v", section["configs_environment"], writes)
 	}
 }
+
+// Kubernetes: the pair's URLs are baked into the init container, which picks
+// the first that answers; without them the command is unchanged.
+func TestK8SInitContainerFallsBackToDR(t *testing.T) {
+	cl := newTestCluster("k8stest")
+	cl.Conf.ProvDbImg = "mariadb:10.11"
+	cl.Conf.ApiServ = true
+	cl.Conf.MonitorAddress = "repman.s18.svc.cloud18"
+	cl.Conf.APIPort = "10005"
+	s := &ServerMonitor{Name: "db1", Port: "3306", Pass: "secret"}
+
+	initCmd := func() string {
+		return strings.Join(cl.k8sDatabaseDeployment(s, 3306, "node-a").Spec.Template.Spec.InitContainers[0].Command, " ")
+	}
+	without := initCmd()
+	if strings.Contains(without, "$B") || strings.Contains(without, "/api/version") {
+		t.Fatalf("command changed without DR URLs: %s", without)
+	}
+
+	cl.SetBootstrapDRURL("https://repman.s18.svc.cloud18:10005 https://repman-dr.s18.svc.cloud18:10005")
+	with := initCmd()
+	if !strings.Contains(with, "for u in https://repman.s18.svc.cloud18:10005 https://repman-dr.s18.svc.cloud18:10005 ;") {
+		t.Fatalf("pair not tried in order without duplicates: %s", with)
+	}
+	if !strings.Contains(with, "$B/api/clusters/k8stest/servers/") || !strings.Contains(with, "$B/static/configurator/bin/replication-manager-cli") {
+		t.Fatalf("config and CLI fetches do not use the picked URL: %s", with)
+	}
+}
+
+// On-premise: the provisioning command tries the main URL, then each DR URL
+// once, and the SSH environment carries REPLICATION_MANAGER_URL_DR.
+func TestOnPremiseBootstrapCommandAndEnvCarryDR(t *testing.T) {
+	cmd := onPremiseBootstrapCommand("repository/debian/mariadb")
+	for _, want := range []string{
+		"for u in $REPLICATION_MANAGER_URL $REPLICATION_MANAGER_URL_DR",
+		"$u/static/configurator/onpremise/repository/debian/mariadb/bootstrap",
+		"REPLICATION_MANAGER_URL=$u sh /tmp/replication-manager-bootstrap",
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Fatalf("command misses %q: %s", want, cmd)
+		}
+	}
+
+	cl := newTestCluster("onprem")
+	cl.SetBootstrapDRURL("https://a:10005 https://b:10005")
+	s := &ServerMonitor{Host: "db1", Port: "3306", ClusterGroup: cl}
+	if env := s.GetSshEnv(); !strings.Contains(env, "export REPLICATION_MANAGER_URL_DR='https://a:10005 https://b:10005'") {
+		t.Fatalf("SSH env has no DR URLs: %s", env)
+	}
+}

@@ -47,6 +47,25 @@ func (cluster *Cluster) SetBootstrapDRURL(url string) {
 	cluster.bootstrapDR.mu.Unlock()
 }
 
+// bootstrapDRURLs is the pair's URLs (own, then peer) offered to bootstrap
+// scripts, empty without active/standby. On-premise exports it over SSH and
+// Kubernetes bakes it into the init container command; OpenSVC goes through
+// the namespace config (bootstrapDRURLMapped).
+func (cluster *Cluster) bootstrapDRURLs() string {
+	cluster.bootstrapDR.mu.Lock()
+	defer cluster.bootstrapDR.mu.Unlock()
+	return cluster.bootstrapDR.url
+}
+
+// onPremiseBootstrapCommand fetches an on-premise bootstrap script from
+// REPLICATION_MANAGER_URL, then from each REPLICATION_MANAGER_URL_DR URL not
+// tried yet, and runs it with the URL that answered.
+func onPremiseBootstrapCommand(path string) string {
+	return `tried=; for u in $REPLICATION_MANAGER_URL $REPLICATION_MANAGER_URL_DR; do case " $tried " in *" $u "*) continue;; esac; tried="$tried $u"; ` +
+		`if wget --no-check-certificate -q -T 10 -O /tmp/replication-manager-bootstrap $u/static/configurator/onpremise/` + path + `/bootstrap; then ` +
+		`REPLICATION_MANAGER_URL=$u sh /tmp/replication-manager-bootstrap; exit $?; fi; echo "bootstrap: $u did not answer" >&2; done; exit 1`
+}
+
 // bootstrapDRURLMapped reports whether the init container may map the DR URL:
 // the key must exist in the namespace config, since a mapped key that does not
 // exist fails the start. It is written once per value; a failed write keeps it

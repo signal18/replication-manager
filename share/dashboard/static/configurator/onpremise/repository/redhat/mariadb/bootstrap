@@ -4,6 +4,7 @@ function help {
 	echo "  REPLICATION_MANAGER_USER" >&2
 	echo "  REPLICATION_MANAGER_PASSWORD" >&2
 	echo "  REPLICATION_MANAGER_URL" >&2
+	echo "  REPLICATION_MANAGER_URL_DR (optional, active/standby: the URLs of the pair, tried after REPLICATION_MANAGER_URL)" >&2
 	echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
 	echo "  REPLICATION_MANAGER_HOST_NAME" >&2
 	echo "  REPLICATION_MANAGER_HOST_PORT" >&2
@@ -20,7 +21,20 @@ set -x
 
 GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
 AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
-TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_URL/api/login)
+# Log in on the main replication-manager, else on the DR ones (active/standby,
+# REPLICATION_MANAGER_URL_DR), and keep the one that answered for every call below.
+TOKEN=""
+tried=""
+for u in $REPLICATION_MANAGER_URL $REPLICATION_MANAGER_URL_DR; do
+	case " $tried " in *" $u "*) continue ;; esac
+	tried="$tried $u"
+	TOKEN=$($GET -T 10 --post-data "$AUTH_DATA" --header Accept:text/html $u/api/login)
+	if [ -n "$TOKEN" ]; then
+		REPLICATION_MANAGER_URL=$u
+		break
+	fi
+	echo "bootstrap: no login on $u" >&2
+done
 function get {
 	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" $@
 }

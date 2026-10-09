@@ -42,6 +42,7 @@ func (server *ServerMonitor) GetSshEnv() string {
 		REPLICATION_MANAGER_USER
 		REPLICATION_MANAGER_PASSWORD
 		REPLICATION_MANAGER_URL
+		REPLICATION_MANAGER_URL_DR
 		REPLICATION_MANAGER_URL_HOST
 		REPLICATION_MANAGER_URL_PORT
 		REPLICATION_MANAGER_CLUSTER_NAME
@@ -74,6 +75,7 @@ func (server *ServerMonitor) GetSshEnv() string {
 		";" + shellExport("REPLICATION_MANAGER_HOST_PASSWORD", server.Pass) +
 		";" + shellExport("MYSQL_ROOT_PASSWORD", server.Pass) +
 		";" + shellExport("REPLICATION_MANAGER_URL", "https://"+server.ClusterGroup.Conf.MonitorAddress+":"+server.ClusterGroup.Conf.APIPort) +
+		";" + shellExport("REPLICATION_MANAGER_URL_DR", server.ClusterGroup.bootstrapDRURLs()) +
 		";" + shellExport("REPLICATION_MANAGER_URL_HOST", server.ClusterGroup.Conf.MonitorAddress) +
 		";" + shellExport("REPLICATION_MANAGER_URL_PORT", server.ClusterGroup.Conf.APIPort) +
 		";" + shellExport("REPLICATION_MANAGER_USER", adminuser) +
