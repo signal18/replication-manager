@@ -319,6 +319,31 @@ and the intermediate `.config/` isolated clone that copied `<name>.toml` to
 standby clusters only (one-directional: standby-born changes were stranded
 and eventually overwritten).
 
+## Peer Heartbeat Transport and Failure States (#1940, 2026-10-09)
+
+The peer heartbeat is `GET <arbitration-peer-hosts entry>/api/heartbeat`. That route is served by the **http-port** listener (10001), not by the API port (10005), which answers 404 for it.
+
+**Scheme:**
+- An entry written without a scheme is called over `http://`.
+- On a scheme mismatch, `fetchPeerHeartbeat` (`server/server_heartbeat_peer.go`) retries once over the other scheme. A mismatch is either an https-only answer to http (400 "Client sent an HTTP request to an HTTPS server") or http answering https ("server gave HTTP response to HTTPS client" / "first record does not look like a TLS handshake").
+- The scheme that answers is kept per peer (`arbPeerScheme`).
+- An entry written with a scheme is never changed. These matches depend on Go's error texts, and the tests in `server_heartbeat_peer_test.go` catch a rewording.
+
+**States (`ErrKey` set explicitly; `AddState` does not fill it):**
+
+| State | Meaning |
+|---|---|
+| GWARN018 | Peer heartbeat failed. The URL and error of every failing peer are joined in one description. When both schemes fail, both errors are kept, so a certificate problem shows. A 404 names the http-port. |
+| GWARN019 | A peer written without a scheme answers only on the other one. The description gives the value to write. |
+| GWARN020 | The peer has our own `arbitration-external-unique-id`. When both are Standby, the lower id claims Active, so equal ids leave the pair Standby. |
+
+**`apiUrl` (#1942):**
+- The heartbeat answer also carries `apiUrl` (`conf.MonitorAPIURL()`).
+- The peer keeps it only if it is a plain `https://host[:port]` on the host of the configured peer entry (`validPeerAPIURL`).
+- It feeds the bootstrap DR fallback (`BOOTSTRAP_DR_FALLBACK.md`).
+
+**Open:** the answer still carries `secret` (`arbitration-external-secret`) to any caller. See #1955.
+
 ## Configuration
 
 | Setting | Description |
