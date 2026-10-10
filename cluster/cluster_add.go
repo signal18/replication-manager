@@ -326,27 +326,36 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 		return fmt.Errorf("User %s is not exist in cluster. Unable to update roles and grants", user)
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s is not exist in cluster. Unable to update roles and grants", user)
 	} else {
-		new_acls := make([]string, 0)
-		acls := strings.Split(list, ",")
+		user_acl := user + ":" + grants + ":" + cluster.Name
+		if roles != "" {
+			user_acl = user_acl + ":" + roles
+		}
 
-		for _, acl := range acls {
+		// A user holding credentials without an entry of its own (admin, from the
+		// main api-credentials, once a new cluster blanked its external ACL) gets
+		// one appended: rewriting only an existing entry left the update in memory,
+		// and the next LoadAPIUsers rebuilt the user as a visitor.
+		new_acls := make([]string, 0)
+		found := false
+		for _, acl := range strings.Split(list, ",") {
+			if acl == "" {
+				continue
+			}
 			useracl, _, _, _ := misc.SplitAcls(acl)
 			if useracl == user {
-				acl = user + ":" + grants + ":" + cluster.Name
-				if roles != "" {
-					acl = acl + ":" + roles
-				}
-				new_acls = append(new_acls, acl)
-			} else {
-				new_acls = append(new_acls, acl)
+				acl = user_acl
+				found = true
 			}
+			new_acls = append(new_acls, acl)
+		}
+		if !found {
+			new_acls = append(new_acls, user_acl)
 		}
 
 		cluster.Conf.APIUsersACLAllowExternal = strings.Join(new_acls, ",")
 
 		new_acls = make([]string, 0)
-		acls = strings.Split(xlist, ",")
-		for _, xacl := range acls {
+		for _, xacl := range strings.Split(xlist, ",") {
 			useracl, _, _, _ := misc.SplitAcls(xacl)
 			if useracl != user {
 				new_acls = append(new_acls, xacl)
