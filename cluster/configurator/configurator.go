@@ -978,6 +978,12 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 			}
 		}
 	}
+	// Galera: the SST must keep the .system mount points (galera_sst_cpat.go)
+	if configurator.galeraSplitPathSST() {
+		if err := configurator.writeGaleraSSTCpat(Datadir); err != nil {
+			return err
+		}
+	}
 	// Galera on MariaDB: the SST account is created at datadir init (init/ is the image's
 	// /docker-entrypoint-initdb.d), so the bootstrap node holds it before any node joins
 	if configurator.galeraSocketSST() {
