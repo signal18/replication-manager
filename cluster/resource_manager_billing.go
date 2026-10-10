@@ -169,6 +169,7 @@ type MonthStatement struct {
 
 type billingState struct {
 	prices    BillingPrices
+	priced    bool // SetPrices ran: prices is the instance's list, zeros included
 	dir       string
 	pushFinal func(ctx context.Context, path, month string) error // pushes a closed month's snapshot (Units.<month>.log) to the git sync repository; never called under the lock
 	pushing   atomic.Bool                                         // one push at a time
@@ -206,14 +207,16 @@ func (m *ResourceManager) billing() *billingState {
 func (m *ResourceManager) SetPrices(p BillingPrices) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.billing().prices = p
+	b := m.billing()
+	b.prices, b.priced = p, true
 }
 
 // Prices is the infrastructure's price list in force: the one every cluster prices with.
-func (m *ResourceManager) Prices() BillingPrices {
+func (m *ResourceManager) Prices() (BillingPrices, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.billing().prices
+	b := m.billing()
+	return b.prices, b.priced
 }
 
 // SetBillingDir names where the month statements live and loads the current month.
@@ -747,10 +750,14 @@ func (m *ResourceManager) StatementMonths() []string {
 
 // unitPrices is the price list a cluster bills with: the ResourceManager's, the
 // instance's one, applied live. The cluster's copy of these server-scope settings is
-// read only without a manager (unit tests), never over the manager's list.
+// read only without a manager (unit tests) or before the manager received its list,
+// never over it.
 func (cluster *Cluster) unitPrices() BillingPrices {
 	if cluster.resources != nil {
-		return cluster.resources.Prices()
+		// before the instance gave its list (SetPrices), the cluster copy, never zeros
+		if p, ok := cluster.resources.Prices(); ok {
+			return p
+		}
 	}
 	c := cluster.Conf
 	return BillingPrices{DBU: c.Cloud18MarketplaceDBUPrice, APU: c.Cloud18MarketplaceAPUPrice, BKU: c.Cloud18MarketplaceBKUPrice,

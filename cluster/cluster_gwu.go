@@ -101,14 +101,14 @@ func (cluster *Cluster) SetGatewayTraffic(bytes int64, mbpsNow, planMbps, onTopG
 // DBU; the bandwidth held above the allowance is the borrowed line, nothing is credited
 // below it, the free units cost nothing, the on-top units carry the plain price; always
 // present, priced only with a price.
-func (cluster *Cluster) gatewayUsage(over, under int) (UnitUsage, bool) {
+func (cluster *Cluster) gatewayUsage(pr BillingPrices) (UnitUsage, bool) {
 	c := cluster.Conf
 	free := c.Cloud18MarketplaceGWUFreeUnits
 	if free < 0 {
 		free = 0
 	}
 	u := UnitUsage{Family: BillingFamilyGateway, Unit: "GWU", Plan: float64(free), FreePlan: true,
-		Priced: cluster.unitPrices().GWU > 0, UnitPrice: cluster.unitPrices().GWU, OverPct: over, UnderPct: under}
+		Priced: pr.GWU > 0, UnitPrice: pr.GWU, OverPct: pr.OverPct, UnderPct: pr.UnderPct}
 	cluster.Lock()
 	r := cluster.GatewayUnits
 	cluster.Unlock()

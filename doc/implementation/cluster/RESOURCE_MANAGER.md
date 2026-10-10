@@ -1057,6 +1057,18 @@ the manager holds every cluster's plans, consumption and borrows, receives the u
 (`SetPrices` from cloud18-marketplace-*-price and the over/under-commit percentages, refreshed
 at every capacity tick) and is the one place that prices usage.
 
+**Price source of truth (2026-10-10, #1965):** the unit prices are the instance's
+(`scope:"server"`), held by the manager; a cluster never prices from its own copy of them.
+Every reading and the billing feed take ONE snapshot per evaluation through
+`cluster.unitPrices()` (`ResourceManager.Prices()`), so the price and the over/under
+percentages of a line come from the same list. Before the manager received its first list
+(`SetPrices`, at cluster init and every tick) the cluster copy is used, never zeros; without a
+manager (unit tests) too. Why: the ledger keeps the price a cluster sends when it is above 0,
+and the cluster copy, taken at load and then written into `<cluster>.toml` by the cluster's
+periodic save, won over the instance's list: a price set through the API never reached the
+bills, even across restarts (RapidSpace billed 12 / 6.67 with the instance at 14 / 11).
+Tests: `TestClusterPricesFromResourceManager`, `TestBillingUsageCarriesManagerPrices`.
+
 **Rule (Stéphane):** the price is the INTEGRAL over every monitoring period since the first
 of the month of each unit family's rate, `rate = unit price × [plan + over × (100+over%)/100 −
 under × under%/100]`, over = max(0, billable − plan), under = max(0, plan − billable). Five

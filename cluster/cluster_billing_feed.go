@@ -71,7 +71,7 @@ func (cluster *Cluster) BillingUsage() []UnitUsage {
 		}
 	}
 	out = append(out, st, co, bk, ar)
-	if gw, ok := cluster.gatewayUsage(over, under); ok {
+	if gw, ok := cluster.gatewayUsage(pr); ok {
 		out = append(out, gw)
 	}
 	return out
