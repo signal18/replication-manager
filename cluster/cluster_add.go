@@ -309,6 +309,8 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 	roles := userform.Roles
 	grants := userform.Grants
 
+	auser, ok := cluster.APIUsers[user]
+
 	if delegator != "admin" {
 		duser, dok := cluster.APIUsers[delegator]
 		if !dok {
@@ -317,11 +319,16 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 
 		r := duser.Roles[config.RoleSysOps]
 		if !r {
+			// The entry below now persists (it is appended when missing), so a
+			// delegator below sysops must not rewrite a sysops account (admin, the
+			// Cloud18 git user): its change used to vanish at the next reload.
+			if ok && auser.Roles[config.RoleSysOps] {
+				return fmt.Errorf("Delegator %s is not sysops: unable to update sysops user %s", delegator, user)
+			}
 			grants = cluster.FilterGrants(grants, &duser)
 		}
 	}
 
-	auser, ok := cluster.APIUsers[user]
 	if !ok {
 		return fmt.Errorf("User %s is not exist in cluster. Unable to update roles and grants", user)
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s is not exist in cluster. Unable to update roles and grants", user)
@@ -356,6 +363,9 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 
 		new_acls = make([]string, 0)
 		for _, xacl := range strings.Split(xlist, ",") {
+			if xacl == "" {
+				continue
+			}
 			useracl, _, _, _ := misc.SplitAcls(xacl)
 			if useracl != user {
 				new_acls = append(new_acls, xacl)
