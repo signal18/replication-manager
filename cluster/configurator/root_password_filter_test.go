@@ -56,3 +56,35 @@ func TestFilterRootPasswordLeavesTheRest(t *testing.T) {
 		t.Errorf("empty password must not filter")
 	}
 }
+
+// A short or common password must not comment out lines that only share its letters
+// (review of #1962): user names, paths, comments and section headers stay.
+func TestFilterRootPasswordCommonPasswordNoOverMatch(t *testing.T) {
+	in := "[mysqld]\nuser=root\nwsrep_sst_user=root\ndatadir=/var/lib/mysql\n# root is the admin\nsocket=/run/mysqld/mysqld.sock\n" +
+		"wsrep_sst_auth=root:root\n[client]\npassword=root\n[xtrabackup]\npassword = \"root\"\n"
+	out, changed := FilterRootPassword("/etc/mysql/conf.d/x.cnf", in, "root")
+	for _, keep := range []string{"user=root", "wsrep_sst_user=root", "datadir=/var/lib/mysql", "# root is the admin"} {
+		if !strings.Contains(out, keep) {
+			t.Errorf("%q must stay:\n%s", keep, out)
+		}
+	}
+	if strings.Contains(out, "password=root") || strings.Contains(out, "\"root\"") || strings.Contains(out, "wsrep_sst_auth=root") {
+		t.Errorf("the password values must be removed:\n%s", out)
+	}
+	if len(changed) != 3 {
+		t.Errorf("changed %v, want wsrep_sst_auth and the two password lines", changed)
+	}
+	// a script line passing it as -p<password> is still caught
+	if out, _ := FilterRootPassword("/x/dbjob.sh", "mysql -uroot -proot -e 'select 1'\n", "root"); strings.Contains(out, "-proot") {
+		t.Errorf("-p<password> must be removed: %s", out)
+	}
+}
+
+// A password holding a separator is still found in the value.
+func TestFilterRootPasswordWithSeparator(t *testing.T) {
+	pw := "s3:cr et"
+	out, changed := FilterRootPassword("/x/x.cnf", "[client]\nuser=root\npassword="+pw+"\n", pw)
+	if strings.Contains(out, pw) || len(changed) != 1 || !strings.Contains(out, "user=root") {
+		t.Fatalf("password with separators: %v\n%s", changed, out)
+	}
+}
