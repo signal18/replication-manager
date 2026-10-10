@@ -7,6 +7,7 @@ package configurator
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Galera SST and the .system tree. Before restoring, the joiner's SST script empties the
@@ -42,4 +43,34 @@ func (configurator *Configurator) writeGaleraSSTCpat(Datadir string) error {
 	}
 	content := "# replication-manager: the Galera SST keeps the .system mount points (see galera_sst_cpat.go)\n[sst]\ncpat=" + galeraSSTCpat + "\n"
 	return os.WriteFile(dir+"/"+galeraSSTCpatFile, []byte(content), 0644)
+}
+
+// galeraISTRecvBind adds ist.recv_bind=0.0.0.0 to the rendered wsrep_provider_options of a
+// Galera node. Without it the IST listener binds to wsrep_node_address, the node's OWN
+// service name: right after the container starts the CNI has not registered it yet, the
+// resolve fails ("Failed to open IST listener ... Failed to listen: resolve"), the joiner's
+// request carries no IST address, the donor answers "No message of desired type" and Galera
+// aborts the joiner (the last node to join, every time: dev3 galera-sst 2026-10-10). The
+// listener binds every address; the donor still connects to the advertised name, resolvable
+// by then. An existing ist.recv_bind is kept; the other provider options are untouched.
+func galeraISTRecvBind(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		t := strings.TrimSpace(line)
+		if !strings.HasPrefix(t, "wsrep_provider_options") || strings.Contains(t, "ist.recv_bind") {
+			continue
+		}
+		key, val, ok := strings.Cut(t, "=")
+		if !ok || strings.TrimSpace(key) != "wsrep_provider_options" {
+			continue
+		}
+		v := strings.Trim(strings.TrimSpace(val), `"'`)
+		if v == "" {
+			v = "ist.recv_bind=0.0.0.0"
+		} else {
+			v = strings.TrimRight(v, "; ") + "; ist.recv_bind=0.0.0.0"
+		}
+		lines[i] = `wsrep_provider_options="` + v + `"`
+	}
+	return strings.Join(lines, "\n")
 }

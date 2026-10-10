@@ -1390,6 +1390,9 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 			content = strings.ReplaceAll(content, "./.system", RemoteBasedir+"/var/lib/mysql/.system")
 		}
 
+		if configurator.IsFilterInDBTags("wsrep") {
+			content = galeraISTRecvBind(content) // IST listener without resolving its own name
+		}
 		var stripped []string
 		content, stripped = FilterRootPassword(fpath, content, TemplateEnv["%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%"], configurator.galeraSocketSST())
 		if len(stripped) > 0 {

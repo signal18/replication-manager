@@ -32,3 +32,20 @@ func TestGaleraSplitPathSSTCpat(t *testing.T) {
 		}
 	}
 }
+
+func TestGaleraISTRecvBind(t *testing.T) {
+	in := "[mysqld]\nwsrep_node_address=db3.x\nwsrep_provider_options=\"gcache.size=128M; gmcast.segment=0\"\n#wsrep_provider_options=\"evs.keepalive_period = PT2S\"\n"
+	out := galeraISTRecvBind(in)
+	if !strings.Contains(out, `wsrep_provider_options="gcache.size=128M; gmcast.segment=0; ist.recv_bind=0.0.0.0"`) {
+		t.Fatalf("recv_bind not appended:\n%s", out)
+	}
+	if !strings.Contains(out, `#wsrep_provider_options="evs.keepalive_period = PT2S"`) {
+		t.Fatalf("a commented line must stay as it is:\n%s", out)
+	}
+	if again := galeraISTRecvBind(out); again != out {
+		t.Fatalf("idempotent: an existing ist.recv_bind is kept:\n%s", again)
+	}
+	if out := galeraISTRecvBind("[mysqld]\nwsrep_provider_options=\"\"\n"); !strings.Contains(out, `wsrep_provider_options="ist.recv_bind=0.0.0.0"`) {
+		t.Fatalf("empty options: %s", out)
+	}
+}
