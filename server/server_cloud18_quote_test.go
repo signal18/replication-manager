@@ -1,6 +1,12 @@
 package server
 
-import "testing"
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+)
 
 // selfService answers shaped like GET /api/cloud18/self-service once JSON-decoded.
 func ssFixture(enabled bool, reason string, freeDbu, freeApu, dbuPrice, apuPrice float64) map[string]any {
@@ -83,5 +89,23 @@ func TestDefaultRequestResolved(t *testing.T) {
 	}
 	if apps, _ := d["apps"].([]string); len(apps) != 1 || apps[0] != "phpmyadmin" {
 		t.Errorf("apps = %v", d["apps"])
+	}
+}
+
+// TestQuoteReadsPricesThroughTheStatusFilter: the quote is computed from what
+// selfServiceStatusOfTimeout keeps of the infrastructure's answer, so the prices
+// must survive that filter (they did not: every quote said "unknown").
+func TestQuoteReadsPricesThroughTheStatusFilter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(ssFixture(true, "", 34.8, 69.6, 12, 6.67))
+	}))
+	defer srv.Close()
+	ss, _, err := selfServiceStatusOfTimeout(&peerSession{base: srv.URL}, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := cloud18QuoteOf(quoteSpec(), ss)
+	if q["monthlyAtFullCapacity"] != 81.35 {
+		t.Fatalf("quote through the status filter = %v", q)
 	}
 }

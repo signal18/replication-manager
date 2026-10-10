@@ -604,7 +604,7 @@ func selfServiceStatusOfTimeout(sess *peerSession, timeout time.Duration) (map[s
 		return nil, status, fmt.Errorf("self-service status of %s: %w", sess.base, err)
 	}
 	out := map[string]any{}
-	for _, k := range []string{"enabled", "reason", "orchestrator", "maxClustersPerUser", "used", "remaining", "defaultDbu", "defaultApu", "defaultBku", "neededDbu", "neededApu", "pool", "poolOk", "poolNote", "borrowed", "appTemplates"} {
+	for _, k := range []string{"enabled", "reason", "orchestrator", "maxClustersPerUser", "used", "remaining", "defaultDbu", "defaultApu", "defaultBku", "neededDbu", "neededApu", "pool", "poolOk", "poolNote", "borrowed", "appTemplates", "prices"} {
 		if v, ok := ss[k]; ok {
 			out[k] = v
 		}
