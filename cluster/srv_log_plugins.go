@@ -88,17 +88,35 @@ func (server *ServerMonitor) cachedPluginEval(p logplugin.LogPlugin, src logplug
 		server.pluginEval[name] = e
 	}
 	hb := cluster.StateMachine.GetHeartbeats()
-	if !e.inFlight && (!e.have || hb-e.lastTick >= pluginEvalIntervalTicks) {
+	// hb < lastTick: the heartbeats restarted (cluster or state machine re-init), the
+	// entry is stale, refresh now instead of waiting for the old count to come back
+	if !e.inFlight && (!e.have || hb-e.lastTick >= pluginEvalIntervalTicks || hb < e.lastTick) {
 		e.inFlight = true
 		e.lastTick = hb
-		// src is a snapshot (copies), safe to read from the goroutine.
+		// src is a snapshot (copies), safe to read from the goroutine, except the spike
+		// cache, a pointer shared with the tick: the goroutine works on its own copy and
+		// writes it back under pluginEvalMu, where the tick reads it (spikeCacheSnapshot).
+		shared := src.SpikeCache
+		if shared != nil {
+			local := *shared
+			src.SpikeCache = &local
+		}
 		go func() {
+			// registered first, runs last: inFlight is released even when Evaluate
+			// panics (LogPanicToFile recovers), else the plugin never refreshes again
+			defer func() {
+				server.pluginEvalMu.Lock()
+				e.inFlight = false
+				server.pluginEvalMu.Unlock()
+			}()
 			defer cluster.LogPanicToFile("cluster")
 			res := p.Evaluate(src) // slow subprocess — OFF the monitor tick
 			server.pluginEvalMu.Lock()
 			e.result = res
 			e.have = true
-			e.inFlight = false
+			if shared != nil {
+				*shared = *src.SpikeCache
+			}
 			server.pluginEvalMu.Unlock()
 		}()
 	}
@@ -407,7 +425,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			score.ApplyCheck(sc.Tag, sc.Pass)
 		}
 
-		cache := spikeCache[cacheKey]
+		cache := server.spikeCacheSnapshot(spikeCache[cacheKey])
 		if cache != nil && cache.IsHeld() {
 			hasSpikeInFindings := false
 			for _, f := range result.Findings {
@@ -1443,4 +1461,16 @@ func hasExecutables(dir string) bool {
 		}
 	}
 	return false
+}
+
+// spikeCacheSnapshot copies a spike cache under pluginEvalMu, the lock its background
+// Evaluate writes it back under: the tick never reads it while a refresh writes it.
+func (server *ServerMonitor) spikeCacheSnapshot(c *logplugin.SpikeCache) *logplugin.SpikeCache {
+	if c == nil {
+		return nil
+	}
+	server.pluginEvalMu.Lock()
+	defer server.pluginEvalMu.Unlock()
+	cp := *c
+	return &cp
 }
