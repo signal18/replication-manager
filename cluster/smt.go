@@ -67,6 +67,17 @@ func (a Agent) CPUQuotaFactor(gain float64) float64 {
 	return a.ThreadsPerCore() / a.smtGain(gain)
 }
 
+// smtGainInForce is the instance's SMT gain, from the ResourceManager; the cluster copy only
+// without a manager (unit tests).
+func (cluster *Cluster) smtGainInForce() float64 {
+	if cluster.resources != nil {
+		if g := cluster.resources.SmtGain(); g > 0 {
+			return g
+		}
+	}
+	return cluster.Conf.ResourceManagerSmtGain
+}
+
 // cpuQuotaCoresOnNode turns a container's cores into the logical CPUs of quota
 // on the node it runs on. An unknown node keeps the cores.
 func (cluster *Cluster) cpuQuotaCoresOnNode(node string, cores float64) float64 {
@@ -75,7 +86,7 @@ func (cluster *Cluster) cpuQuotaCoresOnNode(node string, cores float64) float64 
 	}
 	for _, a := range cluster.Agents {
 		if a.HostName == node {
-			return cores * a.CPUQuotaFactor(cluster.Conf.ResourceManagerSmtGain)
+			return cores * a.CPUQuotaFactor(cluster.smtGainInForce())
 		}
 	}
 	return cores

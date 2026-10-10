@@ -3622,6 +3622,7 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Global policy: the share of the metal repman may allocate (protects non-repman
 	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
 	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
+	repman.resourceManager.SetSmtGain(repman.Conf.ResourceManagerSmtGain)
 	repman.resourceManager.SetPrices(repman.billingPrices())
 	if repman.Conf.WorkingDir != "" {
 		logf := func(format string, args ...interface{}) {

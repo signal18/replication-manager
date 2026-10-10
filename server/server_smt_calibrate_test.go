@@ -61,3 +61,17 @@ func TestSysbenchOutputParsing(t *testing.T) {
 		t.Fatalf("memory MiB/s: %v", m)
 	}
 }
+
+func TestSmtGainSetterValidation(t *testing.T) {
+	for _, bad := range []string{"NaN", "nan", "Inf", "-Inf", "-0.5", "abc"} {
+		if _, err := parseSmtGain(bad); err == nil {
+			t.Errorf("%q must be refused", bad)
+		}
+	}
+	// no upper bound of 2: an SMT4 host is clamped by the node, not refused here
+	for _, ok := range []string{"1.15", "0", "3.2"} {
+		if _, err := parseSmtGain(ok); err != nil {
+			t.Errorf("%q refused: %v", ok, err)
+		}
+	}
+}

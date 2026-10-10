@@ -69,3 +69,20 @@ func TestCPUQuotaOnNode(t *testing.T) {
 		t.Errorf("docker --cpus on the SMT node = %q, want 3.48", got)
 	}
 }
+
+// The quota follows the instance's gain held by the ResourceManager, live, never a
+// per-cluster copy (review of #1959: no write into cl.Conf from the API goroutine).
+func TestCPUQuotaFollowsManagerGain(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{ResourceManagerSmtGain: 1},
+		Agents: []Agent{{HostName: "smt", CpuCores: 48, CpuThreads: 96}}}
+	rm := NewResourceManager()
+	rm.SetSmtGain(1.15)
+	cl.SetResourceManager(rm)
+	if got := cl.cpuQuotaCoresOnNode("smt", 2); !smtNear(got, 3.478) {
+		t.Fatalf("manager gain 1.15: %.3f logical CPUs, want 3.478", got)
+	}
+	rm.SetSmtGain(1)
+	if got := cl.cpuQuotaCoresOnNode("smt", 2); got != 2 {
+		t.Fatalf("manager gain 1 (SMT not accounted): %.3f, want the 2 cores unchanged", got)
+	}
+}

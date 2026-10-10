@@ -10,6 +10,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -22,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -108,6 +110,9 @@ var (
 	sysbenchMemRe    = regexp.MustCompile(`MiB transferred \(([0-9.]+) MiB/sec\)`)
 )
 
+// errSMTCalibrationRunning: one calibration at a time (the handler answers 409).
+var errSMTCalibrationRunning = errors.New("a calibration is already running")
+
 func (repman *ReplicationManager) sysbenchRun(ctx context.Context, re *regexp.Regexp, args ...string) (float64, error) {
 	bin := repman.Conf.SysbenchBinaryPath
 	if _, err := os.Stat(bin); err != nil {
@@ -117,13 +122,25 @@ func (repman *ReplicationManager) sysbenchRun(ctx context.Context, re *regexp.Re
 			return 0, fmt.Errorf("sysbench not found (%s)", repman.Conf.SysbenchBinaryPath)
 		}
 	}
-	out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
-	if err != nil {
-		return 0, fmt.Errorf("sysbench %s: %v", strings.Join(args[:1], " "), err)
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
 	}
-	m := re.FindSubmatch(out)
+	// the lowest CPU priority: the measurement loads every thread for about a minute and
+	// must never take the CPU from the monitor, the API or the heartbeats of this host
+	var buf bytes.Buffer
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Stdout, cmd.Stderr = &buf, &buf
+	if err := cmd.Start(); err != nil {
+		return 0, fmt.Errorf("sysbench %s: %v", name, err)
+	}
+	_ = syscall.Setpriority(syscall.PRIO_PROCESS, cmd.Process.Pid, 19)
+	if err := cmd.Wait(); err != nil {
+		return 0, fmt.Errorf("sysbench %s: %v", name, err)
+	}
+	m := re.FindSubmatch(buf.Bytes())
 	if m == nil {
-		return 0, fmt.Errorf("sysbench %s: no result in its output", args[0])
+		return 0, fmt.Errorf("sysbench %s: no result in its output", name)
 	}
 	return strconv.ParseFloat(string(m[1]), 64)
 }
@@ -132,7 +149,7 @@ func (repman *ReplicationManager) sysbenchRun(ctx context.Context, re *regexp.Re
 // the host runs SMT, writes it to resource-manager-smt-gain.
 func (repman *ReplicationManager) CalibrateSMTGain(ctx context.Context, user, url string, apply bool) (*SMTCalibration, error) {
 	if !smtCalibrationRunning.CompareAndSwap(false, true) {
-		return nil, errors.New("a calibration is already running")
+		return nil, errSMTCalibrationRunning
 	}
 	defer smtCalibrationRunning.Store(false)
 	start := time.Now()
@@ -220,7 +237,7 @@ func (repman *ReplicationManager) handlerMuxCalibrateSMTGain(w http.ResponseWrit
 	res, err := repman.CalibrateSMTGain(ctx, user, r.URL.Path, apply)
 	if err != nil {
 		code := http.StatusInternalServerError
-		if strings.Contains(err.Error(), "already running") {
+		if errors.Is(err, errSMTCalibrationRunning) {
 			code = http.StatusConflict
 		}
 		http.Error(w, err.Error(), code)
