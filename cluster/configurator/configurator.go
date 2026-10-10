@@ -1371,14 +1371,13 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 		content := misc.ExtractKey(f.Content, TemplateEnv)
 
 		if configurator.IsFilterInDBTags("docker") && configurator.ClusterConfig.ProvOrchestrator != config.ConstOrchestratorLocalhost {
-			if configurator.IsFilterInDBTags("wsrep") {
-				//if galera don't cusomized system files
-				if strings.Contains(content, "./.system") && !strings.Contains(content, "exclude") && !strings.Contains(content, "ignore") {
-					content = ""
-				}
-			} else {
-				content = strings.ReplaceAll(content, "./.system", "/var/lib/mysql/.system")
-			}
+			// Absolute .system paths, Galera included. Galera used to drop every file holding
+			// ./.system unless it also said "exclude" or "ignore": default_path.cnf says
+			// ignore_db_dir, so it kept its RELATIVE paths and mariadb-backup --move-back
+			// built /var/lib/mysql./.system/aria (no separator) on the joiner. With absolute
+			// paths and the [sst] cpat keeping the .system mount points (galera_sst_cpat.go),
+			// the split path layout joins (dev3 galera-sst 2026-10-10).
+			content = strings.ReplaceAll(content, "./.system", "/var/lib/mysql/.system")
 		}
 
 		if configurator.ClusterConfig.ProvOrchestrator == config.ConstOrchestratorLocalhost {
