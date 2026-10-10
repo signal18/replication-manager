@@ -114,35 +114,56 @@ var (
 var errSMTCalibrationRunning = errors.New("a calibration is already running")
 
 func (repman *ReplicationManager) sysbenchRun(ctx context.Context, re *regexp.Regexp, args ...string) (float64, error) {
+	out, err := repman.sysbenchExec(ctx, "", args...)
+	if err != nil {
+		return 0, err
+	}
+	m := re.FindSubmatch(out)
+	if m == nil {
+		return 0, fmt.Errorf("sysbench %s: no result in its output", firstArg(args))
+	}
+	return strconv.ParseFloat(string(m[1]), 64)
+}
+
+// sysbenchExec runs the embedded sysbench in dir (its working directory, "" = inherited)
+// at the lowest CPU priority: a measurement loads the host for about a minute and must
+// never take the CPU from the monitor, the API or the heartbeats of this host.
+func (repman *ReplicationManager) sysbenchExec(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	bin := repman.Conf.SysbenchBinaryPath
 	if _, err := os.Stat(bin); err != nil {
 		if p, lerr := exec.LookPath("sysbench"); lerr == nil {
 			bin = p
 		} else {
-			return 0, fmt.Errorf("sysbench not found (%s)", repman.Conf.SysbenchBinaryPath)
+			return nil, fmt.Errorf("sysbench not found (%s)", repman.Conf.SysbenchBinaryPath)
 		}
 	}
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	}
-	// the lowest CPU priority: the measurement loads every thread for about a minute and
-	// must never take the CPU from the monitor, the API or the heartbeats of this host
 	var buf bytes.Buffer
 	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = dir
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	if err := cmd.Start(); err != nil {
-		return 0, fmt.Errorf("sysbench %s: %v", name, err)
+		return nil, fmt.Errorf("sysbench %s: %v", firstArg(args), err)
 	}
 	_ = syscall.Setpriority(syscall.PRIO_PROCESS, cmd.Process.Pid, 19)
 	if err := cmd.Wait(); err != nil {
-		return 0, fmt.Errorf("sysbench %s: %v", name, err)
+		return buf.Bytes(), fmt.Errorf("sysbench %s: %v: %s", firstArg(args), err, strings.TrimSpace(lastLine(buf.String())))
 	}
-	m := re.FindSubmatch(buf.Bytes())
-	if m == nil {
-		return 0, fmt.Errorf("sysbench %s: no result in its output", name)
+	return buf.Bytes(), nil
+}
+
+func firstArg(args []string) string {
+	if len(args) == 0 {
+		return ""
 	}
-	return strconv.ParseFloat(string(m[1]), 64)
+	return args[0]
+}
+
+func lastLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.LastIndex(s, "\n"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 // CalibrateSMTGain measures the SMT gain of this host and, when apply is set and

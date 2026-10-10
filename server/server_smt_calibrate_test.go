@@ -75,3 +75,20 @@ func TestSmtGainSetterValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestParseFileioIops(t *testing.T) {
+	out := []byte(`File operations:
+    reads/s:                      5123.45
+    writes/s:                     3415.63
+    fsyncs/s:                     0.00
+
+Throughput:
+    read, MiB/s:                  80.05`)
+	r, w, err := parseFileioIops(out)
+	if err != nil || r != 5123.45 || w != 3415.63 {
+		t.Fatalf("reads %v writes %v err %v", r, w, err)
+	}
+	if _, _, err := parseFileioIops([]byte("FATAL: cannot open file")); err == nil {
+		t.Fatal("an output without rates must be an error")
+	}
+}

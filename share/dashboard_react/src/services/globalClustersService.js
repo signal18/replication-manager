@@ -23,6 +23,7 @@ export const globalClustersService = {
   reloadClustersPlan,
   reloadClustersPlanInfo,
   calibrateSmtGain,
+  calibrateIops,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
   register,
@@ -123,6 +124,10 @@ function reloadClustersPlan(download = true) {
 
 // SMT gain calibration (#1958): runs the embedded sysbench on the replication-manager host
 // (about a minute) and, unless apply is false, writes resource-manager-smt-gain
+function calibrateIops(apply = false) {
+  return getApi().post(`clusters/settings/actions/calibrate-iops?apply=${apply}`)
+}
+
 function calibrateSmtGain(apply = true) {
   return getApi().post(`clusters/settings/actions/calibrate-smt-gain?apply=${apply}`)
 }
