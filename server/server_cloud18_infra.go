@@ -149,14 +149,14 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	if spec.DBCount <= 0 {
 		spec.DBCount = 2
 	}
-	if spec.DBCount > 5 {
-		return spec, errors.New("db_count above 5 is not a self-service size")
+	if spec.DBCount > cloud18MaxDBCount {
+		return spec, fmt.Errorf("db_count above %d is not a self-service size", cloud18MaxDBCount)
 	}
-	if spec.DBU < 0 || spec.DBU > 64 {
-		return spec, errors.New("dbu (per database node) must be between 1 and 64, 0 = the infrastructure's default")
+	if spec.DBU < 0 || spec.DBU > cloud18MaxDBU {
+		return spec, fmt.Errorf("dbu (per database node) must be between 1 and %d, 0 = the infrastructure's default", cloud18MaxDBU)
 	}
-	if spec.APU < 0 || spec.APU > 256 {
-		return spec, errors.New("apu must be between 1 and 256, 0 = the infrastructure's default")
+	if spec.APU < 0 || spec.APU > cloud18MaxAPU {
+		return spec, fmt.Errorf("apu must be between 1 and %d, 0 = the infrastructure's default", cloud18MaxAPU)
 	}
 	spec.Proxy = strings.ToLower(strings.TrimSpace(spec.Proxy))
 	switch spec.Proxy {
@@ -190,8 +190,8 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 		spec.ProxyCount = 0
 	case spec.ProxyCount <= 0:
 		spec.ProxyCount = 1
-	case spec.ProxyCount > 3:
-		return spec, errors.New("proxy_count above 3 is not a self-service size")
+	case spec.ProxyCount > cloud18MaxProxyCount:
+		return spec, fmt.Errorf("proxy_count above %d is not a self-service size", cloud18MaxProxyCount)
 	}
 	// phpMyAdmin is deployed by default; apps=none opts out.
 	apps := []string{}
@@ -214,7 +214,41 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 		}
 	}
 	spec.Apps = apps
+	// A requested APU is what applyRequestedPlan reserves, so the quote prices exactly that:
+	// each app holds 1 APU, the proxies share the rest equally (whole units, at least 1 each).
+	if spec.APU > 0 {
+		if min := len(apps) + spec.ProxyCount; spec.APU < min {
+			return spec, fmt.Errorf("apu %d cannot hold %d app(s) and %d proxy(ies): at least %d", spec.APU, len(apps), spec.ProxyCount, min)
+		}
+		spec.APU = appliedAPU(spec)
+	}
 	return spec, nil
+}
+
+// Self-service sizes: one source for the validation, the options and the tool texts.
+const (
+	cloud18MaxDBCount    = 5
+	cloud18MaxDBU        = 64
+	cloud18MaxAPU        = 256
+	cloud18MaxProxyCount = 3
+)
+
+// appliedAPU is the APU a request really reserves: 1 per app, plus prov-proxy-apu per proxy
+// (the rest shared equally, rounded down, at least 1); without a proxy, the apps only.
+func appliedAPU(spec Cloud18ClusterSpec) int {
+	if spec.ProxyCount <= 0 {
+		return len(spec.Apps)
+	}
+	return len(spec.Apps) + spec.ProxyCount*proxyAPUOf(spec)
+}
+
+// proxyAPUOf is the prov-proxy-apu of each proxy for a requested APU.
+func proxyAPUOf(spec Cloud18ClusterSpec) int {
+	per := (spec.APU - len(spec.Apps)) / spec.ProxyCount
+	if per < 1 {
+		per = 1
+	}
+	return per
 }
 
 // plannedHosts lists the services the tool will add, in order. Hosts are short
@@ -362,6 +396,12 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 	// 1b. The requested plan, through change-plan-units: the infrastructure's ledger and
 	// plan-increase script authorise it, never a raw setting write.
 	if note, err := applyRequestedPlan(sess, cpath, spec); err != nil {
+		// never leave a cluster on a plan nobody asked for: the creation is undone
+		if _, derr := sess.mustOK(http.MethodDelete, "/api/clusters/actions/delete/"+spec.ClusterName, nil); derr != nil {
+			plan["leftover"] = fmt.Sprintf("cluster %s exists on the infrastructure's default plan: deleting it failed (%v)", spec.ClusterName, derr)
+		} else {
+			steps = append(steps, "cluster deleted: its plan was refused")
+		}
 		return fail("plan", err)
 	} else if note != "" {
 		steps = append(steps, note)
@@ -664,7 +704,7 @@ func selfServiceStatusOfTimeout(sess *peerSession, timeout time.Duration) (map[s
 		return nil, status, fmt.Errorf("self-service status of %s: %w", sess.base, err)
 	}
 	out := map[string]any{}
-	for _, k := range []string{"enabled", "reason", "orchestrator", "maxClustersPerUser", "used", "remaining", "defaultDbu", "defaultApu", "defaultBku", "neededDbu", "neededApu", "pool", "poolOk", "poolNote", "borrowed", "appTemplates", "prices"} {
+	for _, k := range []string{"enabled", "reason", "orchestrator", "maxClustersPerUser", "used", "remaining", "defaultDbu", "defaultApu", "defaultBku", "neededDbu", "neededApu", "pool", "poolOk", "poolNote", "borrowed", "appTemplates", "prices", "poolBlocked"} {
 		if v, ok := ss[k]; ok {
 			out[k] = v
 		}
@@ -847,11 +887,7 @@ func applyRequestedPlan(sess *peerSession, cpath string, spec Cloud18ClusterSpec
 	if spec.APU > 0 && spec.ProxyCount > 0 {
 		// prov-proxy-apu is PER PROXY: the APU left once each app holds its 1-APU floor,
 		// shared by the proxies (rounded down, at least 1 each)
-		target := (spec.APU - len(spec.Apps)) / spec.ProxyCount
-		if target < 1 {
-			target = 1
-		}
-		if err := move("APU", cl.Config.ProvProxyApu, target); err != nil {
+		if err := move("APU", cl.Config.ProvProxyApu, proxyAPUOf(spec)); err != nil {
 			return "", err
 		}
 	}

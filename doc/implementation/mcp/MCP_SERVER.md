@@ -111,6 +111,65 @@ caller's effective grants, token narrowing applied; the literal `admin` login is
 accepted when no cluster is loaded) instead of the literal user name `admin`, which a narrowed
 token of admin used to pass.
 
+## Quote, options and creation of a cluster (server_cloud18_quote.go, server_cloud18_options.go, server_cloud18_infra.go)
+
+Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per database node,
+`proxy`, `proxy_count`, `apps`, `apu`, and `topology` for PostgreSQL), normalized once by
+`normalizeSpec`:
+
+- `list-cloud18-cluster-options`: the possible values per dimension (flavor, image lines
+  with LTS from `share/plugins/data/lts-versions.json`, topology per flavor, proxy, apps =
+  the infrastructure's templates, DBU/APU range and free pool). The ranges are the constants
+  `cloud18MaxDBCount`/`MaxDBU`/`MaxAPU`/`MaxProxyCount`, shared with the validation. An
+  unreadable release table is said in `db_image_source`, never shown as a flavor without lines.
+- `get-cloud18-cluster-quote`: one **choice per partner infrastructure** (from the for-sale
+  list, `Cloud18Infrastructures`). Each choice carries the partner, its zone and its
+  infrastructure description from peer.json (`cloud18InfraDefinitionOf`: platform, CPU, data
+  centers, geo, bandwidth, certifications, SLA, dbops/sysops), then the quote from that
+  infrastructure's `GET /api/cloud18/self-service`: units (DBU = db_count x dbu, APU, BKU),
+  whether they fit the free pool, `canCreate` or the reason, and the monthly price at full
+  capacity from its own unit prices. The status read keeps a fixed list of fields
+  (`selfServiceStatusOfTimeout`); `prices` and `poolBlocked` are on it. Each infrastructure is
+  asked in parallel (`accessParallel`) with a 10 s deadline (`accessStatusTimeout`); one that
+  refuses the identity or does not answer stays a described choice with its reason and no
+  price. Sorted creatable first, cheapest first.
+- `cloud18-create-cluster`: the plan with its quote, and with `confirm=true` the creation.
+
+**APU quoted = APU applied.** `prov-proxy-apu` is per proxy: each app holds 1 APU, the
+proxies share the rest equally, rounded down, at least 1 each (`proxyAPUOf`).
+`normalizeSpec` refuses an `apu` below apps + proxies and replaces it by what
+`applyRequestedPlan` will reserve (`appliedAPU`), so the quote prices exactly that. Apps
+whose template sizes above 1 APU are not counted yet.
+
+**Pool verdict.** The infrastructure's `enabled=false` may come from its pool check, taken for
+its default cluster; the quote re-takes it for the requested units. The status says so with
+`poolBlocked` (machine-readable); an older infrastructure without the flag is read from its
+wording (`reason == poolNote`). The per-user limit is checked from `remaining` when present,
+and in every case by the partner itself at creation (`selfServiceCheck`).
+
+**Creation steps** (`Cloud18CreateCluster`): add the cluster; apply the requested plan through
+`change-plan-units` (the partner's ledger and plan-increase script decide); **a refused plan
+deletes the cluster** (`DELETE /api/clusters/actions/delete/<name>`) so none is left on a plan
+nobody asked for, the answer says `leftover` when the delete fails; then per flavor:
+- MariaDB, MySQL, Percona: `prov-db-image`, `addserver dbN/3306`, proxies on 3306,
+  phpMyAdmin by default.
+- PostgreSQL, the way pg-stream / pg-logical were built: `topology-target` first
+  (`master-slave-pg-stream` default, `master-slave-pg-logical`, `active-passive` for one node),
+  db1 from `postgres/postgres` and the others from `postgres/postgres-standby` (stream) or
+  `postgres/postgres-peer` (logical) on 5432, as engine apps that register themselves as
+  monitored servers (`registerEngineAppAsServer`); HAProxy write 5432 / read 5433; ProxySQL
+  refused (MySQL protocol only); Adminer by default; the image is the templates'.
+Then the cluster provision (databases, proxies, engine members) and each app's provision, in
+the background.
+
+**Identity.** A partner is asked as the caller (`peerIdentityFor`): an OIDC session logs in as
+the user, a local admin with the instance's Cloud18 identity, an API token is refused (it holds
+no credential for another infrastructure). This instance is called over the loopback with the
+caller's own credential.
+
+Tests: `TestQuote*`, `TestApplyRequestedPlan` (fake infrastructure: per-unit difference,
+refusal), `TestCloud18SpecPostgres`, `TestCloud18SpecMySQLFamily`, `TestInfraDefinitionOfPeer`.
+
 ## Self-service clusters on an infrastructure (server_selfservice.go, server_cloud18_infra.go)
 
 Decided 2026-09-25: a Cloud18 user may create a cluster on a partner infrastructure directly,

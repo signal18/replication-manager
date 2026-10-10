@@ -100,7 +100,11 @@ func (repman *ReplicationManager) Cloud18ClusterOptions(p *repmanmcp.Principal, 
 		out["db_flavor"] = list
 	}
 	if want("db_image") {
-		table, source, _ := releases.Load(repman.Conf.ShareDir + "/plugins/data")
+		table, source, lerr := releases.Load(repman.Conf.ShareDir + "/plugins/data")
+		if lerr != nil {
+			// an unreadable release table must not look like a flavor without lines
+			source = fmt.Sprintf("%s (unreadable: %v)", source, lerr)
+		}
 		images := map[string]any{}
 		for _, f := range cloud18Flavors {
 			if !containsString(flavors, f.name) {
@@ -156,14 +160,14 @@ func (repman *ReplicationManager) Cloud18ClusterOptions(p *repmanmcp.Principal, 
 			out["apps"] = map[string]any{"templates": ss["appTemplates"], "default": []string{"phpmyadmin"}, "none": "apps=none deploys no app"}
 		}
 		if want("dbu") {
-			e := map[string]any{"unit": "DBU per database node", "min": 1, "max": 64, "default": num(ss, "defaultDbu")}
+			e := map[string]any{"unit": "DBU per database node", "min": 1, "max": cloud18MaxDBU, "default": num(ss, "defaultDbu")}
 			if pool != nil {
 				e["freeInPool"] = math.Round(num(pool, "freeDbu")*100) / 100
 			}
 			out["dbu"] = e
 		}
 		if want("apu") {
-			e := map[string]any{"unit": "APU of the proxies and apps together (each app at least 1)", "min": 1, "max": 256, "default": num(ss, "defaultApu")}
+			e := map[string]any{"unit": "APU of the proxies and apps together (each app at least 1)", "min": 1, "max": cloud18MaxAPU, "default": num(ss, "defaultApu")}
 			if pool != nil {
 				e["freeInPool"] = math.Round(num(pool, "freeApu")*100) / 100
 			}

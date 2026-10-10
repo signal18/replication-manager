@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ func ssFixture(enabled bool, reason string, freeDbu, freeApu, dbuPrice, apuPrice
 	}
 	if reason != "" {
 		ss["reason"] = reason
-		if !enabled && reason[:2] == "no" {
+		if !enabled && strings.HasPrefix(reason, "no") {
 			ss["poolNote"] = reason
 		}
 	}
@@ -118,5 +119,76 @@ func TestInfraDefinitionOfPeer(t *testing.T) {
 	sla, _ := d["sla"].(map[string]any)
 	if d["partner"] != "bso" || d["zone"] != "bso-fr-1" || d["cpuModel"] != "EPYC" || d["dataCenters"] != "Ajaccio" || sla["repairTime"] != 4.0 || d["dbops"] != true {
 		t.Fatalf("definition = %v", d)
+	}
+}
+
+// The quoted APU is the APU the plan really reserves (review of #1964, item 1).
+func TestQuoteAPUIsTheAppliedAPU(t *testing.T) {
+	// 2 apps + 1 proxy need at least 3
+	if _, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", APU: 2, Apps: []string{"a", "b"}}); err == nil {
+		t.Fatal("apu below apps + proxies must be refused")
+	}
+	// 1 app + 2 proxies, apu 4: each proxy gets (4-1)/2 = 1, so 3 are reserved and quoted
+	s, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", APU: 4, ProxyCount: 2})
+	if err != nil || s.APU != 3 || proxyAPUOf(s) != 1 {
+		t.Fatalf("apu 4 with 1 app and 2 proxies: %v %v (per proxy %d)", s.APU, err, proxyAPUOf(s))
+	}
+	// no proxy: only the apps hold APU
+	if s, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", APU: 5, Proxy: "none"}); s.APU != 1 {
+		t.Fatalf("apu with no proxy = apps only: %v", s.APU)
+	}
+	if s, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", APU: 7}); s.APU != 7 || proxyAPUOf(s) != 6 {
+		t.Fatalf("apu 7, 1 app, 1 proxy: %v per proxy %d", s.APU, proxyAPUOf(s))
+	}
+}
+
+// The pool-only refusal is read from the infrastructure's flag, the wording only for an
+// older release that has no flag (review of #1964, item 3).
+func TestQuotePoolBlockedFlag(t *testing.T) {
+	ss := ssFixture(false, "some other wording", 50, 50, 12, 6)
+	ss["poolBlocked"] = true
+	if q := cloud18QuoteOf(quoteSpec(), ss); q["canCreate"] != true {
+		t.Fatalf("flagged pool refusal with room for the request must be creatable: %v", q)
+	}
+	ss["poolBlocked"] = false
+	ss["poolNote"] = "some other wording"
+	if q := cloud18QuoteOf(quoteSpec(), ss); q["canCreate"] != false {
+		t.Fatalf("a refusal the infrastructure says is NOT the pool must stay refused: %v", q)
+	}
+	delete(ss, "poolBlocked") // older release: the wording decides
+	if q := cloud18QuoteOf(quoteSpec(), ss); q["canCreate"] != true {
+		t.Fatalf("older release, reason == poolNote: %v", q)
+	}
+}
+
+// applyRequestedPlan moves the plan through change-plan-units by the difference, per unit.
+func TestApplyRequestedPlan(t *testing.T) {
+	var calls []string
+	refuse := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.Method+" "+r.URL.Path)
+		switch {
+		case r.URL.Path == "/api/clusters/q":
+			_, _ = w.Write([]byte(`{"config":{"provDbDbu":2,"provProxyApu":1}}`))
+		case refuse:
+			http.Error(w, "plan increase refused", http.StatusForbidden)
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+	sess := &peerSession{base: srv.URL}
+	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBU: 4, APU: 5})
+	note, err := applyRequestedPlan(sess, "/api/clusters/q", spec)
+	if err != nil || note != "plan DBU 2 -> 4, plan APU 1 -> 4" {
+		t.Fatalf("note %q err %v calls %v", note, err, calls)
+	}
+	want := []string{"GET /api/clusters/q", "POST /api/clusters/q/settings/actions/change-plan-units/DBU/2", "POST /api/clusters/q/settings/actions/change-plan-units/APU/3"}
+	if strings.Join(calls, "|") != strings.Join(want, "|") {
+		t.Fatalf("calls %v, want %v", calls, want)
+	}
+	calls, refuse = nil, true
+	if _, err := applyRequestedPlan(sess, "/api/clusters/q", spec); err == nil || !strings.Contains(err.Error(), "refused") {
+		t.Fatalf("a refused plan must fail: %v", err)
 	}
 }

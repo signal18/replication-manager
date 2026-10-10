@@ -98,6 +98,9 @@ type SelfServiceStatus struct {
 	Pool      InfraUnitPool `json:"pool"`
 	PoolOK    bool          `json:"poolOk"`
 	PoolNote  string        `json:"poolNote,omitempty"`
+	// PoolBlocked: Enabled is false because of the pool only (the verdict a quote re-takes
+	// for the requested units), never compared by its wording.
+	PoolBlocked bool `json:"poolBlocked"`
 	// Borrowed: the pool could not guarantee the units but the over-commit pot can lend them
 	// (cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.
 	Borrowed bool `json:"borrowed"`
@@ -266,6 +269,7 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 		if st.Enabled {
 			st.Enabled = false
 			st.Reason = snap.poolErr.Error()
+			st.PoolBlocked = true
 		}
 	} else if snap.poolNote != "" {
 		st.Borrowed = true

@@ -55,7 +55,13 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	enabled, _ := ss["enabled"].(bool)
 	reason, _ := ss["reason"].(string)
 	poolNote, _ := ss["poolNote"].(string)
-	blockedByPoolOnly := !enabled && reason != "" && reason == poolNote
+	// poolBlocked is the infrastructure's own flag; an older release without it is read
+	// from its wording (its reason is then the pool note)
+	poolBlocked, hasFlag := ss["poolBlocked"].(bool)
+	if !hasFlag {
+		poolBlocked = reason != "" && reason == poolNote
+	}
+	blockedByPoolOnly := !enabled && poolBlocked
 	switch {
 	case enabled || blockedByPoolOnly:
 		reason = ""
