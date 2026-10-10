@@ -22,17 +22,18 @@ import (
 var cloud18OptionDimensions = []string{"db_flavor", "db_image", "topology", "proxy", "apps", "dbu", "apu"}
 
 // cloud18Flavors: the database flavors and whether a self-service creation builds them.
-// Only MariaDB is validated end to end through cloud18-create-cluster; the others are listed
-// so a client knows they exist, refused until validated.
+// Every flavor is built: MariaDB, MySQL and Percona on the database path, PostgreSQL
+// members from the infrastructure's postgres app templates (engine servers, monitored
+// like any server).
 var cloud18Flavors = []struct {
 	name, repo string
 	creatable  bool
 	note       string
 }{
 	{"mariadb", "mariadb", true, ""},
-	{"mysql", "mysql", false, "not validated for self-service creation yet"},
-	{"percona", "percona/percona-server", false, "not validated for self-service creation yet"},
-	{"postgres", "postgres", false, "not validated for self-service creation yet"},
+	{"mysql", "mysql", true, ""},
+	{"percona", "percona/percona-server", true, ""},
+	{"postgres", "postgres", true, "members run the image of the infrastructure's postgres/postgres templates"},
 }
 
 // cloud18Topologies: per flavor, the topologies replication-manager runs, and whether a
@@ -44,16 +45,17 @@ var cloud18Topologies = map[string][]map[string]any{
 		{"topology": config.TopoMultiMasterWsrep, "description": "Galera multi-master", "minNodes": 3, "creatable": false, "note": "needs a topology parameter and the Galera bootstrap in cloud18-create-cluster"},
 	},
 	"mysql": {
-		{"topology": config.TopoMasterSlave, "description": "a master and replicas", "minNodes": 2, "creatable": false, "note": "flavor not validated for self-service"},
+		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
 		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication", "minNodes": 3, "creatable": false, "note": "needs a topology parameter in cloud18-create-cluster"},
 	},
 	"percona": {
-		{"topology": config.TopoMasterSlave, "description": "a master and replicas", "minNodes": 2, "creatable": false, "note": "flavor not validated for self-service"},
+		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
 		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication", "minNodes": 3, "creatable": false, "note": "needs a topology parameter in cloud18-create-cluster"},
 	},
 	"postgres": {
-		{"topology": config.TopoMasterSlavePgStream, "description": "streaming replication", "minNodes": 2, "creatable": false, "note": "flavor not validated for self-service"},
-		{"topology": config.TopoMasterSlavePgLog, "description": "logical replication", "minNodes": 2, "creatable": false, "note": "flavor not validated for self-service"},
+		{"topology": config.TopoMasterSlavePgStream, "description": "WAL streaming replication, a primary and standbys (default)", "minNodes": 2, "creatable": true},
+		{"topology": config.TopoMasterSlavePgLog, "description": "logical replication", "minNodes": 2, "creatable": true},
+		{"topology": config.TopoActivePassive, "description": "one server (db_count 1)", "minNodes": 1, "creatable": true},
 	},
 }
 
@@ -116,7 +118,7 @@ func (repman *ReplicationManager) Cloud18ClusterOptions(p *repmanmcp.Principal, 
 				"floating":  []string{f.repo + ":lts", f.repo + ":latest"},
 				"lines":     lines,
 				"creatable": f.creatable,
-				"note":      "a floating tag or a line resolves to its exact release at provisioning and is pinned there until a rolling upgrade; an exact release (e.g. " + f.repo + ":12.3.3) is taken as is",
+				"note":      imageNote(f.repo, table.Lines[f.name]),
 			}
 		}
 		out["db_image"] = images
@@ -178,4 +180,12 @@ func containsString(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// imageNote explains how an image of a flavor is taken, with an example of that flavor.
+func imageNote(repo string, lines []string) string {
+	if len(lines) == 0 {
+		return "no release line is published for " + repo + ": " + repo + ":lts, :latest or an exact tag; PostgreSQL members run the image of the infrastructure's postgres/postgres templates"
+	}
+	return "a floating tag or a line (e.g. " + repo + ":" + lines[len(lines)-1] + ") resolves to its exact release at provisioning and is pinned there until a rolling upgrade; an exact release (" + repo + ":<line>.<patch>) is taken as is"
 }

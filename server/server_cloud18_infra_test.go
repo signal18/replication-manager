@@ -212,3 +212,36 @@ func TestPeerSessionReuseCapAndRelogin(t *testing.T) {
 		t.Fatalf("the reason names the refusal: %s", entry.Error)
 	}
 }
+
+func TestCloud18SpecPostgres(t *testing.T) {
+	s, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "pg", DBImage: "postgres:17", DBCount: 3})
+	if err != nil || s.Topology != config.TopoMasterSlavePgStream || len(s.Apps) != 1 || s.Apps[0] != "adminer" {
+		t.Fatalf("stream default: %v %v", s, err)
+	}
+	h := plannedHosts(s)
+	if h[0]["template"] != "postgres/postgres" || h[1]["template"] != "postgres/postgres-standby" || h[2]["template"] != "postgres/postgres-standby" || h[0]["port"] != "5432" || h[3]["type"] != "haproxy" || h[3]["port"] != "5432" {
+		t.Fatalf("stream hosts: %v", h)
+	}
+	s, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "pg", DBImage: "postgres:17", Topology: "master-slave-pg-logical"})
+	if postgresMemberTemplate(s, 2) != "postgres/postgres-peer" {
+		t.Fatalf("logical member 2: %s", postgresMemberTemplate(s, 2))
+	}
+	if s, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "pg", DBImage: "postgres:17", DBCount: 1}); s.Topology != config.TopoActivePassive {
+		t.Fatalf("one node: %v", s.Topology)
+	}
+	if _, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "pg", DBImage: "postgres:17", Proxy: "proxysql"}); err == nil {
+		t.Fatal("proxysql in front of PostgreSQL must be refused")
+	}
+	if _, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "pg", DBImage: "postgres:17", Topology: "multi-master-wsrep"}); err == nil {
+		t.Fatal("a MariaDB topology on PostgreSQL must be refused")
+	}
+}
+
+func TestCloud18SpecMySQLFamily(t *testing.T) {
+	for _, img := range []string{"mysql:8.4", "percona/percona-server:8.4"} {
+		s, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "m", DBImage: img})
+		if err != nil || plannedHosts(s)[0]["port"] != "3306" || s.Apps[0] != "phpmyadmin" {
+			t.Fatalf("%s: %v %v", img, s, err)
+		}
+	}
+}

@@ -161,6 +161,7 @@ func (s *MCPServer) registerCloud18Tools() {
 			mcp.WithString("apps", mcp.Description("Comma-separated app template names to deploy, resolved against the infrastructure's templates (phpmyadmin finds phpmyadmin/phpmyadmin); default phpmyadmin, none to deploy no app. The answer gives each app's URL, live once provisioned")),
 			mcp.WithNumber("dbu", mcp.Description("DBU per database node; default the infrastructure's (prov-db-dbu). The cluster plan is db_count x dbu")),
 			mcp.WithNumber("apu", mcp.Description("APU of the cluster's proxies and apps together; default the infrastructure's. Each app keeps at least 1 APU, the rest is shared by the proxies")),
+			mcp.WithString("topology", mcp.Description("PostgreSQL only: master-slave-pg-stream (WAL streaming, default) or master-slave-pg-logical; one node is active-passive. MariaDB, MySQL and Percona build a master and replicas")),
 			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only, with the quote (monthly price at full capacity); true: create")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -316,6 +317,7 @@ func cloud18SpecFrom(req mcp.CallToolRequest) Cloud18ClusterSpec {
 		DBImage:        req.GetString("db_image", ""),
 		DBCount:        req.GetInt("db_count", 0),
 		Proxy:          req.GetString("proxy", ""),
+		Topology:       req.GetString("topology", ""),
 		ProxyCount:     req.GetInt("proxy_count", 0),
 		DBU:            req.GetInt("dbu", 0),
 		APU:            req.GetInt("apu", 0),

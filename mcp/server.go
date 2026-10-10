@@ -85,6 +85,7 @@ type Cloud18ClusterSpec struct {
 	Apps           []string `json:"apps"`       // app template names, e.g. phpmyadmin
 	DBU            int      `json:"dbu"`        // DBU per database node; 0 = the infrastructure's default (prov-db-dbu)
 	APU            int      `json:"apu"`        // APU of the cluster (proxy + apps); 0 = the infrastructure's default
+	Topology       string   `json:"topology"`   // PostgreSQL: master-slave-pg-stream (default) or master-slave-pg-logical; one node = active-passive
 }
 
 // Cloud18Infrastructure is one provider infrastructure of the marketplace: a
