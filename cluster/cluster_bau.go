@@ -42,7 +42,7 @@ func (cluster *Cluster) bauUnitPrice() float64 {
 	if cluster.Conf.Cloud18MarketplaceBAUClientStorage {
 		return 0
 	}
-	return cluster.Conf.Cloud18MarketplaceBAUPrice
+	return cluster.unitPrices().BAU
 }
 
 // computeBAU builds the remote archive reading from the consumer bytes and the producer

@@ -209,6 +209,13 @@ func (m *ResourceManager) SetPrices(p BillingPrices) {
 	m.billing().prices = p
 }
 
+// Prices is the infrastructure's price list in force: the one every cluster prices with.
+func (m *ResourceManager) Prices() BillingPrices {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.billing().prices
+}
+
 // SetBillingDir names where the month statements live and loads the current month.
 func (m *ResourceManager) SetBillingDir(dir string, logf func(string, ...interface{})) error {
 	m.mu.Lock()
@@ -736,4 +743,17 @@ func (m *ResourceManager) StatementMonths() []string {
 		}
 	}
 	return out
+}
+
+// unitPrices is the price list a cluster bills with: the ResourceManager's, the
+// instance's one, applied live. The cluster's copy of these server-scope settings is
+// read only without a manager (unit tests), never over the manager's list.
+func (cluster *Cluster) unitPrices() BillingPrices {
+	if cluster.resources != nil {
+		return cluster.resources.Prices()
+	}
+	c := cluster.Conf
+	return BillingPrices{DBU: c.Cloud18MarketplaceDBUPrice, APU: c.Cloud18MarketplaceAPUPrice, BKU: c.Cloud18MarketplaceBKUPrice,
+		BAU: c.Cloud18MarketplaceBAUPrice, GWU: c.Cloud18MarketplaceGWUPrice,
+		OverPct: c.Cloud18MarketplaceOvercommitPricePct, UnderPct: c.Cloud18MarketplaceUndercommitPricePct}
 }
