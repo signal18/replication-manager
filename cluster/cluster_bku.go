@@ -165,7 +165,8 @@ func (cluster *Cluster) RefreshBackupUnits() {
 	now := time.Now()
 	unit := cluster.bkuUnitBytes()
 	d := cluster.appDiskAccounting(unit)
-	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), unit, d.computeBytes, d.computeUnits, cluster.Conf.Cloud18MarketplaceBKUPrice, cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, now)
+	pr := cluster.unitPrices() // one snapshot: price and percentages from the same list
+	r := computeBKU(cluster.Conf.ProvDbBku, cluster.localBackupBytes(), unit, d.computeBytes, d.computeUnits, pr.BKU, pr.OverPct, pr.UnderPct, now)
 	cluster.BackupUnits = r
 	if cluster.resources != nil {
 		// Ledger: the BKU plan is a reservation on the NVMe disk axis; storage used above it

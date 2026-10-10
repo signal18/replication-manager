@@ -166,10 +166,9 @@ func (cluster *Cluster) RefreshComputeBilling() {
 		}
 		units = append(units, u)
 	}
-	cluster.ComputeUnits = computeAPUBilling(units, cluster.Conf.ProvServicePlanApu, cluster.Conf.Cloud18MarketplaceAPUPrice,
-		cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, time.Now())
+	pr := cluster.unitPrices()
+	cluster.ComputeUnits = computeAPUBilling(units, cluster.Conf.ProvServicePlanApu, pr.APU, pr.OverPct, pr.UnderPct, time.Now())
 	// Stateful apps: their own DBU line, plan = Σ their planned DBU (never the DB plan).
 	statefulPlan := int(cluster.resources.StatefulPlanByCluster(cluster.Name).Dbu + 0.5)
-	cluster.StatefulUnits = computeStatefulBilling(stateful, statefulPlan, cluster.Conf.Cloud18MarketplaceDBUPrice,
-		cluster.Conf.Cloud18MarketplaceOvercommitPricePct, cluster.Conf.Cloud18MarketplaceUndercommitPricePct, time.Now())
+	cluster.StatefulUnits = computeStatefulBilling(stateful, statefulPlan, pr.DBU, pr.OverPct, pr.UnderPct, time.Now())
 }

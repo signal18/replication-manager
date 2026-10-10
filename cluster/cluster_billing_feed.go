@@ -30,28 +30,28 @@ func (cluster *Cluster) BillingUsage() []UnitUsage {
 			billable = cfg * float64(len(cluster.Servers))
 		}
 	}
-	// Prices: the cluster's own configuration, the same values its unit readings price
-	// with (a server-scope setting can differ between the instance file and a cluster's
-	// file; the reading and the statement must agree).
+	// Prices: the ResourceManager's price list, the instance's one, the same its unit
+	// readings price with (never the cluster's copy of a server-scope setting).
 	c := cluster.Conf
-	over, under := c.Cloud18MarketplaceOvercommitPricePct, c.Cloud18MarketplaceUndercommitPricePct
+	pr := cluster.unitPrices()
+	over, under := pr.OverPct, pr.UnderPct
 	out := []UnitUsage{{Family: BillingFamilyDatabase, Unit: "DBU", Plan: plan, Billable: billable, Priced: true,
-		UnitPrice: c.Cloud18MarketplaceDBUPrice, OverPct: over, UnderPct: under}}
-	st := UnitUsage{Family: BillingFamilyStateful, Unit: "DBU", Priced: true, UnitPrice: c.Cloud18MarketplaceDBUPrice, OverPct: over, UnderPct: under}
+		UnitPrice: pr.DBU, OverPct: over, UnderPct: under}}
+	st := UnitUsage{Family: BillingFamilyStateful, Unit: "DBU", Priced: true, UnitPrice: pr.DBU, OverPct: over, UnderPct: under}
 	if b := cluster.StatefulUnits; b != nil {
 		st.Plan, st.Billable = float64(b.Plan), float64(b.BillableUnits)
 		if b.UnitPrice > 0 {
 			st.UnitPrice, st.OverPct, st.UnderPct = b.UnitPrice, b.OverPricePct, b.UnderPricePct
 		}
 	}
-	co := UnitUsage{Family: BillingFamilyCompute, Unit: "APU", Priced: true, UnitPrice: c.Cloud18MarketplaceAPUPrice, OverPct: over, UnderPct: under}
+	co := UnitUsage{Family: BillingFamilyCompute, Unit: "APU", Priced: true, UnitPrice: pr.APU, OverPct: over, UnderPct: under}
 	if b := cluster.ComputeUnits; b != nil {
 		co.Plan, co.Billable = float64(b.Plan), float64(b.BillableUnits)
 		if b.UnitPrice > 0 {
 			co.UnitPrice, co.OverPct, co.UnderPct = b.UnitPrice, b.OverPricePct, b.UnderPricePct
 		}
 	}
-	bk := UnitUsage{Family: BillingFamilyBackup, Unit: "BKU", Priced: true, UnitPrice: c.Cloud18MarketplaceBKUPrice, OverPct: over, UnderPct: under}
+	bk := UnitUsage{Family: BillingFamilyBackup, Unit: "BKU", Priced: true, UnitPrice: pr.BKU, OverPct: over, UnderPct: under}
 	if b := cluster.BackupUnits; b != nil {
 		// The units really consumed, not BilledUnits (floored at the plan): the ledger
 		// derives the over-commit AND the under-commit from plan vs consumed, so the
@@ -63,7 +63,7 @@ func (cluster *Cluster) BillingUsage() []UnitUsage {
 	}
 	// Archives: priced unless the client brought its own storage; before the first
 	// reading of the day there are no units yet, the price still shows.
-	ar := UnitUsage{Family: BillingFamilyArchive, Unit: "BAU", NoPlan: true, Priced: !c.Cloud18MarketplaceBAUClientStorage, UnitPrice: c.Cloud18MarketplaceBAUPrice}
+	ar := UnitUsage{Family: BillingFamilyArchive, Unit: "BAU", NoPlan: true, Priced: !c.Cloud18MarketplaceBAUClientStorage, UnitPrice: pr.BAU}
 	if b := cluster.BackupArchiveUnits; b != nil {
 		ar.Billable, ar.Priced = float64(b.BilledUnits), b.Priced
 		if b.UnitPrice > 0 {
@@ -71,7 +71,7 @@ func (cluster *Cluster) BillingUsage() []UnitUsage {
 		}
 	}
 	out = append(out, st, co, bk, ar)
-	if gw, ok := cluster.gatewayUsage(over, under); ok {
+	if gw, ok := cluster.gatewayUsage(pr); ok {
 		out = append(out, gw)
 	}
 	return out
