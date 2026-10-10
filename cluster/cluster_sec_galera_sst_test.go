@@ -35,3 +35,16 @@ func TestGaleraUnsupportedMariaDBVersion(t *testing.T) {
 		t.Fatal("on premise replication-manager renders no configuration: no ERR00115")
 	}
 }
+
+// The declared topology is known before any server ran: the provisioning picks the Galera
+// bootstrap node from it (a never-started cluster discovers nothing and reads master-slave).
+func TestGetTopologyTargetBeforeDiscovery(t *testing.T) {
+	legacy := &Cluster{Topology: config.TopoMasterSlave, Conf: &config.Config{MultiMasterWsrep: true}}
+	if got := legacy.GetTopologyTarget(); got != config.TopoMultiMasterWsrep {
+		t.Fatalf("legacy wsrep switch: %q", got)
+	}
+	target := &Cluster{Topology: config.TopoMasterSlave, Conf: &config.Config{TopologyTarget: config.TopoMultiMasterWsrep}}
+	if got := target.GetTopologyTarget(); got != config.TopoMultiMasterWsrep {
+		t.Fatalf("topology-target: %q", got)
+	}
+}

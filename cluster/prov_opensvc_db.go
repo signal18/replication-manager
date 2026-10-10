@@ -712,8 +712,9 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			svccontainer["image_pull_policy"] = "always"
 		}
 
-		//Proceed with galera specific
-		if server.ClusterGroup.GetTopology() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
+		//Proceed with galera specific: the DECLARED topology, a cluster never started has
+		// discovered nothing (master-slave by default) and no node would bootstrap
+		if server.ClusterGroup.GetTopologyTarget() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
 			if server.ClusterGroup.GetMaster() == nil {
 				server.ClusterGroup.vmaster = server
 				svccontainer["command"] = "mysqld --wsrep_new_cluster"
@@ -997,7 +998,7 @@ func (cluster *Cluster) OpenSVCGetNetSection() map[string]string {
 		svcnet["type"] = "cni"
 		svcnet["netns"] = "container#01"
 		svcnet["network"] = cluster.Conf.ProvNetCNICluster
-		if cluster.GetTopology() == config.TopoMultiMasterWsrep {
+		if cluster.GetTopologyTarget() == config.TopoMultiMasterWsrep {
 			svcnet["wait_dns"] = "15s"
 		}
 		return svcnet
@@ -1470,7 +1471,7 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -v {env.base_dir}/init:/docker-entrypoint-initdb.d:rw
 
 `
-		if server.ClusterGroup.GetTopology() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
+		if server.ClusterGroup.GetTopologyTarget() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
 			//Proceed with galera specific
 			if server.ClusterGroup.GetMaster() == nil {
 				server.ClusterGroup.vmaster = server
