@@ -715,6 +715,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 				if cluster.master != nil {
 					cluster.lastmaster = cluster.master
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
+					cluster.Save() // lastMaster in clusterstate.json: a full Galera start bootstraps it
 
 					if !cluster.Conf.FailRestartUnsafe {
 						// forget the master if safe mode

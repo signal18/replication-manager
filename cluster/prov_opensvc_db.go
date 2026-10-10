@@ -714,14 +714,12 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 
 		//Proceed with galera specific: the DECLARED topology, a cluster never started has
 		// discovered nothing (master-slave by default) and no node would bootstrap
-		if server.ClusterGroup.GetTopologyTarget() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
-			if server.ClusterGroup.GetMaster() == nil {
-				server.ClusterGroup.vmaster = server
-				// the option alone: the image entrypoint prepends its own server binary when
-				// the first argument is an option (mariadbd on MariaDB 10.5+, whose images have
-				// no mysqld: "mysqld: command not found", dev3 galera-sst 2026-10-10)
-				svccontainer["command"] = galeraBootstrapCommand
-			}
+		if server.ClusterGroup.isGaleraBootstrapNode(server) {
+			server.ClusterGroup.vmaster = server
+			// the option alone: the image entrypoint prepends its own server binary when
+			// the first argument is an option (mariadbd on MariaDB 10.5+, whose images have
+			// no mysqld: "mysqld: command not found", dev3 galera-sst 2026-10-10)
+			svccontainer["command"] = galeraBootstrapCommand
 		}
 	}
 	return svccontainer
@@ -1474,12 +1472,10 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -v {env.base_dir}/init:/docker-entrypoint-initdb.d:rw
 
 `
-		if server.ClusterGroup.GetTopologyTarget() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
+		if server.ClusterGroup.isGaleraBootstrapNode(server) {
 			//Proceed with galera specific
-			if server.ClusterGroup.GetMaster() == nil {
-				server.ClusterGroup.vmaster = server
-				vm = vm + "run_command = " + galeraBootstrapCommand + "\n"
-			}
+			server.ClusterGroup.vmaster = server
+			vm = vm + "run_command = " + galeraBootstrapCommand + "\n"
 		}
 	}
 	return vm
