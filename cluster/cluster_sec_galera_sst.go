@@ -30,6 +30,14 @@ func (cluster *Cluster) CheckGaleraSSTAccount() {
 	if orch == config.ConstOrchestratorOnPremise || orch == "" || cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		return
 	}
+	// MariaDB 10.3 and older: no built-in unix_socket, the SST of the rendered configuration
+	// cannot authenticate; not supported, said by an ERROR on every such server
+	for _, server := range cluster.Servers {
+		if server != nil && server.DBVersion != nil && server.DBVersion.IsMariaDB() && !server.DBVersion.GreaterEqual("10.4") {
+			cluster.StateMachine.AddState("ERR00115", state.State{ErrType: "ERROR",
+				ErrDesc: fmt.Sprintf(clusterError["ERR00115"], cluster.Name, server.URL, server.DBVersion.ToString()), ErrFrom: "TOPO", ServerUrl: server.URL})
+		}
+	}
 	account := "'" + config.ConstGaleraSSTSocketUser + "'@'localhost'"
 	// a Synced node first: a donor or desynced node may block or fail the replicated DDL
 	servers := make([]*ServerMonitor, 0, len(cluster.Servers))

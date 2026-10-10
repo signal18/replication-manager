@@ -23,6 +23,15 @@ compliance collector.
 - A password shorter than 12 characters makes the filter WARN with the keys it commented out
   (a value can equal it by chance, e.g. `wsrep_cluster_name=mysql`).
 
+## Supported versions
+
+On a Galera topology whose configuration replication-manager renders (an orchestrator, not
+on premise), **MariaDB 10.4 or later**: the SST authenticates `mysql@localhost` through
+`unix_socket`, built in from 10.4. **MariaDB 10.3 and older are no longer supported** there:
+`CheckGaleraSSTAccount` raises the ERROR **ERR00115** on each such server (cluster state
+machine, every tick) until it is upgraded. On premise, replication-manager renders nothing and
+raises nothing.
+
 ## The SST account
 
 `mysql@localhost IDENTIFIED VIA unix_socket`, granted `RELOAD, PROCESS, LOCK TABLES` and
