@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/signal18/replication-manager/config"
 	"io"
 	"net/http"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	repmanmcp "github.com/signal18/replication-manager/mcp"
+	"github.com/signal18/replication-manager/utils/releases"
 )
 
 // Consumer side of self-service clusters (issue #1838): from this instance, act
@@ -137,11 +139,24 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	if spec.DBImage == "" {
 		spec.DBImage = "mariadb:lts"
 	}
+	// only the flavors list-cloud18-cluster-options marks creatable are built (#1963)
+	fl := releases.FlavorOfImage(spec.DBImage)
+	for _, f := range cloud18Flavors {
+		if f.name == fl && !f.creatable {
+			return spec, fmt.Errorf("db_image %s: %s is %s (list-cloud18-cluster-options)", spec.DBImage, f.name, f.note)
+		}
+	}
 	if spec.DBCount <= 0 {
 		spec.DBCount = 2
 	}
-	if spec.DBCount > 5 {
-		return spec, errors.New("db_count above 5 is not a self-service size")
+	if spec.DBCount > cloud18MaxDBCount {
+		return spec, fmt.Errorf("db_count above %d is not a self-service size", cloud18MaxDBCount)
+	}
+	if spec.DBU < 0 || spec.DBU > cloud18MaxDBU {
+		return spec, fmt.Errorf("dbu (per database node) must be between 1 and %d, 0 = the infrastructure's default", cloud18MaxDBU)
+	}
+	if spec.APU < 0 || spec.APU > cloud18MaxAPU {
+		return spec, fmt.Errorf("apu must be between 1 and %d, 0 = the infrastructure's default", cloud18MaxAPU)
 	}
 	spec.Proxy = strings.ToLower(strings.TrimSpace(spec.Proxy))
 	switch spec.Proxy {
@@ -151,6 +166,32 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	}
 	if spec.Proxy == "" {
 		spec.Proxy = "haproxy"
+	}
+	// PostgreSQL: members from the postgres app templates, WAL streaming by default,
+	// active-passive alone; ProxySQL speaks the MySQL protocol only.
+	spec.Topology = strings.ToLower(strings.TrimSpace(spec.Topology))
+	if isPostgresSpec(spec) {
+		if spec.Proxy == "proxysql" {
+			return spec, errors.New("proxy proxysql speaks the MySQL protocol: use haproxy or none for PostgreSQL")
+		}
+		switch {
+		case spec.DBCount == 1:
+			spec.Topology = config.TopoActivePassive
+		case spec.Topology == "":
+			spec.Topology = config.TopoMasterSlavePgStream
+		case spec.Topology != config.TopoMasterSlavePgStream && spec.Topology != config.TopoMasterSlavePgLog:
+			return spec, fmt.Errorf("topology %q: PostgreSQL builds %s or %s", spec.Topology, config.TopoMasterSlavePgStream, config.TopoMasterSlavePgLog)
+		}
+	} else if spec.Topology != "" && spec.Topology != config.TopoMasterSlave {
+		return spec, fmt.Errorf("topology %q: %s builds %s (a master and replicas)", spec.Topology, releases.FlavorOfImage(spec.DBImage), config.TopoMasterSlave)
+	}
+	switch {
+	case spec.Proxy == "none":
+		spec.ProxyCount = 0
+	case spec.ProxyCount <= 0:
+		spec.ProxyCount = 1
+	case spec.ProxyCount > cloud18MaxProxyCount:
+		return spec, fmt.Errorf("proxy_count above %d is not a self-service size", cloud18MaxProxyCount)
 	}
 	// phpMyAdmin is deployed by default; apps=none opts out.
 	apps := []string{}
@@ -166,10 +207,48 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 		}
 	}
 	if len(apps) == 0 && !optOut {
+		// phpMyAdmin speaks MySQL only; Adminer administers PostgreSQL
 		apps = []string{"phpmyadmin"}
+		if isPostgresSpec(spec) {
+			apps = []string{"adminer"}
+		}
 	}
 	spec.Apps = apps
+	// A requested APU is what applyRequestedPlan reserves, so the quote prices exactly that:
+	// each app holds 1 APU, the proxies share the rest equally (whole units, at least 1 each).
+	if spec.APU > 0 {
+		if min := len(apps) + spec.ProxyCount; spec.APU < min {
+			return spec, fmt.Errorf("apu %d cannot hold %d app(s) and %d proxy(ies): at least %d", spec.APU, len(apps), spec.ProxyCount, min)
+		}
+		spec.APU = appliedAPU(spec)
+	}
 	return spec, nil
+}
+
+// Self-service sizes: one source for the validation, the options and the tool texts.
+const (
+	cloud18MaxDBCount    = 5
+	cloud18MaxDBU        = 64
+	cloud18MaxAPU        = 256
+	cloud18MaxProxyCount = 3
+)
+
+// appliedAPU is the APU a request really reserves: 1 per app, plus prov-proxy-apu per proxy
+// (the rest shared equally, rounded down, at least 1); without a proxy, the apps only.
+func appliedAPU(spec Cloud18ClusterSpec) int {
+	if spec.ProxyCount <= 0 {
+		return len(spec.Apps)
+	}
+	return len(spec.Apps) + spec.ProxyCount*proxyAPUOf(spec)
+}
+
+// proxyAPUOf is the prov-proxy-apu of each proxy for a requested APU.
+func proxyAPUOf(spec Cloud18ClusterSpec) int {
+	per := (spec.APU - len(spec.Apps)) / spec.ProxyCount
+	if per < 1 {
+		per = 1
+	}
+	return per
 }
 
 // plannedHosts lists the services the tool will add, in order. Hosts are short
@@ -177,11 +256,23 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 // (.<cluster>.svc.<orchestrator cluster>) to every server, proxy and app.
 func plannedHosts(spec Cloud18ClusterSpec) []map[string]string {
 	out := []map[string]string{}
-	for i := 1; i <= spec.DBCount; i++ {
-		out = append(out, map[string]string{"type": "database", "host": fmt.Sprintf("db%d", i), "port": "3306", "image": spec.DBImage})
+	port := "3306"
+	if isPostgresSpec(spec) {
+		port = "5432"
 	}
-	if spec.Proxy != "none" {
-		out = append(out, map[string]string{"type": spec.Proxy, "host": spec.Proxy + "1", "port": "3306"})
+	for i := 1; i <= spec.DBCount; i++ {
+		h := map[string]string{"type": "database", "host": fmt.Sprintf("db%d", i), "port": port, "image": spec.DBImage}
+		if isPostgresSpec(spec) {
+			// PostgreSQL members are engine servers rendered from the app templates, the
+			// way pg-stream / pg-logical were built: the first is the primary, the others
+			// seed from it (WAL standby) or subscribe to it (logical peer)
+			h["template"] = postgresMemberTemplate(spec, i)
+			delete(h, "image")
+		}
+		out = append(out, h)
+	}
+	for i := 1; i <= spec.ProxyCount; i++ {
+		out = append(out, map[string]string{"type": spec.Proxy, "host": fmt.Sprintf("%s%d", spec.Proxy, i), "port": port})
 	}
 	for i, app := range spec.Apps {
 		short := app
@@ -263,6 +354,11 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 		"selfService":    ss,
 		"unitPlan":       "the infrastructure's default DBU / APU / BKU (no service plan)",
 	}
+	quote := cloud18QuoteOf(spec, ss)
+	plan["quote"] = quote
+	if spec.DBU > 0 || spec.APU > 0 {
+		plan["unitPlan"] = "the requested plan, applied with change-plan-units (the infrastructure's ledger and plan-increase script decide)"
+	}
 	if len(unresolved) > 0 {
 		plan["refused"] = fmt.Sprintf("app template not available on the infrastructure: %s (templates: %s)", strings.Join(unresolved, ", "), strings.Join(templates, ", "))
 		if !confirm {
@@ -270,19 +366,14 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 		}
 		return plan, fmt.Errorf("%s", plan["refused"])
 	}
-	if enabled, _ := ss["enabled"].(bool); !enabled {
-		plan["refused"] = ss["reason"]
+	// The quote carries the infrastructure's verdict, its pool check re-taken for the
+	// requested units (the infrastructure's own pool verdict is for its default cluster).
+	if ok, _ := quote["canCreate"].(bool); !ok {
+		plan["refused"] = quote["reason"]
 		if !confirm {
 			return plan, nil
 		}
-		return plan, fmt.Errorf("self-service refused by %s: %v", sess.base, ss["reason"])
-	}
-	if rem, _ := ss["remaining"].(float64); rem <= 0 {
-		plan["refused"] = fmt.Sprintf("limit reached: %v clusters already sponsored there", ss["used"])
-		if !confirm {
-			return plan, nil
-		}
-		return plan, fmt.Errorf("self-service limit reached on %s", sess.base)
+		return plan, fmt.Errorf("self-service refused by %s: %v", sess.base, quote["reason"])
 	}
 	// Templates for the apps must exist on the infrastructure; checked once the
 	// cluster exists (the listing is per cluster), so only announced here.
@@ -302,9 +393,33 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 	}
 	steps = append(steps, "cluster created")
 	cpath := "/api/clusters/" + spec.ClusterName
+	// 1b. The requested plan, through change-plan-units: the infrastructure's ledger and
+	// plan-increase script authorise it, never a raw setting write.
+	if note, err := applyRequestedPlan(sess, cpath, spec); err != nil {
+		// never leave a cluster on a plan nobody asked for: the creation is undone
+		if _, derr := sess.mustOK(http.MethodDelete, "/api/clusters/actions/delete/"+spec.ClusterName, nil); derr != nil {
+			plan["leftover"] = fmt.Sprintf("cluster %s exists on the infrastructure's default plan: deleting it failed (%v)", spec.ClusterName, derr)
+		} else {
+			steps = append(steps, "cluster deleted: its plan was refused")
+		}
+		return fail("plan", err)
+	} else if note != "" {
+		steps = append(steps, note)
+	}
+	// 1c. Topology target: PostgreSQL members follow the cluster topology (stream,
+	// logical, active-passive), set before they are added.
+	if isPostgresSpec(spec) {
+		if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/topology-target/"+spec.Topology, nil); err != nil {
+			return fail("topology "+spec.Topology, err)
+		}
+		steps = append(steps, "topology "+spec.Topology)
+	}
 	// 2. Database image, best effort: the infrastructure may pin it (immutable
 	// setting), in which case the cluster runs the infrastructure's image.
-	if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/prov-db-image/"+url.PathEscape(spec.DBImage), nil); err != nil {
+	// PostgreSQL members run their template's image.
+	if isPostgresSpec(spec) {
+		steps = append(steps, "database image from the postgres templates")
+	} else if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/prov-db-image/"+url.PathEscape(spec.DBImage), nil); err != nil {
 		plan["dbImageNote"] = fmt.Sprintf("the infrastructure kept its own database image (%v)", err)
 		steps = append(steps, "database image left to the infrastructure")
 	} else {
@@ -315,7 +430,12 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 		var err error
 		switch h["type"] {
 		case "database":
-			_, err = sess.mustOK(http.MethodGet, cpath+"/actions/addserver/"+h["host"]+"/"+h["port"], nil)
+			if h["template"] != "" {
+				// an engine app registers itself as a server of the cluster
+				_, err = sess.mustOK(http.MethodPost, cpath+"/actions/addserver/"+h["host"]+"/"+h["port"]+"/app", map[string]any{"template": h["template"]})
+			} else {
+				_, err = sess.mustOK(http.MethodGet, cpath+"/actions/addserver/"+h["host"]+"/"+h["port"], nil)
+			}
 		case "app":
 			// the route takes a docker IMAGE in the path and the template in the body: sent in
 			// the path, "phpmyadmin/phpmyadmin" became the image of a template-less app
@@ -328,6 +448,15 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 			return fail("add "+h["type"]+" "+h["host"], err)
 		}
 		steps = append(steps, "added "+h["type"]+" "+h["host"])
+	}
+	// 3b. HAProxy in front of PostgreSQL: writes on 5432, reads on 5433 (pg-stream).
+	if isPostgresSpec(spec) && spec.Proxy == "haproxy" {
+		for k, v := range map[string]string{"haproxy-write-port": "5432", "haproxy-read-port": "5433"} {
+			if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/"+k+"/"+v, nil); err != nil {
+				return fail(k, err)
+			}
+		}
+		steps = append(steps, "haproxy write 5432 / read 5433")
 	}
 	// 4. Provision: databases and proxies through the cluster provision (the
 	// infrastructure's call is synchronous: it waits for the databases and
@@ -575,7 +704,7 @@ func selfServiceStatusOfTimeout(sess *peerSession, timeout time.Duration) (map[s
 		return nil, status, fmt.Errorf("self-service status of %s: %w", sess.base, err)
 	}
 	out := map[string]any{}
-	for _, k := range []string{"enabled", "reason", "orchestrator", "maxClustersPerUser", "used", "remaining", "defaultDbu", "defaultApu", "defaultBku", "neededDbu", "neededApu", "pool", "poolOk", "poolNote", "borrowed", "appTemplates"} {
+	for _, k := range []string{"enabled", "reason", "orchestrator", "maxClustersPerUser", "used", "remaining", "defaultDbu", "defaultApu", "defaultBku", "neededDbu", "neededApu", "pool", "poolOk", "poolNote", "borrowed", "appTemplates", "prices", "poolBlocked"} {
 		if v, ok := ss[k]; ok {
 			out[k] = v
 		}
@@ -647,6 +776,7 @@ func (repman *ReplicationManager) cloud18InfrastructureAccessOne(p *repmanmcp.Pr
 		"note":    "your session on this infrastructure, as " + as + ": a secret like a token, it expires with the login; create your cluster there with cloud18-create-cluster, then mint a durable token with cloud18-create-cluster-token",
 	}
 	entry.SelfService = ss
+	entry.DefaultRequest = defaultRequestOf(ss)
 	return entry
 }
 
@@ -717,4 +847,66 @@ func (repman *ReplicationManager) Cloud18GetClusterPrice(p *repmanmcp.Principal,
 	}
 	out["infrastructure"] = sess.base
 	return out, nil
+}
+
+// applyRequestedPlan moves the new cluster's reservations to the request (#1963): DBU per
+// database node (prov-db-dbu) and the APU total shared by the proxies (prov-proxy-apu), each app
+// keeping its own reservation (at least 1 APU, more when its template sizes it larger).
+// Each move is a change-plan-units delta from the cluster's current value.
+func applyRequestedPlan(sess *peerSession, cpath string, spec Cloud18ClusterSpec) (string, error) {
+	if spec.DBU <= 0 && spec.APU <= 0 {
+		return "", nil
+	}
+	body, err := sess.mustOK(http.MethodGet, cpath, nil)
+	if err != nil {
+		return "", err
+	}
+	var cl struct {
+		Config struct {
+			ProvDbDbu    int `json:"provDbDbu"`
+			ProvProxyApu int `json:"provProxyApu"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal(body, &cl); err != nil {
+		return "", fmt.Errorf("cannot read the new cluster's plan: %w", err)
+	}
+	notes := []string{}
+	move := func(unit string, cur, target int) error {
+		if target <= 0 || target == cur {
+			return nil
+		}
+		if _, err := sess.mustOK(http.MethodPost, fmt.Sprintf("%s/settings/actions/change-plan-units/%s/%d", cpath, unit, target-cur), nil); err != nil {
+			return fmt.Errorf("plan %s %d -> %d refused: %w", unit, cur, target, err)
+		}
+		notes = append(notes, fmt.Sprintf("plan %s %d -> %d", unit, cur, target))
+		return nil
+	}
+	if err := move("DBU", cl.Config.ProvDbDbu, spec.DBU); err != nil {
+		return "", err
+	}
+	if spec.APU > 0 && spec.ProxyCount > 0 {
+		// prov-proxy-apu is PER PROXY: the APU left once each app holds its 1-APU floor,
+		// shared by the proxies (rounded down, at least 1 each)
+		if err := move("APU", cl.Config.ProvProxyApu, proxyAPUOf(spec)); err != nil {
+			return "", err
+		}
+	}
+	return strings.Join(notes, ", "), nil
+}
+
+// isPostgresSpec: the request builds a PostgreSQL cluster.
+func isPostgresSpec(spec Cloud18ClusterSpec) bool {
+	return releases.FlavorOfImage(spec.DBImage) == "postgres"
+}
+
+// postgresMemberTemplate is the app template of the i-th PostgreSQL member (1-based).
+func postgresMemberTemplate(spec Cloud18ClusterSpec, i int) string {
+	switch {
+	case i == 1:
+		return "postgres/postgres"
+	case spec.Topology == config.TopoMasterSlavePgLog:
+		return "postgres/postgres-peer"
+	default:
+		return "postgres/postgres-standby"
+	}
 }

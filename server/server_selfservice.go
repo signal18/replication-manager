@@ -98,9 +98,26 @@ type SelfServiceStatus struct {
 	Pool      InfraUnitPool `json:"pool"`
 	PoolOK    bool          `json:"poolOk"`
 	PoolNote  string        `json:"poolNote,omitempty"`
+	// PoolBlocked: Enabled is false because of the pool only (the verdict a quote re-takes
+	// for the requested units), never compared by its wording.
+	PoolBlocked bool `json:"poolBlocked"`
 	// Borrowed: the pool could not guarantee the units but the over-commit pot can lend them
 	// (cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.
 	Borrowed bool `json:"borrowed"`
+	// Prices: this infrastructure's unit price list, so a client quotes a cluster from the
+	// partner's own figures (#1963). A 0 price means the unit is not priced here.
+	Prices SelfServicePrices `json:"prices"`
+}
+
+// SelfServicePrices is the unit price list (cloud18-marketplace-*-price), per unit-month.
+type SelfServicePrices struct {
+	Currency           string  `json:"currency"`
+	PricingMode        string  `json:"pricingMode"`
+	DBU                float64 `json:"dbu"`
+	APU                float64 `json:"apu"`
+	BKU                float64 `json:"bku"`
+	BAU                float64 `json:"bau"`
+	OvercommitPricePct int     `json:"overcommitPricePct"` // price of a unit above the plan, in % of the unit price
 }
 
 // selfServiceSnapshot is the identity-independent part of the self-service status, computed
@@ -239,6 +256,10 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 		Domain: repman.Conf.Cloud18Domain, SubDomain: repman.Conf.Cloud18SubDomain, Zone: repman.Conf.Cloud18SubDomainZone,
 		GatewayDomain: repman.Conf.PrimaryGatewayDomain(), AppTemplates: snap.templates,
 		NeededDBU: snap.neededDBU, NeededAPU: snap.neededAPU,
+		Prices: SelfServicePrices{Currency: "EUR", PricingMode: repman.Conf.Cloud18MarketplacePricingMode,
+			DBU: repman.Conf.Cloud18MarketplaceDBUPrice, APU: repman.Conf.Cloud18MarketplaceAPUPrice,
+			BKU: repman.Conf.Cloud18MarketplaceBKUPrice, BAU: repman.Conf.Cloud18MarketplaceBAUPrice,
+			OvercommitPricePct: repman.Conf.Cloud18MarketplaceOvercommitPricePct},
 	}
 	if !st.Pool.Known {
 		st.PoolNote = "infrastructure capacity unknown (no agent observed, no resource-manager-infra-* declared): the pool does not gate"
@@ -248,6 +269,7 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 		if st.Enabled {
 			st.Enabled = false
 			st.Reason = snap.poolErr.Error()
+			st.PoolBlocked = true
 		}
 	} else if snap.poolNote != "" {
 		st.Borrowed = true

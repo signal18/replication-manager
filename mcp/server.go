@@ -65,6 +65,8 @@ type RepmanProvider interface {
 	// server_cloud18_infra.go.
 	Cloud18InfrastructuresAccess(p *Principal) ([]Cloud18InfrastructureAccess, error)
 	Cloud18CreateCluster(p *Principal, spec Cloud18ClusterSpec, confirm bool) (map[string]any, error)
+	Cloud18ClusterQuote(p *Principal, spec Cloud18ClusterSpec) ([]map[string]any, error)
+	Cloud18ClusterOptions(p *Principal, dimension, flavor, infra string) (map[string]any, error)
 	Cloud18GetCluster(p *Principal, infra, clusterName string) (map[string]any, error)
 	// Billing (resource manager month statement): local cluster, and a cluster on an infrastructure.
 	ClusterPrice(clusterName string) (map[string]any, error)
@@ -76,10 +78,14 @@ type RepmanProvider interface {
 type Cloud18ClusterSpec struct {
 	Infrastructure string   `json:"infrastructure"` // api-public-url from list-cloud18-infrastructures
 	ClusterName    string   `json:"clusterName"`
-	DBImage        string   `json:"dbImage"` // default mariadb:lts
-	DBCount        int      `json:"dbCount"` // default 2
-	Proxy          string   `json:"proxy"`   // haproxy (default), proxysql, none
-	Apps           []string `json:"apps"`    // app template names, e.g. phpmyadmin
+	DBImage        string   `json:"dbImage"`    // default mariadb:lts
+	DBCount        int      `json:"dbCount"`    // default 2
+	Proxy          string   `json:"proxy"`      // haproxy (default), proxysql, none
+	ProxyCount     int      `json:"proxyCount"` // number of proxies, default 1 (0 with proxy none), max 3
+	Apps           []string `json:"apps"`       // app template names, e.g. phpmyadmin
+	DBU            int      `json:"dbu"`        // DBU per database node; 0 = the infrastructure's default (prov-db-dbu)
+	APU            int      `json:"apu"`        // APU of the cluster (proxy + apps); 0 = the infrastructure's default
+	Topology       string   `json:"topology"`   // PostgreSQL: master-slave-pg-stream (default) or master-slave-pg-logical; one node = active-passive
 }
 
 // Cloud18Infrastructure is one provider infrastructure of the marketplace: a
@@ -101,7 +107,10 @@ type Cloud18InfrastructureAccess struct {
 	Identity        string         `json:"identity,omitempty"`
 	MCPServerConfig map[string]any `json:"mcpServerConfig,omitempty"`
 	SelfService     map[string]any `json:"selfService,omitempty"`
-	Error           string         `json:"error,omitempty"`
+	// DefaultRequest is the cluster a request with every parameter empty gets on this
+	// infrastructure, fully resolved (image, nodes, DBU per node, proxies, apps, APU, BKU).
+	DefaultRequest map[string]any `json:"defaultRequest,omitempty"`
+	Error          string         `json:"error,omitempty"`
 }
 
 // MCPServer encapsulates the MCP server and its configuration.
