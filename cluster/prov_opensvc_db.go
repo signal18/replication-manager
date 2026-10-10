@@ -712,12 +712,14 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			svccontainer["image_pull_policy"] = "always"
 		}
 
-		//Proceed with galera specific
-		if server.ClusterGroup.GetTopology() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
-			if server.ClusterGroup.GetMaster() == nil {
-				server.ClusterGroup.vmaster = server
-				svccontainer["command"] = "mysqld --wsrep_new_cluster"
-			}
+		//Proceed with galera specific: the DECLARED topology, a cluster never started has
+		// discovered nothing (master-slave by default) and no node would bootstrap
+		if server.ClusterGroup.isGaleraBootstrapNode(server) {
+			server.ClusterGroup.vmaster = server
+			// the option alone: the image entrypoint prepends its own server binary when
+			// the first argument is an option (mariadbd on MariaDB 10.5+, whose images have
+			// no mysqld: "mysqld: command not found", dev3 galera-sst 2026-10-10)
+			svccontainer["command"] = galeraBootstrapCommand
 		}
 	}
 	return svccontainer
@@ -997,7 +999,7 @@ func (cluster *Cluster) OpenSVCGetNetSection() map[string]string {
 		svcnet["type"] = "cni"
 		svcnet["netns"] = "container#01"
 		svcnet["network"] = cluster.Conf.ProvNetCNICluster
-		if cluster.GetTopology() == config.TopoMultiMasterWsrep {
+		if cluster.GetTopologyTarget() == config.TopoMultiMasterWsrep {
 			svcnet["wait_dns"] = "15s"
 		}
 		return svcnet
@@ -1470,13 +1472,10 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
  -v {env.base_dir}/init:/docker-entrypoint-initdb.d:rw
 
 `
-		if server.ClusterGroup.GetTopology() == config.TopoMultiMasterWsrep && server.ClusterGroup.TopologyClusterDown() {
+		if server.ClusterGroup.isGaleraBootstrapNode(server) {
 			//Proceed with galera specific
-			if server.ClusterGroup.GetMaster() == nil {
-				server.ClusterGroup.vmaster = server
-				vm = vm + `run_command = mysqld --wsrep_new_cluster
-`
-			}
+			server.ClusterGroup.vmaster = server
+			vm = vm + "run_command = " + galeraBootstrapCommand + "\n"
 		}
 	}
 	return vm
@@ -1536,3 +1535,8 @@ func (cluster *Cluster) sensorStartTimeout(kind string) string {
 func (cluster *Cluster) proxyStartTimeout() string {
 	return startTimeoutOrDefault(cluster.Conf.ProvProxyStartTimeout)
 }
+
+// galeraBootstrapCommand starts the Galera bootstrap node: the option only, the official
+// MariaDB / MySQL / Percona entrypoints prepend their own server binary to an argument list
+// that starts with an option, so it is right whatever the image's binary is called.
+const galeraBootstrapCommand = "--wsrep_new_cluster"

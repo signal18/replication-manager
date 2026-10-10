@@ -1969,9 +1969,10 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 	if cl != nil {
 		// Start from the main credentials only: the external accounts inherited
 		// from the default section are dropped together with their ACL, so the
-		// ones added below get a fresh entry (UpdateUser can only rewrite an
-		// existing entry; with the ACL blanked but the credentials kept, the
-		// Cloud18 git user used to end up a visitor with every grant discarded).
+		// ones added below get a fresh entry (with the ACL blanked but the
+		// credentials kept, the Cloud18 git user used to end up a visitor with
+		// every grant discarded). The `system` service account initCluster
+		// created goes with them and is created again below.
 		cl.Conf.APIUsersExternal = ""
 		cl.Conf.APIUsersACLAllowExternal = ""
 		cl.Conf.APIUsersACLDiscardExternal = ""
@@ -1985,6 +1986,10 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 		if repman.Conf.Cloud18GitUser != "" {
 			repman.AddCloud18GitUser(cl, false)
 		}
+
+		// Without it, the first dbjob secret-login re-created `system` with a
+		// random password and without cluster-resource-sensor.
+		cl.EnsureSystemServiceUser()
 
 		cl.LoadAPIUsers()
 		cl.SaveAcls()

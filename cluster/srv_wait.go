@@ -64,7 +64,8 @@ func (server *ServerMonitor) WaitDatabaseStart() error {
 			cluster.SetState("WARN0128", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0128"], server.URL, err.Error()), ErrFrom: "PROV", ServerUrl: server.URL})
 		}
 
-		if cluster.GetTopology() == config.TopoMultiMasterWsrep {
+		// the declared topology: a Galera cluster being provisioned has discovered nothing yet
+		if cluster.GetTopologyTarget() == config.TopoMultiMasterWsrep {
 			if !server.IsConnected() {
 				err = errors.New("Not yet connected")
 			}

@@ -309,6 +309,8 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 	roles := userform.Roles
 	grants := userform.Grants
 
+	auser, ok := cluster.APIUsers[user]
+
 	if delegator != "admin" {
 		duser, dok := cluster.APIUsers[delegator]
 		if !dok {
@@ -317,36 +319,53 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 
 		r := duser.Roles[config.RoleSysOps]
 		if !r {
+			// The entry below now persists (it is appended when missing), so a
+			// delegator below sysops must not rewrite a sysops account (admin, the
+			// Cloud18 git user): its change used to vanish at the next reload.
+			if ok && auser.Roles[config.RoleSysOps] {
+				return fmt.Errorf("Delegator %s is not sysops: unable to update sysops user %s", delegator, user)
+			}
 			grants = cluster.FilterGrants(grants, &duser)
 		}
 	}
 
-	auser, ok := cluster.APIUsers[user]
 	if !ok {
 		return fmt.Errorf("User %s is not exist in cluster. Unable to update roles and grants", user)
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s is not exist in cluster. Unable to update roles and grants", user)
 	} else {
-		new_acls := make([]string, 0)
-		acls := strings.Split(list, ",")
+		user_acl := user + ":" + grants + ":" + cluster.Name
+		if roles != "" {
+			user_acl = user_acl + ":" + roles
+		}
 
-		for _, acl := range acls {
+		// A user holding credentials without an entry of its own (admin, from the
+		// main api-credentials, once a new cluster blanked its external ACL) gets
+		// one appended: rewriting only an existing entry left the update in memory,
+		// and the next LoadAPIUsers rebuilt the user as a visitor.
+		new_acls := make([]string, 0)
+		found := false
+		for _, acl := range strings.Split(list, ",") {
+			if acl == "" {
+				continue
+			}
 			useracl, _, _, _ := misc.SplitAcls(acl)
 			if useracl == user {
-				acl = user + ":" + grants + ":" + cluster.Name
-				if roles != "" {
-					acl = acl + ":" + roles
-				}
-				new_acls = append(new_acls, acl)
-			} else {
-				new_acls = append(new_acls, acl)
+				acl = user_acl
+				found = true
 			}
+			new_acls = append(new_acls, acl)
+		}
+		if !found {
+			new_acls = append(new_acls, user_acl)
 		}
 
 		cluster.Conf.APIUsersACLAllowExternal = strings.Join(new_acls, ",")
 
 		new_acls = make([]string, 0)
-		acls = strings.Split(xlist, ",")
-		for _, xacl := range acls {
+		for _, xacl := range strings.Split(xlist, ",") {
+			if xacl == "" {
+				continue
+			}
 			useracl, _, _, _ := misc.SplitAcls(xacl)
 			if useracl != user {
 				new_acls = append(new_acls, xacl)

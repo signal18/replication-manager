@@ -929,13 +929,28 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	}
 	// We will leave when in failover to avoid refreshing variables and status
 	if cluster.StateMachine.IsInFailover() {
-		//	conn.Close()
+		// the ping pool is not kept here: closed, else one pool LEAKED per server per tick
+		// for as long as the failover state lasts; a provisioning holds it for its whole
+		// run, a serialized Galera one for minutes: 1001 connections from repman, then
+		// "Too many connections" (1040) on every node (dev3 galera-sst 2026-10-10)
+		if conn != nil && conn != server.Conn {
+			conn.Close()
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Inside failover, skiping refresh")
 		return
 	}
 	err = server.Refresh()
 	if err != nil {
-		// reaffect a global DB pool object if we never get it , ex dynamic seeding
+		// reaffect a global DB pool object if we never get it , ex dynamic seeding: the
+		// ping pool connects while the global one failed (a restarted node). The pool it
+		// replaces is closed, after a grace period for the queries still running on it,
+		// else it leaked at every refresh failure.
+		if old := server.Conn; old != nil && old != conn {
+			go func() {
+				time.Sleep(replacedPoolGrace)
+				old.Close()
+			}()
+		}
 		server.Conn = conn
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server refresh failed but ping connect %s", err)
 		return
@@ -2796,3 +2811,7 @@ func (server *ServerMonitor) refreshReplicationParallelism() {
 		server.ReplicationParallelThreads, _ = strconv.ParseInt(v, 10, 64)
 	}
 }
+
+// replacedPoolGrace: a global pool replaced by Ping is closed after this delay, enough for
+// the queries already running on it to finish.
+const replacedPoolGrace = 30 * time.Second

@@ -2252,3 +2252,49 @@ func CreateDatabaseIfNotExists(db *sqlx.DB, schema string) (string, error) {
 	_, err := db.Exec(query)
 	return query, err
 }
+
+// GaleraSSTPrivileges are the global privileges mariabackup/xtrabackup needs on the
+// donor of a Galera SST: BINLOG MONITOR replaced REPLICATION CLIENT in MariaDB 10.5.
+func GaleraSSTPrivileges(myver *version.Version) string {
+	if myver.IsMariaDB() && myver.GreaterEqual("10.5") {
+		return "RELOAD, PROCESS, LOCK TABLES, BINLOG MONITOR"
+	}
+	return "RELOAD, PROCESS, LOCK TABLES, REPLICATION CLIENT"
+}
+
+// CreateSocketAuthUser creates user@localhost authenticated by the OS user of the
+// connecting process (MariaDB unix_socket, MySQL auth_socket), so no password exists
+// to leak, and grants it privileges on *.* (#1960). IF NOT EXISTS: the statement
+// replicates (Galera TOI) and an existing account is kept as it is.
+func CreateSocketAuthUser(db *sqlx.DB, myver *version.Version, user_name string, privileges string) (string, error) {
+	if err := ValidateIdentifier(user_name); err != nil {
+		return "", fmt.Errorf("invalid username: %w", err)
+	}
+	via := "VIA unix_socket"
+	if !myver.IsMariaDB() {
+		via = "WITH auth_socket"
+	}
+	account := QuoteMySQLIdentifier(user_name) + "@'localhost'"
+	query := "CREATE USER IF NOT EXISTS " + account + " IDENTIFIED " + via
+	if _, err := db.Exec(query); err != nil {
+		return query, err
+	}
+	grant := "GRANT " + privileges + " ON *.* TO " + account
+	_, err := db.Exec(grant)
+	return query + ";" + grant, err
+}
+
+// GaleraSSTAccountInitSQL is the datadir-init SQL of the Galera SST account on MariaDB
+// (#1960): run by the image entrypoint from /docker-entrypoint-initdb.d when the datadir
+// is created, before Galera starts, so the bootstrap node, the donor of the first SSTs,
+// holds the account from its first second and the joiners receive it with the copy.
+// REPLICATION CLIENT is the alias MariaDB 10.5+ keeps for BINLOG MONITOR: one file for
+// every version, the monitor's CheckGaleraSSTAccount stays the safety net.
+func GaleraSSTAccountInitSQL(user_name string) (string, error) {
+	if err := ValidateIdentifier(user_name); err != nil {
+		return "", fmt.Errorf("invalid username: %w", err)
+	}
+	account := QuoteMySQLIdentifier(user_name) + "@'localhost'"
+	return "CREATE USER IF NOT EXISTS " + account + " IDENTIFIED VIA unix_socket;\n" +
+		"GRANT RELOAD, PROCESS, LOCK TABLES, REPLICATION CLIENT ON *.* TO " + account + ";\n", nil
+}

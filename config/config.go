@@ -1557,6 +1557,11 @@ const (
 	ConstResourceAlignPlan string = "plan" // cap = (prov-service-plan-dbu / nodes) × mem-ratio
 	ConstResourceAlignUp   string = "up"   // cap = max-axis DBU from config × mem-ratio (coherence/debug)
 	ConstResourceAlignOff  string = "off"  // no alignment: cap = prov-db-memory (legacy)
+	// ConstGaleraSSTSocketUser is the unix_socket account the Galera SST authenticates
+	// with, the root password never being written in the database configuration
+	// (#1960): the donor's mariabackup runs as mysqld's OS user, mysql in every image
+	// we deploy (OpenSVC and Kubernetes).
+	ConstGaleraSSTSocketUser string = "mysql"
 )
 
 // prov-db-dynamic-resize-policy values: WHEN a triggered live memory resize is applied.

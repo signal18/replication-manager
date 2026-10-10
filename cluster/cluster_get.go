@@ -1052,6 +1052,14 @@ func (cluster *Cluster) GetAppServerIdList() []string {
 	return ret
 }
 
+// GetTopologyTarget is the topology the cluster is DECLARED with: topology-target when
+// set, else derived from the legacy per-topology switches (replication-multi-master-wsrep,
+// ...). Unlike GetTopology (what discovery found), it is known before any server ran:
+// provisioning decides from it (the Galera bootstrap node, its DNS wait).
+func (cluster *Cluster) GetTopologyTarget() string {
+	return cluster.GetTopologyFromConf()
+}
+
 func (cluster *Cluster) GetTopologyFromConf() string {
 
 	// An explicitly declared topology-target is authoritative: trust it directly

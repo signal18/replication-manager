@@ -153,7 +153,10 @@ func (cluster *Cluster) ProvisionServices() error {
 
 		}
 		cluster.ProvisionDatabaseScript(server)
-		if cluster.GetConf().ProvSerialized {
+		// Galera is always serialized: the first node bootstraps, then each joiner takes
+		// its SST alone; started together, two joiners raced for the one donor and Galera
+		// aborted the second ("Will never receive state", dev3 galera-sst 2026-10-10)
+		if cluster.GetConf().ProvSerialized || cluster.GetTopologyTarget() == config.TopoMultiMasterWsrep {
 			server.WaitDatabaseStart()
 		}
 

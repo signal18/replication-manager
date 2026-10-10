@@ -78,6 +78,12 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
+	// Galera SST unix_socket account upkeep (#1960, CheckGaleraSSTAccount): last
+	// creation attempt and the open ERR00114 text while it fails. Read and written by the
+	// monitor tick only: no lock; a reader outside the tick must add one.
+	galeraSSTAccountLastTry time.Time
+	galeraSSTAccountErr     string
+
 	OsUser          *user.User `json:"-"`
 	Name            string     `json:"name" groups:"apps,web"`
 	Tenant          string     `json:"tenant" groups:"web"`
@@ -1389,6 +1395,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.IsFailable = cluster.GetStatus()
 		cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
 		cluster.CheckDBCredentials()
+		cluster.CheckGaleraSSTAccount()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// CheckFailed trigger failover code if passing all false positiv and constraints
@@ -1922,6 +1929,9 @@ type ClusterState struct {
 	IsMasterDown  bool `json:"isMasterDown"`
 	IsFailable    bool `json:"isFailable"`
 	IsProvisioned bool `json:"isProvisioned"`
+	// LastMaster: the URL of lastmaster, the master seen when the whole cluster went
+	// down, so a full Galera start bootstraps it even after replication-manager restarted.
+	LastMaster string `json:"lastMaster,omitempty"`
 }
 
 // ClearAppProvisioned removes the provision cookie and marks the app explicitly
@@ -1978,6 +1988,9 @@ func (cluster *Cluster) SaveCallBack() error {
 	clsave.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().State == "Failed"
 	clsave.IsFailable = !cluster.IsNotMonitoring && cluster.StateMachine.GetHeartbeats() > 0
 	clsave.IsProvisioned = cluster.IsAllDbUp
+	if cluster.lastmaster != nil {
+		clsave.LastMaster = cluster.lastmaster.URL
+	}
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
