@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	repmanmcp "github.com/signal18/replication-manager/mcp"
+	"github.com/signal18/replication-manager/peer"
 )
 
 // cloud18QuoteOf prices a cluster request on one infrastructure from its self-service
@@ -117,6 +118,17 @@ func (repman *ReplicationManager) Cloud18ClusterQuote(p *repmanmcp.Principal, sp
 	if err != nil {
 		return nil, err
 	}
+	// Each choice carries its partner's infrastructure description, from the for-sale
+	// list every instance receives (peer.json): no login needed, so a partner that does
+	// not answer (or refuses the caller) is still a described choice.
+	defs := map[string]map[string]any{}
+	if sale, err := repman.Cloud18ClustersForSale(); err == nil {
+		for _, pc := range sale {
+			if pc != nil && pc.ApiPublicUrl != "" && defs[pc.ApiPublicUrl] == nil {
+				defs[pc.ApiPublicUrl] = cloud18InfraDefinitionOf(pc)
+			}
+		}
+	}
 	out := make([]map[string]any, len(list))
 	sem := make(chan struct{}, accessParallel)
 	var wg sync.WaitGroup
@@ -126,13 +138,17 @@ func (repman *ReplicationManager) Cloud18ClusterQuote(p *repmanmcp.Principal, sp
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			def := defs[url]
 			a := repman.cloud18InfrastructureAccessOne(p, url)
 			if a.Error != "" {
-				out[i] = map[string]any{"infrastructure": url, "canCreate": false, "reason": a.Error}
+				out[i] = map[string]any{"infrastructure": url, "partner": def["partner"], "definition": def,
+					"canCreate": false, "reason": a.Error, "price": "unknown: the infrastructure did not answer for this identity"}
 				return
 			}
 			q := cloud18QuoteOf(spec, a.SelfService)
 			q["infrastructure"] = url
+			q["partner"] = def["partner"]
+			q["definition"] = def
 			q["orchestrator"] = a.SelfService["orchestrator"]
 			out[i] = q
 		}(i, infra.ApiPublicUrl)
@@ -167,4 +183,32 @@ func defaultRequestOf(ss map[string]any) map[string]any {
 	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "default"})
 	num := func(k string) float64 { v, _ := ss[k].(float64); return v }
 	return resolvedRequest(spec, num("defaultDbu"), num("defaultApu"), num("defaultBku"))
+}
+
+// cloud18InfraDefinitionOf is a partner infrastructure's description as the for-sale
+// list publishes it: who runs it, where, on what, and the service levels it commits to.
+func cloud18InfraDefinitionOf(pc *peer.PeerCluster) map[string]any {
+	zone := pc.Cloud18SubDomain
+	if pc.Cloud18SubDomainZone != "" {
+		zone += "-" + pc.Cloud18SubDomainZone
+	}
+	return map[string]any{
+		"partner":          pc.Cloud18Domain,
+		"zone":             zone,
+		"description":      pc.Cloud18PlatformDescription,
+		"orchestrator":     pc.ProvOrchestrator,
+		"cpuModel":         pc.Cloud18InfraCPUModel,
+		"cpuFreq":          pc.Cloud18InfraCPUFreq,
+		"dataCenters":      pc.Cloud18InfraDataCenters,
+		"geoLocalizations": pc.Cloud18InfraGeoLocalizations,
+		"publicBandwidth":  pc.Cloud18InfraPublicBandwidth,
+		"certifications":   pc.Cloud18InfraCertifications,
+		"sla": map[string]any{
+			"responseTime":  pc.Cloud18SlaResponseTime,
+			"repairTime":    pc.Cloud18SlaRepairTime,
+			"provisionTime": pc.Cloud18SlaProvisionTime,
+		},
+		"dbops":  pc.Cloud18OpenDbops,
+		"sysops": pc.Cloud18OpenSysops,
+	}
 }

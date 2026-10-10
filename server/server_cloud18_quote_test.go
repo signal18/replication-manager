@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/signal18/replication-manager/peer"
 )
 
 // selfService answers shaped like GET /api/cloud18/self-service once JSON-decoded.
@@ -107,5 +109,14 @@ func TestQuoteReadsPricesThroughTheStatusFilter(t *testing.T) {
 	q := cloud18QuoteOf(quoteSpec(), ss)
 	if q["monthlyAtFullCapacity"] != 81.35 {
 		t.Fatalf("quote through the status filter = %v", q)
+	}
+}
+
+func TestInfraDefinitionOfPeer(t *testing.T) {
+	d := cloud18InfraDefinitionOf(&peer.PeerCluster{Cloud18Domain: "bso", Cloud18SubDomain: "bso", Cloud18SubDomainZone: "fr-1",
+		Cloud18InfraCPUModel: "EPYC", Cloud18InfraDataCenters: "Ajaccio", Cloud18SlaRepairTime: 4, Cloud18OpenDbops: true})
+	sla, _ := d["sla"].(map[string]any)
+	if d["partner"] != "bso" || d["zone"] != "bso-fr-1" || d["cpuModel"] != "EPYC" || d["dataCenters"] != "Ajaccio" || sla["repairTime"] != 4.0 || d["dbops"] != true {
+		t.Fatalf("definition = %v", d)
 	}
 }
