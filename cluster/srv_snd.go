@@ -46,6 +46,66 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 
 	}
 
+	// Replication parallelism: group commit size (the concurrency the binlog offers) and the
+	// workers configured to consume it. Emitted for every server (a master's group size is
+	// what its slaves can parallelise; a slave's own is what ITS slaves get).
+	metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.replication_group_commit_size", hostname), fmt.Sprintf("%.3f", server.ReplicationGroupCommitSize), time.Now().Unix()))
+	metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.replication_parallel_threads", hostname), fmt.Sprintf("%d", server.ReplicationParallelThreads), time.Now().Unix()))
+
+	// The Top page "Cluster Workload" gauges (ClusterWorkload.jsx), as series so the Graphs
+	// page shows the same signals over time: thread-pool CPU % (MariaDB thread pool only,
+	// -1 elsewhere -> not emitted), userstats CPU time, and the schema footprint. Queries
+	// and threads already exist as mysql_global_status_queries / threads_running. First-class
+	// (not whitelist-gated) like the replication pair above: the whitelist.conf materialised
+	// per cluster is never refreshed, so a whitelisted name would never reach existing clusters.
+	if wl, ok := server.WorkLoad.CheckAndGet("current"); ok {
+		if wl.CpuThreadPool >= 0 {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_cpu_thread_pool_pct", hostname), fmt.Sprintf("%.2f", wl.CpuThreadPool), time.Now().Unix()))
+		}
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_cpu_user_stats", hostname), fmt.Sprintf("%.2f", wl.CpuUserStats), time.Now().Unix()))
+	}
+	// Concurrency under semi-synchronous replication, the pair the thread pool rule sizes
+	// from (GetConfigThreadPoolSize: cores x 4 under semi-sync, #1902): the pool size the
+	// engine runs with, the threads the pool holds, and the semi-sync acknowledgment wait
+	// as the cgroup can never see it (a task asleep on a socket is no stall for PSI or the
+	// quota, #1904): the master's cumulative Rpl_semi_sync_master_tx_wait_time rated over
+	// the tick = seconds of wait per second, a cores-equivalent, next to the engine's own
+	// average per transaction. First-class for the same reason as above.
+	if v := server.Variables.Get("THREAD_POOL_SIZE"); v != "" {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.concurrency_thread_pool_size", hostname), v, time.Now().Unix()))
+	}
+	if v := server.Status.Get("THREADPOOL_THREADS"); v != "" {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.concurrency_threadpool_threads", hostname), v, time.Now().Unix()))
+	}
+	if v := server.Status.Get("THREADPOOL_IDLE_THREADS"); v != "" {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.concurrency_threadpool_idle_threads", hostname), v, time.Now().Unix()))
+	}
+	if server.IsSemiSyncMaster() {
+		// TX wait, not NET wait: MariaDB keeps Rpl_semi_sync_master_net_* at 0 and accounts
+		// the acknowledgment wait in Rpl_semi_sync_master_tx_* (belair: net 0, tx avg 12317 us
+		// over 91833 waits, 2026-10-07)
+		if v := server.Status.Get("RPL_SEMI_SYNC_MASTER_TX_AVG_WAIT_TIME"); v != "" {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.semisync_tx_avg_wait_us", hostname), v, time.Now().Unix()))
+		}
+		if cores, ok := server.semiSyncWaitCores(); ok {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.semisync_wait_cores", hostname), fmt.Sprintf("%.4f", cores), time.Now().Unix()))
+		}
+	}
+	// The Top page per-instance header graphs (TopHeader: Queries, Rows, Swap, Transactions,
+	// Cache Miss), one series per bar, same per-tick delta the page shows. First-class for the
+	// same reason as above.
+	for _, g := range server.TopHeader().Graphs {
+		for _, m := range g.Data {
+			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.top_%s_%s", hostname, topMetricToken(g.Name), topMetricToken(m.Name)), fmt.Sprintf("%d", m.Value), time.Now().Unix()))
+		}
+	}
+	// Table/index bytes are a cluster figure (DictTables are collected on the master), so the
+	// master carries the series.
+	if server.IsMaster() {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_table_size_bytes", hostname), fmt.Sprintf("%d", cluster.WorkLoad.DBTableSize), time.Now().Unix()))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.workload_index_size_bytes", hostname), fmt.Sprintf("%d", cluster.WorkLoad.DBIndexSize), time.Now().Unix()))
+	}
+
 	isNumeric := func(s string) bool {
 		_, err := strconv.ParseFloat(s, 64)
 		return err == nil
@@ -90,6 +150,71 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 			}
 		}
 	}
+
+	// DBU (Database Unit) consumed — computed by repman from the system-level
+	// sensor push (cgroup + df) in handlerMuxServerDBUConsumed. Emitted
+	// unconditionally like the slave-status block above (a first-class signal,
+	// not whitelist-gated), one value per monitor loop. dbu is the pivot = the
+	// peak DBU of the last period; the per-axis values show which one binds
+	// (the biggest contributor is server.DBUConsumed.Binding, kept in the JSON).
+	// Emitted EVERY tick (not only on a fresh sensor push) so the series is continuous
+	// (no gaps -> no flapping). Two views: the DBU duplicate (dbu_*), always >= 1 per
+	// axis -- even for a stopped service, which keeps its reserved restart minimum
+	// (ConsumedDBUForEmit) -- and the RAW resource series (service_*), the real
+	// measurement, which DOES go to 0 when the service is down (RawResourceForEmit).
+	//
+	// EXCEPT when the reading is stale (ResourceReadingStale: the sensor went silent for
+	// longer than resourceSensorFreshnessWindow): then NOTHING is emitted, on purpose. The
+	// gap is the truth, and it is what the sustained-decision coverage rule (windowExtremum,
+	// >= 80 % present samples) needs to withhold a resize instead of deciding on a frozen
+	// line. A never-measured or down server keeps the continuous min-1 / 0 series.
+	if !server.ResourceReadingStale() {
+		ts := time.Now().Unix()
+		dbu, cpu, mem, io, disk := server.ConsumedDBUForEmit()
+		// DBU RESOURCE series on the B scheme: dbu.<cluster>.<host>.* -- cluster is its OWN leading
+		// segment with the RAW cluster.Name (mirrors apu.<cluster>.<unit>), so a multi-cluster repman
+		// never mixes clusters and the GUI scope() matches with the identical raw name (no Go/JS
+		// sanitiser). DEPARTURE from the old mysql.<HOST>.dbu* tree (cluster carried inside the host
+		// id); the other mysql.* stats series keep the old scheme. This orphans the old dbu whisper
+		// data (the DBU graph starts fresh from deploy).
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu", cluster.Name, hostname), strconv.FormatFloat(dbu, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu_cpu", cluster.Name, hostname), strconv.FormatFloat(cpu, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu_mem", cluster.Name, hostname), strconv.FormatFloat(mem, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu_io", cluster.Name, hostname), strconv.FormatFloat(io, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.dbu_disk", cluster.Name, hostname), strconv.FormatFloat(disk, 'f', 4, 64), ts))
+
+		// Raw resource values (native units), the real measurement -- NOT floored
+		// (the dbu_* series above are the DBU duplicate carrying the min-1 rule).
+		// 0 on a down server. Same "service" unit the resource model reasons in.
+		cores, memBytes, iops, diskBytes := server.RawResourceForEmit()
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_cpu", cluster.Name, hostname), strconv.FormatFloat(cores, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_mem", cluster.Name, hostname), strconv.FormatFloat(memBytes, 'f', 0, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_io", cluster.Name, hostname), strconv.FormatFloat(iops, 'f', 4, 64), ts))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("dbu.%s.%s.service_disk", cluster.Name, hostname), strconv.FormatFloat(diskBytes, 'f', 0, 64), ts))
+	}
+
+	// Cluster-level PLAN series, resourcemanager.<CTOKEN>.plan_dbu. The plan
+	// (prov-service-plan-dbu) is a CLUSTER contract -- it exists nowhere per-server -- so it is
+	// emitted here to be graphed over time. Emitted by EVERY server, unconditionally (same
+	// series, same value, last write wins in whisper), NOT only by the master: the over/under
+	// commit charts are diffSeries(sumSeries(dbu.<cluster>.*.dbu), plan) computed at query
+	// time, and the embedded diffSeries treats an ABSENT plan point as 0 -- so any bucket where
+	// a consumed point exists without a plan point shows the WHOLE consumption as overcommit.
+	// With a master-only plan that happened on every bucket where the master's batch was missing
+	// or landed one bucket off (preprod 2026-09-17: 100 % of the 17 366 "overcommit" points over
+	// 7 days were plan gaps, real over-plan consumption was 0). Emitting the plan from every
+	// server with the same timestamp base as its consumed series guarantees, by construction,
+	// that a bucket holding a consumed point also holds the plan point. The plan token stays
+	// the uppercased CTOKEN; only the consumed resource series moved to dbu.<cluster>.<host>.
+	//
+	// Nothing else is emitted here on purpose. Over/under-consumption -- what the client calls
+	// OVERCOMMIT (consumed > plan) and its opposite (consumed < plan, the giveback) -- are NOT
+	// emitted: they are DERIVED at query time from the two series that already exist, in the
+	// GUI. A display, never a billing ledger: over-plan accounting comes from the
+	// ResourceManager states (ResourceConsumedOverPlanAxes, WARN0213, ERR00112).
+	metrics = append(metrics, graphite.NewMetric(
+		fmt.Sprintf("resourcemanager.%s.plan_dbu", strings.ToUpper(replacer.Replace(cluster.Name))),
+		strconv.FormatFloat(float64(cluster.GetPlanDbu()), 'f', 4, 64), time.Now().Unix()))
 	return metrics
 }
 
@@ -114,4 +239,34 @@ func (server *ServerMonitor) SendAlert() error {
 	}
 
 	return server.ClusterGroup.SendAlert(a)
+}
+
+// topMetricToken turns a Top header label ("Cache Miss", "Binlog Group") into a graphite
+// leaf token (cache_miss, binlog_group).
+func topMetricToken(name string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(name), " ", "_"))
+}
+
+// semiSyncWaitCores is the master's semi-synchronous acknowledgment wait over the last
+// monitor tick as seconds of wait per second (a cores-equivalent, like the cgroup wait
+// fractions): the increase of Rpl_semi_sync_master_tx_wait_time (microseconds, cumulative)
+// over the tick. Not available on the first tick, on a counter reset, or without a tick.
+func (server *ServerMonitor) semiSyncWaitCores() (float64, bool) {
+	prev, ok := server.PrevStatus.CheckAndGet("RPL_SEMI_SYNC_MASTER_TX_WAIT_TIME")
+	if !ok {
+		return 0, false
+	}
+	cur, err := strconv.ParseFloat(server.Status.Get("RPL_SEMI_SYNC_MASTER_TX_WAIT_TIME"), 64)
+	if err != nil {
+		return 0, false
+	}
+	p, err := strconv.ParseFloat(prev, 64)
+	if err != nil || cur < p {
+		return 0, false
+	}
+	seconds := float64(server.MonitorTime - server.PrevMonitorTime)
+	if seconds <= 0 {
+		return 0, false
+	}
+	return (cur - p) / 1e6 / seconds, true
 }

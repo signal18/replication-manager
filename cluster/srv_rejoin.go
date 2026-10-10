@@ -57,6 +57,12 @@ func (server *ServerMonitor) RejoinMaster() error {
 		cluster.rejoinCond.Send <- true
 	}()
 
+	if server.IsPostgreSQLHost() {
+		// A former PostgreSQL primary rejoins on its data directory (re-seed armed by the
+		// jobs sidecar, applied at restart): none of the statements below exists there.
+		return server.postgresRejoin()
+	}
+
 	if cluster.Conf.ActivePassive {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining %s ignored caused by active-passive mode", server.URL)
 		return nil
@@ -93,6 +99,18 @@ func (server *ServerMonitor) RejoinMaster() error {
 	// back. Makes the Failed->up edge AND the per-tick topology extra-master call
 	// idempotent — this replaces the old age cap / re-fetch loop.
 	if cluster.rejoinAlreadyAttempted(server.URL) {
+		return nil
+	}
+
+	// CURRENT-MASTER GUARD: RejoinMaster fires on every state edge (Failed->up,
+	// Maintenance->up, the topology extra-master call) and, with no local crash, asks
+	// the peer for a verdict. After a switchover the NEW master takes such an edge; on
+	// 2026-09-14 (belair, #1793) the peer answered with a 4-day-old failoverHistory
+	// entry naming that master as the LOSER, and repman ran CHANGE MASTER on the live
+	// master -- a replication ring, both sides writable. Never re-slave the current
+	// master unless a crash NEWER than its promotion names it.
+	if cluster.rejoinWouldDemoteMaster(server) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin of %s skipped: it is the current master and no crash newer than its promotion names it", server.URL)
 		return nil
 	}
 
@@ -792,6 +810,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		cluster.rejoinCond.Send <- true
 	}()
 
+	if server.IsPostgreSQLHost() {
+		// a PostgreSQL standby follows whom its primary_conninfo names: nothing to repoint here
+		return nil
+	}
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep {
 		if cluster.GetTopology() == config.TopoMultiMasterRing {
 			server.RejoinLoop()
@@ -1103,11 +1125,18 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 		}
 	}
 
+	// Replica server-id leased from the pool for the fetch (#1886): the hard-coded 10000
+	// collided with the binlog backup copy and the metadata syncer.
+	fetchID, release, err := cluster.binlogServerIDPool().Acquire("rejoin-fetch")
+	if err != nil {
+		return err
+	}
+	defer release()
 	var params []string = make([]string, 0)
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		params = append(params, "--connection-server-id=10000")
+		params = append(params, "--connection-server-id="+strconv.FormatUint(uint64(fetchID), 10))
 	} else {
-		params = append(params, "--stop-never-slave-server-id=10000")
+		params = append(params, "--stop-never-slave-server-id="+strconv.FormatUint(uint64(fetchID), 10))
 	}
 	params = append(params, "--read-from-remote-server", "--raw", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+cluster.Conf.WorkingDir+"/"+cluster.Name+"-server"+strconv.FormatUint(uint64(server.ServerID), 10)+"-", "--start-position="+crash.FailoverMasterLogPos)
 	params = append(params, server.GetSSLClientParam("client-binlog")...)
@@ -1233,4 +1262,27 @@ func (server *ServerMonitor) UsedGtidAtElection(crash *Crash) bool {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin server can not found a GTID greater than 0 ")
 	return false
 
+}
+
+// MarkReseedFailed records a reseed job failure for the reconciliation (#1866): a
+// reseed that reported a failure is a failed reseed, even if the empty replica then
+// looks like a slave of its master.
+func (server *ServerMonitor) MarkReseedFailed(err error) {
+	if err == nil {
+		return
+	}
+	server.reseedLastError.Store(err.Error())
+	server.reseedFailedAt.Store(time.Now().UnixNano())
+}
+
+// ReseedFailedSince answers the error of a reseed failure recorded after since
+// (unix-nanos), "" when none.
+func (server *ServerMonitor) ReseedFailedSince(since int64) string {
+	if at := server.reseedFailedAt.Load(); at > since {
+		if e, ok := server.reseedLastError.Load().(string); ok {
+			return e
+		}
+		return "reseed failed"
+	}
+	return ""
 }

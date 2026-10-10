@@ -1318,11 +1318,12 @@ func TestRemoveServerMonitor_PrunesRemovedServersDBLogWriters(t *testing.T) {
 	}
 }
 
-func TestNewLogTailer_DoesNotPruneWhenRotateDisabled(t *testing.T) {
+func TestNewLogTailer_PrunesOldStyleRotatedFilesUnconditionally(t *testing.T) {
 	tmp := t.TempDir()
 	server := newTestServerForDBLogs(t, tmp)
-	// DBLogRotate left at its zero value (false): compatibility-first, no
-	// pruning of any kind should happen.
+	// DBLogRotate left false on purpose: repman-side history pruning is now
+	// UNCONDITIONAL (a perpetual repman never lets its own rotated log history
+	// grow unbounded), independent of the db-log-rotate DB-node-side flag.
 
 	legacyDir := server.legacyDBLogDir()
 	if err := os.MkdirAll(legacyDir, 0755); err != nil {
@@ -1339,8 +1340,8 @@ func TestNewLogTailer_DoesNotPruneWhenRotateDisabled(t *testing.T) {
 	}
 	defer func() { tl.Stop(); tl.Cleanup() }()
 
-	if _, err := os.Stat(oldStyle); err != nil {
-		t.Fatalf("expected old-style rotated file to remain untouched when db-log-rotate is disabled: %v", err)
+	if _, err := os.Stat(oldStyle); !os.IsNotExist(err) {
+		t.Fatalf("expected old-style rotated file to be pruned unconditionally, but it still exists (err=%v)", err)
 	}
 }
 

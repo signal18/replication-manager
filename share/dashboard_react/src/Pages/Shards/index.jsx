@@ -23,6 +23,7 @@ import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 import { sizeOf } from '../../utility/common'
 import SchemaGraph from './SchemaGraph'
+import Events from './Events'
 import { useTheme } from '../../ThemeProvider'
 import { isAutoReloadPaused } from '../../utility/autoReloadPause'
 
@@ -780,6 +781,16 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
           enableSorting={true}
           lockSorting={true}
           initialSorting={[{ id: 'syncStatus', desc: false }]}
+        />
+      )}
+
+      {/* ── Scheduled database events (monitoring-schema-events) ──────────── */}
+      {selectedCluster?.config?.monitoringSchemaEvents !== false && (
+        <AccordionComponent
+          className={styles.accordion}
+          heading="Scheduled Database Events (consistency)"
+          headerActions={onOpenMonitoringSettings ? <RMIconButton icon={HiCog} tooltip='Monitoring Settings' onClick={onOpenMonitoringSettings} size='xs' variant='ghost' /> : null}
+          body={<Events clusterName={selectedCluster?.name} />}
         />
       )}
 

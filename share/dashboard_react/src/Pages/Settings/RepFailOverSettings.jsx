@@ -47,6 +47,8 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
   const hSwitchLock = `**Switchover Lock Users on Freeze Workload**\n\nTemporarily locks all user accounts on the current master during switchover to drain active connections.\nEnsures a clean traffic cutover with no in-flight writes at the moment of promotion.\n\nConfig: \`switchover-lock-user-on-freeze\``
   const hMaxDelay = `**Switchover Replication Maximum Delay**\n\nMaximum replication lag (seconds) a replica may have to be a valid switchover target.\nDefault: 30 seconds.\n\nConfig: \`failover-max-slave-delay\``
   const hWaitRoute = `**Switchover Wait Unmanaged Proxy Monitor**\n\nSeconds to wait after switchover for unmanaged proxies to detect the new master. Default: 1 second.\n\nConfig: \`switchover-wait-route-change\``
+  const hWaitWrite = `**Switchover Long Write Threshold**\n\nSeconds a write query or an open InnoDB transaction may have been running on the master before the switchover counts it as long.\nLong writes are never killed: before freezing anything the switchover waits for them to complete, up to the wait below, then cancels ("Long updates running on master. Cannot switchover"). Default: 10 seconds.\n\nConfig: \`switchover-wait-write-query\``
+  const hWaitTrx = `**Switchover Wait Transactions**\n\nSeconds the switchover waits, before freezing anything, for the long writes above to complete, then again for the pre-flush of the master tables. Still running at the deadline: the switchover is cancelled, nothing is killed. Default: 10 seconds.\n\nConfig: \`switchover-wait-trx\``
   const hMinorRelease = `**Switchover Allow on Minor Release**\n\nAllows switchover when the candidate replica runs a different minor version than the master.\nEnable during rolling upgrades.\n\nConfig: \`switchover-lower-release\``
 
   const dataObject = [
@@ -63,6 +65,8 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
     { key: 'Switchover Lock Users on Freeze Workload', help: h(hSwitchLock, 'Switchover Lock Users on Freeze Workload'), value: sw('switchover-lock-user-on-freeze', 'switchLockUserOnFreeze') },
     { key: 'Switchover Replication Maximum Delay', help: h(hMaxDelay, 'Switchover Replication Maximum Delay'), value: (<RMSlider value={selectedCluster?.config?.failoverMaxSlaveDelay} max={100} showMarkAtInterval={20} confirmTitle='Confirm change max delay to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'failover-max-slave-delay', value: val }))} />) },
     { key: 'Switchover Wait Unmanaged Proxy Monitor', help: h(hWaitRoute, 'Switchover Wait Unmanaged Proxy Monitor'), value: (<RMSlider value={selectedCluster?.config?.switchoverWaitRouteChange} confirmTitle='Confirm change wait change route detection to: ' onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'switchover-wait-route-change', value: val }))} />) },
+    { key: 'Switchover Long Write Threshold (seconds)', help: h(hWaitWrite, 'Switchover Long Write Threshold'), value: sl('switchover-wait-write-query', 'switchoverWaitWriteQuery', 1, 3600, 600) },
+    { key: 'Switchover Wait Transactions (seconds)', help: h(hWaitTrx, 'Switchover Wait Transactions'), value: sl('switchover-wait-trx', 'switchoverWaitTrx', 1, 3600, 600) },
     { key: 'Switchover Allow on Minor Release', help: h(hMinorRelease, 'Switchover Allow on Minor Release'), value: sw('switchover-lower-release', 'switchoverLowerRelease') },
   ]
 

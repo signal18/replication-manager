@@ -1,4 +1,4 @@
-import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure, Popover, PopoverTrigger, PopoverContent, PopoverArrow, PopoverBody } from '@chakra-ui/react'
+import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure, Popover, PopoverTrigger, PopoverContent, PopoverArrow, PopoverBody, Tooltip } from '@chakra-ui/react'
 import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
@@ -15,7 +15,7 @@ import ConfigModal from '../Modals/ConfigModal'
 import CrashesModal from '../Modals/CrashesModal'
 import ReseedProgressModal from '../Modals/ReseedProgressModal'
 import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
-import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings, MdHistory } from 'react-icons/md'
+import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings, MdHistory, MdHourglassTop, MdBackup } from 'react-icons/md'
 import { HiRefresh } from 'react-icons/hi'
 import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
@@ -28,6 +28,7 @@ import RMIconButton from '../RMIconButton'
 import TagPill from '../TagPill'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
+import ApiTokensModal from '../Modals/ApiTokensModal'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet, resetMeetError } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
@@ -53,6 +54,7 @@ function Navbar({ username, user }) {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [isInterventionPanelOpen, setIsInterventionPanelOpen] = useState(false)
   const [isUserInfoPanelOpen, setIsUserInfoPanelOpen] = useState(false)
+  const [isApiTokensOpen, setIsApiTokensOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
@@ -347,15 +349,21 @@ function Navbar({ username, user }) {
                 colorScheme={
                   (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR')
                     ? 'red'
-                    : (clusterData?.configStates || []).length > 0
+                    : (clusterData?.configStates || []).some((s) => s.ErrType === 'WARNING')
                       ? 'yellow'
-                      : 'gray'
+                      : (clusterData?.configStates || []).length > 0
+                        ? 'blue'
+                        : 'gray'
                 }
                 icon={MdSettings}
                 text='Config'
                 count={(clusterData?.configStates || []).length}
                 bubbleStyle={{
-                  background: `var(--chakra-colors-${(clusterData?.configStates || []).length > 0 ? 'yellow' : 'gray'}-600)`,
+                  background: `var(--chakra-colors-${
+                    (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR') ? 'red'
+                      : (clusterData?.configStates || []).some((s) => s.ErrType === 'WARNING') ? 'yellow'
+                        : (clusterData?.configStates || []).length > 0 ? 'blue' : 'gray'
+                  }-600)`,
                   color: 'white',
                 }}
                 onClick={() => setIsConfigModalOpen(true)}
@@ -400,6 +408,75 @@ function Navbar({ username, user }) {
                   showText={!isMobile}
                 />
               )}
+              {clusterData?.switchoverLongWriteWait && (() => {
+                // LIVE: the switchover long-write guard is waiting on the master. The
+                // cluster object carries switchoverLongWriteWait for the duration of the
+                // wait (null otherwise); no state/alert can open while a switchover runs,
+                // so this field, not clusterAlerts, is the signal. WARN0217 opens after.
+                const w = clusterData.switchoverLongWriteWait
+                const deadline = w.deadline ? new Date(w.deadline).toLocaleTimeString() : ''
+                return (
+                  <Tooltip
+                    as='div'
+                    label={`Switchover waiting for ${w.count} long write${w.count > 1 ? 's' : ''} on ${w.serverUrl} to complete, never killed; cancelled at ${deadline} if still running (switchover-wait-trx)`}>
+                    <Box>
+                      <AlertBadge
+                        colorScheme={'orange'}
+                        icon={MdHourglassTop}
+                        text='Switchover'
+                        count={w.count}
+                        blink={true}
+                        bubbleStyle={{
+                          background: 'var(--chakra-colors-orange-500)',
+                          color: 'white',
+                        }}
+                        showText={!isMobile}
+                      />
+                    </Box>
+                  </Tooltip>
+                )
+              })()}
+              {(clusterData?.backupsInProgress || []).length > 0 && (() => {
+                // LIVE: every running backup carries its tracked progress on the cluster
+                // object (backupsInProgress, refreshed each tick): level running = kind +
+                // since when, bytes = against the previous backup's size, schema = per
+                // table from the dump's verbose stream. A report, it gates nothing.
+                const rows = clusterData.backupsInProgress
+                const fmtBytes = (b) => (b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : b >= 1e6 ? (b / 1e6).toFixed(1) + ' MB' : b >= 1e3 ? (b / 1e3).toFixed(0) + ' KB' : b + ' B')
+                const fmtDur = (sec) => (sec >= 3600 ? Math.floor(sec / 3600) + 'h' + Math.floor((sec % 3600) / 60) + 'm' : sec >= 60 ? Math.floor(sec / 60) + 'm' + (sec % 60) + 's' : sec + 's')
+                const line = (r) => {
+                  const who = r.server ? `${r.kind} ${r.server}` : `${r.kind} ${r.task}`
+                  const pct = r.percent >= 0 ? `${Math.round(r.percent)}%` : fmtBytes(r.bytesDone || 0)
+                  const rate = r.rateBytesPerS > 0 ? ` at ${fmtBytes(r.rateBytesPerS)}/s` : ''
+                  const eta = r.etaSeconds >= 0 ? `, ETA ${fmtDur(r.etaSeconds)}` : ''
+                  const tbl = r.currentTable ? `, table ${r.currentTable} (${r.tablesDone}/${r.tablesTotal})` : ''
+                  const since = r.started ? `, since ${new Date(r.started).toLocaleTimeString()}` : ''
+                  return `${who}: ${pct}${rate}${eta}${tbl}${since} [${r.level}]`
+                }
+                // rows come ranked by the server: the data dump first, then the binlog copy,
+                // then the archive push (which belongs to the previous backup)
+                const first = rows[0]
+                const kindLabel = { logical: 'Dump', physical: 'Backup', binlog: 'Binlog', archive: 'Archive' }[first.kind] || 'Backup'
+                const text = first.percent >= 0 ? `${kindLabel} ${Math.round(first.percent)}%` : kindLabel
+                return (
+                  <Tooltip as='div' label={rows.map(line).join('\n')} whiteSpace='pre-line' hasArrow>
+                    <Box>
+                      <AlertBadge
+                        colorScheme={'teal'}
+                        icon={MdBackup}
+                        text={text}
+                        count={rows.length}
+                        blink={true}
+                        bubbleStyle={{
+                          background: 'var(--chakra-colors-teal-500)',
+                          color: 'white',
+                        }}
+                        showText={!isMobile}
+                      />
+                    </Box>
+                  </Tooltip>
+                )
+              })()}
             </Flex>
           )}
 
@@ -539,7 +616,14 @@ function Navbar({ username, user }) {
             setIsUserInfoPanelOpen(false)
             handleLogout()
           }}
+          onApiTokens={() => {
+            setIsUserInfoPanelOpen(false)
+            setIsApiTokensOpen(true)
+          }}
         />
+      )}
+      {isApiTokensOpen && (
+        <ApiTokensModal isOpen={isApiTokensOpen} closeModal={() => setIsApiTokensOpen(false)} user={user} />
       )}
     </>
   )

@@ -13,8 +13,10 @@ import (
 )
 
 var tests = []string{
+	"testSwitchoverNoDivergenceOnOldMaster",
 	"testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync",
 	"testSwitchoverLongTransactionNoRplCheckNoSemiSync",
+	"testSwitchoverLongTransactionWaitNoRplCheckNoSemiSync",
 	"testSwitchoverLongQueryNoRplCheckNoSemiSync",
 	"testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync",
 	"testSwitchoverReadOnlyNoRplCheck",
@@ -62,6 +64,25 @@ var tests = []string{
 	"testSetDualActive",
 	"testSplitBrainNoWinner",
 	"testMasterNil",
+	// testStagingRecoverNoReadOnly is intentionally not in this list: it
+	// requires topology-staging=true and a resolvable staging-server-host,
+	// which most clusters don't have. Including it here would make it run
+	// (and hard-FAIL, since this framework has no "skip" result) as part of
+	// "ALL" on every non-staging cluster. Run it explicitly by name instead:
+	// --test=testStagingRecoverNoReadOnly
+	// testPhysicalReseedRestore is intentionally not in this list for the same
+	// reason: it needs a jobs container next to each database and a physical
+	// backup tool matching the servers, and it reseeds a replica. Run it by
+	// name: /api/clusters/<cluster>/tests/actions/run/testPhysicalReseedRestore
+	// testSchemaEventsDrift is not in this list either: it writes on a replica
+	// and switches monitoring-schema-events off and on while it runs. Run it by
+	// name: /api/clusters/<cluster>/tests/actions/run/testSchemaEventsDrift
+	// testSchemaEventsFailoverIsolation is not in this list either: it
+	// switches the master over twice. Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testSchemaEventsFailoverIsolation
+	// testProxySQLPostgresRouting is not in this list either: it needs a
+	// PostgreSQL cluster behind a ProxySQL and switches the master over twice.
+	// Run it by name: /api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
 	"testConfigCookiePushBasic",
@@ -86,7 +107,24 @@ var tests = []string{
 	"testResticReseedXtrabackup",
 	"testResticReseedMariabackup",
 	"testOpenSVCUpgradeWarnRecovery",
+	"testRejoinStaleCrashKeepsMaster",
+	"testRollingRestart",
+	"testRollingUpgrade",
+	"testRollingReprovReseed",
+	"testK8SProvisionSchedulerVolumeBinding",
+	"testK8SStopStartDatabaseService",
 	"testSchemaPlugin",
+	"testGraphiteMetricsQueueBound",
+	"testDirectReseedSystemAllEmptyDestination",
+	"testDirectReseedSystemAllPluginAlreadyActive",
+	"testDirectReseedSystemAllPreExistingUserAppliedViaAlterUser",
+	"testDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure",
+	"testDirectReseedSystemAllSplitUserSingleAuthority",
+	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped",
+	"testHaproxyRuntimeAPIDynamicServerLifecycle",
+	"testProxyReadBackendReconciliation",
+	"testMaintenancePersistReload",
+	"testAppWarningDebounceAndRecovery",
 }
 
 const recoverTime = 8

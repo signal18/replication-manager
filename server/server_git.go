@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
@@ -598,6 +599,9 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*/variable-diff.json")
 	// Event log instance-local state and crash-safe temp files never travel.
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "event-log-state.json")
+	// User-issued API tokens store (encrypted, instance-local; never in config git).
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "api-tokens.json")
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "api-tokens.json.tmp")
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "*.new")
 	// The .config isolated clone is replaced by the config event log
 	// (doc/implementation/config/CONFIG_EVENT_LOG.md); drop leftovers.
@@ -660,9 +664,14 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 	filePath := pullDir + "/cloud18.toml"
 
 	if repman.Conf.GitUrlPull != "" {
+		// Self-heal a pre-symlink upgrade: a legacy real .pull/<cluster>/plugins
+		// directory blocks the checkout of the ../plugins symlink the -pull repo now
+		// ships, which aborts the whole pull. Normalize it up front.
+		repman.normalizePullPluginSymlinks(pullDir)
 		err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
 		if err != nil {
 			os.RemoveAll(pullDir + "/.git")
+			repman.normalizePullPluginSymlinks(pullDir) // clear any remaining conflict before the retry
 			err = repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
 			if err != nil {
 				pullErr = err
@@ -687,6 +696,10 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		// from pull repo root plugins/data/ → ShareDir/plugins/data/.
 		repman.syncPluginDataFromPull(pullDir)
 	}
+
+	// A standby also imports the clusters created on the active since it
+	// started (#1946); background, throttled, missing-only.
+	repman.maybeImportClustersOnStandby(time.Now())
 
 	if repman.Conf.Cloud18 {
 		//then to check new file pulled in working dir
@@ -896,6 +909,45 @@ func (repman *ReplicationManager) ensurePluginSymlink(clusterPluginDir, sharedDi
 	return true
 }
 
+// normalizePullPluginSymlinks converts any legacy real .pull/<cluster>/plugins
+// directory into the ../plugins symlink the -pull repo ships, BEFORE the git
+// checkout runs. go-git cannot lay a tracked symlink over a real directory
+// ("symlink ../plugins ...: file exists"), which aborts the whole cloud18 pull and
+// never recovers (the retry only wipes .git, not the working tree). Instances
+// upgraded from the pre-symlink layout still carry those real dirs, so this lets
+// them self-heal on the next pull. .pull is fully git-authoritative, so removing a
+// stale dir loses nothing — the shared plugins/ and the symlink are restored by the
+// pull. No-op when .pull is absent (first clone) or the entry is already a symlink.
+func (repman *ReplicationManager) normalizePullPluginSymlinks(pullDir string) {
+	entries, err := os.ReadDir(pullDir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == ".git" || e.Name() == logplugin.PluginDirName {
+			continue
+		}
+		clusterPluginDir := filepath.Join(pullDir, e.Name(), logplugin.PluginDirName)
+		fi, lerr := os.Lstat(clusterPluginDir)
+		if lerr != nil || fi.Mode()&os.ModeSymlink != 0 {
+			continue // absent, or already the symlink we want — leave it
+		}
+		if rerr := os.RemoveAll(clusterPluginDir); rerr != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,
+				"[git] cannot normalize legacy plugin dir %s: %v", clusterPluginDir, rerr)
+			continue
+		}
+		rel, rerr := filepath.Rel(filepath.Dir(clusterPluginDir), filepath.Join(pullDir, logplugin.PluginDirName))
+		if rerr != nil {
+			rel = filepath.Join("..", logplugin.PluginDirName)
+		}
+		// Best-effort: the checkout will also (re)create it from the repo.
+		os.Symlink(rel, clusterPluginDir)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo,
+			"[git] normalized legacy real plugin dir %s -> %s (pre-symlink upgrade self-heal)", clusterPluginDir, rel)
+	}
+}
+
 // ensurePluginSymlinksAtStartup creates the shared plugin dir and migrates
 // existing per-cluster real plugin dirs to symlinks. Called once at startup
 // so that locally built plugins are available before the first pull sync.
@@ -975,9 +1027,14 @@ func (repman *ReplicationManager) syncPluginDataFromPull(pullDir string) {
 			}
 			// Reload db_distributions.json (safe to auto-refresh)
 			cluster.Configurator.ReloadDBDistributions()
-			// Reload repos.json (docker image tags)
+			// Reload repos.json (docker image tags) into the per-cluster list.
 			cluster.ReloadDockerRepos()
 		}
+		// Also refresh the server-level ServiceRepos -- what the GUI reads -- from the
+		// same BO-pushed repos.json. ReloadDockerRepos only updates the per-cluster
+		// DockerRepos (json:"-", not serialized), so without this the GUI version
+		// dropdown stays frozen on the tag list captured at startup (issue #1702).
+		repman.ReloadServiceRepos()
 
 		// Compliance modules are NOT auto-reloaded — the enterprise-compliance
 		// plugin detects the change and raises a state; the user must explicitly
@@ -1121,14 +1178,20 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	}
 
 	// Decode JSON
-	var PeerList []*peer.PeerCluster
-	if err := json.Unmarshal(content, &PeerList); err != nil {
+	// Entry by entry: one unreadable cluster entry is skipped, never the whole list.
+	PeerList, skipped, err := peer.DecodePeerList(content)
+	if err != nil {
 		repman.Logrus.Errorf("failed to decode peer JSON: %v", err)
 		return err
 	}
+	for _, s := range skipped {
+		repman.Logrus.Warnf("peer JSON entry skipped: %s", s)
+	}
 
 	if len(PeerList) > 0 {
-		repman.PeerManager.BatchUpdateClusters(PeerList, true)
+		// A file with a skipped entry removes nothing: the clusters known from the
+		// previous file stay until a fully readable one arrives (#1948 review).
+		repman.PeerManager.BatchUpdateClusters(PeerList, len(skipped) == 0)
 	}
 
 	// peer.json content changed: refresh health immediately, but through the
@@ -1293,10 +1356,12 @@ func (repman *ReplicationManager) AddTempDirToGitignore() {
 	}
 }
 
-// AddDictTablesToGitignore ensures "dicttables.json" is in .gitignore so
-// table size changes do not generate git diffs on every monitoring tick.
+// AddDictTablesToGitignore ensures "dicttables.json" and "eventschema.json"
+// are in .gitignore so table size changes and schema scans do not generate
+// git diffs.
 func (repman *ReplicationManager) AddDictTablesToGitignore() {
 	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "dicttables.json")
+	addLineToGitignore(repman.Conf.WorkingDir+"/.gitignore", "eventschema.json")
 }
 
 // addLineToGitignore ensures a given line is present in the .gitignore file
@@ -1681,3 +1746,51 @@ func (repman *ReplicationManager) ShallowClone() error {
 	return err
 }
 
+// PushUnitsLogToGit commits and pushes the closed month's Units.log to the git sync
+// repository, once, at the month rollover (the periodic sync never stages it: the file
+// is rewritten every minute and *.log is ignored; an explicit Add bypasses the ignore
+// like the event-changed logs above). No git configured: nothing to do.
+func (repman *ReplicationManager) PushUnitsLogToGit(ctx context.Context, path, month string) error {
+	if repman.Conf.GitUrl == "" {
+		return nil // no git sync configured: the snapshot stays local (and is kept)
+	}
+	dir := repman.Conf.WorkingDir
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		return fmt.Errorf("no git repository in %s", dir)
+	}
+	r, err := git.PlainOpen(dir)
+	if err != nil {
+		return err
+	}
+	w, err := r.Worktree()
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return err
+	}
+	if _, err := w.Add(rel); err != nil {
+		return fmt.Errorf("cannot add %s: %w", rel, err)
+	}
+	_, err = w.Commit("Units statement "+month+" final", &git.CommitOptions{
+		Author: &git_obj.Signature{Name: "Replication Manager", When: time.Now()},
+	})
+	if err != nil && err != git.ErrEmptyCommit {
+		return fmt.Errorf("cannot commit %s: %w", rel, err)
+	}
+	head, err := r.Head()
+	if err != nil {
+		return err
+	}
+	auth := &git_https.BasicAuth{Username: repman.Conf.GitUsername, Password: repman.Conf.GetDecryptedValue("git-acces-token")}
+	err = r.PushContext(ctx, &git.PushOptions{
+		RemoteName: "origin", Auth: auth,
+		RefSpecs: []gitconfig.RefSpec{gitconfig.RefSpec(head.Name().String() + ":" + head.Name().String())},
+	})
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return fmt.Errorf("cannot push %s: %w", rel, err)
+	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "%s of %s pushed to git", rel, month)
+	return nil
+}

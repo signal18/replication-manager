@@ -324,30 +324,6 @@ func TruncatePFSStatements(db *sqlx.DB) (string, error) {
 	return query, err
 }
 
-func GetPlugins(db *sqlx.DB, myver *version.Version) (map[string]*Plugin, string, error) {
-
-	vars := make(map[string]*Plugin)
-	query := `SHOW PLUGINS`
-	if myver.IsMariaDB() {
-		query = `SHOW PLUGINS soname`
-	}
-
-	rows, err := db.Queryx(query)
-	if err != nil {
-		return nil, query, errors.New("Could not get queries")
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var v Plugin
-		err := rows.Scan(&v.Name, &v.Status, &v.Type, &v.Library, &v.License)
-		if err != nil {
-			return nil, query, errors.New("Could not get results from plugins scan")
-		}
-		vars[v.Name] = &v
-	}
-	return vars, query, nil
-}
-
 func GetPFSVariablesInstruments(db *sqlx.DB) (map[string]string, string, error) {
 	vars := make(map[string]string)
 	query := "SELECT /*replication-manager*/ UPPER(NAME) AS variable_name, ENABLED AS VALUE from performance_schema.setup_instruments"
@@ -415,6 +391,23 @@ func CheckLongRunningWrites(db *sqlx.DB, thresh int) (int, string, error) {
 	query := "select SUM(ct) from ( select count(*) as ct from information_schema.processlist  where command = 'Query' and time >= ? and info not like 'select%' union all select count(*) as ct  FROM  INFORMATION_SCHEMA.INNODB_TRX trx WHERE trx.trx_started < CURRENT_TIMESTAMP - INTERVAL ? SECOND) A"
 	err := db.QueryRowx(query, thresh, thresh).Scan(&count)
 	return count, query + "(" + strconv.Itoa(thresh) + ")", err
+}
+
+// GetLongRunningWrites lists the sessions CheckLongRunningWrites counts, with the same
+// threshold: write statements running for at least thresh seconds and InnoDB transactions
+// open for at least that long, with the transaction age and its rows modified and locked so
+// the operator can judge what a rollback would cost.
+func GetLongRunningWrites(db *sqlx.DB, thresh int) ([]Processlist, string, error) {
+	var pl []Processlist
+	query := "SELECT a.Id, a.User, a.Host, a.`Db` AS `db`, a.Command, a.Time as Time, a.State, SUBSTRING(COALESCE(a.INFO,''),1,200) as Info, " +
+		"GREATEST(COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started, now()),0),0) as trx_time, " +
+		"COALESCE(b.trx_rows_modified,0) as trx_rows_modified, " +
+		"COALESCE(b.trx_rows_locked,0) as trx_rows_locked " +
+		"FROM INFORMATION_SCHEMA.PROCESSLIST a " +
+		"LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " +
+		"WHERE (a.command = 'Query' AND a.time >= ? AND a.info NOT LIKE 'select%') OR b.trx_started < CURRENT_TIMESTAMP - INTERVAL ? SECOND"
+	err := db.Select(&pl, query, thresh, thresh)
+	return pl, query + "(" + strconv.Itoa(thresh) + ")", err
 }
 
 func KillThreads(db *sqlx.DB, myver *version.Version) (string, error) {

@@ -65,7 +65,7 @@ func (repman *ReplicationManager) CreateAdminUserForm(username string) cluster.U
 	return cluster.UserForm{
 		Username: username,
 		Roles:    "sysops dbops",
-		Grants:   "cluster db proxy prov global grant show sale extrole app terminal",
+		Grants:   "cluster db proxy prov global grant show sale extrole app terminal token",
 	}
 }
 

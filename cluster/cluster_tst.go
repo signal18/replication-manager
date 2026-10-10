@@ -160,7 +160,7 @@ func (cluster *Cluster) prepareTpccParams(prx DatabaseProxy, command string, ove
 	}
 
 	test := "./" + cluster.Conf.SysbenchTest + ".lua"
-	params := []string{test, scale, tables, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user=" + cluster.GetDbUser(), "--mysql-password=" + cluster.GetDbPass(), "--mysql-host=" + prx.GetHost(), "--mysql-port=" + strconv.Itoa(prx.GetWritePort())}
+	params := append([]string{test, scale, tables}, cluster.sysbenchConnectionArgs(prx)...)
 	if cluster.Conf.SysbenchForcePK {
 		params = append(params, "--force-pk=1")
 	}
@@ -200,10 +200,26 @@ func (cluster *Cluster) ensureSysbenchVersionAvailable() error {
 	return nil
 }
 
+// getFirstProxy is the entry point of the benchmark: the first proxy, as the application
+// would connect, else the master itself (a cluster without proxy, pg-active-passive) carried
+// by a bare Proxy value for its host and write port.
+func (cluster *Cluster) getFirstProxy() (DatabaseProxy, error) {
+	proxies := cluster.GetProxies()
+	if len(proxies) > 0 && proxies[0] != nil {
+		return proxies[0], nil
+	}
+	master := cluster.GetMaster()
+	if master == nil {
+		return nil, errors.New("No proxy and no master to benchmark")
+	}
+	port, _ := strconv.Atoi(master.Port)
+	return &Proxy{Host: master.Host, WritePort: port}, nil
+}
+
 func (cluster *Cluster) PrepareBench() error {
-	prx := cluster.GetProxies()[0]
-	if prx == nil {
-		return errors.New("No proxy")
+	prx, err := cluster.getFirstProxy()
+	if err != nil {
+		return err
 	}
 	if cluster.benchmarkType == "sysbench" {
 		test := "--test=oltp"
@@ -213,7 +229,7 @@ func (cluster *Cluster) PrepareBench() error {
 		time := "--max-time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 		mode := "--oltp-test-mode=complex"
 		var cmdprep *exec.Cmd
-		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "prepare")
+		cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test, tablesize}, cluster.sysbenchConnectionArgs(prx)...), time, mode, requests, threads, "prepare")...)
 
 		if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
@@ -230,7 +246,7 @@ func (cluster *Cluster) PrepareBench() error {
 			test = cluster.Conf.SysbenchTest
 			time = "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 			tablesize = "--table-size=1000000"
-			cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "prepare")
+			cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test, tablesize}, cluster.sysbenchConnectionArgs(prx)...), time, threads, "prepare")...)
 
 			if cluster.Conf.SysbenchTest == "tpcc" {
 				cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "prepare", nil)...)
@@ -260,12 +276,10 @@ func (cluster *Cluster) PrepareBench() error {
 }
 
 func (cluster *Cluster) CleanupBench() error {
-	proxies := cluster.GetProxies()
-	if len(proxies) == 0 {
-		return errors.New("No proxy")
+	prx, err := cluster.getFirstProxy()
+	if err != nil {
+		return err
 	}
-
-	prx := proxies[0]
 	if cluster.benchmarkType == "sysbench" {
 		if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
@@ -282,10 +296,10 @@ func (cluster *Cluster) CleanupBench() error {
 		if useV1Syntax {
 			test = cluster.Conf.SysbenchTest
 		}
-		var cleanup = cluster.Conf.SysbenchBinaryPath + test + " --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.GetDbUser() + " --mysql-password=" + cluster.GetDbPass() + " --mysql-host=" + prx.GetHost() + " --mysql-port=" + strconv.Itoa(prx.GetWritePort()) + " cleanup"
+		var cleanup = cluster.Conf.SysbenchBinaryPath + " " + test + " " + strings.Join(cluster.sysbenchConnectionArgs(prx), " ") + " cleanup"
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.ReplaceAll(cleanup, cluster.GetDbPass(), "XXXXX"))
 		var cmdcls *exec.Cmd
-		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), "cleanup")
+		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test}, cluster.sysbenchConnectionArgs(prx)...), "cleanup")...)
 		if cluster.Conf.SysbenchTest == "tpcc" {
 			cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "cleanup", nil)...)
 			cmdcls.Dir = cluster.Conf.ShareDir + "/submodule/sysbench-tpcc"
@@ -327,9 +341,9 @@ func (cluster *Cluster) ChecksumBench() bool {
 
 func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize string, myTime string, myMode string, scaleGroup ...time.Time) (float64, float64, int, error) {
 	startedAt := time.Now()
-	prx := cluster.GetProxies()[0]
-	if prx == nil {
-		return 0, 0, 0, errors.New("No proxy")
+	prx, err := cluster.getFirstProxy()
+	if err != nil {
+		return 0, 0, 0, err
 	}
 
 	test := "--test=" + myTest
@@ -340,7 +354,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	mode := "--oltp-test-mode=" + myMode
 
 	var cmdrun *exec.Cmd
-	cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "--report-interval=1", "run")
+	cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test, tablesize}, cluster.sysbenchConnectionArgs(prx)...), time, mode, requests, threads, "--report-interval=1", "run")...)
 
 	if err := cluster.ensureSysbenchVersionAvailable(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Sysbench version check failed: %s", err)
@@ -358,7 +372,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 		tablesize = "--table-size=" + mySize
 		threads = "--threads=" + myThreads
 		time = "--time=" + myTime
-		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "--report-interval=1", "run")
+		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test, tablesize}, cluster.sysbenchConnectionArgs(prx)...), time, threads, "--report-interval=1", "run")...)
 		if cluster.Conf.SysbenchTest == "tpcc" {
 			override := map[string]string{"time": myTime, "threads": myThreads, "tablesize": mySize}
 			cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "run", override)...)
@@ -467,10 +481,13 @@ func (cluster *Cluster) RunBench() error {
 }
 
 func (cluster *Cluster) RunSysbench() error {
-	cluster.CleanupBench()
-	cluster.PrepareBench()
-	cluster.RunBench()
-	return nil
+	if err := cluster.CleanupBench(); err != nil {
+		return err
+	}
+	if err := cluster.PrepareBench(); err != nil {
+		return err
+	}
+	return cluster.RunBench()
 }
 
 // RunSysbenchScaleThreads runs the configured test doubling threads from 1 up to 2×cores.
@@ -479,8 +496,12 @@ func (cluster *Cluster) RunSysbenchScaleThreads() error {
 	scaleGroupTime := time.Now()
 
 	prepareStart := time.Now()
-	cluster.CleanupBench()
-	cluster.PrepareBench()
+	if err := cluster.CleanupBench(); err != nil {
+		return err
+	}
+	if err := cluster.PrepareBench(); err != nil {
+		return err
+	}
 	cluster.LogSysbenchStep("prepare", prepareStart, scaleGroupTime)
 
 	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
@@ -506,15 +527,21 @@ func (cluster *Cluster) RunSysbenchScaleThreads() error {
 	}
 
 	cleanupStart := time.Now()
-	cluster.CleanupBench()
+	if err := cluster.CleanupBench(); err != nil {
+		return err
+	}
 	cluster.LogSysbenchStep("cleanup", cleanupStart, scaleGroupTime)
 
 	return nil
 }
 
 func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() error {
-	cluster.CleanupBench()
-	cluster.PrepareBench()
+	if err := cluster.CleanupBench(); err != nil {
+		return err
+	}
+	if err := cluster.PrepareBench(); err != nil {
+		return err
+	}
 	threads := 1
 	for threads <= 256 {
 		_, _, _, _ = cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex")
@@ -642,6 +669,41 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 	}
 
 	err := cluster.StartDatabaseService(server)
+	wg2.Wait()
+	return err
+}
+
+// K8SRestartDatabaseServiceWaitRejoin mirrors StartDatabaseWaitRejoin's
+// synchronization contract (spawn WaitRejoin, prime the need-config-fetch
+// cookie, wait for rejoin completion) but drives the restart via
+// K8SRestartDatabaseService -- lighter than the generic
+// StopDatabaseService -> WaitDatabaseFailed -> StartDatabaseService dance
+// (no explicit scale-to-0 step), though not actually zero-downtime: single
+// replica on a ReadWriteOnce PVC means the new pod can't come up until the
+// old one releases the volume either way. WaitRejoin's completion signal
+// (rejoinCond) fires from repman's monitoring loop observing
+// PrevState==stateFailed (srv.go, srv_rejoin.go) -- orchestrator-agnostic,
+// so it fires correctly here too. WaitDatabaseStart alone (raw
+// connectivity) isn't equivalent -- it doesn't confirm the server actually
+// rejoined the replication topology.
+func (cluster *Cluster) K8SRestartDatabaseServiceWaitRejoin(server *ServerMonitor) error {
+	wg2 := new(sync.WaitGroup)
+	wg2.Add(1)
+	go cluster.WaitRejoin(wg2)
+
+	if cluster.Conf.ProvDbStartFetchConfig && server.HasNoConfigFetchCookie() {
+		server.DelNoConfigFetchCookie()
+	} else if !cluster.Conf.ProvDbStartFetchConfig && !server.HasNoConfigFetchCookie() {
+		server.SetNoConfigFetchCookie()
+	}
+
+	err := cluster.K8SRestartDatabaseService(server)
+	if err == nil {
+		// Positive confirmation the pod was genuinely replaced -- see
+		// k8sWaitRolloutCompleteWithClient (prov_k8s_db.go) for why this is
+		// needed in addition to (not instead of) the WaitRejoin wait below.
+		err = cluster.K8SWaitRolloutComplete(server)
+	}
 	wg2.Wait()
 	return err
 }
@@ -786,5 +848,32 @@ func (cluster *Cluster) ForgetTopology() error {
 	cluster.master = nil
 	cluster.vmaster = nil
 	cluster.slaves = nil
+	return nil
+}
+
+// sysbenchConnectionArgs: the driver and connection options of sysbench for the cluster's
+// database flavor, through the proxy's write port. PostgreSQL has databases, not schemas
+// to create on the fly: the benchmark tables go to the monitored database.
+func (cluster *Cluster) sysbenchConnectionArgs(prx DatabaseProxy) []string {
+	// the cluster's flavor, not the master pointer: a benchmark may be launched while the
+	// master is being rediscovered (right after a rolling restart the cleanup ran with the
+	// mysql driver against PostgreSQL, 2026-10-06)
+	if pg := cluster.postgresServer(); pg != nil {
+		return []string{"--db-driver=pgsql", "--pgsql-db=" + pg.PostgressDB, "--pgsql-user=" + cluster.GetDbUser(), "--pgsql-password=" + cluster.GetDbPass(), "--pgsql-host=" + prx.GetHost(), "--pgsql-port=" + strconv.Itoa(prx.GetWritePort())}
+	}
+	return []string{"--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user=" + cluster.GetDbUser(), "--mysql-password=" + cluster.GetDbPass(), "--mysql-host=" + prx.GetHost(), "--mysql-port=" + strconv.Itoa(prx.GetWritePort())}
+}
+
+// postgresServer returns a PostgreSQL server of the cluster (the master when known), nil
+// when the cluster is not PostgreSQL.
+func (cluster *Cluster) postgresServer() *ServerMonitor {
+	if m := cluster.GetMaster(); m != nil && m.IsPostgreSQLHost() {
+		return m
+	}
+	for _, s := range cluster.Servers {
+		if s != nil && s.IsPostgreSQLHost() {
+			return s
+		}
+	}
 	return nil
 }

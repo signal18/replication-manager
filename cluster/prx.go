@@ -168,6 +168,8 @@ type DatabaseProxy interface {
 	HasNoConfigFetchCookie() bool
 	HasDNS() bool
 
+	CheckNeedConfigFetch()
+
 	DelProvisionCookie() error
 	DelUnprovisionCookie() error
 	DelReprovisionCookie() error
@@ -268,6 +270,17 @@ func (cluster *Cluster) newProxyList() error {
 		}
 	}
 
+	// Mirrors newServerMonitor's server.CheckNeedConfigFetch() call
+	// (cluster/srv.go) -- without this, a cluster started with
+	// prov-proxy-start-fetch-config=false never gets the no-fetch cookie
+	// seeded until an operator later toggles the setting through the API,
+	// leaving proxies free to fetch config on start in the meantime.
+	for _, pr := range cluster.Proxies {
+		if pr != nil {
+			pr.CheckNeedConfigFetch()
+		}
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Loaded %d proxies", len(cluster.Proxies))
 
 	return nil
@@ -295,6 +308,9 @@ func (cluster *Cluster) injectTrafficUsesDDL() bool {
 
 func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKey string) error {
 	uuid := misc.GetUUID()
+	if cluster.isPostgresMaster() {
+		return cluster.postgresInjectTrafficMarker(db, uuid, readyKey)
+	}
 	if cluster.injectTrafficUsesDDL() {
 		_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + uuid + "' from dual")
 		return err
@@ -408,6 +424,17 @@ func (cluster *Cluster) IsProxyEqualMaster() bool {
 				return false
 			}
 			defer db.Close()
+			if cluster.isPostgresMaster() {
+				ok, err := cluster.postgresProxyServesMaster(db)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Can't check the master through the proxy: %s", err)
+					return false
+				}
+				if ok {
+					return true
+				}
+				continue
+			}
 			var sv map[string]string
 			sv, _, err = dbhelper.GetVariables(db, cluster.GetMaster().DBVersion)
 			if err != nil {
@@ -490,7 +517,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				cluster.BashScriptPrxServersChangeState(pr, pr.GetState(), pr.GetPrevState())
 				pr.SetPrevState(pr.GetState())
 			}
-			if cluster.Conf.GraphiteMetrics {
+			if cluster.CanSendGraphiteMetrics() {
 				pr.FetchStats()
 			}
 			//	pr.DelLock()

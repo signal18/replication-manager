@@ -30,7 +30,7 @@ function NumberInput({
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
 
   useEffect(() => {
-    if (value) {
+    if (value !== undefined && value !== null) {
       setCurrentValue(value)
       setPreviousValue(value)
     }

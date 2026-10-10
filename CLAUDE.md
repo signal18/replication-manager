@@ -6,6 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **replication-manager** is a high-availability orchestrator for MariaDB, MySQL, and Percona Server replication topologies. It handles monitoring, failover, switchover, proxy integration, provisioning, backups, and alerting for database clusters.
 
+## Development Laws
+
+**Read `doc/implementation/DEVELOPMENT_LAWS.md` before making non-trivial changes.**
+It defines the functional laws (F1–F11: what repman must/must not do — e.g. never
+compromise its own monitoring capability, never fill its own disks, never collect
+anything to infinity) and technical laws (T1–T19: how we build it — e.g. all SQL
+through `dbhelper`, no unbounded buffers, no feature without a GitHub issue/PR/docs).
+Functional laws outrank technical laws, and the perpetual-monitoring invariant
+(F2 + F3 + F4) outranks everything else. Any memory leak or deadlock that can halt
+the monitor is always a release blocker.
+
 ## Build System
 
 The project uses Go build tags to create multiple binaries from the same codebase:
@@ -311,6 +322,10 @@ Some configuration values have runtime-computed defaults:
 
 ## Testing
 
+Per T13, this regtest/Docker suite — not a Go unit test — is the required gate
+before a feature ships: real MariaDB/MySQL/Percona across versions in Docker,
+exercising actual cluster behavior.
+
 ### Regression Tests
 
 Run tests via the server with test mode enabled:
@@ -356,6 +371,12 @@ go test ./utils/...
 
 ## Development Workflow
 
+**Before writing code** (per the [Development Laws](#development-laws)): file a
+labelled, milestoned GitHub issue (T9, T11, T12), then branch off `develop` — no
+direct-to-develop commits (T10). The PR against that branch is where review and
+merge happen. The recipes below describe the code mechanics only; they don't
+repeat this every time.
+
 ### Working with Server Code
 
 The server initialization flow:
@@ -390,6 +411,10 @@ The server initialization flow:
        },
    }
    ```
+
+4. Add the corresponding GUI surface (T6 — no API-only features) and a
+   `doc/implementation/{package_path}/` writeup plus user doc on
+   `docs.signal18.io` (T8) before calling the endpoint done.
 
 ### Adding New Configuration Options
 
@@ -453,6 +478,10 @@ Implementation-specific documentation created by Claude Code agents is stored in
 
 **Structure**: `doc/implementation/{package_path}/{DOC_NAME}.md`
 
+**`doc/implementation/DEVELOPMENT_LAWS.md`** is the one exception to that
+package-scoped layout — it lives at the top level as the shared, project-wide
+reference of binding functional and technical laws (see "Development Laws" above).
+
 The `doc/implementation/` directory has been significantly expanded with module-specific documentation:
 
 **Configuration**:
@@ -488,4 +517,4 @@ When creating new implementation documentation:
 
 **Docker Rootless Permissions**: When running rootless Docker containers, ensure mounted volumes have correct ownership (`chown 1000:1000` or appropriate UID/GID for the `repman` user).
 
-**Environment Variable Conflicts**: If using both TOML config and environment variables, remember that environment variables take precedence over TOML values. Use `replication-manager config-merge` to debug effective configuration.
+**Environment Variable Conflicts**: If using both TOML config and environment variables, remember that environment variables take precedence over TOML values. To inspect the effective configuration, read it from the API (`/api/clusters/{name}` config object). `config-merge` is NOT an inspection tool: it consolidates dynamic-mode changes back into the original config file and OVERWRITES it.

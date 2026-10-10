@@ -89,6 +89,7 @@ func (cluster *Cluster) LogSqlGeneralPrintf(level string, url string, from strin
 		Level:     level,
 		Timestamp: stamp,
 		Text:      format,
+		Module:    config.ConstLogModSQL,
 	}
 	cluster.SQLGeneralLog.Add(msg)
 	cluster.SqlGeneralLog.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from}).Info(format)
@@ -101,6 +102,7 @@ func (cluster *Cluster) LogSqlErrorPrintf(level string, url string, err error, f
 		Level:     level,
 		Timestamp: stamp,
 		Text:      logs,
+		Module:    config.ConstLogModSQL,
 	}
 	cluster.SQLErrorLog.Add(msg)
 	cluster.SqlErrorLog.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from, "error": err, "sql": logs}).Error(format)
@@ -114,6 +116,7 @@ func (cluster *Cluster) LogUpdate(line int, level string, format string, args ..
 		Level:     level,
 		Timestamp: stamp,
 		Text:      fmt.Sprintf(format, args...),
+		Module:    config.ConstLogModGeneral,
 	}
 	cluster.Log.Update(line, msg)
 	return line
@@ -216,12 +219,12 @@ func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, l
 				Level:     level,
 				Timestamp: stamp,
 				Text:      fmt.Sprintf(httpformat, args...),
+				Module:    module,
 			}
 			line = cluster.htlog.Add(msg)
-			switch module {
-			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream, config.ConstLogModDbErrors, config.ConstLogModDbSqlErrors, config.ConstLogModDbSlowquery, config.ConstLogModDbOptimize, config.ConstLogModDbAudit, config.ConstLogModRestic:
+			if config.IsTaskLogModule(module) {
 				cluster.LogTask.Add(msg)
-			default:
+			} else {
 				cluster.Log.Add(msg)
 			}
 		}
@@ -392,17 +395,16 @@ func (cluster *Cluster) LogTaskPrintDebug(forcingLog bool, module int, key strin
 				Level:     config.LvlDbg,
 				Timestamp: stamp,
 				Text:      fmt.Sprintf(httpformat, args...),
+				Module:    module,
 			}
 			line = cluster.htlog.Add(msg)
-			switch module {
-			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream:
+			if config.IsTaskLogModule(module) {
 				if line2, ok := cluster.debugLineMap[key]; ok {
 					cluster.LogTask.Update(line2, msg)
 				} else {
 					cluster.debugLineMap[key] = cluster.LogTask.Add(msg)
 				}
-
-			default:
+			} else {
 				if line2, ok := cluster.debugLineMap[key]; ok {
 					cluster.Log.Update(line2, msg)
 				} else {
@@ -443,6 +445,24 @@ func (cluster *Cluster) LogPrintAllWorkloadStates() {
 	}
 	for _, st := range SM.GetLastOpenedStates() {
 		cluster.logPrintStateTo(st, false, &cluster.LogWorkload)
+	}
+}
+
+// LogPrintAllSchemaStates prints the schema advisory machine's transitions to the
+// schema buffer and schema.log, like the workload and security printers (the schema
+// machine had none: its findings appeared once at open and never as OPENED/RESOLV).
+func (cluster *Cluster) LogPrintAllSchemaStates() {
+	SM := cluster.SchemaStateMachine
+	if SM == nil {
+		return
+	}
+	if !cluster.runOnceAfterTopology {
+		for _, st := range SM.GetLastResolvedStates() {
+			cluster.logPrintStateTo(st, true, &cluster.LogSchema)
+		}
+	}
+	for _, st := range SM.GetLastOpenedStates() {
+		cluster.logPrintStateTo(st, false, &cluster.LogSchema)
 	}
 }
 
@@ -493,7 +513,30 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 	logformat := "[%s] [%s] %s - " + format
 	logargs := []interface{}{cluster.Name, tag, padright(level, " ", 5), st.ErrKey, logDesc}
 
-	if cluster.tlog != nil && cluster.tlog.Len > 0 {
+	// The daemon line follows the buffer: a workload, security or schema state is
+	// written to its own log file (workload.log, security.log, schema.log) and to
+	// its own terminal buffer, never to the general ones -- the general cluster
+	// log (live buffer, CLI log, and the on-disk history the GUI pages through)
+	// carries HA/operational states only. A missing dedicated logger falls back
+	// to the main one, as before.
+	general := buf == cluster.htlog
+	daemon := cluster.Logrus
+	switch buf {
+	case &cluster.LogWorkload:
+		if cluster.WorkloadLogrus != nil {
+			daemon = cluster.WorkloadLogrus
+		}
+	case &cluster.LogSecurity:
+		if cluster.SecurityLogrus != nil {
+			daemon = cluster.SecurityLogrus
+		}
+	case &cluster.LogSchema:
+		if cluster.SchemaLogrus != nil {
+			daemon = cluster.SchemaLogrus
+		}
+	}
+
+	if general && cluster.tlog != nil && cluster.tlog.Len > 0 {
 		cluster.tlog.Add(fmt.Sprintf(logformat, logargs...))
 	}
 
@@ -504,6 +547,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 			Level:     level,
 			Timestamp: stamp,
 			Text:      httpmsg,
+			Module:    config.ConstLogModGeneral,
 		}
 		line = buf.Add(msg)
 		// Only mirror to the general log when writing to the general buffer.
@@ -526,7 +570,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 	if cluster.Conf.Daemon {
 		// wrap logrus levels
 		if resolved {
-			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
+			daemon.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
 			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["status"] = "RESOLV"
@@ -534,7 +578,7 @@ func (cluster *Cluster) logPrintStateTo(st state.State, resolved bool, buf *s18l
 				}
 			}
 		} else {
-			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
+			daemon.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warn(logDesc)
 			if !cluster.IsIntervention && strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["status"] = "OPENED"

@@ -67,11 +67,15 @@ func (r *Runtime) Reload(c *Config) error {
 		cmd = exec.Command(r.Binary, arg0, arg1, arg2, arg3, arg4)
 	}
 
-	var out bytes.Buffer
+	var out, stderr bytes.Buffer
 	cmd.Stdout = &out
+	cmd.Stderr = &stderr
 
 	cmdErr := cmd.Run()
 	if cmdErr != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("%w: %s", cmdErr, msg)
+		}
 		return cmdErr
 	}
 

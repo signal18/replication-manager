@@ -602,6 +602,8 @@ var snapshotMetadataCandidates = []snapshotMetadataCandidate{
 	{File: "mydumper.meta.json", Method: backupmgr.BackupMethodLogical, Tool: config.ConstBackupLogicalTypeMydumper},
 	{File: "dumpling.meta.json", Method: backupmgr.BackupMethodLogical, Tool: config.ConstBackupLogicalTypeDumpling},
 	{File: "mysqlpump.meta.json", Method: backupmgr.BackupMethodLogical, Tool: "mysqlpump"},
+	{File: "pgdump.meta.json", Method: backupmgr.BackupMethodLogical, Tool: string(config.ConstTaskPgDump)},
+	{File: "pgbasebackup.meta.json", Method: backupmgr.BackupMethodPhysical, Tool: string(config.ConstTaskPgBaseBackup)},
 	{File: "mariabackup.meta.json", Method: backupmgr.BackupMethodPhysical, Tool: config.ConstBackupPhysicalTypeMariaBackup},
 	{File: "xtrabackup.meta.json", Method: backupmgr.BackupMethodPhysical, Tool: config.ConstBackupPhysicalTypeXtrabackup},
 }

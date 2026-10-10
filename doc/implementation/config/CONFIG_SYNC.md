@@ -95,6 +95,27 @@ capacity — so it must keep flowing through the config repo. `PushConfigToGit` 
 excluded; `sla.json` is never staged. Anything not on the list can churn freely with zero git
 impact.
 
+## Staging is O(files), not O(files x tree) — and only what changed (#1852, 2026-09-30)
+
+Observed on the preprod active: `GWARN013@gitsync` opened at every gate (~1550 times a day),
+resolving 10 s later. Not the network (pull 1-2 s, push 90 ms): **`Total file add took 2m10s-2m46s`**.
+go-git's `Worktree.Add(path)` computes the FULL worktree status (walk + hash of the ~650-file
+checkout) before staging one path — 2-3.5 s per file — and the `CommitManager` added the ~67
+whitelisted files one by one: quadratic, longer than the 120 s gate period, and 2.5 min of hashing
+every 4 min on the active (the "git-sync starvation" of the monitoring loop).
+
+- `addFileToCommit` stages with `AddWithOptions{Path, SkipStatus: true}`: the index update alone.
+- `stageIfChanged`: a file is enqueued only when its content hash differs from `pushedHash` (the
+  content as of the last SUCCESSFUL push, promoted from `pendingHash` after the push; a failed push
+  drops `pendingHash` so the same files retry). Zero staged files → no commit, no push. `ForceFullStage()` re-stages everything once
+  after a (re)clone, a metadata refresh or a reset of the local branch onto the remote head — the
+  cases where the remote may not hold what `pushedHash` remembers. It is deliberately NOT tied to
+  the gate's safety push: on preprod `git-monitoring-ticker=30` makes that push due at every gate.
+  Log line per cycle: `Staged N changed files (M unchanged skipped, force=..) in X`.
+- The gate times its phases and logs at WARN `Config sync cycle took X, longer than its Y period:
+  save A, git push B` when a cycle overruns; GWARN013's text no longer asserts a network hang (a
+  hung pull/push hits its own context timeout).
+
 ## Deferred follow-ups
 - Rename `ConfigManager` → `GitManager` (what remains is git push/pull only) and rename the inner
   `GitManager` queue → `pushQueue`.

@@ -37,6 +37,8 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 		// if server.HasBackupDumplingCookie() {
 		server.AppendLastMetadata(config.ConstBackupLogicalTypeDumpling, &logical)
 		// }
+		// PostgreSQL dump taken by the jobs sidecar (srv_job_postgres.go)
+		server.AppendLastMetadata(string(config.ConstTaskPgDump), &logical)
 
 		if logical > 0 {
 			server.LastBackupMeta.Logical = cluster.BackupMetaMap.Get(logical)
@@ -53,6 +55,8 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 		// if server.HasBackupMariabackupCookie() {
 		server.AppendLastMetadata(config.ConstBackupPhysicalTypeMariaBackup, &physical)
 		// }
+		// PostgreSQL base backup taken by the jobs sidecar (srv_job_postgres.go)
+		server.AppendLastMetadata(string(config.ConstTaskPgBaseBackup), &physical)
 
 		if physical > 0 {
 			server.LastBackupMeta.Physical = cluster.BackupMetaMap.Get(physical)
@@ -99,7 +103,7 @@ func (server *ServerMonitor) ReadLastMetadata(method string) (*backupmgr.BackupM
 	}
 	var methodType backupmgr.BackupMethod = backupmgr.BackupMethodLogical
 	switch strings.ToLower(strings.TrimSpace(method)) {
-	case "physical", config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
+	case "physical", config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup, string(config.ConstTaskPgBaseBackup):
 		methodType = backupmgr.BackupMethodPhysical
 	default:
 		methodType = backupmgr.BackupMethodLogical

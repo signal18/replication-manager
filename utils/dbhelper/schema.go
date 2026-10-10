@@ -58,6 +58,16 @@ type schemaExecutor interface {
 // Short timeout to avoid long metadata lock waits during scans.
 const defaultSchemaScanTimeout = 5 * time.Second
 
+// Event checksum pages and snapshots have independent hard bounds:
+// GetEventChecksums follows pages until it reaches the end or detects that the
+// complete catalog exceeds the snapshot maximum.
+const (
+	DefaultEventChecksumPageSize  = 1000
+	MaxEventChecksumPageSize      = 10000
+	DefaultEventChecksumMaxEvents = 10000
+	MaxEventChecksumMaxEvents     = 10000
+)
+
 // SetEventStatus enables or disables a database event
 func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
 	definer := strings.Split(ev.Definer, "@")
@@ -292,12 +302,19 @@ func getAllTables(ext schemaExecutor, myver *version.Version, timeout time.Durat
 
 func tablesQueryAll(myver *version.Version) string {
 	if myver.IsPostgreSQL() {
-		return `SELECT table_schema, table_name, 'BASE TABLE' AS engine, table_type,
-			'' AS row_format, '' AS table_collation, '' AS create_options, '' AS table_comment,
-			0::bigint AS auto_increment, 0::bigint AS table_rows, 0::bigint AS data_length,
-			0::bigint AS index_length, 0::bigint AS data_free, 0::bigint AS avg_row_length
-			FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-			ORDER BY table_schema, table_name`
+		// pg_class statistics: the planner's row estimate and the on-disk sizes (heap + toast
+		// for the data, every index for the indexes); every user schema of the database
+		return `SELECT n.nspname AS table_schema, c.relname AS table_name, 'heap' AS engine, 'BASE TABLE' AS table_type,
+			'' AS row_format, '' AS table_collation, '' AS create_options,
+			COALESCE(obj_description(c.oid, 'pg_class'), '') AS table_comment,
+			0::bigint AS auto_increment, GREATEST(c.reltuples, 0)::bigint AS table_rows,
+			pg_table_size(c.oid)::bigint AS data_length, pg_indexes_size(c.oid)::bigint AS index_length,
+			0::bigint AS data_free,
+			CASE WHEN c.reltuples > 0 THEN (pg_table_size(c.oid) / c.reltuples)::bigint ELSE 0 END AS avg_row_length
+			FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+			WHERE c.relkind IN ('r', 'p') AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+			AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
+			ORDER BY n.nspname, c.relname`
 	}
 	return `SELECT table_schema, table_name, engine, table_type,
 		COALESCE(row_format, ''), COALESCE(table_collation, ''), COALESCE(create_options, ''),
@@ -509,7 +526,32 @@ func normalizeExtraStr(e string) string {
 }
 
 // AnalyzeTable performs table analysis
+// postgresAnalyzeQuery builds ANALYZE "schema"."table" from a schema.table name, each
+// part quoted as a PostgreSQL identifier.
+func postgresAnalyzeQuery(table string) (string, error) {
+	parts := strings.Split(table, ".")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("invalid table name %q, schema.table expected", table)
+	}
+	for _, part := range parts {
+		if strings.ContainsAny(part, "\x00") {
+			return "", fmt.Errorf("invalid table name %q", table)
+		}
+	}
+	quote := func(id string) string { return `"` + strings.ReplaceAll(id, `"`, `""`) + `"` }
+	return "ANALYZE " + quote(parts[0]) + "." + quote(parts[1]), nil
+}
+
 func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, persistent bool, columns string, indexes string) (string, error) {
+	if myver.IsPostgreSQL() {
+		// ANALYZE schema.table: statistics for the planner, no lock that blocks reads or writes
+		query, err := postgresAnalyzeQuery(table)
+		if err != nil {
+			return "", err
+		}
+		_, err = db.Exec(query)
+		return query, err
+	}
 	quotedTable, err := QuoteMySQLTableIdentifier(table)
 	if err != nil {
 		return "", err
@@ -566,17 +608,15 @@ func SetUserPassword(db *sqlx.DB, myver *version.Version, user_host string, user
 		return "", fmt.Errorf("invalid username: %w", err)
 	}
 
-	// Build query using parameterization where possible
-	// ALTER USER syntax doesn't support full parameterization, but we validate and escape
-	query := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY ?",
+	// ALTER USER takes no bound parameter on MariaDB/MySQL (Error 1064 near '?', #1871):
+	// the password is a quoted literal; the returned query masks it for the SQL log.
+	query := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY %s",
 		QuoteMySQLIdentifier(user_name),
-		QuoteMySQLIdentifier(user_host))
+		QuoteMySQLIdentifier(user_host), QuoteMySQLString(new_password))
+	logged := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY '*****'", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
 
-	_, err := db.Exec(query, new_password)
-	if err != nil {
-		return query, err
-	}
-	return query, nil
+	_, err := db.Exec(query)
+	return logged, err
 }
 
 // validateDBHost validates a MySQL host string.
@@ -612,7 +652,7 @@ func LockDBUser(db *sqlx.DB, user, host string) (string, error) {
 
 // DropDBUser removes a database account.
 // Uses DROP USER IF EXISTS to be idempotent.
-// user may be empty string (anonymous accounts have user='').
+// user may be empty string (anonymous accounts have user=”).
 func DropDBUser(db *sqlx.DB, user, host string) (string, error) {
 	if user != "" {
 		if err := ValidateIdentifier(user); err != nil {
@@ -730,10 +770,57 @@ func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, e
 	return vars, query, nil
 }
 
-// GetProxySQLUsers retrieves users from ProxySQL
-func GetProxySQLUsers(db *sqlx.DB) (map[string]Grant, string, error) {
+// GetUserAuthConn is the restore-time-truth counterpart to GetUsers above:
+// pinned *sqlx.Conn, single-account lookup, used by execSplitdumpSingle
+// (cluster/srv_job_backup.go) to decide whether a password-setting statement
+// in a mysql.system-all replay is redundant. Mirrors the
+// GetPluginStatusConn/GetPlugins relationship (plugins.go).
+//
+// exists=false, err=nil means no matching row -- an expected, non-error
+// outcome the caller must branch on (mirrors GetPluginStatusConn's
+// PluginAbsent case), since the account may simply not have been created yet
+// at the point in the replay this is called.
+//
+// The per-flavor/version query text is copied from GetUsers, narrowed to one
+// account via a parameterized WHERE clause instead of selecting every row --
+// deliberately not a new query shape, since GetUsers' branches are already
+// exercised against the supported version/flavor matrix.
+func GetUserAuthConn(ctx context.Context, conn *sqlx.Conn, user, host string, myver *version.Version) (hash string, exists bool, err error) {
+	query := "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	if myver.IsPostgreSQL() {
+		return "", false, fmt.Errorf("GetUserAuthConn is not supported for PostgreSQL")
+	} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.7.6") {
+		query = "SELECT authentication_string FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	} else if myver.IsMariaDB() && myver.GreaterEqual("10.4.2") {
+		query = "SELECT u.password FROM mysql.user u WHERE u.user = ? AND u.host = ? LIMIT 1"
+	}
+
+	rows, err := conn.QueryxContext(ctx, query, user, host)
+	if err != nil {
+		return "", false, fmt.Errorf("could not look up user %s@%s: %w", user, host, err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return "", false, fmt.Errorf("error iterating user lookup result: %w", err)
+		}
+		return "", false, nil
+	}
+	if err := rows.Scan(&hash); err != nil {
+		return "", false, fmt.Errorf("could not scan user lookup result: %w", err)
+	}
+	if err := rows.Err(); err != nil {
+		return "", false, fmt.Errorf("error iterating user lookup result: %w", err)
+	}
+	return hash, true, nil
+}
+
+// GetProxySQLUsers retrieves users from the ProxySQL users table
+// (mysql_users or pgsql_users)
+func GetProxySQLUsers(db *sqlx.DB, table string) (map[string]Grant, string, error) {
 	vars := make(map[string]Grant)
-	query := "SELECT username, password FROM mysql_users"
+	query := "SELECT username, password FROM " + table
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return nil, query, errors.New("Could not get proxySQL user list")
@@ -765,6 +852,155 @@ func GetEventStatus(db *sqlx.DB, version *version.Version) ([]Event, string, err
 		return nil, query, errors.New("Could not get event status")
 	}
 	return ss, query, err
+}
+
+// ErrEventsUnsupported is returned by GetEventChecksums for an engine without
+// MySQL/MariaDB EVENT objects (PostgreSQL).
+var ErrEventsUnsupported = errors.New("scheduled database events are not supported by this engine")
+
+// ErrEventChecksumLimitExceeded is returned when a server has more scheduled
+// events than the bounded snapshot may retain. Callers must treat it as an
+// unavailable collection, never compare the partial result.
+var ErrEventChecksumLimitExceeded = errors.New("scheduled database event limit exceeded")
+
+// eventChecksumQuery reads, per event, what GetEventChecksums compares: the
+// identity, the definer, the status and the fields of the definition
+// (HashEventDefinition), in a stable order. The body never leaves the server:
+// only its MD5, of its utf8mb4 bytes so MariaDB and MySQL hash the same text
+// alike.
+const eventChecksumQuery = "SELECT /*replication-manager*/ EVENT_SCHEMA, EVENT_NAME, COALESCE(DEFINER, ''), COALESCE(STATUS, '')," +
+	" COALESCE(EVENT_TYPE, ''), COALESCE(CAST(EXECUTE_AT AS CHAR), ''), COALESCE(CAST(INTERVAL_VALUE AS CHAR), ''), COALESCE(INTERVAL_FIELD, '')," +
+	" COALESCE(CAST(STARTS AS CHAR), ''), COALESCE(CAST(ENDS AS CHAR), ''), COALESCE(ON_COMPLETION, ''), COALESCE(SQL_MODE, ''), COALESCE(TIME_ZONE, '')," +
+	" COALESCE(MD5(CONVERT(EVENT_DEFINITION USING utf8mb4)), '') FROM information_schema.EVENTS" +
+	" WHERE EVENT_SCHEMA > ? OR (EVENT_SCHEMA = ? AND EVENT_NAME > ?) ORDER BY EVENT_SCHEMA, EVENT_NAME LIMIT ?"
+
+// EventDefinitionFields are the fields of an event that make its definition,
+// as information_schema.EVENTS reports them: what HashEventDefinition hashes.
+// Status, definer, originator (server_id), created / last altered / last
+// executed times, comment and character set columns are not part of it.
+type EventDefinitionFields struct {
+	EventType     string
+	ExecuteAt     string
+	IntervalValue string
+	IntervalField string
+	Starts        string
+	Ends          string
+	OnCompletion  string
+	SQLMode       string
+	TimeZone      string
+	BodyMD5       string // MD5 of EVENT_DEFINITION, computed by the server
+}
+
+// HashEventDefinition returns the CRC64 (ECMA, as GetTables) of the fields, in
+// the order of EventDefinitionFields, separated by a NUL byte. The body enters
+// as its MD5 and is not normalized (the server keeps the body as it was
+// written, and a dump reloads it as is).
+func HashEventDefinition(f EventDefinitionFields) uint64 {
+	var b strings.Builder
+	for _, v := range []string{f.EventType, f.ExecuteAt, f.IntervalValue, f.IntervalField, f.Starts, f.Ends, f.OnCompletion, f.SQLMode, f.TimeZone, f.BodyMD5} {
+		b.WriteString(v)
+		b.WriteByte(0)
+	}
+	return crc64.Checksum([]byte(b.String()), crc64.MakeTable(crc64.ECMA))
+}
+
+// EventStatusClass maps the status information_schema.EVENTS reports to a
+// class for the comparison between servers: ENABLED is "active", DISABLED is
+// "disabled", and the replica-side disabled status (MariaDB:
+// SLAVESIDE_DISABLED, MySQL 8.4: REPLICA_SIDE_DISABLED) is
+// "replica-side-disabled": a replica gives it to every replicated event,
+// whatever its status on the master, so it says nothing about that status.
+// Anything else is "unknown".
+func EventStatusClass(status string) string {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "ENABLED":
+		return EventStatusActive
+	case "SLAVESIDE_DISABLED", "REPLICA_SIDE_DISABLED":
+		return EventStatusReplicaSide
+	case "DISABLED":
+		return EventStatusDisabled
+	default:
+		return EventStatusUnknown
+	}
+}
+
+// GetEventChecksums returns the events of the server, ordered by schema and
+// name, each with its status class and the CRC64 of its definition, for the
+// schema drift detection. The server returns the MD5 of each body, never the
+// body. It reads information_schema.EVENTS, which lists the events of
+// the schemas where the user has the EVENT privilege. pageSize bounds each SQL
+// result page (defaultEventChecksumPageSize when 0 or less; capped at
+// MaxEventChecksumPageSize). maxEvents bounds the complete in-memory and
+// persisted snapshot (defaultEventChecksumMaxEvents when 0 or less; capped at
+// MaxEventChecksumMaxEvents). A server with more events is unavailable: no
+// partial list is returned or compared. The one timeout context covers the
+// whole page loop. PostgreSQL has no EVENT objects: ErrEventsUnsupported,
+// without a query.
+func GetEventChecksums(db *sqlx.DB, myver *version.Version, timeoutSeconds, pageSize, maxEvents int) ([]EventChecksum, string, error) {
+	if myver != nil && myver.IsPostgreSQL() {
+		return nil, "", ErrEventsUnsupported
+	}
+	if pageSize <= 0 {
+		pageSize = DefaultEventChecksumPageSize
+	} else if pageSize > MaxEventChecksumPageSize {
+		pageSize = MaxEventChecksumPageSize
+	}
+	if maxEvents <= 0 {
+		maxEvents = DefaultEventChecksumMaxEvents
+	} else if maxEvents > MaxEventChecksumMaxEvents {
+		maxEvents = MaxEventChecksumMaxEvents
+	}
+	timeout := defaultSchemaScanTimeout
+	if timeoutSeconds > 0 {
+		timeout = time.Duration(timeoutSeconds) * time.Second
+	}
+	ctx, cancel := scanContext(timeout)
+	defer cancel()
+	events := make([]EventChecksum, 0, min(pageSize, maxEvents))
+	lastSchema, lastName := "", ""
+	for {
+		limit := min(pageSize, maxEvents-len(events))
+		if limit == 0 {
+			// The snapshot is full. Read one more ordered row to distinguish an
+			// exact-limit catalog from an over-limit one without collecting it.
+			limit = 1
+		}
+		rows, err := db.QueryContext(ctx, eventChecksumQuery, lastSchema, lastSchema, lastName, limit)
+		if err != nil {
+			return nil, eventChecksumQuery, err
+		}
+		count := 0
+		for rows.Next() {
+			var ev EventChecksum
+			var status string
+			var f EventDefinitionFields
+			if err := rows.Scan(&ev.Db, &ev.Name, &ev.Definer, &status, &f.EventType, &f.ExecuteAt, &f.IntervalValue, &f.IntervalField,
+				&f.Starts, &f.Ends, &f.OnCompletion, &f.SQLMode, &f.TimeZone, &f.BodyMD5); err != nil {
+				rows.Close()
+				return nil, eventChecksumQuery, err
+			}
+			if len(events) == maxEvents {
+				rows.Close()
+				return nil, eventChecksumQuery, fmt.Errorf("%w: maximum %d events", ErrEventChecksumLimitExceeded, maxEvents)
+			}
+			ev.Status = EventStatusClass(status)
+			ev.DefinitionCrc64 = HashEventDefinition(f)
+			events = append(events, ev)
+			lastSchema, lastName = ev.Db, ev.Name
+			count++
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, eventChecksumQuery, err
+		}
+		if err := rows.Close(); err != nil {
+			return nil, eventChecksumQuery, err
+		}
+		if count < limit {
+			break
+		}
+	}
+	return events, eventChecksumQuery, nil
 }
 
 // IsGroupReplicationMaster checks if server is a group replication master
@@ -1106,18 +1342,23 @@ func CreateUser(db *sqlx.DB, myver *version.Version, user_host string, user_name
 	if err := ValidateIdentifier(user_name); err != nil {
 		return "", fmt.Errorf("invalid username: %w", err)
 	}
-	if err := ValidateIdentifier(user_host); err != nil {
+	if err := validateDBHost(user_host); err != nil { // hosts take '%' and ':' (IPv6), unlike identifiers (#1870)
 		return "", fmt.Errorf("invalid host: %w", err)
 	}
 
-	// Note: CREATE USER cannot use parameterized password in all MySQL versions
-	// Using quoted identifiers for user/host and escaping password
-	query := fmt.Sprintf("CREATE USER %s@%s IDENTIFIED BY ?",
+	// CREATE USER takes no bound parameter on MariaDB/MySQL (Error 1064 near '?', #1871):
+	// the password is a quoted literal; the returned query masks it for the SQL log.
+	// IF NOT EXISTS: the statement replicates, and a replica that already holds the
+	// account (an app re-added, a replica reseeded after the first creation) stopped its
+	// SQL thread on "Operation CREATE USER failed" (curepipe db1, forgejo1, 2026-10-08).
+	// MariaDB 10.1.3+ and MySQL 5.7+ accept it.
+	query := fmt.Sprintf("CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY %s",
 		QuoteMySQLIdentifier(user_name),
-		QuoteMySQLIdentifier(user_host))
+		QuoteMySQLIdentifier(user_host), QuoteMySQLString(new_password))
+	logged := fmt.Sprintf("CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY '*****'", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
 
-	_, err := db.Exec(query, new_password)
-	return query, err
+	_, err := db.Exec(query)
+	return logged, err
 }
 
 // RevokeUserGrants revokes all privileges from a user
@@ -1414,7 +1655,9 @@ func loadFKLinks(ext schemaExecutor, myver *version.Version, tablemap map[string
 //  3. No explicit FOREIGN KEY already exists between the pair.
 //
 // Result columns: child_schema, child_table, parent_schema, parent_table,
-//   shared_cols (csv), child_pk_cols (int), child_fk_count (int), child_extra_cols (int)
+//
+//	shared_cols (csv), child_pk_cols (int), child_fk_count (int), child_extra_cols (int)
+//
 // loadColumnMatchLinks detects implicit FK-like relationships from the
 // already-loaded tablemap — zero additional SQL queries.
 //
@@ -1815,8 +2058,8 @@ func parentIndexColsFor(t *Table, colName string) []string {
 // cluster.ApplyPFSJoinLinksToSchema converts []cluster.PFSExplainRecord into
 // []PFSQueryPlan before calling this function.
 type PFSQueryPlan struct {
-	Digest     string  // PFS digest hash — key into execCounts
-	SchemaName string  // default schema for unqualified table names
+	Digest     string    // PFS digest hash — key into execCounts
+	SchemaName string    // default schema for unqualified table names
 	Plan       []Explain // EXPLAIN rows in driving order
 }
 
@@ -1997,4 +2240,15 @@ func attachJoinWeight(tablemap map[string]*Table, keyA, keyB string, pct float64
 		Cardinality:   CardinalityOneToMany,
 		JoinWeightPct: pct,
 	})
+}
+
+// CreateDatabaseIfNotExists creates a schema for an application (#1870); the
+// identifier is validated then quoted, the statement is returned for the SQL log.
+func CreateDatabaseIfNotExists(db *sqlx.DB, schema string) (string, error) {
+	if err := ValidateIdentifier(schema); err != nil {
+		return "", fmt.Errorf("invalid schema name: %w", err)
+	}
+	query := "CREATE DATABASE IF NOT EXISTS " + QuoteMySQLIdentifier(schema)
+	_, err := db.Exec(query)
+	return query, err
 }

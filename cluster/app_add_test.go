@@ -76,13 +76,6 @@ func TestAddAppAndAddAppToList_UseSameInitialization(t *testing.T) {
 		t.Fatalf("unexpected addAppToList datadir: got %q want %q", appFromList.Datadir, wantDatadir)
 	}
 
-	if appFromAdd.AppConfig.ProvAppCreditPlanned != 2 || appFromList.AppConfig.ProvAppCreditPlanned != 2 {
-		t.Fatalf("expected planned credit inferred from agents to be 2, got AddApp=%d addAppToList=%d",
-			appFromAdd.AppConfig.ProvAppCreditPlanned,
-			appFromList.AppConfig.ProvAppCreditPlanned,
-		)
-	}
-
 	if len(appFromAdd.AppConfig.Deployment.Routes) != 1 || len(appFromList.AppConfig.Deployment.Routes) != 1 {
 		t.Fatalf("expected one default route on both paths")
 	}

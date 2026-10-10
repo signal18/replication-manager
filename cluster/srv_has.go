@@ -52,6 +52,28 @@ func (server *ServerMonitor) HasJobsRefreshTTLExpired(ttl time.Duration) bool {
 	return time.Since(lastAttempt) >= ttl
 }
 
+// HasTerminalJobsReconcileTTLExpired gates JobsReconcileSQL. It is
+// deliberately tracked separately from lastJobsRefreshAttempt (used by the
+// dashboard-poll-triggered JobsRefreshEntries): that path only refreshes the
+// JobResults cache and never runs AfterJobProcess, so sharing one timestamp
+// would let a recent dashboard poll silently suppress the reconciliation that
+// actually runs StartSlave() -- reintroducing the bug this is meant to fix.
+func (server *ServerMonitor) HasTerminalJobsReconcileTTLExpired(ttl time.Duration) bool {
+	if ttl <= 0 {
+		return true
+	}
+
+	server.jobRefreshStateMutex.RLock()
+	lastAttempt := server.lastReconcileAttempt
+	server.jobRefreshStateMutex.RUnlock()
+
+	if lastAttempt.IsZero() {
+		return true
+	}
+
+	return time.Since(lastAttempt) >= ttl
+}
+
 func (server *ServerMonitor) IsSemiSyncReplica() bool {
 	// If MySQL or Percona 8.0 or greater
 	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0") {
@@ -163,8 +185,12 @@ func (server *ServerMonitor) HasWaitLogicalBackupCookie() bool {
 	return server.hasCookie("cookie_waitlogicalbackup")
 }
 
-func (server *ServerMonitor) HasWaitPhysicalBackupCookie() bool {
-	return server.hasCookie("cookie_waitphysicalbackup")
+func (server *ServerMonitor) HasWaitXtrabackupCookie() bool {
+	return server.hasCookie("cookie_waitxtrabackup")
+}
+
+func (server *ServerMonitor) HasWaitMariabackupCookie() bool {
+	return server.hasCookie("cookie_waitmariabackup")
 }
 
 func (server *ServerMonitor) HasWaitResticReseedCookie() bool {
@@ -303,6 +329,11 @@ func (server *ServerMonitor) HasBackupMariabackupCookie() bool {
 }
 
 func (server *ServerMonitor) HasReadOnly() bool {
+	if server.IsPostgreSQLHost() {
+		// a standby in recovery, or a server whose transactions default to read-only
+		// (the PostgreSQL read_only, set by SetReadOnly and the switchover)
+		return server.Variables.Get("IN_HOT_STANDBY") == "ON" || server.Variables.Get("DEFAULT_TRANSACTION_READ_ONLY") == "ON"
+	}
 	return server.Variables.Get("READ_ONLY") == "ON"
 }
 
@@ -703,6 +734,52 @@ func (server *ServerMonitor) HasReplicationIssue() bool {
 	return true
 }
 
+// IsValidMasterCheck is the shared condition behind every "is this
+// server a valid master" external-check endpoint
+// (handlerMuxServersIsMasterStatus, handlerMuxServersPortIsMasterStatus,
+// server/api_database.go) -- moved here, rather than left as a free
+// function in the server package, since it's purely a function of this
+// server's own state, the same home IsDown/IsMaster/HasReplicationIssue
+// already have. Deliberately does NOT check cluster.IsActive() or
+// cluster.IsInFailover(): both are monitor/cluster-level concerns (is this
+// repman instance the active one for this cluster, is the cluster mid
+// failover right now), not per-server ones -- callers gate on them
+// separately alongside this.
+func (server *ServerMonitor) IsValidMasterCheck() bool {
+	return server.IsMaster() && !server.IsDown() && !server.IsMaintenance && !server.IsReadOnly()
+}
+
+// IsValidSlaveCheck is the shared condition behind the legacy "is this
+// server a valid slave" external-check endpoints
+// (handlerMuxServersIsSlaveStatus, handlerMuxServersPortIsSlaveStatus).
+// Deliberately unchanged/bug-for-bug identical to its pre-existing behavior
+// (only PRXServersReadOnMaster is consulted, never
+// PRXServersReadOnMasterNoSlave -- see bug #6, HAPROXY_LIVE_K8S_TEST_REPORT.md):
+// both routes are polled continuously by every already-deployed
+// haproxy-mode=externalcheck cluster's checkslave script, so this is not the
+// place for a behavior change. IsValidReaderCheck below is the fixed
+// version, reached only via the new reader-status route. Deliberately does
+// NOT check cluster.IsActive() -- see IsValidMasterCheck's doc comment.
+func (server *ServerMonitor) IsValidSlaveCheck() bool {
+	return !server.IsDown() && !server.IsMaintenance &&
+		((server.IsSlave && !server.HasReplicationIssue()) ||
+			(server.IsMaster() && server.ClusterGroup.Conf.PRXServersReadOnMaster))
+}
+
+// IsValidReaderCheck is bug #6's fix: the same shape as
+// IsValidSlaveCheck, but the master branch goes through
+// cluster.ShouldServeReadsFromMaster() (PRXServersReadOnMaster OR the
+// PRXServersReadOnMasterNoSlave fallback) instead of PRXServersReadOnMaster
+// alone. Reached only via handlerMuxServersPortIsReaderStatus's new route,
+// never via slave-status/is-slave -- see that handler's doc comment for why
+// this couldn't just be a change to IsValidSlaveCheck. Deliberately does NOT
+// check cluster.IsActive() -- see IsValidMasterCheck's doc comment.
+func (server *ServerMonitor) IsValidReaderCheck() bool {
+	return !server.IsDown() && !server.IsMaintenance &&
+		((server.IsSlave && !server.HasReplicationIssue()) ||
+			(server.IsMaster() && server.ClusterGroup.ShouldServeReadsFromMaster()))
+}
+
 func (server *ServerMonitor) IsIgnored() bool {
 	return server.Ignored
 }
@@ -757,6 +834,22 @@ func (server *ServerMonitor) IsMaster() bool {
 		return true
 	}
 	return false
+}
+
+// IsPostgreSQLHost tells which driver opens this server, before any connection exists (the
+// version is only known once connected). PostgreSQL when the cluster declares a PostgreSQL
+// replication topology, or when the server's own host entry names a database
+// (host:port/database): the second lets one PostgreSQL instance be monitored
+// active-passive with no replication topology to declare. Once connected, the version
+// read from the server says it too.
+func (server *ServerMonitor) IsPostgreSQLHost() bool {
+	if server.postgresDeclared || (server.DBVersion != nil && server.DBVersion.IsPostgreSQL()) {
+		return true
+	}
+	if server.ClusterGroup == nil || server.ClusterGroup.Conf == nil {
+		return false
+	}
+	return server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical
 }
 
 func (server *ServerMonitor) IsMySQL() bool {

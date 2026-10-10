@@ -108,6 +108,7 @@ func (u *APIUser) Granted(grant string) error {
 //   - no password        => SSO identity. Authenticated by OIDC only; local
 //     password auth is refused — an empty stored or submitted password must
 //     never authenticate, closing the blank-password bypass.
+//
 // IsLocalOnlyAccount reports whether strUser is a local (password-protected)
 // account that must authenticate by password only — SSO must never bind or
 // authenticate it, or a same-named GitLab identity would ride its ACL. The
@@ -124,6 +125,31 @@ func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
 }
 
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
+	return cluster.isValidACL(strUser, strPassword, URL, AuthMethod, true)
+}
+
+// IsValidACLQuiet behaves exactly like IsValidACL (same password re-verification,
+// same grant check) but does not log denied checks. Intended for aggregate/probing
+// callers, e.g. the global jobs dashboard, that deliberately test many clusters per
+// request and would otherwise flood cluster logs with expected denials for clusters
+// the caller can't see.
+func (cluster *Cluster) IsValidACLQuiet(strUser string, strPassword string, URL string, AuthMethod string) bool {
+	return cluster.isValidACL(strUser, strPassword, URL, AuthMethod, false)
+}
+
+func (cluster *Cluster) isValidACL(strUser string, strPassword string, URL string, AuthMethod string, errorPrint bool) bool {
+	// An API token (issue #1835) carries no password: the server already verified
+	// its signature and store record, and strUser is the token principal name that
+	// GetACLUser resolves to the narrowed grant set. Only the URL ACL runs.
+	if AuthMethod == "token" {
+		if !IsTokenPrincipal(strUser) {
+			return false
+		}
+		if _, ok := cluster.GetACLUser(strUser); !ok {
+			return false
+		}
+		return cluster.IsURLPassACL(strUser, URL, errorPrint)
+	}
 	user, ok := cluster.APIUsers[strUser]
 	if !ok {
 		return false
@@ -135,7 +161,7 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 		if cluster.IsLocalOnlyAccount(strUser) {
 			return false
 		}
-		return cluster.IsURLPassACL(strUser, URL, true)
+		return cluster.IsURLPassACL(strUser, URL, errorPrint)
 	}
 
 	// Local password auth: passwordless accounts are SSO-only, and a blank
@@ -144,7 +170,7 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 		return false
 	}
 	if subtle.ConstantTimeCompare([]byte(user.Password), []byte(cluster.Conf.GetDecryptedPassword("api-credentials", strPassword))) == 1 {
-		return cluster.IsURLPassACL(strUser, URL, true)
+		return cluster.IsURLPassACL(strUser, URL, errorPrint)
 	}
 	return false
 }
@@ -353,7 +379,35 @@ func (cluster *Cluster) LoadAPIUsers() error {
 	}
 
 	cluster.APIUsers = meUsers
+	// Every (re)load reinstates the persisted `system` password, which can be stale
+	// (an older binary stored a random one before AddUser honoured an explicit password;
+	// a SecretKey change would also drift it). Force it back to the current derived key
+	// here so a config reload can never break the compute sensor's login.
+	cluster.reconcileSystemServicePassword()
+	cluster.reconcileSystemServiceGrants()
 	return nil
+}
+
+// reconcileSystemServiceGrants strips the API-token grants from the `system`
+// service account on every load: a machine identity authenticating with a derived
+// key must never mint or manage bearer credentials, whatever an ACL string or the
+// user-management GUI handed it (issue #1835).
+func (cluster *Cluster) reconcileSystemServiceGrants() {
+	u, ok := cluster.APIUsers["system"]
+	if !ok || u.Grants == nil {
+		return
+	}
+	stripped := false
+	for _, g := range config.GetGrantToken() {
+		if u.Grants[g] {
+			u.Grants[g] = false
+			stripped = true
+		}
+	}
+	if stripped {
+		cluster.APIUsers["system"] = u
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Stripped API token grants from the `system` service account: a machine identity never issues tokens")
+	}
 }
 
 // logUserGrantAssignment writes the resolved grant set for a user to the
@@ -375,6 +429,7 @@ func (cluster *Cluster) logUserGrantAssignment(u APIUser) {
 		Level:     config.LvlInfo,
 		Timestamp: time.Now().Format("2006/01/02 15:04:05"),
 		Text:      msg,
+		Module:    config.ConstLogModUncategorized,
 	})
 
 	if cluster.SecurityLogrus != nil {
@@ -460,6 +515,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	case "/api/clusters/" + cluster.Name + "/topology/http-logs":
 		return true
+	case "/api/clusters/" + cluster.Name + "/price":
+		// The cluster's month statement: read-only, for any authenticated user of the cluster.
+		return true
 	}
 
 	// Configurator read-only endpoints — no specific grant required beyond auth.
@@ -480,6 +538,19 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	// Check GLOBAL settings FIRST (before specific cluster routing)
 	// Global settings URLs: /api/clusters/settings/... (not cluster-specific)
 	// These require GrantGlobalSettings and should NOT fall through to cluster rules
+	// Metering/pricing settings are decided by their exclusive rule, before any generic
+	// settings table can grant them (see pricingACLRules).
+	for _, rule := range pricingACLRules {
+		if strings.Contains(URL, rule.URLPattern) {
+			if cluster.matchACLRules(strUser, URL, []ACLRule{rule}) {
+				return true
+			}
+			if errorPrint {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL pricing check failed for user %s : %s (requires %s)", strUser, URL, config.GrantSalesPricing)
+			}
+			return false
+		}
+	}
 	if strings.HasPrefix(URL, "/api/clusters/settings") {
 		return cluster.matchACLRules(strUser, URL, globalSettingsACLRules)
 	}

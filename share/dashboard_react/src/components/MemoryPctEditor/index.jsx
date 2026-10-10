@@ -7,9 +7,12 @@ const COLORS = [
   '#a855f7', '#06b6d4'
 ]
 
-const MIN_PCT_KEYS = ['aria', 'myisam']
+// aria keeps a 10% floor: internal on-disk temp tables use Aria
+// (aria_used_for_temp_tables), so its pagecache is actively needed. myisam is
+// legacy (everything is InnoDB) and no longer floored.
+const MIN_PCT_KEYS = ['aria']
 const MIN_PCT = 10
-const ALLOW_ZERO_KEYS = ['querycache', 'tokudb']
+const ALLOW_ZERO_KEYS = ['querycache', 'tokudb', 'myisam']
 const MIN_STEP_MB = 128
 
 function MemoryPctEditor({ label, value, totalMemoryMB, isDisabled, onSave }) {

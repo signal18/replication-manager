@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -16,6 +17,52 @@ import (
 func (cluster *Cluster) RollingReprov() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprovisionning")
+
+	// Reentrancy guard: only one RollingReprov may run at a time on a cluster.
+	// Both call sites are unguarded (the API handler fires it per POST, the cron
+	// scheduler fires it independently), and the flag piloting below is not safe
+	// under interleaving -- two overlapping runs would corrupt the Autoseed
+	// save/restore and could leave autoseed permanently flipped or reintroduce
+	// the #1771 data-loss. TryLock so a concurrent run is refused, not queued.
+	if !cluster.rollingReprovMutex.TryLock() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling reprovision already in progress, skipping")
+		return errors.New("rolling reprovision already in progress")
+	}
+	defer cluster.rollingReprovMutex.Unlock()
+
+	// A rolling reprovision DESTROYS each replica's data (UnprovisionDatabaseService)
+	// before recreating an empty service. The reseed that repopulates it is not done
+	// by this function: it is delegated to the autoseed rejoin path
+	// (srv.go RejoinMaster -> srv_rejoin.go ReseedMasterSST), which fires only when
+	// Conf.Autorejoin AND Conf.Autoseed are on. So a reprov with autoseed off (the
+	// default) would leave the replicas empty -- silent data loss (#1771). Guarantee
+	// the reseed:
+	//   - require autorejoin: srv.go:947 gates the rejoin trigger on it, and forcing
+	//     it globally would change failover behaviour for every other server, so we
+	//     refuse (before destroying anything) rather than pilot it;
+	//   - pilot autoseed on for the duration and restore the operator's value after,
+	//     so each reprovisioned replica is reseeded from the master.
+	if !cluster.Conf.Autorejoin {
+		return errors.New("rolling reprovision refused: autorejoin is disabled -- reprovisioned replicas would be destroyed without a reseed; enable autorejoin first")
+	}
+	// Pilot the reseed on for the duration and restore the operator's values after.
+	// autoseed makes the rejoin path reseed a freshly reprovisioned (empty, standalone)
+	// replica -- but ReseedMasterSST additionally needs a reseed METHOD armed, otherwise
+	// it logs "No SST reseed method found" and leaves the replica empty. If the operator
+	// has armed no method, fall back to a direct mysqldump from the master (always
+	// available, needs no pre-existing backup); a method the operator did choose is kept.
+	savedAutoseed := cluster.Conf.Autoseed
+	savedMysqldump := cluster.Conf.AutorejoinMysqldump
+	cluster.Conf.Autoseed = true
+	if !cluster.Conf.AutorejoinMysqldump && cluster.Conf.BackupLoadScript == "" &&
+		!cluster.Conf.AutorejoinLogicalBackup && !cluster.Conf.AutorejoinPhysicalBackup {
+		cluster.Conf.AutorejoinMysqldump = true
+	}
+	defer func() {
+		cluster.Conf.Autoseed = savedAutoseed
+		cluster.Conf.AutorejoinMysqldump = savedMysqldump
+	}()
+
 	master := cluster.GetMaster()
 	if master == nil {
 		return errors.New("No master found for rolling reprovisionning")
@@ -25,6 +72,7 @@ func (cluster *Cluster) RollingReprov() error {
 		if slave == nil || slave.IsIgnored() {
 			continue
 		}
+		reprovStart := time.Now().UnixNano()
 
 		if !slave.IsDown() {
 			maintenanceEnabled := !slave.IsMaintenance
@@ -63,6 +111,16 @@ func (cluster *Cluster) RollingReprov() error {
 				}
 				return err
 			}
+			// The rejoin armed an ASYNC reseed: wait for its outcome before the next
+			// node (#1866: the loop used to move on while the reseed job had not even
+			// started, and destroyed the next replica after a failed one).
+			if err = cluster.waitRollingReseed(slave, reprovStart); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov: %s", err)
+				if maintenanceEnabled {
+					slave.SwitchMaintenance()
+				}
+				return err
+			}
 
 			currentMaster := cluster.GetMaster()
 			if currentMaster == nil {
@@ -91,6 +149,7 @@ func (cluster *Cluster) RollingReprov() error {
 		if maintenanceEnabled {
 			master.SwitchMaintenance()
 		}
+		masterReprovStart := time.Now().UnixNano()
 		err := cluster.UnprovisionDatabaseService(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
@@ -118,6 +177,13 @@ func (cluster *Cluster) RollingReprov() error {
 		err = cluster.WaitDatabaseStart(master)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
+		}
+		if err = cluster.waitRollingReseed(master, masterReprovStart); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov: %s", err)
 			if maintenanceEnabled {
 				master.SwitchMaintenance()
 			}
@@ -165,31 +231,64 @@ func (cluster *Cluster) RollingRestart() error {
 				time.Sleep(time.Second)
 			}
 
-			err := cluster.StopDatabaseService(slave)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
-				if maintenanceEnabled {
-					slave.SwitchMaintenance()
+			// K8SRestartDatabaseServiceWaitRejoin (cluster_tst.go) is
+			// lighter than the generic stop->wait failed->start dance
+			// below. Not RestartDatabaseService/K8SForceRepullDatabaseService
+			// either: this is a scheduled/bulk restart
+			// (scheduler-rolling-restart), and silently re-asserting the
+			// image-pull-policy setting on every scheduled restart would
+			// be a surprising side effect.
+			if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+				err := cluster.K8SRestartDatabaseServiceWaitRejoin(slave)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
+					if maintenanceEnabled {
+						slave.SwitchMaintenance()
+					}
+					return err
 				}
-				return err
-			}
+			} else {
+				if ferr := cluster.FreezeDatabaseService(slave); ferr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", slave.URL, ferr)
+				}
+				err := cluster.StopDatabaseService(slave)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on slave %s %s", slave.URL, err)
+					if maintenanceEnabled {
+						slave.SwitchMaintenance()
+					}
+					_ = cluster.UnfreezeDatabaseService(slave)
+					return err
+				}
 
-			err = cluster.WaitDatabaseFailed(slave)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
-				if maintenanceEnabled {
-					slave.SwitchMaintenance()
+				err = cluster.WaitDatabaseFailed(slave)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling stop slave does not transit Failed %s %s", slave.URL, err)
+					if maintenanceEnabled {
+						slave.SwitchMaintenance()
+					}
+					_ = cluster.UnfreezeDatabaseService(slave)
+					return err
 				}
-				return err
-			}
 
-			err = cluster.StartDatabaseWaitRejoin(slave)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
-				if maintenanceEnabled {
-					slave.SwitchMaintenance()
+				// Reapply the deployment (the plan-driven container cap, image, run_args,
+				// env) so the slave comes up on the CURRENT OpenSVC service config, not the
+				// one written at the last provision. prov-orchestrator-deployment-upgrade-on-start
+				// (default on); non-fatal -- a push failure just leaves the previous cap.
+				if uerr := cluster.UpgradeDatabaseDeploymentOnStart(slave, true); uerr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on slave %s (continuing): %s", slave.URL, uerr)
 				}
-				return err
+				err = cluster.StartDatabaseWaitRejoin(slave)
+				if uerr := cluster.UnfreezeDatabaseService(slave); uerr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", slave.URL, uerr)
+				}
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
+					if maintenanceEnabled {
+						slave.SwitchMaintenance()
+					}
+					return err
+				}
 			}
 		}
 		currentMaster := cluster.GetMaster()
@@ -203,6 +302,11 @@ func (cluster *Cluster) RollingRestart() error {
 		if maintenanceEnabled {
 			slave.SwitchMaintenance()
 		}
+	}
+	if len(cluster.slaves) == 0 {
+		// no replica to switch to (active-passive, a single server): the master restarts in
+		// place, the orchestrator brings it back where its placement says
+		return cluster.rollingRestartMasterInPlace(master)
 	}
 	cluster.SwitchoverWaitTest()
 	master = cluster.GetServerFromName(masterID)
@@ -229,29 +333,57 @@ func (cluster *Cluster) RollingRestart() error {
 		}
 		time.Sleep(time.Second)
 	}
-	err := cluster.StopDatabaseService(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
+	// See the matching Kubernetes branch in the slave loop above for why
+	// this uses the lighter K8SRestartDatabaseServiceWaitRejoin instead of
+	// the generic stop->wait failed->start dance (or RestartDatabaseService).
+	if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+		err := cluster.K8SRestartDatabaseServiceWaitRejoin(master)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
 		}
-		return err
-	}
-	err = cluster.WaitDatabaseFailed(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
+	} else {
+		if ferr := cluster.FreezeDatabaseService(master); ferr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze failed on %s: %s (going on unfrozen)", master.URL, ferr)
 		}
-		return err
-	}
-	err = cluster.StartDatabaseWaitRejoin(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
+		err := cluster.StopDatabaseService(master)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master stop failed %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			_ = cluster.UnfreezeDatabaseService(master)
+			return err
 		}
-		return err
+		err = cluster.WaitDatabaseFailed(master)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			_ = cluster.UnfreezeDatabaseService(master)
+			return err
+		}
+		// Reapply the deployment (the plan-driven container cap, image, run_args, env)
+		// so the old master comes up on the CURRENT OpenSVC service config.
+		// prov-orchestrator-deployment-upgrade-on-start (default on); non-fatal.
+		if uerr := cluster.UpgradeDatabaseDeploymentOnStart(master, true); uerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: deployment upgrade on start failed on old master %s (continuing): %s", master.URL, uerr)
+		}
+		err = cluster.StartDatabaseWaitRejoin(master)
+		if uerr := cluster.UnfreezeDatabaseService(master); uerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze failed on %s: %s", master.URL, uerr)
+		}
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
+			if maintenanceEnabled {
+				master.SwitchMaintenance()
+			}
+			return err
+		}
 	}
 	master.WaitSyncToMaster(cluster.master)
 	if maintenanceEnabled {
@@ -263,6 +395,21 @@ func (cluster *Cluster) RollingRestart() error {
 }
 
 func (cluster *Cluster) RollingOptimize() {
+	// PostgreSQL: the optimize is a VACUUM (ANALYZE) run by the jobs sidecar of the PRIMARY.
+	// It blocks neither reads nor writes, and a standby cannot be vacuumed: it replays the
+	// primary's. The MariaDB rule below (replicas only, one after the other) does not apply.
+	if m := cluster.GetMaster(); m != nil && m.DBVersion != nil && m.DBVersion.IsPostgreSQL() {
+		if m.IsDown() || m.IsIgnored() {
+			return
+		}
+		jobid, err := m.JobOptimize()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Optimize request failed on %s: %s", m.URL, err)
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Optimize job id %d on %s ", jobid, m.URL)
+		return
+	}
 	for _, s := range cluster.slaves {
 		if s == nil || s.IsIgnored() || s.IsDown() {
 			continue
@@ -279,11 +426,94 @@ func (cluster *Cluster) RollingOptimize() {
 	}
 }
 
+// rollingUpgradeStopUpdateStart stops a server, updates its database service
+// config (image + pull policy) for forcePull, and starts it back up -- one
+// stop/config/start step of RollingUpgrade. clean selects
+// StopDatabaseServiceClean (innodb_fast_shutdown=0) over a plain stop; phase
+// labels the step for logging ("pull" vs "clean").
+//
+// OpenSVC and Kubernetes need opposite ordering here. OpenSVC's service
+// config is inert until the container's next start, so updating before stop
+// is safe and the image is pulled during that stop→start cycle. Kubernetes
+// instead applies a Deployment patch that the controller can act on right
+// away: updating while the pod is still live would race that controller's
+// own rollout against this function's explicit stop, so for Kubernetes the
+// update must happen only once the Deployment is already scaled to 0 (see
+// K8SUpdateDatabaseServiceConfig, cluster/prov_k8s_db.go).
+//
+// On Kubernetes, whether a failed config update is fatal depends on the
+// phase. forcePull=true (the "pull" phase) is the actual image change: a
+// failed patch there is fatal, since the coming start step would otherwise
+// silently bring the server back up on the unchanged image while
+// RollingUpgrade reports success. forcePull=false (the "clean" phase) only
+// restores the steady-state pull policy on a server already upgraded by the
+// preceding pull phase -- failing that patch is cleanup drift, not an
+// upgrade failure, so it's logged as a warning and the server is started
+// anyway rather than left down (temporarily still forced to PullAlways).
+// OpenSVC keeps its pre-existing best-effort behavior in both phases (log
+// and continue) -- its push happens before the stop, so a failure there
+// just means "still running the old image" on a step that was always
+// best-effort.
+func (cluster *Cluster) rollingUpgradeStopUpdateStart(server *ServerMonitor, forcePull bool, clean bool, phase string) error {
+	stop := cluster.StopDatabaseService
+	if clean {
+		stop = cluster.StopDatabaseServiceClean
+	}
+	isKubernetes := cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes
+	updateConfig := func() error {
+		cfgErr := cluster.UpdateDatabaseServiceConfig(server, forcePull)
+		if cfgErr == nil {
+			return nil
+		}
+		if isKubernetes && forcePull {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): failed to update service config for %s: %s", phase, server.URL, cfgErr)
+			return cfgErr
+		}
+		if isKubernetes {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade (%s): cleanup incomplete on %s, Deployment still forced to PullAlways: %s", phase, server.URL, cfgErr)
+			return nil
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): failed to update service config for %s: %s", phase, server.URL, cfgErr)
+		return nil
+	}
+
+	if !isKubernetes {
+		updateConfig()
+	}
+	// Frozen for the stop/start: the orchestrator must not undo the stop (opensvc/om3#1142).
+	if err := cluster.FreezeDatabaseService(server); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade (%s): freeze failed on %s: %s (going on unfrozen)", phase, server.URL, err)
+	}
+	defer func() {
+		if err := cluster.UnfreezeDatabaseService(server); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade (%s): unfreeze failed on %s: %s", phase, server.URL, err)
+		}
+	}()
+	if err := stop(server); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): stop failed on %s: %s", phase, server.URL, err)
+		return err
+	}
+	if err := cluster.WaitDatabaseFailed(server); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): %s does not transit failed: %s", phase, server.URL, err)
+		return err
+	}
+	if isKubernetes {
+		if err := updateConfig(); err != nil {
+			return err
+		}
+	}
+	if err := cluster.StartDatabaseWaitRejoin(server); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade (%s): %s does not restart: %s", phase, server.URL, err)
+		return err
+	}
+	return nil
+}
+
 func (cluster *Cluster) RollingUpgrade() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling upgrade")
 
 	// On-premise upgrades use a dedicated upgrade script (installs new packages +
-	// runs mariadb-upgrade) instead of the OpenSVC image-pull two-phase approach.
+	// runs mariadb-upgrade) instead of the OpenSVC/Kubernetes image-pull two-phase approach.
 	if cluster.GetOrchestrator() == config.ConstOrchestratorOnPremise {
 		return cluster.rollingUpgradeOnPremise()
 	}
@@ -293,12 +523,19 @@ func (cluster *Cluster) RollingUpgrade() error {
 		return errors.New("No master found for rolling upgrade")
 	}
 	masterID := master.Id
+	// The release the definitions are pinned on was decided by PrepareRollingUpgrade
+	// (the plan: list method, running release kept when the list is older). Here only a
+	// missing record is filled from the list, an existing one is never overridden
+	// (#1862: dev3 2026-10-02, a forced re-resolution took the stale list's 11.8.8 over
+	// the prepared 11.8.9).
+	if err := cluster.ResolveDatabaseImage(false); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling upgrade: prov-db-image %s not resolved from the image list: %s", cluster.Conf.ProvDbImg, err)
+	}
 
-	// Loop 1 — pull: set image_pull_policy=always and restart every slave so
-	// OpenSVC re-pulls the new image. OpenSVC only reads this key at container
-	// start time, so the stop→start cycle is required to trigger the pull.
-	// Maintenance is toggled per node and cleared after sync, so nodes are only
-	// in maintenance during their own stop/start cycle.
+	// Loop 1 — pull: force PullAlways (K8s) / image_pull_policy=always (OpenSVC)
+	// and restart every slave so the orchestrator re-pulls the new image. Maintenance
+	// is toggled per node and cleared after sync, so nodes are only in maintenance
+	// during their own stop/start cycle.
 	for _, slave := range cluster.slaves {
 		if slave == nil || slave.IsIgnored() || slave.IsDown() {
 			continue
@@ -307,28 +544,7 @@ func (cluster *Cluster) RollingUpgrade() error {
 		if maintEnabled {
 			slave.SwitchMaintenance()
 		}
-		if cfgErr := cluster.UpdateDatabaseServiceConfig(slave, true); cfgErr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", slave.URL, cfgErr)
-		}
-		err := cluster.StopDatabaseServiceClean(slave)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: clean stop failed on slave %s %s", slave.URL, err)
-			if maintEnabled {
-				slave.SwitchMaintenance()
-			}
-			return err
-		}
-		err = cluster.WaitDatabaseFailed(slave)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: slave does not transit failed %s %s", slave.URL, err)
-			if maintEnabled {
-				slave.SwitchMaintenance()
-			}
-			return err
-		}
-		err = cluster.StartDatabaseWaitRejoin(slave)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: slave does not restart %s %s", slave.URL, err)
+		if err := cluster.rollingUpgradeStopUpdateStart(slave, true, true, "pull"); err != nil {
 			if maintEnabled {
 				slave.SwitchMaintenance()
 			}
@@ -347,9 +563,9 @@ func (cluster *Cluster) RollingUpgrade() error {
 		}
 	}
 
-	// Loop 2 — clean: strip image_pull_policy=always and restart every slave so
-	// the key is absent from the live config. Docker will not re-pull the
-	// already-local image, so this cycle costs only container restart time.
+	// Loop 2 — clean: restore the steady-state pull policy and restart every
+	// slave so the forced pull-always setting is no longer live. The image is
+	// already local, so this cycle costs only container restart time.
 	// Maintenance is re-evaluated per node; nodes were cleared at the end of
 	// loop 1 so they served traffic between the two loops.
 	for _, slave := range cluster.slaves {
@@ -360,28 +576,7 @@ func (cluster *Cluster) RollingUpgrade() error {
 		if maintEnabled {
 			slave.SwitchMaintenance()
 		}
-		if cfgErr := cluster.UpdateDatabaseServiceConfig(slave, false); cfgErr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to reset service config for %s: %s", slave.URL, cfgErr)
-		}
-		err := cluster.StopDatabaseService(slave)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: stop failed on slave %s %s (clean config)", slave.URL, err)
-			if maintEnabled {
-				slave.SwitchMaintenance()
-			}
-			return err
-		}
-		err = cluster.WaitDatabaseFailed(slave)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: slave does not transit failed %s %s (clean config)", slave.URL, err)
-			if maintEnabled {
-				slave.SwitchMaintenance()
-			}
-			return err
-		}
-		err = cluster.StartDatabaseWaitRejoin(slave)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: slave does not restart %s %s (clean config)", slave.URL, err)
+		if err := cluster.rollingUpgradeStopUpdateStart(slave, false, false, "clean"); err != nil {
 			if maintEnabled {
 				slave.SwitchMaintenance()
 			}
@@ -418,28 +613,7 @@ func (cluster *Cluster) RollingUpgrade() error {
 	}
 
 	// Phase 1: pull new image on the old master (now a replica after switchover).
-	if cfgErr := cluster.UpdateDatabaseServiceConfig(master, true); cfgErr != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to push service config for %s: %s", master.URL, cfgErr)
-	}
-	err := cluster.StopDatabaseServiceClean(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master clean stop failed %s %s", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
-		}
-		return err
-	}
-	err = cluster.WaitDatabaseFailed(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master does not transit failed %s %s", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
-		}
-		return err
-	}
-	err = cluster.StartDatabaseWaitRejoin(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master does not restart %s %s", master.URL, err)
+	if err := cluster.rollingUpgradeStopUpdateStart(master, true, true, "pull"); err != nil {
 		if maintenanceEnabled {
 			master.SwitchMaintenance()
 		}
@@ -447,29 +621,8 @@ func (cluster *Cluster) RollingUpgrade() error {
 	}
 	master.WaitSyncToMaster(cluster.master)
 
-	// Phase 2: strip image_pull_policy=always (see slave phase 2 comment above).
-	if cfgErr := cluster.UpdateDatabaseServiceConfig(master, false); cfgErr != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: failed to reset service config for %s: %s", master.URL, cfgErr)
-	}
-	err = cluster.StopDatabaseService(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master stop failed %s %s (clean config)", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
-		}
-		return err
-	}
-	err = cluster.WaitDatabaseFailed(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master does not transit failed %s %s (clean config)", master.URL, err)
-		if maintenanceEnabled {
-			master.SwitchMaintenance()
-		}
-		return err
-	}
-	err = cluster.StartDatabaseWaitRejoin(master)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling upgrade: old master does not restart %s %s (clean config)", master.URL, err)
+	// Phase 2: restore the steady-state pull policy (see slave phase 2 comment above).
+	if err := cluster.rollingUpgradeStopUpdateStart(master, false, false, "clean"); err != nil {
 		if maintenanceEnabled {
 			master.SwitchMaintenance()
 		}
@@ -718,5 +871,87 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade completed")
 
+	return nil
+}
+
+// waitRollingReseed waits for the async reseed a rolling reprov armed on a node, and
+// answers its outcome: nil once the reseed completed without a reported failure, an
+// error when the reseed job reported one (#1866) or when nothing completed within
+// rollingReseedWait. A node that armed no reseed returns at once.
+const rollingReseedWait = 4 * time.Hour
+
+// rollingReseedArmWait is how long the loop gives the rejoin to arm a reseed on a node
+// that is not yet a healthy replica, before taking "nothing armed" as "nothing to do".
+const rollingReseedArmWait = 3 * time.Minute
+
+func (cluster *Cluster) waitRollingReseed(server *ServerMonitor, since int64) error {
+	deadline := time.Now().Add(rollingReseedWait)
+	armDeadline := time.Now().Add(rollingReseedArmWait)
+	logged := false
+	healthy := func() bool {
+		if !server.IsSlave || server.IsFailed() || cluster.master == nil {
+			return false
+		}
+		m, _ := cluster.GetMasterFromReplication(server)
+		return m != nil && m.URL == cluster.master.URL
+	}
+	for {
+		if failure := server.ReseedFailedSince(since); failure != "" {
+			return fmt.Errorf("reseed of %s failed: %s", server.URL, failure)
+		}
+		armed := server.reseedFromRejoin.Load() || server.IsReseeding != ""
+		if !armed {
+			// Nothing in flight: done when the node replicates from the master, or when
+			// the rejoin had a grace period to arm a reseed and armed none (a node that
+			// needed no reseed); never on the empty node the rejoin has not looked at yet.
+			if healthy() || time.Now().After(armDeadline) {
+				return nil
+			}
+		} else if !logged {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprov: waiting for the reseed of %s to complete", server.URL)
+			logged = true
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("reseed of %s not completed after %s", server.URL, rollingReseedWait)
+		}
+		time.Sleep(5 * time.Second)
+	}
+}
+
+// rollingRestartMasterInPlace restarts a master that has no replica (active-passive): stop,
+// wait for the monitor to see it down, start with the refreshed definition, wait for it
+// back. The service interruption is the restart itself; there is nothing to switch to.
+func (cluster *Cluster) rollingRestartMasterInPlace(master *ServerMonitor) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling restart: no replica, master %s restarts in place", master.URL)
+	// frozen first, as the replicas are: an orchestrated (ha) service is restarted by the
+	// orchestrator the second it stops, before the monitor sees it down
+	if ferr := cluster.FreezeDatabaseService(master); ferr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: freeze of %s failed: %s", master.URL, ferr)
+	}
+	defer func() {
+		if uerr := cluster.UnfreezeDatabaseService(master); uerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: unfreeze of %s failed: %s", master.URL, uerr)
+		}
+	}()
+	if err := cluster.StopDatabaseService(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart stop failed on master %s %s", master.URL, err)
+		return err
+	}
+	if err := cluster.WaitDatabaseFailed(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart master does not transit Failed %s %s", master.URL, err)
+		return err
+	}
+	if err := cluster.UpgradeDatabaseDeploymentOnStart(master, true); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rolling restart: definition refresh failed on %s: %s", master.URL, err)
+	}
+	if err := cluster.StartDatabaseService(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart start failed on master %s %s", master.URL, err)
+		return err
+	}
+	if err := cluster.WaitDatabaseStart(master); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rolling restart: master %s did not come back: %s", master.URL, err)
+		return err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling restart: master %s is back", master.URL)
 	return nil
 }

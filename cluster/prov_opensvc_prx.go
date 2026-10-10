@@ -118,7 +118,7 @@ func (cluster *Cluster) OpenSVCStartProxyService(server DatabaseProxy) error {
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
-		err := svc.StartServiceV3(cluster.Name, server.GetServiceName())
+		err := cluster.openSVCStartOrRecoverV3(svc, server.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start proxy:  %s ", err)
 			return err
@@ -174,6 +174,9 @@ func (cluster *Cluster) OpenSVCClearProxyInstanceState(server DatabaseProxy, nod
 
 func (cluster *Cluster) OpenSVCProvisionProxyV3(pri DatabaseProxy, svc opensvc.Collector, agent opensvc.Host) error {
 	err := cluster.OpenSVCCreateMaps(agent.Node_name)
+	if perr := cluster.openSVCEnsureSensorPrerequisites(svc); perr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "Proxy %s sensor prerequisites not published: %s", pri.GetName(), perr)
+	}
 	if err != nil {
 		return err
 	}
@@ -483,8 +486,14 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 		svcsection["volume#01"] = cluster.OpenSVCGetProxyVolumeDataSection()
 	}
 
-	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
+	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection(cluster.proxyStartTimeout())
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
+
+	// APU (Compute) sensor sidecar: proxies are stateless and consume Compute, so they
+	// report their cgroup usage to the ResourceManager like the DB jobs container does.
+	if cluster.Conf.MonitoringSystemResources {
+		svcsection["container#sensor"] = cluster.OpenSVCGetSensorContainerSection(string(KindProxy), pri.GetName())
+	}
 
 	if prx, ok := pri.(*MariadbShardProxy); ok {
 		svcsection["container#prx"] = cluster.OpenSVCGetShardproxyContainerSection(prx)
@@ -507,6 +516,13 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateSectionMap(servers string, pri Da
 
 	if prx, ok := pri.(*MaxscaleProxy); ok {
 		svcsection["container#prx"] = cluster.OpenSVCGetMaxscaleContainerSection(prx)
+	}
+
+	// Every proxy family's container#prx: the start timeout, the orchestrator default
+	// being 5s (#1924). Here, on the section map, so the v2 and v3 templates both carry it.
+	if c, ok := svcsection["container#prx"]; ok {
+		c["start_timeout"] = cluster.proxyStartTimeout()
+		c["pull_timeout"] = cluster.proxyStartTimeout() // the image pull after a purge, same budget
 	}
 
 	svcsection["env"] = cluster.OpenSVCGetProxyEnvSection(servers, pri)
@@ -611,7 +627,7 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx DatabasePr
 	svcenv := make(map[string]string)
 	svcenv["nodes"] = prx.GetAgent()
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-	svcenv["size"] = cluster.Conf.ProvProxDisk + "g"
+	svcenv["size"] = cluster.provProxyDiskSizeForOpenSVC()
 	svcenv["ip_pod01"] = prx.GetHost()
 	svcenv["port_pod01"] = prx.GetPort()
 	svcenv["network"] = network
@@ -639,6 +655,11 @@ func (cluster *Cluster) OpenSVCGetProxyEnvSection(servers string, prx DatabasePr
 	svcenv["user_admin"] = prx.GetUser()
 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
+	// APU compute sensor identity (kind=proxy). NON-secret only: the derived `system`
+	// API key is NOT put in svcenv (config is pushed to git) -- it goes via the OpenSVC
+	// secret channel (secrets_environment), like the DB's MYSQL_ROOT_PASSWORD.
+	svcenv["sensor_kind"] = string(KindProxy)
+	svcenv["sensor_name"] = prx.GetName()
 
 	return svcenv
 }
@@ -716,6 +737,7 @@ func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {
 		svcdefault["orchestrate"] = "ha"
 	}
 	svcdefault["app"] = cluster.Conf.ProvCodeApp
+	svcdefault["priority"] = openSVCPriorityProxy
 	if cluster.Conf.ProvProxType == "docker" {
 		if cluster.Conf.ProvDockerDaemonPrivate {
 			svcdefault["docker_daemon_private"] = "true"
@@ -736,4 +758,17 @@ func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {
 
 	}
 	return svcdefault
+}
+
+// provProxyDiskSizeForOpenSVC is prov-proxy-disk-size as an OpenSVC size, the proxy side of
+// #1897: the setting carries its unit ("20G"), a hard-coded "g" gave "20Gg", a volume of
+// size 0 and "fs#0: provision: create: exit status 1" on every HAProxy of a cluster created
+// through the API (tamarin, pg-active-passive, 2026-10-07). Gigabytes, rounded down, at least 1.
+func (cluster *Cluster) provProxyDiskSizeForOpenSVC() string {
+	gb, err := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvProxDisk, true)
+	if err != nil || gb < 1 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "prov-proxy-disk-size %q is not a size (%v): 1g used", cluster.Conf.ProvProxDisk, err)
+		gb = 1
+	}
+	return strconv.Itoa(gb) + "g"
 }

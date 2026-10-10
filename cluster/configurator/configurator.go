@@ -16,9 +16,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"sync"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
@@ -49,12 +49,12 @@ type Configurator struct {
 	// ActiveDBCRC and ActivePrxCRC are CRC32 checksums of the compliance
 	// modules last accepted by the user. Persisted to disk so upgrades
 	// (new embedded module) and BO pushes are both detected on restart.
-	ActiveDBCRC           uint32            `json:"-"`
-	ActivePrxCRC          uint32            `json:"-"`
+	ActiveDBCRC  uint32 `json:"-"`
+	ActivePrxCRC uint32 `json:"-"`
 	// PendingDBCRC and PendingPrxCRC are CRC32 checksums of new compliance
 	// files found in PluginDataDir or embedded. Non-zero when an update is pending.
-	PendingDBCRC          uint32            `json:"pendingDBCRC,omitempty"`
-	PendingPrxCRC         uint32            `json:"pendingPrxCRC,omitempty"`
+	PendingDBCRC  uint32 `json:"pendingDBCRC,omitempty"`
+	PendingPrxCRC uint32 `json:"pendingPrxCRC,omitempty"`
 }
 
 func (configurator *Configurator) Init(conf config.Config, logger *logrus.Logger) error {
@@ -920,6 +920,20 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 		}
 	}*/
 
+	// Stage the APU (Compute) sensor script into the proxy config tarball, mirroring
+	// how GenerateDatabaseConfig stages dbjobs_new. The init container extracts the
+	// tarball into the shared service FS, and the sensor sidecar -- which shares that
+	// FS like the DB jobs container does -- runs init/app_job. No image baking, no
+	// moduleset edit: the script ships embedded in the binary via go:embed.
+	if scriptBytes, err := share.EmbededDbModuleFS.ReadFile("scripts/app_job.sh"); err == nil {
+		appjobPath := filepath.Join(Datadir, "init", "init", "app_job")
+		os.MkdirAll(filepath.Dir(appjobPath), 0775)
+		content := misc.ExtractKey(string(scriptBytes), TemplateEnv)
+		if err := os.WriteFile(appjobPath, []byte(content), 0755); err != nil {
+			configurator.Logger.Errorf("Failed to write embedded app_job: %s", err)
+		}
+	}
+
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 
 	return nil
@@ -1308,48 +1322,6 @@ func ParseVariableNamesFromCnf(cnf string) []string {
 		}
 	}
 	return names
-}
-
-func (configurator *Configurator) GetDatabaseConfig(filter string, datadir string) (string, error) {
-	mydynamicconf := ""
-	// processing symlink
-	type Link struct {
-		Symlink string `json:"symlink"`
-		Target  string `json:"target"`
-	}
-	for _, rule := range configurator.DBModule.Rulesets {
-		if strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf.generic") {
-			for _, variable := range rule.Variables {
-				if variable.Class == "symlink" {
-					if configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
-						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
-							configurator.Logger.Debugf("content %s %s", filter, rule.Filter)
-						}
-						if filter == "" || strings.Contains(rule.Filter, filter) {
-							var f Link
-							json.Unmarshal([]byte(variable.Value), &f)
-							fpath := datadir + "/init/etc/mysql/conf.d/"
-							if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
-								configurator.Logger.Debugf("Config symlink %s , %s", fpath, f.Target)
-							}
-							file, err := os.Open(fpath + f.Target)
-							if err == nil {
-								scanner := bufio.NewScanner(file)
-								for scanner.Scan() {
-									mydynamicconf = mydynamicconf + strings.Split(scanner.Text(), ":")[1]
-								}
-								file.Close()
-
-							} else {
-								return mydynamicconf, fmt.Errorf("Error in dynamic config: %s", err)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return mydynamicconf, nil
 }
 
 func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, rule *config.ComplianceRuleset, variable *config.ComplianceVariable) error {

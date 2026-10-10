@@ -105,6 +105,16 @@ type Config struct {
 	Host          string        `json:"host"`
 	ApiPort       string        `json:"apiPort"`
 	StatPort      string        `json:"statPort"`
+	// ExternalCheck and InsecureForkWanted mirror the "external-check" /
+	// "insecure-fork-wanted" global directives OpenSVC's haproxy_check.cfg
+	// uses for haproxy-mode=externalcheck (cluster/prov_opensvc_haproxy.go):
+	// "external-check" is required once globally before any backend can use
+	// option external-check, and "insecure-fork-wanted" lets a
+	// multi-threaded worker actually fork the external-check subprocess
+	// (without it every check fails with SOCKERR regardless of backend
+	// config, a live incident on a 32-thread host).
+	ExternalCheck      bool `json:"externalCheck"`
+	InsecureForkWanted bool `json:"insecureForkWanted"`
 }
 
 // Defines a single haproxy "backend".
@@ -114,6 +124,15 @@ type Backend struct {
 	Servers   []*ServerDetail `json:"servers" binding:"required"`
 	Options   ProxyOptions    `json:"options"`
 	ProxyMode bool            `json:"proxyMode" binding:"required"`
+	// ExternalCheck routes this backend's health checks through an external
+	// command (checkmaster/checkslave) instead of HAProxy's built-in
+	// checks, matching the externalcheck model in
+	// share/opensvc/moduleset_mariadb.svc.mrm.proxy.json. Each server still
+	// needs ServerDetail.Check set for HAProxy to check it at all --
+	// ExternalCheck only changes *how* the check runs.
+	ExternalCheck        bool   `json:"externalCheck"`
+	ExternalCheckPath    string `json:"externalCheckPath"`
+	ExternalCheckCommand string `json:"externalCheckCommand"`
 }
 
 // Defines a single haproxy "frontend".

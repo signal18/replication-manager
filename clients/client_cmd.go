@@ -35,56 +35,59 @@ import (
 )
 
 var (
-	Version                      string
-	FullVersion                  string
-	Build                        string
-	cliUser                      string
-	cliPassword                  string
-	cliHost                      string
-	cliPort                      string
-	cliCert                      string
-	cliEncryptSecret             string
-	cliNoCheckCert               bool
-	cliToken                     string
-	cliClusters                  []string
-	cliClusterIndex              int
-	cliTlog                      s18log.TermLog
-	cliTermlength                int
-	cliServers                   []cluster.ServerMonitor
-	cliMaster                    cluster.ServerMonitor
-	cliSettings                  cluster.Cluster
-	cliMonitor                   server.ReplicationManager
-	cliUrl                       string
-	cliTTestRun                  string
-	cliTestShowTests             bool
-	cliTeststopcluster           bool
-	cliTeststartcluster          bool
-	cliTestConvert               bool
-	cliTestConvertFile           string
-	cliTestResultDBCredential    string
-	cliTestResultDBServer        string
-	cliBootstrapTopology         string
-	cliBootstrapCleanall         bool
-	cliBootstrapWithProvisioning bool
-	cliExit                      bool
-	cliPrefMaster                string
-	cliStatusErrors              bool
-	cliServerID                  string
-	cliServerHost                string
-	cliServerPort                string
-	cliServerSet                 string
-	cliServerGet                 string
-	cliServerAction              string
-	cliConsoleServerIndex        int
-	cliShowObjects               string
-	cliConfirm                   string
-	cliLogDir                    string
-	cliOutputDir                 string
-	cliInputFile                 string
-	cliSplitDumpStreamSizeMax    string
-	cfgGroup                     string
-	memprofile                   string
-	cpuprofile                   string
+	Version                        string
+	FullVersion                    string
+	Build                          string
+	cliUser                        string
+	cliPassword                    string
+	cliHost                        string
+	cliPort                        string
+	cliCert                        string
+	cliEncryptSecret               string
+	cliAPIToken                    string
+	cliNoCheckCert                 bool
+	cliToken                       string
+	cliClusters                    []string
+	cliClusterIndex                int
+	cliTlog                        s18log.TermLog
+	cliTermlength                  int
+	cliServers                     []cluster.ServerMonitor
+	cliMaster                      cluster.ServerMonitor
+	cliSettings                    cluster.Cluster
+	cliMonitor                     server.ReplicationManager
+	cliUrl                         string
+	cliTTestRun                    string
+	cliTestShowTests               bool
+	cliTeststopcluster             bool
+	cliTeststartcluster            bool
+	cliTestConvert                 bool
+	cliTestConvertFile             string
+	cliTestResultDBCredential      string
+	cliTestResultDBServer          string
+	cliBootstrapTopology           string
+	cliBootstrapCleanall           bool
+	cliBootstrapWithProvisioning   bool
+	cliExit                        bool
+	cliPrefMaster                  string
+	cliStatusErrors                bool
+	cliServerID                    string
+	cliServerHost                  string
+	cliServerPort                  string
+	cliServerSet                   string
+	cliServerGet                   string
+	cliServerAction                string
+	cliConsoleServerIndex          int
+	cliShowObjects                 string
+	cliConfirm                     string
+	cliLogDir                      string
+	cliOutputDir                   string
+	cliInputFile                   string
+	cliSplitDumpStreamSizeMax      string
+	cliSplitDumpCompressionLevel   int
+	cliSplitDumpCompressionThreads int
+	cfgGroup                       string
+	memprofile                     string
+	cpuprofile                     string
 	// Provisoning to add flags for compile
 	WithProvisioning      string = "OFF"
 	WithArbitration       string = "OFF"
@@ -161,7 +164,10 @@ func cliInit(needcluster bool) {
 		cliSettings.Conf = new(config.Config)
 	}
 
-	if cliEncryptSecret != "" && cfgGroup != "" {
+	if cliAPIToken != "" {
+		// A user-issued API token (issue #1835) is used as-is: no login round-trip.
+		cliToken = cliAPIToken
+	} else if cliEncryptSecret != "" && cfgGroup != "" {
 		cliToken, err = cliSecretLogin()
 		if err != nil {
 			fmt.Printf("\n'%s'\n", err)
@@ -237,6 +243,7 @@ func initServerApiFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
 	cmd.Flags().StringVar(&cliEncryptSecret, "enc-secret", "", "Encryption secret")
+	cmd.Flags().StringVar(&cliAPIToken, "api-token", "", "User-issued API token used as bearer instead of user/password login")
 	cmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 	viper.BindPFlags(cmd.Flags())
 }
@@ -283,6 +290,8 @@ func initStatusFlagsDumpSplit(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliOutputDir, "outputdir", "./", "Directory to store files")
 	cmd.Flags().StringVar(&cliInputFile, "inputfile", "", "SQL file in text or gzip instead of stdin")
 	cmd.Flags().StringVar(&cliSplitDumpStreamSizeMax, "stream-size-max", "", "Max stream size before sharding (e.g. 16MiB, 1G; 0 disables sharding)")
+	cmd.Flags().IntVar(&cliSplitDumpCompressionLevel, "compression-level", 6, "gzip level of the per-table files, 1 fastest .. 9 smallest (parallel pgzip)")
+	cmd.Flags().IntVar(&cliSplitDumpCompressionThreads, "compression-threads", 0, "parallel gzip blocks compressed at once, 0 = every CPU")
 	viper.BindPFlags(cmd.Flags())
 }
 
@@ -362,6 +371,9 @@ func init() {
 	initApiFlags(apiCmd)
 	initClusterFlags(apiCmd)
 
+	rootClientCmd.AddCommand(tokenCmd)
+	initTokenFlags()
+
 	rootClientCmd.AddCommand(regTestCmd)
 	initRegTestFlags(regTestCmd)
 	initClusterFlags(regTestCmd)
@@ -374,6 +386,12 @@ func init() {
 
 	rootClientCmd.AddCommand(splitRestoreCmd)
 	initSplitRestoreFlags(splitRestoreCmd)
+
+	rootClientCmd.AddCommand(streamCmd)
+	initStreamFlags(streamCmd)
+
+	rootClientCmd.AddCommand(jobCmd)
+	initJobFlags(jobCmd)
 
 	rootClientCmd.AddCommand(bootstrapCmd)
 	initBootstrapFlags(bootstrapCmd)

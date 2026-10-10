@@ -140,6 +140,47 @@ func (cluster *Cluster) HasNoValidSlave() bool {
 	return false
 }
 
+// HasValidReadSlave reports whether at least one non-leader, non-maintenance
+// server in the cluster is currently eligible to serve reads. This is the
+// exact "is there a valid alternative reader" computation
+// prx_haproxy.go's masterShouldRead (standby/runtimeapi) uses for its
+// proxy-servers-read-on-master-no-slave fallback -- exported here so
+// ShouldServeReadsFromMaster() (used by haproxy-mode=externalcheck's
+// IsValidReaderCheck, srv_has.go) can apply the identical rule.
+func (cluster *Cluster) HasValidReadSlave() bool {
+	for _, s := range cluster.Servers {
+		if s.IsMaintenance || s.IsLeader() {
+			continue
+		}
+		if !s.standbyReadIneligible() {
+			return true
+		}
+	}
+	return false
+}
+
+// ShouldServeReadsFromMaster is the single canonical answer to "should the
+// master/leader be a member of the read backend": always when
+// proxy-servers-read-on-master is set, or as a fallback
+// (proxy-servers-read-on-master-no-slave) when there is no other valid
+// alternative reader right now. Used by both prx_haproxy.go's Init()
+// (standby's read-backend render) and ServerMonitor.IsValidReaderCheck
+// (srv_has.go, externalcheck's checkslave HTTP handler, reached via the
+// reader-status route) so the no-slave fallback behaves identically across
+// modes -- before this existed, the externalcheck handler had its own inline
+// check that only consulted PRXServersReadOnMaster and never
+// PRXServersReadOnMasterNoSlave at all (bug #6,
+// HAPROXY_LIVE_K8S_TEST_REPORT.md), so a cluster with every slave down and
+// the no-slave flag on took its entire read backend offline instead of
+// falling back to the master.
+func (cluster *Cluster) ShouldServeReadsFromMaster() bool {
+	if cluster.Configurator.HasProxyReadLeader() {
+		return true
+	}
+	return cluster.Configurator.HasProxyReadLeaderNoSlave() &&
+		(cluster.HasNoValidSlave() || !cluster.HasValidReadSlave())
+}
+
 func (cluster *Cluster) IsProvisioned() bool {
 	cluster.Lock()
 	defer cluster.Unlock()
@@ -180,7 +221,9 @@ func (cluster *Cluster) IsAppProvisioned() bool {
 
 	for _, app := range cluster.Apps {
 		if !app.HasProvisionCookie() {
-			if app.IsRunning() && !app.HasUnprovisionCookie() {
+			// Only an app really answering (checked Running) recovers a provision cookie: a
+			// freshly declared app is Suspect, IsRunning is merely "not Failed" (#1870 live).
+			if app.State == stateAppRunning && !app.HasPendingCheckFailures() && !app.HasUnprovisionCookie() {
 				// App is running without a provision cookie — recover state from a restart.
 				// Skip entirely when the unprovision cookie is present: the app was explicitly
 				// unprovisioned and may just be in a brief shutdown transition.
@@ -188,14 +231,6 @@ func (cluster *Cluster) IsAppProvisioned() bool {
 					cluster.SetState("APPERR006", state.State{ErrType: "WARNING", ErrDesc: clusterError["APPERR006"], ErrFrom: "TOPO", ServerUrl: app.GetURL()})
 				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie %s: %s", app.GetURL(), app.GetState())
-				if app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
-					app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
-					if _, err := cluster.SaveApp(app, ""); err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
-							"Failed to persist backfilled credit usage for %s: %s", app.Name, err)
-					}
-					cluster.recomputeAppCredits()
-				}
 			} else if !app.IsRunning() {
 				return false
 			}
@@ -244,6 +279,43 @@ func (cluster *Cluster) IsInIgnoredReadonly(server *ServerMonitor) bool {
 		}
 	}
 	return false
+}
+
+// maintenanceTokens splits a maintenance-host membership list into its
+// non-empty comma-separated tokens.
+func maintenanceTokens(hostList string) []string {
+	var toks []string
+	for _, tok := range strings.Split(hostList, ",") {
+		if tok != "" {
+			toks = append(toks, tok)
+		}
+	}
+	return toks
+}
+
+// maintenanceListHasHost reports whether hostList contains a token that
+// EXACTLY equals url or name -- never a substring/prefix match. This is the
+// single membership predicate shared by restoration (IsInMaintenanceHosts)
+// and mutation (SetMaintenanceSrv), so the two can never disagree about what
+// counts as a match.
+func maintenanceListHasHost(hostList, url, name string) bool {
+	for _, tok := range maintenanceTokens(hostList) {
+		if tok == url || tok == name {
+			return true
+		}
+	}
+	return false
+}
+
+// IsInMaintenanceHosts reports whether server belongs to the durable maintenance-host
+// membership, the persisted counterpart of the runtime IsMaintenance flag restored at
+// server-monitor construction (startup and config reload).
+func (cluster *Cluster) IsInMaintenanceHosts(server *ServerMonitor) bool {
+	// Child cluster servers never carry this cluster's maintenance membership
+	if server.SourceClusterName != cluster.Name {
+		return false
+	}
+	return maintenanceListHasHost(cluster.Conf.MaintenanceSrv, server.URL, server.Name)
 }
 
 func (cluster *Cluster) IsInPreferedHosts(server *ServerMonitor) bool {
@@ -402,6 +474,46 @@ func (cluster *Cluster) HasRequestDBRollingRestart() bool {
 	return ret
 }
 
+// CheckResourceCapPlan composes the cluster-level cap-up / cap-down signals from the PER-SERVER
+// plan states (each server's ResourceConsumedOver/UnderPlanAxes, set by
+// ServerMonitor.CheckResourceConsumed). checkState only -- it sets state, takes no action.
+// Composition rule -- ONE server suffices to force OR to break the action:
+//   - IsNeedResourceCapUp   = ANY up server is over the plan  (one server hitting the envelope
+//     forces raising the plan).
+//   - IsNeedResourceCapDown = EVERY up server is under the plan (a single non-under server BREAKS
+//     the cap-down -- safe-shrink: never lower the plan while any server still needs it).
+//
+// Resources within the plan are managed PER SERVER (each server's ResourceConsumedOver/
+// UnderConfigAxes drive raising/shrinking that server), so there is no cluster-level config
+// aggregate here. Both signals are false when resource-align is off, no manager, or no up server.
+func (cluster *Cluster) CheckResourceCapPlan() {
+	cluster.IsNeedResourceCapUp = false
+	cluster.IsNeedResourceCapDown = false
+	if cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff || cluster.resources == nil {
+		return
+	}
+	nUp := 0
+	anyOver := false
+	allUnder := true
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsDown() {
+			continue
+		}
+		nUp++
+		if len(srv.ResourceConsumedOverPlanAxes) > 0 {
+			anyOver = true
+		}
+		if len(srv.ResourceConsumedUnderPlanAxes) == 0 {
+			allUnder = false
+		}
+	}
+	if nUp == 0 {
+		return
+	}
+	cluster.IsNeedResourceCapUp = anyOver
+	cluster.IsNeedResourceCapDown = allUnder
+}
+
 func (cluster *Cluster) HasRequestDBRollingReprov() bool {
 	ret := true
 	if cluster.Servers == nil {
@@ -446,6 +558,23 @@ func (cluster *Cluster) HasRequestProxiesReprov() bool {
 			if p.HasReprovCookie() {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+// HasProvisionedHaproxy reports whether any HAProxy proxy has already been
+// provisioned -- scoped to type "haproxy" specifically, not any proxy
+// (ProxySQL/MaxScale/... provisioned in the same cluster must not block an
+// HAProxy-only setting). Refresh() (cluster/prx_haproxy.go) reads settings
+// like HaproxyMode/HaproxyAPIBootstrapServers live every monitoring tick, so
+// changing them while a proxy is already deployed would alter its
+// reconciliation behavior immediately, ahead of the deployed config being
+// regenerated to match -- callers use this to refuse that live change.
+func (cluster *Cluster) HasProvisionedHaproxy() bool {
+	for _, p := range cluster.Proxies {
+		if p != nil && p.GetType() == config.ConstProxyHaproxy && p.HasProvisionCookie() {
+			return true
 		}
 	}
 	return false
@@ -501,6 +630,21 @@ func (cluster *Cluster) IsActive() bool {
 	} else {
 		return false
 	}
+}
+
+// CanSendGraphiteMetrics reports whether this monitor should collect and emit
+// graphite metrics this tick. The active monitor always does. A passive/standby
+// monitor does so only when carbon is embedded: it then records its OWN
+// observation of the cluster into its OWN local carbon — each monitor keeps its
+// independent view of the world (comparing the active vs passive perspective is
+// diagnostic, e.g. split-brain). This way a standby never duplicates the active
+// monitor's series on a shared carbon, and never doubles the metric query load
+// on the monitored DB for nothing. See issue #1680.
+func (cluster *Cluster) CanSendGraphiteMetrics() bool {
+	if !cluster.Conf.GraphiteMetrics {
+		return false
+	}
+	return cluster.IsActive() || cluster.Conf.GraphiteEmbedded
 }
 
 func (cluster *Cluster) IsVerbose() bool {
@@ -725,5 +869,18 @@ func (cluster *Cluster) IsInSchemaTableList(tablelist string, schema string, tab
 		}
 	}
 
+	return false
+}
+
+// HasSemiSyncObserved reports semi-synchronous replication as the monitor sees it on the
+// servers (master or replica semi-sync status ON), whatever the configuration says. The
+// sizing rules that depend on semi-sync (thread pool, #1902) compose it with the flag and
+// the configurator tag through Configurator.IsSemiSync.
+func (cluster *Cluster) HasSemiSyncObserved() bool {
+	for _, s := range cluster.Servers {
+		if s != nil && s.HasSemiSync() {
+			return true
+		}
+	}
 	return false
 }

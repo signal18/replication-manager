@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -260,16 +261,29 @@ func (server *ServerMonitor) CheckReplication() string {
 }
 
 // CheckSlaveSettings check slave variables & enforce if set
+// slaveParallelModeEnforceCooldown bounds how often CheckSlaveSettings may stop/start a
+// slave's SQL thread to change slave_parallel_mode (a failed SET must not flap replication
+// every tick).
+const slaveParallelModeEnforceCooldown = 5 * time.Minute
+
 func (server *ServerMonitor) CheckSlaveSettings() {
 	if server.IsIgnored() {
 		return
 	}
 	sl := server
 	cluster := server.ClusterGroup
+	// A standby never enforces settings on a replica (GH-1847): every force-* below is a
+	// SET GLOBAL / plugin install decided from THIS monitor's view; the active does it.
+	if !cluster.IsActive() {
+		return
+	}
 	master := cluster.GetMaster()
-	if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
+	if sl.IsPostgreSQLHost() {
+		// PostgreSQL has no semi-sync plugin: nothing to enforce, nothing to warn about
+	} else if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
-		dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
+		logs, err := dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
+		cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlErr, "Could not enforce semisync on %s: %s", sl.URL, err)
 	} else if !sl.IsIgnored() && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
 		cluster.SetState("WARN0048", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
@@ -348,25 +362,40 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} /*else if !sl.IsIgnored() && cluster.Conf.ForceSlaveStrict &&  && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
 		cluster.SetState("WARN0104", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0103"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	} */
-	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) == "OPTIMISTIC" && !sl.HaveSlaveOptimistic && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
-		dbhelper.SetSlaveParallelMode(sl.Conn, "OPTIMISTIC", cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication parallel mode optimistic on slave %s", sl.URL)
+	// Parallel replication mode enforcement. force-slave-parallel-mode wins when set; when it
+	// is empty and prov-db-apply-dynamic-config is on, OPTIMISTIC is enforced (decision
+	// 2026-09-16: under dynamic config the mode is repman's, and optimistic is the one that
+	// parallelises beyond the binlog group commit size -- on a low-concurrency master the
+	// group size is ~1, so conservative applies serially whatever the worker count). The
+	// setter stops and restarts the SQL thread (SetSlaveParallelMode), so it is rate-limited
+	// per server: one attempt per slaveParallelModeEnforceCooldown, and a failure is a state
+	// (WARN0216) instead of a silent per-tick stop/start of the slave.
+	forcedMode := strings.ToUpper(cluster.Conf.ForceSlaveParallelMode)
+	if forcedMode == "" && cluster.Conf.ProvDBApplyDynamicConfig {
+		forcedMode = "OPTIMISTIC"
 	}
-	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) == "SERIALIZED" && !sl.HaveSlaveSerialized && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
-		dbhelper.SetSlaveParallelMode(sl.Conn, "NONE", cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication parallel mode serialized on slave %s", sl.URL)
-	}
-	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) == "AGGRESSIVE" && !sl.HaveSlaveAggressive && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
-		dbhelper.SetSlaveParallelMode(sl.Conn, "AGGRESSIVE", cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication parallel mode aggressive on slave %s", sl.URL)
-	}
-	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) == "MINIMAL" && !sl.HaveSlaveMinimal && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
-		dbhelper.SetSlaveParallelMode(sl.Conn, "MINIMAL", cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication parallel mode minimal on slave %s", sl.URL)
-	}
-	if strings.ToUpper(cluster.Conf.ForceSlaveParallelMode) == "CONSERVATIVE" && !sl.HaveSlaveConservative && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
-		dbhelper.SetSlaveParallelMode(sl.Conn, "CONSERVATIVE", cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication parallel mode conservative on slave %s", sl.URL)
+	if forcedMode != "" && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
+		var wantMode string
+		switch {
+		case forcedMode == "OPTIMISTIC" && !sl.HaveSlaveOptimistic:
+			wantMode = "OPTIMISTIC"
+		case forcedMode == "SERIALIZED" && !sl.HaveSlaveSerialized:
+			wantMode = "NONE"
+		case forcedMode == "AGGRESSIVE" && !sl.HaveSlaveAggressive:
+			wantMode = "AGGRESSIVE"
+		case forcedMode == "MINIMAL" && !sl.HaveSlaveMinimal:
+			wantMode = "MINIMAL"
+		case forcedMode == "CONSERVATIVE" && !sl.HaveSlaveConservative:
+			wantMode = "CONSERVATIVE"
+		}
+		if wantMode != "" && time.Since(sl.lastParallelModeEnforce) > slaveParallelModeEnforceCooldown {
+			sl.lastParallelModeEnforce = time.Now()
+			if _, err := dbhelper.SetSlaveParallelMode(sl.Conn, wantMode, cluster.Conf.MasterConn, server.DBVersion); err != nil {
+				cluster.SetState("WARN0216", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0216"], sl.URL, strings.ToLower(forcedMode), err.Error()), ErrFrom: "TOPO", ServerUrl: sl.URL})
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce replication parallel mode %s on slave %s", strings.ToLower(forcedMode), sl.URL)
+			}
+		}
 	}
 	if cluster.Conf.ForceSyncInnoDB && !sl.HaveInnodbTrxCommit {
 		dbhelper.SetSyncInnodb(sl.Conn)
@@ -399,7 +428,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	} else if !sl.IsIgnored() && !sl.HaveBinlogCompress && sl.DBVersion.IsMariaDB() && sl.DBVersion.Major >= 10 && sl.DBVersion.Minor >= 2 {
 		cluster.SetState("WARN0056", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0056"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if !sl.IsIgnored() && !sl.HaveBinlogSlaveUpdates {
+	if !sl.IsIgnored() && !sl.HaveBinlogSlaveUpdates && !sl.IsPostgreSQLHost() {
 		cluster.SetState("WARN0057", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0057"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 
@@ -411,13 +440,19 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 
 // CheckMasterSettings check master variables & enforce if set
 func (server *ServerMonitor) CheckMasterSettings() {
+	if cluster := server.ClusterGroup; cluster != nil && !cluster.IsActive() {
+		return // a standby never enforces settings on the master (GH-1847)
+	}
 	if server.IsIgnored() {
 		return
 	}
 	cluster := server.ClusterGroup
-	if cluster.Conf.ForceSlaveSemisync && !server.HaveSemiSync {
+	if server.IsPostgreSQLHost() {
+		// PostgreSQL has no semi-sync plugin: nothing to enforce, nothing to warn about
+	} else if cluster.Conf.ForceSlaveSemisync && !server.HaveSemiSync {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce semisync on Master %s", server.URL)
-		dbhelper.InstallSemiSync(server.Conn, server.DBVersion)
+		logs, err := dbhelper.InstallSemiSync(server.Conn, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not enforce semisync on %s: %s", server.URL, err)
 	} else if !server.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 		cluster.SetState("WARN0060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0060"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
@@ -457,7 +492,7 @@ func (server *ServerMonitor) CheckMasterSettings() {
 	} else if !server.HaveBinlogCompress && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 && server.DBVersion.Minor >= 2 {
 		cluster.SetState("WARN0068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0068"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
-	if !server.HaveBinlogSlaveUpdates {
+	if !server.HaveBinlogSlaveUpdates && !server.IsPostgreSQLHost() {
 		cluster.SetState("WARN0069", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0069"], server.URL), ErrFrom: "TOPO", ServerUrl: server.URL})
 	}
 	if !server.HaveGtidStrictMode && server.DBVersion.Flavor == "MariaDB" && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
@@ -620,9 +655,20 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 	// Remote tasks only — logical tasks (mysqldump, mydumper, analyze) are
 	// executed directly by replication-manager and must not be dispatched to
 	// the dbjobs script to avoid double execution.
-	case config.ConstTaskXB, config.ConstTaskMB:
-		if server.HasWaitPhysicalBackupCookie() {
-			server.DelWaitPhysicalBackupCookie()
+	case config.ConstTaskXB:
+		if server.HasWaitXtrabackupCookie() {
+			server.DelWaitXtrabackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskMB:
+		if server.HasWaitMariabackupCookie() {
+			server.DelWaitMariabackupCookie()
+			return true, nil
+		}
+	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup, config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync, config.ConstTaskPgRestore, config.ConstTaskPgRestoreLogical, config.ConstTaskPgReseedLogical:
+		// PostgreSQL tasks run in the jobs sidecar (srv_job_postgres.go)
+		if server.hasCookie(postgresJobCookie(checktype)) {
+			server.delCookie(postgresJobCookie(checktype))
 			return true, nil
 		}
 	case config.ConstTaskOptimize:

@@ -57,6 +57,22 @@ func (configurator *Configurator) SetDBMaxConnections(value string) {
 	configurator.ClusterConfig.ProvMaxConnections = valueNum
 }
 
+func (configurator *Configurator) SetDBReplicationParallelThreads(value string) {
+	valueNum, err := strconv.Atoi(value)
+	if err != nil || valueNum < 0 {
+		valueNum = 32
+	}
+	configurator.ClusterConfig.ProvReplicationParallelThreads = valueNum
+}
+
+func (configurator *Configurator) SetDBReplicationDomainParallelThreads(value string) {
+	valueNum, err := strconv.Atoi(value)
+	if err != nil || valueNum < 0 {
+		valueNum = 0
+	}
+	configurator.ClusterConfig.ProvReplicationDomainParallelThreads = valueNum
+}
+
 func (configurator *Configurator) SetDBExpireLogDays(value string) {
 	valueNum, err := strconv.Atoi(value)
 	if err != nil {

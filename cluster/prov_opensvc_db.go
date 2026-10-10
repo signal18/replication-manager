@@ -155,13 +155,45 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	if !svc.IsV3() {
 		return fmt.Errorf("update-opensvc-template requires OpenSVC v3 API")
 	}
-	_, err := cluster.OpenSVCFoundDatabaseAgent(s)
-	if err != nil {
-		return err
-	}
-	res, err := s.GenerateDBTemplateV3()
-	if err != nil {
-		return err
+	// the refreshed definition maps the sensor keys; a namespace provisioned before
+	// the sensor existed has none of them (#1944)
+	cluster.openSVCEnsureSensorPrerequisitesLogged(svc, s.ServiceName)
+	var res []byte
+	var err error
+	if app := cluster.engineAppOfServer(s); app != nil {
+		// an engine server: its definition is the one its template renders (the same
+		// object, the server's service); refreshed here like any server's, so the rolling
+		// restart and the restart carry a changed mount or container without reprovisioning
+		res, err = cluster.OpenSVCGetAppTemplateV3(app)
+		if err != nil {
+			return err
+		}
+		// and the scripts its containers run from config keys: the start script and the
+		// configurator render, written at provision, follow the build like the definition
+		// (pg1 of pg-active-passive restarted on an old start script, 2026-10-06); the
+		// jobs script has its own upgrade (checkPostgresJobsVersion)
+		if script := appStartScript(app); script != "" {
+			if err := svc.CreateConfigKeyValue(cluster.Name, app.Name, appStartScriptKey, script); err != nil { // create updates an existing key
+				return fmt.Errorf("config key %s of %s: %w", appStartScriptKey, app.Name, err)
+			}
+		}
+		if app.AppConfig != nil && app.AppConfig.ProvAppConfigurator != "" {
+			script, err := cluster.AppConfiguratorScript(app)
+			if err != nil {
+				return err
+			}
+			if err := svc.CreateConfigKeyValue(cluster.Name, app.Name, appConfiguratorScriptKey, script); err != nil {
+				return fmt.Errorf("config key %s of %s: %w", appConfiguratorScriptKey, app.Name, err)
+			}
+		}
+	} else {
+		if _, err = cluster.OpenSVCFoundDatabaseAgent(s); err != nil {
+			return err
+		}
+		res, err = s.GenerateDBTemplateV3()
+		if err != nil {
+			return err
+		}
 	}
 	svcparts := strings.SplitN(s.ServiceName, "/", 3)
 	if len(svcparts) != 3 {
@@ -170,17 +202,33 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 	ns, kind, svcname := svcparts[0], svcparts[1], svcparts[2]
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"Refreshing OpenSVC template for %s", s.ServiceName)
-	_, err = svc.UpdateObjectV3(ns, kind, svcname, res)
-	return err
+	if _, err = svc.UpdateObjectV3(ns, kind, svcname, res); err != nil {
+		return err
+	}
+	// om3 commits the file synchronously but reloads the instance config
+	// asynchronously: the rolling restart's start issued right after this PUT ran
+	// on the PREVIOUS config and recreated the containers without the pushed
+	// change (#1792, belair 2026-09-14). Return only once the node has loaded it.
+	return svc.WaitObjectConfigSettledV3(s.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
+	if app := cluster.engineAppOfServer(s); app != nil {
+		// An engine server (PostgreSQL member rendered from an app template): its service
+		// is the app's, provisioned from that template; the database template would deploy
+		// the cluster's default image under the member's name (MariaDB 13 answering on
+		// pg1:5432, pg-logical 2026-10-08). The app provision reports on errorChan itself.
+		cluster.OpenSVCProvisionAppService(app)
+		return
+	}
+	cluster.warnDBRunAsVolumeMismatch()
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {
 		cluster.errorChan <- err
 		return
 	}
+	cluster.ResolveDatabaseImage(false) // the service definition carries a release, not a pointer (#1862)
 
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		err = cluster.OpenSVCProvisionDatabaseV1(s, svc, agent)
@@ -214,6 +262,7 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor, for
 		const key = "image_pull_policy"
 		if forcePull {
 			return svc.SetServiceConfigKeysV2(s.ServiceName, s.Agent, []string{
+				"env.docker_image=" + cluster.deployImage(), // the release the upgrade pins (#1862)
 				dbSection + "." + key + "=always",
 				jobsSection + "." + key + "=always",
 			})
@@ -242,6 +291,12 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseServiceConfig(s *ServerMonitor, for
 
 	for _, section := range cfg.Sections() {
 		name := section.Name()
+		if name == "env" && forcePull {
+			// The pull phase of the upgrade pins the release the declared image resolved
+			// to (#1862); the file keeps every other key as it is.
+			section.Key("docker_image").SetValue(cluster.deployImage())
+			continue
+		}
 		if name != "container#db" && name != "container#jobs" {
 			continue
 		}
@@ -274,7 +329,24 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
 	} else if svc.IsV3() {
-		agent := server.Agent
+		if len(cluster.GetDatabaseAgentNames(server)) > 1 {
+			// a service placed on several agents (its prov-db-agents) is stopped by the
+			// orchestration, which holds it down on every node, frozen or not (verified on
+			// om3, 2026-10-06): an instance stop is undone by om3, which re-places the
+			// service on another node (pg1 of pg-logical moved from s18-fr-4 to s18-fr-5,
+			// then back, instead of stopping)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"OpenSVC V3 orchestrated stop for %s (placed on several nodes)", server.URL)
+			if err := svc.StopServiceV3(cluster.Name, server.ServiceName); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database: %s", err)
+				return err
+			}
+			return nil
+		}
+		// the instance to stop is where the service RUNS: not necessarily the agent the
+		// round robin assigned (pg2 of pg-stream: the stop went to an idle node and
+		// nothing stopped, 2026-10-06)
+		agent := server.placementNode()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"OpenSVC V3 instance stop for %s on node %s", server.URL, agent)
 		err := svc.StopInstanceV3(agent, server.ServiceName)
@@ -317,7 +389,7 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
 					"OpenSVC V3 abort before start failed for %s: %s (proceeding)", server.URL, abortErr)
 			}
-			err := svc.RestartServiceV3(cluster.Name, server.ServiceName)
+			err := cluster.openSVCRestartWhenIdleV3(svc, server.ServiceName)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
 					"OpenSVC V3 orchestrated restart failed for %s: %s", server.URL, err)
@@ -327,7 +399,27 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 			// Default: instance-level start (om start --local). Bypasses the
 			// orchestrator's global monitor state check so it works even when the
 			// service is in warn state. Does not coordinate failover volumes.
-			agent := server.Agent
+			if len(cluster.GetDatabaseAgentNames(server)) > 1 {
+				// a service placed on several agents (its prov-db-agents): the orchestrator
+				// picks the node, an instance start on one node would fight its placement
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+					"OpenSVC V3 orchestrated start for %s (failover placement)", server.URL)
+				// retried while the orchestrator still runs the stop that preceded (409)
+				deadline := time.Now().Add(3 * time.Minute)
+				for {
+					err := svc.StartServiceV3(cluster.Name, server.ServiceName)
+					if err == nil {
+						return nil
+					}
+					if !(strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "in progress")) || time.Now().After(deadline) {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+							"OpenSVC V3 start failed for %s: %s", server.URL, err)
+						return err
+					}
+					time.Sleep(5 * time.Second)
+				}
+			}
+			agent := server.placementNode()
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 				"OpenSVC V3 instance start for %s on node %s", server.URL, agent)
 			err := svc.StartInstanceV3(agent, server.ServiceName)
@@ -349,7 +441,6 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 
 	return nil
 }
-
 
 func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, node string, rid string) error {
 	svc := cluster.OpenSVCConnect()
@@ -435,6 +526,13 @@ func (cluster *Cluster) OpenSVCClearDatabaseInstanceState(server *ServerMonitor,
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor) {
+	if app := cluster.engineAppOfServer(server); app != nil {
+		// An engine server: the app unprovision purges its service and the volume objects
+		// of its template (pg1-drbd, not a database volume named pg1 that answers 404 and
+		// leaves the member's DRBD volumes provisioned on every node, pg-logical 2026-10-08).
+		cluster.errorChan <- cluster.OpenSVCUnprovisionAppService(app)
+		return
+	}
 	svc := cluster.OpenSVCConnect()
 	var opErr error
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
@@ -497,9 +595,18 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 	if agents == nil {
 		return agent, errors.New("Error getting OpenSVC node list")
 	}
+	names := cluster.GetDatabaseAgentNames(server)
 	for _, node := range agents {
-		if strings.Contains(svc.ProvAgents, node.Node_name) {
+		// the server's agent list (engine app, prov-db-agents), every node when none
+		if len(names) == 0 {
 			clusteragents = append(clusteragents, node)
+			continue
+		}
+		for _, n := range names {
+			if n == node.Node_name {
+				clusteragents = append(clusteragents, node)
+				break
+			}
 		}
 	}
 	for i, srv := range cluster.Servers {
@@ -514,6 +621,18 @@ func (cluster *Cluster) OpenSVCFoundDatabaseAgent(server *ServerMonitor) (opensv
 	return agent, errors.New("Indice not found in database node list")
 }
 
+// Start priority of the services in the orchestrator (DEFAULT.priority, smaller first,
+// default 50): when a node boots and hits node.max_parallel, databases are served before
+// the proxies that route to them and before the apps that connect through the proxies;
+// the cluster's system services (dns at 5) keep going first. An engine server rendered
+// from an app template is a database. The key is honoured only for an API identity holding
+// the orchestrator's "prioritizer" grant (silently dropped otherwise).
+const (
+	openSVCPriorityDatabase = "10"
+	openSVCPriorityProxy    = "20"
+	openSVCPriorityApp      = "30"
+)
+
 func (server *ServerMonitor) OpenSVCGetDBDefaultSection() map[string]string {
 	svcdefault := make(map[string]string)
 	svcdefault["nodes"] = server.Agent
@@ -526,6 +645,7 @@ func (server *ServerMonitor) OpenSVCGetDBDefaultSection() map[string]string {
 		svcdefault["orchestrate"] = "ha"
 	}
 	svcdefault["app"] = server.ClusterGroup.Conf.ProvCodeApp
+	svcdefault["priority"] = openSVCPriorityDatabase
 	if server.ClusterGroup.Conf.ProvType == "docker" {
 		if server.ClusterGroup.Conf.ProvDockerDaemonPrivate {
 			svcdefault["docker_daemon_private"] = "true"
@@ -556,6 +676,8 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["pull_timeout"] = server.ClusterGroup.dbStartTimeout()  // the image pull after a purge, same budget
+		svccontainer["start_timeout"] = server.ClusterGroup.dbStartTimeout() // the orchestrator default is 5s (#1924)
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 
 		if server.ClusterGroup.Conf.ProvDBDockerTmpfsSize != "0" {
@@ -563,12 +685,20 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		} else {
 			svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBDockerRunArgs
 		}
-		if strings.Contains(strings.ToLower(server.ClusterGroup.Conf.ProvDbImg), "mysql") {
+		if runAsUID, runAsGID, set := server.ClusterGroup.dbRunAs(); set {
+			// An operator --user in prov-db-docker-run-args keeps winning (docker
+			// takes the last --user, so appending ours would silently override it).
+			if !dockerRunArgsHaveUser(svccontainer["run_args"]) {
+				svccontainer["run_args"] += fmt.Sprintf(" --user %d:%d", runAsUID, runAsGID)
+			}
+		} else if strings.Contains(strings.ToLower(server.ClusterGroup.Conf.ProvDbImg), "mysql") {
 			svccontainer["run_args"] = svccontainer["run_args"] + " --user mysql"
 		}
 		if server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
-			memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", server.ClusterGroup.Conf.ProvMem, true)
-			memStr := strconv.Itoa(memMB) + "m"
+			// Container memory CAP = DBU tier + 1 overcommit DBU (GetDBContainerMemoryCapMB),
+			// deliberately ABOVE prov-db-memory (which sizes my.cnf) so mariadbd has headroom
+			// and is not OOM-killed when its real footprint exceeds the buffer pool.
+			memStr := strconv.Itoa(server.ClusterGroup.GetDBContainerMemoryCapMB()) + "m"
 			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + memStr + " --memory-swap=" + memStr + " --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
 			// this need to find the device with df in container
 			//  --device-read-iops=" + server.ClusterGroup.Conf.ProvIops +".0" --device-write-iops=device" + server.ClusterGroup.Conf.ProvIops
@@ -577,7 +707,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
-		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		svccontainer["environment"] = server.OpenSVCGetDBContainerEnvironment()
 		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
 			svccontainer["image_pull_policy"] = "always"
 		}
@@ -593,7 +723,25 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 	return svccontainer
 }
 
+// OpenSVCGetDBContainerEnvironment builds the container#db environment line,
+// appending the shared allocator tuning (GetDBAllocatorEnv, #1749).
+func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
+	env := "MYSQL_INITDB_SKIP_TZINFO=yes"
+	if server.ClusterGroup.DBImageAutoUpgradeEnv() {
+		env += " MARIADB_AUTO_UPGRADE=1"
+	}
+	if preload, arenaMax := server.ClusterGroup.GetDBAllocatorEnv(); preload != "" {
+		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + arenaMax
+	}
+	return env
+}
+
 func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string {
+	return server.openSVCGetJobsContainerSection(server.ClusterGroup.xtrabackupBundleImage())
+}
+
+// openSVCGetJobsContainerSection renders the jobs container from a helper image already resolved for this template.
+func (server *ServerMonitor) openSVCGetJobsContainerSection(xtrabackupImage string) map[string]string {
 	svccontainer := make(map[string]string)
 	if server.ClusterGroup.Conf.ProvType == "docker" || server.ClusterGroup.Conf.ProvType == "podman" {
 		svccontainer["tags"] = ""
@@ -601,10 +749,38 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
+		svccontainer["pull_timeout"] = server.ClusterGroup.dbStartTimeout()  // the image pull after a purge, same budget
+		svccontainer["start_timeout"] = server.ClusterGroup.dbStartTimeout() // the orchestrator default is 5s (#1924)
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
 		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
+		if server.ClusterGroup.dbIdentityManaged() {
+			// The jobs container runs as root whatever the image's own USER is
+			// (Percona Server images default to mysql, 1001): it must read and
+			// chown a datadir owned by prov-db-volume-uid (db_owner in dbjobs_new.sh).
+			// First, so a --user in prov-db-jobs-docker-run-args still wins.
+			svccontainer["run_args"] = strings.TrimSpace("--user 0:0 " + svccontainer["run_args"])
+		}
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/jobs:/var/lib/replication-manager-jobs:rw {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
+		if xtrabackupImage != "" {
+			// read-only: only the helper init container writes the bundle
+			svccontainer["volume_mounts"] += " {name}/xtrabackup:" + xtrabackupBundleMount + ":ro"
+		}
+		if server.ClusterGroup.Conf.MonitoringSystemResources {
+			// Bind ONLY this service's pg cgroup slice read-only into the jobs
+			// container at /svc-cgroup, so the system-units sensor reads the
+			// whole-service memory.current/cpu.stat/io.stat. Least privilege: the
+			// sidecar sees only its own service's cgroup -- unlike --cgroupns=host,
+			// which would expose the whole node's cgroup tree (every co-tenant on a
+			// shared host). {namespace}/{svcname} are substituted by OpenSVC like
+			// {name} above. On by default; the flag is the off-switch (T14) if a
+			// bad bind blocks container start on an unexpected cgroup layout.
+			svccontainer["volume_mounts"] += " " + openSVCServiceCgroupMount(server.ClusterGroup.Name, server.Name)
+		}
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
+		if bundlePath := server.ClusterGroup.xtrabackupBundlePathForImage(xtrabackupImage); bundlePath != "" {
+			// the tools of the injection on the PATH of the container itself (see xtrabackupBundlePath)
+			svccontainer["environment"] += " PATH=" + bundlePath
+		}
 		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"
 		svccontainer["entrypoint"] = "/bin/bash"
 		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
@@ -623,8 +799,8 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 		return svcenv
 	}
 	svcenv["nodes"] = agent.HostName
-	svcenv["size"] = server.ClusterGroup.Conf.ProvDisk + "g"
-	svcenv["docker_image"] = server.ClusterGroup.Conf.ProvDbImg
+	svcenv["size"] = server.ClusterGroup.provDiskSizeForOpenSVC()
+	svcenv["docker_image"] = server.deployImage()
 	ips := strings.Split(server.ClusterGroup.Conf.ProvGateway, ".")
 	masks := strings.Split(server.ClusterGroup.Conf.ProvNetmask, ".")
 	for i, mask := range masks {
@@ -660,11 +836,76 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 	return svcenv
 }
 
-func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string {
+// OpenSVCGetSensorContainerSection builds the APU (Compute) sensor sidecar shared by
+// proxy and app services. It is a long-running busybox container (detach=true, unlike
+// the one-shot init container) that shares the service netns (container#01, for egress
+// to repman) and has ONLY this service's cgroup slice bound read-only at /svc-cgroup
+// (least privilege, same rationale as the DB jobs container). It runs init/app_job --
+// staged into the config tarball via go:embed share/scripts/app_job.sh and extracted
+// into the shared FS by the init container -- so no image baking and no moduleset edit.
+// The SENSOR_API_KEY comes via the OpenSVC SECRET channel (secrets_environment), never
+// svcenv. Gated by MonitoringSystemResources (the off-switch, T14).
+func (cluster *Cluster) OpenSVCGetSensorContainerSection(kind string, name string) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType != "docker" && cluster.Conf.ProvType != "podman" {
+		return svccontainer
+	}
+	svccontainer["type"] = "docker"
+	svccontainer["image"] = "busybox"
+	svccontainer["start_timeout"] = cluster.sensorStartTimeout(kind)
+	svccontainer["pull_timeout"] = cluster.sensorStartTimeout(kind)
+	svccontainer["netns"] = "container#01"
+	svccontainer["detach"] = "true"
+	svccontainer["rm"] = "true"
+	svccontainer["entrypoint"] = "/bin/sh"
+	if cluster.Conf.ProvDiskType != "volume" {
+		svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
+	} else {
+		svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
+	}
+	// Bind ONLY this service's cgroup slice read-only -- NOT --cgroupns=host, which would
+	// expose every co-tenant on a shared node. {namespace}/{svcname} substituted by OpenSVC.
+	svccontainer["volume_mounts"] += " " + openSVCServiceCgroupMount(cluster.Name, name)
+	svccontainer["secrets_environment"] = "env/SENSOR_API_KEY"
+	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL"
+	svccontainer["environment"] = "MRM_CLUSTER={namespace} SENSOR_KIND=" + kind + " SENSOR_NAME=" + name + " SENSOR_INTERVAL=60"
+	// The init container (detach=false) extracts init/app_job before later containers
+	// start; the wait-loop makes the sidecar robust to ordering/retries regardless.
+	svccontainer["command"] = "-c 'while [ ! -f /bootstrap/init/app_job ]; do sleep 2; done; exec sh /bootstrap/init/app_job'"
+	return svccontainer
+}
+
+// OpenSVCGetAppSensorContainerSection is the sensor sidecar of an APP service. Same
+// busybox/netns/cgroup contract as the proxy one, but an app service has no config
+// tarball and no init container to stage init/app_job from, so the script arrives as a
+// config key of the namespace `env` object (published by openSVCPublishAppJobScript, named
+// after the script's content hash so a new repman build never has to overwrite a key) and
+// is materialised from the environment at start. The sidecar runs the exact script version
+// it was provisioned with; a reprovision picks up a newer one.
+func (cluster *Cluster) OpenSVCGetAppSensorContainerSection(app *App, scriptKey string) map[string]string {
+	svccontainer := cluster.OpenSVCGetSensorContainerSection(string(KindApp), app.Name)
+	if len(svccontainer) == 0 {
+		return svccontainer
+	}
+	svccontainer["start_timeout"] = app.GetStartTimeout() // the app's own timeout, like its pause and main containers
+	svccontainer["pull_timeout"] = app.GetStartTimeout()
+	svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro " + openSVCServiceCgroupMount(cluster.Name, app.Name)
+	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_URL env/" + scriptKey
+	svccontainer["command"] = "-c 'printf \"%s\\n\" \"$" + scriptKey + "\" > /tmp/app_job; exec sh /tmp/app_job'"
+	return svccontainer
+}
+
+// OpenSVCGetNamespaceContainerSection is the pause container that holds the pod's network
+// namespace; startTimeout is the kind's container start timeout: om3 defaults it to 5 s,
+// which the pause container itself exceeded on a node restarting everything after the
+// s18-fr-4 crash (pg1.curepipe stayed down for hours, 2026-10-08).
+func (cluster *Cluster) OpenSVCGetNamespaceContainerSection(startTimeout string) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["type"] = "docker"
 		svccontainer["image"] = "ghcr.io/opensvc/pause"
+		svccontainer["start_timeout"] = startTimeoutOrDefault(startTimeout)
+		svccontainer["pull_timeout"] = startTimeoutOrDefault(startTimeout)
 		svccontainer["hostname"] = "{svcname}.{namespace}.svc.{clustername}"
 		svccontainer["rm"] = "true"
 		svccontainer["run_args"] = cluster.Conf.ProvNetDockerRunArgs
@@ -672,6 +913,10 @@ func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string 
 	return svccontainer
 }
 
+// OpenSVCGetInitContainerSection is shared by database and proxy services. It
+// carries no database identity: the bootstrap then chowns /bootstrap/data to
+// its legacy 999 default, which is what the proxies (ProxySQL, ShardProxy)
+// always had. The database variant is OpenSVCGetDBInitContainerSection.
 func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
@@ -687,16 +932,42 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]s
 		} else {
 			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
 		}
-		svccontainer["command"] = "-c 'wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/opensvc/bootstrap | sh'"
+		svccontainer["command"] = bootstrapInitCommand // main URL, then the DR one (bootstrap_dr.go)
 	}
 	svccontainer["entrypoint"] = "/bin/sh"
 	svccontainer["secrets_environment"] = "env/REPLICATION_MANAGER_PASSWORD"
 	svccontainer["configs_environment"] = "env/REPLICATION_MANAGER_USER env/REPLICATION_MANAGER_URL"
+	if cluster.bootstrapDRURLMapped() {
+		svccontainer["configs_environment"] += " env/" + bootstrapDRURLKey
+	}
 	svccontainer["environment"] = "REPLICATION_MANAGER_CLUSTER_NAME={namespace} REPLICATION_MANAGER_HOST_NAME={fqdn} REPLICATION_MANAGER_HOST_PORT=" + port
 	//	svccontainer["# Debug"] = ""
 	//	svccontainer["# interactive"] = "true"
 	//	svccontainer["# tty"] = "true"
 	return svccontainer
+}
+
+// OpenSVCGetDBInitContainerSection is the database service's init container:
+// the shared one plus, when the owner is managed (dbVolumeOwner), the UID/GID the
+// bootstrap applies to the data volume. Otherwise the bootstrap keeps its legacy
+// 999:999.
+func (cluster *Cluster) OpenSVCGetDBInitContainerSection(port string) map[string]string {
+	svccontainer := cluster.OpenSVCGetInitContainerSection(port)
+	if ownerUID, ownerGID, managed := cluster.dbVolumeOwner(); managed {
+		svccontainer["environment"] += fmt.Sprintf(" REPLICATION_MANAGER_DB_VOLUME_UID=%d REPLICATION_MANAGER_DB_VOLUME_GID=%d", ownerUID, ownerGID)
+	}
+	return svccontainer
+}
+
+// dockerRunArgsHaveUser reports whether docker run arguments already set the
+// container user (--user, --user=, -u).
+func dockerRunArgsHaveUser(args string) bool {
+	for _, f := range strings.Fields(args) {
+		if f == "--user" || strings.HasPrefix(f, "--user=") || (strings.HasPrefix(f, "-u") && !strings.HasPrefix(f, "--")) {
+			return true
+		}
+	}
+	return false
 }
 
 func (cluster *Cluster) OpenSVCGetTmpFsSection() map[string]string {
@@ -901,14 +1172,26 @@ func (server *ServerMonitor) OpenSVCGetZFSSnapshotSection() map[string]string {
 	return svcsnap
 }
 
+// OpenSVCGetVolumeDataSection is the data volume of a database service (volume#01 of
+// GenerateDBTemplateMap only). Its owner is prov-db-volume-uid (dbVolumeOwner): a proxy
+// service must not reuse this section, its data keeps the legacy 999 owner.
 func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
+	return cluster.openSVCGetVolumeDataSection(cluster.xtrabackupBundleImage())
+}
+
+// openSVCGetVolumeDataSection renders the data volume from a helper image already resolved for this template.
+func (cluster *Cluster) openSVCGetVolumeDataSection(xtrabackupImage string) map[string]string {
 	svcvol := make(map[string]string)
+	ownerUID, ownerGID, _ := cluster.dbVolumeOwner()
 	svcvol["name"] = "{name}"
 	svcvol["pool"] = cluster.Conf.ProvVolumeData
 	svcvol["size"] = "{env.size}"
 	svcvol["directories"] = "run/mysqld"
-	svcvol["user"] = "999"
-	svcvol["group"] = "999"
+	if xtrabackupImage != "" {
+		svcvol["directories"] += " xtrabackup"
+	}
+	svcvol["user"] = strconv.Itoa(ownerUID)
+	svcvol["group"] = strconv.Itoa(ownerGID)
 	return svcvol
 }
 
@@ -955,6 +1238,16 @@ func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 
 	svcsection := server.GenerateDBTemplateMap()
+	if !server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
+		// The container cap lives on the om3 PG SLICE, not the docker scope (see
+		// WARN0214): same memory ceiling the docker run-args carried (tier + 1 DBU
+		// headroom) plus the cpu quota, so a live pg update can move BOTH axes.
+		// om3 syntax only (v3 template): "<cores*100>%" -- see OpenSVCCPUQuotaKeyword.
+		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(server.ClusterGroup.GetDBContainerMemoryCapMB())*1024*1024, 10)
+		if q := OpenSVCCPUQuotaKeyword(server.ClusterGroup.GetDBContainerCPUCapCores()); q != "" {
+			svcsection["DEFAULT"]["pg_cpu_quota"] = q
+		}
+	}
 
 	cfg := ini.Empty()
 
@@ -996,6 +1289,9 @@ func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 func (server *ServerMonitor) GenerateDBTemplateMap() map[string]map[string]string {
 
 	svcsection := make(map[string]map[string]string)
+	// A queue-full registry verdict is deliberately not cached, so resolve once and use that answer throughout this
+	// template. Otherwise a later call could add a helper without the matching volume directory or jobs mount.
+	xtrabackupImage := server.ClusterGroup.xtrabackupBundleImage()
 	svcsection["DEFAULT"] = server.OpenSVCGetDBDefaultSection()
 	svcsection["ip#01"] = server.ClusterGroup.OpenSVCGetNetSection()
 	if server.ClusterGroup.Conf.ProvDiskType != "volume" {
@@ -1020,15 +1316,19 @@ func (server *ServerMonitor) GenerateDBTemplateMap() map[string]map[string]strin
 		if server.ClusterGroup.Conf.ProvDockerDaemonPrivate {
 			svcsection["volume#00"] = server.ClusterGroup.OpenSVCGetVolumeDockerSection()
 		}
-		svcsection["volume#01"] = server.ClusterGroup.OpenSVCGetVolumeDataSection()
+		svcsection["volume#01"] = server.ClusterGroup.openSVCGetVolumeDataSection(xtrabackupImage)
 		//	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetVolumeSystemSection()
 		//	svcsection["volume#03"] = server.ClusterGroup.OpenSVCGetVolumeTempSection()
 	}
-	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetInitContainerSection(server.Port)
+	svcsection["container#01"] = server.ClusterGroup.OpenSVCGetNamespaceContainerSection(server.ClusterGroup.dbStartTimeout())
+	svcsection["container#02"] = server.ClusterGroup.OpenSVCGetDBInitContainerSection(server.Port)
+	// only a complete section: an empty one would leave a resource without a type in the service
+	if section := server.ClusterGroup.openSVCGetXtrabackupBundleContainerSection(xtrabackupImage); len(section) > 0 {
+		svcsection["container#03"] = section
+	}
 	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
 	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetJobsVolumeSecret()
-	svcsection["container#jobs"] = server.OpenSVCGetJobsContainerSection()
+	svcsection["container#jobs"] = server.openSVCGetJobsContainerSection(xtrabackupImage)
 
 	//	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()
 	svcsection["env"] = server.OpenSVCGetDBEnvSection()
@@ -1098,7 +1398,7 @@ run_requires = fs#01(up,stdby up) container#01(up,stdby up)
 	conf = conf + `
 [env]
 nodes = ` + agent + `
-size = ` + collector.ProvDisk + `g
+size = ` + server.ClusterGroup.provDiskSizeForOpenSVC() + `
 docker_imgage = ` + collector.ProvDockerImg + `
 ` + ipPods + `
 ` + portPods + `
@@ -1180,4 +1480,59 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 		}
 	}
 	return vm
+}
+
+// deployImage is the image a deployment render uses: the running image a rolling restart
+// keeps on the server (#1861), else the explicit release prov-db-image resolved to
+// (cluster.deployImage, #1862).
+func (server *ServerMonitor) deployImage() string {
+	if server.DeployImageOverride != "" {
+		return server.DeployImageOverride
+	}
+	return server.ClusterGroup.deployImage()
+}
+
+// provDiskSizeForOpenSVC is prov-db-disk-size as an OpenSVC size: the setting carries its
+// unit ("20G"), the templates used to append a hard-coded "g" to a bare number, and
+// "20Gg" gave the volume a size of 0 (ZFS then refused quota=0 and the provisioning of
+// mahebourg failed, 2026-10-06). Gigabytes, rounded down, at least 1.
+func (cluster *Cluster) provDiskSizeForOpenSVC() string {
+	gb, err := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	if err != nil || gb < 1 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "prov-db-disk-size %q is not a size (%v): 1g used", cluster.Conf.ProvDisk, err)
+		gb = 1
+	}
+	return strconv.Itoa(gb) + "g"
+}
+
+// startTimeoutOrDefault: the configured container start timeout, 2m when unset.
+func startTimeoutOrDefault(v string) string {
+	if v = strings.TrimSpace(v); v != "" {
+		return v
+	}
+	return "2m"
+}
+
+// dbStartTimeout is the start timeout written on the database containers and their jobs
+// sidecar: prov-db-start-timeout, 2m when unset. The orchestrator's own default is 5s,
+// which a container whose image was purged exceeds (#1924). The image pull has its own
+// pull_timeout in the orchestrator (2m by default).
+func (cluster *Cluster) dbStartTimeout() string {
+	return startTimeoutOrDefault(cluster.Conf.ProvDbStartTimeout)
+}
+
+// sensorStartTimeout: the sensor sidecar follows its kind's container start timeout.
+func (cluster *Cluster) sensorStartTimeout(kind string) string {
+	switch kind {
+	case string(KindProxy):
+		return cluster.proxyStartTimeout()
+	case string(KindApp):
+		return startTimeoutOrDefault(cluster.Conf.ProvAppStartTimeout)
+	}
+	return cluster.dbStartTimeout()
+}
+
+// proxyStartTimeout is the same for the proxy containers: prov-proxy-start-timeout (#1924).
+func (cluster *Cluster) proxyStartTimeout() string {
+	return startTimeoutOrDefault(cluster.Conf.ProvProxyStartTimeout)
 }

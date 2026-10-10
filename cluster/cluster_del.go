@@ -16,6 +16,9 @@ import (
 )
 
 func (cluster *Cluster) RemoveServerFromIndex(index int) {
+	if index >= 0 && index < len(cluster.Servers) && cluster.Servers[index] != nil {
+		cluster.Servers[index].CloseBinlogEventSyncer()
+	}
 	newServers := make([]*ServerMonitor, 0)
 	newServers = append(newServers, cluster.Servers[:index]...)
 	newServers = append(newServers, cluster.Servers[index+1:]...)
@@ -31,12 +34,14 @@ func (cluster *Cluster) RemoveServerMonitor(host string, port string) error {
 	newServers := make([]*ServerMonitor, 0)
 	newList := make([]string, 0)
 	index := -1
+	var dropped *ServerMonitor
 	//Find the index
 	for i, srv := range cluster.Servers {
 
 		//Skip the server
 		if srv.Host == host && srv.Port == port {
 			index = i
+			dropped = srv
 			continue
 		}
 
@@ -55,6 +60,7 @@ func (cluster *Cluster) RemoveServerMonitor(host string, port string) error {
 		// log paths no longer belong to any current server, so close any
 		// writers cached for them.
 		cluster.pruneStaleDBLogWriters()
+		cluster.RunDropMonitorScript(cluster.monitorHookDatabase(host, port, dropped))
 	} else {
 		return fmt.Errorf("Host with address %s:%s not found in cluster", host, port)
 	}
@@ -137,9 +143,11 @@ func (cluster *Cluster) RemoveProxyMonitor(prx string, host string, port string)
 	newProxies := make([]DatabaseProxy, 0)
 	index := -1
 	var prxhost string
+	var dropped DatabaseProxy
 	for i, pr := range cluster.Proxies {
 		if pr.GetHost() == host && pr.GetPort() == port {
 			index = i
+			dropped = pr
 			prxhost = pr.GetName() // use name since host might be altered by provNetCNI
 			break                  // found the proxy
 		}
@@ -164,6 +172,7 @@ func (cluster *Cluster) RemoveProxyMonitor(prx string, host string, port string)
 		}
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
+		cluster.RunDropMonitorScript(cluster.monitorHookProxy(prx, host, port, dropped))
 	} else {
 		return fmt.Errorf("Proxy host with address %s:%s not found in cluster", host, port)
 	}
@@ -213,7 +222,28 @@ func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
 		}
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
-		cluster.recomputeAppCredits()
+		// What the app left on the gateway and in the DNS goes with it (curepipe
+		// 2026-10-02: a dropped app kept its HAProxy fragment and its CNAME), and so does
+		// its provision cookie, so a new app of the same name starts clean.
+		if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
+			if err := cluster.withdrawGatewayRoutes(app); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Drop app %s: gateway routes not withdrawn: %s", app.GetName(), err)
+			}
+			if appcnf != nil && appcnf.Deployment != nil {
+				for _, route := range appcnf.Deployment.Routes {
+					if route.CName == "" {
+						continue
+					}
+					if _, managed := cluster.ManagedHostCNAME(route.CName); managed {
+						if err := cluster.BashScriptDeprovDNS(route.CName); err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Drop app %s: CNAME %s not removed: %s", app.GetName(), route.CName, err)
+						}
+					}
+				}
+			}
+		}
+		app.DelProvisionCookie()
+		cluster.RunDropMonitorScript(cluster.monitorHookApp(appcnf, app))
 	} else {
 		return fmt.Errorf("App with address %s:%s not found in cluster", host, port)
 	}

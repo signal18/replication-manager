@@ -22,7 +22,7 @@ side is authoritative, standby peers pull and apply `<cluster>.toml` from the
 shared config git repo (isolated `.config/` clone). Mutations born on a peer
 that is *standby* for that cluster are stranded:
 
-- A marketplace visitor signup (`r1mfd@powerscrews.com` on belair) was
+- A marketplace visitor signup (`visitor@example.com` on belair) was
   accepted by the main instance while belair was standby there. The user was
   saved into main's local `belair.toml`, but the active peer (DR) never pulls,
   so the user never reaches it — and the next active-side push will make the

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/sync/singleflight"
 	"hash"
 	"hash/crc64"
 	"io"
@@ -57,6 +58,7 @@ import (
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
+	repmanmcp "github.com/signal18/replication-manager/mcp"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
@@ -64,6 +66,7 @@ import (
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -76,15 +79,24 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
+	selfServiceMu                sync.Mutex                         // guards selfServiceSnap and selfServiceVerdicts
+	selfServiceVerdicts          map[string]selfServiceVerdict      // identity -> enabled-script verdict within the cache TTL
+	selfServiceFlight            singleflight.Group                 // one snapshot computation, one script run per identity, at a time
+	peerSessionMu                sync.Mutex                         // guards peerSessions
+	peerSessions                 map[string]peerSessionEntry        // user|infrastructure -> login on that infrastructure, see server_cloud18_infra.go
+	selfServiceSnap              *selfServiceSnapshot               // cached self-service status, see server_selfservice.go
 	OpenSVC                      opensvc.Collector                  `json:"-"`
 	Version                      string                             `json:"version"`
 	Fullversion                  string                             `json:"fullVersion"`
+	ToolsVersions                map[string]string                  `json:"toolsVersions"` // local tools of this replication-manager host, from the clusters' detection
 	Os                           string                             `json:"os"`
 	OsUser                       *user.User                         `json:"osUser" swaggerignore:"true"`
 	Arch                         string                             `json:"arch"`
 	MemProfile                   string                             `json:"memprofile"`
 	CpuProfile                   string                             `json:"cpuprofile"`
 	Clusters                     map[string]*cluster.Cluster        `json:"-"`
+	resourceManager              *cluster.ResourceManager           `json:"-"` // repman-side DBU authority (Epic #1776); created once, injected into every cluster; survives ServerMonitor recreation
+	gatewayTraffic               *gatewayTraffic                    `json:"-"` // GWU collector state (#1872)
 	PeerManager                  *peer.PeerManager                  `json:"-"`
 	Partners                     []config.Partner                   `json:"partners"`
 	Partner                      config.Partner                     `json:"partner"`
@@ -106,6 +118,7 @@ type ReplicationManager struct {
 	StateMachine                 *state.StateMachine                `json:"stateMachine" groups:"web"`
 	clusterHeartbeatTrackingLock sync.RWMutex                       `json:"-"`
 	clusterHeartbeatTracking     map[string]clusterHeartbeatTracker `json:"-"`
+	clustersReady                atomic.Bool                        `json:"-"` // set once every cluster's Init (ACL users loaded) is done: /api/login answers 503 before, never 401
 	gitSyncBusy                  atomic.Bool                        `json:"-"`
 	cloud18PullBusy              atomic.Bool                        `json:"-"`
 	peerHealthBusy               atomic.Bool                        `json:"-"`
@@ -113,6 +126,21 @@ type ReplicationManager struct {
 	// to simulate this node being isolated from its peer — the server-level
 	// leg of the split-brain simulator (cluster_splitbrain_simulator.go). Runtime state only.
 	sbHeartbeatFailUntil atomic.Int64 `json:"-"`
+	// peerAPIURL is the arbitration peer's API URL learned from its heartbeat
+	// answer; kept when the peer stops answering, since that is when the DR
+	// fallback matters. Written under the repman lock.
+	peerAPIURL string `json:"-"`
+	// standbyImport throttles the standby import of new clusters (server_standby_import.go).
+	standbyImport standbyImportState `json:"-"`
+	// arbPeerScheme remembers, per arbitration peer written without a scheme,
+	// the scheme that answered (see HeartbeatPeerSplitBrain).
+	arbPeerScheme sync.Map `json:"-"`
+	// peerHeartbeatFailures holds, per peer, why its last heartbeat failed
+	// (URL and error) for GWARN018; peerHeartbeatSameUID is set when a peer
+	// answers with our own arbitration-external-unique-id (GWARN020). Both are
+	// written under the repman lock during Heartbeat.
+	peerHeartbeatFailures map[string]string `json:"-"`
+	peerHeartbeatSameUID  bool              `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -144,6 +172,7 @@ type ReplicationManager struct {
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
 	UserAuthTry                 sync.Map                    `json:"-"`
+	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	OAuthAccessToken            *oauth2.Token               `json:"-"`
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
@@ -166,12 +195,15 @@ type ReplicationManager struct {
 	VersionConfs           map[string]*config.ConfVersion `json:"-"`
 	grpcServer             *grpc.Server                   `json:"-"`
 	grpcWrapped            *grpcweb.WrappedGrpcServer     `json:"-"`
+	mcpServer              *repmanmcp.MCPServer           `json:"-"`
+	mcpMutex               sync.Mutex                     `json:"-"`
 	httpServer             *http.Server                   `json:"-"`
 	apiServer              *http.Server                   `json:"-"`
 	V3Up                   chan bool                      `json:"-"`
 	v3Config               Repmanv3Config                 `json:"-"`
 	cloud18CheckSum        hash.Hash                      `json:"-"`
 	RegStatus              RegistrationStatus             `json:"-"`
+	regPassword            string                         // GitLab password of the registration in progress (MCP confirm reuses it)
 	clog                   *clog.Logger                   `json:"-"`
 	cApiLog                *clog.Logger                   `json:"-"`
 	Logrus                 *log.Logger                    `json:"-"`
@@ -308,6 +340,10 @@ type Heartbeat struct {
 	Status    string    `json:"status"`
 	Hosts     int       `json:"hosts"`
 	Failed    int       `json:"failed"`
+	// APIURL is the answering instance's API URL, the one it writes as
+	// REPLICATION_MANAGER_URL: its peer offers it to init containers as the DR
+	// fallback (REPLICATION_MANAGER_URL_DR).
+	APIURL string `json:"apiUrl,omitempty"`
 }
 
 var confs = make(map[string]config.Config)
@@ -341,6 +377,8 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
+	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
+	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
 
 	var usr string
 	if repman != nil && repman.OsUser != nil {
@@ -392,6 +430,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitoringSecretVersioningAutoPrune, "monitoring-secret-versioning-auto-prune", false, "Automatically prune tracked secret versions during reconciliation")
 	flags.IntVar(&conf.MonitoringSecretVersioningKeepLast, "monitoring-secret-versioning-keep-last", 0, "Keep only the last N versions per secret key when auto-prune is enabled (0 = unlimited)")
 	flags.Int64Var(&conf.MonitoringTicker, "monitoring-ticker", 2, "Monitoring interval in seconds")
+	flags.BoolVar(&conf.MonitoringResolveServerIP, "monitoring-resolve-server-ip", true, "Re-resolve a database server's hostname to an IP on every reconnect after an outage, keeping ServerMonitor.IP current for haproxy-mode=externalcheck/runtimeapi and other IP-based lookups (e.g. every pod restart on Kubernetes, where addresses are not stable like they typically are on OpenSVC/Docker). Only triggers on a down-to-up transition, not every tick. Disable to skip this DNS lookup entirely")
 
 	//not working so far
 	//flags.StringVar(&conf.TunnelHost, "monitoring-tunnel-host", "", "Bastion host to access to monitor topology via SSH tunnel host:22")
@@ -404,6 +443,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorVariableChangeScript, "monitoring-variable-change-script", "", "Script called when a variable changes on a server")
 	flags.StringVar(&conf.MonitorVariableChangeIgnore, "monitoring-variable-change-ignore", "GTID_BINLOG_POS,GTID_BINLOG_STATE,GTID_CURRENT_POS,GTID_SLAVE_POS,GTID_PURGED,GTID_EXECUTED,TIMESTAMP,IN_TRANSACTION,ERROR_COUNT,WARNING_COUNT,LAST_INSERT_ID,IDENTITY,INSERT_ID,PSEUDO_THREAD_ID,RAND_SEED1,RAND_SEED2,CHARACTER_SET_DATABASE,COLLATION_DATABASE", "Comma-separated list of variable names to ignore in temporal change detection. Merged with auto-detected variables from GLOBAL_VALUE_ORIGIN on MariaDB 10.1+")
 	flags.BoolVar(&conf.MonitorPFS, "monitoring-performance-schema", true, "Monitor performance schema")
+	flags.IntVar(&conf.MonitorPFSSnapshotRetentionDays, "monitoring-pfs-snapshot-retention-days", 2, "Days of hourly PFS query snapshot files (log_pfs_queries_*.jsonl) to keep for the Schema Graph time-series; older files are always pruned (repman-side housekeeping)")
 	flags.BoolVar(&conf.MonitorPFSInstruments, "monitoring-performance-schema-instruments", true, "Monitor performance schema instruments")
 	flags.BoolVar(&conf.MonitorPFSMutex, "monitoring-performance-schema-mutex", true, "Monitor mutex metrics")
 	flags.BoolVar(&conf.MonitorPFSLatch, "monitoring-performance-schema-latch", true, "Monitor Latch metrics")
@@ -418,15 +458,20 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitorIgnoreErrors, "monitoring-ignore-errors", "", "Comma separated list of error or warning to ignore")
 	flags.BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
 	flags.BoolVar(&conf.MonitorSchemaScheduler, "monitoring-schema-scheduler", true, "Cron format schedule for schema monitoring")
-	flags.StringVar(&conf.MonitorSchemaSchedulerCron, "monitoring-schema-scheduler-cron", "0 0 2 * * *", "Cron format schedule for schema monitoring, using 6 space-separated fields")
+	flags.StringVar(&conf.MonitorSchemaSchedulerCron, "monitoring-schema-scheduler-cron", "0 17 2 * * *", "Cron format schedule for schema monitoring, using 6 space-separated fields")
 	flags.BoolVar(&conf.MonitorChecksumScheduler, "monitoring-checksum-scheduler", false, "Cron format schedule for checksum all tables")
-	flags.StringVar(&conf.MonitorChecksumSchedulerCron, "monitoring-checksum-scheduler-cron", "0 0 2 * * 5", "Cron format schedule for checksum all tables, using 6 space-separated fields")
+	flags.StringVar(&conf.MonitorChecksumSchedulerCron, "monitoring-checksum-scheduler-cron", "0 42 3 * * 5", "Cron format schedule for checksum all tables, using 6 space-separated fields")
 	flags.BoolVar(&conf.MonitorSchemaColumns, "monitoring-schema-columns", true, "Monitor schema columns changes")
 	flags.BoolVar(&conf.MonitorSchemaIndexes, "monitoring-schema-indexes", true, "Monitor schema indexes changes")
+	flags.BoolVar(&conf.MonitorSchemaEvents, "monitoring-schema-events", true, "Monitor scheduled database events (MySQL/MariaDB EVENT) changes: compare their definition checksum, definer and status between master and replicas")
+	flags.IntVar(&conf.MonitorSchemaEventsPageSize, "monitoring-schema-events-page-size", dbhelper.DefaultEventChecksumPageSize, "Scheduled database event rows per schema scan query (0 or less uses 1000; values above 10000 are capped)")
+	flags.IntVar(&conf.MonitorSchemaEventsMax, "monitoring-schema-events-max", dbhelper.DefaultEventChecksumMaxEvents, "Maximum scheduled database events retained per server for schema drift detection (1 to 10000; over-limit servers are unavailable and not compared)")
 	flags.BoolVar(&conf.MonitorSchemaOnReplicas, "monitoring-schema-on-replicas", true, "Also monitor schema changes on replicas")
 	flags.StringVar(&conf.MonitorSchemaIgnoreTables, "monitoring-schema-ignore-tables", "", "Comma separated list of tables to ignore for schema change monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorChecksumIgnoreTables, "monitoring-checksum-ignore-tables", "replication_manager_schema.jobs,replication_manager_schema.table_checksum", "Comma separated list of tables to ignore for data checksum monitoring. Use db_name.table_name pattern")
 	flags.StringVar(&conf.MonitorSchemaChangeScript, "monitoring-schema-change-script", "", "Monitor schema change external script")
+	flags.StringVar(&conf.MonitoringAddMonitorScript, "monitoring-add-monitor-script", "", "Script run before a database, proxy or app monitor is added (argv: cluster, type, name, version, units; env REPMAN_MONITOR_*, REPMAN_RESOURCE_*); a non-zero exit refuses the add, its first output line is the reason")
+	flags.StringVar(&conf.MonitoringDropMonitorScript, "monitoring-drop-monitor-script", "", "Script run after a database, proxy or app monitor is dropped, same contract as monitoring-add-monitor-script, informative only")
 	flags.StringVar(&conf.MonitoringSSLCert, "monitoring-ssl-cert", "", "HTTPS & API TLS certificate")
 	flags.StringVar(&conf.MonitoringSSLKey, "monitoring-ssl-key", "", "HTTPS & API TLS key")
 	flags.StringVar(&conf.MonitoringKeyPath, "monitoring-key-path", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
@@ -544,6 +589,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	flags.StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")
 	flags.StringVar(&conf.IgnoreSrvRO, "db-servers-ignored-readonly", "", "Database list of hosts not changing read only status")
+	flags.StringVar(&conf.MaintenanceSrv, "db-servers-maintenance-hosts", "", "Database list of hosts in maintenance mode, excluded from proxy routing and failover election, restored on restart/reload")
 	flags.StringVar(&conf.BackupServers, "db-servers-backup-hosts", "", "Database list of hosts to backup when set can backup a slave")
 	flags.StringVar(&conf.DbServersChangeStateScript, "db-servers-state-change-script", "", "Database state change script")
 	flags.StringVar(&conf.DbServersBindAddress, "db-servers-bind-address", "", "Database bind address to use for jobs like SST, backup")
@@ -586,6 +632,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MultiTierSlave, "replication-multi-tier-slave", false, "Relay slaves topology")
 	flags.BoolVar(&conf.MasterSlavePgStream, "replication-master-slave-pg-stream", false, "Postgres streaming replication")
 	flags.BoolVar(&conf.MasterSlavePgLogical, "replication-master-slave-pg-logical", false, "Postgres logical replication")
+	flags.BoolVar(&conf.PgLogicalDDLReplication, "replication-pg-logical-ddl", true, "PostgreSQL logical replication: replicate DDL through an event trigger that logs each statement in a published table, applied by the subscribers (PostgreSQL does not replicate DDL)")
 	flags.BoolVar(&conf.ReplicationNoRelay, "replication-master-slave-never-relay", true, "Do not allow relay server MSS MXS XXM RSM")
 	flags.StringVar(&conf.ReplicationErrorScript, "replication-error-script", "", "Replication error script")
 	flags.StringVar(&conf.ReplicationRestartOnSQLErrorMatch, "replication-restart-on-sqlerror-match", "", "Auto restart replication on SQL Error regexep")
@@ -667,13 +714,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
 	flags.StringVar(&conf.APIUsersExternal, "api-credentials-external", "", "Rest API user list user:password,.. as dba:repman,foo:bar")
-	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole terminal app,dba:cluster proxy db,foo:", "User acl allow")
+	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole terminal app token,dba:cluster proxy db token-create,foo:", "User acl allow")
 	flags.StringVar(&conf.APIUsersACLAllowExternal, "api-credentials-acl-allow-external", "", "User dynamic acl allow")
 	flags.StringVar(&conf.APIUsersACLDiscard, "api-credentials-acl-discard", "", "User acl discard")
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")
 	flags.StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	flags.BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
-	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", false, "Need JWT token to download config tar.gz")
+	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", true , "Need JWT token to download config tar.gz")
 	flags.BoolVar(&conf.APIAutologin, "api-autologin", false, "Enable unauthenticated auto-login token endpoint (trusted networks only)")
 	flags.StringVar(&conf.APIAutologinUser, "api-autologin-user", "admin", "Username to generate a token for when api-autologin is enabled")
 	flags.StringVar(&conf.APIDashboardUser, "api-dashboard-user", "", "Read-only user for the /dashboard public endpoint (empty = disabled)")
@@ -751,6 +798,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.HttpServ, "http-server", true, "Start the HTTP server")
 	flags.BoolVar(&conf.ApiServ, "api-server", true, "Start the API HTTPS server")
 	flags.BoolVar(&conf.ApiSwaggerEnabled, "api-swagger-enabled", true, "Start the API with Swagger")
+	flags.BoolVar(&conf.MCPServ, "mcp-server", false, "Start MCP server for AI assistant integration")
+	flags.StringVar(&conf.MCPTransport, "mcp-transport", "api", "MCP transport: api (mounted on the HTTP and HTTPS API listeners at /api/mcp, default), sse (own listener on mcp-port), stdio, or both (sse + stdio)")
+	flags.StringVar(&conf.MCPPort, "mcp-port", "10007", "MCP standalone SSE listen port (transport sse/both only)")
+	flags.StringVar(&conf.MCPBindAddr, "mcp-bind-address", "localhost", "MCP server bind address")
+	flags.StringVar(&conf.MCPAdvertiseAddr, "mcp-advertise-address", "", "MCP public base URL (e.g. http://repman.example.com:10007); overrides mcp-bind-address for SSE endpoint advertisements (useful behind Docker port mappings or reverse proxies)")
+	flags.BoolVar(&conf.MCPAuthEnabled, "mcp-auth-enabled", true, "Require a bearer on MCP /sse and /message: an interactive login JWT or a user-issued API token (token create); every tool then runs under that user's cluster ACL. false = unrestricted (needed for stdio transport")
 
 	flags.StringVar(&conf.BindAddr, "http-bind-address", "localhost", "Bind HTTP monitor to this IP address")
 	flags.StringVar(&conf.HttpPort, "http-port", "10001", "HTTP monitor to listen on this port")
@@ -845,6 +898,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.IntVar(&conf.GraphiteCarbonPprofPort, "graphite-carbon-pprof-port", 7007, "Graphite Carbon Pickle port")
 		flags.StringVar(&conf.GraphiteCarbonHost, "graphite-carbon-host", "127.0.0.1", "Graphite monitoring host")
 		flags.BoolVar(&conf.GraphiteMetrics, "graphite-metrics", true, "Enable Graphite monitoring")
+		flags.IntVar(&conf.GraphiteMetricsQueueLimit, "graphite-metrics-queue-limit", 100000, "Max metrics buffered in memory awaiting flush to the carbon sink. Oldest are dropped once exceeded (protects against unbounded growth when the sink is slow/unreachable). <= 0 falls back to this default, never unbounded")
 		flags.BoolVar(&conf.GraphiteEmbedded, "graphite-embedded", true, "Enable Internal Graphite Carbon Server")
 		flags.BoolVar(&conf.GraphiteWhitelist, "graphite-whitelist", true, "Enable Whitelist")
 		flags.BoolVar(&conf.GraphiteBlacklist, "graphite-blacklist", false, "Enable Blacklist")
@@ -861,6 +915,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.DBServersLocality, "db-servers-locality", "127.0.0.1", "List database servers that are in same network locality")
 		flags.StringVar(&conf.ArbitrationFailedMasterScript, "arbitration-failed-master-script", "", "External script when a master lost arbitration during split brain")
 		flags.IntVar(&conf.ArbitrationReadTimout, "arbitration-read-timeout", 800, "Read timeout for arbotration response in millisec don't woveload monitoring ticker in second")
+		flags.IntVar(&conf.ArbitrationVerdictStreak, "arbitration-verdict-streak", 3, "Consecutive arbitrator answers of one kind, in monitoring ticks, before a cluster changes status (looser) or the minority fail-safe fires (unreachable, or an arbitrator without its store); a winner resets the count; 1 = act on every answer, as before; the default of 3 delays a real loss by that many ticks in exchange for immunity to one bad answer")
 	}
 
 	flags.StringVar(&conf.SchedulerReceiverPorts, "scheduler-db-servers-receiver-ports", "4444", "Scheduler TCP port to send data to db node, if list port affection is modulo db nodes")
@@ -988,7 +1043,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
 	flags.StringVar(&conf.BackupLogicalPostScript, "backup-logical-post-script", "", "Customized backup post script location. Params: <clustername> <hostname> <port> <backup-path>")
 	flags.StringVar(&conf.BackupPhysicalPostScript, "backup-physical-post-script", "", "Customized backup post script location. Params: <clustername> <hostname> <port> <backup-path>")
-	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
+	flags.BoolVar(&conf.CompressBackups, "compress-backups", true, "Compress backups (on by default; set to false to keep them uncompressed)")
 	flags.StringVar(&conf.CompressBackupsLogical, "compress-backups-logical", "auto", "Compression for logical backups: auto|true|false (auto uses compress-backups)")
 	flags.StringVar(&conf.CompressBackupsPhysical, "compress-backups-physical", "auto", "Compression for physical backups: auto|true|false (auto uses compress-backups)")
 	flags.IntVar(&conf.CompressBackupsCompressionLevel, "compress-backups-compression-level", 6, "Compression level for pgzip (1=fastest, 9=best compression, 6=default)")
@@ -1003,6 +1058,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupEstimateSize, "backup-estimate-size", false, "To estimate size of backup before processing backup")
 	flags.IntVar(&conf.BackupGrowthPercentage, "backup-growth-percentage", 50, "Percentage of growth according to last backup to check required space. 0 means no growth from last backup. Default 50 percent growth")
 	flags.IntVar(&conf.BackupEstimateSizePercentage, "backup-estimate-size-percentage", 150, "Size ratio estimation for backup using information schema data and index size. Default 150 (50 percent bigger than size from query)")
+	flags.BoolVar(&conf.BackupEncryption, "backup-encryption", false, "Encrypt newly created local backup artifacts (OpenSSL AES-256-CBC format) with the database root password (db-servers-credential)")
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "", "Path to mydumper binary")
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "", "Path to myloader binary")
@@ -1055,25 +1111,63 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBConfig, "prov-db-config", WithProvisioning == "ON", "Enable configurator config tracking and deployment to database servers. When false, dbjobs skips config refresh and no config is pushed to databases. Default: true for PRO, false for OSC.")
+	flags.BoolVar(&conf.ProvDbUpgradeMajorReprov, "prov-db-upgrade-major-reprov", false, "Rolling upgrade across a major release: provision each node again from scratch on the new release and reseed it from the master (rolling reprov) instead of restarting it on its data directory with mariadb-upgrade. A downgrade across a major always reprovisions (#1862)")
+	flags.BoolVar(&conf.ProvOrchestratorDeploymentUpgradeOnStart, "prov-orchestrator-deployment-upgrade-on-start", true, "On each node (re)start during a rolling restart/upgrade, re-render and push the full deployment (service config: image, resources/cgroup cap, run_args, env) to the orchestrator BEFORE start, so the recreated container/pod comes up on the current config instead of the last-provisioned one. Covers the resource cap; also lets an unpinned image tag roll forward on restart (intended). On by default; set false to keep rolling restart deployment-neutral.")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
+	flags.BoolVar(&conf.ProvDBDynamicResource, "prov-db-dynamic-resource", false, "Apply system-resource resizes (prov-db-memory/cpu/io) live via SET GLOBAL instead of a restart, for the dynamically-settable variables (buffer pool, max_session_mem_used, io capacity, ...); off by default")
+	flags.StringVar(&conf.ProvDBResourceAlign, "prov-db-resource-align", "plan", "Align the DB container memory CAP (cgroup --memory) to the DBU tier, ABOVE the MySQL config memory (prov-db-memory drives my.cnf) so mariadbd has headroom and is not OOM-killed. 'plan' (default): cap from prov-service-plan-dbu; 'up': cap from the max-axis DBU (coherence/debug); 'off': cap = prov-db-memory (legacy). prov-db-memory itself is never changed.")
+	flags.StringVar(&conf.ProvDBDynamicResizePolicy, "prov-db-dynamic-resize-policy", "scale-speed", "WHEN a live memory resize (prov-db-dynamic-resource) is applied: 'scale-speed' (default) applies as saturation dictates, throttled by the prov-db-scale-*-speed timeframe; 'daily-time' defers the live memory resize to the fixed daily clock time prov-db-dynamic-resize-daily-time, so any InnoDB buffer-pool-resize stall is contained to an off-peak hour. CPU/IO tuning is unaffected (no stall).")
+	flags.StringVar(&conf.ProvDBDynamicResizeDailyTime, "prov-db-dynamic-resize-daily-time", "03:00", "Daily clock time HH:MM (24h, server-local) at which the live memory resize is applied when prov-db-dynamic-resize-policy=daily-time.")
+	flags.IntVar(&conf.ProvDBOvercommitPct, "prov-db-overcommit-pct", 50, "COMMERCIAL scalability-up barrier (per cluster): the max percent the dynamic resource change may AUTO-grow the client's plan before a manual plan raise is required -- the client accepts auto-scaling up to plan x (1 + pct/100) (e.g. 50 = up to x1.5). Not a technical cap formula; enforced by ResourceManager.CanGrowBeyondPlan. Default 50.")
+	flags.IntVar(&conf.ProvDBUndercommitPct, "prov-db-undercommit-pct", 50, "COMMERCIAL scalability-down floor (per cluster), the pendant of prov-db-overcommit-pct: the max percent the dynamic resource change may AUTO-shrink the client's resources UNDER the plan -- down to floor(plan x (1 - pct/100)) DBU per node, never under 1 DBU (e.g. 50 = down to x0.5). Not a technical formula; enforced by ResourceManager.UndercommitFloorDBU. Default 50.")
+	flags.IntVar(&conf.ProvDBCapSafetyPct, "prov-db-cap-safety-pct", 15, "HIGH-water margin (per cluster, per axis): a server is OVER a reference when it consumes at least (1 - pct/100) of it. Drives raise-resources (consumed vs per-server CONFIG) and cap-up (consumed vs PLAN). Default 15 (over at 85%).")
+	flags.IntVar(&conf.ProvDBCapShrinkPct, "prov-db-cap-shrink-pct", 50, "LOW-water margin (per cluster, per axis): a server is UNDER a reference when it consumes at most (pct/100) of it. Drives shrink-resources (consumed vs per-server CONFIG) and cap-down (consumed vs PLAN). The dead-band between shrink-pct and (100 - safety-pct) is status quo (anti-flap). Default 50 (under at 50%).")
+	flags.StringVar(&conf.ScaleUpConfigInPlanSpeed, "prov-db-scale-up-config-in-plan-speed", "1m", "Client-settable scale SPEED: how long a server's config saturation must persist before repman scales its resources UP within the plan. A duration; default 1m is the current (fastest) behaviour.")
+	flags.StringVar(&conf.ScaleDownConfigInPlanSpeed, "prov-db-scale-down-config-in-plan-speed", "5m", "Client-settable scale SPEED: how long a server's config under-use must persist before repman scales its resources DOWN within the plan. A duration; default 5m (slower than up, to avoid thrashing).")
+	flags.StringVar(&conf.ScaleUpPlanSpeed, "prov-db-scale-up-plan-speed", "30m", "Client-settable scale SPEED: how long consumption must persist against the PLAN before repman raises the plan (cap up). Commercial, so slower than in-plan; default 30m.")
+	flags.StringVar(&conf.ScaleDownPlanSpeed, "prov-db-scale-down-plan-speed", "1h", "Client-settable scale SPEED: how long under-use must persist against the PLAN before repman lowers the plan (cap down). Most conservative (don't yo-yo the billed plan); default 1h.")
+	flags.BoolVar(&conf.MonitoringSystemResources, "monitoring-system-resources", true, "Enable the system-level resource sensor: bind each service's pg cgroup read-only into the jobs/sidecar container (/svc-cgroup) so the sensor measures the whole-service consumed system resources (mem/cpu/io) and repman derives the units per domain (DBU for databases, APU for apps, ...); on by default (disable if a bad bind blocks container start on an unexpected cgroup layout)")
+	flags.StringVar(&conf.ProvDBDynamicResourceCanChangeScript, "prov-db-dynamic-resource-can-change-script", "", "Client-overridable feasibility check run BEFORE a live resource resize; prints its verdict on stdout: 'yes' (resize possible in place), 'no' (not possible, keep current size), or 'migration' (not in place, needs relocating the instance to a host with capacity); resource values and direction via env; empty means always yes")
+	flags.StringVar(&conf.ProvDBDynamicResourceChangeScript, "prov-db-dynamic-resource-change-script", "", "Client-overridable hook called to resize the four provisioned resources (mem/cpu/disk/io) of a running server live (cgroup/disk/io), for orchestrators without a native resize API (on-premise, localhost, slapos); resource values and direction are passed via env; empty disables it")
+	flags.StringVar(&conf.ProvPlanIncreaseScript, "prov-plan-increase-script", "", "Client-overridable hook fired PER CLUSTER when the client RAISES a unit's plan/contract (ChangePlanUnits, DBU or APU). Non-zero exit REFUSES the increase; empty = always allowed. Args: unit from to cluster; also via env REPMAN_PLAN_UNIT/FROM/TO.")
+	flags.StringVar(&conf.ProvDBResourceRaisedOverPlanScript, "prov-db-resource-raised-over-plan-script", "", "Client-overridable hook fired PER SERVICE when the dynamic resize raises a server's resource PAST its plan (the borrow: cgroup cap = plan + borrow). Non-zero exit VETOES the over-plan grow; empty = allowed. Args: host port cluster; plan/target/borrow DBU-per-node via env REPMAN_PLAN_DBU/TARGET_DBU/BORROW_DBU.")
 	flags.BoolVar(&conf.ProvDBForceWriteConfig, "prov-db-force-write-config", false, "Force write to config files without Signal18 header on provision")
 	flags.BoolVar(&conf.ProvDBConfigPreserve, "prov-db-config-preserve", true, "Preserve values in config files. If set to false, the 99_preserved.cnf will not be copied to the config.tar.gz")
 	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "", "List of preserved options separated by semicolon (opt1;opt2=val2;opt3). Allow hard code by adding value e.g. innodb_data_home_dir=/var/lib/mysql")
 	flags.StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
 	flags.StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
 	flags.StringVar(&conf.ProvMem, "prov-db-memory", "4G", "Database container memory, value with unit e.g. 256M, 1G")
-	flags.StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:55,myisam:10,aria:10,rocksdb:1,tokudb:0,s3:1,archive:1,querycache:0,tidesdb:1", "% memory shared per buffer")
+	flags.StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:10,innodb:45,myisam:4,aria:8,rocksdb:1,tokudb:0,s3:1,archive:1,querycache:0,tidesdb:1,pfs:4,fscache:20", "% memory shared per buffer")
 	flags.StringVar(&conf.ProvMemThreadedPct, "prov-db-memory-threaded-pct", "tmp:70,join:20,sort:10", "% memory allocted per threads")
 	flags.StringVar(&conf.ProvDisk, "prov-db-disk-size", "20G", "Database container disk size, value with unit e.g. 20G, 100G")
 	flags.IntVar(&conf.ProvExpireLogDays, "prov-db-expire-log-days", 5, "Keep binlogs that nunmber of days")
+	flags.IntVar(&conf.ProvReplicationParallelThreads, "prov-db-replication-parallel-threads", 32, "slave_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_PARALLEL_THREADS). Parallel apply workers run on the thread pool: their count is the concurrency needed to absorb network and commit latency, NOT the number of cores. Default 32.")
+	flags.IntVar(&conf.ProvReplicationDomainParallelThreads, "prov-db-replication-domain-parallel-threads", 0, "slave_domain_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS): max workers one replication domain may take from the pool. 0 (default, MariaDB's default) = no per-domain cap -- the right value for a single-master cluster; set it only on multi-source/multi-domain topologies (pool / number of domains).")
 	flags.IntVar(&conf.ProvMaxConnections, "prov-db-max-connections", 1000, "Max database connections")
 	flags.StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave,docker,linux,noreadwritesplit", "playbook configuration tags wsrep,multimaster,masterslave")
 	flags.StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20G", "Proxy container disk size, value with unit e.g. 20G, 100G")
 	flags.StringVar(&conf.ProvProxCores, "prov-proxy-cpu-cores", "1", "Cpu cores ")
 	flags.StringVar(&conf.ProvProxMem, "prov-proxy-memory", "1G", "Proxy container memory, value with unit e.g. 256M, 1G")
+	flags.IntVar(&conf.ProvProxyApu, "prov-proxy-apu", 2, "Per-proxy APU reservation (technical resource contract; 1 APU = 1 core / 1GB / 10GB, no IOPS). The proxy contribution to the cluster APU contract is prov-proxy-apu x number of proxies; apps add their own APU reservation from their own config. Default 2 (2 cores / 2GB / 20GB per proxy).")
 	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "https://docs.google.com/spreadsheets/d/e/2PACX-1vQClXknRapJZ4bRSId_aa5zUrbFDZmmc6GiV3n7-tPyQJispqqnSJj6lMaJxoJv5pOC9Ktj8ywWdGX6/pub?gid=0&single=true&output=csv", "URL to csv service plan list")
 	//	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
+	flags.IntVar(&conf.ProvServicePlanDbu, "prov-service-plan-dbu", 0, "Per-cluster DBU service plan = the SUM of the deployment plans (Σ prov-db-dbu over the DB nodes). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-node prov-db-dbu, not this, so it never re-locks in /etc.")
+	flags.IntVar(&conf.ProvDbDbu, "prov-db-dbu", 2, "Per-node DBU reservation (technical resource contract; 1 DBU = 1 core / 4GB / 20GB / 1000 IOPS). All DB nodes are identical, so the cluster DBU contract = prov-db-dbu x number of nodes. Client-controlled (dynamic layer), the DBU configurator moves it. Default 2 (2 cores / 8GB / 80GB / 2000 IOPS per node).")
+	flags.IntVar(&conf.ProvDbBku, "prov-db-bku", 6, "Per-cluster BKU reservation, the backup unit plan (1 BKU = 20 GB of backup disk, nothing else; accounted per cluster, never per node). Backup storage above the plan is over-commit: billed, never blocked. Local BKU = the cluster's local backup (the repman backups directory on the local pool); remote BKU = what is archived on S3/SFTP (restic), billed at its own price.")
+	flags.IntVar(&conf.ProvGatewayUnits, "prov-gateway-units", 0, "Gateway network plan of the cluster in GWU (cloud18-marketplace-gwu-unit-mbit Mb/s each); 0 = the plan follows the gateway capacity divided by the clusters present on it; a value pins it")
+	flags.IntVar(&conf.ProvServicePlanApu, "prov-service-plan-apu", 4, "Per-cluster APU service plan = the SUM of the deployment plans (proxies at prov-proxy-apu + apps at their own config). Materialized/recomputed each tick -- the real cluster contract number readers use (GUI/API/GWARN016). The client moves the per-deployment reservations, not this. 1 APU = 1 core / 1GB / 10GB, no IOPS.")
+	flags.IntVar(&conf.ProvServicePlanBpu, "prov-service-plan-bpu", 1, "Service plan in Public-network/Bandwidth Units (BPU reservation contract; public network capacity, maps to cloud18-infra-public-bandwidth). Default 1.")
+	flags.IntVar(&conf.ProvServicePlanBku, "prov-service-plan-bku", 1, "Service plan in Backup Units (BKU reservation contract; storage/backup profile, disk-dominant). Default 1.")
+	flags.StringVar(&conf.ResourceManagerRatioDBU, "resource-manager-ratio-dbu", cluster.DefaultRatioDBU, "What one DBU (Database Unit) is made of: cores=,mem=,disk=,iops= (mem in m/g, disk in g/t). The ONE source of the ratio, for the resource manager, the billing and the dashboard")
+	flags.StringVar(&conf.ResourceManagerRatioAPU, "resource-manager-ratio-apu", cluster.DefaultRatioAPU, "What one APU (Application Unit, proxies and apps) is made of: cores=,mem=,disk= (no iops)")
+	flags.StringVar(&conf.ResourceManagerRatioBKU, "resource-manager-ratio-bku", cluster.DefaultRatioBKU, "What one BKU/BAU (storage unit) is made of: disk= only")
+	flags.Float64Var(&conf.ResourceManagerInfraQuotaPct, "resource-manager-infra-quota-pct", 90, "Share of the physical metal (0-100) repman's ResourceManager may allocate, protecting non-repman workloads on the agent. Default 90.")
+	flags.Float64Var(&conf.ResourceManagerInfraCpuCores, "resource-manager-infra-cpu-cores", 0, "ResourceManager infra capacity override: total CPU cores. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraMemoryMB, "resource-manager-infra-memory-mb", 0, "ResourceManager infra capacity override: total memory in MB. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraDiskGB, "resource-manager-infra-disk-gb", 0, "ResourceManager infra capacity override: total disk in GB. 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerInfraIops, "resource-manager-infra-iops", 0, "ResourceManager infra capacity override: total IOPS. 0 = unset (use the monitored/calibrated value).")
+	flags.Float64Var(&conf.ResourceManagerInfraNetworkMbps, "resource-manager-infra-network-mbps", 0, "ResourceManager infra capacity override: total public network bandwidth in Mbps (the BPU axis). 0 = unset (use the monitored value).")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
@@ -1082,7 +1176,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Test, "test", false, "Enable non regression tests")
 	flags.BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 	flags.BoolVar(&conf.TestInjectTrafficStaging, "test-inject-traffic-staging", false, "Inject some database traffic via proxy to staging")
-	flags.StringVar(&conf.InjectTrafficMode, "inject-traffic-mode", "ddl", "Pseudo-GTID / traffic marker format: ddl (CREATE OR REPLACE VIEW — self-contained idempotent DDL, needs no table on newly-monitored/reseeded nodes, greppable for positional rejoin; battle-tested DEFAULT) or dml (single-row REPLACE, flashback-able; table created once via the proxy so it replicates ahead of the writes — EXPERIMENTAL, pending the topology matrix)")
+	flags.StringVar(&conf.InjectTrafficMode, "inject-traffic-mode", "dml", "Pseudo-GTID / traffic marker format: dml (DEFAULT since 3.1.43: a single-row REPLACE, a ROW event flashback can reverse; table created once via the proxy so it replicates ahead of the writes) or ddl (CREATE OR REPLACE VIEW: self-contained, greppable for positional rejoin, but every marker is a non-flashbackable binlog event -- tests and positional replication only, forced anyway by force-slave-no-gtid-mode; WARN0230 while in use)")
 	flags.IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 	flags.IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
 	flags.StringVar(&conf.SysbenchTest, "sysbench-test", "oltp_read_write", "oltp_read_write|tpcc|oltp_read_only|oltp_update_index|oltp_update_non_index")
@@ -1176,11 +1270,27 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18PeerHealthMode, "cloud18-peer-health-mode", "pulling", "Peer health polling scope. pulling (DEFAULT) and smart both serve the for-sale catalog from the BO-aggregated peer.json and live-poll ONLY clusters this instance has a relationship to — own fleet (registering user) + delegated + active-session users' clusters + sale workflows. An instance with no such relationship (a fresh/browsing client) opens no peer connections. peering is a legacy full-mesh that live-polls EVERY peer incl. the for-sale catalog (O(N^2); opt-in only, never for clients). partner plan auto-promotes pulling->smart.")
 	flags.BoolVar(&conf.Cloud18DisablePeers, "cloud18-disable-peers", false, "Hide peer clusters from dashboard")
 	flags.BoolVar(&conf.Cloud18DisableForSale, "cloud18-disable-for-sale", false, "Hide clusters for sale from marketplace (paid plans only)")
-	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
+	flags.StringVar(&conf.Cloud18MarketplacePricingMode, "cloud18-marketplace-pricing-mode", config.ConstMarketplacePricingModeCsvServicePlan, "Marketplace pricing model. csv-service-plan (DEFAULT) uses a per-cluster service plan downloaded as CSV. global-unit-pricing prices clusters globally from cloud18-marketplace-dbu-price and cloud18-marketplace-apu-price (both in Eur), with no per-cluster plan.")
+	flags.Float64Var(&conf.Cloud18MarketplaceDBUPrice, "cloud18-marketplace-dbu-price", 0, "Price per Database Unit in Eur, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
+	flags.Float64Var(&conf.Cloud18MarketplaceAPUPrice, "cloud18-marketplace-apu-price", 0, "Price per APU (Application Unit: 1 core, 2 GB RAM, 10 GB disk, no IOPS) in Eur, used when cloud18-marketplace-pricing-mode is global-unit-pricing")
+	flags.Float64Var(&conf.Cloud18MarketplaceBKUPrice, "cloud18-marketplace-bku-price", 0, "Price per BKU and per month in Eur (1 BKU = 20 GB of local backup storage: the last backup of each server plus a local restic archive); 0 = not priced")
+	flags.Float64Var(&conf.Cloud18MarketplaceBAUPrice, "cloud18-marketplace-bau-price", 0, "Price per BAU and per month in Eur (1 BAU = 20 GB of remote backup archive held by restic on S3/SFTP, no plan, billed on usage); applies to Signal18 or partner storage only; 0 = not priced")
+	flags.IntVar(&conf.Cloud18MarketplaceOvercommitPricePct, "cloud18-marketplace-overcommit-price-pct", 150, "SURCHARGE on a unit consumed ABOVE the plan, in percent of the unit price (150 = the unit costs 2.5 times the price); asymmetric with cloud18-marketplace-undercommit-price-pct; applies to every unit family with a plan (DBU, APU, BKU), never to the BAU (pure usage)")
+	flags.IntVar(&conf.Cloud18MarketplaceUndercommitPricePct, "cloud18-marketplace-undercommit-price-pct", 80, "REDUCTION on a plan unit left UNCONSUMED, in percent of the unit price (80 = the unit costs 0.2 times the price; 0 = the plan is billed in full); the pendant of cloud18-marketplace-overcommit-price-pct")
+	flags.StringVar(&conf.Cloud18GatewayBandwidthMbit, "cloud18-gateway-bandwidth-mbit", "1000", "Uplink capacity of each Cloud18 gateway in Mb/s, comma-separated and aligned with cloud18-gateway-service (one value applies to all); the traffic of every cluster is tracked in Mb/s against it, not invoiced")
+	flags.Float64Var(&conf.Cloud18MarketplaceGWUPrice, "cloud18-marketplace-gwu-price", 0, "Price per GWU and per month of gateway bandwidth held above the free allowance, in Eur (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s in + out through the Cloud18 gateways, integrated over the month; the free units cost nothing). 0 = reported to the back office without an amount")
+	flags.IntVar(&conf.Cloud18MarketplaceGWUFreeUnits, "cloud18-marketplace-gwu-free-units", 10, "GWU of gateway bandwidth free for every cluster (10 = 1 Gb/s at the default 100 Mb/s unit); bandwidth held above it is reported to the back office as borrowed, never blocked; per cluster override allowed")
+	flags.Float64Var(&conf.Cloud18MarketplaceGWUUnitMbit, "cloud18-marketplace-gwu-unit-mbit", 100, "Size of one GWU in Mb/s (a 1000 Mb/s gateway = 10 GWU)")
+	flags.BoolVar(&conf.Cloud18MarketplaceBAUClientStorage, "cloud18-marketplace-bau-client-storage", false, "The cluster's remote backup repository (S3/SFTP) is the client's own storage: its BAU are tracked but never priced")
+	flags.BoolVar(&conf.Cloud18SelfServiceClusters, "cloud18-self-service-clusters", false, "Let registered Cloud18 users reaching this instance through peering create clusters here without subscription acceptance; the partner is only informed (OpenSVC and Kubernetes orchestrators)")
+	flags.IntVar(&conf.Cloud18SelfServiceMaxClustersPerUser, "cloud18-self-service-max-clusters-per-user", 3, "Clusters a Cloud18 user may sponsor on this instance through self-service")
+	flags.IntVar(&conf.Cloud18SelfServiceCacheSeconds, "cloud18-self-service-cache-seconds", 10, "Seconds the self-service status (pool, templates, enabled-script verdict) is served from a snapshot: one computation per interval whatever the request rate on /api/cloud18/self-service; 0 computes at every request")
+	flags.StringVar(&conf.Cloud18SelfServiceClustersEnabledScript, "cloud18-self-service-clusters-enabled-script", "", "Script run before a self-service cluster creation (argv: identity, orchestrator; env REPMAN_IDENTITY, REPMAN_SPONSORED_CLUSTERS, REPMAN_NEEDED_DBU/APU, REPMAN_FREE_DBU/APU, REPMAN_BORROW_DBU/APU); a non-zero exit vetoes it, its first output line is the reason")
+	flags.BoolVar(&conf.Cloud18SelfServiceClustersCanBorrow, "cloud18-self-service-clusters-can-borrow", false, "Let a self-service cluster be created on borrowed capacity (the over-commit pot) when the plan pot cannot guarantee its default units")
+	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 gateway VIP domain(s), comma-separated and aligned with cloud18-gateway-service; the first one is where the app CNAMEs point (the DNS round-robins the VIPs)")
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
+	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
-	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
-	flags.IntVar(&conf.Cloud18ApplicationCreditsPrice, "cloud18-application-credits-price", 20, "Cloud18 application credits price in Eur")
 	flags.StringVar(&conf.Cloud18DomainAddScript, "cloud18-domain-add-script", "/usr/share/replication-manager/scripts/prov_domain_add_script.sh", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainUser, "cloud18-domain-user", "", "First parameter to pass prov-domain-?-script")
@@ -1196,15 +1306,18 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	}
 
 	if WithProvisioning == "ON" {
-		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC service of the janitor proxy")
+		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC HAProxy gateway service(s) namespace/svc/name, comma-separated: route fragments are published on every one of them")
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
 		flags.StringVar(&conf.ProvDiskTempSize, "prov-db-disk-temp-size", "128", "Disk in m for micro service VM")
 		flags.StringVar(&conf.ProvDiskDockerSize, "prov-db-disk-docker-size", "2", "Disk in g for Docker Private per micro service VM")
+		flags.StringVar(&conf.ProvDbImgResolved, "prov-db-docker-img-resolved", "", "Written by replication-manager: the release prov-db-docker-img resolved to at the last provision or rolling upgrade, as \"declared=explicit\" (mariadb:latest=mariadb:13.0.2); the service definition always carries the explicit release, so only an upgrade moves it (#1862)")
 		flags.StringVar(&conf.ProvDbImg, "prov-db-docker-img", "mariadb:latest", "Docker image for database")
+		flags.StringVar(&conf.ProvDbDockerXtrabackupImg, "prov-db-docker-xtrabackup-img", "", "Advanced setting. Official xtrabackup image (for example percona/percona-xtrabackup:8.4, or auto to derive it from the database image) whose xtrabackup, xbstream and socat are injected into the database jobs container; for the official MySQL (mysql) and Percona Server (percona/percona-server) images only, which do not ship them (OpenSVC, Kubernetes), ignored for any other image; the tag must match the server major version; empty = off, the database image must ship them")
 		flags.StringVar(&conf.ProvDBDockerTmpfsSize, "prov-db-docker-tmpfs-size", "256", "Docker tmpfs size in megabytes. If 0 or not set, no tmpfs will be used. Please note that tmpfs is a memory filesystem and will use memory from the host.")
 		flags.StringVar(&conf.ProvDBDockerRunArgs, "prov-db-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for db")
 		flags.BoolVar(&conf.ProvDBDockerRunArgsLimit, "prov-db-docker-run-args-limit", true, "Limit Cores and Memory according to configurator")
+		flags.StringVar(&conf.ProvDBDockerJemallocPreload, "prov-db-docker-jemalloc-preload", "libjemalloc.so.2", "Library soname or path LD_PRELOADed in the database container for allocator tuning, with MALLOC_ARENA_MAX derived from prov-cores as the glibc fallback when the image lacks it; empty disables both exports")
 		flags.StringVar(&conf.ProvDBJobsDockerRunArgs, "prov-db-jobs-docker-run-args", "--ulimit nofile=262144:262144", "Additional docker run arguments for db jobs")
 		flags.StringVar(&conf.ProvProxDockerRunArgs, "prov-proxy-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for proxy")
 		flags.StringVar(&conf.ProvType, "prov-db-service-type ", "package", "[package|docker|podman|oci|kvm|zone|lxc]")
@@ -1215,6 +1328,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvDiskType, "prov-db-disk-type", "loopback", "[loopback|physical|pool|directory|volume]")
 		flags.StringVar(&conf.ProvVolumeDocker, "prov-db-volume-docker", "", "Volume name in case of docker private")
 		flags.StringVar(&conf.ProvVolumeData, "prov-db-volume-data", "default", "Volume name for the datadir")
+		flags.StringVar(&conf.ProvDBRunAsUID, "prov-db-run-as-uid", "", "Advanced setting. Numeric UID[:GID] the provisioned database container runs as (OpenSVC --user, Kubernetes securityContext); GID defaults to UID, 0 = root; empty = legacy behavior (--user mysql for MySQL images, the image's own user otherwise)")
+		flags.StringVar(&conf.ProvDBVolumeUID, "prov-db-volume-uid", "", "Advanced setting. Numeric UID[:GID] that owns the provisioned database data volume (OpenSVC volume owner and bootstrap chown, Kubernetes init chown); GID defaults to UID, 0 = root; empty = legacy behavior (999:999, none on Kubernetes), except Percona Server images which use 1001")
 		flags.StringVar(&conf.ProvDiskDevice, "prov-db-disk-device", "", "loopback:path-to-loopfile|physical:/dev/xx|pool:pool-name|directory:/srv")
 		flags.BoolVar(&conf.ProvDiskSnapshot, "prov-db-disk-snapshot-prefered-master", false, "Take snapshoot of prefered master")
 		flags.IntVar(&conf.ProvDiskSnapshotKeep, "prov-db-disk-snapshot-keep", 7, "Keek this number of snapshoot of prefered master")
@@ -1240,7 +1355,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvProxRouteMask, "prov-proxy-route-mask", "255.255.255.0", "Route Netmask to databases proxies")
 		flags.StringVar(&conf.ProvProxRoutePolicy, "prov-proxy-route-policy", "failover", "Route policy failover or balance")
 		flags.StringVar(&conf.ProvProxProxysqlImg, "prov-proxy-docker-proxysql-img", "signal18/proxysql:1.4", "Docker image for proxysql")
-		flags.StringVar(&conf.ProvProxMaxscaleImg, "prov-proxy-docker-maxscale-img", "mariadb/maxscale:2.2", "Docker image for maxscale proxy")
+		flags.StringVar(&conf.ProvProxMaxscaleImg, "prov-proxy-docker-maxscale-img", "mariadb/maxscale:2.4.10-1", "Docker image for maxscale proxy (2.4.10-1 is the oldest tag still published on Docker Hub -- 2.2/2.3 have been removed)")
 		flags.StringVar(&conf.ProvProxHaproxyImg, "prov-proxy-docker-haproxy-img", "haproxytech/haproxy-alpine:2.4", "Docker image for haproxy")
 		flags.StringVar(&conf.ProvProxMysqlRouterImg, "prov-proxy-docker-mysqlrouter-img", "pulsepointinc/mysql-router", "Docker image for MySQLRouter")
 		flags.StringVar(&conf.ProvProxShardingImg, "prov-proxy-docker-shardproxy-img", "signal18/mariadb104-spider", "Docker image for sharding proxy")
@@ -1261,11 +1376,15 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")
 		flags.BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
 		flags.StringVar(&conf.ProvNetCNICluster, "prov-net-cni-cluster", "default", "Name of of the OpenSVC network")
+		flags.BoolVar(&conf.ProvKubeImageForcePull, "prov-kube-image-force-pull", false, "Kubernetes only: force ImagePullPolicy=Always on the database container instead of the default IfNotPresent")
+		flags.StringVar(&conf.ProvKubeStorageClass, "prov-kube-storage-class", "", "Kubernetes only: StorageClass for the database PVC (empty uses the cluster's default StorageClass). Only applies to a server's PVC that doesn't exist yet -- an existing PVC keeps its original StorageClass across reprovisions, since StorageClassName is immutable and the PVC is never auto-deleted")
+		flags.StringVar(&conf.ProvKubeProxyStorageClass, "prov-kube-proxy-storage-class", "", "Kubernetes only: StorageClass for the proxy PVC (empty uses the cluster's default StorageClass). Only applies to a proxy's PVC that doesn't exist yet -- an existing PVC keeps its original StorageClass across reprovisions, since StorageClassName is immutable and the PVC is never auto-deleted")
 		flags.StringVar(&conf.ProvNetDockerRunArgs, "prov-net-docker-run-args", "--sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for netns container")
 		flags.BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.ProvAutoUpdateCompliance, "prov-auto-update-compliance", true, "Auto-update compliance best practices from back office or binary upgrades")
+		flags.BoolVar(&conf.ProvDBComplianceAutoAgree, "prov-db-compliance-auto-agree", false, "Auto-agree value-differs config deltas to the compliance value on the DB (DB-side counterpart of prov-auto-update-compliance); off by default, value-changes only")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 		flags.BoolVar(&conf.ProvObjectAllowOverwrite, "prov-object-allow-overwrite", true, "Allow overwriting config/secret keys when objects already exist")
 
@@ -1309,6 +1428,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4G", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
+	flags.StringVar(&conf.ProvAppStartTimeout, "prov-app-start-timeout", "2m", "Start and image pull timeout of an app container in the orchestrator service definition (om3 start_timeout and pull_timeout, e.g. 2m, 15m): the default of every app, a template or an app may set its own for a heavy image")
+	flags.StringVar(&conf.ProvDbStartTimeout, "prov-db-start-timeout", "2m", "Start and image pull timeout of a database container (and its jobs sidecar, pause and sensor containers) in the orchestrator, a positive duration; the orchestrator's own defaults are 5s and 2m, too short for a container whose image was purged")
+	flags.StringVar(&conf.ProvProxyStartTimeout, "prov-proxy-start-timeout", "2m", "Start and image pull timeout of a proxy container (and its pause and sensor containers) in the orchestrator, a positive duration; the orchestrator's own defaults are 5s and 2m, too short for a container whose image was purged")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "App container memory, value with unit e.g. 256M, 1G. Base for 1 credit in cloud18")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
 	flags.StringVar(&conf.ProvAppSizingMode, "prov-app-sizing-mode", "", "Cluster-level app sizing policy: 'unit' (App Unit credit-based) or 'manual' (direct resource edit). Empty means legacy mode.")
@@ -2014,13 +2136,21 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.PeerManager.SetInterval(repman.Conf.Cloud18HealthRefreshInterval)
 
 	if init_git {
-		// Sync the CRM's current plan for this URI so a node booting with cloud18
-		// already set (e.g. a copied config, or a second node registering against
-		// an already-subscribed URI) doesn't stay stuck on a stale local plan.
-		// Must run after *repman.Conf = conf above, since it persists directly onto
-		// repman.Conf — any earlier and this assignment would clobber it back to
-		// the stale pre-sync value. Best-effort: see syncSubscriptionPlanFromCRM.
-		repman.syncSubscriptionPlanFromCRM()
+		if repman.Conf.Cloud18LicenseFile != "" {
+			// Air-gapped / PCI: no internet to reach the CRM. Source the plan from
+			// the signed offline license instead (verified against the embedded
+			// plugin-signing public key, identity-bound to this instance). Soft:
+			// on any failure the plan stays at its default (free) with a WARN.
+			repman.loadOfflineLicensePlan()
+		} else {
+			// Sync the CRM's current plan for this URI so a node booting with cloud18
+			// already set (e.g. a copied config, or a second node registering against
+			// an already-subscribed URI) doesn't stay stuck on a stale local plan.
+			// Must run after *repman.Conf = conf above, since it persists directly onto
+			// repman.Conf — any earlier and this assignment would clobber it back to
+			// the stale pre-sync value. Best-effort: see syncSubscriptionPlanFromCRM.
+			repman.syncSubscriptionPlanFromCRM()
+		}
 	}
 }
 
@@ -2321,6 +2451,30 @@ func (repman *ReplicationManager) LimitPrivileges() {
 			// Compatibility with old version, for files with root level permission in workingdir
 			misc.ChownR(repman.Conf.WorkingDir, uidInt, gidInt)
 
+			// repman.Conf.LogFile (and its derived security/workload/schema/
+			// maintenance siblings) live outside WorkingDir by default, so the
+			// chown above never reaches them. Their write fds, opened while
+			// still root, keep working across the Setuid/Setgid below — but any
+			// fresh open (e.g. the log-history API re-reading them) re-checks
+			// permissions under the target user and fails with "permission
+			// denied" unless ownership is also transferred here.
+			if repman.Conf.LogFile != "" {
+				// All five siblings live in the same directory, so this reads
+				// it once and matches all five against that one listing —
+				// see ChownHistoryFilesBatch — instead of each of the five
+				// ChownHistoryFiles calls this replaced independently
+				// re-reading that same directory.
+				if err := s18log.ChownHistoryFilesBatch([]string{
+					repman.Conf.LogFile,
+					securityLogPath(repman.Conf.LogFile),
+					workloadLogPath(repman.Conf.LogFile),
+					schemaLogPath(repman.Conf.LogFile),
+					maintenanceLogPath(repman.Conf.LogFile),
+				}, uidInt, gidInt); err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not chown log history files to %s: %v", targetUser.Username, err)
+				}
+			}
+
 			// Set GID (Group ID)
 			err = syscall.Setgid(gidInt)
 			if err != nil {
@@ -2516,7 +2670,18 @@ func (repman *ReplicationManager) Run() error {
 			MaxAge:     repman.Conf.LogRotateMaxAge,
 			Level:      config.ToLogrusLevel(repman.Conf.LogFileLevel),
 			Formatter: &log.TextFormatter{
-				DisableColors:   true,
+				DisableColors: true,
+				// Same zoneless format as every other log file this process
+				// writes (security/workload/schema/maintenance/graphite,
+				// below) and as origin/develop always used here. This file is
+				// also the only one ReadHistory (utils/s18log/history.go)
+				// parses back for the GUI's log-history Since/Until
+				// filtering — see historyTimestampLayout there. A zoneless
+				// layout parses as a fictional-but-consistent UTC on both
+				// this side and the picker's query bound (see
+				// datetimeLocalToRFC3339 in Logs/index.jsx), so relative
+				// ordering/filtering is correct without needing to know or
+				// carry the server's real offset.
 				TimestampFormat: "2006-01-02 15:04:05",
 				FullTimestamp:   true,
 			},
@@ -2653,10 +2818,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.ReloadTerms()
 	repman.InitSharedAppTemplates()
 	repman.MonitorType = config.GetMonitorType()
-	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
-	if err != nil {
-		repman.Logrus.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
-	}
+	// ServiceRepos (the docker image tag list the GUI reads via json:"serviceRepos")
+	// is loaded through ReloadServiceRepos so the exact same path is reused when the
+	// back office pushes a fresh plugins/data/repos.json after startup (issue #1702).
+	repman.ReloadServiceRepos()
 	repman.ServiceTarballs, err = repman.Conf.GetTarballs(repman.Conf.Test)
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
@@ -2760,6 +2925,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.ensureLoginUpgradeInfra()
 
 	//	repman.currentCluster.SetCfgGroupDisplay(strClusters)
+	if repman.Conf.MCPServ {
+		repman.startMCPServer()
+	}
+
 	if repman.Conf.ApiServ {
 		go repman.apiserver()
 	} else {
@@ -2821,14 +2990,20 @@ func (repman *ReplicationManager) Run() error {
 		if !ok {
 			continue
 		}
-		gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
-		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(priorRoutesByGateway[gw]); len(conflicts) > 0 {
+		gws := cl.Conf.GatewayServicesLower() // #1873: a cluster may sit on several gateways
+		var prior [][]config.Route
+		for _, gw := range gws {
+			prior = append(prior, priorRoutesByGateway[gw]...)
+		}
+		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(prior); len(conflicts) > 0 {
 			cl.MarkGatewayConflicts(conflicts)
 			cl.WithdrawConflictedGatewayRoutes()
 		}
 		// OwnGatewayRoutes now excludes apps marked conflicted in either 3a or 3b,
 		// so only genuinely publishable routes accumulate in the prior-routes pile.
-		priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
+		for _, gw := range gws {
+			priorRoutesByGateway[gw] = append(priorRoutesByGateway[gw], cl.OwnGatewayRoutes(gw)...)
+		}
 	}
 
 	// Ensure per-cluster plugin dirs are symlinks to the shared dir so that
@@ -2841,6 +3016,13 @@ func (repman *ReplicationManager) Run() error {
 			go cl.Run()
 		}
 	}
+	// The HTTP listener is up since before phase 1, so a login arriving during the phases found
+	// no cluster (no ACL users yet) and was refused as "invalid credentials": three of those
+	// from the standby peer reconnecting one second after the listener opened locked the admin
+	// account for every client, dashboard included (preprod 2026-09-29, 11:39 and 11:55 UTC).
+	// The ACL users load in phase 1 (initCluster); the flag is raised once every cluster is
+	// initialised (phases 1-4 done). Before, loginHandler answers 503 "starting".
+	repman.clustersReady.Store(true)
 
 	// Send initial email
 	repman.SendClustersInitMail()
@@ -2864,6 +3046,9 @@ func (repman *ReplicationManager) Run() error {
 
 	//this ticker generate a new app access token, using app refresh token
 	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
+	// GWU (#1872): poll the gateways' HAProxy stats for the egress of every cluster.
+	go repman.gatewayTrafficLoop()
+
 	ticker_PAT := time.NewTicker(86400 * time.Second)
 	quit_PAT := make(chan struct{})
 	go func() {
@@ -2971,11 +3156,23 @@ func (repman *ReplicationManager) Run() error {
 			//      SaveCallBack in step 1) or safetyDue (GitMonitoringTicker, the
 			//      periodic feed/safety cadence). Config no longer waits on the
 			//      timer; the agents.json staging throttle is unchanged.
-			if repman.Conf.GitUrl != "" && repman.Status == ConstMonitorActif {
+			if repman.Status == ConstMonitorActif {
 				safetyDue := counter%int64(repman.Conf.GitMonitoringTicker) == 0
 				if repman.gitSyncBusy.CompareAndSwap(false, true) {
 					go func() {
 						defer repman.gitSyncBusy.Store(false)
+						// Cycle timing (#1852): a cycle longer than the gate period is
+						// what makes the next gate find it busy (GWARN013). Say WHERE the
+						// time went instead of guessing at the network.
+						cycleStart := time.Now()
+						var saveDur, gitDur time.Duration
+						period := time.Duration(repman.Conf.MonitoringTicker) * 60 * time.Second
+						defer func() {
+							if total := time.Since(cycleStart); total > period {
+								repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+									"Config sync cycle took %s, longer than its %s period: save %s, git push %s", total.Round(time.Millisecond), period, saveDur.Round(time.Millisecond), gitDur.Round(time.Millisecond))
+							}
+						}()
 
 						// 1. SAVE phase. The active/standby authority for config-sync is
 						// the server (repman.Status, gated above), not the per-cluster
@@ -3012,6 +3209,15 @@ func (repman *ReplicationManager) Run() error {
 							}
 						}()
 						savewg.Wait()
+						saveDur = time.Since(cycleStart)
+
+						// Local config persistence (the SAVE phase above) is done and is
+						// INDEPENDENT of git: it must always run on the active repman. Only the
+						// git PUSH below needs a configured remote -- a missing or failing git
+						// remote must never prevent local file persistence.
+						if repman.Conf.GitUrl == "" {
+							return
+						}
 
 						// 2. PUSH phase (dirty-gated). IsNeedGitPush was just set by
 						// SaveCallBack above when config actually changed.
@@ -3039,7 +3245,9 @@ func (repman *ReplicationManager) Run() error {
 						// replayed changes land in this same cycle. See
 						// doc/implementation/config/CONFIG_EVENT_LOG.md.
 						repman.ReplayPeerConfigEvents()
+						gitStart := time.Now()
 						repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+						gitDur = time.Since(gitStart)
 					}()
 				} else {
 					repman.SetState("GWARN013@gitsync", state.State{ErrType: "WARNING", ErrKey: "GWARN013", ErrDesc: fmt.Sprintf(config.GlobalError["GWARN013"], "git config sync"), ErrFrom: "REPMAN"})
@@ -3079,9 +3287,9 @@ func (repman *ReplicationManager) Run() error {
 		repman.ProduceClusterHeartbeatSupervisionStates()
 		repman.ProduceGitSupervisionStates()
 		repman.ProduceClusterAggregateStates()
+		repman.ProduceContractedCapacityState()
 		if counter%60 == 0 {
 			repman.ProduceCloud18ConnectivityStates()
-			repman.RefreshCreditsFromCRM()
 		} else {
 			// The connectivity probes only run every %60 ticks while the
 			// lifecycle clears every tick: carry their states across the
@@ -3122,6 +3330,29 @@ func (repman *ReplicationManager) Run() error {
 	os.Exit(0)
 	return nil
 
+}
+
+// ReloadServiceRepos reloads the server-level ServiceRepos -- the docker image
+// tag list the GUI reads via json:"serviceRepos" (monitor.serviceRepos). It is
+// sourced from GetDockerRepos, which prefers the back-office-pushed
+// plugins/data/repos.json over the embedded fallback. It MUST be called whenever
+// the -pull repo delivers a fresh repos.json; otherwise the GUI keeps showing the
+// tag list captured at startup, while newer tags only land in the per-cluster
+// DockerRepos (which is json:"-" and never serialized to the GUI). See issue #1702.
+func (repman *ReplicationManager) ReloadServiceRepos() {
+	repos, err := repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
+	if err != nil {
+		repman.Logrus.WithError(err).Errorf("Reload docker repos failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)
+		return
+	}
+	if len(repos) == 0 {
+		return
+	}
+	if len(repos) != len(repman.ServiceRepos) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Service docker image repos updated: %d repos loaded from back office plugins/data/repos.json", len(repos))
+	}
+	repman.ServiceRepos = repos
 }
 
 // loadMainConfigInto reads the server's main config.toml into v, using the
@@ -3372,10 +3603,40 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
+	// Report the full git-describe version (nightly detection) and repman's own
+	// process start time to the BO via clusterstate.json — RepMgrVersion stays the base tag.
+	repman.currentCluster.RepMgrFullVersion = repman.Fullversion
+	repman.currentCluster.RepMgrRestartTime = repman.StartTime.Unix()
 	repman.Lock()
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.Unlock()
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
+	// The ResourceManager is repman-side and infra-wide (Epic #1776): created once, shared
+	// into every cluster. The per-server consumed reading then survives the cluster's
+	// ServerMonitor recreations here (fixes the graph flapping), and it is where the
+	// per-cluster / per-agent consumed views and capacity ("is there room?") live.
+	if repman.resourceManager == nil {
+		repman.resourceManager = cluster.NewResourceManager()
+	}
+	// Global policy: the share of the metal repman may allocate (protects non-repman
+	// workloads). resource-manager-* family (repman-side / on-prem first-class, NOT cloud18).
+	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
+	repman.resourceManager.SetPrices(repman.billingPrices())
+	if repman.Conf.WorkingDir != "" {
+		logf := func(format string, args ...interface{}) {
+			if repman.Logrus != nil {
+				repman.Logrus.WithFields(log.Fields{"module": "billing"}).Infof(format, args...)
+			}
+		}
+		if err := repman.resourceManager.SetBillingDir(repman.Conf.WorkingDir, logf); err != nil {
+			logf("%s: %v", cluster.UnitsLogName, err)
+		}
+		repman.resourceManager.SetFinalPush(repman.PushUnitsLogToGit)
+	}
+	if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s (built-in defaults kept for the profiles that failed)", err)
+	}
+	repman.currentCluster.SetResourceManager(repman.resourceManager)
 
 	if repman.currentCluster.Conf.SecretKey == nil {
 		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: config.ClusterError["ERR00090"], ErrFrom: "CLUSTER"})
@@ -3431,8 +3692,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	// same policy as full startup and ReloadConfig.  Applies to git auto-discovery
 	// and dynamic API adds so that APPERR005 fires, route ownership is accurate,
 	// and previously published fragments for a losing cluster are cleaned up.
-	gw := strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
-	if gw != "" {
+	if cl.Conf.PrimaryGatewayService() != "" {
 		var priorRoutes [][]config.Route
 		for _, name := range clusterOrderCopy {
 			if name == clusterName {
@@ -3442,8 +3702,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 			if peer == nil {
 				continue
 			}
-			if strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) == gw {
-				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutes(gw)...)
+			if peer.Conf.SharesGateway(cl.Conf) { // #1873
+				priorRoutes = append(priorRoutes, peer.OwnGatewayRoutesAny()...)
 			}
 		}
 		if conflicts, _ := cl.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
@@ -3506,7 +3766,7 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 	// OwnGatewayRoutes (which filters the GatewayConflicts map).
 	for _, name := range clusterOrder {
 		peer := clusters[name]
-		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+		if peer == nil || !peer.Conf.HasGateway(gw) {
 			continue
 		}
 		peer.RefreshGatewayConflicts()
@@ -3516,7 +3776,7 @@ func (repman *ReplicationManager) recomputeConflictsForGateway(gw string) {
 	var priorRoutes [][]config.Route
 	for _, name := range clusterOrder {
 		peer := clusters[name]
-		if peer == nil || strings.ToLower(strings.TrimSpace(peer.Conf.Cloud18GatewayService)) != gw {
+		if peer == nil || !peer.Conf.HasGateway(gw) {
 			continue
 		}
 		if conflicts, _ := peer.DetectCrossClusterGatewayConflicts(priorRoutes); len(conflicts) > 0 {
@@ -3548,21 +3808,23 @@ func (repman *ReplicationManager) RecomputeGatewayConflicts(changedClusterName, 
 		return
 	}
 
-	gw := strings.ToLower(strings.TrimSpace(changed.Conf.Cloud18GatewayService))
-	prev := strings.ToLower(strings.TrimSpace(prevGateway))
-
-	if gw != "" {
-		repman.recomputeConflictsForGateway(gw)
+	gws := changed.Conf.GatewayServicesLower() // #1873: every current gateway
+	if len(gws) > 0 {
+		for _, gw := range gws {
+			repman.recomputeConflictsForGateway(gw)
+		}
 	} else {
 		// No current gateway: local intra-cluster refresh only.
 		changed.RefreshGatewayConflicts()
 		changed.WithdrawConflictedGatewayRoutes()
 	}
 
-	// If the cluster moved to a different gateway (or left entirely), recompute
-	// the old gateway so peers that were blocked by this cluster are unblocked.
-	if prev != "" && prev != gw {
-		repman.recomputeConflictsForGateway(prev)
+	// If the cluster left a gateway (moved, or left entirely), recompute that
+	// gateway so peers that were blocked by this cluster are unblocked.
+	for _, prev := range config.SplitGatewayList(strings.ToLower(prevGateway)) {
+		if !changed.Conf.HasGateway(prev) {
+			repman.recomputeConflictsForGateway(prev)
+		}
 	}
 }
 
@@ -3583,63 +3845,68 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 		}
 	*/
 
-	scheme := "http://"
-	if strings.HasPrefix(peer, "https://") || strings.HasPrefix(peer, "http://") {
-		scheme = ""
+	// A peer written without a scheme is called over the scheme that last
+	// answered (http first). On a scheme mismatch -- an https-only API answers
+	// plain http with a 400, an http API answers https with a malformed
+	// response -- the other scheme is tried once and kept for this peer, and
+	// GWARN019 tells which value to write. An explicit scheme is never changed.
+	explicit := strings.HasPrefix(peer, "https://") || strings.HasPrefix(peer, "http://")
+	scheme := ""
+	if !explicit {
+		scheme = repman.peerHeartbeatScheme(peer)
 	}
 	url := scheme + peer + "/api/heartbeat"
-	client := &http.Client{
-		Timeout: timeout,
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Sending peer request to node %s", url)
+	h, err := fetchPeerHeartbeat(url, timeout)
+	if err != nil && !explicit && errors.Is(err, errPeerSchemeMismatch) {
+		other := otherHeartbeatScheme(scheme)
+		if h2, err2 := fetchPeerHeartbeat(other+peer+"/api/heartbeat", timeout); err2 == nil {
+			repman.arbPeerScheme.Store(peer, other)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Peer %s answers on %s only: set arbitration-peer-hosts to %s%s", peer, other, other, peer)
+			h, err, url = h2, nil, other+peer+"/api/heartbeat"
+		} else {
+			// both schemes failed: keep the second one's error, which may be the
+			// real cause (a certificate the system does not trust, for instance)
+			err = fmt.Errorf("%w; over %s: %v", err, other, err2)
+		}
 	}
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Sending peer request to node %s", peer)
-	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
+		reason := err.Error()
+		if explicit && errors.Is(err, errPeerSchemeMismatch) {
+			reason += " -- the peer API does not serve " + strings.SplitN(peer, "://", 2)[0] + ", fix the scheme in arbitration-peer-hosts"
+		}
+		if repman.peerHeartbeatFailures == nil {
+			repman.peerHeartbeatFailures = make(map[string]string)
+		}
+		repman.peerHeartbeatFailures[peer] = url + ": " + reason
 		if !bcksplitbrain {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Error building HTTP request: %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlWarn, "Peer heartbeat %s failed: %s", url, reason)
 		}
 		return true
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		if !bcksplitbrain {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not reach peer node, might be down or incorrect address")
-		}
-		return true
+	delete(repman.peerHeartbeatFailures, peer)
+	if h.UID == repman.Conf.ArbitrationSasUniqueId {
+		repman.peerHeartbeatSameUID = true
 	}
-	defer resp.Body.Close()
-	monjson, err := io.ReadAll(resp.Body)
-	if err != nil {
-		if !bcksplitbrain {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not read body from peer response")
-		}
-		return true
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
+	repman.recordPeerAPIURL(peer, h)
+	// CALM authority: the peer answered, so we can talk and are NOT split.
+	// Resolve to the anti-peer status; the cluster reinforce loop in
+	// Heartbeat() then pushes repman.Status down onto the clusters.
+	//   - peer Active and we are Active  -> dual-active: yield to Standby
+	//     (the peer keeps driving; failback is never automatic).
+	//   - both Standby (e.g. a node just (re)joined after a restart) -> the
+	//     main (lowest arbitration uid) claims Active; the higher-uid peer,
+	//     seeing us Active next tick, stays Standby. This un-sticks the
+	//     both-Standby startup case WITHOUT declaring a split brain.
+	if h.Status == ConstMonitorActif && repman.Status == ConstMonitorActif {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: peer is Active and so are we — yielding to Standby")
+		repman.Status = ConstMonitorStandby
+	} else if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby && repman.Conf.ArbitrationSasUniqueId < h.UID {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: both Standby and we are the main (uid %d < peer %d) — claiming Active", repman.Conf.ArbitrationSasUniqueId, h.UID)
+		repman.Status = ConstMonitorActif
 	}
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer response: %s", monjson)
-	// Use json.Decode for reading streams of JSON data
-	var h Heartbeat
-	if err := json.Unmarshal(monjson, &h); err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Could not unmarshal JSON from peer response %s", err)
-		return true
-	} else {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "Peer heartbeat response: %v", h)
-		// CALM authority: the peer answered, so we can talk and are NOT split.
-		// Resolve to the anti-peer status; the cluster reinforce loop in
-		// Heartbeat() then pushes repman.Status down onto the clusters.
-		//   - peer Active and we are Active  -> dual-active: yield to Standby
-		//     (the peer keeps driving; failback is never automatic).
-		//   - both Standby (e.g. a node just (re)joined after a restart) -> the
-		//     main (lowest arbitration uid) claims Active; the higher-uid peer,
-		//     seeing us Active next tick, stays Standby. This un-sticks the
-		//     both-Standby startup case WITHOUT declaring a split brain.
-		if h.Status == ConstMonitorActif && repman.Status == ConstMonitorActif {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: peer is Active and so are we — yielding to Standby")
-			repman.Status = ConstMonitorStandby
-		} else if h.Status == ConstMonitorStandby && repman.Status == ConstMonitorStandby && repman.Conf.ArbitrationSasUniqueId < h.UID {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlInfo, "Calm: both Standby and we are the main (uid %d < peer %d) — claiming Active", repman.Conf.ArbitrationSasUniqueId, h.UID)
-			repman.Status = ConstMonitorActif
-		}
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
-	}
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "No peer split brain, peer status is %s, my status is %s", h.Status, repman.Status)
 
 	return false
 }
@@ -3890,12 +4157,19 @@ func (repman *ReplicationManager) Heartbeat() {
 			cl.SetState("VSPLIT0002", state.State{ErrType: "WARNING", ErrKey: "VSPLIT0002", ErrDesc: config.ClusterError["VSPLIT0002"], ErrFrom: "TEST"})
 		}
 	} else {
+		repman.Lock()
+		if repman.peerHeartbeatFailures == nil {
+			repman.peerHeartbeatFailures = make(map[string]string)
+		}
+		repman.peerHeartbeatSameUID = false
+		repman.Unlock()
 		for _, arbPeer := range arbPeerList {
 			repman.Lock()
 			repman.SplitBrain = repman.HeartbeatPeerSplitBrain(arbPeer, bcksplitbrain)
 			repman.Unlock()
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModHeartBeat, config.LvlDbg, "SplitBrain set to %t on arbitration peer %s", repman.SplitBrain, arbPeer)
 		} //end check all arbitration peers
+		repman.raisePeerHeartbeatStates(arbPeerList)
 	}
 
 	if bcksplitbrain != repman.SplitBrain {
@@ -3914,9 +4188,16 @@ func (repman *ReplicationManager) Heartbeat() {
 		}
 	}
 
-	// Propagate the split-brain flag to every cluster.
+	// Propagate the split-brain flag to every cluster, and the URLs of the
+	// active/standby pair as the init containers' fallback (#1942): this instance
+	// then its peer, since the namespace's REPLICATION_MANAGER_URL stays on the
+	// instance that provisioned, which may be the dead one.
+	repman.Lock()
+	drURL := repman.bootstrapPairURLs()
+	repman.Unlock()
 	for _, cl := range repman.Clusters {
 		cl.IsSplitBrain = repman.SplitBrain
+		cl.SetBootstrapDRURL(drURL)
 	}
 
 	// Authority direction depends on calm vs split-brain:
@@ -4040,6 +4321,11 @@ func (repman *ReplicationManager) Stop() {
 			repman.Logrus.Warn("gRPC graceful stop timed out, forcing stop")
 			repman.grpcServer.Stop()
 		}
+	}
+
+	if repman.mcpServer != nil {
+		repman.Logrus.Info("Stop: stopping MCP server")
+		repman.stopMCPServer()
 	}
 
 	if repman.MemProfile != "" {
@@ -4813,4 +5099,56 @@ func (repman *ReplicationManager) InitSharedAppTemplates() {
 				"InitSharedAppTemplates: cannot write %s: %v", dest, err)
 		}
 	}
+}
+
+// startMCPServer creates and starts the MCP server from the current settings
+// (issue #1838). With the default transport "api" it only registers the tools:
+// the endpoints are served by the API listeners through handlerMuxMCP.
+func (repman *ReplicationManager) startMCPServer() {
+	repman.mcpMutex.Lock()
+	defer repman.mcpMutex.Unlock()
+	if repman.mcpServer != nil {
+		return
+	}
+	repman.mcpServer = repmanmcp.NewMCPServer(repman, repman.Conf, repman.Logrus)
+	srv := repman.mcpServer
+	go func() {
+		if err := srv.Start(context.Background()); err != nil {
+			repman.Logrus.Errorf("MCP server error: %v", err)
+		}
+	}()
+}
+
+// stopMCPServer stops and forgets the MCP server; /api/mcp answers 404 afterwards.
+func (repman *ReplicationManager) stopMCPServer() {
+	repman.mcpMutex.Lock()
+	defer repman.mcpMutex.Unlock()
+	if repman.mcpServer == nil {
+		return
+	}
+	repman.mcpServer.Stop()
+	repman.mcpServer = nil
+}
+
+// restartMCPServer applies a changed mcp-* setting live: tools, auth and
+// transport are fixed at creation, so the server is rebuilt.
+func (repman *ReplicationManager) restartMCPServer() {
+	repman.stopMCPServer()
+	if repman.Conf.MCPServ {
+		repman.startMCPServer()
+	}
+}
+
+// handlerMuxMCP serves /api/mcp/* on the HTTP and HTTPS API listeners: the SSE
+// stream and the message endpoint, behind the MCP bearer middleware (login JWT
+// or API token) and the per-tool ACL. 404 when the MCP server is off.
+func (repman *ReplicationManager) handlerMuxMCP(w http.ResponseWriter, r *http.Request) {
+	repman.mcpMutex.Lock()
+	srv := repman.mcpServer
+	repman.mcpMutex.Unlock()
+	if srv == nil || !repman.Conf.MCPServ {
+		http.Error(w, "MCP server is not enabled (mcp-server)", http.StatusNotFound)
+		return
+	}
+	srv.Handler().ServeHTTP(w, r)
 }

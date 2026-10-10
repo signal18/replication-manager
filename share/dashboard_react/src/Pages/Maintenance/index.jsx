@@ -4,7 +4,7 @@ import { sizeOf, convertObjectToArray, formatBytes, formatDate, getBackupMethod,
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
-import { Box, HStack, Progress, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
+import { Box, Flex, HStack, Progress, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
@@ -12,8 +12,17 @@ import DatabaseJobs from './DatabaseJobs'
 import { deleteBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle } from 'react-icons/hi'
+import CommonModal from '../../components/Modals/CommonModal'
+import modalStyles from '../../components/Modals/styles.module.scss'
+import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { showWarningToast } from '../../redux/toastSlice'
+import PropTypes from 'prop-types'
+import { changePlanUnits } from '../../redux/settingsSlice'
+import { Text } from '@chakra-ui/react'
+import TextForm from '../../components/TextForm'
+import { getUnitRatios } from '../../utility/unitRatios'
 
 const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
   const [direction, setDirection] = useState('first');
@@ -126,12 +135,110 @@ const resticTaskDetail = (row) => {
 }
 
 
+// BKUSlider is the backup plan bar, the BKU twin of the configurator's DBUSlider: the
+// per-cluster reservation prov-db-bku on a linear 1..BKU_MAX scale. What the user must read
+// at a glance is the GB LIMIT the plan gives them and how much of it is used: the plan in
+// GB and the usage bar in GB against it. No pricing here: the product is not only a cloud
+// offer; what a unit costs, when it does, is the marketplace's business (Resource Manager).
+const BKU_MAX = 128
+const bkuHelp = (unitGB) => `**Backup storage plan (BKU)**
+
+1 BKU = ${unitGB} GB of local backup storage: the replication-manager backups kept on the infrastructure and the extra physical disk replicated for failover applications.
+
+Exceeding the plan is monitored as over-commit and raises the alert WARN0225.`
+function BKUSlider({ value, isDisabled, onChange, unitGB, bku }) {
+  const [draft, setDraft] = useState(null)
+  const [showTooltip, setShowTooltip] = useState(false)
+  const [isHelpOpen, setIsHelpOpen] = useState(false)
+  const plan = draft !== null ? draft : value
+  const planGB = plan * unitGB
+  const usedBytes = bku ? (bku.localBytes || 0) + (bku.appDiskBytes || 0) : 0
+  const usedGB = usedBytes / (1024 * 1024 * 1024)
+  const pct = planGB > 0 ? (usedGB / planGB) * 100 : 0
+  const fmt = (n) => `${n} BKU = ${n * unitGB} GB of local backup storage`
+  return (
+    <Box w='100%'>
+      <Flex justify='space-between' mb={1} align='start'>
+        <HStack spacing={1}>
+          <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Backup storage plan (BKU) — per cluster</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => setIsHelpOpen(true)} iconFontsize='1rem' variant='ghost' style={{ opacity: 0.5, minWidth: '1.5rem', height: '1.5rem' }} />
+        </HStack>
+        <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>plan {plan} BKU = {planGB} GB</Text>
+      </Flex>
+      <Slider
+        min={1}
+        max={BKU_MAX}
+        step={1}
+        value={plan}
+        isDisabled={isDisabled}
+        onChange={(v) => setDraft(v)}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        onChangeEnd={(v) => {
+          setDraft(null)
+          if (v !== value && onChange) onChange(v)
+        }}
+      >
+        <SliderTrack h='8px' borderRadius='full' bg='gray.200'>
+          <SliderFilledTrack bg='blue.400' />
+        </SliderTrack>
+        <Tooltip label={fmt(plan)} placement='top' isOpen={showTooltip || draft !== null} hasArrow>
+          <SliderThumb boxSize={5} bg='blue.500' />
+        </Tooltip>
+      </Slider>
+      <Flex justify='space-between' mt={1}>
+        <Text fontSize='9px' color='gray.500'>1 BKU = {unitGB} GB</Text>
+        <Text fontSize='9px' color='gray.500'>{BKU_MAX} BKU = {BKU_MAX * unitGB} GB</Text>
+      </Flex>
+      {bku && (
+        <Box mt={2}>
+          <Flex justify='space-between' mb={1}>
+            <Text fontSize='sm' color='var(--text-color)'>
+              Used {usedGB.toFixed(1)} GB of {planGB} GB ({pct.toFixed(0)}%) — backups {formatBytes(bku.localBytes || 0)}{bku.appDiskBytes > 0 ? `, failover application disks ${formatBytes(bku.appDiskBytes)}` : ''}
+            </Text>
+            <Text fontSize='sm' fontWeight='semibold' color={bku.overPlanUnits > 0 ? 'red.500' : 'var(--text-color)'}>
+              {bku.overPlanUnits > 0
+                ? `${bku.overPlanUnits * unitGB} GB over the plan (${bku.overPlanUnits} BKU), WARN0225 open`
+                : bku.underPlanUnits > 0
+                  ? `${bku.underPlanUnits * unitGB} GB left in the plan (${bku.underPlanUnits} BKU)`
+                  : 'at the plan'}
+            </Text>
+          </Flex>
+          <Progress value={Math.min(pct, 100)} size='sm' borderRadius='full' colorScheme={pct >= 100 ? 'red' : pct >= 80 ? 'orange' : 'blue'} />
+        </Box>
+      )}
+      <CommonModal isOpen={isHelpOpen} closeModal={() => setIsHelpOpen(false)} title='Backup storage plan (BKU)' body={<Box className={modalStyles.infoTooltip}><Markdown remarkPlugins={[remarkGfm]}>{bkuHelp(unitGB)}</Markdown></Box>} size='xl' />
+    </Box>
+  )
+}
+BKUSlider.propTypes = {
+  value: PropTypes.number,
+  isDisabled: PropTypes.bool,
+  onChange: PropTypes.func,
+  unitGB: PropTypes.number,
+  bku: PropTypes.object,
+}
+
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
-function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
+function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenArchiveSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const [queueData, setQueueData] = useState([])
   const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', payload: null })
+  // BKU plan (prov-db-bku): the per-cluster backup storage reservation, a PLAN not a resource,
+  // so it lives with the backups, not among the configurator's resource gauges. The measured
+  // side (backupUnits, every 30 ticks) is shown next to it; over the plan = billed.
+  const [bkuConfirm, setBkuConfirm] = useState({ isOpen: false, title: '', delta: 0 })
+  // GWU plan (prov-gateway-units): the per-cluster egress reservation through the Cloud18
+  // gateways (#1872); the reading (gatewayUnits, month to date) is shown next to it.
+  const [gwuConfirm, setGwuConfirm] = useState({ isOpen: false, title: '', delta: 0 })
+  const gwu = selectedCluster?.gatewayUnits
+  const gwuPlan = selectedCluster?.config?.provGatewayUnits ?? 0
+  const gwuUnit = gwu?.unitMbit || 100
+  const clusterData = useSelector((state) => state.cluster?.clusterData)
+  const bkuGB = getUnitRatios(clusterData).storage.diskGBPerUnit || 20
+  const bku = selectedCluster?.backupUnits
+  const bkuPlan = parseInt(selectedCluster?.config?.provDbBku) || 0
   const { isOpen: isConfirmModalOpen, title, payload } = confirmState
 
   const dispatch = useDispatch()
@@ -583,7 +690,35 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         headerActions={settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
+            <BKUSlider
+              isDisabled={user?.grants['cluster-settings'] == false}
+              value={bkuPlan || 1}
+              unitGB={bkuGB}
+              bku={bku}
+              onChange={(value) => {
+                const delta = value - bkuPlan
+                if (delta === 0) return
+                setBkuConfirm({ isOpen: true, delta, title: `Confirm the backup plan at ${value} BKU = ${value * bkuGB} GB of local backup storage for the cluster` })
+              }}
+            />
             <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
+            {gwu && (<Flex gap={3} alignItems='center' wrap='wrap'>
+              <Text fontWeight='bold'>Gateway network plan (GWU, {gwuUnit} Mb/s each)</Text>
+              <TextForm
+                value={gwuPlan > 0 ? String(gwuPlan) : ''}
+                type='number'
+                placeholder={gwu ? `follows the gateway: ${gwu.plan.toFixed(2)} GWU` : 'follows the gateway'}
+                confirmTitle='Confirm the gateway network plan in GWU for the cluster: '
+                onSave={(value) => {
+                  const next = parseInt(value, 10)
+                  if (!Number.isFinite(next) || next < 1) return
+                  const delta = next - gwuPlan
+                  if (delta === 0) return
+                  setGwuConfirm({ isOpen: true, delta, title: `Confirm the gateway network plan at ${next} GWU = ${next * gwuMB} MB exchanged per month through the gateways` })
+                }}
+              />
+              <Text>{gwu ? `plan ${gwu.plan.toFixed(2)} GWU = ${gwu.planMbps.toFixed(0)} Mb/s${gwu.pinned ? ' (pinned)' : ' (gateway capacity / clusters present)'}, consumed ${gwu.units.toFixed(3)} GWU = ${gwu.mbps.toFixed(1)} Mb/s, ${gwu.units > gwu.plan ? `borrowing ${(gwu.units - gwu.plan).toFixed(2)}` : `giving away ${(gwu.plan - gwu.units).toFixed(2)}`} GWU; ${gwu.freeUnits} GWU free, ${gwu.onTop.toFixed(3)} GWU held above it now, ${gwu.onTopGbit.toFixed(3)} Gbit moved above it this month (reported to the back office); ${gwu.gbit.toFixed(2)} Gbit moved in total on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
+            </Flex>)}
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
           </VStack>
         }
@@ -595,7 +730,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        headerActions={settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
+        headerActions={settingsButton(onOpenArchiveSettings || onOpenBackupSettings, 'Open Archive Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
             <Box className={styles.repoRow}>
@@ -649,6 +784,12 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       {(!section || section === 'backup') && backupSection}
       {(!section || section === 'jobs') && jobsSection}
       {!section && logsSection}
+      {gwuConfirm.isOpen && <ConfirmModal title={gwuConfirm.title} isOpen={gwuConfirm.isOpen}
+        onConfirmClick={() => { dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'GWU', delta: gwuConfirm.delta })); setGwuConfirm({ isOpen: false, title: '', delta: 0 }) }}
+        closeModal={() => setGwuConfirm({ isOpen: false, title: '', delta: 0 })} />}
+      {bkuConfirm.isOpen && <ConfirmModal title={bkuConfirm.title} isOpen={bkuConfirm.isOpen}
+        onConfirmClick={() => { dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'BKU', delta: bkuConfirm.delta })); setBkuConfirm({ isOpen: false, title: '', delta: 0 }) }}
+        closeModal={() => setBkuConfirm({ isOpen: false, title: '', delta: 0 })} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
         payload={payload}
         queueData={queueData}

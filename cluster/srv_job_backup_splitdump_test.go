@@ -261,4 +261,24 @@ func TestIsSplitDumpDir(t *testing.T) {
 	if ok, err := isSplitDumpDir(emptyDir); err != nil || ok {
 		t.Fatalf("expected empty dir to be false, err=%v", err)
 	}
+
+	// Encrypted artifacts, addressed by their own name or by the
+	// plaintext-style name when only the encrypted sibling exists.
+	encFile := filepath.Join(base, "mysqldump.sql.gz")
+	if err := os.WriteFile(encFile+".enc", []byte("x"), 0600); err != nil {
+		t.Fatalf("failed to write encrypted file: %v", err)
+	}
+	if ok, err := isSplitDumpDir(encFile); err != nil || ok {
+		t.Fatalf("expected encrypted single-file dump to be false, err=%v", err)
+	}
+	encDir := filepath.Join(base, "splitdump")
+	if err := os.WriteFile(encDir+".tar.enc", []byte("x"), 0600); err != nil {
+		t.Fatalf("failed to write encrypted dir artifact: %v", err)
+	}
+	if ok, err := isSplitDumpDir(encDir); err != nil || !ok {
+		t.Fatalf("expected encrypted splitdump sibling to be true, err=%v", err)
+	}
+	if ok, err := isSplitDumpDir(encDir + ".tar.enc"); err != nil || !ok {
+		t.Fatalf("expected encrypted splitdump name to be true, err=%v", err)
+	}
 }

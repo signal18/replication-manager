@@ -6,6 +6,7 @@ This directory contains detailed implementation documentation for various featur
 
 - **cloud18/REGISTRATION.md** - Community onboarding A→Z: GitLab SSO login, first-claimant domain ownership, the config vs `-pull` repos, empty-remote config-repo bootstrap, GWARN002 troubleshooting
 - **peer/MARKETPLACE.md** - What registration unlocks: `peer.json` community feed, for-sale listings, delegated cross-repman access and health
+- **peer/PEER_JSON_AND_CLIENT.md** - `peer.json` sizes read with the config's unit parser, entry-by-entry decoding (BO normalization too), and the peer client's leading double slash under `SkipClean` (#1948, #1953)
 
 ## Build & Release
 
@@ -18,6 +19,8 @@ This directory contains detailed implementation documentation for various featur
 Cluster monitoring, backup, and resilience.
 
 - **BACKUP_DEAD_VOLUME_STALL.md** - Why a lost backup volume must not stall the monitor: the write-stall watchdog (`backup-write-stall-timeout`), the monitoring-hot-path sleep fix, and the controllable-mount reproduction
+- **HEARTBEAT_AND_ARBITRATION.md** - Peer heartbeat and arbitration; peer transport (http-port, scheme fallback) and failure states GWARN018-020 (#1940)
+- **CONFIGURATOR_BUFFER_ROUNDING.md** - Engine buffer sizing: power of two for every buffer, 128 MB chunks for the InnoDB buffer pool, page cache left for the redo log (#1950, #1951)
 
 ### `/restart-cookie/`
 Documentation related to the restart cookie mechanism and database restart functionality.
@@ -46,6 +49,12 @@ Frontend UI component documentation.
 - **ServerMenu.README.md** - ServerMenu component documentation
 - **ServerMenu.REVIEW.md** - ServerMenu component review notes
 - **ServerMenu.SUMMARY.md** - ServerMenu component summary
+
+### `/server/`
+Server API and cross-cluster aggregation documentation.
+
+- **GLOBAL_JOBS_DASHBOARD.md** - Global jobs aggregate endpoint, ACL behavior, and dashboard wiring
+- **STANDBY_CLUSTER_IMPORT.md** - A standby imports the clusters created on the active from the shared config repository, throttled and single flight (#1946)
 
 ### `/utils/dbhelper/`
 Database helper utilities documentation.

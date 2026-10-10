@@ -110,6 +110,9 @@ func (proxy *ExternalProxy) Refresh() error {
 		}
 		proxy.BackendsRead = append(proxy.BackendsRead, bkeread)
 	}
+	// Internal network fallback (cluster_net.go): ProxySQL's own cumulative byte
+	// counters, SQL traffic only (Source=status), when no pod sensor reports.
+	proxy.ingestNetFromBackends()
 	return nil
 }
 

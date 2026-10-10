@@ -26,7 +26,7 @@ var databaseACLRules = []ACLRule{
 	{"/actions/run-jobs", nil, []string{config.GrantClusterProcess}},
 	{"/actions/provision", nil, []string{config.GrantProvDBProvision}},
 	{"/actions/update-opensvc-template", nil, []string{config.GrantProvDBProvision}},
-	{"/service-opensvc", nil, []string{config.GrantProvDBProvision}},
+	{"/service/", nil, []string{config.GrantProvDBProvision}},
 	{"/actions/unprovision", nil, []string{config.GrantProvDBUnprovision}},
 	{"/actions/start", nil, []string{config.GrantDBStart}},
 	{"/actions/stop", nil, []string{config.GrantDBStop}},
@@ -89,6 +89,7 @@ var databaseACLRules = []ACLRule{
 	{"/actions/del-maintenance", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/wait-innodb-purge", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/jobs-upgrade", nil, []string{config.GrantDBMaintenance}},
+	{"/actions/upgrade", nil, []string{config.GrantDBMaintenance}},
 
 	// Job dispatch actions (dbjobs script API)
 	{"/needs/", nil, []string{config.GrantDBJobs}},
@@ -118,12 +119,26 @@ var proxyACLRules = []ACLRule{
 	{"/actions/staging", nil, []string{config.GrantClusterStaging}},
 }
 
+// pricingACLRules are EXCLUSIVE rules for the settings that decide how a cluster or an
+// app is metered and priced. Sizing (prov-app-*, prov-db-dbu, agents, topology) is the
+// owner's right and stays on the ordinary app-config / cluster-settings grants; the
+// metering rule is the provider's (Stéphane 2026-09-30: "some cluster owner can not change
+// the way it's monitored and priced"). Unlike every other table, a URL matching one of
+// these is decided by that rule ALONE (IsURLPassACL): the generic "/settings/actions/"
+// rules never grant it, since matchACLRules grants on ANY matching rule.
+var pricingACLRules = []ACLRule{
+	{"/settings/actions/set/app-stateful", nil, []string{config.GrantSalesPricing}},
+	{"/settings/actions/set/app-s3-provider", nil, []string{config.GrantSalesPricing}},
+	{"/settings/actions/switch/cloud18-marketplace-bau-client-storage", nil, []string{config.GrantSalesPricing}},
+}
+
 // appACLRules defines ACL rules for application endpoints
 var appACLRules = []ACLRule{
 	{"/actions/provision", nil, []string{config.GrantProvAppProvision}},
 	{"/service-opensvc", nil, []string{config.GrantProvAppProvision}},
 	{"/actions/update-routes", nil, []string{config.GrantProvAppProvision}},
 	{"/actions/update-opensvc-config", nil, []string{config.GrantProvAppProvision}},
+	{"/actions/update-opensvc-template", nil, []string{config.GrantProvAppProvision}},
 	{"/actions/unprovision", nil, []string{config.GrantProvAppUnprovision}},
 	{"/actions/drop", nil, []string{config.GrantProvAppUnprovision}},
 	{"/deployment/", nil, []string{config.GrantAppDeployment}},
@@ -161,6 +176,11 @@ var clusterACLRules = []ACLRule{
 	// Sharding
 	{"/actions/monitor-schemas", nil, []string{config.GrantClusterSharding}},
 	{"/schema", nil, []string{config.GrantClusterSharding}},
+	// Scheduled database event consistency (monitoring-schema-events): read-only
+	// schema metadata, so db-show-schema as /tables and /schemas. Not an exclusive
+	// override: matchACLRules falls back to the shorter /schema rule above when
+	// this one denies, so cluster-sharding also reads it.
+	{"/schema/events", nil, []string{config.GrantDBShowSchema}},
 	{"/shardclusters", nil, []string{config.GrantClusterSharding}},
 
 	// Process and Jobs
@@ -184,6 +204,7 @@ var clusterACLRules = []ACLRule{
 	// Routes and Certificates
 	{"/queryrules", nil, []string{config.GrantClusterShowRoutes}},
 	{"/certificates", nil, []string{config.GrantClusterShowCertificates}},
+	{"/tools", nil, []string{config.GrantClusterShowAgents}}, // local tools versions: what runs on the monitor host, like the agents view
 	{"/actions/certificates-reload", nil, []string{config.GrantClusterCertificatesReload}},
 	{"/actions/certificates-rotate", nil, []string{config.GrantClusterCertificatesRotate}},
 
@@ -245,10 +266,13 @@ var clusterACLRules = []ACLRule{
 	// Cluster Settings
 	{"/settings/actions/reload", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/reload-plan-info", nil, []string{config.GrantClusterSettings}},
+	{"/settings/actions/git-push", nil, []string{config.GrantClusterSettings}},
+	{"/settings/actions/git-repair", nil, []string{config.GrantClusterSettings}},
 	{"/settings/actions/accept-compliance", nil, []string{config.GrantDBConfigAcceptCompliance, config.GrantProxyConfigAcceptCompliance}},
 	{"/configurator/compliance-diff", nil, []string{config.GrantDBConfigGet}},
 	{"/settings/actions/switch", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/set", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
+	{"/settings/actions/change-plan-units", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/clear", nil, []string{config.GrantClusterSettings, config.GrantGlobalSettings}},
 	{"/settings/actions/discover", nil, []string{config.GrantClusterSettings}},
 	{"/actions/reset-failover-control", nil, []string{config.GrantClusterSettings}},
@@ -290,6 +314,8 @@ var clusterACLRules = []ACLRule{
 
 	// User Management
 	{"/users/send-credentials", nil, []string{config.GrantGrantShow}},
+	// User-issued API tokens covering the cluster (issue #1835): listing needs token-manage.
+	{"/tokens", nil, []string{config.GrantTokenManage}},
 	{"/api/monitor/actions/adduser/", nil, []string{config.GrantGrantAdd}},
 	{"/users/add", nil, []string{config.GrantGrantAdd}},
 	{"/users/update", nil, []string{config.GrantGrantModify}},
@@ -336,7 +362,7 @@ var terminalACLRules = []ACLRule{
 // Returns true if access granted, false otherwise
 // Logs detailed information about missing grants when access is denied
 func (cluster *Cluster) checkACLRule(strUser string, rule ACLRule, URL string) (bool, string) {
-	user, ok := cluster.APIUsers[strUser]
+	user, ok := cluster.GetACLUser(strUser)
 	if !ok {
 		return false, "user not found"
 	}
@@ -380,6 +406,7 @@ func (cluster *Cluster) checkACLRule(strUser string, rule ACLRule, URL string) (
 // Logs detailed information about permission denials
 // Matches are checked in order of specificity (longer patterns first) to ensure
 // more specific rules take precedence, but all matching patterns are tried (hierarchical fallback)
+// URL patterns are literal substrings; this matcher does not implement wildcards.
 func (cluster *Cluster) matchACLRules(strUser string, URL string, rules []ACLRule) bool {
 	// First pass: collect all matching rules with their pattern lengths
 	type matchedRule struct {
@@ -468,7 +495,7 @@ var dbLogPaths = []string{
 
 // checkDBLogAccess checks if user has access to database log paths
 func (cluster *Cluster) checkDBLogAccess(strUser string, URL string) bool {
-	if !cluster.APIUsers[strUser].Grants[config.GrantDBLogs] {
+	if u, ok := cluster.GetACLUser(strUser); !ok || !u.Grants[config.GrantDBLogs] {
 		return false
 	}
 

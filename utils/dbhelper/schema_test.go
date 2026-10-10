@@ -5,6 +5,8 @@
 package dbhelper
 
 import (
+	"context"
+	"errors"
 	"hash/crc64"
 	"regexp"
 	"strings"
@@ -273,8 +275,10 @@ func TestGetTablesQueryAlignment(t *testing.T) {
 	expectedCRC := expectedTable.TableCrc
 
 	tablesSQL := tablesQueryAll(ver)
-	mock.ExpectExec(regexp.QuoteMeta("SET SESSION information_schema_stats_expiry = 0")).
-		WillReturnResult(sqlmock.NewResult(0, 0))
+	// No ExpectExec for "SET SESSION information_schema_stats_expiry = 0":
+	// that variable is MySQL-8.0-only, and applyInformationSchemaStatsExpiry
+	// skips it entirely for MariaDB (the version built above), going
+	// straight to the table Query below.
 	mock.ExpectQuery(regexp.QuoteMeta(tablesSQL)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"table_schema",
@@ -421,5 +425,339 @@ func TestAnalyzeTableRejectsInvalidPersistentIndexes(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+// GetUserAuthConn tests -- GetUserAuthConn is the restore-time-truth
+// counterpart to GetUsers above (schema.go), so its tests live here too.
+
+func userAuthRows(hash string) *sqlmock.Rows {
+	return sqlmock.NewRows([]string{"password"}).AddRow(hash)
+}
+
+func TestGetUserAuthConnMySQLUsesAuthenticationString(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+	const query = "SELECT authentication_string FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("root", "localhost").
+		WillReturnRows(userAuthRows("*HASH1"))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "root", "localhost", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected exists=true")
+	}
+	if hash != "*HASH1" {
+		t.Fatalf("expected hash *HASH1, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnMariaDB104UsesPassword(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 5}
+	const query = "SELECT u.password FROM mysql.user u WHERE u.user = ? AND u.host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("root", "localhost").
+		WillReturnRows(userAuthRows("*HASH2"))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "root", "localhost", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected exists=true")
+	}
+	if hash != "*HASH2" {
+		t.Fatalf("expected hash *HASH2, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnOldMariaDBUsesPlainPassword(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 1}
+	const query = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("app", "%").
+		WillReturnRows(userAuthRows("*HASH3"))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "app", "%", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected exists=true")
+	}
+	if hash != "*HASH3" {
+		t.Fatalf("expected hash *HASH3, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnOldMySQLUsesPlainPassword(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL", Major: 5, Minor: 6}
+	const query = "SELECT password FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("app", "%").
+		WillReturnRows(userAuthRows("*HASH4"))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "app", "%", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected exists=true")
+	}
+	if hash != "*HASH4" {
+		t.Fatalf("expected hash *HASH4, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnNotFound(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+	const query = "SELECT authentication_string FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("ghost", "localhost").
+		WillReturnRows(sqlmock.NewRows([]string{"password"}))
+
+	hash, exists, err := GetUserAuthConn(context.Background(), conn, "ghost", "localhost", myver)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exists {
+		t.Fatal("expected exists=false")
+	}
+	if hash != "" {
+		t.Fatalf("expected empty hash, got %q", hash)
+	}
+}
+
+func TestGetUserAuthConnPostgreSQLUnsupported(t *testing.T) {
+	conn, _, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "PostgreSQL"}
+	_, exists, err := GetUserAuthConn(context.Background(), conn, "root", "localhost", myver)
+	if err == nil {
+		t.Fatal("expected an error for PostgreSQL, got nil")
+	}
+	if exists {
+		t.Fatal("expected exists=false on error")
+	}
+}
+
+func TestGetUserAuthConnQueryErrorIsWrapped(t *testing.T) {
+	conn, mock, closeFn := newPluginTestConn(t)
+	defer closeFn()
+
+	myver := &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}
+	const query = "SELECT authentication_string FROM mysql.user WHERE user = ? AND host = ? LIMIT 1"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WithArgs("root", "localhost").
+		WillReturnError(context.DeadlineExceeded)
+
+	_, _, err := GetUserAuthConn(context.Background(), conn, "root", "localhost", myver)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected the wrapped error to unwrap to context.DeadlineExceeded, got: %v", err)
+	}
+}
+
+// eventChecksumColumns are the columns of eventChecksumQuery.
+var eventChecksumColumns = []string{"schema", "name", "definer", "status", "event_type", "execute_at", "interval_value", "interval_field",
+	"starts", "ends", "on_completion", "sql_mode", "time_zone", "body_md5"}
+
+func TestGetEventChecksums(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 10000).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "purge", "root@%", "ENABLED", "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "STRICT_TRANS_TABLES", "SYSTEM", "3c2a8f0e6c0d5e0f1b2a3c4d5e6f7a8b").
+		AddRow("app", "purge_copy", "root@%", "SLAVESIDE_DISABLED", "RECURRING", "", "1", "DAY", "2030-01-01 00:00:00", "", "PRESERVE", "STRICT_TRANS_TABLES", "SYSTEM", "3c2a8f0e6c0d5e0f1b2a3c4d5e6f7a8b").
+		AddRow("app", "off", "app@%", "DISABLED", "ONE TIME", "2030-06-01 00:00:00", "", "", "", "", "NOT PRESERVE", "", "+00:00", "9e1f8c2b7a6d5e4f3a2b1c0d9e8f7a6b"))
+	if !strings.Contains(eventChecksumQuery, "MD5(CONVERT(EVENT_DEFINITION USING utf8mb4))") || strings.Contains(strings.ReplaceAll(eventChecksumQuery, "MD5(CONVERT(EVENT_DEFINITION", ""), "EVENT_DEFINITION") {
+		t.Fatalf("the body must only be read as its server-side MD5: %s", eventChecksumQuery)
+	}
+	events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 10000, 10000)
+	if err != nil || len(events) != 3 {
+		t.Fatalf("GetEventChecksums = %+v, %v", events, err)
+	}
+	if events[0].Db != "app" || events[0].Name != "purge" || events[0].Definer != "root@%" || events[0].Status != EventStatusActive || events[0].DefinitionCrc64 == 0 {
+		t.Fatalf("first event = %+v", events[0])
+	}
+	// a replicated copy: its own replica-side disabled class, the same definition
+	if events[1].Status != EventStatusReplicaSide || events[1].DefinitionCrc64 != events[0].DefinitionCrc64 {
+		t.Fatalf("a replicated copy of the same event must compare equal: %+v vs %+v", events[1], events[0])
+	}
+	if events[2].Status != EventStatusDisabled || events[2].DefinitionCrc64 == events[0].DefinitionCrc64 {
+		t.Fatalf("third event = %+v", events[2])
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta("FROM information_schema.EVENTS")).WithArgs("", "", "", 10000).WillReturnError(errors.New("access denied"))
+	if events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 10000, 10000); err == nil || events != nil {
+		t.Fatalf("a failed read must return the error and no list (never an empty one): %+v, %v", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+
+	// PostgreSQL: unsupported, no query sent
+	if _, _, err := GetEventChecksums(sqlxdb, &version.Version{Flavor: "PostgreSQL", Major: 16}, 5, 10000, 10000); !errors.Is(err, ErrEventsUnsupported) {
+		t.Fatalf("PostgreSQL must be unsupported, got %v", err)
+	}
+}
+
+func TestGetEventChecksumsPages(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	// The second page starts strictly after app.b: every event is returned,
+	// while no one database result set exceeds the page size.
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "a", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "a").
+		AddRow("app", "b", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "b"))
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("app", "app", "b", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "c", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "c"))
+
+	events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 2, 10000)
+	if err != nil || len(events) != 3 || events[0].Name != "a" || events[1].Name != "b" || events[2].Name != "c" {
+		t.Fatalf("GetEventChecksums pages = %+v, %v", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetEventChecksumsPageFailureReturnsNoList(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "a", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "a").
+		AddRow("app", "b", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "b"))
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("app", "app", "b", 2).WillReturnError(errors.New("page two unavailable"))
+
+	if events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 2, 10000); err == nil || events != nil {
+		t.Fatalf("a failed page must return no partial list, got %+v, %v", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetEventChecksumsLimitExceededReturnsNoList(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	// The first query fills the two-event snapshot. The next one asks for only
+	// one row so an exact-limit catalog succeeds while a larger one is rejected.
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "a", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "a").
+		AddRow("app", "b", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "b"))
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("app", "app", "b", 1).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "c", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "c"))
+
+	if events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 2, 2); events != nil || !errors.Is(err, ErrEventChecksumLimitExceeded) {
+		t.Fatalf("over-limit collection = %+v, %v; want no list and ErrEventChecksumLimitExceeded", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestGetEventChecksumsExactLimitSucceeds(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("failed to create sqlmock: %v", err)
+	}
+	defer db.Close()
+	sqlxdb := sqlx.NewDb(db, "sqlmock")
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("", "", "", 2).WillReturnRows(sqlmock.NewRows(eventChecksumColumns).
+		AddRow("app", "a", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "a").
+		AddRow("app", "b", "root@%", "ENABLED", "ONE TIME", "", "", "", "", "", "PRESERVE", "", "SYSTEM", "b"))
+	mock.ExpectQuery(regexp.QuoteMeta(eventChecksumQuery)).WithArgs("app", "app", "b", 1).WillReturnRows(sqlmock.NewRows(eventChecksumColumns))
+
+	events, _, err := GetEventChecksums(sqlxdb, mariadb, 5, 2, 2)
+	if err != nil || len(events) != 2 {
+		t.Fatalf("exact-limit collection = %+v, %v", events, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+func TestHashEventDefinition(t *testing.T) {
+	base := EventDefinitionFields{EventType: "RECURRING", IntervalValue: "1", IntervalField: "HOUR", Starts: "2030-01-01 00:00:00",
+		OnCompletion: "PRESERVE", SQLMode: "STRICT_TRANS_TABLES", TimeZone: "SYSTEM", BodyMD5: "3c2a8f0e6c0d5e0f1b2a3c4d5e6f7a8b"}
+	h := HashEventDefinition(base)
+	if same := base; HashEventDefinition(same) != h {
+		t.Fatalf("the same fields must give the same hash")
+	}
+	for name, change := range map[string]func(*EventDefinitionFields){
+		"body":          func(f *EventDefinitionFields) { f.BodyMD5 = "9e1f8c2b7a6d5e4f3a2b1c0d9e8f7a6b" },
+		"interval":      func(f *EventDefinitionFields) { f.IntervalValue = "2" },
+		"interval unit": func(f *EventDefinitionFields) { f.IntervalField = "DAY" },
+		"starts":        func(f *EventDefinitionFields) { f.Starts = "2031-01-01 00:00:00" },
+		"ends":          func(f *EventDefinitionFields) { f.Ends = "2031-01-01 00:00:00" },
+		"on completion": func(f *EventDefinitionFields) { f.OnCompletion = "NOT PRESERVE" },
+		"sql mode":      func(f *EventDefinitionFields) { f.SQLMode = "" },
+		"time zone":     func(f *EventDefinitionFields) { f.TimeZone = "+00:00" },
+		"type":          func(f *EventDefinitionFields) { f.EventType = "ONE TIME" },
+		// the NUL separator keeps a value from moving between two fields
+		"field shift": func(f *EventDefinitionFields) { f.IntervalValue, f.IntervalField = "1H", "OUR" },
+	} {
+		f := base
+		change(&f)
+		if HashEventDefinition(f) == h {
+			t.Errorf("a change of %s must change the hash", name)
+		}
+	}
+}
+
+func TestEventStatusClass(t *testing.T) {
+	for status, want := range map[string]string{
+		"ENABLED": EventStatusActive, "SLAVESIDE_DISABLED": EventStatusReplicaSide, "REPLICA_SIDE_DISABLED": EventStatusReplicaSide,
+		"enabled": EventStatusActive, "DISABLED": EventStatusDisabled, "": EventStatusUnknown, "WHATEVER": EventStatusUnknown,
+	} {
+		if got := EventStatusClass(status); got != want {
+			t.Errorf("EventStatusClass(%q) = %q, want %q", status, got, want)
+		}
 	}
 }

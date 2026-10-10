@@ -2,10 +2,12 @@ import { VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 
 import Dropdown from '../../../components/Dropdown'
+import TextForm from '../../../components/TextForm'
 import TableType2 from '../../../components/TableType2'
 import parentStyles from '../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
 import { setSetting, switchSetting } from '../../../redux/settingsSlice'
+import { getKubeStorageClasses } from '../../../redux/clusterSlice'
 import { convertObjectToArrayForDropdown } from '../../../utility/common'
 import RMSwitch from '../../../components/RMSwitch'
 
@@ -14,6 +16,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
   const {
     globalClusters: { monitor }
   } = useSelector((state) => state)
+  const kubeStorageClasses = useSelector((state) => state.cluster?.kubeStorageClasses || [])
   const [serviceVMs, setServiceVMs] = useState([])
 
   useEffect(() => {
@@ -22,7 +25,37 @@ function OrchestratorDbVM({ selectedCluster, user }) {
     }
   }, [monitor?.serviceVM])
 
+  useEffect(() => {
+    if (selectedCluster?.name && selectedCluster?.config?.provOrchestrator === 'kube') {
+      dispatch(getKubeStorageClasses({ clusterName: selectedCluster.name }))
+    }
+  }, [selectedCluster?.name, selectedCluster?.config?.provOrchestrator])
+
   const dataObject = [
+    {
+      key: 'Database Start Timeout',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.provDbStartTimeout}
+          placeholder='2m'
+          confirmTitle="Database Start Timeout Change"
+          confirmBody='Start and image pull timeout of the database containers in the orchestrator (the orchestrator default is 5s, too short for an image pull after a purge). Change "prov-db-start-timeout" to: '
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-timeout', value: value }))}
+        />
+      )
+    },
+    {
+      key: 'Proxy Start Timeout',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.provProxyStartTimeout}
+          placeholder='2m'
+          confirmTitle="Proxy Start Timeout Change"
+          confirmBody='Start and image pull timeout of the proxy containers in the orchestrator. Change "prov-proxy-start-timeout" to: '
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'prov-proxy-start-timeout', value: value }))}
+        />
+      )
+    },
     {
       key: 'Database VM',
       value: (
@@ -74,6 +107,59 @@ function OrchestratorDbVM({ selectedCluster, user }) {
         />
       )
     },
+    selectedCluster?.config?.provOrchestrator === 'kube' && {
+      key: 'Kubernetes Storage Class',
+      value: (
+        <Dropdown
+          className={parentStyles.dropdown}
+          options={kubeStorageClasses}
+          selectedValue={selectedCluster?.config?.provKubeStorageClass}
+          confirmTitle={`Confirm change Kubernetes storage class to `}
+          onChange={(value) => {
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'prov-kube-storage-class',
+                value: value
+              })
+            )
+          }}
+        />
+      )
+    },
+    selectedCluster?.config?.provOrchestrator === 'kube' && {
+      key: 'Kubernetes Proxy Storage Class',
+      value: (
+        <Dropdown
+          className={parentStyles.dropdown}
+          options={kubeStorageClasses}
+          selectedValue={selectedCluster?.config?.provKubeProxyStorageClass}
+          confirmTitle={`Confirm change Kubernetes proxy storage class to `}
+          onChange={(value) => {
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'prov-kube-proxy-storage-class',
+                value: value
+              })
+            )
+          }}
+        />
+      )
+    },
+    selectedCluster?.config?.provOrchestrator === 'kube' && {
+      key: 'Kubernetes Force Image Pull',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provKubeImageForcePull}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-kube-image-force-pull?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-kube-image-force-pull' }))
+          }
+        />
+      )
+    },
     {
       key: 'Provisioning Private Docker Daemon',
       value: (
@@ -100,7 +186,7 @@ function OrchestratorDbVM({ selectedCluster, user }) {
         />
       )
     }
-  ]
+  ].filter(Boolean)
   return (
     <VStack>
       <TableType2 dataArray={dataObject} className={parentStyles.table} />

@@ -45,6 +45,7 @@ function ArbitrationSettings({ config }) {
   const hPeerHosts = `**Peer Replication-Manager Hosts**\n\nComma-separated API addresses of the peer replication-manager instances, probed during split-brain detection.\n\nConfig: \`arbitration-peer-hosts\``
   const hFailedScript = `**Failed Master Script**\n\nScript executed when arbitration declares a master failed. Receives the failed master host and port as arguments.\n\nConfig: \`arbitration-failed-master-script\``
   const hReadTimeout = `**Read Timeout**\n\nTimeout in milliseconds for arbitrator responses during elections.\n\nConfig: \`arbitration-read-timeout\``
+  const hVerdictStreak = `**Verdict Streak**\n\nConsecutive arbitrator answers of one kind, in monitoring ticks, before a cluster changes status: standby after that many looser verdicts, the minority fail-safe after that many unreachable answers. A winner resets the count. 1 acts on every answer. The default of 3 delays a real loss by that many ticks in exchange for immunity to one bad answer.\n\nConfig: \`arbitration-verdict-streak\``
   const hReset = `**Reset Arbitration**\n\nDeletes every heartbeat row registered on the arbitrator for this secret. A fresh election runs on the next monitoring tick.\nUse after changing unique ids or after testing.`
 
   const plan = (config?.cloud18SubscriptionPlan || '').trim().toLowerCase()
@@ -166,6 +167,20 @@ function ArbitrationSettings({ config }) {
           showConfirmModal={true}
           confirmTitle={`Confirm change 'arbitration-read-timeout' to: `}
           onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'arbitration-read-timeout', value: value }))}
+        />
+      )
+    },
+    {
+      key: 'Verdict Streak in Ticks',
+      help: h(hVerdictStreak, 'Verdict Streak'),
+      value: (
+        <NumberInput
+          min={1}
+          value={config?.arbitrationVerdictStreak ?? 3}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'arbitration-verdict-streak' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'arbitration-verdict-streak', value: value }))}
         />
       )
     },

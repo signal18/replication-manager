@@ -3,15 +3,20 @@ import styles from '../styles.module.scss'
 import TableType2 from '../../../components/TableType2'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import Gauge from '../../../components/Gauge'
-import { Flex, HStack, VStack } from '@chakra-ui/react'
+import RMSwitch from '../../../components/RMSwitch'
+import { Box, Flex, HStack, Text, VStack } from '@chakra-ui/react'
 import AddRemovePill from '../../../components/AddRemovePill'
 import { addProxyTag, dropProxyTag } from '../../../redux/configSlice'
-import { useDispatch } from 'react-redux'
-import { setSetting } from '../../../redux/settingsSlice'
+import { useDispatch, useSelector } from 'react-redux'
+import { setSetting, switchSetting, changePlanUnits } from '../../../redux/settingsSlice'
+import RMSlider from '../../../components/Sliders/RMSlider'
 import { convertSize } from '../../../utility/common'
 
 function ProxyConfig({ selectedCluster, user }) {
   const dispatch = useDispatch()
+  const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
+  const nProx = clusterProxies?.length || 1
+  const apuPerProxy = parseInt(selectedCluster?.config?.provProxyApu) || 2
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
@@ -36,23 +41,10 @@ function ProxyConfig({ selectedCluster, user }) {
   }
 
   // {
-  //   key: 'Cluster Proxy Start Fetch Config',
-  //   value: (
-  //     <RMSwitch
-  //       isChecked={selectedCluster?.config?.provProxyStartFetchConfig}
-  //       isDisabled={user?.grants['cluster-settings'] == false}
-  //       confirmTitle={'Confirm switch settings for prov-proxy-start-fetch-config?'}
-  //       onChange={() =>
-  //         dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-proxy-start-fetch-config' }))
-  //       }
-  //     />
-  //   )
-  // },
-  // {
   //   key: 'Generate All Proxy Config Files',
   //   value: (
-  //     <RMIconButton icon={HiRefresh} onClick={() => { 
-  //       setConfirmTitle('Confirm generate Proxy Config from configurator settings to monitor datadir?'); 
+  //     <RMIconButton icon={HiRefresh} onClick={() => {
+  //       setConfirmTitle('Confirm generate Proxy Config from configurator settings to monitor datadir?');
   //       setIsConfirmModalOpen(true)
   //       setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'proxy'})))
   //     }} />
@@ -60,6 +52,19 @@ function ProxyConfig({ selectedCluster, user }) {
   // },
 
   const dataObject = [
+    {
+      key: 'Proxy Start Fetch Config',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provProxyStartFetchConfig}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-proxy-start-fetch-config?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-proxy-start-fetch-config' }))
+          }
+        />
+      )
+    },
     {
       key: 'Manage Tags',
       value: (
@@ -110,6 +115,35 @@ function ProxyConfig({ selectedCluster, user }) {
             </HStack>
           </VStack>
         </VStack>
+      )
+    },
+    {
+      key: 'Application Units (APU)',
+      value: (
+        <Box w='100%'>
+          <Flex justify='space-between' mb={1} align='start'>
+            <Box>
+              <Text fontSize='sm' fontWeight='bold' color='var(--text-color)'>Application Units (APU) — per proxy</Text>
+              <Text fontSize='11px' color='gray.500'>1 APU = 1 core · 1 GB · 10 GB</Text>
+            </Box>
+            <Text fontSize='sm' fontWeight='semibold' color='var(--text-color)'>
+              {apuPerProxy} APU/proxy · plan {apuPerProxy * nProx} APU ({nProx} prox{nProx > 1 ? 'ies' : 'y'})
+            </Text>
+          </Flex>
+          <RMSlider
+            value={apuPerProxy}
+            min={1}
+            max={64}
+            isDisabled={user?.grants['cluster-settings'] == false}
+            confirmTitle='Confirm per-proxy APU reservation (technical resource contract) to: '
+            onChange={(val) => {
+              const delta = val - apuPerProxy
+              if (delta !== 0) {
+                dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'APU', delta }))
+              }
+            }}
+          />
+        </Box>
       )
     },
     {

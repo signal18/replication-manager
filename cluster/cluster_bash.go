@@ -74,14 +74,14 @@ func (cluster *Cluster) ManagedHostCNAME(fullCname string) (shortCname string, m
 }
 
 func (cluster *Cluster) BashScriptProvDNS(cname string) error {
-	if cluster.Conf.Cloud18GatewayDomainName == "" {
+	if cluster.Conf.PrimaryGatewayDomain() == "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", "Empty gateway for cloud18-gateway-domain-name")
 		return errors.New("Empty gateway for cloud18-gateway-domain-name")
 	}
 	if cluster.Conf.Cloud18DomainAddScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision add domain script")
 		var out []byte
-		out, err := exec.Command(cluster.Conf.Cloud18DomainAddScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.Cloud18DomainAddScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.PrimaryGatewayDomain()).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 			return fmt.Errorf("domain add script failed for %s: %w", cname, err)
@@ -94,14 +94,14 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 // BashScriptDeprovDNS calls the cloud18-domain-drop-script to remove a managed
 // CNAME entry that is no longer needed (route dropped or renamed).
 func (cluster *Cluster) BashScriptDeprovDNS(cname string) error {
-	if cluster.Conf.Cloud18GatewayDomainName == "" {
+	if cluster.Conf.PrimaryGatewayDomain() == "" {
 		return errors.New("empty gateway for cloud18-gateway-domain-name")
 	}
 	if cluster.Conf.Cloud18DomainDropScript == "" {
 		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision drop domain script for %s", cname)
-	out, err := exec.Command(cluster.Conf.Cloud18DomainDropScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
+	out, err := exec.Command(cluster.Conf.Cloud18DomainDropScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.PrimaryGatewayDomain()).CombinedOutput()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		return fmt.Errorf("domain drop script failed for %s: %w", cname, err)
@@ -355,6 +355,9 @@ func (cluster *Cluster) BinlogRotationScript(srv *ServerMonitor) error {
 }
 
 func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, isPurge bool) error {
+	if err := cluster.preflightBackupEncryptionKey(); err != nil {
+		return err
+	}
 	if !server.IsMaster() {
 		return errors.New("Copy only master binlog")
 	}
@@ -381,12 +384,22 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 	if cluster.Conf.BinlogCopyScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Calling binlog copy script on %s. Binlog: %s", server.URL, binlog)
 		var out []byte
-		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, server.Host, server.Port, strconv.Itoa(cluster.Conf.OnPremiseSSHPort), server.GetBinaryLogDir(), server.GetMyBackupDirectory(), binlog).CombinedOutput()
+		// With encryption on the script copies into the ".partial" staging
+		// directory; only finalizeBinlogCopy publishes the encrypted copy.
+		copyDir := server.binlogCopyDir()
+		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, server.Host, server.Port, strconv.Itoa(cluster.Conf.OnPremiseSSHPort), server.GetBinaryLogDir(), copyDir, binlog).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+			server.discardBinlogCopy(copyDir, binlog)
 		} else {
+			// Encrypt every successful copy, purge batch or not.
+			if _, encErr := server.finalizeBinlogCopy(copyDir, binlog); encErr != nil {
+				cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0219"], server.URL, "binlog", encErr.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
+				return encErr
+			}
 			// Skip backup to restic if in purge binlog
 			if !isPurge {
+
 				if idx := slices.Index(server.BinaryLogMetaToWrite, binlog); idx == -1 {
 					server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlog)
 				}

@@ -19,7 +19,9 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -573,6 +575,8 @@ func TestResolveMysqldumpDestNoSplitdump(t *testing.T) {
 	}
 }
 
+func boolPtr(b bool) *bool { return &b }
+
 func TestShouldRunRestic(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -940,6 +944,72 @@ func TestDeleteBackupByIDSuccess(t *testing.T) {
 	}
 }
 
+func TestDeleteBackupByIDRemovesEncryptedIntegritySidecar(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	dest := filepath.Join(server.GetMyBackupDirectory(), "mysqldump.sql.gz.enc")
+	if err := os.WriteFile(dest, []byte("ciphertext"), 0600); err != nil {
+		t.Fatalf("create encrypted backup: %v", err)
+	}
+	sidecar := backupmgr.IntegritySidecarPath(dest)
+	if err := os.WriteFile(sidecar, []byte("hmac-sha256-v1:"+strings.Repeat("0", 64)+"\n"), 0600); err != nil {
+		t.Fatalf("create integrity sidecar: %v", err)
+	}
+	meta := &backupmgr.BackupMetadata{
+		Id:         time.Now().UnixNano(),
+		BackupTool: config.ConstBackupLogicalTypeMysqldump,
+		BackupLine: backupmgr.BackupLineDefault,
+		Source:     server.URL,
+		Dest:       dest,
+		Encrypted:  true,
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+	if err := os.WriteFile(server.backupMetaFilePath(meta), []byte("{}"), 0600); err != nil {
+		t.Fatalf("create metadata: %v", err)
+	}
+	if _, err := cluster.DeleteBackupByID(meta.Id); err != nil {
+		t.Fatalf("delete encrypted backup: %v", err)
+	}
+	if fileExists(dest) || fileExists(sidecar) {
+		t.Fatalf("encrypted backup and integrity sidecar must delete together")
+	}
+}
+
+func TestPurgeExpiredAdhocBackupRemovesEncryptedIntegritySidecar(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	dest := filepath.Join(server.GetMyBackupDirectory(), "adhoc.sql.gz.enc")
+	if err := os.WriteFile(dest, []byte("ciphertext"), 0600); err != nil {
+		t.Fatalf("create encrypted backup: %v", err)
+	}
+	sidecar := backupmgr.IntegritySidecarPath(dest)
+	if err := os.WriteFile(sidecar, []byte("hmac-sha256-v1:"+strings.Repeat("0", 64)+"\n"), 0600); err != nil {
+		t.Fatalf("create integrity sidecar: %v", err)
+	}
+	meta := &backupmgr.BackupMetadata{
+		Id:            time.Now().UnixNano(),
+		BackupTool:    config.ConstBackupLogicalTypeMysqldump,
+		BackupLine:    backupmgr.BackupLineAdhoc,
+		RetentionDays: 1,
+		Completed:     true,
+		EndTime:       time.Now().Add(-48 * time.Hour),
+		Source:        server.URL,
+		Dest:          dest,
+		Encrypted:     true,
+	}
+	metaPath := server.backupMetaFilePath(meta)
+	payload, err := json.Marshal(meta)
+	if err != nil {
+		t.Fatalf("marshal metadata: %v", err)
+	}
+	if err := os.WriteFile(metaPath, payload, 0600); err != nil {
+		t.Fatalf("create metadata: %v", err)
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+	cluster.PurgeExpiredAdhocBackups()
+	if fileExists(dest) || fileExists(sidecar) || fileExists(metaPath) {
+		t.Fatalf("expired encrypted backup, sidecar, and metadata must delete together")
+	}
+}
+
 func TestDeleteBackupByIDInProgress(t *testing.T) {
 	cluster, server := newTestClusterServer(t)
 	cluster.InLogicalBackup = true
@@ -999,7 +1069,302 @@ func newTestClusterServer(t *testing.T) (*Cluster, *ServerMonitor) {
 	return cluster, server
 }
 
-// Helper function
-func boolPtr(b bool) *bool {
-	return &b
+func TestSetLastPhysicalRestoreMeta(t *testing.T) {
+	server := &ServerMonitor{}
+
+	meta := &PhysicalRestoreMeta{Vendor: "MySQL", GTID: "1-2-3", BinLogFile: "mysql-bin.000001", BinLogPos: "456"}
+	server.SetLastPhysicalRestoreMeta(meta)
+	if server.LastPhysicalRestoreMeta != meta {
+		t.Fatalf("LastPhysicalRestoreMeta = %+v, want %+v", server.LastPhysicalRestoreMeta, meta)
+	}
+
+	// A nil restoreMeta (e.g. unparseable API-mode payload) must not clobber
+	// a previously recorded restore.
+	server.SetLastPhysicalRestoreMeta(nil)
+	if server.LastPhysicalRestoreMeta != meta {
+		t.Fatalf("LastPhysicalRestoreMeta was cleared by a nil call: got %+v, want %+v", server.LastPhysicalRestoreMeta, meta)
+	}
+}
+
+func TestPhysicalRestoreRecoveryMode(t *testing.T) {
+	tests := []struct {
+		name             string
+		v                *version.Version
+		meta             *PhysicalRestoreMeta
+		wantHasGTID      bool
+		wantIsPositional bool
+	}{
+		{"nil meta", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, nil, false, false},
+		{"MySQL 8.0 with GTID", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, &PhysicalRestoreMeta{GTID: "1-2-3", BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, true, false},
+		{"MySQL 5.6 without GTID but with binlog position", &version.Version{Flavor: "MySQL", Major: 5, Minor: 6}, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, false, true},
+		{"Percona 5.6 without GTID but with binlog position", &version.Version{Flavor: "Percona", Major: 5, Minor: 6}, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, false, true},
+		{"MySQL without GTID and without binlog position", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, &PhysicalRestoreMeta{}, false, false},
+		{"MariaDB without GTID but with binlog position stays non-positional", &version.Version{Flavor: "MariaDB", Major: 10, Minor: 3}, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, false, false},
+		{"nil version with binlog position", nil, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001", BinLogPos: "456"}, false, false},
+		{"MySQL without GTID, binlog file but no position", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, &PhysicalRestoreMeta{BinLogFile: "mysql-bin.000001"}, false, false},
+		{"MySQL without GTID, binlog position but no file", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0}, &PhysicalRestoreMeta{BinLogPos: "456"}, false, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hasGTID, isPositional := physicalRestoreRecoveryMode(tt.v, tt.meta)
+			if hasGTID != tt.wantHasGTID || isPositional != tt.wantIsPositional {
+				t.Fatalf("physicalRestoreRecoveryMode(%+v, %+v) = (%v, %v), want (%v, %v)",
+					tt.v, tt.meta, hasGTID, isPositional, tt.wantHasGTID, tt.wantIsPositional)
+			}
+		})
+	}
+}
+
+// TestMarkBackupPhysicalDoneRaceWithResticUpdate reproduces the concurrency
+// window described in review of the API-mode physical restore path:
+// MarkBackupPhysicalDone is now called from the API job-state HTTP handler
+// (server/api_database.go), and can run concurrently with the restic
+// completion goroutine's UpdateBackupMetadataWithRestic (srv_bck.go), both of
+// which read/mutate the same server.LastBackupMeta.Physical. Run with -race;
+// before MarkBackupPhysicalDone took backupMetaMutex, this reliably reported
+// a data race.
+func TestMarkBackupPhysicalDoneRaceWithResticUpdate(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	server.Datadir = t.TempDir()
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
+		BackupTool: config.ConstBackupPhysicalTypeMariaBackup,
+		BackupLine: backupmgr.BackupLineDefault,
+	}
+	cluster.ResticManager = backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			server.MarkBackupPhysicalDone(config.ConstBackupPhysicalTypeMariaBackup)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 100; i++ {
+			server.UpdateBackupMetadataWithRestic(backupmgr.BackupMethodPhysical, "snap-id")
+		}
+	}()
+	wg.Wait()
+
+	if !server.LastBackupMeta.Physical.Completed {
+		t.Fatalf("expected LastBackupMeta.Physical.Completed=true after MarkBackupPhysicalDone")
+	}
+	if server.LastBackupMeta.Physical.ResticSnapshotID != "snap-id" {
+		t.Fatalf("ResticSnapshotID = %q, want %q", server.LastBackupMeta.Physical.ResticSnapshotID, "snap-id")
+	}
+}
+
+// TestWaitForBinlogMetaNoDeadlock reproduces the WriteBackupMetadata self-deadlock: the
+// metadata writer held backupMetaMutex while polling for lastmeta.BinLogFileName, but that
+// field is only ever published by the writelog API path, which takes the SAME mutex. The
+// writer therefore blocked forever on a value it was preventing anyone from setting -- this
+// wedged belair/db2's rejoin for a day. waitForBinlogMeta must poll with the mutex RELEASED
+// so the publisher can make progress, then return holding it again.
+func TestWaitForBinlogMetaNoDeadlock(t *testing.T) {
+	_, server := newTestClusterServer(t)
+	lastmeta := &backupmgr.BackupMetadata{}
+
+	done := make(chan struct{})
+	go func() {
+		// Match WriteBackupMetadata's caller state: enter holding the mutex.
+		server.backupMetaMutex.Lock()
+		server.waitForBinlogMeta(lastmeta)
+		server.backupMetaMutex.Unlock() // helper returns holding it, per its contract
+		close(done)
+	}()
+
+	// The writelog API path publishes BinLogFileName under the same mutex. With the old code
+	// (poll while holding the lock) this Lock() would block forever -> deadlock.
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		server.backupMetaMutex.Lock()
+		lastmeta.BinLogFileName = "binlog.000042"
+		server.backupMetaMutex.Unlock()
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("waitForBinlogMeta did not return within 5s: backupMetaMutex self-deadlock regressed")
+	}
+}
+
+// TestJobsCheckStatesApiModeSkipsSQL verifies the api-mode guard. In api mode the jobs table
+// is not the source of truth, so JobsCheckStates must return before the SQL path. With Conn
+// nil and no guard the function would instead return the "No connection pool" error (and in a
+// live server spam ERROR 1146 against the non-existent jobs table every tick).
+func TestJobsCheckStatesApiModeSkipsSQL(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.Conf.SchedulerJobsMode = "api"
+
+	if err := server.JobsCheckStates(); err != nil {
+		t.Fatalf("JobsCheckStates in api mode returned %v, want nil (must skip the SQL path)", err)
+	}
+}
+
+// A logical backup fills its binlog position while the dump is read; once the dump function
+// has returned nothing can publish it. WriteBackupMetadata must therefore not wait for it:
+// the wait never ended, kept InLogicalBackup raised and held the global backup slot forever.
+func TestWriteBackupMetadataLogicalDoesNotWaitForBinlogPosition(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.DiskStatManager = misc.NewDiskStatManager()
+	server.JobResults = config.NewTasksMap()
+	server.JobResults.Set("mysqldump", &config.Task{Task: "mysqldump", State: 3, Done: 1})
+
+	dest := filepath.Join(t.TempDir(), "mysqldump.sql.gz")
+	if err := os.WriteFile(dest, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
+		Id:         1,
+		BackupTool: "mysqldump",
+		Dest:       dest,
+		StartTime:  time.Now(),
+	}
+	done := make(chan struct{})
+	go func() {
+		server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("WriteBackupMetadata kept waiting for a binlog position a finished logical backup can no longer receive")
+	}
+	if !server.LastBackupMeta.Logical.Completed {
+		t.Fatal("a finished logical backup must be written as completed even without a binlog position")
+	}
+}
+
+// waitSlotsHeld polls until the semaphore holds want slots or the timeout elapses.
+func waitSlotsHeld(sem chan struct{}, want int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if len(sem) == want {
+			return true
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return len(sem) == want
+}
+
+// While another backup of the cluster is running (here a binlog copy, which takes no backup
+// slot), a physical backup request waits for it while holding exactly the one slot it took.
+// The old code called itself again, which took a second slot while still holding the first:
+// with a single slot it waited for its own slot forever, with more it leaked one per retry.
+func TestJobBackupPhysicalWaitsHoldingOneSlotAndReleasesWhenAborted(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	sem := make(chan struct{}, 2)
+	cluster.ServerGlobals = &ServerGlobals{BackupSemaphore: sem}
+	cluster.SetInBinlogBackupState(true)
+
+	done := make(chan error, 1)
+	go func() { done <- server.JobBackupPhysicalWithOptions(BackupRunOptions{}) }()
+
+	if !waitSlotsHeld(sem, 1, 5*time.Second) {
+		t.Fatalf("holding %d slots, want the one it waits with", len(sem))
+	}
+	// Past the retry delay the old code had taken a second slot by now.
+	time.Sleep(1500 * time.Millisecond)
+	select {
+	case err := <-done:
+		t.Fatalf("returned while another backup was running: %v", err)
+	default:
+	}
+	if got := len(sem); got != 1 {
+		t.Fatalf("holding %d slots while waiting, want exactly 1", got)
+	}
+
+	cluster.exit.Store(true)
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected an error when the cluster is shutting down")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("kept waiting after the cluster started shutting down")
+	}
+	if got := len(sem); got != 0 {
+		t.Fatalf("slot not given back after the wait was aborted: %d held", got)
+	}
+}
+
+// The abort conditions must also be checked on the pass that ends the wait. If the cluster
+// started shutting down while the request slept and the backup it waited for ended in the
+// meantime, it must not go on to raise InPhysicalBackup and open a receiver; it gives the
+// slot back instead (WARN0073 is not open yet, so nothing else would release it).
+//
+// It ends the awaited backup by clearing a plain bool flag while the request reads it, as the
+// monitor does in production, so it is not clean under -race (neither is the rest of this package).
+func TestJobBackupPhysicalChecksAbortWhenTheAwaitedBackupEnds(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	sem := make(chan struct{}, 1)
+	cluster.ServerGlobals = &ServerGlobals{BackupSemaphore: sem}
+	cluster.SetInBinlogBackupState(true)
+
+	done := make(chan error, 1)
+	go func() {
+		// A request that wrongly goes on would run into the unconfigured test server: report
+		// that as a failure of this test instead of crashing the whole test binary.
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("went on with the backup: %v", r)
+			}
+		}()
+		done <- server.JobBackupPhysicalWithOptions(BackupRunOptions{})
+	}()
+
+	if !waitSlotsHeld(sem, 1, 5*time.Second) {
+		t.Fatalf("holding %d slots, want the one it waits with", len(sem))
+	}
+	cluster.exit.Store(true)              // shutdown starts while the request sleeps...
+	cluster.SetInBinlogBackupState(false) // ...and the backup it waits for ends
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "shutting down") {
+			t.Fatalf("got %v, want a shutting down error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("did not return")
+	}
+	if cluster.InPhysicalBackup {
+		t.Fatal("raised InPhysicalBackup for a cluster that is shutting down")
+	}
+	if got := len(sem); got != 0 {
+		t.Fatalf("slot not given back: %d held", got)
+	}
+}
+
+// Same as above for the server going down while the request waits. Like the previous test it
+// changes a plain field the monitor also changes in production (server.State), so it is not
+// clean under -race.
+func TestJobBackupPhysicalGivesSlotBackWhenServerGoesDownWhileWaiting(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	sem := make(chan struct{}, 1)
+	cluster.ServerGlobals = &ServerGlobals{BackupSemaphore: sem}
+	cluster.SetInBinlogBackupState(true)
+
+	done := make(chan error, 1)
+	go func() { done <- server.JobBackupPhysicalWithOptions(BackupRunOptions{}) }()
+
+	if !waitSlotsHeld(sem, 1, 5*time.Second) {
+		t.Fatalf("holding %d slots, want the one it waits with", len(sem))
+	}
+	server.State = stateFailed
+
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "server down") {
+			t.Fatalf("got %v, want a server down error", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("kept waiting after the server went down")
+	}
+	if got := len(sem); got != 0 {
+		t.Fatalf("slot not given back: %d held", got)
+	}
 }

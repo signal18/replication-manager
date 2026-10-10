@@ -5,6 +5,10 @@ global
  maxconn 4096
  stats socket {{.SockFile}} level admin
  stats socket ipv4@{{.Host}}:{{.ApiPort}} level admin
+ {{if .ExternalCheck}}external-check
+ {{end}}
+ {{if .InsecureForkWanted}}insecure-fork-wanted
+ {{end}}
 
  ###
  #
@@ -138,6 +142,12 @@ backend {{.Name}}
 
    {{ if eq .Mode "http" }} balance roundrobin {{end}}
    {{ if eq .Mode "tcp" }} balance leastconn {{end}}
+
+   {{if .ExternalCheck}}
+   option external-check
+   external-check path "{{.ExternalCheckPath}}"
+   external-check command {{.ExternalCheckCommand}}
+   {{end}}
 
 {{ if .ProxyMode}}
 

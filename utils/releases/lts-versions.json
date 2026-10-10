@@ -1,0 +1,49 @@
+{
+  "updated": "2026-04-09",
+  "comment": "MariaDB LTS: 10.6 (EOL Jul 2026), 10.11 (EOL Feb 2028), 11.4 (EOL May 2029), 11.8 (EOL Jun 2028), 12.3 (LTS); MySQL/Percona LTS: 8.0 (EOL Apr 2026), 8.4 (EOL Apr 2029); lines = every release line published as a docker tag per flavor, used by the rolling-upgrade targets next-minor / next-lts / next-major",
+  "lts": {
+    "mariadb": [
+      "10.6",
+      "10.11",
+      "11.4",
+      "11.8",
+      "12.3"
+    ],
+    "mysql": [
+      "8.0",
+      "8.4"
+    ],
+    "percona": [
+      "8.0",
+      "8.4"
+    ]
+  },
+  "lines": {
+    "mariadb": [
+      "10.6",
+      "10.11",
+      "11.4",
+      "11.5",
+      "11.6",
+      "11.7",
+      "11.8",
+      "12.0",
+      "12.1",
+      "12.2",
+      "12.3"
+    ],
+    "mysql": [
+      "8.0",
+      "8.4",
+      "9.0",
+      "9.1",
+      "9.2",
+      "9.3",
+      "9.4"
+    ],
+    "percona": [
+      "8.0",
+      "8.4"
+    ]
+  }
+}

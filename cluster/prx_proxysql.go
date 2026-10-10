@@ -36,10 +36,24 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	prx.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSProxySQLPartitions, conf.ProxysqlHostsIPV6, conf.ProxysqlJanitorWeights)
 
 	if conf.ProvNetCNI {
+		// Kubernetes uses k8sClusterDomain's "local" (prov-orchestrator-cluster's
+		// own CLI default, OpenSVC-oriented, not a real cluster domain) ->
+		// "cluster.local" fallback, matching how GetDomain()/GetDomainHeadCluster()
+		// (cluster_get.go) and k8sDatabaseDeployment already resolve the DB side's
+		// equivalent suffix -- without it, a cluster that never set
+		// prov-orchestrator-cluster explicitly gets a host ending in ".svc.local",
+		// one ".svc." segment short of the real Service DNS name
+		// ".svc.cluster.local", and CoreDNS never resolves it. Other orchestrators
+		// (OpenSVC) keep the raw value unchanged: they don't share Kubernetes'
+		// CoreDNS default and have never had this fallback.
+		domain := conf.ProvOrchestratorCluster
+		if cluster.GetOrchestrator() == config.ConstOrchestratorKubernetes {
+			domain = k8sClusterDomain(cluster)
+		}
 		if conf.ClusterHead == "" {
-			prx.Host = prx.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+			prx.Host = prx.Host + "." + cluster.Name + ".svc." + domain
 		} else {
-			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + conf.ProvOrchestratorCluster
+			prx.Host = prx.Host + "." + conf.ClusterHead + ".svc." + domain
 		}
 	}
 
@@ -80,6 +94,9 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 		WriterHG: fmt.Sprintf("%d", proxy.WriterHostgroup),
 		ReaderHG: fmt.Sprintf("%d", proxy.ReaderHostgroup),
 		Weight:   proxy.Weight,
+	}
+	if proxy.ClusterGroup.isPostgresCluster() {
+		psql.Flavor = proxysql.FlavorPgSQL
 	}
 
 	if err := psql.Connect(); err != nil {
@@ -578,14 +595,30 @@ func (proxy *ProxySQLProxy) Refresh() error {
 
 		// load the grants
 		if leader && cluster.Conf.ProxysqlCopyGrants {
-			myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection)
+			myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection, psql.UsersTable())
 			if err != nil {
 				cluster.SetState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 			}
 			uniUsers := make(map[string]*dbhelper.Grant)
 			dupUsers := make(map[string]string)
 
-			for _, u := range s.Users.ToNewMap() {
+			users := s.Users.ToNewMap()
+			if psql.Flavor == proxysql.FlavorPgSQL {
+				// PostgreSQL does not expose passwords and ProxySQL needs the
+				// clear one to authenticate on the backend: load the cluster
+				// credential and the write heartbeat one only.
+				pgUsers, conflict := cluster.postgresProxySQLUsers()
+				if conflict {
+					cluster.SetState("WARN0233", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0233"], proxy.Name, cluster.GetDbUser()), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				}
+				for _, u := range pgUsers {
+					if u.Password != "" {
+						uniUsers[u.User+":"+u.Password] = u
+					}
+				}
+				users = nil
+			}
+			for _, u := range users {
 				user, ok := uniUsers[u.User+":"+u.Password]
 				if ok {
 					dupUsers[user.User] = user.User
@@ -642,16 +675,16 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		cluster.SetState("WARN0098", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0098"], err), ErrFrom: "MON", ServerUrl: proxy.Name})
 	}
 	if proxy.ClusterGroup.Conf.ProxysqlBootstrapVariables {
-		if proxy.Variables["MYSQL-MULTIPLEXING"] == "TRUE" && !proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
-			psql.SetMySQLVariable("MYSQL-MULTIPLEXING", "FALSE")
+		if proxy.Variables[strings.ToUpper(psql.Variable("multiplexing"))] == "TRUE" && !proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
+			psql.SetMySQLVariable(psql.Variable("multiplexing"), "FALSE")
 			psql.LoadMySQLVariablesToRuntime()
 			if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
 				psql.SaveMySQLVariablesToDisk()
 			}
 		}
-		if proxy.Variables["MYSQL-MULTIPLEXING"] == "FALSE" && proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
+		if proxy.Variables[strings.ToUpper(psql.Variable("multiplexing"))] == "FALSE" && proxy.ClusterGroup.Conf.ProxysqlMultiplexing {
 
-			psql.SetMySQLVariable("MYSQL-MULTIPLEXING", "TRUE")
+			psql.SetMySQLVariable(psql.Variable("multiplexing"), "TRUE")
 			psql.LoadMySQLVariablesToRuntime()
 			if proxy.ClusterGroup.Conf.ProxysqlSaveToDisk {
 				psql.SaveMySQLVariablesToDisk()
@@ -661,9 +694,13 @@ func (proxy *ProxySQLProxy) Refresh() error {
 	return nil
 }
 
+// A reader is available when ProxySQL has it ONLINE and the monitor does not
+// see it Failed: a dead former primary moved to the readers by Failover() is
+// not a reader, else the leader is added to and dropped from the readers at
+// every tick.
 func (proxy *ProxySQLProxy) HasAvailableReader() bool {
 	for _, b := range proxy.BackendsRead {
-		if b.PrxStatus == "ONLINE" {
+		if b.PrxStatus == "ONLINE" && b.Status != stateFailed {
 			return true
 		}
 	}
@@ -672,7 +709,7 @@ func (proxy *ProxySQLProxy) HasAvailableReader() bool {
 
 func (proxy *ProxySQLProxy) CountAvailableReaders() (n int) {
 	for _, b := range proxy.BackendsRead {
-		if b.PrxStatus == "ONLINE" {
+		if b.PrxStatus == "ONLINE" && b.Status != stateFailed {
 			n++
 		}
 	}
@@ -746,16 +783,16 @@ func (proxy *ProxySQLProxy) RotateMonitoringPasswords(password string) {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not get mysql variables (%s)", err)
 	}
-	mon_user := vars["MYSQL-MONITOR_USERNAME"]
+	mon_user := vars[strings.ToUpper(psql.Variable("monitor_username"))]
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxySQL,LvlInfo, "RotationMonitorPasswords user %s", user)
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxySQL,LvlInfo, "RotationMonitorPasswords dbUser %s", cluster.dbUser)
-	err = psql.SetMySQLVariable("mysql-monitor_password", password)
+	err = psql.SetMySQLVariable(psql.Variable("monitor_password"), password)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 	}
 
 	if mon_user != strings.ToUpper(cluster.GetDbUser()) {
-		err = psql.SetMySQLVariable("mysql-monitor_username", cluster.GetDbUser())
+		err = psql.SetMySQLVariable(psql.Variable("monitor_username"), cluster.GetDbUser())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not set mysql variables (%s)", err)
 		}

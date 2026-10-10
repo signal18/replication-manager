@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -155,6 +156,588 @@ func TestDecodeS3SyncRequestBody(t *testing.T) {
 	})
 }
 
+// TestSetClusterSetting_GraphiteMetricsQueueLimit guards against
+// graphite-metrics-queue-limit regressing to "setting not found" in
+// setClusterSetting, the hardcoded (not reflection-driven) switch that
+// /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}
+// resolves to. The field is intentionally cluster-scoped (no scope:"server"
+// tag) because the queue/counters it bounds live on each cluster's
+// ClusterGraphite instance — see doc/implementation/cluster/GRAPHITE_SCOPE.md.
+func TestSetClusterSetting_GraphiteMetricsQueueLimit(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	if err := repman.setClusterSetting(cl, "graphite-metrics-queue-limit", "250000"); err != nil {
+		t.Fatalf("setClusterSetting(graphite-metrics-queue-limit): unexpected error: %v", err)
+	}
+	if cl.Conf.GraphiteMetricsQueueLimit != 250000 {
+		t.Fatalf("expected GraphiteMetricsQueueLimit=250000, got %d", cl.Conf.GraphiteMetricsQueueLimit)
+	}
+}
+
+// TestSetClusterSetting_MonitorSchemaEventsPageSize guards the dynamic
+// settings dispatcher for the event-query page size. This is a per-query
+// LIMIT, not a cap on the complete event catalog.
+func TestSetClusterSetting_MonitorSchemaEventsPageSize(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	for _, value := range []string{"1", "10000"} {
+		if err := repman.setClusterSetting(cl, "monitoring-schema-events-page-size", value); err != nil {
+			t.Fatalf("setClusterSetting(monitoring-schema-events-page-size, %q): unexpected error: %v", value, err)
+		}
+	}
+	if cl.Conf.MonitorSchemaEventsPageSize != 10000 {
+		t.Fatalf("expected MonitorSchemaEventsPageSize=10000, got %d", cl.Conf.MonitorSchemaEventsPageSize)
+	}
+
+	for _, value := range []string{"0", "-1", "not-a-number", "10001"} {
+		err := repman.setClusterSetting(cl, "monitoring-schema-events-page-size", value)
+		want := fmt.Sprintf("invalid value for monitoring-schema-events-page-size: %q, expected an integer from 1 to 10000", value)
+		if err == nil || err.Error() != want {
+			t.Fatalf("setClusterSetting(monitoring-schema-events-page-size, %q) error = %v, want %q", value, err, want)
+		}
+	}
+}
+
+func TestSetClusterSetting_MonitorSchemaEventsMax(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	for _, value := range []string{"1", "10000"} {
+		if err := repman.setClusterSetting(cl, "monitoring-schema-events-max", value); err != nil {
+			t.Fatalf("setClusterSetting(monitoring-schema-events-max, %q): unexpected error: %v", value, err)
+		}
+	}
+	if cl.Conf.MonitorSchemaEventsMax != 10000 {
+		t.Fatalf("expected MonitorSchemaEventsMax=10000, got %d", cl.Conf.MonitorSchemaEventsMax)
+	}
+
+	for _, value := range []string{"0", "-1", "not-a-number", "10001"} {
+		err := repman.setClusterSetting(cl, "monitoring-schema-events-max", value)
+		want := fmt.Sprintf("invalid value for monitoring-schema-events-max: %q, expected an integer from 1 to 10000", value)
+		if err == nil || err.Error() != want {
+			t.Fatalf("setClusterSetting(monitoring-schema-events-max, %q) error = %v, want %q", value, err, want)
+		}
+	}
+}
+
+// TestSetClusterSetting_GraphiteMetricsQueueLimit_IndependentPerCluster proves
+// two clusters monitored by the same repman instance can hold different
+// queue-limit values — the actual reason the field is cluster-scoped rather
+// than scope:"server" (which would force one shared value across every
+// cluster, as all other graphite-* settings currently do).
+func TestSetClusterSetting_GraphiteMetricsQueueLimit_IndependentPerCluster(t *testing.T) {
+	cl1 := newTestClusterForAPI(t)
+	cl1.Name = "cluster1"
+	cl1.Conf.Secrets = make(map[string]config.Secret)
+	cl1.ConfigManager = newConfigManagerForTest()
+
+	cl2 := newTestClusterForAPI(t)
+	cl2.Name = "cluster2"
+	cl2.Conf.Secrets = make(map[string]config.Secret)
+	cl2.ConfigManager = newConfigManagerForTest()
+
+	repman := &ReplicationManager{
+		Clusters: map[string]*cluster.Cluster{cl1.Name: cl1, cl2.Name: cl2},
+	}
+
+	if err := repman.setClusterSetting(cl1, "graphite-metrics-queue-limit", "50000"); err != nil {
+		t.Fatalf("setClusterSetting on cluster1: unexpected error: %v", err)
+	}
+	if err := repman.setClusterSetting(cl2, "graphite-metrics-queue-limit", "500000"); err != nil {
+		t.Fatalf("setClusterSetting on cluster2: unexpected error: %v", err)
+	}
+
+	if cl1.Conf.GraphiteMetricsQueueLimit != 50000 {
+		t.Fatalf("expected cluster1 limit 50000, got %d", cl1.Conf.GraphiteMetricsQueueLimit)
+	}
+	if cl2.Conf.GraphiteMetricsQueueLimit != 500000 {
+		t.Fatalf("expected cluster2 limit 500000, got %d", cl2.Conf.GraphiteMetricsQueueLimit)
+	}
+}
+
+// TestSwitchClusterSetting_HaproxyAPIBootstrapServers and
+// TestSetClusterSetting_HaproxyAPIBootstrapServers guard the two independent
+// dispatch tables the "haproxy-api-bootstrap-servers" setting must be
+// registered in: switchClusterSettings (the flip-only
+// .../settings/actions/switch/{settingName} route) and setClusterSetting
+// (the explicit-state .../settings/actions/switch/{settingName}/{on|off}
+// route). A review pass found the setting present in the former but missing
+// from the latter — the flip route worked while the explicit on/off route
+// would have returned "Setting Not Found" / "Setting not found" errors.
+// These two tests exercise the real dispatchers (not the underlying
+// Cluster.SwitchHaproxyAPIBootstrapServers()/config field directly), the
+// same way TestSetClusterSetting_GraphiteMetricsQueueLimit guards
+// graphite-metrics-queue-limit above.
+func TestSwitchClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
+
+	if err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers"); err != nil {
+		t.Fatalf("switchClusterSettings(haproxy-api-bootstrap-servers): unexpected error: %v", err)
+	}
+	if !cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=true after first switch, got false")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after switching haproxy-api-bootstrap-servers, got none")
+	}
+
+	if err := repman.switchClusterSettings(cl, "haproxy-api-bootstrap-servers"); err != nil {
+		t.Fatalf("switchClusterSettings(haproxy-api-bootstrap-servers) second call: unexpected error: %v", err)
+	}
+	if cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=false after second switch, got true")
+	}
+}
+
+// Confirms prov-kube-image-force-pull actually reaches setClusterSetting's
+// switch (GUI dispatches switchSetting for it, OrchestratorDbVM.jsx) --
+// wiring a GUI control without a matching case here means the toggle
+// renders but silently never persists.
+func TestSwitchClusterSetting_ProvKubeImageForcePull(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.ProvKubeImageForcePull = false
+
+	if err := repman.switchClusterSettings(cl, "prov-kube-image-force-pull"); err != nil {
+		t.Fatalf("switchClusterSettings(prov-kube-image-force-pull): unexpected error: %v", err)
+	}
+	if !cl.Conf.ProvKubeImageForcePull {
+		t.Fatalf("expected ProvKubeImageForcePull=true after first switch, got false")
+	}
+
+	if err := repman.switchClusterSettings(cl, "prov-kube-image-force-pull"); err != nil {
+		t.Fatalf("switchClusterSettings(prov-kube-image-force-pull) second call: unexpected error: %v", err)
+	}
+	if cl.Conf.ProvKubeImageForcePull {
+		t.Fatalf("expected ProvKubeImageForcePull=false after second switch, got true")
+	}
+}
+
+func TestSetClusterSetting_ProvKubeImageForcePull(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.ProvKubeImageForcePull = false
+
+	if err := repman.setClusterSetting(cl, "prov-kube-image-force-pull", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(prov-kube-image-force-pull, "on"): unexpected error: %v`, err)
+	}
+	if !cl.Conf.ProvKubeImageForcePull {
+		t.Fatalf("expected ProvKubeImageForcePull=true after explicit \"on\", got false")
+	}
+
+	if err := repman.setClusterSetting(cl, "prov-kube-image-force-pull", "off"); err != nil {
+		t.Fatalf(`setClusterSetting(prov-kube-image-force-pull, "off"): unexpected error: %v`, err)
+	}
+	if cl.Conf.ProvKubeImageForcePull {
+		t.Fatalf("expected ProvKubeImageForcePull=false after explicit \"off\", got true")
+	}
+}
+
+// Confirms prov-kube-storage-class (GUI dispatches setSetting for it,
+// OrchestratorDbVM.jsx) actually reaches SetProvKubeStorageClass through
+// setClusterSetting's switch.
+func TestSetClusterSetting_ProvKubeStorageClass(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	if err := repman.setClusterSetting(cl, "prov-kube-storage-class", "fast-ssd"); err != nil {
+		t.Fatalf(`setClusterSetting(prov-kube-storage-class, "fast-ssd"): unexpected error: %v`, err)
+	}
+	if cl.Conf.ProvKubeStorageClass != "fast-ssd" {
+		t.Fatalf("expected ProvKubeStorageClass %q, got %q", "fast-ssd", cl.Conf.ProvKubeStorageClass)
+	}
+}
+
+// prov-kube-proxy-storage-class is prov-kube-storage-class's proxy-side
+// counterpart (GUI dispatches setSetting for it, OrchestratorDbVM.jsx) --
+// confirms it reaches SetProvKubeProxyStorageClass, a distinct config field
+// from the database one, through setClusterSetting's switch.
+func TestSetClusterSetting_ProvKubeProxyStorageClass(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	if err := repman.setClusterSetting(cl, "prov-kube-proxy-storage-class", "fast-ssd"); err != nil {
+		t.Fatalf(`setClusterSetting(prov-kube-proxy-storage-class, "fast-ssd"): unexpected error: %v`, err)
+	}
+	if cl.Conf.ProvKubeProxyStorageClass != "fast-ssd" {
+		t.Fatalf("expected ProvKubeProxyStorageClass %q, got %q", "fast-ssd", cl.Conf.ProvKubeProxyStorageClass)
+	}
+	if cl.Conf.ProvKubeStorageClass != "" {
+		t.Fatalf("expected ProvKubeStorageClass to stay unset, got %q", cl.Conf.ProvKubeStorageClass)
+	}
+}
+
+// TestSetClusterSetting_ProvDBIdentity guards the explicit settings dispatcher used
+// by the configurator for prov-db-run-as-uid and prov-db-volume-uid. Each value is empty
+// (legacy behavior), a numeric UID or UID:GID, 0 being root; the two are
+// independent; a meaningful change must request reprovisioning without performing it.
+func TestSetClusterSetting_ProvDBIdentity(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+	db := &cluster.ServerMonitor{ClusterGroup: cl, Datadir: t.TempDir()}
+	cl.Servers = append(cl.Servers, db)
+
+	set := func(setting, value string) {
+		t.Helper()
+		if err := repman.setClusterSetting(cl, setting, value); err != nil {
+			t.Fatalf("setClusterSetting(%s, %q): unexpected error: %v", setting, value, err)
+		}
+	}
+	expectReprov := func(want bool) {
+		t.Helper()
+		if db.HasReprovCookie() != want {
+			t.Fatalf("database reprov cookie = %v, want %v", db.HasReprovCookie(), want)
+		}
+		if want {
+			if err := db.DelReprovisionCookie(); err != nil {
+				t.Fatalf("clear database reprov cookie: %v", err)
+			}
+		}
+	}
+
+	set("prov-db-run-as-uid", "0")
+	if cl.Conf.ProvDBRunAsUID != "0" || cl.Conf.ProvDBVolumeUID != "" {
+		t.Fatalf("run as = %q chown = %q, want 0 and empty (independent settings)", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+	}
+	expectReprov(true)
+
+	set("prov-db-volume-uid", "1001:1001")
+	if cl.Conf.ProvDBVolumeUID != "1001:1001" || cl.Conf.ProvDBRunAsUID != "0" {
+		t.Fatalf("run as = %q chown = %q, want 0 and 1001:1001", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+	}
+	expectReprov(true)
+
+	set("prov-db-volume-uid", " 1001:1001 ")
+	expectReprov(false)
+
+	for _, setting := range []string{"prov-db-run-as-uid", "prov-db-volume-uid"} {
+		for _, value := range []string{"-1", "mysql", "1001:2147483648", "1001:", "1:2:3"} {
+			if err := repman.setClusterSetting(cl, setting, value); err == nil {
+				t.Fatalf("setClusterSetting(%s, %q): expected validation error", setting, value)
+			}
+		}
+	}
+	expectReprov(false)
+	if cl.Conf.ProvDBRunAsUID != "0" || cl.Conf.ProvDBVolumeUID != "1001:1001" {
+		t.Fatalf("refused values must leave the configuration alone, got %q and %q", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+	}
+
+	// The configurator clears a setting by sending an empty value.
+	set("prov-db-run-as-uid", "")
+	set("prov-db-volume-uid", "")
+	if cl.Conf.ProvDBRunAsUID != "" || cl.Conf.ProvDBVolumeUID != "" {
+		t.Fatalf("cleared settings = %q and %q, want empty", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+	}
+	expectReprov(true)
+}
+
+// Both settings only exist for OpenSVC and Kubernetes databases: for any other
+// provisioner they are refused (no silent no-op, no reprovision cookie).
+func TestSetClusterSetting_ProvDBIdentityRefusedForOtherOrchestrators(t *testing.T) {
+	for _, tc := range []struct {
+		orchestrator string
+		accepted     bool
+	}{
+		{config.ConstOrchestratorOpenSVC, true},
+		{config.ConstOrchestratorKubernetes, true},
+		{config.ConstOrchestratorLocalhost, false},
+		{config.ConstOrchestratorOnPremise, false},
+		{config.ConstOrchestratorSlapOS, false},
+		{"", false},
+	} {
+		t.Run("orchestrator="+tc.orchestrator, func(t *testing.T) {
+			cl := newTestClusterForAPI(t)
+			cl.Conf.ProvOrchestrator = tc.orchestrator
+			cl.Conf.Secrets = make(map[string]config.Secret)
+			cl.ConfigManager = newConfigManagerForTest()
+			repman := newTestRepmanWithCluster(t, cl.Name, cl)
+			db := &cluster.ServerMonitor{ClusterGroup: cl, Datadir: t.TempDir()}
+			cl.Servers = append(cl.Servers, db)
+
+			for _, setting := range []string{"prov-db-run-as-uid", "prov-db-volume-uid"} {
+				err := repman.setClusterSetting(cl, setting, "1001")
+				if tc.accepted && err != nil {
+					t.Fatalf("setClusterSetting(%s) must be accepted for %q: %v", setting, tc.orchestrator, err)
+				}
+				if !tc.accepted && err == nil {
+					t.Fatalf("setClusterSetting(%s) must be refused for %q", setting, tc.orchestrator)
+				}
+			}
+			if tc.accepted {
+				return
+			}
+			if cl.Conf.ProvDBRunAsUID != "" || cl.Conf.ProvDBVolumeUID != "" {
+				t.Errorf("refused settings must leave the configuration alone, got %q and %q", cl.Conf.ProvDBRunAsUID, cl.Conf.ProvDBVolumeUID)
+			}
+			if db.HasReprovCookie() {
+				t.Error("a refused setting must not raise a reprovision cookie")
+			}
+		})
+	}
+}
+
+func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
+
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on"): unexpected error: %v`, err)
+	}
+	if !cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=true after explicit \"on\", got false")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after haproxy-api-bootstrap-servers \"on\", got none")
+	}
+	if !cl.HasRequestProxiesReprov() {
+		t.Fatalf("expected cluster.HasRequestProxiesReprov()=true after haproxy-api-bootstrap-servers \"on\"")
+	}
+
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "off"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "off"): unexpected error: %v`, err)
+	}
+	if cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=false after explicit \"off\", got true")
+	}
+}
+
+// Unlike haproxy-mode, changing haproxy-api-bootstrap-servers live is always
+// allowed, even while provisioned under runtimeapi: each proxy retains its
+// own last-provisioned value (HaproxyProxy.BootstrapServersEnabled).
+func TestSetClusterSetting_HaproxyAPIBootstrapServers_AllowedWhileProvisioned(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	cl.Conf.HaproxyAPIBootstrapServers = false
+	prx := newTestProxyForReprov(t, cl)
+	prx.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") while provisioned: unexpected error: %v`, err)
+	}
+	if !cl.Conf.HaproxyAPIBootstrapServers {
+		t.Fatalf("expected HaproxyAPIBootstrapServers=true after change")
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after the change, got none")
+	}
+
+	// Re-setting the same value is a no-op and must not mark reprov again.
+	prx.DelReprovisionCookie()
+	if err := repman.setClusterSetting(cl, "haproxy-api-bootstrap-servers", "on"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-api-bootstrap-servers, "on") (no-op): unexpected error: %v`, err)
+	}
+	if prx.HasReprovCookie() {
+		t.Fatalf("expected no reprov cookie after a no-op haproxy-api-bootstrap-servers set, got one")
+	}
+}
+
+// TestSetClusterSetting_HaproxyMode guards the haproxy-mode setter: it must
+// accept every documented mode value and reject anything else, since every
+// HaproxyMode == "..." check throughout cluster/prx_haproxy.go and
+// cluster/prov_opensvc_haproxy.go is a plain string comparison that would
+// silently no-op on an unrecognized value. Not provisioned yet, so every
+// mode change (including standby) is freely allowed.
+func TestSetClusterSetting_HaproxyMode(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+	prx := newTestProxyForReprov(t, cl)
+
+	for _, mode := range []string{"standby", "runtimeapi", "externalcheck", "dataplaneapi"} {
+		if err := repman.setClusterSetting(cl, "haproxy-mode", mode); err != nil {
+			t.Fatalf("setClusterSetting(haproxy-mode, %q): unexpected error: %v", mode, err)
+		}
+		if cl.Conf.HaproxyMode != mode {
+			t.Fatalf("expected HaproxyMode=%q, got %q", mode, cl.Conf.HaproxyMode)
+		}
+	}
+	if !prx.HasReprovCookie() {
+		t.Fatalf("expected proxy reprov cookie after a valid haproxy-mode change, got none")
+	}
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "bogus"); err == nil {
+		t.Fatalf("setClusterSetting(haproxy-mode, \"bogus\"): expected error, got nil")
+	}
+	if cl.Conf.HaproxyMode != "runtimeapi" {
+		t.Fatalf("expected HaproxyMode to remain %q after rejected value, got %q", "runtimeapi", cl.Conf.HaproxyMode)
+	}
+}
+
+// Any haproxy-mode change must be refused while a proxy is provisioned.
+func TestSetClusterSetting_HaproxyMode_BlockedWhileProvisioned(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	prx := newTestProxyForReprov(t, cl)
+	prx.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "externalcheck"); err == nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "externalcheck"): expected error while provisioned, got nil`)
+	}
+	if cl.Conf.HaproxyMode != "runtimeapi" {
+		t.Fatalf("expected HaproxyMode to remain %q after rejected change, got %q", "runtimeapi", cl.Conf.HaproxyMode)
+	}
+
+	// Re-setting the same value is a no-op: must still be allowed, and must
+	// not mark the proxy for reprov -- nothing actually changed.
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "runtimeapi"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "runtimeapi") (no-op): unexpected error: %v`, err)
+	}
+	if prx.HasReprovCookie() {
+		t.Fatalf("expected no reprov cookie after a no-op haproxy-mode set, got one")
+	}
+}
+
+// A ProxySQL/other proxy being provisioned must not block an HAProxy-only
+// setting -- HasProvisionedHaproxy is scoped to type "haproxy".
+func TestSetClusterSetting_HaproxyMode_IgnoresOtherProxyTypes(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.HaproxyMode = "runtimeapi"
+	proxysql := &cluster.ProxySQLProxy{Proxy: cluster.Proxy{
+		ClusterGroup: cl,
+		Datadir:      t.TempDir(),
+		Type:         config.ConstProxySqlproxy,
+	}}
+	cl.Proxies = append(cl.Proxies, proxysql)
+	proxysql.SetProvisionCookie()
+
+	if err := repman.setClusterSetting(cl, "haproxy-mode", "externalcheck"); err != nil {
+		t.Fatalf(`setClusterSetting(haproxy-mode, "externalcheck") with only a provisioned ProxySQL: unexpected error: %v`, err)
+	}
+}
+
+// TestSetClusterSetting_HaproxyPorts guards the four haproxy-*-port setters:
+// valid ports must persist, and out-of-range/non-numeric values must be
+// rejected without mutating the existing port.
+func TestSetClusterSetting_HaproxyPorts(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cases := []struct {
+		setting string
+		get     func() int
+	}{
+		{"haproxy-write-port", func() int { return cl.Conf.HaproxyWritePort }},
+		{"haproxy-read-port", func() int { return cl.Conf.HaproxyReadPort }},
+		{"haproxy-stat-port", func() int { return cl.Conf.HaproxyStatPort }},
+		{"haproxy-api-port", func() int { return cl.Conf.HaproxyAPIPort }},
+	}
+
+	for _, c := range cases {
+		if err := repman.setClusterSetting(cl, c.setting, "4406"); err != nil {
+			t.Fatalf("setClusterSetting(%s, \"4406\"): unexpected error: %v", c.setting, err)
+		}
+		if c.get() != 4406 {
+			t.Fatalf("expected %s=4406, got %d", c.setting, c.get())
+		}
+
+		for _, bad := range []string{"not-a-port", "0", "70000"} {
+			if err := repman.setClusterSetting(cl, c.setting, bad); err == nil {
+				t.Fatalf("setClusterSetting(%s, %q): expected error, got nil", c.setting, bad)
+			}
+			if c.get() != 4406 {
+				t.Fatalf("expected %s to remain 4406 after rejected value %q, got %d", c.setting, bad, c.get())
+			}
+		}
+	}
+}
+
+// TestSetClusterSetting_HaproxyPassword guards the haproxy-password setter:
+// the value arrives base64-encoded (matching the GUI's TextForm/btoa
+// convention for password fields, e.g. mail-smtp-password) and must land in
+// both Conf.HaproxyPassword and the tracked Secrets map so
+// GetDecryptedValue("haproxy-password") reflects it.
+func TestSetClusterSetting_HaproxyPassword(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	encoded := base64.StdEncoding.EncodeToString([]byte("s3cr3t"))
+	if err := repman.setClusterSetting(cl, "haproxy-password", encoded); err != nil {
+		t.Fatalf("setClusterSetting(haproxy-password): unexpected error: %v", err)
+	}
+	if cl.Conf.HaproxyPassword != "s3cr3t" {
+		t.Fatalf("expected HaproxyPassword=%q, got %q", "s3cr3t", cl.Conf.HaproxyPassword)
+	}
+	if got := cl.Conf.GetDecryptedValue("haproxy-password"); got != "s3cr3t" {
+		t.Fatalf("expected GetDecryptedValue(haproxy-password)=%q, got %q", "s3cr3t", got)
+	}
+
+	if err := repman.setClusterSetting(cl, "haproxy-password", "not-valid-base64!!"); err == nil {
+		t.Fatalf("setClusterSetting(haproxy-password, invalid base64): expected error, got nil")
+	}
+}
+
+// TestGetApiChangeLogFormat_HaproxyPasswordRedacted guards F10 (never leak a
+// secret in logs): haproxy-password must hit GetApiChangeLogFormat's redact
+// case, the same way mail-smtp-password/backup-restic-password do, so the
+// "API receive set setting" INFO log setClusterSetting emits never contains
+// the raw or base64-encoded password.
+func TestGetApiChangeLogFormat_HaproxyPasswordRedacted(t *testing.T) {
+	encoded := base64.StdEncoding.EncodeToString([]byte("s3cr3t"))
+
+	fmtlog, args := GetApiChangeLogFormat("haproxy-password", encoded)
+	if fmtlog != "API receive set setting %s to ****" {
+		t.Fatalf("expected redacted log format, got %q", fmtlog)
+	}
+	if len(args) != 1 || args[0] != "haproxy-password" {
+		t.Fatalf("expected args=[haproxy-password], got %v", args)
+	}
+
+	rendered := fmt.Sprintf(fmtlog, args...)
+	if strings.Contains(rendered, "s3cr3t") || strings.Contains(rendered, encoded) {
+		t.Fatalf("rendered log line leaked the password: %q", rendered)
+	}
+}
+
 func TestNormalizeCompressionOverride(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -298,6 +881,19 @@ func newTestClusterForAPI(t *testing.T) *cluster.Cluster {
 		Name:       name,
 		WorkingDir: workingDir,
 	}
+}
+
+// newTestProxyForReprov appends a proxy with a writable Datadir (cookies are
+// marker files under it) so a test can assert on its reprov cookie.
+func newTestProxyForReprov(t *testing.T, cl *cluster.Cluster) *cluster.HaproxyProxy {
+	t.Helper()
+	prx := &cluster.HaproxyProxy{Proxy: cluster.Proxy{
+		ClusterGroup: cl,
+		Datadir:      t.TempDir(),
+		Type:         config.ConstProxyHaproxy,
+	}}
+	cl.Proxies = append(cl.Proxies, prx)
+	return prx
 }
 
 // TestBuildClusterAPIPayload_ClusterS3ProvidersPresent verifies that

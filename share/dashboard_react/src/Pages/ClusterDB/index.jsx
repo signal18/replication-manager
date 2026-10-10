@@ -86,7 +86,12 @@ function ClusterDB(props) {
         if (apiUser.grants['db-show-variables']) {
           authorizedTabs.push('Variables')
         }
-        authorizedTabs.push('Service OpenSVC')
+        // Only orchestrators with an actual manifest/config view to show --
+        // service/{orchestrator} (buildDatabaseServiceConfigResponse,
+        // server/api_database.go) returns an empty body for everything else.
+        if (['opensvc', 'kube'].includes(clusterData?.config?.provOrchestrator)) {
+          authorizedTabs.push('Service Config')
+        }
         if (apiUser.grants['db-show-logs']) {
           authorizedTabs.push('Metadata Locks')
           authorizedTabs.push('Response Time')
@@ -148,9 +153,8 @@ function ClusterDB(props) {
     if (tabs.current[selectedTabRef.current] === 'Variables') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId, queryParams: { diff: variableModeRef.current === 'diff' } }))
     }
-    if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
-      // if (selectedTabRef.current === 8) {
-      dispatch(getDatabaseService({ clusterName, serviceName: 'service-opensvc', dbId }))
+    if (tabs.current[selectedTabRef.current] === 'Service Config' && clusterData?.config?.provOrchestrator) {
+      dispatch(getDatabaseService({ clusterName, serviceName: `service/${clusterData.config.provOrchestrator}`, dbId }))
     }
     if (tabs.current[selectedTabRef.current] === 'Metadata Locks') {
       // if (selectedTabRef.current === 9) {
@@ -305,13 +309,18 @@ function ClusterDB(props) {
                 ]
               : []),
 
-            <ClusterDBTabContent
-              tab='opensvc'
-              dbId={dbId}
-              clusterName={clusterName}
-              user={user}
-              selectedDBServer={selectedDBServer}
-            />,
+            ...(['opensvc', 'kube'].includes(clusterData?.config?.provOrchestrator)
+              ? [
+                  <ClusterDBTabContent
+                    tab='serviceconfig'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                    orchestrator={clusterData?.config?.provOrchestrator}
+                  />
+                ]
+              : []),
 
             ...(user?.grants['db-show-logs']
               ? [

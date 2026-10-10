@@ -34,13 +34,18 @@ import (
 // same app, regardless of whether the racing field is itself group-tagged.
 // buildAppSubstitutionView instead produces an independent copy up front.
 type appSubstitutionView struct {
-	Id        string            `json:"id" groups:"apps"`
-	Name      string            `json:"name" groups:"apps"`
-	Type      string            `json:"type" groups:"apps"`
-	Host      string            `json:"host" groups:"apps"`
-	Port      string            `json:"port" groups:"apps"`
-	Version   string            `json:"version" groups:"apps"`
-	AppConfig *config.AppConfig `json:"config" groups:"apps"`
+	Id        string                 `json:"id" groups:"apps"`
+	Name      string                 `json:"name" groups:"apps"`
+	Type      string                 `json:"type" groups:"apps"`
+	Host      string                 `json:"host" groups:"apps"`
+	Port      string                 `json:"port" groups:"apps"`
+	Version   string                 `json:"version" groups:"apps"`
+	AppConfig *config.AppConfig      `json:"config" groups:"apps"`
+	Db        *appDbSubstitutionView `json:"db,omitempty" groups:"apps"` // {{app.db.*}}, present only when the app asked for a database (#1870)
+	// {{app.randompassword}}: the password replication-manager generated for this app
+	// (stored encrypted, a secret-type variable decrypts it); absent when the app asked
+	// for none, so the key stays unresolved and the add is refused
+	RandomPassword string `json:"randompassword,omitempty" groups:"apps"`
 }
 
 // cloneAppConfigForSubstitution returns an independent copy of cnf, safe to
@@ -107,6 +112,7 @@ type appConfigAPIView struct {
 // never has it, rather than adding it and deleting it after marshal.
 type AppAPIView struct {
 	Id                    string               `json:"id"`
+	URL                   string               `json:"url"` // https on the primary route once routed, else the internal http://host:port/
 	Name                  string               `json:"name"`
 	Type                  string               `json:"type"`
 	Host                  string               `json:"host"`
@@ -150,6 +156,7 @@ func (app *App) GetAppAPIView() *AppAPIView {
 	view := &AppAPIView{
 		Id:                    app.Id,
 		Name:                  app.Name,
+		URL:                   app.GetPublicURL(),
 		Type:                  app.Type,
 		Host:                  app.Host,
 		HostIPV6:              app.HostIPV6,
@@ -207,6 +214,8 @@ func (app *App) buildAppSubstitutionView() *appSubstitutionView {
 	}
 	app.Lock()
 	view.AppConfig = cloneAppConfigForSubstitution(app.AppConfig)
+	view.Db = appDbView(app.AppConfig)
+	view.RandomPassword = app.AppConfig.AppRandomPassword
 	app.Unlock()
 	return view
 }
@@ -608,6 +617,13 @@ func (p *App) GetFailCount() int {
 	return p.FailCount
 }
 
+// GetWarnCount is locked (app.Lock()) -- see App.SetWarnCount (app_set.go).
+func (p *App) GetWarnCount() int {
+	p.Lock()
+	defer p.Unlock()
+	return p.WarnCount
+}
+
 // GetPrevState is locked (app.Lock()) -- see App.SetPrevState (app_set.go).
 func (p *App) GetPrevState() string {
 	p.Lock()
@@ -636,6 +652,7 @@ func (p *App) GetSshEnv() string {
 		REPLICATION_MANAGER_USER
 		REPLICATION_MANAGER_PASSWORD
 		REPLICATION_MANAGER_URL
+		REPLICATION_MANAGER_URL_DR
 		REPLICATION_MANAGER_CLUSTER_NAME
 		REPLICATION_MANAGER_HOST_NAME
 		REPLICATION_MANAGER_HOST_USER
@@ -648,7 +665,7 @@ func (p *App) GetSshEnv() string {
 	if user, ok := p.ClusterGroup.APIUsers[adminuser]; ok {
 		adminpassword = user.Password
 	}
-	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"https://" + p.ClusterGroup.Conf.MonitorAddress + ":" + p.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"
+	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"" + p.ClusterGroup.Conf.MonitorAPIURL() + "\";export REPLICATION_MANAGER_URL_DR=\"" + p.ClusterGroup.bootstrapDRURLs() + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"
 }
 
 func (app *App) GetOpenSVCDeploymentAppEnv(vartype string) string {
@@ -815,4 +832,44 @@ func (app *App) GetVolumes(resolved bool) []string {
 
 func (app *App) GetS3Endpoint() string {
 	return app.GetHost() + ":" + app.GetPort()
+}
+
+// GetPublicURL is where the app answers: https (or the route's protocol) on the
+// primary route's CNAME when the app has one, else the internal address, reachable
+// from the cluster network only. GetURL above is the bare host:port.
+func (app *App) GetPublicURL() string {
+	if app == nil {
+		return ""
+	}
+	if app.AppConfig != nil {
+		for _, route := range app.AppConfig.Deployment.Routes {
+			if route.Primary && route.CName != "" && !strings.Contains(route.CName, "(") {
+				proto := strings.ToLower(route.Protocol)
+				if proto == "" {
+					proto = "https"
+				}
+				return proto + "://" + route.CName + "/"
+			}
+		}
+	}
+	if app.Host == "" {
+		return ""
+	}
+	port := app.Port
+	if port == "" {
+		port = "80"
+	}
+	return "http://" + app.Host + ":" + port + "/"
+}
+
+// GetStartTimeout is the om3 start_timeout / pull_timeout of the app container: the
+// app's own prov-app-start-timeout, else the cluster's, else 2m.
+func (app *App) GetStartTimeout() string {
+	if app != nil && app.AppConfig != nil && strings.TrimSpace(app.AppConfig.ProvAppStartTimeout) != "" {
+		return strings.TrimSpace(app.AppConfig.ProvAppStartTimeout)
+	}
+	if app != nil && app.ClusterGroup != nil && strings.TrimSpace(app.ClusterGroup.Conf.ProvAppStartTimeout) != "" {
+		return strings.TrimSpace(app.ClusterGroup.Conf.ProvAppStartTimeout)
+	}
+	return "2m"
 }

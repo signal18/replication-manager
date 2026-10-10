@@ -17,6 +17,11 @@ import (
 func (regtest *RegTest) TestSwitchoverLongTransactionNoRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 	cluster.SetRplMaxDelay(8)
 	cluster.SetRplChecks(false)
+	// The guard waits up to switchover-wait-trx for the long transaction: pin it to 1 s so the
+	// 20 s transaction is still there at the deadline and the switchover is refused.
+	saveWaitTrx := cluster.Conf.SwitchWaitTrx
+	cluster.SetSwitchoverWaitTrx("1")
+	defer func() { cluster.Conf.SwitchWaitTrx = saveWaitTrx }()
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
@@ -33,7 +38,7 @@ func (regtest *RegTest) TestSwitchoverLongTransactionNoRplCheckNoSemiSync(cluste
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
 		return false
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Waiting in some trx 12s more wait-trx  default %d ", cluster.GetWaitTrx())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Waiting in some trx 14s, past switchover-wait-write-query %d, switchover-wait-trx %d: switchover must be refused", cluster.Conf.SwitchWaitWrite, cluster.GetWaitTrx())
 	time.Sleep(14 * time.Second)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST :  Master is %s", cluster.GetMaster().URL)
 	cluster.SwitchoverWaitTest()

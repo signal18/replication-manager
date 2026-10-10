@@ -3,12 +3,14 @@ package opensvc
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -64,6 +66,17 @@ func (collector *Collector) GetClientV3() (*clientv3.T, error) {
 	}
 
 	return client, nil
+}
+
+// waitLocalV3 adds the om3 rc46 query parameter wait_local=true to a request: the daemon
+// answers once the object the request creates is initialised locally.
+func waitLocalV3() apiv3.RequestEditorFn {
+	return func(ctx context.Context, req *http.Request) error {
+		q := req.URL.Query()
+		q.Set("wait_local", "true")
+		req.URL.RawQuery = q.Encode()
+		return nil
+	}
 }
 
 func (collector *Collector) RequestCloserV3() apiv3.RequestEditorFn {
@@ -151,17 +164,64 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	}
 
 	var hosts []Host
-	// Process the response to extract node information
+	// Process the response to extract node information. GetNodes v3 returns ONLY the
+	// node name -- the physical capacity (cpu_cores/cpu_freq/mem_bytes/node_id) lives on
+	// the per-node system/property endpoint, so fetch it per node like GetNodesV1/V2 did
+	// (otherwise cluster.Agents comes back cpu/mem = 0 on OpenSVC v3, breaking the Agents
+	// page and the ResourceManager capacity view). Best-effort: a property-fetch failure
+	// leaves that node's axes at 0 rather than dropping the node.
 	nodes := gjson.GetBytes(body, "items.#.meta.node").Array()
 	for _, node := range nodes {
-		h := Host{
-			Node_name: node.String(),
+		name := node.String()
+		h := Host{Node_name: name}
+		if pbody, perr := collector.getNodeSystemProperties(name); perr == nil {
+			val := func(prop string) gjson.Result {
+				return gjson.GetBytes(pbody, `items.#(data.name=="`+prop+`").data.value`)
+			}
+			h.Node_id = val("node_id").String()
+			h.Cpu_cores = val("cpu_cores").Int()
+			// VMs (QEMU, no dmidecode) report cpu_cores = 0 while cpu_threads is
+			// right; a vCPU is what the guest gets, so fall back to threads
+			// (issue #1844). Bare metal keeps physical cores.
+			if h.Cpu_cores == 0 {
+				h.Cpu_cores = val("cpu_threads").Int()
+			}
+			h.Cpu_freq = val("cpu_freq").Int()
+			h.Mem_bytes = val("mem_bytes").Int()
+			h.Os_name = val("os_name").String()
+			h.Os_kernel = val("os_kernel").String()
+		} else if collector.isLoggable(config.ConstLogModOrchestrator, config.LvlDbg) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC v3 node property fetch failed for %s: %s\n", name, perr)
 		}
-
 		hosts = append(hosts, h)
 	}
 
 	return hosts, nil
+}
+
+// getNodeSystemProperties fetches one node's system/property list (v3) as raw JSON --
+// where cpu_cores / cpu_freq / mem_bytes / node_id live (GetNodes itself returns only the
+// node name). Best-effort helper for GetNodesV3; the caller tolerates an error.
+func (collector *Collector) getNodeSystemProperties(nodename string) ([]byte, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	resp, err := client.GetNodeSystemProperty(ctx, apiv3.InPathNodeName(nodename), collector.RequestCloserV3())
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(b)}
+	}
+	return b, nil
 }
 
 func (collector *Collector) GetPoolListV3() ([]string, error) {
@@ -233,7 +293,11 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
+	// om3 rc46: POST config/file no longer waits by default; wait_local=true asks the daemon
+	// to return once the new object is initialised on the node, so the provisioning that
+	// follows does not race an object the daemon has not finished creating. Older daemons
+	// ignore the parameter (the rc40 client knows no params struct for this route).
+	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3(), waitLocalV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create object in %s/%s/%s: %w", namespace, kind, service, err)
 	}
@@ -264,7 +328,7 @@ func (collector *Collector) GetObjectConfigFileV3(namespace, kind, service strin
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err := client.GetObjectConfigFile(ctx, namespace, oKind, service, collector.RequestCloserV3())
+	resp, err := client.GetObjectConfigFile(ctx, namespace, oKind, service, nil, collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object config for %s/%s/%s: %w", namespace, kind, service, err)
 	}
@@ -316,6 +380,113 @@ func (collector *Collector) UpdateObjectV3(namespace, kind, service string, data
 	return body, nil
 }
 
+// GetInstanceConfigChecksumV3 returns the checksum om3 reports for the object config the
+// daemon on `node` has LOADED for namespace/kind/name (instance.Config.Checksum, json
+// "csum" = md5 of the config file at load time) -- the config a start or a pg update
+// would run on, as opposed to the file on disk. Empty when the node has no instance
+// config for the object.
+func (collector *Collector) GetInstanceConfigChecksumV3(node, namespace, kind, name string) (string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return "", err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	path := fmt.Sprintf("%s/%s/%s", namespace, kind, name)
+	params := &apiv3.GetInstancesParams{Path: &path, Node: &node}
+	resp, err := client.GetInstances(ctx, params, collector.RequestCloserV3())
+	if err != nil {
+		return "", fmt.Errorf("failed to get instance %s on %s: %w", path, node, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if !handleSuccessGroup(resp.StatusCode) {
+		return "", &StatusError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
+	for _, item := range gjson.GetBytes(body, "items").Array() {
+		if item.Get("meta.node").String() != node {
+			continue
+		}
+		return item.Get("data.config.csum").String(), nil
+	}
+	return "", nil
+}
+
+// GetInstanceConfigFileV3 reads the object config file held by the daemon on `node`
+// (GET /api/node/name/{node}/instance/path/.../config/file). `node` = "_" is the daemon
+// that serves the request, i.e. the opensvc-host node repman talks to -- the node a
+// PUT config/file lands on. This is the route om3 peers use to fetch a freshly written
+// "foreign" config, so it returns the new file while the object's instance nodes still
+// hold the old one.
+func (collector *Collector) GetInstanceConfigFileV3(node, namespace, kind, name string) ([]byte, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	resp, err := client.GetInstanceConfigFile(ctx, node, namespace, apiv3.Kind(kind), name, collector.RequestCloserV3())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instance config file of %s/%s/%s on %s: %w", namespace, kind, name, node, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if !handleSuccessGroup(resp.StatusCode) {
+		return nil, &StatusError{StatusCode: resp.StatusCode, Body: string(body)}
+	}
+	return body, nil
+}
+
+// WaitObjectConfigSettledV3 blocks until the daemon on `node` has LOADED the object
+// config just written (its instance config checksum equals the md5 of that file), or
+// `timeout` elapses. Call it after UpdateObjectV3 and BEFORE any action that reads the
+// config (instance start, pg update): om3 commits the file synchronously but reloads the
+// instance config asynchronously, so an action fired right after the PUT still runs on
+// the PREVIOUS config (issue #1792: a rolling restart recreated the jobs containers
+// without the mount pushed one second earlier).
+//
+// The reference md5 is taken from the API node's OWN copy of the file (node "_", the
+// daemon the PUT landed on), NOT from GET /object/.../config/file: that read is proxied
+// to an instance node, which for a service living elsewhere still holds the OLD file
+// for ~250 ms after the PUT -- so md5(old) == loaded csum(old), the wait returned at
+// once and the pg update applied the previous quota (issue #1795: every live resize
+// landed one push behind on nodes other than opensvc-host). The API node drops its
+// foreign copy once the peers have fetched it; by then the proxied read is the new
+// file, so it is the fallback. The file is re-read rather than hashing the pushed body
+// because the commit re-serializes it.
+func (collector *Collector) WaitObjectConfigSettledV3(node, namespace, kind, name string, timeout time.Duration) error {
+	raw, err := collector.GetInstanceConfigFileV3("_", namespace, kind, name)
+	if err != nil {
+		raw, err = collector.GetObjectConfigFileV3(namespace, kind, name)
+		if err != nil {
+			return err
+		}
+	}
+	want := fmt.Sprintf("%x", md5.Sum(raw))
+	deadline := time.Now().Add(timeout)
+	for {
+		got, err := collector.GetInstanceConfigChecksumV3(node, namespace, kind, name)
+		if err == nil && got == want {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return fmt.Errorf("config of %s/%s/%s not settled on %s after %s: %w", namespace, kind, name, node, timeout, err)
+			}
+			return fmt.Errorf("config of %s/%s/%s not settled on %s after %s (loaded csum %q, file md5 %q)", namespace, kind, name, node, timeout, got, want)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
 
 type ObjectGetterFunc func([]byte) ([]byte, error)
 
@@ -512,7 +683,7 @@ func (collector *Collector) ListConfigKeysV3(namespace, service string) ([]strin
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
 	defer cancel()
-	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), "cfg", apiv3.InPathName(service), collector.RequestCloserV3())
+	resp, err := client.GetObjectDataKeys(ctx, apiv3.InPathNamespace(namespace), "cfg", apiv3.InPathName(service), nil, collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list cfg keys for %s/%s: %w", namespace, service, err)
 	}
@@ -664,6 +835,159 @@ func (collector *Collector) StartInstanceV3(node, svc string) error {
 	return err
 }
 
+// PGUpdateInstanceV3 re-applies the process-group (cgroup) limits of a running
+// instance live via `om instance pg update` — no restart. Use it after changing
+// the container's mem/cpu keywords in the service config to grow/shrink the live
+// cgroup. rid optionally targets a single resource (e.g. "container#db"); empty
+// applies to the whole instance.
+func (collector *Collector) PGUpdateInstanceV3(node, svc, rid string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	params := &apiv3.PostInstanceActionPGUpdateParams{}
+	if rid != "" {
+		r := apiv3.InQueryRid(rid)
+		params.Rid = &r
+	}
+	resp, err := client.PostInstanceActionPGUpdate(ctx, node, svcparts[0], apiv3.Kind(svcparts[1]), svcparts[2], params, collector.RequestCloserV3())
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("pg update failed on %s (%s): status %d", node, svc, resp.StatusCode)
+	}
+	return nil
+}
+
+// ResizeVolumeV3 asks the daemon to GROW the volume object <namespace>/vol/<name> to size
+// ("50g"): POST .../vol/<name>/action/resize (om3 rc40, `om vol resize SIZE`). The size is
+// written to the volume configuration and every node converges to it; the answer is a
+// queued orchestration, not a result: the volume's own status tells whether it landed. A
+// resize only grows, and on rc40 the zfs driver moves the refquota of the head dataset
+// (the quota keyword follows in a later om3 release). Returns the orchestration id.
+func (collector *Collector) ResizeVolumeV3(namespace, volname, size string) (string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+	body := apiv3.PostObjectActionResize{Size: &size}
+	resp, err := client.PostObjectActionResizeWithResponse(ctx, namespace, apiv3.Kind("vol"), volname, &apiv3.PostObjectActionResizeParams{}, body, collector.RequestCloserV3())
+	if err != nil {
+		return "", err
+	}
+	if resp.JSON200 != nil {
+		return resp.JSON200.OrchestrationID.String(), nil
+	}
+	return "", fmt.Errorf("volume resize refused on %s/vol/%s (size %s): status %d: %s", namespace, volname, size, resp.StatusCode(), strings.TrimSpace(string(resp.Body)))
+}
+
+// GetVolumeSizeV3 reads DEFAULT.size of the volume object <namespace>/vol/<name> in bytes
+// (om3 writes it as "4gi", "3g" or a plain byte count).
+func (collector *Collector) GetVolumeSizeV3(namespace, volname string) (int64, error) {
+	raw, err := collector.GetObjectConfigFileV3(namespace, "vol", volname)
+	if err != nil {
+		return 0, err
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "size") {
+			continue
+		}
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) != 2 || strings.TrimSpace(kv[0]) != "size" {
+			continue
+		}
+		return ParseOpenSVCSize(strings.TrimSpace(kv[1]))
+	}
+	return 0, fmt.Errorf("no DEFAULT.size in %s/vol/%s", namespace, volname)
+}
+
+// ParseOpenSVCSize parses an om3 size expression ("4gi", "3g", "512m", "1t", "4294967296")
+// into bytes; the k/m/g/t suffixes are binary multiples, as om3 evaluates them.
+func ParseOpenSVCSize(s string) (int64, error) {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return 0, fmt.Errorf("empty size")
+	}
+	mult := int64(1)
+	for _, suf := range []struct {
+		s string
+		m int64
+	}{{"tib", 1 << 40}, {"gib", 1 << 30}, {"mib", 1 << 20}, {"kib", 1 << 10}, {"tb", 1 << 40}, {"gb", 1 << 30}, {"mb", 1 << 20}, {"kb", 1 << 10}, {"ti", 1 << 40}, {"gi", 1 << 30}, {"mi", 1 << 20}, {"ki", 1 << 10}, {"t", 1 << 40}, {"g", 1 << 30}, {"m", 1 << 20}, {"k", 1 << 10}} {
+		if strings.HasSuffix(s, suf.s) {
+			mult = suf.m
+			s = strings.TrimSuffix(s, suf.s)
+			break
+		}
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid size %q: %w", s, err)
+	}
+	return int64(f * float64(mult)), nil
+}
+
+// WaitVolumeResizeV3 follows the queued resize of <namespace>/vol/<name> through the
+// instance monitors: "resizing" while a stage runs, then "idle" when the volume converged
+// or "resize failed" when a stage refused (the reason is in the volume's om logs). Returns
+// the final monitor state, or "timeout" when nothing settled within timeout.
+func (collector *Collector) WaitVolumeResizeV3(namespace, volname string, timeout time.Duration) (string, error) {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return "", err
+	}
+	path := apiv3.PathOptional(namespace + "/vol/" + volname)
+	deadline := time.Now().Add(timeout)
+	sawResizing := false
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+		resp, err := client.GetInstancesWithResponse(ctx, &apiv3.GetInstancesParams{Path: &path}, collector.RequestCloserV3())
+		cancel()
+		if err != nil {
+			return "", err
+		}
+		failed, resizing := false, false
+		if resp.JSON200 != nil {
+			for _, it := range resp.JSON200.Items {
+				if it.Data.Monitor == nil {
+					continue
+				}
+				switch it.Data.Monitor.State.String() {
+				case "resize failed":
+					failed = true
+				case "resizing":
+					resizing = true
+				}
+			}
+		}
+		if failed {
+			return "resize failed", nil
+		}
+		if resizing {
+			sawResizing = true
+		} else if sawResizing || time.Since(deadline.Add(-timeout)) > 4*time.Second {
+			// settled (idle everywhere) after a resize was seen, or nothing ever started
+			// resizing in the first seconds: the orchestration is done either way.
+			return "idle", nil
+		}
+		if time.Now().After(deadline) {
+			return "timeout", nil
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
 func (collector *Collector) StopServiceV3(cluster, svc string) error {
 
 	svcparts := strings.SplitN(svc, "/", 3)
@@ -768,6 +1092,10 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 			rpparams = params.ToRunParams()
 		}
 		resp, err = client.PostInstanceActionRun(ctx, node, namespace, oKind, service, rpparams, collector.RequestCloserV3())
+	case "freeze":
+		resp, err = client.PostInstanceActionFreeze(ctx, node, namespace, oKind, service, nil, collector.RequestCloserV3())
+	case "unfreeze":
+		resp, err = client.PostInstanceActionUnfreeze(ctx, node, namespace, oKind, service, nil, collector.RequestCloserV3())
 	case "clear":
 		resp, err = client.PostInstanceClear(ctx, node, namespace, oKind, service, collector.RequestCloserV3())
 	default:
@@ -791,6 +1119,27 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	}
 
 	return body, nil
+}
+
+// FreezeInstanceV3 freezes one instance: the daemon's HA orchestration leaves it alone, so a
+// user stop holds whatever status refresh lands during the stop (om3 rc40, opensvc/om3#1142).
+func (collector *Collector) FreezeInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "freeze", nil)
+	return err
+}
+
+// UnfreezeInstanceV3 gives the instance back to the orchestration.
+func (collector *Collector) UnfreezeInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "unfreeze", nil)
+	return err
 }
 
 func (collector *Collector) ClearInstanceV3(node, svc string) error {

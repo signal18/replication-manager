@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -29,6 +30,9 @@ const (
 	ErrAppTCPConnectFailed = "APPERR003"
 	ErrAppUnsupportedProto = "APPERR004"
 	ErrAppGatewayConflict  = "APPERR005"
+	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
+	ErrAppPingFailed       = "APPERR009" // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
+	StateAppRunning        = stateAppRunning // exported for the MCP tools
 	appErrFailureThreshold = 3
 )
 
@@ -40,6 +44,7 @@ type App struct {
 	Host          string `json:"host" groups:"apps"`
 	HostIPV6      string `json:"hostIPV6"`
 	Port          string `json:"port" groups:"apps"`
+	URL           string `json:"url" groups:"apps"` // https://<primary route cname>/ once routed, else the internal http://host:port/
 	User          string `json:"-"`
 	Pass          string `json:"-"`
 	Version       string `json:"version" groups:"apps"`
@@ -51,6 +56,16 @@ type App struct {
 	Agent         string `json:"agent"`
 	Weight        string `json:"weight"`
 	FailCount     int    `json:"failCount"`
+	// WarnCount counts consecutive Refresh() cycles reporting stateAppWarning,
+	// saturating at appErrorDebounceThreshold(cluster.Conf) -- see the
+	// stateAppWarning case in Refresh(). It is reset on any non-warning
+	// observation (AppRunning, Failed, maintenance) so interrupted warning
+	// streaks cannot accumulate across an unrelated state. Without it, a
+	// single transient check failure flips State (and fires the ALERT log)
+	// immediately. json:"-" is deliberate: AppAPIView does not expose it and
+	// no UI currently reads it -- add it explicitly there (plus GUI/docs
+	// updates) if operators should see the pending warning count.
+	WarnCount int `json:"-"`
 	// Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster
 	// only shows batch-wide timing, not which app is actually slow). Set
 	// via SetRefreshInProgress/SetRefreshResult under app.Mutex -- read
@@ -62,6 +77,7 @@ type App struct {
 	LastRefreshEnd        time.Time `json:"lastRefreshEnd"`
 	LastRefreshDurationMs int64     `json:"lastRefreshDurationMs"`
 	LastRefreshError      string    `json:"lastRefreshError"`
+	DbProvisionError      string    `json:"dbProvisionError"` // last app database auto-create refusal (#1870), "" once one goes through
 	RefreshInProgress     bool      `json:"refreshInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
 	AppErrConsecutiveMap map[string]int         `json:"-"`
@@ -140,22 +156,6 @@ func (cluster *Cluster) newAppList() error {
 
 	cluster.LoadAllAppTemplateMD5Provisioned()
 
-	// Backfill ProvAppCreditUsed for apps that are provisioned but whose saved
-	// value is zero — this covers apps created before credit persistence was added.
-	// We only save when the value actually changes so restarts after backfill are
-	// no-ops.
-	for _, app := range cluster.Apps {
-		if app.HasProvisionCookie() && app.AppConfig.ProvAppCreditUsed == 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
-			app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
-			if _, err := cluster.SaveApp(app, ""); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr,
-					"Failed to persist backfilled credit usage for %s: %s", app.Name, err)
-			}
-		}
-	}
-
-	cluster.recomputeAppCredits()
-
 	return nil
 }
 
@@ -166,15 +166,17 @@ func (c *Cluster) initializeAppForRegistration(app *App) error {
 	app.SetID()
 	app.SetDataDir()
 	app.SetServiceName(c.Name)
-	if err := app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name); err != nil {
-		return fmt.Errorf("app %s: default route generation failed: %w", app.Name, err)
+	// A template says what is routed: one without routes is an app that stays on the
+	// cluster network (a database, a cache: never on a gateway port, Stéphane
+	// 2026-10-02). The default https route is for an app declared from a docker image.
+	if app.AppConfig == nil || strings.TrimSpace(app.AppConfig.ProvAppTemplate) == "" {
+		if err := app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name); err != nil {
+			return fmt.Errorf("app %s: default route generation failed: %w", app.Name, err)
+		}
 	}
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
 	app.SetState(stateSuspect)
-	if app.AppConfig.ProvAppCreditPlanned == 0 {
-		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
-	}
 	return nil
 }
 
@@ -253,6 +255,58 @@ func (app *App) IncAppErrConsecutiveCnt(routeKey string) int {
 	return app.AppErrConsecutiveMap[routeKey]
 }
 
+// IncWarnCount increments WarnCount and returns the new value, saturating it
+// at threshold (threshold <= 0 disables saturation). It is locked (app.Lock())
+// so the read-modify-write is atomic with respect to a concurrent Refresh()
+// on the same App -- unlike GetWarnCount()+1 followed by a separate
+// SetWarnCount() call, which would race.
+func (app *App) IncWarnCount(threshold int) int {
+	app.Lock()
+	defer app.Unlock()
+
+	app.WarnCount++
+	if threshold > 0 && app.WarnCount > threshold {
+		app.WarnCount = threshold
+	}
+	return app.WarnCount
+}
+
+// appErrorDebounceThreshold resolves the effective consecutive-observation
+// count required before a debounced app check commits: the per-route APPERR
+// debounce in GetMonitoringStatus (app_chk.go) and the aggregate
+// AppRunning->AppWarning debounce in Refresh() both call this so a change to
+// the legacy default (appErrFailureThreshold) or to the config fallback rule
+// only needs to happen in one place.
+func appErrorDebounceThreshold(conf *config.Config) int {
+	if conf.AppErrorDebounceThreshold > 0 {
+		return conf.AppErrorDebounceThreshold
+	}
+	return appErrFailureThreshold
+}
+
+// ResetAppErrConsecutiveCntExcept drops every debounce counter but the kept keys.
+func (app *App) ResetAppErrConsecutiveCntExcept(keep ...string) {
+	app.Lock()
+	defer app.Unlock()
+	kept := map[string]bool{}
+	for _, k := range keep {
+		kept[k] = true
+	}
+	for k := range app.AppErrConsecutiveMap {
+		if !kept[k] {
+			delete(app.AppErrConsecutiveMap, k)
+		}
+	}
+}
+
+// HasPendingCheckFailures reports debounced check failures not yet turned into a state: a
+// freshly declared app reads Running while its first probes fail below the threshold.
+func (app *App) HasPendingCheckFailures() bool {
+	app.Lock()
+	defer app.Unlock()
+	return len(app.AppErrConsecutiveMap) > 0
+}
+
 func (app *App) ResetAppErrConsecutiveCnt(routeKey string) {
 	app.Lock()
 	defer app.Unlock()
@@ -276,11 +330,10 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppDbPass, "app-db-pass", "", "App Database Password")
 	flags.StringVar(&conf.AppDbSchema, "app-db-schema", "", "App Database Schema")
 	flags.BoolVar(&conf.AppS3Provider, "app-s3-provider", false, "Whether the app is an S3 provider, default is false.")
-	flags.IntVar(&conf.ProvAppCreditPlanned, "prov-app-credit-planned", 0, "Planned App Credit for the application, default is 0.")
-	flags.IntVar(&conf.ProvAppCreditUsed, "prov-app-credit-used", 0, "Used App Credit for the application, default is 0.")
 }
 
 func (app *App) Refresh() error {
+	app.URL = app.GetPublicURL()
 	cluster := app.ClusterGroup
 
 	start := time.Now()
@@ -292,6 +345,9 @@ func (app *App) Refresh() error {
 	}()
 
 	app.CheckPrimaryRoute()
+	// a database engine app that is the cluster's database brings it its credential (no-op
+	// once done, app_random_password.go)
+	cluster.adoptEngineAppCredential(app)
 	appState := app.GetMonitoringStatus()
 	sub, err := cluster.GetAppsSubstitutionJSon(app)
 	if err == nil {
@@ -302,9 +358,13 @@ func (app *App) Refresh() error {
 	switch appState {
 	case stateMaintenance:
 		app.SetState(stateMaintenance)
+		// A warning streak interrupted by maintenance is not consecutive:
+		// require a fresh run of warning observations once maintenance ends.
+		app.SetWarnCount(0)
 	case stateAppRunning:
 		app.SetState(stateAppRunning)
 		app.SetFailCount(0)
+		app.SetWarnCount(0)
 	case stateFailed:
 		if app.GetFailCount() >= cluster.Conf.MaxFail {
 			app.SetState(stateFailed)
@@ -312,27 +372,69 @@ func (app *App) Refresh() error {
 			app.SetState(stateSuspect)
 			app.SetFailCount(app.GetFailCount() + 1)
 		}
+		// Same reasoning as stateMaintenance: a warning streak interrupted by
+		// a Failed observation is not consecutive.
+		app.SetWarnCount(0)
 	case stateAppWarning:
-		app.SetState(stateAppWarning)
+		// Debounce like stateFailed above: a single transient check failure
+		// should not flip State (and fire the ALERT log) on its own. Reuses
+		// the same AppErrorDebounceThreshold knob as the per-route APPERR
+		// debounce in GetMonitoringStatus (app_chk.go) via
+		// appErrorDebounceThreshold, so both debounces move together.
+		//
+		// IncWarnCount both increments and saturates atomically under a
+		// single app.Lock() -- GetWarnCount()+SetWarnCount() as two separate
+		// locked calls would race against a concurrent Refresh() on the same
+		// App (BackendsStateChange() calls Refresh() directly and is not
+		// covered by the async single-flight guarantee in
+		// maybeRefreshAppsAsync).
+		warnThreshold := appErrorDebounceThreshold(cluster.Conf)
+		warnCount := app.IncWarnCount(warnThreshold)
+		if warnCount >= warnThreshold {
+			app.SetState(stateAppWarning)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+				"Debounced app %s state change to %s (warn count %d/%d)",
+				app.Name, stateAppWarning, warnCount, warnThreshold)
+		}
+	default:
+		app.SetWarnCount(0)
 	}
 
-	// Send alert if state has changed
-	if app.PrevState != app.State {
-		//if cluster.Conf.Verbose {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
-		if app.State != stateSuspect {
-			lvl := "ALERT"
-			if app.State == stateAppRunning {
-				lvl = "ALERTOK"
-			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lvl, "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
+	// CommitStateTransition atomically compares State against PrevState and
+	// advances PrevState under a single app.Lock(), so the ALERT/ALERTOK
+	// decision below sees a consistent (old, new) pair even if another
+	// Refresh() call is racing on this App. It only reports changed=true on
+	// the cycle that actually commits a new State -- e.g. a still-debouncing
+	// AppWarning cycle above never calls SetState, so State==PrevState and no
+	// alert fires below the threshold.
+	if oldState, newState, changed := app.CommitStateTransition(); changed {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "app %s state changed from %s to %s", app.Name, oldState, newState)
+		if lvl := appTransitionAlertLevel(newState); lvl != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lvl, "app %s state changed from %s to %s", app.Name, oldState, newState)
 		}
 	}
-
-	if app.PrevState != app.State {
-		app.SetPrevState(app.State)
-	}
 	return nil
+}
+
+// appTransitionAlertLevel returns the LogModulePrintf level for a committed
+// App state transition landing on newState, or "" to suppress the alert
+// entirely. stateSuspect is the transient state stateFailed's own
+// FailCount/MaxFail debounce commits below its threshold -- it is not yet a
+// confirmed failure, so it must not alert.
+//
+// Every other landing state -- stateAppRunning (recovery) included -- uses
+// ALERT, matching cluster/srv.go's database state-change logging: the server
+// monitor also always logs ALERT (see srv.go's "Server %s state changed from
+// %s to %s" call) and lets the oldState/newState values themselves
+// distinguish a recovery (e.g. "Failed to Slave") from a new problem, rather
+// than switching level. This keeps the two state-machine logging paths
+// consistent instead of introducing an app-only ALERTOK convention.
+func appTransitionAlertLevel(newState string) string {
+	if newState == stateSuspect {
+		return ""
+	}
+	return "ALERT"
 }
 
 func (app *App) BackendsStateChange() {

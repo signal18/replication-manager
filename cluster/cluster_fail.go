@@ -22,6 +22,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // MasterFailover triggers a leader change and returns the new master URL when single possible leader
@@ -54,6 +55,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 
 	cluster.StateMachine.SetFailoverState()
 	defer cluster.StateMachine.RemoveFailoverState()
+	if cluster.isPostgresStreaming() || cluster.isPostgresLogical() {
+		// its own failover: none of the statements below exists on PostgreSQL
+		return cluster.postgresFailover(fail)
+	}
 	// Phase 1: Cleanup and election
 	var err error
 	if !fail {
@@ -69,13 +74,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot switchover without a master connection")
 			return false
 		}
-		qt, logs, err := dbhelper.CheckLongRunningWrites(cluster.master.Conn, cluster.Conf.SwitchWaitWrite)
-		cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
-		if qt > 0 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long updates running on master. Cannot switchover")
-
+		if !cluster.waitLongRunningWrites(cluster.master) {
 			return false
 		}
+		var logs string
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Flushing tables on master %s", cluster.master.URL)
 		workerFlushTable := make(chan error, 1)
@@ -364,9 +366,19 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 		logs, changeMasterErr = dbhelper.ChangeMaster(cluster.oldMaster.Conn, changemasteropt, cluster.oldMaster.DBVersion)
 		cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
+		startSlaveErr := error(nil)
 		if oldmasterneedslavestart {
-			logs, err = cluster.oldMaster.StartSlave()
-			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, err)
+			logs, startSlaveErr = cluster.oldMaster.StartSlave()
+			cluster.LogSQL(logs, startSlaveErr, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, startSlaveErr)
+			err = startSlaveErr
+		}
+		if changeMasterErr == nil && startSlaveErr == nil {
+			// The old master is re-slaved by the switchover itself, never by the rejoin
+			// path, and a switchover has no divergent tail by construction (old master
+			// frozen under FTWRL, candidate caught up before promotion). Stamp the outcome
+			// the rejoin would: the record leaves the working set and history shows
+			// "no-divergence" instead of a crash awaiting analysis.
+			cluster.finishCrashRecord(crash, RejoinResultNoDivergence)
 		}
 
 		if !cluster.Conf.ActivePassive && cluster.Conf.ReadOnly {
@@ -411,6 +423,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.backendStateChangeProxies()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master switch on %s complete", cluster.master.URL)
 	cluster.master.FailCount = 0
+	// Both failover and switchover change the master: anchor the rejoin staleness
+	// guards on it (#1793). FailoverTs below stays failover-only (it drives the
+	// between-failover throttle).
+	cluster.MasterChangeTs = time.Now().Unix()
 	if fail {
 		cluster.FailoverCtr++
 		cluster.FailoverTs = time.Now().Unix()
@@ -434,6 +450,47 @@ func (cluster *Cluster) pointSlaveToMasterWithMode(sl *ServerMonitor, mode strin
 	changemasteropt.Mode = mode
 
 	return dbhelper.ChangeMaster(sl.Conn, changemasteropt, sl.DBVersion)
+}
+
+// pointSlaveToMasterAutoDetect picks the GTID mode for CHANGE MASTER/CHANGE
+// REPLICATION SOURCE from the target's own vendor rather than hardcoding
+// "SLAVE_POS" -- that mode emits MASTER_USE_GTID=SLAVE_POS, a MariaDB-only
+// clause that MySQL/Percona rejects outright, so calling
+// pointSlaveToMasterWithMode(sl, "SLAVE_POS") unconditionally breaks the
+// CHANGE MASTER step on a MySQL/Percona target before a physical
+// reseed/flashback ever starts streaming. Mirrors the mode selection already
+// used for logical reseed/flashback below in this file.
+func (cluster *Cluster) pointSlaveToMasterAutoDetect(sl *ServerMonitor) (string, error) {
+	switch changeMasterStrategyFor(sl.DBVersion, sl.HasMySQLGTID()) {
+	case changeMasterAutoPosition:
+		return cluster.pointSlaveToMasterWithMode(sl, "MASTER_AUTO_POSITION")
+	case changeMasterPositional:
+		return cluster.pointSlaveToMasterPositional(sl)
+	default:
+		return cluster.pointSlaveToMasterWithMode(sl, "SLAVE_POS")
+	}
+}
+
+type changeMasterStrategy int
+
+const (
+	changeMasterSlavePos changeMasterStrategy = iota
+	changeMasterAutoPosition
+	changeMasterPositional
+)
+
+// changeMasterStrategyFor picks the GTID mode based on vendor, mirroring the
+// logical reseed/flashback gating elsewhere in this file: MySQL/Percona use
+// MASTER_AUTO_POSITION when GTID is available and positional replication
+// otherwise, since SLAVE_POS is a MariaDB-only clause MySQL/Percona reject.
+func changeMasterStrategyFor(v *version.Version, hasGTID bool) changeMasterStrategy {
+	if v != nil && v.IsMySQLOrPercona() {
+		if hasGTID {
+			return changeMasterAutoPosition
+		}
+		return changeMasterPositional
+	}
+	return changeMasterSlavePos
 }
 
 func (cluster *Cluster) pointSlaveToMasterPositional(sl *ServerMonitor) (string, error) {
@@ -537,6 +594,76 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 				}
 			}
 		}
+	}
+}
+
+// LongWriteWait is the tracked fact "a switchover is waiting for long writes to complete on
+// the master". Set by waitLongRunningWrites for the duration of the wait, nil otherwise. It
+// is the LIVE signal: the switchover runs on the monitor goroutine (cluster.Run's select on
+// switchoverChan), so no tick, no state processing and no alert happens while it waits; the
+// cluster JSON serves this field directly. The state machine gets WARN0217 like ERR00100:
+// set during the switchover, opened at the first tick after it, with the wait's outcome.
+type LongWriteWait struct {
+	ServerURL string    `json:"serverUrl"`
+	Count     int       `json:"count"`
+	Since     time.Time `json:"since"`
+	Deadline  time.Time `json:"deadline"`
+}
+
+// waitLongRunningWrites is the switchover long-write guard, run before anything is frozen
+// or locked on the master. It counts the write statements running for at least
+// switchover-wait-write-query seconds and the InnoDB transactions open for at least that
+// long. Since nothing is locked yet the application does not see this wait, so instead of
+// refusing at once it re-checks every 2 s for at most switchover-wait-trx seconds and goes
+// on as soon as they are gone. Still there at the deadline: refuse, listing each offender
+// with its age and rows modified. They are never killed: the rollback of a killed
+// transaction runs unbounded, on the server about to be demoted.
+func (cluster *Cluster) waitLongRunningWrites(server *ServerMonitor) bool {
+	qt, logs, err := dbhelper.CheckLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
+	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
+	if qt == 0 {
+		return true
+	}
+	since := time.Now()
+	found := qt
+	deadline := since.Add(time.Duration(cluster.Conf.SwitchWaitTrx) * time.Second)
+	cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: since, Deadline: deadline}
+	defer func() { cluster.SwitchoverLongWriteWait = nil }()
+	// One WARN0217 per wait, its description rewritten with the outcome before returning:
+	// the state map keeps the first Add for a key, so delete it before setting it again.
+	setWaitState := func(outcome string) {
+		cluster.StateMachine.DeleteState(state.BuildStateKey("WARN0217", server.URL))
+		cluster.SetState("WARN0217", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0217"], server.URL, found, cluster.Conf.SwitchWaitWrite, outcome), ErrFrom: "SWITCHOVER", ServerUrl: server.URL})
+	}
+	setWaitState(fmt.Sprintf("waiting up to switchover-wait-trx=%ds for them to complete", cluster.Conf.SwitchWaitTrx))
+	for qt > 0 && time.Now().Before(deadline) {
+		cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: cluster.SwitchoverLongWriteWait.Since, Deadline: deadline}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long updates running on master %s: %d write query/transaction past switchover-wait-write-query=%ds, waiting for them to complete, %ds left of switchover-wait-trx=%ds", server.URL, qt, cluster.Conf.SwitchWaitWrite, int(time.Until(deadline).Seconds()), cluster.Conf.SwitchWaitTrx)
+		cluster.logLongRunningWrites(server)
+		time.Sleep(2 * time.Second)
+		qt, logs, err = dbhelper.CheckLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
+		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
+	}
+	if qt > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long updates running on master. Cannot switchover: %d write query/transaction on %s still past switchover-wait-write-query=%ds after switchover-wait-trx=%ds, not killed (rollback time unknown)", qt, server.URL, cluster.Conf.SwitchWaitWrite, cluster.Conf.SwitchWaitTrx)
+		cluster.logLongRunningWrites(server)
+		setWaitState(fmt.Sprintf("still running after switchover-wait-trx=%ds, switchover cancelled", cluster.Conf.SwitchWaitTrx))
+		return false
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Long updates on master %s completed, proceeding with switchover", server.URL)
+	setWaitState(fmt.Sprintf("completed after %ds, switchover proceeding", int(time.Since(since).Seconds())))
+	return true
+}
+
+// logLongRunningWrites logs one line per session the long-write guard counts.
+func (cluster *Cluster) logLongRunningWrites(server *ServerMonitor) {
+	pl, logs, err := dbhelper.GetLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
+	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "GetLongRunningWrites")
+	if err != nil {
+		return
+	}
+	for _, p := range pl {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long update on %s: session %d user %s host %s command %s running %.0fs, trx open %ds rows modified %d rows locked %d: %s", server.URL, p.Id, p.User, p.Host, p.Command, p.Time.Float64, p.TrxTime, p.TrxRowsModified, p.TrxRowsLocked, p.Info.String)
 	}
 }
 
@@ -686,7 +813,7 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 			cluster.SetState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
-		if !sl.HasBinlog() && !sl.IsIgnored() {
+		if !sl.HasBinlog() && !sl.IsIgnored() && !sl.IsPostgreSQLHost() {
 			cluster.SetState("ERR00013", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			continue
 		}
@@ -843,7 +970,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 			cluster.SetState("ERR00084", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00084"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
-		if !sl.HasBinlog() && !sl.IsIgnored() {
+		if !sl.HasBinlog() && !sl.IsIgnored() && !sl.IsPostgreSQLHost() {
 			cluster.SetState("ERR00013", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00013"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			continue
 		}
@@ -1207,13 +1334,10 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot switchover without a vmaster connection")
 			return false
 		}
-		qt, logs, err := dbhelper.CheckLongRunningWrites(cluster.vmaster.Conn, cluster.Conf.SwitchWaitWrite)
-		cluster.LogSQL(logs, err, cluster.vmaster.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
-		if qt > 0 {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long updates running on virtual master. Cannot switchover")
-
+		if !cluster.waitLongRunningWrites(cluster.vmaster) {
 			return false
 		}
+		var logs string
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Flushing tables on virtual master %s", cluster.vmaster.URL)
 		workerFlushTable := make(chan error, 1)

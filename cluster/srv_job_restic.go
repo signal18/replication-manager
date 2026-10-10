@@ -1763,8 +1763,36 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 	}()
 
 	var reader io.Reader = pr
+
+	// A snapshot taken after this server's own backup-encryption ran (see
+	// finalizeBackupEncryption) stores the .enc artifact, not the plaintext
+	// dump -- decrypt the raw restic stream before any gzip check, which
+	// must otherwise run against the *logical* (suffix-stripped) name: an
+	// encrypted compressed dump is named "....gz.enc", not "....gz".
+	logicalPath := filePath
+	if strings.HasSuffix(strings.ToLower(filePath), ".enc") {
+		// A stream cannot be retried: use the most likely password.
+		password, err := cluster.backupStreamRestorePassword(filePath)
+		if err != nil {
+			_ = pr.CloseWithError(err)
+			return fmt.Errorf("cannot restore encrypted restic stream %s: %w", filePath, err)
+		}
+		decrypted, err := backupmgr.DecryptStream(pr, password)
+		if err != nil {
+			_ = pr.CloseWithError(err)
+			return fmt.Errorf("failed to decrypt restic stream %s: %w", filePath, err)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose,
+			config.ConstLogModRestic,
+			config.LvlInfo,
+			"Decrypting encrypted mysqldump stream: %s",
+			filePath)
+		reader = decrypted
+		logicalPath = logicalArtifactName(filePath)
+	}
+
 	var gzReader *pgzip.Reader
-	if strings.HasSuffix(strings.ToLower(filePath), ".gz") {
+	if strings.HasSuffix(strings.ToLower(logicalPath), ".gz") {
 		cluster.LogModulePrintf(cluster.Conf.Verbose,
 			config.ConstLogModRestic,
 			config.LvlInfo,
@@ -1773,7 +1801,7 @@ func (server *ServerMonitor) reseedMysqldumpFromResticStream(ctx context.Context
 		var err error
 		bufferSize := cluster.getSanitizedDecompressBufferSize(config.ConstLogModRestic)
 		parallelBlocks := cluster.getSanitizedParallelBlocks(config.ConstLogModRestic)
-		gzReader, err = pgzip.NewReaderN(pr, bufferSize, parallelBlocks)
+		gzReader, err = pgzip.NewReaderN(reader, bufferSize, parallelBlocks)
 		if err != nil {
 			_ = pr.CloseWithError(err)
 			return fmt.Errorf("failed to create gzip reader: %w", err)

@@ -46,18 +46,44 @@ function ChartMultiMetric({
     tooltipText: theme === 'light' ? 'var(--text-color, #333333)' : 'var(--text-color, #e7e9ef)'
   };
 
+  // Short, human labels. The DBU/service leaf tokens (dbu, dbu_cpu, ...) have
+  // fewer than 3 underscore-words, so the old slice(3) logic yielded '' and fell
+  // back to the FULL graphite path ('maxSeries(mysql.*-DEV3-*.dbu)') as the legend
+  // -- unreadable, and every DBU line got the same overlong name so they looked
+  // like one series ("il affiche que les disques" = 5 lines flat at 1 overlapping).
+  const FRIENDLY = {
+    dbu: 'DBU', dbu_cpu: 'CPU', dbu_mem: 'Mem', dbu_io: 'IO', dbu_disk: 'Disk',
+    dbu_plan: 'Plan',
+    service_cpu: 'CPU', service_mem: 'Mem', service_io: 'IO', service_disk: 'Disk',
+    // cgroup waits (dbu.<cluster>.<host>.wait_*): fractions of wall time, per server
+    wait_cpu_throttled: 'CPU throttled (cores)', wait_cpu_throttled_periods: 'periods throttled',
+    wait_cpu_psi_some: 'CPU stall some', wait_cpu_psi_full: 'CPU stall full',
+    wait_io_psi_some: 'IO stall some', wait_io_psi_full: 'IO stall full',
+    wait_mem_psi_some: 'Mem stall some', wait_mem_psi_full: 'Mem stall full',
+    // concurrency under semi-sync (mysql.<host>.*): the thread pool and the ack wait
+    concurrency_thread_pool_size: 'thread_pool_size', concurrency_threadpool_threads: 'pool threads',
+    concurrency_threadpool_idle_threads: 'pool idle threads',
+    semisync_tx_avg_wait_us: 'semi-sync avg wait (us/commit)', semisync_wait_cores: 'semi-sync wait (cores)',
+  };
   const getDisplayName = (metricPath) => {
-    const parts = metricPath.split('.');
-    let displayName = parts[parts.length - 1] || metricPath;
+    // aliasByNode(path, n): the leaf is in the path argument, not after the last comma
+    const bare = metricPath.replace(/^aliasByNode\((.*),\s*\d+\)$/, '$1');
+    const parts = bare.split('.');
+    // leaf = last dotted segment, minus any trailing ')' from maxSeries(...) wrappers
+    const leaf = (parts[parts.length - 1] || bare).replace(/\)+$/, '');
 
-    // Remove first 3 underscore-separated words
-    const nameParts = displayName.split('_');
-    displayName = nameParts.slice(3).join('_');
+    if (FRIENDLY[leaf]) return FRIENDLY[leaf];
 
-    // Remove trailing closing parenthesis
-    displayName = displayName.replace(/\)+$/, '');
+    // top_<graph>_<metric...> (the Top page header graphs): the chart title already names
+    // the graph, so the legend keeps only the metric ("binlog_group", "tmp_tables").
+    const top = leaf.match(/^top_[a-z]+_(.+)$/);
+    if (top) return top[1];
 
-    return displayName || metricPath; // Fallback to original if empty
+    // mysql_global_status_* / mysql_global_variables_*: drop the 3-word prefix
+    const words = leaf.split('_');
+    if (words.length > 3) return words.slice(3).join('_');
+
+    return leaf || metricPath; // Fallback to original if empty
   };
 
   // Helper function to format numbers with units (K, M, G, T)
@@ -67,15 +93,17 @@ function ChartMultiMetric({
     const k = 1024;
     const sizes = ['', 'K', 'M', 'G', 'T', 'P', 'E'];
 
-    // Find the right unit
-    const i = Math.floor(Math.log(Math.abs(value)) / Math.log(k));
+    // Find the right unit. A value under 1 (the wait fractions, 0.0001) gave a NEGATIVE
+    // index, sizes[-2] = undefined and a "104.9undefined" tick: it has no unit and keeps
+    // its decimals.
+    const i = Math.max(0, Math.floor(Math.log(Math.abs(value)) / Math.log(k)));
 
     // Don't go beyond our available units
     const unitIndex = Math.min(i, sizes.length - 1);
 
     // Format with the appropriate unit
     if (unitIndex === 0) {
-      return d3.format(',.1f')(value);
+      return Math.abs(value) < 1 ? d3.format(',.4~f')(value) : d3.format(',.1f')(value);
     } else {
       return d3.format(',.1f')(value / Math.pow(k, unitIndex)) + sizes[unitIndex];
     }
@@ -90,8 +118,13 @@ function ChartMultiMetric({
       const from = now - (size * step);
       const until = now;
 
-      // Encode the metric path for the URL
-      const encodedTarget = encodeURIComponent(`alias(${metricPath},'')`);
+      // Encode the metric path for the URL. A path the page already named (alias* wrapper)
+      // keeps its name: the raw response then carries it, one line per series, and a
+      // wildcard target (dbu.<cluster>.*.wait_* = one line per server) is drawn as that
+      // many lines labelled "<leaf label> <name>". An unnamed path is blanked as before
+      // and expected to be ONE series.
+      const named = /^alias/.test(metricPath);
+      const encodedTarget = encodeURIComponent(named ? metricPath : `alias(${metricPath},'')`);
 
       // Create the API URL similar to your working examples
       const url = `/graphite/render?format=raw&target=${encodedTarget}&from=${from}&until=${until}`;
@@ -106,40 +139,54 @@ function ChartMultiMetric({
 
       const text = await response.text();
 
-      // Parse the response - format is expected to be something like:
-      // ,startTime,endTime,step|value1,value2,value3,...
-      const parts = text.split('|');
-      if (parts.length !== 2) {
-        console.error(`Unexpected response format for ${metricPath}`);
-        return null;
+      // Parse the response - raw format, one line per series:
+      // name,startTime,endTime,step|value1,value2,value3,...
+      const lines = text.split('\n').filter(l => l.includes('|'));
+      if (!lines.length) {
+        return [];
       }
+      const series = [];
+      for (const line of lines) {
+        const parts = line.split('|');
+        if (parts.length !== 2) {
+          console.error(`Unexpected response format for ${metricPath}`);
+          continue;
+        }
+        // the name itself may hold commas only when the page aliased it; the last three
+        // fields are always start, end, step
+        const timeInfo = parts[0].split(',');
+        if (timeInfo.length < 4) {
+          console.error(`Unexpected time format for ${metricPath}`);
+          continue;
+        }
+        const name = timeInfo.slice(0, timeInfo.length - 3).join(',');
+        const startTime = parseInt(timeInfo[timeInfo.length - 3]) * 1000; // Convert to ms
+        const stepTime = parseInt(timeInfo[timeInfo.length - 1]) * 1000;  // Convert to ms
 
-      const timeInfo = parts[0].split(',');
-      if (timeInfo.length !== 4) {
-        console.error(`Unexpected time format for ${metricPath}`);
-        return null;
+        const values = parts[1].split(',');
+
+        // Create data points
+        const data = values.map((value, i) => {
+          // Graphite sends 'None' for a gap (no datapoint that period). Keep it as
+          // NaN -- NOT 0 -- so the filter below drops it and the line connects
+          // across the gap instead of dipping to 0 (the "flapping"). 0 is a real
+          // value (an idle-but-measured DB), nil means "not measured": they must
+          // not render the same.
+          const val = value === 'None' ? NaN : parseFloat(value);
+          return {
+            date: new Date(startTime + (i * stepTime)),
+            value: val
+          };
+        }).filter(d => !isNaN(d.value));
+
+        const label = getDisplayName(metricPath);
+        series.push({
+          path: name ? `${metricPath}#${name}` : metricPath,
+          displayName: name ? `${label} ${name}` : label,
+          data
+        });
       }
-
-      const startTime = parseInt(timeInfo[1]) * 1000; // Convert to ms
-      const endTime = parseInt(timeInfo[2]) * 1000;   // Convert to ms
-      const stepTime = parseInt(timeInfo[3]) * 1000;  // Convert to ms
-
-      const values = parts[1].split(',');
-
-      // Create data points
-      const data = values.map((value, i) => {
-        const val = value === 'None' ? 0 : parseFloat(value) || 0;
-        return {
-          date: new Date(startTime + (i * stepTime)),
-          value: val
-        };
-      }).filter(d => !isNaN(d.value));
-
-      return {
-        path: metricPath,
-        displayName: getDisplayName(metricPath),
-        data
-      };
+      return series;
     } catch (error) {
       if (error.name !== 'AbortError') {
         console.error(`Error fetching data for ${metricPath}:`, error);
@@ -162,9 +209,9 @@ function ChartMultiMetric({
     dataFetchInProgress.current = true;
 
     try {
-      const data = await Promise.all(
+      const data = (await Promise.all(
         metricPaths.map(path => fetchMetricData(path))
-      );
+      )).flat();
 
       const dataMap = data.reduce((acc, curr) => {
         if (curr) acc[curr.path] = curr;
@@ -184,12 +231,13 @@ function ChartMultiMetric({
 
       // Use a single atomic update for state changes
       setMetricsData(prevData => {
-        // More thorough comparison to prevent unnecessary updates
-        const hasSignificantChanges = Object.keys(dataMap).some(path => {
-          const prevValues = prevData[path]?.data?.map(d => d.value).join(',');
-          const newValues = dataMap[path]?.data?.map(d => d.value).join(',');
-          return prevValues !== newValues;
-        });
+        // Redraw when the data OR the time window changed. The old check compared
+        // only values, so a flat series (e.g. an idle DB floored at 1 DBU -> "1,1,..
+        // ,1") kept the same value string as the window slid: the graph never redrew,
+        // froze, and only jumped when a value finally changed (the "flapping"). Include
+        // each point's timestamp so a sliding window always triggers a redraw.
+        const sig = (m) => m?.data?.map(p => `${p.date.getTime()}:${p.value}`).join(',');
+        const hasSignificantChanges = Object.keys(dataMap).some(path => sig(prevData[path]) !== sig(dataMap[path]));
 
         if (hasSignificantChanges) {
           // Trigger re-render atomically with the data change
@@ -227,6 +275,32 @@ function ChartMultiMetric({
     // Validate data
     const allData = Object.values(dataMap).flatMap(item => item.data);
     if (!allData.length) {
+      // No data yet: still render the SVG + title (and a "No data" note) so the
+      // empty graph stays identifiable instead of showing as an unlabelled empty
+      // box (e.g. metrics not produced yet, or performance_schema disabled).
+      d3.select(container).selectAll('svg').remove();
+      const emptySvg = d3.select(container).append('svg')
+        .attr('width', '100%')
+        .attr('height', height)
+        .style('background', themeColors.background)
+        .style('border-radius', '8px');
+      emptySvg.append('text')
+        .attr('x', 60)
+        .attr('y', 20)
+        .attr('class', theme === 'dark' ? 'dark-theme-title' : '')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '16px')
+        .style('font-weight', '600')
+        .style('dominant-baseline', 'middle')
+        .text(title);
+      emptySvg.append('text')
+        .attr('x', '50%')
+        .attr('y', height / 2)
+        .attr('text-anchor', 'middle')
+        .style('fill', themeColors.titleColor)
+        .style('font-size', '13px')
+        .style('opacity', 0.6)
+        .text('No data');
       isDrawingRef.current = false;
       return;
     }
@@ -271,8 +345,12 @@ function ChartMultiMetric({
     const g = svg.append('g')
       .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const startTime = d3.min(allData, d => d.date);
-    const endTime = d3.max(allData, d => d.date);
+    // The time axis is the REQUESTED window (context size x step up to now), the same on
+    // every chart of the page, not the extent of the data: a series that began minutes ago
+    // drew a nine-minute axis under a forty-minute one and read as a clock shift
+    // (2026-10-07). The points keep their own times inside it.
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - context.size() * context.step());
 
     // Scales
     const xScale = d3.scaleTime()
@@ -555,7 +633,14 @@ function ChartMultiMetric({
       clearInterval(intervalId);
       abortControllerRef.current.abort();
     };
-  }, [metricPaths, context, isVisible]);
+    // Depend on the metric paths BY VALUE, not the array reference: the parent passes
+    // metricPaths={scopeAll([...])}, a NEW array on every render, so a reference dep
+    // re-ran this effect each render -> abort() killed the in-flight fetch (the
+    // "proxy error: context canceled" flood) -> it returned empty -> blank graph, with
+    // the AbortError swallowed so no console error. Keying on the joined string re-runs
+    // only when the paths actually change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricPaths.join('|'), context, isVisible]);
 
   // Unified chart drawing effect that handles all triggers
   useEffect(() => {

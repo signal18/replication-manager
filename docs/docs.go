@@ -99,6 +99,36 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/cloud18/self-service": {
+            "get": {
+                "description": "Whether this instance accepts self-service cluster creation from Cloud18 users, the per-user limit, and how many clusters the caller already sponsors here.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Self-service cluster status for the caller",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.SelfServiceStatus"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters": {
             "get": {
                 "description": "Fetches the list of clusters that the user has access to based on ACL.",
@@ -1583,6 +1613,12 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "409": {
+                        "description": "Master is still up; use switchover for a planned role change",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "500": {
                         "description": "No cluster",
                         "schema": {
@@ -2155,6 +2191,83 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/rolling/upgrade/plan": {
+            "get": {
+                "description": "Resolves the target with the image list of the configurator (patch, next-minor, next-lts, next-major, last-lts, version) from the line the nodes run and describes the steps, the target release, what prov-db-image declares afterwards and the warnings. Nothing is changed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMaintenance"
+                ],
+                "summary": "Plan a rolling upgrade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "patch",
+                            "next-minor",
+                            "next-lts",
+                            "next-major",
+                            "last-lts",
+                            "previous-minor",
+                            "previous-major",
+                            "version"
+                        ],
+                        "type": "string",
+                        "description": "patch (default), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major, version",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "with target=version: the release or line to move to",
+                        "name": "version",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.RollingUpgradePlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Target not resolvable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/rolling/{action}": {
             "post": {
                 "description": "Triggers one of: restart, reprov, upgrade, jobs-upgrade.\nreprov and upgrade are long-running and return 202 Accepted immediately; the operation runs in the background.",
@@ -2196,6 +2309,28 @@ const docTemplate = `{
                         "name": "action",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "patch",
+                            "next-minor",
+                            "next-lts",
+                            "next-major",
+                            "last-lts",
+                            "previous-minor",
+                            "previous-major",
+                            "version"
+                        ],
+                        "type": "string",
+                        "description": "upgrade only: the release to move to, a method of the image list: patch (default: the declared prov-db-image resolved by the list), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major (downgrades), version",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "upgrade with target=version: the release or line to move to",
+                        "name": "version",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -2870,7 +3005,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Master failed",
+                        "description": "Master failed or preferred master not found",
                         "schema": {
                             "type": "string"
                         }
@@ -2935,6 +3070,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "No proxy configured",
                         "schema": {
                             "type": "string"
                         }
@@ -5297,6 +5438,72 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apu/{kind}/{name}": {
+            "post": {
+                "description": "The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy. Optional netRxBytes/netTxBytes (cumulative octets of the pod interface) feed the internal network series net.\u003ccluster\u003e.\u003ckind\u003e.\u003cname\u003e.*.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterResources"
+                ],
+                "summary": "Ingest an app/proxy APU compute-sensor push",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Compute kind: app or proxy",
+                        "name": "kind",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App deployment or proxy name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ingested",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Decode error / invalid kind",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/backups": {
             "get": {
                 "description": "This endpoint retrieves the backups for the specified cluster.\nRequired grant: cluster-show-backups",
@@ -6354,6 +6561,47 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/kube-storage-classes": {
+            "get": {
+                "description": "Lists the Kubernetes cluster's available StorageClasses.",
+                "tags": [
+                    "Database"
+                ],
+                "summary": "List available Kubernetes StorageClasses",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Kubernetes StorageClass list fetched",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.PoolOption"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"Error getting Kubernetes storage class list",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/need-rolling-reprov": {
             "get": {
                 "description": "Checks if a specified cluster needs a rolling reprovision.",
@@ -6629,6 +6877,55 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK"
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/price": {
+            "get": {
+                "description": "The cluster's month statement: partner, sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Price of a cluster for the running month",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ClusterStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement yet",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -8509,6 +8806,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/schema/events": {
+            "get": {
+                "description": "Scheduled database events (MySQL/MariaDB EVENT objects) as the last schema scan collected them on the master and the replicas (monitoring-schema-events), compared with the master: per server the collection state (checked, unavailable, unsupported, not-checked) and, for a replica, the comparison (consistent, different, not-checked); per event its presence, status class (active, disabled, unknown) and definition CRC64 on each checked server, and its drifts (missing, extra, definition, definer, status). A server absent from an event's nodes was not checked: it is never reported missing. It never carries an event definition, schedule, comment or definer. Observational only: the schema drift signal is WARN0164. enabled is false, with no server and no event, when monitoring-schema-events is off. Requires db-show-schema (or cluster-sharding, through /schema).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSchema"
+                ],
+                "summary": "Retrieve the scheduled database event consistency of a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Scheduled database event consistency",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.EventSchemaView"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/schema/{schemaName}/all/actions/analyze-schema/{persistent}": {
             "post": {
                 "description": "This endpoint triggers the analyze calculation for all tables in a schema in the specified cluster.",
@@ -9597,7 +9943,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/del-maintenance": {
             "get": {
-                "description": "Deletes the maintenance mode on a specified server within a cluster.",
+                "description": "Deletes the maintenance mode on a specified server within a cluster.\nAlso clears the durable maintenance membership, so the server does\nnot come back into maintenance on the next process restart or\nconfig reload.",
                 "produces": [
                     "application/json"
                 ],
@@ -9834,7 +10180,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance": {
             "get": {
-                "description": "Toggles the maintenance mode on a specified server within a cluster.",
+                "description": "Toggles the maintenance mode on a specified server within a cluster.\nMaintenance mode is durable: it is written to the cluster's\ndynamic configuration and restored on process restart or config\nreload, so a server stays excluded from proxy routing and failover\nelection until maintenance is explicitly cleared. Requires\nmonitoring-save-config=true (the default) to survive a restart.",
                 "produces": [
                     "application/json"
                 ],
@@ -10694,7 +11040,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/set-maintenance": {
             "get": {
-                "description": "Sets a specified server within a cluster to maintenance mode.",
+                "description": "Sets a specified server within a cluster to maintenance mode.\nMaintenance mode is durable: it is written to the cluster's\ndynamic configuration and restored on process restart or config\nreload, so the server stays excluded from proxy routing and\nfailover election until maintenance is explicitly cleared.\nRequires monitoring-save-config=true (the default) to survive a\nrestart.",
                 "produces": [
                     "application/json"
                 ],
@@ -14002,16 +14348,16 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/service-opensvc": {
+        "/api/clusters/{clusterName}/servers/{serverName}/service/{orchestrator}": {
             "get": {
-                "description": "Retrieves the database service configuration of a specified server within a cluster.",
+                "description": "Retrieves the database service configuration or live manifests of a specified server within a cluster: raw OpenSVC service config text, or live Kubernetes manifests as JSON.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Database"
                 ],
-                "summary": "Get database service configuration of a server",
+                "summary": "Get database service/manifest view of a server",
                 "parameters": [
                     {
                         "type": "string",
@@ -14034,11 +14380,24 @@ const docTemplate = `{
                         "name": "serverName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Orchestrator (must match the cluster's configured orchestrator)",
+                        "name": "orchestrator",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "Database service configuration retrieved successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Orchestrator does not match cluster configuration",
                         "schema": {
                             "type": "string"
                         }
@@ -17033,6 +17392,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/settings/actions/change-plan-units/{unit}/{delta}": {
+            "post": {
+                "description": "Moves the cluster's plan (technical resource reservation) for a unit (DBU/APU)\nby a relative delta. Decrease is free down to the floor; increase is validated\n(admin immutable lock; external claim hook) then applied and persisted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Change a cluster plan reservation by a delta",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Plan unit: DBU or APU",
+                        "name": "unit",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Relative change (e.g. -3 or 2)",
+                        "name": "delta",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "delta must be an integer",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/settings/actions/discover": {
             "post": {
                 "description": "This endpoint triggers the discovery of settings for the specified cluster.",
@@ -17234,6 +17662,116 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster\" or \"No server",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/settings/actions/git-push": {
+            "post": {
+                "description": "Triggers the server-level config git push immediately instead of waiting for the dirty-gated config-sync loop. Runs the real push path, which self-heals a corrupt pack (reclone + retry). Server-level (one repo, all clusters); routed per-cluster for ACL. Requires GrantClusterSettings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Force the config-repo push to git now",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "config pushed to git",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "git config sync not configured",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/settings/actions/git-repair": {
+            "post": {
+                "description": "Explicit self-heal: refresh git metadata (reclone re-inits the local .git from the remote, shedding corrupt/dangling objects) then push a clean pack. Use when the config-repo push is stuck (e.g. after a gitlab failover emptied the remote and pushes fail the remote receive fsck). Server-level; routed per-cluster for ACL. Requires GrantClusterSettings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Repair a stuck config-repo git sync and push",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "git repaired and pushed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "git config sync not configured",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "string"
                         }
@@ -18770,6 +19308,51 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/tokens": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "List the API tokens covering a cluster (grant token-manage)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.APITokenView"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/top": {
             "get": {
                 "description": "This endpoint retrieves the top metrics for the specified cluster.",
@@ -18914,7 +19497,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/topology/http-logs": {
             "get": {
-                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
+                "description": "Returns cluster logs for the specified type (in-memory buffer), or — for general/task with ?since=/?until= — a bounded scan of on-disk log history. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.",
                 "produces": [
                     "application/json"
                 ],
@@ -18938,6 +19521,42 @@ const docTemplate = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 lower time bound; presence switches general/task to on-disk history",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 upper time bound; presence switches general/task to on-disk history",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated module tags, e.g. sql,proxy",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: substring filter on message text",
+                        "name": "text",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "History mode only: max lines returned (server-clamped)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -18946,6 +19565,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "logType has no on-disk history",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "403": {
@@ -18965,7 +19590,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/topology/http-logs/{logType}": {
             "get": {
-                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
+                "description": "Returns cluster logs for the specified type (in-memory buffer), or — for general/task with ?since=/?until= — a bounded scan of on-disk log history. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.",
                 "produces": [
                     "application/json"
                 ],
@@ -18992,9 +19617,45 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Log type: general, task, security, workload, ddl, variable-change, sysbench",
+                        "description": "Log type: general, task, security, workload, ddl, schema, variable-change, sysbench",
                         "name": "logType",
                         "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 lower time bound; presence switches general/task to on-disk history",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 upper time bound; presence switches general/task to on-disk history",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated module tags, e.g. sql,proxy",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: substring filter on message text",
+                        "name": "text",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "History mode only: max lines returned (server-clamped)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -19003,6 +19664,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "logType has no on-disk history",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "403": {
@@ -19068,7 +19735,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/topology/logs/{logType}": {
             "get": {
-                "description": "Returns cluster logs for the specified type. Available types: general, task, security, workload, ddl, variable-change, sysbench. Without logType returns all logs.",
+                "description": "Returns cluster logs for the specified type (in-memory buffer), or — for general/task with ?since=/?until= — a bounded scan of on-disk log history. Available types: general, task, security, workload, ddl, schema, variable-change, sysbench. Without logType returns all logs.",
                 "produces": [
                     "application/json"
                 ],
@@ -19095,9 +19762,45 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Log type: general, task, security, workload, ddl, variable-change, sysbench",
+                        "description": "Log type: general, task, security, workload, ddl, schema, variable-change, sysbench",
                         "name": "logType",
                         "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 lower time bound; presence switches general/task to on-disk history",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 upper time bound; presence switches general/task to on-disk history",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated module tags, e.g. sql,proxy",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: substring filter on message text",
+                        "name": "text",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "History mode only: max lines returned (server-clamped)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -19106,6 +19809,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "logType has no on-disk history",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "403": {
@@ -20092,7 +20801,7 @@ const docTemplate = `{
         },
         "/api/global/http-logs": {
             "get": {
-                "description": "Returns server-level log entries from the ReplicationManager in-memory ring buffer.",
+                "description": "Returns server-level log entries from the in-memory ring buffer, or — with ?since=/?until= — a bounded scan of on-disk log history.",
                 "produces": [
                     "application/json"
                 ],
@@ -20108,6 +20817,42 @@ const docTemplate = `{
                         "name": "Authorization",
                         "in": "header",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 lower time bound; presence switches to on-disk history",
+                        "name": "since",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "RFC3339 upper time bound; presence switches to on-disk history",
+                        "name": "until",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated level buckets ERR,WARN,INFO,DBG",
+                        "name": "level",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: comma-separated module tags, e.g. sql,proxy",
+                        "name": "module",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "History mode only: substring filter on message text",
+                        "name": "text",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "History mode only: max lines returned (server-clamped)",
+                        "name": "limit",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -20115,6 +20860,48 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/server.globalLogsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/jobs": {
+            "get": {
+                "description": "Returns running and recently completed DB jobs, and current Restic tasks, across all clusters.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Get global jobs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalJobsResponse"
                         }
                     },
                     "401": {
@@ -20157,6 +20944,115 @@ const docTemplate = `{
                         "description": "Unauthorized",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/price": {
+            "get": {
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Month billing statement of the infrastructure",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.MonthStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement for that month",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/price/{month}": {
+            "get": {
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Month billing statement of the infrastructure",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Month YYYY-MM (default: the running month)",
+                        "name": "month",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.MonthStatement"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No statement for that month",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/global/resources": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Global"
+                ],
+                "summary": "Global ResourceManager view",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.globalResourcesResponse"
                         }
                     }
                 }
@@ -20287,6 +21183,43 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error signing token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/me/units": {
+            "get": {
+                "description": "For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, failover DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Units consumed this month by the logged user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "No statement",
                         "schema": {
                             "type": "string"
                         }
@@ -21010,6 +21943,164 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tokens": {
+            "get": {
+                "description": "GET lists the caller's tokens (token strings included for an interactive login). POST (grant token-create, interactive login only) issues a new token narrowed to a subset of the caller's own grants and a cluster scope; the token can never carry a grant the caller does not hold. The system service account can never issue tokens.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "List or create the caller's API tokens",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Token form (POST)",
+                        "name": "token",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.APITokenForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.APITokenView"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "GET lists the caller's tokens (token strings included for an interactive login). POST (grant token-create, interactive login only) issues a new token narrowed to a subset of the caller's own grants and a cluster scope; the token can never carry a grant the caller does not hold. The system service account can never issue tokens.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "List or create the caller's API tokens",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Token form (POST)",
+                        "name": "token",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.APITokenForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.APITokenView"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/tokens/{tokenID}": {
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Revoke an API token",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Token id",
+                        "name": "tokenID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.APITokenView"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -22010,6 +23101,10 @@ const docTemplate = `{
                 "encryptionKey": {
                     "type": "string"
                 },
+                "encryptionKeyVersion": {
+                    "description": "EncryptionKeyVersion is the secret_store.json version of\ndb-servers-credential whose password encrypted the artifact (0 when\nunknown). A version number only, never the password: restore uses it\nto pick the right historic root password after a password change.",
+                    "type": "integer"
+                },
                 "endTime": {
                     "type": "string"
                 },
@@ -22018,6 +23113,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "integrityAlgo": {
+                    "type": "string"
                 },
                 "metaFile": {
                     "type": "string"
@@ -22056,6 +23154,10 @@ const docTemplate = `{
                 },
                 "startTime": {
                     "type": "string"
+                },
+                "streamSize": {
+                    "description": "bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator",
+                    "type": "integer"
                 }
             }
         },
@@ -22919,6 +24021,10 @@ const docTemplate = `{
                 "datadir": {
                     "type": "string"
                 },
+                "dbProvisionError": {
+                    "description": "last app database auto-create refusal (#1870), \"\" once one goes through",
+                    "type": "string"
+                },
                 "failCount": {
                     "type": "integer"
                 },
@@ -22934,6 +24040,19 @@ const docTemplate = `{
                 "isHashingTemplate": {
                     "type": "boolean"
                 },
+                "lastRefreshDurationMs": {
+                    "type": "integer"
+                },
+                "lastRefreshEnd": {
+                    "type": "string"
+                },
+                "lastRefreshError": {
+                    "type": "string"
+                },
+                "lastRefreshStart": {
+                    "description": "Per-app refresh freshness (cluster-level AppRefreshLast* on Cluster\nonly shows batch-wide timing, not which app is actually slow). Set\nvia SetRefreshInProgress/SetRefreshResult under app.Mutex -- read\nthem the same way (App.Lock()/Unlock(), or GetAppAPIView) rather than\ndirectly: these are read from a different goroutine than the one\nthat writes them (maybeRefreshAppsAsync's worker vs. any status/API\nreader).",
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -22942,6 +24061,9 @@ const docTemplate = `{
                 },
                 "prevState": {
                     "type": "string"
+                },
+                "refreshInProgress": {
+                    "type": "boolean"
                 },
                 "routeStatus": {
                     "type": "array",
@@ -22967,11 +24089,41 @@ const docTemplate = `{
                 "type": {
                     "type": "string"
                 },
+                "url": {
+                    "description": "https://\u003cprimary route cname\u003e/ once routed, else the internal http://host:port/",
+                    "type": "string"
+                },
                 "version": {
                     "type": "string"
                 },
                 "weight": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.BillingPrices": {
+            "type": "object",
+            "properties": {
+                "apu": {
+                    "type": "number"
+                },
+                "bau": {
+                    "type": "number"
+                },
+                "bku": {
+                    "type": "number"
+                },
+                "dbu": {
+                    "type": "number"
+                },
+                "gwu": {
+                    "type": "number"
+                },
+                "overPct": {
+                    "type": "integer"
+                },
+                "underPct": {
+                    "type": "integer"
                 }
             }
         },
@@ -22989,6 +24141,57 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.ClusterStatement": {
+            "type": "object",
+            "properties": {
+                "accrued": {
+                    "description": "Accrued unit-seconds per family, kept on disk so a reload continues the month:\nplan, over, under, rate, planCost, overCost, underCredit.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "type": "number"
+                        }
+                    }
+                },
+                "cluster": {
+                    "type": "string"
+                },
+                "firstSeen": {
+                    "type": "string"
+                },
+                "lastSeen": {
+                    "type": "string"
+                },
+                "monthCost": {
+                    "description": "EUR accrued this month",
+                    "type": "number"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "projected": {
+                    "description": "MonthCost + Rate × the time left",
+                    "type": "number"
+                },
+                "rate": {
+                    "description": "EUR per month at the last tick",
+                    "type": "number"
+                },
+                "sponsors": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "units": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.UnitBillingRow"
+                    }
+                }
+            }
+        },
         "cluster.Diff": {
             "type": "object",
             "properties": {
@@ -23003,6 +24206,98 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.EventSchemaDriftView": {
+            "type": "object",
+            "properties": {
+                "drift": {
+                    "type": "string"
+                },
+                "serverId": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaEventView": {
+            "type": "object",
+            "properties": {
+                "db": {
+                    "type": "string"
+                },
+                "drifts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaDriftView"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.EventSchemaNodeView"
+                    }
+                }
+            }
+        },
+        "cluster.EventSchemaNodeView": {
+            "type": "object",
+            "properties": {
+                "definitionCrc64": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "present": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaServerView": {
+            "type": "object",
+            "properties": {
+                "collectedAt": {
+                    "type": "integer"
+                },
+                "collection": {
+                    "type": "string"
+                },
+                "comparison": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isMaster": {
+                    "type": "boolean"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaView": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaEventView"
+                    }
+                },
+                "servers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaServerView"
+                    }
+                }
+            }
+        },
         "cluster.GraphiteFilterList": {
             "type": "object",
             "properties": {
@@ -23011,6 +24306,66 @@ const docTemplate = `{
                 },
                 "whitelist": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.LedgerAxes": {
+            "type": "object",
+            "properties": {
+                "cores": {
+                    "type": "number"
+                },
+                "diskBytes": {
+                    "type": "number"
+                },
+                "iops": {
+                    "type": "number"
+                },
+                "memBytes": {
+                    "type": "number"
+                }
+            }
+        },
+        "cluster.MonthStatement": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.ClusterStatement"
+                    }
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "defaultPrices": {
+                    "description": "the instance's price list; each row carries the price its cluster applied",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.BillingPrices"
+                        }
+                    ]
+                },
+                "elapsedPct": {
+                    "type": "number"
+                },
+                "final": {
+                    "type": "boolean"
+                },
+                "generatedAt": {
+                    "type": "string"
+                },
+                "month": {
+                    "type": "string"
+                },
+                "monthCost": {
+                    "type": "number"
+                },
+                "projected": {
+                    "type": "number"
+                },
+                "rate": {
+                    "type": "number"
                 }
             }
         },
@@ -23138,6 +24493,93 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.ResourceLedger": {
+            "type": "object",
+            "properties": {
+                "borrowPot": {
+                    "description": "over-commit pot per unit (smallest axis)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.UnitPots"
+                        }
+                    ]
+                },
+                "borrowed": {
+                    "description": "Σ resources granted above the plans (DB config over plan, BKU usage over plan)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "capacity": {
+                    "description": "the metal (agents summed, config override winning)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "known": {
+                    "type": "boolean"
+                },
+                "overCommitPot": {
+                    "description": "capacity − reserved − borrowed",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "overdrawn": {
+                    "description": "an over-commit pot axis is negative: borrowed resources must give way",
+                    "type": "boolean"
+                },
+                "planPot": {
+                    "description": "sellable − reserved",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "planPotUnits": {
+                    "description": "plan pot per unit (smallest axis)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.UnitPots"
+                        }
+                    ]
+                },
+                "quotaPct": {
+                    "type": "number"
+                },
+                "reserved": {
+                    "description": "Σ plans of every cluster, DBU + APU + BKU, physical",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                },
+                "reservedUnits": {
+                    "description": "Σ plans per unit, as sold (DBU, APU, BKU)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.UnitPots"
+                        }
+                    ]
+                },
+                "sellable": {
+                    "description": "capacity × quota: what plans may add up to",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.LedgerAxes"
+                        }
+                    ]
+                }
+            }
+        },
         "cluster.ResticEnsureBucketResult": {
             "type": "object",
             "properties": {
@@ -23152,6 +24594,86 @@ const docTemplate = `{
                 },
                 "message": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.RollingUpgradePlan": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "currentImage": {
+                    "description": "prov-db-image as declared",
+                    "type": "string"
+                },
+                "currentIsLTS": {
+                    "type": "boolean"
+                },
+                "currentLine": {
+                    "type": "string"
+                },
+                "currentRelease": {
+                    "description": "the release the service definitions carry (prov-db-docker-img-resolved)",
+                    "type": "string"
+                },
+                "declaredAfter": {
+                    "description": "prov-db-image after the upgrade",
+                    "type": "string"
+                },
+                "flavor": {
+                    "type": "string"
+                },
+                "imageList": {
+                    "type": "string"
+                },
+                "mechanic": {
+                    "description": "\"upgrade\" (restart on the new image) or \"reprov\" (provision again + reseed)",
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "target": {
+                    "type": "string"
+                },
+                "targetImage": {
+                    "description": "the real release, repo:x.y.z",
+                    "type": "string"
+                },
+                "targetIsLTS": {
+                    "type": "boolean"
+                },
+                "targetLine": {
+                    "type": "string"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -23197,16 +24719,151 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "config-init": {
-                    "$ref": "#/definitions/config.Config"
+                    "$ref": "#/definitions/github_com_signal18_replication-manager_config.Config"
                 },
                 "config-test": {
-                    "$ref": "#/definitions/config.Config"
+                    "$ref": "#/definitions/github_com_signal18_replication-manager_config.Config"
                 },
                 "name": {
                     "type": "string"
                 },
                 "result": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.UnitBillingRow": {
+            "type": "object",
+            "properties": {
+                "billable": {
+                    "type": "number"
+                },
+                "cumulative": {
+                    "description": "month-to-date volume, not integrated (#1872)",
+                    "type": "boolean"
+                },
+                "family": {
+                    "type": "string"
+                },
+                "freePlan": {
+                    "description": "the plan is a free allowance: no plan cost, no unused credit",
+                    "type": "boolean"
+                },
+                "monthCost": {
+                    "description": "= monthPlanCost + monthOverCost − monthUnderCredit",
+                    "type": "number"
+                },
+                "monthOverCommit": {
+                    "type": "number"
+                },
+                "monthOverCost": {
+                    "type": "number"
+                },
+                "monthPlan": {
+                    "type": "number"
+                },
+                "monthPlanCost": {
+                    "type": "number"
+                },
+                "monthUnderCommit": {
+                    "type": "number"
+                },
+                "monthUnderCredit": {
+                    "type": "number"
+                },
+                "overCommit": {
+                    "type": "number"
+                },
+                "overCommitPct": {
+                    "type": "integer"
+                },
+                "overCost": {
+                    "description": "+ over-commit × price × (100+over%)/100",
+                    "type": "number"
+                },
+                "plan": {
+                    "type": "number"
+                },
+                "planCost": {
+                    "description": "plan × price, per month, at the last tick",
+                    "type": "number"
+                },
+                "priced": {
+                    "type": "boolean"
+                },
+                "projectedCost": {
+                    "type": "number"
+                },
+                "projectedOverCommit": {
+                    "type": "number"
+                },
+                "projectedOverCost": {
+                    "type": "number"
+                },
+                "projectedPlan": {
+                    "description": "Projection to the end of the month: each component as it stands at the last tick\ncarried over the time left (plan count of every tick, over-commit and under-commit\nprojected per unit), then priced: projectedCost = monthCost + rate × time left.",
+                    "type": "number"
+                },
+                "projectedPlanCost": {
+                    "type": "number"
+                },
+                "projectedUnderCommit": {
+                    "type": "number"
+                },
+                "projectedUnderCredit": {
+                    "type": "number"
+                },
+                "rate": {
+                    "description": "EUR per month at the last tick = planCost + overCost − underCredit",
+                    "type": "number"
+                },
+                "underCommit": {
+                    "type": "number"
+                },
+                "underCommitPct": {
+                    "type": "integer"
+                },
+                "underCredit": {
+                    "description": "− under-commit × price × under%/100",
+                    "type": "number"
+                },
+                "unit": {
+                    "type": "string"
+                },
+                "unitPrice": {
+                    "type": "number"
+                }
+            }
+        },
+        "cluster.UnitPots": {
+            "type": "object",
+            "properties": {
+                "apu": {
+                    "type": "number"
+                },
+                "bku": {
+                    "type": "number"
+                },
+                "dbu": {
+                    "type": "number"
+                }
+            }
+        },
+        "cluster.UnitRatios": {
+            "type": "object",
+            "properties": {
+                "coresPerUnit": {
+                    "type": "number"
+                },
+                "diskGBPerUnit": {
+                    "type": "number"
+                },
+                "iopsPerUnit": {
+                    "description": "0 = axis excluded",
+                    "type": "number"
+                },
+                "memMBPerUnit": {
+                    "type": "number"
                 }
             }
         },
@@ -23259,6 +24916,14 @@ const docTemplate = `{
                     "description": "AppConfigVersion is the explicit persisted migration marker stamped by\ncluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)\ncontent; AppConfigVersionV2 means content already matches the V1 -\u003e V2\nmigration baseline and does not need re-canonicalizing for shape alone.",
                     "type": "integer"
                 },
+                "appDbAutoCreate": {
+                    "description": "AppDbAutoCreate (#1870): the app asks the cluster for its own schema, user and password\n({{app.db.*}} template keys); created at provision, never on foreign objects.",
+                    "type": "boolean"
+                },
+                "appDbOwned": {
+                    "description": "AppDbOwned: the ownership mark, set by the provision that created the schema and the user;\nwithout it an existing schema or user is never touched (APPERR008).",
+                    "type": "boolean"
+                },
                 "appDbPass": {
                     "type": "string"
                 },
@@ -23280,6 +24945,10 @@ const docTemplate = `{
                 "appS3Provider": {
                     "type": "boolean"
                 },
+                "appStateful": {
+                    "description": "AppStateful: the app holds data (minio, a storage service), so it is accounted on the\nDatabase profile as whole DBU (reserved in the DBU pool, billed at the DBU price), not\nas APU. A template default (cloud18-templates minio) inherited at creation, overridable\nper app in the GUI.",
+                    "type": "boolean"
+                },
                 "deployment": {
                     "$ref": "#/definitions/config.Deployment"
                 },
@@ -23289,14 +24958,12 @@ const docTemplate = `{
                 "provAppAgentsFailover": {
                     "type": "string"
                 },
-                "provAppCpuCores": {
+                "provAppConfigurator": {
+                    "description": "engine whose moduleset (share/opensvc/moduleset_\u003cengine\u003e.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none",
                     "type": "string"
                 },
-                "provAppCreditPlanned": {
-                    "type": "integer"
-                },
-                "provAppCreditUsed": {
-                    "type": "integer"
+                "provAppCpuCores": {
+                    "type": "string"
                 },
                 "provAppDiskIops": {
                     "type": "string"
@@ -23334,12 +25001,382 @@ const docTemplate = `{
                 "provAppSizingMode": {
                     "type": "string"
                 },
+                "provAppStartTimeout": {
+                    "description": "om3 start_timeout and pull_timeout of the app container (10m, 1h); empty = the cluster default",
+                    "type": "string"
+                },
                 "provAppTemplate": {
                     "type": "string"
                 }
             }
         },
-        "config.Config": {
+        "config.Deployment": {
+            "type": "object",
+            "properties": {
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PathMapping"
+                    }
+                },
+                "primaryRoute": {
+                    "$ref": "#/definitions/config.Route"
+                },
+                "routes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Route"
+                    }
+                },
+                "storages": {
+                    "$ref": "#/definitions/config.StorageMapping"
+                },
+                "variables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.VariableMapping"
+                    }
+                }
+            }
+        },
+        "config.GitClone": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "pass": {
+                    "type": "string"
+                },
+                "repo": {
+                    "type": "string"
+                },
+                "timeout": {
+                    "type": "integer"
+                },
+                "user": {
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                },
+                "volumename": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.PathMapping": {
+            "type": "object",
+            "properties": {
+                "dockerpath": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parentname": {
+                    "type": "string"
+                },
+                "srcname": {
+                    "type": "string"
+                },
+                "srcpath": {
+                    "type": "string"
+                },
+                "srctype": {
+                    "$ref": "#/definitions/config.SourceType"
+                },
+                "volumename": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.Route": {
+            "type": "object",
+            "properties": {
+                "cname": {
+                    "description": "Existing host-route fields kept for backward compatibility.",
+                    "type": "string"
+                },
+                "destPort": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "Explicit source/destination fields.",
+                    "type": "string"
+                },
+                "monitor": {
+                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.RouteMonitor"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "sourcePort": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.RouteMonitor": {
+            "type": "object",
+            "properties": {
+                "authSecretVar": {
+                    "type": "string"
+                },
+                "authType": {
+                    "type": "string"
+                },
+                "authUser": {
+                    "type": "string"
+                },
+                "expectStatus": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.RouteStatus": {
+            "type": "object",
+            "properties": {
+                "cname": {
+                    "description": "Existing host-route fields kept for backward compatibility.",
+                    "type": "string"
+                },
+                "destPort": {
+                    "type": "string"
+                },
+                "mode": {
+                    "description": "Explicit source/destination fields.",
+                    "type": "string"
+                },
+                "monitor": {
+                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.RouteMonitor"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "sourcePort": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.S3Mount": {
+            "type": "object",
+            "properties": {
+                "accesskey": {
+                    "type": "string"
+                },
+                "bucket": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "gid": {
+                    "type": "string"
+                },
+                "mountdir": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "providerName": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "secretkey": {
+                    "type": "string"
+                },
+                "uid": {
+                    "description": "Uid / Gid: the owner the mounted files are presented as inside the container\n(the mount sidecar's --uid/--gid); empty = 33 (www-data), the historical value.",
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                },
+                "volumename": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.ServerTaskList": {
+            "type": "object",
+            "properties": {
+                "serverUrl": {
+                    "type": "string"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Task"
+                    }
+                }
+            }
+        },
+        "config.SourceType": {
+            "type": "string",
+            "enum": [
+                "volume",
+                "git",
+                "s3"
+            ],
+            "x-enum-varnames": [
+                "SourceVolume",
+                "SourceGit",
+                "SourceS3"
+            ]
+        },
+        "config.StorageMapping": {
+            "type": "object",
+            "properties": {
+                "gitClones": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.GitClone"
+                    }
+                },
+                "s3Mounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.S3Mount"
+                    }
+                },
+                "volumes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Volume"
+                    }
+                }
+            }
+        },
+        "config.Task": {
+            "type": "object",
+            "properties": {
+                "done": {
+                    "type": "integer"
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "payload": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "integer"
+                },
+                "task": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.VariableMapping": {
+            "type": "object",
+            "properties": {
+                "conditional": {
+                    "description": "This is used to set the variable value only if the agent matches",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.AgentVariable"
+                    }
+                },
+                "locked": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.Volume": {
+            "type": "object",
+            "properties": {
+                "dirperm": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "poolname": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "string"
+                },
+                "user": {
+                    "description": "Owner of the volume directories (OpenSVC volume user/group/dirperm): images that run as a\nnon-root user (rustfs 10001, frappe 1000) cannot write a root-owned directory (#1870).",
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_signal18_replication-manager_config.Config": {
             "type": "object",
             "properties": {
                 "ExternalScript": {
@@ -23450,6 +25487,12 @@ const docTemplate = `{
                 "apiTokenTimeout": {
                     "type": "integer"
                 },
+                "apiUserTokens": {
+                    "type": "boolean"
+                },
+                "apiUserTokensDefaultExpireDays": {
+                    "type": "integer"
+                },
                 "app": {
                     "type": "boolean"
                 },
@@ -23497,6 +25540,9 @@ const docTemplate = `{
                 },
                 "arbitratorBindAddress": {
                     "type": "string"
+                },
+                "arbitratorConnectTimeout": {
+                    "type": "integer"
                 },
                 "arbitratorDriver": {
                     "type": "string"
@@ -23575,6 +25621,9 @@ const docTemplate = `{
                 },
                 "backupDiskTresholdWarn": {
                     "type": "integer"
+                },
+                "backupEncryption": {
+                    "type": "boolean"
                 },
                 "backupEstimateSize": {
                     "type": "boolean"
@@ -23909,6 +25958,9 @@ const docTemplate = `{
                 "backupStreamingRegion": {
                     "type": "string"
                 },
+                "backupWriteStallTimeout": {
+                    "type": "integer"
+                },
                 "binlogCopyMode": {
                     "type": "string"
                 },
@@ -23956,18 +26008,6 @@ const docTemplate = `{
                 },
                 "cloud18AlertSlackUser": {
                     "type": "string"
-                },
-                "cloud18ApplicationCredits": {
-                    "type": "integer"
-                },
-                "cloud18ApplicationCreditsPlanned": {
-                    "type": "integer"
-                },
-                "cloud18ApplicationCreditsPrice": {
-                    "type": "integer"
-                },
-                "cloud18ApplicationCreditsUsed": {
-                    "type": "integer"
                 },
                 "cloud18CostCurrency": {
                     "type": "string"
@@ -24023,6 +26063,10 @@ const docTemplate = `{
                 "cloud18ExternalSysOpsStatus": {
                     "type": "string"
                 },
+                "cloud18GatewayBandwidthMbit": {
+                    "description": "GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.\nCloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with\ncloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).",
+                    "type": "string"
+                },
                 "cloud18GatewayDomainName": {
                     "type": "string"
                 },
@@ -24055,6 +26099,44 @@ const docTemplate = `{
                 },
                 "cloud18InfraPublicBandwidth": {
                     "type": "number"
+                },
+                "cloud18LicenseFile": {
+                    "description": "Cloud18LicenseFile, when set, is the single switch for offline-license mode:\nthe instance sources its plan from this signed file instead of the CRM (for\nair-gapped/PCI instances). Empty = normal online CRM path.",
+                    "type": "string"
+                },
+                "cloud18MarketplaceApuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceBauClientStorage": {
+                    "type": "boolean"
+                },
+                "cloud18MarketplaceBauPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceBkuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceDbuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceGwuFreeUnits": {
+                    "description": "GWU for the BO (#1872): the first cloud18-marketplace-gwu-free-units GWU of BANDWIDTH (10 = 1 Gb/s) are free\nfor every cluster; bandwidth held above them is reported on top (only possible where the gateways give more).",
+                    "type": "integer"
+                },
+                "cloud18MarketplaceGwuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceGwuUnitMbit": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceOvercommitPricePct": {
+                    "type": "integer"
+                },
+                "cloud18MarketplacePricingMode": {
+                    "type": "string"
+                },
+                "cloud18MarketplaceUndercommitPricePct": {
+                    "type": "integer"
                 },
                 "cloud18MonthlyDbopsCost": {
                     "type": "number"
@@ -24104,6 +26186,18 @@ const docTemplate = `{
                 "cloud18SalesUnsubscribeScript": {
                     "type": "string"
                 },
+                "cloud18SelfServiceClusters": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceClustersCanBorrow": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceClustersEnabledScript": {
+                    "type": "string"
+                },
+                "cloud18SelfServiceMaxClustersPerUser": {
+                    "type": "integer"
+                },
                 "cloud18Shared": {
                     "type": "boolean"
                 },
@@ -24152,6 +26246,21 @@ const docTemplate = `{
                 "compressBackupsPhysical": {
                     "type": "string"
                 },
+                "dbLogOnBackupStorage": {
+                    "type": "boolean"
+                },
+                "dbLogRotate": {
+                    "type": "boolean"
+                },
+                "dbLogRotateMaxAge": {
+                    "type": "integer"
+                },
+                "dbLogRotateMaxBackup": {
+                    "type": "integer"
+                },
+                "dbLogRotateMaxSize": {
+                    "type": "integer"
+                },
                 "dbServersBackupHosts": {
                     "type": "string"
                 },
@@ -24163,6 +26272,9 @@ const docTemplate = `{
                 },
                 "dbServersCredential": {
                     "type": "string"
+                },
+                "dbServersDnsTimeout": {
+                    "type": "integer"
                 },
                 "dbServersExecTimeout": {
                     "type": "integer"
@@ -24177,6 +26289,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "dbServersLocality": {
+                    "type": "string"
+                },
+                "dbServersMaintenanceHosts": {
                     "type": "string"
                 },
                 "dbServersPreferedMaster": {
@@ -24444,6 +26559,9 @@ const docTemplate = `{
                 "graphiteMetrics": {
                     "type": "boolean"
                 },
+                "graphiteMetricsQueueLimit": {
+                    "type": "integer"
+                },
                 "graphiteWhitelist": {
                     "type": "boolean"
                 },
@@ -24451,6 +26569,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "haproxy": {
+                    "type": "boolean"
+                },
+                "haproxyAPIBootstrapServers": {
                     "type": "boolean"
                 },
                 "haproxyAPIPort": {
@@ -24507,11 +26628,11 @@ const docTemplate = `{
                 "haproxyStatPort": {
                     "type": "integer"
                 },
+                "haproxyUser": {
+                    "type": "string"
+                },
                 "haproxyWritePort": {
                     "type": "integer"
-                },
-                "haproxylUser": {
-                    "type": "string"
                 },
                 "heartbeatTable": {
                     "type": "boolean"
@@ -24607,6 +26728,18 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "logHeartbeatLevel": {
+                    "type": "integer"
+                },
+                "logHistoryEnable": {
+                    "type": "boolean"
+                },
+                "logHistoryMaxFiles": {
+                    "type": "integer"
+                },
+                "logHistoryMaxLines": {
+                    "type": "integer"
+                },
+                "logHistoryMaxScanBytes": {
                     "type": "integer"
                 },
                 "logLevel": {
@@ -24761,6 +26894,9 @@ const docTemplate = `{
                 "maxscaleMaxinfoPort": {
                     "type": "integer"
                 },
+                "maxscaleMode": {
+                    "type": "string"
+                },
                 "maxscalePass": {
                     "type": "string"
                 },
@@ -24771,6 +26907,12 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "maxscaleReadWritePort": {
+                    "type": "integer"
+                },
+                "maxscaleRestApi": {
+                    "type": "boolean"
+                },
+                "maxscaleRestPort": {
                     "type": "integer"
                 },
                 "maxscaleServerMatchPort": {
@@ -24791,11 +26933,32 @@ const docTemplate = `{
                 "maxscalemBinaryPath": {
                     "type": "string"
                 },
+                "mcpAdvertiseAddress": {
+                    "type": "string"
+                },
+                "mcpAuthEnabled": {
+                    "type": "boolean"
+                },
+                "mcpBindAddress": {
+                    "type": "string"
+                },
+                "mcpPort": {
+                    "type": "string"
+                },
+                "mcpServer": {
+                    "type": "boolean"
+                },
+                "mcpTransport": {
+                    "type": "string"
+                },
                 "measurement": {
                     "type": "boolean"
                 },
                 "measurementAutoClampLimit": {
                     "type": "boolean"
+                },
+                "monitoringAddMonitorScript": {
+                    "type": "string"
                 },
                 "monitoringAddress": {
                     "type": "string"
@@ -24856,6 +27019,9 @@ const docTemplate = `{
                 },
                 "monitoringDiskUsagePct": {
                     "type": "integer"
+                },
+                "monitoringDropMonitorScript": {
+                    "type": "string"
                 },
                 "monitoringErrorLogLength": {
                     "type": "integer"
@@ -24935,7 +27101,13 @@ const docTemplate = `{
                 "monitoringPerformanceSchemaQueriesExplainPurgePeriod": {
                     "type": "integer"
                 },
+                "monitoringPerformanceSchemaQueriesInterval": {
+                    "type": "integer"
+                },
                 "monitoringPerformanceSchemaQueriesPeriod": {
+                    "type": "integer"
+                },
+                "monitoringPfsSnapshotRetentionDays": {
                     "type": "integer"
                 },
                 "monitoringPlugins": {
@@ -24968,6 +27140,9 @@ const docTemplate = `{
                 "monitoringQueryTimeout": {
                     "type": "integer"
                 },
+                "monitoringResolveServerIP": {
+                    "type": "boolean"
+                },
                 "monitoringRestoreConfigOnStart": {
                     "type": "boolean"
                 },
@@ -24991,6 +27166,15 @@ const docTemplate = `{
                 },
                 "monitoringSchemaColumns": {
                     "type": "boolean"
+                },
+                "monitoringSchemaEvents": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaEventsMax": {
+                    "type": "integer"
+                },
+                "monitoringSchemaEventsPageSize": {
+                    "type": "integer"
                 },
                 "monitoringSchemaIgnoreTables": {
                     "type": "string"
@@ -25027,6 +27211,9 @@ const docTemplate = `{
                 },
                 "monitoringSqlErrorLogLength": {
                     "type": "integer"
+                },
+                "monitoringSystemResources": {
+                    "type": "boolean"
                 },
                 "monitoringTenant": {
                     "type": "string"
@@ -25220,6 +27407,9 @@ const docTemplate = `{
                 "provAppSizingMode": {
                     "type": "string"
                 },
+                "provAppStartTimeout": {
+                    "type": "string"
+                },
                 "provAppTemplateRepo": {
                     "type": "string"
                 },
@@ -25238,6 +27428,9 @@ const docTemplate = `{
                 "provAppTemplateRepoUser": {
                     "type": "string"
                 },
+                "provAppVolumePools": {
+                    "type": "string"
+                },
                 "provAutoUpdateCompliance": {
                     "type": "boolean"
                 },
@@ -25245,6 +27438,14 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "provDBCompliance": {
+                    "type": "string"
+                },
+                "provDBDynamicResizeDailyTime": {
+                    "description": "HH:MM daily window when policy = daily-time",
+                    "type": "string"
+                },
+                "provDBDynamicResizePolicy": {
+                    "description": "WHEN a live memory resize applies: \"scale-speed\" (default) / \"daily-time\"",
                     "type": "string"
                 },
                 "provDBForceWriteConfig": {
@@ -25265,14 +27466,28 @@ const docTemplate = `{
                 "provDbBinaryTarballName": {
                     "type": "string"
                 },
+                "provDbBku": {
+                    "type": "integer"
+                },
                 "provDbBootstrapScript": {
                     "type": "string"
+                },
+                "provDbCapSafetyPct": {
+                    "description": "HIGH-water margin: a server is \"over\" a reference on an axis when consumed \u003e= ref x (1 - pct/100). Drives raise-resources (vs config) and cap-up (vs plan). Default 15 (85%)",
+                    "type": "integer"
+                },
+                "provDbCapShrinkPct": {
+                    "description": "LOW-water margin: a server is \"under\" a reference on an axis when consumed \u003c= ref x (pct/100). Drives shrink-resources (vs config) and cap-down (vs plan). The dead-band [shrink-pct, 100-safety-pct] = status quo (anti-flap). Default 50",
+                    "type": "integer"
                 },
                 "provDbCleanupScript": {
                     "type": "string"
                 },
                 "provDbClientBasedir": {
                     "type": "string"
+                },
+                "provDbComplianceAutoAgree": {
+                    "type": "boolean"
                 },
                 "provDbConfig": {
                     "type": "boolean"
@@ -25288,6 +27503,9 @@ const docTemplate = `{
                 },
                 "provDbDatadirVersion": {
                     "type": "string"
+                },
+                "provDbDbu": {
+                    "type": "integer"
                 },
                 "provDbDiskDevice": {
                     "type": "string"
@@ -25331,6 +27549,12 @@ const docTemplate = `{
                 "provDbDockerImg": {
                     "type": "string"
                 },
+                "provDbDockerImgResolved": {
+                    "type": "string"
+                },
+                "provDbDockerJemallocPreload": {
+                    "type": "string"
+                },
                 "provDbDockerRunArgs": {
                     "type": "string"
                 },
@@ -25340,7 +27564,19 @@ const docTemplate = `{
                 "provDbDockerTmpfsSize": {
                     "type": "string"
                 },
+                "provDbDockerXtrabackupImg": {
+                    "type": "string"
+                },
                 "provDbDomain": {
+                    "type": "string"
+                },
+                "provDbDynamicResource": {
+                    "type": "boolean"
+                },
+                "provDbDynamicResourceCanChangeScript": {
+                    "type": "string"
+                },
+                "provDbDynamicResourceChangeScript": {
                     "type": "string"
                 },
                 "provDbExpireLogDays": {
@@ -25376,6 +27612,28 @@ const docTemplate = `{
                 "provDbNetMask": {
                     "type": "string"
                 },
+                "provDbOvercommitPct": {
+                    "description": "COMMERCIAL scalability-up barrier: max % the dynamic resource change may auto-grow the plan (plan × (1+pct/100)) before a plan raise is required. Not a technical cap formula (see ResourceManager.CanGrowBeyondPlan)",
+                    "type": "integer"
+                },
+                "provDbReplicationDomainParallelThreads": {
+                    "description": "slave_domain_parallel_threads (SVC_CONF_ENV_SLAVE_DOMAIN_PARALLEL_THREADS); 0 = no per-domain cap (MariaDB default)",
+                    "type": "integer"
+                },
+                "provDbReplicationParallelThreads": {
+                    "description": "slave_parallel_threads written by the configurator (template env SVC_CONF_ENV_SLAVE_PARALLEL_THREADS); concurrency to absorb latency, NOT tied to cores",
+                    "type": "integer"
+                },
+                "provDbResourceAlign": {
+                    "description": "container memory cap alignment to the DBU tier: \"plan\" (default) / \"up\" / \"off\"",
+                    "type": "string"
+                },
+                "provDbResourceRaisedOverPlanScript": {
+                    "type": "string"
+                },
+                "provDbRunAsUid": {
+                    "type": "string"
+                },
                 "provDbServiceType": {
                     "type": "string"
                 },
@@ -25391,10 +27649,20 @@ const docTemplate = `{
                 "provDbTags": {
                     "type": "string"
                 },
+                "provDbUndercommitPct": {
+                    "description": "scale-down floor: auto-shrink never under floor(plan x (1 - pct/100)) DBU/node, min 1 -- the pendant of prov-db-overcommit-pct",
+                    "type": "integer"
+                },
+                "provDbUpgradeMajorReprov": {
+                    "type": "boolean"
+                },
                 "provDbVolumeData": {
                     "type": "string"
                 },
                 "provDbVolumeDocker": {
+                    "type": "string"
+                },
+                "provDbVolumeUid": {
                     "type": "string"
                 },
                 "provDockerDaemonPrivate": {
@@ -25405,6 +27673,18 @@ const docTemplate = `{
                 },
                 "provEventTimeout": {
                     "type": "integer"
+                },
+                "provGatewayUnits": {
+                    "type": "integer"
+                },
+                "provKubeImageForcePull": {
+                    "type": "boolean"
+                },
+                "provKubeProxyStorageClass": {
+                    "type": "string"
+                },
+                "provKubeStorageClass": {
+                    "type": "string"
                 },
                 "provNetCni": {
                     "type": "boolean"
@@ -25424,7 +27704,13 @@ const docTemplate = `{
                 "provOrchestratorCluster": {
                     "type": "string"
                 },
+                "provOrchestratorDeploymentUpgradeOnStart": {
+                    "type": "boolean"
+                },
                 "provOrchestratorEnable": {
+                    "type": "string"
+                },
+                "provPlanIncreaseScript": {
                     "type": "string"
                 },
                 "provProxyAgents": {
@@ -25432,6 +27718,9 @@ const docTemplate = `{
                 },
                 "provProxyAgentsFailover": {
                     "type": "string"
+                },
+                "provProxyApu": {
+                    "type": "integer"
                 },
                 "provProxyBootstrapScript": {
                     "type": "string"
@@ -25525,6 +27814,18 @@ const docTemplate = `{
                 },
                 "provServicePlan": {
                     "type": "string"
+                },
+                "provServicePlanApu": {
+                    "type": "integer"
+                },
+                "provServicePlanBku": {
+                    "type": "integer"
+                },
+                "provServicePlanBpu": {
+                    "type": "integer"
+                },
+                "provServicePlanDbu": {
+                    "type": "integer"
                 },
                 "provServicePlanRegistry": {
                     "type": "string"
@@ -25786,6 +28087,49 @@ const docTemplate = `{
                 },
                 "replicationUseSsl": {
                     "type": "boolean"
+                },
+                "resourceManagerInfraCpuCores": {
+                    "type": "number"
+                },
+                "resourceManagerInfraDiskGb": {
+                    "type": "number"
+                },
+                "resourceManagerInfraIops": {
+                    "type": "number"
+                },
+                "resourceManagerInfraMemoryMb": {
+                    "type": "number"
+                },
+                "resourceManagerInfraNetworkMbps": {
+                    "type": "number"
+                },
+                "resourceManagerInfraQuotaPct": {
+                    "type": "number"
+                },
+                "resourceManagerRatioApu": {
+                    "type": "string"
+                },
+                "resourceManagerRatioBku": {
+                    "type": "string"
+                },
+                "resourceManagerRatioDbu": {
+                    "type": "string"
+                },
+                "scaleDownConfigInPlanSpeed": {
+                    "description": "sustain duration before scaling DOWN a server's config resources within the plan. Default 5m",
+                    "type": "string"
+                },
+                "scaleDownPlanSpeed": {
+                    "description": "sustain duration before lowering the PLAN (cap down) -- most conservative, don't yo-yo the billed plan. Default 1h",
+                    "type": "string"
+                },
+                "scaleUpConfigInPlanSpeed": {
+                    "description": "Client-settable SCALE SPEED: how long a saturation must persist before repman scales the\nresources up. Today this behaviour was fixed at 1 minute; this makes it a client knob.\nA duration string; the default 1m is the current (fastest) behaviour. The down/plan\nvariants (ScaleDownConfigInPlan, ScaleUp/DownPlan) will follow the same naming when wired.",
+                    "type": "string"
+                },
+                "scaleUpPlanSpeed": {
+                    "description": "sustain duration before raising the PLAN (cap up) -- commercial, slower than in-plan. Default 30m",
+                    "type": "string"
                 },
                 "schedulerAlertDisable": {
                     "type": "boolean"
@@ -26108,355 +28452,6 @@ const docTemplate = `{
                 }
             }
         },
-        "config.Deployment": {
-            "type": "object",
-            "properties": {
-                "paths": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.PathMapping"
-                    }
-                },
-                "primaryRoute": {
-                    "$ref": "#/definitions/config.Route"
-                },
-                "routes": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.Route"
-                    }
-                },
-                "storages": {
-                    "$ref": "#/definitions/config.StorageMapping"
-                },
-                "variables": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.VariableMapping"
-                    }
-                }
-            }
-        },
-        "config.GitClone": {
-            "type": "object",
-            "properties": {
-                "branch": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "pass": {
-                    "type": "string"
-                },
-                "repo": {
-                    "type": "string"
-                },
-                "timeout": {
-                    "type": "integer"
-                },
-                "user": {
-                    "type": "string"
-                },
-                "volumedir": {
-                    "type": "string"
-                },
-                "volumename": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.PathMapping": {
-            "type": "object",
-            "properties": {
-                "dockerpath": {
-                    "type": "string"
-                },
-                "level": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "parentname": {
-                    "type": "string"
-                },
-                "srcname": {
-                    "type": "string"
-                },
-                "srcpath": {
-                    "type": "string"
-                },
-                "srctype": {
-                    "$ref": "#/definitions/config.SourceType"
-                },
-                "volumename": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.Route": {
-            "type": "object",
-            "properties": {
-                "cname": {
-                    "description": "Existing host-route fields kept for backward compatibility.",
-                    "type": "string"
-                },
-                "destPort": {
-                    "type": "string"
-                },
-                "mode": {
-                    "description": "Explicit source/destination fields.",
-                    "type": "string"
-                },
-                "monitor": {
-                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.RouteMonitor"
-                        }
-                    ]
-                },
-                "name": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "string"
-                },
-                "primary": {
-                    "type": "boolean"
-                },
-                "protocol": {
-                    "type": "string"
-                },
-                "sourcePort": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.RouteMonitor": {
-            "type": "object",
-            "properties": {
-                "authSecretVar": {
-                    "type": "string"
-                },
-                "authType": {
-                    "type": "string"
-                },
-                "authUser": {
-                    "type": "string"
-                },
-                "expectStatus": {
-                    "type": "string"
-                },
-                "path": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.RouteStatus": {
-            "type": "object",
-            "properties": {
-                "cname": {
-                    "description": "Existing host-route fields kept for backward compatibility.",
-                    "type": "string"
-                },
-                "destPort": {
-                    "type": "string"
-                },
-                "mode": {
-                    "description": "Explicit source/destination fields.",
-                    "type": "string"
-                },
-                "monitor": {
-                    "description": "Optional per-route monitoring customization.  Nil means no monitor block\nwas configured; legacy routes keep nil so no defaults are injected.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.RouteMonitor"
-                        }
-                    ]
-                },
-                "name": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "string"
-                },
-                "primary": {
-                    "type": "boolean"
-                },
-                "protocol": {
-                    "type": "string"
-                },
-                "sourcePort": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.S3Mount": {
-            "type": "object",
-            "properties": {
-                "accesskey": {
-                    "type": "string"
-                },
-                "bucket": {
-                    "type": "string"
-                },
-                "endpoint": {
-                    "type": "string"
-                },
-                "mountdir": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "providerName": {
-                    "type": "string"
-                },
-                "region": {
-                    "type": "string"
-                },
-                "secretkey": {
-                    "type": "string"
-                },
-                "volumedir": {
-                    "type": "string"
-                },
-                "volumename": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.ServerTaskList": {
-            "type": "object",
-            "properties": {
-                "serverUrl": {
-                    "type": "string"
-                },
-                "tasks": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.Task"
-                    }
-                }
-            }
-        },
-        "config.SourceType": {
-            "type": "string",
-            "enum": [
-                "volume",
-                "git",
-                "s3"
-            ],
-            "x-enum-varnames": [
-                "SourceVolume",
-                "SourceGit",
-                "SourceS3"
-            ]
-        },
-        "config.StorageMapping": {
-            "type": "object",
-            "properties": {
-                "gitClones": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.GitClone"
-                    }
-                },
-                "s3Mounts": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.S3Mount"
-                    }
-                },
-                "volumes": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.Volume"
-                    }
-                }
-            }
-        },
-        "config.Task": {
-            "type": "object",
-            "properties": {
-                "done": {
-                    "type": "integer"
-                },
-                "end": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "payload": {
-                    "type": "string"
-                },
-                "port": {
-                    "type": "integer"
-                },
-                "result": {
-                    "type": "string"
-                },
-                "server": {
-                    "type": "string"
-                },
-                "start": {
-                    "type": "integer"
-                },
-                "state": {
-                    "type": "integer"
-                },
-                "task": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.VariableMapping": {
-            "type": "object",
-            "properties": {
-                "conditional": {
-                    "description": "This is used to set the variable value only if the agent matches",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.AgentVariable"
-                    }
-                },
-                "locked": {
-                    "type": "boolean"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "type": {
-                    "type": "string"
-                },
-                "value": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.Volume": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "poolname": {
-                    "type": "string"
-                },
-                "size": {
-                    "type": "string"
-                },
-                "volumedir": {
-                    "type": "string"
-                }
-            }
-        },
         "mailer.Email": {
             "type": "object",
             "properties": {
@@ -26542,8 +28537,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "extension": {
                     "type": "string"
@@ -26578,8 +28572,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "fileIds": {
                     "type": "array",
@@ -26676,6 +28669,9 @@ const docTemplate = `{
         "peer.PeerCluster": {
             "type": "object",
             "properties": {
+                "activePassiveStatus": {
+                    "type": "string"
+                },
                 "api-credentials-acl-allow": {
                     "type": "string"
                 },
@@ -26789,6 +28785,13 @@ const docTemplate = `{
                 "cluster-name": {
                     "type": "string"
                 },
+                "dbServers": {
+                    "type": "integer"
+                },
+                "directUpdate": {
+                    "description": "last successful direct /api/clusters enrichment",
+                    "type": "string"
+                },
                 "isDown": {
                     "type": "boolean"
                 },
@@ -26803,6 +28806,9 @@ const docTemplate = `{
                 },
                 "lastUpdate": {
                     "type": "string"
+                },
+                "monitoringPause": {
+                    "type": "boolean"
                 },
                 "prov-db-cpu-cores": {
                     "type": "string",
@@ -26826,7 +28832,17 @@ const docTemplate = `{
                 "prov-service-plan": {
                     "type": "string"
                 },
+                "proxyServers": {
+                    "type": "integer"
+                },
                 "repmgrVersion": {
+                    "type": "string"
+                },
+                "topology": {
+                    "description": "Live monitoring fields — populated by the direct /api/clusters fetch from the\npeer (auto-connect to fleet), NOT present in the BO peer.json catalog. They stay\nempty until a successful direct connection enriches the row, and are preserved\nacross peer.json BatchUpdateClusters (which would otherwise reset them).",
+                    "type": "string"
+                },
+                "uptime": {
                     "type": "string"
                 }
             }
@@ -26878,6 +28894,91 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "timestamp": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.APITokenForm": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "description": "empty or [\"*\"] = every cluster the owner can see",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "expireDays": {
+                    "description": "0 = server default (api-user-tokens-default-expire-days); -1 = never",
+                    "type": "integer"
+                },
+                "grants": {
+                    "description": "compact prefixes, space separated, e.g. \"db-show proxy\"; empty = all of the owner's grants",
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.APITokenView": {
+            "type": "object",
+            "properties": {
+                "clusters": {
+                    "description": "cluster scope; [\"*\"] = all",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "createdFrom": {
+                    "type": "string"
+                },
+                "expired": {
+                    "type": "boolean"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "grants": {
+                    "description": "compact grant prefixes requested by the owner",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "lastUsedAt": {
+                    "type": "string"
+                },
+                "lastUsedFrom": {
+                    "type": "string"
+                },
+                "ownerAuthType": {
+                    "description": "OwnerAuthType is how the owner was authenticated when the token was issued\n(\"SSO\" or \"Local\"): a token issued by a Cloud18 identity keeps that identity\nfor the self-service rules, which need an SSO caller.",
+                    "type": "string"
+                },
+                "revoked": {
+                    "type": "boolean"
+                },
+                "revokedAt": {
+                    "type": "string"
+                },
+                "revokedBy": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                },
+                "user": {
                     "type": "string"
                 }
             }
@@ -27037,6 +29138,32 @@ const docTemplate = `{
                 }
             }
         },
+        "server.InfraUnitPool": {
+            "type": "object",
+            "properties": {
+                "freeApu": {
+                    "type": "number"
+                },
+                "freeDbu": {
+                    "type": "number"
+                },
+                "known": {
+                    "type": "boolean"
+                },
+                "plannedApu": {
+                    "type": "number"
+                },
+                "plannedDbu": {
+                    "type": "number"
+                },
+                "usableApu": {
+                    "type": "number"
+                },
+                "usableDbu": {
+                    "type": "number"
+                }
+            }
+        },
         "server.MeetAlertMessage": {
             "type": "object",
             "properties": {
@@ -27152,6 +29279,86 @@ const docTemplate = `{
                 }
             }
         },
+        "server.SelfServiceStatus": {
+            "type": "object",
+            "properties": {
+                "appTemplates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "borrowed": {
+                    "description": "Borrowed: the pool could not guarantee the units but the over-commit pot can lend them\n(cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.",
+                    "type": "boolean"
+                },
+                "clusters": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "defaultApu": {
+                    "type": "integer"
+                },
+                "defaultBku": {
+                    "type": "integer"
+                },
+                "defaultDbu": {
+                    "type": "integer"
+                },
+                "domain": {
+                    "description": "The infrastructure identity and the app templates it can deploy, so a client\nplans an app and renders its URL (the template's primary route CNAME is\n\u003capp\u003e.\u003ccluster\u003e.\u003csubDomain\u003e-\u003czone\u003e.\u003cdomain\u003e.cloud18.io) before creating anything.",
+                    "type": "string"
+                },
+                "enabled": {
+                    "type": "boolean"
+                },
+                "gatewayDomain": {
+                    "type": "string"
+                },
+                "identity": {
+                    "type": "string"
+                },
+                "maxClustersPerUser": {
+                    "type": "integer"
+                },
+                "neededApu": {
+                    "type": "number"
+                },
+                "neededDbu": {
+                    "description": "ResourceManager pool: what a new cluster needs and what is free.",
+                    "type": "number"
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "pool": {
+                    "$ref": "#/definitions/server.InfraUnitPool"
+                },
+                "poolNote": {
+                    "type": "string"
+                },
+                "poolOk": {
+                    "type": "boolean"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "remaining": {
+                    "type": "integer"
+                },
+                "subDomain": {
+                    "type": "string"
+                },
+                "used": {
+                    "type": "integer"
+                },
+                "zone": {
+                    "type": "string"
+                }
+            }
+        },
         "server.appTemplateContentResponse": {
             "type": "object",
             "properties": {
@@ -27261,6 +29468,72 @@ const docTemplate = `{
                 }
             }
         },
+        "server.globalClusterResticTask": {
+            "type": "object",
+            "properties": {
+                "clusterName": {
+                    "type": "string"
+                },
+                "currentTask": {
+                    "$ref": "#/definitions/backupmgr.ResticTaskState"
+                }
+            }
+        },
+        "server.globalJobEntry": {
+            "type": "object",
+            "properties": {
+                "clusterName": {
+                    "type": "string"
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "serverId": {
+                    "type": "string"
+                },
+                "serverUrl": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "integer"
+                },
+                "stateLabel": {
+                    "type": "string"
+                },
+                "task": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.globalJobsResponse": {
+            "type": "object",
+            "properties": {
+                "recentCompletedJobs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalJobEntry"
+                    }
+                },
+                "resticCurrentTasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalClusterResticTask"
+                    }
+                },
+                "runningJobs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalJobEntry"
+                    }
+                }
+            }
+        },
         "server.globalLogsResponse": {
             "type": "object",
             "properties": {
@@ -27283,6 +29556,10 @@ const docTemplate = `{
                 },
                 "line": {
                     "type": "integer"
+                },
+                "truncated": {
+                    "description": "Truncated is only ever true for a history response (see HttpLog.Truncated).",
+                    "type": "boolean"
                 }
             }
         },
@@ -27355,6 +29632,202 @@ const docTemplate = `{
                 },
                 "process": {
                     "$ref": "#/definitions/server.globalMetricsProcessInfo"
+                }
+            }
+        },
+        "server.globalResourcesAgent": {
+            "type": "object",
+            "properties": {
+                "cores": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "token": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.globalResourcesAxis": {
+            "type": "object",
+            "properties": {
+                "axis": {
+                    "description": "cpu|mem|io|disk|network",
+                    "type": "string"
+                },
+                "capacityDbu": {
+                    "description": "projected to DBU (0 for network)",
+                    "type": "number"
+                },
+                "capacityRaw": {
+                    "description": "native units",
+                    "type": "number"
+                },
+                "consumedDbu": {
+                    "description": "consumed on this axis (0 for network)",
+                    "type": "number"
+                },
+                "source": {
+                    "description": "config|agents",
+                    "type": "string"
+                },
+                "unit": {
+                    "description": "cores|MB|iops|GB|Mbps",
+                    "type": "string"
+                }
+            }
+        },
+        "server.globalResourcesCluster": {
+            "type": "object",
+            "properties": {
+                "apu": {
+                    "description": "real consumed APU pivot -- the cluster's share of infra APU",
+                    "type": "number"
+                },
+                "cluster": {
+                    "type": "string"
+                },
+                "dbu": {
+                    "description": "real consumed pivot (max axis) -- the cluster's share of infra DBU",
+                    "type": "number"
+                },
+                "dbuCpu": {
+                    "type": "number"
+                },
+                "dbuDisk": {
+                    "type": "number"
+                },
+                "dbuIo": {
+                    "type": "number"
+                },
+                "dbuMem": {
+                    "type": "number"
+                },
+                "gwu": {
+                    "description": "gateway bandwidth consumed, in GWU (#1872)",
+                    "type": "number"
+                },
+                "planApu": {
+                    "description": "the cluster's APU reservation contract (prov-service-plan-apu)",
+                    "type": "number"
+                },
+                "planDbu": {
+                    "description": "the cluster's DBU reservation contract (prov-service-plan-dbu)",
+                    "type": "number"
+                },
+                "planGwu": {
+                    "description": "its GWU plan: gateway capacity / clusters present, or pinned",
+                    "type": "number"
+                },
+                "planStatefulDbu": {
+                    "description": "their DBU reservation, own line (never in planDbu)",
+                    "type": "number"
+                },
+                "servers": {
+                    "type": "integer"
+                },
+                "statefulDbu": {
+                    "description": "real consumed DBU of the stateful apps (app-stateful)",
+                    "type": "number"
+                }
+            }
+        },
+        "server.globalResourcesResponse": {
+            "type": "object",
+            "properties": {
+                "agentList": {
+                    "description": "Agents the RM has placement for, each with the exact graphite token its per-agent series are\nkeyed on (resourcemanager.agent.\u003ctoken\u003e.{dbu,apu,plan_dbu,plan_apu}) so the GUI targets them.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalResourcesAgent"
+                    }
+                },
+                "agents": {
+                    "type": "integer"
+                },
+                "axes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalResourcesAxis"
+                    }
+                },
+                "bindingAxis": {
+                    "type": "string"
+                },
+                "bindingAxisApu": {
+                    "type": "string"
+                },
+                "capacityApu": {
+                    "description": "APU (Compute) infra view -- the SAME metal projected into APU (1c/2GB/10GB, no IO).",
+                    "type": "number"
+                },
+                "capacityDbu": {
+                    "type": "number"
+                },
+                "capacityGwu": {
+                    "description": "the same capacity in GWU (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s)",
+                    "type": "number"
+                },
+                "clusters": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/server.globalResourcesCluster"
+                    }
+                },
+                "consumedApu": {
+                    "type": "number"
+                },
+                "consumedDbu": {
+                    "type": "number"
+                },
+                "consumedGwu": {
+                    "description": "Σ clusters",
+                    "type": "number"
+                },
+                "gatewayCapacityMbit": {
+                    "type": "number"
+                },
+                "gatewayDomains": {
+                    "description": "Gateways: the shared uplinks the clusters' traffic is tracked against (#1872), Mb/s.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ledger": {
+                    "description": "the physical ledger: plan pot + over-commit pot, every unit from ONE metal",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.ResourceLedger"
+                        }
+                    ]
+                },
+                "quotaPct": {
+                    "type": "number"
+                },
+                "slackApu": {
+                    "type": "number"
+                },
+                "slackDbu": {
+                    "type": "number"
+                },
+                "unitRatios": {
+                    "description": "the manager's ratios, the page's only source of unit arithmetic",
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.UnitRatios"
+                    }
+                },
+                "usableApu": {
+                    "type": "number"
+                },
+                "usableDbu": {
+                    "type": "number"
+                },
+                "usableGwu": {
+                    "description": "= capacity: the uplink has no quota",
+                    "type": "number"
                 }
             }
         },

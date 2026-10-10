@@ -154,6 +154,13 @@ func (app *App) SetFailCount(c int) {
 	app.FailCount = c
 }
 
+// SetWarnCount is locked (app.Lock()) -- see SetPrevState.
+func (app *App) SetWarnCount(c int) {
+	app.Lock()
+	defer app.Unlock()
+	app.WarnCount = c
+}
+
 func (app *App) SetCredential(credential string) {
 	app.User, app.Pass = misc.SplitPair(credential)
 }
@@ -163,6 +170,26 @@ func (app *App) SetState(v string) {
 	app.Lock()
 	defer app.Unlock()
 	app.State = v
+}
+
+// CommitStateTransition is locked (app.Lock()) -- see SetPrevState. It reads
+// PrevState and State as one atomic pair and, only when they differ, advances
+// PrevState to State, returning (old, new, true). When they already match it
+// returns (State, State, false) without mutating anything. Refresh() uses
+// this instead of separately comparing app.PrevState != app.State and then
+// calling SetState()/SetPrevState() -- two locked calls a concurrent
+// Refresh() on the same App (e.g. via BackendsStateChange(), which bypasses
+// the maybeRefreshAppsAsync single-flight guarantee) could interleave with,
+// causing a spurious or missed transition log/alert.
+func (app *App) CommitStateTransition() (oldState, newState string, changed bool) {
+	app.Lock()
+	defer app.Unlock()
+	oldState, newState = app.PrevState, app.State
+	if oldState != newState {
+		app.PrevState = newState
+		return oldState, newState, true
+	}
+	return oldState, newState, false
 }
 
 func (app *App) SetCluster(c *Cluster) {
@@ -193,15 +220,16 @@ func (app *App) deriveUnitFromStoredResources() int {
 	cores, _ := strconv.Atoi(app.AppConfig.ProvAppCpuCores)
 	memMB, _ := config.ParseUnitMeasurementToInt("M", app.AppConfig.ProvAppMem, false)
 	diskGB, _ := config.ParseUnitMeasurementToInt("G", app.AppConfig.ProvAppDisk, false)
+	unitCores, unitMemMB, unitDiskGB := app.unitRatioInts()
 	unitFromCores, unitFromMem, unitFromDisk := 1, 1, 1
-	if cores > config.AppUnitCpuCores {
-		unitFromCores = (cores + config.AppUnitCpuCores - 1) / config.AppUnitCpuCores
+	if unitCores > 0 && cores > unitCores {
+		unitFromCores = (cores + unitCores - 1) / unitCores
 	}
-	if memMB > config.AppUnitMemMB {
-		unitFromMem = (memMB + config.AppUnitMemMB - 1) / config.AppUnitMemMB
+	if unitMemMB > 0 && memMB > unitMemMB {
+		unitFromMem = (memMB + unitMemMB - 1) / unitMemMB
 	}
-	if diskGB > config.AppUnitDiskGB {
-		unitFromDisk = (diskGB + config.AppUnitDiskGB - 1) / config.AppUnitDiskGB
+	if unitDiskGB > 0 && diskGB > unitDiskGB {
+		unitFromDisk = (diskGB + unitDiskGB - 1) / unitDiskGB
 	}
 	appUnit := unitFromCores
 	if unitFromMem > appUnit {
@@ -219,31 +247,24 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.ProvAppDockerImg = value
 	case "prov-app-docker-cmd":
 		app.AppConfig.ProvAppDockerCmd = value
-	case "prov-app-agents":
-		if app.effectiveSizingMode() == config.AppSizingModeUnit {
-			// Unit mode only: preserve App Unit per agent, recalculate total credits.
-			// Save previous agents so we can roll back if credit recalculation fails.
-			oldCount := len(app.GetAppAgents())
-			oldUnit := 1
-			if app.preservedLegacyInUnitPolicy() {
-				oldUnit = app.deriveUnitFromStoredResources()
-			} else if oldCount > 0 && app.AppConfig.ProvAppCreditPlanned > 0 {
-				oldUnit = app.AppConfig.ProvAppCreditPlanned / oldCount
+	case "prov-app-start-timeout":
+		if value != "" {
+			if _, err := time.ParseDuration(value); err != nil {
+				return fmt.Errorf("prov-app-start-timeout %q: a duration such as 10m or 1h is expected", value)
 			}
-			prevAgents := app.AppConfig.ProvAppAgents
-			app.AppConfig.ProvAppAgents = value
-			newCount := len(app.GetAppAgents())
-			if newCount == 0 {
-				newCount = 1
-			}
-			if err := app.SetAppProvisionByCredit(oldUnit * newCount); err != nil {
-				app.AppConfig.ProvAppAgents = prevAgents
-				return fmt.Errorf("agent change rejected: %w", err)
-			}
-		} else {
-			// Legacy ("") and Manual: just update agents, no credit recalculation
-			app.AppConfig.ProvAppAgents = value
 		}
+		app.AppConfig.ProvAppStartTimeout = value
+	case "prov-app-configurator":
+		if value != "" {
+			if _, err := loadAppConfiguratorModule(value); err != nil {
+				return err
+			}
+		}
+		app.AppConfig.ProvAppConfigurator = value
+	case "prov-app-agents":
+		// The shape (prov-app-cpu-cores/memory/disk) is PER INSTANCE and never depends on
+		// the agent count; the instances follow the topology (flex = agents, failover = 1).
+		app.AppConfig.ProvAppAgents = value
 	case "prov-app-template":
 		app.AppConfig.ProvAppTemplate = value
 	case "app-port":
@@ -251,30 +272,41 @@ func (app *App) SetSetting(key, value string) error {
 	case "app-db-user":
 		app.AppConfig.AppDbUser = value
 	case "app-db-pass":
-		app.AppConfig.AppDbPass = value
+		// stored encrypted; on an owned database the user password is rotated at once (#1870)
+		app.AppConfig.AppDbPass = app.ClusterGroup.Conf.GetEncryptedString(app.ClusterGroup.Conf.GetDecryptedPassword("app-db-pass", value))
+		if err := app.ClusterGroup.RotateAppDatabasePassword(app); err != nil {
+			return err
+		}
+	case "app-random-password":
+		// stored encrypted; the app's containers read it at their next provisioning
+		app.AppConfig.AppRandomPassword = app.ClusterGroup.Conf.GetEncryptedString(app.ClusterGroup.Conf.GetDecryptedPassword("app-random-password", value))
+	case "app-db-auto-create":
+		app.AppConfig.AppDbAutoCreate = value == "true" || value == "1" || value == "on"
+		if err := app.ClusterGroup.ApplyAppDbDefaults(app.AppConfig); err != nil {
+			return err
+		}
+	case "app-db-owned":
+		// the ownership mark: an operator asserts the schema and user belong to this app
+		app.AppConfig.AppDbOwned = value == "true" || value == "1" || value == "on"
 	case "app-db-schema":
 		app.AppConfig.AppDbSchema = value
-	case "prov-app-credit-planned":
-		effectiveMode := app.effectiveSizingMode()
-		if effectiveMode == config.AppSizingModeManual {
-			return errors.New("prov-app-credit-planned cannot be set in manual mode; use CPU/memory/disk controls instead")
+	case "prov-app-units":
+		if app.ClusterGroup != nil && app.ClusterGroup.engineServerOfApp(app) != nil {
+			// a monitored server is sized by the database plan: resize it there
+			return errors.New("this app is a database server of the cluster: resize it with the database settings (prov-db-memory, prov-db-cpu-cores, prov-db-disk-size), not with app units")
 		}
-		creditPlanSize, err := strconv.Atoi(value)
-		if err != nil {
-			return errors.New("invalid credit planned value: " + value)
+		// The unit sizing HELPER, not a store (Stéphane 2026-09-29: the unit count is derived,
+		// tracked in graphite, never a field): N whole units per instance -> the three declared
+		// prov-app-* values at the manager's ratio of the app's profile (Compute, or Database
+		// when app-stateful). Manual mode keeps the hand-typed shape.
+		if app.effectiveSizingMode() == config.AppSizingModeManual {
+			return errors.New("prov-app-units cannot be set in manual mode; use CPU/memory/disk controls instead")
 		}
-		if creditPlanSize < 1 {
-			return errors.New("credit planned must be greater than or equal to 1")
+		units, err := strconv.Atoi(value)
+		if err != nil || units < 1 {
+			return errors.New("invalid units value: " + value + " (whole number >= 1)")
 		}
-		if effectiveMode == "" {
-			if err := app.SetAppProvisionByLegacyCredit(creditPlanSize); err != nil {
-				return err
-			}
-		} else {
-			if err := app.SetAppProvisionByCredit(creditPlanSize); err != nil {
-				return err
-			}
-		}
+		app.applyUnitShape(units)
 	case "prov-app-sizing-mode":
 		if value == "" {
 			prevAppMode := app.AppConfig.ProvAppSizingMode
@@ -290,14 +322,7 @@ func (app *App) SetSetting(key, value string) error {
 					app.AppConfig.ProvAppSizingMode = prevAppMode
 					return errors.New("cannot inherit unit mode: no agents configured")
 				}
-				appUnit := app.deriveUnitFromStoredResources()
-				creditPlanSize := appUnit * numAgents
-				app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-				app.AppConfig.ProvAppCpuCores = strconv.Itoa(appUnit * config.AppUnitCpuCores)
-				app.AppConfig.ProvAppMem = strconv.Itoa(appUnit * config.AppUnitMemMB)
-				app.AppConfig.ProvAppDisk = strconv.Itoa(appUnit * config.AppUnitDiskGB)
-				app.SetReprovCookie()
-				app.ClusterGroup.recomputeAppCredits()
+				app.applyUnitShape(app.deriveUnitFromStoredResources())
 			}
 			return nil
 		}
@@ -307,17 +332,10 @@ func (app *App) SetSetting(key, value string) error {
 		prevAppMode := app.AppConfig.ProvAppSizingMode
 		oldMode := app.effectiveSizingMode()
 		app.AppConfig.ProvAppSizingMode = value
-		// When switching any non-unit mode (legacy "" or manual) → unit:
-		// derive best-fit units from current resources and force-apply resource formula.
-		// We do not call SetAppProvisionByCredit here because its early-exit on matching
-		// credit count would leave resources at old values if the derived credit count
-		// happens to equal the stored planned credits.
+		// When switching any non-unit mode (legacy "" or manual) -> unit: derive the
+		// best-fit whole units from the current shape and snap the shape onto the unit
+		// grid (applyUnitShape), so a unit-managed app always sits on whole units.
 		if value == config.AppSizingModeUnit && oldMode != config.AppSizingModeUnit {
-			numAgents := len(app.GetAppAgents())
-			if numAgents == 0 {
-				app.AppConfig.ProvAppSizingMode = prevAppMode
-				return errors.New("cannot switch to unit mode: no agents configured")
-			}
 			var cores int
 			if app.AppConfig.ProvAppCpuCores != "" {
 				var parseErr error
@@ -345,15 +363,16 @@ func (app *App) SetSetting(key, value string) error {
 					return fmt.Errorf("cannot switch to unit mode: unparseable disk %q: %w", app.AppConfig.ProvAppDisk, parseErr)
 				}
 			}
+			unitCores, unitMemMB, unitDiskGB := app.ClusterGroup.computeRatioInts()
 			unitFromCores, unitFromMem, unitFromDisk := 1, 1, 1
-			if cores > config.AppUnitCpuCores {
-				unitFromCores = (cores + config.AppUnitCpuCores - 1) / config.AppUnitCpuCores
+			if unitCores > 0 && cores > unitCores {
+				unitFromCores = (cores + unitCores - 1) / unitCores
 			}
-			if memMB > config.AppUnitMemMB {
-				unitFromMem = (memMB + config.AppUnitMemMB - 1) / config.AppUnitMemMB
+			if unitMemMB > 0 && memMB > unitMemMB {
+				unitFromMem = (memMB + unitMemMB - 1) / unitMemMB
 			}
-			if diskGB > config.AppUnitDiskGB {
-				unitFromDisk = (diskGB + config.AppUnitDiskGB - 1) / config.AppUnitDiskGB
+			if unitDiskGB > 0 && diskGB > unitDiskGB {
+				unitFromDisk = (diskGB + unitDiskGB - 1) / unitDiskGB
 			}
 			appUnit := unitFromCores
 			if unitFromMem > appUnit {
@@ -362,15 +381,28 @@ func (app *App) SetSetting(key, value string) error {
 			if unitFromDisk > appUnit {
 				appUnit = unitFromDisk
 			}
-			creditPlanSize := appUnit * numAgents
-			app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-			app.AppConfig.ProvAppCpuCores = strconv.Itoa(appUnit * config.AppUnitCpuCores)
-			app.AppConfig.ProvAppMem = strconv.Itoa(appUnit * config.AppUnitMemMB)
-			app.AppConfig.ProvAppDisk = strconv.Itoa(appUnit * config.AppUnitDiskGB)
-			app.SetReprovCookie()
+			app.applyUnitShape(appUnit)
 		}
 	case "prov-app-ha-topology":
 		app.AppConfig.ProvAppHATopology = value
+	case "app-monitor-mode":
+		// How an app without a route is probed: port (TCP connect to app-port) or ping
+		// (ICMP echo to the host, for a process that listens on nothing, #1919).
+		mode := strings.ToLower(strings.TrimSpace(value))
+		if mode != "" && mode != "port" && mode != "ping" {
+			return fmt.Errorf("app-monitor-mode: %q is not port or ping", value)
+		}
+		app.AppConfig.AppMonitorMode = mode
+	case "app-stateful":
+		// Stateful app (minio and the like): accounted as DBU, not APU. The plan and the
+		// billing re-project on the spot; the sensor's next push lands on the DBU track.
+		app.AppConfig.AppStateful = value == "true" || value == "1" || value == "on"
+		app.ClusterGroup.RefreshComputePlanAPU()
+	case "app-s3-provider":
+		// The storage profile: the app hosts an archive for others (minio). Its volume is
+		// billed as producer BAU, not BKU, and it stays a compute unit for its cores/memory.
+		app.AppConfig.AppS3Provider = value == "true" || value == "1" || value == "on"
+		app.ClusterGroup.refreshAppS3Providers()
 	case "prov-app-cpu-cores":
 		app.AppConfig.ProvAppCpuCores = value
 		if app.effectiveSizingMode() == config.AppSizingModeManual {
@@ -394,13 +426,21 @@ func (app *App) SetSetting(key, value string) error {
 	default:
 		return errors.New("unknown setting: " + key)
 	}
-
-	app.ClusterGroup.recomputeAppCredits()
 	return nil
 }
 
 func (app *App) SwitchSetting(key string) error {
 	switch key {
+	case "app-db-auto-create":
+		if app.AppConfig.AppDbAutoCreate {
+			return app.SetSetting(key, "false")
+		}
+		return app.SetSetting(key, "true")
+	case "app-db-owned":
+		if app.AppConfig.AppDbOwned {
+			return app.SetSetting(key, "false")
+		}
+		return app.SetSetting(key, "true")
 	default:
 		return errors.New("unknown setting: " + key)
 	}
@@ -450,83 +490,36 @@ func (app *App) UpdateVariable(vIndex int, field, newValue string) error {
 	return nil
 }
 
-func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
-
-	if creditPlanSize == app.AppConfig.ProvAppCreditPlanned {
-		return nil
+// applyUnitShape writes the declared shape of ONE instance from a whole unit count at the
+// manager's ratio of the app's profile (Database when app-stateful, else Compute), and
+// arms a reprovision. The count itself is not stored: it is re-derived from the shape
+// (deriveUnitFromStoredResources) and tracked as the app's plan series in graphite.
+func (app *App) applyUnitShape(units int) {
+	if units < 1 {
+		units = 1
 	}
-
-	numAgents := len(app.GetAppAgents())
-
-	if numAgents == 0 {
-		return errors.New("no agents available for flex provisioning")
-	}
-	if creditPlanSize%numAgents != 0 {
-		return fmt.Errorf("credit planned (%d) must be a multiple of the number of agents (%d)", creditPlanSize, numAgents)
-	}
-
-	app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-
-	// Unit mode only: apply the App Unit resource formula and trigger reprovision.
-	// Legacy and manual modes are dispatched to their own helpers before this function
-	// is called, so reaching here in a non-unit mode is a no-op.
-	if app.effectiveSizingMode() == config.AppSizingModeUnit {
-		unitsPerAgent := creditPlanSize / numAgents
-		app.AppConfig.ProvAppCpuCores = strconv.Itoa(unitsPerAgent * config.AppUnitCpuCores)
-		app.AppConfig.ProvAppMem = strconv.Itoa(unitsPerAgent * config.AppUnitMemMB)
-		app.AppConfig.ProvAppDisk = strconv.Itoa(unitsPerAgent * config.AppUnitDiskGB)
-		app.SetReprovCookie()
-	}
-
-	return nil
-}
-
-// SetAppProvisionByLegacyCredit is the exact origin/develop SetAppProvisionByCredit
-// logic preserved for legacy-mode apps (ProvAppSizingMode == ""). It uses only the
-// app-level cluster defaults (ProvAppCpuCores / ProvAppMem / ProvAppDisk) with no
-// fallback to the DB-level Prov* fields, matching pre-split behavior exactly.
-func (app *App) SetAppProvisionByLegacyCredit(creditPlanSize int) error {
-	if creditPlanSize == app.AppConfig.ProvAppCreditPlanned {
-		return nil
-	}
-
-	numAgents := len(app.GetAppAgents())
-	if numAgents == 0 {
-		return errors.New("no agents available for flex provisioning")
-	}
-	if creditPlanSize%numAgents != 0 {
-		return errors.New("credit planned must be a multiple of the number of agents for flex provisioning")
-	}
-
-	provCredit := creditPlanSize / numAgents
-
-	baseCore, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppCpuCores, true)
-	if err != nil {
-		return err
-	}
-	baseMemory, err := config.ParseUnitMeasurementToInt("M", app.ClusterGroup.Conf.ProvAppMem, true)
-	if err != nil {
-		return err
-	}
-	baseDisk, err := config.ParseUnitMeasurementToInt("G", app.ClusterGroup.Conf.ProvAppDisk, true)
-	if err != nil {
-		return err
-	}
-
-	app.AppConfig.ProvAppCreditPlanned = creditPlanSize
-	app.AppConfig.ProvAppCpuCores = strconv.Itoa(provCredit * baseCore)
-	app.AppConfig.ProvAppMem = strconv.Itoa(provCredit * baseMemory)
-	app.AppConfig.ProvAppDisk = strconv.Itoa(provCredit * baseDisk)
-
+	unitCores, unitMemMB, unitDiskGB := app.unitRatioInts()
+	app.AppConfig.ProvAppCpuCores = strconv.Itoa(units * unitCores)
+	app.AppConfig.ProvAppMem = strconv.Itoa(units * unitMemMB)
+	app.AppConfig.ProvAppDisk = strconv.Itoa(units * unitDiskGB)
 	app.SetReprovCookie()
-
-	return nil
 }
 
-func (app *App) ApplyPlannedCredits() {
-	if app.AppConfig.ProvAppCreditPlanned != app.AppConfig.ProvAppCreditUsed {
-		app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
+// unitRatioInts is the whole cores / MB / GB per unit for THIS app: the Database ratio
+// for a stateful app (DBU), the Compute ratio otherwise (APU).
+func (app *App) unitRatioInts() (cores, memMB, diskGB int) {
+	if app.AppConfig != nil && app.AppConfig.AppStateful {
+		c, m := app.ClusterGroup.dbuRatioInts()
+		d := 0
+		if app.ClusterGroup.resources != nil {
+			d = int(app.ClusterGroup.resources.Ratios(ProfileDatabase).DiskGBPerUnit + 0.5)
+		}
+		if d <= 0 {
+			d = int(mustRatio(DefaultRatioDBU).DiskGBPerUnit + 0.5)
+		}
+		return c, m, d
 	}
+	return app.ClusterGroup.computeRatioInts()
 }
 
 func (app *App) SetRouteStatuses(routeStatuses []config.RouteStatus) {

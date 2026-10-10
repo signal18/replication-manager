@@ -1056,6 +1056,69 @@ func (m *VariablesMap) EmptyPreservedValues() {
 	})
 }
 
+// DropReconciledAgreed drops the agreed (03_agreed.cnf) marking of every variable
+// the DB now actually runs at the compliance (Config) value: the agree has served
+// its purpose (it only exists to hold a value "until the DB is restarted with the
+// compliance value"), so once Runtime == Config it must be cleared to avoid a
+// phantom pending diff. It NEVER touches operator-forced values: only agreed ones
+// (Preserved set with an empty PreservedSource) are considered — server-specific
+// or cluster-level preserved values (PreservedSource != "") are left untouched.
+// Returns the names of the variables whose agree was dropped.
+func (m *VariablesMap) DropReconciledAgreed() []string {
+	var dropped []string
+	m.Range(func(key, value any) bool {
+		state, ok := value.(*VariableState)
+		if !ok {
+			return true
+		}
+		// Only agreed values: Preserved set, no explicit preserve source.
+		if state.Preserved == nil || state.PreservedSource != "" {
+			return true
+		}
+		// Need both the runtime value and the compliance value to compare.
+		if state.Runtime == nil || state.Config == nil {
+			return true
+		}
+		if state.Runtime.String() == state.Config.String() {
+			state.UnsetPreservedValue()
+			dropped = append(dropped, state.VariableName)
+		}
+		return true
+	})
+	return dropped
+}
+
+// AutoAgreeValueDeltas agrees every value-differs delta to the compliance
+// (Config) value: a known variable (Config != nil) whose deployed value differs
+// from Config and is neither preserved nor dropped. Agreeing sets Preserved =
+// Config, which routes it to 03_agreed.cnf so the DB adopts the compliance value
+// on its next restart (and DropReconciledAgreed clears it afterwards). Scoped to
+// value-differs only: no-config / dropped variables are left for manual review
+// (loose_ hides deprecation — see #1495). Returns the agreed variable names.
+func (m *VariablesMap) AutoAgreeValueDeltas() []string {
+	var agreed []string
+	m.Range(func(key, value any) bool {
+		state, ok := value.(*VariableState)
+		if !ok {
+			return true
+		}
+		// Skip anything already decided (preserved/agreed) or an accepted drop.
+		if state.Preserved != nil || state.Dropped {
+			return true
+		}
+		// Value-differs only: needs both a compliance value and a deployed value.
+		if state.Config == nil || state.Deployed == nil {
+			return true
+		}
+		if state.Deployed.String() != state.Config.String() {
+			state.SetPreservedValue(state.Config.String())
+			agreed = append(agreed, state.VariableName)
+		}
+		return true
+	})
+	return agreed
+}
+
 func (m *VariablesMap) SetDeployedValue(varname string, value string) {
 	lowerVarName := strings.ToLower(varname)
 	if state, ok := m.Load(lowerVarName); ok {
@@ -1084,10 +1147,38 @@ func (m *VariablesMap) SetRuntimeValue(varname string, value string) {
 	}
 }
 
-func (m *VariablesMap) SetRuntimeValues(strmap map[string]string) {
+// SetRuntimeValues applies the live DB variable values and returns how many
+// actually changed since the previous tick. Callers gate per-tick reconciliation
+// work (DropReconciledAgreed) on a non-zero return: a variable can only become
+// reconciled (Runtime == Config) when its runtime value moves, so in the steady
+// state — runtime identical tick to tick — the drop walk is skipped entirely.
+func (m *VariablesMap) SetRuntimeValues(strmap map[string]string) int {
+	changed := 0
 	for k, v := range strmap {
-		m.SetRuntimeValue(k, v)
+		lowervarname := strings.ToLower(k)
+		state, ok := m.Load(lowervarname)
+		if !ok {
+			ns := NewVariableState(lowervarname)
+			ns.SetRuntimeValue(v)
+			m.Store(lowervarname, ns)
+			changed++
+			continue
+		}
+		vs := state.(*VariableState)
+		before := ""
+		if vs.Runtime != nil {
+			before = vs.Runtime.String()
+		}
+		vs.SetRuntimeValue(v)
+		after := ""
+		if vs.Runtime != nil {
+			after = vs.Runtime.String()
+		}
+		if before != after {
+			changed++
+		}
 	}
+	return changed
 }
 
 func (m *VariablesMap) SetConfigValue(varname string, value string) {

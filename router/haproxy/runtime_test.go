@@ -24,7 +24,7 @@ func TestRuntime_SetNewPid(t *testing.T) {
 	os.Remove(PID_FILE)
 
 	if err := haRuntime.SetPid(PID_FILE); err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%v", err)
 	}
 
 }
@@ -44,6 +44,10 @@ func TestRuntime_UseExistingPid(t *testing.T) {
 
 // all tests againt a running Haproxy are for now lumped together. TODO: split it up
 func TestRuntime_HaproxyFunctions(t *testing.T) {
+	requireFixtures(t)
+	if _, err := os.Stat(haRuntime.Binary); err != nil {
+		t.Skipf("skipping: haproxy binary not present at %s", haRuntime.Binary)
+	}
 
 	/*
 		Preamble to set up and tear down haproxy

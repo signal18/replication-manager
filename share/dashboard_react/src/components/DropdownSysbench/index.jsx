@@ -26,12 +26,22 @@ const THREAD_OPTIONS = [
   { name: 128, value: 128 }
 ]
 
+const TIME_OPTIONS = [
+  { name: '100s', value: 100 },
+  { name: '5 min', value: 300 },
+  { name: '10 min', value: 600 },
+  { name: '15 min', value: 900 },
+  { name: '30 min', value: 1800 },
+  { name: '1 hour', value: 3600 }
+]
+
 function DropdownSysbench({ clusterName }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isCleanupConfirmOpen, setIsCleanupConfirmOpen] = useState(false)
   const [selectedThread, setSelectedThread] = useState(THREAD_OPTIONS[0])
   const [selectedTest, setSelectedTest] = useState(SYSBENCH_TESTS[0])
+  const [selectedTime, setSelectedTime] = useState(TIME_OPTIONS[0])
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -42,13 +52,14 @@ function DropdownSysbench({ clusterName }) {
   }
 
   const runSysbench = () => {
-    dispatch(runSysBench({ clusterName, thread: selectedThread.value, test: selectedTest.value }))
+    dispatch(runSysBench({ clusterName, thread: selectedThread.value, test: selectedTest.value, time: selectedTime.value }))
     closeConfirmModal()
   }
   return (
     <Flex className={styles.sysbenchContainer}>
       <Dropdown options={SYSBENCH_TESTS} onChange={(value) => setSelectedTest(value)} label='Sysbench test' selectedValue={selectedTest.value} />
       <Dropdown options={THREAD_OPTIONS} onChange={(value) => setSelectedThread(value)} label='Threads' selectedValue={selectedThread.value} />
+      <Dropdown options={TIME_OPTIONS} onChange={(value) => setSelectedTime(value)} label='Time' selectedValue={selectedTime.value} />
       <RMButton type='button' onClick={openConfirmModal}>
         Run
       </RMButton>
@@ -60,8 +71,8 @@ function DropdownSysbench({ clusterName }) {
           isOpen={isConfirmModalOpen}
           closeModal={closeConfirmModal}
           title={selectedThread.value === 0
-            ? `Run ${selectedTest.name} scaling threads from 1 to 2×CPU cores?`
-            : `Run ${selectedTest.name} with ${selectedThread.name} threads?`}
+            ? `Run ${selectedTest.name} for ${selectedTime.name}, scaling threads from 1 to 2×CPU cores?`
+            : `Run ${selectedTest.name} with ${selectedThread.name} threads for ${selectedTime.name}?`}
           onConfirmClick={runSysbench}
         />
       )}

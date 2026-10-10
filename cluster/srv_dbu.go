@@ -1,0 +1,757 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
+// This source code is licensed under the GNU General Public License, version 3.
+
+package cluster
+
+import (
+	"fmt"
+	"math"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/utils/state"
+)
+
+// DBUReading is one period's consumed-DBU picture for a server. DBU is one unit
+// projection over native resources; the conversion RATIOS (1 DBU = 1 core / 4 GB /
+// 20 GB / 1000 IOPS by default) live on the ResourceManager -- the point where
+// resources converge -- so ComputeUsedDBU is a method there, not a package function. The raw per-axis
+// maxima are measured at the SYSTEM level (cgroup + statfs) by a thin sensor in
+// the DB container and pushed here; repman does the DBU semantics (normalisation,
+// pivot, binding) so the client's DB CPU is never spent on it. All the "max"
+// aggregation is over the [WindowStart, WindowEnd] period, so Dbu is the *peak*
+// DBU the workload reached — the size it actually needed, not an average.
+type DBUReading struct {
+	WindowStart time.Time `json:"windowStart"`
+	WindowEnd   time.Time `json:"windowEnd"`
+	// ReceivedAt is stamped by repman when the push lands (IngestDBUMaxes): the freshness
+	// clock, on repman's own time so a skewed sensor clock cannot make a reading look
+	// fresh or stale. Zero on readings built locally (plans, tests) -> WindowEnd is used.
+	ReceivedAt time.Time `json:"receivedAt,omitempty"`
+
+	// Raw per-axis maxima over the period, in native units, as read by the sensor.
+	MemMaxBytes  int64   `json:"memMaxBytes"`  // cgroup memory.current peak
+	CpuMaxCores  float64 `json:"cpuMaxCores"`  // cpu.stat usage_usec rate peak, in cores
+	IoMaxIops    float64 `json:"ioMaxIops"`    // io.stat (rios+wios) rate peak, in iops
+	DiskMaxBytes int64   `json:"diskMaxBytes"` // Σ statfs(mounts under datadir).used peak
+
+	// Normalised per-axis DBU (raw / ratio).
+	DbuMem  float64 `json:"dbuMem"`
+	DbuCpu  float64 `json:"dbuCpu"`
+	DbuIo   float64 `json:"dbuIo"`
+	DbuDisk float64 `json:"dbuDisk"`
+
+	// Dbu is the pivot: the peak DBU over the period = max of the four axes.
+	// Binding is the axis that set it (the biggest contributor / bottleneck):
+	// one of "cpu", "mem", "io", "disk".
+	Dbu     float64 `json:"dbu"`
+	Binding string  `json:"binding"`
+}
+
+// SetResourceManager injects the repman-side ResourceManager into this cluster (set once at
+// cluster start). nil is tolerated (tests, or before wiring): the reading then only
+// lives on the ServerMonitor, as before. See resource_manager.go for why the manager --
+// not the ServerMonitor or the Cluster, both recreated on reload -- is the reading's
+// durable home (it is what stops the DBU graph flapping).
+func (cluster *Cluster) SetResourceManager(m *ResourceManager) { cluster.resources = m }
+
+// SetDBUConsumed records the latest computed reading. Written by the DBU-push API
+// handler (sensor callback), read by the Graphite emission on the monitor loop.
+// It updates the ServerMonitor field (immediate emission + GUI JSON) AND the
+// repman-side manager keyed by cluster/server, so the reading survives the
+// ServerMonitor recreation on a config reload (RestoreDBUConsumed reloads it).
+func (server *ServerMonitor) SetDBUConsumed(r DBUReading) {
+	server.DBUConsumed = &r
+	if cluster := server.ClusterGroup; cluster != nil && cluster.resources != nil {
+		cluster.resources.SetConsumed(ResourceKey{Cluster: cluster.Name, Server: server.URL}, &r)
+	}
+}
+
+// IngestDBUMaxes is the single entry point for a sensor push: it converts the raw
+// per-axis maxima into a DBUReading using THIS cluster's ResourceManager ratios
+// (conversion is owned by the manager, so the API handler stays dumb and just
+// forwards raw numbers), stores it, and returns it for logging. No manager wired
+// (tests, early startup) -> zero reading, nothing stored.
+func (server *ServerMonitor) IngestDBUMaxes(start, end time.Time, memMaxBytes int64, cpuMaxCores, ioMaxIops float64, diskMaxBytes int64) DBUReading {
+	cluster := server.ClusterGroup
+	if cluster == nil || cluster.resources == nil {
+		return DBUReading{}
+	}
+	r := cluster.resources.ComputeUsedDBU(start, end, memMaxBytes, cpuMaxCores, ioMaxIops, diskMaxBytes)
+	r.ReceivedAt = time.Now()
+	server.SetDBUConsumed(r)
+	return r
+}
+
+// resourceSensorFreshnessWindow is how old the last sensor reading may be before it is
+// treated as NO reading. The sensor pushes once per dbjobs launcher run (~60 s), so three
+// missed pushes means the sensor is silent: the jobs container is down, or a long dbjob
+// (backup, reseed, optimize) runs in the same script and starves the push. Without this
+// gate the last reading is FROZEN: the instant axes keep their pre-job value, the DBU
+// series repeats it every tick, and the sustained check sees a flat present line -- a
+// pre-backup "under-used" reading shrank the cap under a running backup, a "saturated"
+// one grew it every minute on a load nobody measured. Shared with the Kubernetes sensor
+// prerequisite check (k8sResourceSensorFreshnessWindow).
+const resourceSensorFreshnessWindow = 3 * time.Minute
+
+// resourceReadingAge is the age of the last sensor reading (0, false when none).
+func (server *ServerMonitor) resourceReadingAge() (time.Duration, bool) {
+	r := server.DBUConsumed
+	if r == nil {
+		return 0, false
+	}
+	at := r.ReceivedAt
+	if at.IsZero() {
+		at = r.WindowEnd
+	}
+	if at.IsZero() {
+		return 0, false
+	}
+	return time.Since(at), true
+}
+
+// ResourceReadingStale reports a reading that exists but is older than the freshness
+// window: the sensor went silent. A missing reading is NOT stale (nothing to distrust;
+// the decisions already treat nil as unmeasured).
+func (server *ServerMonitor) ResourceReadingStale() bool {
+	age, ok := server.resourceReadingAge()
+	return ok && age > resourceSensorFreshnessWindow
+}
+
+// ConsumedDBUForEmit returns the five DBU series values to emit, applying the DBU
+// business rule -- this is DBU SEMANTICS only; the raw resource metrics are never
+// touched. Emitted every tick, so the series is continuous (no gaps -> no flapping).
+//
+// The DBU never drops below 1 per axis -- even for a STOPPED service. The DBU drives
+// plan-decrease proposals, and we can NEVER free a service's resources below what it
+// needs to RESTART: a stopped service must always keep >= 1 DBU reserved, or it could
+// fail to come back for lack of resource. (The raw resource series, by contrast, DO
+// go to 0 when down -- that is real consumption; see RawResourceForEmit.)
+//   - DOWN, or not measured yet -> 1 on every axis (the reserved restart minimum).
+//   - UP                         -> max(measured, 1) on every axis.
+func (server *ServerMonitor) ConsumedDBUForEmit() (dbu, cpu, mem, io, disk float64) {
+	atLeastOne := func(v float64) float64 {
+		if v < 1 {
+			return 1
+		}
+		return v
+	}
+	if server.IsDown() || server.DBUConsumed == nil {
+		return 1, 1, 1, 1, 1
+	}
+	r := server.DBUConsumed
+	return atLeastOne(r.Dbu), atLeastOne(r.DbuCpu), atLeastOne(r.DbuMem), atLeastOne(r.DbuIo), atLeastOne(r.DbuDisk)
+}
+
+// RawResourceForEmit returns the RAW measured per-axis values to emit (native units:
+// cores, mem bytes, iops, disk bytes) -- the real measurement, NOT floored (the DBU
+// duplicate carries the min-1 rule).
+//
+// When the service is DOWN: cpu/mem/io go to 0 (the process is gone, they do not
+// persist), but DISK keeps its LAST-KNOWN value -- the image and data volumes are
+// still on disk, so the last measurement stays valid until the volume is actually
+// deleted (the in-container sensor cannot re-measure a stopped service). Before the
+// first measurement everything is 0.
+func (server *ServerMonitor) RawResourceForEmit() (cores, memBytes, iops, diskBytes float64) {
+	r := server.DBUConsumed
+	if server.IsDown() {
+		if r != nil {
+			return 0, 0, 0, float64(r.DiskMaxBytes)
+		}
+		return 0, 0, 0, 0
+	}
+	if r == nil {
+		return 0, 0, 0, 0
+	}
+	return r.CpuMaxCores, float64(r.MemMaxBytes), r.IoMaxIops, float64(r.DiskMaxBytes)
+}
+
+// GetProvDbuFromConfigPerNode returns the per-node DBU the cluster's current prov-db-* provisioning
+// maps to = max over axes of (prov-db-* / ratio), computed by the ResourceManager -- the
+// SINGLE ratio authority (MUST NOT be re-done in the frontend). It is the per-node term of
+// the plan materialization (GetProvDbuFromConfigPerNode × node count). Parses the prov-db-* config and
+// projects via ComputeUsedDBU (Database ratios); returns ceil(pivot). 0 when no manager is wired.
+func (cluster *Cluster) GetProvDbuFromConfigPerNode() int {
+	if cluster.resources == nil {
+		return 0
+	}
+	return int(math.Ceil(cluster.GetConfigDBUPerNode().Dbu))
+}
+
+// GetConfigDBUPerNode projects the cluster's current prov-db-* provisioning into a per-node
+// DBUReading via the ResourceManager ratios -- the PER-AXIS config allocation (DbuCpu/DbuMem/
+// DbuIo/DbuDisk) plus the pivot (Dbu = max axis) and its Binding. It is the per-node config
+// "capacity" the saturation check reads against (consumed_axis / config_axis). Zero reading
+// when no manager is wired.
+func (cluster *Cluster) GetConfigDBUPerNode() DBUReading {
+	return cluster.projectConfigDBUPerNode(-1, -1)
+}
+
+// projectConfigDBUPerNode is GetConfigDBUPerNode with an optional cores / iops override
+// (negative = keep the configured value): the per-node reading a NOT-yet-applied config
+// would give, so a dynamic +1 step can be gated before it is written. Zero reading when
+// no manager is wired.
+func (cluster *Cluster) projectConfigDBUPerNode(cores, iops float64) DBUReading {
+	if cluster.resources == nil {
+		return DBUReading{}
+	}
+	if cores < 0 {
+		cores, _ = strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+	}
+	if iops < 0 {
+		iops, _ = strconv.ParseFloat(cluster.Conf.ProvIops, 64)
+	}
+	memMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	diskGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	now := time.Now()
+	return cluster.resources.ComputeUsedDBU(now, now, int64(memMB)*1024*1024, cores, iops, int64(diskGB)*1024*1024*1024)
+}
+
+// GetPlanDBUPerNode projects the cluster PLAN (the cap -- "le cap est déjà réglé au plan") to a
+// per-node per-axis reference reading. The plan is a bundled DBU reservation, so each axis's
+// per-node cap is the same GetPlanDbu()/node-count DBU. Used by CheckResourceConsumedOverPlan as
+// the reference the consumed DBU is measured against (consumed approaching the plan -> cap up).
+// Zero reading when there are no servers.
+func (cluster *Cluster) GetPlanDBUPerNode() DBUReading {
+	if len(cluster.Servers) == 0 {
+		return DBUReading{}
+	}
+	p := float64(cluster.GetPlanDbu()) / float64(len(cluster.Servers))
+	return DBUReading{DbuCpu: p, DbuMem: p, DbuIo: p, DbuDisk: p, Dbu: p}
+}
+
+// CheckResourceConsumed is THIS server's checkState: from its own DBUConsumed it sets the four
+// consumed-vs-reference axis states (over/under x config/plan). checkState ONLY -- it sets state,
+// takes no action (the resize/cap decision is composed downstream). Over = consumed_axis >=
+// ref_axis x (1 - prov-db-cap-safety-pct/100); under = consumed_axis <= ref_axis x
+// (prov-db-cap-shrink-pct/100); the dead-band between the two is status quo (anti-flap). Config
+// ref = this server's own resource allocation (GetConfigDBUPerNode) -> raise/shrink THIS server;
+// plan ref = the cap (GetPlanDBUPerNode) -> feeds the cluster cap-up/down composition. All four
+// are cleared when the server is down / unmeasured / resource-align is off.
+func (server *ServerMonitor) CheckResourceConsumed() {
+	server.ResourceConsumedOverConfigAxes = nil
+	server.ResourceConsumedUnderConfigAxes = nil
+	server.ResourceConsumedOverPlanAxes = nil
+	server.ResourceConsumedUnderPlanAxes = nil
+	server.BufferPoolMemGrowDue = false
+	cluster := server.ClusterGroup
+	if cluster == nil || cluster.Conf.ProvDBResourceAlign == config.ConstResourceAlignOff {
+		return
+	}
+	server.checkBufferPoolPressure() // memory grow signal = pressure (not occupancy), folded into the mem axis
+	if cluster.resources == nil || server.IsDown() || server.DBUConsumed == nil {
+		return
+	}
+	// Freshness gate: a silent sensor leaves the last reading in place; treat it as no
+	// reading (axes stay cleared -> DriveDynamicResize / driveDynamicShrink stand still)
+	// and say why. Re-set every tick while stale, so the state resolves on the next push.
+	//
+	// WARN0218, not WARN0215: this is the orchestrator-agnostic "is the reading itself
+	// fresh" check (ReceivedAt, repman's clock), scoped per server via ServerUrl (storage
+	// key WARN0218@<url>). WARN0215 is CheckK8SResourceSensor's own, unrelated,
+	// cluster-scoped "can the Kubernetes prerequisites even deliver a reading" check
+	// (prov_k8s_db.go) -- the two used to share WARN0215, and PreserveState's prefix
+	// match on the bare code (utils/state/state.go) resurrected this scoped entry on
+	// every throttled k8s recheck tick even after it had genuinely cleared.
+	if server.ResourceReadingStale() {
+		age, _ := server.resourceReadingAge()
+		cluster.SetState("WARN0218", state.State{ErrType: config.LvlWarn, ErrFrom: "MON", ServerUrl: server.URL,
+			ErrDesc: fmt.Sprintf(clusterError["WARN0218"], server.URL,
+				fmt.Sprintf("last reading is %s old (window %s): the sensor pushes once per dbjobs run, a long dbjob or a stopped jobs container starves it; dynamic resize withheld", age.Round(time.Second), resourceSensorFreshnessWindow))})
+		return
+	}
+	clamp := func(p int) float64 {
+		if p < 0 {
+			return 0
+		}
+		if p > 100 {
+			return 100
+		}
+		return float64(p)
+	}
+	hi := 1 - clamp(cluster.Conf.ProvDBCapSafetyPct)/100.0
+	lo := clamp(cluster.Conf.ProvDBCapShrinkPct) / 100.0
+	cfg := cluster.GetConfigDBUPerNode()
+	plan := cluster.GetPlanDBUPerNode()
+	c := server.DBUConsumed
+	server.ResourceConsumedOverConfigAxes = dropMem(consumedAxes(c, cfg, hi, true))
+	server.ResourceConsumedUnderConfigAxes = dropMem(consumedAxes(c, cfg, lo, false))
+	server.ResourceConsumedOverPlanAxes = dropMem(consumedAxes(c, plan, hi, true))
+	server.ResourceConsumedUnderPlanAxes = dropMem(consumedAxes(c, plan, lo, false))
+	// Memory has its own DOWN signal, a STATE not a click (Stéphane 2026-09-29, after a plan
+	// decrease left curepipe at 16 GB): the configured memory sits above the plan AND the
+	// buffer pool shows no pressure. Occupancy says nothing about memory (the pool fills
+	// whatever it is given), pressure does. While that state holds, "mem" joins the
+	// under-config axes and the existing in-plan shrink (driveDynamicShrink, sustained over
+	// prov-db-scale-down-config-in-plan-speed, floored by the undercommit floor and the
+	// consumption headroom) brings the memory down, buffer pool first then cgroup.
+	if server.memoryOverPlanNoPressure(cfg, plan) {
+		server.ResourceConsumedUnderConfigAxes = appendAxis(server.ResourceConsumedUnderConfigAxes, "mem")
+		cluster.SetState("CINF0010", state.State{ErrType: "INFO", ErrFrom: "WORKLOAD", ServerUrl: server.URL,
+			ErrDesc: fmt.Sprintf(clusterError["CINF0010"], server.URL, cfg.DbuMem, plan.DbuMem, cluster.Conf.ScaleDownConfigInPlanSpeed)})
+	}
+}
+
+// memoryOverPlanNoPressure is the memory scale-DOWN state: the configured memory exceeds the
+// plan on the memory axis and the buffer pool has shown no pressure (no wait-free growth
+// pending nor sustained). Pure, so the rule is unit-testable.
+func (server *ServerMonitor) memoryOverPlanNoPressure(cfg, plan DBUReading) bool {
+	if plan.DbuMem <= 0 || cfg.DbuMem <= plan.DbuMem+1e-9 {
+		return false
+	}
+	return !server.BufferPoolMemGrowDue && server.bufferPoolPressureSince.IsZero()
+}
+
+// appendAxis adds an axis once, keeping the stable cpu/mem/io/disk order of consumedAxes.
+func appendAxis(axes []string, axis string) []string {
+	for _, a := range axes {
+		if a == axis {
+			return axes
+		}
+	}
+	order := map[string]int{"cpu": 0, "mem": 1, "io": 2, "disk": 3}
+	out := append(append([]string{}, axes...), axis)
+	sort.Slice(out, func(i, j int) bool { return order[out[i]] < order[out[j]] })
+	return out
+}
+
+// checkBufferPoolPressure sets the memory GROW signal from buffer-pool PRESSURE (not occupancy,
+// see dropMem). Innodb_buffer_pool_wait_free rising means InnoDB had to WAIT for a free page --
+// no clean page available -- which is a threshold-free sign the buffer pool is too small for the
+// working set. Once that pressure has PERSISTED for the scale-up-config-in-plan window,
+// BufferPoolMemGrowDue is set and CanScaleConfigInPlan(up) folds "mem" back into the due axes.
+// A single quiet cycle (delta 0) clears the sustain timer, so a blip never grows.
+func (server *ServerMonitor) checkBufferPoolPressure() {
+	server.BufferPoolMemGrowDue = false
+	cluster := server.ClusterGroup
+	if cluster == nil || server.IsDown() {
+		server.bufferPoolPressureSince = time.Time{}
+		return
+	}
+	if server.GetStatusDeltaValue("INNODB_BUFFER_POOL_WAIT_FREE") <= 0 {
+		server.bufferPoolPressureSince = time.Time{} // pressure cleared this cycle
+		return
+	}
+	if server.bufferPoolPressureSince.IsZero() {
+		server.bufferPoolPressureSince = time.Now()
+	}
+	d, err := time.ParseDuration(cluster.Conf.ScaleUpConfigInPlanSpeed)
+	if err != nil || d < time.Minute {
+		d = time.Minute
+	}
+	if time.Since(server.bufferPoolPressureSince) >= d {
+		server.BufferPoolMemGrowDue = true
+	}
+}
+
+// dropMem removes the memory axis from a scaling state. dbu_mem is cgroup memory OCCUPANCY,
+// and a healthy InnoDB buffer pool is ALWAYS ~full (clean + dirty pages, adaptive hash index,
+// change buffer, ...), so occupancy is not a workload-demand signal in EITHER direction: it
+// never means "grow" (it is pinned near the cap regardless of load) and never means "shrink"
+// (memory is sticky -- the buffer pool does not release on idle). So the dynamic scaling
+// states are driven by the DEMAND axes -- cpu (usage), io (saturation), disk (usage) -- not by
+// memory occupancy. Real memory NEED surfaces as IO: a too-small buffer pool causes misses
+// (Innodb_buffer_pool_reads -> disk reads), which the io axis already sees. Memory SHRINK is
+// the deliberate reclaim path (SET GLOBAL buffer pool down), never an occupancy trigger.
+// Follow-up: a pressure-based mem grow signal (Innodb_buffer_pool_reads / wait_free / hit-ratio)
+// to disambiguate io saturation into "grow iops" vs "grow memory".
+func dropMem(axes []string) []string {
+	out := make([]string, 0, len(axes))
+	for _, a := range axes {
+		if a != "mem" {
+			out = append(out, a)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// consumedAxes returns the axes (cpu/mem/io/disk, stable order) where consumed_axis / ref_axis
+// compares to frac: >= frac when over is true, <= frac when over is false. An axis whose
+// reference is 0 is skipped (not provisioned / unknown). nil when none match.
+func consumedAxes(c *DBUReading, ref DBUReading, frac float64, over bool) []string {
+	set := map[string]bool{}
+	for _, a := range []struct {
+		name       string
+		cons, capa float64
+	}{
+		{"cpu", c.DbuCpu, ref.DbuCpu}, {"mem", c.DbuMem, ref.DbuMem},
+		{"io", c.DbuIo, ref.DbuIo}, {"disk", c.DbuDisk, ref.DbuDisk},
+	} {
+		if a.capa <= 0 {
+			continue
+		}
+		r := a.cons / a.capa
+		if (over && r >= frac) || (!over && r <= frac) {
+			set[a.name] = true
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for _, a := range []string{"cpu", "mem", "io", "disk"} {
+		if set[a] {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// GetPlanDbu returns the cluster's EFFECTIVE plan DBU: the explicit
+// prov-service-plan-dbu reservation contract when set (> 0), else AUTO-computed =
+// per-node derived DBU (GetProvDbuFromConfigPerNode) × the number of DB nodes. "Auto only when
+// zero" -- a stored 0 means "let repman compute it". Single source used by the API and
+// the graphite emission.
+// GetPlanDbu is the cluster DBU contract = the PlanByCluster ROLLUP (Σ per-node prov-db-dbu).
+// Falls back to prov-db-dbu x #nodes before the per-server plan ledger (RefreshDBUPlan) is
+// populated, then to the legacy prov-service-plan-dbu / config-derived value.
+func (cluster *Cluster) GetPlanDbu() int {
+	if cluster.resources != nil {
+		if agg := cluster.resources.PlanByCluster(cluster.Name); agg.Dbu > 0 {
+			return int(math.Round(agg.Dbu))
+		}
+	}
+	if cluster.Conf.ProvDbDbu > 0 {
+		return cluster.Conf.ProvDbDbu * len(cluster.Servers)
+	}
+	if cluster.Conf.ProvServicePlanDbu > 0 {
+		return cluster.Conf.ProvServicePlanDbu
+	}
+	return cluster.GetProvDbuFromConfigPerNode() * len(cluster.Servers)
+}
+
+// RefreshDBUPlan records each DB server's DBU reservation (prov-db-dbu per node, at the Database
+// ratios) as its plan in the ResourceManager, so PlanByCluster is the cluster DBU contract -- the
+// DB-track mirror of RefreshComputePlanAPU. Deterministic from config, no sensor. Uses the same
+// ResourceKey (Cluster + Server.URL) as the consumed side, so plan and consumed align per server.
+func (cluster *Cluster) RefreshDBUPlan() {
+	if cluster == nil || cluster.resources == nil {
+		return
+	}
+	cluster.UnitRatios = cluster.resources.AllRatios()
+	now := time.Now()
+	dbu := cluster.Conf.ProvDbDbu
+	if dbu < 1 {
+		dbu = 1
+	}
+	r := cluster.resources.Ratios(ProfileDatabase)
+	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
+		// An UNPROVISIONED cluster reserves nothing on the infrastructure (Stéphane 2026-09-29):
+		// its plan is a configured intent, not a delivered contract. A nil reading is skipped by
+		// every rollup (PlanByCluster, the ledger, GWARN016) and the plan reappears at provisioning.
+		if !cluster.IsProvision {
+			cluster.resources.SetPlan(ResourceKey{Cluster: cluster.Name, Server: server.URL}, nil)
+			continue
+		}
+		reading := cluster.resources.ComputeUsedDBU(now, now,
+			int64(float64(dbu)*r.MemMBPerUnit)*1024*1024,
+			float64(dbu)*r.CoresPerUnit,
+			float64(dbu)*r.IopsPerUnit,
+			int64(float64(dbu)*r.DiskGBPerUnit)*1024*1024*1024)
+		k := ResourceKey{Cluster: cluster.Name, Server: server.URL}
+		cluster.resources.SetPlan(k, &reading)
+		// Placement: attribute this server to the agent it RUNS on (working node), falling back to
+		// the provisioning assignment -- so the per-agent physical view (and the reclaim) can group
+		// co-tenants by node. The DB-track mirror of SetAppAgent. (Was only set in tests = the
+		// per-agent DBU view had no data.)
+		agent := server.GetWorkingAgent()
+		if agent == "" {
+			agent = server.Agent
+		}
+		if agent != "" {
+			cluster.resources.SetServerAgent(k, agent)
+		}
+	}
+	// Materialize the per-cluster DBU contract -- the REAL cluster-level number every reader uses
+	// (GUI, API, GWARN016): the PlanByCluster rollup (= prov-db-dbu x #nodes). Derived from the
+	// per-node input and recomputed each tick, so it is always correct and never stale; the client
+	// moves only the per-node prov-db-dbu (dynamic layer), so this never re-locks in /etc.
+	cluster.Conf.ProvServicePlanDbu = int(cluster.resources.PlanByCluster(cluster.Name).Dbu + 0.5)
+	// The TECHNICAL side, next to the plan: what prov-db-* currently allocates, projected to DBU
+	// per node and summed cluster-wide. The graph draws it as the "configured" line so an
+	// operator sees resources raised over the plan (dynamic over-plan grow) as the state it is.
+	cluster.ConfigDbuPerNode = cluster.GetConfigDBUPerNode()
+	cluster.ConfigDbu = math.Round(cluster.ConfigDbuPerNode.Dbu*float64(len(cluster.Servers))*100) / 100
+	// Ledger: what the DB track holds ABOVE its plan (the configured resources over the plan
+	// reservation, per node × nodes) is BORROWED from the unreserved capacity. Only a
+	// PROVISIONED cluster holds anything: an unprovisioned one has a plan (reserved) but no
+	// resources granted, so it borrows nothing.
+	if cluster.resources != nil {
+		plan := cluster.GetPlanDBUPerNode()
+		var b PhysicalUsage
+		n := float64(len(cluster.Servers))
+		if !cluster.IsProvision {
+			n = 0
+		}
+		if d := cluster.ConfigDbuPerNode.CpuMaxCores - plan.CpuMaxCores; d > 0 {
+			b.CpuCores = d * n
+		}
+		if d := cluster.ConfigDbuPerNode.MemMaxBytes - plan.MemMaxBytes; d > 0 {
+			b.MemBytes = int64(float64(d) * n)
+		}
+		if d := cluster.ConfigDbuPerNode.IoMaxIops - plan.IoMaxIops; d > 0 {
+			b.IoIops = d * n
+		}
+		if d := cluster.ConfigDbuPerNode.DiskMaxBytes - plan.DiskMaxBytes; d > 0 {
+			b.DiskBytes = int64(float64(d) * n)
+		}
+		cluster.resources.SetBorrowed(cluster.Name, "db", b)
+	}
+}
+
+// GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container.
+//
+// The cap is aligned to the DBU tier PLUS one overcommit DBU -- the same overcommit slack the
+// MariaDB dynamic-resize model uses -- so it sits ABOVE the MySQL config memory. prov-db-memory
+// (immutable) keeps driving my.cnf (buffer pool etc.) and is NEVER changed here; only the
+// container cap moves. A cap flush against the config memory OOM-kills mariadbd the instant its
+// real footprint (connections, temp tables, performance_schema, allocator overhead) exceeds the
+// buffer pool -- the db3 crash. The +1 DBU headroom prevents that.
+//
+// Modes (prov-db-resource-align): "plan" (default) tier = prov-service-plan-dbu / node count;
+// "up" tier = max-axis config DBU (coherence/debug); "off" cap = prov-db-memory (legacy).
+// The cap never drops below prov-db-memory.
+// GetDBTierDbuPerNode is the per-node DBU tier the container cap aligns to, per
+// prov-db-resource-align: "plan" (prov-service-plan-dbu / nodes), "up" (max-axis config DBU).
+// Returns 0 when alignment is off or there is no RM/servers yet (caller falls back to legacy).
+func (cluster *Cluster) GetDBTierDbuPerNode() float64 {
+	mode := cluster.Conf.ProvDBResourceAlign
+	if mode == "" {
+		mode = config.ConstResourceAlignPlan
+	}
+	if mode == config.ConstResourceAlignOff || cluster.resources == nil || len(cluster.Servers) == 0 {
+		return 0
+	}
+	var tier float64
+	if mode == config.ConstResourceAlignUp {
+		tier = float64(cluster.GetProvDbuFromConfigPerNode())
+	} else {
+		tier = float64(cluster.GetPlanDbu()) / float64(len(cluster.Servers))
+	}
+	if tier < 1 {
+		tier = 1
+	}
+	return tier
+}
+
+// GetDBContainerMemoryCapMB returns the cgroup --memory cap (MB) for the DB container:
+// (tier + cap-burst) × mem-ratio, deliberately ABOVE prov-db-memory (the my.cnf sizing, never
+// changed) so mariadbd has headroom and is not OOM-killed. Falls back to prov-db-memory when
+// alignment is off. Never below prov-db-memory.
+func (cluster *Cluster) GetDBContainerMemoryCapMB() int {
+	provMemMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+	tier := cluster.GetDBTierDbuPerNode()
+	if tier <= 0 {
+		return int(provMemMB)
+	}
+	capMB := int(math.Ceil(tier * cluster.resources.DBMemMBPerUnit()))
+	if capMB < int(provMemMB) {
+		capMB = int(provMemMB)
+	}
+	return capMB
+}
+
+// GetDBContainerCPUCapCores returns the cgroup CPU cap (cores) for the DB container: the
+// per-node DBU tier × cores-ratio, i.e. the plan's contract (2 DBU = 2 cores), never below
+// prov-db-cpu-cores. The technical cores (prov-db-cpu-cores, thread pool, io threads) move
+// INSIDE that envelope with the dynamic resize; the cap itself is the contract (the quota was
+// rendered from the technical cores and capped a 2-DBU server at 1 core, 2026-10-07). Falls
+// back to prov-db-cpu-cores when alignment is off.
+func (cluster *Cluster) GetDBContainerCPUCapCores() float64 {
+	provCores, _ := strconv.ParseFloat(strings.TrimSpace(cluster.Conf.ProvCores), 64)
+	tier := cluster.GetDBTierDbuPerNode()
+	if tier <= 0 {
+		return provCores
+	}
+	capCores := tier * cluster.resources.DBCoresPerUnit()
+	if capCores < provCores {
+		capCores = provCores
+	}
+	return capCores
+}
+
+// RestoreDBUConsumed reloads this server's last reading from the repman-side manager
+// into the (freshly recreated) ServerMonitor, so a config reload does not blank the
+// DBU metric. No entry (never pushed) leaves DBUConsumed nil.
+func (server *ServerMonitor) RestoreDBUConsumed() {
+	if cluster := server.ClusterGroup; cluster != nil && cluster.resources != nil {
+		server.DBUConsumed = cluster.resources.GetConsumed(ResourceKey{Cluster: cluster.Name, Server: server.URL})
+	}
+}
+
+func clampPct(p int) float64 {
+	if p < 0 {
+		return 0
+	}
+	if p > 100 {
+		return 100
+	}
+	return float64(p)
+}
+
+// axisConfigDBU returns the per-node config DBU of one axis from a reading.
+func axisConfigDBU(r DBUReading, axis string) float64 {
+	switch axis {
+	case "cpu":
+		return r.DbuCpu
+	case "mem":
+		return r.DbuMem
+	case "io":
+		return r.DbuIo
+	case "disk":
+		return r.DbuDisk
+	}
+	return 0
+}
+
+// lastRenderValue returns the last non-absent point of a graphite render result.
+func lastRenderValue(vals []float64, absent []bool) (float64, bool) {
+	for i := len(vals) - 1; i >= 0; i-- {
+		if i < len(absent) && absent[i] {
+			continue
+		}
+		return vals[i], true
+	}
+	return 0, false
+}
+
+// sustainMinCoverage is the share of the scale window that must actually be covered by
+// samples before the window is trusted: a decision taken on a handful of points right after
+// a restart, a sensor gap, or -- the dev3 case -- on the partial last summarize bucket is
+// not "sustained for the window", it is instant.
+const sustainMinCoverage = 0.8
+
+// windowExtremum returns the max (up=false: shrink -- the busiest sample must be under) or
+// min (up=true: grow -- the quietest sample must be over) of the present samples of a raw
+// series over the scale window, and ok=false when the present samples cover less than
+// sustainMinCoverage of the window (step x present count). Absent points are skipped, never
+// counted as coverage.
+func windowExtremum(vals []float64, absent []bool, step int32, window time.Duration, up bool) (float64, bool) {
+	if step <= 0 || window <= 0 {
+		return 0, false
+	}
+	var ext float64
+	present := 0
+	for i, v := range vals {
+		if i < len(absent) && absent[i] {
+			continue
+		}
+		if present == 0 || (up && v < ext) || (!up && v > ext) {
+			ext = v
+		}
+		present++
+	}
+	if present == 0 {
+		return 0, false
+	}
+	if float64(present)*float64(step) < sustainMinCoverage*window.Seconds() {
+		return 0, false
+	}
+	return ext, true
+}
+
+// graphiteHostToken is this server's token in the mysql.<host>.* graphite series (same
+// replacer as srv_snd.go's emission).
+func (server *ServerMonitor) graphiteHostToken() string {
+	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
+	return replacer.Replace(server.Variables.Get("HOSTNAME"))
+}
+
+// canScaleSustained is the shared SPEED gate for the scale-due decisions: given the instant
+// over/under axes, the client-set speed, and the per-node reference (config or plan), it returns
+// the axes for which the saturation has PERSISTED long enough to act. At the fastest speed (<= one
+// sensor tick, the 1m default) the instant state is the decision -- no history. For a slower speed
+// it asks Graphite whether the consumed axis stayed over/under its threshold for the WHOLE window
+// (summarize min for grow / max for shrink); a Graphite hiccup falls back to the instant state.
+// DECISION only -- never resizes (the resize is composed downstream, gated by CanConfigResize).
+func (server *ServerMonitor) canScaleSustained(up bool, instant []string, speedStr string, ref DBUReading) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil || len(instant) == 0 {
+		return nil // no cluster, or not even instantaneously over/under -> nothing to sustain
+	}
+	d, err := time.ParseDuration(speedStr)
+	if err != nil || d <= time.Minute {
+		return instant // fast path: 1 tick / <= 1m -> the instant state IS the decision
+	}
+	overThrFactor := 1 - clampPct(cluster.Conf.ProvDBCapSafetyPct)/100.0
+	underThrFactor := clampPct(cluster.Conf.ProvDBCapShrinkPct) / 100.0
+	host := server.graphiteHostToken()
+	until := int32(time.Now().Unix())
+	from := until - int32(d.Seconds())
+	var due []string
+	for _, axis := range instant {
+		capa := axisConfigDBU(ref, axis)
+		if capa <= 0 {
+			continue
+		}
+		// The RAW series over the whole window, reduced client-side (windowExtremum): the
+		// previous summarize(...,'<window>','max') read its LAST bucket, which is the partial
+		// current one -- a decision "sustained for 5m" was taken 2 s after the load dropped
+		// (dev3 2026-09-16: a manual 2-core push was shrunk back to 1 within 2 s).
+		target := fmt.Sprintf("dbu.%s.%s.dbu_%s", cluster.Name, host, axis)
+		md, rerr := graphite.Zipper.Render(target, from, until)
+		if rerr != nil {
+			due = append(due, axis) // Graphite unavailable -> trust the instant state
+			continue
+		}
+		v, ok := windowExtremum(md.Values, md.IsAbsent, md.GetStepTime(), d, up)
+		if !ok {
+			// Not enough history to call it sustained: not due yet. Deliberate: right after a
+			// start or across a sensor gap the old code trusted the instant state, which is
+			// exactly the "decided on 2 s of data" this replaces; the fast path (speed <= 1m)
+			// still decides on the instant state, and coverage catches up within one window.
+			continue
+		}
+		if (up && v >= capa*overThrFactor) || (!up && v <= capa*underThrFactor) {
+			due = append(due, axis)
+		}
+	}
+	return due
+}
+
+// CanScaleConfigInPlan reports the axes for which a config resource scale is DUE (up = grow on
+// saturation, down = shrink on under-use), reference = the per-server CONFIG, speed =
+// ScaleUp/DownConfigInPlanSpeed. In-plan, so cheap/reactive (fast default).
+func (server *ServerMonitor) CanScaleConfigInPlan(up bool) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return nil
+	}
+	if up {
+		due := server.canScaleSustained(true, server.ResourceConsumedOverConfigAxes, cluster.Conf.ScaleUpConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
+		// Memory grow rides buffer-pool PRESSURE, not occupancy (dropMem removed mem from the
+		// occupancy axes). checkBufferPoolPressure already applied the scale-up-window sustain,
+		// so if it is due, fold mem in (it can never already be present).
+		if server.BufferPoolMemGrowDue {
+			due = append(due, "mem")
+		}
+		return due
+	}
+	return server.canScaleSustained(false, server.ResourceConsumedUnderConfigAxes, cluster.Conf.ScaleDownConfigInPlanSpeed, cluster.GetConfigDBUPerNode())
+}
+
+// CanScalePlan reports the axes for which a PLAN scale is DUE (up = cap up, down = cap down),
+// reference = the PLAN (the cap), speed = ScaleUp/DownPlanSpeed. Commercial, so slower/more
+// conservative than in-plan. Per server; the cluster composes cap up/down from these (one server
+// suffices to force cap-up; every server must agree for cap-down).
+func (server *ServerMonitor) CanScalePlan(up bool) []string {
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return nil
+	}
+	if up {
+		return server.canScaleSustained(true, server.ResourceConsumedOverPlanAxes, cluster.Conf.ScaleUpPlanSpeed, cluster.GetPlanDBUPerNode())
+	}
+	return server.canScaleSustained(false, server.ResourceConsumedUnderPlanAxes, cluster.Conf.ScaleDownPlanSpeed, cluster.GetPlanDBUPerNode())
+}

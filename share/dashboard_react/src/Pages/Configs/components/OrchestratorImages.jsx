@@ -1,4 +1,4 @@
-import { Flex, HStack, VStack } from '@chakra-ui/react'
+import { Flex, HStack, VStack, Text } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import TagPill from '../../../components/TagPill'
 import Dropdown from '../../../components/Dropdown'
@@ -114,6 +114,18 @@ function OrchestratorImages({ selectedCluster }) {
       )
     },
     {
+      key: 'Service definition image',
+      value: (
+        <Text>
+          {selectedCluster?.config?.provDbDockerImgResolved
+            ? selectedCluster.config.provDbDockerImgResolved.split('=')[1] +
+              ' (release the declared image resolved to at the last provision or rolling upgrade; only a rolling upgrade moves it)'
+            : selectedCluster?.config?.provDbDockerImg +
+              ' (declared image, explicit or not yet resolved; a rolling upgrade resolves a floating tag to a release and pins it)'}
+        </Text>
+      )
+    },
+    {
       key: 'ProxySQL',
       value: (
         <Dropdown
@@ -167,6 +179,32 @@ function OrchestratorImages({ selectedCluster }) {
                 clusterName: selectedCluster?.name,
                 setting: 'prov-proxy-docker-haproxy-img',
                 value: `${value}`
+              })
+            )
+          }}
+        />
+      )
+    },
+    {
+      // The tools of the physical backup for the official MySQL and Percona Server images, which do not ship them:
+      // 'off' is sent as an empty value (the setting is cleared), 'auto' derives the image from the database image.
+      key: 'Xtrabackup (official MySQL/Percona images)',
+      value: (
+        <Dropdown
+          className={parentStyles.dropdown}
+          options={[
+            { name: 'Off (the database image ships the tools)', value: 'off' },
+            { name: 'Auto (from the database image)', value: 'auto' },
+            ...(serviceRepos.find((repo) => repo.name === 'xtrabackup')?.options || [])
+          ]}
+          selectedValue={selectedCluster?.config?.provDbDockerXtrabackupImg || 'off'}
+          confirmTitle={`Confirm change xtrabackup OCI image to:`}
+          onChange={(value) => {
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'prov-db-docker-xtrabackup-img',
+                value: value === 'off' ? '' : `${value}`
               })
             )
           }}

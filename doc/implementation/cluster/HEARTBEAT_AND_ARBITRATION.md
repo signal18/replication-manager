@@ -179,6 +179,52 @@ Two writers to the same arbitrator row caused flapping: `WriteHeartbeat` (POST `
 
 Previously `ArbitratorElection()` only fired on the split-brain transition (`IsSplitBrainBck != IsSplitBrain`). After the first tick, `IsSplitBrainBck` was updated to match, so subsequent ticks skipped the election. This broke election transfer when one repman was stopped. Fixed: election now runs every tick during split-brain via `arbitratorElection()`.
 
+### ~~SetActiveStatus Goroutine Leak~~ (Fixed, GH-1674)
+
+Because election runs every tick during split-brain (see above), `arbitratorElection()` (`cluster/cluster_split.go`) calls `SetActiveStatus(ConstMonitorActif)` or `SetActiveStatus(ConstMonitorStandby)` on *every* tick the verdict holds, not only on the tick it actually changes — the surrounding code already logs the transition once, but the status write and its scheduler side effect were unconditional.
+
+`utils/cron.Cron.Start()` is not idempotent — it unconditionally does `go c.run()` on the same `*Cron` — so every redundant `SetActiveStatus(sameStatus)` call while a cluster stayed the winner (or loser) leaked another `run()` goroutine for the rest of the process. All leaked goroutines loop over the *same* shared `c.entries` slice (there is no per-goroutine copy), so each one independently fires `Job.Run()` for every entry whose schedule matches — a single scheduled tick gets executed once per leaked goroutine (duplicate backups, optimize/analyze runs, etc.). Since the election re-affirms the same verdict every tick, the leak scaled with the duration of the split brain, not with the number of real transitions — unbounded monitoring-loop growth (F2/F3/F4, T18).
+
+Fixed in `cluster/cluster_set.go`: `SetActiveStatus()` now returns early when the requested status equals `cluster.Status`, making it safe to call redundantly from any caller rather than pushing "only call on an actual transition" bookkeeping onto `arbitratorElection()`. `cron.Cron.Start`/`Stop` remain non-idempotent, and this fix only guards the `SetActiveStatus` path — `SetMonitoringScheduler`, `SwitchMonitoringScheduler`, and `initScheduler` still call `scheduler.Start()`/`Stop()` directly and would need their own guard if a caller ever re-invoked them redundantly.
+
+Regression coverage: `cluster/cluster_set_test.go` exercises a real `*cron.Cron` and asserts via `runtime.NumGoroutine()` diffs that (a) 20 redundant same-status calls after activation add no goroutines, and (b) a real actif↔standby flip still starts/stops the scheduler goroutine. Passes under `go test ./cluster/ -run TestSetActiveStatus -race -count=5`.
+
+## A standby never designates nor opens a master (GH-1847)
+
+Preprod belair, 2026-09-27 11:30 UTC: the active switched db2 → db1; two seconds later the
+STANDBY (repman-dr), whose topology discovery still saw db2 as "last non slave", ran
+`SET GLOBAL read_only=0` on db2 and its HAProxy refresh repointed `service_write/leader` on both
+proxies back to db2. The active's traffic marker (`InjectProxiesTraffic`, through the proxy RW
+port, root bypasses read_only) then landed on db2, binlogged under db2's server id, and the
+replica died on the GTID strict-mode collision. The standby was correctly standby: those two
+DECISIONS had no active gate. The fix is at the decision level only, no primitive is gated:
+
+- `cluster_topo.go`, last-non-slave fallback: in CALM a standby (`standbyDesignateMaster`)
+  keeps the last-known master whatever the local view says (a demoted master or a replica
+  mid-repair both look like a "last non slave" for a few ticks) and takes the local candidate
+  only when none is known; it never touches read_only. It DOES re-designate when the master
+  moved on it: in split brain, or once its last-known master has become a replica
+  (`LostArbitration` attached the fenced old master to the winner's master): the standby's
+  role is then to follow the winner (Stéphane 2026-09-29: "the role of the passive is to shoot
+  in the head the old master that moved on the winner, but only on split brain"). The
+  active's branch is unchanged, it only logs the designation when it changes.
+- `prx_haproxy.go`: in calm a standby never repoints `service_write/leader`; in split brain,
+  or when the leader row is a fenced old master now attached as a replica, it repoints it off
+  that node as before.
+- A standby never purges binlogs (`CheckSlavesReplicationsPurge`) and never drives a dynamic
+  resize (`DriveDynamicResize`, `DriveDailyDynamicResize`): both are the active's decisions
+  (Stéphane 2026-09-29). The binlog-scan streamer seen under the `[purge]` log module on the
+  DR (`ScanBinlogQueryEvents`) is the log plugins' read-only Binlog Dump, not the purge; it
+  reconnects on its own after a database restart and stays ungated.
+- A standby never enforces settings on a server (`CheckSlaveSettings`, `CheckMasterSettings`:
+  semisync install, binlog format, heartbeat, GTID/exec/parallel modes, sync, checksum are all
+  SET GLOBAL decided from this monitor's view); the active does it.
+- The traffic marker is deliberately NOT gated (Stéphane: "traffic on all sides is what proves
+  it was wrong"): the marker landing on the demoted master is the evidence.
+- Regtest `testSwitchoverNoDivergenceOnOldMaster`: after a switchover, five marker injections
+  through the proxies must not add an own-origin GTID on the demoted master and every replica
+  keeps its SQL thread.
+
 ## Known Issues (Current)
 
 ### INSERT OR REPLACE Destroys Election Status
@@ -192,6 +238,10 @@ Both `ArbitratorHandler` (via `arbitratorElection()`, runs during split-brain) a
 ### Server-Level Status Not Derived from Quorum
 
 `repman.Status` is set to Standby at startup (when arbitration enabled) and is only changed by the manual toggle API. It does not reflect the actual quorum state. The GUI Navbar shows split brain state (`"In Majority"` / `"Split Brain"`) based on `repman.SplitBrain`, but this only checks peer reachability — not arbitrator reachability. A full lost-majority state (peer AND arbitrator unreachable) is not surfaced at the server level.
+
+### No Regtest for Repeated Arbitration Reinforcement (GH-1674 follow-up)
+
+The `SetActiveStatus` goroutine-leak fix above has unit coverage (`cluster/cluster_set_test.go`) but no Docker-backed `regtest/` scenario drives a real split-brain incident through many arbitration ticks end to end, per T13. GH-1674 also has no labels or milestone set yet (T11/T12).
 
 ### Split-Brain Badge Scope
 
@@ -268,6 +318,31 @@ push/pull/reload ping-pong when combined with unstable secret ciphertext),
 and the intermediate `.config/` isolated clone that copied `<name>.toml` to
 standby clusters only (one-directional: standby-born changes were stranded
 and eventually overwritten).
+
+## Peer Heartbeat Transport and Failure States (#1940, 2026-10-09)
+
+The peer heartbeat is `GET <arbitration-peer-hosts entry>/api/heartbeat`. That route is served by the **http-port** listener (10001), not by the API port (10005), which answers 404 for it.
+
+**Scheme:**
+- An entry written without a scheme is called over `http://`.
+- On a scheme mismatch, `fetchPeerHeartbeat` (`server/server_heartbeat_peer.go`) retries once over the other scheme. A mismatch is either an https-only answer to http (400 "Client sent an HTTP request to an HTTPS server") or http answering https ("server gave HTTP response to HTTPS client" / "first record does not look like a TLS handshake").
+- The scheme that answers is kept per peer (`arbPeerScheme`).
+- An entry written with a scheme is never changed. These matches depend on Go's error texts, and the tests in `server_heartbeat_peer_test.go` catch a rewording.
+
+**States (`ErrKey` set explicitly; `AddState` does not fill it):**
+
+| State | Meaning |
+|---|---|
+| GWARN018 | Peer heartbeat failed. The URL and error of every failing peer are joined in one description. When both schemes fail, both errors are kept, so a certificate problem shows. A 404 names the http-port. |
+| GWARN019 | A peer written without a scheme answers only on the other one. The description gives the value to write. |
+| GWARN020 | The peer has our own `arbitration-external-unique-id`. When both are Standby, the lower id claims Active, so equal ids leave the pair Standby. |
+
+**`apiUrl` (#1942):**
+- The heartbeat answer also carries `apiUrl` (`conf.MonitorAPIURL()`).
+- The peer keeps it only if it is a plain `https://host[:port]` on the host of the configured peer entry (`validPeerAPIURL`).
+- It feeds the bootstrap DR fallback (`BOOTSTRAP_DR_FALLBACK.md`).
+
+**Open:** the answer still carries `secret` (`arbitration-external-secret`) to any caller. See #1955.
 
 ## Configuration
 

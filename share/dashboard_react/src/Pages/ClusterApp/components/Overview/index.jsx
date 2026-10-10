@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import styles from "./styles.module.scss";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import GeneralSection from "./GeneralSection";
-import AppCredit from "./AppCredit";
+import AppUnits from "./AppUnits";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop, pauseAutoReload, resolveTemplateVariables, storageFieldIndexAdd, getOpenSVCPools } from "../../../../redux/clusterSlice";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
@@ -159,7 +159,7 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
                     />
                     <AccordionComponent
                         heading={'Infra Resources'}
-                        body={<AppCredit config={config} appConfig={appConfig} />}
+                        body={<AppUnits config={config} appConfig={appConfig} />}
                     />
                     <AccordionComponent
                         heading={'DNS Routes'}

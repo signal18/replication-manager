@@ -47,6 +47,17 @@ func (cluster *Cluster) SetStatus() {
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()
 	cluster.IsNeedDatabasesRollingRestart = cluster.HasRequestDBRollingRestart()
 	cluster.IsNeedDatabasesRollingReprov = cluster.HasRequestDBRollingReprov()
+	for _, srv := range cluster.Servers { // per-server over/under x config/plan consumed states
+		if srv != nil {
+			srv.CheckResourceConsumed()
+		}
+	}
+	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
+	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
+	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
+	cluster.DriveDailyDynamicResize()             // daily-time policy: reconcile live memory in the off-peak window
+	cluster.DriveDynamicResize()                  // dynamic-resize trigger: turn a sustained saturation state into a real resize
+	cluster.CheckDynamicResourceDeploymentReady() // WARN0214 when live resize is on but the container is still docker-capped (not resize-ready)
 	cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
 	cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()
@@ -117,22 +128,55 @@ func (cluster *Cluster) SetInteractive(check bool) {
 }
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
-
+	oldGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	cluster.Configurator.SetDBDisk(value)
 	cluster.Conf.ProvDisk = cluster.Configurator.GetConfigDBDisk()
-
+	newGB, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
+	// Live move (#1854): with the dynamic resource on, the declared disk moves the volumes
+	// through the orchestrator instead of asking for a reprovision, up or down (a shrink
+	// the orchestrator does not honour yet is tracked as WARN0221, never a reprovision:
+	// it is data). Without it, the reprovision path as before.
+	if cluster.Conf.ProvDBDynamicResource && newGB != oldGB {
+		cluster.applyDiskResize(int(oldGB), int(newGB))
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
+	old := cluster.Conf.ProvCores
 	cluster.Configurator.SetDBCores(value)
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
+	// Live resize: a core change re-tunes the cores-driven DB variables
+	// (innodb_read_io_threads) via SET GLOBAL. The container cpu cgroup limit
+	// resize (pg_cpus) is a follow-up; for now this only re-tunes the DB side.
+	if cluster.Conf.ProvDBDynamicResource {
+		if cluster.Conf.ProvCores != old {
+			newC, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
+			oldC, _ := strconv.ParseFloat(old, 64)
+			cluster.lastDynamicResize = time.Now() // a manual change opens the same cooldown as a dynamic step
+			cluster.ResizeDynamicResources(resizeCPU, newC > oldC)
+		}
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
+	oldMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	cluster.Configurator.SetDBMemory(value)
 	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
+	// When live resource resize is enabled, drive it (SET GLOBAL + client
+	// infra hook) instead of a full container recreation. grow is decided from
+	// the memory delta; ResizeDynamicResources no-ops when the feature is off.
+	if cluster.Conf.ProvDBDynamicResource {
+		newMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
+		if newMB != oldMB { // skip no-op reloads (would re-run the feasibility script for nothing)
+			cluster.lastDynamicResize = time.Now() // a manual change opens the same cooldown as a dynamic step
+			cluster.ResizeDynamicResources(resizeMemory, newMB > oldMB)
+		}
+		return
+	}
 	cluster.SetDBReprovCookie()
 }
 
@@ -158,8 +202,17 @@ func (cluster *Cluster) SetTagsFromConfigurator() {
 }
 
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
+	old := cluster.Conf.ProvIops
 	cluster.Configurator.SetDBDiskIOPS(value)
 	cluster.Conf.ProvIops = cluster.Configurator.GetConfigDBDiskIOPS()
+	// Live resize: an iops change re-tunes the iops-driven DB variables
+	// (innodb_io_capacity/_max, innodb_write_io_threads) via SET GLOBAL.
+	if cluster.Conf.ProvDBDynamicResource {
+		if cluster.Conf.ProvIops != old {
+			cluster.ResizeDynamicResources(resizeIO, false)
+		}
+		return
+	}
 	cluster.SetDBRestartCookie()
 }
 
@@ -172,6 +225,25 @@ func (cluster *Cluster) SetDBMaxConnections(value string) {
 func (cluster *Cluster) SetDBExpireLogDays(value string) {
 	cluster.Configurator.SetDBExpireLogDays(value)
 	cluster.Conf.ProvExpireLogDays = cluster.Configurator.GetConfigDBExpireLogDays()
+	cluster.SetDBRestartCookie()
+}
+
+// SetDBReplicationParallelThreads sets slave_parallel_threads for the configurator template.
+// Decision 2026-09-16: replication workers do NOT follow the core count -- they idle on the
+// thread pool and their number is the concurrency that hides network/commit latency. The
+// value reaches the running slaves at the next config apply (restart cookie), like the
+// other template-driven replication settings.
+func (cluster *Cluster) SetDBReplicationParallelThreads(value string) {
+	cluster.Configurator.SetDBReplicationParallelThreads(value)
+	cluster.Conf.ProvReplicationParallelThreads = cluster.Configurator.GetConfigDBReplicationParallelThreads()
+	cluster.SetDBRestartCookie()
+}
+
+// SetDBReplicationDomainParallelThreads sets slave_domain_parallel_threads (0 = no per-domain
+// cap); keep 0 on a single-master cluster, otherwise the pool is capped per domain.
+func (cluster *Cluster) SetDBReplicationDomainParallelThreads(value string) {
+	cluster.Configurator.SetDBReplicationDomainParallelThreads(value)
+	cluster.Conf.ProvReplicationDomainParallelThreads = cluster.Configurator.GetConfigDBReplicationDomainParallelThreads()
 	cluster.SetDBRestartCookie()
 }
 
@@ -414,6 +486,77 @@ func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 	}
 	cluster.Conf.IgnoreSrv = strings.Join(ignoresrvlist, ",")
 	// fmt.Printf("Update config ignored server: " + cluster.Conf.IgnoreSrv + "\n")
+}
+
+// SetMaintenanceSrv replaces the durable maintenance-host membership list
+// with newList (a comma-separated set of host tokens, deduplicated; matched
+// EXACTLY -- see maintenanceListHasHost, never by substring), then syncs the
+// runtime IsMaintenance flag for every currently-instantiated server to match
+// it. It trusts newList as the complete intended membership -- it does not
+// filter tokens against cluster.Servers, so a host temporarily absent from
+// the live server list keeps its entry (see AddMaintenanceSrv/
+// RemoveMaintenanceSrv, which build newList by editing the existing token
+// list rather than reconstructing it from live servers). It does not run the
+// db-servers-state-change script or touch proxy backends -- callers
+// (SetMaintenance/DelMaintenance/SwitchMaintenance) own those side effects;
+// this only tracks membership so it survives restart and config reload (see
+// newServerMonitor).
+func (cluster *Cluster) SetMaintenanceSrv(newList string) {
+	seen := make(map[string]bool)
+	var deduped []string
+	for _, tok := range maintenanceTokens(newList) {
+		if seen[tok] {
+			continue
+		}
+		seen[tok] = true
+		deduped = append(deduped, tok)
+	}
+	cluster.Conf.MaintenanceSrv = strings.Join(deduped, ",")
+
+	for _, srv := range cluster.Servers {
+		if srv == nil || srv.GetSourceClusterName() != cluster.Name {
+			continue
+		}
+		srv.IsMaintenance = maintenanceListHasHost(cluster.Conf.MaintenanceSrv, srv.URL, srv.Name)
+	}
+}
+
+// AddMaintenanceSrv adds node to the durable maintenance-host membership and
+// persists it, preserving every other entry already tracked -- including
+// hosts not currently represented in cluster.Servers.
+func (cluster *Cluster) AddMaintenanceSrv(node *ServerMonitor) {
+	if maintenanceListHasHost(cluster.Conf.MaintenanceSrv, node.URL, node.Name) {
+		node.IsMaintenance = true
+		return
+	}
+	entry := strings.ReplaceAll(node.URL, node.Domain+":3306", "")
+	newList := append(maintenanceTokens(cluster.Conf.MaintenanceSrv), entry)
+	cluster.SetMaintenanceSrv(strings.Join(newList, ","))
+	cluster.ConfigManager.SaveConfig(cluster, false)
+}
+
+// RemoveMaintenanceSrv removes node from the durable maintenance-host
+// membership and persists it, preserving every other entry already tracked --
+// including hosts not currently represented in cluster.Servers.
+func (cluster *Cluster) RemoveMaintenanceSrv(node *ServerMonitor) error {
+	if node.SourceClusterName != cluster.Name {
+		return fmt.Errorf("Host is in child cluster. Cannot remove maintenance")
+	}
+
+	if !maintenanceListHasHost(cluster.Conf.MaintenanceSrv, node.URL, node.Name) {
+		return fmt.Errorf("Host not found in maintenance list")
+	}
+
+	var kept []string
+	for _, tok := range maintenanceTokens(cluster.Conf.MaintenanceSrv) {
+		if tok == node.URL || tok == node.Name {
+			continue
+		}
+		kept = append(kept, tok)
+	}
+	cluster.SetMaintenanceSrv(strings.Join(kept, ","))
+	cluster.ConfigManager.SaveConfig(cluster, false)
+	return nil
 }
 
 // Set Ignored for ReadOnly Check
@@ -1126,7 +1269,14 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 			}
 		}
 	case config.ConstProxyMaxscale:
-		cluster.Conf.MxsUser, cluster.Conf.MxsPass = misc.SplitPair(credential)
+		user, pass := misc.SplitPair(credential)
+		var newSecret config.Secret
+		newSecret.OldValue = cluster.Conf.Secrets["maxscale-pass"].Value
+		newSecret.Value = pass
+		cluster.Conf.Secrets["maxscale-pass"] = newSecret
+		cluster.Conf.MxsUser = user
+		cluster.Conf.MxsPass = pass
+		cluster.MarkSecretVersionStoreDirty()
 
 		/*for _, pri := range cluster.Proxies {
 
@@ -1234,6 +1384,9 @@ func (cluster *Cluster) SetUnDiscovered() {
 }
 
 func (cluster *Cluster) SetActiveStatus(status string) {
+	if cluster.Status == status {
+		return
+	}
 	cluster.Status = status
 	if cluster.Conf.MonitorScheduler {
 		if cluster.Status == ConstMonitorActif {
@@ -1382,6 +1535,15 @@ func (cluster *Cluster) SetSysbenchThreads(Threads string) {
 	}
 }
 
+func (cluster *Cluster) SetSysbenchTime(t string) {
+	i, err := strconv.Atoi(t)
+	if err == nil {
+		cluster.Conf.SysbenchTime = i
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting sysbench time to int %s", err)
+	}
+}
+
 /*
 Set Service Plan. Log Module : Topology
 */
@@ -1392,12 +1554,31 @@ func (cluster *Cluster) SetServicePlanInfos(theplan string) error {
 		if plan.Plan == theplan {
 
 			cluster.Conf.ProvServicePlan = theplan
-			cluster.SetDBCores(strconv.Itoa(plan.DbCores))
-			cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory))
-			cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize))
-			cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops))
-			cluster.SetProxyCores(strconv.Itoa(plan.PrxCores))
-			cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize))
+
+			// Provisioning specs are guarded by immutability: a value the
+			// operator has pinned (present in ImmuableFlagMap / immutable.toml)
+			// is a hard lock that attaching or refreshing a service plan must
+			// NOT overwrite. Without this, a plan attach pushed the plan tier
+			// onto prov-db-memory etc.; the immutable-flag reapply then reverted
+			// the Conf side but not the Configurator side, leaving the GUI
+			// showing the plan value (e.g. 4G) while provisioning used the
+			// pinned value (e.g. 768M). To move a pinned spec the operator must
+			// first unpin it. Pricing/SLA/infra descriptors below are plan
+			// metadata, not resource knobs, so they always follow the plan.
+			applyPlanSpec := func(flag string, apply func()) {
+				if cluster.IsVariableImmutable(flag) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+						"Service plan %s: keeping pinned %s, plan value not applied (variable is immutable)", theplan, flag)
+					return
+				}
+				apply()
+			}
+			applyPlanSpec("prov-db-cpu-cores", func() { cluster.SetDBCores(strconv.Itoa(plan.DbCores)) })
+			applyPlanSpec("prov-db-memory", func() { cluster.SetDBMemorySize(strconv.Itoa(plan.DbMemory)) })
+			applyPlanSpec("prov-db-disk-size", func() { cluster.SetDBDiskSize(strconv.Itoa(plan.DbDataSize)) })
+			applyPlanSpec("prov-db-disk-iops", func() { cluster.SetDBDiskIOPS(strconv.Itoa(plan.DbIops)) })
+			applyPlanSpec("prov-proxy-cpu-cores", func() { cluster.SetProxyCores(strconv.Itoa(plan.PrxCores)) })
+			applyPlanSpec("prov-proxy-disk-size", func() { cluster.SetProxyDiskSize(strconv.Itoa(plan.PrxDataSize)) })
 			cluster.SetCloud18MonthlyInfraCost(plan.InfraCost)
 			cluster.SetCloud18MonthlyLicenseCost(plan.LicenceCost)
 			cluster.SetCloud18MonthlySysopsCost(plan.SysCost)
@@ -1574,6 +1755,36 @@ func (cluster *Cluster) SetProvOrchestratorCluster(value string) error {
 	return nil
 }
 
+// SetProvKubeStorageClass only affects the PVC built for a server's *next*
+// (re)provision (k8sDatabasePVC, prov_k8s_db.go), same as SetDBDiskSize --
+// so it needs the DB reprov cookie, not the proxy one. Note this only takes
+// effect for a server whose PVC doesn't already exist: k8sDatabasePVC's
+// Create() is a no-op (AlreadyExists) against an existing PVC, and
+// StorageClassName is immutable on a PVC once created -- reprovisioning an
+// existing server alone will never migrate it to a newly-set StorageClass;
+// the old PVC would need to be deleted first (destructive, and today never
+// done automatically -- see k8sUnprovisionDatabaseServiceWithClient's own
+// retention comment).
+func (cluster *Cluster) SetProvKubeStorageClass(value string) error {
+	cluster.Conf.ProvKubeStorageClass = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
+// SetProvKubeProxyStorageClass is SetProvKubeStorageClass's proxy-side
+// counterpart (k8sProxyPVC, prov_k8s_prx.go) -- only affects a proxy's
+// *next* (re)provision, so it needs the proxy reprov cookie, not the DB one.
+// Same existing-PVC caveat as SetProvKubeStorageClass applies: proxy PVCs
+// are retained on unprovision (k8sUnprovisionProxyServiceWithClient), so a
+// reprovision of an existing proxy reuses that same PVC and its original
+// StorageClass -- this setting only takes effect for a proxy name whose PVC
+// doesn't exist yet.
+func (cluster *Cluster) SetProvKubeProxyStorageClass(value string) error {
+	cluster.Conf.ProvKubeProxyStorageClass = value
+	cluster.SetProxiesReprovCookie()
+	return nil
+}
+
 func (cluster *Cluster) SetProvDbAgents(value string) error {
 	cluster.Conf.ProvAgents = value
 	return nil
@@ -1625,6 +1836,38 @@ func (cluster *Cluster) SetProxyServersBackendMaxConnections(value string) error
 		return err
 	}
 	cluster.Conf.PRXServersBackendMaxConnections = numvalue
+	return nil
+}
+
+// SetSwitchoverWaitWriteQuery sets switchover-wait-write-query: the number of seconds a
+// write query or an open InnoDB transaction may have been running on the master before a
+// switchover is cancelled (the guard in MasterFailover, CheckLongRunningWrites). At least 1:
+// with 0 every running write matches and no switchover would ever pass.
+func (cluster *Cluster) SetSwitchoverWaitWriteQuery(value string) error {
+	numvalue, err := strconv.Atoi(value)
+	if err != nil {
+		return fmt.Errorf("switchover-wait-write-query: %w", err)
+	}
+	if numvalue < 1 {
+		return fmt.Errorf("switchover-wait-write-query must be at least 1 second, got %d", numvalue)
+	}
+	cluster.Conf.SwitchWaitWrite = numvalue
+	return nil
+}
+
+// SetSwitchoverWaitTrx sets switchover-wait-trx: the seconds a switchover waits, before
+// anything is frozen, for the long writes found by the switchover-wait-write-query guard to
+// complete, then again for the pre-flush of the master tables. At least 1: with 0 the flush
+// timeout fires at once and no switchover would ever pass.
+func (cluster *Cluster) SetSwitchoverWaitTrx(value string) error {
+	numvalue, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return fmt.Errorf("switchover-wait-trx: %w", err)
+	}
+	if numvalue < 1 {
+		return fmt.Errorf("switchover-wait-trx must be at least 1 second, got %d", numvalue)
+	}
+	cluster.Conf.SwitchWaitTrx = numvalue
 	return nil
 }
 
@@ -1737,11 +1980,87 @@ func (cluster *Cluster) SetProvOrchestrator(value string) error {
 	return nil
 }
 
+// SetProvDBImage declares the database image. A pinned image (prov-db-docker-img in the
+// immutable cluster.d config) is not moved by a setting or a rolling upgrade: the operator
+// changes the pin first (#1862).
 func (cluster *Cluster) SetProvDBImage(value string) error {
+	if value != cluster.Conf.ProvDbImg && cluster.IsVariableImmutable("prov-db-docker-img") {
+		return fmt.Errorf("prov-db-image %s is pinned in the immutable configuration: %s not applied, change the pin first", cluster.Conf.ProvDbImg, value)
+	}
+	if value != cluster.Conf.ProvDbImg {
+		cluster.Conf.ProvDbImgResolved = "" // resolved again at the next provision / upgrade
+	}
 	cluster.Conf.ProvDbImg = value
 	cluster.SetDBReprovCookie()
 	return nil
 }
+
+// SetProvDbDockerXtrabackupImg sets prov-db-docker-xtrabackup-img: empty (the injection off), "auto" or the reference
+// of an official xtrabackup image (see doc/implementation/cluster/XTRABACKUP_BUNDLE_INJECTION.md). The value is checked
+// here (ValidateXtrabackupImage) so that a bad one is refused to the operator instead of being accepted and only
+// logged by the render. Only the OpenSVC and Kubernetes provisioners render the injection; elsewhere the value would
+// have no effect and would only raise a reprovision cookie for nothing. Reprovisioning remains an explicit operator
+// action: the cookie only surfaces that the rendered service is now stale.
+func (cluster *Cluster) SetProvDbDockerXtrabackupImg(value string) error {
+	value = strings.TrimSpace(value)
+	// An empty value turns the injection off: always allowed, whatever the orchestrator, so that a setting can be
+	// cleared (the dashboard's Off) on a cluster where it can no longer be set.
+	if value != "" {
+		if orchestrator := cluster.GetOrchestrator(); orchestrator != config.ConstOrchestratorOpenSVC && orchestrator != config.ConstOrchestratorKubernetes {
+			return fmt.Errorf("prov-db-docker-xtrabackup-img is only supported with the %s and %s orchestrators, this cluster uses %q",
+				config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes, orchestrator)
+		}
+		if err := ValidateXtrabackupImage(value); err != nil {
+			return err
+		}
+	}
+	if cluster.Conf.ProvDbDockerXtrabackupImg == value {
+		return nil
+	}
+	cluster.Conf.ProvDbDockerXtrabackupImg = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
+// SetProvDBRunAsUID sets the numeric UID[:GID] a provisioned database container
+// runs as (OpenSVC --user, Kubernetes securityContext). Empty restores the
+// legacy behavior; 0 is root, taken literally (for the process; the dbjobs script
+// db_owner keeps the legacy owner for the few files it writes when the datadir is owned
+// by root, see doc/implementation/cluster/DATABASE_RUNTIME_UID_GID.md). It is
+// independent of prov-db-volume-uid. Reprovisioning remains an explicit operator action; the cookie
+// only surfaces that the rendered service is now stale.
+func (cluster *Cluster) SetProvDBRunAsUID(value string) error {
+	return cluster.setProvDBIdentity("prov-db-run-as-uid", &cluster.Conf.ProvDBRunAsUID, value)
+}
+
+// SetProvDBVolumeUID sets the numeric UID[:GID] that owns a provisioned database's
+// data volume (OpenSVC volume owner and bootstrap chown, Kubernetes init
+// chown). See SetProvDBRunAsUID.
+func (cluster *Cluster) SetProvDBVolumeUID(value string) error {
+	return cluster.setProvDBIdentity("prov-db-volume-uid", &cluster.Conf.ProvDBVolumeUID, value)
+}
+
+func (cluster *Cluster) setProvDBIdentity(setting string, field *string, value string) error {
+	// Only the OpenSVC and Kubernetes provisioners create database containers with a
+	// run-as identity or an owned data volume. Elsewhere (local, on-premise, SlapOS)
+	// the value would have no effect and would only raise a reprovision cookie for
+	// nothing.
+	if orchestrator := cluster.GetOrchestrator(); orchestrator != config.ConstOrchestratorOpenSVC && orchestrator != config.ConstOrchestratorKubernetes {
+		return fmt.Errorf("%s is only supported with the %s and %s orchestrators, this cluster uses %q",
+			setting, config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes, orchestrator)
+	}
+	if _, _, _, err := ParseDBIdentity(setting, value); err != nil {
+		return err
+	}
+	value = strings.TrimSpace(value)
+	if *field == value {
+		return nil
+	}
+	*field = value
+	cluster.SetDBReprovCookie()
+	return nil
+}
+
 func (cluster *Cluster) SetProvMaxscaleImage(value string) error {
 	cluster.Conf.ProvProxMaxscaleImg = value
 	cluster.SetProxiesReprovCookie()
@@ -1777,6 +2096,42 @@ func (cluster *Cluster) SetProvDbDiskType(value string) error {
 func (cluster *Cluster) SetProvDbDiskFS(value string) error {
 	cluster.Conf.ProvDiskFS = value
 	cluster.SetDBReprovCookie()
+	return nil
+}
+
+// containerStartTimeout validates a container start timeout setting: a positive duration
+// (2m, 90s). The orchestrator's default is 5s, too short for a container whose image was
+// purged (#1924).
+func containerStartTimeout(name, value string) (string, error) {
+	v := strings.TrimSpace(value)
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return "", fmt.Errorf("%s: %q is not a duration (2m, 90s): %w", name, value, err)
+	}
+	if d <= 0 {
+		return "", fmt.Errorf("%s: %q is not a positive duration (2m, 90s)", name, value)
+	}
+	return v, nil
+}
+
+// SetProvDbStartTimeout: the start timeout written on the database containers and their
+// jobs sidecar; the template refresh carries it, the next start uses it (#1924).
+func (cluster *Cluster) SetProvDbStartTimeout(value string) error {
+	v, err := containerStartTimeout("prov-db-start-timeout", value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.ProvDbStartTimeout = v
+	return nil
+}
+
+// SetProvProxyStartTimeout: the same for the proxy containers (#1924).
+func (cluster *Cluster) SetProvProxyStartTimeout(value string) error {
+	v, err := containerStartTimeout("prov-proxy-start-timeout", value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.ProvProxyStartTimeout = v
 	return nil
 }
 

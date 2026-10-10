@@ -29,6 +29,11 @@ func (cluster *Cluster) newServerList() error {
 	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModTopology,config.LvlErr, "hello %+v", cluster.Conf.Hosts)
 	cluster.Lock()
+	// The old monitors are dropped, never closed: release what they hold on the primaries
+	// (the event scanner's replica stream and its pool lease, #1886) or every rebuild --
+	// config reload, host list change, add server -- leaks one Binlog Dump thread and one
+	// id, and the pool is exhausted after eleven of them.
+	cluster.closeServersBinlogStreams(cluster.Servers)
 	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Processing host: %s", cluster.Conf.Hosts)
 	cluster.Servers = make([]*ServerMonitor, len(cluster.hostList))
 	// split("")  return len = 1
@@ -190,10 +195,26 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// promote that server as the designated master.
 	if len(cluster.Servers) == 1 {
 		cluster.Topology = config.TopoActivePassive
-		if cluster.GetMaster() == nil && cluster.Servers[0] != nil {
+		// Only a REACHABLE lone server is designated: an unreachable one (not provisioned
+		// yet, failed) stayed "Master" and the discovery answered "already has a
+		// master/slave setup" to the provisioning of a cluster created through the API
+		// (tamarin, 2026-10-07): no master is the truth until the server answers.
+		if cluster.GetMaster() == nil && cluster.Servers[0] != nil && !cluster.Servers[0].IsDown() && cluster.Servers[0].State != stateFailed {
 			cluster.master = cluster.Servers[0]
 			cluster.vmaster = cluster.Servers[0]
 			cluster.master.SetMaster()
+		}
+		if cluster.GetMaster() == nil {
+			return errors.New("the only server of the cluster is unreachable")
+		}
+		// the lone server is the master: a read-only default left by a restart under
+		// force-slave-readonly would refuse every write forever (the PostgreSQL primary of
+		// pg-active-passive after its rolling restart, 2026-10-07), like the multi-server
+		// path's "disable read only as last non slave"
+		if m := cluster.GetMaster(); m != nil && cluster.IsActive() && m.IsReadOnly() && !m.IsDown() {
+			if err := m.SetReadWrite(); err == nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s disable read only as single server master", m.URL)
+			}
 		}
 		return nil
 	}
@@ -332,13 +353,22 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						// makes it one-shot. This was the last synchronous rejoin caller.
 						go extra.RejoinMaster()
 					}
+				} else if !cluster.IsFailedArbitrator && !cluster.IsActive() {
+					// STANDBY (GH-1847): its view can lag the active's by seconds (a demoted
+					// master, a replica mid-repair, both looked like the "last non slave" on
+					// preprod). A standby never re-designates a master from its own view and
+					// never opens one to writes: it keeps its last-known master, takes the
+					// local candidate only when it knows none, and rediscovers as active.
+					cluster.standbyDesignateMaster(cluster.Servers[k])
 				} else if !cluster.IsFailedArbitrator {
 					// Minority fail-safe: a node that cannot confirm authority via the
 					// arbitrator (IsFailedArbitrator) must NOT rediscover / re-designate
 					// the master from its own untrusted view — it holds its last-known
 					// topology and does nothing. Only the trusted majority rediscovers.
 					// Either no other master or multi-master topology
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was set master as last non slave", sv.URL)
+					if cluster.master != cluster.Servers[k] {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was set master as last non slave", sv.URL)
+					}
 					if len(cluster.Servers) == 1 {
 						cluster.Topology = config.TopoActivePassive
 					}
@@ -449,6 +479,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// active-passive was configured explicitly.
 	if !hasRelay && !hasCycling && !cluster.HasConfigTopoActivePassive() {
 		cluster.Topology = config.TopoMasterSlave
+		if pgTopology := cluster.postgresReplicationTopology(); pgTopology != "" {
+			cluster.Topology = pgTopology
+		}
 	}
 
 	if cluster.GetTopology() == config.TopoMultiMaster || cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterGrouprep {
@@ -754,6 +787,11 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 }
 
 func (cluster *Cluster) CheckSlavesReplicationsPurge() {
+	// A standby never purges binlogs (GH-1847): PURGE BINARY LOGS is the active's decision,
+	// taken from ITS view of every replica's position.
+	if !cluster.IsActive() {
+		return
+	}
 	if cluster.IsInFailover() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Cancel checking replication, cluster is in failover")
 		return
@@ -805,7 +843,22 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 }
 
 func (cluster *Cluster) BootstrapTopology(topology string) error {
+	// the PostgreSQL replication topologies are exclusive of each other and of active-passive
+	cluster.Conf.MasterSlavePgStream = false
+	cluster.Conf.MasterSlavePgLogical = false
 	switch topology {
+	case config.TopoMasterSlavePgStream, config.TopoMasterSlavePgLog:
+		// PostgreSQL: WAL streaming (physical standbys) or logical replication
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
+		cluster.Conf.MasterSlavePgStream = topology == config.TopoMasterSlavePgStream
+		cluster.Conf.MasterSlavePgLogical = topology == config.TopoMasterSlavePgLog
 	case "active-passive":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -890,7 +943,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetMultiMasterGroupRep(true)
 		cluster.SetActivePassive(false)
 	default:
-		return errors.New("Invalid topology type, supported types are: master-slave, master-slave-no-gtid, multi-master, multi-tier-slave, maxscale-binlog, multi-master-ring, multi-master-wsrep, multi-master-grprep, active-passive")
+		return errors.New("Invalid topology type, supported types are: master-slave, master-slave-no-gtid, multi-master, multi-tier-slave, maxscale-binlog, multi-master-ring, multi-master-wsrep, multi-master-grprep, active-passive, master-slave-pg-stream, master-slave-pg-logical")
 	}
 	cluster.SetTopologyTarget(topology)
 	return nil
@@ -964,4 +1017,38 @@ func (cluster *Cluster) SetReadWriteAsMaster() bool {
 	}
 
 	return found
+}
+
+// standbyDesignateMaster is the standby's side of the last-non-slave fallback (GH-1847).
+// In calm a standby keeps its last-known master whatever its view says tick after tick (a
+// demoted master or a replica mid-repair both look like a "last non slave" for a few ticks)
+// and takes the local candidate only when it knows none. It DOES re-designate when the
+// master moved on it: in split brain, or once its last-known master has become a replica
+// (LostArbitration attached the fenced old master to the winner's master, the standby's
+// role is then to follow the winner and repoint its proxies off the fenced node). Never
+// touches read_only: the winner already opened its master.
+func (cluster *Cluster) standbyDesignateMaster(local *ServerMonitor) {
+	if local == nil || cluster.master == local {
+		return
+	}
+	if cluster.master != nil && !cluster.IsSplitBrain && !cluster.master.IsSlave {
+		return // calm and the last-known master still stands: a standby never re-designates
+	}
+	why := "no master known, taken from the local view (provisional)"
+	if cluster.master != nil {
+		why = "the last-known master " + cluster.master.URL + " moved (split brain or attached as a replica), following the winner"
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Standby: master of %s is %s: %s, nothing written", cluster.Name, local.URL, why)
+	cluster.master = local
+	cluster.master.SetMaster()
+}
+
+// closeServersBinlogStreams releases the binlog event stream and its leased replica
+// server-id of every monitor about to be dropped (cluster_binlog_serverid.go, #1886).
+func (cluster *Cluster) closeServersBinlogStreams(servers []*ServerMonitor) {
+	for _, old := range servers {
+		if old != nil {
+			old.CloseBinlogEventSyncer()
+		}
+	}
 }

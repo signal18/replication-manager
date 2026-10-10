@@ -25,35 +25,35 @@ import (
 type SysbenchLogEntry struct {
 	StartedAt    time.Time                    `json:"startedAt"`
 	EndedAt      time.Time                    `json:"endedAt"`
-	TestType     string                       `json:"testType"`     // oltp_read_write, oltp_read_only, oltp_update_index, oltp_update_non_index, tpcc
-	TestMode     string                       `json:"testMode"`     // complex, simple, nontrx (legacy oltp)
+	TestType     string                       `json:"testType"` // oltp_read_write, oltp_read_only, oltp_update_index, oltp_update_non_index, tpcc
+	TestMode     string                       `json:"testMode"` // complex, simple, nontrx (legacy oltp)
 	Threads      int                          `json:"threads"`
-	Duration     int                          `json:"duration"`     // seconds
+	Duration     int                          `json:"duration"` // seconds
 	TableSize    int                          `json:"tableSize"`
-	Tables       int                          `json:"tables"`       // sysbench-tables
-	Scale        int                          `json:"scale"`        // sysbench-scale (tpcc warehouses)
-	DBFlavor     string                       `json:"dbFlavor"`     // MariaDB, MySQL, Percona, PostgreSQL
+	Tables       int                          `json:"tables"`   // sysbench-tables
+	Scale        int                          `json:"scale"`    // sysbench-scale (tpcc warehouses)
+	DBFlavor     string                       `json:"dbFlavor"` // MariaDB, MySQL, Percona, PostgreSQL
 	DBVersion    string                       `json:"dbVersion"`
 	GraphiteHost string                       `json:"graphiteHost"` // graphite metric hostname (@@hostname with replacements)
 	ProxyType    string                       `json:"proxyType"`    // proxysql, haproxy, maxscale, myproxy
 	ProxyVersion string                       `json:"proxyVersion"`
 	Replicas     int                          `json:"replicas"`
-	Cores        string                       `json:"cores"`        // prov-db-cpu-cores (docker cap)
-	MemoryMB     string                       `json:"memoryMB"`     // prov-db-memory in MB (docker cap)
-	DiskGB       string                       `json:"diskGB"`       // prov-db-disk-size in GB (docker cap)
-	DBU          float64                      `json:"dbu"`          // database units: max(cores/1, mem/4096, disk/40, iops/1000)
-	ClusterDBU   float64                      `json:"clusterDbu"`   // DBU × (replicas + 1)
-	ConfigTags   string                       `json:"configTags"`   // prov-db-tags at run time
+	Cores        string                       `json:"cores"`      // prov-db-cpu-cores (docker cap)
+	MemoryMB     string                       `json:"memoryMB"`   // prov-db-memory in MB (docker cap)
+	DiskGB       string                       `json:"diskGB"`     // prov-db-disk-size in GB (docker cap)
+	DBU          float64                      `json:"dbu"`        // database units: max(cores/1, mem/4096, disk/40, iops/1000)
+	ClusterDBU   float64                      `json:"clusterDbu"` // DBU × (replicas + 1)
+	ConfigTags   string                       `json:"configTags"` // prov-db-tags at run time
 	ServicePlan  string                       `json:"servicePlan"`
 	Results      []SysBenchTpcResultPerMinute `json:"results"`
 	Records      []SysbenchRecord             `json:"records,omitempty"`
 	AvgTPS       float64                      `json:"avgTps"`
 	AvgLatency   float64                      `json:"avgLatency"`
 	TotalErrors  int                          `json:"totalErrors"`
-	TPSPerDBU    float64                      `json:"tpsPerDbu"`              // avgTps / clusterDBU — performance efficiency
-	IsScale      bool                         `json:"isScale,omitempty"`      // true if part of a thread-scaling run
-	ScaleGroup   *time.Time                   `json:"scaleGroup,omitempty"`   // ties scale entries together (start time of the scale run)
-	Step         string                       `json:"step,omitempty"`         // prepare, run, cleanup — only set for scale entries
+	TPSPerDBU    float64                      `json:"tpsPerDbu"`            // avgTps / clusterDBU — performance efficiency
+	IsScale      bool                         `json:"isScale,omitempty"`    // true if part of a thread-scaling run
+	ScaleGroup   *time.Time                   `json:"scaleGroup,omitempty"` // ties scale entries together (start time of the scale run)
+	Step         string                       `json:"step,omitempty"`       // prepare, run, cleanup — only set for scale entries
 }
 
 // SysbenchLog holds the full history of sysbench runs for a cluster.
@@ -136,14 +136,19 @@ func (cluster *Cluster) LogSysbenchRun(testType string, testMode string, threads
 		Records:     records,
 	}
 
-	// Compute DBU: 1 unit = 1 core / 4GB RAM / 40GB NVMe / 1000 IOPS
+	// Compute DBU at the ResourceManager's Database ratio (1 core / 4 GB / 20 GB / 1000 IOPS
+	// by default): the manager is the single source of the ratios, never a copy here.
+	ratios := UnitRatios{CoresPerUnit: 1, MemMBPerUnit: 4096, DiskGBPerUnit: 20, IopsPerUnit: 1000}
+	if cluster.resources != nil {
+		ratios = cluster.resources.Ratios(ProfileDatabase)
+	}
 	cores, _ := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
 	memMBi, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true)
 	memMB := float64(memMBi)
 	diskGBi, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	diskGB := float64(diskGBi)
 	iops, _ := strconv.ParseFloat(cluster.Conf.ProvIops, 64)
-	entry.DBU = math.Max(cores, math.Max(memMB/4096, math.Max(diskGB/40, iops/1000)))
+	entry.DBU = math.Max(unitDiv(cores, ratios.CoresPerUnit), math.Max(unitDiv(memMB, ratios.MemMBPerUnit), math.Max(unitDiv(diskGB, ratios.DiskGBPerUnit), unitDiv(iops, ratios.IopsPerUnit))))
 	entry.ClusterDBU = entry.DBU * float64(dbNodes)
 
 	// DB flavor + version from master

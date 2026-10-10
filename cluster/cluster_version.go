@@ -3,6 +3,7 @@ package cluster
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -38,6 +39,44 @@ func (cluster *Cluster) RefreshToolVersions() {
 			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
 		}
 	}
+	cluster.ToolsVersions = cluster.GetToolsVersions()
+}
+
+// assertToolsVersionsConfigState is the local tools line of the Config pill (CINF0012,
+// INFO), not a block of the cluster dashboard (Stéphane, 2026-10-07): one line, tool by
+// tool, sorted. Asserted where the config states are flushed each tick, the config state
+// machine being cleared every tick.
+func (cluster *Cluster) assertToolsVersionsConfigState() {
+	if len(cluster.ToolsVersions) > 0 {
+		names := make([]string, 0, len(cluster.ToolsVersions))
+		for n := range cluster.ToolsVersions {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		parts := make([]string, 0, len(names))
+		for _, n := range names {
+			parts = append(parts, n+" "+cluster.ToolsVersions[n])
+		}
+		cluster.ConfigStateMachine.AddState("CINF0012", state.State{ErrType: "INFO", ErrFrom: "CONF",
+			ErrDesc: fmt.Sprintf(clusterError["CINF0012"], strings.Join(parts, ", "))})
+	}
+}
+
+// GetToolsVersions returns the local tools found on this replication-manager, tool name
+// to version (client, client-dump, client-binlog, mydumper, sysbench, restic), for the API
+// and the dashboard. A tool that was not found is absent.
+func (cluster *Cluster) GetToolsVersions() map[string]string {
+	out := map[string]string{}
+	if cluster.VersionsMap == nil {
+		return out
+	}
+	cluster.VersionsMap.Callback(func(tool string, v *version.Version) bool {
+		if v != nil {
+			out[tool] = strings.TrimSpace(v.Flavor + " " + v.ToString())
+		}
+		return true
+	})
+	return out
 }
 
 // CheckComplianceUpdate checks if new compliance files are available in

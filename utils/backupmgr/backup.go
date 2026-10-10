@@ -38,30 +38,48 @@ type BackupMetadata struct {
 	BackupTool        string         `json:"backupTool"`
 	BackupToolVersion string         `json:"backupToolVersion"`
 	BackupStrategy    BackupStrategy `json:"backupStrategy"`
-	Source            string         `json:"source"` // server URL
-	Dest              string         `json:"dest"`   // backup destination path
-	Size              int64          `json:"size"`   // in bytes
+	Source            string         `json:"source"`               // server URL
+	Dest              string         `json:"dest"`                 // backup destination path
+	Size              int64          `json:"size"`                 // in bytes
+	StreamSize        int64          `json:"streamSize,omitempty"` // bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator
 	FileCount         int64          `json:"fileCount"`
 	Compressed        bool           `json:"compressed"`
 	Encrypted         bool           `json:"encrypted"`
 	EncryptionAlgo    string         `json:"encryptionAlgo"`
+	IntegrityAlgo     string         `json:"integrityAlgo,omitempty"`
 	EncryptionKey     string         `json:"encryptionKey"`
-	Checksum          string         `json:"checksum"`
-	RetentionDays     int            `json:"retentionDays"`
-	RetentionDuration string         `json:"retentionDuration,omitempty"`
-	BackupLine        string         `json:"backupLine,omitempty"`
-	MetaFile          string         `json:"metaFile,omitempty"`
-	BinLogFileName    string         `json:"binLogFileName"`
-	BinLogFilePos     uint64         `json:"binLogFilePos"`
-	BinLogGtid        string         `json:"binLogUuid"`
-	Completed         bool           `json:"completed"`
-	SplitUser         bool           `json:"splitUser"`
-	SplitDump         bool           `json:"splitDump"`
-	Previous          int64          `json:"previous"`
-	ResticEnabled     bool           `json:"resticEnabled,omitempty"`
-	ResticSnapshotID  string         `json:"resticSnapshotID"`
-	ResticFilePath    string         `json:"resticFilePath"`
-	BackupSessionID   string         `json:"backupSessionID,omitempty"`
+	// EncryptionFailed is an in-memory-only signal (never persisted) set when
+	// backup-encryption but the post-producer encryption step failed.
+	// It exists solely so WriteBackupMetadata does not re-derive Completed=true
+	// from the underlying backup tool's own job state (which has no idea
+	// encryption ran or failed) and publish a failed-encryption backup as a
+	// successful, Restic-eligible one.
+	EncryptionFailed bool `json:"-"`
+	// EncryptionKeyVersion is the secret_store.json version of
+	// db-servers-credential whose password encrypted the artifact (0 when
+	// unknown). A version number only, never the password: restore uses it
+	// to pick the right historic root password after a password change.
+	EncryptionKeyVersion int `json:"encryptionKeyVersion,omitempty"`
+	// SourceJobFailed is an in-memory-only signal set when the DB-side job
+	// that produces a physical stream reported an error. An encrypted run
+	// then never publishes, or withdraws, its artifact.
+	SourceJobFailed   bool   `json:"-"`
+	Checksum          string `json:"checksum"`
+	RetentionDays     int    `json:"retentionDays"`
+	RetentionDuration string `json:"retentionDuration,omitempty"`
+	BackupLine        string `json:"backupLine,omitempty"`
+	MetaFile          string `json:"metaFile,omitempty"`
+	BinLogFileName    string `json:"binLogFileName"`
+	BinLogFilePos     uint64 `json:"binLogFilePos"`
+	BinLogGtid        string `json:"binLogUuid"`
+	Completed         bool   `json:"completed"`
+	SplitUser         bool   `json:"splitUser"`
+	SplitDump         bool   `json:"splitDump"`
+	Previous          int64  `json:"previous"`
+	ResticEnabled     bool   `json:"resticEnabled,omitempty"`
+	ResticSnapshotID  string `json:"resticSnapshotID"`
+	ResticFilePath    string `json:"resticFilePath"`
+	BackupSessionID   string `json:"backupSessionID,omitempty"`
 }
 
 type PointInTimeMeta struct {

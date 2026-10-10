@@ -42,6 +42,7 @@ func (server *ServerMonitor) GetSshEnv() string {
 		REPLICATION_MANAGER_USER
 		REPLICATION_MANAGER_PASSWORD
 		REPLICATION_MANAGER_URL
+		REPLICATION_MANAGER_URL_DR
 		REPLICATION_MANAGER_URL_HOST
 		REPLICATION_MANAGER_URL_PORT
 		REPLICATION_MANAGER_CLUSTER_NAME
@@ -73,7 +74,8 @@ func (server *ServerMonitor) GetSshEnv() string {
 	env := shellExport("REPLICATION_MANAGER_HOST_USER", server.User) +
 		";" + shellExport("REPLICATION_MANAGER_HOST_PASSWORD", server.Pass) +
 		";" + shellExport("MYSQL_ROOT_PASSWORD", server.Pass) +
-		";" + shellExport("REPLICATION_MANAGER_URL", "https://"+server.ClusterGroup.Conf.MonitorAddress+":"+server.ClusterGroup.Conf.APIPort) +
+		";" + shellExport("REPLICATION_MANAGER_URL", server.ClusterGroup.Conf.MonitorAPIURL()) +
+		";" + shellExport("REPLICATION_MANAGER_URL_DR", server.ClusterGroup.bootstrapDRURLs()) +
 		";" + shellExport("REPLICATION_MANAGER_URL_HOST", server.ClusterGroup.Conf.MonitorAddress) +
 		";" + shellExport("REPLICATION_MANAGER_URL_PORT", server.ClusterGroup.Conf.APIPort) +
 		";" + shellExport("REPLICATION_MANAGER_USER", adminuser) +
@@ -169,6 +171,19 @@ func (server *ServerMonitor) GetReplicationServerID() uint64 {
 	return ss.MasterServerID
 }
 
+// GetDatabaseUptime returns the database server's uptime in seconds, read from
+// the already-collected status snapshot (dbhelper.GetStatus normalises the
+// per-vendor uptime to the UPTIME key), so it costs no extra query. A
+// reprovisioned or restarted server reports a freshly reset (low) uptime, which
+// is what lets a test confirm the servers were actually cycled.
+func (server *ServerMonitor) GetDatabaseUptime() int64 {
+	if server.Status == nil {
+		return 0
+	}
+	uptime, _ := strconv.ParseInt(server.Status.Get("UPTIME"), 10, 64)
+	return uptime
+}
+
 func (server *ServerMonitor) GetReplicationDelay() int64 {
 	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
 	if sserr != nil {
@@ -217,6 +232,49 @@ func (server *ServerMonitor) GetBindAddress() string {
 	}
 
 	return "0.0.0.0"
+}
+
+// RuntimeAPIAddr returns the address haproxy-mode=runtimeapi's write-path
+// SetMaster calls (cluster/prx_haproxy.go) should drive this server's
+// HAProxy Runtime API "leader" entry with.
+//
+// resolverBacked must come from ground truth -- HAProxy's own "show servers
+// state" reporting a non-empty srv_fqdn for the specific backend/svname
+// being addressed right now (built fresh every Refresh() pass into
+// resolverBackedPool, cluster/prx_haproxy.go) -- not from reading
+// cluster.Conf.HaproxyAPIBootstrapServers directly. That flag only decides
+// what GetConfigProxyModule (cluster/prx_get.go) renders at this proxy's
+// NEXT (re)provision; it can be toggled live at any time
+// (SwitchHaproxyAPIBootstrapServers, the settings API) with no reprovision
+// required to take effect on the flag itself, so a caller that trusted it
+// directly here could tell this function to return an IP for an entry that
+// (until reprovisioned) still has no "resolvers" clause to dispatch an
+// "addr" update against, or an FQDN for one that no longer has "resolvers"
+// attached at all -- either way, the wrong dispatch form for what's
+// actually deployed. Reading fresh ground truth every call removes that
+// drift window entirely: there is nothing captured to go stale.
+//
+// When resolverBacked is true, server.Host is returned unconditionally:
+// HAProxy's Runtime API "set server ... addr" dispatches to the plain
+// address form for a literal IP, which would bypass the "fqdn" form callers
+// need for a resolver-backed FQDN entry (SetMaster/SetServerAddr in
+// router/haproxy/runtime_api.go already make that IP-vs-FQDN dispatch
+// decision from whatever host string they're given).
+//
+// When resolverBacked is false, server.IP is used when it's been resolved
+// (kept current by refreshResolvedIP on reconnect, or by SetCredential's
+// initial resolution at server setup), falling back to server.Host for the
+// brief window before either has run once: such an entry's config-time line
+// has no "resolvers" clause to fall back on, so HAProxy has no way to
+// re-resolve an FQDN on its own for it.
+func (server *ServerMonitor) RuntimeAPIAddr(resolverBacked bool) string {
+	if resolverBacked {
+		return server.Host
+	}
+	if server.IP != "" {
+		return server.IP
+	}
+	return server.Host
 }
 
 func (server *ServerMonitor) IsReplicationUsingGtidStrict() bool {
@@ -649,6 +707,17 @@ func (server *ServerMonitor) FlushPFSSnapshotToLog() {
 	}
 
 	os.MkdirAll(server.Datadir+"/log", 0755)
+
+	// Unconditional repman-side housekeeping: prune hourly PFS snapshot files
+	// older than the configured retention so the series stays bounded. These
+	// per-hour files ARE a feature (the Schema Graph time-series browses them
+	// via /api .../pfs-snapshots), so we keep a rolling window rather than
+	// merging them; the window is monitoring-pfs-snapshot-retention-days.
+	retentionDays := cluster.Conf.MonitorPFSSnapshotRetentionDays
+	if retentionDays <= 0 {
+		retentionDays = 2
+	}
+	misc.RemoveOldLogFilesWithExt(server.Datadir+"/log", "log_pfs_queries_", ".jsonl", retentionDays, "20060102_15")
 
 	now := time.Now()
 	filename := server.Datadir + "/log/log_pfs_queries_" + now.Format("20060102_15") + ".jsonl"
@@ -1168,7 +1237,7 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		}
 	}
 	// get topology is call to late
-	if server.ClusterGroup.Conf.MasterSlavePgStream || server.ClusterGroup.Conf.MasterSlavePgLogical {
+	if server.IsPostgreSQLHost() {
 		return sqlx.Connect("postgres", server.DSN)
 
 	}
@@ -1661,6 +1730,103 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 	}
 
 	return []string{}
+}
+
+// TopHeader is the per-instance "mytop" header: five small graphs (Queries, Rows, Swap,
+// Transactions, Cache Miss), each a list of per-tick status deltas. ONE computation for
+// the Top page (GetTopMetrics) and for the Graphite series (GetDatabaseMetrics emits every
+// value as mysql.<host>.top_<graph>_<metric>), so the Graphs page lines are exactly the
+// Top page bars over time.
+func (server *ServerMonitor) TopHeader() config.TopHeader {
+	var topheader config.TopHeader
+
+	var graph config.TopGraph
+	graph.Name = "Queries"
+	data := make([]config.TopMetrics, 0)
+	var metric config.TopMetrics
+	metric.Name = "Questions"
+	metric.Value = server.GetStatusDeltaValue("QUESTIONS")
+	data = append(data, metric)
+	metric.Name = "Selects"
+	metric.Value = server.GetStatusDeltaValue("COM_SELECT")
+	data = append(data, metric)
+	metric.Name = "Inserts"
+	metric.Value = server.GetStatusDeltaValue("COM_INSERT")
+	data = append(data, metric)
+	metric.Name = "Updates"
+	metric.Value = server.GetStatusDeltaValue("COM_UPDATE")
+	data = append(data, metric)
+	metric.Name = "Deletes"
+	metric.Value = server.GetStatusDeltaValue("COM_DELETE")
+	data = append(data, metric)
+	//metric.Name = "Replace"
+	//metric.Value = server.GetStatusDeltaValue("COM_REPLACE")
+	//data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+
+	graph.Name = "Rows"
+	data = make([]config.TopMetrics, 0)
+	metric.Name = "Reads"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_READ_FIRST") + server.GetStatusDeltaValue("HANDLER_READ_KEY") + server.GetStatusDeltaValue("HANDLER_READ_NEXT") + server.GetStatusDeltaValue("HANDLER_READ_PREV") + server.GetStatusDeltaValue("HANDLER_READ_RND") + server.GetStatusDeltaValue("HANDLER_READ_RND_NEXT")
+	data = append(data, metric)
+	metric.Name = "Writes"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_WRITE")
+	data = append(data, metric)
+	metric.Name = "Updates"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_UPDATE")
+	data = append(data, metric)
+	metric.Name = "Deletes"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_DELETE")
+	data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+
+	graph.Name = "Swap"
+	data = make([]config.TopMetrics, 0)
+	metric.Name = "Tmp Tables"
+	metric.Value = server.GetStatusDeltaValue("TMP_DISK_TABLES")
+	data = append(data, metric)
+	metric.Name = "Binary Logs"
+	metric.Value = server.GetStatusDeltaValue("BINLOG_STMT_CACHE_DISK_USE") + server.GetStatusDeltaValue("BINLOG_CACHE_DISK_USE")
+	data = append(data, metric)
+	metric.Name = "Sorts"
+	metric.Value = server.GetStatusDeltaValue("SORT_MERGE_PASSES")
+	data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+
+	graph.Name = "Transactions"
+	data = make([]config.TopMetrics, 0)
+	metric.Name = "Commits"
+	metric.Value = server.GetStatusDeltaValue("HANDLER_COMMIT")
+	data = append(data, metric)
+	metric.Name = "Binlog"
+	metric.Value = server.GetStatusDeltaValue("BINLOG_COMMITS")
+	data = append(data, metric)
+	metric.Name = "Binlog Group"
+	metric.Value = server.GetStatusDeltaValue("BINLOG_GROUP_COMMITS")
+	data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+
+	graph.Name = "Cache Miss"
+	data = make([]config.TopMetrics, 0)
+	metric.Name = "InnoDB"
+	metric.Value = server.GetStatusDeltaValue("INNODB_BUFFER_POOL_READS")
+	data = append(data, metric)
+	metric.Name = "Aria"
+	metric.Value = server.GetStatusDeltaValue("ARIA_PAGECACHE_READS")
+	data = append(data, metric)
+	metric.Name = "MyISAM"
+	metric.Value = server.GetStatusDeltaValue("KEY_READS")
+	data = append(data, metric)
+	metric.Name = "MyROCKS"
+	metric.Value = server.GetStatusDeltaValue("ROCKSDB_BLOCK_CACHE_DATA_MISS")
+	data = append(data, metric)
+	graph.Data = data
+	topheader.Graphs = append(topheader.Graphs, graph)
+	return topheader
 }
 
 func (server *ServerMonitor) GetStatusDeltaValue(name string) int {

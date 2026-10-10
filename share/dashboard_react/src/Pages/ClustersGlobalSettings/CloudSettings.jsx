@@ -665,6 +665,69 @@ Start create an account in https://gitlab.signal18.io
     },
   ] : []
 
+  // Self-service clusters — Cloud18 users reaching this instance through peering
+  // may create a cluster here directly (no subscription / email chain; the
+  // partner is only informed). Only meaningful on OpenSVC / Kubernetes.
+  const selfServiceData = isConnected ? [
+    {
+      key: 'Self-Service Clusters',
+      help: h(`**Self-Service Clusters**\n\nWhen enabled, a Cloud18 user (SSO identity) can create a cluster on this infrastructure directly from their own replication-manager or assistant, without the subscription and email-acceptance chain. The cluster starts on the default unit plan (DBU / APU / BKU) and the creator becomes its sponsor. You are informed by mail and in the security log.\n\nRequires an OpenSVC or Kubernetes orchestrator.\n\nConfig: \`cloud18-self-service-clusters\``, 'Self-Service Clusters'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch settings for cloud18-self-service-clusters?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-self-service-clusters' }))}
+          isChecked={config?.cloud18SelfServiceClusters}
+        />
+      )
+    },
+    {
+      key: 'Max Clusters Per User',
+      help: h(`**Max Clusters Per User**\n\nUpper bound of self-service clusters one Cloud18 identity may sponsor on this infrastructure, so that a single user cannot flood it. Counted as the clusters where the identity holds the sponsor role.\n\nDefault 3.\n\nConfig: \`cloud18-self-service-max-clusters-per-user\``, 'Max Clusters Per User'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18SelfServiceMaxClustersPerUser ?? '')}
+          type='number'
+          confirmTitle='Confirm max self-service clusters per user to '
+          onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-self-service-max-clusters-per-user', value: v }))}
+        />
+      )
+    },
+    {
+      key: 'Self-Service Cache Seconds',
+      help: h(`**Self-Service Cache Seconds**\n\nHow long the self-service status (capacity pool, templates, enabled-script verdict per identity) is served from one computation before it is recomputed. A burst of calls on the public status route, or on the MCP infrastructure listing, costs one computation per interval instead of one per call. 0 recomputes at every call.\n\nConfig: \`cloud18-self-service-cache-seconds\``, 'Self-Service Cache Seconds'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18SelfServiceCacheSeconds ?? '')}
+          type='number'
+          confirmTitle='Confirm self-service cache seconds to '
+          onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-self-service-cache-seconds', value: v }))}
+        />
+      )
+    },
+    {
+      key: 'Self-Service Enabled Script',
+      help: h(`**Self-Service Enabled Script**\n\nYour own gate on every self-service creation, run after the switch and the orchestrator check, before the per-user limit and the pool. Arguments: the identity and the orchestrator. Environment: \`REPMAN_IDENTITY\`, \`REPMAN_ORCHESTRATOR\`, \`REPMAN_SPONSORED_CLUSTERS\`, \`REPMAN_NEEDED_DBU\`, \`REPMAN_NEEDED_APU\`, \`REPMAN_FREE_DBU\`, \`REPMAN_FREE_APU\`, \`REPMAN_BORROW_DBU\`, \`REPMAN_BORROW_APU\`.\n\nA non-zero exit refuses the creation and the first line printed is the reason shown to the user; a timeout (30 s) refuses too. The script can only refuse more than the switch, never open what it closes. Empty: no script.\n\nConfig: \`cloud18-self-service-clusters-enabled-script\``, 'Self-Service Enabled Script'),
+      value: (
+        <TextForm
+          value={String(config?.cloud18SelfServiceClustersEnabledScript ?? '')}
+          confirmTitle='Confirm self-service enabled script to '
+          onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-self-service-clusters-enabled-script', value: v }))}
+        />
+      )
+    },
+    {
+      key: 'Self-Service Can Borrow',
+      help: h(`**Self-Service Can Borrow**\n\nWhen the plan pot (capacity × quota minus every plan sold) cannot guarantee the default units of a new cluster, let it be created on the over-commit pot instead: capacity minus every plan minus what is already borrowed. The cluster then runs without guarantee and the self-service status says so (borrowed). Off: a pool without room refuses the creation.\n\nConfig: \`cloud18-self-service-clusters-can-borrow\``, 'Self-Service Can Borrow'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch settings for cloud18-self-service-clusters-can-borrow?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-self-service-clusters-can-borrow' }))}
+          isChecked={config?.cloud18SelfServiceClustersCanBorrow}
+        />
+      )
+    },
+  ] : []
+
   return (
     <>
       <Flex justify='space-between' gap='0'>
@@ -683,6 +746,14 @@ Start create an account in https://gitlab.signal18.io
           <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Marketplace</Box>
           <Flex justify='space-between' gap='0'>
             <TableType2 dataArray={marketplaceData} className={styles.tableWithHelp} helpColumn />
+          </Flex>
+        </>
+      )}
+      {selfServiceData.length > 0 && (
+        <>
+          <Box as='h4' bg='var(--secondary-color)' color='var(--white-color)' fontWeight='bold' textTransform='uppercase' px={4} py={2} mt={4}>Self-Service Clusters</Box>
+          <Flex justify='space-between' gap='0'>
+            <TableType2 dataArray={selfServiceData} className={styles.tableWithHelp} helpColumn />
           </Flex>
         </>
       )}

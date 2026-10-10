@@ -5,6 +5,7 @@ export const clusterService = {
   getClusterData,
   getClusterAlerts,
   getClusterLogs,
+  getClusterLogHistory,
   getClusterMaster,
   getClusterServers,
   getClusterProxies,
@@ -12,11 +13,13 @@ export const clusterService = {
   getTopProcess,
   getOpenSVCStats,
   getOpenSVCPools,
+  getKubeStorageClasses,
   getBackups,
   getBackupStats,
   deleteBackup,
   getJobs,
   getShardSchema,
+  getSchemaEvents,
   getQueryRules,
   getServerLostEvents,
   rejoinCluster,
@@ -66,6 +69,7 @@ export const clusterService = {
   rotateDBCredential,
   rollingOptimize,
   rollingAction,
+  rollingUpgradePlan,
   rotateCertificates,
   reloadCertificates,
   cancelRollingRestart,
@@ -85,7 +89,7 @@ export const clusterService = {
   reseedStagingFromParent,
 
   // Server management APIs
-  setMaintenanceMode,
+  switchMaintenanceMode,
   jobsUpgrade,
   promoteToLeader,
   setAsUnrated,
@@ -207,7 +211,28 @@ export const clusterService = {
   // S3 provider sync APIs
   syncS3ProviderPreview,
   syncS3ProviderApply,
+
+  // User-issued API tokens (issue #1835)
+  getApiTokens,
+  createApiToken,
+  revokeApiToken,
+  getClusterApiTokens,
 }
+
+//#region User-issued API tokens
+function getApiTokens(baseURL) {
+  return getApi(baseURL).get('tokens')
+}
+function createApiToken({ label, grants, clusters, expireDays }, baseURL) {
+  return getApi(baseURL).post('tokens', { label, grants, clusters, expireDays })
+}
+function revokeApiToken(tokenId, baseURL) {
+  return getApi(baseURL).delete(`tokens/${tokenId}`)
+}
+function getClusterApiTokens(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/tokens`)
+}
+//#endregion
 
 //#region Cluster data APIs
 function getClusterData(clusterName, baseURL) {
@@ -234,6 +259,14 @@ function getClusterLogs(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/topology/http-logs`)
 }
 
+// getClusterLogHistory reads on-disk log history (beyond the in-memory ring
+// buffer) for logType ('general' or 'task' - the only history-backed types,
+// see server/api_cluster.go's handlerMuxWebLog) by adding since/until to the
+// same typed endpoint. params: { since, until, level, module, text, limit }.
+function getClusterLogHistory(clusterName, logType, params, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/topology/logs/${logType}`, params)
+}
+
 function getClusterCertificates(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/certificates`)
 }
@@ -248,6 +281,10 @@ function getOpenSVCStats(clusterName, baseURL) {
 
 function getOpenSVCPools(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/opensvc-pools`)
+}
+
+function getKubeStorageClasses(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/kube-storage-classes`)
 }
 
 function getBackups(clusterName, baseURL) {
@@ -300,6 +337,10 @@ function getJobs(clusterName, baseURL) {
 
 function getShardSchema(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema`)
+}
+
+function getSchemaEvents(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/schema/events`)
 }
 
 function getQueryRules(clusterName, baseURL) {
@@ -401,8 +442,13 @@ function rollingOptimize(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/optimize`)
 }
 
-function rollingAction(clusterName, action, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/rolling/${action}`)
+function rollingAction(clusterName, action, baseURL, target) {
+  const q = action === 'upgrade' && target ? `?target=${encodeURIComponent(target)}` : ''
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/rolling/${action}${q}`)
+}
+
+function rollingUpgradePlan(clusterName, target, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/rolling/upgrade/plan?target=${encodeURIComponent(target || 'patch')}`)
 }
 
 function rotateCertificates(clusterName, baseURL) {
@@ -475,7 +521,9 @@ function reseedStagingFromParent(clusterName, baseURL) {
 //#endregion Cluster management APIs
 
 //#region Server management APIs
-function setMaintenanceMode(clusterName, serverId, baseURL) {
+// Hits actions/maintenance, which toggles (server.SwitchMaintenance) -- not a
+// dedicated set action, hence the switch* name rather than set*.
+function switchMaintenanceMode(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/maintenance`)
 }
 
@@ -735,8 +783,8 @@ function monitorAllSchemas(clusterName, baseURL) {
 //#endregion Database service APIs
 
 //#region Test run APIs
-function runSysbench(clusterName, threads, baseURL, test) {
-  const params = `threads=${threads}` + (test ? `&test=${test}` : '')
+function runSysbench(clusterName, threads, baseURL, test, time) {
+  const params = `threads=${threads}` + (test ? `&test=${test}` : '') + (time ? `&time=${time}` : '')
   return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench?${params}`)
 }
 

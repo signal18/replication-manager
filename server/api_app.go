@@ -100,6 +100,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateOpenSVCConfig)),
 	)).Methods("POST")
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-template", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUpdateOpenSVCTemplate)),
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
@@ -483,6 +487,37 @@ func validateStandaloneCustomEndpointCredentials(accessKey, secretKey string) er
 	return nil
 }
 
+// s3ProviderAppCredentials returns the root credentials an S3 provider app exposes
+// through its variables, whatever the product: MinIO (MINIO_ROOT_USER /
+// MINIO_ROOT_PASSWORD), RustFS (RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY) or the AWS
+// names (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY), plus its region variable when
+// it has one (REGION, MINIO_REGION, RUSTFS_REGION, AWS_REGION).
+func s3ProviderAppCredentials(s3node *cluster.App) (access, secret, region *config.VariableMapping, err error) {
+	if s3node == nil || s3node.AppConfig == nil || s3node.AppConfig.Deployment == nil {
+		return nil, nil, nil, fmt.Errorf("S3 endpoint app has no deployment")
+	}
+	dep := s3node.AppConfig.Deployment
+	pairs := [][2]string{{"MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD"}, {"RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"}, {"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"}}
+	for _, pair := range pairs {
+		a, errA := dep.GetVariableByName(pair[0], false)
+		k, errK := dep.GetVariableByName(pair[1], false)
+		if errA == nil && a != nil && errK == nil && k != nil {
+			access, secret = a, k
+			break
+		}
+	}
+	if access == nil || secret == nil {
+		return nil, nil, nil, fmt.Errorf("S3 endpoint app %s exposes no root credentials (MINIO_ROOT_USER/MINIO_ROOT_PASSWORD, RUSTFS_ACCESS_KEY/RUSTFS_SECRET_KEY or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)", s3node.Name)
+	}
+	for _, name := range []string{"REGION", "MINIO_REGION", "RUSTFS_REGION", "AWS_REGION"} {
+		if r, errR := dep.GetVariableByName(name, false); errR == nil && r != nil {
+			region = r
+			break
+		}
+	}
+	return access, secret, region, nil
+}
+
 // hydrateS3MountFromProvider applies provider-managed fields to a provider-linked
 // mount using ProviderName as the server-side authority.
 //
@@ -524,20 +559,16 @@ func hydrateS3MountFromProvider(mycluster *cluster.Cluster, mount *config.S3Moun
 		if s3node == nil {
 			return fmt.Errorf("provider %q references unknown app endpoint %q", providerName, provider.ProviderApp)
 		}
-		acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
-		if err != nil || acckey == nil {
-			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_USER variable set")
-		}
-		secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
-		if err != nil || secretkey == nil {
-			return fmt.Errorf("S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set")
+		acckey, secretkey, providerRegion, err := s3ProviderAppCredentials(s3node)
+		if err != nil {
+			return err
 		}
 
 		mount.Endpoint = provider.ProviderApp
 		mount.AccessKey = acckey.Value
 		mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(mount.Name, secretkey.Value))
 
-		region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+		region := providerRegion
 		if region != nil {
 			mount.Region = region.Value
 		} else {
@@ -1072,6 +1103,47 @@ func (repman *ReplicationManager) handlerMuxAppUpdateOpenSVCConfig(w http.Respon
 	fmt.Fprintf(w, "App config/secret maps updated")
 }
 
+// @Summary Refresh the OpenSVC service definition of an app
+// @Description Re-renders the app's service definition from its template and settings (timeouts, priority, volumes, routes) and pushes it to the live OpenSVC object without restarting it; the next start uses it. The database counterpart is servers/{serverName}/actions/update-opensvc-template.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "App service definition updated"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "App Not Found"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-template [post]
+func (repman *ReplicationManager) handlerMuxAppUpdateOpenSVCTemplate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if mycluster.GetOrchestrator() != "opensvc" {
+		http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
+		return
+	}
+	app := mycluster.GetAppFromName(vars["appName"])
+	if app == nil {
+		http.Error(w, "App Not Found", http.StatusNotFound)
+		return
+	}
+	if err := mycluster.OpenSVCUpdateAppTemplate(app); err != nil {
+		http.Error(w, "Failed to update app service definition: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Fprintf(w, "App service definition updated")
+}
+
 // @Summary Unprovision App Service
 // @Description Unprovision the app service for a given cluster and app
 // @Tags Apps
@@ -1105,7 +1177,7 @@ func (repman *ReplicationManager) handlerMuxAppUnprovision(w http.ResponseWriter
 				http.Error(w, fmt.Sprintf("Can not unprovision app service: %s", err), http.StatusInternalServerError)
 				return
 			}
-			mycluster.ClearAppProvisionedCredits(node)
+			mycluster.ClearAppProvisioned(node)
 		} else {
 			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
@@ -1379,12 +1451,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				gwUnlock := func() {}
 				var externalRoutes [][]config.Route
 				if !strings.HasPrefix(vars["key"], "monitor") {
-					gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
-					if gw != "" {
-						gwMu := repman.getGatewayMutex(gw)
-						gwMu.Lock()
-						gwUnlock = gwMu.Unlock
-					}
+					gwUnlock = repman.lockGateways(mycluster.Conf) // #1873: every gateway of the cluster, fixed order
 					externalRoutes = repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
 				}
 
@@ -1848,6 +1915,28 @@ func routesReferencingSecretVar(routes []config.Route, varName string) []int {
 // it on first use.  Holding this mutex across allExternalGatewayRoutes + node.Lock()
 // prevents two concurrent requests on different clusters from both passing the
 // cross-cluster conflict check and both committing conflicting routes.
+// lockGateways takes the mutex of every gateway of a cluster in a fixed order (no
+// deadlock between two clusters sharing several gateways, #1873) and returns the
+// unlock; a no-op when the cluster has no gateway.
+func (repman *ReplicationManager) lockGateways(conf *config.Config) func() {
+	gws := conf.GatewayServicesLower()
+	if len(gws) == 0 {
+		return func() {}
+	}
+	sort.Strings(gws)
+	locked := make([]*sync.Mutex, 0, len(gws))
+	for _, gw := range gws {
+		mu := repman.getGatewayMutex(gw)
+		mu.Lock()
+		locked = append(locked, mu)
+	}
+	return func() {
+		for i := len(locked) - 1; i >= 0; i-- {
+			locked[i].Unlock()
+		}
+	}
+}
+
 func (repman *ReplicationManager) getGatewayMutex(gw string) *sync.Mutex {
 	actual, _ := repman.gatewayMu.LoadOrStore(gw, new(sync.Mutex))
 	return actual.(*sync.Mutex)
@@ -1866,16 +1955,16 @@ func (repman *ReplicationManager) allExternalGatewayRoutes(excludeClusterName, e
 	}
 	repman.Unlock()
 
-	var thisGateway string
+	var thisConf *config.Config
 	if cl, ok := clusterSnapshot[excludeClusterName]; ok {
-		thisGateway = strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService))
+		thisConf = cl.Conf
 	}
-	if thisGateway == "" {
+	if thisConf == nil || thisConf.PrimaryGatewayService() == "" {
 		return nil
 	}
 	var others [][]config.Route
 	for _, cl := range clusterSnapshot {
-		if strings.ToLower(strings.TrimSpace(cl.Conf.Cloud18GatewayService)) != thisGateway {
+		if !cl.Conf.SharesGateway(thisConf) { // #1873: peers share any gateway
 			continue
 		}
 		// GetAppsCopy snapshots cl.Apps under the cluster lock so we don't
@@ -1951,12 +2040,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		// batch.  gwUnlock is called explicitly at every exit so the mutex is released
 		// right after the commit and before post-commit I/O (SaveConfig, etc.).
 		gwUnlock := func() {}
-		gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
-		if gw != "" {
-			gwMu := repman.getGatewayMutex(gw)
-			gwMu.Lock()
-			gwUnlock = gwMu.Unlock
-		}
+		gwUnlock = repman.lockGateways(mycluster.Conf) // #1873: every gateway of the cluster, fixed order
 		others := repman.allExternalGatewayRoutes(vars["clusterName"], vars["appName"])
 
 		for _, row := range body {
@@ -2186,12 +2270,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 	switch field {
 	case "routes":
 		gwUnlock := func() {}
-		gw := strings.ToLower(strings.TrimSpace(mycluster.Conf.Cloud18GatewayService))
-		if gw != "" {
-			gwMu := repman.getGatewayMutex(gw)
-			gwMu.Lock()
-			gwUnlock = gwMu.Unlock
-		}
+		gwUnlock = repman.lockGateways(mycluster.Conf) // #1873: every gateway of the cluster, fixed order
 		node.Lock()
 		if index >= len(node.AppConfig.Deployment.Routes) {
 			node.Unlock()
@@ -2366,18 +2445,12 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 
 		if s3node != nil && strings.TrimSpace(row.ProviderName) == "" {
 			// Derive credentials from sibling app only when endpoint resolved to an app.
-			acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
-			if err != nil || acckey == nil {
-				http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
+			acckey, secretkey, region, err := s3ProviderAppCredentials(s3node)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			row.AccessKey = acckey.Value
-
-			secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
-			if err != nil || secretkey == nil {
-				http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
-				return
-			}
 
 			// Contract: mount SecretKey remains encrypted at rest in app config/API payloads.
 			// The sibling app variable may arrive plaintext or encrypted depending on source;
@@ -2385,7 +2458,6 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			// re-encrypts for this mount storage slot.
 			row.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name, secretkey.Value))
 
-			region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
 			if region != nil {
 				row.Region = region.Value
 			}
@@ -2792,22 +2864,15 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					s3node, _ := mycluster.GetAppByURL(newValue)
 					if s3node != nil {
 						// Sibling-app endpoint: derive credentials from the app's variables.
-						acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
-						if err != nil || acckey == nil {
-							http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
-							return
-						}
-
-						secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
-						if err != nil || secretkey == nil {
-							http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
+						acckey, secretkey, region, err := s3ProviderAppCredentials(s3node)
+						if err != nil {
+							http.Error(w, err.Error(), http.StatusInternalServerError)
 							return
 						}
 
 						s3Mount.AccessKey = acckey.Value
 						s3Mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(s3Mount.Name, secretkey.Value))
 
-						region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
 						if region != nil {
 							s3Mount.Region = region.Value
 						} else {
@@ -3733,7 +3798,7 @@ func applyTemplateOwnedProjection(dst, src *config.AppConfig, templateName strin
 	// Template ownership projection (Milestone 1):
 	// - Preserved (live app identity / unrelated):
 	//   AppHost, AppPort, AppHostsIPV6, AppDbUser, AppDbPass, AppDbSchema,
-	//   AppS3Provider, ProvAppCreditUsed, ProvAppCreditPlanned.
+	//   AppS3Provider, AppStateful.
 	// - Template-owned (overwritten from validated template):
 	//   Deployment, AppConfigVersion, ProvAppTemplate, ProvAppDockerImg,
 	//   ProvAppDockerCmd, ProvAppType, ProvAppMem, ProvAppCpuCores,

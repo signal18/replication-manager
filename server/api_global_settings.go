@@ -130,6 +130,10 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 	}
 	value := ""
 	if settingValue, ok := vars["settingValue"]; ok {
+		// The GUI clears a text setting with the literal "{undefined}".
+		if settingValue == "{undefined}" {
+			settingValue = ""
+		}
 		value = settingValue
 	}
 
@@ -167,6 +171,32 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// parseLogHistoryBound parses a log-history-max-* setting value. Per T18
+// (see utils/s18log/history.go's HistoryQuery doc comment), 0 is a
+// meaningful "use the package default bound" value, not an error — but
+// strconv.Atoi silently maps any unparseable string to 0 too, which would
+// let a typo'd request (e.g. "not-a-number") report success while actually
+// resetting the bound to its default instead of applying what was asked.
+// An empty value is treated as that same 0/default sentinel rather than
+// rejected: /api/clusters/settings/actions/clear/{settingName} routes to
+// this same handler with no settingValue var, so value is "" here on clear
+// (handlerMuxSetGlobalSettings) — clearing one of these settings must still
+// work, not start failing because "" doesn't parse as an int.
+func parseLogHistoryBound(name, value string) (int, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, fmt.Errorf("invalid integer value for %s: %q", name, value)
+	}
+	if parsed < 0 {
+		return 0, fmt.Errorf("%s must be >= 0 (0 = use default)", name)
+	}
+	return parsed, nil
 }
 
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
@@ -267,6 +297,59 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		new_secret.Value = repman.Conf.Cloud18DomainSecret
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-domain-secret")
 		repman.Conf.Secrets["cloud18-domain-secret"] = new_secret
+	case "cloud18-marketplace-pricing-mode":
+		if value != config.ConstMarketplacePricingModeCsvServicePlan && value != config.ConstMarketplacePricingModeGlobalUnitPricing {
+			return fmt.Errorf("invalid marketplace pricing mode %q, expected %q or %q", value, config.ConstMarketplacePricingModeCsvServicePlan, config.ConstMarketplacePricingModeGlobalUnitPricing)
+		}
+		repman.Conf.Cloud18MarketplacePricingMode = value
+	case "cloud18-marketplace-dbu-price":
+		price, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur price for %s: %w", name, err)
+		}
+		if price < 0 {
+			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceDBUPrice = price
+	case "cloud18-marketplace-apu-price":
+		price, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return fmt.Errorf("invalid Eur price for %s: %w", name, err)
+		}
+		if price < 0 {
+			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
+		}
+		repman.Conf.Cloud18MarketplaceAPUPrice = price
+	case "resource-manager-infra-quota-pct", "resource-manager-infra-cpu-cores", "resource-manager-infra-memory-mb",
+		"resource-manager-infra-disk-gb", "resource-manager-infra-iops", "resource-manager-infra-network-mbps":
+		// scope:"server", persisted to default.toml by SaveConfig. The capacity is reassembled
+		// from the configuration every tick (ProduceContractedCapacityState), so the ledger
+		// follows without a restart: an admin changed the metal or the quota in the system
+		// config and had to restart replication-manager for it (preprod 2026-10-07, #1906).
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("invalid value for %s: %q (a number, 0 = unset)", name, value)
+		}
+		switch name {
+		case "resource-manager-infra-quota-pct":
+			if f > 100 {
+				return fmt.Errorf("invalid value for %s: %q (0-100)", name, value)
+			}
+			repman.Conf.ResourceManagerInfraQuotaPct = f
+			if repman.resourceManager != nil {
+				repman.resourceManager.SetQuotaPct(f)
+			}
+		case "resource-manager-infra-cpu-cores":
+			repman.Conf.ResourceManagerInfraCpuCores = f
+		case "resource-manager-infra-memory-mb":
+			repman.Conf.ResourceManagerInfraMemoryMB = f
+		case "resource-manager-infra-disk-gb":
+			repman.Conf.ResourceManagerInfraDiskGB = f
+		case "resource-manager-infra-iops":
+			repman.Conf.ResourceManagerInfraIops = f
+		case "resource-manager-infra-network-mbps":
+			repman.Conf.ResourceManagerInfraNetworkMbps = f
+		}
 	case "api-bind":
 		repman.Conf.APIBind = value
 	case "api-port":
@@ -298,6 +381,12 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "arbitration-read-timeout":
 		v, _ = strconv.Atoi(value)
 		repman.Conf.ArbitrationReadTimout = v
+	case "arbitration-verdict-streak":
+		v, _ = strconv.Atoi(value)
+		if v < 1 {
+			return fmt.Errorf("arbitration-verdict-streak: %q is not a count of ticks (1 or more)", value)
+		}
+		repman.Conf.ArbitrationVerdictStreak = v
 	case "git-acces-token":
 		repman.Conf.GitAccesToken = value
 	case "git-monitoring-ticker":
@@ -445,6 +534,35 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		val, _ := strconv.Atoi(value)
 		repman.Conf.LogHeartbeatLevel = val
 		repman.Conf.ImmuableFlagMap["log-level-heartbeat"] = val
+	case "log-history-enable":
+		if value == "" {
+			// Clearing (/actions/clear/{settingName} routes here with no
+			// settingValue, so value is "") must revert to the flag's actual
+			// default — server_cmd.go: log-history-enable defaults to true —
+			// not to isactive's "on" check, which reads "" as false and would
+			// make "clear" mean "disable" instead of "restore the default".
+			repman.Conf.LogHistoryEnable = true
+		} else {
+			repman.Conf.LogHistoryEnable = isactive
+		}
+	case "log-history-max-scan-bytes":
+		val, err := parseLogHistoryBound(name, value)
+		if err != nil {
+			return err
+		}
+		repman.Conf.LogHistoryMaxScanBytes = val
+	case "log-history-max-lines":
+		val, err := parseLogHistoryBound(name, value)
+		if err != nil {
+			return err
+		}
+		repman.Conf.LogHistoryMaxLines = val
+	case "log-history-max-files":
+		val, err := parseLogHistoryBound(name, value)
+		if err != nil {
+			return err
+		}
+		repman.Conf.LogHistoryMaxFiles = val
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
 		repman.Mailer.UpdateAddress(value)
@@ -477,6 +595,14 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.ApiServ = isactive
 	case "api-swagger-enabled":
 		repman.Conf.ApiSwaggerEnabled = isactive
+	case "mcp-server":
+		repman.Conf.MCPServ = isactive
+		repman.restartMCPServer()
+	case "cloud18-self-service-clusters":
+		repman.Conf.Cloud18SelfServiceClusters = isactive
+	case "mcp-auth-enabled":
+		repman.Conf.MCPAuthEnabled = isactive
+		repman.restartMCPServer()
 	case "arbitration-external":
 		if isactive && !repman.Conf.IsEligibleForArbitration() {
 			return errors.New("arbitration requires a registered Cloud18 account with a support or partner subscription plan")
@@ -505,6 +631,104 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MonitoringLogAPILogin = isactive
 	case "monitoring-log-api-login-silent-users":
 		repman.Conf.MonitoringLogAPILoginSilentUsers = value
+	case "cloud18-self-service-clusters-enabled-script":
+		repman.Conf.Cloud18SelfServiceClustersEnabledScript = strings.TrimSpace(value)
+	case "cloud18-self-service-clusters-can-borrow":
+		repman.Conf.Cloud18SelfServiceClustersCanBorrow = isactive
+	case "cloud18-self-service-max-clusters-per-user":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("cloud18-self-service-max-clusters-per-user must be a positive integer, got %q", value)
+		}
+		repman.Conf.Cloud18SelfServiceMaxClustersPerUser = n
+	case "cloud18-self-service-cache-seconds":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("cloud18-self-service-cache-seconds must be 0 (no cache) or a number of seconds, got %q", value)
+		}
+		repman.Conf.Cloud18SelfServiceCacheSeconds = n
+	case "resource-manager-ratio-dbu", "resource-manager-ratio-apu", "resource-manager-ratio-bku":
+		if _, err := cluster.ParseUnitRatios(value); err != nil {
+			return fmt.Errorf("%s: %w (format cores=1,mem=4g,disk=20g,iops=1000)", name, err)
+		}
+		switch name {
+		case "resource-manager-ratio-dbu":
+			repman.Conf.ResourceManagerRatioDBU = value
+		case "resource-manager-ratio-apu":
+			repman.Conf.ResourceManagerRatioAPU = value
+		default:
+			repman.Conf.ResourceManagerRatioBKU = value
+		}
+		if repman.resourceManager != nil {
+			if err := repman.resourceManager.ApplyRatioSettings(repman.Conf.ResourceManagerRatioDBU, repman.Conf.ResourceManagerRatioAPU, repman.Conf.ResourceManagerRatioBKU); err != nil {
+				return err
+			}
+		}
+	case "cloud18-marketplace-bku-price":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("cloud18-marketplace-bku-price must be a positive number of Eur per BKU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceBKUPrice = f
+	case "cloud18-marketplace-bau-price":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("cloud18-marketplace-bau-price must be a positive number of Eur per BAU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceBAUPrice = f
+	case "cloud18-marketplace-gwu-price":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f < 0 {
+			return fmt.Errorf("cloud18-marketplace-gwu-price must be a positive number of Eur per GWU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceGWUPrice = f
+		if repman.resourceManager != nil {
+			repman.resourceManager.SetPrices(repman.billingPrices())
+		}
+	case "cloud18-gateway-bandwidth-mbit":
+		for i, p := range config.SplitGatewayList(value) {
+			if f, err := strconv.ParseFloat(p, 64); err != nil || f <= 0 {
+				return fmt.Errorf("cloud18-gateway-bandwidth-mbit: entry %d %q must be a positive number of Mb/s", i+1, p)
+			}
+		}
+		repman.Conf.Cloud18GatewayBandwidthMbit = strings.Join(config.SplitGatewayList(value), ",")
+	case "cloud18-marketplace-gwu-free-units":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("cloud18-marketplace-gwu-free-units must be a whole number of GWU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceGWUFreeUnits = n
+	case "cloud18-marketplace-gwu-unit-mbit":
+		f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+		if err != nil || f <= 0 {
+			return fmt.Errorf("cloud18-marketplace-gwu-unit-mbit must be a positive number of Mb/s per GWU, got %q", value)
+		}
+		repman.Conf.Cloud18MarketplaceGWUUnitMbit = f
+	case "cloud18-marketplace-overcommit-price-pct", "cloud18-marketplace-undercommit-price-pct":
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n < 0 {
+			return fmt.Errorf("%s must be a positive percent of the unit price, got %q", name, value)
+		}
+		if name == "cloud18-marketplace-overcommit-price-pct" {
+			repman.Conf.Cloud18MarketplaceOvercommitPricePct = n
+		} else {
+			repman.Conf.Cloud18MarketplaceUndercommitPricePct = n
+		}
+	case "mcp-transport":
+		if value != "api" && value != "sse" && value != "stdio" && value != "both" {
+			return errors.New("mcp-transport must be api, sse, stdio or both")
+		}
+		repman.Conf.MCPTransport = value
+		repman.restartMCPServer()
+	case "mcp-port":
+		repman.Conf.MCPPort = value
+		repman.restartMCPServer()
+	case "mcp-bind-address":
+		repman.Conf.MCPBindAddr = value
+		repman.restartMCPServer()
+	case "mcp-advertise-address":
+		repman.Conf.MCPAdvertiseAddr = value
+		repman.restartMCPServer()
 	case "cloud18-peer-health-mode":
 		if value == "peering" || value == "smart" || value == "pulling" {
 			// scope:"server" — persisted to default.toml by SaveDynamic (value != default).
@@ -547,6 +771,16 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.ApiServ = !repman.Conf.ApiServ
 	case "api-swagger-enabled":
 		repman.Conf.ApiSwaggerEnabled = !repman.Conf.ApiSwaggerEnabled
+	case "mcp-server":
+		repman.Conf.MCPServ = !repman.Conf.MCPServ
+		repman.restartMCPServer()
+	case "cloud18-self-service-clusters":
+		repman.Conf.Cloud18SelfServiceClusters = !repman.Conf.Cloud18SelfServiceClusters
+	case "cloud18-self-service-clusters-can-borrow":
+		repman.Conf.Cloud18SelfServiceClustersCanBorrow = !repman.Conf.Cloud18SelfServiceClustersCanBorrow
+	case "mcp-auth-enabled":
+		repman.Conf.MCPAuthEnabled = !repman.Conf.MCPAuthEnabled
+		repman.restartMCPServer()
 	case "arbitration-external":
 		if !repman.Conf.Arbitration && !repman.Conf.IsEligibleForArbitration() {
 			return errors.New("arbitration requires a registered Cloud18 account with a support or partner subscription plan")
@@ -578,6 +812,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.ImmuableFlagMap["log-heartbeat"] = repman.Conf.LogHeartbeat
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
+	case "log-history-enable":
+		repman.Conf.LogHistoryEnable = !repman.Conf.LogHistoryEnable
 	case "cloud18-disable-peers":
 		// scope:"server" — persisted to default.toml by SaveDynamic (value != default),
 		// which is merged back at startup. NOT ImmuableFlagMap (immutable.toml is never read).

@@ -75,8 +75,13 @@ func buildLocalCheckKey(appHost string, route config.Route) string {
 func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed}
 	errStates := make(map[string]state.State)
+
+	// Database auto-create (#1870): a refused provision stays visible until one goes through.
+	if msg := app.DbProvisionError; msg != "" {
+		errStates[ErrAppDbProvision] = state.State{ErrType: "WARN", ErrKey: ErrAppDbProvision, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppDbProvision], app.GetId(), msg), ServerUrl: app.Host}
+	}
 
 	// Gateway conflict check: surface the conflict as WARN state and let the rest
 	// of the monitoring checks run — local reachability is independent of gateway
@@ -91,11 +96,7 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		}
 	}
-	failureThreshold := cluster.Conf.AppErrorDebounceThreshold
-	if failureThreshold <= 0 {
-		// Keep legacy default when the cluster-level override is unset/invalid.
-		failureThreshold = appErrFailureThreshold
-	}
+	failureThreshold := appErrorDebounceThreshold(cluster.Conf)
 	routeEndpoint := func(route config.Route) string {
 		normalized := route
 		normalized.Normalize()
@@ -124,8 +125,16 @@ func (app *App) GetMonitoringStatus() string {
 	}
 
 	if len(routes) == 0 {
-		errStates[ErrAppConnectFailed] = state.State{ErrType: "WARN", ErrKey: ErrAppConnectFailed, ErrDesc: fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), "no routes defined"), ServerUrl: app.Host}
-		app.ResetAllAppErrConsecutiveCnt()
+		// No route: the app lives on the cluster network only (a database, a cache). It
+		// is up when its port answers, probed over TCP on the app host; a process that
+		// listens on nothing (app-monitor-mode = ping, #1919) is up when its host answers
+		// an ICMP echo.
+		app.ResetAppErrConsecutiveCntExcept("app-port") // routes gone: their debounce counters go with them
+		if errKey, err := app.probeNoRoute(time.Duration(cluster.Conf.Timeout) * time.Second); err != nil {
+			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: app.noRouteProbeErrDesc(errKey, err), ServerUrl: app.Host}}, err)
+		} else {
+			app.ResetAppErrConsecutiveCnt("app-port")
+		}
 		for _, key := range appErrKeys {
 			if st, ok := errStates[key]; ok {
 				app.RecordAppError(key, st)
@@ -134,7 +143,10 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		}
 		app.SetRouteStatuses(nil)
-		return stateFailed
+		if len(errStates) > 0 {
+			return stateFailed
+		}
+		return stateAppRunning
 	}
 
 	// Run each unique local endpoint check exactly once.
@@ -466,17 +478,5 @@ func (app *App) CheckPrimaryRoute() {
 
 	if assignedFirstAsPrimary {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "No primary route defined for app %s, setting first route as primary", app.Name)
-	}
-}
-
-func (app *App) CheckAppCredits() {
-	if app.AppConfig.ProvAppCreditPlanned < 0 {
-		app.ClusterGroup.SetState("CREDIT02", state.State{ErrType: "WARN", ErrKey: "CREDIT02", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT02"], app.GetId(), app.AppConfig.ProvAppCreditPlanned)})
-	}
-	if app.AppConfig.ProvAppCreditUsed < 0 {
-		app.ClusterGroup.SetState("CREDIT03", state.State{ErrType: "WARN", ErrKey: "CREDIT03", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT03"], app.GetId(), app.AppConfig.ProvAppCreditUsed)})
-	}
-	if app.AppConfig.ProvAppCreditPlanned != app.AppConfig.ProvAppCreditUsed {
-		app.ClusterGroup.SetState("CREDIT04", state.State{ErrType: "WARN", ErrKey: "CREDIT04", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT04"], app.GetId(), app.AppConfig.ProvAppCreditPlanned, app.AppConfig.ProvAppCreditUsed)})
 	}
 }

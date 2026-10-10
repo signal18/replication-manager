@@ -74,6 +74,9 @@ func (repman *ReplicationManager) testFile(fn string) error {
 func (repman *ReplicationManager) httpserver() {
 	//PUBLIC ENDPOINTS
 	router := mux.NewRouter()
+	// Same as the API router: no path cleaning, a setting value in the path may start
+	// with a slash (this router serves the API too when the dashboard port is used).
+	router.SkipClean(true)
 	router.Use(repman.RecoveryMiddleware)
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
@@ -134,6 +137,9 @@ func (repman *ReplicationManager) httpserver() {
 	}
 
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if redispatchLeadingSlashes(router, w, r) {
+			return
+		}
 		// Check if the path starts with "/api"
 		if len(r.URL.Path) >= 4 && r.URL.Path[:4] == "/api" {
 			// Return 404 for /api paths
@@ -153,6 +159,14 @@ func (repman *ReplicationManager) httpserver() {
 	router.HandleFunc("/api/signup/status", repman.handlerSignupStatus).Methods(http.MethodGet, http.MethodOptions)
 	router.HandleFunc("/api/autologin", repman.autologinHandler)
 	router.HandleFunc("/api/dashboard-token", repman.dashboardTokenHandler)
+	// User-issued API tokens (issue #1835): list/create/revoke, admin list per cluster.
+	repman.apiTokenRoutes(router)
+	// MCP server for AI assistants (issue #1838), mounted on this listener.
+	router.PathPrefix("/api/mcp/").HandlerFunc(repman.handlerMuxMCP)
+	router.Handle("/api/cloud18/self-service", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSelfServiceStatus)),
+	))
 
 	router.Handle("/api/register", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -303,6 +317,15 @@ func (repman *ReplicationManager) httpserver() {
 	router.Handle("/clusters/{clusterName}/servers/{serverName}/slave-status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsSlaveStatus)),
 	))
+	// reader-status (bug #6 fix): a single NEW route, deliberately not a
+	// change to is-slave/slave-status above -- see
+	// handlerMuxServersPortIsReaderStatus's doc comment. Only master-status/
+	// slave-status get an /api/-prefixed alias (legacy); this one doesn't need
+	// one since nothing outside the checkslave script this branch also
+	// controls calls it yet.
+	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/reader-status", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsReaderStatus)),
+	))
 	router.Handle("/clusters/{clusterName}/servers/{serverName}/{serverPort}/master-status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortIsMasterStatus)),
 	))
@@ -362,9 +385,29 @@ func (repman *ReplicationManager) httpserver() {
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalMetrics)),
 		))
+		router.Handle("/api/global/resources", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalResources)),
+		))
+		router.Handle("/api/global/price", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalPrice)),
+		))
+		router.Handle("/api/global/price/{month}", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalPrice)),
+		))
+		router.Handle("/api/me/units", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxMyUnits)),
+		))
 		router.Handle("/api/global/http-logs", negroni.New(
 			negroni.HandlerFunc(repman.validateTokenMiddleware),
 			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalLogs)),
+		))
+		router.Handle("/api/global/jobs", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxGlobalJobs)),
 		))
 		repman.apiMeetProtectedHandler(router)
 		repman.apiClusterProtectedHandler(router)
@@ -464,6 +507,7 @@ func (repman *ReplicationManager) handlerHeartbeat(w http.ResponseWriter, r *htt
 	send.UID = repman.Conf.ArbitrationSasUniqueId
 	send.Secret = repman.Conf.ArbitrationSasSecret
 	send.Status = repman.Status
+	send.APIURL = repman.selfAPIURL()
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(send); err != nil {
 		http.Error(w, "Encoding error", http.StatusInternalServerError)

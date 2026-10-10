@@ -537,6 +537,14 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	}
 	server.SetWaitErrorlogCookie()
 
+	// API mode: dbjobs discovers this task via the cookie above and opens its
+	// own receiver on demand through handlerMuxServerReceiveTask. Opening one
+	// here too would leak an SST listener that nothing ever connects to --
+	// it just sits until its 1h accept deadline expires (see cluster_sst.go).
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+	}
+
 	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogError, task)
 	if err != nil {
 		return 0, nil
@@ -560,6 +568,13 @@ func (server *ServerMonitor) JobBackupAuditLog() (int64, error) {
 	}
 	server.SetWaitAuditlogCookie()
 
+	// See JobBackupErrorLog: in API mode, dbjobs pulls the receiver address
+	// from handlerMuxServerReceiveTask on demand -- pre-opening one here
+	// would leak an unused SST listener until its 1h accept deadline.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+	}
+
 	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogAudit, task)
 	if err != nil {
 		return 0, nil
@@ -582,6 +597,13 @@ func (server *ServerMonitor) JobBackupSqlErrorLog() (int64, error) {
 		return 0, nil
 	}
 	server.SetWaitSqlErrorlogCookie()
+
+	// See JobBackupErrorLog: in API mode, dbjobs pulls the receiver address
+	// from handlerMuxServerReceiveTask on demand -- pre-opening one here
+	// would leak an unused SST listener until its 1h accept deadline.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+	}
 
 	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogSqlError, task)
 	if err != nil {
@@ -607,6 +629,13 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 
 	if server.HasWaitSlowqueryCookie() {
 		return 0, nil
+	}
+
+	// See JobBackupErrorLog: in API mode, dbjobs pulls the receiver address
+	// from handlerMuxServerReceiveTask on demand -- pre-opening one here
+	// would leak an unused SST listener until its 1h accept deadline.
+	if cluster.Conf.SchedulerJobsMode == "api" {
+		return server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
 	}
 
 	port, err := cluster.SSTRunReceiverToDBLogFile(server, DBLogSlowQuery, task)
@@ -726,10 +755,12 @@ func (server *ServerMonitor) SlowLogWatcher() {
 
 }
 
-// decryptAES256 runs openssl AES-256-CBC decryption and returns the plaintext bytes.
+// DecryptAES256 runs openssl AES-256-CBC decryption and returns the plaintext bytes.
+// dbjobs_new.sh removes Base64 line breaks, while -A requires a single input line.
+// Normalizing whitespace preserves compatibility with wrapped Base64 callbacks.
 func (server *ServerMonitor) DecryptAES256(encrypted, key, iv string) ([]byte, error) {
-	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", key, "-iv", iv)
-	cmd.Stdin = strings.NewReader(encrypted + "\n")
+	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-A", "-nosalt", "-K", key, "-iv", iv)
+	cmd.Stdin = strings.NewReader(strings.Join(strings.Fields(encrypted), "") + "\n")
 
 	var out bytes.Buffer
 	var stderr bytes.Buffer
@@ -825,26 +856,32 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	return nil
 }
 
-func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, error) {
+// DecodeSecret decrypts an encrypted job-callback body and returns both the
+// "secret" field (used by SecretLoginCheck for auth) and the full decrypted
+// JSON payload, trimmed to its outermost object -- callers that need fields
+// beyond "secret"/"server" (e.g. handlerMuxServerJobState's "restore" field,
+// server/api_database.go) parse the returned payload themselves rather than
+// this function growing a field for every such caller.
+func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (secret string, payload string, err error) {
 	cluster := server.ClusterGroup
 	data, err := server.DecryptAES256(encrypted, key, iv)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error decrypting secret: %s", err.Error())
-		return "", err
+		return "", "", err
 	}
 
 	pos := bytes.LastIndex(data, []byte("}"))
 	if pos > 1 {
 		data = data[:pos+1]
 	} else {
-		return "", errors.New("No valid JSON object found in decrypted data")
+		return "", "", errors.New("No valid JSON object found in decrypted data")
 	}
 
 	// Optional: remove any leading non-JSON noise (e.g., shell output)
 	if start := bytes.Index(data, []byte("{")); start > 0 {
 		data = data[start:]
 	} else if start == -1 {
-		return "", errors.New("No valid JSON object found in decrypted data")
+		return "", "", errors.New("No valid JSON object found in decrypted data")
 	}
 
 	var secretKey struct {
@@ -855,8 +892,8 @@ func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, er
 	err = json.Unmarshal(data, &secretKey)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", data, err.Error())
-		return "", err
+		return "", "", err
 	}
 
-	return strings.TrimSpace(secretKey.Secret), nil
+	return strings.TrimSpace(secretKey.Secret), string(data), nil
 }

@@ -1,0 +1,17 @@
+api:
+  url: "https://mon_ip_repman:10005"
+  username: "admin"
+  password: "!mysuperpassword"
+
+# Optional. Clusters, their hosts and their expected master are discovered
+# from the API (/api/clusters + each cluster topology, where the expected
+# master is the server repman flags as "prefered"). Declare a cluster here
+# only to override that discovery, e.g. when repman has no prefered master
+# set but you still want to pin one.
+#
+# clusters:
+#   - name: "mon_cluster"
+#     master: "my master host"
+#     hosts:
+#       - "my slave host"
+#       - "my other slave host"
