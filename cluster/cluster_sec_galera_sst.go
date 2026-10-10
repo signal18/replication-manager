@@ -31,9 +31,24 @@ func (cluster *Cluster) CheckGaleraSSTAccount() {
 		return
 	}
 	account := "'" + config.ConstGaleraSSTSocketUser + "'@'localhost'"
-	for _, server := range cluster.Servers {
+	// a Synced node first: a donor or desynced node may block or fail the replicated DDL
+	servers := make([]*ServerMonitor, 0, len(cluster.Servers))
+	for _, s := range cluster.Servers {
+		if s != nil && s.IsWsrepSync {
+			servers = append(servers, s)
+		}
+	}
+	for _, s := range cluster.Servers {
+		if s != nil && !s.IsWsrepSync {
+			servers = append(servers, s)
+		}
+	}
+	for _, server := range servers {
 		if server == nil || server.IsPostgreSQLHost() || !server.IsRunning() || server.Conn == nil || server.DBVersion == nil || server.Users == nil {
 			continue
+		}
+		if !server.DBVersion.IsMariaDB() {
+			return // MySQL/Percona keep their wsrep_sst_auth (galeraSocketSST): no socket account
 		}
 		if _, ok := server.Users.CheckAndGet(account); ok {
 			cluster.galeraSSTAccountErr = ""

@@ -871,6 +871,20 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 			}
 		}
 	}
+	// Galera on MariaDB: the SST account is created at datadir init (init/ is the image's
+	// /docker-entrypoint-initdb.d), so the bootstrap node holds it before any node joins
+	if configurator.galeraSocketSST() {
+		sql, err := dbhelper.GaleraSSTAccountInitSQL(config.ConstGaleraSSTSocketUser)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(Datadir+"/init/init", os.FileMode(0775)); err != nil {
+			return fmt.Errorf("Compliance create directory %q: %s", Datadir+"/init/init", err)
+		}
+		if err := os.WriteFile(Datadir+"/init/init/"+galeraSSTAccountInitFile, []byte(sql), 0644); err != nil {
+			return fmt.Errorf("Galera SST account init file: %s", err)
+		}
+	}
 	// processing symlink
 	type Link struct {
 		Symlink string `json:"symlink"`
@@ -1372,8 +1386,12 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 		}
 
 		var stripped []string
-		content, stripped = FilterRootPassword(fpath, content, TemplateEnv["%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%"])
+		content, stripped = FilterRootPassword(fpath, content, TemplateEnv["%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%"], configurator.galeraSocketSST())
 		if len(stripped) > 0 {
+			if pw := TemplateEnv["%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%"]; len(pw) < shortRootPasswordLen {
+				// a short password matches more values by chance: say what was removed, loudly
+				configurator.Logger.Warnf("Config %s: root password shorter than %d characters, %d line(s) commented out (%s): check that none was a value equal to it by chance (#1960)", fpath, shortRootPasswordLen, len(stripped), strings.Join(stripped, ", "))
+			}
 			configurator.Logger.Infof("Config %s: root password removed from %s (#1960)", fpath, strings.Join(stripped, ", "))
 		}
 

@@ -79,7 +79,8 @@ type ClusterResponse struct {
 
 type Cluster struct {
 	// Galera SST unix_socket account upkeep (#1960, CheckGaleraSSTAccount): last
-	// creation attempt and the open ERR00114 text while it fails
+	// creation attempt and the open ERR00114 text while it fails. Read and written by the
+	// monitor tick only: no lock; a reader outside the tick must add one.
 	galeraSSTAccountLastTry time.Time
 	galeraSSTAccountErr     string
 

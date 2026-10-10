@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/releases"
 )
 
 // rootPasswordFileSuffix is the one rendered file whose job is to carry the root
@@ -27,7 +28,11 @@ const rootPasswordFileSuffix = "/init/MYSQL_ROOT_PASSWORD"
 //     the backups and the dbjobs pass their credentials on the command line.
 //
 // It returns the content and the keys it changed. The init secret file is left as is.
-func FilterRootPassword(fpath string, content string, password string) (string, []string) {
+//
+// socketSST: the SST authenticates the unix_socket account (MariaDB). Without it
+// (MySQL/Percona, xtrabackup SST not validated with auth_socket) the wsrep_sst_auth line
+// is left as it is.
+func FilterRootPassword(fpath string, content string, password string, socketSST bool) (string, []string) {
 	if password == "" || strings.HasSuffix(fpath, rootPasswordFileSuffix) || !strings.Contains(content, password) {
 		return content, nil
 	}
@@ -38,6 +43,9 @@ func FilterRootPassword(fpath string, content string, password string) (string, 
 			continue
 		}
 		key := iniLineKey(line)
+		if key == "wsrep_sst_auth" && !socketSST {
+			continue
+		}
 		if key == "wsrep_sst_auth" {
 			lines[i] = "wsrep_sst_auth=" + config.ConstGaleraSSTSocketUser + ":"
 		} else {
@@ -97,3 +105,22 @@ func lineCarriesPassword(line, password string) bool {
 
 // passwordTokenSeparators split a value into the tokens a password is compared with.
 const passwordTokenSeparators = ":,; \t\"'="
+
+// galeraSSTAccountInitFile is the datadir-init SQL creating the SST account (init/ is the
+// image's /docker-entrypoint-initdb.d, which runs *.sql once, at datadir creation).
+const galeraSSTAccountInitFile = "galera_sst_account.sql"
+
+// galeraSocketSST: a Galera cluster on MariaDB authenticates its SST with the unix_socket
+// account. MySQL and Percona keep their wsrep_sst_auth until xtrabackup SST over
+// auth_socket is validated.
+func (configurator *Configurator) galeraSocketSST() bool {
+	if !configurator.IsFilterInDBTags("wsrep") {
+		return false
+	}
+	img := configurator.ClusterConfig.ProvDbImg
+	return img == "" || releases.FlavorOfImage(img) == "mariadb"
+}
+
+// shortRootPasswordLen: below it, a root password can equal an unrelated value by chance
+// (wsrep_cluster_name=mysql): the filter warns with what it commented out.
+const shortRootPasswordLen = 12

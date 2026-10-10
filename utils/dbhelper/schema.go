@@ -2283,3 +2283,18 @@ func CreateSocketAuthUser(db *sqlx.DB, myver *version.Version, user_name string,
 	_, err := db.Exec(grant)
 	return query + ";" + grant, err
 }
+
+// GaleraSSTAccountInitSQL is the datadir-init SQL of the Galera SST account on MariaDB
+// (#1960): run by the image entrypoint from /docker-entrypoint-initdb.d when the datadir
+// is created, before Galera starts, so the bootstrap node, the donor of the first SSTs,
+// holds the account from its first second and the joiners receive it with the copy.
+// REPLICATION CLIENT is the alias MariaDB 10.5+ keeps for BINLOG MONITOR: one file for
+// every version, the monitor's CheckGaleraSSTAccount stays the safety net.
+func GaleraSSTAccountInitSQL(user_name string) (string, error) {
+	if err := ValidateIdentifier(user_name); err != nil {
+		return "", fmt.Errorf("invalid username: %w", err)
+	}
+	account := QuoteMySQLIdentifier(user_name) + "@'localhost'"
+	return "CREATE USER IF NOT EXISTS " + account + " IDENTIFIED VIA unix_socket;\n" +
+		"GRANT RELOAD, PROCESS, LOCK TABLES, REPLICATION CLIENT ON *.* TO " + account + ";\n", nil
+}
