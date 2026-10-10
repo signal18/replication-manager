@@ -478,9 +478,19 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// If no relay and no cycle are detected, infer master-slave unless
 	// active-passive was configured explicitly.
 	if !hasRelay && !hasCycling && !cluster.HasConfigTopoActivePassive() {
-		cluster.Topology = config.TopoMasterSlave
-		if pgTopology := cluster.postgresReplicationTopology(); pgTopology != "" {
-			cluster.Topology = pgTopology
+		switch target := cluster.GetTopologyTarget(); target {
+		case config.TopoMultiMasterWsrep, config.TopoMultiMasterGrouprep:
+			// Galera and group replication are never inferred from the replication
+			// threads: the declaration is their only source. Capped to master-slave here
+			// since 37cd7156e (v3.1.7, the declared topology only applied when unknown):
+			// every wsrep code path was dead (regression from v3.0.33, dev3 galera-sst
+			// 2026-10-10).
+			cluster.Topology = target
+		default:
+			cluster.Topology = config.TopoMasterSlave
+			if pgTopology := cluster.postgresReplicationTopology(); pgTopology != "" {
+				cluster.Topology = pgTopology
+			}
 		}
 	}
 
