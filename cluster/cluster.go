@@ -583,6 +583,7 @@ type Agent struct {
 	Id           string `json:"id"`
 	HostName     string `json:"hostName"`
 	CpuCores     int64  `json:"cpuCores"`
+	CpuThreads   int64  `json:"cpuThreads"` // logical CPUs; above CpuCores the node runs SMT (smt.go)
 	CpuFreq      int64  `json:"cpuFreq"`
 	MemBytes     int64  `json:"memBytes"`
 	MemFreeBytes int64  `json:"memFreeBytes"`

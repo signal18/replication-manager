@@ -14,6 +14,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -320,6 +321,19 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return fmt.Errorf("invalid Eur price for %s: must not be negative", name)
 		}
 		repman.Conf.Cloud18MarketplaceAPUPrice = price
+	case "resource-manager-smt-gain":
+		// SMT gain (#1958): the capacity follows at the next tick, and the clusters read it
+		// from the ResourceManager for the quota they render (no per-cluster copy written
+		// here while their monitor reads it). No upper bound: Agent.smtGain clamps it to the
+		// node's threads per core (SMT2, SMT4...).
+		f, err := parseSmtGain(value)
+		if err != nil {
+			return err
+		}
+		repman.Conf.ResourceManagerSmtGain = f
+		if repman.resourceManager != nil {
+			repman.resourceManager.SetSmtGain(f)
+		}
 	case "resource-manager-infra-quota-pct", "resource-manager-infra-cpu-cores", "resource-manager-infra-memory-mb",
 		"resource-manager-infra-disk-gb", "resource-manager-infra-iops", "resource-manager-infra-network-mbps":
 		// scope:"server", persisted to default.toml by SaveConfig. The capacity is reassembled
@@ -885,4 +899,14 @@ func (repman *ReplicationManager) switchServerSetting(user string, URL string, n
 	}
 
 	return nil
+}
+
+// parseSmtGain validates resource-manager-smt-gain: a finite number >= 0. NaN would pass a
+// range check and poison the pool, the ledger and the rendered CPU quota.
+func parseSmtGain(value string) (float64, error) {
+	f, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) || f < 0 {
+		return 0, fmt.Errorf("invalid resource-manager-smt-gain %q: a finite number >= 0 (1 or less = SMT not accounted)", value)
+	}
+	return f, nil
 }

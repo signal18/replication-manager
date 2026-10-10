@@ -699,7 +699,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 			// deliberately ABOVE prov-db-memory (which sizes my.cnf) so mariadbd has headroom
 			// and is not OOM-killed when its real footprint exceeds the buffer pool.
 			memStr := strconv.Itoa(server.ClusterGroup.GetDBContainerMemoryCapMB()) + "m"
-			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + memStr + " --memory-swap=" + memStr + " --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + memStr + " --memory-swap=" + memStr + " --cpus=" + server.ClusterGroup.dockerCPUsOnNode(server)
 			// this need to find the device with df in container
 			//  --device-read-iops=" + server.ClusterGroup.Conf.ProvIops +".0" --device-write-iops=device" + server.ClusterGroup.Conf.ProvIops
 		}
@@ -1244,7 +1244,7 @@ func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
 		// headroom) plus the cpu quota, so a live pg update can move BOTH axes.
 		// om3 syntax only (v3 template): "<cores*100>%" -- see OpenSVCCPUQuotaKeyword.
 		svcsection["DEFAULT"]["pg_mem_limit"] = strconv.FormatInt(int64(server.ClusterGroup.GetDBContainerMemoryCapMB())*1024*1024, 10)
-		if q := OpenSVCCPUQuotaKeyword(server.ClusterGroup.GetDBContainerCPUCapCores()); q != "" {
+		if q := OpenSVCCPUQuotaKeyword(server.ClusterGroup.cpuQuotaCoresOnNode(serverNode(server), server.ClusterGroup.GetDBContainerCPUCapCores())); q != "" {
 			svcsection["DEFAULT"]["pg_cpu_quota"] = q
 		}
 	}

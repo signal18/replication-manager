@@ -755,6 +755,7 @@ type Config struct {
 	ResourceManagerInfraDiskGB                float64           `scope:"server" mapstructure:"resource-manager-infra-disk-gb" toml:"resource-manager-infra-disk-gb" json:"resourceManagerInfraDiskGb"`
 	ResourceManagerInfraIops                  float64           `scope:"server" mapstructure:"resource-manager-infra-iops" toml:"resource-manager-infra-iops" json:"resourceManagerInfraIops"`
 	ResourceManagerInfraNetworkMbps           float64           `scope:"server" mapstructure:"resource-manager-infra-network-mbps" toml:"resource-manager-infra-network-mbps" json:"resourceManagerInfraNetworkMbps"`
+	ResourceManagerSmtGain                    float64           `scope:"server" mapstructure:"resource-manager-smt-gain" toml:"resource-manager-smt-gain" json:"resourceManagerSmtGain"`
 	ProvDbBootstrapScript                     string            `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
 	ProvProxyBootstrapScript                  string            `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
 	ProvDbCleanupScript                       string            `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`

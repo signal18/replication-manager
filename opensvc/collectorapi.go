@@ -69,12 +69,15 @@ type Host struct {
 	Node_id   string `json:"node_id"`
 	Node_name string `json:"nodename"`
 	Cpu_cores int64  `json:"cpu_cores"`
-	Cpu_freq  int64  `json:"cpu_freq"`
-	Mem_bytes int64  `json:"mem_bytes"`
-	Os_kernel string `json:"os_kernel"`
-	Os_name   string `json:"os_name"`
-	Ips       []Addr
-	Svc       []Service
+	// Cpu_threads is the node's logical CPU count; above Cpu_cores the node runs SMT
+	// (hyperthreading). 0 when the agent does not report it.
+	Cpu_threads int64  `json:"cpu_threads"`
+	Cpu_freq    int64  `json:"cpu_freq"`
+	Mem_bytes   int64  `json:"mem_bytes"`
+	Os_kernel   string `json:"os_kernel"`
+	Os_name     string `json:"os_name"`
+	Ips         []Addr
+	Svc         []Service
 }
 type Service struct {
 	Id         int    `json:"id"`

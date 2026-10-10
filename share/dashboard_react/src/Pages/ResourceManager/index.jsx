@@ -3,6 +3,7 @@ import { Box, Flex, Text, Table, Thead, Tbody, Tr, Th, Td, Progress, Badge } fro
 import { globalClustersService } from '../../services/globalClustersService'
 import ChartBarStack from '../../components/ChartBarStack'
 import { getUnitRatios, describeUnit } from '../../utility/unitRatios'
+import DeclaredCapacity from './DeclaredCapacity'
 
 const CLUSTER_COLORS = ['#3f8fd0', '#8b5cf6', '#e0603a', '#37a06f', '#d99a2b', '#5aa8e6', '#a98bff', '#ef7a54', '#4dc088', '#eabb52']
 const colorFor = (i) => CLUSTER_COLORS[i % CLUSTER_COLORS.length]
@@ -64,6 +65,7 @@ function ResourceManager() {
 
   return (
     <Box p={4} color='var(--text-color)'>
+      <DeclaredCapacity />
       <Text fontSize='lg' fontWeight='bold' mb={1}>Infra ResourceManager — capacity vs consumed</Text>
       <Text fontSize='sm' opacity={0.7} mb={4}>
         {data.agents} agent(s) · quota {fmt(data.quotaPct)}% · binding axis:{' '}

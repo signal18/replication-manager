@@ -604,7 +604,7 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 				continue
 			}
 			seen[key] = true
-			capCores += float64(a.CpuCores)
+			capCores += a.CoreEquivalents(repman.Conf.ResourceManagerSmtGain) // real cores (cluster/smt.go)
 			capMemMB += float64(a.MemBytes) // stored in MB despite the name
 		}
 	}
@@ -619,6 +619,7 @@ func (repman *ReplicationManager) ProduceContractedCapacityState() {
 	// Billing: the prices in force, the statement clock (save every minute, month
 	// rollover) and, once graphite answers, the re-integration of the month to date.
 	repman.resourceManager.SetPrices(repman.billingPrices())
+	repman.resourceManager.SetSmtGain(repman.Conf.ResourceManagerSmtGain)
 	repman.resourceManager.Tick(time.Now())
 	if repman.Conf.GraphiteMetrics && repman.Conf.GraphiteEmbedded {
 		names := make([]string, 0, len(clusters))

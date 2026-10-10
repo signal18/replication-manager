@@ -27,7 +27,8 @@ import (
 // can net their consumption. All mutation goes through the internal RWMutex; callers
 // never touch the maps directly.
 type ResourceManager struct {
-	mu sync.RWMutex
+	smtGain float64 // resource-manager-smt-gain, set by the instance (SetSmtGain)
+	mu      sync.RWMutex
 
 	// DB servers -> DBU (workload profile Database). "server" = a ServerMonitor (DB node).
 	consumed    map[ResourceKey]*DBUReading // real consumed, per DB server (measured; nil if never pushed)
@@ -810,6 +811,22 @@ func (m *ResourceManager) GetAgentCapacity(agent string) *AgentCapacity {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.capacity[agent]
+}
+
+// SetSmtGain sets the SMT gain of the infrastructure (resource-manager-smt-gain), the one
+// every cluster renders its CPU quota with: set by the instance, read by the clusters, never
+// a per-cluster copy written from another goroutine.
+func (m *ResourceManager) SetSmtGain(gain float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.smtGain = gain
+}
+
+// SmtGain is the SMT gain in force (0 = never set).
+func (m *ResourceManager) SmtGain() float64 {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.smtGain
 }
 
 // SetQuotaPct sets the share of the metal repman is allowed to take (0 < pct <= 100),

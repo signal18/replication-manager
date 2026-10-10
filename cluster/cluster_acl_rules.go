@@ -130,6 +130,8 @@ var pricingACLRules = []ACLRule{
 	{"/settings/actions/set/app-stateful", nil, []string{config.GrantSalesPricing}},
 	{"/settings/actions/set/app-s3-provider", nil, []string{config.GrantSalesPricing}},
 	{"/settings/actions/switch/cloud18-marketplace-bau-client-storage", nil, []string{config.GrantSalesPricing}},
+	// SMT gain calibration (#1958): runs sysbench on the replication-manager host and writes a server setting
+	{"/settings/actions/calibrate-smt-gain", nil, []string{config.GrantGlobalSettings}},
 }
 
 // appACLRules defines ACL rules for application endpoints

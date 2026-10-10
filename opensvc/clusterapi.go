@@ -1751,6 +1751,8 @@ func (collector *Collector) GetNodesV2() ([]Host, error) {
 		//		collector.Logrus.WithField("FROM", "OpenSVC").Println("ERROR ", agent)
 		nhosts[i].Node_id = strconv.FormatUint(crc64.Checksum([]byte(agent.Nodename.Value), crcTable), 10)
 		nhosts[i].Cpu_cores, _ = strconv.ParseInt(agent.Cputhreads.Value, 10, 64)
+		// the v2 relay reports threads only: cores = threads, no SMT detected
+		nhosts[i].Cpu_threads = nhosts[i].Cpu_cores
 		nhosts[i].Cpu_freq, _ = strconv.ParseInt(agent.Cpufreq.Value, 10, 64)
 		nhosts[i].Mem_bytes, _ = strconv.ParseInt(agent.Membytes.Value, 10, 64)
 		nhosts[i].Node_name = agent.Nodename.Value

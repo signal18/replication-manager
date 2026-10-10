@@ -47,8 +47,10 @@ func (repman *ReplicationManager) infraCapacityInputs(clusters []*cluster.Cluste
 				continue
 			}
 			seen[key] = true
-			in.AgentCores[key] = float64(a.CpuCores)
-			sumCores += float64(a.CpuCores)
+			// real cores: an SMT node counts cores x resource-manager-smt-gain (cluster/smt.go)
+			ce := a.CoreEquivalents(repman.Conf.ResourceManagerSmtGain)
+			in.AgentCores[key] = ce
+			sumCores += ce
 			// cluster.Agent.MemBytes is populated in MB (OpenSVC asset + on-prem
 			// /proc/meminfo/1024 both store MB), despite the name.
 			sumMemMB += float64(a.MemBytes)
