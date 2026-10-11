@@ -12,19 +12,33 @@ import (
 
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
-// replicationTLSWithoutCA reports an encrypted replication channel that verifies its
-// primary against no CA: the I/O thread falls back to the system trust store, so the
-// channel stays encrypted and healthy while any public CA's certificate is accepted as
-// the primary. Nothing in the replica status fails (#1933).
-func replicationTLSWithoutCA(rep dbhelper.SlaveStatus) bool {
-	return strings.EqualFold(rep.MasterSSLAllowed.String, "Yes") &&
-		rep.MasterSSLCAFile.String == "" && rep.MasterSSLCAPath.String == ""
+// replicationTLSUnverified reports an encrypted replication channel whose primary is not
+// verified: no CA and either MASTER_SSL_VERIFY_SERVER_CERT off, or a release without the
+// 11.4 zero-configuration verification (MySQL, MariaDB before 11.4), where an empty CA
+// falls back to the system trust store and any public CA's certificate is accepted as the
+// primary. On MariaDB 11.4+ with verification on, an empty CA is verified through the
+// replication password (tested on 12.3, #1933): no warning.
+func replicationTLSUnverified(rep dbhelper.SlaveStatus, replica *version.Version) bool {
+	if !strings.EqualFold(rep.MasterSSLAllowed.String, "Yes") || rep.MasterSSLCAFile.String != "" || rep.MasterSSLCAPath.String != "" {
+		return false
+	}
+	if !strings.EqualFold(rep.MasterSSLVerifyServerCert.String, "Yes") {
+		return true
+	}
+	return !hasZeroConfigTLS(replica)
+}
+
+// hasZeroConfigTLS: MariaDB 11.4+ verifies a server certificate without a CA through the
+// account password.
+func hasZeroConfigTLS(v *version.Version) bool {
+	return v != nil && v.IsMariaDB() && v.GreaterEqual("11.4")
 }
 
 // CheckReplicationTLS runs every tick and opens the security WARN0235 per replication
-// channel encrypted without a CA. It only reports: re-pointing a running replica is not
+// channel encrypted with an unverified primary (replicationTLSUnverified). It only reports: re-pointing a running replica is not
 // the monitor's to do; the next CHANGE MASTER replication-manager issues carries the CA
 // (ServerMonitor.ChangeMaster).
 func (cluster *Cluster) CheckReplicationTLS() {
@@ -33,7 +47,7 @@ func (cluster *Cluster) CheckReplicationTLS() {
 			continue
 		}
 		for _, rep := range s.Replications {
-			if !replicationTLSWithoutCA(rep) {
+			if !replicationTLSUnverified(rep, s.DBVersion) {
 				continue
 			}
 			from := rep.MasterHost.String + ":" + rep.MasterPort.String

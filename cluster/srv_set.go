@@ -1026,42 +1026,65 @@ func (server *ServerMonitor) SetDataDiverge() {
 }
 
 // ChangeMaster points this server's replication at opt's primary. Every CHANGE MASTER of
-// a cluster goes through it, so the replication TLS material is never forgotten: with
-// replication-use-ssl, MASTER_SSL_CA is always emitted when a CA is known. MariaDB keeps
-// it only in master.info and in memory, and no server option supplies it: a restart
-// without master.info drops it, and the I/O thread then trusts any public CA, silently
-// (#1933).
+// a cluster goes through it, so the replication TLS material is decided in one place
+// (#1933): with replication-use-ssl, MASTER_SSL_CA is emitted only when it is known to
+// have signed the primary's certificate (ReplicationSSLCa).
 func (server *ServerMonitor) ChangeMaster(opt dbhelper.ChangeMasterOpt) (string, error) {
 	if opt.SSL && opt.SSLCa == "" {
-		opt.SSLCa = server.ReplicationSSLCa()
+		opt.SSLCa = server.ReplicationSSLCa(opt.Host, opt.Port)
 	}
 	return dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 }
 
 // ReplicationSSLCaProvisioned is where the configurator ships the cluster CA in every
-// database it provisions (the init bundle's etc/mysql/ssl).
+// database it provisions (the init bundle's etc/mysql/ssl); the servers use the
+// certificates it signed only with the ssl tag.
 const ReplicationSSLCaProvisioned = "/etc/mysql/ssl/ca-cert.pem"
 
-// ReplicationSSLCa is the CA file, on this replica's host, it verifies its primary with.
-// Never kept on the ServerMonitor (rebuilt at every config reload): the cluster setting
-// replication-ssl-ca first, then the configurator's CA on a provisioned database, then
-// the replica's own ssl_ca read live at the time of the CHANGE MASTER.
-func (server *ServerMonitor) ReplicationSSLCa() string {
-	if cluster := server.ClusterGroup; cluster != nil && cluster.Conf != nil {
-		if cluster.Conf.ReplicationSSLCa != "" {
-			return cluster.Conf.ReplicationSSLCa
-		}
-		switch cluster.GetOrchestrator() {
-		case config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes:
+// ReplicationSSLCa is the CA file, on this replica's host, it verifies the primary at
+// host:port with, or "" to name none. Tested on MariaDB 12.3 (#1933): a CA that did not
+// sign the primary's certificate cuts the channel (error 2026), with or without
+// MASTER_SSL_VERIFY_SERVER_CERT, while a primary on its auto-generated certificate
+// (11.4+) is verified through the replication password with no CA. So a CA is named only
+// when the primary runs a configured certificate, read live at the time of the CHANGE
+// MASTER (never from the ServerMonitor, rebuilt at every reload):
+//  1. replication-ssl-ca, the operator's declaration;
+//  2. on a provisioned cluster with the ssl tag, the CA the configurator ships;
+//  3. the replica's own ssl_ca when it is the primary's too.
+func (server *ServerMonitor) ReplicationSSLCa(host, port string) string {
+	cluster := server.ClusterGroup
+	if cluster == nil || cluster.Conf == nil {
+		return ""
+	}
+	primary := cluster.GetServerFromURL(host + ":" + port)
+	primaryCert := primary.liveVariable("SSL_CERT")
+	if primaryCert == "" {
+		return ""
+	}
+	if cluster.Conf.ReplicationSSLCa != "" {
+		return cluster.Conf.ReplicationSSLCa
+	}
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes:
+		if cluster.Configurator.HaveDBTag("ssl") {
 			return ReplicationSSLCaProvisioned
 		}
 	}
-	if server.Conn == nil || server.DBVersion == nil || server.DBVersion.IsPostgreSQL() {
+	if ca := server.liveVariable("SSL_CA"); ca != "" && ca == primary.liveVariable("SSL_CA") {
+		return ca
+	}
+	return ""
+}
+
+// liveVariable reads a global variable on the server's connection now; "" when the
+// server, its connection or the value is missing.
+func (server *ServerMonitor) liveVariable(name string) string {
+	if server == nil || server.Conn == nil || server.DBVersion == nil || server.DBVersion.IsPostgreSQL() {
 		return ""
 	}
-	ca, _, err := dbhelper.GetVariableByName(server.Conn, "SSL_CA", server.DBVersion)
+	v, _, err := dbhelper.GetVariableByName(server.Conn, name, server.DBVersion)
 	if err != nil {
 		return ""
 	}
-	return ca
+	return v
 }
