@@ -184,7 +184,7 @@ func TestEnsureSystemServiceUserAddsSensorToExisting(t *testing.T) {
 	cm.Stop() // saves become no-ops
 	c.ConfigManager = cm
 	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "system:pw"}
-	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1"
+	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1:dbops"
 	c.LoadAPIUsers()
 	if c.APIUsers["system"].Grants[config.GrantClusterResourceSensor] {
 		t.Fatal("fixture: system starts without the sensor grant")
@@ -201,5 +201,27 @@ func TestEnsureSystemServiceUserAddsSensorToExisting(t *testing.T) {
 	}
 	if strings.Count(c.Conf.APIUsersACLAllowExternal, "system:") != 1 {
 		t.Fatalf("system must keep a single entry: %q", c.Conf.APIUsersACLAllowExternal)
+	}
+	if !s.Roles[config.RoleDBOps] {
+		t.Fatalf("system must keep its roles: %q", c.Conf.APIUsersACLAllowExternal)
+	}
+}
+
+// A `system` defined in the main config ACL cannot be repaired from the cluster ACL
+// (strict override): nothing is rewritten, so the repair does not repeat at every start.
+func TestEnsureSystemServiceUserMainACLNotRewritten(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	cm := manager.NewConfigManager(config.NewLogrusWrapper(c.Conf, logrus.New()))
+	cm.Stop() // saves become no-ops
+	c.ConfigManager = cm
+	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "system:pw"}
+	c.Conf.APIUsersACLAllow = "admin:cluster db,system:db proxy"
+	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1"
+	c.LoadAPIUsers()
+
+	c.EnsureSystemServiceUser()
+	if c.Conf.APIUsersACLAllowExternal != "system:db proxy:c1" {
+		t.Fatalf("the cluster ACL must be left alone: %q", c.Conf.APIUsersACLAllowExternal)
 	}
 }
