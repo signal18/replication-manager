@@ -15,6 +15,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/releases"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // Replication TLS regtests (#1933, #1974, #1975, #1976). The matrix they cover was
@@ -89,14 +90,14 @@ func tlsSlavesReplicate(cl *cluster.Cluster, timeout time.Duration, wantCA func(
 	})
 }
 
-// tlsSecurityStateOpen reports whether the security state key is open on url ("" = any).
+// tlsSecurityStateOpen reports whether the security state key is open on url ("" = any),
+// read from the previous tick (OldState): CurState is emptied at the end of every tick,
+// so between ticks it reads empty.
 func tlsSecurityStateOpen(cl *cluster.Cluster, key, url string) bool {
-	for _, st := range cl.SecurityStateMachine.GetOpenStates() {
-		if st.ErrKey == key && (url == "" || st.ServerUrl == url) {
-			return true
-		}
+	if url == "" {
+		return cl.SecurityStateMachine.IsInStateList(key)
 	}
-	return false
+	return cl.SecurityStateMachine.IsInState(state.BuildStateKey(key, url))
 }
 
 // tlsMonitoringKept fails when a server is declared failed, or a primary refuses
