@@ -2916,7 +2916,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "prov-db-compliance-auto-agree":
 		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
 	case "prov-db-dynamic-resource":
-		mycluster.Conf.ProvDBDynamicResource = !mycluster.Conf.ProvDBDynamicResource
+		mycluster.SwitchProvDBDynamicResource()
 	case "prov-db-docker-run-args-limit":
 		mycluster.Conf.ProvDBDockerRunArgsLimit = !mycluster.Conf.ProvDBDockerRunArgsLimit
 	case "prov-orchestrator-deployment-upgrade-on-start":
@@ -3892,6 +3892,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDBCores(value)
 	case "prov-db-memory":
 		mycluster.SetDBMemorySize(value)
+	case "prov-db-dynamic-resource":
+		if isactive == nil {
+			return fmt.Errorf("prov-db-dynamic-resource must be true or false")
+		}
+		mycluster.SetProvDBDynamicResource(*isactive)
 	case "prov-db-memory-shared-pct":
 		mycluster.Conf.ProvMemSharedPct = value
 	case "prov-db-memory-threaded-pct":

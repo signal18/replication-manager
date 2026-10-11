@@ -204,7 +204,7 @@ func (r k8sResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, error)
 func (r k8sResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
 	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"no live PVC expansion yet, scheduling reprovision on %s for the disk", server.URL)
-	server.SetReprovCookie()
+	server.SetReprovCookieFor(ReprovReasonDiskSize)
 	return false, nil
 }
 
