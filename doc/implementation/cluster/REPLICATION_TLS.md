@@ -1,59 +1,91 @@
-# Replication TLS: the CA a replica verifies its primary with (#1933)
+# Replication TLS: what a CHANGE MASTER names (#1933)
 
 ## The gap
 
 `replication-use-ssl` made every `CHANGE MASTER` carry `MASTER_SSL=1` and nothing else.
 On MariaDB the CA a replica verifies its primary with (`MASTER_SSL_CA`) cannot come from
 any server option or configuration file: `ssl_ca`/`ssl_cert`/`ssl_key` are the server
-side, used to accept TLS clients. The replication CA exists only in `master.info` and in
-the in-memory `Master_info`, and only `CHANGE MASTER` sets it.
+side. The replication CA lives only in `master.info` and in memory, and `CHANGE MASTER`
+keeps every parameter it does not name.
 
-`CHANGE MASTER` keeps every parameter it does not name, so a switchover (no restart)
-kept a CA set by hand. A node that restarts without `master.info` (failover with a
-restart, planned restart of the primary, restore from backup: `mariadb-backup` does not
-copy it) comes back with an empty CA. With `MASTER_SSL=1` and no CA the I/O thread falls
-back to the system trust store: replication stays encrypted and healthy, no error, no
-lag, but any certificate signed by any public CA is accepted as the primary.
+## What the servers do (measured on dev3, MariaDB 12.3.3)
 
-## The fix
+| Primary certificate | Replica `MASTER_SSL_CA` | Verify | Result |
+|---|---|---|---|
+| auto-generated (11.4+, `ssl_cert` NULL) | empty | on | replicates: zero-configuration TLS verifies the primary through the replication password (`mysql_native_password`, `ed25519`, `parsec`) |
+| auto-generated | a CA that did not sign it | on | **error 2026**: no password fallback once a CA is set |
+| signed by the shipped CA (ssl tag) | shipped CA | on | replicates (the certificate's SAN names every database host) |
+| signed by the shipped CA | empty | on | replicates (zero-configuration fallback) |
+| signed by the shipped CA | a CA that did not sign it | on | **error 2026** |
+| signed by the shipped CA | a CA that did not sign it | **off** | **error 2026**: with a CA set the chain is checked even with verification off |
 
-**One entry point.** Every `CHANGE MASTER` of a cluster goes through
-`ServerMonitor.ChangeMaster(opt)` (`cluster/srv_set.go`), which wraps
-`dbhelper.ChangeMaster`. No call site can forget the TLS material.
+So naming a CA is only safe when it signed the primary's certificate, and a CA left in
+`master.info` from an earlier certificate (a dropped ssl tag) cuts the channel as soon as
+the primary changes certificate.
 
-**`MASTER_SSL_CA` is always emitted** when `replication-use-ssl` is on and a CA is
-known (`ChangeMasterOpt.SSLCa`, quoted with `QuoteMySQLString`).
+## The decision (`ServerMonitor.ReplicationTLSFor`)
 
-**The CA is resolved at the time of each `CHANGE MASTER`** (`ReplicationSSLCa`), never
-from state kept on the `ServerMonitor`, which is rebuilt at every config reload (its
-cached variables are empty until the next refresh, the very moment a failover happens):
+Every `CHANGE MASTER` goes through `ServerMonitor.ChangeMaster`, which reads the primary
+**live** at that moment (never from the `ServerMonitor`, rebuilt at every config reload):
 
-1. `replication-ssl-ca`: the cluster setting, a path on the database hosts. Durable in the
-   cluster configuration, it survives reloads, restarts and failovers.
-2. On a provisioned database (OpenSVC, Kubernetes): `/etc/mysql/ssl/ca-cert.pem`, where
-   the configurator ships the cluster CA in every init bundle.
-3. Otherwise the replica's own `ssl_ca`, read live on its connection
-   (`dbhelper.GetVariableByName`). A server CA is normally the private CA that signs its
-   peers.
+| Primary, read live | Emitted |
+|---|---|
+| unreachable | nothing: the channel keeps what it has |
+| no TLS (`have_ssl` not `YES`), `replication-use-ssl` off | `MASTER_SSL=0`: an 11.4+ replica defaults to TLS and would not connect (MDEV-35584, mixed versions during an upgrade) |
+| auto-generated certificate (11.4+) | `MASTER_SSL_CA=''`: any CA breaks it, the password verifies it |
+| configured certificate, `replication-use-ssl` on | `MASTER_SSL_CA` = `replication-ssl-ca`, else `/etc/mysql/ssl/ca-cert.pem` on a provisioned cluster with the `ssl` tag, else the replica's own `ssl_ca` when it is the primary's too; otherwise nothing (a CA an operator set stays) |
 
-`MASTER_SSL_CERT`/`KEY` are not emitted: a server certificate is not necessarily valid
-as a client certificate (extended key usage), and presenting an invalid one would break
-a replication that works today under `REQUIRE SSL`. `MASTER_SSL_VERIFY_SERVER_CERT` is
-left to the release default and to what the operator set (`CHANGE MASTER` keeps it): forcing it would break replicas whose
-primary certificate does not name the host they connect to.
+`MASTER_SSL_CERT`/`KEY` are never emitted (a server certificate is not necessarily a
+valid client certificate). `MASTER_SSL_VERIFY_SERVER_CERT` is never forced: zero-config
+verification depends on the replication user's authentication plugin; a channel left
+unverified is reported instead (WARN0235). Each decision that names something is logged
+at INFO; a variable that cannot be read is logged at DBG.
 
-## Detection: WARN0235
+## Detection
 
-`CheckReplicationTLS` (`cluster/cluster_sec_replication_tls.go`) runs every tick and opens
-the security warning WARN0235 per replica whose channel is encrypted
-(`Master_SSL_Allowed=Yes`) with no CA file and no CA path. It only reports: re-pointing a
-running replica is not the monitor's to do; the next `CHANGE MASTER` replication-manager
-issues carries the CA. The SSL columns are read into `SlaveStatus` (`Master_SSL_*`) and
-mapped from MySQL 8.4 `ReplicaStatus` (`Source_SSL_*`).
+`CheckReplicationTLS` (`cluster/cluster_sec_replication_tls.go`), every tick, every
+channel (managed by replication-manager or set by hand, whatever `replication-use-ssl`:
+these are security states):
+
+- **WARN0235**: encrypted, no CA, and either verification off or a release without
+  zero-configuration TLS (MySQL, MariaDB before 11.4): any certificate of the system trust
+  store is accepted as the primary.
+- **WARN0236**: the channel fails its TLS handshake (`Last_IO_Errno` 2026): the CA does not
+  match the primary's certificate.
+
+The monitor only reports. Remedy: a switchover or a rejoin issues the `CHANGE MASTER` that
+carries the decision; by hand, on the replica:
+`STOP SLAVE; CHANGE MASTER TO MASTER_SSL_CA='<ca>', MASTER_SSL_VERIFY_SERVER_CERT=1; START SLAVE`.
+
+## Found on the way (same branch)
+
+- **#1975** a tag matched as a suffix: `ssl` selected `strictssl`, whose live
+  `require_secure_transport=ON` locked repman's plaintext monitoring out (3159). A tag now
+  matches only a filter's whole last segment (`filterMatchesTag`); `bind`/`nobind` and
+  `statement`/`nologslavestatement` had the same collision. Clusters tagged `ssl`, `bind`
+  or `statement` lose the unintended extra file at their next configuration render.
+- **#1974** `SetDSN` writes the TLS mode into the DSN only when called; a certificate change
+  (ssl tag dropped) left `&tls=tlsconfig` and repman unable to reach healthy servers.
+  `reloadDBTLSCertificates` rebuilds every DSN when the certificate state changes.
+- **#1976** a dropped tag's variables, still deployed until the restart, were kept as
+  `delta:no-config` in `02_delta.cnf` and brought the tag back at every start (auto-agree
+  only handles value-differs deltas). A variable a tag ruleset renders is never kept as a
+  no-config delta (`Configurator.TagManagedVariables`); `01_preserved.cnf` still preserves
+  on purpose.
 
 ## Settings
 
 | Setting | GUI | Meaning |
 |---|---|---|
-| `replication-use-ssl` | Settings > Replication > Replication Use SSL (switch) | `MASTER_SSL=1` |
-| `replication-ssl-ca` | Settings > Replication > Replication SSL CA | the CA path on the database hosts; empty = provisioned CA, else each replica's `ssl_ca` |
+| `replication-use-ssl` | Settings > Replication > Replication Use SSL | `MASTER_SSL=1` |
+| `replication-ssl-ca` | Settings > Replication > Replication SSL CA | the CA path on the database hosts that signed the primaries' certificates |
+
+## Regtests (`regtest/test_replication_tls.go`)
+
+| Test | Needs | Proves |
+|---|---|---|
+| `testReplicationTLSAutoCertificate` | MariaDB 11.4+, auto-generated certificates | switchovers leave replicas encrypted, no CA, replicating, no warning |
+| `testReplicationTLSStaleCAEmptied` | same | a stale CA opens WARN0236; the next CHANGE MASTER empties it |
+| `testReplicationTLSVerifyOffWarns` | same | verification off opens WARN0235, on resolves it |
+| `testReplicationTLSSSLTagLifecycle` | provisioned 11.4+, no ssl tag | tag add/drop never cost the monitoring; rolling restarts move every server to the shipped certificates and back; replicas verify with the shipped CA, then with none |
+| `testRollingUpgradeTransparentSSL` | provisioned MariaDB before 11.4 | rolling upgrade to 11.8 through mixed versions, then replication-use-ssl on: encrypted, no CA, replicating |

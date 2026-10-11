@@ -11,6 +11,7 @@ package cluster
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -1026,12 +1027,18 @@ func (server *ServerMonitor) SetDataDiverge() {
 }
 
 // ChangeMaster points this server's replication at opt's primary. Every CHANGE MASTER of
-// a cluster goes through it, so the replication TLS material is decided in one place
-// (#1933): with replication-use-ssl, MASTER_SSL_CA is emitted only when it is known to
-// have signed the primary's certificate (ReplicationSSLCa).
+// a cluster goes through it, so the replication TLS material is decided in one place,
+// from the primary's live certificate (ReplicationTLSFor, #1933).
 func (server *ServerMonitor) ChangeMaster(opt dbhelper.ChangeMasterOpt) (string, error) {
-	if opt.SSL && opt.SSLCa == "" {
-		opt.SSLCa = server.ReplicationSSLCa(opt.Host, opt.Port)
+	if opt.SSLCa == "" && !opt.SSLCaClear && !opt.SSLOff {
+		tls := server.ReplicationTLSFor(opt.Host, opt.Port, opt.SSL)
+		opt.SSLCa, opt.SSLCaClear, opt.SSLOff = tls.CA, tls.ClearCA, tls.SSLOff
+		// The decision is traceable: a replica that then fails its handshake opens
+		// WARN0236 (CheckReplicationTLS).
+		if cluster := server.ClusterGroup; cluster != nil && cluster.Conf != nil && (tls.CA != "" || tls.ClearCA || tls.SSLOff) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Replication TLS of %s towards %s:%s: CA %q, CA emptied %t, TLS off %t", server.URL, opt.Host, opt.Port, tls.CA, tls.ClearCA, tls.SSLOff)
+		}
 	}
 	return dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 }
@@ -1041,50 +1048,82 @@ func (server *ServerMonitor) ChangeMaster(opt dbhelper.ChangeMasterOpt) (string,
 // certificates it signed only with the ssl tag.
 const ReplicationSSLCaProvisioned = "/etc/mysql/ssl/ca-cert.pem"
 
-// ReplicationSSLCa is the CA file, on this replica's host, it verifies the primary at
-// host:port with, or "" to name none. Tested on MariaDB 12.3 (#1933): a CA that did not
-// sign the primary's certificate cuts the channel (error 2026), with or without
-// MASTER_SSL_VERIFY_SERVER_CERT, while a primary on its auto-generated certificate
-// (11.4+) is verified through the replication password with no CA. So a CA is named only
-// when the primary runs a configured certificate, read live at the time of the CHANGE
-// MASTER (never from the ServerMonitor, rebuilt at every reload):
-//  1. replication-ssl-ca, the operator's declaration;
-//  2. on a provisioned cluster with the ssl tag, the CA the configurator ships;
-//  3. the replica's own ssl_ca when it is the primary's too.
-func (server *ServerMonitor) ReplicationSSLCa(host, port string) string {
+// ReplicationTLS is the TLS material a CHANGE MASTER names: CA the CA file on the
+// replica's host; ClearCA empties a CA kept in master.info; SSLOff turns TLS off.
+type ReplicationTLS struct {
+	CA      string
+	ClearCA bool
+	SSLOff  bool
+}
+
+// ReplicationTLSFor decides the TLS material of a CHANGE MASTER towards host:port, read
+// live on the primary at that moment (never from the ServerMonitor, rebuilt at every
+// reload). Tested on MariaDB 12.3 (#1933): a CA that did not sign the primary's
+// certificate cuts the channel (error 2026), with or without certificate verification;
+// a primary on its auto-generated certificate (11.4+) is verified through the
+// replication password with no CA.
+//   - Primary unreachable: nothing named (the channel keeps what it has).
+//   - Primary without TLS and replication-use-ssl off: MASTER_SSL=0, an 11.4+ replica
+//     would otherwise default to TLS and not connect (MDEV-35584).
+//   - Primary on its auto-generated certificate: the CA is emptied.
+//   - Primary on a configured certificate, with replication-use-ssl: the CA is named
+//     from replication-ssl-ca, else the CA shipped on a provisioned cluster with the ssl
+//     tag, else the replica's own ssl_ca when it is the primary's too; otherwise the
+//     channel keeps its CA (one an operator set stays).
+func (server *ServerMonitor) ReplicationTLSFor(host, port string, useSSL bool) ReplicationTLS {
 	cluster := server.ClusterGroup
-	if cluster == nil || cluster.Conf == nil {
-		return ""
+	if cluster == nil || cluster.Conf == nil || server.DBVersion == nil || server.DBVersion.IsPostgreSQL() {
+		return ReplicationTLS{}
 	}
 	primary := cluster.GetServerFromURL(host + ":" + port)
-	primaryCert := primary.liveVariable("SSL_CERT")
-	if primaryCert == "" {
-		return ""
+	if primary == nil || primary.DBVersion == nil {
+		return ReplicationTLS{}
+	}
+	cert, ok := primary.liveVariable("SSL_CERT")
+	if !ok {
+		return ReplicationTLS{}
+	}
+	if !cert.Valid || cert.String == "" {
+		// No configured certificate: an 11.4+ MariaDB generates one, an older server
+		// (or one with TLS disabled) has none.
+		if haveSSL, ok := primary.liveVariable("HAVE_SSL"); ok && haveSSL.Valid && !strings.EqualFold(haveSSL.String, "YES") {
+			return ReplicationTLS{SSLOff: !useSSL}
+		}
+		return ReplicationTLS{ClearCA: primary.DBVersion.IsMariaDB() && primary.DBVersion.GreaterEqual("11.4")}
+	}
+	if !useSSL {
+		return ReplicationTLS{}
 	}
 	if cluster.Conf.ReplicationSSLCa != "" {
-		return cluster.Conf.ReplicationSSLCa
+		return ReplicationTLS{CA: cluster.Conf.ReplicationSSLCa}
 	}
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes:
 		if cluster.Configurator.HaveDBTag("ssl") {
-			return ReplicationSSLCaProvisioned
+			return ReplicationTLS{CA: ReplicationSSLCaProvisioned}
 		}
 	}
-	if ca := server.liveVariable("SSL_CA"); ca != "" && ca == primary.liveVariable("SSL_CA") {
-		return ca
+	if ca, ok := server.liveVariable("SSL_CA"); ok && ca.String != "" {
+		if pca, ok := primary.liveVariable("SSL_CA"); ok && pca.String == ca.String {
+			return ReplicationTLS{CA: ca.String}
+		}
 	}
-	return ""
+	return ReplicationTLS{}
 }
 
-// liveVariable reads a global variable on the server's connection now; "" when the
-// server, its connection or the value is missing.
-func (server *ServerMonitor) liveVariable(name string) string {
+// liveVariable reads a global variable on the server's connection now: ok false when it
+// could not be read (no server, no connection, a failed query), Valid false when NULL.
+func (server *ServerMonitor) liveVariable(name string) (sql.NullString, bool) {
 	if server == nil || server.Conn == nil || server.DBVersion == nil || server.DBVersion.IsPostgreSQL() {
-		return ""
+		return sql.NullString{}, false
 	}
-	v, _, err := dbhelper.GetVariableByName(server.Conn, name, server.DBVersion)
+	v, _, err := dbhelper.GetVariableByNameNullable(server.Conn, name, server.DBVersion)
 	if err != nil {
-		return ""
+		if cluster := server.ClusterGroup; cluster != nil && cluster.Conf != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+				"Replication TLS: %s not readable on %s: %s", name, server.URL, err)
+		}
+		return sql.NullString{}, false
 	}
-	return v
+	return v, true
 }

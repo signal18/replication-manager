@@ -37,25 +37,31 @@ func hasZeroConfigTLS(v *version.Version) bool {
 	return v != nil && v.IsMariaDB() && v.GreaterEqual("11.4")
 }
 
-// CheckReplicationTLS runs every tick and opens the security WARN0235 per replication
-// channel encrypted with an unverified primary (replicationTLSUnverified). It only reports: re-pointing a running replica is not
-// the monitor's to do; the next CHANGE MASTER replication-manager issues carries the CA
-// (ServerMonitor.ChangeMaster).
+// CheckReplicationTLS runs every tick. Per replication channel it opens the security
+// WARN0235 when the primary is not verified (replicationTLSUnverified), and WARN0236 when
+// the channel fails its TLS handshake (error 2026), the trace of a CA that did not sign
+// the primary's certificate. It covers every channel, managed by replication-manager or
+// set by hand, whatever replication-use-ssl: it is a security state. It only reports:
+// re-pointing a running replica is not the monitor's to do; a switchover or a rejoin
+// issues the CHANGE MASTER that carries the TLS decision (ServerMonitor.ChangeMaster).
 func (cluster *Cluster) CheckReplicationTLS() {
 	for _, s := range cluster.Servers {
 		if s == nil || s.IsDown() {
 			continue
 		}
 		for _, rep := range s.Replications {
-			if !replicationTLSUnverified(rep, s.DBVersion) {
-				continue
-			}
 			from := rep.MasterHost.String + ":" + rep.MasterPort.String
 			if rep.ConnectionName.String != "" {
 				from += " (channel " + rep.ConnectionName.String + ")"
 			}
-			cluster.SecurityStateMachine.AddState("WARN0235", state.State{ErrType: "WARNING", ErrKey: "WARN0235", ErrFrom: "SECURITY", ServerUrl: s.URL,
-				ErrDesc: fmt.Sprintf(clusterError["WARN0235"], s.URL, from)})
+			if rep.LastIOErrno.String == "2026" {
+				cluster.SecurityStateMachine.AddState("WARN0236", state.State{ErrType: "WARNING", ErrKey: "WARN0236", ErrFrom: "SECURITY", ServerUrl: s.URL,
+					ErrDesc: fmt.Sprintf(clusterError["WARN0236"], s.URL, from, rep.MasterSSLCAFile.String)})
+			}
+			if replicationTLSUnverified(rep, s.DBVersion) {
+				cluster.SecurityStateMachine.AddState("WARN0235", state.State{ErrType: "WARNING", ErrKey: "WARN0235", ErrFrom: "SECURITY", ServerUrl: s.URL,
+					ErrDesc: fmt.Sprintf(clusterError["WARN0235"], s.URL, from)})
+			}
 		}
 	}
 }

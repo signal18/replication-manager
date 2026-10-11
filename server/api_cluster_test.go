@@ -2151,3 +2151,23 @@ func TestValidateS3SyncApplyRevisionToken(t *testing.T) {
 		t.Fatalf("expected malformed revisionToken to fail")
 	}
 }
+
+// replication-use-ssl flips through the switch route and replication-ssl-ca is set through
+// the set route (#1933).
+func TestReplicationTLSSettings(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.ConfigManager = newConfigManagerForTest()
+	repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+	cl.Conf.ReplicationSSL = false
+	if err := repman.switchClusterSettings(cl, "replication-use-ssl"); err != nil || !cl.Conf.ReplicationSSL {
+		t.Fatalf("switch replication-use-ssl on: %v %v", err, cl.Conf.ReplicationSSL)
+	}
+	if err := repman.switchClusterSettings(cl, "replication-use-ssl"); err != nil || cl.Conf.ReplicationSSL {
+		t.Fatalf("switch replication-use-ssl off: %v %v", err, cl.Conf.ReplicationSSL)
+	}
+	if err := repman.setClusterSetting(cl, "replication-ssl-ca", " /srv/tls/repl-ca.pem "); err != nil || cl.Conf.ReplicationSSLCa != "/srv/tls/repl-ca.pem" {
+		t.Fatalf("set replication-ssl-ca: %v %q", err, cl.Conf.ReplicationSSLCa)
+	}
+}

@@ -125,6 +125,11 @@ var tests = []string{
 	"testProxyReadBackendReconciliation",
 	"testMaintenancePersistReload",
 	"testAppWarningDebounceAndRecovery",
+	"testReplicationTLSAutoCertificate",
+	"testReplicationTLSStaleCAEmptied",
+	"testReplicationTLSVerifyOffWarns",
+	"testReplicationTLSSSLTagLifecycle",
+	"testRollingUpgradeTransparentSSL",
 }
 
 const recoverTime = 8

@@ -141,11 +141,16 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 		}
 		if opt.SSL {
 			cm += ", " + masterOrSource + "_SSL=1"
-			// Without a CA the I/O thread falls back to the system trust store: encrypted,
-			// but any public CA's certificate is accepted as the primary (#1933).
-			if opt.SSLCa != "" {
-				cm += ", " + masterOrSource + "_SSL_CA=" + QuoteMySQLString(opt.SSLCa)
-			}
+		} else if opt.SSLOff {
+			cm += ", " + masterOrSource + "_SSL=0"
+		}
+		// CHANGE MASTER keeps every parameter it does not name: the CA is named when it
+		// signed the primary's certificate, emptied when the primary runs an
+		// auto-generated one, else left as configured (#1933).
+		if opt.SSLCa != "" {
+			cm += ", " + masterOrSource + "_SSL_CA=" + QuoteMySQLString(opt.SSLCa)
+		} else if opt.SSLCaClear {
+			cm += ", " + masterOrSource + "_SSL_CA=''"
 		}
 
 		// Retry count supported from MariaDB 12 and MySQL 8.4

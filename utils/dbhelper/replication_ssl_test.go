@@ -47,8 +47,19 @@ func TestChangeMasterSSLCa(t *testing.T) {
 	}
 
 	opt = base
-	opt.SSLCa = "/etc/mysql/ssl/ca-cert.pem"
 	if cm := changeMasterSQL(t, opt); strings.Contains(cm, "SSL") {
-		t.Fatalf("no TLS material without replication SSL: %s", cm)
+		t.Fatalf("no TLS material named: none emitted: %s", cm)
+	}
+
+	opt = base
+	opt.SSLCaClear = true
+	if cm := changeMasterSQL(t, opt); !strings.Contains(cm, "MASTER_SSL_CA=''") || strings.Contains(cm, "MASTER_SSL=") {
+		t.Fatalf("an emptied CA without touching MASTER_SSL: %s", cm)
+	}
+
+	opt = base
+	opt.SSLOff = true
+	if cm := changeMasterSQL(t, opt); !strings.Contains(cm, "MASTER_SSL=0") {
+		t.Fatalf("TLS off towards a primary without TLS: %s", cm)
 	}
 }

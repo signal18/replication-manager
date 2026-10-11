@@ -769,7 +769,14 @@ type ChangeMasterOpt struct {
 	// SSLCa is the CA file, on the replica's own host, the I/O thread verifies its
 	// primary with (MASTER_SSL_CA). Only CHANGE MASTER can set it: no server option
 	// does (#1933).
-	SSLCa   string
+	SSLCa string
+	// SSLCaClear empties MASTER_SSL_CA: a primary on its auto-generated certificate
+	// (MariaDB 11.4+) is verified through the replication password, and any CA kept in
+	// master.info from an earlier certificate cuts the channel (error 2026) (#1933).
+	SSLCaClear bool
+	// SSLOff emits MASTER_SSL=0 for a primary without TLS: an 11.4+ replica defaults
+	// to MASTER_SSL=1 and would not connect (MDEV-35584, mixed-version upgrades).
+	SSLOff  bool
 	Logfile string
 	Logpos  string
 	Mode    string
