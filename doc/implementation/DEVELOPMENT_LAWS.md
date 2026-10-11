@@ -80,7 +80,7 @@ but the user supplies the secret.
 
 **T1. Unify the SQL across flavors and versions.** Every SQL / replication /
 topology / status operation goes through `dbhelper`, which abstracts MariaDB /
-MySQL / Percona and versions. Never hand-roll SQL in `cluster/` or `server/` —
+MySQL / Percona / PostgreSQL and versions (T23). Never hand-roll SQL in `cluster/` or `server/` —
 call or extend `dbhelper`. Manual paths delegate to the same auto path.
 
 **T2. Don't duplicate code (DRY).** One implementation per concern — reuse the
@@ -284,6 +284,19 @@ methods): **point to it, never copy its specifics into this public repo** (T15) 
 and keep the reference itself updated as you learn. This is the infrastructure face
 of F5 (reconcile against reality, don't assume) and of T20 (check what already
 exists before you work).
+
+**T23. Every `dbhelper` SQL function answers for EVERY engine repman monitors —
+PostgreSQL included.** When you write or change a `dbhelper` function, decide its
+PostgreSQL side in the same change: the PostgreSQL equivalent behind the usual engine
+branch (`myver.IsPostgreSQL()`), or, when the concept has none, a documented early
+return (zero value or an explicit error) — never MySQL/MariaDB SQL sent to a
+PostgreSQL server, never "PG later". Say which in the function's doc comment, and
+cover both branches in its test. Before adding the function at all, look for the one
+that already exists (T2): a new helper that duplicates an existing one is a bug,
+whatever engines it covers. Example: the fresh-node check reads the install time from
+`mysql.global_priv` CREATE_TIME on MariaDB, `mysql.user` on MySQL, and the initdb time
+encoded in `pg_control_system().system_identifier` on PostgreSQL — one function, one
+rule, every engine (the PostgreSQL read must work for the monitoring user: check its privilege first).
 
 ## Debugging discipline — investigate FULLY before you unblock
 
