@@ -251,8 +251,10 @@ type Cluster struct {
 	// the data-plane counterpart of the master cut for NON-master hosts, so the minority
 	// scenario can also lose the majority-side databases (a real partition cuts the wire
 	// in both directions). Guarded by sbServerFailMu.
-	sbServerFailMu   sync.Mutex       `json:"-"`
-	sbServerFailURLs map[string]int64 `json:"-"`
+	sbServerFailMu sync.Mutex `json:"-"`
+	// reprovReconcileMu: one ReconcileReprovWithDynamicResource run at a time (#1970).
+	reprovReconcileMu sync.Mutex       `json:"-"`
+	sbServerFailURLs  map[string]int64 `json:"-"`
 	// sbSlaveIOStoppedURLs — io_threads the sim REALLY stopped (op 5/6 STOP SLAVE
 	// IO_THREAD), url -> unix until. Unlike every other cut, which only fakes a view
 	// via a flag and needs no undo, this is a real DB side effect: it must be tracked

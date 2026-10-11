@@ -3892,6 +3892,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDBCores(value)
 	case "prov-db-memory":
 		mycluster.SetDBMemorySize(value)
+	case "prov-db-dynamic-resource":
+		if isactive == nil {
+			return fmt.Errorf("prov-db-dynamic-resource must be true or false")
+		}
+		mycluster.SetProvDBDynamicResource(*isactive)
 	case "prov-db-memory-shared-pct":
 		mycluster.Conf.ProvMemSharedPct = value
 	case "prov-db-memory-threaded-pct":

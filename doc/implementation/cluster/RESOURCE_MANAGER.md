@@ -640,9 +640,12 @@ A reprovision recreates the volume, so the data comes back only through the back
 - **Dynamic resource off:**
   - `SetDBMemorySize` and `SetDBCores` set the **restart** cookie when the value changes, and nothing when it doesn't. The rolling restart pushes the new container cap.
   - `SetDBDiskSize` still asks for the reprovision (`disk-size`), because a restart doesn't resize a volume. WARN0234 then offers the live path.
-- **Switching `prov-db-dynamic-resource` on** (`SwitchProvDBDynamicResource` → `ReconcileReprovWithDynamicResource`):
-  - The resource reasons are cancelled and applied by the live engine. CPU runs through `ResizeDynamicResources`. Memory runs only when `dynamicMemoryResizeDue` sees the live buffer pool differ from the target. Disk is a grow to the declared size through the orchestrator.
-  - The engine itself falls back to a restart cookie wherever the release cannot apply a change live: error 1238, a restart-only redo log, PostgreSQL, OpenSVC v2.
+- **Cookie writes:** every read-modify-write of the cookie runs under one mutex (`reprovCookieMu`), and a rewrite replaces the file in one rename, so a check never sees it missing. Adding a reason to a cookie without reasons (written before #1969) first spells out its legacy meaning, memory and cores.
+- **Switching `prov-db-dynamic-resource` on** (`SetProvDBDynamicResource(true)`, from the switch or from the WARN0234 remediation, which is an idempotent set to `true`, never a toggle) runs `ReconcileReprovWithDynamicResource` in the background:
+  - One run at a time per cluster (`reprovReconcileMu.TryLock`); a panic is recovered and logged.
+  - The resource reasons are cancelled and applied by the live engine. Cores run only when `dynamicCPUResizeDue` sees the live `innodb_read_io_threads` differ from the target, in the direction of the difference. Memory runs only when `dynamicMemoryResizeDue` sees the live buffer pool differ from the target. Disk is a grow to the declared size through the orchestrator; an unreadable `prov-db-disk-size` keeps the `disk-size` reason.
+  - A reason is cancelled only on a server the engine reaches. A server down at the start keeps its cookie untouched; a server lost during the run gets its reasons back. While dynamic resource is on, the config-state check starts the reconcile again as soon as such a server is reachable.
+  - The engine itself falls back to a restart cookie wherever the release cannot apply a change live (error 1238, a restart-only redo log, PostgreSQL, OpenSVC v2), and re-records `disk-size` where the orchestrator has no live disk resize. Both survive the reconcile.
   - The other reasons keep the reprovision.
   - A cookie without a reason, written before #1969, is treated as memory and cores.
 - **Cancelling a reprovision by hand:** `POST /api/clusters/{name}/actions/cancel-rolling-reprov` (`CancelRollingReprov`) still cancels it outright.

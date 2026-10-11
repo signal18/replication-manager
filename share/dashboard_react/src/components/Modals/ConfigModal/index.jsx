@@ -40,12 +40,14 @@ function ConfigModal({ isOpen, closeModal }) {
 
   const handleFix = async (errKey) => {
     const fix = remediationByKey[errKey]?.fixes?.[0]
-    if (fix?.type !== 'settings_switch' || !fix?.url) return
+    // settings_set: an explicit value, so a stale page or a double click never undoes it.
+    if (!['settings_set', 'settings_switch'].includes(fix?.type) || !fix?.url) return
     setFixing((prev) => ({ ...prev, [errKey]: true }))
     try {
       const { status, data } = await clusterService.switchClusterSetting(fix.url, baseURL)
       if (status === 200) {
-        dispatch(showSuccessToast({ title: `Fix applied: ${errKey}`, description: fix.description }))
+        // The setting is saved; the work it triggers (live resize) runs in the background.
+        dispatch(showSuccessToast({ title: `Fix scheduled: ${errKey}`, description: fix.description }))
       } else {
         dispatch(showErrorToast({ title: `Fix failed: ${errKey}`, description: typeof data === 'string' ? data : 'Unexpected error' }))
       }
