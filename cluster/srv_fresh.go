@@ -103,16 +103,22 @@ func (server *ServerMonitor) monitorSeesAllSchemas() (bool, string) {
 // errRestoreRefused: an automatic reseed asked on a node not proven fresh.
 var errRestoreRefused = errors.New("automatic restore refused: not a fresh node")
 
-// checkFreshNodeStates opens CINF0013 on each StandAlone server proven fresh, the node an
-// automatic reseed may fill. Only StandAlone servers are read: a running master or
-// replica is never a reseed target.
+// checkFreshNodeStates, every tick, on each StandAlone server (the node an automatic reseed
+// may fill; a running master or replica is never read): CINF0013 when it is proven
+// fresh, WARN0237 when it is not and the automatic reseed is on, with the observed reason.
+// Raised from the facts while they hold, not from the rejoin history: a refusal on the
+// no-crash autoseed path leaves no crash archive, so the history keeps no record of it.
 func (cluster *Cluster) checkFreshNodeStates() {
 	for _, s := range cluster.Servers {
 		if s == nil || s.State != stateUnconn {
 			continue
 		}
-		if fn := s.CheckFreshNode(); fn.Fresh {
+		fn := s.CheckFreshNode()
+		switch {
+		case fn.Fresh:
 			cluster.SetState("CINF0013", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0013"], s.URL, fn.Reason), ErrFrom: "TOPO", ServerUrl: s.URL})
+		case cluster.Conf.Autorejoin && cluster.Conf.Autoseed:
+			cluster.SetState("WARN0237", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0237"], s.URL, fn.Reason), ErrFrom: "REJOIN", ServerUrl: s.URL})
 		}
 	}
 }

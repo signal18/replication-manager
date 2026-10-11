@@ -10,6 +10,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -99,5 +100,27 @@ func TestMyloaderCriticalWrap(t *testing.T) {
 	var none myloaderCritical
 	if e := errors.New("x"); none.wrap(e) != e {
 		t.Fatal("no CRITICAL line: the error as is")
+	}
+}
+
+// A StandAlone node not proven fresh, with the automatic reseed on, shows WARN0237 with the
+// reason, from the facts each tick (the refusal leaves no rejoin history to read it from).
+func TestCheckFreshNodeStatesRefusal(t *testing.T) {
+	s, _ := freshTestServer(t, 259201, 259200, "Y", []string{"replication_manager_schema", "app"}, nil)
+	s.State = stateUnconn
+	c := s.ClusterGroup
+	c.Conf.Autorejoin, c.Conf.Autoseed = true, true
+	c.Servers = []*ServerMonitor{s}
+	c.StateMachine = new(state.StateMachine)
+	c.StateMachine.Init()
+	c.checkFreshNodeStates()
+	found := false
+	for _, st := range c.StateMachine.GetOpenStates() {
+		if st.ErrKey == "WARN0237" && st.ServerUrl == s.URL && strings.Contains(st.ErrDesc, "user data") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("WARN0237 with the reason: %+v", c.StateMachine.GetOpenStates())
 	}
 }
