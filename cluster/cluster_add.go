@@ -9,6 +9,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -207,14 +208,19 @@ func (cluster *Cluster) AppendGrants(grants string, user *APIUser) string {
 }
 
 func (cluster *Cluster) AppendRoles(roles string, user *APIUser) string {
+	// visitor is the default of a user without any other role (LoadAPIUsers):
+	// kept next to a real role it would be saved in the entry and hide the
+	// operator buttons (#1971). A real role drops it, and it is never added
+	// next to one.
 	for _, role := range strings.Fields(roles) {
-		user.Roles[role] = true
-		// visitor is the default of a user without any other role (LoadAPIUsers):
-		// kept next to a real role it would be saved in the entry and hide the
-		// operator buttons (#1971).
-		if role != config.RoleVisitor {
-			delete(user.Roles, config.RoleVisitor)
+		if role == config.RoleVisitor {
+			continue
 		}
+		user.Roles[role] = true
+		delete(user.Roles, config.RoleVisitor)
+	}
+	if len(user.Roles) == 0 && slices.Contains(strings.Fields(roles), config.RoleVisitor) {
+		user.Roles[config.RoleVisitor] = true
 	}
 
 	return strings.Join(config.GetCompactRoles(user.Roles), " ")

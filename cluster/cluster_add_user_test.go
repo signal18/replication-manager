@@ -197,3 +197,15 @@ func TestAppendRolesDropsDefaultVisitor(t *testing.T) {
 		t.Fatalf("bob must be sponsor only after a reload: %+v", r)
 	}
 }
+
+func TestAppendRolesNeverAddsVisitorNextToRealRole(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	u := APIUser{User: "carol", Roles: map[string]bool{config.RoleSponsor: true}}
+	if got := c.AppendRoles(config.RoleVisitor, &u); got != config.RoleSponsor {
+		t.Fatalf("visitor must not be added next to sponsor: %q", got)
+	}
+	empty := APIUser{User: "dave", Roles: map[string]bool{}}
+	if got := c.AppendRoles(config.RoleVisitor, &empty); got != config.RoleVisitor {
+		t.Fatalf("visitor stays the default of a user without role: %q", got)
+	}
+}
