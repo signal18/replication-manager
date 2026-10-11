@@ -288,6 +288,8 @@ func (cluster *Cluster) assertRejoinResultStates() {
 		switch cr.RejoinResult {
 		case RejoinResultNotFlashback, RejoinResultNoMethod, RejoinResultFailed:
 			cluster.SetState("WARN0186", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0186"], url, cr.RejoinResult), ErrFrom: "REJOIN", ServerUrl: url})
+		case RejoinResultRestoreRefused:
+			cluster.SetState("WARN0237", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0237"], url), ErrFrom: "REJOIN", ServerUrl: url})
 		case RejoinResultPeerUnreached:
 			cluster.SetState("WARN0187", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0187"], url), ErrFrom: "REJOIN", ServerUrl: url})
 		}

@@ -183,6 +183,16 @@ func (server *ServerMonitor) RejoinMaster() error {
 						return nil
 					}
 					if cluster.Conf.Autoseed {
+						// An automatic restore only ever fills a node proven fresh: one with
+						// data (a 1 TB replica misread as new) is never overwritten behind
+						// the client's back (F1, #1979). Refused, recorded (WARN0237), left
+						// to an explicit operator reseed.
+						if fn := server.CheckFreshNode(); !fn.Fresh {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+								"Automatic restore refused on %s: not a fresh node, %s", server.URL, fn.Reason)
+							cluster.finishRejoin(server.URL, RejoinResultRestoreRefused)
+							return nil
+						}
 						err := server.ReseedMasterSST()
 						cluster.recordOrDeferRejoin(server, err)
 						return nil

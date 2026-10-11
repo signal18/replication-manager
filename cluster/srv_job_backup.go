@@ -3202,9 +3202,20 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 		return fmt.Errorf("No master. Cancel backup reseeding %s", server.URL)
 	}
 
+	// Restore strategy (#1979), decided on the node before anything is loaded. A fresh
+	// node keeps the system tables of its own release: the backup's raw mysql/sys tables
+	// are never loaded over them (a 12.3 mysql.proc in 10.11 is error 1805), and the
+	// accounts come from the master afterwards. A node with data restored by hand keeps
+	// today's behavior.
+	fresh := server.CheckFreshNode()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) strategy for %s: fresh %t (%s)", server.URL, fresh.Fresh, fresh.Reason)
+
 	myargs := cluster.GetMyLoaderCompatibleOptions()
 	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
+	}
+	if fresh.Fresh {
+		myargs = append(myargs, "--regex=^(?!(mysql|sys)\\.)")
 	}
 
 	myargs = append(myargs, cluster.GetDumpCredentials(server)...)
@@ -3216,6 +3227,9 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	stdoutIn, _ := dumpCmd.StdoutPipe()
 	stderrIn, _ := dumpCmd.StderrPipe()
 	dumpCmd.Start()
+	// myloader reports its fatal error on stderr (copied at DBG) and then aborts: keep
+	// its CRITICAL lines for the returned error, otherwise only the signal is seen.
+	var critical myloaderCritical
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -3224,11 +3238,20 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
+		server.copyLogsHook(stderrIn, config.ConstLogModBackupStream, config.LvlDbg, critical.observe)
 	}()
 	wg.Wait()
 	if err := dumpCmd.Wait(); err != nil {
-		return err
+		return critical.wrap(err)
+	}
+	if fresh.Fresh {
+		sqlLogBin := 0
+		if server.URL == master.URL {
+			sqlLogBin = 1
+		}
+		if err := server.replayMasterSystemUsers(master, sqlLogBin); err != nil {
+			return fmt.Errorf("logical restore of %s: data restored, accounts from %s not replayed: %w", server.URL, master.URL, err)
+		}
 	}
 	elapsed := time.Since(start).Round(time.Second)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (myloader) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
@@ -4408,6 +4431,14 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	return err
 }
 
+// mysqldumpUserArgs is the --system=user dump of this server's accounts and grants, the
+// one JobBackupMysqldumpUser writes as the users sidecar and replayMasterSystemUsers
+// streams live from the master.
+func (server *ServerMonitor) mysqldumpUserArgs() []string {
+	args := append(server.ClusterGroup.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
+	return append(args, "--insert-ignore", "--system=user")
+}
+
 func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	cluster := server.ClusterGroup
 	var err error
@@ -4415,9 +4446,7 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	dir := server.GetMyBackupDirectory()
 	userpath := filepath.Join(dir, "mysql.users.sql.gz")
 
-	dumpargs := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
-	dumpargs = append(dumpargs, "--insert-ignore", "--system=user")
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), server.mysqldumpUserArgs()...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 

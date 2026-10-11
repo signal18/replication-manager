@@ -15,7 +15,7 @@ const PAGE_BYTES = 262144
 
 // Blink for a FAILED rejoin outcome (draws the eye to a crash needing action).
 const blink = keyframes`0%, 100% { opacity: 1 } 50% { opacity: 0.2 }`
-const REJOIN_FAILED = ['not-flashback-able', 'no-rejoin-method', 'failed', 'peer-unreachable']
+const REJOIN_FAILED = ['not-flashback-able', 'no-rejoin-method', 'failed', 'peer-unreachable', 'restore-refused']
 const REJOIN_LABEL = {
   'success': 'Rejoined',
   'no-divergence': 'Rejoined (no divergence)',
@@ -23,6 +23,7 @@ const REJOIN_LABEL = {
   'no-rejoin-method': 'Rejoin failed: no method',
   'failed': 'Rejoin failed',
   'peer-unreachable': 'Rejoin pending: peer unreachable',
+  'restore-refused': 'Automatic restore refused: node holds data',
   'recovered': 'Recovered (healthy slave)'
 }
 

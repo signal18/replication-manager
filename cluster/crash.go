@@ -116,13 +116,14 @@ func RejoinMethodClass(method string) string {
 
 // Rejoin result codes (Crash.RejoinResult). "" = not yet attempted.
 const (
-	RejoinResultSuccess       = "success"            // re-slaved under the elected master
-	RejoinResultNoDivergence  = "no-divergence"      // no crash/no delta: re-slaved on current GTID
-	RejoinResultNotFlashback  = "not-flashback-able" // diverged tail is DDL/statement: manual repair
-	RejoinResultNoMethod      = "no-rejoin-method"   // not flashback-able and no SST method armed
-	RejoinResultPeerUnreached = "peer-unreachable"   // minority could not fetch the verdict (transient split)
-	RejoinResultFailed        = "failed"             // generic execution failure
-	RejoinResultRecovered     = "recovered"          // a FAILED rejoin whose node later became a healthy slave by other means (manual start-slave, save+start, attach) — reconciled so history stops reporting a stale failure
+	RejoinResultSuccess        = "success"            // re-slaved under the elected master
+	RejoinResultNoDivergence   = "no-divergence"      // no crash/no delta: re-slaved on current GTID
+	RejoinResultNotFlashback   = "not-flashback-able" // diverged tail is DDL/statement: manual repair
+	RejoinResultNoMethod       = "no-rejoin-method"   // not flashback-able and no SST method armed
+	RejoinResultPeerUnreached  = "peer-unreachable"   // minority could not fetch the verdict (transient split)
+	RejoinResultFailed         = "failed"             // generic execution failure
+	RejoinResultRestoreRefused = "restore-refused"    // automatic reseed refused: the node is not proven fresh (#1979)
+	RejoinResultRecovered      = "recovered"          // a FAILED rejoin whose node later became a healthy slave by other means (manual start-slave, save+start, attach) — reconciled so history stops reporting a stale failure
 )
 
 // isRejoinFailedResult reports whether a finished rejoin outcome is a FAILURE that
@@ -130,7 +131,7 @@ const (
 // sync with the frontend REJOIN_FAILED set (Navbar / LostEventsModal / HADetail).
 func isRejoinFailedResult(result string) bool {
 	switch result {
-	case RejoinResultNotFlashback, RejoinResultNoMethod, RejoinResultFailed, RejoinResultPeerUnreached:
+	case RejoinResultNotFlashback, RejoinResultNoMethod, RejoinResultFailed, RejoinResultPeerUnreached, RejoinResultRestoreRefused:
 		return true
 	}
 	return false

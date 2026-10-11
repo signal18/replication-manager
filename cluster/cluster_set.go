@@ -52,6 +52,7 @@ func (cluster *Cluster) SetStatus() {
 			srv.CheckResourceConsumed()
 		}
 	}
+	cluster.checkFreshNodeStates()                // CINF0013 on a StandAlone server proven fresh (#1979)
 	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
 	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
 	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
