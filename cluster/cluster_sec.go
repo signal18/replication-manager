@@ -684,7 +684,16 @@ func (cluster *Cluster) EnsureSystemServiceUser() {
 	if apikey == "" {
 		return // no persistent key -> cannot derive; app/proxy sensor auth stays unavailable
 	}
-	if _, ok := cluster.APIUsers["system"]; ok {
+	if u, ok := cluster.APIUsers["system"]; ok {
+		// An existing `system` may predate the sensor grant (secret-login used to create
+		// it with only "db proxy", #1967): add the grant, keep the others.
+		if !u.Grants[config.GrantClusterResourceSensor] {
+			allow, _ := config.GetCompactGrants(u.Grants)
+			cluster.UpdateUser(UserForm{
+				Username: "system",
+				Grants:   strings.Join(append(allow, config.GrantClusterResourceSensor), " "),
+			}, "admin", true)
+		}
 		return
 	}
 	cluster.AddUser(UserForm{

@@ -174,3 +174,32 @@ func TestEnsureSystemServiceUserAfterReset(t *testing.T) {
 		t.Fatal("system must authenticate with the derived key")
 	}
 }
+
+// A `system` created by secret-login with only "db proxy" (#1967) is repaired on
+// the next EnsureSystemServiceUser: the sensor grant is added, the others are kept.
+func TestEnsureSystemServiceUserAddsSensorToExisting(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	cm := manager.NewConfigManager(config.NewLogrusWrapper(c.Conf, logrus.New()))
+	cm.Stop() // saves become no-ops
+	c.ConfigManager = cm
+	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "system:pw"}
+	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1"
+	c.LoadAPIUsers()
+	if c.APIUsers["system"].Grants[config.GrantClusterResourceSensor] {
+		t.Fatal("fixture: system starts without the sensor grant")
+	}
+
+	c.EnsureSystemServiceUser()
+	c.LoadAPIUsers()
+	s := c.APIUsers["system"]
+	if !s.Grants[config.GrantClusterResourceSensor] {
+		t.Fatalf("system must get cluster-resource-sensor: %q", c.Conf.APIUsersACLAllowExternal)
+	}
+	if !s.Grants[config.GrantDBShowVariables] || !s.Grants[config.GrantProxyConfigCreate] {
+		t.Fatal("system must keep its db and proxy grants")
+	}
+	if strings.Count(c.Conf.APIUsersACLAllowExternal, "system:") != 1 {
+		t.Fatalf("system must keep a single entry: %q", c.Conf.APIUsersACLAllowExternal)
+	}
+}

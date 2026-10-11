@@ -4999,7 +4999,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 
 		uform := cluster.UserForm{
 			Username: "system",
-			Grants:   "db proxy",
+			Grants:   "db proxy " + config.GrantClusterResourceSensor,
 			Password: newpasswd,
 		}
 
