@@ -1360,13 +1360,13 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	defer Conn.Close()
 
 	// Move previous batch and truncate if still exists
-	dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString, timeout)
+	dbhelper.MoveLogsToDailyTable(Conn.Conn, server.DBVersion, "slow_log", timeStampString, timeout)
 
-	if err := dbhelper.FetchLogsToBufferTable(Conn, server.DBVersion, "slow_log", timeStampString, timeout); err != nil {
+	if err := dbhelper.FetchLogsToBufferTable(Conn.Conn, server.DBVersion, "slow_log", timeStampString, timeout); err != nil {
 		return fmt.Errorf("Error fetch slow logs to buffer table on %s. Err : %v", server.URL, err)
 	}
 
-	if err := dbhelper.TruncateLogsTable(Conn, server.DBVersion, "slow_log", timeout); err != nil {
+	if err := dbhelper.TruncateLogsTable(Conn.Conn, server.DBVersion, "slow_log", timeout); err != nil {
 		return fmt.Errorf("Error truncate slow logs buffer table on %s. Err : %v", server.URL, err)
 	}
 
@@ -1442,7 +1442,7 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	// last actual write (see getDBLogRotatingWriter).
 	releaseWriter()
 
-	if err := dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString, timeout); err != nil {
+	if err := dbhelper.MoveLogsToDailyTable(Conn.Conn, server.DBVersion, "slow_log", timeStampString, timeout); err != nil {
 		return fmt.Errorf("Error moving logs from buffer to daily table on %s: %v", server.URL, err)
 	}
 

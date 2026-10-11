@@ -1087,6 +1087,12 @@ func (server *ServerMonitor) ReplicationTLSFor(host, port string, useSSL bool) R
 		// No configured certificate: an 11.4+ MariaDB generates one, an older server
 		// (or one with TLS disabled) has none.
 		if haveSSL, ok := primary.liveVariable("HAVE_SSL"); ok && haveSSL.Valid && !strings.EqualFold(haveSSL.String, "YES") {
+			if useSSL {
+				// replication-use-ssl asks for TLS the primary cannot give: the channel will
+				// not connect, the replication error (and WARN0236) surfaces it.
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Replication TLS of %s towards %s:%s: replication-use-ssl is on but the primary has no TLS (have_ssl %s)", server.URL, host, port, haveSSL.String)
+			}
 			return ReplicationTLS{SSLOff: !useSSL}
 		}
 		return ReplicationTLS{ClearCA: primary.DBVersion.IsMariaDB() && primary.DBVersion.GreaterEqual("11.4")}
@@ -1097,6 +1103,8 @@ func (server *ServerMonitor) ReplicationTLSFor(host, port string, useSSL bool) R
 	if cluster.Conf.ReplicationSSLCa != "" {
 		return ReplicationTLS{CA: cluster.Conf.ReplicationSSLCa}
 	}
+	// Only the orchestrators that deploy the configurator's init bundle ship the CA at
+	// that path; on-premise and local servers carry their own certificates.
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes:
 		if cluster.Configurator.HaveDBTag("ssl") {

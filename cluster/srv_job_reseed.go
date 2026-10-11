@@ -516,7 +516,7 @@ func (cluster *Cluster) RetryDirectReseedSystemCatalog(dest *ServerMonitor, arti
 			return false, connErr
 		}
 		defer conn.Close()
-		return dest.restoreSystemCatalog(context.Background(), conn, artifactPath)
+		return dest.restoreSystemCatalog(context.Background(), conn.Conn, artifactPath)
 	}()
 
 	if replayErr != nil {

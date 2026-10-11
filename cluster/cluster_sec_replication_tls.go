@@ -31,6 +31,13 @@ func replicationTLSUnverified(rep dbhelper.SlaveStatus, replica *version.Version
 	return !hasZeroConfigTLS(replica)
 }
 
+// replicationTLSHandshakeFailed: the I/O thread fails on TLS, error 2026. Measured on
+// dev3 (MariaDB 12.3): a CA that did not sign the primary's certificate and a CA file
+// that does not exist both answer 2026.
+func replicationTLSHandshakeFailed(rep dbhelper.SlaveStatus) bool {
+	return rep.LastIOErrno.String == "2026"
+}
+
 // hasZeroConfigTLS: MariaDB 11.4+ verifies a server certificate without a CA through the
 // account password.
 func hasZeroConfigTLS(v *version.Version) bool {
@@ -54,9 +61,13 @@ func (cluster *Cluster) CheckReplicationTLS() {
 			if rep.ConnectionName.String != "" {
 				from += " (channel " + rep.ConnectionName.String + ")"
 			}
-			if rep.LastIOErrno.String == "2026" {
+			if replicationTLSHandshakeFailed(rep) {
+				ca := rep.MasterSSLCAFile.String
+				if ca == "" {
+					ca = "none"
+				}
 				cluster.SecurityStateMachine.AddState("WARN0236", state.State{ErrType: "WARNING", ErrKey: "WARN0236", ErrFrom: "SECURITY", ServerUrl: s.URL,
-					ErrDesc: fmt.Sprintf(clusterError["WARN0236"], s.URL, from, rep.MasterSSLCAFile.String)})
+					ErrDesc: fmt.Sprintf(clusterError["WARN0236"], s.URL, from, ca)})
 			}
 			if replicationTLSUnverified(rep, s.DBVersion) {
 				cluster.SecurityStateMachine.AddState("WARN0235", state.State{ErrType: "WARNING", ErrKey: "WARN0235", ErrFrom: "SECURITY", ServerUrl: s.URL,

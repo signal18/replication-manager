@@ -936,6 +936,11 @@ func (cluster *Cluster) reloadDBTLSCertificates() {
 	if cluster.HaveDBTLSCert == prevCert && cluster.HaveDBTLSOldCert == prevOld {
 		return
 	}
+	// Only the DSN strings change here: the pools follow at the next connection, Ping
+	// opening one per tick (GetNewDBConn). TLSConfigUsed goes back to the current
+	// certificates, dropping any per-server fallback to the previous ones: the set of
+	// certificates it chose between has just changed. Written like every other SetDSN
+	// caller, outside the cluster lock (a tick reads it, a reload writes it).
 	for _, server := range cluster.Servers {
 		if server == nil {
 			continue

@@ -2794,7 +2794,12 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 
 		var conn *sqlx.Conn
 		if sqlLogBin == 0 {
-			conn, connErr = server.GetConnNoBinlog(dbh) // slave reseed: keep the restore out of the binlog
+			// slave reseed: keep the restore out of the binlog (dbh is this restore's own
+			// pool, closed with it, so the session never reaches server.Conn)
+			var nb *NoBinlogConn
+			if nb, connErr = server.GetConnNoBinlog(dbh); nb != nil {
+				conn = nb.Conn
+			}
 		} else {
 			conn, connErr = dbh.Connx(ctx) // master restore: leave binlog ON so replicas receive the data
 		}
@@ -3420,7 +3425,13 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 // an unconditionally-unlogged replay connection.
 func (server *ServerMonitor) reseedMysqldumpSystemReplayConn(ctx context.Context, dbh *sqlx.DB, sqlLogBin int) (*sqlx.Conn, error) {
 	if sqlLogBin == 0 {
-		return server.GetConnNoBinlog(dbh)
+		// dbh is the reseed's own pool, closed with it: the unlogged session never
+		// reaches server.Conn
+		nb, err := server.GetConnNoBinlog(dbh)
+		if nb == nil {
+			return nil, err
+		}
+		return nb.Conn, err
 	}
 	return dbh.Connx(ctx)
 }
@@ -6220,7 +6231,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 				return false, connErr
 			}
 			defer conn.Close()
-			return dest.restoreSystemCatalog(ctx, conn, filepath.Join(finalDir, directReseedSystemArtifactName))
+			return dest.restoreSystemCatalog(ctx, conn.Conn, filepath.Join(finalDir, directReseedSystemArtifactName))
 		}()
 
 		if replayErr != nil {
@@ -6432,7 +6443,7 @@ func (server *ServerMonitor) waitAndSendSSTReady(task string) (bool, error) {
 	}
 	defer conn.Close()
 
-	count, err := server.GetJobCount(conn, task, JobStateHalted)
+	count, err := server.GetJobCount(conn.Conn, task, JobStateHalted)
 	if err != nil {
 		return false, fmt.Errorf("Error getting task on %s: %s", server.URL, err)
 	}

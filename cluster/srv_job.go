@@ -108,7 +108,7 @@ WHERE table_schema = 'replication_manager_schema'
   );`
 
 	var exist int
-	err = server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, query)
+	err = server.ConnGetQueryWithTimeout(Conn.Conn, JobTimeout, &exist, query)
 	if err != nil {
 		return fmt.Errorf("Failed to check jobs table: %v", err)
 	}
@@ -160,10 +160,10 @@ func (server *ServerMonitor) ensureReplicationManagerSchema() {
 	}
 	defer conn.Close()
 	var count int
-	server.ConnGetQueryWithTimeout(conn, JobTimeout, &count,
+	server.ConnGetQueryWithTimeout(conn.Conn, JobTimeout, &count,
 		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='replication_manager_schema'")
 	if count == 0 {
-		server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+		server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 	}
 }
 
@@ -181,12 +181,12 @@ func (server *ServerMonitor) jobsDropTable() {
 	}
 	defer conn.Close()
 	var count int
-	err = server.ConnGetQueryWithTimeout(conn, JobTimeout, &count,
+	err = server.ConnGetQueryWithTimeout(conn.Conn, JobTimeout, &count,
 		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='replication_manager_schema' AND table_name='jobs'")
 	if err != nil || count == 0 {
 		return
 	}
-	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "/* replication-manager */ DROP TABLE replication_manager_schema.jobs")
+	_, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "/* replication-manager */ DROP TABLE replication_manager_schema.jobs")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to drop jobs table on %s: %s", server.URL, err)
 	} else {
@@ -220,10 +220,10 @@ func (server *ServerMonitor) jobsCreateTable() error {
 
 	// Check if schema exists before CREATE to avoid metadata lock on every tick
 	var schemaExists int
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &schemaExists,
+	server.ConnGetQueryWithTimeout(Conn.Conn, JobTimeout, &schemaExists,
 		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name='replication_manager_schema'")
 	if schemaExists == 0 {
-		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+		_, err = server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, "/* replication-manager */ CREATE DATABASE IF NOT EXISTS replication_manager_schema")
 		if err != nil {
 			return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
 		}
@@ -233,51 +233,51 @@ func (server *ServerMonitor) jobsCreateTable() error {
 
 	// Check if jobs table exists before CREATE to avoid metadata lock on every tick
 	var tableExists int
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &tableExists,
+	server.ConnGetQueryWithTimeout(Conn.Conn, JobTimeout, &tableExists,
 		"/* replication-manager */ SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='replication_manager_schema' AND table_name='jobs'")
 	if tableExists == 0 {
-		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
+		_, err = server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, createquery)
 		if err != nil {
 			return fmt.Errorf("Failed to create jobs table: %v", err)
 		}
 	}
 
 	var exist int
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "/* replication-manager */ SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
+	server.ConnGetQueryWithTimeout(Conn.Conn, JobTimeout, &exist, "/* replication-manager */ SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
 	if exist == 0 {
-		server.ConnExecQueryWithTimeout(Conn, JobTimeout, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
+		server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
+		_, err := server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, createquery)
 		if err != nil {
 			return fmt.Errorf("Failed to create jobs table: %v", err)
 		}
 	}
 
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
+	server.ConnGetQueryWithTimeout(Conn.Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
 	if exist == 0 {
 		//Add column instead of changing create table for compatibility
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
+		_, err := server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
 		if err != nil {
 			return fmt.Errorf("Failed to add column on jobs table: %v", err)
 		}
 
 		//Add index
-		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD INDEX idx3 (task, state)")
+		_, err = server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD INDEX idx3 (task, state)")
 		if err != nil {
 			return fmt.Errorf("Failed to add index on jobs table: %v", err)
 		}
 	}
 
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'result' AND COLUMN_TYPE not like '%MEDIUMTEXT%'")
+	server.ConnGetQueryWithTimeout(Conn.Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'result' AND COLUMN_TYPE not like '%MEDIUMTEXT%'")
 	if exist == 1 {
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL;")
+		_, err := server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL;")
 		if err != nil {
 			return fmt.Errorf("Failed to modify column result to MEDIUMTEXT on jobs table: %v", err)
 		}
 	}
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'payload'")
+	server.ConnGetQueryWithTimeout(Conn.Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'payload'")
 	if exist == 0 {
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD COLUMN payload MEDIUMTEXT DEFAULT NULL AFTER result")
+		_, err := server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD COLUMN payload MEDIUMTEXT DEFAULT NULL AFTER result")
 		if err != nil {
 			return fmt.Errorf("Failed to add column payload on jobs table: %v", err)
 		}
@@ -423,7 +423,7 @@ func (server *ServerMonitor) JobsRefreshEntries() error {
 	}
 	defer conn.Close()
 
-	return server.JobsUpdateEntries(conn)
+	return server.JobsUpdateEntries(conn.Conn)
 }
 
 func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost string) (int64, error) {
@@ -549,7 +549,7 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 
 	//delete row to reset all values
 	if nr > 0 {
-		_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
+		_, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
 		if err != nil {
 			return 0, fmt.Errorf("Failed to delete row on jobs table for %s: %v", t.Task, err)
 		}
@@ -558,9 +558,9 @@ func (server *ServerMonitor) jobInsertTask(task string, port string, repmanhost 
 	//Reuse the same id
 	var res sql.Result
 	if payload == nil {
-		res, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "INSERT INTO replication_manager_schema.jobs(id, task, port, server, start) VALUES(?, ?, ?, ?, NOW())", t.Id, task, port, repmanhost)
+		res, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "INSERT INTO replication_manager_schema.jobs(id, task, port, server, start) VALUES(?, ?, ?, ?, NOW())", t.Id, task, port, repmanhost)
 	} else {
-		res, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "INSERT INTO replication_manager_schema.jobs(id, task, port, server, payload, start) VALUES(?, ?, ?, ?, ?, NOW())", t.Id, task, port, repmanhost, *payload)
+		res, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "INSERT INTO replication_manager_schema.jobs(id, task, port, server, payload, start) VALUES(?, ?, ?, ?, ?, NOW())", t.Id, task, port, repmanhost, *payload)
 	}
 	if err != nil {
 		return 0, fmt.Errorf("Failed to insert row on jobs table for %s: %v", t.Task, err)
@@ -702,7 +702,7 @@ func (server *ServerMonitor) HasRunningDBJobs() (bool, error) {
 
 	query := "SELECT COUNT(*) FROM replication_manager_schema.jobs WHERE done=0 AND state IN (?, ?)"
 	var count int
-	err = server.ConnGetQueryWithTimeout(conn, JobTimeout, &count, query, JobStateRunning, JobStateHalted)
+	err = server.ConnGetQueryWithTimeout(conn.Conn, JobTimeout, &count, query, JobStateRunning, JobStateHalted)
 	if err != nil {
 		if isTableMissingError(err) {
 			return false, nil
@@ -773,7 +773,7 @@ func (server *ServerMonitor) OptimizeSQL() error {
 		fqn := "`" + t.TableSchema + "`.`" + t.TableName + "`"
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModDbOptimize, config.LvlInfo,
 			"Optimizing %s on %s", fqn, server.URL)
-		_, err := server.ConnExecQueryWithTimeout(conn, 3600*time.Second, "OPTIMIZE TABLE "+fqn)
+		_, err := server.ConnExecQueryWithTimeout(conn.Conn, 3600*time.Second, "OPTIMIZE TABLE "+fqn)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModDbOptimize, config.LvlErr,
 				"OPTIMIZE TABLE %s failed on %s: %s", fqn, server.URL, err)
@@ -815,7 +815,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	}
 	defer Conn.Close()
 
-	tasks, err := server.GetTasksByState(Conn, JobStateAvailable)
+	tasks, err := server.GetTasksByState(Conn.Conn, JobStateAvailable)
 	if err != nil {
 		return fmt.Errorf("Error retrieving jobs on %s: %s", server.URL, err)
 	}
@@ -824,7 +824,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		if task.ct > 10 {
 			cluster.SetState("ERR00060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00060"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			purge := "DELETE from replication_manager_schema.jobs WHERE task='" + task.task + "' AND done=0 AND result IS NULL order by start asc limit  " + strconv.Itoa(task.ct-1)
-			_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, purge)
+			_, err := server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, purge)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error purging replication_manager_schema.jobs %s", err)
 			}
@@ -1208,12 +1208,12 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancelling tasks on %s as requested", server.URL)
 	//Using lock to prevent wrong reads
-	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "LOCK TABLES replication_manager_schema.jobs WRITE;")
+	_, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "LOCK TABLES replication_manager_schema.jobs WRITE;")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't lock table jobs for cancel task")
 		return err
 	}
-	defer server.ConnExecQueryWithTimeout(conn, JobTimeout, "UNLOCK TABLES;")
+	defer server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "UNLOCK TABLES;")
 
 	query := "UPDATE replication_manager_schema.jobs SET done=1, state=5, result='cancelled by user' WHERE done=0 AND state=0 and task in (?);"
 	if force {
@@ -1229,7 +1229,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	query = conn.Rebind(query)
 
 	var res sql.Result
-	res, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, query, args...)
+	res, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, query, args...)
 	if err != nil {
 		return fmt.Errorf("Error exec query for cancel tasks on %s: %s", server.URL, err)
 	}
@@ -1298,12 +1298,12 @@ func (server *ServerMonitor) JobsCheckStates() error {
 		return nil
 	}
 
-	server.JobsCheckFinished(conn)
-	server.JobsCheckErrors(conn)
-	server.JobsCheckPending(conn)
+	server.JobsCheckFinished(conn.Conn)
+	server.JobsCheckErrors(conn.Conn)
+	server.JobsCheckPending(conn.Conn)
 
 	if server.NeedRefreshJobsPending() {
-		err = server.JobsUpdateEntries(conn)
+		err = server.JobsUpdateEntries(conn.Conn)
 		return err
 	}
 
@@ -1404,14 +1404,14 @@ func (server *ServerMonitor) JobsReconcileSQL() error {
 	if err := server.JobsCheckRunning(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (running) on %s: %s", server.URL, err)
 	}
-	if err := server.JobsCheckFinished(conn); err != nil {
+	if err := server.JobsCheckFinished(conn.Conn); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (finished) on %s: %s", server.URL, err)
 	}
-	if err := server.JobsCheckErrors(conn); err != nil {
+	if err := server.JobsCheckErrors(conn.Conn); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job reconciliation (errors) on %s: %s", server.URL, err)
 	}
 
-	return server.JobsUpdateEntries(conn)
+	return server.JobsUpdateEntries(conn.Conn)
 }
 
 func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
@@ -1636,9 +1636,9 @@ func (server *ServerMonitor) jobsUpdateState(task, result string, state, done in
 	defer conn.Close()
 
 	if done == 1 {
-		_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET done=?, state=?, result=?, end=NOW() WHERE task =?;", done, state, result, task)
+		_, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET done=?, state=?, result=?, end=NOW() WHERE task =?;", done, state, result, task)
 	} else {
-		_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET done=?, state=?, result=? WHERE task =?;", done, state, result, task)
+		_, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET done=?, state=?, result=? WHERE task =?;", done, state, result, task)
 	}
 	if err != nil {
 		return err
@@ -1704,7 +1704,7 @@ func (server *ServerMonitor) jobsUpdatePayload(task, payload string, runtimeOnly
 	}
 	defer conn.Close()
 
-	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET payload=? WHERE task =?;", payload, task)
+	_, err = server.ConnExecQueryWithTimeout(conn.Conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET payload=? WHERE task =?;", payload, task)
 	if err != nil {
 		return err
 	}

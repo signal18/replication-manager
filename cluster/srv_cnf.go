@@ -981,6 +981,8 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 		// the restart): preserving it would bring the dropped tag back at every start
 		// (#1976). Explicit preservation goes through 01_preserved.cnf.
 		if v.Config == nil && managed[strings.ToLower(v.VariableName)] {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+				"Delta of %s: %s not kept, a tag ruleset renders it and the generated config no longer does (preserve it in 01_preserved.cnf to keep it)", server.URL, v.VariableName)
 			continue
 		}
 		// Skip variables that have preservation status set

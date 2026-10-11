@@ -32,7 +32,7 @@ Every `CHANGE MASTER` goes through `ServerMonitor.ChangeMaster`, which reads the
 |---|---|
 | unreachable | nothing: the channel keeps what it has |
 | no TLS (`have_ssl` not `YES`), `replication-use-ssl` off | `MASTER_SSL=0`: an 11.4+ replica defaults to TLS and would not connect (MDEV-35584, mixed versions during an upgrade) |
-| auto-generated certificate (11.4+) | `MASTER_SSL_CA=''`: any CA breaks it, the password verifies it |
+| auto-generated certificate (11.4+) | `MASTER_SSL_CA=''`: any CA breaks it, the password verifies it. Keyed on the primary: a MySQL or pre-11.4 replica cannot verify that way, the empty CA only clears a stale one and the channel is reported (WARN0235) |
 | configured certificate, `replication-use-ssl` on | `MASTER_SSL_CA` = `replication-ssl-ca`, else `/etc/mysql/ssl/ca-cert.pem` on a provisioned cluster with the `ssl` tag, else the replica's own `ssl_ca` when it is the primary's too; otherwise nothing (a CA an operator set stays) |
 
 `MASTER_SSL_CERT`/`KEY` are never emitted (a server certificate is not necessarily a
@@ -50,8 +50,8 @@ these are security states):
 - **WARN0235**: encrypted, no CA, and either verification off or a release without
   zero-configuration TLS (MySQL, MariaDB before 11.4): any certificate of the system trust
   store is accepted as the primary.
-- **WARN0236**: the channel fails its TLS handshake (`Last_IO_Errno` 2026): the CA does not
-  match the primary's certificate.
+- **WARN0236**: the channel fails its TLS handshake (`Last_IO_Errno` 2026, measured both for
+  a CA that did not sign the primary's certificate and for a CA file that does not exist).
 
 The monitor only reports. Remedy: a switchover or a rejoin issues the `CHANGE MASTER` that
 carries the decision; by hand, on the replica:
@@ -67,11 +67,16 @@ carries the decision; by hand, on the replica:
 - **#1974** `SetDSN` writes the TLS mode into the DSN only when called; a certificate change
   (ssl tag dropped) left `&tls=tlsconfig` and repman unable to reach healthy servers.
   `reloadDBTLSCertificates` rebuilds every DSN when the certificate state changes.
+- **#1978** `GetConnNoBinlog` returned its `sql_log_bin=0` session to the `server.Conn` pool,
+  so later writes on the master (the post-switchover `FLUSH TABLES`, repman DDL, the regtest
+  probe) were not binlogged. Its `Close` now discards the connection.
 - **#1976** a dropped tag's variables, still deployed until the restart, were kept as
   `delta:no-config` in `02_delta.cnf` and brought the tag back at every start (auto-agree
   only handles value-differs deltas). A variable a tag ruleset renders is never kept as a
-  no-config delta (`Configurator.TagManagedVariables`); `01_preserved.cnf` still preserves
-  on purpose.
+  no-config delta (`Configurator.TagManagedVariables`, logged at DBG); `01_preserved.cnf`
+  still preserves on purpose. Limit: a variable an operator set by hand that some ruleset
+  renders, while the cluster does not use that tag, is not kept by the delta either; it must
+  be preserved explicitly.
 
 ## Settings
 

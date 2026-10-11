@@ -100,6 +100,19 @@ func tlsSecurityStateOpen(cl *cluster.Cluster, key, url string) bool {
 	return cl.SecurityStateMachine.IsInState(state.BuildStateKey(key, url))
 }
 
+// tlsNeverOpen fails when one of keys opens during d (read every 2 s from the previous
+// tick): a warning must stay closed over the whole window, not only at its end.
+func tlsNeverOpen(cl *cluster.Cluster, d time.Duration, keys ...string) error {
+	for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
+		for _, k := range keys {
+			if tlsSecurityStateOpen(cl, k, "") {
+				return fmt.Errorf("%s open", k)
+			}
+		}
+	}
+	return nil
+}
+
 // tlsMonitoringKept fails when a server is declared failed, or a primary refuses
 // plaintext connections, during d: the ssl tag must never cost the monitoring (#1974,
 // #1975).
@@ -174,9 +187,8 @@ func (regtest *RegTest) TestReplicationTLSAutoCertificate(cl *cluster.Cluster, c
 			return false
 		}
 	}
-	time.Sleep(10 * time.Second)
-	if tlsSecurityStateOpen(cl, "WARN0235", "") || tlsSecurityStateOpen(cl, "WARN0236", "") {
-		tlsLogf(cl, "FAIL ReplicationTLSAutoCertificate: a TLS warning is open on a zero-config verified cluster")
+	if err := tlsNeverOpen(cl, 20*time.Second, "WARN0235", "WARN0236"); err != nil {
+		tlsLogf(cl, "FAIL ReplicationTLSAutoCertificate: a TLS warning on a zero-config verified cluster: %s", err)
 		return false
 	}
 	tlsLogf(cl, "PASS ReplicationTLSAutoCertificate")
@@ -386,9 +398,8 @@ func (regtest *RegTest) TestRollingUpgradeTransparentSSL(cl *cluster.Cluster, co
 			return false
 		}
 	}
-	time.Sleep(10 * time.Second)
-	if tlsSecurityStateOpen(cl, "WARN0236", "") {
-		tlsLogf(cl, "FAIL RollingUpgradeTransparentSSL: a TLS handshake fails after the upgrade")
+	if err := tlsNeverOpen(cl, 20*time.Second, "WARN0236"); err != nil {
+		tlsLogf(cl, "FAIL RollingUpgradeTransparentSSL: a TLS handshake fails after the upgrade: %s", err)
 		return false
 	}
 	if tlsSecurityStateOpen(cl, "WARN0235", "") {
