@@ -209,3 +209,54 @@ func TestAppendRolesNeverAddsVisitorNextToRealRole(t *testing.T) {
 		t.Fatalf("visitor stays the default of a user without role: %q", got)
 	}
 }
+
+// A `system` created by secret-login with only "db proxy" (#1967) is repaired on
+// the next EnsureSystemServiceUser: the sensor grant is added, the others are kept.
+func TestEnsureSystemServiceUserAddsSensorToExisting(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	cm := manager.NewConfigManager(config.NewLogrusWrapper(c.Conf, logrus.New()))
+	cm.Stop() // saves become no-ops
+	c.ConfigManager = cm
+	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "system:pw"}
+	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1:dbops"
+	c.LoadAPIUsers()
+	if c.APIUsers["system"].Grants[config.GrantClusterResourceSensor] {
+		t.Fatal("fixture: system starts without the sensor grant")
+	}
+
+	c.EnsureSystemServiceUser()
+	c.LoadAPIUsers()
+	s := c.APIUsers["system"]
+	if !s.Grants[config.GrantClusterResourceSensor] {
+		t.Fatalf("system must get cluster-resource-sensor: %q", c.Conf.APIUsersACLAllowExternal)
+	}
+	if !s.Grants[config.GrantDBShowVariables] || !s.Grants[config.GrantProxyConfigCreate] {
+		t.Fatal("system must keep its db and proxy grants")
+	}
+	if strings.Count(c.Conf.APIUsersACLAllowExternal, "system:") != 1 {
+		t.Fatalf("system must keep a single entry: %q", c.Conf.APIUsersACLAllowExternal)
+	}
+	if !s.Roles[config.RoleDBOps] {
+		t.Fatalf("system must keep its roles: %q", c.Conf.APIUsersACLAllowExternal)
+	}
+}
+
+// A `system` defined in the main config ACL cannot be repaired from the cluster ACL
+// (strict override): nothing is rewritten, so the repair does not repeat at every start.
+func TestEnsureSystemServiceUserMainACLNotRewritten(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	cm := manager.NewConfigManager(config.NewLogrusWrapper(c.Conf, logrus.New()))
+	cm.Stop() // saves become no-ops
+	c.ConfigManager = cm
+	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "system:pw"}
+	c.Conf.APIUsersACLAllow = "admin:cluster db,system:db proxy"
+	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1"
+	c.LoadAPIUsers()
+
+	c.EnsureSystemServiceUser()
+	if c.Conf.APIUsersACLAllowExternal != "system:db proxy:c1" {
+		t.Fatalf("the cluster ACL must be left alone: %q", c.Conf.APIUsersACLAllowExternal)
+	}
+}
