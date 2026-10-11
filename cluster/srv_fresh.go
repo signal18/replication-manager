@@ -17,6 +17,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -48,22 +49,59 @@ func (server *ServerMonitor) CheckFreshNode() FreshNode {
 	if err != nil {
 		return FreshNode{Reason: "system catalogue age not readable: " + err.Error()}
 	}
-	userTables, _, err := dbhelper.HasUserTables(server.Conn, server.DBVersion)
+	if ok, why := server.monitorSeesAllSchemas(); !ok {
+		return FreshNode{InstallAgeSec: installAge, StartAgeSec: startAge, Reason: why}
+	}
+	userTables, _, err := dbhelper.HasUserData(server.Conn, server.DBVersion)
 	if err != nil {
-		return FreshNode{InstallAgeSec: installAge, StartAgeSec: startAge, Reason: "user tables not readable: " + err.Error()}
+		return FreshNode{InstallAgeSec: installAge, StartAgeSec: startAge, Reason: "user data not readable: " + err.Error()}
 	}
 	fn := FreshNode{InstallAgeSec: installAge, StartAgeSec: startAge, UserTables: userTables}
 	switch {
 	case userTables:
-		fn.Reason = "it holds user tables"
+		fn.Reason = "it holds user data (a user schema)"
 	case installAge-startAge > freshNodeInstallWindowSec:
 		fn.Reason = fmt.Sprintf("its system catalogue was installed %ds before this start", installAge-startAge)
 	default:
 		fn.Fresh = true
-		fn.Reason = fmt.Sprintf("system catalogue installed with this start (%ds before it), no user table", installAge-startAge)
+		fn.Reason = fmt.Sprintf("system catalogue installed with this start (%ds before it), no user schema", installAge-startAge)
 	}
 	return fn
 }
+
+// monitorSeesAllSchemas proves the monitoring account sees every schema before an absence
+// of user data can be trusted: MariaDB/MySQL list in information_schema only what the
+// reading account may see, so an account without global SELECT would read "no user
+// data" on a node full of it. Read with the check the privilege monitor already uses
+// (GetHostFromConnection, GetPrivileges). PostgreSQL catalogs are not filtered.
+func (server *ServerMonitor) monitorSeesAllSchemas() (bool, string) {
+	if server.DBVersion.IsPostgreSQL() {
+		return true, ""
+	}
+	cluster := server.ClusterGroup
+	if cluster == nil {
+		return false, "no cluster"
+	}
+	myhost, _, err := dbhelper.GetHostFromConnection(server.Conn, cluster.GetDbUser(), server.DBVersion)
+	if err != nil {
+		return false, "monitoring account host not readable: " + err.Error()
+	}
+	myip, err := misc.GetIPSafe(misc.Unbracket(myhost))
+	if err != nil {
+		return false, "monitoring account IP not resolvable: " + err.Error()
+	}
+	priv, _, err := dbhelper.GetPrivileges(server.Conn, cluster.GetDbUser(), cluster.RepMgrHostname, myip, server.DBVersion)
+	if err != nil {
+		return false, "monitoring account privileges not readable: " + err.Error()
+	}
+	if priv.Select_priv != "Y" {
+		return false, "the monitoring account has no global SELECT: it may not see every schema"
+	}
+	return true, ""
+}
+
+// errRestoreRefused: an automatic reseed asked on a node not proven fresh.
+var errRestoreRefused = errors.New("automatic restore refused: not a fresh node")
 
 // checkFreshNodeStates opens CINF0013 on each StandAlone server proven fresh, the node an
 // automatic reseed may fill. Only StandAlone servers are read: a running master or

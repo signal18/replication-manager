@@ -289,6 +289,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testRollingUpgradeTransparentSSL" {
 			res = regtest.TestRollingUpgradeTransparentSSL(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testRejoinRefusesNodeWithData" {
+			res = regtest.TestRejoinRefusesNodeWithData(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testRollingReprovReseed" {
 			res = regtest.TestRollingReprovReseed(cl, test.ConfigFile, &test)
 		}

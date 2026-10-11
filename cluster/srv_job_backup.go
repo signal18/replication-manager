@@ -3215,7 +3215,17 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 		myargs = append(myargs, "--enable-binlog")
 	}
 	if fresh.Fresh {
-		myargs = append(myargs, "--regex=^(?!(mysql|sys)\\.)")
+		// The exclusion replaces any regex of backup-myloader-options: myloader keeps a
+		// single one, and the system tables must never be loaded on a fresh node.
+		kept := myargs[:0]
+		for _, a := range myargs {
+			if a == "-x" || a == "--regex" || strings.HasPrefix(a, "--regex=") || strings.HasPrefix(a, "-x=") {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical restore (myloader) of fresh node %s: backup-myloader-options regex %q replaced by the system tables exclusion", server.URL, a)
+				continue
+			}
+			kept = append(kept, a)
+		}
+		myargs = append(kept, "--regex=^(?!(mysql|sys)\\.)")
 	}
 
 	myargs = append(myargs, cluster.GetDumpCredentials(server)...)

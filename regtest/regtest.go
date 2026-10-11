@@ -130,6 +130,7 @@ var tests = []string{
 	"testReplicationTLSVerifyOffWarns",
 	"testReplicationTLSSSLTagLifecycle",
 	"testRollingUpgradeTransparentSSL",
+	"testRejoinRefusesNodeWithData",
 }
 
 const recoverTime = 8

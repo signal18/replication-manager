@@ -183,17 +183,13 @@ func (server *ServerMonitor) RejoinMaster() error {
 						return nil
 					}
 					if cluster.Conf.Autoseed {
-						// An automatic restore only ever fills a node proven fresh: one with
-						// data (a 1 TB replica misread as new) is never overwritten behind
-						// the client's back (F1, #1979). Refused, recorded (WARN0237), left
-						// to an explicit operator reseed.
-						if fn := server.CheckFreshNode(); !fn.Fresh {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-								"Automatic restore refused on %s: not a fresh node, %s", server.URL, fn.Reason)
+						// ReseedMasterSST refuses a node not proven fresh (F1, #1979):
+						// recorded as restore-refused (WARN0237), left to an operator reseed.
+						err := server.ReseedMasterSST()
+						if errors.Is(err, errRestoreRefused) {
 							cluster.finishRejoin(server.URL, RejoinResultRestoreRefused)
 							return nil
 						}
-						err := server.ReseedMasterSST()
 						cluster.recordOrDeferRejoin(server, err)
 						return nil
 					}
@@ -365,6 +361,14 @@ func (server *ServerMonitor) RejoinScript() error {
 }
 
 func (server *ServerMonitor) ReseedMasterSST() error {
+	// The automatic reseed overwrites the node: it only ever fills a node proven fresh, a
+	// node with data (a 1 TB replica misread as new) is never restored behind the
+	// client's back (F1, #1979). Checked here so that no caller can skip it.
+	if fn := server.CheckFreshNode(); !fn.Fresh {
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Automatic restore refused on %s: not a fresh node, %s", server.URL, fn.Reason)
+		return errRestoreRefused
+	}
 	cluster := server.ClusterGroup
 	server.DelWaitBackupCookie()
 	if cluster.Conf.AutorejoinMysqldump {
@@ -1047,6 +1051,7 @@ func (server *ServerMonitor) purgeCrashBinArchives(keep int) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Pruned crash archive %s (keeping the %d most recent)", name, keep)
 	}
 }
+
 // freezeThenCaptureLostEvents captures the diverged old master's binlog tail
 // AFTER stopping it from growing. This is the fix for the empty-capture bug:
 // the previous code captured from crash.FailoverMasterLogPos while the old

@@ -52,31 +52,33 @@ func GetSystemCatalogAge(db *sqlx.DB, myver *version.Version) (installAge int64,
 	return age.Int64, startAge, query, nil
 }
 
-// HasUserTables reports whether the server holds a table outside the system schemas and
-// the schemas replication-manager's provisioning creates (#1979): a node with any is
-// never restored automatically.
-//   - MariaDB/MySQL: a base table outside mysql, sys, information_schema,
-//     performance_schema and replication_manager_schema.
-//   - PostgreSQL: a database besides postgres (ListDatabases), or a table in the
-//     connected database outside pg_catalog, information_schema and
-//     replication_manager_schema.
-func HasUserTables(db *sqlx.DB, myver *version.Version) (bool, string, error) {
-	var found bool
-	if myver != nil && myver.IsPostgreSQL() {
-		dbs, query, err := ListDatabases(db, myver)
-		if err != nil {
-			return false, query, err
-		}
-		for _, d := range dbs {
-			if d != "postgres" {
-				return true, query, nil
-			}
-		}
-		query = "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema','replication_manager_schema'))"
-		err = db.QueryRowx(query).Scan(&found)
-		return found, query, err
+// HasUserData reports whether the server holds any user schema (#1979): a node with one
+// is never restored automatically. A schema counts whatever it holds (tables, sequences,
+// views, routines, events), so an empty user schema is user data too.
+//   - MariaDB/MySQL: a schema of ListDatabases (system schemas excluded) other than
+//     replication_manager_schema, the one replication-manager's provisioning creates.
+//     information_schema only lists what the reading account may see: the caller must
+//     prove that account sees everything first (global SELECT).
+//   - PostgreSQL: a database besides postgres (ListDatabases, templates excluded), or a
+//     table in the connected database outside pg_catalog, information_schema and
+//     replication_manager_schema. The catalogs are not filtered by privileges.
+func HasUserData(db *sqlx.DB, myver *version.Version) (bool, string, error) {
+	dbs, query, err := ListDatabases(db, myver)
+	if err != nil {
+		return false, query, err
 	}
-	query := "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema NOT IN ('information_schema','mysql','performance_schema','sys','replication_manager_schema'))"
-	err := db.QueryRowx(query).Scan(&found)
+	pg := myver != nil && myver.IsPostgreSQL()
+	for _, d := range dbs {
+		if d == "replication_manager_schema" || (pg && d == "postgres") {
+			continue
+		}
+		return true, query, nil
+	}
+	if !pg {
+		return false, query, nil
+	}
+	var found bool
+	query = "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema','replication_manager_schema'))"
+	err = db.QueryRowx(query).Scan(&found)
 	return found, query, err
 }
