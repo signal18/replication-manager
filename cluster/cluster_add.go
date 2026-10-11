@@ -207,8 +207,14 @@ func (cluster *Cluster) AppendGrants(grants string, user *APIUser) string {
 }
 
 func (cluster *Cluster) AppendRoles(roles string, user *APIUser) string {
-	for _, role := range strings.Split(roles, " ") {
+	for _, role := range strings.Fields(roles) {
 		user.Roles[role] = true
+		// visitor is the default of a user without any other role (LoadAPIUsers):
+		// kept next to a real role it would be saved in the entry and hide the
+		// operator buttons (#1971).
+		if role != config.RoleVisitor {
+			delete(user.Roles, config.RoleVisitor)
+		}
 	}
 
 	return strings.Join(config.GetCompactRoles(user.Roles), " ")

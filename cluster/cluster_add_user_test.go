@@ -174,3 +174,26 @@ func TestEnsureSystemServiceUserAfterReset(t *testing.T) {
 		t.Fatal("system must authenticate with the derived key")
 	}
 }
+
+// A credentialed user without an ACL entry is a default visitor; giving it a role
+// (the self-service sponsor, #1971) must not save visitor next to it.
+func TestAppendRolesDropsDefaultVisitor(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "bob:pw2"}
+	c.LoadAPIUsers()
+	u := c.APIUsers["bob"]
+	if !u.Roles[config.RoleVisitor] {
+		t.Fatal("fixture: bob starts a default visitor")
+	}
+	if got := c.AppendRoles(config.RoleSponsor, &u); got != config.RoleSponsor {
+		t.Fatalf("roles to save: %q", got)
+	}
+	c.APIUsers["bob"] = u
+	if err := c.UpdateUser(UserForm{Username: "bob", Roles: config.RoleSponsor, Grants: "db"}, "admin", false); err != nil {
+		t.Fatal(err)
+	}
+	c.LoadAPIUsers()
+	if r := c.APIUsers["bob"].Roles; r[config.RoleVisitor] || !r[config.RoleSponsor] {
+		t.Fatalf("bob must be sponsor only after a reload: %+v", r)
+	}
+}
