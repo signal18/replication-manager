@@ -263,7 +263,7 @@ func (server *ServerMonitor) applyPhysicalRestorePositional(meta *PhysicalRestor
 	changemasteropt.Logfile = meta.BinLogFile
 	changemasteropt.Logpos = meta.BinLogPos
 	changemasteropt.Mode = "POSITIONAL"
-	if _, err := dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion); err != nil {
+	if _, err := server.ChangeMaster(changemasteropt); err != nil {
 		return fmt.Errorf("apply restore-confirmed binlog position: %s", err)
 	}
 	return nil

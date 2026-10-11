@@ -2533,7 +2533,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	hasMyGTID := server.HasMySQLGTID()
 	if cluster.Conf.MultiMasterGrouprep {
 		//MySQL group replication
-		logs, err = dbhelper.ChangeMaster(server.Conn, cluster.GetChangeMasterBaseOptForReplGroup(server), server.DBVersion)
+		logs, err = server.ChangeMaster(cluster.GetChangeMasterBaseOptForReplGroup(server))
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Group Replication bootstrapped  for", server.URL)
 	} else if !cluster.Conf.ForceSlaveNoGtid && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 		//mariadb using GTID
@@ -2544,13 +2544,13 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		}
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = master_use_gitd
-		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
+		logs, err = server.ChangeMaster(changemasteropt)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with %s as master", server.URL, master.URL)
 	} else if hasMyGTID && !cluster.Conf.ForceSlaveNoGtid {
 		// MySQL GTID
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = "MASTER_AUTO_POSITION"
-		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
+		logs, err = server.ChangeMaster(changemasteropt)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with MySQL GTID replication style and %s as master", server.URL, master.URL)
 
 	} else {
@@ -2558,7 +2558,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		changemasteropt.Mode = "POSITIONAL"
 		changemasteropt.Logfile = master.BinaryLogFile
 		changemasteropt.Logpos = master.BinaryLogPos
-		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
+		logs, err = server.ChangeMaster(changemasteropt)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with old replication style and %s as master", server.URL, master.URL)
 	}
 	if err != nil {

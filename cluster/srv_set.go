@@ -388,7 +388,7 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 	} else {
 		changemasteropt.Mode = "MASTER_AUTO_POSITION"
 	}
-	return dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
+	return server.ChangeMaster(changemasteropt)
 }
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) (string, error) {
@@ -401,14 +401,14 @@ func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *Serv
 	} else {
 		changemasteropt.Mode = "CURRENT_POS"
 	}
-	return dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
+	return server.ChangeMaster(changemasteropt)
 }
 
 func (server *ServerMonitor) SetReplicationFromMaxscaleServer(master *ServerMonitor) (string, error) {
 	opt := server.ClusterGroup.GetChangeMasterBaseOptForMxs(server, master)
 	opt.Logfile = master.FailoverMasterLogFile
 	opt.Logpos = master.FailoverMasterLogPos
-	return dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+	return server.ChangeMaster(opt)
 }
 
 func (server *ServerMonitor) SetReplicationChannel(source string) (string, error) {
@@ -1023,4 +1023,45 @@ func (server *ServerMonitor) SetDataDiverge() {
 		}
 	}
 	server.IsDataDiverge = false
+}
+
+// ChangeMaster points this server's replication at opt's primary. Every CHANGE MASTER of
+// a cluster goes through it, so the replication TLS material is never forgotten: with
+// replication-use-ssl, MASTER_SSL_CA is always emitted when a CA is known. MariaDB keeps
+// it only in master.info and in memory, and no server option supplies it: a restart
+// without master.info drops it, and the I/O thread then trusts any public CA, silently
+// (#1933).
+func (server *ServerMonitor) ChangeMaster(opt dbhelper.ChangeMasterOpt) (string, error) {
+	if opt.SSL && opt.SSLCa == "" {
+		opt.SSLCa = server.ReplicationSSLCa()
+	}
+	return dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+}
+
+// ReplicationSSLCaProvisioned is where the configurator ships the cluster CA in every
+// database it provisions (the init bundle's etc/mysql/ssl).
+const ReplicationSSLCaProvisioned = "/etc/mysql/ssl/ca-cert.pem"
+
+// ReplicationSSLCa is the CA file, on this replica's host, it verifies its primary with.
+// Never kept on the ServerMonitor (rebuilt at every config reload): the cluster setting
+// replication-ssl-ca first, then the configurator's CA on a provisioned database, then
+// the replica's own ssl_ca read live at the time of the CHANGE MASTER.
+func (server *ServerMonitor) ReplicationSSLCa() string {
+	if cluster := server.ClusterGroup; cluster != nil && cluster.Conf != nil {
+		if cluster.Conf.ReplicationSSLCa != "" {
+			return cluster.Conf.ReplicationSSLCa
+		}
+		switch cluster.GetOrchestrator() {
+		case config.ConstOrchestratorOpenSVC, config.ConstOrchestratorKubernetes:
+			return ReplicationSSLCaProvisioned
+		}
+	}
+	if server.Conn == nil || server.DBVersion == nil || server.DBVersion.IsPostgreSQL() {
+		return ""
+	}
+	ca, _, err := dbhelper.GetVariableByName(server.Conn, "SSL_CA", server.DBVersion)
+	if err != nil {
+		return ""
+	}
+	return ca
 }

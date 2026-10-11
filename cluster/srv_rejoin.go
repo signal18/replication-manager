@@ -415,7 +415,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		opt := cluster.GetChangeMasterBaseOptForMxs(server, realmaster)
 		opt.Logfile = crash.FailoverMasterLogFile
 		opt.Logpos = crash.FailoverMasterLogPos
-		logs, err := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+		logs, err := server.ChangeMaster(opt)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
 		if err != nil {
 			return err
@@ -427,7 +427,7 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		opt.Mode = "POSITIONAL"
 		opt.Logfile = crash.NewMasterLogFile
 		opt.Logpos = crash.NewMasterLogPos
-		logs, err := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+		logs, err := server.ChangeMaster(opt)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master positional failed in Rejoin old Master in sync %s", err)
 		if err != nil {
 			return err
@@ -550,7 +550,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		opt.Logfile = realmaster.FailoverMasterLogFile
 		opt.Logpos = realmaster.FailoverMasterLogPos
 
-		logs, err3 = dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+		logs, err3 = server.ChangeMaster(opt)
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
 	if err3 != nil {
@@ -884,7 +884,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 							opt.Mode = "POSITIONAL"
 							opt.Logfile = myparentss.MasterLogFile.String
 							opt.Logpos = myparentss.ReadMasterLogPos.String
-							logs, changeMasterErr := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+							logs, changeMasterErr := server.ChangeMaster(opt)
 
 							cluster.LogSQL(logs, changeMasterErr, server.URL, "Rejoin", config.LvlErr, "Rejoin Failed doing Positional switch of slave %s: %s", server.URL, changeMasterErr)
 

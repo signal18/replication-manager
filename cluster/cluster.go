@@ -1400,6 +1400,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
 		cluster.CheckDBCredentials()
 		cluster.CheckGaleraSSTAccount()
+		cluster.CheckReplicationTLS()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// CheckFailed trigger failover code if passing all false positiv and constraints

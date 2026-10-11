@@ -617,6 +617,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.MasterRetryCount, "replication-master-retry-count", 100000, "Number of retry to connect to master before failing. Default 100000 by MariaDB 10.6 standard")
 	flags.StringVar(&conf.RplUser, "replication-credential", "root:mariadb", "Replication user in the [user]:[password] format")
 	flags.BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Replication use SSL encryption to replicate from master")
+	flags.StringVar(&conf.ReplicationSSLCa, "replication-ssl-ca", "", "With replication-use-ssl, the CA file on the database hosts the replicas verify their primary with (MASTER_SSL_CA). Empty: the CA the configurator ships on provisioned databases, else each replica's own ssl_ca")
 	flags.BoolVar(&conf.ActivePassive, "replication-active-passive", false, "Active Passive topology")
 	flags.BoolVar(&conf.MultiMaster, "replication-multi-master", false, "Multi-master topology")
 	flags.BoolVar(&conf.MultiMasterConcurrentWrite, "replication-multi-master-concurrent-write", false, "Enable concurrent write on multi-master topology")
