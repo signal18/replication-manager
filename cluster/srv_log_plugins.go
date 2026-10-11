@@ -726,7 +726,9 @@ func (cluster *Cluster) CheckLogPlugins() {
 		cluster.WorkloadRemediations = cluster.GetWorkloadRemediationPlan()
 		cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
 		cluster.assertToolsVersionsConfigState()
+		cluster.assertReprovDynamicConfigState()
 		cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
+		cluster.ConfigRemediations = cluster.GetConfigRemediationPlan()
 		return
 	}
 	// Clear WARN0314 if log-plugin was just enabled.
@@ -845,6 +847,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 		workload = append(workload, s)
 	}
 	cluster.assertToolsVersionsConfigState()
+	cluster.assertReprovDynamicConfigState()
 	cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
 	slices.SortStableFunc(cluster.ConfigStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl
@@ -855,6 +858,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 		}
 		return 0
 	})
+	cluster.ConfigRemediations = cluster.GetConfigRemediationPlan()
 	cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
 	slices.SortStableFunc(cluster.SchemaStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl

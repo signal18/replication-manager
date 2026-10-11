@@ -75,7 +75,7 @@ func (r scriptResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, err
 func (r scriptResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
 	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"no live disk resize through the change script, scheduling reprovision on %s", server.URL)
-	server.SetReprovCookie()
+	server.SetReprovCookieFor(ReprovReasonDiskSize)
 	return false, nil
 }
 
@@ -118,7 +118,7 @@ func (r restartResizer) ConfigResize(server *ServerMonitor, grow bool) (bool, er
 func (r restartResizer) ResizeDisk(server *ServerMonitor, gb int) (bool, error) {
 	r.cluster.LogModulePrintf(r.cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 		"%s, scheduling reprovision on %s for the disk", r.reason, server.URL)
-	server.SetReprovCookie()
+	server.SetReprovCookieFor(ReprovReasonDiskSize)
 	return false, nil
 }
 
@@ -242,7 +242,7 @@ func (cluster *Cluster) openSVCResizeDisk(server *ServerMonitor, gb int) (bool, 
 	if !svc.IsV3() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 			"OpenSVC v2 has no volume resize, scheduling reprovision on %s", server.URL)
-		server.SetReprovCookie()
+		server.SetReprovCookieFor(ReprovReasonDiskSize)
 		return false, nil
 	}
 	size := strconv.Itoa(gb) + "g"

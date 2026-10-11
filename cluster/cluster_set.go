@@ -140,7 +140,10 @@ func (cluster *Cluster) SetDBDiskSize(value string) {
 		cluster.applyDiskResize(int(oldGB), int(newGB))
 		return
 	}
-	cluster.SetDBReprovCookie()
+	if newGB == oldGB {
+		return
+	}
+	cluster.SetDBReprovCookie(ReprovReasonDiskSize)
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
@@ -159,7 +162,11 @@ func (cluster *Cluster) SetDBCores(value string) {
 		}
 		return
 	}
-	cluster.SetDBReprovCookie()
+	// Without the live path, the rolling restart pushes the new container cap: never a
+	// reprovision for a resource (it recreates the volume, #1969).
+	if cluster.Conf.ProvCores != old {
+		cluster.SetDBRestartCookie()
+	}
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
@@ -177,7 +184,11 @@ func (cluster *Cluster) SetDBMemorySize(value string) {
 		}
 		return
 	}
-	cluster.SetDBReprovCookie()
+	// Without the live path, the rolling restart pushes the new container cap: never a
+	// reprovision for a resource (it recreates the volume, #1969).
+	if newMB, _ := config.ParseUnitMeasurementToInt("M,bytes,required", cluster.Conf.ProvMem, true); newMB != oldMB {
+		cluster.SetDBRestartCookie()
+	}
 }
 
 func (cluster *Cluster) SetDBCoresFromConfigurator() {
@@ -1313,9 +1324,11 @@ func (cluster *Cluster) SetDBRestartCookie() {
 		srv.SetRestartCookie()
 	}
 }
-func (cluster *Cluster) SetDBReprovCookie() {
+
+// SetDBReprovCookie asks every database for a reprovision, recording why (#1969).
+func (cluster *Cluster) SetDBReprovCookie(reason string) {
 	for _, srv := range cluster.Servers {
-		srv.SetReprovCookie()
+		srv.SetReprovCookieFor(reason)
 	}
 }
 func (cluster *Cluster) SetDBConfigPathCookie() {
@@ -1767,7 +1780,7 @@ func (cluster *Cluster) SetProvOrchestratorCluster(value string) error {
 // retention comment).
 func (cluster *Cluster) SetProvKubeStorageClass(value string) error {
 	cluster.Conf.ProvKubeStorageClass = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonStorageClass)
 	return nil
 }
 
@@ -1991,7 +2004,7 @@ func (cluster *Cluster) SetProvDBImage(value string) error {
 		cluster.Conf.ProvDbImgResolved = "" // resolved again at the next provision / upgrade
 	}
 	cluster.Conf.ProvDbImg = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonImage)
 	return nil
 }
 
@@ -2018,7 +2031,7 @@ func (cluster *Cluster) SetProvDbDockerXtrabackupImg(value string) error {
 		return nil
 	}
 	cluster.Conf.ProvDbDockerXtrabackupImg = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonXtrabackupImg)
 	return nil
 }
 
@@ -2057,7 +2070,7 @@ func (cluster *Cluster) setProvDBIdentity(setting string, field *string, value s
 		return nil
 	}
 	*field = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonIdentity)
 	return nil
 }
 
@@ -2089,13 +2102,13 @@ func (cluster *Cluster) SetProvSphinxImage(value string) error {
 
 func (cluster *Cluster) SetProvDbDiskType(value string) error {
 	cluster.Conf.ProvDiskType = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonDiskType)
 	return nil
 }
 
 func (cluster *Cluster) SetProvDbDiskFS(value string) error {
 	cluster.Conf.ProvDiskFS = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonDiskFS)
 	return nil
 }
 
@@ -2137,19 +2150,19 @@ func (cluster *Cluster) SetProvProxyStartTimeout(value string) error {
 
 func (cluster *Cluster) SetProvDbDiskPool(value string) error {
 	cluster.Conf.ProvDiskPool = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonDiskPool)
 	return nil
 }
 
 func (cluster *Cluster) SetProvDbDiskDevice(value string) error {
 	cluster.Conf.ProvDiskDevice = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonDiskDevice)
 	return nil
 }
 
 func (cluster *Cluster) SetProvDbServiceType(value string) error {
 	cluster.Conf.ProvType = value
-	cluster.SetDBReprovCookie()
+	cluster.SetDBReprovCookie(ReprovReasonServiceType)
 	return nil
 }
 

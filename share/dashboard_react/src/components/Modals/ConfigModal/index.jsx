@@ -1,13 +1,15 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
-  Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Text
+  Modal, ModalBody, ModalCloseButton, ModalContent, ModalHeader, ModalOverlay, Text, HStack, Button, Tooltip
 } from '@chakra-ui/react'
-import { useSelector } from 'react-redux'
+import { useSelector, useDispatch } from 'react-redux'
 import { DataTable } from '../../DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import NotFound from '../../NotFound'
 import parentStyles from '../styles.module.scss'
 import { useTheme } from '../../../ThemeProvider'
+import { clusterService } from '../../../services/clusterService'
+import { showSuccessToast, showErrorToast } from '../../../redux/toastSlice'
 
 const columnHelper = createColumnHelper()
 
@@ -18,11 +20,41 @@ const severityRank = { Blocker: 0, Warning: 1, Info: 2 }
 
 // ConfigModal lists the cluster ConfigStateMachine content (deprecated
 // variables, pending compliance modulesets, unapplied config changes) in a
-// severity table matching the health AlertModal.
+// severity table matching the health AlertModal. A state with a remediation
+// (configRemediations, e.g. WARN0234) gets an Enable button that calls it.
 function ConfigModal({ isOpen, closeModal }) {
   const { theme } = useTheme()
+  const dispatch = useDispatch()
   const { isTablet, isDesktop } = useSelector((state) => state.common)
   const clusterData = useSelector((state) => state.cluster.clusterData)
+  const baseURL = useSelector((state) => state.auth?.baseURL || '')
+  const [fixing, setFixing] = useState({})
+
+  const remediationByKey = useMemo(() => {
+    const map = {}
+    for (const entry of clusterData?.configRemediations?.remediations || []) {
+      if (!map[entry.err_key]) map[entry.err_key] = entry
+    }
+    return map
+  }, [clusterData?.configRemediations])
+
+  const handleFix = async (errKey) => {
+    const fix = remediationByKey[errKey]?.fixes?.[0]
+    if (fix?.type !== 'settings_switch' || !fix?.url) return
+    setFixing((prev) => ({ ...prev, [errKey]: true }))
+    try {
+      const { status, data } = await clusterService.switchClusterSetting(fix.url, baseURL)
+      if (status === 200) {
+        dispatch(showSuccessToast({ title: `Fix applied: ${errKey}`, description: fix.description }))
+      } else {
+        dispatch(showErrorToast({ title: `Fix failed: ${errKey}`, description: typeof data === 'string' ? data : 'Unexpected error' }))
+      }
+    } catch (err) {
+      dispatch(showErrorToast({ title: `Fix failed: ${errKey}`, description: String(err) }))
+    } finally {
+      setFixing((prev) => ({ ...prev, [errKey]: false }))
+    }
+  }
 
   const findings = useMemo(
     () =>
@@ -59,16 +91,31 @@ function ConfigModal({ isOpen, closeModal }) {
       }),
       columnHelper.accessor((row) => row.ErrKey, { cell: (i) => i.getValue(), header: 'Key', id: 'key', maxWidth: 120 }),
       columnHelper.accessor(
-        (row) => (
-          <Text whiteSpace='pre-wrap' fontFamily='monospace' fontSize='sm'>
-            {row.ErrDesc}
-          </Text>
-        ),
+        (row) => {
+          const desc = (
+            <Text whiteSpace='pre-wrap' fontFamily='monospace' fontSize='sm'>
+              {row.ErrDesc}
+            </Text>
+          )
+          const entry = remediationByKey[row.ErrKey]
+          if (!entry?.auto_fixable) return desc
+          const fix = entry.fixes?.[0]
+          return (
+            <HStack spacing={2} align='start'>
+              <Tooltip label={`${fix?.description || ''} (risk: ${fix?.risk || 'safe'})`} placement='top'>
+                <Button size='xs' colorScheme='green' flexShrink={0} isLoading={!!fixing[row.ErrKey]} onClick={() => handleFix(row.ErrKey)}>
+                  Enable
+                </Button>
+              </Tooltip>
+              {desc}
+            </HStack>
+          )
+        },
         { cell: (i) => i.getValue(), header: 'Description', id: 'desc' }
       ),
       columnHelper.accessor((row) => row.ServerUrl, { cell: (i) => i.getValue(), header: 'Server', id: 'server', maxWidth: 220 })
     ],
-    []
+    [fixing, remediationByKey, baseURL]
   )
 
   return (

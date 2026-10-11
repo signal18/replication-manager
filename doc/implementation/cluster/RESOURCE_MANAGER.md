@@ -624,10 +624,28 @@ follows the value. Disk never shrinks.
 | WARN0213 | consumption at the **plan** cap for `prov-db-scale-up-plan-speed`: user-facing info to raise the plan by hand; the resize never does it |
 | ERR00112 | a dynamic over-plan step was **refused** (envelope / pool / hook), with the reason |
 | WARN0214 | dynamic resource on but the container is still capped at the docker scope (`prov-db-docker-run-args-limit` on): the live cgroup move cannot bind |
+| WARN0234 | config state: a database reprovision is pending for a resource change (memory, cores, disk size, or an old cookie without a reason) while `prov-db-dynamic-resource` is off. Its remediation, the Enable button in the Config modal, switches dynamic resource on: see "Reprovision reasons" below |
 | WARN0218 | the sensor reading itself is stale (> 3 min, a long dbjob or a stopped jobs container), per server: decisions withheld, the DBU graph shows a gap |
 | WARN0215 | Kubernetes only: the sensor's DELIVERY prerequisites are missing/unconfirmed (Deployment `shareProcessNamespace`→WARN0212 instead, Pod not Running, dbjobs sidecar not Ready, or its own WindowEnd-based staleness check) -- see the Kubernetes section below |
 | resize log (`ResourceResizeLog`) | one record per server per attempt: dimension, direction, applied, feasibility, statements |
 | Resource Manager page: "Overcommit DBU" / "Undercommit DBU" | `diffSeries(sumSeries(dbu.<cluster>.*.dbu), resourcemanager.<C>.plan_dbu)` at query time. A DISPLAY, never a ledger: the embedded `diffSeries` treats an absent plan point as 0, so a plan gap shows the whole consumption as overcommit. Since 2026-09-17 the plan series is emitted by EVERY server with its consumed batch (not the master only), so a bucket with a consumed point always has the plan point (preprod: 100 % of 17 366 "overcommit" points over 7 days were plan gaps, real over-plan = 0). Over-plan accounting for billing comes from `ResourceConsumedOverPlanAxes` / WARN0213 / ERR00112, never from this graph. |
+
+### 5b. Reprovision reasons (#1969)
+
+A reprovision recreates the volume, so the data comes back only through the backup restore. It is never the answer to a resource change.
+- **Reasons in the cookie:** `@cookie_reprov` records why, one reason per line (`SetReprovCookieFor`, `cluster/srv_reprov.go`):
+  - `memory`, `cores`, `disk-size`: resources
+  - `image`, `xtrabackup-image`, `identity`
+  - `disk-type`, `disk-fs`, `disk-pool`, `disk-device`, `service-type`, `storage-class`: the volume or the service itself
+- **Dynamic resource off:**
+  - `SetDBMemorySize` and `SetDBCores` set the **restart** cookie when the value changes, and nothing when it doesn't. The rolling restart pushes the new container cap.
+  - `SetDBDiskSize` still asks for the reprovision (`disk-size`), because a restart doesn't resize a volume. WARN0234 then offers the live path.
+- **Switching `prov-db-dynamic-resource` on** (`SwitchProvDBDynamicResource` → `ReconcileReprovWithDynamicResource`):
+  - The resource reasons are cancelled and applied by the live engine. CPU runs through `ResizeDynamicResources`. Memory runs only when `dynamicMemoryResizeDue` sees the live buffer pool differ from the target. Disk is a grow to the declared size through the orchestrator.
+  - The engine itself falls back to a restart cookie wherever the release cannot apply a change live: error 1238, a restart-only redo log, PostgreSQL, OpenSVC v2.
+  - The other reasons keep the reprovision.
+  - A cookie without a reason, written before #1969, is treated as memory and cores.
+- **Cancelling a reprovision by hand:** `POST /api/clusters/{name}/actions/cancel-rolling-reprov` (`CancelRollingReprov`) still cancels it outright.
 
 ### 6. Backends (`ResourceResizer`, `resourceResizer()`)
 
