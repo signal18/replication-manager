@@ -20,8 +20,9 @@ const refuseProbeSchema = "regtest_refuse_restore"
 
 // TestRejoinRefusesNodeWithData is the F1 proof of #1979: an automatic restore never
 // reaches a node that holds data. A replica gets a user schema of its own (not binlogged),
-// loses its replication channel and restarts, so it comes back StandAlone with no crash
-// record: with autoseed on, the rejoin path would reseed it. It must be refused
+// loses its replication channel and its rejoin history (as after an unprovision whose
+// volume was not wiped) and restarts, so it comes back StandAlone with no crash record:
+// with autoseed on, the rejoin path would reseed it. It must be refused
 // (restore-refused, WARN0237) and the schema must still be there. The replica is then
 // re-attached and the schema dropped.
 func (regtest *RegTest) TestRejoinRefusesNodeWithData(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
@@ -46,12 +47,16 @@ func (regtest *RegTest) TestRejoinRefusesNodeWithData(cl *cluster.Cluster, conf 
 	}
 	defer tlsExecOneConn(slave, "SET SESSION sql_log_bin=0", "DROP DATABASE IF EXISTS "+refuseProbeSchema)
 
-	// No replication channel, then a restart: StandAlone, no crash record, the autoseed path.
+	// What a reprov leaves on repman's side, with the data still there (a volume not
+	// wiped): no replication channel, no rejoin history (ForgetInstance, as after an
+	// unprovision), then a restart. The node comes back StandAlone with no crash record:
+	// the autoseed path, where the rejoin is one-shot per event and this one is new.
 	slave.StopSlave()
 	if _, err := slave.ResetSlave(); err != nil {
 		tlsLogf(cl, "FAIL RejoinRefusesNodeWithData: reset slave: %s", err)
 		return false
 	}
+	cl.ForgetInstance(slave)
 	if err := cl.StopDatabaseService(slave); err != nil {
 		tlsLogf(cl, "FAIL RejoinRefusesNodeWithData: stop: %s", err)
 		return false
