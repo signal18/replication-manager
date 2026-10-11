@@ -116,3 +116,12 @@ refuses the shared PID namespace, the sensor stays off and repman raises WARN021
 so the operator can allow it.
 
 Off-switch for all of it: `monitoring-system-resources` (T14).
+
+## The `system` service account and its grant (#1967)
+
+The sensor pushes to `/apu` and `/dbu` as the `system` account, authenticated with the API key derived from the cluster secret. Those endpoints require the `cluster-resource-sensor` grant.
+
+- **Where it's set:** `EnsureSystemServiceUser` (`cluster/cluster_sec.go`) creates `system` with `db proxy cluster-resource-sensor`. It runs at every cluster start and after a cluster add.
+- **Repair of an existing account:** the dbjob secret-login used to create `system` with only `db proxy`. When `system` exists without the sensor grant, `EnsureSystemServiceUser` adds it and keeps the other grants and roles. Once the grant is there, nothing is written.
+- **Secret-login:** it now creates `system` with the sensor grant too.
+- **Main config ACL:** when `system` is defined in `api-credentials-acl-allow`, the main ACL is applied last with a strict override, so a cluster entry cannot add the grant. The repair then logs a WARN and writes nothing; add the grant in the main ACL.
