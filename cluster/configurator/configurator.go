@@ -1134,7 +1134,7 @@ func (configurator *Configurator) GetDatabaseDynamicConfig(filter string, cmd st
 						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
 							configurator.Logger.Debugf("content %s %s", filter, rule.Filter)
 						}
-						if filter == "" || strings.Contains(rule.Filter, filter) {
+						if filter == "" || filterMatchesTag(rule.Filter, filter) {
 							var f Link
 							json.Unmarshal([]byte(variable.Value), &f)
 							fpath := Datadir + "/init/etc/mysql/conf.d/"
@@ -1190,7 +1190,7 @@ func (configurator *Configurator) GetTagSQL(tagName, cmdPrefix string) string {
 	commentPrefix := "# " + cmdPrefix + ":"
 	var result strings.Builder
 	for _, rule := range configurator.DBModule.Rulesets {
-		if !strings.Contains(rule.Filter, tagName) {
+		if !filterMatchesTag(rule.Filter, tagName) {
 			continue
 		}
 		for _, variable := range rule.Variables {
@@ -1233,7 +1233,7 @@ func (configurator *Configurator) GetTagMyCnf(tagName string) string {
 		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 			continue
 		}
-		filterMatch := rule.Filter != "" && strings.HasSuffix(rule.Filter, tagName)
+		filterMatch := rule.Filter != "" && filterMatchesTag(rule.Filter, tagName)
 		for _, variable := range rule.Variables {
 			if variable.Class != "file" {
 				continue

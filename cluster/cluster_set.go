@@ -912,27 +912,46 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 	}
 }
 
-func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
-	cluster.Configurator.SetConfig(*cluster.Conf)
-	//splitmonitoringuser := cluster.Conf.User
-
-	var err error
-	err = cluster.loadDBCertificates(cluster.WorkingDir)
-	if err != nil {
+// reloadDBTLSCertificates loads the current and previous database TLS certificates and,
+// when what is available changed (an ssl tag added or dropped, certificates configured or
+// removed), rebuilds every server DSN: SetDSN writes the TLS mode into the DSN only when
+// called, so a stale "&tls=tlsconfig" kept repman unable to reach healthy servers after
+// the ssl tag was dropped (#1974).
+func (cluster *Cluster) reloadDBTLSCertificates() {
+	prevCert, prevOld := cluster.HaveDBTLSCert, cluster.HaveDBTLSOldCert
+	if err := cluster.loadDBCertificates(cluster.WorkingDir); err != nil {
 		cluster.HaveDBTLSCert = false
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No database TLS certificates")
 	} else {
 		cluster.HaveDBTLSCert = true
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Database TLS certificates correctly loaded")
 	}
-	err = cluster.loadDBOldCertificates(cluster.WorkingDir + "/old_certs")
-	if err != nil {
+	if err := cluster.loadDBOldCertificates(cluster.WorkingDir + "/old_certs"); err != nil {
 		cluster.HaveDBTLSOldCert = false
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No database previous TLS certificates")
 	} else {
 		cluster.HaveDBTLSOldCert = true
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Database TLS previous certificates correctly loaded")
 	}
+	if cluster.HaveDBTLSCert == prevCert && cluster.HaveDBTLSOldCert == prevOld {
+		return
+	}
+	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
+		server.TLSConfigUsed = ConstTLSCurrentConfig
+		server.SetDSN()
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+		"Database TLS certificates changed (current %t, previous %t): server connection strings rebuilt", cluster.HaveDBTLSCert, cluster.HaveDBTLSOldCert)
+}
+
+func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
+	cluster.Configurator.SetConfig(*cluster.Conf)
+	//splitmonitoringuser := cluster.Conf.User
+
+	cluster.reloadDBTLSCertificates()
 
 	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.User) {
 		client, err := cluster.GetVaultConnection()
@@ -963,23 +982,7 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 
 	//splitreplicationuser := cluster.Conf.RplUser
 
-	var err error
-	err = cluster.loadDBCertificates(cluster.WorkingDir)
-	if err != nil {
-		cluster.HaveDBTLSCert = false
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No database TLS certificates")
-	} else {
-		cluster.HaveDBTLSCert = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Database TLS certificates correctly loaded")
-	}
-	err = cluster.loadDBOldCertificates(cluster.WorkingDir + "/old_certs")
-	if err != nil {
-		cluster.HaveDBTLSOldCert = false
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "No database previous TLS certificates")
-	} else {
-		cluster.HaveDBTLSOldCert = true
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "Database TLS previous certificates correctly loaded")
-	}
+	cluster.reloadDBTLSCertificates()
 	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.RplUser) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {

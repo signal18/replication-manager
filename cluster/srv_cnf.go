@@ -971,7 +971,18 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 	content.WriteString("[mysqld]\n")
 
 	delta := server.VariablesMap.GetVariables(true)
+	var managed map[string]bool
+	if cluster != nil {
+		managed = cluster.Configurator.TagManagedVariables()
+	}
 	for _, v := range delta {
+		// A variable of replication-manager's own tag rulesets that the generated config
+		// no longer carries is a pending tag change (a dropped tag still deployed until
+		// the restart): preserving it would bring the dropped tag back at every start
+		// (#1976). Explicit preservation goes through 01_preserved.cnf.
+		if v.Config == nil && managed[strings.ToLower(v.VariableName)] {
+			continue
+		}
 		// Skip variables that have preservation status set
 		// These are handled by 01_preserved.cnf or 03_agreed.cnf
 		if v.Preserved != nil {
