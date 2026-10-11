@@ -14,15 +14,18 @@ would have been overwritten behind the client's back (F1).
 Read live at decision time, never kept on the `ServerMonitor`. Fresh is **proven**: any
 read that fails means not fresh.
 
-**Fresh = installed with this start AND no user table.**
+**Fresh = installed with this start AND the monitoring account sees every schema AND
+there is no user schema.**
 
 | | MariaDB 10.4+ | MariaDB < 10.4, MySQL | PostgreSQL |
 |---|---|---|---|
 | Install time | `CREATE_TIME` of `mysql.global_priv` (Aria: the datadir install, survives restarts) | `CREATE_TIME` of `mysql.user` (MySQL 8 keeps it in the data dictionary) | initdb time: `pg_control_system().system_identifier >> 32` |
 | Start | `Uptime` | `Uptime` | `pg_postmaster_start_time()` |
-| User data | a base table outside `mysql`, `sys`, `information_schema`, `performance_schema`, `replication_manager_schema` | same | a database besides `postgres`, or a table outside `pg_catalog`, `information_schema`, `replication_manager_schema` |
+| Sees everything | global SELECT of the monitoring account (`GetPrivileges`): `information_schema` only lists what the reading account may see | same | catalogs not filtered |
+| User data | any schema besides the system ones and `replication_manager_schema` (empty or not: tables, sequences, views, routines, events) | same | a database besides `postgres`, or a table outside `pg_catalog`, `information_schema`, `replication_manager_schema` |
 
-`dbhelper.GetSystemCatalogAge` and `dbhelper.HasUserTables`. "Installed with this start"
+`dbhelper.GetSystemCatalogAge` and `dbhelper.HasUserData`; the check sits inside
+`ReseedMasterSST`, so no caller can reach the restore without it. "Installed with this start"
 alone is not enough: a node never restarted since its provisioning reads the same as a
 new one for months; the user tables are what tell them apart. The InnoDB system tables
 cannot date the install (their `CREATE_TIME` moves to the last start), and GTID history
