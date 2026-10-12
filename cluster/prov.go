@@ -81,9 +81,14 @@ func (cluster *Cluster) Bootstrap() error {
 		return err
 	}
 
-	err = cluster.BootstrapReplication(true, false)
-	if err != nil {
-		return err
+	// active-passive: one server, no replication to set up; its discovery (the lone server
+	// is the master) answered "already has an existing master/slave setup" and the
+	// provision failed after the service was up (#2004)
+	if !cluster.HasConfigTopoActivePassive() {
+		err = cluster.BootstrapReplication(true, false)
+		if err != nil {
+			return err
+		}
 	}
 
 	if cluster.GetSponsorEmail() != "" {
