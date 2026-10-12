@@ -23360,6 +23360,10 @@ const docTemplate = `{
                 "metaFile": {
                     "type": "string"
                 },
+                "originalRemoved": {
+                    "description": "OriginalRemoved: the artifact at Dest was removed once its archive snapshot\n(ResticSnapshotID) was verified to hold it (backup-archive-remove-original);\na restore fetches it back from the archive.",
+                    "type": "boolean"
+                },
                 "previous": {
                     "type": "integer"
                 },
@@ -23499,6 +23503,13 @@ const docTemplate = `{
                 "exclude_larger_than": {
                     "description": "Max file size (e.g., \"100M\")",
                     "type": "string"
+                },
+                "extra_paths": {
+                    "description": "More paths in the same snapshot",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "files_from": {
                     "description": "Read files to backup from file",
@@ -25860,6 +25871,9 @@ const docTemplate = `{
                 },
                 "backupArchiveMode": {
                     "type": "string"
+                },
+                "backupArchiveRemoveOriginal": {
+                    "type": "boolean"
                 },
                 "backupBinlogs": {
                     "type": "boolean"
