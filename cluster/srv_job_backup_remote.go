@@ -15,6 +15,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -65,12 +66,13 @@ func (server *ServerMonitor) mysqldumpExecRemote() bool {
 }
 
 // GetRemoteMysqlDumpOptions are the mysqldump arguments of GetMysqlDumpOptions for a dump
-// run on the DB node: without the connection, credential, TLS and option file arguments,
-// which dbjobs takes from the node. Those replication-manager generates are left out, and
-// so are those of backup-mysqldump-options (their names are returned, never their values):
-// the arguments travel in the clear, base64 only, in the receive-task answer or the jobs
-// row payload.
-func (cluster *Cluster) GetRemoteMysqlDumpOptions(server *ServerMonitor) (args []string, dropped []string) {
+// run on the DB node. The connection, credential, TLS, authentication and option file
+// arguments are removed, those replication-manager generates and those of
+// backup-mysqldump-options (their names are returned, never their values): dbjobs connects
+// with the node's own, and the arguments travel in the clear, base64 only, in the
+// receive-task answer or the jobs row payload. The TLS of the dump client is then the one
+// of a local dump, moved to the host (remoteDumpTLSOptions).
+func (cluster *Cluster) GetRemoteMysqlDumpOptions(server *ServerMonitor) (args, dropped, droppedTLSFiles []string) {
 	local := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
 	all := cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())
 	for i := 0; i < len(all); i++ {
@@ -87,32 +89,62 @@ func (cluster *Cluster) GetRemoteMysqlDumpOptions(server *ServerMonitor) (args [
 		}
 		args = append(args, a)
 	}
-	return args, dropped
+	tls, files := server.remoteDumpTLSOptions()
+	return append(args, tls...), dropped, files
 }
 
-// remoteDumpConnectionLong are the options a dump run on the DB node never takes from
-// replication-manager: how to reach and authenticate to the server, and local files.
-var remoteDumpConnectionLong = []string{"--user", "--password", "--host", "--port", "--socket", "--protocol",
-	"--ssl", "--skip-ssl", "--tls", "--defaults-file", "--defaults-extra-file", "--login-path", "--default-auth",
-	"--plugin-dir", "--server-public-key-path", "--get-server-public-key", "--enable-cleartext-plugin"}
+// remoteDumpConnectionOptions are the options a dump run on the DB node never takes from
+// replication-manager, by exact name (no family of names: a client option added later is
+// never caught by accident): how to reach and authenticate to the server, its TLS, and
+// files of the replication-manager host. The value tells whether the option takes a value,
+// attached (--name=value) or as the next argument; --password[N] takes it attached only.
+var remoteDumpConnectionOptions = map[string]bool{
+	// connection
+	"host": true, "port": true, "socket": true, "protocol": true, "bind-address": true,
+	"pipe": false, "shared-memory-base-name": true,
+	// credentials
+	"user": true, "password": false, "password1": false, "password2": false, "password3": false,
+	// TLS: decided for the DB node instead (remoteDumpTLSOptions)
+	"ssl": false, "ssl-ca": true, "ssl-capath": true, "ssl-cert": true, "ssl-key": true,
+	"ssl-cipher": true, "ssl-crl": true, "ssl-crlpath": true, "ssl-mode": true,
+	"ssl-verify-server-cert": false, "ssl-fips-mode": true, "tls-version": true, "tls-ciphersuites": true,
+	// authentication
+	"default-auth": true, "plugin-dir": true, "server-public-key-path": true,
+	"get-server-public-key": false, "enable-cleartext-plugin": false,
+	// option files
+	"defaults-file": true, "defaults-extra-file": true, "defaults-group-suffix": true,
+	"login-path": true, "no-defaults": false,
+}
 
-// remoteDumpConnectionNoValue are those of them that never take the next argument as their
-// value (a switch, or --password whose value is attached or asked for).
-var remoteDumpConnectionNoValue = []string{"--password", "--ssl", "--skip-ssl", "--ssl-verify-server-cert",
-	"--get-server-public-key", "--enable-cleartext-plugin"}
+// remoteDumpOptionModifiers are the prefixes the clients accept before any option name
+// (--skip-ssl is --ssl off, --loose-password is --password): a closed set of the clients.
+var remoteDumpOptionModifiers = []string{"loose-", "skip-", "enable-", "disable-", "maximum-"}
 
-// remoteDumpConnectionShort are their short forms that take a value: -uroot or -u root.
+// remoteDumpConnectionShort are the short forms that take a value: -uroot or -u root.
 // -p takes its value attached only (-psecret); a bare -p asks for it.
 var remoteDumpConnectionShort = map[byte]bool{'u': true, 'p': false, 'h': true, 'P': true, 'S': true}
 
 // remoteDumpConnectionOption names the connection option arg is ("" when it is none), and
-// whether its value may be the next argument.
+// whether its value may be the next argument. The name is read as the clients read it:
+// "_" is "-", one modifier may lead it, and a shortened --password (--pass=...) is one.
 func remoteDumpConnectionOption(arg string) (name string, takesNext bool) {
 	if strings.HasPrefix(arg, "--") {
 		opt, _, hasValue := strings.Cut(arg, "=")
-		for _, l := range remoteDumpConnectionLong {
-			if opt == l || strings.HasPrefix(opt, l+"-") {
-				return opt, !hasValue && !slices.Contains(remoteDumpConnectionNoValue, opt)
+		key := strings.ReplaceAll(strings.TrimPrefix(opt, "--"), "_", "-")
+		keys := []string{key}
+		for _, m := range remoteDumpOptionModifiers {
+			if rest, ok := strings.CutPrefix(key, m); ok {
+				keys = append(keys, rest)
+			}
+		}
+		for _, k := range keys {
+			if value, ok := remoteDumpConnectionOptions[k]; ok {
+				return opt, value && !hasValue
+			}
+			if len(k) >= 2 && strings.HasPrefix("password", k) {
+				// an abbreviation of --password (the clients accept a shortened name, a
+				// deprecated form): its value never travels
+				return opt, false
 			}
 		}
 		return "", false
@@ -125,12 +157,119 @@ func remoteDumpConnectionOption(arg string) (name string, takesNext bool) {
 	return "", false
 }
 
+// remoteDumpTLSOptions are the TLS options of the dump client on the DB node: the decision
+// of a local dump (GetSSLClientParam), its files moved to where the host has them, in the
+// syntax of the node's client. The names of the files left out are returned.
+func (server *ServerMonitor) remoteDumpTLSOptions() (args []string, dropped []string) {
+	cluster := server.ClusterGroup
+	mysql8 := server.DBVersion != nil && server.DBVersion.IsMySQLOrPerconaGreater8() // the node's client is of the server's flavor
+	return remoteDumpTLS(server.GetSSLClientParam("client-dump"), cluster.WorkingDir, cluster.Conf.ReplicationSSLCa, mysql8)
+}
+
+// remoteDumpTLSHostDir is where the database hosts of a provisioned cluster have the
+// certificates replication-manager generates or ships with the ssl tag (#1933).
+var remoteDumpTLSHostDir = filepath.Dir(ReplicationSSLCaProvisioned)
+
+// remoteDumpTLSHostFiles are the files of the generated or shipped certificates, under the
+// same names in replication-manager's working directory and in remoteDumpTLSHostDir.
+var remoteDumpTLSHostFiles = []string{"ca-cert.pem", "client-cert.pem", "client-key.pem"}
+
+// remoteDumpTLS turns the TLS arguments of a local dump (local, as GetSSLClientParam writes
+// them for replication-manager's client) into those of the dump client on the DB node:
+//   - the decision is kept: disabled, or a mode (PREFERRED, REQUIRED, VERIFY_CA,
+//     VERIFY_IDENTITY) read back from either syntax, as GetSSLClientParam maps them;
+//   - a file of replication-manager's working directory among remoteDumpTLSHostFiles is
+//     named at remoteDumpTLSHostDir; any other file (hosts-tls-*, old_certs) has no known
+//     place on the host and is left out (returned), the CA then being hostCA
+//     (replication-ssl-ca, the CA path on the database hosts) when set. A mode needing a
+//     CA that the host lacks is kept: the dump fails, never silently unverified;
+//   - written for the node's client: --ssl-mode for MySQL/Percona 8, --ssl and
+//     --ssl-verify-server-cert for the others.
+func remoteDumpTLS(local []string, workingDir, hostCA string, mysql8 bool) (args []string, dropped []string) {
+	var mode, ca, cert, key string
+	var on, off, verify bool
+	for _, a := range local {
+		opt, value, _ := strings.Cut(a, "=")
+		switch opt {
+		case "--ssl-mode":
+			mode = strings.ToUpper(value)
+		case "--ssl":
+			if strings.EqualFold(value, "FALSE") || value == "0" {
+				off = true
+			} else {
+				on = true
+			}
+		case "--skip-ssl":
+			off = true
+		case "--ssl-verify-server-cert":
+			verify = !strings.EqualFold(value, "false") && value != "0"
+		case "--ssl-ca":
+			ca = value
+		case "--ssl-cert":
+			cert = value
+		case "--ssl-key":
+			key = value
+		}
+	}
+	switch {
+	case off:
+		mode = "DISABLED"
+	case mode == "" && on && verify && cert != "" && key != "":
+		mode = "VERIFY_IDENTITY"
+	case mode == "" && on && verify:
+		mode = "VERIFY_CA"
+	case mode == "" && on:
+		mode = "REQUIRED"
+	}
+	if mode == "" {
+		return nil, nil // the client's own defaults, as for a local dump
+	}
+	hostPath := func(path string) string {
+		if path == "" {
+			return ""
+		}
+		if filepath.Dir(path) == filepath.Clean(workingDir) && slices.Contains(remoteDumpTLSHostFiles, filepath.Base(path)) {
+			return filepath.Join(remoteDumpTLSHostDir, filepath.Base(path))
+		}
+		dropped = append(dropped, path)
+		return ""
+	}
+	ca, cert, key = hostPath(ca), hostPath(cert), hostPath(key)
+	if ca == "" && (mode == "VERIFY_CA" || mode == "VERIFY_IDENTITY") {
+		ca = hostCA
+	}
+	if mysql8 {
+		args = []string{"--ssl-mode=" + mode}
+	} else {
+		switch mode {
+		case "DISABLED":
+			return []string{"--ssl=FALSE"}, dropped
+		case "PREFERRED", "REQUIRED":
+			return []string{"--ssl", "--ssl-verify-server-cert=false"}, dropped
+		default:
+			args = []string{"--ssl", "--ssl-verify-server-cert"}
+		}
+	}
+	if mode == "VERIFY_CA" || mode == "VERIFY_IDENTITY" {
+		if ca != "" {
+			args = append(args, "--ssl-ca="+ca)
+		}
+		if mode == "VERIFY_IDENTITY" && cert != "" && key != "" {
+			args = append(args, "--ssl-cert="+cert, "--ssl-key="+key)
+		}
+	}
+	return args, dropped
+}
+
 // RemoteMysqlDumpArgs are the GetRemoteMysqlDumpOptions as dbjobs reads them: one per
 // line, base64 encoded so they travel as one word (receive-task answer, jobs row payload).
 func (cluster *Cluster) RemoteMysqlDumpArgs(server *ServerMonitor) string {
-	args, dropped := cluster.GetRemoteMysqlDumpOptions(server)
+	args, dropped, files := cluster.GetRemoteMysqlDumpOptions(server)
 	if len(dropped) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Remote dump of %s ignores %s of backup-mysqldump-options: the DB node connects with its own", server.URL, strings.Join(dropped, " "))
+	}
+	if len(files) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Remote dump of %s: TLS files %s have no known place on the DB node and are not used (replication-ssl-ca names the CA there)", server.URL, strings.Join(files, " "))
 	}
 	return base64.StdEncoding.EncodeToString([]byte(strings.Join(args, "\n")))
 }
@@ -175,18 +314,25 @@ func (f writerFunc) Write(p []byte) (int, error) {
 }
 
 // WaitStreamTaskArmed reports whether a backup waits for the stream of task, waiting up to
-// timeout for it. A receiver is opened only for an armed task, so a stale cookie can never
-// stream into an artifact a local run is writing.
-func (server *ServerMonitor) WaitStreamTaskArmed(task string, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
+// timeout for it, or until ctx ends (the receive-task request of dbjobs). A receiver is
+// opened only for an armed task, so a stale cookie can never stream into an artifact a
+// local run writes.
+func (server *ServerMonitor) WaitStreamTaskArmed(ctx context.Context, task string, timeout time.Duration) bool {
+	limit := time.NewTimer(timeout)
+	defer limit.Stop()
+	tick := time.NewTicker(200 * time.Millisecond)
+	defer tick.Stop()
 	for {
 		if _, ok := server.streamTasks.Load(task); ok {
 			return true
 		}
-		if time.Now().After(deadline) {
+		select {
+		case <-ctx.Done():
 			return false
+		case <-limit.C:
+			return false
+		case <-tick.C:
 		}
-		time.Sleep(200 * time.Millisecond)
 	}
 }
 
@@ -200,14 +346,13 @@ func (server *ServerMonitor) jobBackupMysqldumpRemote(ctx context.Context, task,
 	// The receiver hands the stream to this reader on its way to the file: the dump
 	// header names the client, the binary log position and GTID are read like the
 	// local dump's (the GTID of a --dump-slave dump comes at the end of the stream).
-	var clientVersion, bfile, bgtid string
+	var bfile, bgtid string
 	var bpos uint64
 	binlogRegex, gtidRegex := server.getBackupRegexPatterns()
 	parseBinlog, parseGTID := server.shouldParseDumpBinlogGTID()
 	parser := newDumpStreamParser(binlogRegex, gtidRegex, parseBinlog, parseGTID,
 		func(file string, pos uint64) { bfile, bpos = file, pos },
 		func(gtid string) { bgtid = gtid })
-	header := true
 	// the table lines of the stream mark the tables of the live progress (a local dump
 	// reads them from its verbose output, which stays on the DB node here)
 	lines := &dumpPositionLines{parser: parser, onTable: func(schema, table string) {
@@ -215,13 +360,9 @@ func (server *ServerMonitor) jobBackupMysqldumpRemote(ctx context.Context, task,
 			p.TableBoundary(schema, table, time.Now())
 		}
 	}}
+	client := &dumpClientVersion{}
 	observe := func(chunk []byte) {
-		if header {
-			header = false
-			if m := dumpClientRegex.FindSubmatch(chunk); m != nil {
-				clientVersion = string(m[1])
-			}
-		}
+		client.Write(chunk)
 		lines.Write(chunk)
 	}
 	var received atomic.Int64
@@ -283,6 +424,9 @@ func (server *ServerMonitor) jobBackupMysqldumpRemote(ctx context.Context, task,
 	if err != nil {
 		return err
 	}
+	// The reader ran in the receiver's goroutine. Both waits succeed only once the stream
+	// ended, signalled by the receiver after its last read (JobFinishReceiveFile closes
+	// the done channel in its cleanup): what the reader set is complete and safe to read.
 	lines.Flush()
 	if lines.dropped > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Dump of %s: %d position line(s) longer than %d bytes dropped, the binary log position or GTID is not read from them", server.URL, lines.dropped, dumpPositionLineMax)
@@ -295,8 +439,8 @@ func (server *ServerMonitor) jobBackupMysqldumpRemote(ctx context.Context, task,
 	}
 	server.backupMetaMutex.Lock()
 	if m := server.LastBackupMeta.Logical; m != nil {
-		if clientVersion != "" {
-			m.BackupToolVersion = clientVersion // the DB node's client, not replication-manager's
+		if client.version != "" {
+			m.BackupToolVersion = client.version // the DB node's client, not replication-manager's
 		}
 		if m.BinLogGtid == "" && bgtid != "" {
 			m.BinLogGtid = bgtid
@@ -312,8 +456,34 @@ func (server *ServerMonitor) jobBackupMysqldumpRemote(ctx context.Context, task,
 
 // dumpClientRegex reads the version of the client from the first line of a dump:
 // "-- MariaDB dump 10.19  Distrib 10.11.19-MariaDB", "-- MariaDB dump 10.19-11.4.13-MariaDB",
-// "-- MySQL dump 10.13  Distrib 8.0.36".
-var dumpClientRegex = regexp.MustCompile(`-- (?:MariaDB|MySQL) dump [0-9.]+(?:\s+Distrib |-)([0-9]+\.[0-9]+\.[0-9]+)`)
+// "-- MySQL dump 10.13  Distrib 8.0.36, for Linux". The character after the version is
+// required: a version cut by the end of a chunk ("10.11.1") never matches.
+var dumpClientRegex = regexp.MustCompile(`-- (?:MariaDB|MySQL) dump [0-9.]+(?:\s+Distrib |-)([0-9]+\.[0-9]+\.[0-9]+)[^0-9.]`)
+
+// dumpClientHeadMax bounds the start of the stream kept to read the client version: it
+// is on the first lines of the dump.
+const dumpClientHeadMax = 1024
+
+// dumpClientVersion reads the version of the dump client from the start of the stream,
+// whatever the chunks it comes in (a first TCP read can end inside the header line).
+type dumpClientVersion struct {
+	head    []byte
+	done    bool
+	version string
+}
+
+func (c *dumpClientVersion) Write(chunk []byte) {
+	if c.done {
+		return
+	}
+	c.head = append(c.head, chunk[:min(len(chunk), dumpClientHeadMax-len(c.head))]...)
+	if m := dumpClientRegex.FindSubmatch(c.head); m != nil {
+		c.version = string(m[1])
+	} else if len(c.head) < dumpClientHeadMax {
+		return
+	}
+	c.done, c.head = true, nil
+}
 
 // secondsOr is a timeout setting in seconds, def when it is not set (0 or less).
 func secondsOr(seconds int, def time.Duration) time.Duration {

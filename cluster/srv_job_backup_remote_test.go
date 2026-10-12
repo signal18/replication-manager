@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -94,6 +95,25 @@ func TestDumpBinlogRegexConnectionName(t *testing.T) {
 	}
 }
 
+func TestDumpClientVersionAcrossChunks(t *testing.T) {
+	head := "/*M!999999\\- enable the sandbox mode */ \n-- MariaDB dump 10.19  Distrib 10.11.19-MariaDB, for debian-linux-gnu (x86_64)\n--\n"
+	for _, size := range []int{1, 2, 7, 50, 8192} {
+		c := &dumpClientVersion{}
+		for off := 0; off < len(head); off += size {
+			c.Write([]byte(head[off:min(off+size, len(head))]))
+		}
+		if c.version != "10.11.19" {
+			t.Fatalf("chunks of %d: version %q, want 10.11.19 (never a cut one)", size, c.version)
+		}
+	}
+	c := &dumpClientVersion{} // no header in the first KiB: given up, nothing kept
+	c.Write([]byte(strings.Repeat("x", dumpClientHeadMax+10)))
+	c.Write([]byte("-- MariaDB dump 10.19  Distrib 10.11.19-MariaDB,"))
+	if c.version != "" || c.head != nil || !c.done {
+		t.Fatalf("past the head: version %q, kept %d bytes", c.version, len(c.head))
+	}
+}
+
 func TestDumpClientRegex(t *testing.T) {
 	for line, want := range map[string]string{
 		"-- MariaDB dump 10.19  Distrib 10.11.19-MariaDB, for debian-linux-gnu (x86_64)":                         "10.11.19",
@@ -128,11 +148,17 @@ func TestStreamObserver(t *testing.T) {
 func TestWaitStreamTaskArmed(t *testing.T) {
 	_, server := newTestClusterServer(t)
 	task := string(config.ConstTaskDump)
-	if server.WaitStreamTaskArmed(task, 300*time.Millisecond) {
+	if server.WaitStreamTaskArmed(t.Context(), task, 300*time.Millisecond) {
 		t.Fatal("an unarmed task must not get a receiver")
 	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	start := time.Now()
+	if server.WaitStreamTaskArmed(ctx, task, time.Minute) || time.Since(start) > 5*time.Second {
+		t.Fatal("a request that ended must not wait out the arm timeout")
+	}
 	server.armStreamTask(task)
-	if !server.WaitStreamTaskArmed(task, time.Second) {
+	if !server.WaitStreamTaskArmed(t.Context(), task, time.Second) {
 		t.Fatal("an armed task must get a receiver")
 	}
 }
@@ -211,6 +237,48 @@ func TestStopRemoteDumpStreamCutsOpenStream(t *testing.T) {
 	case <-done:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the backup must cut a stream it no longer waits for")
+	}
+}
+
+func TestStreamReaderResultsAfterDone(t *testing.T) {
+	// what the reader sets from the receiver's goroutine (plain variables, as in
+	// jobBackupMysqldumpRemote) is read once done is closed: -race checks the ordering
+	for _, split := range []bool{false, true} {
+		cl, server := newTestClusterServer(t)
+		cl.SstAvailablePorts = make(map[string]string)
+		task := string(config.ConstTaskDump)
+		done := server.armStreamTask(task)
+		var seen int // written by the receiver goroutine only
+		count := func(b []byte) { seen += len(b) }
+		var port string
+		var err error
+		if split {
+			server.streamTasks.Store(remoteDumpSinkKey(task), io.Writer(writerFunc(func(b []byte) (int, error) {
+				count(b)
+				return len(b), nil
+			})))
+			port, err = server.OpenRemoteDumpReceiver(task)
+		} else {
+			server.streamTasks.Store(streamObserverKey(task), count)
+			port, err = cl.SSTRunReceiverToGZip(server, t.TempDir()+"/d.sql.gz", ConstJobCreateFile, task)
+		}
+		if err != nil {
+			t.Fatalf("receiver: %v", err)
+		}
+		c, err := net.Dial("tcp", "127.0.0.1:"+port)
+		if err != nil {
+			t.Fatalf("dial: %v", err)
+		}
+		c.Write([]byte(strings.Repeat("x", 100000)))
+		c.Close()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("stream end not signalled")
+		}
+		if seen != 100000 {
+			t.Fatalf("splitdump %v: the reader saw %d bytes when done was closed, want 100000", split, seen)
+		}
 	}
 }
 
@@ -403,7 +471,7 @@ func TestGetRemoteMysqlDumpOptionsDropsConnection(t *testing.T) {
 	cl.Conf.BackupMysqldumpOptions = "--hex-blob --user=evil -u root2 --password=secret1 -psecret2 --host dbx -hdby -P 3307 " +
 		"--ssl-ca /etc/ca.pem --ssl --ssl-verify-server-cert --single-transaction --defaults-file=/x --socket /s -S/t " +
 		"--protocol=SOCKET --login-path=lp --routines"
-	args, dropped := cl.GetRemoteMysqlDumpOptions(server)
+	args, dropped, _ := cl.GetRemoteMysqlDumpOptions(server)
 	joined := strings.Join(args, " ")
 	for _, leak := range []string{"evil", "root2", "secret1", "secret2", "dbx", "dby", "3307", "/etc/ca.pem", "/x", "/s", "/t", "SOCKET", "lp", "--ssl", "--user", "--password", "--host", "--port", "--socket", "--protocol", "--defaults-file", "--login-path"} {
 		if strings.Contains(joined, leak) {
@@ -423,6 +491,63 @@ func TestGetRemoteMysqlDumpOptionsDropsConnection(t *testing.T) {
 	}
 	if !strings.Contains(names, "--password") || !strings.Contains(names, "-p") || !strings.Contains(names, "-u") {
 		t.Fatalf("dropped options not named: %s", names)
+	}
+}
+
+func TestRemoteDumpTLS(t *testing.T) {
+	wd := "/var/lib/replication-manager/c1"
+	h := "/etc/mysql/ssl/"
+	for _, c := range []struct {
+		name          string
+		local         []string
+		hostCA        string
+		maria, mysql8 string // node client arguments, joined
+		dropped       string
+	}{
+		{"client defaults", nil, "", "", "", ""},
+		{"disabled (MariaDB client)", []string{"--ssl=FALSE"}, "", "--ssl=FALSE", "--ssl-mode=DISABLED", ""},
+		{"disabled (MySQL client)", []string{"--ssl-mode=DISABLED"}, "", "--ssl=FALSE", "--ssl-mode=DISABLED", ""},
+		{"no verify", []string{"--ssl", "--ssl-verify-server-cert=false"}, "", "--ssl --ssl-verify-server-cert=false", "--ssl-mode=REQUIRED", ""},
+		{"no verify (MySQL client)", []string{"--ssl-mode=REQUIRED"}, "", "--ssl --ssl-verify-server-cert=false", "--ssl-mode=REQUIRED", ""},
+		{"generated CA", []string{"--ssl", "--ssl-verify-server-cert", "--ssl-ca=" + wd + "/ca-cert.pem"}, "",
+			"--ssl --ssl-verify-server-cert --ssl-ca=" + h + "ca-cert.pem", "--ssl-mode=VERIFY_CA --ssl-ca=" + h + "ca-cert.pem", ""},
+		{"generated identity", []string{"--ssl-mode=VERIFY_IDENTITY", "--ssl-ca=" + wd + "/ca-cert.pem", "--ssl-cert=" + wd + "/client-cert.pem", "--ssl-key=" + wd + "/client-key.pem"}, "",
+			"--ssl --ssl-verify-server-cert --ssl-ca=" + h + "ca-cert.pem --ssl-cert=" + h + "client-cert.pem --ssl-key=" + h + "client-key.pem",
+			"--ssl-mode=VERIFY_IDENTITY --ssl-ca=" + h + "ca-cert.pem --ssl-cert=" + h + "client-cert.pem --ssl-key=" + h + "client-key.pem", ""},
+		{"operator CA, no host CA: mode kept, file out", []string{"--ssl-mode=VERIFY_CA", "--ssl-ca=/opt/certs/ca.pem"}, "",
+			"--ssl --ssl-verify-server-cert", "--ssl-mode=VERIFY_CA", "/opt/certs/ca.pem"},
+		{"operator CA, replication-ssl-ca", []string{"--ssl-mode=VERIFY_CA", "--ssl-ca=/opt/certs/ca.pem"}, "/etc/pki/db-ca.pem",
+			"--ssl --ssl-verify-server-cert --ssl-ca=/etc/pki/db-ca.pem", "--ssl-mode=VERIFY_CA --ssl-ca=/etc/pki/db-ca.pem", "/opt/certs/ca.pem"},
+		{"rotation (old_certs) has no host place", []string{"--ssl-mode=VERIFY_CA", "--ssl-ca=" + wd + "/old_certs/ca-cert.pem"}, "",
+			"--ssl --ssl-verify-server-cert", "--ssl-mode=VERIFY_CA", wd + "/old_certs/ca-cert.pem"},
+	} {
+		for _, mysql8 := range []bool{false, true} {
+			args, dropped := remoteDumpTLS(c.local, wd, c.hostCA, mysql8)
+			want := c.maria
+			if mysql8 {
+				want = c.mysql8
+			}
+			if got := strings.Join(args, " "); got != want || strings.Join(dropped, " ") != c.dropped {
+				t.Fatalf("%s (mysql8 %v): got %q dropped %q; want %q dropped %q", c.name, mysql8, got, dropped, want, c.dropped)
+			}
+		}
+	}
+}
+
+func TestRemoteDumpConnectionOptionExactNames(t *testing.T) {
+	for _, removed := range []string{"--password1=s", "--password3=s", "--ssl_ca=/x", "--loose-password=s", "--pass=s",
+		"--passw=s", "--skip-ssl", "--disable-ssl", "--enable-cleartext-plugin", "--ssl-mode=REQUIRED", "--tls-version=TLSv1.3",
+		"--defaults-group-suffix=x", "--no-defaults", "--bind-address=1.2.3.4", "--pa=x"} {
+		if name, _ := remoteDumpConnectionOption(removed); name == "" {
+			t.Fatalf("%s must be removed", removed)
+		}
+	}
+	// not a listed name: kept, whatever its first letters (no family of names)
+	for _, kept := range []string{"--single-transaction", "--ssl-new-thing=1", "--tls-new-thing", "--password-history",
+		"--default-character-set=utf8mb4", "--hex-blob", "--users-only", "--port-forward"} {
+		if name, _ := remoteDumpConnectionOption(kept); name != "" {
+			t.Fatalf("%s must be kept, read as %s", kept, name)
+		}
 	}
 }
 

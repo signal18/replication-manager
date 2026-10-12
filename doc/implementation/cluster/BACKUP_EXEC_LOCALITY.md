@@ -27,11 +27,37 @@ restart.
 
 `GetRemoteMysqlDumpOptions` = `GetMysqlDumpOptions` minus
 `GetDumpCredentials` and `GetSSLClientParam("client-dump")`, and minus the
-connection options of `backup-mysqldump-options` (`remoteDumpConnectionOption`:
-`--user`, `--password`, `--host`, `--port`, `--socket`, `--protocol`, `--ssl*`,
-`--tls*`, option files, `--login-path`, auth plugin paths; `-u -p -h -P -S`
-attached or with the next argument as value). The arguments travel in the
-clear (base64 only): the names left out are logged, never their values.
+connection options of `backup-mysqldump-options` (`remoteDumpConnectionOption`),
+plus the TLS options of the node (`remoteDumpTLSOptions`). The arguments travel
+in the clear (base64 only): the names removed are logged, never their values.
+
+`remoteDumpConnectionOptions` lists the removed options by exact name, never by a
+family of names: a client option added later is never removed by accident. A
+name is read as the clients read it, a closed set of forms: `_` for `-`, one
+modifier of `remoteDumpOptionModifiers` (`--skip-ssl`, `--loose-password`), and a
+shortened `--password` (2 letters or more: the clients accept an unambiguous
+prefix of an option, a deprecated form) whose value then never travels. Short
+forms `-u -p -h -P -S`, attached or with the next argument as value.
+
+## TLS of the dump client
+
+`remoteDumpTLS` keeps the decision of a local dump, `GetSSLClientParam("client-dump")`
+(`hosts-tls-ssl-mode`, `hosts-tls-*`, the `ssl` tag, generated certificates, the
+server's TLS), and changes only what is replication-manager's:
+
+- the mode is read back from either syntax as `GetSSLClientParam` maps it
+  (`--ssl --ssl-verify-server-cert=false` REQUIRED, `+ --ssl-ca` VERIFY_CA,
+  `+ --ssl-cert/--ssl-key` VERIFY_IDENTITY, `--ssl=FALSE` DISABLED);
+- the files of replication-manager's working directory among `ca-cert.pem`,
+  `client-cert.pem`, `client-key.pem` are named at `/etc/mysql/ssl/`
+  (`ReplicationSSLCaProvisioned`'s directory, #1933): the configurator ships them
+  there, and the jobs containers mount the database's `/etc/mysql`. Any other file
+  (`hosts-tls-*`, `old_certs` during a rotation) has no known place on the host:
+  it is left out with a warning, and a verifying mode then takes `replication-ssl-ca`
+  (#1933, the CA path on the database hosts) when set. A verifying mode without a CA
+  is kept: the dump fails, never silently unverified;
+- the syntax is the node's client's, of the server's flavor: `--ssl-mode` for
+  MySQL/Percona 8, `--ssl`/`--ssl-verify-server-cert` for the others.
 `RemoteMysqlDumpArgs` encodes them one per line, base64, so they travel as one
 word. dbjobs decodes them with `mapfile` and adds the node's
 `--protocol=TCP --user --host --password --port`.
@@ -125,6 +151,21 @@ as the pg_dump of the PostgreSQL jobs sidecar in api mode (`runStreamTask`).
   `LastBackupMeta.Logical.Dest`), with the observer
   `streamTasks["observe:mysqldump"]` called on every chunk before compression.
 
+The receivers take the first connection on their port without authenticating it,
+as every SST receiver does (physical backups, fetched logs); a dump stream goes to
+the position reader and to splitdump. The peer is not checked against the server's
+address, which can differ from dbjobs' source address (sidecar networking, NAT,
+multi-homed hosts); restricting the port to the database nodes is left to the
+network, and hardening all receivers to a separate change.
+
+The position reader runs in the receiver's goroutine and writes plain variables
+read after the wait: both waits succeed only once the receiver signalled the end of
+the stream (`JobFinishReceiveFile` closes `done` in its cleanup, after the copy loop),
+which orders those writes before the reads (`TestStreamReaderResultsAfterDone`, -race).
+The client version is read from the first 1 KiB of the stream whatever its chunks
+(`dumpClientVersion`); its pattern needs the character after the version, so a cut
+one never matches.
+
 The splitdump input is closed at the end of the wait, with the wait's error
 when it failed, so a cut stream is never taken for a complete dump.
 
@@ -204,7 +245,8 @@ progress (about 140 encrypted posts for a 100 MB lab dump that lasts 5 s).
   PostgreSQL.
 - Regtest `testRemoteMysqldump` (needs dbjobs next to each database, not in the
   ALL list; run it by name, once per `scheduler-jobs-mode`): gzip and splitdump
-  of a replica (metadata, GTID of the server, complete artifact), a 1s pickup
+  of the server the scheduler backs up, the designated backup server else the
+  primary (metadata, GTID of the server, complete artifact), a 1s pickup
   timeout withdrawing the row, with a user and password in
   `backup-mysqldump-options` all along.
 - Lab (OpenSVC, MariaDB 10.11 replica), each in api and sql mode:

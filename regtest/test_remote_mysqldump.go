@@ -18,9 +18,10 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-// TestRemoteMysqldump runs the logical backup of a replica on its DB node through dbjobs
-// (scheduler-jobs-exec-remote=mysqldump, #1628), in the cluster's job dispatch mode, and
-// checks what the backup recorded and wrote:
+// TestRemoteMysqldump runs the logical backup of the server replication-manager backs up
+// (the designated backup server, else the primary, as the scheduler does) on its DB node
+// through dbjobs (scheduler-jobs-exec-remote=mysqldump, #1628), in the cluster's job
+// dispatch mode, and checks what the backup recorded and wrote:
 //
 //   - gzip and splitdump: completed, execRemote, the DB node's client version, the binary
 //     log position, a GTID set (when the server has one) that never starts with '+' and
@@ -36,12 +37,16 @@ func (regtest *RegTest) TestRemoteMysqldump(cl *clusterpkg.Cluster, conf string,
 	logf := func(level, format string, args ...any) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, level, "TEST remote mysqldump: "+format, args...)
 	}
-	slaves := cl.GetSlaves()
-	if len(slaves) == 0 || slaves[0] == nil {
-		logf(config.LvlErr, "no replica to back up")
+	// the server the scheduler backs up: a replica is dumped only when it is the designated
+	// backup server (a dump of a replica, --dump-slave, writes on it)
+	s := cl.GetBackupServer()
+	if s == nil {
+		s = cl.GetMaster()
+	}
+	if s == nil {
+		logf(config.LvlErr, "no server to back up")
 		return false
 	}
-	s := slaves[0]
 
 	saved := *cl.Conf
 	defer func() {

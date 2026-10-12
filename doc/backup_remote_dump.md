@@ -41,12 +41,30 @@ does not run the dump: the backup then fails after the pickup timeout.
 | cancel, live progress | replication-manager |
 
 The dump options sent to dbjobs travel readable (base64, not encrypted), so they
-never carry how to connect: replication-manager leaves out its own connection
-and TLS arguments, and the connection, credential, TLS and option file options
-of `backup-mysqldump-options` (`--user`, `--password`, `--host`, `--port`,
-`--socket`, `--protocol`, `--ssl*`, `--tls*`, `--defaults-file`,
-`--defaults-extra-file`, `--login-path`, and their short forms). A warning names
-the options left out, never their values. dbjobs connects with the node's own.
+never carry how to connect: replication-manager removes its own connection
+arguments, and the connection, credential, TLS, authentication and option file
+options of `backup-mysqldump-options`, by exact name: `--host`, `--port`,
+`--socket`, `--protocol`, `--bind-address`, `--pipe`, `--shared-memory-base-name`,
+`--user`, `--password`, `--password1`/`2`/`3`, `--ssl`, `--ssl-ca`, `--ssl-capath`,
+`--ssl-cert`, `--ssl-key`, `--ssl-cipher`, `--ssl-crl`, `--ssl-crlpath`,
+`--ssl-mode`, `--ssl-verify-server-cert`, `--ssl-fips-mode`, `--tls-version`,
+`--tls-ciphersuites`, `--default-auth`, `--plugin-dir`, `--server-public-key-path`,
+`--get-server-public-key`, `--enable-cleartext-plugin`, `--defaults-file`,
+`--defaults-extra-file`, `--defaults-group-suffix`, `--login-path`, `--no-defaults`,
+and `-u`, `-p`, `-h`, `-P`, `-S`. They are read as the clients read them (`_` for
+`-`, a `--loose-`, `--skip-`, `--enable-`, `--disable-` or `--maximum-` modifier,
+a shortened `--password` such as `--pass`). A warning names the options removed,
+never their values. dbjobs connects with the node's own user and password.
+
+The TLS of the dump on the node is the one replication-manager uses for a local
+dump of that server (`hosts-tls-*`, the `ssl` tag, the server's TLS), written for
+the node's client. Its certificate files are named where the database hosts have
+them: the generated or `ssl` tag certificates at `/etc/mysql/ssl/`. Files only
+replication-manager's host has (`hosts-tls-ca`, `hosts-tls-cli-cert`,
+`hosts-tls-cli-key`) are not used, with a warning; set `replication-ssl-ca` to
+the CA path on the database hosts for a verified connection. A mode that verifies
+without a CA available on the host is kept: the dump fails rather than connect
+unverified.
 
 The DDL lock is taken by dbjobs once it runs the dump, not while the backup
 waits for dbjobs to take it, so DDL is blocked no longer than for a local dump.
@@ -65,6 +83,11 @@ Both job dispatch modes (`scheduler-jobs-mode`) are supported:
   dbjobs never takes.
 
 `backup-mysqldump-splitdump` works the same as for a local dump.
+
+The stream comes in on a receiver port of replication-manager
+(`scheduler-db-servers-sender-ports`, else a random one) that, as for physical
+backups and fetched logs, takes the first connection and does not
+authenticate it. Only open that port from the database nodes.
 
 ## Settings
 

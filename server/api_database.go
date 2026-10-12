@@ -5383,7 +5383,7 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		// logical backup dumped on the DB node by dbjobs (scheduler-jobs-exec-remote),
 		// compressed or split here; only for a backup waiting for it, never into a local
 		// run's file
-		if !node.WaitStreamTaskArmed(taskname, mycluster.RemoteDumpArmTimeout()) {
+		if !node.WaitStreamTaskArmed(r.Context(), taskname, mycluster.RemoteDumpArmTimeout()) {
 			http.Error(w, "No remote "+taskname+" backup waiting on "+node.URL, 500)
 			return
 		}
