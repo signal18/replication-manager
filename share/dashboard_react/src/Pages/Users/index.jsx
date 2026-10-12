@@ -13,8 +13,9 @@ import { HiUserGroup } from 'react-icons/hi'
 import { TbDatabaseStar, TbDatabaseX, TbDeviceDesktopCancel, TbDeviceDesktopStar, TbDeviceDesktopX, TbDevicesStar, TbMail, TbMailCog, TbMailDollar, TbMailStar, TbTrash, TbUserCancel, TbUserStar } from 'react-icons/tb'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { useDispatch, useSelector } from 'react-redux'
-import { HStack } from '@chakra-ui/react'
+import { Flex, HStack } from '@chakra-ui/react'
 import TextInputModal from '../../components/Modals/TextInputModal'
+import ClusterApiTokens from './ClusterApiTokens'
 
 function Users({ selectedCluster, user }) {
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
@@ -188,26 +189,36 @@ function Users({ selectedCluster, user }) {
   )
 
 
+  // The tab opens with cluster-grant or token-manage (#1983): each panel needs its own.
+  const canGrant = !!user?.grants?.['cluster-grant']
+  const canManageTokens = !!user?.grants?.['token-manage'] && monitor?.config?.apiUserTokens !== false
+
   return (
     <>
-      <AccordionComponent
-        heading={'USERS'}
-        allowToggle={false}
-        className={styles.accordion}
-        panelSX={{ overflowX: 'auto', p: 0 }}
-        headerActions={
-          canAddUser ? (
-            <RMIconButton
-              icon={FaUserPlus}
-              tooltip={'Add User'}
-              px='2'
-              variant='outline'
-              onClick={() => setIsAddUserModalOpen(true)}
-            />
-          ) : undefined
-        }
-        body={<DataTable key="users" data={data} columns={columns} className={styles.table} />}
-      />
+      {/* the two panels stacked with the gap the other tabs use */}
+      <Flex direction='column' gap='8px'>
+        {canGrant && (
+          <AccordionComponent
+            heading={'USERS'}
+            allowToggle={false}
+            className={styles.accordion}
+            panelSX={{ overflowX: 'auto', p: 0 }}
+            headerActions={
+              canAddUser ? (
+                <RMIconButton
+                  icon={FaUserPlus}
+                  tooltip={'Add User'}
+                  px='2'
+                  variant='outline'
+                  onClick={() => setIsAddUserModalOpen(true)}
+                />
+              ) : undefined
+            }
+            body={<DataTable key="users" data={data} columns={columns} className={styles.table} />}
+          />
+        )}
+        {canManageTokens && <ClusterApiTokens selectedCluster={selectedCluster} />}
+      </Flex>
       {isAddUserModalOpen && (
         <AddUserModal
           clusterName={selectedCluster?.name}

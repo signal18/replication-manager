@@ -6,7 +6,9 @@ import { get, isEqual } from 'lodash'
 const pendingKeySelectors = {
   'cluster/getJobs': (arg) => arg?.clusterName,
   'cluster/getDatabaseService': (arg) => arg?.serviceName,
-  'cluster/getAppService': (arg) => arg?.serviceName
+  'cluster/getAppService': (arg) => arg?.serviceName,
+  // per cluster: a load for B is never dropped while A's is still in flight (#1983)
+  'cluster/getClusterApiTokens': (arg) => arg?.clusterName
 }
 
 const getThunkTypePrefix = (actionType) => actionType.replace(/\/(pending|fulfilled|rejected)$/, '')
@@ -2009,6 +2011,24 @@ export const getApiTokens = createGuardedAsyncThunk(
   }
 )
 
+// The API tokens covering one cluster, every owner (grant token-manage, #1983)
+export const getClusterApiTokens = createGuardedAsyncThunk(
+  'cluster/getClusterApiTokens',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getClusterApiTokens(clusterName, baseURL)
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' && data.trim() ? data.trim() : `HTTP ${status}`)
+      }
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Loading the cluster's API tokens failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const createApiToken = createGuardedAsyncThunk(
   'cluster/createApiToken',
   async ({ label, grants, clusters, expireDays }, thunkAPI) => {
@@ -2027,12 +2047,22 @@ export const createApiToken = createGuardedAsyncThunk(
 
 export const revokeApiToken = createGuardedAsyncThunk(
   'cluster/revokeApiToken',
-  async ({ tokenId }, thunkAPI) => {
+  async ({ tokenId, clusterName }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.revokeApiToken(tokenId, baseURL)
+      // fetch does not reject on 403/404: without this a refused revoke (another
+      // user's token covering a cluster where the caller lacks token-manage) was
+      // reported as revoked. The API's text names the cluster.
+      if (status !== 200) {
+        throw new Error(typeof data === 'string' && data.trim() ? data.trim() : `HTTP ${status}`)
+      }
       showSuccessBanner(`API token revoked`, status, thunkAPI)
       thunkAPI.dispatch(getApiTokens())
+      // Revoked from a cluster's token list (#1983): refresh that list too.
+      if (clusterName) {
+        thunkAPI.dispatch(getClusterApiTokens({ clusterName }))
+      }
       return { data, status }
     } catch (error) {
       showErrorBanner(`Revoking API token failed!`, error, thunkAPI)
@@ -2750,6 +2780,9 @@ const initialState = {
   pendingThunks: {},
   error: null,
   apiTokens: [],
+  // The tokens of ONE cluster, tagged with its name (#1983): a list loaded for another
+  // cluster, or one whose load failed, is never shown under this cluster's panel.
+  clusterApiTokens: { clusterName: '', tokens: [] },
   clusterApps: null,
   clusterAppStates: null,
   clusterData: null,
@@ -2852,6 +2885,17 @@ export const clusterSlice = createSlice({
   extraReducers: (builder) => {
     builder.addCase(getApiTokens.fulfilled, (state, action) => {
       state.apiTokens = Array.isArray(action.payload?.data) ? action.payload.data : []
+    })
+    builder.addCase(getClusterApiTokens.fulfilled, (state, action) => {
+      state.clusterApiTokens = {
+        clusterName: action.meta.arg.clusterName,
+        tokens: Array.isArray(action.payload?.data) ? action.payload.data : []
+      }
+    })
+    builder.addCase(getClusterApiTokens.rejected, (state, action) => {
+      if (state.clusterApiTokens.clusterName === action.meta.arg.clusterName) {
+        state.clusterApiTokens = { clusterName: action.meta.arg.clusterName, tokens: [] }
+      }
     })
     builder.addCase(preserveVariable.fulfilled, (state, action) => {
       // Refresh the variables after preserve/accept/clear action

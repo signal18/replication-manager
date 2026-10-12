@@ -174,7 +174,7 @@ function Home() {
             if (apiUser.grants['db-show-schema']) {
               authorizedTabs.push('Schema')
             }
-            if (apiUser.grants['cluster-grant']) {
+            if (apiUser.grants['cluster-grant'] || apiUser.grants['token-manage']) {
               authorizedTabs.push('Users')
             }
             dashboardTabsRef.current = authorizedTabs
@@ -424,7 +424,7 @@ function Home() {
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} user={user} onOpenSchedulerSettings={openMaintenanceScheduler} onOpenLogsSettings={openLogsSettings} onOpenMonitoringSettings={openMonitoringSettings} />] : []),
-                ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
+                ...(user?.grants['cluster-grant'] || user?.grants['token-manage'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]
               : [
                   ...(globalTabsRef.current.includes('Clusters Peer')
