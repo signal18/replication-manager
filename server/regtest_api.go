@@ -5,6 +5,7 @@
 package server
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
 	"io"
@@ -67,15 +68,27 @@ func (repman *ReplicationManager) regtestAPIAddress() string {
 // generated self-signed one, and the call never leaves this host, so it is
 // not verified.
 func (repman *ReplicationManager) regtestAPIRequest(token, method, path string) (int, http.Header, []byte, error) {
+	return repman.regtestAPIRequestBody(token, method, path, nil)
+}
+
+// regtestAPIRequestBody is regtestAPIRequest with a JSON body (nil for none).
+func (repman *ReplicationManager) regtestAPIRequestBody(token, method, path string, payload []byte) (int, http.Header, []byte, error) {
 	client := &http.Client{
 		Timeout:   30 * time.Second,
 		Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}},
 	}
-	req, err := http.NewRequest(method, "https://"+repman.regtestAPIAddress()+path, nil)
+	var reqBody io.Reader
+	if payload != nil {
+		reqBody = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequest(method, "https://"+repman.regtestAPIAddress()+path, reqBody)
 	if err != nil {
 		return 0, nil, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, nil, nil, err

@@ -399,7 +399,7 @@ func (cluster *Cluster) GetStagingProxyHosts() []string {
 
 func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor, masterGTIDList string) (string, error) {
 	var err error
-	var logs, dest, masterCurrentGTID string
+	var logs, masterCurrentGTID string
 
 	if parent == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Parent cluster cannot be nil")
@@ -413,10 +413,11 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		return "", fmt.Errorf("no target server found")
 	}
 
-	bcksrv := parent.GetBackupServer()
-	if bcksrv != nil && !bcksrv.HasBackupLogicalCookie() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent cluster %s has no backup. Please run logical backup for refresh child cluster on %s", parent.Name, cluster.Name)
-		parent.LogModulePrintf(parent.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent cluster %s has no backup. Please run logical backup for refresh child cluster on %s", parent.Name, cluster.Name)
+	// The parent's logical backup is the only source (#1989): checked before anything
+	// is touched, with an error naming what is missing.
+	backupfile, _, err := parent.ParentLogicalBackup()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed of %s from parent cluster %s refused: %s", cluster.Name, parent.Name, err)
 		return "", err
 	}
 
@@ -427,20 +428,6 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh data from parent cluster initiated")
-
-	switch backtype {
-	case config.ConstBackupLogicalTypeMysqldump, "script":
-		dest = "mysqldump.sql.gz"
-	case config.ConstBackupLogicalTypeMydumper:
-		dest = "mydumper"
-	}
-
-	// Can't handle script validation, unknown logic
-	backupfile := bcksrv.GetMyBackupDirectory() + dest
-	if _, err := os.Stat(backupfile); err != nil {
-		//Remove false cookie
-		return "", fmt.Errorf("No backup file found on parent for %s", backtype)
-	}
 
 	if target.HasAnyReseedingState() {
 		return "", fmt.Errorf("Server is in reseeding state by %s", target.IsReseeding)
@@ -469,14 +456,20 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	//Delete wait logical backup cookie
 	target.DelWaitLogicalBackupCookie()
 
+	// The channel from the parent's master carries the PARENT's replication-source-name,
+	// the same name on both sides: the parent adopts the child master through it
+	// (AddChildServers). The child's own replication-source-name names its internal
+	// channel (child master to child replicas) and must differ.
+	channel := parent.Conf.MasterConn
 	if target.IsMaster() {
 		// Set replication master to current master if not PITR
-		logs, err = target.StopSlaveChannel(parent.Conf.MasterConn)
+		logs, err = target.StopSlaveChannel(channel)
 		if err != nil {
 			cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", target.URL, err)
 		}
 
 		changeOpt := parent.GetChangeMasterBaseOptForSlave(target, pmaster, false)
+		changeOpt.Channel = channel
 		changeOpt.Mode = "SLAVE_POS"
 
 		if target.DBVersion.IsMySQLOrPercona() {
@@ -500,7 +493,8 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		}
 		err = target.JobReseedMysqldump(backupfile, false)
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err = target.JobReseedMyLoader(backupfile, false)
+		// the data only: the staging cluster keeps its own accounts and system tables
+		err = target.JobReseedMyLoaderFromParent(backupfile)
 		meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
@@ -534,7 +528,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	target.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
 
 	if target.IsMaster() {
-		_, err2 := target.StartSlaveChannel(parent.Conf.MasterConn)
+		_, err2 := target.StartSlaveChannel(channel)
 		if err2 != nil {
 			cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed start slave on server: %s %s", target.URL, err)
 		} else {
@@ -545,4 +539,88 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed logical backup %s from parent cluster completed on %s", backtype, target.URL)
 
 	return masterCurrentGTID, nil
+}
+
+// ParentLogicalBackup returns the logical backup a child cluster (staging) is seeded
+// from: the file or directory of this cluster's backup-logical-type on its backup
+// server. An error names what is missing (#1989): no backup server, no logical backup
+// taken, a type the reseed cannot load, or the file gone from disk.
+func (cluster *Cluster) ParentLogicalBackup() (string, *ServerMonitor, error) {
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		return "", nil, fmt.Errorf("parent cluster %s has no backup server", cluster.Name)
+	}
+	if !bcksrv.HasBackupLogicalCookie() {
+		return "", bcksrv, fmt.Errorf("parent cluster %s has no logical backup on %s: run a logical backup first", cluster.Name, bcksrv.URL)
+	}
+	var dest string
+	switch cluster.Conf.BackupLogicalType {
+	case config.ConstBackupLogicalTypeMysqldump, "script":
+		dest = "mysqldump.sql.gz"
+	case config.ConstBackupLogicalTypeMydumper:
+		dest = "mydumper"
+	default:
+		return "", bcksrv, fmt.Errorf("parent cluster %s backup-logical-type %q cannot seed a child cluster (mysqldump or mydumper)", cluster.Name, cluster.Conf.BackupLogicalType)
+	}
+	backupfile := bcksrv.GetMyBackupDirectory() + dest
+	if _, err := os.Stat(backupfile); err != nil {
+		return "", bcksrv, fmt.Errorf("parent cluster %s logical backup %s not found: %w", cluster.Name, backupfile, err)
+	}
+	return backupfile, bcksrv, nil
+}
+
+// SeedFromParent copies the parent's data into this staging cluster (the "Bootstrap
+// Staging From Parent" action, and the last step of create-staging, #1988): the
+// master is reseeded from the parent's logical backup and keeps replicating from the
+// parent, the first replica waits to be in sync, then the staging refresh detaches it
+// and a logical backup of the staging master is started. Every stop returns its
+// reason.
+func (cluster *Cluster) SeedFromParent(parent *Cluster) error {
+	return cluster.seedFromParent(parent, true)
+}
+
+// SeedChildFromParent copies the parent's data into a child cluster (create-child,
+// #1997): the same reseed of the master, which keeps replicating from the parent and
+// passes the data on to its replicas, every replica in sync, no detach.
+func (cluster *Cluster) SeedChildFromParent(parent *Cluster) error {
+	return cluster.seedFromParent(parent, false)
+}
+
+func (cluster *Cluster) seedFromParent(parent *Cluster, staging bool) error {
+	cmaster := cluster.GetMaster()
+	if cmaster == nil {
+		return fmt.Errorf("no master on %s", cluster.Name)
+	}
+	masterGTIDList, err := cluster.ReseedFromParentCluster(parent, cmaster, "") // the master combines its GTID list with the parent's
+	if err != nil {
+		return fmt.Errorf("reseed of %s from %s: %w", cmaster.URL, parent.Name, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done", parent.Name)
+
+	replicas := cluster.GetSlaves()
+	if staging {
+		// the first replica only: the one the refresh detaches
+		slave := cluster.GetSlaveByIndex(0)
+		if slave == nil {
+			return fmt.Errorf("no replica on %s to detach as the staging server", cluster.Name)
+		}
+		replicas = []*ServerMonitor{slave}
+	}
+	for _, slave := range replicas {
+		starttime := time.Now()
+		for slave.State == stateSlaveLate && time.Since(starttime) < 2*time.Minute {
+			time.Sleep(1 * time.Second)
+		}
+		if slave.State != stateSlave {
+			return fmt.Errorf("replica %s is %s after 2 minutes, not in sync", slave.URL, slave.State)
+		}
+	}
+	if staging {
+		if err := cluster.RefreshStaging(parent, masterGTIDList); err != nil {
+			return fmt.Errorf("refresh staging: %w", err)
+		}
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Seed of %s from parent cluster %s done, starting a logical backup", cluster.Name, parent.Name)
+	go cmaster.JobBackupLogical(context.Background())
+	return nil
 }

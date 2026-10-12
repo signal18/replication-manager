@@ -72,6 +72,20 @@ type RepmanProvider interface {
 	ClusterPrice(clusterName string) (map[string]any, error)
 	Cloud18GetClusterPrice(p *Principal, infra, clusterName string) (map[string]any, error)
 	Cloud18CreateClusterToken(p *Principal, infra, clusterName, label, grants string, expireDays int) (map[string]any, error)
+	// CreateChildClusterAs calls POST /api/clusters/{parent}/actions/create-{kind} (kind
+	// staging or child) as the principal (loopback with its own credential, #1988,
+	// #1997): the route's checks, cluster creation rights included, apply exactly as over
+	// REST. Returns the HTTP status and the answer.
+	CreateChildClusterAs(p *Principal, parent string, kind string, spec ChildClusterSpec) (int, string, error)
+}
+
+// ChildClusterSpec is a create-staging (#1988) or create-child (#1997) request, the body
+// of POST /api/clusters/{parent}/actions/create-staging and create-child.
+type ChildClusterSpec struct {
+	Name    string `json:"name"`    // default <parent>-staging or <parent>-child
+	DBImage string `json:"dbImage"` // default the parent's prov-db-image
+	DBCount int    `json:"dbCount"` // default 3 (staging), 2 (child)
+	Confirm bool   `json:"confirm"` // false: the plan only
 }
 
 // Cloud18ClusterSpec is a self-service cluster request on an infrastructure.

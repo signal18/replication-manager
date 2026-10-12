@@ -70,6 +70,7 @@ export const clusterService = {
   rollingOptimize,
   rollingAction,
   rollingUpgradePlan,
+  createChildCluster,
   rotateCertificates,
   reloadCertificates,
   cancelRollingRestart,
@@ -142,6 +143,7 @@ export const clusterService = {
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
+  alterEngine,
   checksumRepairTable,
   checksumSchema,
   checksumRepairSchema,
@@ -447,6 +449,11 @@ function rollingAction(clusterName, action, baseURL, target) {
   return getApi(baseURL).post(`clusters/${clusterName}/actions/rolling/${action}${q}`)
 }
 
+// Staging (#1988) or child (#1997) cluster of a cluster: confirm false returns the
+// plan, true creates. kind is staging or child.
+function createChildCluster(clusterName, kind, { name, dbImage, dbCount, confirm }, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/create-${kind}`, { name, dbImage, dbCount, confirm })
+}
 function rollingUpgradePlan(clusterName, target, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/rolling/upgrade/plan?target=${encodeURIComponent(target || 'patch')}`)
 }
@@ -752,6 +759,14 @@ function killQuery(clusterName, dbId, queryDigest, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/queries/${queryDigest}/actions/kill-query`)
 }
 
+// Storage engine switch (#1999): one table when a table is given, else every table of
+// engineFrom (optionally of one schema). confirm false returns the plan.
+function alterEngine({ clusterName, schema, table, engineFrom, engineTo, confirm }, baseURL) {
+  if (table) {
+    return getApi(baseURL).post(`clusters/${clusterName}/schema/${schema}/${table}/actions/alter-engine/${engineTo}`, { confirm })
+  }
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/alter-engine`, { engineFrom, engineTo, schema, confirm })
+}
 function checksumTable(clusterName, schema, table, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/${table}/actions/checksum-table`)
 }

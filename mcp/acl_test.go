@@ -69,6 +69,9 @@ func (f *fakeRepman) Cloud18ClustersForSale() ([]*peer.PeerCluster, error) { ret
 func (f *fakeRepman) Cloud18CreateCluster(p *Principal, spec Cloud18ClusterSpec, confirm bool) (map[string]any, error) {
 	return map[string]any{"cluster": spec.ClusterName, "confirm": confirm}, nil
 }
+func (f *fakeRepman) CreateChildClusterAs(p *Principal, parent string, kind string, spec ChildClusterSpec) (int, string, error) {
+	return 200, "{}", nil
+}
 func (f *fakeRepman) Cloud18CreateClusterToken(p *Principal, infra, name, label, grants string, days int) (map[string]any, error) {
 	return map[string]any{"cluster": name, "token": "x"}, nil
 }
@@ -139,6 +142,9 @@ func TestACLURLBuilding(t *testing.T) {
 	req.Params.Arguments = map[string]any{"cluster_name": "c1", "server_name": "db1", "setting_name": "failover-mode", "setting_value": "manual", "snapshot_id": "abc"}
 	cases := map[string]string{
 		"cluster-switchover":               "/api/clusters/c1/actions/switchover",
+		"cluster-create-staging":           "/api/clusters/c1/actions/create-staging",
+		"cluster-create-child":             "/api/clusters/c1/actions/create-child",
+		"cluster-alter-engine":             "/api/clusters/c1/actions/alter-engine",
 		"get-database-variables":           "/api/clusters/c1/servers/db1/variables",
 		"cluster-set-setting":              "/api/clusters/c1/settings/actions/set/failover-mode/manual",
 		"cluster-archive-purge":            "/api/clusters/c1/restic/purge/abc",

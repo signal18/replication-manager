@@ -1158,6 +1158,79 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/alter-engine": {
+            "post": {
+                "description": "Plans (confirm false) or runs (confirm true) ALTER TABLE ... ENGINE=engineTo on the master for every user table on engineFrom, optionally of one schema; binlog on, the replicas follow. Tables of any other engine (Aria, MEMORY, MyISAM...) are not touched; a table engineTo cannot hold (a foreign key, only InnoDB enforces them) is skipped with its reason. engineTo must be available on the master. Runs in the background, one table at a time, stopping at the first error: progress CINF0015, stop WARN0240. Needs db-optimize.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Switch the tables of one storage engine to another",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "engineFrom, engineTo, schema, confirm",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.EngineSwitchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plan (confirm false)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.EngineSwitchPlan"
+                        }
+                    },
+                    "202": {
+                        "description": "Switch started (confirm true)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.EngineSwitchPlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Refused: the reason (engine not available, a switch running, nothing to alter...)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/analyze-all-tables/{persistent}": {
             "post": {
                 "description": "This endpoint triggers the analyze calculation for all tables in the specified cluster.",
@@ -1457,6 +1530,162 @@
                     },
                     "500": {
                         "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/create-child": {
+            "post": {
+                "description": "Plans (confirm false) or creates (confirm true) a child cluster of {clusterName}, named \u003cclusterName\u003e-child unless a name is given, to test a migration under this cluster's writes: same orchestrator, database image unless dbImage is given (a newer release to test), DBU per node, accounts and proxy type, dbCount databases (default 2), GTID domain this cluster's + 1, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only, its master replicating from this cluster's master through the parent's replication-source-name and its replicas following it through the child's own (child). Needs cluster-replication on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0239 where it stopped.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Create a child cluster of this cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Parent cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "name, dbImage, dbCount, confirm",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.ChildRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plan (confirm false)",
+                        "schema": {
+                            "$ref": "#/definitions/server.ChildPlan"
+                        }
+                    },
+                    "202": {
+                        "description": "Creation started (confirm true)",
+                        "schema": {
+                            "$ref": "#/definitions/server.ChildPlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Refused: the reason (no logical backup on the parent, orchestrator, name taken...)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Created and kept, then stopped: the cluster name, the step and the reason (WARN0239)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/create-staging": {
+            "post": {
+                "description": "Plans (confirm false) or creates (confirm true) a staging cluster of {clusterName}, named \u003cclusterName\u003e-staging unless a name is given: same orchestrator, database image unless dbImage is given, DBU per node and proxy type, dbCount databases (default 3), topology-staging on, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only (the staging cluster keeps its own accounts). Needs cluster-staging on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0239 where it stopped.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Create a staging cluster of this cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Parent cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "name, dbImage, dbCount, confirm",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.ChildRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plan (confirm false)",
+                        "schema": {
+                            "$ref": "#/definitions/server.ChildPlan"
+                        }
+                    },
+                    "202": {
+                        "description": "Creation started (confirm true)",
+                        "schema": {
+                            "$ref": "#/definitions/server.ChildPlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Refused: the reason (no logical backup on the parent, orchestrator, name taken...)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Created and kept, then stopped: the cluster name, the step and the reason (WARN0239)",
                         "schema": {
                             "type": "string"
                         }
@@ -9130,6 +9359,99 @@
                         }
                     },
                     "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/alter-engine/{engine}": {
+            "post": {
+                "description": "Plans (confirm false) or runs (confirm true) ALTER TABLE schemaName.tableName ENGINE=engine on the master, binlog on, the replicas follow. Refused when the engine is not available on the master or the table has a foreign key and the engine is not InnoDB. Runs in the background: CINF0015, WARN0240 on a stop. Needs db-optimize.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Switch one table to another storage engine",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Schema Name",
+                        "name": "schemaName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Table Name",
+                        "name": "tableName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Target engine",
+                        "name": "engine",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "confirm",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.EngineSwitchTableRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plan (confirm false)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.EngineSwitchPlan"
+                        }
+                    },
+                    "202": {
+                        "description": "Switch started (confirm true)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.EngineSwitchPlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Refused: the reason",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
                         "description": "No cluster",
                         "schema": {
                             "type": "string"
@@ -24452,6 +24774,72 @@
                 }
             }
         },
+        "cluster.EngineSwitchPlan": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "engineFrom": {
+                    "type": "string"
+                },
+                "engineTo": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "schema": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EngineSwitchTable"
+                    }
+                },
+                "tables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EngineSwitchTable"
+                    }
+                },
+                "totalBytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "cluster.EngineSwitchTable": {
+            "type": "object",
+            "properties": {
+                "bytes": {
+                    "description": "data + indexes, as information_schema reports them",
+                    "type": "integer"
+                },
+                "engine": {
+                    "type": "string"
+                },
+                "foreignKey": {
+                    "description": "a foreign key references this table or is declared on it",
+                    "type": "boolean"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "schema": {
+                    "type": "string"
+                },
+                "table": {
+                    "type": "string"
+                }
+            }
+        },
         "cluster.EventSchemaDriftView": {
             "type": "object",
             "properties": {
@@ -29285,6 +29673,82 @@
                 }
             }
         },
+        "server.ChildPlan": {
+            "type": "object",
+            "properties": {
+                "backup": {
+                    "type": "string"
+                },
+                "backupLogicalType": {
+                    "description": "the parent's",
+                    "type": "string"
+                },
+                "dbCount": {
+                    "type": "integer"
+                },
+                "dbImage": {
+                    "type": "string"
+                },
+                "dbuPerNode": {
+                    "type": "integer"
+                },
+                "domain": {
+                    "description": "GTID domain: the parent's + 1",
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "ownSourceName": {
+                    "description": "the new cluster's replication-source-name (its master to its replicas)",
+                    "type": "string"
+                },
+                "parent": {
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "\"\" = none",
+                    "type": "string"
+                },
+                "sourceName": {
+                    "description": "channel from the parent's master: the parent's replication-source-name",
+                    "type": "string"
+                }
+            }
+        },
+        "server.ChildRequest": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "description": "false: the plan only",
+                    "type": "boolean"
+                },
+                "dbCount": {
+                    "description": "default 3 (staging), 2 (child)",
+                    "type": "integer"
+                },
+                "dbImage": {
+                    "description": "default the parent's prov-db-image",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "default \u003cparent\u003e-staging or \u003cparent\u003e-child",
+                    "type": "string"
+                }
+            }
+        },
         "server.CloudUserForm": {
             "type": "object",
             "properties": {
@@ -29383,6 +29847,32 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "server.EngineSwitchRequest": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean"
+                },
+                "engineFrom": {
+                    "type": "string"
+                },
+                "engineTo": {
+                    "type": "string"
+                },
+                "schema": {
+                    "description": "optional: one schema only",
+                    "type": "string"
+                }
+            }
+        },
+        "server.EngineSwitchTableRequest": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean"
                 }
             }
         },

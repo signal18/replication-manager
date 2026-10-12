@@ -48,6 +48,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.GetPeerIsActive = repman.PeerIsActive
 	regtest.APIToken = repman.regtestAPIToken
 	regtest.APIRequest = repman.regtestAPIRequest
+	regtest.APIRequestBody = repman.regtestAPIRequestBody
 	regtest := new(regtest.RegTest)
 	var allTests map[string]cluster.Test
 	pathdefault := cl.GetShareDir() + "/tests/" + cl.GetOrchestrator() + "/config/masterslave/mariadb/without_traffic/10.5/x2/semisync"
@@ -291,6 +292,15 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		}
 		if test.Name == "testRejoinRefusesNodeWithData" {
 			res = regtest.TestRejoinRefusesNodeWithData(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testCreateStaging" {
+			res = regtest.TestCreateStaging(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testCreateChild" {
+			res = regtest.TestCreateChild(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testAlterEngine" {
+			res = regtest.TestAlterEngine(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testRollingReprovReseed" {
 			res = regtest.TestRollingReprovReseed(cl, test.ConfigFile, &test)

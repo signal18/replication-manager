@@ -25,6 +25,8 @@ var (
 	APIToken func(cl *clusterpkg.Cluster, grants ...string) (string, error)
 	// APIRequest sends one request to the API and returns status, headers and body.
 	APIRequest func(token, method, path string) (int, http.Header, []byte, error)
+	// APIRequestBody is APIRequest with a JSON body.
+	APIRequestBody func(token, method, path string, body []byte) (int, http.Header, []byte, error)
 )
 
 // schemaEventsDB is the schema the test creates its events in.

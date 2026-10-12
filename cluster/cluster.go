@@ -572,6 +572,12 @@ type Cluster struct {
 	schemaWireTables []logplugin.StdioTable `json:"-"`
 	schemaWireLock   sync.RWMutex           `json:"-"`
 	initiated        bool
+
+	// create-staging progress and outcome on the new cluster (cluster_staging_create.go, #1988)
+	stagingCreation atomic.Pointer[StagingCreation] `json:"-"`
+
+	// storage engine switch progress and outcome (cluster_engine_switch.go, #1999)
+	engineSwitch atomic.Pointer[EngineSwitch] `json:"-"`
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both

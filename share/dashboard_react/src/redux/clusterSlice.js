@@ -2045,6 +2045,45 @@ export const createApiToken = createGuardedAsyncThunk(
   }
 )
 
+// Create a staging (#1988) or child (#1997) cluster of a cluster, confirm true; the plan
+// is read by the modal directly. fetch does not reject on 400: the refusal text is the error.
+export const createChildCluster = createGuardedAsyncThunk(
+  'cluster/createChildCluster',
+  async ({ clusterName, kind, name, dbImage, dbCount }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.createChildCluster(clusterName, kind, { name, dbImage, dbCount, confirm: true }, baseURL)
+      if (status !== 202 && status !== 200) {
+        throw new Error(typeof data === 'string' && data.trim() ? data.trim() : `HTTP ${status}`)
+      }
+      showSuccessBanner(`${kind} cluster ${data?.name || ''} is being created: follow its states`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Creating the ${kind} cluster failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
+// Storage engine switch (#1999), confirm true; the plan is read by the modal directly.
+export const alterEngine = createGuardedAsyncThunk(
+  'cluster/alterEngine',
+  async (args, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.alterEngine({ ...args, confirm: true }, baseURL)
+      if (status !== 202 && status !== 200) {
+        throw new Error(typeof data === 'string' && data.trim() ? data.trim() : `HTTP ${status}`)
+      }
+      showSuccessBanner(`Engine switch to ${args.engineTo} started: ${(data?.tables || []).length} table(s)`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Engine switch failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const revokeApiToken = createGuardedAsyncThunk(
   'cluster/revokeApiToken',
   async ({ tokenId, clusterName }, thunkAPI) => {

@@ -813,6 +813,50 @@ definitions:
       variableValue:
         type: string
     type: object
+  cluster.EngineSwitchPlan:
+    properties:
+      cluster:
+        type: string
+      engineFrom:
+        type: string
+      engineTo:
+        type: string
+      notes:
+        items:
+          type: string
+        type: array
+      schema:
+        type: string
+      server:
+        type: string
+      skipped:
+        items:
+          $ref: '#/definitions/cluster.EngineSwitchTable'
+        type: array
+      tables:
+        items:
+          $ref: '#/definitions/cluster.EngineSwitchTable'
+        type: array
+      totalBytes:
+        type: integer
+    type: object
+  cluster.EngineSwitchTable:
+    properties:
+      bytes:
+        description: data + indexes, as information_schema reports them
+        type: integer
+      engine:
+        type: string
+      foreignKey:
+        description: a foreign key references this table or is declared on it
+        type: boolean
+      reason:
+        type: string
+      schema:
+        type: string
+      table:
+        type: string
+    type: object
   cluster.EventSchemaDriftView:
     properties:
       drift:
@@ -4108,6 +4152,60 @@ definitions:
       upgrade_id:
         type: string
     type: object
+  server.ChildPlan:
+    properties:
+      backup:
+        type: string
+      backupLogicalType:
+        description: the parent's
+        type: string
+      dbCount:
+        type: integer
+      dbImage:
+        type: string
+      dbuPerNode:
+        type: integer
+      domain:
+        description: 'GTID domain: the parent''s + 1'
+        type: string
+      kind:
+        type: string
+      name:
+        type: string
+      notes:
+        items:
+          type: string
+        type: array
+      orchestrator:
+        type: string
+      ownSourceName:
+        description: the new cluster's replication-source-name (its master to its
+          replicas)
+        type: string
+      parent:
+        type: string
+      proxy:
+        description: '"" = none'
+        type: string
+      sourceName:
+        description: 'channel from the parent''s master: the parent''s replication-source-name'
+        type: string
+    type: object
+  server.ChildRequest:
+    properties:
+      confirm:
+        description: 'false: the plan only'
+        type: boolean
+      dbCount:
+        description: default 3 (staging), 2 (child)
+        type: integer
+      dbImage:
+        description: default the parent's prov-db-image
+        type: string
+      name:
+        description: default <parent>-staging or <parent>-child
+        type: string
+    type: object
   server.CloudUserForm:
     properties:
       cost:
@@ -4174,6 +4272,23 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  server.EngineSwitchRequest:
+    properties:
+      confirm:
+        type: boolean
+      engineFrom:
+        type: string
+      engineTo:
+        type: string
+      schema:
+        description: 'optional: one schema only'
+        type: string
+    type: object
+  server.EngineSwitchTableRequest:
+    properties:
+      confirm:
+        type: boolean
     type: object
   server.Heartbeat:
     properties:
@@ -5227,6 +5342,62 @@ paths:
       summary: Add a server to a specific cluster
       tags:
       - ClusterMonitor
+  /api/clusters/{clusterName}/actions/alter-engine:
+    post:
+      consumes:
+      - application/json
+      description: 'Plans (confirm false) or runs (confirm true) ALTER TABLE ... ENGINE=engineTo
+        on the master for every user table on engineFrom, optionally of one schema;
+        binlog on, the replicas follow. Tables of any other engine (Aria, MEMORY,
+        MyISAM...) are not touched; a table engineTo cannot hold (a foreign key, only
+        InnoDB enforces them) is skipped with its reason. engineTo must be available
+        on the master. Runs in the background, one table at a time, stopping at the
+        first error: progress CINF0015, stop WARN0240. Needs db-optimize.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: engineFrom, engineTo, schema, confirm
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/server.EngineSwitchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plan (confirm false)
+          schema:
+            $ref: '#/definitions/cluster.EngineSwitchPlan'
+        "202":
+          description: Switch started (confirm true)
+          schema:
+            $ref: '#/definitions/cluster.EngineSwitchPlan'
+        "400":
+          description: 'Refused: the reason (engine not available, a switch running,
+            nothing to alter...)'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No cluster
+          schema:
+            type: string
+      summary: Switch the tables of one storage engine to another
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/analyze-all-tables/{persistent}:
     post:
       consumes:
@@ -5437,6 +5608,131 @@ paths:
       summary: Compute Repair for all tables in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/actions/create-child:
+    post:
+      consumes:
+      - application/json
+      description: 'Plans (confirm false) or creates (confirm true) a child cluster
+        of {clusterName}, named <clusterName>-child unless a name is given, to test
+        a migration under this cluster''s writes: same orchestrator, database image
+        unless dbImage is given (a newer release to test), DBU per node, accounts
+        and proxy type, dbCount databases (default 2), GTID domain this cluster''s
+        + 1, this cluster as head cluster; provisioned, then seeded from this cluster''s
+        logical backup, data only, its master replicating from this cluster''s master
+        through the parent''s replication-source-name and its replicas following it
+        through the child''s own (child). Needs cluster-replication on this cluster
+        and the right to create a cluster. The progress is the state CINF0014 on the
+        new cluster, WARN0239 where it stopped.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Parent cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: name, dbImage, dbCount, confirm
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/server.ChildRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plan (confirm false)
+          schema:
+            $ref: '#/definitions/server.ChildPlan'
+        "202":
+          description: Creation started (confirm true)
+          schema:
+            $ref: '#/definitions/server.ChildPlan'
+        "400":
+          description: 'Refused: the reason (no logical backup on the parent, orchestrator,
+            name taken...)'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No cluster
+          schema:
+            type: string
+        "500":
+          description: 'Created and kept, then stopped: the cluster name, the step
+            and the reason (WARN0239)'
+          schema:
+            type: string
+      summary: Create a child cluster of this cluster
+      tags:
+      - ClusterActions
+  /api/clusters/{clusterName}/actions/create-staging:
+    post:
+      consumes:
+      - application/json
+      description: 'Plans (confirm false) or creates (confirm true) a staging cluster
+        of {clusterName}, named <clusterName>-staging unless a name is given: same
+        orchestrator, database image unless dbImage is given, DBU per node and proxy
+        type, dbCount databases (default 3), topology-staging on, this cluster as
+        head cluster; provisioned, then seeded from this cluster''s logical backup,
+        data only (the staging cluster keeps its own accounts). Needs cluster-staging
+        on this cluster and the right to create a cluster. The progress is the state
+        CINF0014 on the new cluster, WARN0239 where it stopped.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Parent cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: name, dbImage, dbCount, confirm
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/server.ChildRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plan (confirm false)
+          schema:
+            $ref: '#/definitions/server.ChildPlan'
+        "202":
+          description: Creation started (confirm true)
+          schema:
+            $ref: '#/definitions/server.ChildPlan'
+        "400":
+          description: 'Refused: the reason (no logical backup on the parent, orchestrator,
+            name taken...)'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No cluster
+          schema:
+            type: string
+        "500":
+          description: 'Created and kept, then stopped: the cluster name, the step
+            and the reason (WARN0239)'
+          schema:
+            type: string
+      summary: Create a staging cluster of this cluster
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/dropserver/{host}/{port}:
     post:
       consumes:
@@ -10634,6 +10930,73 @@ paths:
       summary: Retrieve schema information for a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/alter-engine/{engine}:
+    post:
+      consumes:
+      - application/json
+      description: 'Plans (confirm false) or runs (confirm true) ALTER TABLE schemaName.tableName
+        ENGINE=engine on the master, binlog on, the replicas follow. Refused when
+        the engine is not available on the master or the table has a foreign key and
+        the engine is not InnoDB. Runs in the background: CINF0015, WARN0240 on a
+        stop. Needs db-optimize.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Schema Name
+        in: path
+        name: schemaName
+        required: true
+        type: string
+      - description: Table Name
+        in: path
+        name: tableName
+        required: true
+        type: string
+      - description: Target engine
+        in: path
+        name: engine
+        required: true
+        type: string
+      - description: confirm
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/server.EngineSwitchTableRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plan (confirm false)
+          schema:
+            $ref: '#/definitions/cluster.EngineSwitchPlan'
+        "202":
+          description: Switch started (confirm true)
+          schema:
+            $ref: '#/definitions/cluster.EngineSwitchPlan'
+        "400":
+          description: 'Refused: the reason'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No cluster
+          schema:
+            type: string
+      summary: Switch one table to another storage engine
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/analyze-table/{persistent}:
     post:
       consumes:

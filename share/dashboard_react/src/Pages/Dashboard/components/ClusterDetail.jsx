@@ -37,6 +37,7 @@ import parentStyles from '../styles.module.scss'
 import CopyTextModal from '../../../components/Modals/CopyTextModal'
 import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
 import NewClusterModal from '../../../components/Modals/NewClusterModal'
+import CreateStagingModal from '../../../components/Modals/CreateStagingModal'
 import RMIconButton from '../../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 import { clusterService } from '../../../services/clusterService'
@@ -56,6 +57,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)
   const [isPeerAppImportModalOpen, setIsPeerAppImportModalOpen] = useState(false)
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
+  const [childClusterKind, setChildClusterKind] = useState('')
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
   const [isClipboardModalOpen, setIsClipboardModalOpen] = useState(false)
   const [clipboardText, setClipboardText] = useState('')
@@ -156,6 +158,23 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
           isDisabled: !g['cluster-create'],
           onClick: () => {
             setIsNewClusterModalOpen(true)
+          }
+        },
+        {
+          // #1988: needs cluster-staging here and the right to create a cluster; the
+          // modal shows the server's plan or its refusal before anything is created
+          name: 'New Staging Cluster',
+          isDisabled: !g['cluster-staging'] || !(g['cluster-create'] || g['prov-cluster']) || !!selectedCluster?.config?.topologyStaging,
+          onClick: () => {
+            setChildClusterKind('staging')
+          }
+        },
+        {
+          // #1997: a child replicating live from this cluster, to test a migration
+          name: 'New Child Cluster',
+          isDisabled: !g['cluster-replication'] || !(g['cluster-create'] || g['prov-cluster']) || !!selectedCluster?.config?.topologyStaging,
+          onClick: () => {
+            setChildClusterKind('child')
           }
         },
         {
@@ -580,6 +599,9 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
         />
       )}
 
+      {childClusterKind && (
+        <CreateStagingModal selectedCluster={selectedCluster} kind={childClusterKind} isOpen={!!childClusterKind} closeModal={() => setChildClusterKind('')} />
+      )}
       {isNewClusterModalOpen && (
         <NewClusterModal 
         plans={monitor?.servicePlans} 

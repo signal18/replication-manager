@@ -1963,61 +1963,78 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 		return
 	}
 
-	repman.AddCluster(vars["clusterName"], "")
-	// Create user and grant for new cluster
-	cl = repman.getClusterByName(vars["clusterName"])
-	if cl != nil {
-		// Start from the main credentials only: the external accounts inherited
-		// from the default section are dropped together with their ACL, so the
-		// ones added below get a fresh entry (with the ACL blanked but the
-		// credentials kept, the Cloud18 git user used to end up a visitor with
-		// every grant discarded). The `system` service account initCluster
-		// created goes with them and is created again below.
-		cl.Conf.APIUsersExternal = ""
-		cl.Conf.APIUsersACLAllowExternal = ""
-		cl.Conf.APIUsersACLDiscardExternal = ""
-		if cl.Conf.Secrets != nil {
-			cl.Conf.Secrets["api-credentials-external"] = config.Secret{}
-		}
-		cl.LoadAPIUsers()
-
-		repman.AddLocalAdminUserACL(cl, false)
-
-		if repman.Conf.Cloud18GitUser != "" {
-			repman.AddCloud18GitUser(cl, false)
-		}
-
-		// Without it, the first dbjob secret-login re-created `system` with a
-		// random password and without cluster-resource-sensor.
-		cl.EnsureSystemServiceUser()
-
-		cl.LoadAPIUsers()
-		cl.SaveAcls()
-
-		// Adjust cluster based on selected orchestrator
-		if cForm.Orchestrator != "" && cForm.Orchestrator != cl.Conf.ProvOrchestrator {
-			cl.SetProvOrchestrator(cForm.Orchestrator)
-		}
-
-		// Cluster will auto set service when plan is not empty
-		if cForm.Plan != "" && !selfService {
-			cl.SetServicePlan(cForm.Plan)
-		}
-		if sso {
-			// An SSO creator sponsors their cluster (a local creator is covered by
-			// the admin ACL copied above); self-service ones start on the default
-			// unit plan and the partner is informed.
-			if err := repman.attachSelfServiceSponsor(cl, username); err != nil {
-				repman.Logrus.Warnf("self-service: cannot attach sponsor %s to %s: %v", username, cl.Name, err)
-			}
-			if selfService {
-				repman.selfServiceBornDynamic(cl)
-				repman.notifySelfServiceCluster(cl, username, r.RemoteAddr)
-			}
-		}
-
-		cl.Save()
+	// AddCluster's only error is a concurrent creation of the same name: refused like
+	// the check above (it used to be ignored and the ACL of that cluster rewritten).
+	if _, err := repman.createCluster(vars["clusterName"], cForm, username, sso, selfService, r.RemoteAddr); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 	}
+}
+
+// createCluster creates a cluster the way POST /api/clusters/actions/add does, for a
+// creator already authorised by clusterAddAuthorize: the cluster's own ACL (local
+// admin, Cloud18 git user, the system service account), the orchestrator and plan of
+// the form, and for an SSO creator the sponsor and the self-service rules. Shared by
+// the add route and create-staging (#1988).
+func (repman *ReplicationManager) createCluster(name string, cForm cluster.ClusterForm, username string, sso bool, selfService bool, remoteAddr string) (*cluster.Cluster, error) {
+	if err := repman.AddCluster(name, ""); err != nil {
+		return nil, err
+	}
+	// Create user and grant for new cluster
+	cl := repman.getClusterByName(name)
+	if cl == nil {
+		return nil, fmt.Errorf("cluster %s not found after its creation", name)
+	}
+	// Start from the main credentials only: the external accounts inherited
+	// from the default section are dropped together with their ACL, so the
+	// ones added below get a fresh entry (with the ACL blanked but the
+	// credentials kept, the Cloud18 git user used to end up a visitor with
+	// every grant discarded). The `system` service account initCluster
+	// created goes with them and is created again below.
+	cl.Conf.APIUsersExternal = ""
+	cl.Conf.APIUsersACLAllowExternal = ""
+	cl.Conf.APIUsersACLDiscardExternal = ""
+	if cl.Conf.Secrets != nil {
+		cl.Conf.Secrets["api-credentials-external"] = config.Secret{}
+	}
+	cl.LoadAPIUsers()
+
+	repman.AddLocalAdminUserACL(cl, false)
+
+	if repman.Conf.Cloud18GitUser != "" {
+		repman.AddCloud18GitUser(cl, false)
+	}
+
+	// Without it, the first dbjob secret-login re-created `system` with a
+	// random password and without cluster-resource-sensor.
+	cl.EnsureSystemServiceUser()
+
+	cl.LoadAPIUsers()
+	cl.SaveAcls()
+
+	// Adjust cluster based on selected orchestrator
+	if cForm.Orchestrator != "" && cForm.Orchestrator != cl.Conf.ProvOrchestrator {
+		cl.SetProvOrchestrator(cForm.Orchestrator)
+	}
+
+	// Cluster will auto set service when plan is not empty
+	if cForm.Plan != "" && !selfService {
+		cl.SetServicePlan(cForm.Plan)
+	}
+	if sso {
+		// An SSO creator sponsors their cluster (a local creator is covered by
+		// the admin ACL copied above); self-service ones start on the default
+		// unit plan and the partner is informed.
+		if err := repman.attachSelfServiceSponsor(cl, username); err != nil {
+			repman.Logrus.Warnf("self-service: cannot attach sponsor %s to %s: %v", username, cl.Name, err)
+		}
+		if selfService {
+			repman.selfServiceBornDynamic(cl)
+			repman.notifySelfServiceCluster(cl, username, remoteAddr)
+		}
+	}
+
+	cl.Save()
+	return cl, nil
 }
 
 // handlerMuxClusterDelete handles the deletion of a cluster.

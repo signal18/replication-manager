@@ -3173,6 +3173,18 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 }
 
 func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
+	return server.jobReseedMyLoader(backupdir, restoreUser, false)
+}
+
+// JobReseedMyLoaderFromParent loads another cluster's backup (a staging cluster seeded
+// from its parent, #1988): the data only. The system schemas (mysql, sys) are never
+// loaded and no account is replayed, so the node keeps its own root, replication and
+// monitoring accounts and the system tables of its own release, whatever the parent's.
+func (server *ServerMonitor) JobReseedMyLoaderFromParent(backupdir string) error {
+	return server.jobReseedMyLoader(backupdir, false, true)
+}
+
+func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool) error {
 	cluster := server.ClusterGroup
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) started at %s for: %s", start.Format(time.RFC3339), server.URL)
@@ -3186,28 +3198,24 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
-	if restoreUser {
-		//walk dir
-		files, err := os.ReadDir(backupdir)
-		if err == nil {
-			if len(files) > 0 {
-				for _, file := range files {
-					if strings.HasPrefix(file.Name(), "mysql.user") && strings.HasSuffix(file.Name(), ".sql.gz.skip") {
-						os.Rename(filepath.Join(backupdir, file.Name()), filepath.Join(backupdir, strings.TrimSuffix(file.Name(), ".skip")))
-					}
-				}
+	// The account tables are set aside (renamed .skip) when the accounts must not be
+	// restored, put back when they must (#1991): every grant table, not only mysql.user,
+	// which is a view over mysql.global_priv since MariaDB 10.4.
+	// Not for a seed from a parent: the directory is the parent's own backup (renaming
+	// there would change it for the parent and race with another seed), and the system
+	// schemas are excluded by regex anyway (#1998 review).
+	if files, err := os.ReadDir(backupdir); err == nil && !fromParent {
+		for _, file := range files {
+			name := file.Name()
+			if !isMysqlAccountTableFile(strings.TrimSuffix(name, ".skip")) {
+				continue
 			}
-		}
-	} else {
-		//walk dir
-		files, err := os.ReadDir(backupdir)
-		if err == nil {
-			if len(files) > 0 {
-				for _, file := range files {
-					if strings.HasPrefix(file.Name(), "mysql.user") && strings.HasSuffix(file.Name(), ".sql.gz") {
-						os.Rename(filepath.Join(backupdir, file.Name()), filepath.Join(backupdir, file.Name()+".skip"))
-					}
-				}
+			// any compression (.sql, .sql.gz, .sql.zst): only the .skip suffix matters
+			switch {
+			case restoreUser && strings.HasSuffix(name, ".skip"):
+				os.Rename(filepath.Join(backupdir, name), filepath.Join(backupdir, strings.TrimSuffix(name, ".skip")))
+			case !restoreUser && !strings.HasSuffix(name, ".skip"):
+				os.Rename(filepath.Join(backupdir, name), filepath.Join(backupdir, name+".skip"))
 			}
 		}
 	}
@@ -3231,13 +3239,13 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
-	if fresh.Fresh {
+	if fresh.Fresh || fromParent {
 		// The exclusion replaces any regex of backup-myloader-options: myloader keeps a
 		// single one, and the system tables must never be loaded on a fresh node.
 		kept := myargs[:0]
 		for _, a := range myargs {
 			if a == "-x" || a == "--regex" || strings.HasPrefix(a, "--regex=") || strings.HasPrefix(a, "-x=") {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical restore (myloader) of fresh node %s: backup-myloader-options regex %q replaced by the system tables exclusion", server.URL, a)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical restore (myloader) of %s: backup-myloader-options regex %q replaced by the system tables exclusion", server.URL, a)
 				continue
 			}
 			kept = append(kept, a)
@@ -3271,7 +3279,8 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	if err := dumpCmd.Wait(); err != nil {
 		return critical.wrap(err)
 	}
-	if fresh.Fresh {
+	// From a parent the node keeps its own accounts: nothing to replay.
+	if fresh.Fresh && !fromParent {
 		sqlLogBin := 0
 		if server.URL == master.URL {
 			sqlLogBin = 1
@@ -7554,4 +7563,25 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.IsNeedPathCheck = true
 	}
 	return nil
+}
+
+// mysqlAccountTables are the grant tables of MariaDB and MySQL: what a restore without
+// the source's accounts must never load (#1991).
+var mysqlAccountTables = map[string]bool{
+	"user": true, "global_priv": true, "db": true, "tables_priv": true, "columns_priv": true,
+	"procs_priv": true, "proxies_priv": true, "roles_mapping": true, "role_edges": true,
+	"default_roles": true, "global_grants": true, "password_history": true,
+}
+
+// isMysqlAccountTableFile reports whether a mydumper file holds a grant table, data
+// (mysql.<table>.sql.gz, mysql.<table>.00000.sql.gz) or definition
+// (mysql.<table>-schema.sql.gz).
+func isMysqlAccountTableFile(name string) bool {
+	rest, ok := strings.CutPrefix(name, "mysql.")
+	if !ok {
+		return false
+	}
+	table, _, _ := strings.Cut(rest, ".")
+	table, _, _ = strings.Cut(table, "-schema")
+	return mysqlAccountTables[table]
 }
