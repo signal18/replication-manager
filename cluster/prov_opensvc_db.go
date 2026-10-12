@@ -558,28 +558,9 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 				}
 			}
 		}
-	} else if svc.IsV3() {
-		err := svc.PurgeServiceV3(cluster.Name, server.ServiceName)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
-			opErr = errors.Join(opErr, err)
-		}
-		err = svc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+server.Name)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
-			opErr = errors.Join(opErr, err)
-		}
-	} else {
-		err := svc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
-			opErr = errors.Join(opErr, err)
-		}
-		err = svc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+server.Name, server.Agent)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
-			opErr = errors.Join(opErr, err)
-		}
+	} else if err := cluster.openSVCPurgeObjects(svc, server.Agent, cluster.openSVCServiceObjects(server.ServiceName, server.Name)...); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database:  %s ", err)
+		opErr = err
 	}
 	cluster.errorChan <- opErr
 }

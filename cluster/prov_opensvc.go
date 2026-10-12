@@ -700,9 +700,41 @@ info = 50
 }
 
 func (cluster *Cluster) OpenSVCUnprovisionSecret() {
-	opensvc := cluster.OpenSVCConnect()
-	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-		opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/sec/env", "")
-		opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/cfg/env", "")
+	svc := cluster.OpenSVCConnect()
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		return
 	}
+	// through the API of the agent's version: on om3 the v2 call left them (#1995)
+	if err := cluster.openSVCPurgeObjects(svc, "", cluster.Name+"/sec/env", cluster.Name+"/cfg/env"); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision the cluster's secret and config:  %s ", err)
+	}
+}
+
+// openSVCPurgeObjects purges OpenSVC objects (namespace/kind/name) through the agent's
+// API version. An object the agent does not have is already gone: not an error, so the
+// caller only sees real failures (#1995, #1994 reads not-found as removed).
+func (cluster *Cluster) openSVCPurgeObjects(svc opensvc.Collector, agent string, paths ...string) error {
+	var opErr error
+	for _, path := range paths {
+		var err error
+		if svc.IsV3() {
+			err = svc.PurgeServiceV3(cluster.Name, path)
+		} else {
+			err = svc.PurgeServiceV2(cluster.Name, path, agent)
+		}
+		switch {
+		case err == nil:
+		case orchestratorNotFound(err):
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Unprovision %s: not found, already removed", path)
+		default:
+			opErr = errors.Join(opErr, fmt.Errorf("%s: %w", path, err))
+		}
+	}
+	return opErr
+}
+
+// openSVCServiceObjects are the objects a database or proxy service is deployed with:
+// the service, its volume and its -sec volume (the templates' {name}-sec, #1995).
+func (cluster *Cluster) openSVCServiceObjects(serviceName, name string) []string {
+	return []string{serviceName, cluster.Name + "/vol/" + name, cluster.Name + "/vol/" + name + "-sec"}
 }

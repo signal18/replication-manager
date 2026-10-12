@@ -30,3 +30,18 @@ func TestOrchestratorNotFound(t *testing.T) {
 		}
 	}
 }
+
+// #1995: a database or proxy service is removed with its volume and its -sec volume.
+func TestOpenSVCServiceObjects(t *testing.T) {
+	c := &Cluster{Name: "dev3-staging"}
+	got := c.openSVCServiceObjects("dev3-staging/svc/db1", "db1")
+	want := []string{"dev3-staging/svc/db1", "dev3-staging/vol/db1", "dev3-staging/vol/db1-sec"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
