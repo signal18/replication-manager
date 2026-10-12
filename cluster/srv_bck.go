@@ -242,23 +242,23 @@ func (server *ServerMonitor) InjectViaReplication(meta backupmgr.PointInTimeMeta
 	return nil
 }
 
-// UpdateBackupMetadataWithRestic updates the backup metadata with restic snapshot information
-func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.BackupMethod, snapshotID string) {
+// UpdateBackupMetadataWithRestic updates the backup metadata with restic snapshot information.
+// meta is the backup the snapshot was pushed for, captured when the push was queued; nil
+// falls back to the server's last backup of that method.
+func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, snapshotID string) {
 	// Protect metadata from concurrent restic callbacks.
 	server.backupMetaMutex.Lock()
 	defer server.backupMetaMutex.Unlock()
 
 	cluster := server.ClusterGroup
-	var lastmeta *backupmgr.BackupMetadata
-
-	switch backtype {
-	case backupmgr.BackupMethodLogical:
-		lastmeta = server.LastBackupMeta.Logical
-	case backupmgr.BackupMethodPhysical:
-		lastmeta = server.LastBackupMeta.Physical
-	default:
+	current := server.lastBackupMetaForMethod(backtype)
+	if backtype != backupmgr.BackupMethodLogical && backtype != backupmgr.BackupMethodPhysical {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Wrong backup type for restic metadata update in %s", server.URL)
 		return
+	}
+	lastmeta := meta
+	if lastmeta == nil {
+		lastmeta = current
 	}
 
 	if lastmeta == nil {
@@ -275,26 +275,44 @@ func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.B
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Updated backup metadata with restic snapshot %s for %s", snapshotLabel, server.URL)
 
-	bjson, err := json.MarshalIndent(lastmeta, "", "\t")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to marshall restic metadata for backup in %s: %s", server.URL, err.Error())
+	// A scheduled backup shares its meta file with the next scheduled run: only the
+	// current one writes it.
+	if lastmeta != current && !lastmeta.IsAdhoc() {
 		return
 	}
-
-	metaPath := server.backupMetaFilePath(lastmeta)
-	if metaPath == "" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to resolve metadata path for restic update in %s", server.URL)
-		return
-	}
-	if lastmeta.MetaFile == "" {
-		lastmeta.MetaFile = metaPath
-	}
-
-	err = os.WriteFile(metaPath, bjson, 0644)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write restic metadata for backup in %s: %s", server.URL, err.Error())
+	if err := server.writeBackupMetaFileLocked(lastmeta); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write restic metadata for backup in %s: %s", server.URL, err)
 		return
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic metadata written successfully for %s", server.URL)
+}
+
+// lastBackupMetaForMethod returns the server's last backup of a method. The caller holds
+// backupMetaMutex.
+func (server *ServerMonitor) lastBackupMetaForMethod(backtype backupmgr.BackupMethod) *backupmgr.BackupMetadata {
+	switch backtype {
+	case backupmgr.BackupMethodLogical:
+		return server.LastBackupMeta.Logical
+	case backupmgr.BackupMethodPhysical:
+		return server.LastBackupMeta.Physical
+	}
+	return nil
+}
+
+// writeBackupMetaFileLocked rewrites the meta file of a backup. The caller holds
+// backupMetaMutex.
+func (server *ServerMonitor) writeBackupMetaFileLocked(meta *backupmgr.BackupMetadata) error {
+	bjson, err := json.MarshalIndent(meta, "", "\t")
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+	metaPath := server.backupMetaFilePath(meta)
+	if metaPath == "" {
+		return fmt.Errorf("no metadata path")
+	}
+	if meta.MetaFile == "" {
+		meta.MetaFile = metaPath
+	}
+	return os.WriteFile(metaPath, bjson, 0644)
 }

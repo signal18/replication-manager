@@ -80,6 +80,10 @@ type BackupMetadata struct {
 	ResticSnapshotID  string `json:"resticSnapshotID"`
 	ResticFilePath    string `json:"resticFilePath"`
 	BackupSessionID   string `json:"backupSessionID,omitempty"`
+	// OriginalRemoved: the artifact at Dest was removed once its archive snapshot
+	// (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
+	// a restore fetches it back from the archive.
+	OriginalRemoved bool `json:"originalRemoved,omitempty"`
 }
 
 type PointInTimeMeta struct {
