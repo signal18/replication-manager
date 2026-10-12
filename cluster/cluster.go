@@ -654,6 +654,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 
 	*cluster.Conf = confs.ConfInit
 	cluster.Conf.NormalizeBackupArchiveMode()
+	// the cluster's own scheduler-jobs-exec-remote, not the map parsed for the defaults
+	cluster.Conf.ParseJobsExecOverrides()
 
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
@@ -2491,6 +2493,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 
 	cluster.Lock()
 	*cluster.Conf = conf
+	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
 
 	cluster.StateMachine.SetFailoverState()
