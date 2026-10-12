@@ -46,7 +46,7 @@ func (server *ServerMonitor) dbFailoverNodes() []string {
 // applyDBFailoverPlacement turns a rendered database service into a failover one: placed
 // on the server's agents (or on nodes, the live service's: a refresh never moves a service
 // onto a node its volume is not on), the data volume on the failover pool, the volume and
-// the containers shared (one instance at a time; without it the pool provisions the
+// the service's containers shared (one instance at a time; without it the pool provisions the
 // volume's filesystem on every node and the peer's mkfs on the read-only DRBD device fails,
 // then its rollback wipes the peer's DRBD resource: dev3, 2026-10-12). Fewer than two
 // nodes is refused: an active-passive server on one node only is not active-passive.
@@ -70,7 +70,10 @@ func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[
 		vol["shared"] = "true"
 	}
 	for name, section := range svcsection {
-		if strings.HasPrefix(name, "container#") {
+		// container#01 is the pause holding the network namespace: like a failover app's,
+		// it is not shared, the standby provisions ip#01 (not shared) into it; shared, the
+		// standby's provision failed entering a namespace not running there (dev3 cstest)
+		if strings.HasPrefix(name, "container#") && name != "container#01" {
 			section["shared"] = "true"
 		}
 	}

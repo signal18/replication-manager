@@ -48,6 +48,9 @@ func TestDBFailoverPlacement(t *testing.T) {
 	if sections["container#db"]["shared"] != "true" || sections["container#jobs"]["shared"] != "true" {
 		t.Fatal("containers run on one node at a time: shared")
 	}
+	if sections["container#01"]["shared"] != "" {
+		t.Fatal("the pause container holds the standby's network namespace: not shared, like a failover app's")
+	}
 
 	cluster.Conf.ProvAgents = "s18-fr-5"
 	if err := srv.applyDBFailoverPlacement(dbFailoverTestSections(srv), nil); err == nil {
@@ -91,6 +94,7 @@ func dbFailoverTestSections(srv *ServerMonitor) map[string]map[string]string {
 	return map[string]map[string]string{
 		"DEFAULT":        srv.OpenSVCGetDBDefaultSection(),
 		"volume#01":      srv.ClusterGroup.openSVCGetVolumeDataSection(""),
+		"container#01":   {},
 		"container#db":   {},
 		"container#jobs": {},
 	}
