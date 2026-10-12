@@ -3928,7 +3928,9 @@ func (server *ServerMonitor) JobBackupScript(destination string) error {
 
 // getBackupRegexPatterns returns appropriate regex patterns based on DB version
 func (server *ServerMonitor) getBackupRegexPatterns() (*regexp.Regexp, *regexp.Regexp) {
-	binlogRegex := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
+	// A MariaDB client older than 11 names the connection: CHANGE MASTER '' TO (a dump
+	// run by dbjobs with the DB node's own client, srv_job_backup_remote.go)
+	binlogRegex := regexp.MustCompile(`CHANGE MASTER (?:'[^']*' )?TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
 	gtidRegex := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
@@ -3939,7 +3941,9 @@ func (server *ServerMonitor) getBackupRegexPatterns() (*regexp.Regexp, *regexp.R
 		binlogRegex = regexp.MustCompile(`CHANGE (?:REPLICATION SOURCE|MASTER) TO (?:SOURCE|MASTER)_LOG_FILE='(.+)', (?:SOURCE|MASTER)_LOG_POS=(\d+)`)
 	}
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
-		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:/\*![0-9]*\s*'([^']+)'\*/\s*|'([^']+)')`)
+		// A MySQL 8 client writes GTID_PURGED=/*!80000 '+'*/ '<set>': the '+' (append to
+		// the purged set on restore) is not the set, and a set never starts with '+'
+		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:/\*![0-9]*\s*'\+'\*/\s*)?(?:/\*![0-9]*\s*'([^'+][^']*)'\*/|'([^'+][^']*)')`)
 	}
 
 	return binlogRegex, gtidRegex
