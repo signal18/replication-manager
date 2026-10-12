@@ -304,8 +304,9 @@ var clusterACLRules = []ACLRule{
 	{"/actions/staging-refresh", nil, []string{config.GrantClusterStaging}},
 	{"/actions/staging-reload-script", nil, []string{config.GrantClusterStaging}},
 	{"/actions/staging-reseed-from-parent", nil, []string{config.GrantClusterStaging}},
-	{"/actions/create-staging", nil, []string{config.GrantClusterStaging}}, // on the parent; the creation is authorised as a cluster add (#1988)
+	{"/actions/create-staging", nil, []string{config.GrantClusterStaging}},   // on the parent; the creation is authorised as a cluster add (#1988)
 	{"/actions/create-child", nil, []string{config.GrantClusterReplication}}, // on the parent: a new replication from its master (#1997)
+	{"/actions/alter-engine", nil, []string{config.GrantDBOptimize}},         // ALTER TABLE ... ENGINE, a table rebuild like OPTIMIZE, cluster or one table (#1999)
 
 	// Cluster Management
 	{"/api/clusters/actions/delete", nil, []string{config.GrantClusterDelete}},

@@ -1309,3 +1309,27 @@ func TestSchemaEventsACL(t *testing.T) {
 		})
 	}
 }
+
+// TestAlterEngineACL (#1999): db-optimize runs the engine switch, for the cluster and for
+// one table (the more specific /actions/alter-engine rule under /schema); without a
+// grant both are denied.
+func TestAlterEngineACL(t *testing.T) {
+	cluster := setupACLTestCluster()
+	cluster.Name = "test"
+	cluster.APIUsers["optimizer"] = APIUser{User: "optimizer", Grants: map[string]bool{config.GrantDBOptimize: true}}
+	for _, tt := range []struct {
+		name, user, url string
+		expected        bool
+	}{
+		{"cluster switch with db-optimize", "optimizer", "/api/clusters/test/actions/alter-engine", true},
+		{"one table with db-optimize", "optimizer", "/api/clusters/test/schema/shop/orders/actions/alter-engine/Aria", true},
+		{"cluster switch without grant", "user_no_grants", "/api/clusters/test/actions/alter-engine", false},
+		{"one table without grant", "user_no_grants", "/api/clusters/test/schema/shop/orders/actions/alter-engine/Aria", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cluster.IsURLPassACL(tt.user, tt.url, false); got != tt.expected {
+				t.Errorf("%s on %s: expected %v, got %v", tt.user, tt.url, tt.expected, got)
+			}
+		})
+	}
+}

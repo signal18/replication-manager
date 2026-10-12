@@ -898,6 +898,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCreateStaging)),
 	)).Methods(http.MethodPost, http.MethodOptions)
+	router.Handle("/api/clusters/{clusterName}/actions/alter-engine", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterAlterEngine)),
+	)).Methods(http.MethodPost, http.MethodOptions)
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/alter-engine/{engine}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTableAlterEngine)),
+	)).Methods(http.MethodPost, http.MethodOptions)
 	router.Handle("/api/clusters/{clusterName}/actions/create-child", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCreateChild)),

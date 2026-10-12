@@ -132,6 +132,8 @@ var toolACLPaths = map[string]string{
 	"cluster-switchover":             "/actions/switchover",
 	"cluster-create-staging":         "/actions/create-staging",
 	"cluster-create-child":           "/actions/create-child",
+	"cluster-alter-engine":           "/actions/alter-engine",
+	"cluster-alter-table-engine":     "/schema/{schema}/{table}/actions/alter-engine/{engine}",
 	"cluster-rolling-restart":        "/actions/rolling/restart",
 	"cluster-rolling-reprov":         "/actions/rolling/reprov",
 	"cluster-rolling-upgrade":        "/actions/rolling/upgrade",
@@ -230,6 +232,9 @@ var templateArgs = map[string]string{
 	"{port}":     "port",
 	"{template}": "template",
 	"{units}":    "units", // app-resize: the plan in whole units (prov-app-units)
+	"{schema}":   "schema_name",
+	"{table}":    "table_name",
+	"{engine}":   "engine_to",
 }
 
 // aclArg is one substituted argument: path-escaped, so a value can never

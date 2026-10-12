@@ -7,6 +7,7 @@ package repmanmcp
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -343,6 +344,58 @@ func (s *MCPServer) registerClusterWriteTools() {
 	}
 	childTool("staging", "Create a staging cluster of a cluster (#1988), on this replication-manager: the parent's orchestrator (OpenSVC or Kubernetes), database image (unless db_image is given), DBU per node, monitoring and replication accounts, proxy type and logical backup tool; GTID domain the parent's + 1; topology-staging with the parent as head cluster; provisioned, then seeded from the parent's latest logical backup, data only, the master replicating from the parent's master through the parent's replication-source-name (its own replicas through staging), then one replica detached as the staging server the dev team tests on. Refused when the parent has no logical backup, is itself staging, runs on premise, or the name exists. confirm false (default) returns the plan only. Creation runs in the background: follow the state CINF0014 on the new cluster (WARN0239 tells where it stopped). Needs cluster-staging on the parent and the right to create a cluster.", "3")
 	childTool("child", "Create a child cluster of a cluster (#1997), on this replication-manager, to test a migration under the parent's real writes: the parent's orchestrator (OpenSVC or Kubernetes), database image (unless db_image is given: the release to test), DBU per node, monitoring and replication accounts, proxy type and logical backup tool; GTID domain the parent's + 1; the parent as head cluster; provisioned, then seeded from the parent's latest logical backup, data only, its master replicating live from the parent's master through the parent's replication-source-name and its replicas following it through child. Refused when the parent has no logical backup, is a staging cluster, runs on premise, or the name exists. confirm false (default) returns the plan only. Creation runs in the background: follow the state CINF0014 on the new cluster (WARN0239 tells where it stopped). Needs cluster-replication on the parent and the right to create a cluster.", "2")
+
+	// cluster-alter-engine and cluster-alter-table-engine (#1999): ALTER TABLE ... ENGINE
+	// on the master; confirm false returns the plan.
+	engineSwitch := func(cl *cluster.Cluster, from, to, schema, table string, confirm bool) (*mcp.CallToolResult, error) {
+		plan, err := cl.PlanEngineSwitch(from, to, schema, table)
+		if err == nil && table != "" && len(plan.Tables) == 0 && len(plan.Skipped) > 0 {
+			err = errors.New(plan.Skipped[0].Reason)
+		}
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if confirm {
+			if err := cl.RunEngineSwitch(plan); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
+		return mcp.NewToolResultText(toJSON(plan)), nil
+	}
+	s.addTool(
+		mcp.NewTool("cluster-alter-engine",
+			mcp.WithDescription("Switch every user table of one storage engine to another (#1999): ALTER TABLE ... ENGINE=engine_to on the master, binlog on so the replicas follow, one table at a time in the background, stopping at the first error (progress CINF0015, stop WARN0240). Tables of any other engine (Aria, MEMORY, MyISAM...) are not touched; a table engine_to cannot hold (a foreign key, only InnoDB enforces them) is skipped with its reason. engine_to must be available on the master, else the configurator tag to add is named. Each ALTER copies its table and blocks its writes while it runs. confirm false (default) returns the plan: the tables, their size, the skipped ones. Needs db-optimize."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("engine_from", mcp.Required(), mcp.Description("Engine of the tables to switch, e.g. InnoDB")),
+			mcp.WithString("engine_to", mcp.Required(), mcp.Description("Target engine, e.g. RocksDB, Aria, ColumnStore")),
+			mcp.WithString("schema_name", mcp.Description("Only this schema; default every user schema")),
+			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: run")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			return engineSwitch(cl, req.GetString("engine_from", ""), req.GetString("engine_to", ""), req.GetString("schema_name", ""), "", req.GetBool("confirm", false))
+		},
+	)
+	s.addTool(
+		mcp.NewTool("cluster-alter-table-engine",
+			mcp.WithDescription("Switch one table to another storage engine (#1999): ALTER TABLE schema.table ENGINE=engine_to on the master, binlog on, in the background (CINF0015, WARN0240 on a stop). Refused when engine_to is not available on the master, or the table has a foreign key and engine_to is not InnoDB. confirm false (default) returns the plan. Needs db-optimize."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("schema_name", mcp.Required(), mcp.Description("Schema of the table")),
+			mcp.WithString("table_name", mcp.Required(), mcp.Description("Table to switch")),
+			mcp.WithString("engine_to", mcp.Required(), mcp.Description("Target engine")),
+			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: run")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			return engineSwitch(cl, "", req.GetString("engine_to", ""), req.GetString("schema_name", ""), req.GetString("table_name", ""), req.GetBool("confirm", false))
+		},
+	)
 
 	s.addTool(
 		mcp.NewTool("cluster-rolling-restart",
