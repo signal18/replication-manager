@@ -89,6 +89,46 @@ with open(path, 'w') as f:
 PY
 }
 
+# CMAPI reverse-resolves every node name (gethostbyaddr: the primary detection, the
+# status, the node add) and OpenSVC's cluster DNS answers forward lookups only: each
+# container keeps a block of /etc/hosts with its own name and every node of
+# Columnstore.xml, resolved forward through the DNS, refreshed in the background (a node
+# added later, an address that changed). Without it the primary did not recognise
+# itself, started as a secondary (DBRM_Worker2) and never started controllernode.
+HOSTS_BEGIN="# columnstore nodes (columnstore-entrypoint.sh)"
+HOSTS_END="# end columnstore nodes"
+sync_hosts() {
+	local names name ip block=""
+	names="$( { hostname -f 2>/dev/null || hostname; grep -oE '<(Node|ModuleHostName[0-9-]+|IPAddr)>[^<]+' /etc/columnstore/Columnstore.xml 2>/dev/null | sed 's/^<[^>]*>//'; } | sort -u )"
+	# the block out first: its stale entries would answer before the DNS
+	# (/etc/hosts is a bind mount: rewritten in place, never replaced)
+	if grep -qxF "$HOSTS_BEGIN" /etc/hosts; then
+		sed "/^$HOSTS_BEGIN\$/,/^$HOSTS_END\$/d" /etc/hosts >/tmp/hosts.columnstore
+		cat /tmp/hosts.columnstore >/etc/hosts
+	fi
+	for name in $names; do
+		case "$name" in
+			localhost | 127.* | ::1) continue ;;
+		esac
+		# an IP address needs no entry
+		if [[ "$name" =~ ^[0-9.]+$ ]]; then
+			continue
+		fi
+		ip="$(getent ahostsv4 "$name" 2>/dev/null | awk 'NR==1{print $1}')"
+		if [ -n "$ip" ]; then
+			block="$block$ip $name"$'\n'
+		fi
+	done
+	printf '%s\n%s%s\n' "$HOSTS_BEGIN" "$block" "$HOSTS_END" >>/etc/hosts
+}
+
+sync_hosts_loop() {
+	while true; do
+		sleep 30
+		sync_hosts || true
+	done
+}
+
 # the node's name in the cluster: its hostname, the OpenSVC service name, which moves
 # with it (the UM's own local PM is db1.<cluster>.svc.<clustername>, a PM app its own).
 # A fresh Columnstore.xml says 127.0.0.1, which CMAPI resolves to the container's IP:
@@ -204,7 +244,9 @@ case "${1:-}" in
 	mariadbd | mysqld | -*)
 		prepare_volume
 		configure_cmapi
+		sync_hosts
 		name_node
+		sync_hosts_loop &
 		start_cmapi
 		start_node
 		wait_port 8616 controllernode
