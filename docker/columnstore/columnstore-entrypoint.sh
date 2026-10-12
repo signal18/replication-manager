@@ -89,6 +89,30 @@ with open(path, 'w') as f:
 PY
 }
 
+# the node's name in the cluster: its hostname, the OpenSVC service name, which moves
+# with it (the UM's own local PM is db1.<cluster>.svc.<clustername>, a PM app its own).
+# A fresh Columnstore.xml says 127.0.0.1, which CMAPI resolves to the container's IP:
+# adding the node by name then counted it twice and the transaction failed. CMAPI's own
+# rename (node_manipulation._replace_localhost, what its add_node does) runs on a fresh
+# config; a config already holding a name is left alone.
+name_node() {
+	local name
+	name="$(hostname -f 2>/dev/null || hostname)"
+	(cd "$CMAPI_DIR" && NODE_NAME="$name" gosu mysql env PYTHONPATH="$CMAPI_DIR/deps:$CMAPI_DIR" \
+		"$CMAPI_DIR/python/bin/python3" - <<'PY'
+import os
+from cmapi_server.node_manipulation import _replace_localhost
+from mcs_node_control.models.node_config import NodeConfig
+path = '/etc/columnstore/Columnstore.xml'
+nc = NodeConfig()
+root = nc.get_current_config_root(path, upgrade=False)
+if _replace_localhost(root, os.environ['NODE_NAME']):
+    nc.write_config(root, filename=path)
+    print('named', os.environ['NODE_NAME'])
+PY
+	) | while read -r line; do log "$line"; done || log "could not name the node $name: it stays 127.0.0.1, a single node"
+}
+
 cmapi_pid=""
 start_cmapi() {
 	log "starting CMAPI"
@@ -171,6 +195,7 @@ case "${1:-}" in
 	mariadbd | mysqld | -*)
 		prepare_volume
 		configure_cmapi
+		name_node
 		start_cmapi
 		start_node
 		wait_port 8616 controllernode

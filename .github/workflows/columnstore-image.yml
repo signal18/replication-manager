@@ -150,12 +150,9 @@ jobs:
               -H 'x-api-key: smoke' -H 'Content-Type: application/json' -d "{\"timeout\": 300, \"node\": \"$1\"}"
             echo
           }
-          # the primary first, by the address CMAPI already lists it under (its
-          # Columnstore.xml says 127.0.0.1, which CMAPI resolves to the container's IP:
-          # added by name, the same node is counted twice and the transaction fails)
-          add "$(docker exec um hostname -i | awk '{print $1}')"
-          docker exec um sh -c 'grep -v -E "\[DEBUG\]" /var/log/mariadb/columnstore/cmapi_server.log | tail -n 80' || true
-          docker exec um sh -c 'cat /etc/columnstore/cmapi_server.conf | grep -v x-api-key; mcsGetConfig -a | grep -i -E "IPAddr|DBRoot" | head -20; hostname -i; getent hosts um' || true
+          # the UM is already its own node under its name (the entrypoint renames
+          # 127.0.0.1): only the PM is added, by name
+          docker exec um sh -c 'mcsGetConfig -a | grep -i -E "IPAddr|HostName|ActiveNodes" | head -20' || true
           add pm
           docker exec um curl -sk https://127.0.0.1:8640/cmapi/0.4.0/cluster/status -H 'x-api-key: smoke' | tee /tmp/cstatus
           echo
