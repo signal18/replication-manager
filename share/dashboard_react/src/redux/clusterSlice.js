@@ -2045,6 +2045,26 @@ export const createApiToken = createGuardedAsyncThunk(
   }
 )
 
+// Create a staging cluster of a cluster (#1988), confirm true; the plan is read by the
+// modal directly. fetch does not reject on 400: the refusal text is the error.
+export const createStagingCluster = createGuardedAsyncThunk(
+  'cluster/createStagingCluster',
+  async ({ clusterName, name, dbImage, dbCount }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.createStaging(clusterName, { name, dbImage, dbCount, confirm: true }, baseURL)
+      if (status !== 202 && status !== 200) {
+        throw new Error(typeof data === 'string' && data.trim() ? data.trim() : `HTTP ${status}`)
+      }
+      showSuccessBanner(`Staging cluster ${data?.name || ''} is being created: follow its states`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Creating the staging cluster failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const revokeApiToken = createGuardedAsyncThunk(
   'cluster/revokeApiToken',
   async ({ tokenId, clusterName }, thunkAPI) => {

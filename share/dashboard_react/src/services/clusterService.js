@@ -70,6 +70,7 @@ export const clusterService = {
   rollingOptimize,
   rollingAction,
   rollingUpgradePlan,
+  createStaging,
   rotateCertificates,
   reloadCertificates,
   cancelRollingRestart,
@@ -447,6 +448,10 @@ function rollingAction(clusterName, action, baseURL, target) {
   return getApi(baseURL).post(`clusters/${clusterName}/actions/rolling/${action}${q}`)
 }
 
+// Staging cluster of a cluster (#1988): confirm false returns the plan, true creates.
+function createStaging(clusterName, { name, dbImage, dbCount, confirm }, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/create-staging`, { name, dbImage, dbCount, confirm })
+}
 function rollingUpgradePlan(clusterName, target, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/rolling/upgrade/plan?target=${encodeURIComponent(target || 'patch')}`)
 }
