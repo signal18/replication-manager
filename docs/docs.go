@@ -1477,7 +1477,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/actions/create-child": {
             "post": {
-                "description": "Plans (confirm false) or creates (confirm true) a child cluster of {clusterName}, named \u003cclusterName\u003e-child unless a name is given, to test a migration under this cluster's writes: same orchestrator, database image unless dbImage is given (a newer release to test), DBU per node, accounts and proxy type, dbCount databases (default 2), GTID domain this cluster's + 1, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only, its master replicating from this cluster's master through the parent's replication-source-name and its replicas following it through the child's own (child). Needs cluster-replication on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0238 where it stopped.",
+                "description": "Plans (confirm false) or creates (confirm true) a child cluster of {clusterName}, named \u003cclusterName\u003e-child unless a name is given, to test a migration under this cluster's writes: same orchestrator, database image unless dbImage is given (a newer release to test), DBU per node, accounts and proxy type, dbCount databases (default 2), GTID domain this cluster's + 1, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only, its master replicating from this cluster's master through the parent's replication-source-name and its replicas following it through the child's own (child). Needs cluster-replication on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0239 where it stopped.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1549,7 +1549,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/actions/create-staging": {
             "post": {
-                "description": "Plans (confirm false) or creates (confirm true) a staging cluster of {clusterName}, named \u003cclusterName\u003e-staging unless a name is given: same orchestrator, database image unless dbImage is given, DBU per node and proxy type, dbCount databases (default 3), topology-staging on, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only (the staging cluster keeps its own accounts). Needs cluster-staging on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0238 where it stopped.",
+                "description": "Plans (confirm false) or creates (confirm true) a staging cluster of {clusterName}, named \u003cclusterName\u003e-staging unless a name is given: same orchestrator, database image unless dbImage is given, DBU per node and proxy type, dbCount databases (default 3), topology-staging on, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only (the staging cluster keeps its own accounts). Needs cluster-staging on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0239 where it stopped.",
                 "consumes": [
                     "application/json"
                 ],
@@ -23504,6 +23504,10 @@ const docTemplate = `{
                 "metaFile": {
                     "type": "string"
                 },
+                "originalRemoved": {
+                    "description": "OriginalRemoved: the artifact at Dest was removed once its archive snapshot\n(ResticSnapshotID) was verified to hold it (backup-archive-remove-original);\na restore fetches it back from the archive.",
+                    "type": "boolean"
+                },
                 "previous": {
                     "type": "integer"
                 },
@@ -23643,6 +23647,13 @@ const docTemplate = `{
                 "exclude_larger_than": {
                     "description": "Max file size (e.g., \"100M\")",
                     "type": "string"
+                },
+                "extra_paths": {
+                    "description": "More paths in the same snapshot",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "files_from": {
                     "description": "Read files to backup from file",
@@ -26004,6 +26015,9 @@ const docTemplate = `{
                 },
                 "backupArchiveMode": {
                     "type": "string"
+                },
+                "backupArchiveRemoveOriginal": {
+                    "type": "boolean"
                 },
                 "backupBinlogs": {
                     "type": "boolean"

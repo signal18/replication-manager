@@ -88,6 +88,7 @@ func GetTaskName(taskType TaskType) string {
 // ResticBackupOption holds the configuration for backup
 type ResticBackupOption struct {
 	DirPath           string   `json:"dir_path"`
+	ExtraPaths        []string `json:"extra_paths,omitempty"` // More paths in the same snapshot
 	Tags              []string `json:"tags"`
 	Exclude           []string `json:"exclude,omitempty"`             // Exclude patterns
 	ExcludeFile       []string `json:"exclude_file,omitempty"`        // Files containing exclude patterns
@@ -5102,6 +5103,7 @@ func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) (string, er
 
 	// Add the directory path
 	args = append(args, opt.DirPath)
+	args = append(args, opt.ExtraPaths...)
 
 	// Execute the Restic "backup" command with streaming to minimize memory usage
 	lastLine, stderr, err := repo.runBackupCommand(args)

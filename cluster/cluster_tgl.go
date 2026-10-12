@@ -809,6 +809,10 @@ func (cluster *Cluster) SwitchBackupKeepUntilValid() {
 	cluster.Conf.BackupKeepUntilValid = !cluster.Conf.BackupKeepUntilValid
 }
 
+func (cluster *Cluster) SwitchBackupArchiveRemoveOriginal() {
+	cluster.Conf.BackupArchiveRemoveOriginal = !cluster.Conf.BackupArchiveRemoveOriginal
+}
+
 func (cluster *Cluster) SwitchCloud18OpenDbops() {
 	cluster.Conf.Cloud18OpenDbops = !cluster.Conf.Cloud18OpenDbops
 }

@@ -609,19 +609,23 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 
 	bckserver := cluster.GetBackupServer()
 	if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
+		archived := cluster.restoreArchivedOriginal(bckserver, backupmgr.BackupMethodPhysical, backtype)
 		if cluster.backupArtifactExists(bckserver.GetMyBackupDirectory() + file) {
 			backupfile = bckserver.GetMyBackupDirectory() + file
 			useMaster = false
-		} else {
+		} else if !archived {
 			//Remove false cookie
 			bckserver.DelBackupTypeCookie(backtype)
 		}
 	}
 
 	if useMaster {
+		archived := cluster.restoreArchivedOriginal(master, backupmgr.BackupMethodPhysical, backtype)
 		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
-			master.DelBackupTypeCookie(backtype)
+			if !archived {
+				master.DelBackupTypeCookie(backtype)
+			}
 			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backtype)
 		}
 		bckserver = master
@@ -860,19 +864,23 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 
 	bckserver := cluster.GetBackupServer()
 	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
+		archived := cluster.restoreArchivedOriginal(bckserver, backupmgr.BackupMethodPhysical, cluster.Conf.BackupPhysicalType)
 		if cluster.backupArtifactExists(bckserver.GetMyBackupDirectory() + file) {
 			backupfile = bckserver.GetMyBackupDirectory() + file
 			useSelfBackup = false
-		} else {
+		} else if !archived {
 			//Remove false cookie
 			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
 		}
 	}
 
 	if useSelfBackup {
+		archived := cluster.restoreArchivedOriginal(server, backupmgr.BackupMethodPhysical, cluster.Conf.BackupPhysicalType)
 		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
-			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+			if !archived {
+				server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+			}
 			return fmt.Errorf("Cancelling flashback. No backup file found on master for %s", cluster.Conf.BackupPhysicalType)
 		}
 	}
@@ -1233,6 +1241,7 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 	var backupfile string
 	bckserver := cluster.GetBackupServer()
 	if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
+		archived := cluster.restoreArchivedOriginal(bckserver, backupmgr.BackupMethodLogical, backtype)
 		if resolved, ok := resolveLogicalBackupPathFromMeta(bckserver, backtype); ok {
 			backupfile = resolved
 			useMaster = false
@@ -1241,13 +1250,15 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 			backupfile = resolved
 			useMaster = false
 			source = bckserver
-		} else {
+		} else if !archived {
 			//Remove false cookie
 			bckserver.DelBackupTypeCookie(backtype)
 		}
 	}
 
+	masterArchived := false
 	if backupfile == "" {
+		masterArchived = cluster.restoreArchivedOriginal(master, backupmgr.BackupMethodLogical, backtype)
 		if resolved, ok := resolveLogicalBackupPathFromMeta(master, backtype); ok {
 			backupfile = resolved
 		} else if resolved, ok := findExistingBackupPath(master, destCandidates); ok {
@@ -1260,7 +1271,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 	if useMaster {
 		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
-			master.DelBackupTypeCookie(backtype)
+			if !masterArchived {
+				master.DelBackupTypeCookie(backtype)
+			}
 			return nil, fmt.Errorf("No backup file found on master for %s", backtype)
 		}
 
@@ -3009,23 +3022,27 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		} else {
 			// Fallback (no catalogued local backup — metadata not populated): legacy
 			// on-disk lookup on master then backup server.
+			masterArchived := cluster.restoreArchivedOriginal(master, backupmgr.BackupMethodLogical, backtype)
 			backupfile, _ = findExistingBackupPath(master, destCandidates)
 			if backupfile == "" {
 				backupfile = master.GetMyBackupDirectory() + dest
 			}
 			bckserver := cluster.GetBackupServer()
 			if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
+				archived := cluster.restoreArchivedOriginal(bckserver, backupmgr.BackupMethodLogical, backtype)
 				if resolved, ok := findExistingBackupPath(bckserver, destCandidates); ok {
 					backupfile = resolved
 					useMaster = false
 					source = bckserver
-				} else {
+				} else if !archived {
 					bckserver.DelBackupTypeCookie(backtype)
 				}
 			}
 			if useMaster {
 				if !cluster.backupArtifactExists(backupfile) {
-					master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+					if !masterArchived {
+						master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+					}
 					noBackupErr := fmt.Errorf("Cancelling reseed. No logical %s backup found on any node", backtype)
 					server.JobsUpdateStateRuntimeOnly(task, noBackupErr.Error(), 5, 1)
 					return noBackupErr
@@ -5115,7 +5132,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			resticPath = server.LastBackupMeta.Logical.Dest
 		}
 		resticScheduled = true
-		server.BackupRestic(backupmgr.BackupMethodLogical, true, resticPath, server.BuildResticTags(backtype, logicalType, backupLine, server.LastBackupMeta.Logical)...)
+		server.BackupRestic(backupmgr.BackupMethodLogical, server.LastBackupMeta.Logical, resticPath, server.BuildResticTags(backtype, logicalType, backupLine, server.LastBackupMeta.Logical)...)
 	}
 
 	return nil
@@ -5260,7 +5277,10 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 	return valid
 }
 
-func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, updateMetadata bool, backupPath string, tags ...string) {
+// BackupRestic pushes backupPath to the archive. meta is the backup being archived, captured
+// now: the snapshot is recorded in it, and with backup-archive-remove-original its original is
+// removed once the snapshot holds it. nil (binary log copies) records nothing.
+func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, tags ...string) {
 	cluster := server.ClusterGroup
 
 	// Defensive checks - clear flag and return early if prerequisites not met
@@ -5353,6 +5373,15 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 	if cluster.Conf.BackupEncryption {
 		backupOpt.Exclude = []string{"*.partial"}
 	}
+	// A fetch from the archive in progress (backup-archive-remove-original) is not a backup.
+	backupOpt.Exclude = append(backupOpt.Exclude, archiveRestoreWorkDirPattern)
+	// An ad-hoc push holds Dest alone: add the integrity sidecar of an encrypted artifact,
+	// without which it cannot be restored.
+	if meta != nil && meta.Dest != "" && filepath.Clean(backupPath) == filepath.Clean(meta.Dest) && isEncryptedBackupArtifact(meta.Dest) {
+		if sidecar := backupmgr.IntegritySidecarPath(meta.Dest); fileExists(sidecar) {
+			backupOpt.ExtraPaths = []string{sidecar}
+		}
+	}
 	resultCh := cluster.ResticManager.AddBackupTaskWithOptions(backupOpt)
 
 	// Launch goroutine to wait for result and update metadata
@@ -5374,8 +5403,11 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, u
 
 		if result.SnapshotID != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic backup completed for %s: snapshot %s", server.URL, result.SnapshotID[:8])
-			if updateMetadata {
-				server.UpdateBackupMetadataWithRestic(backupMethod, result.SnapshotID)
+			if meta != nil {
+				server.UpdateBackupMetadataWithRestic(backupMethod, meta, result.SnapshotID)
+				if cluster.Conf.BackupArchiveRemoveOriginal {
+					server.removeArchivedOriginal(backupMethod, meta, result.SnapshotID)
+				}
 			}
 		}
 	}()
@@ -5527,7 +5559,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
 		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
-		defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
+		defer server.BackupRestic(backupmgr.BackupMethodLogical, nil, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
 	}
 
 	return nil
@@ -6437,7 +6469,7 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
 		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
-		defer server.BackupRestic(backupmgr.BackupMethodLogical, false, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
+		defer server.BackupRestic(backupmgr.BackupMethodLogical, nil, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
 	}
 	return nil
 }
@@ -7064,19 +7096,23 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 	} else {
 		bckserver := cluster.GetBackupServer()
 		if bckserver != nil && bckserver.HasBackupTypeCookie(backupType) {
+			archived := cluster.restoreArchivedOriginal(bckserver, backupmgr.BackupMethodPhysical, backupType)
 			if cluster.backupArtifactExists(bckserver.GetMyBackupDirectory() + file) {
 				backupfile = bckserver.GetMyBackupDirectory() + file
 				useMaster = false
-			} else {
+			} else if !archived {
 				//Remove false cookie
 				bckserver.DelBackupTypeCookie(backupType)
 			}
 		}
 
 		if useMaster {
+			archived := cluster.restoreArchivedOriginal(master, backupmgr.BackupMethodPhysical, backupType)
 			if !cluster.backupArtifactExists(backupfile) {
 				//Remove false cookie
-				master.DelBackupTypeCookie(backupType)
+				if !archived {
+					master.DelBackupTypeCookie(backupType)
+				}
 				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backupType)
 			}
 		}
@@ -7127,19 +7163,23 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 
 	bckserver := cluster.GetBackupServer()
 	if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupPhysicalType) {
+		archived := cluster.restoreArchivedOriginal(bckserver, backupmgr.BackupMethodPhysical, cluster.Conf.BackupPhysicalType)
 		if cluster.backupArtifactExists(bckserver.GetMyBackupDirectory() + file) {
 			backupfile = bckserver.GetMyBackupDirectory() + file
 			useSelfBackup = false
-		} else {
+		} else if !archived {
 			//Remove false cookie
 			bckserver.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
 		}
 	}
 
 	if useSelfBackup {
+		archived := cluster.restoreArchivedOriginal(server, backupmgr.BackupMethodPhysical, cluster.Conf.BackupPhysicalType)
 		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
-			server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+			if !archived {
+				server.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
+			}
 			return fmt.Errorf("Cancelling flashback. No backup file found for %s", cluster.Conf.BackupPhysicalType)
 		}
 	}
@@ -7463,7 +7503,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.IsAdhoc() && server.LastBackupMeta.Physical.Dest != "" {
 				resticPath = server.LastBackupMeta.Physical.Dest
 			}
-			server.BackupRestic(backupmgr.BackupMethodPhysical, true, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
+			server.BackupRestic(backupmgr.BackupMethodPhysical, server.LastBackupMeta.Physical, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
 		}
 
 		cluster.SetInPhysicalBackupState(false)

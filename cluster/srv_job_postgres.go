@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -307,6 +308,11 @@ func (server *ServerMonitor) postgresReseedFromBackup(task config.TaskName) erro
 	if meta == nil || !meta.Completed || meta.Dest == "" {
 		return fmt.Errorf("no completed %s backup of the primary to restore from", map[bool]string{true: "logical", false: "physical"}[task == config.ConstTaskPgRestoreLogical])
 	}
+	var method backupmgr.BackupMethod = backupmgr.BackupMethodPhysical
+	if task == config.ConstTaskPgRestoreLogical {
+		method = backupmgr.BackupMethodLogical
+	}
+	cluster.restoreArchivedOriginal(master, method, "")
 	if _, err := os.Stat(meta.Dest); err != nil {
 		return fmt.Errorf("backup file %s: %w", meta.Dest, err)
 	}

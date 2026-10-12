@@ -166,7 +166,7 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 // CreateChildCluster creates the planned cluster for a creator already authorised
 // (clusterAddAuthorize), configures it and adds its servers, then provisions and seeds
 // it in the background. Every step is recorded on the new cluster (CINF0014 while it
-// runs, WARN0238 where it stopped); a cluster left half-built is kept, never dropped
+// runs, WARN0239 where it stopped); a cluster left half-built is kept, never dropped
 // behind the creator's back.
 func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, plan ChildPlan, mode childMode, username string, sso bool, selfService bool, remoteAddr string) (*cluster.Cluster, error) {
 	cl, err := repman.createCluster(plan.Name, cluster.ClusterForm{ClusterName: plan.Name, Orchestrator: plan.Orchestrator}, username, sso, selfService, remoteAddr)
@@ -292,7 +292,7 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 // handlerMuxClusterCreateStaging creates a staging cluster of a cluster (#1988).
 //
 // @Summary Create a staging cluster of this cluster
-// @Description Plans (confirm false) or creates (confirm true) a staging cluster of {clusterName}, named <clusterName>-staging unless a name is given: same orchestrator, database image unless dbImage is given, DBU per node and proxy type, dbCount databases (default 3), topology-staging on, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only (the staging cluster keeps its own accounts). Needs cluster-staging on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0238 where it stopped.
+// @Description Plans (confirm false) or creates (confirm true) a staging cluster of {clusterName}, named <clusterName>-staging unless a name is given: same orchestrator, database image unless dbImage is given, DBU per node and proxy type, dbCount databases (default 3), topology-staging on, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only (the staging cluster keeps its own accounts). Needs cluster-staging on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0239 where it stopped.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
@@ -354,7 +354,7 @@ func (repman *ReplicationManager) createChildClusterRoute(w http.ResponseWriter,
 // handlerMuxClusterCreateChild creates a child cluster of a cluster (#1997).
 //
 // @Summary Create a child cluster of this cluster
-// @Description Plans (confirm false) or creates (confirm true) a child cluster of {clusterName}, named <clusterName>-child unless a name is given, to test a migration under this cluster's writes: same orchestrator, database image unless dbImage is given (a newer release to test), DBU per node, accounts and proxy type, dbCount databases (default 2), GTID domain this cluster's + 1, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only, its master replicating from this cluster's master through the parent's replication-source-name and its replicas following it through the child's own (child). Needs cluster-replication on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0238 where it stopped.
+// @Description Plans (confirm false) or creates (confirm true) a child cluster of {clusterName}, named <clusterName>-child unless a name is given, to test a migration under this cluster's writes: same orchestrator, database image unless dbImage is given (a newer release to test), DBU per node, accounts and proxy type, dbCount databases (default 2), GTID domain this cluster's + 1, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only, its master replicating from this cluster's master through the parent's replication-source-name and its replicas following it through the child's own (child). Needs cluster-replication on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0239 where it stopped.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json

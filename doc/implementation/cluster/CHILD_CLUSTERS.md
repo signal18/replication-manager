@@ -70,7 +70,7 @@ no account replayed; mysqldump with restore-user off skips the accounts): the ne
 keeps its own system tables and release (#1991).
 
 Progress: `StagingCreation` on the new `Cluster` (not a `ServerMonitor`, rebuilt at every
-reload), raised every tick: CINF0014 while it runs, WARN0238 with the step and the reason
+reload), raised every tick: CINF0014 while it runs, WARN0239 with the step and the reason
 where it stopped. A half-built cluster is kept, never dropped behind the creator's back.
 
 ## Found on the way (same branch)

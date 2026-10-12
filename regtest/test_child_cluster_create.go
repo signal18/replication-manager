@@ -91,9 +91,9 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 	defer stagingDelete(cl, tok, name)
 
 	base := "/api/clusters/" + name
-	// The expected topology; a stop (WARN0238) ends the wait with its reason.
+	// The expected topology; a stop (WARN0239) ends the wait with its reason.
 	if err := stagingWait(stagingRegtestCreate, func() error {
-		if desc := stagingAlert(tok, base, "WARN0238"); desc != "" {
+		if desc := stagingAlert(tok, base, "WARN0239"); desc != "" {
 			return stagingStop{desc}
 		}
 		var servers []map[string]any

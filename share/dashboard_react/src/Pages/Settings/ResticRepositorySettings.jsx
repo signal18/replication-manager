@@ -98,6 +98,16 @@ Switching types does not erase the values stored for the other types, so you can
 
 Config: \`backup-archive-mode\``
 
+const BackupArchiveRemoveOriginalHelp = `**Remove original after archive**
+
+Once the archive snapshot of a logical or physical backup is verified to hold it (and, for an encrypted backup, its integrity sidecar), the original is removed from the server backup directory. The backup metadata stays and records the snapshot.
+
+A reseed or flashback that needs the backup fetches it back from the archive first. The fetched copy stays until the next backup of the same method replaces it.
+
+If the snapshot cannot be verified, the original is kept and WARN0238 is raised. Binary log copies are never removed.
+
+Config: \`backup-archive-remove-original\``
+
 const ResticS3ModeHelp = `**S3 Source-of-Truth Selector**
 
 Controls which set of S3 configuration fields is used as the authoritative source for the Restic repository path and credentials.
@@ -910,6 +920,25 @@ function ResticRepositorySettings({
             This control selects which saved repository configuration Restic uses right now. The
             tabs below (Storage) let you edit repository settings for each repository type.
             Operational actions continue to use the current active repository, not the selected tab.
+          </Text>
+        </GridItem>
+        <GridItem className={styles.rowLabel}>
+          <HStack spacing={1} justify='space-between' width='full'>
+            <Text>Remove original after archive</Text>
+            {h(BackupArchiveRemoveOriginalHelp, 'Remove Original After Archive')}
+          </HStack>
+        </GridItem>
+        <GridItem className={styles.valueCell}>
+          <HStack spacing={2} align='center'>
+            <RMSwitch
+              isChecked={config?.backupArchiveRemoveOriginal}
+              isDisabled={user?.grants['cluster-settings'] == false || archiveMode === 'none'}
+              confirmTitle={'Confirm switch settings for backup-archive-remove-original?'}
+              onChange={() => handleSwitchChange('backup-archive-remove-original')}
+            />
+          </HStack>
+          <Text className={styles.helperText}>
+            Removes each backup from the backup directory once the archive holds it; restores fetch it back.
           </Text>
         </GridItem>
       </Grid>

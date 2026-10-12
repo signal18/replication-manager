@@ -37,14 +37,14 @@ func (cluster *Cluster) GetStagingCreation() *StagingCreation {
 	return cluster.stagingCreation.Load()
 }
 
-// checkStagingCreationStates raises CINF0014 while create-staging runs and WARN0238
+// checkStagingCreationStates raises CINF0014 while create-staging runs and WARN0239
 // once it stopped on an error; nothing once it is done.
 func (cluster *Cluster) checkStagingCreationStates() {
 	sc := cluster.GetStagingCreation()
 	switch {
 	case sc == nil || sc.Done:
 	case sc.Error != "":
-		cluster.SetState("WARN0238", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0238"], sc.Kind, cluster.Name, sc.Parent, sc.Step, sc.Error), ErrFrom: "PROV"})
+		cluster.SetState("WARN0239", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0239"], sc.Kind, cluster.Name, sc.Parent, sc.Step, sc.Error), ErrFrom: "PROV"})
 	default:
 		cluster.SetState("CINF0014", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0014"], sc.Kind, cluster.Name, sc.Parent, sc.Step), ErrFrom: "PROV"})
 	}
