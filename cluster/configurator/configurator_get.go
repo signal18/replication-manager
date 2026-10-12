@@ -222,6 +222,61 @@ func (configurator *Configurator) GetConfigRocksDBCacheSize() string {
 	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["rocksdb"])), 10)
 }
 
+// TidesDB (enginetidesdb ruleset, #2001). The block cache is the "tidesdb" share of
+// prov-db-memory-shared-pct, like RocksDB's; the shared memtable write buffer a quarter
+// of it, kept between 64 and 256 MB (the plugin defaults to 256 MB, too much on a small
+// node); the LSM background threads from prov-db-cpu-cores: flush cores/4 (at least 1),
+// compaction cores/2 (at least 2, compaction being the main background cost).
+const (
+	tidesDBWriteBufferMinMB = 64
+	tidesDBWriteBufferMaxMB = 256
+)
+
+func (configurator *Configurator) GetConfigTidesDBCacheSize() string {
+	usable, err := configurator.getUsableMemoryMB()
+	if err != nil {
+		return strconv.FormatInt(minEngineMemMB, 10)
+	}
+	sharedmempcts, _ := configurator.ClusterConfig.GetMemoryPctShared()
+	return strconv.FormatInt(engineMemMB(usable, int64(sharedmempcts["tidesdb"])), 10)
+}
+
+func (configurator *Configurator) GetConfigTidesDBWriteBufferSize() string {
+	cacheMB, _ := strconv.ParseInt(configurator.GetConfigTidesDBCacheSize(), 10, 64)
+	wb := cacheMB / 4
+	if wb < tidesDBWriteBufferMinMB {
+		wb = tidesDBWriteBufferMinMB
+	}
+	if wb > tidesDBWriteBufferMaxMB {
+		wb = tidesDBWriteBufferMaxMB
+	}
+	return strconv.FormatInt(wb, 10)
+}
+
+func (configurator *Configurator) tidesDBCores() int {
+	cores, err := strconv.ParseFloat(strings.TrimSpace(configurator.ClusterConfig.ProvCores), 64)
+	if err != nil || cores < 1 {
+		return 1
+	}
+	return int(cores)
+}
+
+func (configurator *Configurator) GetConfigTidesDBFlushThreads() string {
+	n := configurator.tidesDBCores() / 4
+	if n < 1 {
+		n = 1
+	}
+	return strconv.Itoa(n)
+}
+
+func (configurator *Configurator) GetConfigTidesDBCompactionThreads() string {
+	n := configurator.tidesDBCores() / 2
+	if n < 2 {
+		n = 2
+	}
+	return strconv.Itoa(n)
+}
+
 // sessionMemFloorMB is the minimum per-session memory ceiling. Below this even
 // ordinary queries (their sort/join/tmp buffers) would fail; on a small VM the
 // cap still protects the instance because a single runaway session is stopped

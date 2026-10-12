@@ -25,6 +25,7 @@ import (
 var engineTags = map[string]string{
 	"rocksdb": "rocksdb", "columnstore": "mcs", "s3": "s3", "connect": "connect",
 	"archive": "archive", "blackhole": "blackhole", "mroonga": "mroonga", "oqgraph": "oqgraph",
+	"tidesdb": "tidesdb",
 }
 
 // EngineSwitchTable is a table of a switch plan; Reason says why it is skipped.
