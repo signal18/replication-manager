@@ -399,7 +399,7 @@ func (cluster *Cluster) GetStagingProxyHosts() []string {
 
 func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor, masterGTIDList string) (string, error) {
 	var err error
-	var logs, dest, masterCurrentGTID string
+	var logs, masterCurrentGTID string
 
 	if parent == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Parent cluster cannot be nil")
@@ -413,10 +413,11 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		return "", fmt.Errorf("no target server found")
 	}
 
-	bcksrv := parent.GetBackupServer()
-	if bcksrv != nil && !bcksrv.HasBackupLogicalCookie() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent cluster %s has no backup. Please run logical backup for refresh child cluster on %s", parent.Name, cluster.Name)
-		parent.LogModulePrintf(parent.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent cluster %s has no backup. Please run logical backup for refresh child cluster on %s", parent.Name, cluster.Name)
+	// The parent's logical backup is the only source (#1989): checked before anything
+	// is touched, with an error naming what is missing.
+	backupfile, _, err := parent.ParentLogicalBackup()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed of %s from parent cluster %s refused: %s", cluster.Name, parent.Name, err)
 		return "", err
 	}
 
@@ -427,20 +428,6 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh data from parent cluster initiated")
-
-	switch backtype {
-	case config.ConstBackupLogicalTypeMysqldump, "script":
-		dest = "mysqldump.sql.gz"
-	case config.ConstBackupLogicalTypeMydumper:
-		dest = "mydumper"
-	}
-
-	// Can't handle script validation, unknown logic
-	backupfile := bcksrv.GetMyBackupDirectory() + dest
-	if _, err := os.Stat(backupfile); err != nil {
-		//Remove false cookie
-		return "", fmt.Errorf("No backup file found on parent for %s", backtype)
-	}
 
 	if target.HasAnyReseedingState() {
 		return "", fmt.Errorf("Server is in reseeding state by %s", target.IsReseeding)
@@ -545,4 +532,32 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed logical backup %s from parent cluster completed on %s", backtype, target.URL)
 
 	return masterCurrentGTID, nil
+}
+
+// ParentLogicalBackup returns the logical backup a child cluster (staging) is seeded
+// from: the file or directory of this cluster's backup-logical-type on its backup
+// server. An error names what is missing (#1989): no backup server, no logical backup
+// taken, a type the reseed cannot load, or the file gone from disk.
+func (cluster *Cluster) ParentLogicalBackup() (string, *ServerMonitor, error) {
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		return "", nil, fmt.Errorf("parent cluster %s has no backup server", cluster.Name)
+	}
+	if !bcksrv.HasBackupLogicalCookie() {
+		return "", bcksrv, fmt.Errorf("parent cluster %s has no logical backup on %s: run a logical backup first", cluster.Name, bcksrv.URL)
+	}
+	var dest string
+	switch cluster.Conf.BackupLogicalType {
+	case config.ConstBackupLogicalTypeMysqldump, "script":
+		dest = "mysqldump.sql.gz"
+	case config.ConstBackupLogicalTypeMydumper:
+		dest = "mydumper"
+	default:
+		return "", bcksrv, fmt.Errorf("parent cluster %s backup-logical-type %q cannot seed a child cluster (mysqldump or mydumper)", cluster.Name, cluster.Conf.BackupLogicalType)
+	}
+	backupfile := bcksrv.GetMyBackupDirectory() + dest
+	if _, err := os.Stat(backupfile); err != nil {
+		return "", bcksrv, fmt.Errorf("parent cluster %s logical backup %s not found: %w", cluster.Name, backupfile, err)
+	}
+	return backupfile, bcksrv, nil
 }
