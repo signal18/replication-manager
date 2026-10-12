@@ -98,17 +98,24 @@ PY
 HOSTS_BEGIN="# columnstore nodes (columnstore-entrypoint.sh)"
 HOSTS_END="# end columnstore nodes"
 sync_hosts() {
-	local names name ip block=""
-	names="$( { hostname -f 2>/dev/null || hostname; grep -oE '<(Node|ModuleHostName[0-9-]+|IPAddr)>[^<]+' /etc/columnstore/Columnstore.xml 2>/dev/null | sed 's/^<[^>]*>//'; } | sort -u || true)"
+	local names name ip block="" self self_ip
+	# the node itself: its own interface address, the DNS does not know a service that
+	# is still starting (the node then did not recognise itself as the primary)
+	self="$(hostname -f 2>/dev/null || hostname)"
+	self_ip="$(ip -4 -o addr show scope global 2>/dev/null | awk '{split($4, a, "/"); print a[1]; exit}' || true)"
+	names="$( { grep -oE '<(Node|ModuleHostName[0-9-]+|IPAddr)>[^<]+' /etc/columnstore/Columnstore.xml 2>/dev/null | sed 's/^<[^>]*>//'; } | sort -u || true)"
 	# the block out first: its stale entries would answer before the DNS
 	# (/etc/hosts is a bind mount: rewritten in place, never replaced)
 	if grep -qxF "$HOSTS_BEGIN" /etc/hosts; then
 		sed "/^$HOSTS_BEGIN\$/,/^$HOSTS_END\$/d" /etc/hosts >/tmp/hosts.columnstore
 		cat /tmp/hosts.columnstore >/etc/hosts
 	fi
+	if [ -n "$self_ip" ]; then
+		block="$self_ip $self"$'\n'
+	fi
 	for name in $names; do
 		case "$name" in
-			localhost | 127.* | ::1) continue ;;
+			localhost | 127.* | ::1 | "$self") continue ;;
 		esac
 		# an IP address needs no entry
 		if [[ "$name" =~ ^[0-9.]+$ ]]; then

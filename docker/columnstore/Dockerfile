@@ -13,7 +13,7 @@ ARG CMAPI_SHA256=a4207e711460275db499fba727a3d876e7b2a64eadd8678d5de3124d098a3d9
 
 RUN set -eux; \
     apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mariadb-plugin-columnstore curl; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mariadb-plugin-columnstore curl iproute2; \
     curl -fsSL -o /tmp/cmapi.deb "$CMAPI_URL"; \
     echo "$CMAPI_SHA256  /tmp/cmapi.deb" | sha256sum -c -; \
     # CMAPI's postinst registers a systemd service (systemctl), absent in a container:
