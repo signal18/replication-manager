@@ -44,13 +44,16 @@ func (server *ServerMonitor) dbFailoverNodes() []string {
 }
 
 // applyDBFailoverPlacement turns a rendered database service into a failover one: placed
-// on the server's agents, the data volume on the failover pool, the volume and the
-// containers shared (one instance at a time; without it the pool provisions the volume's
-// filesystem on every node and the peer's mkfs on the read-only DRBD device fails, then
-// its rollback wipes the peer's DRBD resource: dev3, 2026-10-12). Fewer than two agents
-// is refused: an active-passive server on one node only is not active-passive.
-func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[string]string) error {
-	nodes := server.dbFailoverNodes()
+// on the server's agents (or on nodes, the live service's: a refresh never moves a service
+// onto a node its volume is not on), the data volume on the failover pool, the volume and
+// the containers shared (one instance at a time; without it the pool provisions the
+// volume's filesystem on every node and the peer's mkfs on the read-only DRBD device fails,
+// then its rollback wipes the peer's DRBD resource: dev3, 2026-10-12). Fewer than two
+// nodes is refused: an active-passive server on one node only is not active-passive.
+func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[string]string, nodes []string) error {
+	if len(nodes) == 0 {
+		nodes = server.dbFailoverNodes()
+	}
 	if len(nodes) < 2 {
 		return fmt.Errorf("active-passive %s needs at least two agents to fail over (prov-db-agents), found %q", server.URL, strings.Join(nodes, ","))
 	}
@@ -73,25 +76,26 @@ func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[
 	return nil
 }
 
-// openSVCServicePlacedOnSeveralNodes reads the live service's DEFAULT.nodes: a template
-// refresh keeps the placement the service was provisioned with.
-func (cluster *Cluster) openSVCServicePlacedOnSeveralNodes(svc opensvc.Collector, serviceName string) (bool, error) {
+// openSVCServiceNodes reads the live service's DEFAULT.nodes: a template refresh keeps the
+// placement the service was provisioned with (one node: pinned, its data is there only;
+// several: failover on exactly those nodes, where its volume is).
+func (cluster *Cluster) openSVCServiceNodes(svc opensvc.Collector, serviceName string) ([]string, error) {
 	parts := strings.SplitN(serviceName, "/", 3)
 	if len(parts) != 3 {
-		return false, fmt.Errorf("invalid service name format %q, expected namespace/kind/name", serviceName)
+		return nil, fmt.Errorf("invalid service name format %q, expected namespace/kind/name", serviceName)
 	}
 	b, err := svc.GetObjectConfigFileV3(parts[0], parts[1], parts[2])
 	if err != nil {
-		return false, fmt.Errorf("placement of %s unknown, template not refreshed: %w", serviceName, err)
+		return nil, fmt.Errorf("placement of %s unknown, template not refreshed: %w", serviceName, err)
 	}
-	return liveConfigPlacedOnSeveralNodes(b)
+	return liveConfigNodes(b)
 }
 
-// liveConfigPlacedOnSeveralNodes parses a service definition's DEFAULT.nodes.
-func liveConfigPlacedOnSeveralNodes(b []byte) (bool, error) {
+// liveConfigNodes parses a service definition's DEFAULT.nodes.
+func liveConfigNodes(b []byte) ([]string, error) {
 	cfg, err := ini.Load(b)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return len(strings.Fields(cfg.Section("DEFAULT").Key("nodes").String())) > 1, nil
+	return strings.Fields(cfg.Section("DEFAULT").Key("nodes").String()), nil
 }

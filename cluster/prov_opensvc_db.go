@@ -192,13 +192,13 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 		}
 		// the live placement is kept: a service provisioned pinned to one node stays
 		// pinned, its data is on that node only (#2004)
-		failover := false
+		var liveNodes []string
 		if cluster.dbFailoverPlacement() {
-			if failover, err = cluster.openSVCServicePlacedOnSeveralNodes(svc, s.ServiceName); err != nil {
+			if liveNodes, err = cluster.openSVCServiceNodes(svc, s.ServiceName); err != nil {
 				return err
 			}
 		}
-		res, err = s.generateDBTemplateV3(failover)
+		res, err = s.generateDBTemplateV3(len(liveNodes) > 1, liveNodes)
 		if err != nil {
 			return err
 		}
@@ -1227,16 +1227,17 @@ func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 }
 
 func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
-	return server.generateDBTemplateV3(server.ClusterGroup.dbFailoverPlacement())
+	return server.generateDBTemplateV3(server.ClusterGroup.dbFailoverPlacement(), nil)
 }
 
 // generateDBTemplateV3 renders the service, placed for failover (#2004) or pinned to the
-// server's agent.
-func (server *ServerMonitor) generateDBTemplateV3(failover bool) ([]byte, error) {
+// server's agent. A failover service on nodes (its live node list) keeps them; nil places
+// it on the server's agents.
+func (server *ServerMonitor) generateDBTemplateV3(failover bool, nodes []string) ([]byte, error) {
 
 	svcsection := server.GenerateDBTemplateMap()
 	if failover {
-		if err := server.applyDBFailoverPlacement(svcsection); err != nil {
+		if err := server.applyDBFailoverPlacement(svcsection, nodes); err != nil {
 			return nil, err
 		}
 	}

@@ -33,7 +33,7 @@ func TestDBFailoverPlacement(t *testing.T) {
 		t.Fatal("active-passive on volumes with a failover pool is placed for failover")
 	}
 	sections := dbFailoverTestSections(srv)
-	if err := srv.applyDBFailoverPlacement(sections); err != nil {
+	if err := srv.applyDBFailoverPlacement(sections, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := sections["DEFAULT"]["nodes"]; got != "s18-fr-5 s18-fr-4" {
@@ -50,7 +50,7 @@ func TestDBFailoverPlacement(t *testing.T) {
 	}
 
 	cluster.Conf.ProvAgents = "s18-fr-5"
-	if err := srv.applyDBFailoverPlacement(dbFailoverTestSections(srv)); err == nil {
+	if err := srv.applyDBFailoverPlacement(dbFailoverTestSections(srv), nil); err == nil {
 		t.Fatal("one agent: refused, an active-passive server on one node is not active-passive")
 	}
 
@@ -60,16 +60,29 @@ func TestDBFailoverPlacement(t *testing.T) {
 	}
 }
 
-// A template refresh keeps the placement the live service was provisioned with.
-func TestLiveConfigPlacedOnSeveralNodes(t *testing.T) {
-	for cfg, want := range map[string]bool{
-		"[DEFAULT]\nnodes = s18-fr-4\n":          false,
-		"[DEFAULT]\nnodes = s18-fr-4 s18-fr-5\n": true,
-	} {
-		got, err := liveConfigPlacedOnSeveralNodes([]byte(cfg))
-		if err != nil || got != want {
-			t.Fatalf("%q: want %v, got %v (%v)", cfg, want, got, err)
-		}
+// A template refresh keeps the placement the live service was provisioned with: its exact
+// node list, whatever prov-db-agents says now.
+func TestDBFailoverRefreshKeepsLiveNodes(t *testing.T) {
+	nodes, err := liveConfigNodes([]byte("[DEFAULT]\nnodes = s18-fr-4 s18-fr-5\n"))
+	if err != nil || len(nodes) != 2 {
+		t.Fatalf("live nodes: %v (%v)", nodes, err)
+	}
+	if one, _ := liveConfigNodes([]byte("[DEFAULT]\nnodes = s18-fr-4\n")); len(one) != 1 {
+		t.Fatalf("a pinned service has one node, got %v", one)
+	}
+	cluster := setupTestCluster(t, 1)
+	defer cleanupTestCluster(t, cluster)
+	cluster.Conf = &config.Config{ProvType: "docker", ProvDiskType: "volume", ProvVolumeDataFailover: "drbd",
+		ProvAgents: "s18-fr-4,s18-fr-5,s18-fr-6", TopologyTarget: config.TopoActivePassive}
+	srv := cluster.Servers[0]
+	srv.ClusterGroup = cluster
+	srv.Agent = "s18-fr-4"
+	sections := dbFailoverTestSections(srv)
+	if err := srv.applyDBFailoverPlacement(sections, nodes); err != nil {
+		t.Fatal(err)
+	}
+	if got := sections["DEFAULT"]["nodes"]; got != "s18-fr-4 s18-fr-5" {
+		t.Fatalf("a refresh keeps the live nodes, not prov-db-agents: got %q", got)
 	}
 }
 
