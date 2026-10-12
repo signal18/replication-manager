@@ -2505,6 +2505,25 @@
                 }
             ],
             "fset_name": "mariadb.replication.no128krowmaxsize"
+        },
+        {
+            "fset_stats": false,
+            "id": 430,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "tidesdb",
+                        "f_table": "v_tags",
+                        "id": 386
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.engine.tidesdb"
         }
     ],
     "rulesets": [
@@ -3154,7 +3173,7 @@
                     "var_author": "admin Manager",
                     "var_class": "file",
                     "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_rep_mysqlgtid.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nloose-gtid-mode=ON\\nloose-enforce-gtid-consistency=ON\\nloose-relay-log-recovery=ON\\n\\n# Legacy: 5.6 / 5.7 / 8.0 < 8.0.26\\nloose-slave-parallel-workers=4\\nloose-sync-master-info=1\\nloose-master-info-repository=TABLE\\nloose-relay-log-info-repository=TABLE\\n\\n# Modern: 8.0.26+ / 8.4\\nloose-replica-parallel-workers=4\\nloose-sync-source-info=1\"}",
-                    "var_updated": "2026-10-02 06:20:41",
+                    "var_updated": "2026-10-02 08:37:45",
                     "var_name": "db_cnf_rep_with_mysqlgtid",
                     "id": 5945
                 },
@@ -4341,6 +4360,14 @@
                     "var_updated": "2026-06-09 11:58:46",
                     "var_name": "db_cnf_rep_no_128krowmaxsize",
                     "id": 6364
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/engine_tidesdb.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_command: INSTALL SONAME 'ha_tidesdb';\\n[mariadb]\\nplugin-load-add=ha_tidesdb.so\\nplugin-maturity=beta                                   # required: TideSQL is beta, a stable server accepts gamma and above only\\n\\n# data on the database volume, never next to it (default <datadir>/../tidesdb_data\\n# is outside /var/lib/mysql, so outside the volume: lost on container recreation)\\nloose_tidesdb_data_home_dir=/var/lib/mysql/.system/tidesdb\\n\\n# memory: from the configurator share \\\"tidesdb\\\" of prov-db-memory-shared-pct\\nloose_tidesdb_block_cache_size=%%ENV:SVC_CONF_ENV_TIDESDB_CACHE_SIZE%%M\\nloose_tidesdb_memtable_write_buffer_size=%%ENV:SVC_CONF_ENV_TIDESDB_WRITE_BUFFER_SIZE%%M\\n\\n# background work: from the plan's cores\\nloose_tidesdb_flush_threads=%%ENV:SVC_CONF_ENV_TIDESDB_FLUSH_THREADS%%\\nloose_tidesdb_compaction_threads=%%ENV:SVC_CONF_ENV_TIDESDB_COMPACTION_THREADS%%\\n\\n# durability: every commit synced, like innodb_flush_log_at_trx_commit=1\\nloose_tidesdb_memtable_sync_mode=FULL\\n\\n# logs: the default TRACE writes everything\\nloose_tidesdb_log_level=WARN\\nloose_tidesdb_log_to_file=ON\\nloose_tidesdb_log_truncation_at=24M\"}",
+                    "var_updated": "2026-10-12 16:24:45",
+                    "var_name": "db_cnf_engine_tidesdb",
+                    "id": 6377
                 }
             ],
             "ruleset_public": false,
@@ -4473,7 +4500,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.sec_withstrictssl",
                 "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdreuse",
                 "mariadb.svc.mrm.db.cnf.generic.test_badconfig",
-                "mariadb.svc.mrm.db.cnf.generic.rep_no128krowmaxsize"
+                "mariadb.svc.mrm.db.cnf.generic.rep_no128krowmaxsize",
+                "mariadb.svc.mrm.db.cnf.generic.enginetidesdb"
             ],
             "publications": [
                 "replication-manager"
@@ -7877,6 +7905,30 @@
                 "replication-manager"
             ],
             "id": 1177,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.engine.tidesdb",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.enginetidesdb",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/01_engine_tidesdb.cnf\",\"target\":\"../replication-manager.d/engine_tidesdb.cnf\"}",
+                    "var_updated": "2026-10-12 16:43:08",
+                    "var_name": "db_link_tidesdb",
+                    "id": 6378
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1187,
             "responsibles": [
                 "replication-manager"
             ]
