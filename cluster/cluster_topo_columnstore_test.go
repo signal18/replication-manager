@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -38,6 +39,9 @@ func TestColumnstoreTopology(t *testing.T) {
 	if cl.Conf.ProvTags != "mcs" {
 		t.Fatalf("mcs tag added twice: %q", cl.Conf.ProvTags)
 	}
+	if dirs := cl.openSVCGetVolumeDataSection("")["directories"]; !strings.Contains(dirs, columnstoreVolumeDir) {
+		t.Fatalf("ColumnStore's storage moves with the data volume: directories %q", dirs)
+	}
 	if cl.activePassiveTopology() != config.TopoColumnstore {
 		t.Fatal("a lone columnstore server must be discovered as columnstore")
 	}
@@ -56,6 +60,9 @@ func TestColumnstoreTopology(t *testing.T) {
 	}
 	if ap.Configurator.HaveDBTag("mcs") || ap.HasConfigTopoColumnstore() {
 		t.Fatal("active-passive must not get the mcs tag")
+	}
+	if dirs := ap.openSVCGetVolumeDataSection("")["directories"]; strings.Contains(dirs, columnstoreVolumeDir) {
+		t.Fatalf("no ColumnStore directory outside the columnstore topology: %q", dirs)
 	}
 	if ap.activePassiveTopology() != config.TopoActivePassive {
 		t.Fatal("a lone active-passive server must be discovered as active-passive")

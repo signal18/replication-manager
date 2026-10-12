@@ -696,6 +696,12 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
+		if server.ClusterGroup.HasConfigTopoColumnstore() {
+			svccontainer["volume_mounts"] += " {name}/" + columnstoreVolumeDir + ":/var/lib/columnstore:rw"
+			// the image's stop runs the server's shutdown, then ColumnStore's processes and
+			// the BRM save: the 10s default would kill it before the save
+			svccontainer["stop_timeout"] = "5m"
+		}
 		svccontainer["environment"] = server.OpenSVCGetDBContainerEnvironment()
 		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
 			svccontainer["image_pull_policy"] = "always"
@@ -1171,6 +1177,11 @@ func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 }
 
 // openSVCGetVolumeDataSection renders the data volume from a helper image already resolved for this template.
+// columnstoreVolumeDir: ColumnStore's storage (dbroots, block map, system catalog) on the
+// data volume, mounted at /var/lib/columnstore: it moves with the server like /var/lib/mysql
+// (#2002; in the container, a switch to the other node lost every ColumnStore table)
+const columnstoreVolumeDir = "columnstore"
+
 func (cluster *Cluster) openSVCGetVolumeDataSection(xtrabackupImage string) map[string]string {
 	svcvol := make(map[string]string)
 	ownerUID, ownerGID, _ := cluster.dbVolumeOwner()
@@ -1180,6 +1191,9 @@ func (cluster *Cluster) openSVCGetVolumeDataSection(xtrabackupImage string) map[
 	svcvol["directories"] = "run/mysqld"
 	if xtrabackupImage != "" {
 		svcvol["directories"] += " xtrabackup"
+	}
+	if cluster.HasConfigTopoColumnstore() {
+		svcvol["directories"] += " " + columnstoreVolumeDir
 	}
 	svcvol["user"] = strconv.Itoa(ownerUID)
 	svcvol["group"] = strconv.Itoa(ownerGID)
