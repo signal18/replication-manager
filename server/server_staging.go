@@ -31,6 +31,7 @@ const (
 	stagingDefaultDBCount = 3 // the built-in refresh detaches the first of 2 replicas
 	stagingMaxDBCount     = 5
 	stagingMasterWait     = 5 * time.Minute
+	stagingNodesWait      = 2 * time.Minute // the new cluster loads its orchestrator node list on its own tick
 )
 
 // StagingRequest is the body of POST /api/clusters/{parent}/actions/create-staging,
@@ -187,6 +188,11 @@ func (repman *ReplicationManager) CreateStagingCluster(parent *cluster.Cluster, 
 	cl.Save()
 
 	go func() {
+		step("orchestrator nodes")
+		if err := cl.WaitOrchestratorNodes(stagingNodesWait); err != nil {
+			fail(err)
+			return
+		}
 		step("provision")
 		if err := cl.Bootstrap(); err != nil {
 			fail(err)

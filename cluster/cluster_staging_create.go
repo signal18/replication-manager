@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -45,5 +46,28 @@ func (cluster *Cluster) checkStagingCreationStates() {
 		cluster.SetState("WARN0238", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0238"], cluster.Name, sc.Parent, sc.Step, sc.Error), ErrFrom: "PROV"})
 	default:
 		cluster.SetState("CINF0014", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0014"], cluster.Name, sc.Parent, sc.Step), ErrFrom: "PROV"})
+	}
+}
+
+// WaitOrchestratorNodes waits until the orchestrator's node list is loaded for this
+// cluster (#1988). A cluster created a moment ago has none: the list is loaded by its
+// own monitor loop (initOrchetratorNodes), and provisioning before that fails with
+// "Agent not found in orchestrator node list" (dev3, 2026-10-12).
+func (cluster *Cluster) WaitOrchestratorNodes(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		cluster.Lock()
+		n, err := len(cluster.Agents), cluster.errorInitNodes
+		cluster.Unlock()
+		if n > 0 {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			if err != nil {
+				return fmt.Errorf("no node from orchestrator %s after %s: %w", cluster.GetOrchestrator(), timeout, err)
+			}
+			return fmt.Errorf("no node from orchestrator %s after %s", cluster.GetOrchestrator(), timeout)
+		}
+		time.Sleep(time.Second)
 	}
 }
