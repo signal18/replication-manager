@@ -662,6 +662,7 @@ type Config struct {
 	ProvDiskDockerSize                        string            `measurement:"G,bytes,required" mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
 	ProvVolumeDocker                          string            `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
 	ProvVolumeData                            string            `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
+	ProvVolumeDataFailover                    string            `mapstructure:"prov-db-volume-data-failover" toml:"prov-db-volume-data-failover" json:"provDbVolumeDataFailover"` // active-passive: the failover-capable pool of the single server's data volume (#2004)
 	ProvDBRunAsUID                            string            `mapstructure:"prov-db-run-as-uid" toml:"prov-db-run-as-uid" json:"provDbRunAsUid"`
 	ProvDBVolumeUID                           string            `mapstructure:"prov-db-volume-uid" toml:"prov-db-volume-uid" json:"provDbVolumeUid"`
 	ProvDiskFS                                string            `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`

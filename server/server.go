@@ -1331,6 +1331,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvDiskType, "prov-db-disk-type", "loopback", "[loopback|physical|pool|directory|volume]")
 		flags.StringVar(&conf.ProvVolumeDocker, "prov-db-volume-docker", "", "Volume name in case of docker private")
 		flags.StringVar(&conf.ProvVolumeData, "prov-db-volume-data", "default", "Volume name for the datadir")
+		flags.StringVar(&conf.ProvVolumeDataFailover, "prov-db-volume-data-failover", "drbd", "Active-passive topology: failover-capable pool of the single server's data volume; the service is placed on the server's agents and moves with its data. Empty = pinned to one node on prov-db-volume-data")
 		flags.StringVar(&conf.ProvDBRunAsUID, "prov-db-run-as-uid", "", "Advanced setting. Numeric UID[:GID] the provisioned database container runs as (OpenSVC --user, Kubernetes securityContext); GID defaults to UID, 0 = root; empty = legacy behavior (--user mysql for MySQL images, the image's own user otherwise)")
 		flags.StringVar(&conf.ProvDBVolumeUID, "prov-db-volume-uid", "", "Advanced setting. Numeric UID[:GID] that owns the provisioned database data volume (OpenSVC volume owner and bootstrap chown, Kubernetes init chown); GID defaults to UID, 0 = root; empty = legacy behavior (999:999, none on Kubernetes), except Percona Server images which use 1001")
 		flags.StringVar(&conf.ProvDiskDevice, "prov-db-disk-device", "", "loopback:path-to-loopfile|physical:/dev/xx|pool:pool-name|directory:/srv")

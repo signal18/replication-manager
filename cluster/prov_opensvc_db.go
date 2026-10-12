@@ -190,7 +190,15 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 		if _, err = cluster.OpenSVCFoundDatabaseAgent(s); err != nil {
 			return err
 		}
-		res, err = s.GenerateDBTemplateV3()
+		// the live placement is kept: a service provisioned pinned to one node stays
+		// pinned, its data is on that node only (#2004)
+		failover := false
+		if cluster.dbFailoverPlacement() {
+			if failover, err = cluster.openSVCServicePlacedOnSeveralNodes(svc, s.ServiceName); err != nil {
+				return err
+			}
+		}
+		res, err = s.generateDBTemplateV3(failover)
 		if err != nil {
 			return err
 		}
@@ -1219,8 +1227,19 @@ func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 }
 
 func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
+	return server.generateDBTemplateV3(server.ClusterGroup.dbFailoverPlacement())
+}
+
+// generateDBTemplateV3 renders the service, placed for failover (#2004) or pinned to the
+// server's agent.
+func (server *ServerMonitor) generateDBTemplateV3(failover bool) ([]byte, error) {
 
 	svcsection := server.GenerateDBTemplateMap()
+	if failover {
+		if err := server.applyDBFailoverPlacement(svcsection); err != nil {
+			return nil, err
+		}
+	}
 	if !server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
 		// The container cap lives on the om3 PG SLICE, not the docker scope (see
 		// WARN0214): same memory ceiling the docker run-args carried (tier + 1 DBU
