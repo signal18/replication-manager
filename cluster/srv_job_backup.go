@@ -3169,28 +3169,21 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
-	if restoreUser {
-		//walk dir
-		files, err := os.ReadDir(backupdir)
-		if err == nil {
-			if len(files) > 0 {
-				for _, file := range files {
-					if strings.HasPrefix(file.Name(), "mysql.user") && strings.HasSuffix(file.Name(), ".sql.gz.skip") {
-						os.Rename(filepath.Join(backupdir, file.Name()), filepath.Join(backupdir, strings.TrimSuffix(file.Name(), ".skip")))
-					}
-				}
+	// The account tables are set aside (renamed .skip) when the accounts must not be
+	// restored, put back when they must (#1991): every grant table, not only mysql.user,
+	// which is a view over mysql.global_priv since MariaDB 10.4.
+	if files, err := os.ReadDir(backupdir); err == nil {
+		for _, file := range files {
+			name := file.Name()
+			if !isMysqlAccountTableFile(strings.TrimSuffix(name, ".skip")) {
+				continue
 			}
-		}
-	} else {
-		//walk dir
-		files, err := os.ReadDir(backupdir)
-		if err == nil {
-			if len(files) > 0 {
-				for _, file := range files {
-					if strings.HasPrefix(file.Name(), "mysql.user") && strings.HasSuffix(file.Name(), ".sql.gz") {
-						os.Rename(filepath.Join(backupdir, file.Name()), filepath.Join(backupdir, file.Name()+".skip"))
-					}
-				}
+			// any compression (.sql, .sql.gz, .sql.zst): only the .skip suffix matters
+			switch {
+			case restoreUser && strings.HasSuffix(name, ".skip"):
+				os.Rename(filepath.Join(backupdir, name), filepath.Join(backupdir, strings.TrimSuffix(name, ".skip")))
+			case !restoreUser && !strings.HasSuffix(name, ".skip"):
+				os.Rename(filepath.Join(backupdir, name), filepath.Join(backupdir, name+".skip"))
 			}
 		}
 	}
@@ -7514,4 +7507,25 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.IsNeedPathCheck = true
 	}
 	return nil
+}
+
+// mysqlAccountTables are the grant tables of MariaDB and MySQL: what a restore without
+// the source's accounts must never load (#1991).
+var mysqlAccountTables = map[string]bool{
+	"user": true, "global_priv": true, "db": true, "tables_priv": true, "columns_priv": true,
+	"procs_priv": true, "proxies_priv": true, "roles_mapping": true, "role_edges": true,
+	"default_roles": true, "global_grants": true, "password_history": true,
+}
+
+// isMysqlAccountTableFile reports whether a mydumper file holds a grant table, data
+// (mysql.<table>.sql.gz, mysql.<table>.00000.sql.gz) or definition
+// (mysql.<table>-schema.sql.gz).
+func isMysqlAccountTableFile(name string) bool {
+	rest, ok := strings.CutPrefix(name, "mysql.")
+	if !ok {
+		return false
+	}
+	table, _, _ := strings.Cut(rest, ".")
+	table, _, _ = strings.Cut(table, "-schema")
+	return mysqlAccountTables[table]
 }
