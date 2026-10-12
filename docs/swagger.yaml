@@ -11204,6 +11204,10 @@ paths:
       - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}:
     post:
+      description: 'For mysqldump (scheduler-jobs-exec-remote lists it) the receiver
+        opens only while a logical backup of the server waits for it, and the answer
+        also carries the dump arguments: base64 of the arguments, one per line, without
+        the connection arguments the DB host provides.'
       parameters:
       - description: Cluster name
         in: path
@@ -11220,12 +11224,21 @@ paths:
         name: serverPort
         required: true
         type: string
-      - description: Task name (xtrabackup, mariabackup, errorlog, etc.)
+      - description: Task name (xtrabackup, mariabackup, mysqldump, errorlog, etc.)
         in: path
         name: taskname
         required: true
         type: string
-      responses: {}
+      responses:
+        "200":
+          description: RECEIVER_PORT=<port>, for mysqldump RECEIVER_PORT=<port> DUMP_ARGS=<base64>,
+            then LOCK_DDL=1 when dbjobs blocks DDL around the dump client
+          schema:
+            type: string
+        "500":
+          description: No remote mysqldump backup waiting on <server>
+          schema:
+            type: string
       summary: Open a TCP receiver for a remote task
       tags:
       - DatabaseTasks

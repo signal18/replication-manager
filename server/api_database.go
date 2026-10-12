@@ -5318,11 +5318,14 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 // returns the receiver address. Used in API job mode so the dbjobs script can
 // discover where to stream data (backups, logs) without polling the jobs table.
 // @Summary Open a TCP receiver for a remote task
+// @Description For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.
 // @Tags DatabaseTasks
 // @Param clusterName path string true "Cluster name"
 // @Param serverName path string true "Server hostname"
 // @Param serverPort path string true "Server port"
-// @Param taskname path string true "Task name (xtrabackup, mariabackup, errorlog, etc.)"
+// @Param taskname path string true "Task name (xtrabackup, mariabackup, mysqldump, errorlog, etc.)"
+// @Success 200 {string} string "RECEIVER_PORT=<port>, for mysqldump RECEIVER_PORT=<port> DUMP_ARGS=<base64>, then LOCK_DDL=1 when dbjobs blocks DDL around the dump client"
+// @Failure 500 {string} string "No remote mysqldump backup waiting on <server>"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname} [post]
 func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
