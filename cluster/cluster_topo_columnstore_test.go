@@ -39,7 +39,7 @@ func TestColumnstoreTopology(t *testing.T) {
 	if cl.Conf.ProvTags != "mcs" {
 		t.Fatalf("mcs tag added twice: %q", cl.Conf.ProvTags)
 	}
-	if dirs := cl.openSVCGetVolumeDataSection("")["directories"]; !strings.Contains(dirs, columnstoreVolumeDir) {
+	if dirs := cl.openSVCGetVolumeDataSection("")["directories"]; (!strings.Contains(dirs, columnstoreVolumeDir) || !strings.Contains(dirs, columnstoreEtcVolumeDir)) {
 		t.Fatalf("ColumnStore's storage moves with the data volume: directories %q", dirs)
 	}
 	if cl.activePassiveTopology() != config.TopoColumnstore {

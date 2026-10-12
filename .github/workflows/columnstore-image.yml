@@ -115,8 +115,8 @@ jobs:
           docker logs cs 2>&1 | grep -i -E "columnstore-entrypoint|error|abort" | grep -v optimizer_switch | head -60 || true
           docker rm -f cs
           [ "$ok" = 1 ] && grep -qx 2 /tmp/after && echo "table kept across the restart"
-          # an empty volume on /var/lib/columnstore (the UM's and the PMs' data volume)
-          docker run -d --name csvol -e MARIADB_ROOT_PASSWORD=smoke -v csvol:/var/lib/columnstore mariadb-columnstore:test
+          # empty volumes on /var/lib/columnstore and /etc/columnstore (the UM's and the PMs' data volume)
+          docker run -d --name csvol -e MARIADB_ROOT_PASSWORD=smoke -v csvol:/var/lib/columnstore -v csetc:/etc/columnstore mariadb-columnstore:test
           for i in $(seq 1 90); do
             if docker exec csvol mariadb -uroot -psmoke -e 'SELECT 1' >/dev/null 2>&1; then break; fi
             sleep 2
@@ -129,7 +129,7 @@ jobs:
             SELECT COUNT(*) FROM smoke.t;" | tee /tmp/vol && ok=1
           docker logs csvol 2>&1 | grep -i -E "columnstore-entrypoint|abort|what\(\)" | head -20 || true
           docker rm -f csvol
-          docker volume rm csvol
+          docker volume rm csvol csetc
           [ "$ok" = 1 ] && grep -qx 1 /tmp/vol && echo "ColumnStore on an empty volume works"
 
       - name: Log in to Docker Hub

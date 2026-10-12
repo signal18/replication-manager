@@ -697,7 +697,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
 		if server.ClusterGroup.HasConfigTopoColumnstore() {
-			svccontainer["volume_mounts"] += " {name}/" + columnstoreVolumeDir + ":/var/lib/columnstore:rw"
+			svccontainer["volume_mounts"] += " {name}/" + columnstoreVolumeDir + ":/var/lib/columnstore:rw {name}/" + columnstoreEtcVolumeDir + ":/etc/columnstore:rw"
 			// the image's stop runs the server's shutdown, then ColumnStore's processes and
 			// the BRM save: the 10s default would kill it before the save
 			svccontainer["stop_timeout"] = "5m"
@@ -1182,6 +1182,11 @@ func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 // (#2002; in the container, a switch to the other node lost every ColumnStore table)
 const columnstoreVolumeDir = "columnstore"
 
+// columnstoreEtcVolumeDir: ColumnStore's configuration (Columnstore.xml, CMAPI's) on the
+// data volume, mounted at /etc/columnstore: the cluster a CMAPI join writes there must
+// come back with the server after a switch
+const columnstoreEtcVolumeDir = "columnstore-etc"
+
 func (cluster *Cluster) openSVCGetVolumeDataSection(xtrabackupImage string) map[string]string {
 	svcvol := make(map[string]string)
 	ownerUID, ownerGID, _ := cluster.dbVolumeOwner()
@@ -1193,7 +1198,7 @@ func (cluster *Cluster) openSVCGetVolumeDataSection(xtrabackupImage string) map[
 		svcvol["directories"] += " xtrabackup"
 	}
 	if cluster.HasConfigTopoColumnstore() {
-		svcvol["directories"] += " " + columnstoreVolumeDir
+		svcvol["directories"] += " " + columnstoreVolumeDir + " " + columnstoreEtcVolumeDir
 	}
 	svcvol["user"] = strconv.Itoa(ownerUID)
 	svcvol["group"] = strconv.Itoa(ownerGID)
