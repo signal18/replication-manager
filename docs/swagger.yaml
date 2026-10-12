@@ -727,14 +727,19 @@ definitions:
   cluster.BillingPrices:
     properties:
       apu:
+        format: float64
         type: number
       bau:
+        format: float64
         type: number
       bku:
+        format: float64
         type: number
       dbu:
+        format: float64
         type: number
       gwu:
+        format: float64
         type: number
       overPct:
         type: integer
@@ -755,6 +760,7 @@ definitions:
       accrued:
         additionalProperties:
           items:
+            format: float64
             type: number
           type: array
         description: |-
@@ -1289,7 +1295,17 @@ definitions:
         type: string
       appHostsIpv6:
         type: string
+      appMonitorMode:
+        description: |-
+          AppMonitorMode: how an app without a route is probed. "port" (default) connects to
+          app-port over TCP; "ping" sends an ICMP echo to the app host, for a process that
+          listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
+        type: string
       appPort:
+        type: string
+      appRandomPassword:
+        description: generated when the template references {{app.randompassword}},
+          stored encrypted
         type: string
       appS3Provider:
         type: boolean
@@ -1700,6 +1716,8 @@ definitions:
       arbitrationPeerHosts:
         type: string
       arbitrationReadTimout:
+        type: integer
+      arbitrationVerdictStreak:
         type: integer
       arbitratorBindAddress:
         type: string
@@ -2146,6 +2164,8 @@ definitions:
         type: string
       cloud18SalesUnsubscribeScript:
         type: string
+      cloud18SelfServiceCacheSeconds:
+        type: integer
       cloud18SelfServiceClusters:
         type: boolean
       cloud18SelfServiceClustersCanBorrow:
@@ -3133,6 +3153,8 @@ definitions:
         type: boolean
       provDbStartScript:
         type: string
+      provDbStartTimeout:
+        type: string
       provDbStopScript:
         type: string
       provDbTags:
@@ -3238,6 +3260,8 @@ definitions:
       provProxyStartFetchConfig:
         type: boolean
       provProxyStartScript:
+        type: string
+      provProxyStartTimeout:
         type: string
       provProxyStopScript:
         type: string
@@ -3427,7 +3451,11 @@ definitions:
         type: boolean
       replicationMultisourceHeadClusters:
         type: string
+      replicationPgLogicalDdl:
+        type: boolean
       replicationSourceName:
+        type: string
+      replicationSslCa:
         type: string
       replicationUseSsl:
         type: boolean
@@ -3449,6 +3477,8 @@ definitions:
         type: string
       resourceManagerRatioDbu:
         type: string
+      resourceManagerSmtGain:
+        type: number
       scaleDownConfigInPlanSpeed:
         description: sustain duration before scaling DOWN a server's config resources
           within the plan. Default 5m
@@ -3738,6 +3768,7 @@ definitions:
       channelID:
         type: string
       createAt:
+        format: int64
         type: integer
       extension:
         type: string
@@ -3761,6 +3792,7 @@ definitions:
       channelID:
         type: string
       createAt:
+        format: int64
         type: integer
       fileIds:
         items:
@@ -4132,6 +4164,12 @@ definitions:
     type: object
   server.Heartbeat:
     properties:
+      apiUrl:
+        description: |-
+          APIURL is the answering instance's API URL, the one it writes as
+          REPLICATION_MANAGER_URL: its peer offers it to init containers as the DR
+          fallback (REPLICATION_MANAGER_URL_DR).
+        type: string
       cluster:
         type: string
       failed:
@@ -4150,6 +4188,27 @@ definitions:
         type: string
       uuid:
         type: string
+    type: object
+  server.IOPSCalibration:
+    properties:
+      agents:
+        type: integer
+      applied:
+        type: boolean
+      dir:
+        type: string
+      durationSecond:
+        type: integer
+      hostIops:
+        type: number
+      infraIops:
+        type: number
+      message:
+        type: string
+      readsPerSecond:
+        type: number
+      writesPerSecond:
+        type: number
     type: object
   server.InfraUnitPool:
     properties:
@@ -4241,6 +4300,51 @@ definitions:
       useTempDir:
         type: boolean
     type: object
+  server.SMTCalibration:
+    properties:
+      applied:
+        type: boolean
+      cores:
+        type: integer
+      cpuEventsPerSecCores:
+        type: number
+      cpuEventsPerSecThreads:
+        type: number
+      cpuGain:
+        type: number
+      durationSeconds:
+        type: integer
+      gain:
+        type: number
+      memGain:
+        type: number
+      memMiBPerSecCores:
+        type: number
+      memMiBPerSecThreads:
+        type: number
+      message:
+        type: string
+      threads:
+        type: integer
+    type: object
+  server.SelfServicePrices:
+    properties:
+      apu:
+        type: number
+      bau:
+        type: number
+      bku:
+        type: number
+      currency:
+        type: string
+      dbu:
+        type: number
+      overcommitPricePct:
+        description: price of a unit above the plan, in % of the unit price
+        type: integer
+      pricingMode:
+        type: string
+    type: object
   server.SelfServiceStatus:
     properties:
       appTemplates:
@@ -4285,10 +4389,21 @@ definitions:
         type: string
       pool:
         $ref: '#/definitions/server.InfraUnitPool'
+      poolBlocked:
+        description: |-
+          PoolBlocked: Enabled is false because of the pool only (the verdict a quote re-takes
+          for the requested units), never compared by its wording.
+        type: boolean
       poolNote:
         type: string
       poolOk:
         type: boolean
+      prices:
+        allOf:
+        - $ref: '#/definitions/server.SelfServicePrices'
+        description: |-
+          Prices: this infrastructure's unit price list, so a client quotes a cluster from the
+          partner's own figures (#1963). A 0 price means the unit is not priced here.
       reason:
         type: string
       remaining:
@@ -7416,6 +7531,53 @@ paths:
       summary: Push OpenSVC config/secret maps for an app
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-template:
+    post:
+      consumes:
+      - application/json
+      description: Re-renders the app's service definition from its template and settings
+        (timeouts, priority, volumes, routes) and pushes it to the live OpenSVC object
+        without restarting it; the next start uses it. The database counterpart is
+        servers/{serverName}/actions/update-opensvc-template.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App service definition updated
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: App Not Found
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Refresh the OpenSVC service definition of an app
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appName}/actions/update-routes:
     post:
       consumes:
@@ -8869,6 +9031,15 @@ paths:
         - mydumper
         - xtrabackup
         - mariabackup
+        - pgdump
+        - pgbasebackup
+        - pgstandby
+        - pgreseed
+        - pgschemasync
+        - pgrestore
+        - pgreseedlogical
+        - pgwalarchive
+        - pgrestorelogical
         - errorlog
         - slowquery
         - sqlerrorlog
@@ -11696,6 +11867,15 @@ paths:
         - mydumper
         - xtrabackup
         - mariabackup
+        - pgdump
+        - pgbasebackup
+        - pgstandby
+        - pgreseed
+        - pgschemasync
+        - pgrestore
+        - pgreseedlogical
+        - pgwalarchive
+        - pgrestorelogical
         - errorlog
         - slowquery
         - sqlerrorlog
@@ -12254,6 +12434,15 @@ paths:
         - mydumper
         - xtrabackup
         - mariabackup
+        - pgdump
+        - pgbasebackup
+        - pgstandby
+        - pgreseed
+        - pgschemasync
+        - pgrestore
+        - pgreseedlogical
+        - pgwalarchive
+        - pgrestorelogical
         - errorlog
         - slowquery
         - sqlerrorlog
@@ -17775,6 +17964,39 @@ paths:
       summary: List the API tokens covering a cluster (grant token-manage)
       tags:
       - Auth
+  /api/clusters/{clusterName}/tools:
+    get:
+      description: The command line tools found on this replication-manager for the
+        cluster (database client, dump and binlog clients, mydumper, sysbench, restic)
+        with their detected version; a tool that was not found is absent.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: tool name to version
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Local tools and their versions
+      tags:
+      - Cluster
   /api/clusters/{clusterName}/top:
     get:
       description: This endpoint retrieves the top metrics for the specified cluster.
@@ -18902,6 +19124,84 @@ paths:
       summary: Retrieve peer clusters for a user
       tags:
       - Cloud18
+  /api/clusters/settings/actions/calibrate-iops:
+    post:
+      description: Runs the embedded sysbench fileio (2G of files, 16 KiB random read/write,
+        direct IO, 16 threads, 20 s) in the working directory at the lowest CPU priority,
+        then removes the files. Answers the host IOPS and that figure times the agents
+        and, with apply=true, writes the latter to resource-manager-infra-iops. Representative
+        when every node has the same storage.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: write resource-manager-infra-iops (default false)
+        in: query
+        name: apply
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.IOPSCalibration'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: An IOPS calibration is already running
+          schema:
+            type: string
+      summary: Measure the random IOPS of the replication-manager host's storage with
+        sysbench
+      tags:
+      - GlobalSetting
+  /api/clusters/settings/actions/calibrate-smt-gain:
+    post:
+      description: 'Runs the embedded sysbench (cpu and random memory access, one
+        thread per physical core then every thread, 15 s each) on the host replication-manager
+        runs on, computes the gain and, unless apply=false, writes it to resource-manager-smt-gain.
+        Representative when the infrastructure''s nodes share the same hardware. A
+        host without SMT is not an error: the answer says so and nothing is written.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: write the measured gain (default true)
+        in: query
+        name: apply
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/server.SMTCalibration'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: A calibration is already running
+          schema:
+            type: string
+        "500":
+          description: Measure failed
+          schema:
+            type: string
+      summary: Measure the SMT (hyperthreading) gain of the replication-manager host
+        with sysbench
+      tags:
+      - GlobalSetting
   /api/clusters/settings/actions/reload-clusters-plan-info:
     post:
       description: This endpoint reloads the cluster plan information for all clusters

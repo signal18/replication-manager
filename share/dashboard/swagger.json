@@ -460,6 +460,108 @@
                 }
             }
         },
+        "/api/clusters/settings/actions/calibrate-iops": {
+            "post": {
+                "description": "Runs the embedded sysbench fileio (2G of files, 16 KiB random read/write, direct IO, 16 threads, 20 s) in the working directory at the lowest CPU priority, then removes the files. Answers the host IOPS and that figure times the agents and, with apply=true, writes the latter to resource-manager-infra-iops. Representative when every node has the same storage.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Measure the random IOPS of the replication-manager host's storage with sysbench",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "write resource-manager-infra-iops (default false)",
+                        "name": "apply",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.IOPSCalibration"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "An IOPS calibration is already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/calibrate-smt-gain": {
+            "post": {
+                "description": "Runs the embedded sysbench (cpu and random memory access, one thread per physical core then every thread, 15 s each) on the host replication-manager runs on, computes the gain and, unless apply=false, writes it to resource-manager-smt-gain. Representative when the infrastructure's nodes share the same hardware. A host without SMT is not an error: the answer says so and nothing is written.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Measure the SMT (hyperthreading) gain of the replication-manager host with sysbench",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "write the measured gain (default true)",
+                        "name": "apply",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.SMTCalibration"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A calibration is already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Measure failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/settings/actions/reload-clusters-plan-info": {
             "post": {
                 "description": "This endpoint reloads the cluster plan information for all clusters without reapplying plans.",
@@ -2180,6 +2282,83 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/rolling/upgrade/plan": {
+            "get": {
+                "description": "Resolves the target with the image list of the configurator (patch, next-minor, next-lts, next-major, last-lts, version) from the line the nodes run and describes the steps, the target release, what prov-db-image declares afterwards and the warnings. Nothing is changed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMaintenance"
+                ],
+                "summary": "Plan a rolling upgrade",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "patch",
+                            "next-minor",
+                            "next-lts",
+                            "next-major",
+                            "last-lts",
+                            "previous-minor",
+                            "previous-major",
+                            "version"
+                        ],
+                        "type": "string",
+                        "description": "patch (default), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major, version",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "with target=version: the release or line to move to",
+                        "name": "version",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.RollingUpgradePlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Target not resolvable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/rolling/{action}": {
             "post": {
                 "description": "Triggers one of: restart, reprov, upgrade, jobs-upgrade.\nreprov and upgrade are long-running and return 202 Accepted immediately; the operation runs in the background.",
@@ -2221,6 +2400,28 @@
                         "name": "action",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "enum": [
+                            "patch",
+                            "next-minor",
+                            "next-lts",
+                            "next-major",
+                            "last-lts",
+                            "previous-minor",
+                            "previous-major",
+                            "version"
+                        ],
+                        "type": "string",
+                        "description": "upgrade only: the release to move to, a method of the image list: patch (default: the declared prov-db-image resolved by the list), next-minor, next-lts, next-major, last-lts, previous-minor, previous-major (downgrades), version",
+                        "name": "target",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "upgrade with target=version: the release or line to move to",
+                        "name": "version",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -4301,6 +4502,71 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-template": {
+            "post": {
+                "description": "Re-renders the app's service definition from its template and settings (timeouts, priority, volumes, routes) and pushes it to the live OpenSVC object without restarting it; the next start uses it. The database counterpart is servers/{serverName}/actions/update-opensvc-template.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Refresh the OpenSVC service definition of an app",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App service definition updated",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "App Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/actions/update-routes": {
             "post": {
                 "description": "Push route configuration to the OpenSVC gateway service for a given app",
@@ -5330,7 +5596,7 @@
         },
         "/api/clusters/{clusterName}/apu/{kind}/{name}": {
             "post": {
-                "description": "The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy.",
+                "description": "The compute sensor (app/proxy jobs sidecar) POSTs raw cgroup period maxima (mem/cpu/disk) for one Compute unit; repman projects them to APU via the Compute profile and records them as consumed. kind = app | proxy. Optional netRxBytes/netTxBytes (cumulative octets of the pod interface) feed the internal network series net.\u003ccluster\u003e.\u003ckind\u003e.\u003cname\u003e.*.",
                 "consumes": [
                     "application/json"
                 ],
@@ -6389,6 +6655,15 @@
                             "mydumper",
                             "xtrabackup",
                             "mariabackup",
+                            "pgdump",
+                            "pgbasebackup",
+                            "pgstandby",
+                            "pgreseed",
+                            "pgschemasync",
+                            "pgrestore",
+                            "pgreseedlogical",
+                            "pgwalarchive",
+                            "pgrestorelogical",
                             "errorlog",
                             "slowquery",
                             "sqlerrorlog",
@@ -6773,7 +7048,7 @@
         },
         "/api/clusters/{clusterName}/price": {
             "get": {
-                "description": "The cluster's month statement: partner, sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.",
+                "description": "The cluster's month statement: partner, sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price, EUR accrued, rate and projection. Integrated per monitoring period by the resource manager.",
                 "produces": [
                     "application/json"
                 ],
@@ -8679,6 +8954,55 @@
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/schema/events": {
+            "get": {
+                "description": "Scheduled database events (MySQL/MariaDB EVENT objects) as the last schema scan collected them on the master and the replicas (monitoring-schema-events), compared with the master: per server the collection state (checked, unavailable, unsupported, not-checked) and, for a replica, the comparison (consistent, different, not-checked); per event its presence, status class (active, disabled, unknown) and definition CRC64 on each checked server, and its drifts (missing, extra, definition, definer, status). A server absent from an event's nodes was not checked: it is never reported missing. It never carries an event definition, schedule, comment or definer. Observational only: the schema drift signal is WARN0164. enabled is false, with no server and no event, when monitoring-schema-events is off. Requires db-show-schema (or cluster-sharding, through /schema).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSchema"
+                ],
+                "summary": "Retrieve the scheduled database event consistency of a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Scheduled database event consistency",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.EventSchemaView"
                         }
                     },
                     "403": {
@@ -15869,6 +16193,15 @@
                             "mydumper",
                             "xtrabackup",
                             "mariabackup",
+                            "pgdump",
+                            "pgbasebackup",
+                            "pgstandby",
+                            "pgreseed",
+                            "pgschemasync",
+                            "pgrestore",
+                            "pgreseedlogical",
+                            "pgwalarchive",
+                            "pgrestorelogical",
                             "errorlog",
                             "slowquery",
                             "sqlerrorlog",
@@ -16668,6 +17001,15 @@
                             "mydumper",
                             "xtrabackup",
                             "mariabackup",
+                            "pgdump",
+                            "pgbasebackup",
+                            "pgstandby",
+                            "pgreseed",
+                            "pgschemasync",
+                            "pgrestore",
+                            "pgreseedlogical",
+                            "pgwalarchive",
+                            "pgrestorelogical",
                             "errorlog",
                             "slowquery",
                             "sqlerrorlog",
@@ -19194,6 +19536,52 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/tools": {
+            "get": {
+                "description": "The command line tools found on this replication-manager for the cluster (database client, dump and binlog clients, mydumper, sysbench, restic) with their detected version; a tool that was not found is absent.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Local tools and their versions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "tool name to version",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/top": {
             "get": {
                 "description": "This endpoint retrieves the top metrics for the specified cluster.",
@@ -20792,7 +21180,7 @@
         },
         "/api/global/price": {
             "get": {
-                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
                 "produces": [
                     "application/json"
                 ],
@@ -20834,7 +21222,7 @@
         },
         "/api/global/price/{month}": {
             "get": {
-                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, stateful DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
+                "description": "The price of every cluster for the month, integrated per monitoring period: per cluster the partner, the sponsors and, per unit family (DBU, failover DBU, APU, BKU, BAU), plan, over-commit and under-commit in unit-months, unit price and EUR. Running month by default, a past month with /{month} (YYYY-MM). Requires global-admin-show.",
                 "produces": [
                     "application/json"
                 ],
@@ -21024,6 +21412,43 @@
                     },
                     "500": {
                         "description": "Error signing token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/me/units": {
+            "get": {
+                "description": "For every cluster the logged user sponsors or has access to, like an invoice: per unit family (DBU, failover DBU, APU, BKU, BAU) the units declared and, in unit-months so far, the reserved (plan, debit), the borrowed (over the plan, debit), the unused (under the plan, credit), the net, and the end-of-month projection; totals per unit kind and overall. On a Cloud18 instance each line also carries the amount in EUR at the cluster's unit price (+ debit, - credit) and its projection; elsewhere units only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Units consumed this month by the logged user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "No statement",
                         "schema": {
                             "type": "string"
                         }
@@ -22905,6 +23330,10 @@
                 "encryptionKey": {
                     "type": "string"
                 },
+                "encryptionKeyVersion": {
+                    "description": "EncryptionKeyVersion is the secret_store.json version of\ndb-servers-credential whose password encrypted the artifact (0 when\nunknown). A version number only, never the password: restore uses it\nto pick the right historic root password after a password change.",
+                    "type": "integer"
+                },
                 "endTime": {
                     "type": "string"
                 },
@@ -22913,6 +23342,9 @@
                 },
                 "id": {
                     "type": "integer"
+                },
+                "integrityAlgo": {
+                    "type": "string"
                 },
                 "metaFile": {
                     "type": "string"
@@ -22951,6 +23383,10 @@
                 },
                 "startTime": {
                     "type": "string"
+                },
+                "streamSize": {
+                    "description": "bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator",
+                    "type": "integer"
                 }
             }
         },
@@ -23814,6 +24250,10 @@
                 "datadir": {
                     "type": "string"
                 },
+                "dbProvisionError": {
+                    "description": "last app database auto-create refusal (#1870), \"\" once one goes through",
+                    "type": "string"
+                },
                 "failCount": {
                     "type": "integer"
                 },
@@ -23878,6 +24318,10 @@
                 "type": {
                     "type": "string"
                 },
+                "url": {
+                    "description": "https://\u003cprimary route cname\u003e/ once routed, else the internal http://host:port/",
+                    "type": "string"
+                },
                 "version": {
                     "type": "string"
                 },
@@ -23902,6 +24346,10 @@
                     "format": "float64"
                 },
                 "dbu": {
+                    "type": "number",
+                    "format": "float64"
+                },
+                "gwu": {
                     "type": "number",
                     "format": "float64"
                 },
@@ -23931,7 +24379,7 @@
             "type": "object",
             "properties": {
                 "accrued": {
-                    "description": "Accrued unit-seconds per family, kept on disk so a reload continues the month.",
+                    "description": "Accrued unit-seconds per family, kept on disk so a reload continues the month:\nplan, over, under, rate, planCost, overCost, underCredit.",
                     "type": "object",
                     "additionalProperties": {
                         "type": "array",
@@ -23993,6 +24441,98 @@
                 }
             }
         },
+        "cluster.EventSchemaDriftView": {
+            "type": "object",
+            "properties": {
+                "drift": {
+                    "type": "string"
+                },
+                "serverId": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaEventView": {
+            "type": "object",
+            "properties": {
+                "db": {
+                    "type": "string"
+                },
+                "drifts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaDriftView"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/cluster.EventSchemaNodeView"
+                    }
+                }
+            }
+        },
+        "cluster.EventSchemaNodeView": {
+            "type": "object",
+            "properties": {
+                "definitionCrc64": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "present": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaServerView": {
+            "type": "object",
+            "properties": {
+                "collectedAt": {
+                    "type": "integer"
+                },
+                "collection": {
+                    "type": "string"
+                },
+                "comparison": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "isMaster": {
+                    "type": "boolean"
+                },
+                "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.EventSchemaView": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "type": "boolean"
+                },
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaEventView"
+                    }
+                },
+                "servers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.EventSchemaServerView"
+                    }
+                }
+            }
+        },
         "cluster.GraphiteFilterList": {
             "type": "object",
             "properties": {
@@ -24033,6 +24573,14 @@
                 "currency": {
                     "type": "string"
                 },
+                "defaultPrices": {
+                    "description": "the instance's price list; each row carries the price its cluster applied",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.BillingPrices"
+                        }
+                    ]
+                },
                 "elapsedPct": {
                     "type": "number"
                 },
@@ -24047,9 +24595,6 @@
                 },
                 "monthCost": {
                     "type": "number"
-                },
-                "prices": {
-                    "$ref": "#/definitions/cluster.BillingPrices"
                 },
                 "projected": {
                     "type": "number"
@@ -24287,6 +24832,86 @@
                 }
             }
         },
+        "cluster.RollingUpgradePlan": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "currentImage": {
+                    "description": "prov-db-image as declared",
+                    "type": "string"
+                },
+                "currentIsLTS": {
+                    "type": "boolean"
+                },
+                "currentLine": {
+                    "type": "string"
+                },
+                "currentRelease": {
+                    "description": "the release the service definitions carry (prov-db-docker-img-resolved)",
+                    "type": "string"
+                },
+                "declaredAfter": {
+                    "description": "prov-db-image after the upgrade",
+                    "type": "string"
+                },
+                "flavor": {
+                    "type": "string"
+                },
+                "imageList": {
+                    "type": "string"
+                },
+                "mechanic": {
+                    "description": "\"upgrade\" (restart on the new image) or \"reprov\" (provision again + reseed)",
+                    "type": "string"
+                },
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "order": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "status": {
+                    "type": "string"
+                },
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "target": {
+                    "type": "string"
+                },
+                "targetImage": {
+                    "description": "the real release, repo:x.y.z",
+                    "type": "string"
+                },
+                "targetIsLTS": {
+                    "type": "boolean"
+                },
+                "targetLine": {
+                    "type": "string"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
         "cluster.SnapshotMetadataSummary": {
             "type": "object",
             "properties": {
@@ -24348,19 +24973,37 @@
                 "billable": {
                     "type": "number"
                 },
+                "cumulative": {
+                    "description": "month-to-date volume, not integrated (#1872)",
+                    "type": "boolean"
+                },
                 "family": {
                     "type": "string"
                 },
+                "freePlan": {
+                    "description": "the plan is a free allowance: no plan cost, no unused credit",
+                    "type": "boolean"
+                },
                 "monthCost": {
+                    "description": "= monthPlanCost + monthOverCost − monthUnderCredit",
                     "type": "number"
                 },
                 "monthOverCommit": {
                     "type": "number"
                 },
+                "monthOverCost": {
+                    "type": "number"
+                },
                 "monthPlan": {
                     "type": "number"
                 },
+                "monthPlanCost": {
+                    "type": "number"
+                },
                 "monthUnderCommit": {
+                    "type": "number"
+                },
+                "monthUnderCredit": {
                     "type": "number"
                 },
                 "overCommit": {
@@ -24369,14 +25012,44 @@
                 "overCommitPct": {
                     "type": "integer"
                 },
+                "overCost": {
+                    "description": "+ over-commit × price × (100+over%)/100",
+                    "type": "number"
+                },
                 "plan": {
+                    "type": "number"
+                },
+                "planCost": {
+                    "description": "plan × price, per month, at the last tick",
                     "type": "number"
                 },
                 "priced": {
                     "type": "boolean"
                 },
+                "projectedCost": {
+                    "type": "number"
+                },
+                "projectedOverCommit": {
+                    "type": "number"
+                },
+                "projectedOverCost": {
+                    "type": "number"
+                },
+                "projectedPlan": {
+                    "description": "Projection to the end of the month: each component as it stands at the last tick\ncarried over the time left (plan count of every tick, over-commit and under-commit\nprojected per unit), then priced: projectedCost = monthCost + rate × time left.",
+                    "type": "number"
+                },
+                "projectedPlanCost": {
+                    "type": "number"
+                },
+                "projectedUnderCommit": {
+                    "type": "number"
+                },
+                "projectedUnderCredit": {
+                    "type": "number"
+                },
                 "rate": {
-                    "description": "EUR per month at the last tick",
+                    "description": "EUR per month at the last tick = planCost + overCost − underCredit",
                     "type": "number"
                 },
                 "underCommit": {
@@ -24384,6 +25057,10 @@
                 },
                 "underCommitPct": {
                     "type": "integer"
+                },
+                "underCredit": {
+                    "description": "− under-commit × price × under%/100",
+                    "type": "number"
                 },
                 "unit": {
                     "type": "string"
@@ -24474,6 +25151,14 @@
                     "description": "AppConfigVersion is the explicit persisted migration marker stamped by\ncluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)\ncontent; AppConfigVersionV2 means content already matches the V1 -\u003e V2\nmigration baseline and does not need re-canonicalizing for shape alone.",
                     "type": "integer"
                 },
+                "appDbAutoCreate": {
+                    "description": "AppDbAutoCreate (#1870): the app asks the cluster for its own schema, user and password\n({{app.db.*}} template keys); created at provision, never on foreign objects.",
+                    "type": "boolean"
+                },
+                "appDbOwned": {
+                    "description": "AppDbOwned: the ownership mark, set by the provision that created the schema and the user;\nwithout it an existing schema or user is never touched (APPERR008).",
+                    "type": "boolean"
+                },
                 "appDbPass": {
                     "type": "string"
                 },
@@ -24489,7 +25174,15 @@
                 "appHostsIpv6": {
                     "type": "string"
                 },
+                "appMonitorMode": {
+                    "description": "AppMonitorMode: how an app without a route is probed. \"port\" (default) connects to\napp-port over TCP; \"ping\" sends an ICMP echo to the app host, for a process that\nlistens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.",
+                    "type": "string"
+                },
                 "appPort": {
+                    "type": "string"
+                },
+                "appRandomPassword": {
+                    "description": "generated when the template references {{app.randompassword}}, stored encrypted",
                     "type": "string"
                 },
                 "appS3Provider": {
@@ -24506,6 +25199,10 @@
                     "type": "string"
                 },
                 "provAppAgentsFailover": {
+                    "type": "string"
+                },
+                "provAppConfigurator": {
+                    "description": "engine whose moduleset (share/opensvc/moduleset_\u003cengine\u003e.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none",
                     "type": "string"
                 },
                 "provAppCpuCores": {
@@ -24545,6 +25242,10 @@
                     "type": "string"
                 },
                 "provAppSizingMode": {
+                    "type": "string"
+                },
+                "provAppStartTimeout": {
+                    "description": "om3 start_timeout and pull_timeout of the app container (10m, 1h); empty = the cluster default",
                     "type": "string"
                 },
                 "provAppTemplate": {
@@ -24752,6 +25453,9 @@
                 "endpoint": {
                     "type": "string"
                 },
+                "gid": {
+                    "type": "string"
+                },
                 "mountdir": {
                     "type": "string"
                 },
@@ -24765,6 +25469,10 @@
                     "type": "string"
                 },
                 "secretkey": {
+                    "type": "string"
+                },
+                "uid": {
+                    "description": "Uid / Gid: the owner the mounted files are presented as inside the container\n(the mount sidecar's --uid/--gid); empty = 33 (www-data), the historical value.",
                     "type": "string"
                 },
                 "volumedir": {
@@ -24887,6 +25595,12 @@
         "config.Volume": {
             "type": "object",
             "properties": {
+                "dirperm": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -24894,6 +25608,10 @@
                     "type": "string"
                 },
                 "size": {
+                    "type": "string"
+                },
+                "user": {
+                    "description": "Owner of the volume directories (OpenSVC volume user/group/dirperm): images that run as a\nnon-root user (rustfs 10001, frappe 1000) cannot write a root-owned directory (#1870).",
                     "type": "string"
                 },
                 "volumedir": {
@@ -25063,6 +25781,9 @@
                 "arbitrationReadTimout": {
                     "type": "integer"
                 },
+                "arbitrationVerdictStreak": {
+                    "type": "integer"
+                },
                 "arbitratorBindAddress": {
                     "type": "string"
                 },
@@ -25146,6 +25867,9 @@
                 },
                 "backupDiskTresholdWarn": {
                     "type": "integer"
+                },
+                "backupEncryption": {
+                    "type": "boolean"
                 },
                 "backupEstimateSize": {
                     "type": "boolean"
@@ -25585,6 +26309,10 @@
                 "cloud18ExternalSysOpsStatus": {
                     "type": "string"
                 },
+                "cloud18GatewayBandwidthMbit": {
+                    "description": "GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.\nCloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with\ncloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).",
+                    "type": "string"
+                },
                 "cloud18GatewayDomainName": {
                     "type": "string"
                 },
@@ -25635,6 +26363,16 @@
                     "type": "number"
                 },
                 "cloud18MarketplaceDbuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceGwuFreeUnits": {
+                    "description": "GWU for the BO (#1872): the first cloud18-marketplace-gwu-free-units GWU of BANDWIDTH (10 = 1 Gb/s) are free\nfor every cluster; bandwidth held above them is reported on top (only possible where the gateways give more).",
+                    "type": "integer"
+                },
+                "cloud18MarketplaceGwuPrice": {
+                    "type": "number"
+                },
+                "cloud18MarketplaceGwuUnitMbit": {
                     "type": "number"
                 },
                 "cloud18MarketplaceOvercommitPricePct": {
@@ -25693,6 +26431,9 @@
                 },
                 "cloud18SalesUnsubscribeScript": {
                     "type": "string"
+                },
+                "cloud18SelfServiceCacheSeconds": {
+                    "type": "integer"
                 },
                 "cloud18SelfServiceClusters": {
                     "type": "boolean"
@@ -26675,6 +27416,15 @@
                 "monitoringSchemaColumns": {
                     "type": "boolean"
                 },
+                "monitoringSchemaEvents": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaEventsMax": {
+                    "type": "integer"
+                },
+                "monitoringSchemaEventsPageSize": {
+                    "type": "integer"
+                },
                 "monitoringSchemaIgnoreTables": {
                     "type": "string"
                 },
@@ -26906,6 +27656,9 @@
                 "provAppSizingMode": {
                     "type": "string"
                 },
+                "provAppStartTimeout": {
+                    "type": "string"
+                },
                 "provAppTemplateRepo": {
                     "type": "string"
                 },
@@ -27045,6 +27798,9 @@
                 "provDbDockerImg": {
                     "type": "string"
                 },
+                "provDbDockerImgResolved": {
+                    "type": "string"
+                },
                 "provDbDockerJemallocPreload": {
                     "type": "string"
                 },
@@ -27055,6 +27811,9 @@
                     "type": "boolean"
                 },
                 "provDbDockerTmpfsSize": {
+                    "type": "string"
+                },
+                "provDbDockerXtrabackupImg": {
                     "type": "string"
                 },
                 "provDbDomain": {
@@ -27121,6 +27880,9 @@
                 "provDbResourceRaisedOverPlanScript": {
                     "type": "string"
                 },
+                "provDbRunAsUid": {
+                    "type": "string"
+                },
                 "provDbServiceType": {
                     "type": "string"
                 },
@@ -27128,6 +27890,9 @@
                     "type": "boolean"
                 },
                 "provDbStartScript": {
+                    "type": "string"
+                },
+                "provDbStartTimeout": {
                     "type": "string"
                 },
                 "provDbStopScript": {
@@ -27140,10 +27905,16 @@
                     "description": "scale-down floor: auto-shrink never under floor(plan x (1 - pct/100)) DBU/node, min 1 -- the pendant of prov-db-overcommit-pct",
                     "type": "integer"
                 },
+                "provDbUpgradeMajorReprov": {
+                    "type": "boolean"
+                },
                 "provDbVolumeData": {
                     "type": "string"
                 },
                 "provDbVolumeDocker": {
+                    "type": "string"
+                },
+                "provDbVolumeUid": {
                     "type": "string"
                 },
                 "provDockerDaemonPrivate": {
@@ -27153,6 +27924,9 @@
                     "type": "string"
                 },
                 "provEventTimeout": {
+                    "type": "integer"
+                },
+                "provGatewayUnits": {
                     "type": "integer"
                 },
                 "provKubeImageForcePull": {
@@ -27276,6 +28050,9 @@
                     "type": "boolean"
                 },
                 "provProxyStartScript": {
+                    "type": "string"
+                },
+                "provProxyStartTimeout": {
                     "type": "string"
                 },
                 "provProxyStopScript": {
@@ -27560,7 +28337,13 @@
                 "replicationMultisourceHeadClusters": {
                     "type": "string"
                 },
+                "replicationPgLogicalDdl": {
+                    "type": "boolean"
+                },
                 "replicationSourceName": {
+                    "type": "string"
+                },
+                "replicationSslCa": {
                     "type": "string"
                 },
                 "replicationUseSsl": {
@@ -27592,6 +28375,9 @@
                 },
                 "resourceManagerRatioDbu": {
                     "type": "string"
+                },
+                "resourceManagerSmtGain": {
+                    "type": "number"
                 },
                 "scaleDownConfigInPlanSpeed": {
                     "description": "sustain duration before scaling DOWN a server's config resources within the plan. Default 5m",
@@ -28589,6 +29375,10 @@
         "server.Heartbeat": {
             "type": "object",
             "properties": {
+                "apiUrl": {
+                    "description": "APIURL is the answering instance's API URL, the one it writes as\nREPLICATION_MANAGER_URL: its peer offers it to init containers as the DR\nfallback (REPLICATION_MANAGER_URL_DR).",
+                    "type": "string"
+                },
                 "cluster": {
                     "type": "string"
                 },
@@ -28615,6 +29405,38 @@
                 },
                 "uuid": {
                     "type": "string"
+                }
+            }
+        },
+        "server.IOPSCalibration": {
+            "type": "object",
+            "properties": {
+                "agents": {
+                    "type": "integer"
+                },
+                "applied": {
+                    "type": "boolean"
+                },
+                "dir": {
+                    "type": "string"
+                },
+                "durationSecond": {
+                    "type": "integer"
+                },
+                "hostIops": {
+                    "type": "number"
+                },
+                "infraIops": {
+                    "type": "number"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "readsPerSecond": {
+                    "type": "number"
+                },
+                "writesPerSecond": {
+                    "type": "number"
                 }
             }
         },
@@ -28759,9 +29581,83 @@
                 }
             }
         },
+        "server.SMTCalibration": {
+            "type": "object",
+            "properties": {
+                "applied": {
+                    "type": "boolean"
+                },
+                "cores": {
+                    "type": "integer"
+                },
+                "cpuEventsPerSecCores": {
+                    "type": "number"
+                },
+                "cpuEventsPerSecThreads": {
+                    "type": "number"
+                },
+                "cpuGain": {
+                    "type": "number"
+                },
+                "durationSeconds": {
+                    "type": "integer"
+                },
+                "gain": {
+                    "type": "number"
+                },
+                "memGain": {
+                    "type": "number"
+                },
+                "memMiBPerSecCores": {
+                    "type": "number"
+                },
+                "memMiBPerSecThreads": {
+                    "type": "number"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "threads": {
+                    "type": "integer"
+                }
+            }
+        },
+        "server.SelfServicePrices": {
+            "type": "object",
+            "properties": {
+                "apu": {
+                    "type": "number"
+                },
+                "bau": {
+                    "type": "number"
+                },
+                "bku": {
+                    "type": "number"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "dbu": {
+                    "type": "number"
+                },
+                "overcommitPricePct": {
+                    "description": "price of a unit above the plan, in % of the unit price",
+                    "type": "integer"
+                },
+                "pricingMode": {
+                    "type": "string"
+                }
+            }
+        },
         "server.SelfServiceStatus": {
             "type": "object",
             "properties": {
+                "appTemplates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "borrowed": {
                     "description": "Borrowed: the pool could not guarantee the units but the over-commit pot can lend them\n(cloud18-self-service-clusters-can-borrow): the creation goes through without guarantee.",
                     "type": "boolean"
@@ -28781,8 +29677,15 @@
                 "defaultDbu": {
                     "type": "integer"
                 },
+                "domain": {
+                    "description": "The infrastructure identity and the app templates it can deploy, so a client\nplans an app and renders its URL (the template's primary route CNAME is\n\u003capp\u003e.\u003ccluster\u003e.\u003csubDomain\u003e-\u003czone\u003e.\u003cdomain\u003e.cloud18.io) before creating anything.",
+                    "type": "string"
+                },
                 "enabled": {
                     "type": "boolean"
+                },
+                "gatewayDomain": {
+                    "type": "string"
                 },
                 "identity": {
                     "type": "string"
@@ -28803,11 +29706,23 @@
                 "pool": {
                     "$ref": "#/definitions/server.InfraUnitPool"
                 },
+                "poolBlocked": {
+                    "description": "PoolBlocked: Enabled is false because of the pool only (the verdict a quote re-takes\nfor the requested units), never compared by its wording.",
+                    "type": "boolean"
+                },
                 "poolNote": {
                     "type": "string"
                 },
                 "poolOk": {
                     "type": "boolean"
+                },
+                "prices": {
+                    "description": "Prices: this infrastructure's unit price list, so a client quotes a cluster from the\npartner's own figures (#1963). A 0 price means the unit is not priced here.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/server.SelfServicePrices"
+                        }
+                    ]
                 },
                 "reason": {
                     "type": "string"
@@ -28815,8 +29730,14 @@
                 "remaining": {
                     "type": "integer"
                 },
+                "subDomain": {
+                    "type": "string"
+                },
                 "used": {
                     "type": "integer"
+                },
+                "zone": {
+                    "type": "string"
                 }
             }
         },
@@ -29165,12 +30086,20 @@
                 "dbuMem": {
                     "type": "number"
                 },
+                "gwu": {
+                    "description": "gateway bandwidth consumed, in GWU (#1872)",
+                    "type": "number"
+                },
                 "planApu": {
                     "description": "the cluster's APU reservation contract (prov-service-plan-apu)",
                     "type": "number"
                 },
                 "planDbu": {
                     "description": "the cluster's DBU reservation contract (prov-service-plan-dbu)",
+                    "type": "number"
+                },
+                "planGwu": {
+                    "description": "its GWU plan: gateway capacity / clusters present, or pinned",
                     "type": "number"
                 },
                 "planStatefulDbu": {
@@ -29218,6 +30147,10 @@
                 "capacityDbu": {
                     "type": "number"
                 },
+                "capacityGwu": {
+                    "description": "the same capacity in GWU (1 GWU = cloud18-marketplace-gwu-unit-mbit Mb/s)",
+                    "type": "number"
+                },
                 "clusters": {
                     "type": "array",
                     "items": {
@@ -29229,6 +30162,20 @@
                 },
                 "consumedDbu": {
                     "type": "number"
+                },
+                "consumedGwu": {
+                    "description": "Σ clusters",
+                    "type": "number"
+                },
+                "gatewayCapacityMbit": {
+                    "type": "number"
+                },
+                "gatewayDomains": {
+                    "description": "Gateways: the shared uplinks the clusters' traffic is tracked against (#1872), Mb/s.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "ledger": {
                     "description": "the physical ledger: plan pot + over-commit pot, every unit from ONE metal",
@@ -29258,6 +30205,10 @@
                     "type": "number"
                 },
                 "usableDbu": {
+                    "type": "number"
+                },
+                "usableGwu": {
+                    "description": "= capacity: the uplink has no quota",
                     "type": "number"
                 }
             }
