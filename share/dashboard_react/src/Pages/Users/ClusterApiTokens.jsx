@@ -26,6 +26,9 @@ function ClusterApiTokens({ selectedCluster }) {
   } = useSelector((state) => state)
   const [toRevoke, setToRevoke] = useState(null)
   const clusterName = selectedCluster?.name
+  // Only a list loaded for this very cluster: another cluster's list stays hidden
+  // while this one loads, and is never shown after this one fails.
+  const tokens = clusterApiTokens?.clusterName === clusterName ? clusterApiTokens.tokens : []
 
   useEffect(() => {
     if (clusterName) {
@@ -100,7 +103,7 @@ function ClusterApiTokens({ selectedCluster }) {
         allowToggle={false}
         className={styles.accordion}
         panelSX={{ overflowX: 'auto', p: 0 }}
-        body={<DataTable key='cluster-api-tokens' data={clusterApiTokens || []} columns={columns} className={styles.table} />}
+        body={<DataTable key='cluster-api-tokens' data={tokens} columns={columns} className={styles.table} />}
       />
       {toRevoke && (
         <ConfirmModal

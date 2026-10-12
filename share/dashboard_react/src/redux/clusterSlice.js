@@ -6,7 +6,9 @@ import { get, isEqual } from 'lodash'
 const pendingKeySelectors = {
   'cluster/getJobs': (arg) => arg?.clusterName,
   'cluster/getDatabaseService': (arg) => arg?.serviceName,
-  'cluster/getAppService': (arg) => arg?.serviceName
+  'cluster/getAppService': (arg) => arg?.serviceName,
+  // per cluster: a load for B is never dropped while A's is still in flight (#1983)
+  'cluster/getClusterApiTokens': (arg) => arg?.clusterName
 }
 
 const getThunkTypePrefix = (actionType) => actionType.replace(/\/(pending|fulfilled|rejected)$/, '')
@@ -2778,7 +2780,9 @@ const initialState = {
   pendingThunks: {},
   error: null,
   apiTokens: [],
-  clusterApiTokens: [],
+  // The tokens of ONE cluster, tagged with its name (#1983): a list loaded for another
+  // cluster, or one whose load failed, is never shown under this cluster's panel.
+  clusterApiTokens: { clusterName: '', tokens: [] },
   clusterApps: null,
   clusterAppStates: null,
   clusterData: null,
@@ -2883,7 +2887,15 @@ export const clusterSlice = createSlice({
       state.apiTokens = Array.isArray(action.payload?.data) ? action.payload.data : []
     })
     builder.addCase(getClusterApiTokens.fulfilled, (state, action) => {
-      state.clusterApiTokens = Array.isArray(action.payload?.data) ? action.payload.data : []
+      state.clusterApiTokens = {
+        clusterName: action.meta.arg.clusterName,
+        tokens: Array.isArray(action.payload?.data) ? action.payload.data : []
+      }
+    })
+    builder.addCase(getClusterApiTokens.rejected, (state, action) => {
+      if (state.clusterApiTokens.clusterName === action.meta.arg.clusterName) {
+        state.clusterApiTokens = { clusterName: action.meta.arg.clusterName, tokens: [] }
+      }
     })
     builder.addCase(preserveVariable.fulfilled, (state, action) => {
       // Refresh the variables after preserve/accept/clear action
