@@ -30,7 +30,10 @@ RUN set -eux; \
 # there hides it, the entrypoint copies what the volume lacks (columnstore-entrypoint.sh)
 # the same for /etc/columnstore (Columnstore.xml, CMAPI's configuration)
 RUN cp -a /var/lib/columnstore /usr/share/columnstore/var-lib-columnstore && \
-    cp -a /etc/columnstore /usr/share/columnstore/etc-columnstore
+    cp -a /etc/columnstore /usr/share/columnstore/etc-columnstore && \
+    # CMAPI runs as mysql (columnstore-entrypoint.sh) and writes its self-signed
+    # certificate next to its code at first start
+    chown -R mysql:mysql /usr/share/columnstore/cmapi/cmapi_server
 
 # ColumnStore's processes before the server, without systemd (columnstore-entrypoint.sh)
 COPY columnstore-entrypoint.sh /usr/local/bin/
