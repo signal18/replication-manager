@@ -26,5 +26,12 @@ RUN set -eux; \
     rm -f /usr/bin/systemctl /tmp/cmapi.deb; \
     rm -rf /var/lib/apt/lists/*
 
+# ColumnStore's processes before the server, without systemd (columnstore-entrypoint.sh)
+COPY columnstore-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/columnstore-entrypoint.sh
+
 # 3306 SQL, 8600-8630 8700 8800 ColumnStore inter-node, 8640 CMAPI
 EXPOSE 3306 8600-8630 8640 8700 8800
+
+ENTRYPOINT ["columnstore-entrypoint.sh"]
+CMD ["mariadbd"]

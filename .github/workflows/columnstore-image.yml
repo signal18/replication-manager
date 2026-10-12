@@ -89,17 +89,22 @@ jobs:
             ls /usr/lib/mysql/plugin/ha_columnstore.so
             dpkg -l mariadb-plugin-columnstore mariadb-columnstore-cmapi | tail -2
             ls /usr/bin/mcsSetConfig'
-          # the server starts and loads the engine
-          docker run -d --name cs -e MARIADB_ROOT_PASSWORD=smoke mariadb-columnstore:test --plugin-load-add=ha_columnstore.so --plugin-maturity=beta
-          for i in $(seq 1 60); do
+          # the server starts with ColumnStore's processes, and a ColumnStore table works
+          docker run -d --name cs -e MARIADB_ROOT_PASSWORD=smoke mariadb-columnstore:test
+          for i in $(seq 1 90); do
             if docker exec cs mariadb -uroot -psmoke -e 'SELECT 1' >/dev/null 2>&1; then break; fi
             sleep 2
           done
-          docker exec cs mariadb -uroot -psmoke -N -e "SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME='Columnstore'" | tee /tmp/status
-          # the lines that tell why, from the whole log (the tail is install-db's generic advice)
-          docker logs cs 2>&1 | grep -i -E "error|columnstore|plugin|abort|\\[warning\\]" | head -60 || true
+          ok=0
+          docker exec cs mariadb -uroot -psmoke -N -e "
+            SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME='Columnstore';
+            CREATE DATABASE smoke;
+            CREATE TABLE smoke.t (id INT, v VARCHAR(16)) ENGINE=ColumnStore;
+            INSERT INTO smoke.t VALUES (1,'a'),(2,'b');
+            SELECT COUNT(*) FROM smoke.t;" | tee /tmp/status && ok=1
+          docker logs cs 2>&1 | grep -i -E "columnstore-entrypoint|error|abort" | head -40 || true
           docker rm -f cs
-          grep -q ACTIVE /tmp/status
+          [ "$ok" = 1 ] && grep -q ACTIVE /tmp/status && tail -1 /tmp/status | grep -qx 2
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
