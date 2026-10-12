@@ -96,7 +96,8 @@ jobs:
             sleep 2
           done
           docker exec cs mariadb -uroot -psmoke -N -e "SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME='Columnstore'" | tee /tmp/status
-          docker logs cs 2>&1 | tail -20
+          # the lines that tell why, from the whole log (the tail is install-db's generic advice)
+          docker logs cs 2>&1 | grep -i -E "error|columnstore|plugin|abort|\\[warning\\]" | head -60 || true
           docker rm -f cs
           grep -q ACTIVE /tmp/status
 
