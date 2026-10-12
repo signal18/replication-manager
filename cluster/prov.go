@@ -20,6 +20,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -333,6 +334,8 @@ func (cluster *Cluster) Unprovision() error {
 	defer cluster.provisioningMutex.Unlock()
 
 	cluster.StateMachine.SetFailoverState()
+	// The failover state stops the refresh and topology detection: never left behind (#1994).
+	defer cluster.StateMachine.RemoveFailoverState()
 	// Unprovision proxies first, since they are dependent on databases
 	for _, prx := range cluster.Proxies {
 		/*	prx, ok := pri.(*Proxy)
@@ -389,17 +392,29 @@ func (cluster *Cluster) Unprovision() error {
 		}
 		cluster.UnprovisionDatabaseScript(server)
 	}
+	allGone := true
 	for _, server := range cluster.Servers {
 		err := <-cluster.errorChan
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
-		} else {
+		switch {
+		case err == nil:
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
 			cluster.ForgetInstance(server) // clean slate: datadir, crash events, tracked state (cookies included)
+		case orchestratorNotFound(err):
+			// already gone: as removed (a cluster whose provisioning failed, a second unprovision)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision of database %s: not found in the orchestrator, already removed", cluster.Name+"/svc/"+server.Name)
+			cluster.ForgetInstance(server)
+		default:
+			allGone = false
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
 		}
 	}
-	err := cluster.WaitClusterStop()
-	if err == nil {
+	// Every database service answered removed or not found: the cluster is down, the
+	// orchestrator said so. Waiting on monitor states cannot end anyway while the
+	// failover state stops the refresh and topology detection (#1994); the state wait
+	// stays for a removal that failed.
+	if allGone {
+		cluster.ResetStates()
+	} else if err := cluster.WaitClusterStop(); err == nil {
 		cluster.ResetStates()
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to wait for all databases down : %s", err)
@@ -1548,4 +1563,17 @@ func (server *ServerMonitor) placementNode() string {
 		return wa
 	}
 	return server.Agent
+}
+
+// orchestratorNotFound reports whether an orchestrator answered that the object does not
+// exist: OpenSVC HTTP 404 ("object not found"), Kubernetes NotFound. A service already
+// gone counts as removed for an unprovision (#1994).
+func orchestratorNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if apierrors.IsNotFound(err) {
+		return true
+	}
+	return strings.Contains(err.Error(), "status code: 404")
 }
