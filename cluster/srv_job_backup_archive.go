@@ -12,9 +12,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/sirupsen/logrus"
 )
 
 // backup-archive-remove-original (#1987): once the archive snapshot of a logical or
@@ -47,7 +49,7 @@ func (server *ServerMonitor) removeArchivedOriginal(backtype backupmgr.BackupMet
 		return
 	}
 	if reason := server.archivedOriginalRefusal(dest, completed, encrypted, snapshotID); reason != "" {
-		server.setArchiveRemoveOriginalRefusal(backtype, reason)
+		server.setArchiveRemoveOriginalRefusal(backtype, dest, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Keeping original backup %s of %s: %s", dest, server.URL, reason)
 		return
 	}
@@ -60,11 +62,11 @@ func (server *ServerMonitor) removeArchivedOriginal(backtype backupmgr.BackupMet
 	}
 	if err != nil {
 		reason := fmt.Sprintf("remove %s: %s", dest, err)
-		server.setArchiveRemoveOriginalRefusal(backtype, reason)
+		server.setArchiveRemoveOriginalRefusal(backtype, dest, reason)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Keeping original backup of %s: %s", server.URL, reason)
 		return
 	}
-	server.setArchiveRemoveOriginalRefusal(backtype, "")
+	server.setArchiveRemoveOriginalRefusal(backtype, "", "")
 
 	server.backupMetaMutex.Lock()
 	meta.OriginalRemoved = true
@@ -86,54 +88,108 @@ func (server *ServerMonitor) archivedOriginalRefusal(dest string, completed, enc
 	if !completed {
 		return "the backup is not completed"
 	}
-	if base := server.GetMyBackupDirectoryPath(); !isPathWithinBase(base, dest) {
-		return fmt.Sprintf("%s is outside the backup directory %s", dest, base)
+	if base := server.GetMyBackupDirectoryPath(); !isStrictlyWithinBase(base, dest) {
+		return fmt.Sprintf("%s is not an entry of the backup directory %s", dest, base)
 	}
 	paths := []string{dest}
 	if encrypted {
 		paths = append(paths, backupmgr.IntegritySidecarPath(dest))
 	}
-	for _, path := range paths {
-		found, err := cluster.snapshotPathExists(snapshotID, path)
-		if err != nil {
-			return fmt.Sprintf("cannot list snapshot %s: %s", resticLogSnapshotID(cluster, snapshotID), err)
-		}
-		if !found {
-			return fmt.Sprintf("snapshot %s does not hold %s", resticLogSnapshotID(cluster, snapshotID), path)
-		}
+	missing, err := cluster.snapshotMissingPath(snapshotID, paths)
+	if err != nil {
+		return fmt.Sprintf("cannot list snapshot %s: %s", resticLogSnapshotID(cluster, snapshotID), err)
+	}
+	if missing != "" {
+		return fmt.Sprintf("snapshot %s does not hold %s", resticLogSnapshotID(cluster, snapshotID), missing)
 	}
 	return ""
 }
 
-func (server *ServerMonitor) setArchiveRemoveOriginalRefusal(backtype backupmgr.BackupMethod, reason string) {
+// isStrictlyWithinBase reports whether target lies below baseDir, never baseDir itself:
+// the original removed or fetched is one entry of the backup directory, and removing the
+// directory would take every backup, binary log copy and meta file of the server with it.
+func isStrictlyWithinBase(baseDir, target string) bool {
+	if !isPathWithinBase(baseDir, target) {
+		return false
+	}
+	baseAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return false
+	}
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return false
+	}
+	return filepath.Clean(baseAbs) != filepath.Clean(targetAbs)
+}
+
+// snapshotMissingPath lists paths in the snapshot with one restic ls and returns the first
+// that it does not hold, "" when it holds them all.
+func (cluster *Cluster) snapshotMissingPath(snapshotID string, paths []string) (string, error) {
+	if cluster.ResticManager == nil {
+		return "", fmt.Errorf("restic manager not initialized")
+	}
+	entries, err := cluster.ResticManager.ListSnapshotWithLogLevel(snapshotID, paths, true, logrus.DebugLevel)
+	if err != nil {
+		return "", err
+	}
+	for _, path := range paths {
+		path = filepath.Clean(path)
+		found := false
+		for _, e := range entries {
+			if e.Path == path || strings.HasPrefix(e.Path, path+"/") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return path, nil
+		}
+	}
+	return "", nil
+}
+
+// archiveRemoveOriginalRefusal is why the original at Dest was kept after its archive push.
+type archiveRemoveOriginalRefusal struct {
+	Dest   string
+	Reason string
+}
+
+func (server *ServerMonitor) setArchiveRemoveOriginalRefusal(backtype backupmgr.BackupMethod, dest, reason string) {
 	server.backupMetaMutex.Lock()
 	defer server.backupMetaMutex.Unlock()
+	refusal := archiveRemoveOriginalRefusal{Dest: dest, Reason: reason}
 	switch backtype {
 	case backupmgr.BackupMethodLogical:
-		server.archiveRemoveOriginalRefusalLogical = reason
+		server.archiveRemoveOriginalRefusalLogical = refusal
 	case backupmgr.BackupMethodPhysical:
-		server.archiveRemoveOriginalRefusalPhysical = reason
+		server.archiveRemoveOriginalRefusalPhysical = refusal
 	}
 }
 
 // checkArchiveRemoveOriginalStates, every tick: WARN0238 for each server whose last
 // original could not be removed after its archive push, while backup-archive-remove-original
-// is on.
+// is on. A refusal is dropped when the switch is off, and once its original is no longer on
+// disk (deleted, purged, or removed by a later run): the state follows what is observed.
 func (cluster *Cluster) checkArchiveRemoveOriginalStates() {
-	if !cluster.Conf.BackupArchiveRemoveOriginal {
-		return
-	}
 	for _, s := range cluster.Servers {
 		if s == nil {
 			continue
 		}
 		s.backupMetaMutex.Lock()
 		var reasons []string
-		if r := s.archiveRemoveOriginalRefusalLogical; r != "" {
-			reasons = append(reasons, "logical: "+r)
-		}
-		if r := s.archiveRemoveOriginalRefusalPhysical; r != "" {
-			reasons = append(reasons, "physical: "+r)
+		for _, r := range []struct {
+			method  string
+			refusal *archiveRemoveOriginalRefusal
+		}{{"logical", &s.archiveRemoveOriginalRefusalLogical}, {"physical", &s.archiveRemoveOriginalRefusalPhysical}} {
+			if r.refusal.Reason == "" {
+				continue
+			}
+			if !cluster.Conf.BackupArchiveRemoveOriginal || !fileExists(r.refusal.Dest) {
+				*r.refusal = archiveRemoveOriginalRefusal{}
+				continue
+			}
+			reasons = append(reasons, r.method+": "+r.refusal.Reason)
 		}
 		s.backupMetaMutex.Unlock()
 		if len(reasons) > 0 {
@@ -166,6 +222,9 @@ func (cluster *Cluster) restoreArchivedOriginal(src *ServerMonitor, backtype bac
 		return false
 	}
 
+	// One fetch at a time per server: a second caller waits here, then finds dest present.
+	// dest only ever appears whole (rename out of the work directory), so a present dest
+	// is a complete artifact, never a leftover of an interrupted fetch.
 	src.archiveRestoreMutex.Lock()
 	defer src.archiveRestoreMutex.Unlock()
 	if fileExists(dest) {
@@ -185,24 +244,34 @@ func (cluster *Cluster) restoreArchivedOriginal(src *ServerMonitor, backtype bac
 func (server *ServerMonitor) fetchArchivedOriginal(dest, snapshotID string, size int64, encrypted bool) error {
 	cluster := server.ClusterGroup
 	base := server.GetMyBackupDirectory()
-	if !isPathWithinBase(base, dest) {
-		return fmt.Errorf("%s is outside the backup directory %s", dest, base)
+	if !isStrictlyWithinBase(base, dest) {
+		return fmt.Errorf("%s is not an entry of the backup directory %s", dest, base)
 	}
+	// Measured now, not from the cached disk stats; no measure, no fetch (F3).
 	if size > 0 {
-		if stat, err := cluster.GetDiskStat(base); err == nil && stat.Free < uint64(size) {
-			return fmt.Errorf("%d bytes free in %s, the backup needs %d", stat.Free, base, size)
+		usage, err := disk.Usage(base)
+		if err != nil {
+			return fmt.Errorf("free space of %s: %w", base, err)
+		}
+		if usage.Free < uint64(size) {
+			return fmt.Errorf("%d bytes free in %s, the backup needs %d", usage.Free, base, size)
 		}
 	}
 	paths := []string{dest}
 	if encrypted {
 		paths = append(paths, backupmgr.IntegritySidecarPath(dest))
 	}
-	work, err := os.MkdirTemp(base, ".archive-restore-")
+	work, err := os.MkdirTemp(base, strings.TrimSuffix(archiveRestoreWorkDirPattern, "*"))
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(work)
-	if err := cluster.ResticManager.RestoreSnapshotSyncWithOptions(backupmgr.ResticRestoreOption{SnapshotID: snapshotID, TargetDir: work, Include: paths}); err != nil {
+	// restic reads --include as a pattern: escape the glob characters a path may hold.
+	include := make([]string, len(paths))
+	for i, path := range paths {
+		include[i] = escapeResticPattern(path)
+	}
+	if err := cluster.ResticManager.RestoreSnapshotSyncWithOptions(backupmgr.ResticRestoreOption{SnapshotID: snapshotID, TargetDir: work, Include: include}); err != nil {
 		return err
 	}
 	// Sidecar first: an artifact never appears without it.
@@ -213,3 +282,20 @@ func (server *ServerMonitor) fetchArchivedOriginal(dest, snapshotID string, size
 	}
 	return nil
 }
+
+// escapeResticPattern makes path match itself only as a restic include/exclude pattern.
+func escapeResticPattern(path string) string {
+	var b strings.Builder
+	for _, r := range path {
+		switch r {
+		case '\\', '*', '?', '[', ']':
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// archiveRestoreWorkDirPattern excludes a fetch work directory from the scheduled push,
+// which snapshots the whole backup directory.
+const archiveRestoreWorkDirPattern = ".archive-restore-*"

@@ -10,7 +10,9 @@ default `false`, per cluster, switchable (`SwitchBackupArchiveRemoveOriginal`,
 
 Code: `cluster/srv_job_backup_archive.go`; tests in `srv_job_backup_archive_test.go`
 run against a real restic binary and a temporary local repository (skipped
-without `restic` in `PATH`).
+without `restic` in `PATH`). The GitHub workflows run no Go tests today, so these
+run only where `go test` is run by hand, with restic installed; the regtest
+`testBackupArchiveRemoveOriginal` is the release gate (T13).
 
 ## Removal
 
@@ -33,17 +35,22 @@ is on:
 2. Already removed, or `Dest` missing: nothing to do.
 3. `archivedOriginalRefusal` — the gate. Any reason keeps the original:
    - `!Completed`;
-   - `Dest` outside `GetMyBackupDirectoryPath()` (`isPathWithinBase`);
-   - `snapshotPathExists(snapshotID, Dest)` false or error;
-   - encrypted (`meta.Encrypted` or `.enc`/`.tar.enc` suffix):
-     `snapshotPathExists(snapshotID, IntegritySidecarPath(Dest))` false or error.
+   - `Dest` not a strict descendant of `GetMyBackupDirectoryPath()`
+     (`isStrictlyWithinBase`: `isPathWithinBase` accepts the directory itself,
+     and a scheduled push snapshots that directory, so the snapshot check alone
+     would let `Dest == <backup dir>` through and `os.RemoveAll` would take every
+     backup, binary log copy and meta file of the server);
+   - `snapshotMissingPath` reports `Dest` missing, or the listing fails;
+   - encrypted (`meta.Encrypted` or `.enc`/`.tar.enc` suffix): the same for
+     `IntegritySidecarPath(Dest)`.
 4. Remove with `removeBackupArtifactWithSidecar` (encrypted, sidecar first) or
    `os.RemoveAll`.
 5. `meta.OriginalRemoved = true`, meta file rewritten under the same
    current/ad-hoc rule.
 
-`snapshotPathExists` runs `restic ls <id> <path>`: the snapshot's own tree, not
-the push result alone, is the proof.
+`snapshotMissingPath` runs one `restic ls <id> <Dest> [<sidecar>]` and checks each
+path against the entries (the path itself, or entries below it for a
+directory): the snapshot's own tree, not the push result alone, is the proof.
 
 ### Ad-hoc encrypted pushes
 
@@ -56,13 +63,15 @@ check of the gate can pass and the fetched-back artifact can be decrypted
 
 ### WARN0238 (F7)
 
-A refusal is kept per server and method in
-`archiveRemoveOriginalRefusal{Logical,Physical}` (guarded by
+A refusal (`archiveRemoveOriginalRefusal{Dest, Reason}`) is kept per server and
+method in `archiveRemoveOriginalRefusal{Logical,Physical}` (guarded by
 `backupMetaMutex`), cleared by the next successful removal of that method.
 `checkArchiveRemoveOriginalStates` (cluster_set.go, every tick) raises
-WARN0238 from it while the switch is on, both methods joined in one state per
-server (`ErrFrom: BACKUP`). A refusal of a superseded scheduled meta is never
-recorded.
+WARN0238 from it, both methods joined in one state per server
+(`ErrFrom: BACKUP`). It reconciles first (F5): a refusal is dropped while the
+switch is off (no stale reason when it comes back on) and once its `Dest` is no
+longer on disk (deleted, purged, replaced). A refusal of a superseded scheduled
+meta is never recorded.
 
 ## Fetch back
 
@@ -93,16 +102,28 @@ failed fetch does not erase the backup status.
 
 `fetchArchivedOriginal`:
 
-- free space of the backup directory (`GetDiskStat`) against `meta.Size` (F3);
+- `Dest` must be a strict descendant of the backup directory
+  (`isStrictlyWithinBase`), as for the removal;
+- free space of the backup directory measured now (`disk.Usage`, not the
+  cached `DiskStatManager`, whose lookup misses the directory path) against
+  `meta.Size`; a failed measure refuses the fetch (F3);
 - `restic restore <id> --target <work> --include <Dest> [--include <sidecar>]`
   into `os.MkdirTemp(<backup dir>, ".archive-restore-")`, removed on return.
   The backup directory itself is never the target: `restoreSnapshotWithOptions`
   rewrites the permissions of the whole target tree (`setRestorePermissions`).
-  Full paths are used, so no `<id>:<subfolder>` syntax (restic 0.16+) is needed;
+  Full paths are used, so no `<id>:<subfolder>` syntax (restic 0.16+) is needed.
+  restic reads `--include` as a pattern: `escapeResticPattern` escapes
+  `\ * ? [ ]` so a path holding them matches itself only;
 - rename into place, sidecar first, on the same filesystem.
 
+Every push excludes `.archive-restore-*` (`archiveRestoreWorkDirPattern`): a
+scheduled push snapshots the whole backup directory and must not capture a
+fetch in progress.
+
 `archiveRestoreMutex` (per server) serializes fetches; a second caller finds
-the file present.
+the file present. `Dest` only ever appears whole (rename out of the work
+directory), so a present `Dest` is a complete artifact, never the leftover of an
+interrupted fetch.
 
 All callers run off the monitor loop (`trackTickGoroutine`, `go RejoinMaster`,
 API handlers), so a slow fetch from S3 never stalls a tick (F2).

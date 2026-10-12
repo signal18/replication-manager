@@ -5367,6 +5367,8 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, m
 	if cluster.Conf.BackupEncryption {
 		backupOpt.Exclude = []string{"*.partial"}
 	}
+	// A fetch from the archive in progress (backup-archive-remove-original) is not a backup.
+	backupOpt.Exclude = append(backupOpt.Exclude, archiveRestoreWorkDirPattern)
 	// An ad-hoc push holds Dest alone: add the integrity sidecar of an encrypted artifact,
 	// without which it cannot be restored.
 	if meta != nil && meta.Dest != "" && filepath.Clean(backupPath) == filepath.Clean(meta.Dest) && isEncryptedBackupArtifact(meta.Dest) {

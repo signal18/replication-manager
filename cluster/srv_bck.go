@@ -276,7 +276,8 @@ func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.B
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Updated backup metadata with restic snapshot %s for %s", snapshotLabel, server.URL)
 
 	// A scheduled backup shares its meta file with the next scheduled run: only the
-	// current one writes it.
+	// current one writes it. The in-memory meta above is still updated on purpose: it is
+	// the BackupMetaMap entry of that older backup, which keeps its snapshot.
 	if lastmeta != current && !lastmeta.IsAdhoc() {
 		return
 	}

@@ -26,12 +26,14 @@ removes the original only when all of these hold:
   backup metadata;
 - listing that snapshot shows the original, and for an encrypted backup its
   integrity sidecar (`.hmac`);
-- the original is inside the server backup directory.
+- the original is an entry inside the server backup directory, never the
+  directory itself.
 
 Otherwise the original stays where it is, and the cluster raises **WARN0238**
 with the reason (for example a snapshot that does not hold the file, or a
 restic listing error). The state clears once a later backup of the same
-server is removed.
+server is removed, when the kept original is no longer on disk, or when the
+setting is switched off.
 
 Only the original artifact (and its `.hmac` sidecar) is removed. The backup
 metadata file (`<tool>.meta.json`) stays: it records the snapshot and

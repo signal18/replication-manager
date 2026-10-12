@@ -292,8 +292,8 @@ type ServerMonitor struct {
 	dbLogMigrated                   atomic.Bool                          // set once a migration pass completes with no errors; left false to allow retry after a transient failure
 	backupMetaMutex                 sync.Mutex                           // protects LastBackupMeta from concurrent Restic callback updates
 	// why the last original could not be removed after its archive push (WARN0238), guarded by backupMetaMutex
-	archiveRemoveOriginalRefusalLogical  string
-	archiveRemoveOriginalRefusalPhysical string
+	archiveRemoveOriginalRefusalLogical  archiveRemoveOriginalRefusal
+	archiveRemoveOriginalRefusalPhysical archiveRemoveOriginalRefusal
 	archiveRestoreMutex                  sync.Mutex   // one fetch of an archived original at a time
 	rejoinInProgress                atomic.Bool                          // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
 	reseedFromRejoin                atomic.Bool                          // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
