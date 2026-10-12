@@ -39,16 +39,16 @@ const (
 
 // childMode is what differs between a staging and a child cluster.
 type childMode struct {
-	kind       string // in states and logs: Staging, Child
-	suffix     string // default name: <parent><suffix>
-	sourceName string // replication-source-name of the channel from the parent
-	dbCount    int    // default number of databases
-	staging    bool   // topology-staging, and the refresh detaches a replica
+	kind          string // in states and logs: Staging, Child
+	suffix        string // default name: <parent><suffix>
+	ownSourceName string // replication-source-name of the child's internal channel (master to replicas)
+	dbCount       int    // default number of databases
+	staging       bool   // topology-staging, and the refresh detaches a replica
 }
 
 var (
-	childModeStaging = childMode{kind: "Staging", suffix: "-staging", sourceName: "staging", dbCount: stagingDBCount, staging: true}
-	childModeChild   = childMode{kind: "Child", suffix: "-child", sourceName: "child", dbCount: 2}
+	childModeStaging = childMode{kind: "Staging", suffix: "-staging", ownSourceName: "staging", dbCount: stagingDBCount, staging: true}
+	childModeChild   = childMode{kind: "Child", suffix: "-child", ownSourceName: "child", dbCount: 2}
 )
 
 // ChildRequest is the body of POST /api/clusters/{parent}/actions/create-staging and
@@ -58,18 +58,20 @@ type ChildRequest = repmanmcp.ChildClusterSpec
 // ChildPlan is what create-staging or create-child will build, returned before anything
 // is created.
 type ChildPlan struct {
-	Kind         string   `json:"kind"`
-	Parent       string   `json:"parent"`
-	Name         string   `json:"name"`
-	Orchestrator string   `json:"orchestrator"`
-	DBImage      string   `json:"dbImage"`
-	DBCount      int      `json:"dbCount"`
-	DBUPerNode   int      `json:"dbuPerNode"`
-	Proxy        string   `json:"proxy"`      // "" = none
-	Domain       string   `json:"domain"`     // GTID domain: the parent's + 1
-	SourceName   string   `json:"sourceName"` // replication-source-name of the channel from the parent
-	Backup       string   `json:"backup"`
-	Notes        []string `json:"notes,omitempty"`
+	Kind              string   `json:"kind"`
+	Parent            string   `json:"parent"`
+	Name              string   `json:"name"`
+	Orchestrator      string   `json:"orchestrator"`
+	DBImage           string   `json:"dbImage"`
+	DBCount           int      `json:"dbCount"`
+	DBUPerNode        int      `json:"dbuPerNode"`
+	Proxy             string   `json:"proxy"`             // "" = none
+	Domain            string   `json:"domain"`            // GTID domain: the parent's + 1
+	SourceName        string   `json:"sourceName"`        // channel from the parent's master: the parent's replication-source-name
+	OwnSourceName     string   `json:"ownSourceName"`     // the new cluster's replication-source-name (its master to its replicas)
+	BackupLogicalType string   `json:"backupLogicalType"` // the parent's
+	Backup            string   `json:"backup"`
+	Notes             []string `json:"notes,omitempty"`
 }
 
 // childProxyType is the parent's first provisionable proxy type, "" when it has none.
@@ -148,7 +150,16 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 		return plan, fmt.Errorf("parent %s GTID domain: %w", parent.Name, err)
 	}
 	plan.Domain = strconv.FormatUint(parentDomain+1, 10)
-	plan.SourceName = mode.sourceName
+	// Two channels, two names (staging doc): the child master replicates from the parent's
+	// master through the parent's replication-source-name, the same on both sides; the
+	// child's own replicas through the child's, which must differ (the same name made the
+	// child master a Relay of the parent's, the cluster masterless: dev3, 2026-10-12).
+	plan.SourceName = parent.Conf.MasterConn
+	plan.OwnSourceName = mode.ownSourceName
+	if plan.OwnSourceName == plan.SourceName {
+		return plan, fmt.Errorf("parent %s replicates through replication-source-name %q, the name the %s cluster's own channel would take: change the parent's", parent.Name, plan.SourceName, strings.ToLower(mode.kind))
+	}
+	plan.BackupLogicalType = parent.Conf.BackupLogicalType
 	return plan, nil
 }
 
@@ -192,7 +203,12 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	if err := repman.SetClusterSetting(cl, "prov-db-domain", plan.Domain); err != nil {
 		return cl, fail(err)
 	}
-	if err := repman.SetClusterSetting(cl, "replication-source-name", plan.SourceName); err != nil {
+	if err := repman.SetClusterSetting(cl, "replication-source-name", plan.OwnSourceName); err != nil {
+		return cl, fail(err)
+	}
+	// the parent's backup tool: the logical backup started after the seed, and later
+	// refreshes, use the parent's (dev3: the default mysqldump failed, the parent runs mydumper)
+	if err := repman.SetClusterSetting(cl, "backup-logical-type", plan.BackupLogicalType); err != nil {
 		return cl, fail(err)
 	}
 	// The parent's monitoring and replication accounts, same name same password (staging
@@ -338,7 +354,7 @@ func (repman *ReplicationManager) createChildClusterRoute(w http.ResponseWriter,
 // handlerMuxClusterCreateChild creates a child cluster of a cluster (#1997).
 //
 // @Summary Create a child cluster of this cluster
-// @Description Plans (confirm false) or creates (confirm true) a child cluster of {clusterName}, named <clusterName>-child unless a name is given, to test a migration under this cluster's writes: same orchestrator, database image unless dbImage is given (a newer release to test), DBU per node, accounts and proxy type, dbCount databases (default 2), GTID domain this cluster's + 1, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only, its master replicating from this cluster's master through the channel child and its replicas following it. Needs cluster-replication on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0238 where it stopped.
+// @Description Plans (confirm false) or creates (confirm true) a child cluster of {clusterName}, named <clusterName>-child unless a name is given, to test a migration under this cluster's writes: same orchestrator, database image unless dbImage is given (a newer release to test), DBU per node, accounts and proxy type, dbCount databases (default 2), GTID domain this cluster's + 1, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only, its master replicating from this cluster's master through the parent's replication-source-name and its replicas following it through the child's own (child). Needs cluster-replication on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0238 where it stopped.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json

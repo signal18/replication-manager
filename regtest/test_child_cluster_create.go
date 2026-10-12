@@ -72,15 +72,15 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 
 	// The plan: domain and channel name.
 	var plan struct {
-		Name, Domain, SourceName string
+		Name, Domain, SourceName, OwnSourceName string
 	}
 	if err := stagingPost(tok, cl.Name, kind, map[string]any{"name": name}, http.StatusOK, &plan); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": plan: %s", err)
 		return false
 	}
 	parentDomain, _ := strconv.Atoi(cl.Configurator.GetConfigReplicationDomain(cl.Name))
-	if plan.Domain != strconv.Itoa(parentDomain+1) || plan.SourceName != kind {
-		tlsLogf(cl, "FAIL Create "+kind+": plan domain %q (parent %d) source %q", plan.Domain, parentDomain, plan.SourceName)
+	if plan.Domain != strconv.Itoa(parentDomain+1) || plan.SourceName != cl.Conf.MasterConn || plan.OwnSourceName != kind {
+		tlsLogf(cl, "FAIL Create "+kind+": plan domain %q (parent %d) source %q own %q", plan.Domain, parentDomain, plan.SourceName, plan.OwnSourceName)
 		return false
 	}
 
@@ -120,7 +120,8 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 		return false
 	}
 
-	// The new master replicates from this cluster's master through the channel named kind.
+	// The new master, still Master, replicates from this cluster's master through this
+	// cluster's replication-source-name, the same name on both sides.
 	if err := tlsWait(2*time.Minute, func() error {
 		var master struct {
 			Replications []map[string]any `json:"replications"`
@@ -129,12 +130,12 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 			return err
 		}
 		for _, r := range master.Replications {
-			if stagingString(r["connectionName"]) == kind && stagingString(r["masterHost"]) == parentMaster &&
+			if stagingString(r["connectionName"]) == cl.Conf.MasterConn && stagingString(r["masterHost"]) == parentMaster &&
 				stagingString(r["slaveIoRunning"]) == "Yes" && stagingString(r["slaveSqlRunning"]) == "Yes" {
 				return nil
 			}
 		}
-		return fmt.Errorf("no running channel %s from %s: %v", kind, parentMaster, master.Replications)
+		return fmt.Errorf("no running channel %q from %s: %v", cl.Conf.MasterConn, parentMaster, master.Replications)
 	}); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": %s", err)
 		return false
@@ -156,7 +157,7 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 		tlsLogf(cl, "FAIL Create "+kind+": %s", err)
 		return false
 	}
-	tlsLogf(cl, "PASS Create %s: %s from %s: %v, channel %s from %s running, domain %s, proxy running", kind, name, cl.Name, wantStates, kind, parentMaster, plan.Domain)
+	tlsLogf(cl, "PASS Create %s: %s from %s: %v, channel %q from %s running, own channel %s, domain %s, proxy running", kind, name, cl.Name, wantStates, cl.Conf.MasterConn, parentMaster, kind, plan.Domain)
 	return true
 }
 

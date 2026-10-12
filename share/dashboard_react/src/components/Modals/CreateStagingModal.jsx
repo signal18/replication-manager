@@ -102,8 +102,9 @@ function CreateStagingModal({ selectedCluster, kind = 'staging', isOpen, closeMo
                     {plan.proxy || 'none'}
                   </Text>
                   <Text>
-                    GTID domain {plan.domain}, replicating from {plan.parent} through the channel {plan.sourceName}, with the parent's
-                    monitoring and replication accounts.
+                    GTID domain {plan.domain}. Its master replicates from {plan.parent} through the channel{' '}
+                    {plan.sourceName ? `'${plan.sourceName}'` : 'default'} (the parent's), its own replicas through '{plan.ownSourceName}'. The
+                    parent's monitoring and replication accounts and {plan.backupLogicalType} backups.
                   </Text>
                   <Text>
                     Seeded from {plan.backup}, data only: it keeps its own system tables and release.

@@ -456,13 +456,11 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	//Delete wait logical backup cookie
 	target.DelWaitLogicalBackupCookie()
 
-	// The channel from the parent is named by this staging cluster's
-	// replication-source-name (the staging doc's "staging"); the parent's name only
-	// when the staging cluster has none, as before.
-	channel := cluster.Conf.MasterConn
-	if channel == "" {
-		channel = parent.Conf.MasterConn
-	}
+	// The channel from the parent's master carries the PARENT's replication-source-name,
+	// the same name on both sides: the parent adopts the child master through it
+	// (AddChildServers). The child's own replication-source-name names its internal
+	// channel (child master to child replicas) and must differ.
+	channel := parent.Conf.MasterConn
 	if target.IsMaster() {
 		// Set replication master to current master if not PITR
 		logs, err = target.StopSlaveChannel(channel)
