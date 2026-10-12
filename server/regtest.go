@@ -331,6 +331,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testPhysicalReseedRestore" {
 			res = regtest.TestPhysicalReseedRestore(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testBackupArchiveRemoveOriginal" {
+			res = regtest.TestBackupArchiveRemoveOriginal(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testSchemaEventsDrift" {
 			res = regtest.TestSchemaEventsDrift(cl, test.ConfigFile, &test)
 		}
