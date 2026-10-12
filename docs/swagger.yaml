@@ -4415,6 +4415,45 @@ definitions:
       zone:
         type: string
     type: object
+  server.StagingPlan:
+    properties:
+      backup:
+        type: string
+      dbCount:
+        type: integer
+      dbImage:
+        type: string
+      dbuPerNode:
+        type: integer
+      name:
+        type: string
+      notes:
+        items:
+          type: string
+        type: array
+      orchestrator:
+        type: string
+      parent:
+        type: string
+      proxy:
+        description: '"" = none'
+        type: string
+    type: object
+  server.StagingRequest:
+    properties:
+      confirm:
+        description: 'false: the plan only'
+        type: boolean
+      dbCount:
+        description: default 3
+        type: integer
+      dbImage:
+        description: default the parent's prov-db-image
+        type: string
+      name:
+        description: default <parent>-staging
+        type: string
+    type: object
   server.appTemplateContentResponse:
     properties:
       content:
@@ -5424,6 +5463,62 @@ paths:
       summary: Compute Repair for all tables in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/actions/create-staging:
+    post:
+      consumes:
+      - application/json
+      description: 'Plans (confirm false) or creates (confirm true) a staging cluster
+        of {clusterName}, named <clusterName>-staging unless a name is given: same
+        orchestrator, database image unless dbImage is given, DBU per node and proxy
+        type, dbCount databases (default 3), topology-staging on, this cluster as
+        head cluster; provisioned, then seeded from this cluster''s logical backup,
+        data only (the staging cluster keeps its own accounts). Needs cluster-staging
+        on this cluster and the right to create a cluster. The progress is the state
+        CINF0014 on the new cluster, WARN0238 where it stopped.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Parent cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: name, dbImage, dbCount, confirm
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/server.StagingRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plan (confirm false)
+          schema:
+            $ref: '#/definitions/server.StagingPlan'
+        "202":
+          description: Creation started (confirm true)
+          schema:
+            $ref: '#/definitions/server.StagingPlan'
+        "400":
+          description: 'Refused: the reason (no logical backup on the parent, orchestrator,
+            name taken...)'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No cluster
+          schema:
+            type: string
+      summary: Create a staging cluster of this cluster
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/dropserver/{host}/{port}:
     post:
       consumes:

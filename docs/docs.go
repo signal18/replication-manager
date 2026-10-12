@@ -1475,6 +1475,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/create-staging": {
+            "post": {
+                "description": "Plans (confirm false) or creates (confirm true) a staging cluster of {clusterName}, named \u003cclusterName\u003e-staging unless a name is given: same orchestrator, database image unless dbImage is given, DBU per node and proxy type, dbCount databases (default 3), topology-staging on, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only (the staging cluster keeps its own accounts). Needs cluster-staging on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0238 where it stopped.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Create a staging cluster of this cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Parent cluster name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "name, dbImage, dbCount, confirm",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.StagingRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plan (confirm false)",
+                        "schema": {
+                            "$ref": "#/definitions/server.StagingPlan"
+                        }
+                    },
+                    "202": {
+                        "description": "Creation started (confirm true)",
+                        "schema": {
+                            "$ref": "#/definitions/server.StagingPlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Refused: the reason (no logical backup on the parent, orchestrator, name taken...)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/dropserver/{host}/{port}": {
             "post": {
                 "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
@@ -29748,6 +29820,63 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "zone": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.StagingPlan": {
+            "type": "object",
+            "properties": {
+                "backup": {
+                    "type": "string"
+                },
+                "dbCount": {
+                    "type": "integer"
+                },
+                "dbImage": {
+                    "type": "string"
+                },
+                "dbuPerNode": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "orchestrator": {
+                    "type": "string"
+                },
+                "parent": {
+                    "type": "string"
+                },
+                "proxy": {
+                    "description": "\"\" = none",
+                    "type": "string"
+                }
+            }
+        },
+        "server.StagingRequest": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "description": "false: the plan only",
+                    "type": "boolean"
+                },
+                "dbCount": {
+                    "description": "default 3",
+                    "type": "integer"
+                },
+                "dbImage": {
+                    "description": "default the parent's prov-db-image",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "default \u003cparent\u003e-staging",
                     "type": "string"
                 }
             }
