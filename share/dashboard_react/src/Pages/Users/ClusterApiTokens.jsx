@@ -5,6 +5,7 @@ import { Badge, HStack, Text, VStack } from '@chakra-ui/react'
 import { TbTrash } from 'react-icons/tb'
 import { DataTable } from '../../components/DataTable'
 import AccordionComponent from '../../components/AccordionComponent'
+import TabItems from '../../components/TabItems'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { getClusterApiTokens, revokeApiToken } from '../../redux/clusterSlice'
@@ -14,6 +15,8 @@ import styles from './styles.module.scss'
 // a holder of token-manage on the cluster, the grant GET /api/clusters/{name}/tokens
 // requires. Revoking another user's token needs token-manage on EVERY cluster the
 // token covers: the server refuses otherwise and its message names the cluster.
+// Two tabs: Active (usable, revocable) and Archive (revoked or expired, kept by the
+// server for the retention period as the audit trail, read-only).
 
 const columnHelper = createColumnHelper()
 
@@ -29,6 +32,9 @@ function ClusterApiTokens({ selectedCluster }) {
   // Only a list loaded for this very cluster: another cluster's list stays hidden
   // while this one loads, and is never shown after this one fails.
   const tokens = clusterApiTokens?.clusterName === clusterName ? clusterApiTokens.tokens : []
+  const [tabIndex, setTabIndex] = useState(0)
+  const active = useMemo(() => tokens.filter((t) => !t.revoked && !t.expired), [tokens])
+  const archive = useMemo(() => tokens.filter((t) => t.revoked || t.expired), [tokens])
 
   useEffect(() => {
     if (clusterName) {
@@ -60,40 +66,53 @@ function ClusterApiTokens({ selectedCluster }) {
         cell: (info) => info.getValue(),
         header: 'Expires',
         id: 'expiresAt'
-      }),
+      })
+    ],
+    []
+  )
+
+  const archiveColumns = useMemo(
+    () => [
+      ...columns,
       columnHelper.accessor(
         (row) =>
           row.revoked ? (
             <VStack spacing={0} align='start'>
               <Badge colorScheme='red'>revoked</Badge>
-              {row.revokedBy && <Text fontSize='xs'>by {row.revokedBy}</Text>}
+              <Text fontSize='xs'>
+                {fmtDate(row.revokedAt)}
+                {row.revokedBy ? ` by ${row.revokedBy}` : ''}
+              </Text>
             </VStack>
-          ) : row.expired ? (
-            <Badge colorScheme='orange'>expired</Badge>
           ) : (
-            <Badge colorScheme='green'>active</Badge>
+            <Badge colorScheme='orange'>expired</Badge>
           ),
         { cell: (info) => info.getValue(), header: 'State', id: 'state' }
-      ),
+      )
+    ],
+    [columns]
+  )
+
+  const activeColumns = useMemo(
+    () => [
+      ...columns,
       columnHelper.accessor(
         (row) => (
           <HStack align={'center'} justifyContent={'center'}>
-            {!row.revoked && !row.expired && (
-              <RMIconButton
-                tooltip={'revoke token'}
-                icon={TbTrash}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setToRevoke(row)
-                }}
-              />
-            )}
+            <RMIconButton
+              tooltip={'revoke token'}
+              icon={TbTrash}
+              onClick={(e) => {
+                e.stopPropagation()
+                setToRevoke(row)
+              }}
+            />
           </HStack>
         ),
         { cell: (info) => info.getValue(), header: 'Actions', id: 'actions' }
       )
     ],
-    []
+    [columns]
   )
 
   return (
@@ -103,7 +122,17 @@ function ClusterApiTokens({ selectedCluster }) {
         allowToggle={false}
         className={styles.accordion}
         panelSX={{ overflowX: 'auto', p: 0 }}
-        body={<DataTable key='cluster-api-tokens' data={tokens} columns={columns} className={styles.table} />}
+        body={
+          <TabItems
+            options={[`Active (${active.length})`, `Archive (${archive.length})`]}
+            tabIndex={tabIndex}
+            onChange={setTabIndex}
+            tabContents={[
+              <DataTable key='cluster-api-tokens-active' data={active} columns={activeColumns} className={styles.table} />,
+              <DataTable key='cluster-api-tokens-archive' data={archive} columns={archiveColumns} className={styles.table} />
+            ]}
+          />
+        }
       />
       {toRevoke && (
         <ConfirmModal
