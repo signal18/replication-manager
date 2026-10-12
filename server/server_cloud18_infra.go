@@ -193,8 +193,17 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 		case spec.Topology != config.TopoMasterSlavePgStream && spec.Topology != config.TopoMasterSlavePgLog:
 			return spec, fmt.Errorf("topology %q: PostgreSQL builds %s or %s", spec.Topology, config.TopoMasterSlavePgStream, config.TopoMasterSlavePgLog)
 		}
-	} else if spec.Topology != "" && spec.Topology != config.TopoMasterSlave {
-		return spec, fmt.Errorf("topology %q: %s builds %s (a master and replicas)", spec.Topology, releases.FlavorOfImage(spec.DBImage), config.TopoMasterSlave)
+	} else {
+		// MariaDB, Percona, MySQL: one server is active-passive, on a failover volume
+		// (#2004); more is a master and replicas
+		switch {
+		case spec.DBCount == 1 && (spec.Topology == "" || spec.Topology == config.TopoActivePassive):
+			spec.Topology = config.TopoActivePassive
+		case spec.Topology == config.TopoActivePassive:
+			return spec, fmt.Errorf("topology %s is one server: db_count 1, got %d", config.TopoActivePassive, spec.DBCount)
+		case spec.Topology != "" && spec.Topology != config.TopoMasterSlave:
+			return spec, fmt.Errorf("topology %q: %s builds %s (a master and replicas) or %s (db_count 1)", spec.Topology, releases.FlavorOfImage(spec.DBImage), config.TopoMasterSlave, config.TopoActivePassive)
+		}
 	}
 	switch {
 	case spec.Proxy == "none":
@@ -418,8 +427,9 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 		steps = append(steps, note)
 	}
 	// 1c. Topology target: PostgreSQL members follow the cluster topology (stream,
-	// logical, active-passive), set before they are added.
-	if isPostgresSpec(spec) {
+	// logical, active-passive), set before they are added; an active-passive server is
+	// provisioned on a failover volume (#2004).
+	if isPostgresSpec(spec) || spec.Topology == config.TopoActivePassive {
 		if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/topology-target/"+spec.Topology, nil); err != nil {
 			return fail("topology "+spec.Topology, err)
 		}
