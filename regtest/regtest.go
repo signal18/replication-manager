@@ -131,6 +131,7 @@ var tests = []string{
 	"testReplicationTLSSSLTagLifecycle",
 	"testRollingUpgradeTransparentSSL",
 	"testRejoinRefusesNodeWithData",
+	"testCreateStaging",
 }
 
 const recoverTime = 8
