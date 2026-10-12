@@ -102,9 +102,19 @@ jobs:
             CREATE TABLE smoke.t (id INT, v VARCHAR(16)) ENGINE=ColumnStore;
             INSERT INTO smoke.t VALUES (1,'a'),(2,'b');
             SELECT COUNT(*) FROM smoke.t;" | tee /tmp/status && ok=1
-          docker logs cs 2>&1 | grep -i -E "columnstore-entrypoint|error|abort" | head -40 || true
-          docker rm -f cs
           [ "$ok" = 1 ] && grep -q ACTIVE /tmp/status && tail -1 /tmp/status | grep -qx 2
+          # a stop saves the BRM: after a restart the ColumnStore table is still there
+          docker stop -t 300 cs
+          docker start cs
+          for i in $(seq 1 90); do
+            if docker exec cs mariadb -uroot -psmoke -e 'SELECT 1' >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          ok=0
+          docker exec cs mariadb -uroot -psmoke -N -e "SELECT COUNT(*) FROM smoke.t" | tee /tmp/after && ok=1
+          docker logs cs 2>&1 | grep -i -E "columnstore-entrypoint|error|abort" | grep -v optimizer_switch | head -60 || true
+          docker rm -f cs
+          [ "$ok" = 1 ] && grep -qx 2 /tmp/after && echo "table kept across the restart"
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'

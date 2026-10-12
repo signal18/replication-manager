@@ -7,6 +7,11 @@
 # package's own mariadb-columnstore-start.sh and mcs-*.service units, as mysql, then
 # the official entrypoint runs the server. Local storage (dbroots on the PM's volume):
 # no StorageManager, which is for S3 only.
+#
+# On stop (SIGTERM) the server stops first, then ColumnStore's processes in the order of
+# the package's mariadb-columnstore-stop.sh, and the block map (BRM) is saved to the
+# volume as mcs-workernode's ExecStopPost does: without it, the next start (on the other
+# node after a switch) finds no BRM and no ColumnStore table survives.
 set -euo pipefail
 
 CS_LOG_DIR=/var/log/mariadb/columnstore
@@ -75,10 +80,62 @@ start_columnstore() {
 	fi
 }
 
+# stop one ColumnStore process with SIGTERM, bounded: SIGKILL after the wait
+stop_proc() {
+	local name="$1" wait="$2" i
+	pgrep -x "$name" >/dev/null || return 0
+	log "stopping $name"
+	pkill -TERM -x "$name" || true
+	for i in $(seq 1 "$wait"); do
+		pgrep -x "$name" >/dev/null || return 0
+		sleep 1
+	done
+	log "$name still running after $wait s, killed"
+	pkill -KILL -x "$name" || true
+}
+
+# the package's stop order (mariadb-columnstore-stop.sh) and timeouts (its units), then
+# the BRM save and the shared memory cleanup of mcs-workernode's ExecStopPost
+stop_columnstore() {
+	local dbrm_timeout
+	dbrm_timeout="$(/usr/bin/mcsGetConfig SystemConfig DBRMTimeout 2>/dev/null || true)"
+	stop_proc DMLProc 900
+	stop_proc DDLProc 2
+	stop_proc WriteEngineServer 20
+	stop_proc PrimProc 2
+	stop_proc controllernode "${dbrm_timeout:-20}"
+	stop_proc workernode 750
+	if gosu mysql /usr/bin/mcs-savebrm.py; then
+		log "BRM saved"
+	else
+		log "mcs-savebrm.py failed: the BRM of this run is not saved"
+	fi
+	gosu mysql clearShm >/dev/null 2>&1 || true
+}
+
+server_pid=""
+on_stop() {
+	log "stop requested"
+	if [ -n "$server_pid" ]; then
+		kill -TERM "$server_pid" 2>/dev/null || true
+	fi
+}
+
 # only when the server is what runs (not for a shell, a client, --version...)
 case "${1:-}" in
 	mariadbd | mysqld | -*)
 		start_columnstore
+		trap on_stop TERM INT
+		docker-entrypoint.sh "$@" &
+		server_pid=$!
+		# wait returns early on a trapped signal: wait again until the server is gone
+		rc=0
+		while kill -0 "$server_pid" 2>/dev/null; do
+			wait "$server_pid" && rc=0 || rc=$?
+		done
+		log "server stopped (exit $rc)"
+		stop_columnstore
+		exit "$rc"
 		;;
 esac
 
