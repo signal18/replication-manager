@@ -471,6 +471,108 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/settings/actions/calibrate-iops": {
+            "post": {
+                "description": "Runs the embedded sysbench fileio (2G of files, 16 KiB random read/write, direct IO, 16 threads, 20 s) in the working directory at the lowest CPU priority, then removes the files. Answers the host IOPS and that figure times the agents and, with apply=true, writes the latter to resource-manager-infra-iops. Representative when every node has the same storage.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Measure the random IOPS of the replication-manager host's storage with sysbench",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "write resource-manager-infra-iops (default false)",
+                        "name": "apply",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.IOPSCalibration"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "An IOPS calibration is already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/calibrate-smt-gain": {
+            "post": {
+                "description": "Runs the embedded sysbench (cpu and random memory access, one thread per physical core then every thread, 15 s each) on the host replication-manager runs on, computes the gain and, unless apply=false, writes it to resource-manager-smt-gain. Representative when the infrastructure's nodes share the same hardware. A host without SMT is not an error: the answer says so and nothing is written.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Measure the SMT (hyperthreading) gain of the replication-manager host with sysbench",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "write the measured gain (default true)",
+                        "name": "apply",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/server.SMTCalibration"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A calibration is already running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Measure failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/settings/actions/reload-clusters-plan-info": {
             "post": {
                 "description": "This endpoint reloads the cluster plan information for all clusters without reapplying plans.",
@@ -4411,6 +4513,71 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/actions/update-opensvc-template": {
+            "post": {
+                "description": "Re-renders the app's service definition from its template and settings (timeouts, priority, volumes, routes) and pushes it to the live OpenSVC object without restarting it; the next start uses it. The database counterpart is servers/{serverName}/actions/update-opensvc-template.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Refresh the OpenSVC service definition of an app",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App service definition updated",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "App Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/actions/update-routes": {
             "post": {
                 "description": "Push route configuration to the OpenSVC gateway service for a given app",
@@ -6499,6 +6666,15 @@ const docTemplate = `{
                             "mydumper",
                             "xtrabackup",
                             "mariabackup",
+                            "pgdump",
+                            "pgbasebackup",
+                            "pgstandby",
+                            "pgreseed",
+                            "pgschemasync",
+                            "pgrestore",
+                            "pgreseedlogical",
+                            "pgwalarchive",
+                            "pgrestorelogical",
                             "errorlog",
                             "slowquery",
                             "sqlerrorlog",
@@ -16028,6 +16204,15 @@ const docTemplate = `{
                             "mydumper",
                             "xtrabackup",
                             "mariabackup",
+                            "pgdump",
+                            "pgbasebackup",
+                            "pgstandby",
+                            "pgreseed",
+                            "pgschemasync",
+                            "pgrestore",
+                            "pgreseedlogical",
+                            "pgwalarchive",
+                            "pgrestorelogical",
                             "errorlog",
                             "slowquery",
                             "sqlerrorlog",
@@ -16827,6 +17012,15 @@ const docTemplate = `{
                             "mydumper",
                             "xtrabackup",
                             "mariabackup",
+                            "pgdump",
+                            "pgbasebackup",
+                            "pgstandby",
+                            "pgreseed",
+                            "pgschemasync",
+                            "pgrestore",
+                            "pgreseedlogical",
+                            "pgwalarchive",
+                            "pgrestorelogical",
                             "errorlog",
                             "slowquery",
                             "sqlerrorlog",
@@ -19346,6 +19540,52 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/tools": {
+            "get": {
+                "description": "The command line tools found on this replication-manager for the cluster (database client, dump and binlog clients, mydumper, sysbench, restic) with their detected version; a tool that was not found is absent.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Local tools and their versions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "tool name to version",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "string"
                         }
@@ -24105,19 +24345,24 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "apu": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "bau": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "bku": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "dbu": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "gwu": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "overPct": {
                     "type": "integer"
@@ -24150,7 +24395,8 @@ const docTemplate = `{
                     "additionalProperties": {
                         "type": "array",
                         "items": {
-                            "type": "number"
+                            "type": "number",
+                            "format": "float64"
                         }
                     }
                 },
@@ -24939,7 +25185,15 @@ const docTemplate = `{
                 "appHostsIpv6": {
                     "type": "string"
                 },
+                "appMonitorMode": {
+                    "description": "AppMonitorMode: how an app without a route is probed. \"port\" (default) connects to\napp-port over TCP; \"ping\" sends an ICMP echo to the app host, for a process that\nlistens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.",
+                    "type": "string"
+                },
                 "appPort": {
+                    "type": "string"
+                },
+                "appRandomPassword": {
+                    "description": "generated when the template references {{app.randompassword}}, stored encrypted",
                     "type": "string"
                 },
                 "appS3Provider": {
@@ -25536,6 +25790,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "arbitrationReadTimout": {
+                    "type": "integer"
+                },
+                "arbitrationVerdictStreak": {
                     "type": "integer"
                 },
                 "arbitratorBindAddress": {
@@ -26185,6 +26442,9 @@ const docTemplate = `{
                 },
                 "cloud18SalesUnsubscribeScript": {
                     "type": "string"
+                },
+                "cloud18SelfServiceCacheSeconds": {
+                    "type": "integer"
                 },
                 "cloud18SelfServiceClusters": {
                     "type": "boolean"
@@ -27643,6 +27903,9 @@ const docTemplate = `{
                 "provDbStartScript": {
                     "type": "string"
                 },
+                "provDbStartTimeout": {
+                    "type": "string"
+                },
                 "provDbStopScript": {
                     "type": "string"
                 },
@@ -27798,6 +28061,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "provProxyStartScript": {
+                    "type": "string"
+                },
+                "provProxyStartTimeout": {
                     "type": "string"
                 },
                 "provProxyStopScript": {
@@ -28082,7 +28348,13 @@ const docTemplate = `{
                 "replicationMultisourceHeadClusters": {
                     "type": "string"
                 },
+                "replicationPgLogicalDdl": {
+                    "type": "boolean"
+                },
                 "replicationSourceName": {
+                    "type": "string"
+                },
+                "replicationSslCa": {
                     "type": "string"
                 },
                 "replicationUseSsl": {
@@ -28114,6 +28386,9 @@ const docTemplate = `{
                 },
                 "resourceManagerRatioDbu": {
                     "type": "string"
+                },
+                "resourceManagerSmtGain": {
+                    "type": "number"
                 },
                 "scaleDownConfigInPlanSpeed": {
                     "description": "sustain duration before scaling DOWN a server's config resources within the plan. Default 5m",
@@ -28537,7 +28812,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "extension": {
                     "type": "string"
@@ -28572,7 +28848,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "fileIds": {
                     "type": "array",
@@ -29109,6 +29386,10 @@ const docTemplate = `{
         "server.Heartbeat": {
             "type": "object",
             "properties": {
+                "apiUrl": {
+                    "description": "APIURL is the answering instance's API URL, the one it writes as\nREPLICATION_MANAGER_URL: its peer offers it to init containers as the DR\nfallback (REPLICATION_MANAGER_URL_DR).",
+                    "type": "string"
+                },
                 "cluster": {
                     "type": "string"
                 },
@@ -29135,6 +29416,38 @@ const docTemplate = `{
                 },
                 "uuid": {
                     "type": "string"
+                }
+            }
+        },
+        "server.IOPSCalibration": {
+            "type": "object",
+            "properties": {
+                "agents": {
+                    "type": "integer"
+                },
+                "applied": {
+                    "type": "boolean"
+                },
+                "dir": {
+                    "type": "string"
+                },
+                "durationSecond": {
+                    "type": "integer"
+                },
+                "hostIops": {
+                    "type": "number"
+                },
+                "infraIops": {
+                    "type": "number"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "readsPerSecond": {
+                    "type": "number"
+                },
+                "writesPerSecond": {
+                    "type": "number"
                 }
             }
         },
@@ -29279,6 +29592,74 @@ const docTemplate = `{
                 }
             }
         },
+        "server.SMTCalibration": {
+            "type": "object",
+            "properties": {
+                "applied": {
+                    "type": "boolean"
+                },
+                "cores": {
+                    "type": "integer"
+                },
+                "cpuEventsPerSecCores": {
+                    "type": "number"
+                },
+                "cpuEventsPerSecThreads": {
+                    "type": "number"
+                },
+                "cpuGain": {
+                    "type": "number"
+                },
+                "durationSeconds": {
+                    "type": "integer"
+                },
+                "gain": {
+                    "type": "number"
+                },
+                "memGain": {
+                    "type": "number"
+                },
+                "memMiBPerSecCores": {
+                    "type": "number"
+                },
+                "memMiBPerSecThreads": {
+                    "type": "number"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "threads": {
+                    "type": "integer"
+                }
+            }
+        },
+        "server.SelfServicePrices": {
+            "type": "object",
+            "properties": {
+                "apu": {
+                    "type": "number"
+                },
+                "bau": {
+                    "type": "number"
+                },
+                "bku": {
+                    "type": "number"
+                },
+                "currency": {
+                    "type": "string"
+                },
+                "dbu": {
+                    "type": "number"
+                },
+                "overcommitPricePct": {
+                    "description": "price of a unit above the plan, in % of the unit price",
+                    "type": "integer"
+                },
+                "pricingMode": {
+                    "type": "string"
+                }
+            }
+        },
         "server.SelfServiceStatus": {
             "type": "object",
             "properties": {
@@ -29336,11 +29717,23 @@ const docTemplate = `{
                 "pool": {
                     "$ref": "#/definitions/server.InfraUnitPool"
                 },
+                "poolBlocked": {
+                    "description": "PoolBlocked: Enabled is false because of the pool only (the verdict a quote re-takes\nfor the requested units), never compared by its wording.",
+                    "type": "boolean"
+                },
                 "poolNote": {
                     "type": "string"
                 },
                 "poolOk": {
                     "type": "boolean"
+                },
+                "prices": {
+                    "description": "Prices: this infrastructure's unit price list, so a client quotes a cluster from the\npartner's own figures (#1963). A 0 price means the unit is not priced here.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/server.SelfServicePrices"
+                        }
+                    ]
                 },
                 "reason": {
                     "type": "string"
