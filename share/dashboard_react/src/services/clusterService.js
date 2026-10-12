@@ -143,6 +143,7 @@ export const clusterService = {
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
+  alterEngine,
   checksumRepairTable,
   checksumSchema,
   checksumRepairSchema,
@@ -758,6 +759,14 @@ function killQuery(clusterName, dbId, queryDigest, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/queries/${queryDigest}/actions/kill-query`)
 }
 
+// Storage engine switch (#1999): one table when a table is given, else every table of
+// engineFrom (optionally of one schema). confirm false returns the plan.
+function alterEngine({ clusterName, schema, table, engineFrom, engineTo, confirm }, baseURL) {
+  if (table) {
+    return getApi(baseURL).post(`clusters/${clusterName}/schema/${schema}/${table}/actions/alter-engine/${engineTo}`, { confirm })
+  }
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/alter-engine`, { engineFrom, engineTo, schema, confirm })
+}
 function checksumTable(clusterName, schema, table, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/${table}/actions/checksum-table`)
 }

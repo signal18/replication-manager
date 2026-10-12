@@ -19,6 +19,7 @@ import Gauge from '../../components/Gauge'
 import AccordionComponent from '../../components/AccordionComponent'
 import { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
+import EngineSwitchModal from '../../components/Modals/EngineSwitchModal'
 import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 import { sizeOf } from '../../utility/common'
@@ -179,6 +180,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
   const [data, setData]                                             = useState(shardSchema || [])
   const prevShardsRef                                               = useRef(null)
   const [isChecksumAllRunning, setIsChecksumAllRunning]             = useState(false)
+  const [engineSwitch, setEngineSwitch]                             = useState(null) // #1999: {} cluster-wide, {schema, table, engine} one table
   const [isChecksumRepairAllRunning, setIsChecksumRepairAllRunning] = useState(false)
   const [isSchemaConfirmOpen, setIsSchemaConfirmOpen]               = useState(false)
   const [pendingChecksumAll, setPendingChecksumAll]                 = useState(false)
@@ -456,7 +458,13 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
         </Flex>
       ),
     }),
-    columnHelper.accessor(row => row.engine,        { header: 'Engine' }),
+    columnHelper.accessor(row => row.engine, {
+      header: 'Engine',
+      // #1999: switch this table to another engine (db-optimize)
+      cell: info => user?.grants?.['db-optimize']
+        ? <RMButton variant="outline" onClick={() => setEngineSwitch({ schema: info.row.original.table_schema, table: info.row.original.table_name, engine: info.getValue() })}>{info.getValue()}</RMButton>
+        : info.getValue(),
+    }),
     columnHelper.accessor(row => row.table_rows,    { header: 'Rows' }),
     columnHelper.accessor(row => sizeOf(row.data_length),  { header: 'Data' }),
     columnHelper.accessor(row => sizeOf(row.index_length), { header: 'Index' }),
@@ -525,7 +533,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
         cell: info => <SizeBar pct={info.getValue()} />,
       }
     ),
-  ], [handleChecksum, handleChecksumRepair, sizeTotalsInfo, sizePctSorting])
+  ], [handleChecksum, handleChecksumRepair, sizeTotalsInfo, sizePctSorting, user])
 
   // ── Sync filter pills ─────────────────────────────────────────────────────
   const SYNC_FILTERS = [
@@ -584,6 +592,12 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
               isLoading={isChecksumAllRunning}
             >
               {isChecksumAllRunning ? 'Preparing schema cache…' : 'Checksum All Tables'}
+            </RMButton>
+            <RMButton
+              onClick={() => setEngineSwitch({})}
+              isDisabled={!selectedCluster?.name || !user?.grants['db-optimize']}
+            >
+              Switch Storage Engine
             </RMButton>
             <RMButton
               onClick={handleChecksumRepairAll}
@@ -809,6 +823,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
       />
 
       {/* ── Schema-cache confirm modal ────────────────────────────────────── */}
+      {engineSwitch && (
+        <EngineSwitchModal selectedCluster={selectedCluster} schema={engineSwitch.schema} table={engineSwitch.table} engine={engineSwitch.engine} isOpen={!!engineSwitch} closeModal={() => setEngineSwitch(null)} />
+      )}
       {isSchemaConfirmOpen && (
         <ConfirmModal
           isOpen={isSchemaConfirmOpen}
