@@ -95,6 +95,7 @@ jobs:
             if docker exec cs mariadb -uroot -psmoke -e 'SELECT 1' >/dev/null 2>&1; then break; fi
             sleep 2
           done
+          docker logs --tail 40 cs 2>&1 | grep -v optimizer_switch || true
           ok=0
           docker exec cs mariadb -uroot -psmoke -N -e "
             SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME='Columnstore';

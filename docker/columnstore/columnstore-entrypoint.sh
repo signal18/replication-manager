@@ -99,7 +99,7 @@ HOSTS_BEGIN="# columnstore nodes (columnstore-entrypoint.sh)"
 HOSTS_END="# end columnstore nodes"
 sync_hosts() {
 	local names name ip block=""
-	names="$( { hostname -f 2>/dev/null || hostname; grep -oE '<(Node|ModuleHostName[0-9-]+|IPAddr)>[^<]+' /etc/columnstore/Columnstore.xml 2>/dev/null | sed 's/^<[^>]*>//'; } | sort -u )"
+	names="$( { hostname -f 2>/dev/null || hostname; grep -oE '<(Node|ModuleHostName[0-9-]+|IPAddr)>[^<]+' /etc/columnstore/Columnstore.xml 2>/dev/null | sed 's/^<[^>]*>//'; } | sort -u || true)"
 	# the block out first: its stale entries would answer before the DNS
 	# (/etc/hosts is a bind mount: rewritten in place, never replaced)
 	if grep -qxF "$HOSTS_BEGIN" /etc/hosts; then
@@ -114,7 +114,7 @@ sync_hosts() {
 		if [[ "$name" =~ ^[0-9.]+$ ]]; then
 			continue
 		fi
-		ip="$(getent ahostsv4 "$name" 2>/dev/null | awk 'NR==1{print $1}')"
+		ip="$(getent ahostsv4 "$name" 2>/dev/null | awk 'NR==1{print $1}' || true)"
 		if [ -n "$ip" ]; then
 			block="$block$ip $name"$'\n'
 		fi
@@ -125,7 +125,7 @@ sync_hosts() {
 sync_hosts_loop() {
 	while true; do
 		sleep 30
-		sync_hosts || true
+		sync_hosts || log "could not refresh the /etc/hosts block of the cluster's nodes"
 	done
 }
 
@@ -244,7 +244,8 @@ case "${1:-}" in
 	mariadbd | mysqld | -*)
 		prepare_volume
 		configure_cmapi
-		sync_hosts
+		log "starting the node $(hostname -f 2>/dev/null || hostname)"
+		sync_hosts || log "could not write the /etc/hosts block of the cluster's nodes"
 		name_node
 		sync_hosts_loop &
 		start_cmapi
