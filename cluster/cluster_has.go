@@ -32,9 +32,30 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 
 // HasConfigTopoActivePassive reports whether the cluster is configured for
 // active-passive topology, either via the legacy boolean flag or an explicit
-// topology target.
+// topology target. The columnstore topology is active-passive (#2002).
 func (cluster *Cluster) HasConfigTopoActivePassive() bool {
-	return cluster.Conf.ActivePassive || cluster.Conf.TopologyTarget == config.TopoActivePassive
+	return cluster.Conf.ActivePassive || cluster.Conf.TopologyTarget == config.TopoActivePassive || cluster.HasConfigTopoColumnstore()
+}
+
+// HasConfigTopoColumnstore reports whether the cluster targets the columnstore
+// topology: an active-passive UM with the mcs tag (#2002).
+func (cluster *Cluster) HasConfigTopoColumnstore() bool {
+	return cluster.Conf.TopologyTarget == config.TopoColumnstore
+}
+
+// IsTopologyActivePassive reports whether the discovered topology is
+// active-passive, the columnstore one included.
+func (cluster *Cluster) IsTopologyActivePassive() bool {
+	return cluster.Topology == config.TopoActivePassive || cluster.Topology == config.TopoColumnstore
+}
+
+// activePassiveTopology is the topology a lone active-passive server is
+// discovered as: columnstore when it is the target.
+func (cluster *Cluster) activePassiveTopology() string {
+	if cluster.HasConfigTopoColumnstore() {
+		return config.TopoColumnstore
+	}
+	return config.TopoActivePassive
 }
 
 func (cluster *Cluster) HasValidBackup() bool {
@@ -126,7 +147,7 @@ func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
 }
 
 func (cluster *Cluster) HasNoValidSlave() bool {
-	if cluster.Topology == config.TopoActivePassive {
+	if cluster.IsTopologyActivePassive() {
 		return true
 	}
 	//All slave stopped

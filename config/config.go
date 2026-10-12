@@ -1856,6 +1856,8 @@ const (
 	TopoMasterSlavePgLog    string = "master-slave-pg-logical"
 	TopoMasterSlavePgStream string = "master-slave-pg-stream"
 	TopoActivePassive       string = "active-passive"
+	// MariaDB ColumnStore (#2002): the UM is an active-passive server with the mcs tag
+	TopoColumnstore string = "columnstore"
 )
 
 // GetInstancePATName returns the per-instance GitLab PAT name: the cloud18
@@ -2900,6 +2902,7 @@ func GetTopologyType() map[string]string {
 		TopoMasterSlavePgLog:    TopoMasterSlavePgLog,
 		TopoMasterSlavePgStream: TopoMasterSlavePgStream,
 		TopoActivePassive:       TopoActivePassive,
+		TopoColumnstore:         TopoColumnstore,
 		TopoUnknown:             TopoUnknown,
 	}
 }

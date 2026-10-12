@@ -1030,7 +1030,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			// capture comes back empty and the reslave then collides with the later tail
 			// (SlaveErr). After resolve the active node (the former minority) rejoins with
 			// db1's FINAL tail — non-empty capture, clean reslave.
-			if cluster.Conf.Autorejoin && cluster.IsActive() && cluster.GetTopology() != config.TopoActivePassive && !cluster.IsSplitBrain {
+			if cluster.Conf.Autorejoin && cluster.IsActive() && !cluster.IsTopologyActivePassive() && !cluster.IsSplitBrain {
 				// rejoin if not staging server
 				if isStagingServer {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Preventing auto rejoin on staging server %s", server.URL)
@@ -1078,7 +1078,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			} else {
 				server.SetState(stateUnconn)
 			}
-		} else if server.GetCluster().GetTopology() == config.TopoActivePassive {
+		} else if server.GetCluster().IsTopologyActivePassive() {
 			if server.PrevState == stateSuspect || (server.PrevState == stateMaintenance && !server.IsMaintenance) {
 				// In active-passive, only the designated master returns to master;
 				// other nodes stay unconnected until topology handling assigns them.
@@ -1120,7 +1120,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 // the unconnected (StandAlone) state a return from Failed leaves behind (#1910).
 func (server *ServerMonitor) isDesignatedMasterShownUnconnected() bool {
 	cluster := server.ClusterGroup
-	if cluster == nil || cluster.GetTopology() != config.TopoActivePassive {
+	if cluster == nil || !cluster.IsTopologyActivePassive() {
 		return false // the designated master exists in this topology only
 	}
 	if server.State != stateUnconn || server.IsDown() || server.IsMaintenance {
@@ -1445,7 +1445,7 @@ func (server *ServerMonitor) Refresh() error {
 			}
 			if cluster.StateMachine.GetHeartbeats()%30 == 0 {
 				server.SaveInfos()
-				if server.GetCluster().GetTopology() != config.TopoActivePassive && server.GetCluster().GetTopology() != config.TopoMultiMasterWsrep {
+				if !server.GetCluster().IsTopologyActivePassive() && server.GetCluster().GetTopology() != config.TopoMultiMasterWsrep {
 					server.CheckPrivileges()
 				}
 

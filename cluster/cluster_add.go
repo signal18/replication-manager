@@ -66,6 +66,15 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 	}
 }
 
+// addColumnstoreTag: the columnstore topology's servers (the UM) run ColumnStore,
+// whose configuration is the mcs tag's ruleset (#2002)
+func (cluster *Cluster) addColumnstoreTag() {
+	if cluster.HasConfigTopoColumnstore() && !cluster.Configurator.HaveDBTag("mcs") {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag mcs for topology %s", config.TopoColumnstore)
+		cluster.AddDBTagConfig("mcs")
+	}
+}
+
 func (cluster *Cluster) AddDBTag(tag string, dynamic bool) {
 
 	if !cluster.Configurator.HaveDBTag(tag) {

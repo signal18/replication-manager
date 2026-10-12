@@ -389,7 +389,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 
 func (cluster *Cluster) isFoundCandidateMaster() bool {
 
-	if cluster.GetTopology() == config.TopoActivePassive {
+	if cluster.IsTopologyActivePassive() {
 		return true
 	}
 	var key int

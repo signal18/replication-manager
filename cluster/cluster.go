@@ -980,6 +980,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initConfigDone.Store(true)
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
+	cluster.addColumnstoreTag()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {

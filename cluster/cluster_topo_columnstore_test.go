@@ -1,0 +1,63 @@
+package cluster
+
+import (
+	"testing"
+
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
+	"github.com/sirupsen/logrus"
+)
+
+// newColumnstoreTestCluster: a cluster whose saves are no-ops, as AddDBTagConfig saves
+func newColumnstoreTestCluster() *Cluster {
+	c := &Cluster{Conf: &config.Config{}}
+	cm := manager.NewConfigManager(config.NewLogrusWrapper(c.Conf, logrus.New()))
+	cm.Stop()
+	c.ConfigManager = cm
+	return c
+}
+
+// The columnstore topology is active-passive with the mcs tag (#2002): its target
+// counts as active-passive, a lone server is discovered as columnstore, and the
+// bootstrap adds the mcs tag once.
+func TestColumnstoreTopology(t *testing.T) {
+	cl := newColumnstoreTestCluster()
+	if err := cl.BootstrapTopology(config.TopoColumnstore); err != nil {
+		t.Fatalf("bootstrap columnstore: %v", err)
+	}
+	if !cl.HasConfigTopoActivePassive() || !cl.HasConfigTopoColumnstore() {
+		t.Fatal("columnstore target must be active-passive")
+	}
+	if got := cl.GetTopologyFromConf(); got != config.TopoColumnstore {
+		t.Fatalf("topology from conf %q, want %q", got, config.TopoColumnstore)
+	}
+	if !cl.Configurator.HaveDBTag("mcs") || cl.Conf.ProvTags != "mcs" {
+		t.Fatalf("mcs tag not added: tags %q", cl.Conf.ProvTags)
+	}
+	cl.addColumnstoreTag()
+	if cl.Conf.ProvTags != "mcs" {
+		t.Fatalf("mcs tag added twice: %q", cl.Conf.ProvTags)
+	}
+	if cl.activePassiveTopology() != config.TopoColumnstore {
+		t.Fatal("a lone columnstore server must be discovered as columnstore")
+	}
+	cl.Topology = config.TopoColumnstore
+	if !cl.IsTopologyActivePassive() || !cl.HasNoValidSlave() {
+		t.Fatal("discovered columnstore must behave as active-passive")
+	}
+	if cl.HasDiscoverTopologyMismatchTarget() {
+		t.Fatal("columnstore discovered under a columnstore target is no mismatch")
+	}
+
+	// plain active-passive: no mcs tag, discovered as active-passive
+	ap := newColumnstoreTestCluster()
+	if err := ap.BootstrapTopology(config.TopoActivePassive); err != nil {
+		t.Fatalf("bootstrap active-passive: %v", err)
+	}
+	if ap.Configurator.HaveDBTag("mcs") || ap.HasConfigTopoColumnstore() {
+		t.Fatal("active-passive must not get the mcs tag")
+	}
+	if ap.activePassiveTopology() != config.TopoActivePassive {
+		t.Fatal("a lone active-passive server must be discovered as active-passive")
+	}
+}
