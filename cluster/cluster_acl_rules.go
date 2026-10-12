@@ -304,6 +304,7 @@ var clusterACLRules = []ACLRule{
 	{"/actions/staging-refresh", nil, []string{config.GrantClusterStaging}},
 	{"/actions/staging-reload-script", nil, []string{config.GrantClusterStaging}},
 	{"/actions/staging-reseed-from-parent", nil, []string{config.GrantClusterStaging}},
+	{"/actions/create-staging", nil, []string{config.GrantClusterStaging}}, // on the parent; the creation is authorised as a cluster add (#1988)
 
 	// Cluster Management
 	{"/api/clusters/actions/delete", nil, []string{config.GrantClusterDelete}},

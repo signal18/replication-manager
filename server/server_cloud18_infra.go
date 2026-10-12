@@ -128,14 +128,25 @@ func (s *peerSession) mustOK(method, path string, payload any) ([]byte, error) {
 // Cloud18ClusterSpec is what an assistant asks for.
 type Cloud18ClusterSpec = repmanmcp.Cloud18ClusterSpec
 
+// plainClusterName lowercases and trims a requested cluster name and refuses one that is
+// not a plain name: a cluster name is a directory, a config section and a DNS label.
+func plainClusterName(name string) (string, error) {
+	name = strings.TrimSpace(strings.ToLower(name))
+	if name == "" {
+		return "", errors.New("cluster_name is required")
+	}
+	if strings.ContainsAny(name, " ./:") {
+		return "", errors.New("cluster_name must be a plain name (letters, digits, dashes)")
+	}
+	return name, nil
+}
+
 func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
-	spec.ClusterName = strings.TrimSpace(strings.ToLower(spec.ClusterName))
-	if spec.ClusterName == "" {
-		return spec, errors.New("cluster_name is required")
+	name, err := plainClusterName(spec.ClusterName)
+	if err != nil {
+		return spec, err
 	}
-	if strings.ContainsAny(spec.ClusterName, " ./:") {
-		return spec, errors.New("cluster_name must be a plain name (letters, digits, dashes)")
-	}
+	spec.ClusterName = name
 	if spec.DBImage == "" {
 		spec.DBImage = "mariadb:lts"
 	}

@@ -894,6 +894,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReseedFromParent)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/create-staging", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCreateStaging)),
+	)).Methods(http.MethodPost, http.MethodOptions)
 
 	// S3 Provider CRUD routes
 	router.Handle("/api/clusters/{clusterName}/s3providers", negroni.New(
