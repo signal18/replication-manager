@@ -43,21 +43,40 @@ func (regtest *RegTest) TestCreateChild(cl *cluster.Cluster, conf string, test *
 }
 
 func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, wantStates map[string]int) bool {
+	run, skipped, ok := createCheckedChild(cl, kind, grant, wantStates)
+	if run.created {
+		defer stagingDelete(cl, run.tok, run.name)
+	}
+	return skipped || ok
+}
+
+// childRun is a child cluster a regtest created: delete it with stagingDelete.
+type childRun struct {
+	name, tok string
+	created   bool
+}
+
+// createCheckedChild creates a child (or staging) cluster of cl through the route and
+// checks it (#1988, #1997); the caller deletes it when created. skipped: the cluster
+// cannot have one (not provisioned, no master, itself staging).
+func createCheckedChild(cl *cluster.Cluster, kind string, grant string, wantStates map[string]int) (run childRun, skipped bool, ok bool) {
 	orch := cl.GetOrchestrator()
 	if orch != config.ConstOrchestratorOpenSVC && orch != config.ConstOrchestratorKubernetes || cl.Conf.TopologyStaging || cl.GetMaster() == nil {
 		tlsLogf(cl, "Skipping Create "+kind+": needs a provisioned (OpenSVC or Kubernetes) cluster with a master, not itself staging")
-		return true
+		return run, true, false
 	}
 	if APIToken == nil || APIRequest == nil || APIRequestBody == nil {
 		tlsLogf(cl, "FAIL Create "+kind+": API hooks not wired")
-		return false
+		return run, false, false
 	}
 	tok, err := APIToken(cl, grant, config.GrantClusterCreate)
+	run.tok = tok
 	if err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": %s", err)
-		return false
+		return run, false, false
 	}
 	name := cl.Name + "-" + kind + "-regtest"
+	run.name = name
 	parentMaster := cl.GetMaster().Host
 
 	// The parent's logical backup is the seed: take one when there is none.
@@ -66,7 +85,7 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 		go cl.GetMaster().JobBackupLogical(context.Background())
 		if err := tlsWait(stagingRegtestBackup, func() error { _, _, err := cl.ParentLogicalBackup(); return err }); err != nil {
 			tlsLogf(cl, "FAIL Create "+kind+": no logical backup on %s: %s", cl.Name, err)
-			return false
+			return run, false, false
 		}
 	}
 
@@ -76,19 +95,19 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 	}
 	if err := stagingPost(tok, cl.Name, kind, map[string]any{"name": name}, http.StatusOK, &plan); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": plan: %s", err)
-		return false
+		return run, false, false
 	}
 	parentDomain, _ := strconv.Atoi(cl.Configurator.GetConfigReplicationDomain(cl.Name))
 	if plan.Domain != strconv.Itoa(parentDomain+1) || plan.SourceName != cl.Conf.MasterConn || plan.OwnSourceName != kind {
 		tlsLogf(cl, "FAIL Create "+kind+": plan domain %q (parent %d) source %q own %q", plan.Domain, parentDomain, plan.SourceName, plan.OwnSourceName)
-		return false
+		return run, false, false
 	}
 
 	if err := stagingPost(tok, cl.Name, kind, map[string]any{"name": name, "confirm": true}, http.StatusAccepted, nil); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": create: %s", err)
-		return false
+		return run, false, false
 	}
-	defer stagingDelete(cl, tok, name)
+	run.created = true
 
 	base := "/api/clusters/" + name
 	// The expected topology; a stop (WARN0239) ends the wait with its reason.
@@ -117,7 +136,7 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 		return nil
 	}); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": topology of %s: %s", name, err)
-		return false
+		return run, false, false
 	}
 
 	// The new master, still Master, replicates from this cluster's master through this
@@ -138,7 +157,7 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 		return fmt.Errorf("no running channel %q from %s: %v", cl.Conf.MasterConn, parentMaster, master.Replications)
 	}); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": %s", err)
-		return false
+		return run, false, false
 	}
 
 	// The proxy is monitored (the staging proxy logs in with the parent's user).
@@ -155,10 +174,10 @@ func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, want
 		return nil
 	}); err != nil {
 		tlsLogf(cl, "FAIL Create "+kind+": %s", err)
-		return false
+		return run, false, false
 	}
 	tlsLogf(cl, "PASS Create %s: %s from %s: %v, channel %q from %s running, own channel %s, domain %s, proxy running", kind, name, cl.Name, wantStates, cl.Conf.MasterConn, parentMaster, kind, plan.Domain)
-	return true
+	return run, false, true
 }
 
 type stagingStop struct{ desc string }

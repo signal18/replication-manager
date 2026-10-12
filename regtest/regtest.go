@@ -137,6 +137,7 @@ var tests = []string{
 	"testRejoinRefusesNodeWithData",
 	"testCreateStaging",
 	"testCreateChild",
+	"testAlterEngine",
 }
 
 const recoverTime = 8
