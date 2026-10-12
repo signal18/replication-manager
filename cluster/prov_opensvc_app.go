@@ -1008,7 +1008,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 
 		svccontainer["volume_mounts"] = strings.TrimSpace(cluster.GetOpenSVCDeploymentPathMapping(app) + " " + postgresWalArchiveMount(app))
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv("env")
-		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv("secret")
+		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
 	}
 	return svccontainer
 }
@@ -1034,7 +1034,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
 		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", gc.GetSourceVolumeName())
-		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		dirname := filepath.Join("/bootstrap", gc.GetSourcePath())
 
@@ -1067,7 +1067,7 @@ func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *conf
 		svccontainer["image"] = "signal18/nfsmixr:latest"
 		svccontainer["netns"] = "container#01"
 		svccontainer["privileged"] = "true"
-		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+		svccontainer["secrets_environment"] = appSecretsEnvironment(app)
 		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv(config.VariableTypeEnv)
 		diskname := s3m.GetSourceVolumeName()
 		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
@@ -1987,4 +1987,16 @@ func (e ErrSlice) Error() string {
 		buf.WriteString(err.Error())
 	}
 	return buf.String()
+}
+
+// appSecretsEnvironment is an app container's secrets_environment: the app's own secrets,
+// plus, for an app that is part of the database (prov-app-db-credentials, a ColumnStore PM,
+// #2002), the cluster's database root password as the cluster's database servers get it
+// (env/MYSQL_ROOT_PASSWORD, read by the MariaDB entrypoint).
+func appSecretsEnvironment(app *App) string {
+	s := app.GetOpenSVCDeploymentAppEnv(config.VariableTypeSecret)
+	if app != nil && app.AppConfig != nil && app.AppConfig.ProvAppDbCredentials {
+		s = strings.TrimSpace(s + " env/MYSQL_ROOT_PASSWORD")
+	}
+	return s
 }

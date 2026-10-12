@@ -1172,6 +1172,11 @@ type AppConfig struct {
 	// as APU. A template default (cloud18-templates minio) inherited at creation, overridable
 	// per app in the GUI.
 	AppStateful bool `mapstructure:"app-stateful" toml:"app-stateful" json:"appStateful"`
+	// ProvAppDbCredentials: the app receives the cluster's database root password
+	// (MYSQL_ROOT_PASSWORD from the cluster's env secret), like the cluster's database
+	// servers. For an app that is part of the database itself: a ColumnStore PM, deployed
+	// as an app for its active-passive DRBD placement (#2002). Set by its template.
+	ProvAppDbCredentials bool `mapstructure:"prov-app-db-credentials" toml:"prov-app-db-credentials" json:"provAppDbCredentials"`
 	// AppMonitorMode: how an app without a route is probed. "port" (default) connects to
 	// app-port over TCP; "ping" sends an ICMP echo to the app host, for a process that
 	// listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
