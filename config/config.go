@@ -875,6 +875,9 @@ type Config struct {
 	BackupLogicalLoadThreads                  int               `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`
 	BackupLogicalDumpThreads                  int               `mapstructure:"backup-logical-dump-threads" toml:"backup-logical-dump-threads" json:"backupLogicalDumpThreads"`
 	BackupLogicalDumpSystemTables             bool              `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
+	BackupLogicalRemotePickupTimeout          int               `mapstructure:"backup-logical-remote-pickup-timeout" toml:"backup-logical-remote-pickup-timeout" json:"backupLogicalRemotePickupTimeout"`
+	BackupLogicalRemoteReportTimeout          int               `mapstructure:"backup-logical-remote-report-timeout" toml:"backup-logical-remote-report-timeout" json:"backupLogicalRemoteReportTimeout"`
+	BackupLogicalRemoteArmTimeout             int               `mapstructure:"backup-logical-remote-arm-timeout" toml:"backup-logical-remote-arm-timeout" json:"backupLogicalRemoteArmTimeout"`
 	BackupPhysicalType                        string            `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
 	BackupKeepUntilValid                      bool              `mapstructure:"backup-keep-until-valid" toml:"backup-keep-until-valid" json:"backupKeepUntilValid"`
 	BackupKeepLast                            int               `mapstructure:"backup-keep-last" toml:"backup-keep-last" json:"backupKeepLast"`

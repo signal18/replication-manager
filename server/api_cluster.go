@@ -3579,6 +3579,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-logical-remote-pickup-timeout":
+		if err = mycluster.SetBackupLogicalRemotePickupTimeout(value); err != nil {
+			return err
+		}
+	case "backup-logical-remote-report-timeout":
+		if err = mycluster.SetBackupLogicalRemoteReportTimeout(value); err != nil {
+			return err
+		}
+	case "backup-logical-remote-arm-timeout":
+		if err = mycluster.SetBackupLogicalRemoteArmTimeout(value); err != nil {
+			return err
+		}
 	case "backup-keep-hourly":
 		err = mycluster.SetBackupKeepHourly(value)
 		if err != nil {

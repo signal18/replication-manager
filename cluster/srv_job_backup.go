@@ -4199,8 +4199,11 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 		ctx = context.Background()
 	}
 
+	// A dump run on the DB node blocks DDL there, around its dump client (srv_job_backup_remote.go)
+	remote := server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.ExecRemote
+
 	//Block DDL For Backup
-	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && cluster.Conf.BackupLockDDL {
+	if !remote && server.MysqldumpLockDDL() {
 		bckConn, err = server.GetNewDBConn()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
@@ -4228,6 +4231,13 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	defer dumpCancel()
 	server.registerJobCancel(task, dumpCancel)
 	defer server.clearJobCancel(task)
+	if remote {
+		// the dump runs on the DB node (srv_job_backup_remote.go)
+		if err = server.jobBackupMysqldumpRemote(dumpCtx, task, filename, allowRotate, dumpCancel); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+		}
+		return err
+	}
 	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
@@ -4744,8 +4754,14 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		return errors.New("Can't backup when server down")
 	}
 
+	// mysqldump runs on the DB node when scheduler-jobs-exec-remote lists it (#1628)
+	execRemote := logicalType == config.ConstBackupLogicalTypeMysqldump && server.mysqldumpExecRemote()
+
 	switch logicalType {
 	case config.ConstBackupLogicalTypeMysqldump:
+		if execRemote {
+			break // the dump client of the DB node is used
+		}
 		if _, err := os.Stat(cluster.GetMysqlDumpPath()); os.IsNotExist(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "File does not exist %s", cluster.GetMysqlDumpPath())
 			return err
@@ -4848,6 +4864,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		ResticEnabled:     resticEnabled,
 	}
 	server.ensureBackupSessionID(server.LastBackupMeta.Logical, backupmgr.BackupMethodLogical, start, backupLine)
+	server.LastBackupMeta.Logical.ExecRemote = execRemote
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Logical.Id, server.LastBackupMeta.Logical)
 
@@ -4906,9 +4923,12 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		// the in-memory cache), so it's wrapped here to match JobsUpdateState's
 		// signature and let every call site below share one variable.
 		updateJobState := server.JobsUpdateState
-		if cluster.Conf.MonitorScheduler {
+		// A remote dump in scheduler-jobs-mode=sql writes its row once its receiver is open
+		// (runRemoteDumpJobsRow): the row then carries the receiver port for dbjobs.
+		remoteRow := execRemote && cluster.Conf.SchedulerJobsMode != "api"
+		if cluster.Conf.MonitorScheduler && !remoteRow {
 			server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
-		} else {
+		} else if !cluster.Conf.MonitorScheduler {
 			updateJobState = func(task, result string, state, done int) error {
 				server.JobsUpdateStateRuntimeOnly(task, result, state, done)
 				return nil
@@ -4919,6 +4939,10 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		//Change to switch since we only allow one type of backup (for now)
 		switch logicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
+			if !execRemote {
+				// a local run: no dbjobs may take the remote dump cookie JobInsertTask set
+				server.delTaskCookie(task)
+			}
 			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(isAdhoc, cluster.Conf.BackupMysqldumpSplitDump, start)
 			oldV, _ := cluster.GetToolsVersion("client-dump")
 			if oldV != nil {
@@ -4965,7 +4989,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 			} else {
-				if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
+				if remoteRow {
+					// dbjobs already recorded the end of the dump on the row
+				} else if e2 := updateJobState(task, "Backup completed", 3, 1); e2 != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 				}
 				checkPath := stagedFile
@@ -7451,8 +7477,9 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case "sqlerrorlog":
 		server.DelWaitSqlErrorlogCookie()
 		server.maybeRetryDBLogMigration()
-	case string(config.ConstTaskPgDump):
-		// the stream of a jobs sidecar task ended: the backup waiting on it goes on
+	case string(config.ConstTaskPgDump), string(config.ConstTaskDump):
+		// the stream of a jobs sidecar (or dbjobs remote dump) task ended: the backup
+		// waiting on it goes on
 		server.signalStreamTaskDone(task)
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup, string(config.ConstTaskPgBaseBackup):
 		backtype := "physical"

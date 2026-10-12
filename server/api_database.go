@@ -3675,7 +3675,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			mod = config.ConstLogModDbSlowquery
 		case "optimize":
 			mod = config.ConstLogModDbOptimize
-		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
+		case "mariabackup", "xtrabackup", "mysqldump", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
 			mod = config.ConstLogModBackupStream
 		case "zfssnapback", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade", "print-defaults":
 			mod = config.ConstLogModTask
@@ -5318,11 +5318,14 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 // returns the receiver address. Used in API job mode so the dbjobs script can
 // discover where to stream data (backups, logs) without polling the jobs table.
 // @Summary Open a TCP receiver for a remote task
+// @Description For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.
 // @Tags DatabaseTasks
 // @Param clusterName path string true "Cluster name"
 // @Param serverName path string true "Server hostname"
 // @Param serverPort path string true "Server port"
-// @Param taskname path string true "Task name (xtrabackup, mariabackup, errorlog, etc.)"
+// @Param taskname path string true "Task name (xtrabackup, mariabackup, mysqldump, errorlog, etc.)"
+// @Success 200 {string} string "RECEIVER_PORT=<port>, for mysqldump RECEIVER_PORT=<port> DUMP_ARGS=<base64>, then LOCK_DDL=1 when dbjobs blocks DDL around the dump client"
+// @Failure 500 {string} string "No remote mysqldump backup waiting on <server>"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname} [post]
 func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -5376,6 +5379,27 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		// PostgreSQL logical backup streamed by the jobs sidecar, compressed here
 		dest = node.PostgresStreamDest(taskname)
 		rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
+	case config.ConstTaskDump:
+		// logical backup dumped on the DB node by dbjobs (scheduler-jobs-exec-remote),
+		// compressed or split here; only for a backup waiting for it, never into a local
+		// run's file
+		if !node.WaitStreamTaskArmed(r.Context(), taskname, mycluster.RemoteDumpArmTimeout()) {
+			http.Error(w, "No remote "+taskname+" backup waiting on "+node.URL, 500)
+			return
+		}
+		rcvPort, err = node.OpenRemoteDumpReceiver(taskname)
+		if err != nil {
+			break
+		}
+		args := mycluster.RemoteMysqlDumpArgs(node)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Task receiver port %s opened for %s on %s", rcvPort, taskname, node.Name)
+		w.WriteHeader(200)
+		answer := "RECEIVER_PORT=" + rcvPort + " DUMP_ARGS=" + args
+		if node.MysqldumpLockDDL() {
+			answer += " LOCK_DDL=1" // dbjobs blocks DDL around the dump client
+		}
+		w.Write([]byte(answer))
+		return
 	case config.ConstTaskPgBaseBackup:
 		// PostgreSQL physical backup (tar stream of pg_basebackup), compressed here when the
 		// running backup asked for it

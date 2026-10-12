@@ -41,6 +41,15 @@ func postgresJobCookie(task string) string {
 	return "cookie_wait" + task
 }
 
+// streamDestEmpty tells whether nothing was received into dest: missing, or a file of at most
+// 20 bytes (an empty gzip stream). A directory, the destination of a splitdump, is never
+// judged by its size, which counts its entries and is a few bytes on NFS while the table files
+// are still being written: the splitdump counts the bytes it receives itself.
+func streamDestEmpty(dest string) bool {
+	fi, err := os.Stat(dest)
+	return err != nil || (!fi.IsDir() && fi.Size() <= 20)
+}
+
 // logicalBackupType is the logical backup tool of this server: the cluster's
 // backup-logical-type, or pg_dumpall in the jobs sidecar for a PostgreSQL server.
 func (server *ServerMonitor) logicalBackupType() string {
@@ -133,6 +142,12 @@ func (server *ServerMonitor) signalStreamTaskDone(task string) {
 // stream into dest. It fails when the sidecar does not take the task (no sidecar, not
 // reachable), when nothing was received, or when the caller is cancelled.
 func (server *ServerMonitor) runPostgresStreamTask(ctx context.Context, task, dest string) error {
+	return server.runStreamTask(ctx, task, dest, postgresJobPickupTimeout)
+}
+
+// runStreamTask is runPostgresStreamTask with the time the job runner has to take the
+// task (a dbjobs remote dump, srv_job_backup_remote.go, has its own).
+func (server *ServerMonitor) runStreamTask(ctx context.Context, task, dest string, pickupTimeout time.Duration) error {
 	cluster := server.ClusterGroup
 	done := server.armStreamTask(task)
 	defer server.streamTasks.Delete(task)
@@ -145,7 +160,7 @@ func (server *ServerMonitor) runPostgresStreamTask(ctx context.Context, task, de
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Task %s requested from the jobs sidecar of %s", task, server.URL)
 
-	pickup := time.NewTimer(postgresJobPickupTimeout)
+	pickup := time.NewTimer(pickupTimeout)
 	defer pickup.Stop()
 	limit := time.NewTimer(postgresJobStreamTimeout)
 	defer limit.Stop()
@@ -161,7 +176,7 @@ func (server *ServerMonitor) runPostgresStreamTask(ctx context.Context, task, de
 		case <-pickup.C:
 			if server.hasCookie(cookie) {
 				server.delCookie(cookie)
-				return fmt.Errorf("the jobs sidecar of %s did not take the %s task within %s", server.URL, task, postgresJobPickupTimeout)
+				return fmt.Errorf("the jobs sidecar of %s did not take the %s task within %s", server.URL, task, pickupTimeout)
 			}
 		case <-limit.C:
 			return fmt.Errorf("%s still streaming after %s", task, postgresJobStreamTimeout)

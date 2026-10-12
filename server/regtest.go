@@ -314,6 +314,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testSchemaPlugin" {
 			res = regtest.TestSchemaPlugin(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testRemoteMysqldump" {
+			res = regtest.TestRemoteMysqldump(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testConfigPersistBackupOption" {
 			res = regtest.TestConfigPersistBackupOption(cl, test.ConfigFile, &test)
 		}
