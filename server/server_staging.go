@@ -61,6 +61,18 @@ func stagingProxyType(parent *cluster.Cluster) string {
 	return ""
 }
 
+// stagingProxyCredential is the parent's admin credential for a proxy type, as the
+// credential setting takes it (user:password), "" for a type without one.
+func stagingProxyCredential(parent *cluster.Cluster, proxyType string) (string, string) {
+	switch proxyType {
+	case config.ConstProxySqlproxy:
+		return "proxysql-servers-credential", parent.Conf.ProxysqlUser + ":" + parent.Conf.Secrets["proxysql-password"].Value
+	case config.ConstProxyMaxscale:
+		return "maxscale-servers-credential", parent.Conf.MxsUser + ":" + parent.Conf.Secrets["maxscale-pass"].Value
+	}
+	return "", ""
+}
+
 // PlanStagingCluster checks a create-staging request against the parent and returns
 // what would be created. The first check is the parent's logical backup: without it
 // nothing can be seeded, so nothing is created.
@@ -153,6 +165,14 @@ func (repman *ReplicationManager) CreateStagingCluster(parent *cluster.Cluster, 
 		}
 	}
 	if plan.Proxy != "" {
+		// The parent's proxy admin credential, through the setting the GUI's Set
+		// Credentials uses: the default ProxySQL user admin only connects locally, so a
+		// staging proxy rendered with it could never be monitored (dev3, ERR00051).
+		if key, cred := stagingProxyCredential(parent, plan.Proxy); key != "" {
+			if err := repman.SetClusterSetting(cl, key, cred); err != nil {
+				return cl, fail(err)
+			}
+		}
 		if err := cl.AddSeededProxy(plan.Proxy, plan.Proxy+"1", "3306", "", ""); err != nil {
 			return cl, fail(err)
 		}
