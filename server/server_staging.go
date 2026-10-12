@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ const (
 	stagingMaxDBCount     = 5
 	stagingMasterWait     = 5 * time.Minute
 	stagingNodesWait      = 2 * time.Minute // the new cluster loads its orchestrator node list on its own tick
+	stagingSourceName     = "staging"       // the channel from the parent (staging doc: replication-source-name)
 )
 
 // StagingRequest is the body of POST /api/clusters/{parent}/actions/create-staging,
@@ -47,6 +49,8 @@ type StagingPlan struct {
 	DBCount      int      `json:"dbCount"`
 	DBUPerNode   int      `json:"dbuPerNode"`
 	Proxy        string   `json:"proxy"` // "" = none
+	Domain       string   `json:"domain"`     // GTID domain: the parent's + 1
+	SourceName   string   `json:"sourceName"` // replication-source-name of the channel from the parent
 	Backup       string   `json:"backup"`
 	Notes        []string `json:"notes,omitempty"`
 }
@@ -62,16 +66,18 @@ func stagingProxyType(parent *cluster.Cluster) string {
 	return ""
 }
 
-// stagingProxyCredential is the parent's admin credential for a proxy type, as the
-// credential setting takes it (user:password), "" for a type without one.
-func stagingProxyCredential(parent *cluster.Cluster, proxyType string) (string, string) {
+// stagingProxyCredential is the parent's admin credential for a proxy type: the
+// credential setting and its value (user:password, the secrets the rendered proxy
+// config takes its password from), and the user and password as configured (the
+// login replication-manager monitors the proxy with). "" for a type without one.
+func stagingProxyCredential(parent *cluster.Cluster, proxyType string) (key, cred, user, confPass string) {
 	switch proxyType {
 	case config.ConstProxySqlproxy:
-		return "proxysql-servers-credential", parent.Conf.ProxysqlUser + ":" + parent.Conf.Secrets["proxysql-password"].Value
+		return "proxysql-servers-credential", parent.Conf.ProxysqlUser + ":" + parent.Conf.Secrets["proxysql-password"].Value, parent.Conf.ProxysqlUser, parent.Conf.ProxysqlPassword
 	case config.ConstProxyMaxscale:
-		return "maxscale-servers-credential", parent.Conf.MxsUser + ":" + parent.Conf.Secrets["maxscale-pass"].Value
+		return "maxscale-servers-credential", parent.Conf.MxsUser + ":" + parent.Conf.Secrets["maxscale-pass"].Value, parent.Conf.MxsUser, parent.Conf.MxsPass
 	}
-	return "", ""
+	return "", "", "", ""
 }
 
 // PlanStagingCluster checks a create-staging request against the parent and returns
@@ -117,6 +123,15 @@ func (repman *ReplicationManager) PlanStagingCluster(parent *cluster.Cluster, re
 	}
 	plan.DBUPerNode = parent.Conf.ProvDbDbu
 	plan.Proxy = stagingProxyType(parent)
+	// Another GTID domain than the parent's: the staging master replicates from the
+	// parent and takes its own writes (staging doc, prov-db-domain). The parent's is
+	// the one its configurator renders.
+	parentDomain, err := strconv.ParseUint(parent.Configurator.GetConfigReplicationDomain(parent.Name), 10, 32)
+	if err != nil {
+		return plan, fmt.Errorf("parent %s GTID domain: %w", parent.Name, err)
+	}
+	plan.Domain = strconv.FormatUint(parentDomain+1, 10)
+	plan.SourceName = stagingSourceName
 	return plan, nil
 }
 
@@ -155,6 +170,19 @@ func (repman *ReplicationManager) CreateStagingCluster(parent *cluster.Cluster, 
 	if err := repman.SetClusterSetting(cl, "topology-staging", "true"); err != nil {
 		return cl, fail(err)
 	}
+	if err := repman.SetClusterSetting(cl, "prov-db-domain", plan.Domain); err != nil {
+		return cl, fail(err)
+	}
+	if err := repman.SetClusterSetting(cl, "replication-source-name", plan.SourceName); err != nil {
+		return cl, fail(err)
+	}
+	// The parent's monitoring and replication accounts, same name same password (staging
+	// doc): provisioned identical, nothing to restore from the parent's backup.
+	for _, key := range []string{"db-servers-credential", "replication-credential"} {
+		if err := repman.SetClusterSetting(cl, key, parent.Conf.Secrets[key].Value); err != nil {
+			return cl, fail(err)
+		}
+	}
 	if err := repman.SetClusterSetting(cl, "replication-multisource-head-clusters", parent.Name); err != nil {
 		return cl, fail(err)
 	}
@@ -166,15 +194,19 @@ func (repman *ReplicationManager) CreateStagingCluster(parent *cluster.Cluster, 
 		}
 	}
 	if plan.Proxy != "" {
-		// The parent's proxy admin credential, through the setting the GUI's Set
-		// Credentials uses: the default ProxySQL user admin only connects locally, so a
-		// staging proxy rendered with it could never be monitored (dev3, ERR00051).
-		if key, cred := stagingProxyCredential(parent, plan.Proxy); key != "" {
+		// The parent's proxy admin credential. The rendered ProxySQL config declares
+		// admin and external with the password of the credential secrets; ProxySQL
+		// accepts admin only locally, so replication-manager must log in with the
+		// parent's user (external), not the default admin (dev3, ERR00051): the
+		// secrets through the setting the GUI's Set Credentials uses, the login user
+		// through the proxy add.
+		key, cred, user, confPass := stagingProxyCredential(parent, plan.Proxy)
+		if key != "" {
 			if err := repman.SetClusterSetting(cl, key, cred); err != nil {
 				return cl, fail(err)
 			}
 		}
-		if err := cl.AddSeededProxy(plan.Proxy, plan.Proxy+"1", "3306", "", ""); err != nil {
+		if err := cl.AddSeededProxy(plan.Proxy, plan.Proxy+"1", "3306", user, confPass); err != nil {
 			return cl, fail(err)
 		}
 	}

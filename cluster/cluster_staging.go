@@ -456,14 +456,22 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	//Delete wait logical backup cookie
 	target.DelWaitLogicalBackupCookie()
 
+	// The channel from the parent is named by this staging cluster's
+	// replication-source-name (the staging doc's "staging"); the parent's name only
+	// when the staging cluster has none, as before.
+	channel := cluster.Conf.MasterConn
+	if channel == "" {
+		channel = parent.Conf.MasterConn
+	}
 	if target.IsMaster() {
 		// Set replication master to current master if not PITR
-		logs, err = target.StopSlaveChannel(parent.Conf.MasterConn)
+		logs, err = target.StopSlaveChannel(channel)
 		if err != nil {
 			cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", target.URL, err)
 		}
 
 		changeOpt := parent.GetChangeMasterBaseOptForSlave(target, pmaster, false)
+		changeOpt.Channel = channel
 		changeOpt.Mode = "SLAVE_POS"
 
 		if target.DBVersion.IsMySQLOrPercona() {
@@ -522,7 +530,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	target.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
 
 	if target.IsMaster() {
-		_, err2 := target.StartSlaveChannel(parent.Conf.MasterConn)
+		_, err2 := target.StartSlaveChannel(channel)
 		if err2 != nil {
 			cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed start slave on server: %s %s", target.URL, err)
 		} else {

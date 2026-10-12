@@ -98,6 +98,10 @@ function CreateStagingModal({ selectedCluster, isOpen, closeModal }) {
                     <b>{plan.name}</b> on {plan.orchestrator}: {plan.dbCount} × {plan.dbImage}, {plan.dbuPerNode} DBU per node, proxy{' '}
                     {plan.proxy || 'none'}
                   </Text>
+                  <Text>
+                    GTID domain {plan.domain}, replicating from {plan.parent} through the channel {plan.sourceName}, with the parent's
+                    monitoring and replication accounts.
+                  </Text>
                   <Text>Seeded from {plan.backup}, data only: the staging cluster keeps its own root and accounts.</Text>
                   {(plan.notes || []).map((n) => (
                     <Text key={n} color='orange.500'>

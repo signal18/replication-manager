@@ -4579,6 +4579,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ReplicationSSLCa = strings.TrimSpace(value)
 	case "replication-source-name":
 		mycluster.Conf.MasterConn = value
+	case "prov-db-domain":
+		// GTID domain id of the rendered configuration (gtid_domain_id); a staging cluster
+		// takes its parent's + 1 (#1988)
+		if _, err := strconv.ParseUint(value, 10, 32); err != nil {
+			return fmt.Errorf("prov-db-domain must be a non-negative integer: %s", value)
+		}
+		mycluster.Conf.ProvDomain = value
 	case "replication-master-retry-count":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.MasterRetryCount = val
