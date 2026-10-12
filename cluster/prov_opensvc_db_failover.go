@@ -62,6 +62,9 @@ func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[
 	delete(def, "cluster_type")
 	def["rollback"] = "false"
 	def["orchestrate"] = "ha"
+	if env, ok := svcsection["env"]; ok {
+		env["nodes"] = def["nodes"] // informational, the placement is DEFAULT.nodes
+	}
 	if vol, ok := svcsection["volume#01"]; ok {
 		vol["pool"] = server.ClusterGroup.Conf.ProvVolumeDataFailover
 		vol["shared"] = "true"
