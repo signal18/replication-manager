@@ -3675,7 +3675,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			mod = config.ConstLogModDbSlowquery
 		case "optimize":
 			mod = config.ConstLogModDbOptimize
-		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
+		case "mariabackup", "xtrabackup", "mysqldump", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
 			mod = config.ConstLogModBackupStream
 		case "zfssnapback", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade", "print-defaults":
 			mod = config.ConstLogModTask
@@ -5376,6 +5376,27 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		// PostgreSQL logical backup streamed by the jobs sidecar, compressed here
 		dest = node.PostgresStreamDest(taskname)
 		rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
+	case config.ConstTaskDump:
+		// logical backup dumped on the DB node by dbjobs (scheduler-jobs-exec-remote),
+		// compressed or split here; only for a backup waiting for it, never into a local
+		// run's file
+		if !node.WaitStreamTaskArmed(taskname, mycluster.RemoteDumpArmTimeout()) {
+			http.Error(w, "No remote "+taskname+" backup waiting on "+node.URL, 500)
+			return
+		}
+		rcvPort, err = node.OpenRemoteDumpReceiver(taskname)
+		if err != nil {
+			break
+		}
+		args := mycluster.RemoteMysqlDumpArgs(node)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Task receiver port %s opened for %s on %s", rcvPort, taskname, node.Name)
+		w.WriteHeader(200)
+		answer := "RECEIVER_PORT=" + rcvPort + " DUMP_ARGS=" + args
+		if node.MysqldumpLockDDL() {
+			answer += " LOCK_DDL=1" // dbjobs blocks DDL around the dump client
+		}
+		w.Write([]byte(answer))
+		return
 	case config.ConstTaskPgBaseBackup:
 		// PostgreSQL physical backup (tar stream of pg_basebackup), compressed here when the
 		// running backup asked for it

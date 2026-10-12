@@ -80,6 +80,9 @@ var tests = []string{
 	// testSchemaEventsFailoverIsolation is not in this list either: it
 	// switches the master over twice. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testSchemaEventsFailoverIsolation
+	// testRemoteMysqldump is not in this list either: it needs a jobs container (dbjobs)
+	// next to each database. Run it by name, once per scheduler-jobs-mode:
+	// /api/clusters/<cluster>/tests/actions/run/testRemoteMysqldump
 	// testProxySQLPostgresRouting is not in this list either: it needs a
 	// PostgreSQL cluster behind a ProxySQL and switches the master over twice.
 	// Run it by name: /api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting
