@@ -1,0 +1,138 @@
+name: ColumnStore Image
+
+# The MariaDB ColumnStore database image of the ColumnStore child clusters (#2002):
+# docker/columnstore/Dockerfile, the official mariadb image + ColumnStore + CMAPI.
+# Pull request: build and smoke test only. Push to develop: build, test, push
+# signal18/mariadb-columnstore:<version> and :<major.minor>. By hand: any version.
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'docker/columnstore/**'
+      - '.github/workflows/columnstore-image.yml'
+  pull_request:
+    paths:
+      - 'docker/columnstore/**'
+      - '.github/workflows/columnstore-image.yml'
+  workflow_dispatch:
+    inputs:
+      mariadb_version:
+        description: 'MariaDB version of the base image (e.g. 11.8.9); empty builds the default list'
+        required: false
+        type: string
+        default: ''
+
+concurrency:
+  group: columnstore-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  versions:
+    name: Versions
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+    steps:
+      - id: list
+        env:
+          INPUT: ${{ github.event.inputs.mariadb_version }}
+        run: |
+          # the default list: the MariaDB lines our OLTP clusters run
+          if [ -n "$INPUT" ]; then
+            echo "list=[\"$INPUT\"]" >> "$GITHUB_OUTPUT"
+          else
+            echo 'list=["11.8.9"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build ${{ matrix.version }}
+    needs: versions
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ${{ fromJSON(needs.versions.outputs.list) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Tags
+        id: tags
+        env:
+          VERSION: ${{ matrix.version }}
+        run: |
+          echo "minor=$(echo "$VERSION" | cut -d. -f1,2)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build (local, for the smoke test)
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/columnstore
+          file: docker/columnstore/Dockerfile
+          build-args: |
+            MARIADB_VERSION=${{ matrix.version }}
+          platforms: linux/amd64
+          load: true
+          tags: mariadb-columnstore:test
+          cache-from: type=gha,scope=columnstore-${{ matrix.version }}
+          cache-to: type=gha,mode=max,scope=columnstore-${{ matrix.version }}
+
+      - name: Smoke test
+        run: |
+          set -eux
+          docker run --rm --entrypoint sh mariadb-columnstore:test -c '
+            mariadbd --version
+            ls /usr/lib/mysql/plugin/ha_columnstore.so
+            dpkg -l mariadb-plugin-columnstore mariadb-columnstore-cmapi | tail -2
+            ls /usr/bin/mcsSetConfig'
+          # the server starts and loads the engine
+          docker run -d --name cs -e MARIADB_ROOT_PASSWORD=smoke mariadb-columnstore:test --plugin-load-add=ha_columnstore.so --plugin-maturity=beta
+          for i in $(seq 1 60); do
+            if docker exec cs mariadb -uroot -psmoke -e 'SELECT 1' >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker exec cs mariadb -uroot -psmoke -N -e "SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME='Columnstore'" | tee /tmp/status
+          docker logs cs 2>&1 | tail -20
+          docker rm -f cs
+          grep -q ACTIVE /tmp/status
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/columnstore
+          file: docker/columnstore/Dockerfile
+          build-args: |
+            MARIADB_VERSION=${{ matrix.version }}
+          platforms: linux/amd64
+          push: true
+          tags: |
+            signal18/mariadb-columnstore:${{ matrix.version }}
+            signal18/mariadb-columnstore:${{ steps.tags.outputs.minor }}
+          cache-from: type=gha,scope=columnstore-${{ matrix.version }}
+
+      - name: Notify failure (Mattermost)
+        if: failure() && vars.MATTERMOST_WEBHOOK_URL != ''
+        env:
+          WORKFLOW_NAME: ${{ github.workflow }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REF_NAME: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          WEBHOOK_URL: ${{ vars.MATTERMOST_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-Type: application/json' \
+            --data "{\"text\":\":x: ColumnStore image build failed!\n**Job:** \`${WORKFLOW_NAME}\`\n**Build:** \`${RUN_NUMBER}\`\n**Branch:** \`${REF_NAME}\`\n[View Run](${SERVER_URL}/${REPO}/actions/runs/${RUN_ID})\"}" \
+            "$WEBHOOK_URL"
