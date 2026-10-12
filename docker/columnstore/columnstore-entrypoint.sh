@@ -96,10 +96,13 @@ PY
 # rename (node_manipulation._replace_localhost, what its add_node does) runs on a fresh
 # config; a config already holding a name is left alone.
 name_node() {
-	local name
+	local name i out
 	name="$(hostname -f 2>/dev/null || hostname)"
-	(cd "$CMAPI_DIR" && NODE_NAME="$name" gosu mysql env PYTHONPATH="$CMAPI_DIR/deps:$CMAPI_DIR" \
-		"$CMAPI_DIR/python/bin/python3" - <<'PY'
+	# the service name may not resolve in the first seconds of the container (OpenSVC
+	# registers it while the service starts): retried, bounded
+	for i in $(seq 1 30); do
+		if out="$(cd "$CMAPI_DIR" && NODE_NAME="$name" gosu mysql env PYTHONPATH="$CMAPI_DIR/deps:$CMAPI_DIR" \
+			"$CMAPI_DIR/python/bin/python3" - 2>&1 <<'PY'
 import os
 from cmapi_server.node_manipulation import _replace_localhost
 from mcs_node_control.models.node_config import NodeConfig
@@ -108,9 +111,15 @@ nc = NodeConfig()
 root = nc.get_current_config_root(path, upgrade=False)
 if _replace_localhost(root, os.environ['NODE_NAME']):
     nc.write_config(root, filename=path)
-    print('named', os.environ['NODE_NAME'])
+    print('named ' + os.environ['NODE_NAME'])
 PY
-	) | while read -r line; do log "$line"; done || log "could not name the node $name: it stays 127.0.0.1, a single node"
+		)"; then
+			[ -n "$out" ] && log "${out##*$'\n'}"
+			return 0
+		fi
+		sleep 2
+	done
+	log "could not name the node $name, it stays 127.0.0.1 (a single node): ${out##*$'\n'}"
 }
 
 cmapi_pid=""
