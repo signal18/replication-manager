@@ -274,6 +274,20 @@ func GetVariableByName(db *sqlx.DB, name string, myver *version.Version) (string
 	return value, query, nil
 }
 
+// GetVariableByNameNullable retrieves a global variable by name and tells a NULL value
+// (valid false, err nil) from a failed read (err set): ssl_cert is NULL on a server that
+// runs its auto-generated certificate (#1933).
+func GetVariableByNameNullable(db *sqlx.DB, name string, myver *version.Version) (sql.NullString, string, error) {
+	var value sql.NullString
+	source := GetVariableSource(db, myver)
+	query := "SELECT Variable_Value AS Value FROM " + source + ".global_variables WHERE Variable_Name = ?"
+	err := db.QueryRowx(query, name).Scan(&value)
+	if err == sql.ErrNoRows {
+		return sql.NullString{}, query, nil
+	}
+	return value, query, err
+}
+
 // GetVariableByNameToUpper retrieves a specific global variable by name (uppercased)
 func GetVariableByNameToUpper(db *sqlx.DB, name string, myver *version.Version) (string, string, error) {
 	var value string

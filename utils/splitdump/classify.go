@@ -133,7 +133,7 @@ func classifyStream(r io.Reader, opts ClassifyOptions, maxLineSize int) (Classif
 		}
 
 		dest := opts.ApplicationWriter
-		if inSystemSection {
+		if inSystemSection && !isDumpSessionWrapper(line) {
 			dest = opts.SystemWriter
 		}
 		if _, writeErr := io.WriteString(dest, line); writeErr != nil {
@@ -161,6 +161,23 @@ func classifyStream(r io.Reader, opts ClassifyOptions, maxLineSize int) (Classif
 	}
 
 	return result, nil
+}
+
+// isDumpSessionWrapper reports a line of the session wrapper mariadb-dump/mysqldump puts
+// around the dumped statements, whose opening half sits in the header, before any system
+// section: the footer restoring the saved session (`/*!40103 SET
+// TIME_ZONE=@OLD_TIME_ZONE */`, `/*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */`)
+// and the closing of the account-import role bracket (`SET ROLE NONE`, `DROP ROLE
+// mariadb_dump_import_role`, `EXECUTE IMMEDIATE CONCAT('SET ROLE ', @current_role)`).
+// They stay with their header on the application side: in the system artifact, replayed
+// alone, every @OLD_* and @current_role is NULL and the replay fails (1231 on time_zone,
+// #1980).
+func isDumpSessionWrapper(line string) bool {
+	t := strings.TrimSpace(line)
+	if (strings.HasPrefix(t, "/*!") || strings.HasPrefix(t, "/*M!")) && strings.Contains(t, "=@OLD_") {
+		return true
+	}
+	return strings.Contains(t, "mariadb_dump_import_role") || strings.Contains(t, "@current_role") || t == "SET ROLE NONE;"
 }
 
 // captureStreamMetadata mirrors the GTID/binlog-position capture in

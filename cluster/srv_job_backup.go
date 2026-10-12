@@ -263,7 +263,7 @@ func (server *ServerMonitor) applyPhysicalRestorePositional(meta *PhysicalRestor
 	changemasteropt.Logfile = meta.BinLogFile
 	changemasteropt.Logpos = meta.BinLogPos
 	changemasteropt.Mode = "POSITIONAL"
-	if _, err := dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion); err != nil {
+	if _, err := server.ChangeMaster(changemasteropt); err != nil {
 		return fmt.Errorf("apply restore-confirmed binlog position: %s", err)
 	}
 	return nil
@@ -2794,7 +2794,12 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 
 		var conn *sqlx.Conn
 		if sqlLogBin == 0 {
-			conn, connErr = server.GetConnNoBinlog(dbh) // slave reseed: keep the restore out of the binlog
+			// slave reseed: keep the restore out of the binlog (dbh is this restore's own
+			// pool, closed with it, so the session never reaches server.Conn)
+			var nb *NoBinlogConn
+			if nb, connErr = server.GetConnNoBinlog(dbh); nb != nil {
+				conn = nb.Conn
+			}
 		} else {
 			conn, connErr = dbh.Connx(ctx) // master restore: leave binlog ON so replicas receive the data
 		}
@@ -3197,9 +3202,30 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 		return fmt.Errorf("No master. Cancel backup reseeding %s", server.URL)
 	}
 
+	// Restore strategy (#1979), decided on the node before anything is loaded. A fresh
+	// node keeps the system tables of its own release: the backup's raw mysql/sys tables
+	// are never loaded over them (a 12.3 mysql.proc in 10.11 is error 1805), and the
+	// accounts come from the master afterwards. A node with data restored by hand keeps
+	// today's behavior.
+	fresh := server.CheckFreshNode()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) strategy for %s: fresh %t (%s)", server.URL, fresh.Fresh, fresh.Reason)
+
 	myargs := cluster.GetMyLoaderCompatibleOptions()
 	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
+	}
+	if fresh.Fresh {
+		// The exclusion replaces any regex of backup-myloader-options: myloader keeps a
+		// single one, and the system tables must never be loaded on a fresh node.
+		kept := myargs[:0]
+		for _, a := range myargs {
+			if a == "-x" || a == "--regex" || strings.HasPrefix(a, "--regex=") || strings.HasPrefix(a, "-x=") {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical restore (myloader) of fresh node %s: backup-myloader-options regex %q replaced by the system tables exclusion", server.URL, a)
+				continue
+			}
+			kept = append(kept, a)
+		}
+		myargs = append(kept, "--regex=^(?!(mysql|sys)\\.)")
 	}
 
 	myargs = append(myargs, cluster.GetDumpCredentials(server)...)
@@ -3211,6 +3237,9 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	stdoutIn, _ := dumpCmd.StdoutPipe()
 	stderrIn, _ := dumpCmd.StderrPipe()
 	dumpCmd.Start()
+	// myloader reports its fatal error on stderr (copied at DBG) and then aborts: keep
+	// its CRITICAL lines for the returned error, otherwise only the signal is seen.
+	var critical myloaderCritical
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
@@ -3219,11 +3248,20 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	}()
 	go func() {
 		defer wg.Done()
-		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
+		server.copyLogsHook(stderrIn, config.ConstLogModBackupStream, config.LvlDbg, critical.observe)
 	}()
 	wg.Wait()
 	if err := dumpCmd.Wait(); err != nil {
-		return err
+		return critical.wrap(err)
+	}
+	if fresh.Fresh {
+		sqlLogBin := 0
+		if server.URL == master.URL {
+			sqlLogBin = 1
+		}
+		if err := server.replayMasterSystemUsers(master, sqlLogBin); err != nil {
+			return fmt.Errorf("logical restore of %s: data restored, accounts from %s not replayed: %w", server.URL, master.URL, err)
+		}
 	}
 	elapsed := time.Since(start).Round(time.Second)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restore (myloader) in %s (started at %s) for: %s", elapsed, start.Format(time.RFC3339), server.URL)
@@ -3420,7 +3458,13 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 // an unconditionally-unlogged replay connection.
 func (server *ServerMonitor) reseedMysqldumpSystemReplayConn(ctx context.Context, dbh *sqlx.DB, sqlLogBin int) (*sqlx.Conn, error) {
 	if sqlLogBin == 0 {
-		return server.GetConnNoBinlog(dbh)
+		// dbh is the reseed's own pool, closed with it: the unlogged session never
+		// reaches server.Conn
+		nb, err := server.GetConnNoBinlog(dbh)
+		if nb == nil {
+			return nil, err
+		}
+		return nb.Conn, err
 	}
 	return dbh.Connx(ctx)
 }
@@ -4397,6 +4441,14 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	return err
 }
 
+// mysqldumpUserArgs is the --system=user dump of this server's accounts and grants, the
+// one JobBackupMysqldumpUser writes as the users sidecar and replayMasterSystemUsers
+// streams live from the master.
+func (server *ServerMonitor) mysqldumpUserArgs() []string {
+	args := append(server.ClusterGroup.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
+	return append(args, "--insert-ignore", "--system=user")
+}
+
 func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	cluster := server.ClusterGroup
 	var err error
@@ -4404,9 +4456,7 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	dir := server.GetMyBackupDirectory()
 	userpath := filepath.Join(dir, "mysql.users.sql.gz")
 
-	dumpargs := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
-	dumpargs = append(dumpargs, "--insert-ignore", "--system=user")
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), server.mysqldumpUserArgs()...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
@@ -6220,7 +6270,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 				return false, connErr
 			}
 			defer conn.Close()
-			return dest.restoreSystemCatalog(ctx, conn, filepath.Join(finalDir, directReseedSystemArtifactName))
+			return dest.restoreSystemCatalog(ctx, conn.Conn, filepath.Join(finalDir, directReseedSystemArtifactName))
 		}()
 
 		if replayErr != nil {
@@ -6432,7 +6482,7 @@ func (server *ServerMonitor) waitAndSendSSTReady(task string) (bool, error) {
 	}
 	defer conn.Close()
 
-	count, err := server.GetJobCount(conn, task, JobStateHalted)
+	count, err := server.GetJobCount(conn.Conn, task, JobStateHalted)
 	if err != nil {
 		return false, fmt.Errorf("Error getting task on %s: %s", server.URL, err)
 	}

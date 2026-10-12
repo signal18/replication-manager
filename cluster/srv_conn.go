@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,7 +13,28 @@ import (
 )
 
 // All next query will not use binlog, except changing database via USE
-func (server *ServerMonitor) GetConnNoBinlog(db *sqlx.DB) (*sqlx.Conn, error) {
+// NoBinlogConn is a single pooled connection whose session runs with sql_log_bin=0. Its
+// Close discards the connection instead of returning it to the pool: a pooled connection
+// keeps its session variables, so a later user of server.Conn would write without
+// binlogging, silently out of replication (#1978).
+type NoBinlogConn struct {
+	*sqlx.Conn
+}
+
+// Close drops the connection from the pool (driver.ErrBadConn from Raw marks it bad).
+func (c *NoBinlogConn) Close() error {
+	if c == nil || c.Conn == nil {
+		return nil
+	}
+	_ = c.Conn.Raw(func(any) error { return driver.ErrBadConn })
+	// Raw returning ErrBadConn already closed it: ErrConnDone is the expected answer.
+	if err := c.Conn.Close(); err != nil && !errors.Is(err, sql.ErrConnDone) {
+		return err
+	}
+	return nil
+}
+
+func (server *ServerMonitor) GetConnNoBinlog(db *sqlx.DB) (*NoBinlogConn, error) {
 	if db == nil {
 		return nil, nil
 	}
@@ -27,15 +49,15 @@ func (server *ServerMonitor) GetConnNoBinlog(db *sqlx.DB) (*sqlx.Conn, error) {
 
 	if server.DBVersion != nil && server.DBVersion.IsPostgreSQL() {
 		// no binary log to keep the connection out of
-		return conn, nil
+		return &NoBinlogConn{conn}, nil
 	}
 	_, err = conn.ExecContext(ctx, "set session sql_log_bin=0")
 	if err != nil {
-		conn.Close()
+		(&NoBinlogConn{conn}).Close()
 		return nil, fmt.Errorf("Error disabling binlog, %s", err)
 	}
 
-	return conn, nil
+	return &NoBinlogConn{conn}, nil
 }
 
 // This function will execute query and will use default read timeout

@@ -344,3 +344,55 @@ func TestSharedBoundaryDefinition(t *testing.T) {
 		}
 	}
 }
+
+// The dump's session wrapper stays with its header: the system artifact carries the
+// account statements only, never a footer restoring a saved @OLD_* or the import-role
+// bracket whose opening is on the application side (#1980). Shape taken from a live
+// `mariadb-dump --insert-ignore --system=user` of MariaDB 12.3.3.
+func TestClassifyStreamKeepsDumpSessionWrapperOutOfSystem(t *testing.T) {
+	dump := strings.Join([]string{
+		"-- MariaDB dump 10.19-11.4.12-MariaDB, for debian-linux-gnu (x86_64)",
+		"/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;",
+		"/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */;",
+		"/*!40103 SET TIME_ZONE='+00:00' */;",
+		"/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;",
+		"/*M!100616 SET @OLD_NOTE_VERBOSITY=@@NOTE_VERBOSITY, NOTE_VERBOSITY=0 */;",
+		"SELECT COALESCE(CURRENT_ROLE(),'NONE') into @current_role;",
+		"CREATE ROLE IF NOT EXISTS mariadb_dump_import_role;",
+		"SET ROLE mariadb_dump_import_role;",
+		"CREATE USER IF NOT EXISTS `repl`@`%`;",
+		"GRANT REPLICATION SLAVE ON *.* TO `repl`@`%`;",
+		"/*M!100005 SET DEFAULT ROLE NONE FOR 'repl'@'%' */;",
+		"/*!80001 ALTER USER 'repl'@'%' DEFAULT ROLE NONE */;",
+		"SET ROLE NONE;",
+		"DROP ROLE mariadb_dump_import_role;",
+		"/*M!100203 EXECUTE IMMEDIATE CONCAT('SET ROLE ', @current_role) */;",
+		"/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;",
+		"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */;",
+		"/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;",
+		"/*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */;",
+		"-- Dump completed on 2026-10-11 17:26:53",
+		"",
+	}, "\n")
+	var app, sys strings.Builder
+	res, err := ClassifyStream(strings.NewReader(dump), ClassifyOptions{ApplicationWriter: &app, SystemWriter: &sys})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HasSystemContent {
+		t.Fatal("the accounts are system content")
+	}
+	for _, want := range []string{"CREATE USER IF NOT EXISTS `repl`@`%`;", "GRANT REPLICATION SLAVE", "SET DEFAULT ROLE NONE FOR 'repl'", "ALTER USER 'repl'@'%' DEFAULT ROLE NONE"} {
+		if !strings.Contains(sys.String(), want) {
+			t.Errorf("system artifact lacks %q:\n%s", want, sys.String())
+		}
+	}
+	for _, never := range []string{"@OLD_", "@current_role", "mariadb_dump_import_role", "SET ROLE NONE"} {
+		if strings.Contains(sys.String(), never) {
+			t.Errorf("system artifact carries the dump wrapper %q:\n%s", never, sys.String())
+		}
+	}
+	if !strings.Contains(app.String(), "SET TIME_ZONE=@OLD_TIME_ZONE") || !strings.Contains(app.String(), "DROP ROLE mariadb_dump_import_role") {
+		t.Errorf("the wrapper stays with its header:\n%s", app.String())
+	}
+}

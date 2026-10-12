@@ -8,6 +8,7 @@ package regtest
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -120,7 +121,14 @@ func rollingHealthCheckVersions(cl *cluster.Cluster, opName string, op func() er
 		return false
 	}
 
-	// Same master at the end.
+	// Same master at the end. The rolling operations end by signalling the switchback
+	// (cluster.SwitchOver pushes onto switchoverChan and returns), so the original master
+	// may not be back yet when op returns: wait for it before asserting.
+	for deadline := time.Now().Add(3 * time.Minute); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
+		if m := cl.GetMaster(); m != nil && m.URL == masterURL && !cl.IsInFailover() {
+			break
+		}
+	}
 	masterAfter := cl.GetMaster()
 	if masterAfter == nil {
 		logf("FAIL %s: no master after the operation", opName)

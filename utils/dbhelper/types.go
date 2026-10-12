@@ -569,6 +569,11 @@ type SlaveStatus struct {
 	SQLRemainingDelay        sql.NullInt64  `db:"SQL_Remaining_Delay" json:"sqlRemainingDelay"`
 	AutoPosition             int            `db:"Auto_Position" json:"autoPosition"`
 	MasterRetryCount         sql.NullInt64  `db:"Master_Retry_Count" json:"masterRetryCount"`
+	// Replication TLS (#1933): encrypted without a CA means any public CA is trusted.
+	MasterSSLAllowed          sql.NullString `db:"Master_SSL_Allowed" json:"masterSslAllowed"`
+	MasterSSLCAFile           sql.NullString `db:"Master_SSL_CA_File" json:"masterSslCaFile"`
+	MasterSSLCAPath           sql.NullString `db:"Master_SSL_CA_Path" json:"masterSslCaPath"`
+	MasterSSLVerifyServerCert sql.NullString `db:"Master_SSL_Verify_Server_Cert" json:"masterSslVerifyServerCert"`
 }
 
 // ImportFromReplicaStatus converts ReplicaStatus to SlaveStatus format
@@ -610,6 +615,10 @@ func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
 	s.SQLRemainingDelay = rs.SQLRemainingDelay
 	s.AutoPosition = rs.AutoPosition
 	s.MasterRetryCount = rs.SourceRetryCount
+	s.MasterSSLAllowed = rs.SourceSSLAllowed
+	s.MasterSSLCAFile = rs.SourceSSLCaFile
+	s.MasterSSLCAPath = rs.SourceSSLCaPath
+	s.MasterSSLVerifyServerCert = rs.SourceSSLVerifyServerCert
 }
 
 // ReplicaStatus represents replica replication status (MySQL 8.4+)
@@ -757,9 +766,20 @@ type ChangeMasterOpt struct {
 	Retry     string
 	Heartbeat string
 	SSL       bool
-	Logfile   string
-	Logpos    string
-	Mode      string
+	// SSLCa is the CA file, on the replica's own host, the I/O thread verifies its
+	// primary with (MASTER_SSL_CA). Only CHANGE MASTER can set it: no server option
+	// does (#1933).
+	SSLCa string
+	// SSLCaClear empties MASTER_SSL_CA: a primary on its auto-generated certificate
+	// (MariaDB 11.4+) is verified through the replication password, and any CA kept in
+	// master.info from an earlier certificate cuts the channel (error 2026) (#1933).
+	SSLCaClear bool
+	// SSLOff emits MASTER_SSL=0 for a primary without TLS: an 11.4+ replica defaults
+	// to MASTER_SSL=1 and would not connect (MDEV-35584, mixed-version upgrades).
+	SSLOff  bool
+	Logfile string
+	Logpos  string
+	Mode    string
 
 	RetryCount string // Start from MariaDB 12 and MySQL 8.4
 

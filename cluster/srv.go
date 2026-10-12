@@ -2055,7 +2055,7 @@ func (server *ServerMonitor) ExecQueryNoBinLog(query string, timeout time.Durati
 	}
 	defer conn.Close()
 
-	_, err = server.ConnExecQueryWithTimeout(conn, timeout, query)
+	_, err = server.ConnExecQueryWithTimeout(conn.Conn, timeout, query)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error query %s %s", query, err)
 		return err
@@ -2418,13 +2418,13 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 	}
 	defer Conn.Close()
 
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "USE "+database)
+	_, err = server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, "USE "+database)
 	if err != nil {
 		return 0, err
 	}
 
 	if !server.IsPostgreSQLHost() {
-		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "set sql_log_bin=0")
+		_, err = server.ConnExecQueryWithTimeout(Conn.Conn, JobTimeout, "set sql_log_bin=0")
 		if err != nil {
 			return 0, err
 		}
@@ -2433,7 +2433,7 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 	cleantables := []string{}
 
 	query := "SHOW TABLES LIKE '" + table + "_%'"
-	err = server.ConnSelectQueryWithTimeout(Conn, 5*time.Second, &cleantables, query)
+	err = server.ConnSelectQueryWithTimeout(Conn.Conn, 5*time.Second, &cleantables, query)
 	if err != nil {
 		return dropped, err
 	}
@@ -2447,7 +2447,7 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 
 		// Start dropping
 		for _, row := range cleantables {
-			if _, err := server.ConnExecQueryWithTimeout(Conn, 5*time.Second, "DROP TABLE "+database+"."+row); err != nil {
+			if _, err := server.ConnExecQueryWithTimeout(Conn.Conn, 5*time.Second, "DROP TABLE "+database+"."+row); err != nil {
 				return dropped, err
 			} else {
 				dropped++
@@ -2533,7 +2533,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	hasMyGTID := server.HasMySQLGTID()
 	if cluster.Conf.MultiMasterGrouprep {
 		//MySQL group replication
-		logs, err = dbhelper.ChangeMaster(server.Conn, cluster.GetChangeMasterBaseOptForReplGroup(server), server.DBVersion)
+		logs, err = server.ChangeMaster(cluster.GetChangeMasterBaseOptForReplGroup(server))
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Group Replication bootstrapped  for", server.URL)
 	} else if !cluster.Conf.ForceSlaveNoGtid && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 		//mariadb using GTID
@@ -2544,13 +2544,13 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		}
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = master_use_gitd
-		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
+		logs, err = server.ChangeMaster(changemasteropt)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with %s as master", server.URL, master.URL)
 	} else if hasMyGTID && !cluster.Conf.ForceSlaveNoGtid {
 		// MySQL GTID
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = "MASTER_AUTO_POSITION"
-		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
+		logs, err = server.ChangeMaster(changemasteropt)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with MySQL GTID replication style and %s as master", server.URL, master.URL)
 
 	} else {
@@ -2558,7 +2558,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		changemasteropt.Mode = "POSITIONAL"
 		changemasteropt.Logfile = master.BinaryLogFile
 		changemasteropt.Logpos = master.BinaryLogPos
-		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
+		logs, err = server.ChangeMaster(changemasteropt)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with old replication style and %s as master", server.URL, master.URL)
 	}
 	if err != nil {

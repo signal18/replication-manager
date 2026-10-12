@@ -364,7 +364,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				changemasteropt.Logpos = crash.FailoverMasterLogPos
 			}
 		}
-		logs, changeMasterErr = dbhelper.ChangeMaster(cluster.oldMaster.Conn, changemasteropt, cluster.oldMaster.DBVersion)
+		logs, changeMasterErr = cluster.oldMaster.ChangeMaster(changemasteropt)
 		cluster.LogSQL(logs, changeMasterErr, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Change master failed on old master, reason:%s ", changeMasterErr)
 		startSlaveErr := error(nil)
 		if oldmasterneedslavestart {
@@ -449,7 +449,7 @@ func (cluster *Cluster) pointSlaveToMasterWithMode(sl *ServerMonitor, mode strin
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(sl, cluster.master, sl.IsDelayed)
 	changemasteropt.Mode = mode
 
-	return dbhelper.ChangeMaster(sl.Conn, changemasteropt, sl.DBVersion)
+	return sl.ChangeMaster(changemasteropt)
 }
 
 // pointSlaveToMasterAutoDetect picks the GTID mode for CHANGE MASTER/CHANGE
@@ -518,11 +518,11 @@ func (cluster *Cluster) pointSlaveToMasterPositional(sl *ServerMonitor) (string,
 	changemasteropt.Logpos = mPos
 	changemasteropt.Mode = "POSITIONAL"
 
-	return dbhelper.ChangeMaster(sl.Conn, changemasteropt, sl.DBVersion)
+	return sl.ChangeMaster(changemasteropt)
 }
 
 func (cluster *Cluster) pointSlaveToMasterMxsNoGtid(sl *ServerMonitor) (string, error) {
-	return dbhelper.ChangeMaster(sl.Conn, cluster.GetChangeMasterBaseOptForMxs(sl, cluster.master), sl.DBVersion)
+	return sl.ChangeMaster(cluster.GetChangeMasterBaseOptForMxs(sl, cluster.master))
 }
 
 func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
@@ -735,7 +735,7 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 					changemasteropt.Mode = "MASTER_AUTO_POSITION"
 				}
 			}
-			logs, err := dbhelper.ChangeMaster(NewMaster.Conn, changemasteropt, NewMaster.DBVersion)
+			logs, err := NewMaster.ChangeMaster(changemasteropt)
 			cluster.LogSQL(logs, err, NewMaster.URL, "MasterFailover", config.LvlErr, "Change master failed on slave %s, %s", NewMaster.URL, err)
 			if !fail && err == nil {
 				logs, err := dbhelper.ResetSlave(oldMaster.Conn, true, rep.ConnectionName.String, oldMaster.DBVersion)
@@ -1602,11 +1602,11 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 		} else {
 			changeMasterOpt.Mode = ""
 		}
-		logs, changeMasterErr = dbhelper.ChangeMaster(child.Conn, changeMasterOpt, child.DBVersion)
+		logs, changeMasterErr = child.ChangeMaster(changeMasterOpt)
 	} else {
 		//MariaDB all cases use GTID
 		changeMasterOpt.Mode = "SLAVE_POS"
-		logs, changeMasterErr = dbhelper.ChangeMaster(child.Conn, changeMasterOpt, child.DBVersion)
+		logs, changeMasterErr = child.ChangeMaster(changeMasterOpt)
 	}
 
 	cluster.LogSQL(logs, changeMasterErr, child.URL, "MasterFailover", config.LvlErr, "Could not change masteron server %s, %s", child.URL, changeMasterErr)

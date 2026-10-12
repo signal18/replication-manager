@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -375,7 +374,7 @@ func (server *ServerMonitor) PostgresLogicalReseedFinish() {
 	cluster.postgresInstallDDLReplication(server)
 	opt := cluster.GetChangeMasterBaseOptForSlave(server, primary, false)
 	opt.PostgresExistingSlot = true
-	logs, err := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+	logs, err := server.ChangeMaster(opt)
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Re-copy of %s done but it could not subscribe on its slot: %s", server.URL, err)
 	if err != nil {
 		return

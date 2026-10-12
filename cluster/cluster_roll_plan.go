@@ -192,6 +192,14 @@ func (cluster *Cluster) PlanRollingUpgrade(target, explicit string) (*RollingUpg
 		if next.Major < current.Major && !r.LogicalFresh && len(issues) == 0 {
 			issues = append(issues, "a downgrade across a major needs a logical backup of the primary newer than the binary log retention (a physical backup of "+current.String()+" does not restore into "+next.String()+"), arm autorejoin-logical-backup and take one")
 		}
+		// Each node is rebuilt fresh and gets the master's accounts replayed live with the
+		// dump client (#1979): without it, the first node would be destroyed and left
+		// without its accounts.
+		if dump := cluster.GetMysqlDumpPath(); dump == "" {
+			issues = append(issues, "the fresh-node restore replays the master's accounts with mariadb-dump/mysqldump, none is available")
+		} else if _, err := os.Stat(dump); err != nil {
+			issues = append(issues, "the fresh-node restore replays the master's accounts with "+dump+", not found")
+		}
 		if len(issues) > 0 {
 			return nil, fmt.Errorf("rolling reprov across a major release refused: %s", strings.Join(issues, "; "))
 		}

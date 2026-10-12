@@ -408,7 +408,7 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 				deadline := time.Now().Add(3 * time.Minute)
 				for {
 					err := svc.StartServiceV3(cluster.Name, server.ServiceName)
-					if err == nil {
+					if err == nil || openSVCAlreadyStarted(err) {
 						return nil
 					}
 					if !(strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "in progress")) || time.Now().After(deadline) {
@@ -1540,3 +1540,10 @@ func (cluster *Cluster) proxyStartTimeout() string {
 // MariaDB / MySQL / Percona entrypoints prepend their own server binary to an argument list
 // that starts with an option, so it is right whatever the image's binary is called.
 const galeraBootstrapCommand = "--wsrep_new_cluster"
+
+// openSVCAlreadyStarted reports the orchestrator's 409 "already started": the start asked
+// for is the state the service is already in, a success. Any other 409 (an action still
+// in progress) is not (#1981).
+func openSVCAlreadyStarted(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "409") && strings.Contains(err.Error(), "already started")
+}

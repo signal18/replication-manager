@@ -7,7 +7,10 @@
 package configurator
 
 import (
+	"encoding/json"
 	"strings"
+
+	"github.com/signal18/replication-manager/config"
 
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
@@ -45,10 +48,18 @@ func (configurator *Configurator) HaveProxyTag(tag string) bool {
 	return false
 }
 
+// filterMatchesTag reports whether a ruleset filter (fset_name, e.g.
+// "mariadb.security.ssl") or a bare tag belongs to tag: the tag must be the filter's
+// whole last segment. A plain suffix match let "ssl" select "mariadb.security.strictssl",
+// "bind" select "nobind" and "statement" select "nologslavestatement" (#1975).
+func filterMatchesTag(filter, tag string) bool {
+	return tag != "" && (filter == tag || strings.HasSuffix(filter, "."+tag))
+}
+
 func (configurator *Configurator) IsFilterInProxyTags(filter string) bool {
 	tags := configurator.GetProxyTags()
 	for _, tag := range tags {
-		if strings.HasSuffix(filter, tag) {
+		if filterMatchesTag(filter, tag) {
 			//fmt.Println("test tag: " + tag + "  against " + filter)
 			return true
 		}
@@ -59,7 +70,7 @@ func (configurator *Configurator) IsFilterInProxyTags(filter string) bool {
 func (configurator *Configurator) IsFilterInDBTags(filter string) bool {
 	tags := configurator.GetDBTags()
 	for _, tag := range tags {
-		if strings.HasSuffix(filter, tag) {
+		if filterMatchesTag(filter, tag) {
 			//	fmt.Println(server.ClusterGroup.Conf.ProvTags + " vs tag: " + tag + "  against " + filter)
 			return true
 		}
@@ -86,4 +97,41 @@ func (configurator *Configurator) HasProxyReadLeaderNoSlave() bool {
 		return true
 	}
 	return false
+}
+
+// TagManagedVariables returns every variable a database cnf ruleset of the module
+// renders, whatever the cluster's tags: those variables are replication-manager's own.
+// One of them deployed but absent from the generated config is a pending tag change
+// (a tag dropped, its file still deployed until the restart), never operator drift, so
+// the delta must not preserve it (#1976). Names are normalized like the variable maps.
+func (configurator *Configurator) TagManagedVariables() map[string]bool {
+	type fileVar struct {
+		Fmt string `json:"fmt"`
+	}
+	managed := make(map[string]bool)
+	for _, rule := range configurator.DBModule.Rulesets {
+		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
+			continue
+		}
+		for _, variable := range rule.Variables {
+			if variable.Class != "file" {
+				continue
+			}
+			var fv fileVar
+			if err := json.Unmarshal([]byte(variable.Value), &fv); err != nil || fv.Fmt == "" {
+				continue
+			}
+			for _, line := range strings.Split(fv.Fmt, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "[") || strings.HasPrefix(line, "!") {
+					continue
+				}
+				key, _, _ := strings.Cut(line, "=")
+				if name := strings.ToLower(config.NormalizeConfigVarName(key)); name != "" {
+					managed[name] = true
+				}
+			}
+		}
+	}
+	return managed
 }

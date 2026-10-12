@@ -274,6 +274,24 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testRollingUpgrade" {
 			res = regtest.TestRollingUpgrade(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testReplicationTLSAutoCertificate" {
+			res = regtest.TestReplicationTLSAutoCertificate(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testReplicationTLSStaleCAEmptied" {
+			res = regtest.TestReplicationTLSStaleCAEmptied(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testReplicationTLSVerifyOffWarns" {
+			res = regtest.TestReplicationTLSVerifyOffWarns(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testReplicationTLSSSLTagLifecycle" {
+			res = regtest.TestReplicationTLSSSLTagLifecycle(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testRollingUpgradeTransparentSSL" {
+			res = regtest.TestRollingUpgradeTransparentSSL(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testRejoinRefusesNodeWithData" {
+			res = regtest.TestRejoinRefusesNodeWithData(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testRollingReprovReseed" {
 			res = regtest.TestRollingReprovReseed(cl, test.ConfigFile, &test)
 		}

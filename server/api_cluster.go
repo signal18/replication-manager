@@ -2917,6 +2917,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
 	case "prov-db-dynamic-resource":
 		mycluster.SwitchProvDBDynamicResource()
+	case "replication-use-ssl":
+		mycluster.Conf.ReplicationSSL = !mycluster.Conf.ReplicationSSL
 	case "prov-db-docker-run-args-limit":
 		mycluster.Conf.ProvDBDockerRunArgsLimit = !mycluster.Conf.ProvDBDockerRunArgsLimit
 	case "prov-orchestrator-deployment-upgrade-on-start":
@@ -4570,6 +4572,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.TopologyStagingPostDetachScript = string(val)
 	case "replication-multisource-head-clusters":
 		mycluster.Conf.ReplicationMultisourceHeadClusters = value
+	case "replication-ssl-ca":
+		mycluster.Conf.ReplicationSSLCa = strings.TrimSpace(value)
 	case "replication-source-name":
 		mycluster.Conf.MasterConn = value
 	case "replication-master-retry-count":
