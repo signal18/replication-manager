@@ -16,8 +16,12 @@ RUN set -eux; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends mariadb-plugin-columnstore curl; \
     curl -fsSL -o /tmp/cmapi.deb "$CMAPI_URL"; \
     echo "$CMAPI_SHA256  /tmp/cmapi.deb" | sha256sum -c -; \
+    # CMAPI's postinst registers a systemd service (systemctl), absent in a container:
+    # a no-op systemctl for that install only; the container starts CMAPI itself
+    printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/systemctl; \
+    chmod +x /usr/local/bin/systemctl; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends /tmp/cmapi.deb; \
-    rm -f /tmp/cmapi.deb; \
+    rm -f /usr/local/bin/systemctl /tmp/cmapi.deb; \
     rm -rf /var/lib/apt/lists/*
 
 # 3306 SQL, 8600-8630 8700 8800 ColumnStore inter-node, 8640 CMAPI
