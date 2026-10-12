@@ -1144,7 +1144,7 @@ func TestMarkBackupPhysicalDoneRaceWithResticUpdate(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 100; i++ {
-			server.UpdateBackupMetadataWithRestic(backupmgr.BackupMethodPhysical, "snap-id")
+			server.UpdateBackupMetadataWithRestic(backupmgr.BackupMethodPhysical, nil, "snap-id")
 		}
 	}()
 	wg.Wait()

@@ -1,0 +1,223 @@
+// Copyright 2017-2021 SIGNAL18 CLOUD SAS
+// Authors: Guillaume Lefranc <guillaume@signal18.io>
+//          Stephane Varoqui  <svaroqui@gmail.com>
+// This source code is licensed under the GNU General Public License, version 3.
+
+package regtest
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"time"
+
+	clusterpkg "github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+)
+
+const archiveOriginalSchema = "regtest_archorig"
+
+// TestBackupArchiveRemoveOriginal (#1987): with backup-archive-remove-original, a logical
+// (mysqldump) and a physical backup of the master are removed from the backup directory once
+// their restic snapshot holds them, and a replica that missed rows is reseeded from each:
+// the reseed fetches the original back from the archive.
+//
+// Needs a jobs container next to each database, a physical backup tool matching the servers
+// and restic; it reseeds a replica. Run it by name:
+// /api/clusters/<cluster>/tests/actions/run/testBackupArchiveRemoveOriginal
+func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, conf string, test *clusterpkg.Test) bool {
+	fail := func(format string, args ...interface{}) bool {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "testBackupArchiveRemoveOriginal: "+format, args...)
+		return false
+	}
+	step := func(format string, args ...interface{}) {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "testBackupArchiveRemoveOriginal: "+format, args...)
+	}
+
+	master := cl.GetMaster()
+	if master == nil || master.Conn == nil {
+		return fail("no master with a connection")
+	}
+	slaves := cl.GetSlaves()
+	if len(slaves) == 0 || slaves[0] == nil || slaves[0].Conn == nil {
+		return fail("no replica with a connection")
+	}
+	slave := slaves[0]
+
+	// Reuse the cluster's archive when it runs; otherwise set one up.
+	if !cl.Conf.BackupRestic || cl.ResticManager == nil {
+		if err := cl.SetBackupRestic(true); err != nil {
+			return fail("enable restic: %s", err)
+		}
+		if cl.Conf.BackupResticPassword == "" {
+			cl.Conf.BackupResticPassword = "test"
+		}
+		if err := cl.StartResticManager(); err != nil {
+			return fail("StartResticManager: %s", err)
+		}
+		if err := cl.ResticInitRepo(false); err != nil && !strings.Contains(err.Error(), "already exists") {
+			return fail("ResticInitRepo: %s", err)
+		}
+	}
+	original := cl.Conf.BackupArchiveRemoveOriginal
+	cl.Conf.BackupArchiveRemoveOriginal = true
+	defer func() { cl.Conf.BackupArchiveRemoveOriginal = original }()
+
+	mdb, err := master.GetNewDBConn()
+	if err != nil {
+		return fail("cannot open a connection to the master: %s", err)
+	}
+	defer mdb.Close()
+	defer func() {
+		if err := dbhelper.ExecStatements(mdb, "DROP DATABASE IF EXISTS "+archiveOriginalSchema); err != nil {
+			step("cleanup failed: %s", err)
+		}
+	}()
+
+	table := archiveOriginalSchema + ".t"
+	digest := func(s *clusterpkg.ServerMonitor) (string, error) {
+		return dbhelper.TableContentDigest(s.Conn, table, "CONCAT_WS('|', id, v)")
+	}
+	sameData := func() (bool, string) {
+		dm, err := digest(master)
+		if err != nil {
+			return false, fmt.Sprintf("master: %s", err)
+		}
+		ds, err := digest(slave)
+		if err != nil {
+			return false, fmt.Sprintf("replica: %s", err)
+		}
+		return dm == ds, fmt.Sprintf("master %s, replica %s", dm, ds)
+	}
+	insert := func(from, to int) error {
+		var rows []string
+		for i := from; i <= to; i++ {
+			rows = append(rows, fmt.Sprintf("INSERT INTO %s VALUES (%d, 'row %d')", table, i, i))
+		}
+		return dbhelper.ExecStatements(mdb, rows...)
+	}
+
+	step("create the fixture on the master %s", master.URL)
+	if err := dbhelper.ExecStatements(mdb,
+		"DROP DATABASE IF EXISTS "+archiveOriginalSchema,
+		"CREATE DATABASE "+archiveOriginalSchema,
+		"CREATE TABLE "+table+" (id INT PRIMARY KEY, v VARCHAR(40)) ENGINE=InnoDB",
+	); err != nil {
+		return fail("fixture: %s", err)
+	}
+	if err := insert(1, 50); err != nil {
+		return fail("fixture rows: %s", err)
+	}
+	lastDiff := ""
+	if !physReseedWait(2*time.Minute, func() bool { ok, d := sameData(); lastDiff = d; return ok }) {
+		return fail("the replica never received the fixture: %s", lastDiff)
+	}
+
+	// diverge stops replication on the replica and commits rows it misses.
+	diverge := func(from, to int) bool {
+		if _, err := slave.StopSlave(); err != nil {
+			return fail("cannot stop replication: %s", err)
+		}
+		if err := insert(from, to); err != nil {
+			return fail("rows committed while the replica was stopped: %s", err)
+		}
+		if same, _ := sameData(); same {
+			return fail("the replica already has the master's data: the test would prove nothing")
+		}
+		return true
+	}
+	// archived waits for the backup started after started to be archived and its original removed.
+	archived := func(kind string, started time.Time, meta func() *backupmgr.BackupMetadata) (string, bool) {
+		var dest string
+		ok := physReseedWait(15*time.Minute, func() bool {
+			m := meta()
+			if m == nil || !m.Completed || !m.EndTime.After(started) || m.ResticSnapshotID == "" || !m.OriginalRemoved {
+				return false
+			}
+			dest = m.Dest
+			return true
+		})
+		if !ok {
+			return "", fail("the %s backup was not archived with its original removed within 15 minutes (WARN0238 open: %v)", kind, cl.StateMachine.IsInState("WARN0238"))
+		}
+		if _, err := os.Stat(dest); !os.IsNotExist(err) {
+			return "", fail("the %s original %s is still on disk", kind, dest)
+		}
+		return dest, true
+	}
+	// reseeded waits for the replica to finish the reseed, hold the master's data and replicate.
+	reseeded := func(kind, dest string, next int) bool {
+		if !physReseedWait(30*time.Minute, func() bool { return !slave.HasAnyReseedingState() && !slave.HasReplicationIssue() }) {
+			return fail("the replica is still reseeding or not replicating after the %s reseed", kind)
+		}
+		if !physReseedWait(2*time.Minute, func() bool { ok, d := sameData(); lastDiff = d; return ok }) {
+			return fail("the replica differs from the master after the %s reseed: %s", kind, lastDiff)
+		}
+		if _, err := os.Stat(dest); err != nil {
+			return fail("the %s original %s was not fetched back from the archive: %s", kind, dest, err)
+		}
+		if err := insert(next, next); err != nil {
+			return fail("insert after the %s reseed: %s", kind, err)
+		}
+		if !physReseedWait(2*time.Minute, func() bool { ok, d := sameData(); lastDiff = d; return ok }) {
+			return fail("a transaction after the %s reseed did not reach the replica: %s", kind, lastDiff)
+		}
+		return true
+	}
+
+	step("logical: mysqldump backup of the master, archived, original removed")
+	originalLogical := cl.Conf.BackupLogicalType
+	cl.SetBackupLogicalType(config.ConstBackupLogicalTypeMysqldump)
+	defer cl.SetBackupLogicalType(originalLogical)
+	if !diverge(101, 110) {
+		return false
+	}
+	started := time.Now()
+	if err := master.JobBackupLogical(context.Background()); err != nil {
+		return fail("JobBackupLogical: %s", err)
+	}
+	dest, ok := archived("logical", started, func() *backupmgr.BackupMetadata { return master.LastBackupMeta.Logical })
+	if !ok {
+		return false
+	}
+	step("logical reseed of %s from the archived backup", slave.URL)
+	if err := slave.JobReseedLogicalBackup(context.Background(), config.ConstBackupLogicalTypeMysqldump); err != nil {
+		return fail("JobReseedLogicalBackup: %s", err)
+	}
+	if !reseeded("logical", dest, 200) {
+		return false
+	}
+
+	tool := config.ConstBackupPhysicalTypeXtrabackup
+	if master.IsMariaDB() {
+		tool = config.ConstBackupPhysicalTypeMariaBackup
+	}
+	step("physical: %s backup of the master, archived, original removed", tool)
+	originalPhysical := cl.Conf.BackupPhysicalType
+	cl.SetBackupPhysicalType(tool)
+	defer cl.SetBackupPhysicalType(originalPhysical)
+	if !diverge(301, 310) {
+		return false
+	}
+	started = time.Now()
+	if err := master.JobBackupPhysical(); err != nil {
+		return fail("JobBackupPhysical: %s", err)
+	}
+	dest, ok = archived("physical", started, func() *backupmgr.BackupMetadata { return master.LastBackupMeta.Physical })
+	if !ok {
+		return false
+	}
+	step("physical reseed of %s from the archived backup", slave.URL)
+	if err := slave.JobReseedPhysicalBackup(tool); err != nil {
+		return fail("JobReseedPhysicalBackup: %s", err)
+	}
+	if !reseeded("physical", dest, 400) {
+		return false
+	}
+
+	step("passed: both backups were removed after their archive push and restored from the archive")
+	return true
+}
