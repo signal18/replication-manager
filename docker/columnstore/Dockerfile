@@ -26,6 +26,10 @@ RUN set -eux; \
     rm -f /usr/bin/systemctl /tmp/cmapi.deb; \
     rm -rf /var/lib/apt/lists/*
 
+# the package's /var/lib/columnstore (local/module, the dbroot layout): a volume mounted
+# there hides it, the entrypoint copies what the volume lacks (columnstore-entrypoint.sh)
+RUN cp -a /var/lib/columnstore /usr/share/columnstore/var-lib-columnstore
+
 # ColumnStore's processes before the server, without systemd (columnstore-entrypoint.sh)
 COPY columnstore-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/columnstore-entrypoint.sh

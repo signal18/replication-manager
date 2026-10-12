@@ -16,6 +16,7 @@ set -euo pipefail
 
 CS_LOG_DIR=/var/log/mariadb/columnstore
 CS_SYSCAT_MARKER=/var/lib/columnstore/.replication-manager-syscat
+CS_PACKAGE_DIR=/usr/share/columnstore/var-lib-columnstore
 
 log() { echo "$(date '+%F %T') columnstore-entrypoint: $*"; }
 
@@ -49,6 +50,9 @@ wait_port() {
 
 start_columnstore() {
 	mkdir -p "$CS_LOG_DIR/install" /var/lib/columnstore
+	# a fresh volume over /var/lib/columnstore hides the package's files (workernode aborts
+	# without local/module): copy what is missing, never over what the volume holds
+	cp -a --update=none "$CS_PACKAGE_DIR/." /var/lib/columnstore/
 	chown -R mysql:mysql "$CS_LOG_DIR" /var/lib/columnstore
 
 	# saved BRM state of a previous run (no-op on a fresh volume), as the unit does
