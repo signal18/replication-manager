@@ -4095,6 +4095,60 @@ definitions:
       upgrade_id:
         type: string
     type: object
+  server.ChildPlan:
+    properties:
+      backup:
+        type: string
+      backupLogicalType:
+        description: the parent's
+        type: string
+      dbCount:
+        type: integer
+      dbImage:
+        type: string
+      dbuPerNode:
+        type: integer
+      domain:
+        description: 'GTID domain: the parent''s + 1'
+        type: string
+      kind:
+        type: string
+      name:
+        type: string
+      notes:
+        items:
+          type: string
+        type: array
+      orchestrator:
+        type: string
+      ownSourceName:
+        description: the new cluster's replication-source-name (its master to its
+          replicas)
+        type: string
+      parent:
+        type: string
+      proxy:
+        description: '"" = none'
+        type: string
+      sourceName:
+        description: 'channel from the parent''s master: the parent''s replication-source-name'
+        type: string
+    type: object
+  server.ChildRequest:
+    properties:
+      confirm:
+        description: 'false: the plan only'
+        type: boolean
+      dbCount:
+        description: default 3 (staging), 2 (child)
+        type: integer
+      dbImage:
+        description: default the parent's prov-db-image
+        type: string
+      name:
+        description: default <parent>-staging or <parent>-child
+        type: string
+    type: object
   server.CloudUserForm:
     properties:
       cost:
@@ -4413,45 +4467,6 @@ definitions:
       used:
         type: integer
       zone:
-        type: string
-    type: object
-  server.StagingPlan:
-    properties:
-      backup:
-        type: string
-      dbCount:
-        type: integer
-      dbImage:
-        type: string
-      dbuPerNode:
-        type: integer
-      name:
-        type: string
-      notes:
-        items:
-          type: string
-        type: array
-      orchestrator:
-        type: string
-      parent:
-        type: string
-      proxy:
-        description: '"" = none'
-        type: string
-    type: object
-  server.StagingRequest:
-    properties:
-      confirm:
-        description: 'false: the plan only'
-        type: boolean
-      dbCount:
-        description: default 3
-        type: integer
-      dbImage:
-        description: default the parent's prov-db-image
-        type: string
-      name:
-        description: default <parent>-staging
         type: string
     type: object
   server.appTemplateContentResponse:
@@ -5463,6 +5478,65 @@ paths:
       summary: Compute Repair for all tables in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/actions/create-child:
+    post:
+      consumes:
+      - application/json
+      description: 'Plans (confirm false) or creates (confirm true) a child cluster
+        of {clusterName}, named <clusterName>-child unless a name is given, to test
+        a migration under this cluster''s writes: same orchestrator, database image
+        unless dbImage is given (a newer release to test), DBU per node, accounts
+        and proxy type, dbCount databases (default 2), GTID domain this cluster''s
+        + 1, this cluster as head cluster; provisioned, then seeded from this cluster''s
+        logical backup, data only, its master replicating from this cluster''s master
+        through the parent''s replication-source-name and its replicas following it
+        through the child''s own (child). Needs cluster-replication on this cluster
+        and the right to create a cluster. The progress is the state CINF0014 on the
+        new cluster, WARN0238 where it stopped.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Parent cluster name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: name, dbImage, dbCount, confirm
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/server.ChildRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plan (confirm false)
+          schema:
+            $ref: '#/definitions/server.ChildPlan'
+        "202":
+          description: Creation started (confirm true)
+          schema:
+            $ref: '#/definitions/server.ChildPlan'
+        "400":
+          description: 'Refused: the reason (no logical backup on the parent, orchestrator,
+            name taken...)'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No cluster
+          schema:
+            type: string
+      summary: Create a child cluster of this cluster
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/create-staging:
     post:
       consumes:
@@ -5491,18 +5565,18 @@ paths:
         in: body
         name: request
         schema:
-          $ref: '#/definitions/server.StagingRequest'
+          $ref: '#/definitions/server.ChildRequest'
       produces:
       - application/json
       responses:
         "200":
           description: The plan (confirm false)
           schema:
-            $ref: '#/definitions/server.StagingPlan'
+            $ref: '#/definitions/server.ChildPlan'
         "202":
           description: Creation started (confirm true)
           schema:
-            $ref: '#/definitions/server.StagingPlan'
+            $ref: '#/definitions/server.ChildPlan'
         "400":
           description: 'Refused: the reason (no logical backup on the parent, orchestrator,
             name taken...)'
