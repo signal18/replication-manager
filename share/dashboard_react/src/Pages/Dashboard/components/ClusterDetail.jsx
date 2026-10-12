@@ -57,7 +57,7 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)
   const [isPeerAppImportModalOpen, setIsPeerAppImportModalOpen] = useState(false)
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
-  const [isCreateStagingModalOpen, setIsCreateStagingModalOpen] = useState(false)
+  const [childClusterKind, setChildClusterKind] = useState('')
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
   const [isClipboardModalOpen, setIsClipboardModalOpen] = useState(false)
   const [clipboardText, setClipboardText] = useState('')
@@ -166,7 +166,15 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
           name: 'New Staging Cluster',
           isDisabled: !g['cluster-staging'] || !(g['cluster-create'] || g['prov-cluster']) || !!selectedCluster?.config?.topologyStaging,
           onClick: () => {
-            setIsCreateStagingModalOpen(true)
+            setChildClusterKind('staging')
+          }
+        },
+        {
+          // #1997: a child replicating live from this cluster, to test a migration
+          name: 'New Child Cluster',
+          isDisabled: !g['cluster-replication'] || !(g['cluster-create'] || g['prov-cluster']) || !!selectedCluster?.config?.topologyStaging,
+          onClick: () => {
+            setChildClusterKind('child')
           }
         },
         {
@@ -591,8 +599,8 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
         />
       )}
 
-      {isCreateStagingModalOpen && (
-        <CreateStagingModal selectedCluster={selectedCluster} isOpen={isCreateStagingModalOpen} closeModal={() => setIsCreateStagingModalOpen(false)} />
+      {childClusterKind && (
+        <CreateStagingModal selectedCluster={selectedCluster} kind={childClusterKind} isOpen={!!childClusterKind} closeModal={() => setChildClusterKind('')} />
       )}
       {isNewClusterModalOpen && (
         <NewClusterModal 

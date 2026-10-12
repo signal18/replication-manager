@@ -19,6 +19,7 @@ import (
 // Cluster (not a ServerMonitor, rebuilt at every reload) and raised as a state every
 // tick, since a one-shot state would be gone at the next tick.
 type StagingCreation struct {
+	Kind   string `json:"kind"` // Staging or Child (#1997)
 	Parent string `json:"parent"`
 	Step   string `json:"step"`
 	Error  string `json:"error,omitempty"`
@@ -43,9 +44,9 @@ func (cluster *Cluster) checkStagingCreationStates() {
 	switch {
 	case sc == nil || sc.Done:
 	case sc.Error != "":
-		cluster.SetState("WARN0238", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0238"], cluster.Name, sc.Parent, sc.Step, sc.Error), ErrFrom: "PROV"})
+		cluster.SetState("WARN0238", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0238"], sc.Kind, cluster.Name, sc.Parent, sc.Step, sc.Error), ErrFrom: "PROV"})
 	default:
-		cluster.SetState("CINF0014", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0014"], cluster.Name, sc.Parent, sc.Step), ErrFrom: "PROV"})
+		cluster.SetState("CINF0014", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0014"], sc.Kind, cluster.Name, sc.Parent, sc.Step), ErrFrom: "PROV"})
 	}
 }
 

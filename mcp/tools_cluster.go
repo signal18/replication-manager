@@ -306,36 +306,43 @@ func (s *MCPServer) registerClusterWriteTools() {
 		},
 	)
 
-	s.addTool(
-		mcp.NewTool("cluster-create-staging",
-			mcp.WithDescription("Create a staging cluster of a cluster (#1988), on this replication-manager: named <cluster>-staging unless a name is given, same orchestrator (OpenSVC or Kubernetes), database image (unless db_image is given), DBU per node and proxy type, db_count databases (default 3: the staging refresh detaches the first of 2 replicas). topology-staging is set with this cluster as head cluster, the cluster is provisioned, then seeded from this cluster's latest logical backup, data only: the staging cluster keeps its own root and accounts. Refused when this cluster has no logical backup, is itself staging, runs on premise, or the name exists. confirm false (default) returns the plan only. Creation runs in the background: follow the state CINF0014 on the new cluster (WARN0238 tells where it stopped). Needs cluster-staging on this cluster and the right to create a cluster."),
-			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the parent cluster")),
-			mcp.WithString("name", mcp.Description("Name of the staging cluster; default <cluster_name>-staging")),
-			mcp.WithString("db_image", mcp.Description("Database image of the staging cluster; default the parent's (prov-db-image). A newer release is fine: the staging cluster keeps its own system tables")),
-			mcp.WithNumber("db_count", mcp.Description("Number of databases, default 3, max 5")),
-			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: create")),
-		),
-		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			parent := req.GetString("cluster_name", "")
-			if _, errResult := clusterOrError(s.repman, parent); errResult != nil {
-				return errResult, nil
-			}
-			spec := StagingSpec{
-				Name:    req.GetString("name", ""),
-				DBImage: req.GetString("db_image", ""),
-				DBCount: req.GetInt("db_count", 0),
-				Confirm: req.GetBool("confirm", false),
-			}
-			status, body, err := s.repman.CreateStaging(principalFrom(ctx), parent, spec)
-			if err != nil {
-				return mcp.NewToolResultError(err.Error()), nil
-			}
-			if status < 200 || status > 299 {
-				return mcp.NewToolResultErrorf("refused (HTTP %d): %s", status, body), nil
-			}
-			return mcp.NewToolResultText(body), nil
-		},
-	)
+	// cluster-create-staging and cluster-create-child (#1988, #1997): one creation, a
+	// staging cluster detaching a replica for the dev team, a child cluster replicating
+	// live to test a migration.
+	childTool := func(kind, description, dbCountDefault string) {
+		s.addTool(
+			mcp.NewTool("cluster-create-"+kind,
+				mcp.WithDescription(description),
+				mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the parent cluster")),
+				mcp.WithString("name", mcp.Description("Name of the new cluster; default <cluster_name>-"+kind)),
+				mcp.WithString("db_image", mcp.Description("Database image of the new cluster; default the parent's (prov-db-image). A newer release is fine: the new cluster keeps its own system tables")),
+				mcp.WithNumber("db_count", mcp.Description("Number of databases, default "+dbCountDefault+", max 5")),
+				mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: create")),
+			),
+			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				parent := req.GetString("cluster_name", "")
+				if _, errResult := clusterOrError(s.repman, parent); errResult != nil {
+					return errResult, nil
+				}
+				spec := ChildClusterSpec{
+					Name:    req.GetString("name", ""),
+					DBImage: req.GetString("db_image", ""),
+					DBCount: req.GetInt("db_count", 0),
+					Confirm: req.GetBool("confirm", false),
+				}
+				status, body, err := s.repman.CreateChildClusterAs(principalFrom(ctx), parent, kind, spec)
+				if err != nil {
+					return mcp.NewToolResultError(err.Error()), nil
+				}
+				if status < 200 || status > 299 {
+					return mcp.NewToolResultErrorf("refused (HTTP %d): %s", status, body), nil
+				}
+				return mcp.NewToolResultText(body), nil
+			},
+		)
+	}
+	childTool("staging", "Create a staging cluster of a cluster (#1988), on this replication-manager: the parent's orchestrator (OpenSVC or Kubernetes), database image (unless db_image is given), DBU per node, monitoring and replication accounts and proxy type; GTID domain the parent's + 1; topology-staging with the parent as head cluster; provisioned, then seeded from the parent's latest logical backup, data only, the master replicating from the parent's master through the channel staging, then one replica detached as the staging server the dev team tests on. Refused when the parent has no logical backup, is itself staging, runs on premise, or the name exists. confirm false (default) returns the plan only. Creation runs in the background: follow the state CINF0014 on the new cluster (WARN0238 tells where it stopped). Needs cluster-staging on the parent and the right to create a cluster.", "3")
+	childTool("child", "Create a child cluster of a cluster (#1997), on this replication-manager, to test a migration under the parent's real writes: the parent's orchestrator (OpenSVC or Kubernetes), database image (unless db_image is given: the release to test), DBU per node, monitoring and replication accounts and proxy type; GTID domain the parent's + 1; the parent as head cluster; provisioned, then seeded from the parent's latest logical backup, data only, its master replicating live from the parent's master through the channel child and its replicas following it. Refused when the parent has no logical backup, is a staging cluster, runs on premise, or the name exists. confirm false (default) returns the plan only. Creation runs in the background: follow the state CINF0014 on the new cluster (WARN0238 tells where it stopped). Needs cluster-replication on the parent and the right to create a cluster.", "2")
 
 	s.addTool(
 		mcp.NewTool("cluster-rolling-restart",

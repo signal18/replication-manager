@@ -131,6 +131,7 @@ var toolACLPaths = map[string]string{
 	"cluster-failover":               "/actions/failover",
 	"cluster-switchover":             "/actions/switchover",
 	"cluster-create-staging":         "/actions/create-staging",
+	"cluster-create-child":           "/actions/create-child",
 	"cluster-rolling-restart":        "/actions/rolling/restart",
 	"cluster-rolling-reprov":         "/actions/rolling/reprov",
 	"cluster-rolling-upgrade":        "/actions/rolling/upgrade",

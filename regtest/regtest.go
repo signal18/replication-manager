@@ -132,6 +132,7 @@ var tests = []string{
 	"testRollingUpgradeTransparentSSL",
 	"testRejoinRefusesNodeWithData",
 	"testCreateStaging",
+	"testCreateChild",
 }
 
 const recoverTime = 8

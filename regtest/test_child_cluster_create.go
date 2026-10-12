@@ -20,7 +20,6 @@ import (
 )
 
 const (
-	stagingRegtestSuffix  = "-stg-regtest"
 	stagingRegtestCreate  = 20 * time.Minute
 	stagingRegtestBackup  = 10 * time.Minute
 	stagingRegtestDeleted = 5 * time.Minute
@@ -33,29 +32,40 @@ const (
 // running; the GTID domain this cluster's + 1; the proxy monitored. The staging cluster
 // is deleted at the end, whatever the outcome.
 func (regtest *RegTest) TestCreateStaging(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	return testCreateChildCluster(cl, "staging", config.GrantClusterStaging, map[string]int{"Master": 1, "Slave": 1, "StandAlone": 1})
+}
+
+// TestCreateChild (#1997): the same with a child cluster, which detaches nothing: one
+// Master and one Slave, the master replicating from this cluster's master through the
+// channel "child".
+func (regtest *RegTest) TestCreateChild(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	return testCreateChildCluster(cl, "child", config.GrantClusterReplication, map[string]int{"Master": 1, "Slave": 1})
+}
+
+func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, wantStates map[string]int) bool {
 	orch := cl.GetOrchestrator()
 	if orch != config.ConstOrchestratorOpenSVC && orch != config.ConstOrchestratorKubernetes || cl.Conf.TopologyStaging || cl.GetMaster() == nil {
-		tlsLogf(cl, "Skipping CreateStaging: needs a provisioned (OpenSVC or Kubernetes) cluster with a master, not itself staging")
+		tlsLogf(cl, "Skipping Create "+kind+": needs a provisioned (OpenSVC or Kubernetes) cluster with a master, not itself staging")
 		return true
 	}
 	if APIToken == nil || APIRequest == nil || APIRequestBody == nil {
-		tlsLogf(cl, "FAIL CreateStaging: API hooks not wired")
+		tlsLogf(cl, "FAIL Create "+kind+": API hooks not wired")
 		return false
 	}
-	tok, err := APIToken(cl, config.GrantClusterStaging, config.GrantClusterCreate)
+	tok, err := APIToken(cl, grant, config.GrantClusterCreate)
 	if err != nil {
-		tlsLogf(cl, "FAIL CreateStaging: %s", err)
+		tlsLogf(cl, "FAIL Create "+kind+": %s", err)
 		return false
 	}
-	name := cl.Name + stagingRegtestSuffix
+	name := cl.Name + "-" + kind + "-regtest"
 	parentMaster := cl.GetMaster().Host
 
 	// The parent's logical backup is the seed: take one when there is none.
 	if _, _, err := cl.ParentLogicalBackup(); err != nil {
-		tlsLogf(cl, "CreateStaging: %s, taking a logical backup", err)
+		tlsLogf(cl, "Create %s: %s, taking a logical backup", kind, err)
 		go cl.GetMaster().JobBackupLogical(context.Background())
 		if err := tlsWait(stagingRegtestBackup, func() error { _, _, err := cl.ParentLogicalBackup(); return err }); err != nil {
-			tlsLogf(cl, "FAIL CreateStaging: no logical backup on %s: %s", cl.Name, err)
+			tlsLogf(cl, "FAIL Create "+kind+": no logical backup on %s: %s", cl.Name, err)
 			return false
 		}
 	}
@@ -64,24 +74,24 @@ func (regtest *RegTest) TestCreateStaging(cl *cluster.Cluster, conf string, test
 	var plan struct {
 		Name, Domain, SourceName string
 	}
-	if err := stagingPost(tok, cl.Name, map[string]any{"name": name}, http.StatusOK, &plan); err != nil {
-		tlsLogf(cl, "FAIL CreateStaging: plan: %s", err)
+	if err := stagingPost(tok, cl.Name, kind, map[string]any{"name": name}, http.StatusOK, &plan); err != nil {
+		tlsLogf(cl, "FAIL Create "+kind+": plan: %s", err)
 		return false
 	}
 	parentDomain, _ := strconv.Atoi(cl.Configurator.GetConfigReplicationDomain(cl.Name))
-	if plan.Domain != strconv.Itoa(parentDomain+1) || plan.SourceName != "staging" {
-		tlsLogf(cl, "FAIL CreateStaging: plan domain %q (parent %d) source %q", plan.Domain, parentDomain, plan.SourceName)
+	if plan.Domain != strconv.Itoa(parentDomain+1) || plan.SourceName != kind {
+		tlsLogf(cl, "FAIL Create "+kind+": plan domain %q (parent %d) source %q", plan.Domain, parentDomain, plan.SourceName)
 		return false
 	}
 
-	if err := stagingPost(tok, cl.Name, map[string]any{"name": name, "confirm": true}, http.StatusAccepted, nil); err != nil {
-		tlsLogf(cl, "FAIL CreateStaging: create: %s", err)
+	if err := stagingPost(tok, cl.Name, kind, map[string]any{"name": name, "confirm": true}, http.StatusAccepted, nil); err != nil {
+		tlsLogf(cl, "FAIL Create "+kind+": create: %s", err)
 		return false
 	}
 	defer stagingDelete(cl, tok, name)
 
 	base := "/api/clusters/" + name
-	// One Master, one Slave, one StandAlone; a stop (WARN0238) ends the wait with its reason.
+	// The expected topology; a stop (WARN0238) ends the wait with its reason.
 	if err := stagingWait(stagingRegtestCreate, func() error {
 		if desc := stagingAlert(tok, base, "WARN0238"); desc != "" {
 			return stagingStop{desc}
@@ -94,16 +104,23 @@ func (regtest *RegTest) TestCreateStaging(cl *cluster.Cluster, conf string, test
 		for _, s := range servers {
 			count[stagingString(s["state"])]++
 		}
-		if len(servers) != 3 || count["Master"] != 1 || count["Slave"] != 1 || count["StandAlone"] != 1 {
-			return fmt.Errorf("servers %v", count)
+		total := 0
+		for st, n := range wantStates {
+			total += n
+			if count[st] != n {
+				return fmt.Errorf("servers %v, want %v", count, wantStates)
+			}
+		}
+		if len(servers) != total {
+			return fmt.Errorf("servers %v, want %v", count, wantStates)
 		}
 		return nil
 	}); err != nil {
-		tlsLogf(cl, "FAIL CreateStaging: topology of %s: %s", name, err)
+		tlsLogf(cl, "FAIL Create "+kind+": topology of %s: %s", name, err)
 		return false
 	}
 
-	// The staging master replicates from this cluster's master through "staging".
+	// The new master replicates from this cluster's master through the channel named kind.
 	if err := tlsWait(2*time.Minute, func() error {
 		var master struct {
 			Replications []map[string]any `json:"replications"`
@@ -112,14 +129,14 @@ func (regtest *RegTest) TestCreateStaging(cl *cluster.Cluster, conf string, test
 			return err
 		}
 		for _, r := range master.Replications {
-			if stagingString(r["connectionName"]) == "staging" && stagingString(r["masterHost"]) == parentMaster &&
+			if stagingString(r["connectionName"]) == kind && stagingString(r["masterHost"]) == parentMaster &&
 				stagingString(r["slaveIoRunning"]) == "Yes" && stagingString(r["slaveSqlRunning"]) == "Yes" {
 				return nil
 			}
 		}
-		return fmt.Errorf("no running channel staging from %s: %v", parentMaster, master.Replications)
+		return fmt.Errorf("no running channel %s from %s: %v", kind, parentMaster, master.Replications)
 	}); err != nil {
-		tlsLogf(cl, "FAIL CreateStaging: %s", err)
+		tlsLogf(cl, "FAIL Create "+kind+": %s", err)
 		return false
 	}
 
@@ -136,10 +153,10 @@ func (regtest *RegTest) TestCreateStaging(cl *cluster.Cluster, conf string, test
 		}
 		return nil
 	}); err != nil {
-		tlsLogf(cl, "FAIL CreateStaging: %s", err)
+		tlsLogf(cl, "FAIL Create "+kind+": %s", err)
 		return false
 	}
-	tlsLogf(cl, "PASS CreateStaging: %s from %s: 1 Master, 1 Slave, 1 StandAlone, channel staging from %s running, domain %s, proxy running", name, cl.Name, parentMaster, plan.Domain)
+	tlsLogf(cl, "PASS Create %s: %s from %s: %v, channel %s from %s running, domain %s, proxy running", kind, name, cl.Name, wantStates, kind, parentMaster, plan.Domain)
 	return true
 }
 
@@ -177,9 +194,9 @@ func stagingString(v any) string {
 	return ""
 }
 
-func stagingPost(tok, parent string, body map[string]any, want int, out any) error {
+func stagingPost(tok, parent, kind string, body map[string]any, want int, out any) error {
 	b, _ := json.Marshal(body)
-	code, _, resp, err := APIRequestBody(tok, http.MethodPost, "/api/clusters/"+parent+"/actions/create-staging", b)
+	code, _, resp, err := APIRequestBody(tok, http.MethodPost, "/api/clusters/"+parent+"/actions/create-"+kind, b)
 	if err != nil {
 		return err
 	}
@@ -224,7 +241,7 @@ func stagingAlert(tok, base, key string) string {
 func stagingDelete(cl *cluster.Cluster, tok, name string) {
 	start := time.Now()
 	if _, _, _, err := APIRequest(tok, http.MethodPost, "/api/clusters/actions/delete/"+name); err != nil {
-		tlsLogf(cl, "CreateStaging cleanup: delete %s: %s (waiting for it anyway)", name, err)
+		tlsLogf(cl, "Create cleanup: delete %s: %s (waiting for it anyway)", name, err)
 	}
 	err := tlsWait(stagingRegtestDeleted, func() error {
 		var clusters []map[string]any
@@ -238,5 +255,5 @@ func stagingDelete(cl *cluster.Cluster, tok, name string) {
 		}
 		return nil
 	})
-	tlsLogf(cl, "CreateStaging cleanup: %s deleted in %s (%v)", name, time.Since(start).Round(time.Second), err)
+	tlsLogf(cl, "Create cleanup: %s deleted in %s (%v)", name, time.Since(start).Round(time.Second), err)
 }

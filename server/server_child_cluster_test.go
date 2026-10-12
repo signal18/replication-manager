@@ -30,7 +30,7 @@ func TestPlanStagingClusterNeedsParentBackupFirst(t *testing.T) {
 	}
 	repman := &ReplicationManager{Clusters: map[string]*cluster.Cluster{"prod": parent}, ClusterList: []string{"prod"}, Conf: &config.Config{}}
 
-	plan, err := repman.PlanStagingCluster(parent, StagingRequest{})
+	plan, err := repman.PlanChildCluster(parent, ChildRequest{}, childModeStaging)
 	if err == nil {
 		t.Fatalf("a parent without backup server was planned: %+v", plan)
 	}
@@ -42,8 +42,8 @@ func TestPlanStagingClusterNeedsParentBackupFirst(t *testing.T) {
 	}
 }
 
-func TestStagingProxyTypeWithoutProxy(t *testing.T) {
-	if got := stagingProxyType(&cluster.Cluster{Name: "prod", Conf: &config.Config{}}); got != "" {
+func TestChildProxyTypeWithoutProxy(t *testing.T) {
+	if got := childProxyType(&cluster.Cluster{Name: "prod", Conf: &config.Config{}}); got != "" {
 		t.Fatalf("a parent without proxy gives a staging cluster without proxy, got %q", got)
 	}
 }
