@@ -3156,6 +3156,18 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 }
 
 func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
+	return server.jobReseedMyLoader(backupdir, restoreUser, false)
+}
+
+// JobReseedMyLoaderFromParent loads another cluster's backup (a staging cluster seeded
+// from its parent, #1988): the data only. The system schemas (mysql, sys) are never
+// loaded and no account is replayed, so the node keeps its own root, replication and
+// monitoring accounts and the system tables of its own release, whatever the parent's.
+func (server *ServerMonitor) JobReseedMyLoaderFromParent(backupdir string) error {
+	return server.jobReseedMyLoader(backupdir, false, true)
+}
+
+func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool) error {
 	cluster := server.ClusterGroup
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) started at %s for: %s", start.Format(time.RFC3339), server.URL)
@@ -3207,13 +3219,13 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	if server.URL == master.URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
-	if fresh.Fresh {
+	if fresh.Fresh || fromParent {
 		// The exclusion replaces any regex of backup-myloader-options: myloader keeps a
 		// single one, and the system tables must never be loaded on a fresh node.
 		kept := myargs[:0]
 		for _, a := range myargs {
 			if a == "-x" || a == "--regex" || strings.HasPrefix(a, "--regex=") || strings.HasPrefix(a, "-x=") {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical restore (myloader) of fresh node %s: backup-myloader-options regex %q replaced by the system tables exclusion", server.URL, a)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical restore (myloader) of %s: backup-myloader-options regex %q replaced by the system tables exclusion", server.URL, a)
 				continue
 			}
 			kept = append(kept, a)
@@ -3247,7 +3259,8 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 	if err := dumpCmd.Wait(); err != nil {
 		return critical.wrap(err)
 	}
-	if fresh.Fresh {
+	// From a parent the node keeps its own accounts: nothing to replay.
+	if fresh.Fresh && !fromParent {
 		sqlLogBin := 0
 		if server.URL == master.URL {
 			sqlLogBin = 1

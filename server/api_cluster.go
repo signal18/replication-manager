@@ -8,7 +8,6 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -9414,64 +9413,17 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 		}
 
 		go func() {
-			cmaster := mycluster.GetMaster()
-			if cmaster == nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel reseed from parent cluster. No master found", mycluster.Name)
-				return
-			}
-
-			masterGTIDList, err := mycluster.ReseedFromParentCluster(pcluster, cmaster, "") // master will combine it's GTID list with the one from the parent cluster automatically
-			if err == nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done. Refreshing staging", pcluster.Name)
-
-				slave := mycluster.GetSlaveByIndex(0)
-				if slave == nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. No slave found for standalone candidate", mycluster.Name)
-					return
-				}
-				starttime := time.Now()
-				if slave.State == "SlaveLate" {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for slave to sync replication")
-					for slave.State == "SlaveLate" && time.Since(starttime) < 2*time.Minute {
-						time.Sleep(1 * time.Second)
-					}
-
-					if slave.State == "SlaveLate" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Slave is still late after 2 minutes. Please refresh staging later or check the replication status")
-						return
-					}
-				}
-
-				if slave.State != "Slave" {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Slave is not OK. Please check the replication status")
-					return
-				}
-
-				err := mycluster.RefreshStaging(pcluster, masterGTIDList) // refresh staging and sync the GTID list from current master
-				if err == nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done", pcluster.Name)
-					// Refresh staging is done. Now we can start the backup
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting backup for cluster %s", mycluster.Name)
-					go cmaster.JobBackupLogical(context.Background())
-				} else {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Refresh standalone failed: %s", err)
-				}
-
-			} else {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Error reseeding from parent cluster: %s", err)
+			if err := mycluster.SeedFromParent(pcluster); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed from parent cluster %s: %s", pcluster.Name, err)
 			}
 		}()
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Reseed from parent queued"))
-
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Reseed from parent queued"))
 }
 
 // handlerMuxServersPortRegenerateConfig handles the HTTP request to regenerate the configuration of a specific server port within a cluster.

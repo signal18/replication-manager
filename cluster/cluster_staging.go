@@ -487,7 +487,8 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		}
 		err = target.JobReseedMysqldump(backupfile, false)
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err = target.JobReseedMyLoader(backupfile, false)
+		// the data only: the staging cluster keeps its own accounts and system tables
+		err = target.JobReseedMyLoaderFromParent(backupfile)
 		meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
@@ -560,4 +561,40 @@ func (cluster *Cluster) ParentLogicalBackup() (string, *ServerMonitor, error) {
 		return "", bcksrv, fmt.Errorf("parent cluster %s logical backup %s not found: %w", cluster.Name, backupfile, err)
 	}
 	return backupfile, bcksrv, nil
+}
+
+// SeedFromParent copies the parent's data into this staging cluster (the "Bootstrap
+// Staging From Parent" action, and the last step of create-staging, #1988): the
+// master is reseeded from the parent's logical backup and keeps replicating from the
+// parent, the first replica waits to be in sync, then the staging refresh detaches it
+// and a logical backup of the staging master is started. Every stop returns its
+// reason.
+func (cluster *Cluster) SeedFromParent(parent *Cluster) error {
+	cmaster := cluster.GetMaster()
+	if cmaster == nil {
+		return fmt.Errorf("no master on %s", cluster.Name)
+	}
+	masterGTIDList, err := cluster.ReseedFromParentCluster(parent, cmaster, "") // the master combines its GTID list with the parent's
+	if err != nil {
+		return fmt.Errorf("reseed of %s from %s: %w", cmaster.URL, parent.Name, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done. Refreshing staging", parent.Name)
+
+	slave := cluster.GetSlaveByIndex(0)
+	if slave == nil {
+		return fmt.Errorf("no replica on %s to detach as the staging server", cluster.Name)
+	}
+	starttime := time.Now()
+	for slave.State == stateSlaveLate && time.Since(starttime) < 2*time.Minute {
+		time.Sleep(1 * time.Second)
+	}
+	if slave.State != stateSlave {
+		return fmt.Errorf("replica %s is %s after 2 minutes, not in sync: refresh staging later", slave.URL, slave.State)
+	}
+	if err := cluster.RefreshStaging(parent, masterGTIDList); err != nil {
+		return fmt.Errorf("refresh staging: %w", err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done, starting a logical backup of %s", parent.Name, cluster.Name)
+	go cmaster.JobBackupLogical(context.Background())
+	return nil
 }
