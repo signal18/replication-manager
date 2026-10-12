@@ -1575,5 +1575,7 @@ func orchestratorNotFound(err error) bool {
 	if apierrors.IsNotFound(err) {
 		return true
 	}
-	return strings.Contains(err.Error(), "status code: 404")
+	// OpenSVC: a 404 whose body says the OBJECT is missing; any other 404 (a wrong API
+	// path, an om2/om3 mismatch) is a failure, never a removal (#1998 review)
+	return strings.Contains(err.Error(), "status code: 404") && strings.Contains(err.Error(), "object not found")
 }

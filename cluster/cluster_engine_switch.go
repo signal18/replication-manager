@@ -144,6 +144,14 @@ func (cluster *Cluster) RunEngineSwitch(plan EngineSwitchPlan) error {
 	cluster.engineSwitch.Store(&progress)
 	go func() {
 		defer conn.Close()
+		// a panic here must never take replication-manager down
+		defer func() {
+			if r := recover(); r != nil {
+				p := *cluster.engineSwitch.Load()
+				p.Error, p.Finished = fmt.Sprintf("panic: %v", r), true
+				cluster.engineSwitch.Store(&p)
+			}
+		}()
 		for i, t := range plan.Tables {
 			p := progress
 			p.Done, p.Current = i, t.Schema+"."+t.Table

@@ -18,7 +18,7 @@ import (
 func TestWaitOrchestratorNodes(t *testing.T) {
 	c := &Cluster{Conf: &config.Config{ProvOrchestrator: config.ConstOrchestratorOpenSVC}}
 	c.errorInitNodes = errors.New("cert not loaded")
-	err := c.WaitOrchestratorNodes(10 * time.Millisecond)
+	err := c.WaitOrchestratorNodes(10*time.Millisecond, nil)
 	if err == nil || !strings.Contains(err.Error(), "cert not loaded") || !strings.Contains(err.Error(), "opensvc") {
 		t.Fatalf("no node must stop with the orchestrator and its error, got %v", err)
 	}
@@ -28,7 +28,11 @@ func TestWaitOrchestratorNodes(t *testing.T) {
 		c.Agents = []Agent{{HostName: "s18-fr-4"}}
 		c.Unlock()
 	}()
-	if err := c.WaitOrchestratorNodes(5 * time.Second); err != nil {
+	if err := c.WaitOrchestratorNodes(5*time.Second, nil); err != nil {
 		t.Fatalf("nodes loaded later must be waited for, got %v", err)
+	}
+	empty := &Cluster{Conf: &config.Config{}}
+	if err := empty.WaitOrchestratorNodes(5*time.Second, func() bool { return true }); err == nil || !strings.Contains(err.Error(), "dropped") {
+		t.Fatalf("a dropped cluster must stop the wait, got %v", err)
 	}
 }

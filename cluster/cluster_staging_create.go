@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -54,9 +55,12 @@ func (cluster *Cluster) checkStagingCreationStates() {
 // cluster (#1988). A cluster created a moment ago has none: the list is loaded by its
 // own monitor loop (initOrchetratorNodes), and provisioning before that fails with
 // "Agent not found in orchestrator node list" (dev3, 2026-10-12).
-func (cluster *Cluster) WaitOrchestratorNodes(timeout time.Duration) error {
+func (cluster *Cluster) WaitOrchestratorNodes(timeout time.Duration, stop func() bool) error {
 	deadline := time.Now().Add(timeout)
 	for {
+		if stop != nil && stop() {
+			return errors.New("stopped: the cluster was dropped")
+		}
 		cluster.Lock()
 		n, err := len(cluster.Agents), cluster.errorInitNodes
 		cluster.Unlock()

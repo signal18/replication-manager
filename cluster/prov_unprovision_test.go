@@ -24,6 +24,7 @@ func TestOrchestratorNotFound(t *testing.T) {
 		{apierrors.NewNotFound(schema.GroupResource{Resource: "statefulsets"}, "db1"), true},
 		{errors.New("Agent not found in orechestrator node list"), false},
 		{errors.New("unexpected status code: 500, body: {}"), false},
+		{errors.New("unexpected status code: 404, body: 404 page not found"), false}, // a wrong API path is not a removal
 	} {
 		if got := orchestratorNotFound(c.err); got != c.want {
 			t.Errorf("orchestratorNotFound(%v) = %t, want %t", c.err, got, c.want)

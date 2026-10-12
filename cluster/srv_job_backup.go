@@ -3201,7 +3201,10 @@ func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser boo
 	// The account tables are set aside (renamed .skip) when the accounts must not be
 	// restored, put back when they must (#1991): every grant table, not only mysql.user,
 	// which is a view over mysql.global_priv since MariaDB 10.4.
-	if files, err := os.ReadDir(backupdir); err == nil {
+	// Not for a seed from a parent: the directory is the parent's own backup (renaming
+	// there would change it for the parent and race with another seed), and the system
+	// schemas are excluded by regex anyway (#1998 review).
+	if files, err := os.ReadDir(backupdir); err == nil && !fromParent {
 		for _, file := range files {
 			name := file.Name()
 			if !isMysqlAccountTableFile(strings.TrimSuffix(name, ".skip")) {

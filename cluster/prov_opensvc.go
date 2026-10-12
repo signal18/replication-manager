@@ -725,7 +725,7 @@ func (cluster *Cluster) openSVCPurgeObjects(svc opensvc.Collector, agent string,
 		switch {
 		case err == nil:
 		case orchestratorNotFound(err):
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Unprovision %s: not found, already removed", path)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision %s: the orchestrator answers object not found, counted as removed", path)
 		default:
 			opErr = errors.Join(opErr, fmt.Errorf("%s: %w", path, err))
 		}

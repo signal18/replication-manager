@@ -254,9 +254,17 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	}
 	cl.Save()
 
+	// the new cluster dropped meanwhile (or replaced by a reload): stop waiting for it
+	gone := func() bool { return repman.getClusterByName(cl.Name) != cl }
 	go func() {
+		// a panic here must never take replication-manager down (#1998 review)
+		defer func() {
+			if r := recover(); r != nil {
+				fail(fmt.Errorf("panic: %v", r))
+			}
+		}()
 		step("orchestrator nodes")
-		if err := cl.WaitOrchestratorNodes(childNodesWait); err != nil {
+		if err := cl.WaitOrchestratorNodes(childNodesWait, gone); err != nil {
 			fail(err)
 			return
 		}
@@ -268,6 +276,10 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 		step("master")
 		deadline := time.Now().Add(childMasterWait)
 		for cl.GetMaster() == nil {
+			if gone() {
+				fail(errors.New("the cluster was dropped"))
+				return
+			}
 			if time.Now().After(deadline) {
 				fail(fmt.Errorf("no master after %s", childMasterWait))
 				return
@@ -304,6 +316,7 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 // @Failure 400 {string} string "Refused: the reason (no logical backup on the parent, orchestrator, name taken...)"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "No cluster"
+// @Failure 500 {string} string "Created and kept, then stopped: the cluster name, the step and the reason (WARN0239)"
 // @Router /api/clusters/{clusterName}/actions/create-staging [post]
 func (repman *ReplicationManager) handlerMuxClusterCreateStaging(w http.ResponseWriter, r *http.Request) {
 	repman.createChildClusterRoute(w, r, childModeStaging)
@@ -342,8 +355,15 @@ func (repman *ReplicationManager) createChildClusterRoute(w http.ResponseWriter,
 		repman.jsonResponse(plan, w)
 		return
 	}
-	if _, err := repman.CreateChildCluster(parent, plan, mode, username, sso, selfService, r.RemoteAddr); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	if cl, err := repman.CreateChildCluster(parent, plan, mode, username, sso, selfService, r.RemoteAddr); err != nil {
+		if cl == nil {
+			// refused before anything was created
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		// created, then stopped: never answered as a refusal, a retry would only meet
+		// "already exists" (#1998 review)
+		http.Error(w, fmt.Sprintf("cluster %s was created and kept, its creation stopped: %s (WARN0239 on it): fix the cause and reseed it from its parent, or drop it", cl.Name, err), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -366,6 +386,7 @@ func (repman *ReplicationManager) createChildClusterRoute(w http.ResponseWriter,
 // @Failure 400 {string} string "Refused: the reason (no logical backup on the parent, orchestrator, name taken...)"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "No cluster"
+// @Failure 500 {string} string "Created and kept, then stopped: the cluster name, the step and the reason (WARN0239)"
 // @Router /api/clusters/{clusterName}/actions/create-child [post]
 func (repman *ReplicationManager) handlerMuxClusterCreateChild(w http.ResponseWriter, r *http.Request) {
 	repman.createChildClusterRoute(w, r, childModeChild)

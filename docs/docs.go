@@ -1616,6 +1616,12 @@ const docTemplate = `{
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    "500": {
+                        "description": "Created and kept, then stopped: the cluster name, the step and the reason (WARN0239)",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -1685,6 +1691,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Created and kept, then stopped: the cluster name, the step and the reason (WARN0239)",
                         "schema": {
                             "type": "string"
                         }
