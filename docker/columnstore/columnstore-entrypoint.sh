@@ -89,6 +89,36 @@ with open(path, 'w') as f:
 PY
 }
 
+# ColumnStore sizes its memory (TotalUmMemory, the block cache NumBlocksPct) in percent of
+# the host's unless SystemConfig/CGroup names a cgroup: in a container it then took a
+# share of the host's 188 GB within an 8 GB limit and the OOM killer killed the server
+# (#2018). "." is the container's own cgroup, its namespace's root:
+# /sys/fs/cgroup/./memory.max (v2), /sys/fs/cgroup/memory/./memory.limit_in_bytes (v1).
+# No limit ("max") and ColumnStore falls back to the host, as before. A CGroup already set
+# is kept.
+configure_memory() {
+	local limit=""
+	if [ -r /sys/fs/cgroup/memory.max ]; then
+		limit="$(cat /sys/fs/cgroup/memory.max)"
+	elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+		limit="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)"
+	else
+		log "no cgroup memory limit file: ColumnStore sizes its memory from the host"
+		return 0
+	fi
+	local current
+	current="$(/usr/bin/mcsGetConfig SystemConfig CGroup 2>/dev/null || true)"
+	if [ -n "$current" ] && [ "$current" != "just_no_group_use_local" ]; then
+		log "ColumnStore memory from cgroup $current (set already)"
+		return 0
+	fi
+	if gosu mysql /usr/bin/mcsSetConfig SystemConfig CGroup . ; then
+		log "ColumnStore memory from the container's cgroup (limit $limit)"
+	else
+		log "could not set SystemConfig/CGroup: ColumnStore sizes its memory from the host"
+	fi
+}
+
 # CMAPI reverse-resolves every node name (gethostbyaddr: the primary detection, the
 # status, the node add) and OpenSVC's cluster DNS answers forward lookups only: each
 # container keeps a block of /etc/hosts with its own name and every node of
@@ -251,6 +281,7 @@ case "${1:-}" in
 	mariadbd | mysqld | -*)
 		prepare_volume
 		configure_cmapi
+		configure_memory
 		log "starting the node $(hostname -f 2>/dev/null || hostname)"
 		sync_hosts || log "could not write the /etc/hosts block of the cluster's nodes"
 		name_node
