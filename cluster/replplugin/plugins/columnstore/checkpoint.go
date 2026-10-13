@@ -7,17 +7,18 @@ package main
 import (
 	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/go-mysql-org/go-mysql/schema"
+	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 )
 
@@ -191,7 +192,12 @@ func (w *checkpointWriter) write(m wire.Manifest, files map[string][]byte) error
 	w.waitRoom()
 	m.Wire = wire.WireVersion
 	var buf bytes.Buffer
+	// parallel gzip, 1 MB blocks over the CPUs: the gzip of a big period (the restore's
+	// rows) was the slow part of a checkpoint
 	gz := gzip.NewWriter(&buf)
+	if err := gz.SetConcurrency(1<<20, runtime.NumCPU()); err != nil {
+		return err
+	}
 	tw := tar.NewWriter(gz)
 	names := make([]string, 0, len(files))
 	for n := range files {

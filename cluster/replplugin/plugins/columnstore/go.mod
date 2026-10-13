@@ -5,6 +5,7 @@ go 1.25.8
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/go-mysql-org/go-mysql v1.8.0
+	github.com/klauspost/pgzip v1.2.6
 	github.com/signal18/replication-manager v0.0.0-00010101000000-000000000000
 )
 
@@ -14,9 +15,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/jacoblockett/sanitizefilename v1.0.1 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/pingcap/errors v0.11.5-0.20221009092201-b66cddb77c32 // indirect
 	github.com/pingcap/failpoint v0.0.0-20220801062533-2eaa32854a6c // indirect
 	github.com/pingcap/log v1.1.1-0.20230317032135-a0d097d16e22 // indirect

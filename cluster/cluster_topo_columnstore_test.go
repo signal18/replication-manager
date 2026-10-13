@@ -33,11 +33,11 @@ func TestColumnstoreTopology(t *testing.T) {
 	if got := cl.GetTopologyFromConf(); got != config.TopoColumnstore {
 		t.Fatalf("topology from conf %q, want %q", got, config.TopoColumnstore)
 	}
-	if !cl.Configurator.HaveDBTag("mcs") || cl.Conf.ProvTags != "mcs" {
-		t.Fatalf("mcs tag not added: tags %q", cl.Conf.ProvTags)
+	if !cl.Configurator.HaveDBTag("mcs") || !cl.Configurator.HaveDBTag("localinfile") || cl.Conf.ProvTags != "mcs,localinfile" {
+		t.Fatalf("mcs and localinfile tags not added: tags %q", cl.Conf.ProvTags)
 	}
 	cl.addColumnstoreTag()
-	if cl.Conf.ProvTags != "mcs" {
+	if cl.Conf.ProvTags != "mcs,localinfile" {
 		t.Fatalf("mcs tag added twice: %q", cl.Conf.ProvTags)
 	}
 	if dirs := cl.openSVCGetVolumeDataSection("")["directories"]; !strings.Contains(dirs, columnstoreVolumeDir) || !strings.Contains(dirs, columnstoreEtcVolumeDir) {

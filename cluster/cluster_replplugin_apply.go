@@ -8,16 +8,17 @@ import (
 	"archive/tar"
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"time"
 
+	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -134,7 +135,9 @@ func readCheckpoint(path string) (wire.Manifest, map[string][]byte, error) {
 		return m, nil, err
 	}
 	defer f.Close()
-	gz, err := gzip.NewReader(f)
+	// parallel gunzip (read-ahead blocks decompressed while the tar is read), as the
+	// splitdump restore
+	gz, err := gzip.NewReaderN(f, 1<<20, runtime.NumCPU())
 	if err != nil {
 		return m, nil, err
 	}
