@@ -9,7 +9,9 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -737,4 +739,17 @@ func (cluster *Cluster) openSVCPurgeObjects(svc opensvc.Collector, agent string,
 // the service, its volume and its -sec volume (the templates' {name}-sec, #1995).
 func (cluster *Cluster) openSVCServiceObjects(serviceName, name string) []string {
 	return []string{serviceName, cluster.Name + "/vol/" + name, cluster.Name + "/vol/" + name + "-sec"}
+}
+
+// templateLogBase64 matches a base64 payload embedded in a service template (the
+// xtrabackup bundle script of prov_xtrabackup_bundle.go is one): 256 characters of the
+// base64 alphabet in a row are never a word, a host or a path of the template.
+var templateLogBase64 = regexp.MustCompile(`[A-Za-z0-9+/]{256,}={0,2}`)
+
+// templateForLog is the service template as it is logged: each embedded base64 payload is
+// replaced by its size, the template sent to the orchestrator is left as it is.
+func templateForLog(template string) string {
+	return templateLogBase64.ReplaceAllStringFunc(template, func(b64 string) string {
+		return fmt.Sprintf("<base64, %d bytes>", len(b64)*3/4-strings.Count(b64, "="))
+	})
 }
