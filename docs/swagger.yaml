@@ -836,6 +836,9 @@ definitions:
       bytes:
         description: data size of its extents
         type: integer
+      columns:
+        description: columns, each with its own extents
+        type: integer
       extents:
         additionalProperties:
           type: integer
@@ -4245,6 +4248,9 @@ definitions:
       sourceName:
         description: 'channel from the parent''s master: the parent''s replication-source-name'
         type: string
+      topology:
+        description: the child's topology-target, "" the default (#2012)
+        type: string
     type: object
   server.ChildRequest:
     properties:
@@ -4252,13 +4258,19 @@ definitions:
         description: 'false: the plan only'
         type: boolean
       dbCount:
-        description: default 3 (staging), 2 (child)
+        description: default 3 (staging), 2 (child), 1 with topology columnstore
         type: integer
       dbImage:
         description: default the parent's prov-db-image
         type: string
       name:
         description: default <parent>-staging or <parent>-child
+        type: string
+      topology:
+        description: |-
+          Topology: the child's topology-target, set before its bootstrap (#2012); "" the
+          default. columnstore: a ColumnStore child of an OLTP parent, its tables converted at
+          the seed (#2010), image signal18/mariadb-columnstore and 1 database (the UM) by default
         type: string
     type: object
   server.CloudUserForm:
@@ -5760,7 +5772,7 @@ paths:
         name: clusterName
         required: true
         type: string
-      - description: name, dbImage, dbCount, confirm
+      - description: name, dbImage, dbCount, topology (child only), confirm
         in: body
         name: request
         schema:
@@ -5821,7 +5833,7 @@ paths:
         name: clusterName
         required: true
         type: string
-      - description: name, dbImage, dbCount, confirm
+      - description: name, dbImage, dbCount, topology (child only), confirm
         in: body
         name: request
         schema:

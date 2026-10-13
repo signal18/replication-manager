@@ -84,8 +84,12 @@ type RepmanProvider interface {
 type ChildClusterSpec struct {
 	Name    string `json:"name"`    // default <parent>-staging or <parent>-child
 	DBImage string `json:"dbImage"` // default the parent's prov-db-image
-	DBCount int    `json:"dbCount"` // default 3 (staging), 2 (child)
-	Confirm bool   `json:"confirm"` // false: the plan only
+	DBCount int    `json:"dbCount"` // default 3 (staging), 2 (child), 1 with topology columnstore
+	// Topology: the child's topology-target, set before its bootstrap (#2012); "" the
+	// default. columnstore: a ColumnStore child of an OLTP parent, its tables converted at
+	// the seed (#2010), image signal18/mariadb-columnstore and 1 database (the UM) by default
+	Topology string `json:"topology,omitempty"`
+	Confirm  bool   `json:"confirm"` // false: the plan only
 }
 
 // Cloud18ClusterSpec is a self-service cluster request on an infrastructure.

@@ -1651,7 +1651,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "name, dbImage, dbCount, confirm",
+                        "description": "name, dbImage, dbCount, topology (child only), confirm",
                         "name": "request",
                         "in": "body",
                         "schema": {
@@ -1729,7 +1729,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "name, dbImage, dbCount, confirm",
+                        "description": "name, dbImage, dbCount, topology (child only), confirm",
                         "name": "request",
                         "in": "body",
                         "schema": {
@@ -24978,6 +24978,10 @@ const docTemplate = `{
                     "description": "data size of its extents",
                     "type": "integer"
                 },
+                "columns": {
+                    "description": "columns, each with its own extents",
+                    "type": "integer"
+                },
                 "extents": {
                     "description": "dbroot -\u003e extents",
                     "type": "object",
@@ -29969,6 +29973,10 @@ const docTemplate = `{
                 "sourceName": {
                     "description": "channel from the parent's master: the parent's replication-source-name",
                     "type": "string"
+                },
+                "topology": {
+                    "description": "the child's topology-target, \"\" the default (#2012)",
+                    "type": "string"
                 }
             }
         },
@@ -29980,7 +29988,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "dbCount": {
-                    "description": "default 3 (staging), 2 (child)",
+                    "description": "default 3 (staging), 2 (child), 1 with topology columnstore",
                     "type": "integer"
                 },
                 "dbImage": {
@@ -29989,6 +29997,10 @@ const docTemplate = `{
                 },
                 "name": {
                     "description": "default \u003cparent\u003e-staging or \u003cparent\u003e-child",
+                    "type": "string"
+                },
+                "topology": {
+                    "description": "Topology: the child's topology-target, set before its bootstrap (#2012); \"\" the\ndefault. columnstore: a ColumnStore child of an OLTP parent, its tables converted at\nthe seed (#2010), image signal18/mariadb-columnstore and 1 database (the UM) by default",
                     "type": "string"
                 }
             }

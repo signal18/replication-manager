@@ -2049,10 +2049,10 @@ export const createApiToken = createGuardedAsyncThunk(
 // is read by the modal directly. fetch does not reject on 400: the refusal text is the error.
 export const createChildCluster = createGuardedAsyncThunk(
   'cluster/createChildCluster',
-  async ({ clusterName, kind, name, dbImage, dbCount }, thunkAPI) => {
+  async ({ clusterName, kind, name, dbImage, dbCount, topology }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.createChildCluster(clusterName, kind, { name, dbImage, dbCount, confirm: true }, baseURL)
+      const { data, status } = await clusterService.createChildCluster(clusterName, kind, { name, dbImage, dbCount, topology, confirm: true }, baseURL)
       if (status !== 202 && status !== 200) {
         throw new Error(typeof data === 'string' && data.trim() ? data.trim() : `HTTP ${status}`)
       }

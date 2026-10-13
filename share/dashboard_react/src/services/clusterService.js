@@ -452,8 +452,8 @@ function rollingAction(clusterName, action, baseURL, target) {
 
 // Staging (#1988) or child (#1997) cluster of a cluster: confirm false returns the
 // plan, true creates. kind is staging or child.
-function createChildCluster(clusterName, kind, { name, dbImage, dbCount, confirm }, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/create-${kind}`, { name, dbImage, dbCount, confirm })
+function createChildCluster(clusterName, kind, { name, dbImage, dbCount, topology, confirm }, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/create-${kind}`, { name, dbImage, dbCount, topology, confirm })
 }
 function rollingUpgradePlan(clusterName, target, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/rolling/upgrade/plan?target=${encodeURIComponent(target || 'patch')}`)

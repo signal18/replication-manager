@@ -318,6 +318,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 				mcp.WithString("name", mcp.Description("Name of the new cluster; default <cluster_name>-"+kind)),
 				mcp.WithString("db_image", mcp.Description("Database image of the new cluster; default the parent's (prov-db-image). A newer release is fine: the new cluster keeps its own system tables")),
 				mcp.WithNumber("db_count", mcp.Description("Number of databases, default "+dbCountDefault+", max 5")),
+				mcp.WithString("topology", mcp.Description("child only: the new cluster's topology-target, default the usual; columnstore makes a ColumnStore child, its tables converted at the seed, image signal18/mariadb-columnstore:11.8 and 1 database by default")),
 				mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: create")),
 			),
 			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -326,10 +327,11 @@ func (s *MCPServer) registerClusterWriteTools() {
 					return errResult, nil
 				}
 				spec := ChildClusterSpec{
-					Name:    req.GetString("name", ""),
-					DBImage: req.GetString("db_image", ""),
-					DBCount: req.GetInt("db_count", 0),
-					Confirm: req.GetBool("confirm", false),
+					Name:     req.GetString("name", ""),
+					DBImage:  req.GetString("db_image", ""),
+					DBCount:  req.GetInt("db_count", 0),
+					Topology: req.GetString("topology", ""),
+					Confirm:  req.GetBool("confirm", false),
 				}
 				status, body, err := s.repman.CreateChildClusterAs(principalFrom(ctx), parent, kind, spec)
 				if err != nil {

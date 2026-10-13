@@ -32,9 +32,12 @@ import (
 
 const (
 	childMaxDBCount = 5
-	childMasterWait = 5 * time.Minute
-	childNodesWait  = 2 * time.Minute // the new cluster loads its orchestrator node list on its own tick
-	stagingDBCount  = 3               // the built-in refresh detaches the first of 2 replicas
+	// childColumnstoreImage: a ColumnStore child's database image by default (#2012):
+	// MariaDB with ColumnStore and CMAPI (docker/columnstore)
+	childColumnstoreImage = "signal18/mariadb-columnstore:11.8"
+	childMasterWait       = 5 * time.Minute
+	childNodesWait        = 2 * time.Minute // the new cluster loads its orchestrator node list on its own tick
+	stagingDBCount        = 3               // the built-in refresh detaches the first of 2 replicas
 )
 
 // childMode is what differs between a staging and a child cluster.
@@ -65,11 +68,12 @@ type ChildPlan struct {
 	DBImage           string   `json:"dbImage"`
 	DBCount           int      `json:"dbCount"`
 	DBUPerNode        int      `json:"dbuPerNode"`
-	Proxy             string   `json:"proxy"`             // "" = none
-	Domain            string   `json:"domain"`            // GTID domain: the parent's + 1
-	SourceName        string   `json:"sourceName"`        // channel from the parent's master: the parent's replication-source-name
-	OwnSourceName     string   `json:"ownSourceName"`     // the new cluster's replication-source-name (its master to its replicas)
-	BackupLogicalType string   `json:"backupLogicalType"` // the parent's
+	Proxy             string   `json:"proxy"`              // "" = none
+	Domain            string   `json:"domain"`             // GTID domain: the parent's + 1
+	SourceName        string   `json:"sourceName"`         // channel from the parent's master: the parent's replication-source-name
+	OwnSourceName     string   `json:"ownSourceName"`      // the new cluster's replication-source-name (its master to its replicas)
+	BackupLogicalType string   `json:"backupLogicalType"`  // the parent's
+	Topology          string   `json:"topology,omitempty"` // the child's topology-target, "" the default (#2012)
 	Backup            string   `json:"backup"`
 	Notes             []string `json:"notes,omitempty"`
 }
@@ -126,9 +130,22 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 	if repman.getClusterByName(plan.Name) != nil {
 		return plan, fmt.Errorf("cluster %s already exists", plan.Name)
 	}
+	plan.Topology = req.Topology
+	if plan.Topology != "" {
+		if mode.staging {
+			return plan, fmt.Errorf("a staging cluster has the staging topology: no topology to choose")
+		}
+		if _, ok := config.GetTopologyType()[plan.Topology]; !ok {
+			return plan, fmt.Errorf("unknown topology %q", plan.Topology)
+		}
+	}
+	columnstore := plan.Topology == config.TopoColumnstore
 	plan.DBCount = req.DBCount
 	if plan.DBCount == 0 {
 		plan.DBCount = mode.dbCount
+		if columnstore {
+			plan.DBCount = 1 // the UM; the PMs join it later
+		}
 	}
 	if plan.DBCount < 1 || plan.DBCount > childMaxDBCount {
 		return plan, fmt.Errorf("dbCount must be between 1 and %d", childMaxDBCount)
@@ -139,6 +156,12 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 	plan.DBImage = req.DBImage
 	if plan.DBImage == "" {
 		plan.DBImage = parent.Conf.ProvDbImg
+		if columnstore {
+			plan.DBImage = childColumnstoreImage
+		}
+	}
+	if columnstore {
+		plan.Notes = append(plan.Notes, "each table of the parent's backup is converted to ColumnStore at the seed: keys removed, types widened or mapped (the log lists every change)")
 	}
 	plan.DBUPerNode = parent.Conf.ProvDbDbu
 	plan.Proxy = childProxyType(parent)
@@ -197,6 +220,12 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	}
 	if mode.staging {
 		if err := repman.SetClusterSetting(cl, "topology-staging", "true"); err != nil {
+			return cl, fail(err)
+		}
+	}
+	// before the bootstrap: it reads the target (#2012)
+	if plan.Topology != "" {
+		if err := repman.SetClusterSetting(cl, "topology-target", plan.Topology); err != nil {
 			return cl, fail(err)
 		}
 	}
@@ -310,7 +339,7 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Parent cluster name"
-// @Param request body ChildRequest false "name, dbImage, dbCount, confirm"
+// @Param request body ChildRequest false "name, dbImage, dbCount, topology (child only), confirm"
 // @Success 200 {object} ChildPlan "The plan (confirm false)"
 // @Success 202 {object} ChildPlan "Creation started (confirm true)"
 // @Failure 400 {string} string "Refused: the reason (no logical backup on the parent, orchestrator, name taken...)"
@@ -380,7 +409,7 @@ func (repman *ReplicationManager) createChildClusterRoute(w http.ResponseWriter,
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Parent cluster name"
-// @Param request body ChildRequest false "name, dbImage, dbCount, confirm"
+// @Param request body ChildRequest false "name, dbImage, dbCount, topology (child only), confirm"
 // @Success 200 {object} ChildPlan "The plan (confirm false)"
 // @Success 202 {object} ChildPlan "Creation started (confirm true)"
 // @Failure 400 {string} string "Refused: the reason (no logical backup on the parent, orchestrator, name taken...)"
