@@ -579,6 +579,8 @@ type Cluster struct {
 	// storage engine switch progress and outcome (cluster_engine_switch.go, #1999)
 	engineSwitch         atomic.Pointer[EngineSwitch]         `json:"-"`
 	columnstoreRebalance atomic.Pointer[ColumnstoreRebalance] `json:"-"`
+	replPlugins          map[string]*replPluginRunner         `json:"-"` // replication plugins by TOML path (#2015)
+	replPluginsMu        sync.Mutex                           `json:"-"`
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -1411,6 +1413,8 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckReplicationTLS()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
+		// Replication plugins: supervised on the active monitor only (#2015)
+		cluster.CheckReplicationPlugins()
 		// CheckFailed trigger failover code if passing all false positiv and constraints
 		cluster.CheckFailed()
 		// Run any operator-armed rejoin (GUI delta viewer) — independent of
@@ -1717,6 +1721,7 @@ func (cluster *Cluster) Stop() {
 
 		cluster.exit.Store(true)
 
+		phase("replicationPlugins", cluster.StopReplicationPlugins)
 		phase("scheduler", func() {
 			if cluster.scheduler != nil {
 				cluster.scheduler.Stop()
