@@ -101,12 +101,21 @@ func TestColumnstoreConversionLive(t *testing.T) {
 		}
 	}
 	var got []string
-	if err := db.Select(&got, "SELECT CONCAT_WS('|', id, t, ut, si, usi, i, ui, b, ub, m, e, s, bt, y, HEX(bin), HEX(vb), u, i6, i4, v, IFNULL(nn,'NULL'), dt, d, g, j) FROM "+schema+".src"); err != nil {
+	if err := db.Select(&got, "SELECT CONCAT_WS('|', id, t, ut, si, usi, i, ui, b, ub, m, e, s, bt, y, u, i6, i4, v, IFNULL(nn,'NULL'), dt, d, g, j) FROM "+schema+".src"); err != nil {
 		t.Fatal(err)
 	}
-	want := "4294967295|-128|255|-32768|65535|-2147483648|4294967295|-9223372036854775808|18446744073709551615|-8388608|blue-ish|a,ccc|23|2155|61620000|00FF|11111111-2222-3333-4444-555555555555|2001:db8::1|10.0.0.1|é|NULL|2026-10-13 10:00:00.123456|-1234567890123456789012345678.1234567890|-256|{\"k\":1}"
+	want := "4294967295|-128|255|-32768|65535|-2147483648|4294967295|-9223372036854775808|18446744073709551615|-8388608|blue-ish|a,ccc|23|2155|11111111-2222-3333-4444-555555555555|2001:db8::1|10.0.0.1|é|NULL|2026-10-13 10:00:00.123456|-1234567890123456789012345678.1234567890|-256|{\"k\":1}"
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("src read back\n got %q\nwant %q", got, want)
+	}
+	// ColumnStore takes no function on a BLOB (HEX: "VARBINARY/BLOB in filter or function
+	// is not supported"): the binary columns are compared raw
+	var bin struct{ Bin, Vb []byte }
+	if err := db.QueryRowx("SELECT bin, vb FROM "+schema+".src").Scan(&bin.Bin, &bin.Vb); err != nil {
+		t.Fatal(err)
+	}
+	if string(bin.Bin) != "ab\x00\x00" || string(bin.Vb) != "\x00\xff" {
+		t.Fatalf("binary columns read back %q %q", bin.Bin, bin.Vb)
 	}
 	var n int
 	if err := db.Get(&n, "SELECT COUNT(*) FROM "+schema+".child"); err != nil || n != 3 {
