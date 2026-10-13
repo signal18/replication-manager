@@ -172,7 +172,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyV3(pri DatabaseProxy, svc opensvc.C
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", templateForLog(string(res)))
 
 	templatefile := filepath.Join(pri.GetDatadir(), "opensvc_template.ini")
 	if werr := os.WriteFile(templatefile, res, 0600); werr != nil {
