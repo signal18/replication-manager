@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/signal18/replication-manager/cluster/replplugin/wire"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/sirupsen/logrus"
@@ -39,7 +40,7 @@ func TestColumnstoreTopology(t *testing.T) {
 	if cl.Conf.ProvTags != "mcs" {
 		t.Fatalf("mcs tag added twice: %q", cl.Conf.ProvTags)
 	}
-	if dirs := cl.openSVCGetVolumeDataSection("")["directories"]; (!strings.Contains(dirs, columnstoreVolumeDir) || !strings.Contains(dirs, columnstoreEtcVolumeDir)) {
+	if dirs := cl.openSVCGetVolumeDataSection("")["directories"]; !strings.Contains(dirs, columnstoreVolumeDir) || !strings.Contains(dirs, columnstoreEtcVolumeDir) {
 		t.Fatalf("ColumnStore's storage moves with the data volume: directories %q", dirs)
 	}
 	if shm := cl.openSVCGetColumnstoreShmSection(); shm["type"] != "shm" || shm["size"] != columnstoreShmSize || shm["dirperm"] != "777" {
@@ -89,33 +90,34 @@ func TestColumnstoreRebalanceCopyNames(t *testing.T) {
 	}
 }
 
-// #2014: columnstore_replication_slave goes to the UM applying the parent's replication only:
-// a columnstore child's single UM, or with several UMs its master; never without a parent.
-func TestColumnstoreReplicationSlave(t *testing.T) {
+// #2015: a ColumnStore child's channel ignores the tables of its plugin's TOML, rendered
+// into the UM's bundle; nothing outside the columnstore topology or without a TOML.
+func TestColumnstoreReplicateIgnore(t *testing.T) {
 	cl := newColumnstoreTestCluster()
+	cl.Name = "belair-mcs"
+	cl.Conf.WorkingDir = t.TempDir()
+	um1 := &ServerMonitor{Id: "db1", ClusterGroup: cl}
 	if err := cl.BootstrapTopology(config.TopoColumnstore); err != nil {
 		t.Fatal(err)
 	}
-	um1 := &ServerMonitor{Id: "db1", ClusterGroup: cl}
-	cl.Servers = []*ServerMonitor{um1}
-	if got := um1.columnstoreReplicationSlave(); got != "OFF" {
-		t.Fatalf("no parent: %s, want OFF", got)
+	if got := um1.columnstoreReplicateIgnore(); got != "" {
+		t.Fatalf("no TOML: %q", got)
 	}
-	cl.Conf.ReplicationMultisourceHeadClusters = "belair"
-	if got := um1.columnstoreReplicationSlave(); got != "ON" {
-		t.Fatalf("single UM of a child: %s, want ON", got)
+	cfg := wire.Config{Plugin: "columnstore", Enabled: true, SourceChannel: "belair",
+		Rules: []wire.Rule{{Schema: "repl_test", Tables: []string{"pk_enum", "pk_int"}}, {Schema: "shop", Tables: []string{"orders"}}}}
+	if err := writeReplPluginConfig(cl.columnstorePluginPath(), cfg); err != nil {
+		t.Fatal(err)
 	}
-	um2 := &ServerMonitor{Id: "db2", ClusterGroup: cl}
-	cl.Servers = append(cl.Servers, um2)
-	cl.master = um1
-	if a, b := um1.columnstoreReplicationSlave(), um2.columnstoreReplicationSlave(); a != "ON" || b != "OFF" {
-		t.Fatalf("two UMs: master %s, other %s; want ON, OFF", a, b)
+	if got := um1.columnstoreReplicateIgnore(); got != "belair.replicate_ignore_table=repl_test.pk_enum,repl_test.pk_int,shop.orders" {
+		t.Fatalf("ignore line %q", got)
+	}
+	if columnstorePluginServerID("belair-mcs") != columnstorePluginServerID("belair-mcs") || columnstorePluginServerID("belair-mcs") < 3000000000 {
+		t.Fatal("the plugin's server id must be stable and far from the servers'")
 	}
 	ap := newColumnstoreTestCluster()
-	ap.Conf.ReplicationMultisourceHeadClusters = "belair"
-	db := &ServerMonitor{Id: "db1", ClusterGroup: ap}
-	ap.Servers = []*ServerMonitor{db}
-	if got := db.columnstoreReplicationSlave(); got != "OFF" {
-		t.Fatalf("not columnstore: %s, want OFF", got)
+	ap.Conf.WorkingDir = cl.Conf.WorkingDir
+	ap.Name = "belair-mcs"
+	if got := (&ServerMonitor{ClusterGroup: ap}).columnstoreReplicateIgnore(); got != "" {
+		t.Fatalf("not columnstore: %q", got)
 	}
 }

@@ -6,18 +6,17 @@ import (
 	"testing"
 )
 
-// #2014: the UM applying its parent's replication gets loose_columnstore_replication_slave=ON
-// in conf.d of its bundle.
-func TestWriteColumnstoreReplicationSlave(t *testing.T) {
+// #2015: a ColumnStore child's channel ignores the tables the plugin carries, in conf.d.
+func TestWriteColumnstoreReplicateIgnore(t *testing.T) {
 	dir := t.TempDir()
-	if err := (&Configurator{}).writeColumnstoreReplicationSlave(dir); err != nil {
+	if err := (&Configurator{}).writeColumnstoreReplicateIgnore(dir, "belair.replicate_ignore_table=repl_test.pk_int,repl_test.pk_enum"); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(dir + "/init/etc/mysql/conf.d/" + columnstoreReplicationFile)
+	b, err := os.ReadFile(dir + "/init/etc/mysql/conf.d/" + columnstoreReplicateIgnoreFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), "[mariadb]\nloose_columnstore_replication_slave=ON\n") {
+	if !strings.Contains(string(b), "[mariadb]\nbelair.replicate_ignore_table=repl_test.pk_int,repl_test.pk_enum\n") {
 		t.Fatalf("fragment:\n%s", b)
 	}
 }

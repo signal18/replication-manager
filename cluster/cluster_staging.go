@@ -535,6 +535,15 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 
 	target.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
 
+	// a ColumnStore child (#2015): its ColumnStore tables are carried by replplugin-columnstore,
+	// the channel ignores them, set before it starts
+	if cluster.HasConfigTopoColumnstore() && target.IsMaster() {
+		if err := cluster.prepareColumnstoreChild(parent, target, channel, backupfile); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ColumnStore child %s: %s", cluster.Name, err)
+			return "", fmt.Errorf("ColumnStore child preparation: %w", err)
+		}
+	}
+
 	if target.IsMaster() {
 		_, err2 := target.StartSlaveChannel(channel)
 		if err2 != nil {

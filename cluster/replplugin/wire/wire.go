@@ -61,6 +61,26 @@ type Config struct {
 	// StartGTID: where the plugin starts when it has no State yet (a ColumnStore child:
 	// the GTID of its seed)
 	StartGTID string `toml:"start_gtid" json:"startGtid"`
+	// SourceChannel: the target's native replication channel from the same source, which
+	// ignores the tables this plugin carries (replicate_ignore_table), "" when none
+	SourceChannel string `toml:"source_channel" json:"sourceChannel"`
+}
+
+// Tables lists the rules' tables as schema.table; ok false when a rule takes a whole
+// schema (no exact list then).
+func (c *Config) Tables() (tables []string, ok bool) {
+	for _, r := range c.Rules {
+		if len(r.Tables) == 0 {
+			return nil, false
+		}
+		for _, t := range r.Tables {
+			if t == "*" {
+				return nil, false
+			}
+			tables = append(tables, r.Schema+"."+t)
+		}
+	}
+	return tables, true
 }
 
 // Matches tells whether a rule selects schema.table.

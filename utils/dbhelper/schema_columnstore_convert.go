@@ -173,3 +173,24 @@ func RenameTableConn(ctx context.Context, conn *sqlx.Conn, schema, from, to stri
 	_, err = conn.ExecContext(ctx, query)
 	return query, err
 }
+
+// SetChannelReplicateIgnoreTable sets replicate_ignore_table of one replication channel
+// (MariaDB multi-source: the per-connection filter of @@default_master_connection), on a
+// pinned connection of db; the channel must be stopped. tables: schema.table, "" clears it.
+func SetChannelReplicateIgnoreTable(ctx context.Context, db *sqlx.DB, myver *version.Version, channel string, tables []string) (string, error) {
+	if myver != nil && !myver.IsMariaDB() {
+		return "", fmt.Errorf("per-channel replicate_ignore_table needs MariaDB")
+	}
+	conn, err := db.Connx(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+	q1 := "SET @@default_master_connection = " + QuoteMySQLString(channel)
+	if _, err := conn.ExecContext(ctx, q1); err != nil {
+		return q1, err
+	}
+	q2 := "SET GLOBAL replicate_ignore_table = " + QuoteMySQLString(strings.Join(tables, ","))
+	_, err = conn.ExecContext(ctx, q2)
+	return q1 + "; " + q2, err
+}

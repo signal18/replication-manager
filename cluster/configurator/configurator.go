@@ -984,9 +984,9 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 			return err
 		}
 	}
-	// ColumnStore applying its parent's replication (columnstore_replication.go)
-	if TemplateEnv[ColumnstoreReplicationEnv] == "ON" {
-		if err := configurator.writeColumnstoreReplicationSlave(Datadir); err != nil {
+	// a ColumnStore child's channel ignores the plugin's tables (columnstore_replication.go)
+	if line := TemplateEnv[ColumnstoreReplicateIgnoreEnv]; line != "" {
+		if err := configurator.writeColumnstoreReplicateIgnore(Datadir, line); err != nil {
 			return err
 		}
 	}

@@ -9,28 +9,27 @@ import (
 	"os"
 )
 
-// ColumnStore replicating from an OLTP parent (#2014): ColumnStore drops the row changes a
-// replica applies unless columnstore_replication_slave is ON (preprod belair-mcs: a parent
-// INSERT never arrived, the next UPDATE stopped the channel on error 1032). The variable is
-// read-only at runtime, so it is rendered into the server's configuration bundle. Only for
-// the UM holding the parent's channel, a per-server role the caller decides
-// (ColumnstoreReplicationEnv in the template environment): another UM of the same
-// ColumnStore cluster replicates from that one and must keep it OFF, or it would apply the
-// same changes a second time to the shared storage.
+// A ColumnStore child of an OLTP parent (#2015): ColumnStore takes no row UPDATE or DELETE
+// from replication (its row-level update and delete do nothing; preprod belair-mcs lost an
+// UPDATE silently with columnstore_replication_slave ON, and stopped on 1032 with it OFF).
+// Its ColumnStore tables are carried by the replplugin-columnstore plugin, and its native
+// channel from the parent ignores them: <channel>.replicate_ignore_table, set live at the
+// seed and rendered here into the bundle for the next start. The line comes from the
+// plugin's TOML, through the server's template environment (ColumnstoreReplicateIgnoreEnv).
 const (
-	columnstoreReplicationFile = "03_with_mcs_replication_slave.cnf"
-	// ColumnstoreReplicationEnv is ON in a server's template environment when that server
-	// applies its cluster's parent replication into ColumnStore
-	ColumnstoreReplicationEnv = "%%ENV:COLUMNSTORE_REPLICATION_SLAVE%%"
+	columnstoreReplicateIgnoreFile = "03_with_mcs_replicate_ignore.cnf"
+	// ColumnstoreReplicateIgnoreEnv is "<channel>.replicate_ignore_table=<tables>" in a UM's
+	// template environment, "" when its channel ignores nothing
+	ColumnstoreReplicateIgnoreEnv = "%%ENV:COLUMNSTORE_REPLICATE_IGNORE%%"
 )
 
-// writeColumnstoreReplicationSlave renders the fragment in conf.d (included by my.cnf).
-// loose_: a server started without the ColumnStore plugin only warns.
-func (configurator *Configurator) writeColumnstoreReplicationSlave(Datadir string) error {
+// writeColumnstoreReplicateIgnore renders the channel's ignore list in conf.d (included by
+// my.cnf).
+func (configurator *Configurator) writeColumnstoreReplicateIgnore(Datadir, line string) error {
 	dir := Datadir + "/init/etc/mysql/conf.d"
 	if err := os.MkdirAll(dir, os.FileMode(0775)); err != nil {
 		return fmt.Errorf("Compliance create directory %q: %s", dir, err)
 	}
-	content := "# replication-manager: this UM applies its parent's replication into ColumnStore (see columnstore_replication.go)\n[mariadb]\nloose_columnstore_replication_slave=ON\n"
-	return os.WriteFile(dir+"/"+columnstoreReplicationFile, []byte(content), 0644)
+	content := "# replication-manager: the ColumnStore tables are carried by replplugin-columnstore, not by this channel (see columnstore_replication.go)\n[mariadb]\n" + line + "\n"
+	return os.WriteFile(dir+"/"+columnstoreReplicateIgnoreFile, []byte(content), 0644)
 }

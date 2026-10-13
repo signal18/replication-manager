@@ -32,7 +32,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":                            server.ClusterGroup.Configurator.GetConfigDBCores(),
 		"%%ENV:SVC_CONF_ENV_MAX_CONNECTIONS%%":                      server.ClusterGroup.Configurator.GetConfigMaxConnections(),
 		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                             string(server.Id[2:10]),
-		configurator.ColumnstoreReplicationEnv:                      server.columnstoreReplicationSlave(),
+		configurator.ColumnstoreReplicateIgnoreEnv:                  server.columnstoreReplicateIgnore(),
 		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":                            string(server.Id[2:10]),
 		"%%ENV:SERVER_IP%%":                                         misc.Unbracket(server.GetBindAddress()),
 		"%%ENV:SERVER_HOST%%":                                       server.Host,
@@ -374,22 +374,6 @@ func (server *ServerMonitor) sendDummyConfigWithWait(configFile string, cookieMo
 	}
 
 	return err
-}
-
-// columnstoreReplicationSlave is ON for the server that applies its cluster's parent
-// replication into ColumnStore (#2014): the columnstore topology, a head cluster, and the
-// server holding the parent's channel, the cluster's master (the only server of a single-UM
-// cluster, master or not yet discovered). Another UM keeps it OFF. The variable is read-only:
-// with several UMs a promoted one needs its configuration rendered again and a restart.
-func (server *ServerMonitor) columnstoreReplicationSlave() string {
-	cl := server.ClusterGroup
-	if cl == nil || !cl.HasConfigTopoColumnstore() || cl.Conf.ReplicationMultisourceHeadClusters == "" {
-		return "OFF"
-	}
-	if len(cl.Servers) <= 1 || server.IsMaster() {
-		return "ON"
-	}
-	return "OFF"
 }
 
 func (server *ServerMonitor) getDatabaseConfig(preserve bool) error {
