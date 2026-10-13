@@ -160,6 +160,7 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 			plan.DBImage = childColumnstoreImage
 		}
 	}
+	plan.Notes = append(plan.Notes, "configurator tags: the parent's ("+parent.Conf.ProvTags+")")
 	if columnstore {
 		plan.Notes = append(plan.Notes, "each table of the parent's backup is converted to ColumnStore at the seed: keys removed, types widened or mapped (the log lists every change)")
 	}
@@ -223,6 +224,11 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 			return cl, fail(err)
 		}
 	}
+	// the parent's configurator tags (#2013): the child replays its data and writes, it
+	// needs its server configuration (preprod: belair's noforcepk, its tables without a
+	// primary key refused by the child's default innodb tag); a topology adds its own on
+	// top (columnstore: mcs, below)
+	cl.SetDBTagsConfig(parent.Configurator.GetDBTags())
 	// before the bootstrap: it reads the target (#2012)
 	if plan.Topology != "" {
 		if err := repman.SetClusterSetting(cl, "topology-target", plan.Topology); err != nil {

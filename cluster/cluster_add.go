@@ -66,6 +66,15 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 	}
 }
 
+// SetDBTagsConfig replaces the database tags of a cluster whose servers are not
+// provisioned yet: a new child takes its parent's (#2013). Nothing to apply live and no
+// restart: the provisioning renders them.
+func (cluster *Cluster) SetDBTagsConfig(tags []string) {
+	cluster.Configurator.SetDBTags(append([]string(nil), tags...))
+	cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
+	cluster.SetClusterCredentialsFromConfig()
+}
+
 // addColumnstoreTag: the columnstore topology's servers (the UM) run ColumnStore,
 // whose configuration is the mcs tag's ruleset (#2002)
 func (cluster *Cluster) addColumnstoreTag() {
