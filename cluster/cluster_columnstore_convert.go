@@ -38,6 +38,8 @@ const columnstoreMaxStringBytes = 8000
 var (
 	numericLiteralRe     = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?([eE][-+]?[0-9]+)?$`)
 	columnstoreCommentRe = regexp.MustCompile(`(?i)\b(autoincrement|compression)\b`)
+	jsonValidCheckRe     = regexp.MustCompile("^json_valid\\(`([^`]+)`\\)$")
+	checkFunctionCallRe  = regexp.MustCompile(`[A-Za-z0-9_]\s*\(`)
 )
 
 // columnstoreConversion is the DDL of a table converted to ColumnStore and what it changed.
@@ -163,11 +165,15 @@ func columnstoreColumnType(c dbhelper.TableColumn) (string, []string, error) {
 	return "", nil, fmt.Errorf("%s: type unknown to the ColumnStore conversion", c.ColumnType)
 }
 
-// columnstoreColumnDefinition is one column of the generated DDL.
-func columnstoreColumnDefinition(c dbhelper.TableColumn) (string, []string, error) {
+// columnstoreColumnDefinition is one column of the generated DDL; json: the column's only
+// check is json_valid(column), the JSON type ColumnStore accepts and MariaDB checks.
+func columnstoreColumnDefinition(c dbhelper.TableColumn, json bool) (string, []string, error) {
 	typ, notes, err := columnstoreColumnType(c)
 	if err != nil {
 		return "", nil, err
+	}
+	if json && strings.EqualFold(c.DataType, "longtext") {
+		typ = "json"
 	}
 	def := dbhelper.QuoteMySQLIdentifier(c.Name) + " " + typ
 	extra := strings.ToLower(c.Extra)
@@ -219,16 +225,32 @@ func columnstoreTableDDL(schema, name string, cols []dbhelper.TableColumn, check
 	if err != nil {
 		return conv, err
 	}
+	// ColumnStore refuses a CHECK calling a function (json_valid(), length(): dev3); a JSON
+	// column's json_valid check becomes its JSON type, any other such check goes
+	jsonCols := map[string]bool{}
+	var kept []dbhelper.TableCheck
+	for _, ck := range checks {
+		clause := strings.TrimSpace(ck.Clause)
+		if m := jsonValidCheckRe.FindStringSubmatch(clause); m != nil {
+			jsonCols[m[1]] = true
+			continue
+		}
+		if checkFunctionCallRe.MatchString(clause) {
+			conv.Changes = append(conv.Changes, "CHECK "+ck.Name+" ("+clause+") removed: ColumnStore refuses a function call in a CHECK")
+			continue
+		}
+		kept = append(kept, ck)
+	}
 	var lines []string
 	for _, c := range cols {
-		def, notes, err := columnstoreColumnDefinition(c)
+		def, notes, err := columnstoreColumnDefinition(c, jsonCols[c.Name])
 		if err != nil {
 			return conv, fmt.Errorf("column %s: %w", c.Name, err)
 		}
 		lines = append(lines, "  "+def)
 		conv.Changes = append(conv.Changes, notes...)
 	}
-	for _, ck := range checks {
+	for _, ck := range kept {
 		lines = append(lines, "  CONSTRAINT "+dbhelper.QuoteMySQLIdentifier(ck.Name)+" CHECK ("+ck.Clause+")")
 	}
 	if len(indexes) > 0 {

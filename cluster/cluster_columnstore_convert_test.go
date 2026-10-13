@@ -29,13 +29,14 @@ func columnstoreSampleColumns() []dbhelper.TableColumn {
 		{Name: "big", DataType: "bigint", ColumnType: "bigint(20)", Nullable: true},
 		{Name: "ubig", DataType: "bigint", ColumnType: "bigint(20) unsigned", Nullable: true},
 		{Name: "m", DataType: "mediumint", ColumnType: "mediumint(8) unsigned", Nullable: true},
+		{Name: "j", DataType: "longtext", ColumnType: "longtext", Nullable: true, Charset: ns("utf8mb4"), Collation: ns("utf8mb4_bin")},
 		{Name: "nm", DataType: "varchar", ColumnType: "varchar(10)", Nullable: true, Default: ns("'it''s'"), Charset: ns("utf8mb3"), Collation: ns("utf8mb3_general_ci"), MaxLength: ni(10), OctetLength: ni(30), Comment: "customer name"},
 	}
 }
 
 func TestColumnstoreTableDDL(t *testing.T) {
 	conv, err := columnstoreTableDDL("conv", "src__mcs", columnstoreSampleColumns(),
-		[]dbhelper.TableCheck{{Name: "CONSTRAINT_1", Clause: "`t` > -100"}},
+		[]dbhelper.TableCheck{{Name: "CONSTRAINT_1", Clause: "`t` > -100"}, {Name: "j", Clause: "json_valid(`j`)"}, {Name: "len", Clause: "octet_length(`nm`) > 0"}},
 		dbhelper.TableOptions{Engine: "InnoDB", Charset: "utf8mb4", Collation: "utf8mb4_general_ci", Comment: "orders", Partitioned: true},
 		[]string{"PRIMARY", "name"}, []string{"fk_customer"})
 	if err != nil {
@@ -59,6 +60,7 @@ func TestColumnstoreTableDDL(t *testing.T) {
 		"`ubig` decimal(20,0) unsigned,",
 		"`m` mediumint(8) unsigned,", // MEDIUMINT has its full range
 		"`nm` varchar(10) CHARACTER SET utf8mb3 COLLATE utf8mb3_general_ci DEFAULT 'it''s' COMMENT 'customer name',",
+		"`j` json,", // its json_valid check becomes the JSON type
 		"CONSTRAINT `CONSTRAINT_1` CHECK (`t` > -100)",
 		") ENGINE=Columnstore DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci COMMENT='orders'",
 	} {
@@ -75,6 +77,7 @@ func TestColumnstoreTableDDL(t *testing.T) {
 		"name: NOT NULL removed", "ts: DEFAULT current_timestamp() removed", "ts: ON UPDATE removed",
 		"g: generated column becomes a plain column", "indexes removed: PRIMARY, name",
 		"foreign keys removed: fk_customer", "partitioning removed",
+		"CHECK len (octet_length(`nm`) > 0) removed",
 	} {
 		if !strings.Contains(changes, want) {
 			t.Errorf("changes miss %q:\n%s", want, changes)
@@ -98,5 +101,15 @@ func TestColumnstoreTableDDLRefusal(t *testing.T) {
 		nil, dbhelper.TableOptions{Comment: "compression=0"}, nil, nil)
 	if err != nil || strings.Contains(conv.DDL, "COMMENT") {
 		t.Errorf("comments read as ColumnStore options must go: %v\n%s", err, conv.DDL)
+	}
+}
+
+func TestColumnstoreChecks(t *testing.T) {
+	conv, err := columnstoreTableDDL("s", "t", columnstoreSampleColumns(), []dbhelper.TableCheck{{Name: "j", Clause: "json_valid(`j`)"}}, dbhelper.TableOptions{}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(conv.DDL, "json_valid") || strings.Contains(conv.DDL, "CHECK") {
+		t.Errorf("no CHECK with a function call in a ColumnStore table:\n%s", conv.DDL)
 	}
 }
