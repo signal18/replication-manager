@@ -743,7 +743,8 @@ func (cluster *Cluster) openSVCServiceObjects(serviceName, name string) []string
 
 // templateLogBase64 matches a base64 payload embedded in a service template (the
 // xtrabackup bundle script of prov_xtrabackup_bundle.go is one): 256 characters of the
-// base64 alphabet in a row are never a word, a host or a path of the template.
+// base64 alphabet in a row are never a word, a host or a path of the template. The
+// cutoff deliberately leaves short payloads visible for diagnostics.
 var templateLogBase64 = regexp.MustCompile(`[A-Za-z0-9+/]{256,}={0,2}`)
 
 // templateForLog is the service template as it is logged: each embedded base64 payload is

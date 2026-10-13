@@ -28,4 +28,7 @@ func TestTemplateForLog(t *testing.T) {
 	if plain := "[env]\nnodes = opensvc-node1\n"; templateForLog(plain) != plain {
 		t.Fatal("a template without a payload must be logged unchanged")
 	}
+	if shortPayload := base64.StdEncoding.EncodeToString([]byte("short diagnostic script")); templateForLog(shortPayload) != shortPayload {
+		t.Fatal("a short payload must stay visible for diagnostics")
+	}
 }
