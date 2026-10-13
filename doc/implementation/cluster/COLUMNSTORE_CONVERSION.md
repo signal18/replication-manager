@@ -26,7 +26,9 @@ though its parent is already ColumnStore. The data phase is unchanged.
 4. The ColumnStore table is created as `table__mcs`, then the InnoDB table dropped and
    `table__mcs` renamed into its place: a failed CREATE leaves the InnoDB table to load into.
 
-A table that is not InnoDB is left as it is. A table ColumnStore cannot hold (a spatial
+A table that is not InnoDB is left as it is, and so are the `mysql` and
+`replication_manager_schema` schemas: replication-manager writes its own tables (heartbeat,
+pseudo-GTID, checksums) and they must keep working on the child. A table ColumnStore cannot hold (a spatial
 type, DECIMAL over 38 digits, a type unknown to the conversion) stays InnoDB with a warning
 and the restore goes on. Every change is logged per table.
 

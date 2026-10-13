@@ -1882,8 +1882,9 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 		doneStrip(execErr)
 	}
 	// #2010: into a ColumnStore cluster, the InnoDB table just created becomes ColumnStore
-	// before the data phase loads it
-	if execErr == nil && cluster.HasConfigTopoColumnstore() && schema != "mysql" && table != "" && splitdump.IsTableSchemaFile(path) {
+	// before the data phase loads it; not replication-manager's own schema, whose tables
+	// it writes itself (heartbeat, pseudo-GTID, checksums)
+	if execErr == nil && cluster.HasConfigTopoColumnstore() && schema != "mysql" && schema != "replication_manager_schema" && table != "" && splitdump.IsTableSchemaFile(path) {
 		execErr = server.convertTableToColumnstore(ctx, conn, schema, table)
 	}
 	return execErr
