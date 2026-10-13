@@ -7,6 +7,7 @@ package regtest
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,8 @@ import (
 //     log position, a GTID set (when the server has one) that never starts with '+' and
 //     names only sources (MySQL) or domains (MariaDB) of the server, and the artifact
 //     (a complete gzip dump, a splitdump directory with table files);
+//   - a reseed of a replica from the gzip backup: restored on the replica's DB node by dbjobs
+//     with the node's client (the backup was made there), replication running after it;
 //   - a pickup timeout of 1s: the backup fails and, in sql mode, the jobs row is withdrawn;
 //   - all along, a user and password in backup-mysqldump-options, which the dump run on the
 //     DB node must leave out (with them its client could not log in).
@@ -83,6 +86,14 @@ func (regtest *RegTest) TestRemoteMysqldump(cl *clusterpkg.Cluster, conf string,
 			return false
 		}
 		logf("TEST", "%s (splitdump %v): client %s, %s:%d, GTID %q, %s", s.URL, split, m.BackupToolVersion, m.BinLogFileName, m.BinLogFilePos, m.BinLogGtid, m.Dest)
+		// a splitdump is restored by replication-manager wherever it was made: only the gzip
+		// dump is reseeded, while it is still the last backup
+		if !split {
+			if ok, why := remoteDumpReseed(cl, s); !ok {
+				logf(config.LvlErr, "reseed from %s: %s", m.Dest, why)
+				return false
+			}
+		}
 	}
 
 	// dbjobs polls on a schedule: a 1s pickup timeout passes before it takes the dump
@@ -110,6 +121,51 @@ func (regtest *RegTest) TestRemoteMysqldump(cl *clusterpkg.Cluster, conf string,
 		logf("TEST", "%s: pickup timeout: backup failed", s.URL)
 	}
 	return true
+}
+
+// remoteDumpReseed reseeds a replica from the last logical backup, made on the DB node, and
+// waits for the end of the reseed: it succeeds, in sql mode the reseedmysqldump row of the
+// replica's dbjobs succeeded (the jobs table is never in a dump: the row outlives the
+// restore), and replication runs again.
+func remoteDumpReseed(cl *clusterpkg.Cluster, backup *clusterpkg.ServerMonitor) (bool, string) {
+	var replica *clusterpkg.ServerMonitor
+	for _, sl := range cl.GetSlaves() {
+		if replica == nil || sl.URL != backup.URL {
+			replica = sl
+		}
+	}
+	if replica == nil {
+		return false, "no replica to reseed"
+	}
+	task := "reseed" + config.ConstBackupLogicalTypeMysqldump
+	if err := replica.JobReseedLogicalBackup(context.Background(), config.ConstBackupLogicalTypeMysqldump); err != nil {
+		return false, replica.URL + ": " + err.Error()
+	}
+	// the monitor runs the restore; a reseed of a test database lasts seconds
+	deadline := time.Now().Add(10 * time.Minute)
+	for replica.HasReseedingState(task) {
+		if time.Now().After(deadline) {
+			return false, replica.URL + ": still reseeding after 10 minutes"
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if t := replica.JobResults.Get(task); t == nil || t.Done != 1 || (t.State != 3 && t.State != 4) {
+		return false, fmt.Sprintf("%s: reseed ended with %+v", replica.URL, t)
+	}
+	if cl.Conf.SchedulerJobsMode != "api" {
+		state, done, result, _, err := dbhelper.GetJobTaskState(replica.Conn, replica.DBVersion, task, time.Second)
+		if err != nil || done != 1 || (state != 3 && state != 4) {
+			return false, fmt.Sprintf("%s: not restored by dbjobs: row state %d done %d result %q err %v", replica.URL, state, done, result, err)
+		}
+	}
+	deadline = time.Now().Add(time.Minute)
+	for !cl.CheckSlavesRunning() {
+		if time.Now().After(deadline) {
+			return false, "replication not running a minute after the reseed"
+		}
+		time.Sleep(2 * time.Second)
+	}
+	return true, ""
 }
 
 // remoteDumpGTIDOfServer checks a recorded GTID set against the server: present when the
