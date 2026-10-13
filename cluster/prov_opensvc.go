@@ -745,6 +745,8 @@ func (cluster *Cluster) openSVCServiceObjects(serviceName, name string) []string
 // xtrabackup bundle script of prov_xtrabackup_bundle.go is one): 256 characters of the
 // base64 alphabet in a row are never a word, a host or a path of the template. The
 // cutoff deliberately leaves short payloads visible for diagnostics.
+// It intentionally matches only single-line standard base64: MIME-wrapped and base64url
+// payloads must be handled explicitly if added to templates.
 var templateLogBase64 = regexp.MustCompile(`[A-Za-z0-9+/]{256,}={0,2}`)
 
 // templateForLog is the service template as it is logged: each embedded base64 payload is
