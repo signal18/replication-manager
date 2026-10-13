@@ -298,6 +298,13 @@ whatever engines it covers. Example: the fresh-node check reads the install time
 encoded in `pg_control_system().system_identifier` on PostgreSQL — one function, one
 rule, every engine (the PostgreSQL read must work for the monitoring user: check its privilege first).
 
+**T24. No AI attribution in commits or pull requests.** A commit message or a PR body
+ends with its own content: never a `Co-Authored-By:` trailer, "Generated with" line or
+any other attribution to an AI assistant or tool, whoever or whatever wrote the change.
+The commit's author is the person who commits it and answers for it. This applies from
+now on: commits already pushed are not rewritten to remove such a trailer (a history
+rewrite and a force-push are not worth it).
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a
