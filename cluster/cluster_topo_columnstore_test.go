@@ -42,6 +42,9 @@ func TestColumnstoreTopology(t *testing.T) {
 	if dirs := cl.openSVCGetVolumeDataSection("")["directories"]; (!strings.Contains(dirs, columnstoreVolumeDir) || !strings.Contains(dirs, columnstoreEtcVolumeDir)) {
 		t.Fatalf("ColumnStore's storage moves with the data volume: directories %q", dirs)
 	}
+	if shm := cl.openSVCGetColumnstoreShmSection(); shm["type"] != "shm" || shm["size"] != columnstoreShmSize || shm["dirperm"] != "777" {
+		t.Fatalf("ColumnStore's BRM needs a /dev/shm larger than Docker's 64 MB (#2007): %v", shm)
+	}
 	if cl.activePassiveTopology() != config.TopoColumnstore {
 		t.Fatal("a lone columnstore server must be discovered as columnstore")
 	}

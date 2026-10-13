@@ -697,7 +697,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
 		if server.ClusterGroup.HasConfigTopoColumnstore() {
-			svccontainer["volume_mounts"] += " {name}/" + columnstoreVolumeDir + ":/var/lib/columnstore:rw {name}/" + columnstoreEtcVolumeDir + ":/etc/columnstore:rw"
+			svccontainer["volume_mounts"] += " {name}/" + columnstoreVolumeDir + ":/var/lib/columnstore:rw {name}/" + columnstoreEtcVolumeDir + ":/etc/columnstore:rw {name}-shm/:/dev/shm:rw"
 			// the image's stop runs the server's shutdown, then ColumnStore's processes and
 			// the BRM save: the 10s default would kill it before the save
 			svccontainer["stop_timeout"] = "5m"
@@ -1205,6 +1205,27 @@ func (cluster *Cluster) openSVCGetVolumeDataSection(xtrabackupImage string) map[
 	return svcvol
 }
 
+// columnstoreShmSize: the /dev/shm of a ColumnStore node, which holds its BRM (extent map,
+// VSS, VBBM): Docker's 64 MB default is 87% used by a 2-node cluster and a third node's
+// load_brm fails with "No space left on device" (#2007)
+const columnstoreShmSize = "512m"
+
+// openSVCGetColumnstoreShmSection is the /dev/shm of a ColumnStore node: a volume of the shm
+// pool, like {name}-sec, local to each node (the BRM is reloaded from the data volume at
+// start). dirperm 777, not 1777: a remounted tmpfs comes back without the sticky bit, the
+// resource is then warn and a failover service in warn refuses every orchestration.
+func (cluster *Cluster) openSVCGetColumnstoreShmSection() map[string]string {
+	ownerUID, ownerGID, _ := cluster.dbVolumeOwner()
+	return map[string]string{
+		"name":    "{name}-shm",
+		"type":    "shm",
+		"size":    columnstoreShmSize,
+		"user":    strconv.Itoa(ownerUID),
+		"group":   strconv.Itoa(ownerGID),
+		"dirperm": "777",
+	}
+}
+
 func (cluster *Cluster) OpenSVCGetJobsVolumeSecret() map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}-sec"
@@ -1350,6 +1371,9 @@ func (server *ServerMonitor) GenerateDBTemplateMap() map[string]map[string]strin
 	}
 	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
 	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetJobsVolumeSecret()
+	if server.ClusterGroup.HasConfigTopoColumnstore() {
+		svcsection["volume#03"] = server.ClusterGroup.openSVCGetColumnstoreShmSection()
+	}
 	svcsection["container#jobs"] = server.openSVCGetJobsContainerSection(xtrabackupImage)
 
 	//	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()
