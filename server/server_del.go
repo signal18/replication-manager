@@ -45,6 +45,11 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 	repman.ClusterList = newClusterList
 	delete(repman.Clusters, clusterName)
 	repman.Unlock()
+	// the object's monitor loop must stop with it: left running it kept checking, and ran
+	// its replication plugins next to a new cluster of the same name (preprod belair-mcs)
+	if cl != nil {
+		cl.Stop()
+	}
 
 	repman.refreshAllPeers()
 	// RecomputeGatewayConflicts early-returns when the cluster is already gone
