@@ -73,7 +73,8 @@ func (server *ServerMonitor) mysqldumpExecRemote() bool {
 // of a local dump, moved to the host (remoteDumpTLSOptions).
 func (cluster *Cluster) GetRemoteMysqlDumpOptions(server *ServerMonitor) (args, dropped, droppedTLSFiles []string) {
 	local := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
-	all := cluster.GetMysqlBackupDumpOptions(server, server.JobGetDumpGtidParameter())
+	// the dump client is the DB node's own, of the server's version
+	all := cluster.getMysqlDumpOptions(server, server.JobGetDumpGtidParameter(), true, server.DBVersion)
 	for i := 0; i < len(all); i++ {
 		a := all[i]
 		if slices.Contains(local, a) {

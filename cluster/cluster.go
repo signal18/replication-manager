@@ -1250,6 +1250,7 @@ func (cluster *Cluster) tickBody() {
 					cluster.trackTickGoroutine(cluster.MonitorSchema)
 				}
 				if heartbeats%30 == 0 {
+					cluster.trackTickGoroutine(cluster.CheckBackupServerDumpClient)
 					cluster.trackTickGoroutine(cluster.initOrchetratorNodes)
 					cluster.trackTickGoroutine(cluster.CheckCredentialRotation)
 				}

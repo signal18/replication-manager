@@ -238,6 +238,19 @@ For MySQL and Percona, both dump paths also exclude
 `mysql.slave_worker_info`. It is local parallel-applier state and a restored
 copy causes the following `CHANGE REPLICATION SOURCE` to fail.
 
+## Dump client compatibility
+
+`getMysqlDumpOptions` accepts the version of the client which will execute the
+dump. Local dumps use `client-dump`; remote dumps use the database server's
+version because dbjobs uses the node's own client. This selects
+`--skip-log-queries` only when a MariaDB client and server use the same
+slow-log variable name.
+
+Every 30 monitor heartbeats `CheckBackupServerDumpClient` checks the local
+client against the server being backed up and raises or clears `WARN0244` for
+the incompatible MySQL/MariaDB and 8.0/8.4 combinations. Remote dumps are
+excluded because their client is local to the database node.
+
 ## Settings
 
 | Key | Default | Use |

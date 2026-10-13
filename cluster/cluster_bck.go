@@ -2612,6 +2612,48 @@ func (cluster *Cluster) CheckBackupToolVersions() {
 	cluster.CheckPhysicalBackupToolVersion(bcksrv)
 }
 
+// CheckBackupServerDumpClient runs CheckDumpClientCompatibility on the server the logical
+// backup is taken from so a misconfigured local client is reported before a backup runs.
+func (cluster *Cluster) CheckBackupServerDumpClient() {
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = cluster.GetMaster()
+	}
+	cluster.CheckDumpClientCompatibility(bcksrv)
+}
+
+// CheckDumpClientCompatibility warns (WARN0244) when the cluster's local dump client can not
+// back up the server. It is not checked when the DB node uses its own client.
+func (cluster *Cluster) CheckDumpClientCompatibility(server *ServerMonitor) {
+	if server == nil || server.DBVersion == nil || cluster.Conf.BackupLogicalType != config.ConstBackupLogicalTypeMysqldump || server.mysqldumpExecRemote() {
+		return
+	}
+	client := cluster.VersionsMap.Get("client-dump")
+	if why := dumpClientIncompatibility(client, server.DBVersion); why != "" {
+		cluster.SetState("WARN0244", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0244"], client.ToString(), cluster.GetMysqlDumpPath(), server.DBVersion.ToString(), why), ErrFrom: "CHECK", ServerUrl: server.URL})
+	} else if cluster.IsInErrorState("WARN0244", server.URL) {
+		cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0244@%s", server.URL))
+	}
+}
+
+// dumpClientIncompatibility is why a dump client can not back up a server, empty when it can.
+func dumpClientIncompatibility(client, server *version.Version) string {
+	if client == nil || server == nil || !server.IsMySQLOrPercona() {
+		return ""
+	}
+	switch {
+	case client.IsMariaDB():
+		return "a MariaDB client writes no GTID_PURGED and can not dump MySQL 8.4: set backup-mysqldump-path to a MySQL client"
+	case !client.IsMySQLOrPercona():
+		return ""
+	case server.GreaterEqual("8.2") && !client.GreaterEqual("8.2"):
+		return "this client sends SHOW MASTER STATUS, removed in MySQL 8.4: set backup-mysqldump-path to an 8.4 client"
+	case server.GreaterEqual("8.0") && !server.GreaterEqual("8.2") && client.GreaterEqual("8.2"):
+		return "this client sends SHOW BINARY LOG STATUS, unknown to MySQL 8.0: set backup-mysqldump-path to an 8.0 client"
+	}
+	return ""
+}
+
 func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) error {
 	if server == nil {
 		return fmt.Errorf("Server is nil")

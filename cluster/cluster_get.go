@@ -102,11 +102,11 @@ func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid strin
 
 	dumpargs := strings.Split(strings.ReplaceAll(cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
 
-	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") {
+	if mariadbSkipLogQueriesCompatible(dumpver, server.DBVersion) {
 		dumpargs = append(dumpargs, "--skip-log-queries")
 	}
 
-	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.30") && dumpver.IsMySQLOrPercona() && dumpver.GreaterEqual("8.0.30") {
+	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.30") && dumpver != nil && dumpver.IsMySQLOrPercona() && dumpver.GreaterEqual("8.0.30") {
 		dumpargs = append(dumpargs, "--mysqld-long-query-time=10") // Prevent mysqldump from logging to slow_log
 	}
 
@@ -127,6 +127,15 @@ func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid strin
 	}
 	dumpargs = append(dumpargs, server.GetSSLClientParam("client-dump")...)
 	return misc.RemoveEmptyString(dumpargs)
+}
+
+// mariadbSkipLogQueriesCompatible tells whether a MariaDB dump can take --skip-log-queries:
+// the dump then turns off the slow log under the client version's variable name.
+func mariadbSkipLogQueriesCompatible(client, server *version.Version) bool {
+	if client == nil || server == nil || !client.IsMariaDB() || !server.IsMariaDB() || !server.GreaterEqual("10.1") {
+		return false
+	}
+	return client.GreaterEqual("10.11") == server.GreaterEqual("10.11")
 }
 
 // This will use installed mysqldump first

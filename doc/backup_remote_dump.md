@@ -122,6 +122,16 @@ On MySQL and Percona, the dump also excludes `mysql.slave_worker_info`: its
 parallel-applier state belongs to the source replica and would break the next
 `CHANGE REPLICATION SOURCE` on a restored server.
 
+## Dump client compatibility
+
+Use a MariaDB client for a MariaDB server and a MySQL client for a MySQL or
+Percona server. A MySQL 8.0 client works with MySQL 5.7 and 8.0; use an 8.4
+client for MySQL 8.4. The monitor raises `WARN0244` when its local dump client
+does not meet these rules; node-local remote dumps use the node's client.
+
+For MariaDB, `--skip-log-queries` is used only when the dump client and server
+agree on the slow-log variable name (both pre-10.11 or both 10.11+).
+
 ## Checking a backup
 
 The backup metadata carries `execRemote: true`. Its `backupToolVersion` is the

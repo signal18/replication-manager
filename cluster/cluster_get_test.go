@@ -133,3 +133,45 @@ func TestGetMysqlDumpOptionsIgnoreWorkerInfo(t *testing.T) {
 		}
 	}
 }
+
+func TestMariadbSkipLogQueriesCompatible(t *testing.T) {
+	v := func(flavor string, major, minor, release int) *version.Version {
+		return &version.Version{Flavor: flavor, Major: major, Minor: minor, Release: release}
+	}
+	for _, c := range []struct {
+		client, server *version.Version
+		want           bool
+	}{
+		{v("MariaDB", 11, 4, 13), v("MariaDB", 10, 6, 28), false},
+		{v("MariaDB", 11, 4, 13), v("MariaDB", 10, 11, 19), true},
+		{v("MariaDB", 10, 6, 28), v("MariaDB", 10, 6, 28), true},
+		{v("MariaDB", 10, 6, 28), v("MariaDB", 11, 4, 13), false},
+		{nil, v("MariaDB", 10, 11, 19), false},
+	} {
+		if got := mariadbSkipLogQueriesCompatible(c.client, c.server); got != c.want {
+			t.Errorf("%v, %v: %v, want %v", c.client, c.server, got, c.want)
+		}
+	}
+}
+
+func TestDumpClientIncompatibility(t *testing.T) {
+	v := func(flavor string, major, minor, release int) *version.Version {
+		return &version.Version{Flavor: flavor, Major: major, Minor: minor, Release: release}
+	}
+	for _, c := range []struct {
+		client, server *version.Version
+		flagged        bool
+	}{
+		{v("MariaDB", 11, 4, 13), v("MySQL", 8, 0, 35), true},
+		{v("MariaDB", 11, 4, 13), v("Percona", 5, 7, 44), true},
+		{v("MySQL", 8, 0, 45), v("MySQL", 8, 4, 11), true},
+		{v("MySQL", 8, 4, 10), v("MySQL", 8, 0, 35), true},
+		{v("MySQL", 8, 4, 10), v("MySQL", 5, 7, 42), false},
+		{v("MySQL", 8, 0, 45), v("Percona", 5, 7, 44), false},
+		{nil, v("MySQL", 8, 4, 11), false},
+	} {
+		if got := dumpClientIncompatibility(c.client, c.server); (got != "") != c.flagged {
+			t.Errorf("%v, %v: %q, flagged want %v", c.client, c.server, got, c.flagged)
+		}
+	}
+}
