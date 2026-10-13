@@ -76,11 +76,18 @@ func (cluster *Cluster) SetDBTagsConfig(tags []string) {
 }
 
 // addColumnstoreTag: the columnstore topology's servers (the UM) run ColumnStore,
-// whose configuration is the mcs tag's ruleset (#2002)
+// whose configuration is the mcs tag's ruleset (#2002), and load the replication plugin's
+// checkpoints with LOAD DATA LOCAL INFILE, which the localinfile tag allows (#2015; the
+// default security configuration sets local_infile = 0)
 func (cluster *Cluster) addColumnstoreTag() {
-	if cluster.HasConfigTopoColumnstore() && !cluster.Configurator.HaveDBTag("mcs") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag mcs for topology %s", config.TopoColumnstore)
-		cluster.AddDBTagConfig("mcs")
+	if !cluster.HasConfigTopoColumnstore() {
+		return
+	}
+	for _, tag := range []string{"mcs", "localinfile"} {
+		if !cluster.Configurator.HaveDBTag(tag) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag %s for topology %s", tag, config.TopoColumnstore)
+			cluster.AddDBTagConfig(tag)
+		}
 	}
 }
 
