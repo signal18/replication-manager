@@ -4,9 +4,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 func expectedExecutablePath(t *testing.T) string {
@@ -78,5 +80,38 @@ func TestGetReplicationManagerCliPathUsesExecutableDir(t *testing.T) {
 	}
 	if got != expected {
 		t.Fatalf("expected %q, got %q", expected, got)
+	}
+}
+
+// A backup writes the replication position as a comment only, without STOP/START SLAVE: a
+// statement without a channel can not be replayed on a multi-source replica. The direct
+// reseed stream keeps the active position it is restored with.
+func TestGetMysqlBackupDumpOptionsPositionComment(t *testing.T) {
+	for _, c := range []struct {
+		name          string
+		replica       bool
+		backup, other string
+	}{
+		{"master", false, "--master-data=2", "--master-data=1"},
+		{"replica", true, "--dump-slave=2", "--dump-slave=1"},
+	} {
+		cl, server := newTestClusterServer(t)
+		server.Id = "db1"
+		server.DBVersion = &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11, Release: 8}
+		server.Variables = config.NewStringsMap()
+		cl.VersionsMap = config.NewVersionsMap()
+		cl.VersionsMap.Set("client-dump", server.DBVersion)
+		cl.master = server
+		if c.replica {
+			cl.master = &ServerMonitor{Id: "db2", ClusterGroup: cl}
+		}
+		backup := cl.GetMysqlBackupDumpOptions(server, "--gtid=true")
+		if !slices.Contains(backup, c.backup) || slices.Contains(backup, c.other) || slices.Contains(backup, "--apply-slave-statements") {
+			t.Fatalf("%s backup: want %s, no %s, no --apply-slave-statements: %v", c.name, c.backup, c.other, backup)
+		}
+		direct := cl.GetMysqlDumpOptions(server, "--gtid=true")
+		if !slices.Contains(direct, c.other) || !slices.Contains(direct, "--apply-slave-statements") {
+			t.Fatalf("%s direct: want %s and --apply-slave-statements: %v", c.name, c.other, direct)
+		}
 	}
 }

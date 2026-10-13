@@ -68,13 +68,30 @@ func (cluster *Cluster) GetShareDir() string {
 // This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid string) []string {
 	dumpver := cluster.VersionsMap.Get("client-dump")
+	return cluster.getMysqlDumpOptions(server, usegtid, false, dumpver)
+}
+
+// GetMysqlBackupDumpOptions are the dump options of a logical backup: the replication
+// position is only written as a comment (--master-data=2, --dump-slave=2, no
+// --apply-slave-statements) and recorded in the backup metadata. The reseed points the
+// managed channel itself after the restore, as the MySQL and MariaDB replica setup procedures do.
+func (cluster *Cluster) GetMysqlBackupDumpOptions(server *ServerMonitor, usegtid string) []string {
+	return cluster.getMysqlDumpOptions(server, usegtid, true, cluster.VersionsMap.Get("client-dump"))
+}
+
+// getMysqlDumpOptions builds the options for the dump client of version dumpver.
+func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid string, positionComment bool, dumpver *version.Version) []string {
 	events := ""
 	dumpslave := ""
 
+	position := "1"
+	if positionComment {
+		position = "2"
+	}
 	if server.IsMaster() {
-		dumpslave = "--master-data=1"
+		dumpslave = "--master-data=" + position
 	} else {
-		dumpslave = "--dump-slave=1"
+		dumpslave = "--dump-slave=" + position
 	}
 
 	if server.HasEventScheduler() {
@@ -94,7 +111,10 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid strin
 	}
 
 	dumpargs = append(dumpargs, cluster.GetDumpCredentials(server)...)
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--ignore-table=replication_manager_schema.jobs")
+	if !positionComment {
+		dumpargs = append(dumpargs, "--apply-slave-statements")
+	}
+	dumpargs = append(dumpargs, "--ignore-table=replication_manager_schema.jobs")
 	if cluster.Conf.BackupSplitMysqlUser && !slices.Contains(dumpargs, "--ignore-table=mysql.user") {
 		// Ignore mysql.user table to avoid dump of password this is needed for staging
 		dumpargs = append(dumpargs, "--ignore-table=mysql.user")

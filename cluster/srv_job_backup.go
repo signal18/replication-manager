@@ -4238,7 +4238,7 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 		}
 		return err
 	}
-	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())...)
+	dumpCmd := exec.CommandContext(dumpCtx, cluster.GetMysqlDumpPath(), cluster.GetMysqlBackupDumpOptions(server, server.JobGetDumpGtidParameter())...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 	// Get the stdout pipe from the command

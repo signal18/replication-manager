@@ -109,6 +109,15 @@ timeout only starts then.
 dbjobs runs on a schedule on the node: set the pickup timeout above its period,
 with some margin for a node that is busy (for example upgrading its script).
 
+## Replication position of a logical backup
+
+Every `mysqldump` backup writes its replication position as a comment only:
+`--master-data=2` on a primary or `--dump-slave=2` on a replica, without
+`--apply-slave-statements`. The binary log position and GTID set are still
+recorded in the backup metadata. The dump itself never runs `CHANGE MASTER`,
+`STOP SLAVE`, or `START SLAVE`; replication-manager applies those operations to
+the managed channel during a reseed.
+
 ## Checking a backup
 
 The backup metadata carries `execRemote: true`. Its `backupToolVersion` is the

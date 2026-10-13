@@ -222,6 +222,18 @@ The dump's verbose output (what a local dump reads for tables) stays on the
 node in `backup.out`; dbjobs forwards it through write-log, too late for
 progress (about 140 encrypted posts for a 100 MB lab dump that lasts 5 s).
 
+## Replication position in logical backups
+
+`GetMysqlBackupDumpOptions` derives the logical-backup arguments from the
+existing dump arguments with `--master-data=2` or `--dump-slave=2` and without
+`--apply-slave-statements`. Both the local and remote dump use it. The direct
+rejoin stream keeps `GetMysqlDumpOptions`, whose active position is restored by
+the receiving rejoin path.
+
+The commented position remains visible to the backup metadata parser. It keeps
+the dump from replaying unqualified replication statements on a multi-source
+replica; the reseed owns replication setup explicitly.
+
 ## Settings
 
 | Key | Default | Use |
