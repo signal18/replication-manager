@@ -104,7 +104,9 @@ func TestColumnstoreConversionLive(t *testing.T) {
 	if err := db.Select(&got, "SELECT CONCAT_WS('|', id, t, ut, si, usi, i, ui, b, ub, m, e, s, bt, y, u, i6, i4, v, IFNULL(nn,'NULL'), dt, d, g, j) FROM "+schema+".src"); err != nil {
 		t.Fatal(err)
 	}
-	want := "4294967295|-128|255|-32768|65535|-2147483648|4294967295|-9223372036854775808|18446744073709551615|-8388608|blue-ish|a,ccc|23|2155|11111111-2222-3333-4444-555555555555|2001:db8::1|10.0.0.1|é|NULL|2026-10-13 10:00:00.123456|-1234567890123456789012345678.1234567890|-256|{\"k\":1}"
+	want := "4294967295|-128|255|-32768|65535|-2147483648|4294967295|-9223372036854775808|18446744073709551615|-8388608|blue-ish|a,ccc|23|2155|11111111-2222-3333-4444-555555555555|2001:db8::1|10.0.0.1|é||2026-10-13 10:00:00.123456|-1234567890123456789012345678.1234567890|-256|{\"k\":1}"
+	// nn: '' kept by a row INSERT (the reload's path); the bulk path (INSERT ... SELECT,
+	// LOAD DATA, cpimport) reads it as NULL, hence NOT NULL removed on string columns
 	if len(got) != 1 || got[0] != want {
 		t.Fatalf("src read back\n got %q\nwant %q", got, want)
 	}

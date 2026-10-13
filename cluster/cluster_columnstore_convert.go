@@ -26,7 +26,8 @@ import (
 // keys, foreign keys, partitions and table options disappear by construction. Safe rules,
 // from the schema only (no data read): the integers widen because ColumnStore reserves two
 // values of each type (TINYINT -128 and -127, TINYINT UNSIGNED 254 and 255, ... measured on
-// dev3); NOT NULL goes from the string columns because ColumnStore stores '' as NULL.
+// dev3); NOT NULL goes from the string columns: a row INSERT keeps '', but ColumnStore's bulk
+// load (INSERT ... SELECT, LOAD DATA, cpimport) reads it as NULL and fails a NOT NULL column.
 
 // columnstoreStagingSuffix: the ColumnStore table created next to the InnoDB one, renamed
 // into its place once created, so a failed CREATE leaves the InnoDB table to load into
@@ -185,7 +186,7 @@ func columnstoreColumnDefinition(c dbhelper.TableColumn, json bool) (string, []s
 	}
 	if !c.Nullable {
 		if columnstoreStringTypes[strings.ToLower(c.DataType)] {
-			notes = append(notes, "NOT NULL removed (ColumnStore stores '' as NULL)")
+			notes = append(notes, "NOT NULL removed (ColumnStore's bulk load reads '' as NULL)")
 		} else {
 			def += " NOT NULL"
 		}
