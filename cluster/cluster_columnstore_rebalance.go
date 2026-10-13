@@ -105,11 +105,14 @@ func (cluster *Cluster) PlanColumnstoreRebalance(schema, table string) (Columnst
 	}
 	for _, t := range tables {
 		rt := ColumnstoreRebalanceTable{ColumnstoreTable: t}
-		missing := 0
+		missing, extents := 0, 0
 		for _, d := range plan.DBRoots {
 			if t.Extents[d] == 0 {
 				missing++
 			}
+		}
+		for _, n := range t.Extents {
+			extents += n
 		}
 		switch {
 		case isColumnstoreRebalanceCopy(t.Table):
@@ -122,6 +125,9 @@ func (cluster *Cluster) PlanColumnstoreRebalance(schema, table string) (Columnst
 			rt.Reason = "the name leaves no room for the copy's suffix " + columnstoreRebalanceSuffix + " (64 characters)"
 		case missing == 0:
 			rt.Reason = "already on every dbroot"
+		case t.Columns > 0 && extents <= t.Columns:
+			// one extent per column: a rebuild writes it to one dbroot again (dev3: 3 rows)
+			rt.Reason = "too small to spread: one extent per column, a rebuild would put it on one dbroot again"
 		}
 		if rt.Reason != "" {
 			plan.Skipped = append(plan.Skipped, rt)

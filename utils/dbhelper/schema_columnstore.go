@@ -28,6 +28,7 @@ import (
 type ColumnstoreTable struct {
 	Schema  string      `json:"schema"`
 	Table   string      `json:"table"`
+	Columns int         `json:"columns"` // columns, each with its own extents
 	Bytes   int64       `json:"bytes"`   // data size of its extents
 	Extents map[int]int `json:"extents"` // dbroot -> extents
 }
@@ -107,6 +108,7 @@ func GetColumnstoreTableExtents(db *sqlx.DB, myver *version.Version, schema, tab
 			out = append(out, ColumnstoreTable{Schema: c.Schema, Table: c.Table, Extents: map[int]int{}})
 		}
 		cur := &out[len(out)-1]
+		cur.Columns++
 		ext, err := db.Queryx(extentQuery, c.OID)
 		if err != nil {
 			return out, extentQuery, err

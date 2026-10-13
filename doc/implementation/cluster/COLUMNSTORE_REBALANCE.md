@@ -33,8 +33,9 @@ On the UM (the cluster's master), columnstore topology only:
   dbroot. Only the equality reads one object directly.
 - A table goes into the plan when a dbroot holds none of its extents. Skipped with the
   reason: already on every dbroot; a copy left by a rebalance (`__rebalance`, `__old`
-  suffixes), or a table that still has one; an autoincrement column; a name too long for
-  the suffix (64 characters).
+  suffixes), or a table that still has one; an autoincrement column; a table of one extent
+  per column, too small to spread (a 3-row table rebuilt on dev3 landed on one dbroot
+  again); a name too long for the suffix (64 characters).
 - Autoincrement: ColumnStore keeps a column's next value in its catalog. A copy of the rows
   restarts it, and ColumnStore refuses to set it on a column already autoincrement
   (`ALTER TABLE … COMMENT='autoincrement=col,N'`: MCS-4006; `AUTO_INCREMENT=`: not supported).
