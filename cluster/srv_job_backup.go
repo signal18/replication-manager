@@ -1881,6 +1881,11 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 	if doneStrip != nil {
 		doneStrip(execErr)
 	}
+	// #2010: into a ColumnStore cluster, the InnoDB table just created becomes ColumnStore
+	// before the data phase loads it
+	if execErr == nil && cluster.HasConfigTopoColumnstore() && schema != "mysql" && table != "" && splitdump.IsTableSchemaFile(path) {
+		execErr = server.convertTableToColumnstore(ctx, conn, schema, table)
+	}
 	return execErr
 }
 

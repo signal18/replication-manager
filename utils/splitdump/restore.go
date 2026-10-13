@@ -570,6 +570,17 @@ func IsSchemaFile(name string) bool {
 		strings.HasSuffix(lower, "-schema-procedure.sql")
 }
 
+// IsTableSchemaFile reports whether name is the CREATE TABLE file of one table
+// (schema.table-schema.sql[.gz]): not a view, routine, trigger or the mysql system catalogue.
+func IsTableSchemaFile(name string) bool {
+	base := filepath.Base(name)
+	if IsMysqlSystemAll(base) {
+		return false
+	}
+	lower := strings.ToLower(base)
+	return strings.HasSuffix(lower, "-schema.sql.gz") || strings.HasSuffix(lower, "-schema.sql")
+}
+
 // IsPostFile reports whether name is a post-data-phase file (triggers or events).
 // These are distinct from schema-phase files even though their filenames carry a "-schema-" infix.
 func IsPostFile(name string) bool {
