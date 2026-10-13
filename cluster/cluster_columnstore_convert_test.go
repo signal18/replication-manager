@@ -113,3 +113,24 @@ func TestColumnstoreChecks(t *testing.T) {
 		t.Errorf("no CHECK with a function call in a ColumnStore table:\n%s", conv.DDL)
 	}
 }
+
+// A ColumnStore cluster converts replication_manager_schema's load-test tables, not the
+// tables replication-manager writes, nor the system tables.
+func TestKeepsItsEngine(t *testing.T) {
+	for _, c := range []struct {
+		schema, table string
+		keep          bool
+	}{
+		{"mysql", "user", true},
+		{"replication_manager_schema", "heartbeat", true},
+		{"replication_manager_schema", "pseudo_gtid_hist", true},
+		{"replication_manager_schema", "table_checksum", true},
+		{"replication_manager_schema", "sbtest1", false},
+		{"replication_manager_schema", "order_line9", false},
+		{"repl_test", "pk_int", false},
+	} {
+		if got := keepsItsEngine(c.schema, c.table); got != c.keep {
+			t.Errorf("keepsItsEngine(%s.%s) = %v, want %v", c.schema, c.table, got, c.keep)
+		}
+	}
+}

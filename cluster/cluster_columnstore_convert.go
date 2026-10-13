@@ -359,3 +359,20 @@ func (server *ServerMonitor) convertTableToColumnstore(ctx context.Context, conn
 	}
 	return nil
 }
+
+// repmanOwnTables are the tables of replication_manager_schema that replication-manager
+// writes itself (heartbeat, pseudo-GTID, checksums, jobs, DDL capture, bench marker…). A
+// ColumnStore child keeps them as they are: repman writes them on the child too, and
+// ColumnStore takes no row UPDATE. The rest of the schema (the sysbench and TPC-C tables
+// of the load tests) is data, converted and carried like any other table (#2015).
+var repmanOwnTables = map[string]bool{
+	"heartbeat": true, "jobs": true, "bench": true, "ddl_log": true, "log_ddl": true,
+	"apply_ddl": true, "table_chunk": true, "table_checksum": true, "pseudo_gtid_hist": true,
+	"pseudo_gtid_v": true, "slow_log_buffer": true,
+}
+
+// keepsItsEngine: a table a ColumnStore cluster does not convert, the system tables and
+// replication-manager's own.
+func keepsItsEngine(schema, table string) bool {
+	return schema == "mysql" || (schema == "replication_manager_schema" && repmanOwnTables[table])
+}

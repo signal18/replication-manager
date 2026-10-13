@@ -346,7 +346,7 @@ func main() {
 	// a table an include matches, the excludes then removing some: an exclude alone
 	// excludes every table
 	ccfg.IncludeTableRegex = []string{`^.*\..*$`}
-	ccfg.ExcludeTableRegex = []string{`^mysql\..*$`, `^replication_manager_schema\..*$`}
+	ccfg.ExcludeTableRegex = []string{`^mysql\..*$`} // replication_manager_schema's load-test tables are carried (#2015)
 	cc, err := canal.NewCanal(ccfg)
 	if err != nil {
 		fail(c, fmt.Errorf("source %s: %w", ccfg.Addr, err))

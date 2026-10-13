@@ -1845,7 +1845,7 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 	// ColumnStore table (converted in the schema phase): its checkpoints load them with LOAD
 	// DATA, the INSERTs are not executed
 	toPlugin := false
-	if cluster.columnstoreFeed.Load() != nil && schema != "mysql" && schema != "replication_manager_schema" && table != "" &&
+	if cluster.columnstoreFeed.Load() != nil && !keepsItsEngine(schema, table) && table != "" &&
 		!splitdump.IsSchemaFile(path) && !splitdump.IsPostFile(path) {
 		if opts, _, err := dbhelper.GetTableOptions(server.Conn, server.DBVersion, schema, table); err == nil && strings.EqualFold(opts.Engine, "Columnstore") {
 			toPlugin = true
@@ -1914,9 +1914,9 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 		doneStrip(execErr)
 	}
 	// #2010: into a ColumnStore cluster, the InnoDB table just created becomes ColumnStore
-	// before the data phase loads it; not replication-manager's own schema, whose tables
-	// it writes itself (heartbeat, pseudo-GTID, checksums)
-	if execErr == nil && cluster.HasConfigTopoColumnstore() && schema != "mysql" && schema != "replication_manager_schema" && table != "" && splitdump.IsTableSchemaFile(path) {
+	// before the data phase loads it; not the system tables nor the tables replication-manager
+	// writes itself (heartbeat, pseudo-GTID, checksums: keepsItsEngine)
+	if execErr == nil && cluster.HasConfigTopoColumnstore() && !keepsItsEngine(schema, table) && table != "" && splitdump.IsTableSchemaFile(path) {
 		execErr = server.convertTableToColumnstore(ctx, conn, schema, table)
 	}
 	return execErr
