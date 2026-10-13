@@ -56,45 +56,77 @@ func GetColumnstoreDBRootCount(db *sqlx.DB, myver *version.Version) (int, string
 }
 
 // GetColumnstoreTableExtents lists the ColumnStore tables, optionally of one schema and
-// one table, with their column extents per dbroot (information_schema.COLUMNSTORE_EXTENTS).
+// one table, with their column extents per dbroot. The columns come from
+// information_schema.COLUMNSTORE_COLUMNS, then each column's extents from
+// COLUMNSTORE_EXTENTS with OBJECT_ID = ?, one query per column: the view's full scan stops
+// at ObjectIDManager::size(), the number of object ids in use, and ColumnStore reuses the
+// ids a DROP frees, so once a table was dropped the newer objects are past that bound and
+// missing from a join or a range (dev3: a rebuilt table's extents absent, editem showing
+// them); OBJECT_ID IN (...) misses them too. Only the equality reads one object directly.
 func GetColumnstoreTableExtents(db *sqlx.DB, myver *version.Version, schema, table string) ([]ColumnstoreTable, string, error) {
 	if myver != nil && myver.IsPostgreSQL() {
 		return nil, "", ErrNoStorageEngine
 	}
-	query := "SELECT c.TABLE_SCHEMA, c.TABLE_NAME, e.DBROOT, COUNT(*), COALESCE(SUM(e.DATA_SIZE),0) " +
-		"FROM information_schema.COLUMNSTORE_EXTENTS e JOIN information_schema.COLUMNSTORE_COLUMNS c ON c.OBJECT_ID = e.OBJECT_ID " +
-		"WHERE c.TABLE_SCHEMA NOT IN ('mysql','sys','information_schema','performance_schema','replication_manager_schema','calpontsys')"
+	query := "SELECT TABLE_SCHEMA, TABLE_NAME, OBJECT_ID FROM information_schema.COLUMNSTORE_COLUMNS " +
+		"WHERE TABLE_SCHEMA NOT IN ('mysql','sys','information_schema','performance_schema','replication_manager_schema','calpontsys')"
 	var args []any
 	if schema != "" {
-		query += " AND c.TABLE_SCHEMA = ?"
+		query += " AND TABLE_SCHEMA = ?"
 		args = append(args, schema)
 	}
 	if table != "" {
-		query += " AND c.TABLE_NAME = ?"
+		query += " AND TABLE_NAME = ?"
 		args = append(args, table)
 	}
-	query += " GROUP BY c.TABLE_SCHEMA, c.TABLE_NAME, e.DBROOT ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, e.DBROOT"
+	query += " ORDER BY TABLE_SCHEMA, TABLE_NAME, OBJECT_ID"
+	type column struct {
+		Schema, Table string
+		OID           int64
+	}
+	var columns []column
 	rows, err := db.Queryx(query, args...)
 	if err != nil {
 		return nil, query, err
 	}
-	defer rows.Close()
-	var out []ColumnstoreTable
 	for rows.Next() {
-		var s, t string
-		var dbroot, extents int
-		var bytes int64
-		if err := rows.Scan(&s, &t, &dbroot, &extents, &bytes); err != nil {
-			return out, query, err
+		var c column
+		if err := rows.Scan(&c.Schema, &c.Table, &c.OID); err != nil {
+			rows.Close()
+			return nil, query, err
 		}
-		if n := len(out); n == 0 || out[n-1].Schema != s || out[n-1].Table != t {
-			out = append(out, ColumnstoreTable{Schema: s, Table: t, Extents: map[int]int{}})
+		columns = append(columns, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, query, err
+	}
+	var out []ColumnstoreTable
+	extentQuery := "SELECT DBROOT, COALESCE(DATA_SIZE,0) FROM information_schema.COLUMNSTORE_EXTENTS WHERE OBJECT_ID = ?"
+	for _, c := range columns {
+		if n := len(out); n == 0 || out[n-1].Schema != c.Schema || out[n-1].Table != c.Table {
+			out = append(out, ColumnstoreTable{Schema: c.Schema, Table: c.Table, Extents: map[int]int{}})
 		}
 		cur := &out[len(out)-1]
-		cur.Extents[dbroot] += extents
-		cur.Bytes += bytes
+		ext, err := db.Queryx(extentQuery, c.OID)
+		if err != nil {
+			return out, extentQuery, err
+		}
+		for ext.Next() {
+			var dbroot int
+			var bytes int64
+			if err := ext.Scan(&dbroot, &bytes); err != nil {
+				ext.Close()
+				return out, extentQuery, err
+			}
+			cur.Extents[dbroot]++
+			cur.Bytes += bytes
+		}
+		ext.Close()
+		if err := ext.Err(); err != nil {
+			return out, extentQuery, err
+		}
 	}
-	return out, query, rows.Err()
+	return out, query, nil
 }
 
 // CreateTableLike creates schema.newTable with the definition of schema.table.

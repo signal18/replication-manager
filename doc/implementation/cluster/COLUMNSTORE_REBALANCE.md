@@ -24,8 +24,13 @@ On the UM (the cluster's master), columnstore topology only:
   `LOAD_FILE` (`dbhelper.GetColumnstoreDBRootCount`), so an empty dbroot counts. When the
   server cannot read it (no FILE privilege, `secure_file_priv`), the dbroots holding extents.
 - The tables: `dbhelper.GetColumnstoreTableExtents`, the column extents of each table per
-  dbroot (`information_schema.COLUMNSTORE_EXTENTS` joined to `COLUMNSTORE_COLUMNS`), and the
-  data size of its extents.
+  dbroot and their data size: the columns from `information_schema.COLUMNSTORE_COLUMNS`,
+  then one `COLUMNSTORE_EXTENTS … WHERE OBJECT_ID = ?` per column. Not a join, a range nor
+  an `IN (…)`: the view's full scan stops at `ObjectIDManager::size()` (the number of object
+  ids in use, `is_columnstore_extents.cpp`), and ColumnStore reuses the ids a DROP frees; once
+  a table was dropped, newer objects lie past that bound and are missing. On dev3 the table
+  a rebalance had just rebuilt had no extents in a join while `editem` showed its 3, one per
+  dbroot. Only the equality reads one object directly.
 - A table goes into the plan when a dbroot holds none of its extents. Skipped with the
   reason: already on every dbroot; a copy left by a rebalance (`__rebalance`, `__old`
   suffixes), or a table that still has one; an autoincrement column; a name too long for
