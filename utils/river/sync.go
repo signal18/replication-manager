@@ -130,7 +130,12 @@ func (h *eventHandler) OnRow(e *canal.RowsEvent) error {
 
 	case canal.UpdateAction:
 		h.r.bulkidx++
-		h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable] = append(h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable], e.Rows[0])
+		// the rows come as pairs [before, after, before, after...]: the new rows are the
+		// after images (it was e.Rows[0], the before image of the first pair: an update loaded
+		// its old row back, #2015); the before images' keys go to the deletes (makeRequest)
+		for i := 1; i < len(e.Rows); i += 2 {
+			h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable] = append(h.r.micro_transactions["insert_"+rule.CSchema+"_"+rule.CTable], e.Rows[i])
+		}
 
 		h.r.bulkmode = false
 		err = h.r.makeUpdateRequest(rule, e.Rows)
@@ -263,6 +268,11 @@ func (r *River) makeRequest(rule *Rule, action string, rows [][]interface{}) err
 			return errors.Trace(err)
 		}
 		rowtodelete[0] = id
+		// a key per deleted row, and per updated row its before image's (even rows): one
+		// key appended after the loop kept only the last row's (#2015)
+		if action == canal.DeleteAction || (action == canal.UpdateAction && ctrows%2 == 0) {
+			r.micro_transactions["delete_"+rule.CSchema+"_"+rule.CTable] = append(r.micro_transactions["delete_"+rule.CSchema+"_"+rule.CTable], []interface{}{id})
+		}
 		if action == canal.DeleteAction {
 			sql = sql + "( "
 
@@ -298,16 +308,12 @@ func (r *River) makeRequest(rule *Rule, action string, rows [][]interface{}) err
 	}
 
 	if action == canal.DeleteAction {
-		r.micro_transactions["delete_"+rule.CSchema+"_"+rule.CTable] = append(r.micro_transactions["delete_"+rule.CSchema+"_"+rule.CTable], rowtodelete)
-
 		sql = "DELETE FROM " + rule.CSchema + "." + rule.CTable + " WHERE " + c.Name + " IN  "
 	}
 	if action == canal.InsertAction {
 		sql = "INSERT INTO " + rule.CSchema + "." + rule.CTable + " VALUES "
 	}
 	if action == canal.UpdateAction {
-		r.micro_transactions["delete_"+rule.CSchema+"_"+rule.CTable] = append(r.micro_transactions["delete_"+rule.CSchema+"_"+rule.CTable], rowtodelete)
-
 		sql = "UPDATE   " + rule.CSchema + "." + rule.CTable + " SET "
 	}
 
