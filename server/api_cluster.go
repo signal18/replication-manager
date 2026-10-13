@@ -5365,6 +5365,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.MarkSecretVersionStoreDirty()
 		mycluster.ReconcileSecretVersionStore()
 	}
+	// a secret set here must survive the next re-derivation of the secrets from the config
+	// maps (#2017)
+	mycluster.Conf.RememberSecret(name)
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
