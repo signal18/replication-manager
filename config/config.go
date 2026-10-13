@@ -1933,6 +1933,23 @@ func (conf *Config) DecryptSecretsFromConfig() {
 	}
 }
 
+// RememberSecret records the in-memory value of secret key, encrypted, in the dynamic flag
+// map: DecryptSecretsFromConfig rebuilds every secret from the config maps (a database tag
+// added re-derives the credentials), and a secret set at runtime lived in Secrets only, so
+// the map's older value came back and the next save wrote it (#2017: preprod belair-mcs
+// lost the root password a create-child had set, at the first tag added, then at restart).
+func (conf *Config) RememberSecret(key string) {
+	sec, ok := conf.Secrets[key]
+	if !ok || conf.DynamicFlagMap == nil {
+		return
+	}
+	if sec.Value == "" {
+		delete(conf.DynamicFlagMap, key)
+		return
+	}
+	conf.DynamicFlagMap[key] = conf.GetStableEncryptedValue(key, sec.Value)
+}
+
 // DecryptSecretValue decrypts a secret payload while preserving composite
 // credential structure such as "user:hash_..." and comma-separated lists.
 func (conf *Config) DecryptSecretValue(key string, value string) string {
