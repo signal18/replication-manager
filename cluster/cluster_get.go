@@ -67,19 +67,22 @@ func (cluster *Cluster) GetShareDir() string {
 
 // This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid string) []string {
-	dumpver := cluster.VersionsMap.Get("client-dump")
-	return cluster.getMysqlDumpOptions(server, usegtid, false, dumpver)
+	return cluster.getMysqlDumpOptions(server, usegtid, false, cluster.VersionsMap.Get("client-dump"))
 }
 
 // GetMysqlBackupDumpOptions are the dump options of a logical backup: the replication
 // position is only written as a comment (--master-data=2, --dump-slave=2, no
-// --apply-slave-statements) and recorded in the backup metadata. The reseed points the
-// managed channel itself after the restore, as the MySQL and MariaDB replica setup procedures do.
+// --apply-slave-statements) and recorded in the backup metadata. An active CHANGE MASTER
+// can not name a channel: MySQL refuses it on a replica with several channels, MariaDB applies
+// it to default_master_connection, and its STOP/START SLAVE act on every channel. The reseed
+// points the managed channel itself after the restore (ProcessReseedLogical), as the MySQL
+// and MariaDB replica setup procedures do.
 func (cluster *Cluster) GetMysqlBackupDumpOptions(server *ServerMonitor, usegtid string) []string {
 	return cluster.getMysqlDumpOptions(server, usegtid, true, cluster.VersionsMap.Get("client-dump"))
 }
 
-// getMysqlDumpOptions builds the options for the dump client of version dumpver.
+// getMysqlDumpOptions builds the options for the dump client of version dumpver: the options
+// that depend on the client (and the server) follow the client that runs the dump.
 func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid string, positionComment bool, dumpver *version.Version) []string {
 	events := ""
 	dumpslave := ""
@@ -130,7 +133,9 @@ func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid strin
 }
 
 // mariadbSkipLogQueriesCompatible tells whether a MariaDB dump can take --skip-log-queries:
-// the dump then turns off the slow log under the client version's variable name.
+// the dump then turns off the slow log of its own restore, under the variable name of the
+// client (slow_query_log before 10.11, log_slow_query from 10.11) behind a 10.1.1 guard, so a
+// server of the other side of 10.11 rejects it (ERROR 1193). An unknown client never gets it.
 func mariadbSkipLogQueriesCompatible(client, server *version.Version) bool {
 	if client == nil || server == nil || !client.IsMariaDB() || !server.IsMariaDB() || !server.GreaterEqual("10.1") {
 		return false

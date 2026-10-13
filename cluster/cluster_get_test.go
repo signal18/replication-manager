@@ -116,6 +116,59 @@ func TestGetMysqlBackupDumpOptionsPositionComment(t *testing.T) {
 	}
 }
 
+// --skip-log-queries only when the dump client and the server name the slow log the same way
+// (slow_query_log before MariaDB 10.11, log_slow_query from 10.11): a 10.11+ client's dump
+// fails on a 10.6 server (ERROR 1193 Unknown system variable 'LOG_SLOW_QUERY').
+func TestMariadbSkipLogQueriesCompatible(t *testing.T) {
+	v := func(flavor string, major, minor, release int) *version.Version {
+		return &version.Version{Flavor: flavor, Major: major, Minor: minor, Release: release}
+	}
+	for _, c := range []struct {
+		name           string
+		client, server *version.Version
+		want           bool
+	}{
+		{"client 11.4, server 10.6", v("MariaDB", 11, 4, 13), v("MariaDB", 10, 6, 28), false},
+		{"client 11.4, server 10.11", v("MariaDB", 11, 4, 13), v("MariaDB", 10, 11, 19), true},
+		{"client 10.6, server 10.6 (remote dump)", v("MariaDB", 10, 6, 28), v("MariaDB", 10, 6, 28), true},
+		{"client 10.6, server 11.4", v("MariaDB", 10, 6, 28), v("MariaDB", 11, 4, 13), false},
+		{"unknown client", nil, v("MariaDB", 10, 11, 19), false},
+		{"MySQL", v("MySQL", 8, 0, 45), v("MySQL", 8, 0, 35), false},
+	} {
+		if got := mariadbSkipLogQueriesCompatible(c.client, c.server); got != c.want {
+			t.Errorf("%s: %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// The dump client cases seen failing in the lab are flagged, the working ones are not.
+func TestDumpClientIncompatibility(t *testing.T) {
+	v := func(flavor string, major, minor, release int) *version.Version {
+		return &version.Version{Flavor: flavor, Major: major, Minor: minor, Release: release}
+	}
+	for _, c := range []struct {
+		name           string
+		client, server *version.Version
+		flagged        bool
+	}{
+		{"MariaDB client, MySQL 8.0", v("MariaDB", 11, 4, 13), v("MySQL", 8, 0, 35), true},
+		{"MariaDB client, Percona 5.7", v("MariaDB", 11, 4, 13), v("Percona", 5, 7, 44), true},
+		{"8.0 client, MySQL 8.4", v("MySQL", 8, 0, 45), v("MySQL", 8, 4, 11), true},
+		{"8.4 client, MySQL 8.0", v("MySQL", 8, 4, 10), v("MySQL", 8, 0, 35), true},
+		{"8.4 client, Percona 8.0", v("MySQL", 8, 4, 10), v("Percona", 8, 0, 46), true},
+		{"8.0 client, MySQL 8.0", v("MySQL", 8, 0, 45), v("MySQL", 8, 0, 35), false},
+		{"8.0 client, Percona 5.7", v("MySQL", 8, 0, 45), v("Percona", 5, 7, 44), false},
+		{"8.4 client, MySQL 5.7", v("MySQL", 8, 4, 10), v("MySQL", 5, 7, 42), false},
+		{"8.4 client, Percona 8.4", v("MySQL", 8, 4, 10), v("Percona", 8, 4, 11), false},
+		{"MariaDB client, MariaDB", v("MariaDB", 11, 4, 13), v("MariaDB", 10, 6, 28), false},
+		{"unknown client", nil, v("MySQL", 8, 4, 11), false},
+	} {
+		if got := dumpClientIncompatibility(c.client, c.server); (got != "") != c.flagged {
+			t.Errorf("%s: %q, flagged want %v", c.name, got, c.flagged)
+		}
+	}
+}
+
 // A MySQL/Percona dump leaves out the replica's parallel applier state; MariaDB has no such table.
 func TestGetMysqlDumpOptionsIgnoreWorkerInfo(t *testing.T) {
 	for flavor, want := range map[string]bool{"MySQL": true, "Percona": true, "MariaDB": false} {
@@ -130,48 +183,6 @@ func TestGetMysqlDumpOptionsIgnoreWorkerInfo(t *testing.T) {
 			if got := slices.Contains(args, "--ignore-table=mysql.slave_worker_info"); got != want {
 				t.Fatalf("%s: --ignore-table=mysql.slave_worker_info %v, want %v: %v", flavor, got, want, args)
 			}
-		}
-	}
-}
-
-func TestMariadbSkipLogQueriesCompatible(t *testing.T) {
-	v := func(flavor string, major, minor, release int) *version.Version {
-		return &version.Version{Flavor: flavor, Major: major, Minor: minor, Release: release}
-	}
-	for _, c := range []struct {
-		client, server *version.Version
-		want           bool
-	}{
-		{v("MariaDB", 11, 4, 13), v("MariaDB", 10, 6, 28), false},
-		{v("MariaDB", 11, 4, 13), v("MariaDB", 10, 11, 19), true},
-		{v("MariaDB", 10, 6, 28), v("MariaDB", 10, 6, 28), true},
-		{v("MariaDB", 10, 6, 28), v("MariaDB", 11, 4, 13), false},
-		{nil, v("MariaDB", 10, 11, 19), false},
-	} {
-		if got := mariadbSkipLogQueriesCompatible(c.client, c.server); got != c.want {
-			t.Errorf("%v, %v: %v, want %v", c.client, c.server, got, c.want)
-		}
-	}
-}
-
-func TestDumpClientIncompatibility(t *testing.T) {
-	v := func(flavor string, major, minor, release int) *version.Version {
-		return &version.Version{Flavor: flavor, Major: major, Minor: minor, Release: release}
-	}
-	for _, c := range []struct {
-		client, server *version.Version
-		flagged        bool
-	}{
-		{v("MariaDB", 11, 4, 13), v("MySQL", 8, 0, 35), true},
-		{v("MariaDB", 11, 4, 13), v("Percona", 5, 7, 44), true},
-		{v("MySQL", 8, 0, 45), v("MySQL", 8, 4, 11), true},
-		{v("MySQL", 8, 4, 10), v("MySQL", 8, 0, 35), true},
-		{v("MySQL", 8, 4, 10), v("MySQL", 5, 7, 42), false},
-		{v("MySQL", 8, 0, 45), v("Percona", 5, 7, 44), false},
-		{nil, v("MySQL", 8, 4, 11), false},
-	} {
-		if got := dumpClientIncompatibility(c.client, c.server); (got != "") != c.flagged {
-			t.Errorf("%v, %v: %q, flagged want %v", c.client, c.server, got, c.flagged)
 		}
 	}
 }

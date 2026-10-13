@@ -109,28 +109,69 @@ timeout only starts then.
 dbjobs runs on a schedule on the node: set the pickup timeout above its period,
 with some margin for a node that is busy (for example upgrading its script).
 
-## Replication position of a logical backup
+## Restoring it
 
-Every `mysqldump` backup writes its replication position as a comment only:
-`--master-data=2` on a primary or `--dump-slave=2` on a replica, without
-`--apply-slave-statements`. The binary log position and GTID set are still
-recorded in the backup metadata. The dump itself never runs `CHANGE MASTER`,
-`STOP SLAVE`, or `START SLAVE`; replication-manager applies those operations to
-the managed channel during a reseed.
+A reseed from a backup made on a database node (`execRemote: true` in its
+metadata) is restored on the database node of the reseeded server, by its dbjobs,
+with that node's own client.
+replication-manager streams the backup to dbjobs, preceded by the same restore
+preamble as a local restore, and still restores the users and system tables
+afterwards and restarts replication.
 
-On MySQL and Percona, the dump also excludes `mysql.slave_worker_info`: its
-parallel-applier state belongs to the source replica and would break the next
-`CHANGE REPLICATION SOURCE` on a restored server.
+The client on the node runs without `--force`: the first error ends the restore,
+and the reseed fails with the last lines of the client's output (`reseed.out`
+on the node). `backup-mysqlclient-options` is not used there.
 
-## Dump client compatibility
+Unchanged:
 
-Use a MariaDB client for a MariaDB server and a MySQL client for a MySQL or
-Percona server. A MySQL 8.0 client works with MySQL 5.7 and 8.0; use an 8.4
-client for MySQL 8.4. The monitor raises `WARN0244` when its local dump client
-does not meet these rules; node-local remote dumps use the node's client.
+- backups made by replication-manager, and older backups without
+  `execRemote`, are restored by replication-manager as before;
+- a splitdump is restored by replication-manager, wherever it was made;
+- a flashback is restored by replication-manager.
 
-For MariaDB, `--skip-log-queries` is used only when the dump client and server
-agree on the slow-log variable name (both pre-10.11 or both 10.11+).
+The node's dbjobs script must be the one of this release; with an older one the
+reseed fails once the stream wait (`sst-wait-max-loop`) ends. In api mode the
+task is signalled to dbjobs whatever `scheduler-jobs-exec-remote` says now: the
+restore goes where the backup was made.
+
+## Replication position of a logical backup and reseed
+
+This applies to every `mysqldump` backup and reseed, local or on the database
+node.
+
+A logical backup writes the replication position as a comment only
+(`--master-data=2` on the primary, `--dump-slave=2` on a replica, without
+`--apply-slave-statements`). The position is still recorded in the backup
+metadata: binary log file and position, and the GTID set. The dump never runs
+a `CHANGE MASTER`, `STOP SLAVE` or `START SLAVE` itself: these statements name
+no replication channel, which MySQL refuses on a replica with several channels
+and MariaDB applies to `default_master_connection`.
+
+A reseed follows the replica setup procedures of MySQL and MariaDB:
+
+1. stop every replication channel of the replica and, when it has only one,
+   reset it as a new replica (`RESET SLAVE ALL`);
+2. load the dump;
+3. point the channel replication-manager manages (`replication-source-name`)
+   at the primary, from the position of the restored dump: MySQL and Percona
+   with GTID by auto-position; MariaDB with GTID by setting `gtid_slave_pos`,
+   then `MASTER_USE_GTID=slave_pos`; without GTID by the binary log file and
+   position;
+4. start that channel.
+
+The replica's GTID state after a reseed is the backup's, as it is: MySQL's
+`GTID_PURGED` (every source of the backed-up server) or MariaDB's
+`gtid_slave_pos` (every domain). GTIDs the replica had and the backup does not
+are not kept.
+
+Multi-source replication is not supported by the reseed: the replica's other
+channels stay stopped, with a warning naming them, for the operator.
+
+A backup made before this release writes an active `CHANGE MASTER` and
+`STOP`/`START SLAVE`. It is still restored on a replica with one channel: they
+apply to the emptied channel, which has no primary, and its replication starts
+only once the position of the backup is set. On a MySQL or Percona replica with
+several channels, its restore on the database node fails at that statement.
 
 ## Checking a backup
 

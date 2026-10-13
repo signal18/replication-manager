@@ -1059,6 +1059,7 @@ var pstates30 = []string{
 	"WARN0170",             // Configurator prerequisites (CheckConfiguratorPrerequisites runs %30)
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
 	"WARN0225", // Local backup storage over the BKU plan (RefreshBackupUnits runs %30)
+	"WARN0244", // Logical dump client (CheckDumpClientCompatibility runs %30)
 }
 
 var pstates3600 = []string{

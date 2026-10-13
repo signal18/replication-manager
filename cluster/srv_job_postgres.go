@@ -41,15 +41,6 @@ func postgresJobCookie(task string) string {
 	return "cookie_wait" + task
 }
 
-// streamDestEmpty tells whether nothing was received into dest: missing, or a file of at most
-// 20 bytes (an empty gzip stream). A directory, the destination of a splitdump, is never
-// judged by its size, which counts its entries and is a few bytes on NFS while the table files
-// are still being written: the splitdump counts the bytes it receives itself.
-func streamDestEmpty(dest string) bool {
-	fi, err := os.Stat(dest)
-	return err != nil || (!fi.IsDir() && fi.Size() <= 20)
-}
-
 // logicalBackupType is the logical backup tool of this server: the cluster's
 // backup-logical-type, or pg_dumpall in the jobs sidecar for a PostgreSQL server.
 func (server *ServerMonitor) logicalBackupType() string {
@@ -187,10 +178,19 @@ func (server *ServerMonitor) runStreamTask(ctx context.Context, task, dest strin
 			}
 		}
 	}
-	if fi, err := os.Stat(dest); err != nil || fi.Size() <= 20 { // an empty gzip stream is 20 bytes
+	if streamDestEmpty(dest) {
 		return fmt.Errorf("no data received from %s", task)
 	}
 	return nil
+}
+
+// streamDestEmpty tells whether nothing was received into dest: missing, or a file of at most
+// 20 bytes (an empty gzip stream). A directory, the destination of a splitdump, is never
+// judged by its size, which counts its entries and is a few bytes on NFS while the table files
+// are still being written: the splitdump counts the bytes it receives itself.
+func streamDestEmpty(dest string) bool {
+	fi, err := os.Stat(dest)
+	return err != nil || (!fi.IsDir() && fi.Size() <= 20)
 }
 
 // postgresNextStartTargetKey is where the primary a role-change task works against is kept

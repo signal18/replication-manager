@@ -1689,7 +1689,22 @@ func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, ba
 			"Splitdump metadata detected for %s; restoring with mysql client", backupPath)
 		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
 	}
+	// the reseed task is the one dbjobs runs: a flashback keeps replication-manager's client
+	if server.HasReseedingState(remoteReseedTask) && restoreLogicalOnNode(meta, backupPath) {
+		return server.jobReseedMysqldump(ctx, backupPath, restoreUser, true)
+	}
 	return server.reseedMysqldumpWithSplitdump(ctx, backupPath, restoreUser)
+}
+
+// restoreLogicalOnNode tells whether a logical backup is restored on the reseeded server's DB
+// node: one made on a DB node (scheduler-jobs-exec-remote). A splitdump, and a backup without
+// that flag (local, or older than remote dumps), keep the local restore.
+func restoreLogicalOnNode(meta *backupmgr.BackupMetadata, backupPath string) bool {
+	if meta == nil || !meta.ExecRemote || meta.SplitDump || isSplitDumpName(meta.Dest) {
+		return false
+	}
+	isSplit, err := isSplitDumpDir(backupPath)
+	return err == nil && !isSplit
 }
 
 // ---------------------------------------------------------------------------
@@ -2744,6 +2759,7 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 			"Splitdump metadata indicates source-data=0; GTID will not be applied (%s)", backupPath)
 		meta = nil
 	}
+	server.logicalRestorePosition.Store(meta)
 
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
@@ -3297,6 +3313,14 @@ func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser boo
 }
 
 func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser bool) error {
+	return server.jobReseedMysqldump(context.Background(), backupfile, restoreUser, false)
+}
+
+// jobReseedMysqldump restores a mysqldump backup: onNode, its stream goes to dbjobs and the
+// DB node's own client applies it (a backup made on the DB node, see startNodeReseedClient);
+// otherwise replication-manager's mysql client does. The preamble, the classification of the
+// system content and its replay are the same either way.
+func (server *ServerMonitor) jobReseedMysqldump(ctx context.Context, backupfile string, restoreUser bool, onNode bool) error {
 	cluster := server.ClusterGroup
 	var err error
 	defer server.SetInReseedBackup("")
@@ -3332,12 +3356,6 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	}
 	defer fz.Close()
 
-	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
-	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
-
 	cmdstring, sqlLogBin, err := server.buildLogicalRestorePreamble()
 	if err != nil {
 		return err
@@ -3361,51 +3379,17 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		return fmt.Errorf("[%s] Failed to create system-catalogue artifact: %s", server.URL, err)
 	}
 
-	// StdinPipe (rather than Cmd.Stdin = io.MultiReader(...), used before this
-	// change) gives splitdump.ClassifyStream a real io.Writer for its
-	// ApplicationWriter, and means Wait() below reflects only process exit --
-	// the pump goroutine below owns writing to it independently, same reasoning
-	// as JobRejoinMysqldumpFromSource's identical choice.
-	clientStdin, err := clientCmd.StdinPipe()
+	var client *reseedClient
+	if onNode {
+		client, err = server.startNodeReseedClient(ctx, backupfile)
+	} else {
+		client, err = server.startLocalReseedClient()
+	}
 	if err != nil {
 		artifactWriter.discard()
-		return fmt.Errorf("[%s] Failed to create mysql client stdin pipe: %s", server.URL, err)
+		return err
 	}
-
-	// Own the stdout/stderr pipe directly (rather than clientCmd.StdoutPipe())
-	// so Cmd.Wait()'s unconditional close of its own registered pipes on
-	// process exit can't race the stderr-tail drain goroutine below and
-	// truncate the very diagnostic tail a failure needs -- same reasoning as
-	// JobRejoinMysqldumpFromSource's identical pipe ownership.
-	clientOutR, clientOutW, err := os.Pipe()
-	if err != nil {
-		artifactWriter.discard()
-		clientStdin.Close()
-		return fmt.Errorf("[%s] Failed to create mysql client output pipe: %s", server.URL, err)
-	}
-	clientCmd.Stdout = clientOutW
-	clientCmd.Stderr = clientOutW
-
-	if err := clientCmd.Start(); err != nil {
-		artifactWriter.discard()
-		clientStdin.Close()
-		clientOutW.Close()
-		clientOutR.Close()
-		return fmt.Errorf("Can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
-	}
-	// The child now holds its own inherited copy of clientOutW -- close ours so
-	// the read end can see EOF once the child exits.
-	clientOutW.Close()
-
-	const stderrTailLines = 20
-	wg := sync.WaitGroup{}
-	var clientTail []string
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer clientOutR.Close()
-		clientTail = server.copyLogsTail(clientOutR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
-	}()
+	clientStdin := client.stdin
 
 	type reseedPumpResult struct {
 		result       splitdump.ClassifyResult
@@ -3425,8 +3409,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	// subprocess here fed by a goroutine reading a local file, which cannot
 	// "stall" the way a live network-fed dump can. Sequential Wait() then
 	// wg.Wait() then draining the pump channel is sufficient.
-	clientErr := clientCmd.Wait()
-	wg.Wait()
+	clientErr, clientTail := client.wait()
 	pr := <-pumpResultCh
 
 	if clientErr != nil || pr.err != nil {
@@ -3435,6 +3418,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", msg)
 		return errors.New(msg)
 	}
+	position := pr.result.Metadata
+	server.logicalRestorePosition.Store(&position)
 
 	// Phase two: exactly one system-catalogue source is ever replayed, matching
 	// direct reseed's model where the classified artifact is the sole
@@ -3482,6 +3467,72 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 // restore (sqlLogBin==1, server.URL == cluster master), so replicas still
 // receive the replayed system-catalogue statements instead of losing them to
 // an unconditionally-unlogged replay connection.
+// reseedClient is where a logical reseed's stream is applied: stdin of the restore client,
+// and wait, returning once the client ended, with its error and its last output lines.
+type reseedClient struct {
+	stdin io.WriteCloser
+	wait  func() (error, []string)
+}
+
+// startLocalReseedClient starts replication-manager's mysql client on server.
+func (server *ServerMonitor) startLocalReseedClient() (*reseedClient, error) {
+	cluster := server.ClusterGroup
+	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
+	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+
+	// StdinPipe (rather than Cmd.Stdin = io.MultiReader(...), used before this
+	// change) gives splitdump.ClassifyStream a real io.Writer for its
+	// ApplicationWriter, and means Wait() below reflects only process exit --
+	// the pump goroutine below owns writing to it independently, same reasoning
+	// as JobRejoinMysqldumpFromSource's identical choice.
+	clientStdin, err := clientCmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("[%s] Failed to create mysql client stdin pipe: %s", server.URL, err)
+	}
+
+	// Own the stdout/stderr pipe directly (rather than clientCmd.StdoutPipe())
+	// so Cmd.Wait()'s unconditional close of its own registered pipes on
+	// process exit can't race the stderr-tail drain goroutine below and
+	// truncate the very diagnostic tail a failure needs -- same reasoning as
+	// JobRejoinMysqldumpFromSource's identical pipe ownership.
+	clientOutR, clientOutW, err := os.Pipe()
+	if err != nil {
+		clientStdin.Close()
+		return nil, fmt.Errorf("[%s] Failed to create mysql client output pipe: %s", server.URL, err)
+	}
+	clientCmd.Stdout = clientOutW
+	clientCmd.Stderr = clientOutW
+
+	if err := clientCmd.Start(); err != nil {
+		clientStdin.Close()
+		clientOutW.Close()
+		clientOutR.Close()
+		return nil, fmt.Errorf("Can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
+	}
+	// The child now holds its own inherited copy of clientOutW -- close ours so
+	// the read end can see EOF once the child exits.
+	clientOutW.Close()
+
+	const stderrTailLines = 20
+	wg := sync.WaitGroup{}
+	var clientTail []string
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer clientOutR.Close()
+		clientTail = server.copyLogsTail(clientOutR, config.ConstLogModBackupStream, config.LvlDbg, stderrTailLines)
+	}()
+
+	return &reseedClient{stdin: clientStdin, wait: func() (error, []string) {
+		err := clientCmd.Wait()
+		wg.Wait()
+		return err, clientTail
+	}}, nil
+}
+
 func (server *ServerMonitor) reseedMysqldumpSystemReplayConn(ctx context.Context, dbh *sqlx.DB, sqlLogBin int) (*sqlx.Conn, error) {
 	if sqlLogBin == 0 {
 		// dbh is the reseed's own pool, closed with it: the unlogged session never
@@ -6632,7 +6683,10 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncomp
 	return errors.New("Error: waiting for " + task + " more than max loop.")
 }
 
-func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task string, sourceName string, uncompress bool, loop int, opener SSTStreamOpener) error {
+// trackProgress=false leaves the reseed progress to the caller: a logical restore streamed to
+// the DB node already counts the backup file it reads, and resetting or adding the sent bytes
+// here would restart and double its bar.
+func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task string, sourceName string, uncompress bool, loop int, opener SSTStreamOpener, trackProgress bool) error {
 	cluster := server.ClusterGroup
 
 	if ctx == nil {
@@ -6678,7 +6732,11 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 			// sstSendStream fills it in from the opener's expectedSize, but only
 			// when not decompressing on the fly (uncompress=true means bytes sent
 			// won't match the source's expected/compressed size).
-			server.beginReseedProgress(&ReseedProgress{Backup: sourceName, Tool: cluster.Conf.BackupPhysicalType}, 0)
+			var sink *SSTProgressSink
+			if trackProgress {
+				server.beginReseedProgress(&ReseedProgress{Backup: sourceName, Tool: cluster.Conf.BackupPhysicalType}, 0)
+				sink = newReseedProgressSink(server)
+			}
 			go func() {
 				sendStart := time.Now()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST stream send for %s started at %s (source: %s)", task, sendStart.Format(time.RFC3339), sourceName)
@@ -6688,7 +6746,7 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 					server.JobsUpdateState(task, err.Error(), JobStateErrorExec, 0)
 					return
 				}
-				err = cluster.SSTRunSenderStream(sourceName, opener, server, uncompress, newReseedProgressSink(server))
+				err = cluster.SSTRunSenderStream(sourceName, opener, server, uncompress, sink)
 				elapsed := time.Since(sendStart).Round(time.Second)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST stream send for %s failed after %s: %s", task, elapsed, err.Error())
@@ -6713,6 +6771,85 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 	server.JobsUpdateState(task, "Waiting more than max loop", JobStateErrorExec, 0)
 	server.SetNeedRefreshJobs(true)
 	return errors.New("Error: waiting for " + task + " more than max loop.")
+}
+
+// pointLogicalReseedReplica points the managed channel (replication-source-name) at the
+// primary after a mysqldump restore, from the backup's position, and starts it when the
+// restore succeeded:
+//   - MySQL/Percona with GTID: auto-position; the dump's GTID_PURGED is the position.
+//   - MariaDB with a GTID in the backup and GTID replication (not force-slave-no-gtid-mode):
+//     gtid_slave_pos set from it (a backup writes it as a comment only), then
+//     MASTER_USE_GTID=slave_pos.
+//   - otherwise: the binary log file and position of the backup; a backup without them keeps
+//     the positional pointing replication-manager computes.
+//
+// Multi-source replication is not supported: extra channels stay stopped, with a warning,
+// for the operator. The GTID state is the backup's, as it is: the restore replaced the one
+// their sources would resume from.
+func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMetadata, start bool) error {
+	cluster := server.ClusterGroup
+	if cluster.master == nil {
+		return fmt.Errorf("point %s after the restore: no primary known", server.URL)
+	}
+	gtid, file, pos := logicalReseedPosition(server.logicalRestorePosition.Load(), meta)
+	// an older backup (--apply-slave-statements) restarts replication at the end of its own load
+	// (START SLAVE / START ALL SLAVES): the position is set on stopped channels only
+	if logs, err := server.StopAllSlaves(); err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop all slaves on server: %s %s", server.URL, err)
+	}
+	var logs string
+	var err error
+	switch {
+	case server.HasMySQLGTID():
+		logs, err = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+	case server.IsMariaDB() && gtid != "" && server.HasGTIDReplication():
+		if err = server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+strings.ReplaceAll(gtid, "'", "''")+"'", time.Second); err != nil {
+			return fmt.Errorf("point %s after the restore: set gtid_slave_pos: %w", server.URL, err)
+		}
+		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+	case file != "":
+		opt := cluster.GetChangeMasterBaseOptForSlave(server, cluster.master, server.IsDelayed)
+		opt.Logfile, opt.Logpos, opt.Mode = file, strconv.FormatUint(pos, 10), "POSITIONAL"
+		logs, err = server.ChangeMaster(opt)
+	default:
+		logs, err = cluster.pointSlaveToMasterAutoDetect(server)
+	}
+	if err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to point %s to the primary after the restore: %s", server.URL, err)
+		return fmt.Errorf("point %s after the restore: %w", server.URL, err)
+	}
+	if !start {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
+	if logs, err := server.StartSlave(); err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed start slave after dump on %s: %s", server.URL, err)
+		return fmt.Errorf("start replication of %s after the restore: %w", server.URL, err)
+	}
+	var paused []string
+	for _, rep := range server.Replications {
+		if channel := rep.ConnectionName.String; channel != server.ReplicationSourceName {
+			paused = append(paused, fmt.Sprintf("%s (source %s:%s)", channel, rep.MasterHost.String, rep.MasterPort.String))
+		}
+	}
+	if len(paused) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"managed channel recovered; extra replication source(s) left stopped for operator review (multi-source is not supported by the reseed): %s on %s", strings.Join(paused, ", "), server.URL)
+	}
+	return nil
+}
+
+// logicalReseedPosition is the replication position a mysqldump reseed points the replica
+// at: the one read from the restored dump, else the one its backup recorded. A dump made
+// with --source-data=0 has none.
+func logicalReseedPosition(restored *splitdump.Metadata, meta *backupmgr.BackupMetadata) (gtid, file string, pos uint64) {
+	if restored != nil && (restored.GTID != "" || restored.File != "") {
+		return restored.GTID, restored.File, restored.Position
+	}
+	if meta != nil {
+		return meta.BinLogGtid, meta.BinLogFileName, meta.BinLogFilePos
+	}
+	return "", "", 0
 }
 
 func (server *ServerMonitor) ProcessReseedLogical(task string) error {
@@ -6916,8 +7053,31 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	// in between (see resolveLogicalReseedUserRestore).
 	restoreUser, splitUser, userRestoreAssessment := resolveLogicalReseedUserRestore(cluster, backupType, backupfile, meta, splitUserOverridePtr)
 
+	// A mysqldump reseed follows the replica setup procedures of MySQL and MariaDB: stop
+	// replication, load the dump, then point the replica and start it. The managed channel is
+	// pointed after the load, by name (pointLogicalReseedReplica): a dump never names a
+	// channel, and pointed with auto-position before the load a MySQL replica refuses the
+	// file/position CHANGE MASTER of an older --master-data=1 backup (error 1776).
+	pointAfterRestore := !isPITR && backupType == config.ConstBackupLogicalTypeMysqldump
+
 	// Set replication master to current master if not PITR
-	if !isPITR {
+	if pointAfterRestore {
+		// every channel: the restore replaces the GTID baseline of all of them
+		if logs, err := server.StopAllSlaves(); err != nil {
+			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop all slaves on server: %s %s", server.URL, err)
+		}
+		// The replica is emptied as a new replica: an older backup (--master-data=1,
+		// --apply-slave-statements) carries its own CHANGE MASTER and START SLAVE, which then
+		// apply to a channel without a primary and can not start replication before the
+		// position is set below (started, it applies what follows the dump, and the dump's
+		// position set afterwards replays it). With several channels it is skipped: RESET
+		// SLAVE ALL without a channel would drop them all.
+		if len(server.Replications) <= 1 {
+			if logs, err := server.ResetSlave(); err != nil {
+				cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed reset slave all on server: %s %s", server.URL, err)
+			}
+		}
+	} else if !isPITR {
 		logs, err := server.StopSlave()
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
@@ -6949,10 +7109,17 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 
 	var err error
 	if backupType == config.ConstBackupLogicalTypeMysqldump {
+		server.logicalRestorePosition.Store(nil)
 		if skipMetadata {
 			err = server.reseedMysqldumpWithSplitdump(ctx, backupfile, restoreUser)
 		} else {
 			err = server.reseedMysqldumpWithMetadata(ctx, backupfile, restoreUser, meta)
+		}
+		if pointAfterRestore {
+			// a failed restore too: the replica is never left without its primary
+			if perr := server.pointLogicalReseedReplica(matchLogicalReseedBackupMeta(meta, backupfile), err == nil); perr != nil && err == nil {
+				err = perr
+			}
 		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backupType, server.URL, err.Error())
@@ -6961,7 +7128,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			return err
 		}
 
-		if server.IsSlave && !isPITR {
+		if server.IsSlave && !isPITR && !pointAfterRestore {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
 			server.StartSlave()
 		}
@@ -7116,7 +7283,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 
 			uncompress := cluster.shouldUncompressOnSenderForReseed()
 			go func() {
-				err := server.WaitAndSendSSTStream(ctx, task, resticSourcePath, uncompress, 0, streamOpener)
+				err := server.WaitAndSendSSTStream(ctx, task, resticSourcePath, uncompress, 0, streamOpener, true)
 				if err != nil {
 					if server.HasReseedingState(task) {
 						server.SetInReseedBackup("")

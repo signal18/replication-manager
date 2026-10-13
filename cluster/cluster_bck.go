@@ -2613,7 +2613,8 @@ func (cluster *Cluster) CheckBackupToolVersions() {
 }
 
 // CheckBackupServerDumpClient runs CheckDumpClientCompatibility on the server the logical
-// backup is taken from so a misconfigured local client is reported before a backup runs.
+// backup is taken from: it only compares the versions already known, so it runs %30 and a
+// misconfigured client is reported soon after a start, not after the hourly tool refresh.
 func (cluster *Cluster) CheckBackupServerDumpClient() {
 	bcksrv := cluster.GetBackupServer()
 	if bcksrv == nil {
@@ -2623,7 +2624,8 @@ func (cluster *Cluster) CheckBackupServerDumpClient() {
 }
 
 // CheckDumpClientCompatibility warns (WARN0244) when the cluster's local dump client can not
-// back up the server. It is not checked when the DB node uses its own client.
+// back up the server: a backup with it fails at its first statement, or records no GTID.
+// Not checked when the dump runs on the DB node, with the node's own client.
 func (cluster *Cluster) CheckDumpClientCompatibility(server *ServerMonitor) {
 	if server == nil || server.DBVersion == nil || cluster.Conf.BackupLogicalType != config.ConstBackupLogicalTypeMysqldump || server.mysqldumpExecRemote() {
 		return
@@ -2637,6 +2639,9 @@ func (cluster *Cluster) CheckDumpClientCompatibility(server *ServerMonitor) {
 }
 
 // dumpClientIncompatibility is why a dump client can not back up a server, empty when it can.
+// Only the cases seen failing: a MariaDB client for MySQL/Percona (no GTID_PURGED, MySQL 8.4
+// not dumpable), an 8.0 client for 8.4 (SHOW MASTER STATUS, removed in 8.4), an 8.4 client
+// for 8.0 (SHOW BINARY LOG STATUS, unknown to 8.0). An 8.4 client dumps 5.7.
 func dumpClientIncompatibility(client, server *version.Version) string {
 	if client == nil || server == nil || !server.IsMySQLOrPercona() {
 		return ""

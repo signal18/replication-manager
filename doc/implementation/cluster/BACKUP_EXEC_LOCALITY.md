@@ -222,34 +222,109 @@ The dump's verbose output (what a local dump reads for tables) stays on the
 node in `backup.out`; dbjobs forwards it through write-log, too late for
 progress (about 140 encrypted posts for a 100 MB lab dump that lasts 5 s).
 
-## Replication position in logical backups
+## Restore on the node
 
-`GetMysqlBackupDumpOptions` derives the logical-backup arguments from the
-existing dump arguments with `--master-data=2` or `--dump-slave=2` and without
-`--apply-slave-statements`. Both the local and remote dump use it. The direct
-rejoin stream keeps `GetMysqlDumpOptions`, whose active position is restored by
-the receiving rejoin path.
+`reseedMysqldumpWithMetadata` routes to `jobReseedMysqldump(..., onNode=true)`
+when the reseed state is `reseedmysqldump` (not a flashback) and
+`restoreLogicalOnNode(meta, path)`: `meta.ExecRemote`, not a splitdump (metadata
+or directory). Old backups have no `ExecRemote` and keep the local restore.
+Splitdump on the node comes later.
 
-The commented position remains visible to the backup metadata parser. It keeps
-the dump from replaying unqualified replication statements on a multi-source
-replica; the reseed owns replication setup explicitly.
+Only the client moves. `jobReseedMysqldump` keeps the preamble
+(`buildLogicalRestorePreamble`), the classification of `mysql.*` content and the
+system replay; its client is a `reseedClient{stdin, wait}`:
 
-For MySQL and Percona, both dump paths also exclude
-`mysql.slave_worker_info`. It is local parallel-applier state and a restored
-copy causes the following `CHANGE REPLICATION SOURCE` to fail.
+- `startLocalReseedClient`: replication-manager's client, unchanged
+  (`--force`, `backup-mysqlclient-options`).
+- `startNodeReseedClient` (`srv_job_backup_remote.go`): the task
+  `reseedmysqldump` without payload, an `io.Pipe` as the stream source of
+  `WaitAndSendSSTStream(..., trackProgress=false)`. sql mode: `JobInsertTask`
+  with the node's `SSTPort`. api mode: the cookie only (`setTaskCookie`):
+  `JobInsertTask` refuses a task the reseed already tracks as running, and
+  signals only a task `scheduler-jobs-exec-remote` lists. A stream that never
+  starts withdraws the row (sql) or the cookie (api).
+- `waitNodeReseed`: the row (sql) or `JobResults` (api) each second, bounded
+  by `postgresJobStreamTimeout`, the context and the cluster exit. State 5/6 is
+  a failure (sql: with the result lines), done=1 with 3/4 is success. `wait`
+  then closes the pipe, so a writer is never left blocked.
+
+`trackProgress=false`: the restore already counts the backup file it reads
+(`startReseedProgress`); `WaitAndSendSSTStream`'s own progress would reset it,
+add the sent bytes again and label it with the physical tool.
+
+dbjobs (`reseedmysqldump`): `socat` from `SST_RECEIVER_PORT` into
+`$BINARY_CLIENT --batch`, no `--force`, output in `reseed.out`. Either exit
+code non-zero sets `PR_STATUS=1` and writes "Restore failed (stream exit, client
+exit): <last 5 lines>" to `reseedmysqldump.out`, the row's result (sql); api
+mode reports `error`. `--force` is left out on purpose: a statement that fails
+leaves a replica that differs from its backup, which must fail the reseed, not
+be skipped. The dump never holds `replication_manager_schema.jobs`
+(`--ignore-table`), so the restore never touches the row it is tracked by.
+
+## Replication position: backup and reseed (all mysqldump, local or node)
+
+Backup: `GetMysqlBackupDumpOptions` (`cluster_get.go`) = the dump options with
+`--master-data=2` / `--dump-slave=2` and without `--apply-slave-statements`,
+for the local and the remote dump. `GetMysqlDumpOptions` keeps the active
+position for the direct rejoin stream (`JobRejoinMysqldumpFromSource`), which
+never points the replica itself. The metadata parsers are not anchored, so the
+commented lines still give `BinLogFileName`/`BinLogFilePos`/`BinLogGtid`.
+
+Why: an active `CHANGE MASTER` names no channel. MySQL refuses it when a
+replica has several channels; MariaDB applies it to `default_master_connection`.
+On a MySQL GTID replica pointed with auto-position it fails (error 1776), which
+the local restore only hid with `--force`. MySQL's multi-source provisioning
+dumps without `--source-data`, and the MySQL, MariaDB, Percona XtraBackup and
+mariadb-backup replica procedures load the data, then run `CHANGE MASTER`,
+then `START SLAVE`.
+
+Reseed (`ProcessReseedLogical`, mysqldump, not PITR):
+
+1. `StopAllSlaves`.
+2. Every single-channel replica, all flavors and modes: `ResetSlave` (`RESET
+   SLAVE ALL`), as a new replica. An older backup (`--master-data=1`,
+   `--apply-slave-statements`) then applies its own `CHANGE MASTER` to a
+   channel without a primary, and its `START SLAVE` can not start replication
+   before the position is set (started, it applies what follows the dump, and
+   setting the dump's position afterwards replays it: duplicate keys). It is
+   skipped with several channels: without `FOR CHANNEL` it would drop them all.
+3. The restore: local or on the node, file or splitdump. Each records the
+   position it restored in `server.logicalRestorePosition` (the classified
+   stream's `splitdump.Metadata`, or the splitdump metadata).
+4. `pointLogicalReseedReplica`, also after a failed restore (the replica
+   keeps its primary): it stops all channels again first (an older backup's
+   `START SLAVE` / `START ALL SLAVES` restarts replication at the end of the
+   load, and `gtid_slave_pos` or `CHANGE MASTER` need it stopped); position from `logicalReseedPosition` (the restored
+   one, else the backup metadata). MySQL GTID: auto-position. MariaDB with a
+   GTID and GTID replication (not `force-slave-no-gtid-mode`): `SET GLOBAL
+   gtid_slave_pos`, then `SLAVE_POS`. Else file/position
+   (`POSITIONAL`), else `pointSlaveToMasterAutoDetect`. Then, after a
+   successful restore, `StartSlave` (the managed channel). The GTID state is the
+   backup's as it is (`GTID_PURGED`, `gtid_slave_pos`, all sources and
+   domains). Multi-source is not supported: extra channels stay stopped with a
+   warning naming them, for the operator.
+
+mydumper and the backup-load-script path keep their pointing before the load.
 
 ## Dump client compatibility
 
-`getMysqlDumpOptions` accepts the version of the client which will execute the
-dump. Local dumps use `client-dump`; remote dumps use the database server's
-version because dbjobs uses the node's own client. This selects
-`--skip-log-queries` only when a MariaDB client and server use the same
-slow-log variable name.
+Rules between the dump client and the server, next to the existing tool rules
+(`CheckLogicalBackupToolVersion`: restore tool and backup tool of the same
+major.minor; `getDumpParameter`: no `--system=all` on MySQL;
+`GetMyLoaderCompatibleOptions`: mydumper options by version). Verified in the lab.
 
-Every 30 monitor heartbeats `CheckBackupServerDumpClient` checks the local
-client against the server being backed up and raises or clears `WARN0244` for
-the incompatible MySQL/MariaDB and 8.0/8.4 combinations. Remote dumps are
-excluded because their client is local to the database node.
+| # | Rule | Applied by |
+|---|---|---|
+| C1 | MariaDB server: MariaDB client. MySQL/Percona server: MySQL client (`mariadb-dump` writes no `GTID_PURGED` and can not dump MySQL 8.4) | the cluster's `backup-mysqldump-path` / `backup-mysqlclient-path` / `backup-mysqlbinlog-path`; a remote dump uses the node's client. Checked: WARN0244 |
+| C2 | MySQL client of the server's line: 8.0 for 5.7 and 8.0, 8.4 for 8.4 (the 8.4 client sends `SHOW BINARY LOG STATUS`, unknown to 8.0; the 8.0 client `SHOW MASTER STATUS`, removed in 8.4). An 8.4 client dumps 5.7 | same. Checked: WARN0244 |
+| C3 | `--skip-log-queries` only when the client and the server name the slow log the same way: `slow_query_log` before MariaDB 10.11, `log_slow_query` from 10.11. The dump writes `/*M!100101 SET LOCAL SQL_LOG_OFF=0, LOCAL LOG_SLOW_QUERY=0 */` with a 10.11+ client, which a 10.4-10.6 server rejects (ERROR 1193) | `mariadbSkipLogQueriesCompatible` in `getMysqlDumpOptions`, with the client version: `client-dump` for a local dump, the server's for a remote one (the node's client) |
+
+`CheckDumpClientCompatibility` (`cluster_bck.go`, from `CheckBackupServerDumpClient` every 30
+heartbeats) raises WARN0244 on the backed-up server when the cluster's local dump
+client (`client-dump`) is one of the cases seen failing (`dumpClientIncompatibility`): a
+MariaDB client for MySQL/Percona, a pre-8.2 client for an 8.2+ server, an 8.2+ client for an
+8.0/8.1 server. It is skipped when the dump runs on the DB node, and cleared once the client
+fits.
 
 ## Settings
 
@@ -270,12 +345,21 @@ excluded because their client is local to the database node.
   multi-line 10000-source GTID, CRLF and indentation, a cut statement, the
   1 MiB bound, table lines), connection options left out, receiver close with
   and without a stream, splitdump sink receiver, timeouts default.
+  Restore on the node: `TestRestoreLogicalOnNode` (remote dump, local, no
+  metadata, splitdump by metadata and by name, missing file),
+  `TestWaitNodeReseed` (sql row failed with its lines, finished only once done,
+  success, api reports, canceled). Position: `TestGetMysqlBackupDumpOptionsPositionComment`
+  (cluster_get_test.go: backup dumps comment the position, the direct stream
+  keeps it), `TestLogicalReseedPosition` (restored position first, then the
+  backup metadata).
   `utils/dbhelper/jobs_test.go`: both jobs table helpers, MariaDB/MySQL and
   PostgreSQL.
 - Regtest `testRemoteMysqldump` (needs dbjobs next to each database, not in the
   ALL list; run it by name, once per `scheduler-jobs-mode`): gzip and splitdump
   of the server the scheduler backs up, the designated backup server else the
-  primary (metadata, GTID of the server, complete artifact), a 1s pickup
+  primary (metadata, GTID of the server, complete artifact), a reseed of a
+  replica from the gzip dump (restored by the replica's dbjobs: in sql mode its
+  `reseedmysqldump` row succeeded; replication running after it), a 1s pickup
   timeout withdrawing the row, with a user and password in
   `backup-mysqldump-options` all along.
 - Lab (OpenSVC, MariaDB 10.11 replica), each in api and sql mode:
