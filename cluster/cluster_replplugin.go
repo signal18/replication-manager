@@ -274,6 +274,21 @@ func (cluster *Cluster) replPluginBinary(plugin string) (string, error) {
 	return "", fmt.Errorf("binary %s not found in %s", name, strings.Join(dirs, ", "))
 }
 
+// replPluginSourcePass is the password of the cluster that monitors the plugin's source
+// server (a child's source is its parent: preprod, the child's own password was refused by
+// belair), the cluster's own when none does.
+func (cluster *Cluster) replPluginSourcePass(c wire.Config) string {
+	url := fmt.Sprintf("%s:%d", c.Source.Host, c.Source.Port)
+	if cluster.GetServerFromURL(url) == nil {
+		for _, cl := range cluster.clusterList {
+			if cl != nil && cl != cluster && cl.GetServerFromURL(url) != nil {
+				return cl.GetDbPass()
+			}
+		}
+	}
+	return cluster.GetDbPass()
+}
+
 // execReplPlugin runs the plugin once, until it exits or the context ends.
 func (cluster *Cluster) execReplPlugin(ctx context.Context, r *replPluginRunner) error {
 	bin, err := cluster.replPluginBinary(r.cfg.Plugin)
@@ -295,7 +310,7 @@ func (cluster *Cluster) execReplPlugin(ctx context.Context, r *replPluginRunner)
 	cmd.Env = []string{
 		"PATH=/usr/local/bin:/usr/bin:/bin",
 		wire.EnvWireVersion + "=" + strconv.Itoa(wire.WireVersion),
-		wire.EnvSourcePassword + "=" + cluster.GetDbPass(),
+		wire.EnvSourcePassword + "=" + cluster.replPluginSourcePass(r.cfg),
 		wire.EnvTargetPassword + "=" + cluster.GetDbPass(),
 	}
 	stdout, err := cmd.StdoutPipe()
