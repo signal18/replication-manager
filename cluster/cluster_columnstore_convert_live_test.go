@@ -8,6 +8,9 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/s18log"
+	logsql "github.com/sirupsen/logrus"
 )
 
 // TestColumnstoreConversionLive converts InnoDB tables on a real ColumnStore UM the way the
@@ -45,6 +48,8 @@ func TestColumnstoreConversionLive(t *testing.T) {
 		}
 	}
 	cl := newColumnstoreTestCluster()
+	cl.SqlErrorLog, cl.SqlGeneralLog = logsql.New(), logsql.New()
+	cl.SQLErrorLog, cl.SQLGeneralLog = s18log.NewHttpLog(20), s18log.NewHttpLog(20)
 	server := &ServerMonitor{Conn: db, URL: "live", ClusterGroup: cl}
 
 	tables := []struct{ name, ddl string }{
@@ -70,9 +75,15 @@ func TestColumnstoreConversionLive(t *testing.T) {
 		}
 		var engine string
 		if err := db.Get(&engine, "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=? AND TABLE_NAME=?", schema, tb.name); err != nil || !strings.EqualFold(engine, "Columnstore") {
-			var ddl struct{ Table, Create string }
-			_ = db.QueryRowx("SHOW CREATE TABLE "+schema+"."+tb.name).Scan(&ddl.Table, &ddl.Create)
-			t.Fatalf("%s is %q (%v), not ColumnStore:\n%s", tb.name, engine, err, ddl.Create)
+			// why it stayed: the generated DDL run again, its error shown
+			cols, _, _ := dbhelper.GetTableColumns(db, nil, schema, tb.name)
+			checks, _, _ := dbhelper.GetTableChecks(db, nil, schema, tb.name)
+			opts, _, _ := dbhelper.GetTableOptions(db, nil, schema, tb.name)
+			conv, cerr := columnstoreTableDDL(schema, tb.name+"__probe", cols, checks, opts, nil, nil)
+			if cerr == nil {
+				_, cerr = conn.ExecContext(ctx, conv.DDL)
+			}
+			t.Fatalf("%s is %q (%v), not ColumnStore: %v\n%s", tb.name, engine, err, cerr, conv.DDL)
 		}
 	}
 
