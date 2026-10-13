@@ -99,16 +99,28 @@ func (configurator *Configurator) HasProxyReadLeaderNoSlave() bool {
 	return false
 }
 
+// formerlyRenderedVariables are variables a tag ruleset of an earlier release rendered and
+// the module no longer does. A server deployed by that release still carries them in its
+// config, so they stay in TagManagedVariables: dropping the tag must not leave them behind.
+//   - ssl: the bare "ssl" line of the ssl tag, removed because MySQL/Percona 8.4 refuse the
+//     option at start (#1993); ssl-ca/ssl-cert/ssl-key alone enable TLS.
+var formerlyRenderedVariables = []string{"ssl"}
+
 // TagManagedVariables returns every variable a database cnf ruleset of the module
 // renders, whatever the cluster's tags: those variables are replication-manager's own.
 // One of them deployed but absent from the generated config is a pending tag change
 // (a tag dropped, its file still deployed until the restart), never operator drift, so
 // the delta must not preserve it (#1976). Names are normalized like the variable maps.
+// The map is a set: true means "managed by a tag ruleset", never a value of the variable
+// (nothing is rendered or enabled from it).
 func (configurator *Configurator) TagManagedVariables() map[string]bool {
 	type fileVar struct {
 		Fmt string `json:"fmt"`
 	}
 	managed := make(map[string]bool)
+	for _, name := range formerlyRenderedVariables {
+		managed[name] = true
+	}
 	for _, rule := range configurator.DBModule.Rulesets {
 		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
 			continue

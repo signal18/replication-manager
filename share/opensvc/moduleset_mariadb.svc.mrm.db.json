@@ -2790,8 +2790,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
-                    "var_updated": "2024-07-29 19:10:52",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2026-10-13 09:39:08",
                     "var_name": "db_cnf_ssl",
                     "id": 5903
                 }
@@ -2824,8 +2824,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=../etc/mysql/ssl/ca-cert.pem\\nssl-cert=../etc/mysql/ssl/server-cert.pem\\nssl-key=../etc/mysql/ssl/server-key.pem\"}",
-                    "var_updated": "2024-07-29 19:13:42",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl-ca=../etc/mysql/ssl/ca-cert.pem\\nssl-cert=../etc/mysql/ssl/server-cert.pem\\nssl-key=../etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2026-10-13 09:39:40",
                     "var_name": "db_cnf_ssl",
                     "id": 5905
                 },
@@ -7528,8 +7528,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
-                    "var_updated": "2024-08-01 12:43:30",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2026-10-13 09:40:04",
                     "var_name": "db_cnf_ssl",
                     "id": 6312
                 },
@@ -7618,8 +7618,8 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
-                    "var_updated": "2024-08-02 05:21:57",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_sec_ssl.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"[mysqld]\\nssl-ca=/etc/mysql/ssl/ca-cert.pem\\nssl-cert=/etc/mysql/ssl/server-cert.pem\\nssl-key=/etc/mysql/ssl/server-key.pem\"}",
+                    "var_updated": "2026-10-13 09:38:53",
                     "var_name": "db_cnf_ssl",
                     "id": 6326
                 },

@@ -3,6 +3,7 @@ package configurator
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -70,5 +71,28 @@ func TestTagManagedVariables(t *testing.T) {
 	}
 	if managed["my_custom_operator_var"] {
 		t.Error("an operator variable is not managed")
+	}
+}
+
+// No cnf ruleset renders a bare ssl line: MySQL/Percona 8.4 refuse to start on the removed
+// --ssl server option, and ssl-ca/ssl-cert/ssl-key enable TLS without it (#1993).
+func TestNoBareSSLRendered(t *testing.T) {
+	for _, rule := range loadDBModule(t).Rulesets {
+		if !strings.Contains(rule.Name, "mariadb.svc.mrm.db.cnf") {
+			continue
+		}
+		for _, variable := range rule.Variables {
+			var fv struct {
+				Fmt string `json:"fmt"`
+			}
+			if variable.Class != "file" || json.Unmarshal([]byte(variable.Value), &fv) != nil {
+				continue
+			}
+			for _, line := range strings.Split(fv.Fmt, "\n") {
+				if strings.TrimSpace(line) == "ssl" {
+					t.Errorf("%s / %s renders a bare ssl line", rule.Name, variable.Name)
+				}
+			}
+		}
 	}
 }
