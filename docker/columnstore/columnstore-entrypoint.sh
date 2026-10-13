@@ -34,16 +34,16 @@ CMAPI_KEY="${CMAPI_API_KEY:-${MYSQL_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}}"
 
 log() { echo "$(date '+%F %T') columnstore-entrypoint: $*"; }
 
-# wait until a local port answers, bounded
+# wait until a port answers, bounded (host: 127.0.0.1 unless given)
 wait_port() {
-	local port="$1" what="$2" i
+	local port="$1" what="$2" host="${3:-127.0.0.1}" i
 	for i in $(seq 1 180); do
-		if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+		if (exec 3<>"/dev/tcp/$host/$port") 2>/dev/null; then
 			return 0
 		fi
 		sleep 1
 	done
-	log "$what did not open port $port after 180 s"
+	log "$what did not open port $port on $host after 180 s"
 	return 1
 }
 
@@ -257,7 +257,9 @@ case "${1:-}" in
 		sync_hosts_loop &
 		start_cmapi
 		start_node
-		wait_port 8616 controllernode
+		# the DBRM the server needs: controllernode runs on the primary only, local on the
+		# UM and remote on a PM (a PM waiting on 127.0.0.1 exited after 180 s)
+		wait_port 8616 controllernode "$(/usr/bin/mcsGetConfig DBRM_Controller IPAddr 2>/dev/null || echo 127.0.0.1)"
 		trap on_stop TERM INT
 		docker-entrypoint.sh "$@" &
 		server_pid=$!
