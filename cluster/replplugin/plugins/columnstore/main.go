@@ -342,8 +342,11 @@ func main() {
 		ccfg.ServerID = cfg.ServerID
 	}
 	ccfg.Dump.ExecutionPath = "" // no dump: the restore's rows come on stdin
-	// the tables carried are known at the restore's end: filtered in OnRow
-	ccfg.ExcludeTableRegex = []string{`mysql\..*`, `replication_manager_schema\..*`}
+	// the tables carried are known at the restore's end: filtered in OnRow. canal keeps only
+	// a table an include matches, the excludes then removing some: an exclude alone
+	// excludes every table
+	ccfg.IncludeTableRegex = []string{`^.*\..*$`}
+	ccfg.ExcludeTableRegex = []string{`^mysql\..*$`, `^replication_manager_schema\..*$`}
 	cc, err := canal.NewCanal(ccfg)
 	if err != nil {
 		fail(c, fmt.Errorf("source %s: %w", ccfg.Addr, err))
