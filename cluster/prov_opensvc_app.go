@@ -423,7 +423,7 @@ func (cluster *Cluster) OpenSVCProvisionAppV3(app *App, svc opensvc.Collector, a
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", templateForLog(string(res)))
 
 	templatefile := filepath.Join(app.Datadir, "opensvc_template.ini")
 	if err := os.WriteFile(templatefile, res, 0600); err != nil {

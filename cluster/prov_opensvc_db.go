@@ -110,7 +110,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV2(s *ServerMonitor, svc opensvc
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", templateForLog(string(res)))
 	err = svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
@@ -129,7 +129,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", templateForLog(string(res)))
 	body, err := svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
 	if err != nil {
 		if !isOpenSVCAlreadyExists(err) {
