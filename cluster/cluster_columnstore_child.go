@@ -24,15 +24,16 @@ import (
 
 // A ColumnStore child of an OLTP parent (#2002, #2015): ColumnStore takes no row UPDATE or
 // DELETE from replication, so the child's ColumnStore tables are carried by the
-// replplugin-columnstore plugin: it turns the seed's splitdump backup into checkpoints, then
-// the parent's binlog from the backup's GTID, which replication-manager applies with LOAD
-// DATA (the seed created those tables but did not load their data). The child's native
-// channel from the parent ignores them (replicate_ignore_table); the tables left InnoDB
+// replplugin-columnstore plugin, and replication-manager applies its checkpoints with LOAD
+// DATA. Before the seed, the plugin's TOML is written (its start: the backup's GTID) and the
+// plugin started, waiting on its stdin. The seed's restore creates the tables (converted to
+// ColumnStore) and sends the rows of the ColumnStore ones to the plugin instead of
+// executing them. At the restore's end, the plugin is told the GTID and the tables carried,
+// and streams the parent's binlog from there; the child's native channel from the parent
+// ignores those tables (replicate_ignore_table), the tables left InnoDB
 // (replication_manager_schema, a table ColumnStore cannot hold) keep replicating natively.
-// Prepared after the seed's restore, before the channel starts: the plugin's TOML (its
-// rules are the child's ColumnStore tables, its start the backup and its GTID) and the
-// channel's ignore list. The same list is rendered into the UM's configuration bundle, for
-// its next start (configurator.ColumnstoreReplicateIgnoreEnv).
+// The same list is rendered into the UM's configuration bundle, for its next start
+// (configurator.ColumnstoreReplicateIgnoreEnv).
 
 const columnstorePluginName = "columnstore"
 
@@ -47,21 +48,13 @@ func columnstorePluginServerID(clusterName string) uint32 {
 	return 3000000000 + crc32.ChecksumIEEE([]byte(clusterName))%100000
 }
 
-// prepareColumnstoreChild writes the plugin's TOML and sets the channel's ignore list on the
-// target, the UM just seeded from backupPath. Nothing when the target holds no ColumnStore
-// table.
-func (cluster *Cluster) prepareColumnstoreChild(parent *Cluster, target *ServerMonitor, channel, backupPath string) error {
+// startColumnstoreChild writes the plugin's TOML before the seed's restore from backupPath
+// into target, and arms the feed the restore sends the ColumnStore rows to; the next tick
+// starts the plugin.
+func (cluster *Cluster) startColumnstoreChild(parent *Cluster, target *ServerMonitor, channel, backupPath string) error {
 	pmaster := parent.GetMaster()
 	if pmaster == nil {
 		return fmt.Errorf("parent %s has no master", parent.Name)
-	}
-	tables, q, err := dbhelper.GetTablesByEngine(target.Conn, target.DBVersion, "Columnstore", "", "")
-	if err != nil {
-		cluster.LogSQL(q, err, target.URL, "ColumnstoreChild", config.LvlErr, "ColumnStore tables of %s: %s", target.URL, err)
-		return err
-	}
-	if len(tables) == 0 {
-		return nil
 	}
 	meta, err := splitdump.ReadMetadata(backupPath)
 	if err != nil || meta == nil || meta.GTID == "" {
@@ -70,44 +63,76 @@ func (cluster *Cluster) prepareColumnstoreChild(parent *Cluster, target *ServerM
 	cfg := wire.Config{
 		Plugin:         columnstorePluginName,
 		Enabled:        true,
-		Mode:           "sql",
+		Mode:           "csv",
 		ServerID:       columnstorePluginServerID(cluster.Name),
 		Source:         wire.Endpoint{Host: pmaster.Host, Port: atoiPort(pmaster.Port), User: cluster.GetDbUser()},
 		Target:         wire.Endpoint{Host: target.Host, Port: atoiPort(target.Port), User: cluster.GetDbUser()},
-		BatchSize:      1000,
 		BatchTimeoutMs: 10000,
 		StartGTID:      meta.GTID,
-		StartBackup:    backupPath,
 		MaxPendingMB:   1024,
 		SourceChannel:  channel,
 	}
-	bySchema := map[string][]string{}
-	for _, t := range tables {
-		bySchema[t.Schema] = append(bySchema[t.Schema], t.Table)
-	}
-	schemas := make([]string, 0, len(bySchema))
-	for s := range bySchema {
-		schemas = append(schemas, s)
-	}
-	sort.Strings(schemas)
-	for _, s := range schemas {
-		sort.Strings(bySchema[s])
-		cfg.Rules = append(cfg.Rules, wire.Rule{Schema: s, Tables: bySchema[s]})
-	}
-	if err := writeReplPluginConfig(cluster.columnstorePluginPath(), cfg); err != nil {
+	path := cluster.columnstorePluginPath()
+	// a fresh seed: nothing of an older one kept, the running plugin stopped first (its
+	// TOML removed, the next tick stops it)
+	os.Remove(path)
+	cluster.CheckReplicationPlugins()
+	os.Remove(wire.StatePath(path))
+	os.Remove(wire.AppliedPath(path))
+	os.RemoveAll(wire.CheckpointDir(path))
+	if err := writeReplPluginConfig(path, cfg); err != nil {
 		return err
 	}
-	// a fresh seed: the plugin starts from this backup, nothing of an older one kept
-	os.Remove(wire.StatePath(cluster.columnstorePluginPath()))
-	os.Remove(wire.AppliedPath(cluster.columnstorePluginPath()))
-	os.RemoveAll(wire.CheckpointDir(cluster.columnstorePluginPath()))
-	list, _ := cfg.Tables()
+	cluster.columnstoreFeed.Store(&replFeed{path: path})
+	cluster.CheckReplicationPlugins()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ColumnStore child %s: replplugin-columnstore started, the restore of %s feeds it, then the binlog of %s from GTID %s", cluster.Name, backupPath, pmaster.URL, meta.GTID)
+	return nil
+}
+
+// sendColumnstoreRows hands a restore's INSERT for a ColumnStore table to the plugin; false
+// when no seed feeds it (the statement is executed as usual).
+func (cluster *Cluster) sendColumnstoreRows(schema, table string, stmt []byte) (bool, error) {
+	f := cluster.columnstoreFeed.Load()
+	if f == nil {
+		return false, nil
+	}
+	return true, cluster.sendReplPluginInput(f, wire.Input{Type: wire.InputRestoreRows, Schema: schema, Table: table}, stmt)
+}
+
+// finishColumnstoreChild ends the feed after the seed's restore: the plugin is told the
+// backup's GTID and the tables carried (the target's ColumnStore tables), and the channel
+// ignores them, set before it starts. On a failed restore, ok false: the feed is dropped.
+func (cluster *Cluster) finishColumnstoreChild(target *ServerMonitor, channel, backupPath string, ok bool) error {
+	f := cluster.columnstoreFeed.Swap(nil)
+	if f == nil || !ok {
+		return nil
+	}
+	tables, q, err := dbhelper.GetTablesByEngine(target.Conn, target.DBVersion, "Columnstore", "", "")
+	if err != nil {
+		cluster.LogSQL(q, err, target.URL, "ColumnstoreChild", config.LvlErr, "ColumnStore tables of %s: %s", target.URL, err)
+		return err
+	}
+	list := make([]string, 0, len(tables))
+	for _, t := range tables {
+		list = append(list, t.Schema+"."+t.Table)
+	}
+	sort.Strings(list)
+	meta, err := splitdump.ReadMetadata(backupPath)
+	if err != nil || meta == nil || meta.GTID == "" {
+		return fmt.Errorf("the GTID of the backup %s is unknown (%v)", backupPath, err)
+	}
+	if err := cluster.sendReplPluginInput(f, wire.Input{Type: wire.InputRestoreDone, GTID: meta.GTID, Tables: list}, nil); err != nil {
+		return err
+	}
+	if len(list) == 0 {
+		return nil
+	}
 	q, err = dbhelper.SetChannelReplicateIgnoreTable(context.Background(), target.Conn, target.DBVersion, channel, list)
 	cluster.LogSQL(q, err, target.URL, "ColumnstoreChild", config.LvlErr, "Ignore list of channel %s on %s: %s", channel, target.URL, err)
 	if err != nil {
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ColumnStore child %s: %d ColumnStore tables carried by replplugin-columnstore from %s at GTID %s, ignored by channel %s", cluster.Name, len(list), pmaster.URL, meta.GTID, channel)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ColumnStore child %s: restore done, %d ColumnStore tables carried by replplugin-columnstore from GTID %s, ignored by channel %s", cluster.Name, len(list), meta.GTID, channel)
 	return nil
 }
 
@@ -116,7 +141,7 @@ func writeReplPluginConfig(path string, cfg wire.Config) error {
 		return err
 	}
 	var b bytes.Buffer
-	b.WriteString("# replication-manager: written at the seed of the ColumnStore child (#2015); editable\n")
+	b.WriteString("# replication-manager: written at the seed of the ColumnStore child (#2015); its tables are in its state once the restore is done\n")
 	if err := toml.NewEncoder(&b).Encode(cfg); err != nil {
 		return err
 	}
@@ -138,6 +163,14 @@ func (server *ServerMonitor) columnstoreReplicateIgnore() string {
 	var cfg wire.Config
 	if _, err := toml.DecodeFile(cl.columnstorePluginPath(), &cfg); err != nil || !cfg.Enabled || cfg.SourceChannel == "" {
 		return ""
+	}
+	if len(cfg.Rules) == 0 {
+		// the tables carried are those the restore's end told the plugin
+		st, err := wire.ReadState(wire.StatePath(cl.columnstorePluginPath()))
+		if err != nil || !st.RestoreDone {
+			return ""
+		}
+		cfg.Rules = wire.RulesOf(st.Tables)
 	}
 	tables, ok := cfg.Tables()
 	if !ok || len(tables) == 0 {

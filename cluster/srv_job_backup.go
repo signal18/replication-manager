@@ -1841,15 +1841,14 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 		}
 	}
 
-	// #2015: into a ColumnStore cluster, the data of a ColumnStore table (converted in the
-	// schema phase) comes from the replication plugin's checkpoints, LOAD DATA from the same
-	// backup, not from these INSERTs
-	if cluster.HasConfigTopoColumnstore() && schema != "mysql" && schema != "replication_manager_schema" && table != "" &&
+	// #2015: the seed of a ColumnStore child feeds replplugin-columnstore the rows of a
+	// ColumnStore table (converted in the schema phase): its checkpoints load them with LOAD
+	// DATA, the INSERTs are not executed
+	toPlugin := false
+	if cluster.columnstoreFeed.Load() != nil && schema != "mysql" && schema != "replication_manager_schema" && table != "" &&
 		!splitdump.IsSchemaFile(path) && !splitdump.IsPostFile(path) {
 		if opts, _, err := dbhelper.GetTableOptions(server.Conn, server.DBVersion, schema, table); err == nil && strings.EqualFold(opts.Engine, "Columnstore") {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
-				"Splitdump restore: %s left to the replication plugin, %s.%s is ColumnStore", filepath.Base(path), schema, table)
-			return nil
+			toPlugin = true
 		}
 	}
 
@@ -1878,6 +1877,27 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 	var doneStrip func(error)
 	if stripDefiner {
 		reader, doneStrip = splitdump.NewDefinerStrippingReader(reader)
+	}
+
+	if toPlugin {
+		err := forEachSplitdumpStatement(reader, func(stmt string) error {
+			if classifySplitdumpStatement(stmt) != splitdumpStmtInsert {
+				return nil
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			_, err := cluster.sendColumnstoreRows(schema, table, []byte(stmt))
+			return err
+		})
+		if doneStrip != nil {
+			doneStrip(err)
+		}
+		if err == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+				"Splitdump restore: %s sent to replplugin-columnstore", filepath.Base(path))
+		}
+		return err
 	}
 
 	if schema != "" {

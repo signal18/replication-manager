@@ -41,6 +41,7 @@ type tableBuf struct {
 	delOrd  []string
 	list    []row // keyless: the inserted rows
 	dels    []row // keyless: the deleted rows' key values
+	loads   []row // the restore's rows: into a table the restore created, nothing to delete
 }
 
 func newTableBuf(t *schema.Table) *tableBuf {
@@ -104,12 +105,21 @@ func (b *tableBuf) remove(r row) {
 }
 
 func (b *tableBuf) empty() bool {
-	return len(b.inserts) == 0 && len(b.deletes) == 0 && len(b.list) == 0 && len(b.dels) == 0
+	return len(b.inserts) == 0 && len(b.deletes) == 0 && len(b.list) == 0 && len(b.dels) == 0 && len(b.loads) == 0
 }
 
 // files renders the table's two files: the keys to delete (those of the loaded rows
-// included) and the rows to load.
+// included) and the rows to load, the restore's rows last.
 func (b *tableBuf) files() (dels, ins []byte, ndel, nins int64) {
+	dels, ins, ndel, nins = b.changes()
+	for _, r := range b.loads {
+		ins = wire.EncodeTSV(ins, r)
+		nins++
+	}
+	return
+}
+
+func (b *tableBuf) changes() (dels, ins []byte, ndel, nins int64) {
 	if !b.keyed() {
 		for _, k := range b.dels {
 			dels = wire.EncodeTSV(dels, k)

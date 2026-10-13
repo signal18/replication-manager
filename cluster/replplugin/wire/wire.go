@@ -12,8 +12,10 @@
 package wire
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -63,11 +65,8 @@ type Config struct {
 	// StartGTID: where the plugin starts when it has no State yet (a ColumnStore child:
 	// the GTID of its seed)
 	StartGTID string `toml:"start_gtid" json:"startGtid"`
-	// StartBackup: the splitdump backup the plugin starts from (#2015): its carried tables
-	// become the first checkpoints, then the binlog from StartGTID, the backup's GTID
-	StartBackup string `toml:"start_backup" json:"startBackup"`
-	// MaxPendingMB: the plugin pauses (no more splitdump converted, no more binlog read)
-	// while the checkpoints waiting to be applied take more than this; 0: 1024
+	// MaxPendingMB: the plugin pauses (no more input read, no more binlog read) while the
+	// checkpoints waiting to be applied take more than this; 0: 1024
 	MaxPendingMB int `toml:"max_pending_mb" json:"maxPendingMb"`
 	// SourceChannel: the target's native replication channel from the same source, which
 	// ignores the tables this plugin carries (replicate_ignore_table), "" when none
@@ -132,13 +131,94 @@ type Status struct {
 }
 
 // State is a plugin's position, <name>.state.json next to its TOML: where it restarts.
-// SnapshotDone: every splitdump piece is a checkpoint; Seq: the last checkpoint written.
+// RestoreDone: the restore's rows were all received, the binlog streams from GTID; Tables:
+// the tables it carries since then (schema.table), told by the restore's end; Seq: the
+// last checkpoint written.
 type State struct {
-	GTID         string `json:"gtid"`
-	SnapshotDone bool   `json:"snapshotDone"`
-	Seq          int64  `json:"seq"`
-	// SnapshotFiles: the splitdump data files already turned into checkpoints
-	SnapshotFiles []string `json:"snapshotFiles,omitempty"`
+	GTID        string   `json:"gtid"`
+	RestoreDone bool     `json:"restoreDone"`
+	Tables      []string `json:"tables,omitempty"`
+	Seq         int64    `json:"seq"`
+}
+
+// What replication-manager writes on a plugin's stdin (#2015): the restore sends the rows of
+// the carried tables as it reads them, then its end; the plugin only then streams the
+// binlog, from the GTID of the backup restored. A frame: an Input as a JSON line, then Len
+// bytes of payload, the statement as the backup holds it (binary values included, which a
+// JSON string would not keep).
+const (
+	InputRestoreRows = "restore_rows"
+	InputRestoreDone = "restore_done"
+)
+
+// Input is a frame's header: an INSERT ... VALUES of the restore for schema.table (Len
+// bytes follow), or the restore's end with the backup's GTID and the tables carried (those
+// the restore made ColumnStore; a table it left as it was is not).
+type Input struct {
+	Type   string   `json:"type"`
+	Schema string   `json:"schema,omitempty"`
+	Table  string   `json:"table,omitempty"`
+	Len    int      `json:"len,omitempty"`
+	GTID   string   `json:"gtid,omitempty"`
+	Tables []string `json:"tables,omitempty"`
+}
+
+// WriteInput writes a frame.
+func WriteInput(w io.Writer, in Input, payload []byte) error {
+	in.Len = len(payload)
+	b, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	b = append(b, '\n')
+	if _, err := w.Write(b); err != nil {
+		return err
+	}
+	if len(payload) > 0 {
+		_, err = w.Write(payload)
+	}
+	return err
+}
+
+// ReadInput reads a frame.
+func ReadInput(r *bufio.Reader) (Input, []byte, error) {
+	var in Input
+	line, err := r.ReadBytes('\n')
+	if err != nil {
+		return in, nil, err
+	}
+	if err := json.Unmarshal(line, &in); err != nil {
+		return in, nil, fmt.Errorf("input frame: %w", err)
+	}
+	if in.Len < 0 {
+		return in, nil, fmt.Errorf("input frame of %d bytes", in.Len)
+	}
+	payload := make([]byte, in.Len)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		return in, nil, err
+	}
+	return in, payload, nil
+}
+
+// RulesOf turns schema.table names into rules.
+func RulesOf(tables []string) []Rule {
+	by := map[string][]string{}
+	var order []string
+	for _, t := range tables {
+		s, n, ok := strings.Cut(t, ".")
+		if !ok {
+			continue
+		}
+		if _, seen := by[s]; !seen {
+			order = append(order, s)
+		}
+		by[s] = append(by[s], n)
+	}
+	rules := make([]Rule, 0, len(order))
+	for _, s := range order {
+		rules = append(rules, Rule{Schema: s, Tables: by[s]})
+	}
+	return rules
 }
 
 // Applied is what replication-manager applied to the target, <name>.applied.json.
@@ -214,15 +294,14 @@ func ParseCheckpointName(name string) (int64, bool) {
 // ManifestName is the manifest inside a checkpoint tar.gz.
 const ManifestName = "manifest.json"
 
-// Manifest describes a checkpoint: the rows of each table to delete (by key) then to load.
-// GTID is the source position the target is at once the checkpoint is applied, "" for a
-// splitdump piece before the last one (the target is consistent only at the end).
+// Manifest describes a checkpoint, a period of what the plugin received: the rows of each
+// table to delete (by key) then to load. GTID is the source position the target is at once
+// the checkpoint is applied, "" while the restore runs (consistent only at its end).
 type Manifest struct {
-	Wire     int          `json:"wire"`
-	Seq      int64        `json:"seq"`
-	GTID     string       `json:"gtid"`
-	Snapshot bool         `json:"snapshot"`
-	Tables   []TableFiles `json:"tables"`
+	Wire   int          `json:"wire"`
+	Seq    int64        `json:"seq"`
+	GTID   string       `json:"gtid"`
+	Tables []TableFiles `json:"tables"`
 }
 
 // TableFiles are the files of one table in a checkpoint, tab-separated in LOAD DATA's

@@ -1,6 +1,9 @@
 package wire
 
 import (
+	"bufio"
+	"bytes"
+	"io"
 	"path/filepath"
 	"testing"
 )
@@ -53,5 +56,31 @@ func TestTSVAndCheckpointNames(t *testing.T) {
 	}
 	if _, ok := ParseCheckpointName("000000000042.tar.gz.tmp"); ok {
 		t.Fatal("a temporary file is no checkpoint")
+	}
+}
+
+func TestInputFrames(t *testing.T) {
+	var buf bytes.Buffer
+	stmt := []byte("INSERT INTO `t` VALUES (1,'a\x00\xff\n'),(2,NULL)")
+	if err := WriteInput(&buf, Input{Type: InputRestoreRows, Schema: "s", Table: "t"}, stmt); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteInput(&buf, Input{Type: InputRestoreDone, GTID: "0-1-5", Tables: []string{"s.t", "s.u", "x.y"}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	r := bufio.NewReader(&buf)
+	in, p, err := ReadInput(r)
+	if err != nil || in.Type != InputRestoreRows || in.Table != "t" || !bytes.Equal(p, stmt) {
+		t.Fatalf("rows frame: %+v %q %v", in, p, err)
+	}
+	in, p, err = ReadInput(r)
+	if err != nil || in.Type != InputRestoreDone || in.GTID != "0-1-5" || len(p) != 0 {
+		t.Fatalf("done frame: %+v %v", in, err)
+	}
+	if rules := RulesOf(in.Tables); len(rules) != 2 || len(rules[0].Tables) != 2 || rules[1].Schema != "x" {
+		t.Fatalf("rules: %+v", rules)
+	}
+	if _, _, err := ReadInput(r); err != io.EOF {
+		t.Fatalf("end: %v", err)
 	}
 }

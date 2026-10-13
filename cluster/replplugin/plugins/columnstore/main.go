@@ -4,30 +4,28 @@
 
 // replplugin-columnstore captures a source's carried tables as checkpoints (#2015), which
 // replication-manager applies to a ColumnStore copy with LOAD DATA: ColumnStore takes no
-// row UPDATE or DELETE from replication. It starts from an existing splitdump backup of the
-// source, no dump of its own: every data file of a carried table becomes a checkpoint, the
-// last one carrying the backup's GTID. Then it reads the source's binlog from that GTID
-// (go-mysql canal, MariaDB compressed events included) and writes a checkpoint per period,
-// at a transaction boundary: the keys to delete and the rows to load per table. It pauses
-// while the checkpoints not yet applied exceed max_pending_mb, the splitdump and the
-// binlog alike. Started and supervised by replication-manager, its passwords in its
-// environment; a wire.Status JSON line on stdout per period; its position in its State file,
-// written after each checkpoint, so a restart re-reads what no checkpoint holds yet.
+// row UPDATE or DELETE from replication. Started before the child's seed, it reads on stdin
+// the rows of the ColumnStore tables the restore parses from the parent's splitdump backup,
+// then the restore's end, with the backup's GTID and the tables carried; only then it reads
+// the source's binlog from that GTID (go-mysql canal, MariaDB compressed events included).
+// Everything it receives is accumulated per period (batch_timeout_ms) and written as a
+// checkpoint at a transaction boundary: per table the keys to delete and the rows to load.
+// It pauses while the checkpoints not yet applied exceed max_pending_mb: its stdin is not
+// read, the restore slows down; the binlog is not read. Supervised by replication-manager,
+// its passwords in its environment; a wire.Status JSON line on stdout per period; its
+// position in its State file, written after each checkpoint, so a restart re-reads what no
+// checkpoint holds yet. A restart during the restore cannot resume it: a new seed is needed.
 package main
 
 import (
-	"compress/gzip"
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -38,7 +36,6 @@ import (
 	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/go-mysql-org/go-mysql/schema"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
-	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
 type capture struct {
@@ -135,8 +132,8 @@ func (c *capture) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
 	return nil
 }
 
-// OnPosSynced follows the GTID after each transaction, and closes the period there when it
-// is due (its time is over, or batch_size rows).
+// OnPosSynced follows the GTID after each transaction, and closes the period there when its
+// time is over.
 func (c *capture) OnPosSynced(_ *replication.EventHeader, _ mysql.Position, set mysql.GTIDSet, _ bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -146,7 +143,7 @@ func (c *capture) OnPosSynced(_ *replication.EventHeader, _ mysql.Position, set 
 	if c.inTx {
 		return nil
 	}
-	if c.flushDue || (c.cfg.BatchSize > 0 && c.rows >= c.cfg.BatchSize) {
+	if c.flushDue {
 		return c.flushLocked()
 	}
 	return nil
@@ -216,105 +213,72 @@ func (c *capture) statusLocked(state, errText string) {
 	fmt.Println(string(b))
 }
 
-// snapshot turns the carried tables of the splitdump backup into checkpoints, a data file
-// each, then a last one carrying the backup's GTID. Files already done (State) are skipped.
-func (c *capture) snapshot() error {
-	dir := c.cfg.StartBackup
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return fmt.Errorf("splitdump backup %s: %w", dir, err)
-	}
-	done := map[string]bool{}
-	for _, f := range c.state.SnapshotFiles {
-		done[f] = true
-	}
-	var names []string
-	for _, e := range entries {
-		n := e.Name()
-		if e.IsDir() || splitdump.IsSchemaFile(n) || splitdump.IsPostFile(n) || splitdump.IsMysqlSystemAll(n) {
-			continue
+// restore reads the restore's frames on stdin (#2015): the rows of each INSERT go into the
+// period, loaded into the table the restore created; at the restore's end the period is
+// written with the backup's GTID and started is closed, the binlog streams from there.
+// Reading waits while a checkpoint waits for room (c.mu is held): the restore's writes
+// block, the restore slows down.
+func (c *capture) restore(stdin io.Reader, started chan<- struct{}) error {
+	br := bufio.NewReaderSize(stdin, 1<<20)
+	for {
+		in, payload, err := wire.ReadInput(br)
+		if err == io.EOF {
+			return fmt.Errorf("the restore's input ended before its end")
 		}
-		if !strings.HasSuffix(n, ".sql.gz") && !strings.HasSuffix(n, ".sql") {
-			continue
-		}
-		s, t := splitdump.SchemaFromFilename(n), splitdump.TableFromFilename(n)
-		if s == "" || t == "" || !c.cfg.Matches(s, t) || done[n] {
-			continue
-		}
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		s, t := splitdump.SchemaFromFilename(n), splitdump.TableFromFilename(n)
-		table, err := c.c.GetTable(s, t)
-		if err != nil {
-			return fmt.Errorf("schema of %s.%s on the source: %w", s, t, err)
-		}
-		b := newTableBuf(table)
-		if err := readDumpFile(filepath.Join(dir, n), func(v []dumpValue) error {
-			r := make(row, len(table.Columns))
-			for i := range table.Columns {
-				if i < len(v) {
-					r[i] = dumpField(&table.Columns[i], v[i])
-				}
-			}
-			b.list = append(b.list, r) // a fresh table: rows to load, no key to delete
-			return nil
-		}); err != nil {
-			return fmt.Errorf("%s: %w", n, err)
-		}
-		var ins []byte
-		for _, r := range b.list {
-			ins = wire.EncodeTSV(ins, r)
-		}
-		seq := c.state.Seq + 1
-		tf := wire.TableFiles{Schema: s, Table: t, KeyColumns: b.keyNames(), InsertRows: int64(len(b.list))}
-		files := map[string][]byte{}
-		if len(b.list) > 0 {
-			tf.Inserts = "0.inserts.tsv"
-			files[tf.Inserts] = ins
-		}
-		if err := c.w.write(wire.Manifest{Seq: seq, Snapshot: true, Tables: []wire.TableFiles{tf}}, files); err != nil {
-			return fmt.Errorf("checkpoint %d: %w", seq, err)
-		}
-		c.mu.Lock()
-		c.state.Seq = seq
-		c.state.SnapshotFiles = append(c.state.SnapshotFiles, n)
-		c.st.Inserts += int64(len(b.list))
-		err = wire.WriteState(c.statePath, c.state)
-		c.mu.Unlock()
 		if err != nil {
 			return err
 		}
-		c.status(wire.StateRunning, "")
+		switch in.Type {
+		case wire.InputRestoreRows:
+			if err := c.restoreRows(in.Schema, in.Table, payload); err != nil {
+				return fmt.Errorf("restore of %s.%s: %w", in.Schema, in.Table, err)
+			}
+		case wire.InputRestoreDone:
+			if in.GTID == "" {
+				return fmt.Errorf("the restore's end has no GTID")
+			}
+			c.mu.Lock()
+			c.cfg.Rules = wire.RulesOf(in.Tables)
+			c.gtid = in.GTID
+			c.state.RestoreDone, c.state.Tables = true, in.Tables
+			err := c.flushLocked() // the last restored rows, with the GTID, and the State
+			if err == nil {
+				err = wire.WriteState(c.statePath, c.state)
+			}
+			c.mu.Unlock()
+			if err != nil {
+				return err
+			}
+			close(started)
+			return nil
+		default:
+			return fmt.Errorf("unknown input %q", in.Type)
+		}
 	}
-	seq := c.state.Seq + 1
-	if err := c.w.write(wire.Manifest{Seq: seq, Snapshot: true, GTID: c.cfg.StartGTID}, nil); err != nil {
-		return fmt.Errorf("checkpoint %d: %w", seq, err)
+}
+
+func (c *capture) restoreRows(schemaName, tableName string, stmt []byte) error {
+	table, err := c.c.GetTable(schemaName, tableName)
+	if err != nil {
+		return fmt.Errorf("its schema on the source: %w", err)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.state.Seq, c.state.GTID, c.state.SnapshotDone, c.state.SnapshotFiles = seq, c.cfg.StartGTID, true, nil
-	c.gtid = c.cfg.StartGTID
-	return wire.WriteState(c.statePath, c.state)
-}
-
-func readDumpFile(path string, fn func([]dumpValue) error) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	var r io.Reader = f
-	if strings.HasSuffix(path, ".gz") {
-		gz, err := gzip.NewReader(f)
-		if err != nil {
-			return err
+	b := c.buf(table)
+	n := 0
+	err = parseInsert(stmt, func(v []dumpValue) error {
+		r := make(row, len(table.Columns))
+		for i := range table.Columns {
+			if i < len(v) {
+				r[i] = dumpField(&table.Columns[i], v[i])
+			}
 		}
-		defer gz.Close()
-		r = gz
-	}
-	return forEachInsert(r, fn)
+		b.loads = append(b.loads, r)
+		n++
+		return nil
+	})
+	c.st.Inserts += int64(n)
+	return err
 }
 
 func truncate(s string, n int) string {
@@ -322,25 +286,6 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
-}
-
-// includeRegex: canal's table filter, "schema\.table" of the rules
-func includeRegex(cfg *wire.Config) []string {
-	var out []string
-	for _, r := range cfg.Rules {
-		if len(r.Tables) == 0 {
-			out = append(out, regexp.QuoteMeta(r.Schema)+`\..*`)
-			continue
-		}
-		for _, t := range r.Tables {
-			if t == "*" {
-				out = append(out, regexp.QuoteMeta(r.Schema)+`\..*`)
-			} else {
-				out = append(out, regexp.QuoteMeta(r.Schema)+`\.`+regexp.QuoteMeta(t))
-			}
-		}
-	}
-	return out
 }
 
 func fail(c *capture, err error) {
@@ -366,9 +311,6 @@ func main() {
 	if v := os.Getenv(wire.EnvWireVersion); v != "" && v != strconv.Itoa(wire.WireVersion) {
 		fail(nil, fmt.Errorf("replication-manager speaks wire %s, this plugin wire %d", v, wire.WireVersion))
 	}
-	if len(cfg.Rules) == 0 {
-		fail(nil, fmt.Errorf("no rule: nothing to carry"))
-	}
 	if cfg.BatchTimeoutMs <= 0 {
 		cfg.BatchTimeoutMs = 10000
 	}
@@ -377,8 +319,11 @@ func main() {
 	if err != nil {
 		fail(nil, fmt.Errorf("state %s: %w", statePath, err))
 	}
-	if !state.SnapshotDone && (cfg.StartBackup == "" || cfg.StartGTID == "") {
-		fail(nil, fmt.Errorf("no start_backup or start_gtid: where to start is unknown"))
+	if !state.RestoreDone && state.Seq > 0 {
+		fail(nil, fmt.Errorf("a restore was interrupted after %d checkpoints: the child must be seeded again", state.Seq))
+	}
+	if state.RestoreDone && len(cfg.Rules) == 0 {
+		cfg.Rules = wire.RulesOf(state.Tables)
 	}
 
 	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID}
@@ -396,8 +341,9 @@ func main() {
 	if cfg.ServerID > 0 {
 		ccfg.ServerID = cfg.ServerID
 	}
-	ccfg.Dump.ExecutionPath = "" // no dump: the splitdump backup is the start
-	ccfg.IncludeTableRegex = includeRegex(&cfg)
+	ccfg.Dump.ExecutionPath = "" // no dump: the restore's rows come on stdin
+	// the tables carried are known at the restore's end: filtered in OnRow
+	ccfg.ExcludeTableRegex = []string{`mysql\..*`, `replication_manager_schema\..*`}
 	cc, err := canal.NewCanal(ccfg)
 	if err != nil {
 		fail(c, fmt.Errorf("source %s: %w", ccfg.Addr, err))
@@ -408,27 +354,46 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	c.status(wire.StateStarting, "")
-	if !state.SnapshotDone {
-		snap := make(chan error, 1)
-		go func() { snap <- c.snapshot() }()
-		select {
-		case err := <-snap:
-			if err != nil {
-				fail(c, err)
+	ticker := time.NewTicker(time.Duration(cfg.BatchTimeoutMs) * time.Millisecond)
+	defer ticker.Stop()
+
+	started := make(chan struct{})
+	if state.RestoreDone {
+		close(started)
+	} else {
+		c.mu.Lock()
+		c.st.Description = "waiting for the restore's rows"
+		c.mu.Unlock()
+		restored := make(chan error, 1)
+		go func() { restored <- c.restore(os.Stdin, started) }()
+	restoring:
+		for {
+			select {
+			case err := <-restored:
+				if err != nil {
+					fail(c, err)
+				}
+				break restoring
+			case <-ticker.C:
+				if err := c.tick(); err != nil {
+					fail(c, err)
+				}
+				c.status(wire.StateRunning, "")
+			case <-sig:
+				os.Exit(0)
 			}
-		case <-sig:
-			os.Exit(0)
 		}
+		c.mu.Lock()
+		c.st.Description = ""
+		c.mu.Unlock()
 	}
+	<-started
 	gset, err := mysql.ParseGTIDSet(mysql.MariaDBFlavor, c.state.GTID)
 	if err != nil {
 		fail(c, fmt.Errorf("GTID %q: %w", c.state.GTID, err))
 	}
 	done := make(chan error, 1)
 	go func() { done <- cc.StartFromGTID(gset) }()
-
-	ticker := time.NewTicker(time.Duration(cfg.BatchTimeoutMs) * time.Millisecond)
-	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:

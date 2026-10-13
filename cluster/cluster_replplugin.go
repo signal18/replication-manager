@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,6 +54,57 @@ type replPluginRunner struct {
 	status  atomic.Pointer[wire.Status]
 	stopped atomic.Pointer[replPluginStop] // nil while the process runs
 	applied atomic.Pointer[replApplied]    // what the applier applied to the target
+
+	inMu  sync.Mutex     // one frame at a time on stdin
+	stdin io.WriteCloser // the running process's, nil when none
+	gen   int64          // the process started, counted
+}
+
+// replFeed is a restore feeding a plugin's stdin (#2015): the process it started with, so a
+// plugin restarted during the restore, which lost the rows of its period, fails the restore.
+type replFeed struct {
+	path string
+	mu   sync.Mutex
+	gen  int64 // 0 until the first frame
+}
+
+// replPluginFeedWait: how long a frame waits for the plugin's process (the next tick starts it)
+const replPluginFeedWait = 2 * time.Minute
+
+// send writes a frame to the plugin of the feed, waiting for its process to run.
+func (cluster *Cluster) sendReplPluginInput(f *replFeed, in wire.Input, payload []byte) error {
+	deadline := time.Now().Add(replPluginFeedWait)
+	for {
+		cluster.replPluginsMu.Lock()
+		r := cluster.replPlugins[f.path]
+		cluster.replPluginsMu.Unlock()
+		if r != nil {
+			r.inMu.Lock()
+			if r.stdin != nil {
+				f.mu.Lock()
+				if f.gen == 0 {
+					f.gen = r.gen
+				}
+				gen := f.gen
+				f.mu.Unlock()
+				if gen != r.gen {
+					r.inMu.Unlock()
+					return fmt.Errorf("replication plugin %s restarted during the restore", filepath.Base(f.path))
+				}
+				err := wire.WriteInput(r.stdin, in, payload)
+				r.inMu.Unlock()
+				if err != nil {
+					return fmt.Errorf("replication plugin %s: %w", filepath.Base(f.path), err)
+				}
+				return nil
+			}
+			r.inMu.Unlock()
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("replication plugin %s is not running", filepath.Base(f.path))
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 // replPluginClaims: the TOMLs a runner of this process holds, whatever the cluster object
@@ -250,12 +302,25 @@ func (cluster *Cluster) execReplPlugin(ctx context.Context, r *replPluginRunner)
 	if err != nil {
 		return err
 	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
 	var stderr capBuffer
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	r.stopped.Store(nil)
+	r.inMu.Lock()
+	r.stdin = stdin
+	r.gen++
+	r.inMu.Unlock()
+	defer func() {
+		r.inMu.Lock()
+		r.stdin = nil
+		r.inMu.Unlock()
+	}()
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {

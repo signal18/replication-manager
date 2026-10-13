@@ -491,7 +491,21 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		meta := bcksrv.LastBackupMeta.Logical
 		split, _ := isSplitDumpDir(backupfile)
 		if split {
+			// a ColumnStore child (#2015): the restore feeds replplugin-columnstore its
+			// ColumnStore tables' rows, the plugin streams the binlog after it
+			feed := cluster.HasConfigTopoColumnstore() && target.IsMaster()
+			if feed {
+				if err := cluster.startColumnstoreChild(parent, target, channel, backupfile); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ColumnStore child %s: %s", cluster.Name, err)
+					return "", fmt.Errorf("ColumnStore child preparation: %w", err)
+				}
+			}
 			err = target.reseedMysqldumpWithMetadata(context.Background(), backupfile, false, meta)
+			if feed {
+				if ferr := cluster.finishColumnstoreChild(target, channel, backupfile, err == nil); ferr != nil && err == nil {
+					err = fmt.Errorf("ColumnStore child: %w", ferr)
+				}
+			}
 		} else {
 			if meta != nil && !meta.SplitUser {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed mysqldump with no split user is not supported")
@@ -534,15 +548,6 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	}
 
 	target.JobsUpdateStateRuntimeOnly(task, "Reseed completed", 3, 1)
-
-	// a ColumnStore child (#2015): its ColumnStore tables are carried by replplugin-columnstore,
-	// the channel ignores them, set before it starts
-	if cluster.HasConfigTopoColumnstore() && target.IsMaster() {
-		if err := cluster.prepareColumnstoreChild(parent, target, channel, backupfile); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ColumnStore child %s: %s", cluster.Name, err)
-			return "", fmt.Errorf("ColumnStore child preparation: %w", err)
-		}
-	}
 
 	if target.IsMaster() {
 		_, err2 := target.StartSlaveChannel(channel)

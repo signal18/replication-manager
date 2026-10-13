@@ -580,6 +580,7 @@ type Cluster struct {
 	engineSwitch         atomic.Pointer[EngineSwitch]         `json:"-"`
 	columnstoreRebalance atomic.Pointer[ColumnstoreRebalance] `json:"-"`
 	replPlugins          map[string]*replPluginRunner         `json:"-"` // replication plugins by TOML path (#2015)
+	columnstoreFeed      atomic.Pointer[replFeed]             `json:"-"` // the seed's restore feeding replplugin-columnstore (#2015)
 	replPluginsMu        sync.Mutex                           `json:"-"`
 }
 
