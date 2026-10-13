@@ -984,6 +984,12 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 			return err
 		}
 	}
+	// ColumnStore applying its parent's replication (columnstore_replication.go)
+	if TemplateEnv[ColumnstoreReplicationEnv] == "ON" {
+		if err := configurator.writeColumnstoreReplicationSlave(Datadir); err != nil {
+			return err
+		}
+	}
 	// Galera on MariaDB: the SST account is created at datadir init (init/ is the image's
 	// /docker-entrypoint-initdb.d), so the bootstrap node holds it before any node joins
 	if configurator.galeraSocketSST() {

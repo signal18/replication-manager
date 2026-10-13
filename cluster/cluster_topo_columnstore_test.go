@@ -88,3 +88,34 @@ func TestColumnstoreRebalanceCopyNames(t *testing.T) {
 		t.Fatal("a rebalance outside the columnstore topology must be refused")
 	}
 }
+
+// #2014: columnstore_replication_slave goes to the UM applying the parent's replication only:
+// a columnstore child's single UM, or with several UMs its master; never without a parent.
+func TestColumnstoreReplicationSlave(t *testing.T) {
+	cl := newColumnstoreTestCluster()
+	if err := cl.BootstrapTopology(config.TopoColumnstore); err != nil {
+		t.Fatal(err)
+	}
+	um1 := &ServerMonitor{Id: "db1", ClusterGroup: cl}
+	cl.Servers = []*ServerMonitor{um1}
+	if got := um1.columnstoreReplicationSlave(); got != "OFF" {
+		t.Fatalf("no parent: %s, want OFF", got)
+	}
+	cl.Conf.ReplicationMultisourceHeadClusters = "belair"
+	if got := um1.columnstoreReplicationSlave(); got != "ON" {
+		t.Fatalf("single UM of a child: %s, want ON", got)
+	}
+	um2 := &ServerMonitor{Id: "db2", ClusterGroup: cl}
+	cl.Servers = append(cl.Servers, um2)
+	cl.master = um1
+	if a, b := um1.columnstoreReplicationSlave(), um2.columnstoreReplicationSlave(); a != "ON" || b != "OFF" {
+		t.Fatalf("two UMs: master %s, other %s; want ON, OFF", a, b)
+	}
+	ap := newColumnstoreTestCluster()
+	ap.Conf.ReplicationMultisourceHeadClusters = "belair"
+	db := &ServerMonitor{Id: "db1", ClusterGroup: ap}
+	ap.Servers = []*ServerMonitor{db}
+	if got := db.columnstoreReplicationSlave(); got != "OFF" {
+		t.Fatalf("not columnstore: %s, want OFF", got)
+	}
+}
