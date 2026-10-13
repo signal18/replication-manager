@@ -115,3 +115,21 @@ func TestGetMysqlBackupDumpOptionsPositionComment(t *testing.T) {
 		}
 	}
 }
+
+// A MySQL/Percona dump leaves out the replica's parallel applier state; MariaDB has no such table.
+func TestGetMysqlDumpOptionsIgnoreWorkerInfo(t *testing.T) {
+	for flavor, want := range map[string]bool{"MySQL": true, "Percona": true, "MariaDB": false} {
+		cl, server := newTestClusterServer(t)
+		server.Id = "db1"
+		server.DBVersion = &version.Version{Flavor: flavor, Major: 8, Minor: 0, Release: 35}
+		server.Variables = config.NewStringsMap()
+		cl.VersionsMap = config.NewVersionsMap()
+		cl.VersionsMap.Set("client-dump", server.DBVersion)
+		cl.master = server
+		for _, args := range [][]string{cl.GetMysqlBackupDumpOptions(server, ""), cl.GetMysqlDumpOptions(server, "")} {
+			if got := slices.Contains(args, "--ignore-table=mysql.slave_worker_info"); got != want {
+				t.Fatalf("%s: --ignore-table=mysql.slave_worker_info %v, want %v: %v", flavor, got, want, args)
+			}
+		}
+	}
+}

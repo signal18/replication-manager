@@ -118,6 +118,10 @@ recorded in the backup metadata. The dump itself never runs `CHANGE MASTER`,
 `STOP SLAVE`, or `START SLAVE`; replication-manager applies those operations to
 the managed channel during a reseed.
 
+On MySQL and Percona, the dump also excludes `mysql.slave_worker_info`: its
+parallel-applier state belongs to the source replica and would break the next
+`CHANGE REPLICATION SOURCE` on a restored server.
+
 ## Checking a backup
 
 The backup metadata carries `execRemote: true`. Its `backupToolVersion` is the

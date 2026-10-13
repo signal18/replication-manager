@@ -234,6 +234,10 @@ The commented position remains visible to the backup metadata parser. It keeps
 the dump from replaying unqualified replication statements on a multi-source
 replica; the reseed owns replication setup explicitly.
 
+For MySQL and Percona, both dump paths also exclude
+`mysql.slave_worker_info`. It is local parallel-applier state and a restored
+copy causes the following `CHANGE REPLICATION SOURCE` to fail.
+
 ## Settings
 
 | Key | Default | Use |

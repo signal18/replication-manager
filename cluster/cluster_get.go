@@ -115,6 +115,12 @@ func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid strin
 		dumpargs = append(dumpargs, "--apply-slave-statements")
 	}
 	dumpargs = append(dumpargs, "--ignore-table=replication_manager_schema.jobs")
+	if server.DBVersion.IsMySQLOrPercona() {
+		// The replica's own parallel applier state, which mysqldump does not leave out like the
+		// other replication metadata tables: restored from another server it breaks the next
+		// CHANGE REPLICATION SOURCE (error 1201, "Error reading replica worker configuration").
+		dumpargs = append(dumpargs, "--ignore-table=mysql.slave_worker_info")
+	}
 	if cluster.Conf.BackupSplitMysqlUser && !slices.Contains(dumpargs, "--ignore-table=mysql.user") {
 		// Ignore mysql.user table to avoid dump of password this is needed for staging
 		dumpargs = append(dumpargs, "--ignore-table=mysql.user")
