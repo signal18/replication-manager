@@ -566,7 +566,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 				}
 			}
 		}
-	} else if err := cluster.openSVCPurgeObjects(svc, server.Agent, cluster.openSVCServiceObjects(server.ServiceName, server.Name)...); err != nil {
+	} else if err := cluster.openSVCPurgeObjects(svc, server.Agent, cluster.openSVCDBServiceObjects(server.ServiceName, server.Name)...); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database:  %s ", err)
 		opErr = err
 	}
