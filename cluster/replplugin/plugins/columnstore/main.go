@@ -2,27 +2,32 @@
 // Copyright 2017-2026 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
-// replplugin-columnstore carries a source's row changes to a ColumnStore copy as statements
-// (#2015): ColumnStore applies a replicated INSERT, but its row-level update and delete do
-// nothing (ha_mcs_impl_update_row, ha_mcs_impl_delete_row), and a replica cannot turn row
-// events into statements. It reads the source's binlog from a GTID (go-mysql canal, MariaDB
-// compressed events included), and writes each source transaction as one target
-// transaction: a multi-row INSERT, an UPDATE or a DELETE keyed by the source's primary key.
-// Started and supervised by replication-manager with its TOML and its passwords in the
-// environment; one wire.Status JSON line on stdout per period; its position in its State
-// file, written after each committed transaction (at least once: a crash between the
-// commit and the write replays that transaction).
+// replplugin-columnstore captures a source's carried tables as checkpoints (#2015), which
+// replication-manager applies to a ColumnStore copy with LOAD DATA: ColumnStore takes no
+// row UPDATE or DELETE from replication. It starts from an existing splitdump backup of the
+// source, no dump of its own: every data file of a carried table becomes a checkpoint, the
+// last one carrying the backup's GTID. Then it reads the source's binlog from that GTID
+// (go-mysql canal, MariaDB compressed events included) and writes a checkpoint per period,
+// at a transaction boundary: the keys to delete and the rows to load per table. It pauses
+// while the checkpoints not yet applied exceed max_pending_mb, the splitdump and the
+// binlog alike. Started and supervised by replication-manager, its passwords in its
+// environment; a wire.Status JSON line on stdout per period; its position in its State file,
+// written after each checkpoint, so a restart re-reads what no checkpoint holds yet.
 package main
 
 import (
-	"database/sql"
+	"compress/gzip"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -31,169 +36,285 @@ import (
 	"github.com/go-mysql-org/go-mysql/canal"
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-mysql-org/go-mysql/schema"
 	"github.com/signal18/replication-manager/cluster/replplugin/wire"
+	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
-// stateEvery: the State file is written at most once per period (and at exit)
-const stateEvery = time.Second
-
-type applier struct {
+type capture struct {
 	canal.DummyEventHandler
 	cfg       wire.Config
 	statePath string
-	target    *sql.DB
+	c         *canal.Canal
+	w         *checkpointWriter
 
-	mu        sync.Mutex
-	tx        *sql.Tx
-	st        wire.Status
-	lastTS    uint32 // source time of the last committed transaction
-	pendingTS uint32
-	gtid      string
-	savedGTID string
-	savedAt   time.Time
-	keyErrs   map[string]bool
+	mu       sync.Mutex
+	state    wire.State
+	bufs     map[string]*tableBuf
+	rows     int  // rows buffered in the period
+	inTx     bool // between a transaction's first row and its XID
+	flushDue bool // the period ended inside a transaction
+	gtid     string
+	lastTS   uint32 // source time of the last captured transaction
+	st       wire.Status
+	keyErrs  map[string]bool
 }
 
-func (a *applier) begin() (*sql.Tx, error) {
-	if a.tx != nil {
-		return a.tx, nil
+func (c *capture) buf(t *schema.Table) *tableBuf {
+	k := t.Schema + "." + t.Name
+	b, ok := c.bufs[k]
+	if !ok || b.t != t {
+		// a new table, or its schema changed (a DDL): a new buffer is fine once the old
+		// one was flushed; within a period the old buffer keeps its rows
+		if ok && !b.empty() {
+			return b
+		}
+		b = newTableBuf(t)
+		c.bufs[k] = b
 	}
-	tx, err := a.target.Begin()
-	if err != nil {
-		return nil, err
-	}
-	a.tx = tx
-	return tx, nil
+	return b
 }
 
-func (a *applier) exec(q string, args []interface{}) error {
-	tx, err := a.begin()
-	if err != nil {
-		return err
+func (c *capture) tsv(t *schema.Table, r []interface{}) row {
+	out := make(row, len(t.Columns))
+	for i := range t.Columns {
+		if i < len(r) {
+			out[i] = tsvField(&t.Columns[i], r[i])
+		}
 	}
-	if _, err := tx.Exec(q, args...); err != nil {
-		return fmt.Errorf("%s: %w", q, err)
-	}
-	return nil
+	return out
 }
 
-// OnRow writes the rows of an event as statements in the open target transaction.
-func (a *applier) OnRow(e *canal.RowsEvent) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if !a.cfg.Matches(e.Table.Schema, e.Table.Name) {
-		a.st.Skipped += int64(len(e.Rows))
+// OnRow buffers the rows of an event in the period.
+func (c *capture) OnRow(e *canal.RowsEvent) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.cfg.Matches(e.Table.Schema, e.Table.Name) {
+		c.st.Skipped += int64(len(e.Rows))
 		return nil
 	}
-	a.pendingTS = e.Header.Timestamp
+	c.inTx = true
+	c.lastTS = e.Header.Timestamp
+	b := c.buf(e.Table)
+	if b.keyErr != nil && e.Action != canal.InsertAction {
+		// updates and deletes cannot be applied: said once, rows counted as skipped
+		name := e.Table.Schema + "." + e.Table.Name
+		if !c.keyErrs[name] {
+			c.keyErrs[name] = true
+			c.st.Description = b.keyErr.Error()
+		}
+		c.st.Skipped += int64(len(e.Rows))
+		return nil
+	}
 	switch e.Action {
 	case canal.InsertAction:
-		q, args := insertStatement(e.Table, e.Rows)
-		if err := a.exec(q, args); err != nil {
-			return err
+		for _, r := range e.Rows {
+			b.insert(c.tsv(e.Table, r))
+			c.st.Inserts++
 		}
-		a.st.Inserts += int64(len(e.Rows))
-	case canal.UpdateAction, canal.DeleteAction:
-		key, err := keyColumns(e.Table)
-		if err != nil {
-			// the table is skipped for updates and deletes, said once in the status
-			name := e.Table.Schema + "." + e.Table.Name
-			if !a.keyErrs[name] {
-				a.keyErrs[name] = true
-				a.st.Description = err.Error()
-			}
-			a.st.Skipped += int64(len(e.Rows))
-			return nil
+	case canal.DeleteAction:
+		for _, r := range e.Rows {
+			b.remove(c.tsv(e.Table, r))
+			c.st.Deletes++
 		}
-		if e.Action == canal.UpdateAction {
-			for i := 0; i+1 < len(e.Rows); i += 2 {
-				q, args := updateStatement(e.Table, key, e.Rows[i], e.Rows[i+1])
-				if err := a.exec(q, args); err != nil {
-					return err
-				}
-				a.st.Updates++
-			}
-		} else {
-			for _, row := range e.Rows {
-				q, args := deleteStatement(e.Table, key, row)
-				if err := a.exec(q, args); err != nil {
-					return err
-				}
-				a.st.Deletes++
-			}
+	case canal.UpdateAction:
+		for i := 0; i+1 < len(e.Rows); i += 2 {
+			b.remove(c.tsv(e.Table, e.Rows[i]))
+			b.insert(c.tsv(e.Table, e.Rows[i+1]))
+			c.st.Updates++
 		}
 	}
+	c.rows += len(e.Rows)
 	return nil
 }
 
-// OnXID commits the target transaction of the source transaction.
-func (a *applier) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.tx == nil {
+func (c *capture) OnXID(_ *replication.EventHeader, _ mysql.Position) error {
+	c.mu.Lock()
+	c.inTx = false
+	c.mu.Unlock()
+	return nil
+}
+
+// OnPosSynced follows the GTID after each transaction, and closes the period there when it
+// is due (its time is over, or batch_size rows).
+func (c *capture) OnPosSynced(_ *replication.EventHeader, _ mysql.Position, set mysql.GTIDSet, _ bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if set != nil {
+		c.gtid = set.String()
+	}
+	if c.inTx {
 		return nil
 	}
-	err := a.tx.Commit()
-	a.tx = nil
-	if err != nil {
-		return fmt.Errorf("commit: %w", err)
-	}
-	if a.pendingTS > 0 {
-		a.lastTS = a.pendingTS
+	if c.flushDue || (c.cfg.BatchSize > 0 && c.rows >= c.cfg.BatchSize) {
+		return c.flushLocked()
 	}
 	return nil
 }
 
-// OnPosSynced follows the source's GTID after each transaction and writes the State file,
-// at most once per stateEvery.
-func (a *applier) OnPosSynced(_ *replication.EventHeader, _ mysql.Position, set mysql.GTIDSet, force bool) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if set == nil || a.tx != nil {
+func (c *capture) OnDDL(_ *replication.EventHeader, _ mysql.Position, q *replication.QueryEvent) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.st.Description = "a DDL on the source is not applied to ColumnStore: " + truncate(string(q.Query), 200)
+	return nil
+}
+
+func (c *capture) String() string { return "replplugin-columnstore" }
+
+// flushLocked writes the period as a checkpoint at the current GTID, then the State. Its
+// wait for room blocks the binlog reading: the pause.
+func (c *capture) flushLocked() error {
+	c.flushDue = false
+	tables, files := renderTables(c.bufs)
+	if len(tables) == 0 {
+		if c.gtid != "" && c.gtid != c.state.GTID {
+			c.state.GTID = c.gtid
+			return wire.WriteState(c.statePath, c.state)
+		}
 		return nil
 	}
-	a.gtid = set.String()
-	if force || time.Since(a.savedAt) >= stateEvery {
-		return a.saveLocked()
+	seq := c.state.Seq + 1
+	if err := c.w.write(wire.Manifest{Seq: seq, GTID: c.gtid, Tables: tables}, files); err != nil {
+		return fmt.Errorf("checkpoint %d: %w", seq, err)
 	}
+	c.state.Seq, c.state.GTID = seq, c.gtid
+	if err := wire.WriteState(c.statePath, c.state); err != nil {
+		return err
+	}
+	c.bufs, c.rows = map[string]*tableBuf{}, 0
 	return nil
 }
 
-func (a *applier) OnDDL(_ *replication.EventHeader, _ mysql.Position, q *replication.QueryEvent) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.st.Description = "a DDL on the source is not applied to ColumnStore: " + truncate(string(q.Query), 200)
-	return nil
-}
-
-func (a *applier) String() string { return "replplugin-columnstore" }
-
-func (a *applier) saveLocked() error {
-	if a.gtid == "" || a.gtid == a.savedGTID {
+// tick ends the period: flushed now between transactions, else at the next transaction end.
+func (c *capture) tick() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inTx {
+		c.flushDue = true
 		return nil
 	}
-	if err := wire.WriteState(a.statePath, wire.State{GTID: a.gtid}); err != nil {
-		return fmt.Errorf("state %s: %w", a.statePath, err)
-	}
-	a.savedGTID, a.savedAt = a.gtid, time.Now()
-	return nil
+	return c.flushLocked()
 }
 
 // status prints one wire.Status line.
-func (a *applier) status(state, errText string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.st.Wire = wire.WireVersion
-	a.st.Time = time.Now().UTC().Format(time.RFC3339)
-	a.st.State = state
-	a.st.Error = errText
-	a.st.GTID = a.gtid
-	if a.lastTS > 0 {
-		a.st.LagSeconds = time.Now().Unix() - int64(a.lastTS)
+func (c *capture) status(state, errText string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.statusLocked(state, errText)
+}
+
+func (c *capture) statusLocked(state, errText string) {
+	c.st.Wire = wire.WireVersion
+	c.st.Time = time.Now().UTC().Format(time.RFC3339)
+	c.st.State = state
+	c.st.Error = errText
+	c.st.GTID = c.state.GTID
+	if c.lastTS > 0 {
+		c.st.LagSeconds = time.Now().Unix() - int64(c.lastTS)
 	}
-	b, _ := json.Marshal(a.st)
+	b, _ := json.Marshal(c.st)
 	fmt.Println(string(b))
+}
+
+// snapshot turns the carried tables of the splitdump backup into checkpoints, a data file
+// each, then a last one carrying the backup's GTID. Files already done (State) are skipped.
+func (c *capture) snapshot() error {
+	dir := c.cfg.StartBackup
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("splitdump backup %s: %w", dir, err)
+	}
+	done := map[string]bool{}
+	for _, f := range c.state.SnapshotFiles {
+		done[f] = true
+	}
+	var names []string
+	for _, e := range entries {
+		n := e.Name()
+		if e.IsDir() || splitdump.IsSchemaFile(n) || splitdump.IsPostFile(n) || splitdump.IsMysqlSystemAll(n) {
+			continue
+		}
+		if !strings.HasSuffix(n, ".sql.gz") && !strings.HasSuffix(n, ".sql") {
+			continue
+		}
+		s, t := splitdump.SchemaFromFilename(n), splitdump.TableFromFilename(n)
+		if s == "" || t == "" || !c.cfg.Matches(s, t) || done[n] {
+			continue
+		}
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		s, t := splitdump.SchemaFromFilename(n), splitdump.TableFromFilename(n)
+		table, err := c.c.GetTable(s, t)
+		if err != nil {
+			return fmt.Errorf("schema of %s.%s on the source: %w", s, t, err)
+		}
+		b := newTableBuf(table)
+		if err := readDumpFile(filepath.Join(dir, n), func(v []dumpValue) error {
+			r := make(row, len(table.Columns))
+			for i := range table.Columns {
+				if i < len(v) {
+					r[i] = dumpField(&table.Columns[i], v[i])
+				}
+			}
+			b.list = append(b.list, r) // a fresh table: rows to load, no key to delete
+			return nil
+		}); err != nil {
+			return fmt.Errorf("%s: %w", n, err)
+		}
+		var ins []byte
+		for _, r := range b.list {
+			ins = wire.EncodeTSV(ins, r)
+		}
+		seq := c.state.Seq + 1
+		tf := wire.TableFiles{Schema: s, Table: t, KeyColumns: b.keyNames(), InsertRows: int64(len(b.list))}
+		files := map[string][]byte{}
+		if len(b.list) > 0 {
+			tf.Inserts = "0.inserts.tsv"
+			files[tf.Inserts] = ins
+		}
+		if err := c.w.write(wire.Manifest{Seq: seq, Snapshot: true, Tables: []wire.TableFiles{tf}}, files); err != nil {
+			return fmt.Errorf("checkpoint %d: %w", seq, err)
+		}
+		c.mu.Lock()
+		c.state.Seq = seq
+		c.state.SnapshotFiles = append(c.state.SnapshotFiles, n)
+		c.st.Inserts += int64(len(b.list))
+		err = wire.WriteState(c.statePath, c.state)
+		c.mu.Unlock()
+		if err != nil {
+			return err
+		}
+		c.status(wire.StateRunning, "")
+	}
+	seq := c.state.Seq + 1
+	if err := c.w.write(wire.Manifest{Seq: seq, Snapshot: true, GTID: c.cfg.StartGTID}, nil); err != nil {
+		return fmt.Errorf("checkpoint %d: %w", seq, err)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.state.Seq, c.state.GTID, c.state.SnapshotDone, c.state.SnapshotFiles = seq, c.cfg.StartGTID, true, nil
+	c.gtid = c.cfg.StartGTID
+	return wire.WriteState(c.statePath, c.state)
+}
+
+func readDumpFile(path string, fn func([]dumpValue) error) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	var r io.Reader = f
+	if strings.HasSuffix(path, ".gz") {
+		gz, err := gzip.NewReader(f)
+		if err != nil {
+			return err
+		}
+		defer gz.Close()
+		r = gz
+	}
+	return forEachInsert(r, fn)
 }
 
 func truncate(s string, n int) string {
@@ -222,9 +343,9 @@ func includeRegex(cfg *wire.Config) []string {
 	return out
 }
 
-func fail(a *applier, err error) {
-	if a != nil {
-		a.status(wire.StateError, err.Error())
+func fail(c *capture, err error) {
+	if c != nil {
+		c.status(wire.StateError, err.Error())
 	} else {
 		b, _ := json.Marshal(wire.Status{Wire: wire.WireVersion, Time: time.Now().UTC().Format(time.RFC3339), State: wire.StateError, Error: err.Error()})
 		fmt.Println(string(b))
@@ -256,29 +377,16 @@ func main() {
 	if err != nil {
 		fail(nil, fmt.Errorf("state %s: %w", statePath, err))
 	}
-	start := state.GTID
-	if start == "" {
-		start = cfg.StartGTID
-	}
-	if start == "" {
-		fail(nil, fmt.Errorf("no start_gtid and no state: where to start is unknown"))
-	}
-	gset, err := mysql.ParseGTIDSet(mysql.MariaDBFlavor, start)
-	if err != nil {
-		fail(nil, fmt.Errorf("GTID %q: %w", start, err))
+	if !state.SnapshotDone && (cfg.StartBackup == "" || cfg.StartGTID == "") {
+		fail(nil, fmt.Errorf("no start_backup or start_gtid: where to start is unknown"))
 	}
 
-	target, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/?interpolateParams=true&charset=utf8mb4&parseTime=false",
-		cfg.Target.User, os.Getenv(wire.EnvTargetPassword), cfg.Target.Host, cfg.Target.Port))
-	if err != nil {
-		fail(nil, err)
-	}
-	target.SetMaxOpenConns(1)
-	if err := target.Ping(); err != nil {
-		fail(nil, fmt.Errorf("target %s:%d: %w", cfg.Target.Host, cfg.Target.Port, err))
-	}
-
-	a := &applier{cfg: cfg, statePath: statePath, target: target, gtid: start, savedGTID: state.GTID, keyErrs: map[string]bool{}}
+	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID}
+	c.w = &checkpointWriter{dir: wire.CheckpointDir(*configPath), maxPending: mbBytes(cfg.MaxPendingMB), paused: func(p int64) {
+		c.mu.Lock()
+		c.st.Description = fmt.Sprintf("paused: %d MB of checkpoints wait to be applied (max_pending_mb %d)", p>>20, mbBytes(cfg.MaxPendingMB)>>20)
+		c.mu.Unlock()
+	}}
 
 	ccfg := canal.NewDefaultConfig()
 	ccfg.Addr = fmt.Sprintf("%s:%d", cfg.Source.Host, cfg.Source.Port)
@@ -288,58 +396,54 @@ func main() {
 	if cfg.ServerID > 0 {
 		ccfg.ServerID = cfg.ServerID
 	}
-	ccfg.Dump.ExecutionPath = "" // no dump: the target was seeded, the plugin starts at its GTID
+	ccfg.Dump.ExecutionPath = "" // no dump: the splitdump backup is the start
 	ccfg.IncludeTableRegex = includeRegex(&cfg)
-	c, err := canal.NewCanal(ccfg)
+	cc, err := canal.NewCanal(ccfg)
 	if err != nil {
-		fail(a, fmt.Errorf("source %s: %w", ccfg.Addr, err))
+		fail(c, fmt.Errorf("source %s: %w", ccfg.Addr, err))
 	}
-	c.SetEventHandler(a)
+	c.c = cc
+	cc.SetEventHandler(c)
 
-	a.status(wire.StateStarting, "")
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	c.status(wire.StateStarting, "")
+	if !state.SnapshotDone {
+		snap := make(chan error, 1)
+		go func() { snap <- c.snapshot() }()
+		select {
+		case err := <-snap:
+			if err != nil {
+				fail(c, err)
+			}
+		case <-sig:
+			os.Exit(0)
+		}
+	}
+	gset, err := mysql.ParseGTIDSet(mysql.MariaDBFlavor, c.state.GTID)
+	if err != nil {
+		fail(c, fmt.Errorf("GTID %q: %w", c.state.GTID, err))
+	}
 	done := make(chan error, 1)
-	go func() { done <- c.StartFromGTID(gset) }()
+	go func() { done <- cc.StartFromGTID(gset) }()
 
 	ticker := time.NewTicker(time.Duration(cfg.BatchTimeoutMs) * time.Millisecond)
 	defer ticker.Stop()
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	for {
 		select {
 		case <-ticker.C:
-			a.mu.Lock()
-			err := a.saveLocked()
-			a.mu.Unlock()
-			if err != nil {
-				fail(a, err)
+			if err := c.tick(); err != nil {
+				fail(c, err)
 			}
-			a.status(wire.StateRunning, "")
+			c.status(wire.StateRunning, "")
 		case <-sig:
-			c.Close()
-			a.mu.Lock()
-			if a.tx != nil {
-				a.tx.Rollback()
-				a.tx = nil
-			}
-			err := a.saveLocked()
-			a.mu.Unlock()
-			if err != nil {
-				fail(a, err)
-			}
-			a.status(wire.StateRunning, "")
-			os.Exit(0)
+			cc.Close()
+			os.Exit(0) // what no checkpoint holds is read again from the State's GTID
 		case err := <-done:
-			a.mu.Lock()
-			if a.tx != nil {
-				a.tx.Rollback()
-				a.tx = nil
-			}
-			a.saveLocked()
-			a.mu.Unlock()
 			if err == nil {
 				err = fmt.Errorf("the source stream ended")
 			}
-			fail(a, err)
+			fail(c, err)
 		}
 	}
 }

@@ -7,10 +7,14 @@
 package dbhelper
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"strings"
+
+	"github.com/go-sql-driver/mysql"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/version"
@@ -193,4 +197,53 @@ func SetChannelReplicateIgnoreTable(ctx context.Context, db *sqlx.DB, myver *ver
 	q2 := "SET GLOBAL replicate_ignore_table = " + QuoteMySQLString(strings.Join(tables, ","))
 	_, err = conn.ExecContext(ctx, q2)
 	return q1 + "; " + q2, err
+}
+
+// DeleteRowsByKey deletes, in one statement, the rows of schema.table whose key columns
+// hold one of keys (a NULL key part matched with IS NULL): the deletes of a replication
+// plugin's checkpoint (#2015).
+func DeleteRowsByKey(ctx context.Context, conn *sqlx.Conn, schema, table string, keyColumns []string, keys [][]interface{}) (string, error) {
+	if len(keys) == 0 || len(keyColumns) == 0 {
+		return "", nil
+	}
+	quoted, err := QuoteMySQLTableIdentifier(schema + "." + table)
+	if err != nil {
+		return "", err
+	}
+	var ors []string
+	var args []interface{}
+	for _, k := range keys {
+		if len(k) != len(keyColumns) {
+			return "", fmt.Errorf("a key of %d values for %d key columns", len(k), len(keyColumns))
+		}
+		parts := make([]string, len(keyColumns))
+		for i, c := range keyColumns {
+			if k[i] == nil {
+				parts[i] = QuoteMySQLIdentifier(c) + " IS NULL"
+				continue
+			}
+			parts[i] = QuoteMySQLIdentifier(c) + " = ?"
+			args = append(args, k[i])
+		}
+		ors = append(ors, "("+strings.Join(parts, " AND ")+")")
+	}
+	query := "DELETE FROM " + quoted + " WHERE " + strings.Join(ors, " OR ")
+	_, err = conn.ExecContext(ctx, query, args...)
+	return query, err
+}
+
+// LoadDataLocal loads rows in LOAD DATA's default format (tab-separated, \N for NULL,
+// backslash escapes) into schema.table from memory, through the driver's reader handler:
+// nothing is written on the server's disk. CHARACTER SET binary: the bytes are the
+// source's, in the column's charset already.
+func LoadDataLocal(ctx context.Context, conn *sqlx.Conn, schema, table, name string, data []byte) (string, error) {
+	quoted, err := QuoteMySQLTableIdentifier(schema + "." + table)
+	if err != nil {
+		return "", err
+	}
+	mysql.RegisterReaderHandler(name, func() io.Reader { return bytes.NewReader(data) })
+	defer mysql.DeregisterReaderHandler(name)
+	query := "LOAD DATA LOCAL INFILE 'Reader::" + name + "' INTO TABLE " + quoted + " CHARACTER SET binary"
+	_, err = conn.ExecContext(ctx, query)
+	return query, err
 }

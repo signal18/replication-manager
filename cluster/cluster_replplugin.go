@@ -52,7 +52,12 @@ type replPluginRunner struct {
 
 	status  atomic.Pointer[wire.Status]
 	stopped atomic.Pointer[replPluginStop] // nil while the process runs
+	applied atomic.Pointer[replApplied]    // what the applier applied to the target
 }
+
+// replPluginClaims: the TOMLs a runner of this process holds, whatever the cluster object
+// (preprod: two runners of one TOML connected twice with the same server_id).
+var replPluginClaims sync.Map
 
 type replPluginStop struct {
 	Reason  string
@@ -124,11 +129,18 @@ func (cluster *Cluster) CheckReplicationPlugins() {
 }
 
 func (cluster *Cluster) startReplPluginLocked(path string, c wire.Config, mod time.Time) {
+	if _, held := replPluginClaims.LoadOrStore(path, cluster); held {
+		return // another runner of this process holds it: never two
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &replPluginRunner{path: path, modTime: mod, cfg: c, cancel: cancel, done: make(chan struct{})}
 	cluster.replPlugins[path] = r
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication plugin %s of %s: starting (%s)", c.Plugin, cluster.Name, path)
-	go cluster.superviseReplPlugin(ctx, r)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); cluster.superviseReplPlugin(ctx, r) }()
+	go func() { defer wg.Done(); cluster.applyReplCheckpoints(ctx, r) }()
+	go func() { wg.Wait(); replPluginClaims.Delete(path); close(r.done) }()
 }
 
 func (cluster *Cluster) stopReplPluginLocked(path string, r *replPluginRunner) {
@@ -155,7 +167,6 @@ func (cluster *Cluster) StopReplicationPlugins() {
 // superviseReplPlugin runs a plugin until its context ends, restarting it with a backoff
 // (back to the minimum after a run of 10 minutes).
 func (cluster *Cluster) superviseReplPlugin(ctx context.Context, r *replPluginRunner) {
-	defer close(r.done)
 	defer func() {
 		if p := recover(); p != nil {
 			r.stopped.Store(&replPluginStop{Reason: fmt.Sprintf("panic in its supervisor: %v", p)})
@@ -282,6 +293,13 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 			cluster.SetState("WARN0242", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0242"], name, cluster.Name, stop.Reason, in), ErrFrom: "REPL"})
 			continue
 		}
+		ap := r.applied.Load()
+		if ap == nil {
+			ap = &replApplied{}
+		}
+		if ap.Err != "" {
+			cluster.SetState("WARN0243", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0243"], name, cluster.Name, ap.Err), ErrFrom: "REPL"})
+		}
 		st := r.status.Load()
 		if st == nil {
 			continue
@@ -290,7 +308,8 @@ func (cluster *Cluster) checkReplPluginStates(runners []*replPluginRunner, errs 
 		if st.Description != "" {
 			detail = "; " + st.Description
 		}
-		cluster.SetState("CINF0017", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0017"], name, cluster.Name, st.State, st.GTID, st.LagSeconds, st.Inserts, st.Updates, st.Deletes, st.Skipped, detail), ErrFrom: "REPL"})
+		pendingMB := wire.PendingBytes(wire.CheckpointDir(r.path)) >> 20
+		cluster.SetState("CINF0017", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0017"], name, cluster.Name, st.State, st.GTID, ap.Seq, ap.GTID, pendingMB, st.LagSeconds, st.Inserts, st.Updates, st.Deletes, st.Skipped, detail), ErrFrom: "REPL"})
 	}
 	for path, err := range errs {
 		cluster.SetState("WARN0242", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0242"], filepath.Base(path), cluster.Name, "its TOML does not parse: "+err.Error(), time.Duration(0)), ErrFrom: "REPL"})

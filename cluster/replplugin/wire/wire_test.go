@@ -31,3 +31,27 @@ func TestRulesAndState(t *testing.T) {
 		t.Fatalf("read back %v %v", s, err)
 	}
 }
+
+func TestTSVAndCheckpointNames(t *testing.T) {
+	row := []interface{}{nil, "a\tb\nc\\d", []byte{0, 'x'}, int64(-5), "", "N"}
+	line := EncodeTSV(nil, row)
+	if string(line) != "\\N\ta\\tb\\nc\\\\d\t\\0x\t-5\t\tN\n" {
+		t.Fatalf("encoded %q", line)
+	}
+	got := DecodeTSV(line[:len(line)-1])
+	want := [][]byte{nil, []byte("a\tb\nc\\d"), {0, 'x'}, []byte("-5"), {}, []byte("N")}
+	if len(got) != len(want) {
+		t.Fatalf("decoded %q", got)
+	}
+	for i := range want {
+		if (want[i] == nil) != (got[i] == nil) || string(want[i]) != string(got[i]) {
+			t.Fatalf("field %d: %q, want %q", i, got[i], want[i])
+		}
+	}
+	if n, ok := ParseCheckpointName(CheckpointName(42)); !ok || n != 42 {
+		t.Fatalf("checkpoint name %s", CheckpointName(42))
+	}
+	if _, ok := ParseCheckpointName("000000000042.tar.gz.tmp"); ok {
+		t.Fatal("a temporary file is no checkpoint")
+	}
+}

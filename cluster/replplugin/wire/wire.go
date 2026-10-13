@@ -13,8 +13,10 @@ package wire
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -61,6 +63,12 @@ type Config struct {
 	// StartGTID: where the plugin starts when it has no State yet (a ColumnStore child:
 	// the GTID of its seed)
 	StartGTID string `toml:"start_gtid" json:"startGtid"`
+	// StartBackup: the splitdump backup the plugin starts from (#2015): its carried tables
+	// become the first checkpoints, then the binlog from StartGTID, the backup's GTID
+	StartBackup string `toml:"start_backup" json:"startBackup"`
+	// MaxPendingMB: the plugin pauses (no more splitdump converted, no more binlog read)
+	// while the checkpoints waiting to be applied take more than this; 0: 1024
+	MaxPendingMB int `toml:"max_pending_mb" json:"maxPendingMb"`
 	// SourceChannel: the target's native replication channel from the same source, which
 	// ignores the tables this plugin carries (replicate_ignore_table), "" when none
 	SourceChannel string `toml:"source_channel" json:"sourceChannel"`
@@ -124,7 +132,18 @@ type Status struct {
 }
 
 // State is a plugin's position, <name>.state.json next to its TOML: where it restarts.
+// SnapshotDone: every splitdump piece is a checkpoint; Seq: the last checkpoint written.
 type State struct {
+	GTID         string `json:"gtid"`
+	SnapshotDone bool   `json:"snapshotDone"`
+	Seq          int64  `json:"seq"`
+	// SnapshotFiles: the splitdump data files already turned into checkpoints
+	SnapshotFiles []string `json:"snapshotFiles,omitempty"`
+}
+
+// Applied is what replication-manager applied to the target, <name>.applied.json.
+type Applied struct {
+	Seq  int64  `json:"seq"`
 	GTID string `json:"gtid"`
 }
 
@@ -166,4 +185,156 @@ func WriteState(path string, s State) error {
 // StatePath is the State file of a plugin TOML: name.toml -> name.state.json.
 func StatePath(configPath string) string {
 	return strings.TrimSuffix(configPath, filepath.Ext(configPath)) + ".state.json"
+}
+
+// CheckpointDir is the directory of a plugin's checkpoints, <name>.checkpoints next to its TOML.
+func CheckpointDir(configPath string) string {
+	return strings.TrimSuffix(configPath, filepath.Ext(configPath)) + ".checkpoints"
+}
+
+// AppliedPath is the file replication-manager records the applied checkpoints in.
+func AppliedPath(configPath string) string {
+	return strings.TrimSuffix(configPath, filepath.Ext(configPath)) + ".applied.json"
+}
+
+// CheckpointName is the file of checkpoint seq, sorted by name in the order of seq.
+func CheckpointName(seq int64) string {
+	return fmt.Sprintf("%012d.tar.gz", seq)
+}
+
+// ParseCheckpointName returns the seq of a checkpoint file, false for any other file.
+func ParseCheckpointName(name string) (int64, bool) {
+	if !strings.HasSuffix(name, ".tar.gz") || len(name) != 12+len(".tar.gz") {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(strings.TrimSuffix(name, ".tar.gz"), 10, 64)
+	return n, err == nil
+}
+
+// ManifestName is the manifest inside a checkpoint tar.gz.
+const ManifestName = "manifest.json"
+
+// Manifest describes a checkpoint: the rows of each table to delete (by key) then to load.
+// GTID is the source position the target is at once the checkpoint is applied, "" for a
+// splitdump piece before the last one (the target is consistent only at the end).
+type Manifest struct {
+	Wire     int          `json:"wire"`
+	Seq      int64        `json:"seq"`
+	GTID     string       `json:"gtid"`
+	Snapshot bool         `json:"snapshot"`
+	Tables   []TableFiles `json:"tables"`
+}
+
+// TableFiles are the files of one table in a checkpoint, tab-separated in LOAD DATA's
+// default format (EncodeTSV). Deletes holds the KeyColumns of the rows to delete, those of
+// the loaded rows included (a checkpoint applied twice gives the same table); Inserts holds
+// every column, in the table's order.
+type TableFiles struct {
+	Schema     string   `json:"schema"`
+	Table      string   `json:"table"`
+	KeyColumns []string `json:"keyColumns"`
+	Deletes    string   `json:"deletes,omitempty"`
+	DeleteRows int64    `json:"deleteRows"`
+	Inserts    string   `json:"inserts,omitempty"`
+	InsertRows int64    `json:"insertRows"`
+}
+
+// PendingBytes is the size of the checkpoints waiting in dir.
+func PendingBytes(dir string) int64 {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	var n int64
+	for _, e := range entries {
+		if _, ok := ParseCheckpointName(e.Name()); !ok {
+			continue
+		}
+		if info, err := e.Info(); err == nil {
+			n += info.Size()
+		}
+	}
+	return n
+}
+
+// EncodeTSV appends one row in LOAD DATA's default format: fields separated by a tab, the
+// row ended by a newline, NULL as \N, backslash, tab, newline, carriage return and NUL
+// escaped by a backslash. A value is nil, a string or bytes (its text).
+func EncodeTSV(buf []byte, fields []interface{}) []byte {
+	for i, f := range fields {
+		if i > 0 {
+			buf = append(buf, '\t')
+		}
+		var s []byte
+		switch v := f.(type) {
+		case nil:
+			buf = append(buf, '\\', 'N')
+			continue
+		case string:
+			s = []byte(v)
+		case []byte:
+			s = v
+		default:
+			s = []byte(fmt.Sprint(v))
+		}
+		for _, c := range s {
+			switch c {
+			case '\\':
+				buf = append(buf, '\\', '\\')
+			case '\t':
+				buf = append(buf, '\\', 't')
+			case '\n':
+				buf = append(buf, '\\', 'n')
+			case '\r':
+				buf = append(buf, '\\', 'r')
+			case 0:
+				buf = append(buf, '\\', '0')
+			default:
+				buf = append(buf, c)
+			}
+		}
+	}
+	return append(buf, '\n')
+}
+
+// DecodeTSV reads one row written by EncodeTSV (without its newline): nil for \N, else
+// the bytes.
+func DecodeTSV(line []byte) [][]byte {
+	var out [][]byte
+	var cur []byte
+	null := false
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch {
+		case c == '\t':
+			if null {
+				out = append(out, nil)
+			} else {
+				out = append(out, append([]byte{}, cur...))
+			}
+			cur, null = cur[:0], false
+		case c == '\\' && i+1 < len(line):
+			i++
+			switch line[i] {
+			case 'N':
+				null = true
+			case 't':
+				cur = append(cur, '\t')
+			case 'n':
+				cur = append(cur, '\n')
+			case 'r':
+				cur = append(cur, '\r')
+			case '0':
+				cur = append(cur, 0)
+			default:
+				cur = append(cur, line[i])
+			}
+		default:
+			cur = append(cur, c)
+		}
+	}
+	if null {
+		return append(out, nil)
+	}
+	return append(out, append([]byte{}, cur...))
 }

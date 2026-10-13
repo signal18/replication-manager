@@ -1841,6 +1841,18 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 		}
 	}
 
+	// #2015: into a ColumnStore cluster, the data of a ColumnStore table (converted in the
+	// schema phase) comes from the replication plugin's checkpoints, LOAD DATA from the same
+	// backup, not from these INSERTs
+	if cluster.HasConfigTopoColumnstore() && schema != "mysql" && schema != "replication_manager_schema" && table != "" &&
+		!splitdump.IsSchemaFile(path) && !splitdump.IsPostFile(path) {
+		if opts, _, err := dbhelper.GetTableOptions(server.Conn, server.DBVersion, schema, table); err == nil && strings.EqualFold(opts.Engine, "Columnstore") {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+				"Splitdump restore: %s left to the replication plugin, %s.%s is ColumnStore", filepath.Base(path), schema, table)
+			return nil
+		}
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return err

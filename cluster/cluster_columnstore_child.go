@@ -24,13 +24,15 @@ import (
 
 // A ColumnStore child of an OLTP parent (#2002, #2015): ColumnStore takes no row UPDATE or
 // DELETE from replication, so the child's ColumnStore tables are carried by the
-// replplugin-columnstore plugin, as statements, and its native channel from the parent
-// ignores them (replicate_ignore_table); the tables left InnoDB (replication_manager_schema,
-// a table ColumnStore cannot hold) keep replicating natively. Prepared after the seed's
-// restore, before the channel starts: the plugin's TOML (its rules are the child's
-// ColumnStore tables, its start the backup's GTID), and the channel's ignore list. The
-// same list is rendered into the UM's configuration bundle, for its next start
-// (configurator.ColumnstoreReplicateIgnoreEnv).
+// replplugin-columnstore plugin: it turns the seed's splitdump backup into checkpoints, then
+// the parent's binlog from the backup's GTID, which replication-manager applies with LOAD
+// DATA (the seed created those tables but did not load their data). The child's native
+// channel from the parent ignores them (replicate_ignore_table); the tables left InnoDB
+// (replication_manager_schema, a table ColumnStore cannot hold) keep replicating natively.
+// Prepared after the seed's restore, before the channel starts: the plugin's TOML (its
+// rules are the child's ColumnStore tables, its start the backup and its GTID) and the
+// channel's ignore list. The same list is rendered into the UM's configuration bundle, for
+// its next start (configurator.ColumnstoreReplicateIgnoreEnv).
 
 const columnstorePluginName = "columnstore"
 
@@ -75,6 +77,8 @@ func (cluster *Cluster) prepareColumnstoreChild(parent *Cluster, target *ServerM
 		BatchSize:      1000,
 		BatchTimeoutMs: 10000,
 		StartGTID:      meta.GTID,
+		StartBackup:    backupPath,
+		MaxPendingMB:   1024,
 		SourceChannel:  channel,
 	}
 	bySchema := map[string][]string{}
@@ -93,8 +97,10 @@ func (cluster *Cluster) prepareColumnstoreChild(parent *Cluster, target *ServerM
 	if err := writeReplPluginConfig(cluster.columnstorePluginPath(), cfg); err != nil {
 		return err
 	}
-	// a fresh seed: the plugin starts at the backup's GTID, not at an older position
+	// a fresh seed: the plugin starts from this backup, nothing of an older one kept
 	os.Remove(wire.StatePath(cluster.columnstorePluginPath()))
+	os.Remove(wire.AppliedPath(cluster.columnstorePluginPath()))
+	os.RemoveAll(wire.CheckpointDir(cluster.columnstorePluginPath()))
 	list, _ := cfg.Tables()
 	q, err = dbhelper.SetChannelReplicateIgnoreTable(context.Background(), target.Conn, target.DBVersion, channel, list)
 	cluster.LogSQL(q, err, target.URL, "ColumnstoreChild", config.LvlErr, "Ignore list of channel %s on %s: %s", channel, target.URL, err)

@@ -11,19 +11,9 @@ import (
 	"github.com/go-mysql-org/go-mysql/schema"
 )
 
-// The statements this plugin writes on ColumnStore (#2015): ColumnStore applies UPDATE and
-// DELETE as statements only, so each row change of the source becomes a statement keyed
-// by the source's primary key (the ColumnStore copy has no key: #2010). Pure, so tested
-// without a database.
-
-// quote quotes an identifier with backticks.
-func quote(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
-}
-
-func tableName(t *schema.Table) string {
-	return quote(t.Schema) + "." + quote(t.Name)
-}
+// How the plugin finds a row on the target and writes its values (#2015): rows are found by
+// the source's primary key (the ColumnStore copy has no key: #2010), ENUM and SET written as
+// their text. Pure, so tested without a database.
 
 // filterable: ColumnStore refuses a BLOB or TEXT column in a WHERE ("VARBINARY/BLOB in
 // filter or function is not supported"), JSON and BINARY included, converted to them (#2010)
@@ -104,57 +94,4 @@ func toInt(v interface{}) (int64, bool) {
 		return int64(n), true
 	}
 	return 0, false
-}
-
-// whereKey is "`a` = ? AND `b` IS NULL ..." for the key columns of a row, and its arguments.
-func whereKey(t *schema.Table, key []int, row []interface{}) (string, []interface{}) {
-	parts := make([]string, 0, len(key))
-	var args []interface{}
-	for _, i := range key {
-		c := &t.Columns[i]
-		if row[i] == nil {
-			parts = append(parts, quote(c.Name)+" IS NULL")
-			continue
-		}
-		parts = append(parts, quote(c.Name)+" = ?")
-		args = append(args, value(c, row[i]))
-	}
-	return strings.Join(parts, " AND "), args
-}
-
-// insertStatement is one multi-row INSERT of the rows of an event.
-func insertStatement(t *schema.Table, rows [][]interface{}) (string, []interface{}) {
-	cols := make([]string, len(t.Columns))
-	for i := range t.Columns {
-		cols[i] = quote(t.Columns[i].Name)
-	}
-	one := "(" + strings.TrimSuffix(strings.Repeat("?, ", len(cols)), ", ") + ")"
-	values := make([]string, len(rows))
-	var args []interface{}
-	for r, row := range rows {
-		values[r] = one
-		for i := range t.Columns {
-			args = append(args, value(&t.Columns[i], row[i]))
-		}
-	}
-	return "INSERT INTO " + tableName(t) + " (" + strings.Join(cols, ", ") + ") VALUES " + strings.Join(values, ", "), args
-}
-
-// updateStatement sets every column to the after image, on the row found by the key of
-// the before image.
-func updateStatement(t *schema.Table, key []int, before, after []interface{}) (string, []interface{}) {
-	sets := make([]string, len(t.Columns))
-	var args []interface{}
-	for i := range t.Columns {
-		sets[i] = quote(t.Columns[i].Name) + " = ?"
-		args = append(args, value(&t.Columns[i], after[i]))
-	}
-	where, wargs := whereKey(t, key, before)
-	return "UPDATE " + tableName(t) + " SET " + strings.Join(sets, ", ") + " WHERE " + where, append(args, wargs...)
-}
-
-// deleteStatement deletes the row found by the key of its image.
-func deleteStatement(t *schema.Table, key []int, row []interface{}) (string, []interface{}) {
-	where, args := whereKey(t, key, row)
-	return "DELETE FROM " + tableName(t) + " WHERE " + where, args
 }
