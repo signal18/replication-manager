@@ -137,11 +137,15 @@ func (b *tableBuf) changes() (dels, ins []byte, ndel, nins int64) {
 		dels = wire.EncodeTSV(dels, b.deletes[k])
 		ndel++
 	}
+	// a key is in order once per insert after a delete (an update: delete then insert), its
+	// row is written once, the last (preprod: 6 updates of one row loaded it 6 times)
+	written := map[string]bool{}
 	for _, k := range b.order {
 		r, ok := b.inserts[k]
-		if !ok {
+		if !ok || written[k] {
 			continue
 		}
+		written[k] = true
 		if !seen[k] {
 			seen[k] = true
 			dels = wire.EncodeTSV(dels, b.keyOf(r))
