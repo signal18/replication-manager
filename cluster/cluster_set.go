@@ -55,6 +55,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkFreshNodeStates()                // CINF0013 on a StandAlone server proven fresh (#1979)
 	cluster.checkStagingCreationStates()          // CINF0014 while create-staging/child runs, WARN0239 when it stopped (#1988)
 	cluster.checkEngineSwitchStates()             // CINF0015 while an engine switch runs, WARN0240 when it stopped (#1999)
+	cluster.checkColumnstoreRebalanceStates()     // CINF0016 while a ColumnStore rebalance runs, WARN0241 when it stopped (#2008)
 	cluster.checkArchiveRemoveOriginalStates()    // WARN0238 while an archived original could not be removed (#1987)
 	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
 	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)

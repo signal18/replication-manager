@@ -145,6 +145,7 @@ func TestACLURLBuilding(t *testing.T) {
 		"cluster-create-staging":           "/api/clusters/c1/actions/create-staging",
 		"cluster-create-child":             "/api/clusters/c1/actions/create-child",
 		"cluster-alter-engine":             "/api/clusters/c1/actions/alter-engine",
+		"cluster-rebalance-columnstore":    "/api/clusters/c1/actions/columnstore-rebalance",
 		"get-database-variables":           "/api/clusters/c1/servers/db1/variables",
 		"cluster-set-setting":              "/api/clusters/c1/settings/actions/set/failover-mode/manual",
 		"cluster-archive-purge":            "/api/clusters/c1/restic/purge/abc",

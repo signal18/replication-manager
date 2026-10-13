@@ -804,6 +804,50 @@ definitions:
           $ref: '#/definitions/cluster.UnitBillingRow'
         type: array
     type: object
+  cluster.ColumnstoreRebalancePlan:
+    properties:
+      cluster:
+        type: string
+      dbroots:
+        items:
+          type: integer
+        type: array
+      notes:
+        items:
+          type: string
+        type: array
+      schema:
+        type: string
+      server:
+        type: string
+      skipped:
+        items:
+          $ref: '#/definitions/cluster.ColumnstoreRebalanceTable'
+        type: array
+      tables:
+        items:
+          $ref: '#/definitions/cluster.ColumnstoreRebalanceTable'
+        type: array
+      totalBytes:
+        type: integer
+    type: object
+  cluster.ColumnstoreRebalanceTable:
+    properties:
+      bytes:
+        description: data size of its extents
+        type: integer
+      extents:
+        additionalProperties:
+          type: integer
+        description: dbroot -> extents
+        type: object
+      reason:
+        type: string
+      schema:
+        type: string
+      table:
+        type: string
+    type: object
   cluster.Diff:
     properties:
       role:
@@ -1384,6 +1428,13 @@ definitions:
         type: string
       provAppCpuCores:
         type: string
+      provAppDbCredentials:
+        description: |-
+          ProvAppDbCredentials: the app receives the cluster's database root password
+          (MYSQL_ROOT_PASSWORD from the cluster's env secret), like the cluster's database
+          servers. For an app that is part of the database itself: a ColumnStore PM, deployed
+          as an app for its active-passive DRBD placement (#2002). Set by its template.
+        type: boolean
       provAppDiskIops:
         type: string
       provAppDiskSize:
@@ -3224,6 +3275,10 @@ definitions:
         type: boolean
       provDbVolumeData:
         type: string
+      provDbVolumeDataFailover:
+        description: 'active-passive: the failover-capable pool of the single server''s
+          data volume (#2004)'
+        type: string
       provDbVolumeDocker:
         type: string
       provDbVolumeUid:
@@ -4220,6 +4275,19 @@ definitions:
         type: string
       username:
         type: string
+    type: object
+  server.ColumnstoreRebalanceRequest:
+    properties:
+      confirm:
+        type: boolean
+      schema:
+        description: 'optional: one schema only'
+        type: string
+    type: object
+  server.ColumnstoreRebalanceTableRequest:
+    properties:
+      confirm:
+        type: boolean
     type: object
   server.CredentialMailForm:
     properties:
@@ -5608,6 +5676,63 @@ paths:
       summary: Compute Repair for all tables in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/actions/columnstore-rebalance:
+    post:
+      consumes:
+      - application/json
+      description: 'Plans (confirm false) or runs (confirm true) the rebuild of every
+        ColumnStore table, optionally of one schema, whose extents are not on every
+        dbroot (a PM added since it was written). Columnstore topology only. Each
+        table is copied into schema.table__rebalance under FLUSH TABLES ... WITH READ
+        LOCK (its writes wait, its reads go on), then swapped by an atomic RENAME
+        and the original dropped. Runs on the UM in the background, one table at a
+        time, stopping at the first error: progress CINF0016, stop WARN0241. Needs
+        db-optimize.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: schema, confirm
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/server.ColumnstoreRebalanceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plan (confirm false)
+          schema:
+            $ref: '#/definitions/cluster.ColumnstoreRebalancePlan'
+        "202":
+          description: Rebalance started (confirm true)
+          schema:
+            $ref: '#/definitions/cluster.ColumnstoreRebalancePlan'
+        "400":
+          description: 'Refused: the reason (not a columnstore cluster, a rebalance
+            running, nothing to rebalance...)'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No cluster
+          schema:
+            type: string
+      summary: Rebalance the ColumnStore tables over every dbroot
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/create-child:
     post:
       consumes:
@@ -11135,6 +11260,69 @@ paths:
       summary: Calculate checksum for a specific table in a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/columnstore-rebalance:
+    post:
+      consumes:
+      - application/json
+      description: 'Plans (confirm false) or runs (confirm true) the rebuild of schemaName.tableName
+        so that its extents spread over every dbroot: a copy under a table read lock
+        (writes wait, reads go on), an atomic RENAME, the original dropped. Refused
+        outside the columnstore topology, for a table already on every dbroot, or
+        with a copy of a previous rebalance left. Runs in the background: CINF0016,
+        WARN0241 on a stop. Needs db-optimize.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Schema Name
+        in: path
+        name: schemaName
+        required: true
+        type: string
+      - description: Table Name
+        in: path
+        name: tableName
+        required: true
+        type: string
+      - description: confirm
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/server.ColumnstoreRebalanceTableRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: The plan (confirm false)
+          schema:
+            $ref: '#/definitions/cluster.ColumnstoreRebalancePlan'
+        "202":
+          description: Rebalance started (confirm true)
+          schema:
+            $ref: '#/definitions/cluster.ColumnstoreRebalancePlan'
+        "400":
+          description: 'Refused: the reason'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: No cluster
+          schema:
+            type: string
+      summary: Rebalance one ColumnStore table over every dbroot
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/move-table/{clusterShard}:
     post:
       consumes:

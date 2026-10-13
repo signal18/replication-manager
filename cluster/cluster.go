@@ -577,7 +577,8 @@ type Cluster struct {
 	stagingCreation atomic.Pointer[StagingCreation] `json:"-"`
 
 	// storage engine switch progress and outcome (cluster_engine_switch.go, #1999)
-	engineSwitch atomic.Pointer[EngineSwitch] `json:"-"`
+	engineSwitch         atomic.Pointer[EngineSwitch]         `json:"-"`
+	columnstoreRebalance atomic.Pointer[ColumnstoreRebalance] `json:"-"`
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both

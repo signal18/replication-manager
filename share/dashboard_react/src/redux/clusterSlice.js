@@ -2084,6 +2084,25 @@ export const alterEngine = createGuardedAsyncThunk(
   }
 )
 
+// ColumnStore rebalance (#2008), confirm true; the plan is read by the modal directly.
+export const rebalanceColumnstore = createGuardedAsyncThunk(
+  'cluster/rebalanceColumnstore',
+  async (args, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.rebalanceColumnstore({ ...args, confirm: true }, baseURL)
+      if (status !== 202 && status !== 200) {
+        throw new Error(typeof data === 'string' && data.trim() ? data.trim() : `HTTP ${status}`)
+      }
+      showSuccessBanner(`ColumnStore rebalance started: ${(data?.tables || []).length} table(s)`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`ColumnStore rebalance failed!`, error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const revokeApiToken = createGuardedAsyncThunk(
   'cluster/revokeApiToken',
   async ({ tokenId, clusterName }, thunkAPI) => {

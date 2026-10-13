@@ -144,6 +144,7 @@ export const clusterService = {
   toggleDatabaseActions,
   checksumTable,
   alterEngine,
+  rebalanceColumnstore,
   checksumRepairTable,
   checksumSchema,
   checksumRepairSchema,
@@ -766,6 +767,15 @@ function alterEngine({ clusterName, schema, table, engineFrom, engineTo, confirm
     return getApi(baseURL).post(`clusters/${clusterName}/schema/${schema}/${table}/actions/alter-engine/${engineTo}`, { confirm })
   }
   return getApi(baseURL).post(`clusters/${clusterName}/actions/alter-engine`, { engineFrom, engineTo, schema, confirm })
+}
+
+// ColumnStore rebalance (#2008): one table when a table is given, else every ColumnStore
+// table not on every dbroot (optionally of one schema). confirm false returns the plan.
+function rebalanceColumnstore({ clusterName, schema, table, confirm }, baseURL) {
+  if (table) {
+    return getApi(baseURL).post(`clusters/${clusterName}/schema/${schema}/${table}/actions/columnstore-rebalance`, { confirm })
+  }
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/columnstore-rebalance`, { schema, confirm })
 }
 function checksumTable(clusterName, schema, table, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/${table}/actions/checksum-table`)

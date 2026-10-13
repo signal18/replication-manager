@@ -397,6 +397,55 @@ func (s *MCPServer) registerClusterWriteTools() {
 		},
 	)
 
+	// cluster-rebalance-columnstore and cluster-rebalance-columnstore-table (#2008): a
+	// ColumnStore table rebuilt over every dbroot; confirm false returns the plan.
+	columnstoreRebalance := func(cl *cluster.Cluster, schema, table string, confirm bool) (*mcp.CallToolResult, error) {
+		plan, err := cl.PlanColumnstoreRebalance(schema, table)
+		if err == nil && table != "" && len(plan.Tables) == 0 && len(plan.Skipped) > 0 {
+			err = errors.New(plan.Skipped[0].Reason)
+		}
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		if confirm {
+			if err := cl.RunColumnstoreRebalance(plan); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+		}
+		return mcp.NewToolResultText(toJSON(plan)), nil
+	}
+	s.addTool(
+		mcp.NewTool("cluster-rebalance-columnstore",
+			mcp.WithDescription("Spread the ColumnStore tables over every dbroot (#2008), after a PM was added: every ColumnStore table, optionally of one schema, whose extents are not on every dbroot is rebuilt on the UM, one at a time in the background, stopping at the first error (progress CINF0016, stop WARN0241). Each table is copied into table__rebalance under a table read lock (its writes wait, its reads go on), then swapped by an atomic RENAME and the original dropped; the PMs need the table's size free while it runs. Columnstore topology only. confirm false (default) returns the plan: the dbroots, each table's extents per dbroot, the skipped ones. Needs db-optimize."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("schema_name", mcp.Description("Only this schema; default every user schema")),
+			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: run")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			return columnstoreRebalance(cl, req.GetString("schema_name", ""), "", req.GetBool("confirm", false))
+		},
+	)
+	s.addTool(
+		mcp.NewTool("cluster-rebalance-columnstore-table",
+			mcp.WithDescription("Spread one ColumnStore table over every dbroot (#2008): a copy under a table read lock (writes wait, reads go on), an atomic RENAME, the original dropped, in the background (CINF0016, WARN0241 on a stop). Refused outside the columnstore topology, for a table already on every dbroot, or with a copy of a previous rebalance left. confirm false (default) returns the plan. Needs db-optimize."),
+			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
+			mcp.WithString("schema_name", mcp.Required(), mcp.Description("Schema of the table")),
+			mcp.WithString("table_name", mcp.Required(), mcp.Description("Table to rebalance")),
+			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: run")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			cl, errResult := clusterOrError(s.repman, req.GetString("cluster_name", ""))
+			if errResult != nil {
+				return errResult, nil
+			}
+			return columnstoreRebalance(cl, req.GetString("schema_name", ""), req.GetString("table_name", ""), req.GetBool("confirm", false))
+		},
+	)
+
 	s.addTool(
 		mcp.NewTool("cluster-rolling-restart",
 			mcp.WithDescription("Restart all database nodes in the cluster one at a time, preserving availability. Replicas are restarted first, then a switchover is performed before restarting the current master. Use after applying OS patches or configuration changes that require a restart.."),

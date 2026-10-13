@@ -1325,6 +1325,11 @@ func TestAlterEngineACL(t *testing.T) {
 		{"one table with db-optimize", "optimizer", "/api/clusters/test/schema/shop/orders/actions/alter-engine/Aria", true},
 		{"cluster switch without grant", "user_no_grants", "/api/clusters/test/actions/alter-engine", false},
 		{"one table without grant", "user_no_grants", "/api/clusters/test/schema/shop/orders/actions/alter-engine/Aria", false},
+		// the ColumnStore rebalance is the same kind of rebuild (#2008)
+		{"rebalance with db-optimize", "optimizer", "/api/clusters/test/actions/columnstore-rebalance", true},
+		{"one table rebalance with db-optimize", "optimizer", "/api/clusters/test/schema/shop/facts/actions/columnstore-rebalance", true},
+		{"rebalance without grant", "user_no_grants", "/api/clusters/test/actions/columnstore-rebalance", false},
+		{"one table rebalance without grant", "user_no_grants", "/api/clusters/test/schema/shop/facts/actions/columnstore-rebalance", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := cluster.IsURLPassACL(tt.user, tt.url, false); got != tt.expected {

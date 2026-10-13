@@ -20,6 +20,7 @@ import AccordionComponent from '../../components/AccordionComponent'
 import { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import EngineSwitchModal from '../../components/Modals/EngineSwitchModal'
+import ColumnstoreRebalanceModal from '../../components/Modals/ColumnstoreRebalanceModal'
 import RMIconButton from '../../components/RMIconButton'
 import { HiCog } from 'react-icons/hi'
 import { sizeOf } from '../../utility/common'
@@ -181,6 +182,8 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
   const prevShardsRef                                               = useRef(null)
   const [isChecksumAllRunning, setIsChecksumAllRunning]             = useState(false)
   const [engineSwitch, setEngineSwitch]                             = useState(null) // #1999: {} cluster-wide, {schema, table, engine} one table
+  const [columnstoreRebalance, setColumnstoreRebalance]             = useState(null) // #2008: {} cluster-wide, {schema, table} one table
+  const isColumnstore = selectedCluster?.config?.topologyTarget === 'columnstore'
   const [isChecksumRepairAllRunning, setIsChecksumRepairAllRunning] = useState(false)
   const [isSchemaConfirmOpen, setIsSchemaConfirmOpen]               = useState(false)
   const [pendingChecksumAll, setPendingChecksumAll]                 = useState(false)
@@ -462,7 +465,13 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
       header: 'Engine',
       // #1999: switch this table to another engine (db-optimize)
       cell: info => user?.grants?.['db-optimize']
-        ? <RMButton variant="outline" onClick={() => setEngineSwitch({ schema: info.row.original.table_schema, table: info.row.original.table_name, engine: info.getValue() })}>{info.getValue()}</RMButton>
+        ? <Flex gap={2}>
+            <RMButton variant="outline" onClick={() => setEngineSwitch({ schema: info.row.original.table_schema, table: info.row.original.table_name, engine: info.getValue() })}>{info.getValue()}</RMButton>
+            {/* #2008: spread a ColumnStore table over every dbroot */}
+            {isColumnstore && String(info.getValue()).toLowerCase() === 'columnstore' && (
+              <RMButton variant="outline" onClick={() => setColumnstoreRebalance({ schema: info.row.original.table_schema, table: info.row.original.table_name })}>Rebalance</RMButton>
+            )}
+          </Flex>
         : info.getValue(),
     }),
     columnHelper.accessor(row => row.table_rows,    { header: 'Rows' }),
@@ -533,7 +542,7 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
         cell: info => <SizeBar pct={info.getValue()} />,
       }
     ),
-  ], [handleChecksum, handleChecksumRepair, sizeTotalsInfo, sizePctSorting, user])
+  ], [handleChecksum, handleChecksumRepair, sizeTotalsInfo, sizePctSorting, user, isColumnstore])
 
   // ── Sync filter pills ─────────────────────────────────────────────────────
   const SYNC_FILTERS = [
@@ -599,6 +608,14 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
             >
               Switch Storage Engine
             </RMButton>
+            {isColumnstore && (
+              <RMButton
+                onClick={() => setColumnstoreRebalance({})}
+                isDisabled={!selectedCluster?.name || !user?.grants['db-optimize']}
+              >
+                Rebalance ColumnStore
+              </RMButton>
+            )}
             <RMButton
               onClick={handleChecksumRepairAll}
               isDisabled={!selectedCluster?.name || isChecksumRepairAllRunning || !user?.grants['cluster-checksum-repair']}
@@ -825,6 +842,9 @@ function Shards({ selectedCluster, user, onOpenSchedulerSettings, onOpenLogsSett
       {/* ── Schema-cache confirm modal ────────────────────────────────────── */}
       {engineSwitch && (
         <EngineSwitchModal selectedCluster={selectedCluster} schema={engineSwitch.schema} table={engineSwitch.table} engine={engineSwitch.engine} isOpen={!!engineSwitch} closeModal={() => setEngineSwitch(null)} />
+      )}
+      {columnstoreRebalance && (
+        <ColumnstoreRebalanceModal selectedCluster={selectedCluster} schema={columnstoreRebalance.schema} table={columnstoreRebalance.table} isOpen={!!columnstoreRebalance} closeModal={() => setColumnstoreRebalance(null)} />
       )}
       {isSchemaConfirmOpen && (
         <ConfirmModal

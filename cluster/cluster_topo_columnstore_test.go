@@ -71,3 +71,20 @@ func TestColumnstoreTopology(t *testing.T) {
 		t.Fatal("a lone active-passive server must be discovered as active-passive")
 	}
 }
+
+// A rebalance's own copies are never planned (#2008): t__rebalance being filled, t__old
+// swapped out; a table merely ending in "old" is a table.
+func TestColumnstoreRebalanceCopyNames(t *testing.T) {
+	for name, want := range map[string]bool{
+		"facts__rebalance": true, "facts__old": true,
+		"facts": false, "facts_old": false, "__old": false, "gold": false,
+	} {
+		if got := isColumnstoreRebalanceCopy(name); got != want {
+			t.Errorf("isColumnstoreRebalanceCopy(%q) = %v, want %v", name, got, want)
+		}
+	}
+	cl := newColumnstoreTestCluster()
+	if _, err := cl.PlanColumnstoreRebalance("", ""); err == nil {
+		t.Fatal("a rebalance outside the columnstore topology must be refused")
+	}
+}
