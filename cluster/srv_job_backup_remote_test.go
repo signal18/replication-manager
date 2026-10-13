@@ -355,6 +355,32 @@ func TestStreamDestEmpty(t *testing.T) {
 	}
 }
 
+// The GTID set of a MySQL server with two sources, as mysqldump 8.4 writes it (one line per
+// source), is read whole: the parser alone matches no line of it.
+func TestDumpPositionLinesMultiSourceGTID(t *testing.T) {
+	_, server := newTestClusterServer(t)
+	server.DBVersion = &version.Version{Flavor: "MySQL", Major: 8, Minor: 4, Release: 11}
+	br, bg := server.getBackupRegexPatterns()
+	dump := "-- MySQL dump 10.13  Distrib 8.4.10, for Linux (x86_64)\n" +
+		"SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a009676e-c6cb-11f1-9ba6-ea188a944068:1-2,\n" +
+		"a02894cb-c6cb-11f1-8c66-4eb3d380dfb9:1-30';\n" +
+		"-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000007', SOURCE_LOG_POS=35203;\n"
+	var gtid string
+	parser := newDumpStreamParser(br, bg, true, true, func(string, uint64) {}, func(g string) { gtid = g })
+	parser.Consume([]byte(dump))
+	parser.Flush()
+	if gtid != "" {
+		t.Fatalf("the parser alone was expected to miss a multi-line set, got %q", gtid)
+	}
+	gtid = ""
+	l := &dumpPositionLines{parser: newDumpStreamParser(br, bg, true, true, func(string, uint64) {}, func(g string) { gtid = g })}
+	l.Write([]byte(dump))
+	l.Flush()
+	if want := "a009676e-c6cb-11f1-9ba6-ea188a944068:1-2,a02894cb-c6cb-11f1-8c66-4eb3d380dfb9:1-30"; strings.ReplaceAll(gtid, "\n", "") != want {
+		t.Fatalf("GTID %q, want %q", gtid, want)
+	}
+}
+
 func TestWaitRemoteJobReport(t *testing.T) {
 	_, server := newTestClusterServer(t)
 	server.JobResults = config.NewTasksMap()

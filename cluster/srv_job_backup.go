@@ -4332,6 +4332,11 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 		},
 	)
 
+	// A MySQL client writes the GTID_PURGED of several sources over several lines (one per
+	// source): the lines reader joins them, as for a remote dump; the parser alone sees one line
+	// at a time and records no GTID.
+	positionLines := &dumpPositionLines{parser: parser}
+
 	// Write-stall watchdog. A dead/hung backup output volume blocks the write
 	// side of the pipe, which back-pressures this read loop; without this the
 	// backup hangs forever and its deferred InLogicalBackup clear never runs
@@ -4383,11 +4388,11 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 				p.AddBytes(int64(n))
 			}
 			if parser.Enabled() {
-				parser.Consume(buffer[:n])
+				positionLines.Write(buffer[:n])
 			}
 		}
 
-		parser.Flush()
+		positionLines.Flush()
 
 		if splitDumpPipeline != nil {
 			_ = splitDumpPipeline.pipeWriter.Close()
