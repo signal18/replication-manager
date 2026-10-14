@@ -117,6 +117,7 @@ type Cluster struct {
 	IsClusterDown                 bool                           `json:"isClusterDown" groups:"web"`
 	IsMasterDown                  bool                           `json:"isMasterDown" groups:"web"`
 	IsAllDbUp                     bool                           `json:"isAllDbUp" groups:"web"`
+	RotatePasswordsRefusal        string                         `json:"rotatePasswordsRefusal" groups:"web"` // why rotate-passwords is refused now, empty when allowed (CanRotatePasswords, #2042)
 	IsFailable                    bool                           `json:"isFailable" groups:"web"`
 	IsPostgres                    bool                           `json:"isPostgres" groups:"web"`
 	ToolsVersions                 map[string]string              `json:"toolsVersions" groups:"web"` // local tools found by RefreshToolVersions, tool -> version

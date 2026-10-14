@@ -901,15 +901,19 @@ func (cluster *Cluster) getOnePreferedMaster() *ServerMonitor {
 	return nil
 }
 
+// GetRelayServer returns the server the replicas of a binlog server or multi-tier
+// topology converge to: the MaxScale binlog server, or with replication-multi-tier-slave
+// the intermediate replica (a replica with replicas under it).
 func (cluster *Cluster) GetRelayServer() *ServerMonitor {
 	if cluster.Conf.Hosts == "" {
 		return nil
 	}
 	for _, server := range cluster.Servers {
+		intermediate := cluster.Conf.MultiTierSlave && server.IsSlave && server.HasSlaves(cluster.slaves)
 		// if cluster.Conf.LogLevel > 2 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Check for relay server %s: relay: %t", server.URL, server.IsRelay)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Check for relay server %s: relay: %t intermediate: %t", server.URL, server.IsRelay, intermediate)
 		// }
-		if server.IsRelay {
+		if server.IsRelay || intermediate {
 			return server
 		}
 	}
