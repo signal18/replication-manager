@@ -120,6 +120,7 @@ var tests = []string{
 	"testResticReseedMariabackup",
 	"testOpenSVCUpgradeWarnRecovery",
 	"testRejoinStaleCrashKeepsMaster",
+	"testRelayElectableAndRepaired",
 	"testRollingRestart",
 	"testRollingUpgrade",
 	"testRollingReprovReseed",

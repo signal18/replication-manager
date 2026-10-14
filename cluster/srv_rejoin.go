@@ -858,10 +858,18 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 			if server.HasGTIDReplication() {
 				crash := cluster.getCrashFromMaster(cluster.master.URL)
 				if crash == nil {
-					cluster.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
-					return errors.New("No Crash info on current master")
+					// A relay replicating from the live master serves the master's own
+					// stream: moving its replica up needs no failover record. Any other
+					// source (an old master after a split brain) still needs one.
+					relaySource, _ := cluster.GetMasterFromReplication(mycurrentmaster)
+					if !mycurrentmaster.IsRelay || relaySource == nil || relaySource.Id != cluster.master.Id {
+						cluster.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
+						return errors.New("No Crash info on current master")
+					}
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No crash info on current master, %s replicates from relay %s of the current master", server.URL, mycurrentmaster.URL)
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info on current master %s", crash)
 				}
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info on current master %s", crash)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, cluster.master.URL)
 
 				realmaster := cluster.master

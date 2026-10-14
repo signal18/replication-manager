@@ -54,7 +54,7 @@ var ClusterError = map[string]string{
 	"ERR00033":  "Skip slave in election %s: has no master log file, slave might have failed",
 	"ERR00034":  "Skip slave in election %s: not electable for switchover",
 	"ERR00035":  "Skip slave in election %s is multi-master and is already the master",
-	"ERR00036":  "Skip slave in election %s is relay",
+	"ERR00036":  "Skip slave in election %s is a MaxScale binlog relay",
 	"ERR00037":  "Skip slave in election %s: in ignore list",
 	"ERR00038":  "Skip slave in election %s: not electable for failover",
 	"ERR00039":  "Skip slave in election %s: not electable",

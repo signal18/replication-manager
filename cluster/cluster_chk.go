@@ -147,9 +147,10 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		return false
 	}
 
-	if sl.IsMaxscale || sl.IsRelay {
+	// A database feeding another replica stays electable: only the MaxScale binlog relay holds no data.
+	if sl.IsMaxscale {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
-		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is a relay slave. Skipping", sl.URL)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is a MaxScale binlog relay. Skipping", sl.URL)
 		// }
 		return false
 	}

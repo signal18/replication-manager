@@ -808,8 +808,10 @@ func (cluster *Cluster) electSwitchoverCandidate(l []*ServerMonitor, forcingLog 
 		if sl.IsFull {
 			continue
 		}
-		//Need comment//
-		if sl.IsRelay {
+		// A MaxScale binlog relay holds no data and can never lead. A database
+		// that feeds another replica is a full copy of the leader: it goes
+		// through the checks below like any other replica.
+		if sl.IsMaxscale {
 			cluster.SetState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ServerUrl: sl.URL, ErrFrom: "CHECK"})
 			continue
 		}
@@ -948,13 +950,13 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 		trackposList[i].Indice = i
 		trackposList[i].Prefered = sl.IsPrefered() && sl.SourceClusterName == cluster.Name   //Never set child cluster as prefered
 		trackposList[i].Ignoredconf = sl.IsIgnored() || sl.SourceClusterName != cluster.Name //Always ignore if child cluster
-		trackposList[i].Ignoredrelay = sl.IsRelay
+		trackposList[i].Ignoredrelay = sl.IsMaxscale
 		trackposList[i].DelayStat = sl.DelayStat.Total
 		trackposList[i].IgnoredErrantTrx = sl.HasErrantTransactions()
 		trackposList[i].IgnoredBlocker = sl.HasBlockerIssue()
 		trackposList[i].IgnoredDataDivergence = sl.IsDataDiverge
-		//Need comment//
-		if sl.IsRelay {
+		// Only a MaxScale binlog relay is out of the election, see electSwitchoverCandidate.
+		if sl.IsMaxscale {
 			cluster.SetState("ERR00036", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00036"], sl.URL), ErrFrom: "CHECK", ServerUrl: sl.URL})
 			continue
 		}
