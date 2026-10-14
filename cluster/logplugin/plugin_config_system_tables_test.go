@@ -81,3 +81,46 @@ func TestSystemTablesPlugin(t *testing.T) {
 		t.Fatalf("MySQL 5.7: %+v", res.Findings)
 	}
 }
+
+// review of #2030: the error log is in the server's zone, MySQL 8.0.16+ upgrades at
+// start, and on the same second the proof that the tables are fine wins
+func TestSystemTablesPluginZonesAndTies(t *testing.T) {
+	p := &SystemTablesPlugin{}
+	now := time.Now().Unix()
+	plus2 := time.FixedZone("+02:00", 2*3600)
+	line := func(at int64, loc *time.Location) s18log.HttpMessage {
+		return s18log.HttpMessage{Timestamp: time.Unix(at, 0).In(loc).Format("2006-01-02 15:04:05") + " 0", Level: "ERROR",
+			Text: "Incorrect definition of table mysql.event: expected column 'sql_mode'"}
+	}
+	upgraded := StdioJob{Task: "mariadbupgrade", Done: 1, State: 3, End: now - 3600}
+	for _, vars := range []map[string]string{{"time_zone": "+02:00"}, {"time_zone": "SYSTEM", "system_time_zone": "Europe/Paris"}} {
+		loc := serverLocation(vars)
+		// a complaint from 2 hours ago, written in the server's local time: older than the
+		// upgrade an hour ago, so closed (read as UTC it looked newer)
+		src := LogSource{ServerVersion: StdioServerVersion{Flavor: "MariaDB", Major: 11}, ServerVariables: vars,
+			ServerStatus: map[string]string{"uptime": "86400"}, Jobs: []StdioJob{upgraded},
+			ErrorLog: []s18log.HttpMessage{line(now-7200, loc)}}
+		if res := p.Evaluate(src); len(res.Findings) != 0 {
+			t.Errorf("%v: a complaint older than the upgrade, in local time, must not reopen it: %+v", vars, res.Findings)
+		}
+	}
+	if serverLocation(map[string]string{"time_zone": "+02:00"}).String() != plus2.String() {
+		t.Fatal("time_zone offset")
+	}
+	if serverLocation(nil) != time.UTC || serverLocation(map[string]string{"system_time_zone": "CEST"}) != time.UTC {
+		t.Fatal("unknown zone: UTC")
+	}
+
+	failed := StdioJob{Task: "mysqldump", Done: 1, State: 5, Result: curepipeDumpError, End: now - 60}
+	if res := p.Evaluate(LogSource{ServerVersion: StdioServerVersion{Flavor: "MySQL", Major: 8, Minor: 0, Release: 36}, Jobs: []StdioJob{failed}}); len(res.Findings) != 0 {
+		t.Fatal("MySQL 8.0.36 upgrades at start: no finding the action would refuse")
+	}
+	if res := p.Evaluate(LogSource{ServerVersion: StdioServerVersion{Flavor: "MySQL", Major: 8, Minor: 0, Release: 15}, Jobs: []StdioJob{failed}}); len(res.Findings) != 1 {
+		t.Fatal("MySQL 8.0.15 still needs mysql_upgrade")
+	}
+
+	tie := StdioJob{Task: "mariadbupgrade", Done: 1, State: 4, End: now - 60}
+	if res := p.Evaluate(LogSource{ServerVersion: StdioServerVersion{Flavor: "MariaDB", Major: 11}, Jobs: []StdioJob{failed, tie}}); len(res.Findings) != 0 {
+		t.Fatal("same second: the upgrade ended OK wins")
+	}
+}

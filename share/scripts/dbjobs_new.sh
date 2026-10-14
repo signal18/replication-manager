@@ -1592,7 +1592,8 @@ run_mariadb_upgrade() {
     fi
     rm -f "$LOG_DIR/$job.rc"
     if [[ -z "$tool" ]]; then
-        echo "No mariadb-upgrade nor mysql_upgrade in $CLIENT_BASEDIR" >"$LOG_DIR/$job.out"
+        # the job log streams $job.process.out: it says why, like the job's result
+        echo "No mariadb-upgrade nor mysql_upgrade in $CLIENT_BASEDIR" | tee "$LOG_DIR/$job.process.out" >"$LOG_DIR/$job.out"
         echo 127 >"$LOG_DIR/$job.rc"
         return
     fi

@@ -391,10 +391,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerOptimize)),
 	))
 
+	// POST only: it queues a job on the server, a GET from a link or a prefetch must not
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/upgrade-system-tables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerUpgradeSystemTables)),
-	))
+	)).Methods("POST")
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),

@@ -7865,18 +7865,25 @@ func isMysqlAccountTableFile(name string) bool {
 	return mysqlAccountTables[table]
 }
 
-// lineTail keeps the last max lines written by one goroutine and read by another
+// lineTail keeps the last max lines written by one goroutine and read by another: the
+// error lines of a dump, so neither the dump's verbose progress ("-- Retrieving ...")
+// nor a blank line, and each line cut at lineTailMaxBytes (a job result, bounded, T18)
 type lineTail struct {
 	mu  sync.Mutex
 	max int
 	buf []string
 }
 
+const lineTailMaxBytes = 512
+
 func newLineTail(max int) *lineTail { return &lineTail{max: max} }
 
 func (t *lineTail) add(line string) {
-	if strings.TrimSpace(line) == "" {
+	if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "-- ") {
 		return
+	}
+	if len(line) > lineTailMaxBytes {
+		line = line[:lineTailMaxBytes] + "…"
 	}
 	t.mu.Lock()
 	defer t.mu.Unlock()

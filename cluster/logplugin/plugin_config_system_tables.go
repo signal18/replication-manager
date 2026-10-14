@@ -70,14 +70,28 @@ type systemTablesEvent struct {
 	source  string
 }
 
+// upgradesAtStart: MySQL and Percona 8.0.16 and later upgrade their system tables at
+// start (the server action refuses them), PostgreSQL has none of these tables
+func upgradesAtStart(v StdioServerVersion) bool {
+	switch strings.ToLower(v.Flavor) {
+	case "postgresql":
+		return true
+	case "mysql", "percona":
+		return v.Major > 8 || (v.Major == 8 && (v.Minor > 0 || v.Release >= 16))
+	}
+	return false
+}
+
 func (p *SystemTablesPlugin) Evaluate(src LogSource) EvaluateResult {
 	var res EvaluateResult
-	if strings.EqualFold(src.ServerVersion.Flavor, "PostgreSQL") {
+	if upgradesAtStart(src.ServerVersion) {
 		return res
 	}
 	var last *systemTablesEvent
+	// the most recent observation; on the same second, the proof that the tables are
+	// fine wins (an upgrade ended OK closes the finding)
 	keep := func(e systemTablesEvent) {
-		if last == nil || e.at >= last.at {
+		if last == nil || e.at > last.at || (e.at == last.at && !e.lagging) {
 			c := e
 			last = &c
 		}
@@ -107,12 +121,13 @@ func (p *SystemTablesPlugin) Evaluate(src LogSource) EvaluateResult {
 	if up, err := strconv.ParseInt(src.ServerStatus["uptime"], 10, 64); err == nil && up > 0 {
 		started = time.Now().Unix() - up
 	}
+	loc := serverLocation(src.ServerVariables)
 	for _, msg := range src.ErrorLog {
 		m := systemTablesLagRe.FindString(msg.Text)
 		if m == "" {
 			continue
 		}
-		ts, err := parseErrorLogTimestamp(msg.Timestamp)
+		ts, err := parseErrorLogTimestamp(msg.Timestamp, loc)
 		if err != nil || ts.Unix() < started {
 			continue
 		}
@@ -143,12 +158,37 @@ func (p *SystemTablesPlugin) Evaluate(src LogSource) EvaluateResult {
 	return res
 }
 
+// serverLocation: the zone the server writes its error log in, from its variables:
+// time_zone when it is an offset ("+02:00"), else system_time_zone when Go knows it
+// ("UTC", "Europe/Paris"); UTC otherwise. The error log's local times are compared with
+// the server's start and with the jobs' end, which are absolute.
+func serverLocation(vars map[string]string) *time.Location {
+	if tz := strings.TrimSpace(vars["time_zone"]); len(tz) == 6 && (tz[0] == '+' || tz[0] == '-') && tz[3] == ':' {
+		h, errh := strconv.Atoi(tz[1:3])
+		m, errm := strconv.Atoi(tz[4:6])
+		if errh == nil && errm == nil {
+			off := h*3600 + m*60
+			if tz[0] == '-' {
+				off = -off
+			}
+			return time.FixedZone(tz, off)
+		}
+	}
+	if name := strings.TrimSpace(vars["system_time_zone"]); name != "" {
+		if loc, err := time.LoadLocation(name); err == nil {
+			return loc
+		}
+	}
+	return time.UTC
+}
+
 // parseErrorLogTimestamp: the error log watcher keeps what precedes the level, the
-// date and time followed by the thread id on MariaDB ("2026-10-14 11:02:03 0")
-func parseErrorLogTimestamp(s string) (time.Time, error) {
+// date and time followed by the thread id on MariaDB ("2026-10-14 11:02:03 0"), in the
+// server's zone; an ISO time with its own zone keeps it
+func parseErrorLogTimestamp(s string, loc *time.Location) (time.Time, error) {
 	s = strings.TrimSpace(s)
-	if len(s) > 19 {
-		if t, err := parseLogTimestamp(s[:19]); err == nil {
+	if len(s) >= 19 {
+		if t, err := time.ParseInLocation("2006-01-02 15:04:05", s[:19], loc); err == nil {
 			return t, nil
 		}
 	}

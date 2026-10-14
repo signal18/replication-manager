@@ -124,8 +124,10 @@ func TestLineTail(t *testing.T) {
 	for _, l := range []string{"-- a", "", "-- b", "-- c", "mariadb-dump: Couldn't execute 'SHOW FUNCTION STATUS': Column count of mysql.proc is wrong"} {
 		tail.add(l)
 	}
+	tail.add("Got error: 2013 " + strings.Repeat("x", 2000))
 	got := tail.lines()
-	if len(got) != 3 || got[0] != "-- b" || !strings.Contains(got[2], "Column count of mysql.proc") {
-		t.Fatalf("last 3 non-empty lines: %q", got)
+	// the verbose progress lines are not kept, a long line is cut
+	if len(got) != 2 || !strings.Contains(got[0], "Column count of mysql.proc") || len(got[1]) > lineTailMaxBytes+len("…") {
+		t.Fatalf("error lines only, bounded: %q", got)
 	}
 }
