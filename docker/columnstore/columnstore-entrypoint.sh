@@ -283,25 +283,33 @@ fresh_node() {
 	[ "$nodes" -le 1 ] && [ "$dbroots" = 1 ]
 }
 
+# the primary's CMAPI, from this node
+cmapi_primary() {
+	local method="$1" path="$2" body="$3"
+	curl -sk --max-time 600 -X "$method" "https://$COLUMNSTORE_PRIMARY:8640/cmapi/0.4.0/$path" \
+		-H "x-api-key: $CMAPI_KEY" -H 'Content-Type: application/json' -d "$body"
+}
+
+# Joined is this node's own configuration naming the cluster (no longer a fresh node), not
+# the primary listing it: a failed add leaves the node listed there ("Config distribution
+# isn't successful", CI 2026-10-14) while its configuration is still its own. A failed add
+# is removed before the next try: a node half added is not added again (spike cstry).
 join_cluster() {
-	local primary="$1" self out i
+	local self out i
 	self="$(hostname -f 2>/dev/null || hostname)"
-	for i in $(seq 1 60); do
-		if out="$(curl -sk --max-time 60 "https://$primary:8640/cmapi/0.4.0/cluster/status" -H "x-api-key: $CMAPI_KEY")" &&
-			echo "$out" | grep -q "\"$self\""; then
-			log "already a node of the cluster of $primary"
+	# the primary ready: its server answers once its own ColumnStore runs
+	wait_port 3306 "the primary's server" "$COLUMNSTORE_PRIMARY" || true
+	for i in $(seq 1 30); do
+		out="$(cmapi_primary PUT cluster/node "{\"timeout\": 300, \"node\": \"$self\"}")" || true
+		if ! fresh_node; then
+			log "added to the cluster of $COLUMNSTORE_PRIMARY"
 			return 0
 		fi
-		if out="$(curl -sk --max-time 600 -X PUT "https://$primary:8640/cmapi/0.4.0/cluster/node" \
-			-H "x-api-key: $CMAPI_KEY" -H 'Content-Type: application/json' \
-			-d "{\"timeout\": 300, \"node\": \"$self\"}")" && echo "$out" | grep -q timestamp; then
-			log "added to the cluster of $primary"
-			return 0
-		fi
-		log "joining the cluster of $primary not done yet: ${out:0:200}"
-		sleep 10
+		log "joining the cluster of $COLUMNSTORE_PRIMARY not done yet: ${out:0:200}"
+		cmapi_primary DELETE cluster/node "{\"timeout\": 300, \"node\": \"$self\"}" >/dev/null || true
+		sleep 20
 	done
-	log "could not join the cluster of $primary"
+	log "could not join the cluster of $COLUMNSTORE_PRIMARY"
 	return 1
 }
 
@@ -328,7 +336,7 @@ case "${1:-}" in
 		self="$(hostname -f 2>/dev/null || hostname)"
 		if [ -n "${COLUMNSTORE_PRIMARY:-}" ] && [ "$COLUMNSTORE_PRIMARY" != "$self" ] && fresh_node; then
 			wait_port 8640 "the primary's CMAPI" "$COLUMNSTORE_PRIMARY" || true
-			join_cluster "$COLUMNSTORE_PRIMARY" || exit 1
+			join_cluster || exit 1
 		fi
 		# the DBRM the server needs: controllernode runs on the primary only, local on the
 		# UM and remote on a PM (a PM waiting on 127.0.0.1 exited after 180 s)
