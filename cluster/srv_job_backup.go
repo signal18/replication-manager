@@ -4549,6 +4549,23 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	return err
 }
 
+// logicalBackupAccountsBlocker refuses a logical backup that dumps the server's accounts
+// while some of them are hidden by skip_name_resolve: mariadb-dump runs SHOW CREATE USER
+// on each account it lists and stops at the first one the server ignores (error 1133).
+func (server *ServerMonitor) logicalBackupAccountsBlocker(logicalType string) error {
+	cluster := server.ClusterGroup
+	dumpsAccounts := cluster.Conf.BackupSplitMysqlUser ||
+		(logicalType == config.ConstBackupLogicalTypeMysqldump && server.IsMariaDB() && strings.Contains(cluster.getDumpParameter(), "--system="))
+	if !dumpsAccounts {
+		return nil
+	}
+	hidden := server.AccountsIgnoredBySkipNameResolve()
+	if len(hidden) == 0 {
+		return nil
+	}
+	return fmt.Errorf("logical backup refused on %s: skip_name_resolve=ON makes the server ignore %d account(s) with a DNS host and the dump of the accounts stops on them (SHOW CREATE USER, error 1133): %s -- convert them to an IP, or to '%%' for an app account", server.URL, len(hidden), strings.Join(hidden, ", "))
+}
+
 // mysqldumpUserArgs is the --system=user dump of this server's accounts and grants, the
 // one JobBackupMysqldumpUser writes as the users sidecar and replayMasterSystemUsers
 // streams live from the master.
@@ -4939,6 +4956,15 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	// Removing previous valid backup state and start
 	if !isAdhoc {
 		server.DelBackupLogicalCookie()
+	}
+
+	// The dump of the accounts (--system=all of a MariaDB mysqldump, or the users sidecar)
+	// stops on the first account skip_name_resolve hides from the server: refuse before
+	// anything runs, with the accounts in the job result (ERR00117 shows it, #2046).
+	if err := server.logicalBackupAccountsBlocker(logicalType); err != nil {
+		server.JobsUpdateStateRuntimeOnly(logicalType, err.Error(), 5, 1)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s", err)
+		return err
 	}
 
 	if cluster.Conf.BackupSplitMysqlUser {

@@ -12,12 +12,14 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/hostmatch"
 )
 
 func (server *ServerMonitor) IsSemiSyncMaster() bool {
@@ -1046,4 +1048,24 @@ func (server *ServerMonitor) GetWaitDummyConfigSendAddress() (string, string, er
 
 func (server *ServerMonitor) HasRollingJobsUpgradeCookie() bool {
 	return server.hasCookie("cookie_rolling_jobs_upgrade")
+}
+
+// AccountsIgnoredBySkipNameResolve lists the accounts ('user'@'host') the server ignores
+// because skip_name_resolve is on and their host is a DNS name: they stay in the
+// privilege tables, the server does not know them (#2046).
+func (server *ServerMonitor) AccountsIgnoredBySkipNameResolve() []string {
+	if server.Variables == nil || server.Users == nil {
+		return nil
+	}
+	if v := strings.ToUpper(server.Variables.Get("SKIP_NAME_RESOLVE")); v != "ON" && v != "1" {
+		return nil
+	}
+	var out []string
+	for _, u := range server.Users.ToNewMap() {
+		if u != nil && hostmatch.IsDNSHost(u.Host) {
+			out = append(out, fmt.Sprintf("'%s'@'%s'", u.User, u.Host))
+		}
+	}
+	sort.Strings(out)
+	return out
 }

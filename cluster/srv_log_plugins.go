@@ -623,9 +623,10 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 				continue
 			}
 			if t := srv.LastFailedLogicalBackup(); t != nil {
+				// the head says what failed, the tail carries the tool's last words
 				reason := strings.TrimSpace(t.Result)
-				if len(reason) > 300 {
-					reason = "..." + reason[len(reason)-300:]
+				if len(reason) > 400 {
+					reason = reason[:200] + " ... " + reason[len(reason)-200:]
 				}
 				cluster.ConfigStateMachine.AddState(state.BuildStateKey("ERR00117", srv.URL), state.State{ErrType: "ERROR", ErrKey: "ERR00117",
 					ErrDesc: fmt.Sprintf(clusterError["ERR00117"], srv.URL, t.Task, time.Unix(t.End, 0).UTC().Format("2006-01-02 15:04:05"), reason), ErrFrom: "CONFIG", ServerUrl: srv.URL})
