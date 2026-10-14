@@ -56,6 +56,17 @@ func TestColumnstoreTopology(t *testing.T) {
 	if cl.IsTopologyActivePassive() || !cl.IsTopologyMasterSlave() {
 		t.Fatal("discovered columnstore must behave as a master-slave")
 	}
+	// a lone ColumnStore server's master is designated, as active-passive's (belair-mcs
+	// stayed Suspect); several are discovered from the replication
+	cl.Servers = []*ServerMonitor{{URL: "db1:3306", ClusterGroup: cl}}
+	if !cl.hasDesignatedMaster() {
+		t.Fatal("a lone ColumnStore server is the designated master")
+	}
+	cl.Servers = append(cl.Servers, &ServerMonitor{URL: "db2:3306", ClusterGroup: cl})
+	if cl.hasDesignatedMaster() {
+		t.Fatal("ColumnStore servers: the master is discovered from the replication")
+	}
+	cl.Servers = nil
 	if _, floor, _, err := cl.planUnitSpec(PlanUnitDBU); err != nil || floor != ColumnstoreMinDBU {
 		t.Fatalf("a ColumnStore server runs a UM and a PM: DBU floor %d (%v), want %d", floor, err, ColumnstoreMinDBU)
 	}

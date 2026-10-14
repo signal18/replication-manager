@@ -1030,7 +1030,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			// capture comes back empty and the reslave then collides with the later tail
 			// (SlaveErr). After resolve the active node (the former minority) rejoins with
 			// db1's FINAL tail — non-empty capture, clean reslave.
-			if cluster.Conf.Autorejoin && cluster.IsActive() && !cluster.IsTopologyActivePassive() && !cluster.IsSplitBrain {
+			if cluster.Conf.Autorejoin && cluster.IsActive() && !cluster.hasDesignatedMaster() && !cluster.IsSplitBrain {
 				// rejoin if not staging server
 				if isStagingServer {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Preventing auto rejoin on staging server %s", server.URL)
@@ -1062,7 +1062,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "From state %s to unconnected and non leader on server %s", server.PrevState, server.URL)
 
 			// if the config is read only and we are not in a wsrep cluster and node is not staging server
-			if !cluster.Conf.ActivePassive && cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && !server.IsIgnoredReadonly() && !cluster.IsInFailover() && !isStagingServer {
+			if !cluster.Conf.ActivePassive && !cluster.hasDesignatedMaster() && cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && !server.IsIgnoredReadonly() && !cluster.IsInFailover() && !isStagingServer {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
 			}
@@ -1078,7 +1078,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			} else {
 				server.SetState(stateUnconn)
 			}
-		} else if server.GetCluster().IsTopologyActivePassive() {
+		} else if server.GetCluster().hasDesignatedMaster() {
 			if server.PrevState == stateSuspect || (server.PrevState == stateMaintenance && !server.IsMaintenance) {
 				// In active-passive, only the designated master returns to master;
 				// other nodes stay unconnected until topology handling assigns them.
@@ -1120,8 +1120,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 // the unconnected (StandAlone) state a return from Failed leaves behind (#1910).
 func (server *ServerMonitor) isDesignatedMasterShownUnconnected() bool {
 	cluster := server.ClusterGroup
-	if cluster == nil || !cluster.IsTopologyActivePassive() {
-		return false // the designated master exists in this topology only
+	if cluster == nil || !cluster.hasDesignatedMaster() {
+		return false // the designated master exists in these topologies only
 	}
 	if server.State != stateUnconn || server.IsDown() || server.IsMaintenance {
 		return false
@@ -1445,7 +1445,7 @@ func (server *ServerMonitor) Refresh() error {
 			}
 			if cluster.StateMachine.GetHeartbeats()%30 == 0 {
 				server.SaveInfos()
-				if !server.GetCluster().IsTopologyActivePassive() && server.GetCluster().GetTopology() != config.TopoMultiMasterWsrep {
+				if !server.GetCluster().hasDesignatedMaster() && server.GetCluster().GetTopology() != config.TopoMultiMasterWsrep {
 					server.CheckPrivileges()
 				}
 

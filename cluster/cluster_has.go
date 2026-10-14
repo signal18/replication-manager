@@ -49,6 +49,14 @@ func (cluster *Cluster) IsTopologyActivePassive() bool {
 	return cluster.Topology == config.TopoActivePassive
 }
 
+// hasDesignatedMaster: the master is designated, not discovered from the replication:
+// the active-passive topology, and a lone ColumnStore server, which is discovered as
+// columnstore and not active-passive since #2021 (it stayed Suspect after a monitor
+// restart, preprod belair-mcs 2026-10-14).
+func (cluster *Cluster) hasDesignatedMaster() bool {
+	return cluster.IsTopologyActivePassive() || (cluster.Topology == config.TopoColumnstore && len(cluster.Servers) == 1)
+}
+
 // IsTopologyMasterSlave reports whether the discovered topology is a master and
 // its replicas, the columnstore one included (#2021): its servers replicate the
 // schema from the master like a master-slave.
