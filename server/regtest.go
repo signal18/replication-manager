@@ -236,6 +236,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testRejoinStaleCrashKeepsMaster" {
 			res = regtest.TestRejoinStaleCrashKeepsMaster(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testMisplacedReplicaNotRelay" {
+			res = regtest.TestMisplacedReplicaNotRelay(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testStagingRecoverNoReadOnly" {
 			res = regtest.TestStagingRecoverNoReadOnly(cl, test.ConfigFile, &test)
 		}

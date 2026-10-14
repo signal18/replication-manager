@@ -858,10 +858,20 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 			if server.HasGTIDReplication() {
 				crash := cluster.getCrashFromMaster(cluster.master.URL)
 				if crash == nil {
-					cluster.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
-					return errors.New("No Crash info on current master")
+					// Without a failover electing the master, a replica can still sit on the
+					// wrong source (a peer failover, a manual change). When that source is
+					// itself a replica of the master, the replica applies the master's own
+					// stream and moves up by GTID. Any other source (an old master after a
+					// split brain) still needs the crash record.
+					source, _ := cluster.GetMasterFromReplication(mycurrentmaster)
+					if !mycurrentmaster.IsSlave || source == nil || source.Id != cluster.master.Id {
+						cluster.SetState("ERR00065", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00065"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
+						return errors.New("No Crash info on current master")
+					}
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No crash info on current master: %s replicates from %s, a replica of the current master", server.URL, mycurrentmaster.URL)
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info on current master %s", crash)
 				}
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info on current master %s", crash)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, cluster.master.URL)
 
 				realmaster := cluster.master
@@ -881,7 +891,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 					}
 				}
 			} else {
-				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsRelay {
+				if mycurrentmaster.State != stateFailed && mycurrentmaster.IsSlave {
 					// No GTID compatible solution stop relay master wait apply relay and move to real master
 					logs, err := mycurrentmaster.StopSlave()
 					cluster.LogSQL(logs, err, mycurrentmaster.URL, "Rejoin", config.LvlErr, "Failed to stop slave on relay server  %s: %s", mycurrentmaster.URL, err)
