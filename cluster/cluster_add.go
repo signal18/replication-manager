@@ -91,6 +91,22 @@ func (cluster *Cluster) addColumnstoreTag() {
 	}
 }
 
+// ColumnstoreMinDBU: a ColumnStore server runs both roles (#2021), 1 DBU for the UM side
+// (the server, DML and DDL processing) and 1 for the PM side (PrimProc, WriteEngineServer).
+const ColumnstoreMinDBU = 2
+
+// raiseColumnstoreDBU raises prov-db-dbu to ColumnstoreMinDBU when the columnstore topology
+// is chosen, through the plan change (its pot and script decide, the resources follow the
+// ratio); before provisioning only, never the contract of a running cluster.
+func (cluster *Cluster) raiseColumnstoreDBU() {
+	if cluster.IsProvision || cluster.Conf.ProvDbDbu >= ColumnstoreMinDBU {
+		return
+	}
+	if err := cluster.ChangePlanUnits(PlanUnitDBU, ColumnstoreMinDBU-cluster.Conf.ProvDbDbu); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Topology %s needs %d DBU per server, prov-db-dbu stays %d: %s", config.TopoColumnstore, ColumnstoreMinDBU, cluster.Conf.ProvDbDbu, err)
+	}
+}
+
 func (cluster *Cluster) AddDBTag(tag string, dynamic bool) {
 
 	if !cluster.Configurator.HaveDBTag(tag) {

@@ -164,6 +164,10 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 		plan.Notes = append(plan.Notes, fmt.Sprintf("%d ColumnStore servers, each its own failover service holding a dbroot; the master is seeded, the others replicate its schema", plan.DBCount))
 	}
 	plan.DBUPerNode = parent.Conf.ProvDbDbu
+	if columnstore && plan.DBUPerNode < cluster.ColumnstoreMinDBU {
+		plan.DBUPerNode = cluster.ColumnstoreMinDBU
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%d DBU per server: a ColumnStore server runs a UM and a PM, 1 DBU each", plan.DBUPerNode))
+	}
 	plan.Proxy = childProxyType(parent)
 	// Another GTID domain than the parent's: the child master replicates from the
 	// parent and takes its own writes (staging doc, prov-db-domain). The parent's is

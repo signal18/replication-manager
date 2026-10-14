@@ -56,11 +56,30 @@ func TestColumnstoreTopology(t *testing.T) {
 	if cl.IsTopologyActivePassive() || !cl.IsTopologyMasterSlave() {
 		t.Fatal("discovered columnstore must behave as a master-slave")
 	}
+	if _, floor, _, err := cl.planUnitSpec(PlanUnitDBU); err != nil || floor != ColumnstoreMinDBU {
+		t.Fatalf("a ColumnStore server runs a UM and a PM: DBU floor %d (%v), want %d", floor, err, ColumnstoreMinDBU)
+	}
 	if cl.isAutomaticFailover() {
 		t.Fatal("a columnstore cluster never fails over on its own: the orchestrator moves the master's service")
 	}
 	if cl.HasDiscoverTopologyMismatchTarget() {
 		t.Fatal("columnstore discovered under a columnstore target is no mismatch")
+	}
+
+	// #2021: the topology chosen before provisioning raises prov-db-dbu to 2, never lowers
+	// it, and leaves a provisioned cluster's contract alone
+	for _, c := range []struct {
+		dbu, want int
+		provisioned bool
+	}{{1, 2, false}, {4, 4, false}, {1, 1, true}} {
+		cs := newColumnstoreTestCluster()
+		cs.Conf.ProvDbDbu, cs.IsProvision = c.dbu, c.provisioned
+		if err := cs.BootstrapTopology(config.TopoColumnstore); err != nil {
+			t.Fatal(err)
+		}
+		if cs.Conf.ProvDbDbu != c.want {
+			t.Errorf("prov-db-dbu %d (provisioned %v): got %d, want %d", c.dbu, c.provisioned, cs.Conf.ProvDbDbu, c.want)
+		}
 	}
 
 	// plain active-passive: no mcs tag, discovered as active-passive
