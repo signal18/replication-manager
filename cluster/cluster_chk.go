@@ -163,6 +163,15 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 }
 
 func (cluster *Cluster) isAutomaticFailover() bool {
+	// ColumnStore: each server is its own failover service, OpenSVC restarts the master
+	// on another node with its volume; a promotion at the same time would race it (#2021)
+	if cluster.HasConfigTopoColumnstore() {
+		if cluster.master == nil || !cluster.master.IsFailed() {
+			return false
+		}
+		cluster.SetState("WARN0244", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0244"], cluster.Name), ErrFrom: "CHECK"})
+		return false
+	}
 	if !cluster.Conf.Interactive {
 		return true
 	}

@@ -298,7 +298,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				master := cluster.GetMaster()
 
 				// If master-slave topology and server is not the master (split brain)
-				if cluster.IsActive() && master != nil && cluster.GetTopology() == config.TopoMasterSlave && cluster.Servers[k].URL != master.URL {
+				if cluster.IsActive() && master != nil && cluster.IsTopologyMasterSlave() && cluster.Servers[k].URL != master.URL {
 					// Extra master after a split brain (our cluster.master differs from a
 					// non-slave others follow). Who's the REAL master? Not our own
 					// pointer (this node may have sat out the split as the minority and
@@ -402,7 +402,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			// fail-safe detached it), and the surviving slave may already have been re-pointed to the majority's
 			// promoted master over an app-level cut — inferring a master from that here re-promotes it on the
 			// minority (it has no authority to). Hold master=nil until it can confirm authority again.
-			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.Conf.TopologyTarget == config.TopoMasterSlave && !cluster.IsFailedArbitrator {
+			if !cluster.runOnceAfterTopology && cluster.GetMaster() == nil && len(cluster.slaves) > 0 && cluster.IsTopologyTargetMasterSlave(cluster.Conf.TopologyTarget) && !cluster.IsFailedArbitrator {
 				numSlaves := 0
 				for _, sl := range cluster.slaves {
 					// if the slave is replicating from this server
@@ -479,12 +479,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// active-passive was configured explicitly.
 	if !hasRelay && !hasCycling && !cluster.HasConfigTopoActivePassive() {
 		switch target := cluster.GetTopologyTarget(); target {
-		case config.TopoMultiMasterWsrep, config.TopoMultiMasterGrouprep:
+		case config.TopoMultiMasterWsrep, config.TopoMultiMasterGrouprep, config.TopoColumnstore:
 			// Galera and group replication are never inferred from the replication
 			// threads: the declaration is their only source. Capped to master-slave here
 			// since 37cd7156e (v3.1.7, the declared topology only applied when unknown):
 			// every wsrep code path was dead (regression from v3.0.33, dev3 galera-sst
 			// 2026-10-10).
+			// ColumnStore servers replicate like a master-slave, the target names them (#2021).
 			cluster.Topology = target
 		default:
 			cluster.Topology = config.TopoMasterSlave
@@ -660,12 +661,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// Remove read_only from the discovered master outside master-slave, but keep
 	// active-passive writable state under explicit topology handling.
 	mst := cluster.GetMaster()
-	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance && cluster.Topology != config.TopoMasterSlave && !cluster.HasConfigTopoActivePassive() {
+	if cluster.IsDiscovered() && mst != nil && mst.IsReadOnly() && !mst.IsMaintenance && !cluster.IsTopologyMasterSlave() && !cluster.HasConfigTopoActivePassive() {
 		mst.SetReadWrite()
 	}
 
 	// Remove Virtual Master from Master-Slave Topology
-	if cluster.Topology == config.TopoMasterSlave && cluster.master != nil && cluster.vmaster != nil {
+	if cluster.IsTopologyMasterSlave() && cluster.master != nil && cluster.vmaster != nil {
 		cluster.vmaster.IsVirtualMaster = false
 		cluster.vmaster = nil
 	}
@@ -880,7 +881,8 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetMultiMasterGroupRep(false)
 		cluster.SetActivePassive(true)
 	case config.TopoColumnstore:
-		// the UM: an active-passive server whose configuration carries the mcs tag
+		// ColumnStore servers, each UM and PM, as a master-slave whose configuration
+		// carries the mcs tag (#2021)
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
 		cluster.SetForceSlaveNoGtid(false)
@@ -888,7 +890,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetBinlogServer(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
-		cluster.SetActivePassive(true)
+		cluster.SetActivePassive(false)
 		cluster.SetTopologyTarget(topology)
 		cluster.addColumnstoreTag()
 	case "master-slave":

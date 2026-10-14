@@ -19,16 +19,19 @@ func newColumnstoreTestCluster() *Cluster {
 	return c
 }
 
-// The columnstore topology is active-passive with the mcs tag (#2002): its target
-// counts as active-passive, a lone server is discovered as columnstore, and the
-// bootstrap adds the mcs tag once.
+// The columnstore topology is a master-slave of ColumnStore servers with the mcs tag
+// (#2021): its target is not active-passive, it is discovered as columnstore and handled
+// as a master-slave, never fails over on its own, and the bootstrap adds the mcs tag once.
 func TestColumnstoreTopology(t *testing.T) {
 	cl := newColumnstoreTestCluster()
 	if err := cl.BootstrapTopology(config.TopoColumnstore); err != nil {
 		t.Fatalf("bootstrap columnstore: %v", err)
 	}
-	if !cl.HasConfigTopoActivePassive() || !cl.HasConfigTopoColumnstore() {
-		t.Fatal("columnstore target must be active-passive")
+	if cl.HasConfigTopoActivePassive() || cl.Conf.ActivePassive || !cl.HasConfigTopoColumnstore() {
+		t.Fatal("columnstore target must be a master-slave, not active-passive")
+	}
+	if !cl.IsTopologyTargetMasterSlave(cl.Conf.TopologyTarget) {
+		t.Fatal("columnstore target must count as a master-slave target")
 	}
 	if got := cl.GetTopologyFromConf(); got != config.TopoColumnstore {
 		t.Fatalf("topology from conf %q, want %q", got, config.TopoColumnstore)
@@ -50,8 +53,11 @@ func TestColumnstoreTopology(t *testing.T) {
 		t.Fatal("a lone columnstore server must be discovered as columnstore")
 	}
 	cl.Topology = config.TopoColumnstore
-	if !cl.IsTopologyActivePassive() || !cl.HasNoValidSlave() {
-		t.Fatal("discovered columnstore must behave as active-passive")
+	if cl.IsTopologyActivePassive() || !cl.IsTopologyMasterSlave() {
+		t.Fatal("discovered columnstore must behave as a master-slave")
+	}
+	if cl.isAutomaticFailover() {
+		t.Fatal("a columnstore cluster never fails over on its own: the orchestrator moves the master's service")
 	}
 	if cl.HasDiscoverTopologyMismatchTarget() {
 		t.Fatal("columnstore discovered under a columnstore target is no mismatch")

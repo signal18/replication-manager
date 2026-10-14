@@ -32,25 +32,37 @@ func (cluster *Cluster) HasServer(srv *ServerMonitor) bool {
 
 // HasConfigTopoActivePassive reports whether the cluster is configured for
 // active-passive topology, either via the legacy boolean flag or an explicit
-// topology target. The columnstore topology is active-passive (#2002).
+// topology target.
 func (cluster *Cluster) HasConfigTopoActivePassive() bool {
-	return cluster.Conf.ActivePassive || cluster.Conf.TopologyTarget == config.TopoActivePassive || cluster.HasConfigTopoColumnstore()
+	return cluster.Conf.ActivePassive || cluster.Conf.TopologyTarget == config.TopoActivePassive
 }
 
 // HasConfigTopoColumnstore reports whether the cluster targets the columnstore
-// topology: an active-passive UM with the mcs tag (#2002).
+// topology: a master-slave of ColumnStore servers with the mcs tag (#2021).
 func (cluster *Cluster) HasConfigTopoColumnstore() bool {
 	return cluster.Conf.TopologyTarget == config.TopoColumnstore
 }
 
 // IsTopologyActivePassive reports whether the discovered topology is
-// active-passive, the columnstore one included.
+// active-passive.
 func (cluster *Cluster) IsTopologyActivePassive() bool {
-	return cluster.Topology == config.TopoActivePassive || cluster.Topology == config.TopoColumnstore
+	return cluster.Topology == config.TopoActivePassive
 }
 
-// activePassiveTopology is the topology a lone active-passive server is
-// discovered as: columnstore when it is the target.
+// IsTopologyMasterSlave reports whether the discovered topology is a master and
+// its replicas, the columnstore one included (#2021): its servers replicate the
+// schema from the master like a master-slave.
+func (cluster *Cluster) IsTopologyMasterSlave() bool {
+	return cluster.Topology == config.TopoMasterSlave || cluster.Topology == config.TopoColumnstore
+}
+
+// IsTopologyTargetMasterSlave is IsTopologyMasterSlave for the configured target.
+func (cluster *Cluster) IsTopologyTargetMasterSlave(target string) bool {
+	return target == config.TopoMasterSlave || target == config.TopoColumnstore
+}
+
+// activePassiveTopology is the topology a lone server is discovered as:
+// columnstore when it is the target.
 func (cluster *Cluster) activePassiveTopology() string {
 	if cluster.HasConfigTopoColumnstore() {
 		return config.TopoColumnstore
