@@ -711,6 +711,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.VersionsMap = config.NewVersionsMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
+	opensvc.RemoveLegacyP12Pem(cluster.WorkingDir) // the om3 client's key now lives in <working-dir>/.opensvc-pem
 	cluster.InterventionHistory = make([]InterventionEntry, 0)
 	cluster.LoadInterventionHistory()
 	cluster.LoadSysbenchLog()

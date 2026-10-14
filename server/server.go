@@ -2108,6 +2108,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	//set cluster list
 	repman.ClusterList = strings.Split(strClusters, ",")
+	repman.removeLegacyP12Pem()
 	repman.ImmuableFlagMaps["default"] = ImmuableMap
 	repman.DynamicFlagMaps["default"] = DynamicMap
 	conf.ImmuableFlagMap = ImmuableMap

@@ -9,6 +9,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -76,7 +77,7 @@ func normalizeOpenSVCV3ProvisionDelay(delay int) int {
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
 	svc.ClusterConf = cluster.Conf
-	svc.ClusterDir = cluster.WorkingDir
+	svc.PemDir = filepath.Join(cluster.Conf.WorkingDir, ".opensvc-pem")
 	svc.Logrus = cluster.Logrus
 	svc.UseCollectorAPI = cluster.Conf.ProvOpensvcUseCollectorAPI
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
