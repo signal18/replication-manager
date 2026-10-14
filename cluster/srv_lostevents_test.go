@@ -62,3 +62,24 @@ func TestReadLostEventsPage(t *testing.T) {
 		t.Fatalf("expected clean EOF past the end, got page=%+v err=%v", page, err)
 	}
 }
+
+// #2025 (review of #2031): the lost-events viewer masks a lost statement's password,
+// the page offsets stay the file's
+func TestReadLostEventsPageMasksSecrets(t *testing.T) {
+	content := "#261014 10:39:43 server id 1  end_log_pos 1234\nCREATE USER `app1`@`%` IDENTIFIED BY 'LostSecret9'\n/*!*/;\n"
+	path := filepath.Join(t.TempDir(), "delta.sql")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	page, err := ReadLostEventsPage(path, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all := strings.Join(page.Lines, "\n")
+	if strings.Contains(all, "LostSecret9") || !strings.Contains(all, "IDENTIFIED BY '*****'") {
+		t.Fatalf("lines: %q", page.Lines)
+	}
+	if page.NextPos != int64(len(content)) || !page.EOF {
+		t.Fatalf("offsets are the file's: next %d of %d", page.NextPos, len(content))
+	}
+}

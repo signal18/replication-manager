@@ -17,13 +17,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/signal18/replication-manager/utils/sqlmask"
 	"hash/crc64"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/signal18/replication-manager/utils/sqlmask"
 )
 
 const debug = false

@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/signal18/replication-manager/utils/sqlmask"
 	"io"
 	"os"
 	"os/exec"
@@ -25,6 +24,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/signal18/replication-manager/utils/sqlmask"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"

@@ -14,7 +14,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/signal18/replication-manager/utils/sqlmask"
 	"io"
 	"net/http"
 	"net/url"
@@ -23,6 +22,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"github.com/signal18/replication-manager/utils/sqlmask"
 
 	teams "github.com/atc0005/go-teams-notify/v2"
 	"github.com/atc0005/go-teams-notify/v2/messagecard"

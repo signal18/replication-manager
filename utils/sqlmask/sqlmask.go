@@ -9,7 +9,10 @@
 // cluster code and the external plugins share it.
 package sqlmask
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
 
 // Mask replaces every secret literal of the text.
 const Mask = "*****"
@@ -31,14 +34,31 @@ var rules = []struct {
 	{regexp.MustCompile(`(?i)(\bSET\s+PASSWORD\b[^=]*=\s*)(?:` + literal + `)`), "${1}'" + Mask + "'"},
 	// CHANGE MASTER / CHANGE REPLICATION SOURCE: MASTER_PASSWORD='pw', SOURCE_PASSWORD='pw'
 	{regexp.MustCompile(`(?i)(\b(?:MASTER|SOURCE)_PASSWORD\s*=\s*)(?:` + literal + `)`), "${1}'" + Mask + "'"},
-	// connection strings and command lines: password=pw, pwd=pw
+	// connection strings and command lines: password='p w', --password="pw"
+	{regexp.MustCompile(`(?i)(\b(?:password|pwd)=)(?:` + literal + `)`), "${1}'" + Mask + "'"},
+	// and unquoted: password=pw, pwd=pw
 	{regexp.MustCompile(`(?i)(\b(?:password|pwd)=)[^;,\s'"]+`), "${1}" + Mask},
 }
+
+// keywords: every rule needs one of them; a text without any is returned untouched,
+// without running the expressions (slow log and processlist lines, the hot paths)
+var keywords = []string{"identified", "password", "pwd"}
 
 // Secrets returns the text with every password literal it carries replaced by Mask,
 // the statement otherwise intact.
 func Secrets(s string) string {
 	if s == "" {
+		return s
+	}
+	lower := strings.ToLower(s)
+	found := false
+	for _, k := range keywords {
+		if strings.Contains(lower, k) {
+			found = true
+			break
+		}
+	}
+	if !found {
 		return s
 	}
 	for _, r := range rules {
