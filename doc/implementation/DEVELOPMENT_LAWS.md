@@ -88,14 +88,26 @@ existing helper, never reimplement what exists. If two pieces of code do the sam
 job, that's a bug: consolidate. Before writing a function, look for the one that
 already does it.
 
-**T3. Log — and track state — at the CORRECT level and in the CORRECT domain
-state machine.** Two axes, always classify both:
+**T3. Log — and track state — at the CORRECT level, in the CORRECT domain state
+machine and log, with the CORRECT severity.** Three axes, always classify all three:
 - **Level:** *server* (one DB instance) vs *cluster* (the whole cluster).
-- **Domain state machine:** HA (the main `StateMachine`), maintenance, schema
-  (`SchemaStateMachine`), security (`SecurityStateMachine`), workload
-  (`WorkloadStateMachine`).
+- **Domain:** HA (the main `StateMachine`, the cluster log), maintenance, schema
+  (`SchemaStateMachine`, `schema.log`), security (`SecurityStateMachine`,
+  `security.log`), workload (`WorkloadStateMachine`, `workload.log`), config
+  (`ConfigStateMachine`, the config pill: a fact about a server's configuration that
+  needs an operator, e.g. system tables behind the release, deprecated variables). The
+  state goes to its domain's state machine AND its line to that domain's log, never to
+  another domain's (the HA view above all, T4). A plugin finding names its domain
+  explicitly (`Finding.Domain`, or its severity for security/workload/schema), never
+  falls into the HA machine by default.
+- **Severity:** by consequence, not by habit. ERROR when the server cannot do part of
+  its job until someone acts (every dump of it fails, a replica cannot be seeded),
+  WARNING for a risk, INFO for a mode. A config fact can be an ERROR (ERR00116: the
+  system tables lag the release, every logical backup fails).
 
-Every state and every log line belongs to exactly one level + one domain.
+Every state and every log line belongs to exactly one level + one domain + one
+severity. A domain without its own log yet (config) is a gap to close, not a reason to
+use another domain's.
 
 **T4. Log everything, but present only what matters — never pollute a domain's
 view, above all HA.** What you *log* (collect broadly, for debug) vs what you

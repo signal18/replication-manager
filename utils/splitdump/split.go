@@ -115,6 +115,51 @@ var (
 	gtidRegexMySQL     = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:\/\*![^*]*\*\/\s*)?'([^']+)'`)
 )
 
+// gtidStatementLines joins the lines of a GTID_PURGED statement: a MySQL client writes the
+// GTID set of several sources over several lines, one source per line, and the position
+// regexes read one statement. A continuation line is a GTID set part, else the statement is
+// dropped (no position is read from a cut one); bounded by gtidStatementMax.
+type gtidStatementLines struct {
+	stmt strings.Builder
+	open bool
+}
+
+// gtidStatementMax bounds a joined GTID_PURGED statement: 10000 sources with several
+// intervals each are about 650 KB.
+const gtidStatementMax = 1 << 20
+
+var gtidContinuationRegex = regexp.MustCompile(`^\s*[0-9A-Za-z_:,-]+(?:'\s*(?:;|\*/))?\s*$`)
+
+// add returns the line as is, or a GTID_PURGED statement once complete; "" while the
+// statement continues on the next lines.
+func (g *gtidStatementLines) add(line string) string {
+	t := strings.TrimRight(line, "\r\n")
+	end := func(s string) bool {
+		s = strings.TrimSpace(s)
+		return strings.HasSuffix(s, ";") || strings.HasSuffix(s, "*/")
+	}
+	if !g.open {
+		if !strings.Contains(t, "GTID_PURGED") || end(t) {
+			return t
+		}
+		g.open = true
+		g.stmt.Reset()
+		g.stmt.WriteString(t)
+		return ""
+	}
+	if !gtidContinuationRegex.MatchString(t) || g.stmt.Len()+len(t) > gtidStatementMax {
+		g.open = false
+		g.stmt.Reset()
+		return t
+	}
+	g.stmt.WriteString(strings.TrimSpace(t))
+	if end(t) {
+		g.open = false
+		return g.stmt.String()
+	}
+	return ""
+}
+
 // isSystemSectionBoundary reports whether line is the first line of the
 // mysql.system-all section of a mariadb-dump/mysqldump --system=all stream
 // (INSTALL PLUGIN / CREATE USER, the only two statement forms known to open
@@ -178,6 +223,7 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	}
 
 	onTableScheme, onTableData, pastHeader := false, false, false
+	var gtidLines gtidStatementLines
 	shardpad, schema := "", ""
 	shard := 0
 	dataTableName := ""
@@ -466,18 +512,18 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 					return
 				}
 			}
-			if !sourceDataDisabled {
-				if matches := gtidRegexMariaDB.FindStringSubmatch(line); matches != nil {
+			if stmt := gtidLines.add(line); !sourceDataDisabled && stmt != "" {
+				if matches := gtidRegexMariaDB.FindStringSubmatch(stmt); matches != nil {
 					bgtid = matches[1]
 				}
-				if matches := gtidRegexMySQL.FindStringSubmatch(line); matches != nil {
+				if matches := gtidRegexMySQL.FindStringSubmatch(stmt); matches != nil {
 					bgtid = matches[1]
 				}
-				if matches := binlogRegexMariaDB.FindStringSubmatch(line); matches != nil {
+				if matches := binlogRegexMariaDB.FindStringSubmatch(stmt); matches != nil {
 					bfile = matches[1]
 					bpos = matches[2]
 				}
-				if matches := binlogRegexMySQL.FindStringSubmatch(line); matches != nil {
+				if matches := binlogRegexMySQL.FindStringSubmatch(stmt); matches != nil {
 					bfile = matches[1]
 					bpos = matches[2]
 				}

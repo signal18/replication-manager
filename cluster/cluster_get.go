@@ -67,14 +67,34 @@ func (cluster *Cluster) GetShareDir() string {
 
 // This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid string) []string {
-	dumpver := cluster.VersionsMap.Get("client-dump")
+	return cluster.getMysqlDumpOptions(server, usegtid, false, cluster.VersionsMap.Get("client-dump"))
+}
+
+// GetMysqlBackupDumpOptions are the dump options of a logical backup: the replication
+// position is only written as a comment (--master-data=2, --dump-slave=2, no
+// --apply-slave-statements) and recorded in the backup metadata. An active CHANGE MASTER
+// can not name a channel: MySQL refuses it on a replica with several channels, MariaDB applies
+// it to default_master_connection, and its STOP/START SLAVE act on every channel. The reseed
+// points the managed channel itself after the restore (ProcessReseedLogical), as the MySQL
+// and MariaDB replica setup procedures do.
+func (cluster *Cluster) GetMysqlBackupDumpOptions(server *ServerMonitor, usegtid string) []string {
+	return cluster.getMysqlDumpOptions(server, usegtid, true, cluster.VersionsMap.Get("client-dump"))
+}
+
+// getMysqlDumpOptions builds the options for the dump client of version dumpver: the options
+// that depend on the client (and the server) follow the client that runs the dump.
+func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid string, positionComment bool, dumpver *version.Version) []string {
 	events := ""
 	dumpslave := ""
 
+	position := "1"
+	if positionComment {
+		position = "2"
+	}
 	if server.IsMaster() {
-		dumpslave = "--master-data=1"
+		dumpslave = "--master-data=" + position
 	} else {
-		dumpslave = "--dump-slave=1"
+		dumpslave = "--dump-slave=" + position
 	}
 
 	if server.HasEventScheduler() {
@@ -85,22 +105,42 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid strin
 
 	dumpargs := strings.Split(strings.ReplaceAll(cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
 
-	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") {
+	if mariadbSkipLogQueriesCompatible(dumpver, server.DBVersion) {
 		dumpargs = append(dumpargs, "--skip-log-queries")
 	}
 
-	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.30") && dumpver.IsMySQLOrPercona() && dumpver.GreaterEqual("8.0.30") {
+	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.30") && dumpver != nil && dumpver.IsMySQLOrPercona() && dumpver.GreaterEqual("8.0.30") {
 		dumpargs = append(dumpargs, "--mysqld-long-query-time=10") // Prevent mysqldump from logging to slow_log
 	}
 
 	dumpargs = append(dumpargs, cluster.GetDumpCredentials(server)...)
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--ignore-table=replication_manager_schema.jobs")
+	if !positionComment {
+		dumpargs = append(dumpargs, "--apply-slave-statements")
+	}
+	dumpargs = append(dumpargs, "--ignore-table=replication_manager_schema.jobs")
+	if server.DBVersion.IsMySQLOrPercona() {
+		// The replica's own parallel applier state, which mysqldump does not leave out like the
+		// other replication metadata tables: restored from another server it breaks the next
+		// CHANGE REPLICATION SOURCE (error 1201, "Error reading replica worker configuration").
+		dumpargs = append(dumpargs, "--ignore-table=mysql.slave_worker_info")
+	}
 	if cluster.Conf.BackupSplitMysqlUser && !slices.Contains(dumpargs, "--ignore-table=mysql.user") {
 		// Ignore mysql.user table to avoid dump of password this is needed for staging
 		dumpargs = append(dumpargs, "--ignore-table=mysql.user")
 	}
 	dumpargs = append(dumpargs, server.GetSSLClientParam("client-dump")...)
 	return misc.RemoveEmptyString(dumpargs)
+}
+
+// mariadbSkipLogQueriesCompatible tells whether a MariaDB dump can take --skip-log-queries:
+// the dump then turns off the slow log of its own restore, under the variable name of the
+// client (slow_query_log before 10.11, log_slow_query from 10.11) behind a 10.1.1 guard, so a
+// server of the other side of 10.11 rejects it (ERROR 1193). An unknown client never gets it.
+func mariadbSkipLogQueriesCompatible(client, server *version.Version) bool {
+	if client == nil || server == nil || !client.IsMariaDB() || !server.IsMariaDB() || !server.GreaterEqual("10.1") {
+		return false
+	}
+	return client.GreaterEqual("10.11") == server.GreaterEqual("10.11")
 }
 
 // This will use installed mysqldump first

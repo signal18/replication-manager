@@ -117,6 +117,9 @@ function BackupSettings({ selectedCluster, user }) {
   const hMydumperRegex = `**Mydumper Regex**\n\nRegular expression to filter which tables mydumper includes in the backup.\n\nConfig: \`backup-mydumper-regex\``
   const hMyloaderOptions = `**Myloader Options**\n\nAdditional command-line flags passed to myloader during restore.\n\nConfig: \`backup-myloader-options\``
   const hLoadThreads = `**Logical Restore Threads**\n\nNumber of parallel threads used when restoring a logical/splitdump backup (passed as \`--threads\` to myloader/splitdump).\nHigher values speed up restore at the cost of more CPU and I/O on the target. Default: 2.\n\nConfig: \`backup-logical-load-threads\``
+  const hRemotePickup = `**Remote Dump Pickup Timeout**\n\nWhen \`mysqldump\` is listed in Force Remote Execution (Scheduler settings), the dump runs on the database node through dbjobs and streams back to replication-manager.\nThis is how long, in seconds, a backup waits for dbjobs to take the dump before it fails. 0 uses the default: 300.\n\nConfig: \`backup-logical-remote-pickup-timeout\``
+  const hRemoteReport = `**Remote Dump Report Timeout**\n\nFor a dump run on the database node (Force Remote Execution lists \`mysqldump\`): how long, in seconds, the backup waits after the end of the stream for dbjobs to report the exit status of the dump client. 0 uses the default: 120.\n\nConfig: \`backup-logical-remote-report-timeout\``
+  const hRemoteArm = `**Remote Dump Arm Timeout**\n\nFor a dump run on the database node (Force Remote Execution lists \`mysqldump\`): how long, in seconds, dbjobs' request for a receiver waits for the backup to be ready for its stream. 0 uses the default: 10.\n\nConfig: \`backup-logical-remote-arm-timeout\``
   const hDumpThreads = `**Logical Dump Threads**\n\nNumber of parallel threads used when taking a logical/splitdump backup.\nHigher values speed up the dump at the cost of more load on the source. Default: 2.\n\nConfig: \`backup-logical-dump-threads\``
   const hSplitUser = `**Split Logical Dump with DB Credentials**\n\nWhen enabled, the logical dump is split into per-database files using the database credentials for each.\n\nConfig: \`backup-split-mysql-user\``
   const hRestoreUser = `**Restore User When Reseed**\n\nWhen enabled, MySQL user accounts and grants are restored as part of the reseed process.\n\nConfig: \`backup-restore-mysql-user\``
@@ -315,6 +318,33 @@ function BackupSettings({ selectedCluster, user }) {
         <NumberInput min={1} max={64} value={selectedCluster?.config?.backupLogicalDumpThreads}
           showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change logical dump threads to: `}
           onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-logical-dump-threads', value }))} />
+      )
+    },
+    {
+      key: 'Remote Dump Pickup Timeout',
+      help: h(hRemotePickup, 'Remote Dump Pickup Timeout'),
+      value: (
+        <NumberInput min={0} value={selectedCluster?.config?.backupLogicalRemotePickupTimeout}
+          showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-logical-remote-pickup-timeout' to: `}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-logical-remote-pickup-timeout', value }))} />
+      )
+    },
+    {
+      key: 'Remote Dump Report Timeout',
+      help: h(hRemoteReport, 'Remote Dump Report Timeout'),
+      value: (
+        <NumberInput min={0} value={selectedCluster?.config?.backupLogicalRemoteReportTimeout}
+          showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-logical-remote-report-timeout' to: `}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-logical-remote-report-timeout', value }))} />
+      )
+    },
+    {
+      key: 'Remote Dump Arm Timeout',
+      help: h(hRemoteArm, 'Remote Dump Arm Timeout'),
+      value: (
+        <NumberInput min={0} value={selectedCluster?.config?.backupLogicalRemoteArmTimeout}
+          showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-logical-remote-arm-timeout' to: `}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-logical-remote-arm-timeout', value }))} />
       )
     },
     {

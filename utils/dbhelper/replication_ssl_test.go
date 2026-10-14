@@ -6,6 +6,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // changeMasterSQL runs ChangeMaster against a mock that accepts any statement and
@@ -23,6 +24,30 @@ func changeMasterSQL(t *testing.T, opt ChangeMasterOpt) string {
 		t.Fatal(err)
 	}
 	return cm
+}
+
+// A positional CHANGE turns GTID positioning off: MariaDB MASTER_USE_GTID=NO, MySQL
+// SOURCE_AUTO_POSITION=0 (a channel left on auto-position refuses a file/position, error 1776).
+func TestChangeMasterPositionalTurnsGTIDOff(t *testing.T) {
+	opt := ChangeMasterOpt{Host: "db1", Port: "3306", User: "repl", Password: "pw", Retry: "10", Heartbeat: "1", Mode: "POSITIONAL", Logfile: "binlog.000002", Logpos: "93156"}
+	if cm := changeMasterSQL(t, opt); !strings.Contains(cm, "MASTER_log_pos=93156, MASTER_USE_GTID=NO") {
+		t.Fatalf("MariaDB: %s", cm)
+	}
+	for _, v := range []*version.Version{{Flavor: "MySQL", Major: 8, Minor: 0, Release: 35}, {Flavor: "Percona", Major: 5, Minor: 7, Release: 44}} {
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		mock.ExpectExec("CHANGE").WillReturnResult(sqlmock.NewResult(0, 0))
+		cm, err := ChangeMaster(sqlx.NewDb(db, "sqlmock"), opt, v)
+		db.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(cm, "_log_pos=93156, ") || !strings.Contains(strings.ToUpper(cm), "_AUTO_POSITION=0") {
+			t.Fatalf("%s %d.%d: %s", v.Flavor, v.Major, v.Minor, cm)
+		}
+	}
 }
 
 // With replication SSL and a CA the replica verifies its primary against the CA, quoted;

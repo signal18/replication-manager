@@ -15879,6 +15879,7 @@
         },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}": {
             "post": {
+                "description": "For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.",
                 "tags": [
                     "DatabaseTasks"
                 ],
@@ -15907,13 +15908,26 @@
                     },
                     {
                         "type": "string",
-                        "description": "Task name (xtrabackup, mariabackup, errorlog, etc.)",
+                        "description": "Task name (xtrabackup, mariabackup, mysqldump, errorlog, etc.)",
                         "name": "taskname",
                         "in": "path",
                         "required": true
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "RECEIVER_PORT=\u003cport\u003e, for mysqldump RECEIVER_PORT=\u003cport\u003e DUMP_ARGS=\u003cbase64\u003e, then LOCK_DDL=1 when dbjobs blocks DDL around the dump client",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No remote mysqldump backup waiting on \u003cserver\u003e",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
             }
         },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade": {

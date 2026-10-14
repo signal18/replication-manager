@@ -84,6 +84,14 @@ var tests = []string{
 	// testSchemaEventsFailoverIsolation is not in this list either: it
 	// switches the master over twice. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testSchemaEventsFailoverIsolation
+	// testRemoteMysqldump is not in this list either: it needs a jobs container (dbjobs)
+	// next to each database. Run it by name, once per scheduler-jobs-mode:
+	// /api/clusters/<cluster>/tests/actions/run/testRemoteMysqldump
+	// testLogicalReseed is not in this list either, for the same reason: run it by name, once
+	// per scheduler-jobs-mode. Only normal operation, fit for any test environment.
+	// testLogicalReseedEdgeCases and testDumpClientCheck are not in this list either: they
+	// break replication, overwrite a backup, change GTID state or raise a warning on purpose,
+	// for a dedicated test cluster only. Run them by name.
 	// testProxySQLPostgresRouting is not in this list either: it needs a
 	// PostgreSQL cluster behind a ProxySQL and switches the master over twice.
 	// Run it by name: /api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting

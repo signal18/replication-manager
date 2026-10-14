@@ -599,6 +599,9 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 	// PostgreSQL tools — the jobs sidecar runs them
 	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup, config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync, config.ConstTaskPgRestore, config.ConstTaskPgRestoreLogical, config.ConstTaskPgReseedLogical:
 		return server.createCookie(postgresJobCookie(task))
+	// Logical backup — dbjobs runs the dump client on DB host (srv_job_backup_remote.go)
+	case config.ConstTaskDump:
+		return server.createCookie(postgresJobCookie(task))
 	// Optimize — dbjobs runs mysqlcheck on DB host
 	case config.ConstTaskOptimize:
 		return server.SetWaitOptimizeCookie()
@@ -683,6 +686,8 @@ func (server *ServerMonitor) delTaskCookie(task string) error {
 		return server.DelWaitSqlErrorlogCookie()
 	case config.ConstTaskZFS:
 		return server.delCookie("cookie_waitzfssnapback")
+	case config.ConstTaskDump:
+		return server.delCookie(postgresJobCookie(task))
 	default:
 		return nil
 	}
