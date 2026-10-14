@@ -536,6 +536,11 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 		if cluster.Conf.MultiMaster || cluster.Conf.MultiMasterGrouprep || sl.State == stateWsrep || sl.State == stateWsrepDonor || sl.State == stateWsrepLate || (cluster.oldMaster != nil && sl.URL == cluster.oldMaster.URL) || sl.State == stateMaster || (!sl.IsRelay && cluster.Conf.MxsBinlogOn) {
 			continue
 		}
+		// A replica of the elected relay already streams from the new master.
+		if src, _ := cluster.GetMasterFromReplication(sl); src != nil && src.Id == cluster.master.Id {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Slave %s already replicates from the new master", sl.URL)
+			continue
+		}
 		// maxscale is in the list of slave
 
 		if !fail && !cluster.Conf.MxsBinlogOn && cluster.Conf.SwitchSlaveWaitCatch {

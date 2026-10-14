@@ -108,6 +108,11 @@ func (server *ServerMonitor) SetMaster() {
 		// A real promotion (not the per-tick re-assert): anchor the rejoin guards.
 		cluster.MasterChangeTs = time.Now().Unix()
 	}
+	// A promoted relay leads now: the relay flag is recomputed for replicas
+	// only, so a stale one would skip the read-only clear and the proxy writer.
+	if !server.IsMaxscale {
+		server.IsRelay = false
+	}
 	server.SetState(stateMaster)
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Server %s state transition from %s changed to: %s in SetMaster", server.URL, server.PrevState, stateMaster)
 	_, file, no, ok := runtime.Caller(1)

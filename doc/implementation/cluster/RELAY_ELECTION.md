@@ -28,6 +28,18 @@ attached to it, so promoting it needs no extra move.
 Unchanged: `isOneSlaveHeartbeatIncreasing` still ignores replicas whose source
 is a relay, since they do not see the leader heartbeat directly.
 
+## Promoting a relay
+
+- `SetMaster` clears `IsRelay` (except MaxScale): the flag is recomputed for
+  replicas only, so a promoted relay kept it and skipped the read-only clear
+  (`cluster_topo.go`, `srv_rejoin.go`), the ProxySQL writer swap
+  (`prx_proxysql.go`) and the privilege checks (`srv_chk.go`).
+- `SwitchSlavesToMaster` skips the candidate (already `stateMaster`) and now also
+  any replica whose source is already the new master: the relay's own replica
+  keeps its stream instead of a pointless `CHANGE MASTER`, and on a non-GTID
+  cluster without positional heartbeat it is no longer put in maintenance.
+- The old master rejoins the new master like after any switchover or failover.
+
 ## No-relay repair
 
 With `replication-master-slave-never-relay`, `CheckTopology` raises ERR00064 for
@@ -48,6 +60,11 @@ the record, so ERR00065 keeps guarding the divergent case.
 ## Test
 
 `regtest/test_relay_electable_and_repaired.go` (`testRelayElectableAndRepaired`),
-gated on a leader with two GTID replicas: chains B under A, checks A stays a
-candidate with B stopped, then hides the crash records electing the leader,
-enables never-relay and expects B back under the leader.
+gated on a leader with two GTID replicas: chains B under A, checks over three
+ticks that A stays a candidate with B stopped, hides the crash records electing
+the leader, enables never-relay and expects B back under the leader, then chains
+again and switches over: A must be elected, lose its relay flag, keep B and get
+the old leader as replica.
+
+`cluster.Crashes` is written without a lock by the test, as by `ResetCrashes`
+and every failover path: no lock guards that slice today.
