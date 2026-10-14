@@ -1460,6 +1460,21 @@ export const optimizeServer = createGuardedAsyncThunk(
   }
 )
 
+export const upgradeSystemTables = createGuardedAsyncThunk(
+  'cluster/upgradeSystemTables',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.upgradeSystemTables(clusterName, serverId, baseURL)
+      showSuccessBanner('Upgrade of the system tables queued: see the job log', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Upgrade of the system tables refused!', error, thunkAPI)
+      return handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const skipReplicationEvent = createGuardedAsyncThunk(
   'cluster/skipReplicationEvent',
   async ({ clusterName, serverId }, thunkAPI) => {
@@ -3065,6 +3080,7 @@ export const clusterSlice = createSlice({
         updateOpensvcTemplate.pending,
         runRemoteJobs.pending,
         optimizeServer.pending,
+        upgradeSystemTables.pending,
         skipReplicationEvent.pending,
         toggleInnodbMonitor.pending,
         toggleSlowQueryCapture.pending,
@@ -3152,6 +3168,7 @@ export const clusterSlice = createSlice({
         updateOpensvcTemplate.fulfilled,
         runRemoteJobs.fulfilled,
         optimizeServer.fulfilled,
+        upgradeSystemTables.fulfilled,
         skipReplicationEvent.fulfilled,
         toggleInnodbMonitor.fulfilled,
         toggleSlowQueryCapture.fulfilled,
@@ -3240,6 +3257,7 @@ export const clusterSlice = createSlice({
         updateOpensvcTemplate.rejected,
         runRemoteJobs.rejected,
         optimizeServer.rejected,
+        upgradeSystemTables.rejected,
         skipReplicationEvent.rejected,
         toggleInnodbMonitor.rejected,
         toggleSlowQueryCapture.rejected,

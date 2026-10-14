@@ -84,6 +84,7 @@ var databaseACLRules = []ACLRule{
 
 	// Maintenance actions
 	{"/actions/optimize", nil, []string{config.GrantDBMaintenance}},
+	{"/actions/upgrade-system-tables", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/maintenance", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/set-maintenance", nil, []string{config.GrantDBMaintenance}},
 	{"/actions/del-maintenance", nil, []string{config.GrantDBMaintenance}},

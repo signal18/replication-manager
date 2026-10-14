@@ -1711,6 +1711,7 @@ const (
 	ConstTaskAuditLog           TaskName = "auditlog"
 	ConstTaskZFS                TaskName = "zfssnapback"
 	ConstTaskOptimize           TaskName = "optimize"
+	ConstTaskMariadbUpgrade     TaskName = "mariadbupgrade" // the jobs container runs mariadb-upgrade (mysql_upgrade) --upgrade-system-tables, #2022
 	ConstTaskReseedXB           TaskName = "reseedxtrabackup"
 	ConstTaskReseedMB           TaskName = "reseedmariabackup"
 	ConstTaskReseedDump         TaskName = "reseedmysqldump"
@@ -1774,6 +1775,8 @@ var TaskRegistry = map[TaskName]TaskDef{
 	ConstTaskSqlError:           {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
 	ConstTaskAuditLog:           {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
 	ConstTaskZFS:                {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
+	// the upgrade tool of the server's own release: the database image's, in its jobs container
+	ConstTaskMariadbUpgrade: {Name: ConstTaskMariadbUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskJobsCheck:          {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
 	ConstTaskJobsUpgrade:        {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskPrintCurrentConfig: {Name: ConstTaskPrintCurrentConfig, Capability: TaskCapRemoteOnly},

@@ -133,6 +133,7 @@ var ClusterError = map[string]string{
 	"ERR00112":  "Cluster %s: dynamic %s grow refused (%s -> %s = %.2f DBU/node over the plan): %s -- resources stay as they are; widen prov-db-overcommit-pct, free the node pool, or raise the plan",
 	"ERR00113":  "Kubernetes deployment %s not created: the namespace policy (PodSecurity) forbids shareProcessNamespace, which the resource sensor needs -- allow it or set monitoring-system-resources=false: %s",
 	"ERR00115":  "Cluster %s: %s runs MariaDB %s on a Galera topology whose configuration replication-manager renders: MariaDB 10.3 and older are no longer supported there (the SST authenticates the unix_socket account mysql@localhost, built in from 10.4) -- upgrade to 10.4 or later",
+	"ERR00116":  "Server %s: the system tables lag the server's release (a logical backup or the error log says so): run the server action upgrade-system-tables (mariadb-upgrade, mysql_upgrade before MySQL 8.0.16)",
 	"ERR00114":  "Cluster %s: the Galera SST account mysql@localhost (unix_socket) cannot be created on %s: %s -- an SST from a donor without it fails authentication (the root password is never written in the database configuration)",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",

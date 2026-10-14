@@ -11,6 +11,7 @@ import {
   jobsUpgrade,
   logicalBackup,
   optimizeServer,
+  upgradeSystemTables,
   physicalBackupMaster,
   promoteToLeader,
   provisionDatabase,
@@ -523,6 +524,15 @@ function ServerMenu({
                   openConfirmModal()
                   setConfirmTitle(`Confirm optimize for ${serverName}?`)
                   setConfirmHandler(() => () => dispatch(optimizeServer({ clusterName, serverId: row.id })))
+                }
+              },
+              {
+                name: 'Upgrade System Tables',
+                isDisabled: !user?.grants['db-maintenance'],
+                onClick: () => {
+                  openConfirmModal()
+                  setConfirmTitle(`Confirm upgrading the system tables of ${serverName} (mariadb-upgrade)?`)
+                  setConfirmHandler(() => () => dispatch(upgradeSystemTables({ clusterName, serverId: row.id })))
                 }
               },
               {

@@ -21,7 +21,9 @@ const severityRank = { Blocker: 0, Warning: 1, Info: 2 }
 // ConfigModal lists the cluster ConfigStateMachine content (deprecated
 // variables, pending compliance modulesets, unapplied config changes) in a
 // severity table matching the health AlertModal. A state with a remediation
-// (configRemediations, e.g. WARN0234) gets an Enable button that calls it.
+// (configRemediations, e.g. WARN0234, or a server action such as the system tables
+// upgrade, #2022) gets a button that calls it. Remediations are keyed by state and
+// server: a per-server state has one per server.
 function ConfigModal({ isOpen, closeModal }) {
   const { theme } = useTheme()
   const dispatch = useDispatch()
@@ -30,21 +32,27 @@ function ConfigModal({ isOpen, closeModal }) {
   const baseURL = useSelector((state) => state.auth?.baseURL || '')
   const [fixing, setFixing] = useState({})
 
+  const remediationKey = (errKey, server) => `${errKey}@${server || ''}`
   const remediationByKey = useMemo(() => {
     const map = {}
     for (const entry of clusterData?.configRemediations?.remediations || []) {
-      if (!map[entry.err_key]) map[entry.err_key] = entry
+      const key = remediationKey(entry.err_key, entry.server)
+      if (!map[key]) map[key] = entry
     }
     return map
   }, [clusterData?.configRemediations])
 
-  const handleFix = async (errKey) => {
-    const fix = remediationByKey[errKey]?.fixes?.[0]
+  const handleFix = async (errKey, server) => {
+    const key = remediationKey(errKey, server)
+    const fix = remediationByKey[key]?.fixes?.[0]
     // settings_set: an explicit value, so a stale page or a double click never undoes it.
-    if (!['settings_set', 'settings_switch'].includes(fix?.type) || !fix?.url) return
-    setFixing((prev) => ({ ...prev, [errKey]: true }))
+    if (!['settings_set', 'settings_switch', 'server_action'].includes(fix?.type) || !fix?.url) return
+    setFixing((prev) => ({ ...prev, [key]: true }))
     try {
-      const { status, data } = await clusterService.switchClusterSetting(fix.url, baseURL)
+      const { status, data } =
+        fix.type === 'server_action'
+          ? await clusterService.runServerAction(fix.url, baseURL)
+          : await clusterService.switchClusterSetting(fix.url, baseURL)
       if (status === 200) {
         // The setting is saved; the work it triggers (live resize) runs in the background.
         dispatch(showSuccessToast({ title: `Fix scheduled: ${errKey}`, description: fix.description }))
@@ -54,7 +62,7 @@ function ConfigModal({ isOpen, closeModal }) {
     } catch (err) {
       dispatch(showErrorToast({ title: `Fix failed: ${errKey}`, description: String(err) }))
     } finally {
-      setFixing((prev) => ({ ...prev, [errKey]: false }))
+      setFixing((prev) => ({ ...prev, [key]: false }))
     }
   }
 
@@ -99,14 +107,15 @@ function ConfigModal({ isOpen, closeModal }) {
               {row.ErrDesc}
             </Text>
           )
-          const entry = remediationByKey[row.ErrKey]
+          const key = remediationKey(row.ErrKey, row.ServerUrl)
+          const entry = remediationByKey[key] || remediationByKey[remediationKey(row.ErrKey, '')]
           if (!entry?.auto_fixable) return desc
           const fix = entry.fixes?.[0]
           return (
             <HStack spacing={2} align='start'>
               <Tooltip label={`${fix?.description || ''} (risk: ${fix?.risk || 'safe'})`} placement='top'>
-                <Button size='xs' colorScheme='green' flexShrink={0} isLoading={!!fixing[row.ErrKey]} onClick={() => handleFix(row.ErrKey)}>
-                  Enable
+                <Button size='xs' colorScheme='green' flexShrink={0} isLoading={!!fixing[key]} onClick={() => handleFix(row.ErrKey, entry.server)}>
+                  {fix?.type === 'server_action' ? 'Remediate' : 'Enable'}
                 </Button>
               </Tooltip>
               {desc}

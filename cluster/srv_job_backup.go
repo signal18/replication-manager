@@ -4347,9 +4347,14 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	errCh := make(chan error, 4)
 
 	var wg sync.WaitGroup
+	// The last lines of stderr go into the error of a failed dump, hence into the job's
+	// result: what made it fail (e.g. "Column count of mysql.proc is wrong", which the
+	// config-system-tables plugin reads, #2022), not only its exit status. Bounded (T18).
+	stderrTail := newLineTail(5)
 	// The verbose stream marks every table boundary: it feeds the schema level of the
 	// live progress on its way to the log.
 	server.spawnLogCopierHook(&wg, stderrIn, config.ConstLogModBackupStream, config.LvlDbg, func(line string) {
+		stderrTail.add(line)
 		if p := cluster.backupProgressFor(server, "logical"); p != nil {
 			p.ObserveDumpLine(line)
 		}
@@ -4454,8 +4459,12 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 
 		if err := dumpCmd.Wait(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "mysqldump: %s", err)
+			dumpErr := fmt.Errorf("mysqldump: %w", err)
+			if tail := stderrTail.lines(); len(tail) > 0 {
+				dumpErr = fmt.Errorf("mysqldump: %w | stderr: %s", err, strings.Join(tail, " / "))
+			}
 			select {
-			case errCh <- fmt.Errorf("mysqldump: %w", err):
+			case errCh <- dumpErr:
 			default:
 			}
 		}
@@ -7854,4 +7863,38 @@ func isMysqlAccountTableFile(name string) bool {
 	table, _, _ := strings.Cut(rest, ".")
 	table, _, _ = strings.Cut(table, "-schema")
 	return mysqlAccountTables[table]
+}
+
+// lineTail keeps the last max lines written by one goroutine and read by another: the
+// error lines of a dump, so neither the dump's verbose progress ("-- Retrieving ...")
+// nor a blank line, and each line cut at lineTailMaxBytes (a job result, bounded, T18)
+type lineTail struct {
+	mu  sync.Mutex
+	max int
+	buf []string
+}
+
+const lineTailMaxBytes = 512
+
+func newLineTail(max int) *lineTail { return &lineTail{max: max} }
+
+func (t *lineTail) add(line string) {
+	if strings.TrimSpace(line) == "" || strings.HasPrefix(line, "-- ") {
+		return
+	}
+	if len(line) > lineTailMaxBytes {
+		line = line[:lineTailMaxBytes] + "…"
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.buf) == t.max {
+		t.buf = append(t.buf[:0:0], t.buf[1:]...)
+	}
+	t.buf = append(t.buf, line)
+}
+
+func (t *lineTail) lines() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return append([]string(nil), t.buf...)
 }
