@@ -78,6 +78,10 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 				test.Result = "ERR"
 				continue
 			}
+		} else {
+			// A single test runs on a live cluster: what its setters change must not
+			// outlive it, in memory or in the saved TOML.
+			cl.SaveTestConf()
 		}
 		test.ConfigFile = cl.GetConf().ConfigFile
 		if test.Name == "testFailoverManual" {
@@ -236,6 +240,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testRejoinStaleCrashKeepsMaster" {
 			res = regtest.TestRejoinStaleCrashKeepsMaster(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testMisplacedReplicaNotRelay" {
+			res = regtest.TestMisplacedReplicaNotRelay(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testStagingRecoverNoReadOnly" {
 			res = regtest.TestStagingRecoverNoReadOnly(cl, test.ConfigFile, &test)
 		}
@@ -381,6 +388,8 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {
 			cl.CloseTestCluster(test.ConfigFile, &test)
+		} else {
+			cl.RestoreConf()
 		}
 		allTests[key] = test
 

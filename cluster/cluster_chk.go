@@ -248,8 +248,10 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 
 	for _, slave := range cluster.slaves {
 		relaycheck, _ := cluster.GetMasterFromReplication(slave)
-		// Skip if relaycheck is nil or it's a relay slave
-		if relaycheck == nil || relaycheck.IsRelay {
+		// Only a direct replica of the master sees its heartbeat: skip a replica of a
+		// relay or of an intermediate replica (not in multi-master, where every node is a
+		// replica, as the relay flag was never set there).
+		if relaycheck == nil || relaycheck.IsRelay || (!cluster.Conf.MultiMaster && relaycheck.IsSlave) {
 			continue
 		}
 
