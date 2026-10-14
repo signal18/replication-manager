@@ -345,6 +345,8 @@ var ClusterError = map[string]string{
 	"WARN0239":  "%s cluster %s, created from %s, stopped at %s: %s. Fix the cause, then reseed it from its parent, or drop the cluster",
 	"WARN0240":  "Engine switch %s to %s on %s stopped at %s: %s (%d/%d tables done). The table keeps its engine; fix the cause and switch again",
 	"WARN0243":  "Replication plugin %s of %s: %s; retrying",
+	"WARN0245":  "ColumnStore replica %s has no schema and the oldest binary log of the master %s, %s, starts after GTID %s: the DDL before it is gone, the replica cannot get its schema by replication (a dump would drop the tables every server shares)",
+	"WARN0246":  "ColumnStore replica %s has a schema other than the master %s (%d tables on the master only, %d on the replica only): not rebootstrapped, a dump would drop the tables every server shares",
 	"WARN0244":  "ColumnStore cluster %s: no automatic failover, the orchestrator restarts the master's service on another node with its volume; a switchover stays possible",
 	"WARN0242":  "Replication plugin %s of %s stopped: %s; restart in %s",
 	"WARN0241":  "ColumnStore rebalance on %s stopped at %s: %s (%d/%d tables done). The table is as it was unless the message says otherwise; fix the cause and rebalance again",

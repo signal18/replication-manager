@@ -371,6 +371,10 @@ func (server *ServerMonitor) ReseedMasterSST() error {
 	}
 	cluster := server.ClusterGroup
 	server.DelWaitBackupCookie()
+	// a new ColumnStore replica gets its schema from the master, never a dump (#2021)
+	if server.isColumnstoreReplica() {
+		return server.RebootstrapColumnstoreReplica()
+	}
 	if cluster.Conf.AutorejoinMysqldump {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin dump restore %s", server.URL)
 		err := server.RejoinDirectDump()
@@ -515,6 +519,9 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 }
 
 func (server *ServerMonitor) RejoinDirectDump() error {
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return err
+	}
 	cluster := server.ClusterGroup
 	var err3 error
 	var logs string

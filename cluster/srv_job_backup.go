@@ -1191,6 +1191,14 @@ func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtyp
 func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, backtype string) (*logicalReseedPlan, error) {
 	var err error
 	cluster := server.ClusterGroup
+	// a ColumnStore replica's seed is its schema replicated from the master (#2021)
+	if server.isColumnstoreReplica() {
+		if err := server.RebootstrapColumnstoreReplica(); err != nil {
+			return nil, err
+		}
+		server.DelWaitLogicalBackupCookie()
+		return nil, nil
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1469,6 +1477,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(ctx conte
 func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.Context, backtype, backupPath string, opts JobReseedLogicalOptions) (*logicalReseedPlan, error) {
 	var err error
 	cluster := server.ClusterGroup
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return nil, err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -2733,6 +2744,10 @@ func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) 
 		sqlLogBin = 1
 		resetmaster = ""
 	}
+	// the last guard of every logical restore: never into a ColumnStore replica (#2021)
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return "", 0, err
+	}
 
 	cmdstring := fmt.Sprintf("%sSET sql_log_bin=%d;SET long_query_time=10;", resetmaster, sqlLogBin)
 	return cmdstring, sqlLogBin, nil
@@ -3224,6 +3239,9 @@ func (server *ServerMonitor) JobReseedMyLoaderFromParent(backupdir string) error
 
 func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool) error {
 	cluster := server.ClusterGroup
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return err
+	}
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 
@@ -6721,6 +6739,9 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	cluster := server.ClusterGroup
 	master := cluster.GetMaster()
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return err
+	}
 
 	//Prevent multiple reseed
 	if !server.HasReseedingState(task) {
