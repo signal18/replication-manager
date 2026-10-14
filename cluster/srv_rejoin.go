@@ -407,16 +407,9 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Found same or lower sequence %s , %s", server.BinaryLogFile, server.BinaryLogPos)
 	}
 	var err error
-	realmaster := cluster.GetMaster()
-	if cluster.Conf.MxsBinlogOn || cluster.Conf.MultiTierSlave {
-		realmaster = cluster.GetRelayServer()
-		if realmaster == nil {
-			return fmt.Errorf("No relay for current cluster and Maxscale Binlog Server or multi tier slave is active")
-		}
-	}
-
-	if realmaster == nil {
-		return fmt.Errorf("No master found for rejoin GTID position")
+	realmaster, err := cluster.rejoinSource()
+	if err != nil {
+		return err
 	}
 
 	if server.HasGTIDReplication() || (realmaster.MxsHaveGtid && realmaster.IsMaxscale) {
@@ -452,11 +445,33 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	return err
 }
 
+// rejoinSource is the server a returning old master replicates from: the MaxScale
+// binlog server when one is used (required), the intermediate replica of a multi-tier
+// topology when there is one, else the master, as failover does without a relay.
+func (cluster *Cluster) rejoinSource() (*ServerMonitor, error) {
+	source := cluster.GetMaster()
+	if cluster.Conf.MxsBinlogOn || cluster.Conf.MultiTierSlave {
+		if relay := cluster.GetRelayServer(); relay != nil {
+			source = relay
+		} else if cluster.Conf.MxsBinlogOn {
+			return nil, fmt.Errorf("No relay for current cluster and Maxscale Binlog Server is active")
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Multi tier slave is active but no intermediate replica found, rejoining under the master")
+		}
+	}
+	if source == nil {
+		return nil, fmt.Errorf("No master found for rejoin")
+	}
+	return source, nil
+}
+
 func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	cluster := server.ClusterGroup
-	realmaster := cluster.master
-	if cluster.Conf.MxsBinlogOn || cluster.Conf.MultiTierSlave {
-		realmaster = cluster.GetRelayServer()
+	// Resolved before the flashback: a rewound server with nowhere to replicate from
+	// is worse than one left as it was.
+	realmaster, err := cluster.rejoinSource()
+	if err != nil {
+		return err
 	}
 
 	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {
@@ -479,7 +494,6 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(binlogCmd.Args, " "), cluster.GetRplPass(), "XXXX"))
 
-	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error opening pipe: %s", err)
