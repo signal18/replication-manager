@@ -214,7 +214,7 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 	}
 
 	applyVal := value
-	if _, isSecret := cl.Conf.Secrets[ev.Key]; isSecret && strings.Contains(applyVal, "hash_") {
+	if _, isSecret := cl.Conf.Secrets.Lookup(ev.Key); isSecret && strings.Contains(applyVal, "hash_") {
 		// Peers share the encryption key through the config exchange, so the
 		// ciphertext decrypts here; the plaintext feeds the normal setter.
 		applyVal = cl.Conf.DecryptSecretValue(ev.Key, applyVal)
@@ -234,13 +234,13 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 		}
 	}
 
-	if _, isSecret := cl.Conf.Secrets[ev.Key]; isSecret && ev.Action == "set" && strings.Contains(ev.Value, "hash_") {
+	if _, isSecret := cl.Conf.Secrets.Lookup(ev.Key); isSecret && ev.Action == "set" && strings.Contains(ev.Value, "hash_") {
 		// Seed the ciphertext cache with the peer's exact ciphertext so our
 		// next save writes the identical bytes: both peers' saved configs
 		// converge and the echo subtraction matches on the first save.
-		sec := cl.Conf.Secrets[ev.Key]
+		sec := cl.Conf.Secrets.Get(ev.Key)
 		sec.Crypted = ev.Value
-		cl.Conf.Secrets[ev.Key] = sec
+		cl.Conf.Secrets.Set(ev.Key, sec)
 	}
 
 	cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)

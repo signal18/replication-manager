@@ -958,6 +958,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.BackupLogicalDumpThreads, "backup-logical-dump-threads", 2, "Number of threads to dump database")
 	flags.BoolVar(&conf.BackupLogicalDumpSystemTables, "backup-logical-dump-system-tables", false, "Backup restore the mysql database")
 	flags.StringVar(&conf.BackupLogicalType, "backup-logical-type", "mysqldump", "type of logical backup: river|mysqldump|mydumper")
+	flags.IntVar(&conf.BackupLogicalRemotePickupTimeout, "backup-logical-remote-pickup-timeout", 300, "Seconds a logical backup run on the DB node (scheduler-jobs-exec-remote) waits for dbjobs to take it before it fails. 0 uses the default")
+	flags.IntVar(&conf.BackupLogicalRemoteReportTimeout, "backup-logical-remote-report-timeout", 120, "Seconds a logical backup run on the DB node waits, once its stream ended, for dbjobs to report the exit code of the dump client. 0 uses the default")
+	flags.IntVar(&conf.BackupLogicalRemoteArmTimeout, "backup-logical-remote-arm-timeout", 10, "Seconds dbjobs' receive-task request for a logical backup run on the DB node waits for the backup to be ready for its stream. 0 uses the default")
 	flags.StringVar(&conf.BackupPhysicalType, "backup-physical-type", "xtrabackup", "type of physical backup: xtrabackup|mariabackup")
 	flags.StringVar(&conf.BackupArchiveMode, "backup-archive-mode", "", "Restic archive backend: none, restic-local, restic-aws, restic-sftp (empty derives from legacy backup-restic flags)")
 	flags.BoolVar(&conf.BackupArchiveRemoveOriginal, "backup-archive-remove-original", false, "Remove the original logical/physical backup from the backup directory once its archive snapshot is verified to hold it; restores fetch it back from the archive")
@@ -2119,7 +2122,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.InitGitConfig(&conf)
 	}
 
-	repman.PeerManager.SetPeerCredentials(conf.Cloud18GitUser, conf.GetDecryptedPassword("git-password", conf.Secrets["cloud18-gitlab-password"].Value))
+	repman.PeerManager.SetPeerCredentials(conf.Cloud18GitUser, conf.GetDecryptedPassword("git-password", conf.Secrets.Get("cloud18-gitlab-password").Value))
 	repman.PeerManager.SetApiPublicURL(conf.APIPublicURL)
 
 	//add config from cluster to the config map
@@ -3068,12 +3071,12 @@ func (repman *ReplicationManager) Run() error {
 					new_tok, _ := githelper.GetGitLabTokenOAuth(repman.OAuthAccessToken.AccessToken, tokenName, repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 
 					//save the new PAT
-					newSecret := repman.Conf.Secrets["git-acces-token"]
+					newSecret := repman.Conf.Secrets.Get("git-acces-token")
 					newSecret.OldValue = newSecret.Value
 					newSecret.Value = new_tok
-					repman.Conf.Secrets["git-acces-token"] = newSecret
+					repman.Conf.Secrets.Set("git-acces-token", newSecret)
 					for _, cluster := range repman.Clusters {
-						cluster.Conf.Secrets["git-acces-token"] = newSecret
+						cluster.Conf.Secrets.Set("git-acces-token", newSecret)
 					}
 				}
 			case <-quit_PAT:
@@ -4620,7 +4623,7 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 	switch key {
 	case "api-credentials", "api-credentials-external":
 		var tab_ApiUser []string
-		lst_Users := strings.Split(repman.Conf.Secrets[key].Value, ",")
+		lst_Users := strings.Split(repman.Conf.Secrets.Get(key).Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
 			for _, cluster := range repman.Clusters {
@@ -4699,9 +4702,9 @@ func (repman *ReplicationManager) Overwrite() (bool, error) {
 			if !ok {
 				s.Delete(key)
 			} else {
-				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets.Get(key).Value == repman.Conf.Secrets.Get(key).OldValue || repman.Conf.Secrets.Get(key).OldValue == "") {
 					s.Delete(key)
-				} else if _, ok = repman.Conf.Secrets[key]; ok && repman.Conf.Secrets[key].Value != v {
+				} else if _, ok = repman.Conf.Secrets.Lookup(key); ok && repman.Conf.Secrets.Get(key).Value != v {
 					v := repman.GetEncryptedValueFromMemory(key)
 					if v != "" {
 						s.Set(key, v)
@@ -4786,7 +4789,7 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 				if fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
 					s.Delete(key)
 				} else {
-					if _, ok = repman.Conf.Secrets[key]; ok {
+					if _, ok = repman.Conf.Secrets.Lookup(key); ok {
 						//to encrypt credentials before writting in the config file
 						encrypt_val := repman.GetEncryptedValueFromMemory(key)
 						if encrypt_val != "" {
@@ -4845,7 +4848,7 @@ func (repman *ReplicationManager) SaveImmutable() (bool, error) {
 
 	for _, key := range keys {
 		val := repman.Conf.ImmuableFlagMap[key]
-		_, ok := repman.Conf.Secrets[key]
+		_, ok := repman.Conf.Secrets.Lookup(key)
 		if ok {
 			encrypt_val := repman.GetEncryptedValueFromMemory(key)
 			file2.WriteString(key + " = \"" + encrypt_val + "\"\n")

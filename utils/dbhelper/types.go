@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/signal18/replication-manager/utils/sqlmask"
 )
 
 const debug = false
@@ -984,4 +986,16 @@ func FromBinaryLogMetaMap(m *BinaryLogMetaMap, c *BinaryLogMetaMap) *BinaryLogMe
 // compareDesc compares strings in descending order
 func compareDesc(a, b string) int {
 	return map[bool]int{a > b: -1, a < b: 1}[true]
+}
+
+// MaskSecrets masks the password literals a replication error carries (#2025): a replica
+// that failed on CREATE USER ... IDENTIFIED BY 'pw' reports the statement verbatim, and
+// the status is stored, logged and served (topology API, GUI).
+func (s *SlaveStatus) MaskSecrets() {
+	if s.LastSQLError.Valid {
+		s.LastSQLError.String = sqlmask.Secrets(s.LastSQLError.String)
+	}
+	if s.LastIOError.Valid {
+		s.LastIOError.String = sqlmask.Secrets(s.LastIOError.String)
+	}
 }

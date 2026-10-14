@@ -391,6 +391,12 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerOptimize)),
 	))
 
+	// POST only: it queues a job on the server, a GET from a link or a prefetch must not
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/upgrade-system-tables", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerUpgradeSystemTables)),
+	)).Methods("POST")
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
@@ -1376,6 +1382,44 @@ func (repman *ReplicationManager) handlerMuxServerOptimize(w http.ResponseWriter
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
+}
+
+// handlerMuxServerUpgradeSystemTables queues the upgrade of a server's system tables (#2022).
+// @Summary Upgrade the system tables of a server
+// @Description Queues the mariadbupgrade task: the server's jobs container runs mariadb-upgrade (mysql_upgrade on older releases) --upgrade-system-tables with the tool of the server's own release, without writing to the binary log; the outcome is the task's job. Refused for MySQL 8.0.16 and later (they upgrade at start) and PostgreSQL.
+// @Tags DatabaseActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {string} string "Upgrade of the system tables queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "Refused: the reason (server down, MySQL 8.0.16+, PostgreSQL, task already queued)"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/upgrade-system-tables [post]
+func (repman *ReplicationManager) handlerMuxServerUpgradeSystemTables(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", 500)
+		return
+	}
+	if _, err := node.JobMariadbUpgrade(); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Upgrade of the system tables queued"))
 }
 
 // handlerMuxServerReseed handles the HTTP request to reseed a server within a cluster.
@@ -3675,7 +3719,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			mod = config.ConstLogModDbSlowquery
 		case "optimize":
 			mod = config.ConstLogModDbOptimize
-		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
+		case "mariabackup", "xtrabackup", "mysqldump", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
 			mod = config.ConstLogModBackupStream
 		case "zfssnapback", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade", "print-defaults":
 			mod = config.ConstLogModTask
@@ -5318,11 +5362,14 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 // returns the receiver address. Used in API job mode so the dbjobs script can
 // discover where to stream data (backups, logs) without polling the jobs table.
 // @Summary Open a TCP receiver for a remote task
+// @Description For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.
 // @Tags DatabaseTasks
 // @Param clusterName path string true "Cluster name"
 // @Param serverName path string true "Server hostname"
 // @Param serverPort path string true "Server port"
-// @Param taskname path string true "Task name (xtrabackup, mariabackup, errorlog, etc.)"
+// @Param taskname path string true "Task name (xtrabackup, mariabackup, mysqldump, errorlog, etc.)"
+// @Success 200 {string} string "RECEIVER_PORT=<port>, for mysqldump RECEIVER_PORT=<port> DUMP_ARGS=<base64>, then LOCK_DDL=1 when dbjobs blocks DDL around the dump client"
+// @Failure 500 {string} string "No remote mysqldump backup waiting on <server>"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname} [post]
 func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -5376,6 +5423,27 @@ func (repman *ReplicationManager) handlerMuxServerReceiveTask(w http.ResponseWri
 		// PostgreSQL logical backup streamed by the jobs sidecar, compressed here
 		dest = node.PostgresStreamDest(taskname)
 		rcvPort, err = mycluster.SSTRunReceiverToGZip(node, dest, cluster.ConstJobCreateFile, taskname)
+	case config.ConstTaskDump:
+		// logical backup dumped on the DB node by dbjobs (scheduler-jobs-exec-remote),
+		// compressed or split here; only for a backup waiting for it, never into a local
+		// run's file
+		if !node.WaitStreamTaskArmed(r.Context(), taskname, mycluster.RemoteDumpArmTimeout()) {
+			http.Error(w, "No remote "+taskname+" backup waiting on "+node.URL, 500)
+			return
+		}
+		rcvPort, err = node.OpenRemoteDumpReceiver(taskname)
+		if err != nil {
+			break
+		}
+		args := mycluster.RemoteMysqlDumpArgs(node)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Task receiver port %s opened for %s on %s", rcvPort, taskname, node.Name)
+		w.WriteHeader(200)
+		answer := "RECEIVER_PORT=" + rcvPort + " DUMP_ARGS=" + args
+		if node.MysqldumpLockDDL() {
+			answer += " LOCK_DDL=1" // dbjobs blocks DDL around the dump client
+		}
+		w.Write([]byte(answer))
+		return
 	case config.ConstTaskPgBaseBackup:
 		// PostgreSQL physical backup (tar stream of pg_basebackup), compressed here when the
 		// running backup asked for it

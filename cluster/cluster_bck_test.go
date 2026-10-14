@@ -1633,10 +1633,10 @@ func TestResticCopyRepoWithOptionsG4Preflight(t *testing.T) {
 func newSavedSourceCluster(t *testing.T, conf *config.Config, password, awsSecret string) *Cluster {
 	t.Helper()
 	if conf.Secrets == nil {
-		conf.Secrets = make(map[string]config.Secret)
+		conf.Secrets = config.NewSecrets(nil)
 	}
-	conf.Secrets["backup-restic-password"] = config.Secret{Value: password}
-	conf.Secrets["backup-restic-aws-access-secret"] = config.Secret{Value: awsSecret}
+	conf.Secrets.Set("backup-restic-password", config.Secret{Value: password})
+	conf.Secrets.Set("backup-restic-aws-access-secret", config.Secret{Value: awsSecret})
 	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
 	rm.PauseWorker()
 	t.Cleanup(rm.ShutdownWorker)
@@ -1736,7 +1736,7 @@ func TestSavedS3SourceFreezeOnQueueTime(t *testing.T) {
 
 	// Mutate config after queueing.
 	conf.BackupResticAwsBucket = "changed-bucket"
-	conf.Secrets["backup-restic-password"] = config.Secret{Value: "changed-pass"}
+	conf.Secrets.Set("backup-restic-password", config.Secret{Value: "changed-pass"})
 
 	// Read the queued task option.
 	cluster.ResticManager.Mutex.Lock()
@@ -1943,9 +1943,9 @@ func TestSavedS3SourceRejectsUnsupportedMode(t *testing.T) {
 
 func newS3ModeCluster(conf *config.Config) *Cluster {
 	if conf.Secrets == nil {
-		conf.Secrets = make(map[string]config.Secret)
-		conf.Secrets["backup-restic-aws-access-secret"] = config.Secret{Value: "secret"}
-		conf.Secrets["backup-restic-password"] = config.Secret{Value: "pass"}
+		conf.Secrets = config.NewSecrets(nil)
+		conf.Secrets.Set("backup-restic-aws-access-secret", config.Secret{Value: "secret"})
+		conf.Secrets.Set("backup-restic-password", config.Secret{Value: "pass"})
 	}
 	conf.BackupResticAws = true
 	return &Cluster{Name: "mycluster", Conf: conf}
@@ -2095,9 +2095,9 @@ func TestResolveResticS3_AppendCluster(t *testing.T) {
 
 func newBootCluster(conf *config.Config) (*Cluster, *backupmgr.ResticManager) {
 	if conf.Secrets == nil {
-		conf.Secrets = make(map[string]config.Secret)
-		conf.Secrets["backup-restic-aws-access-secret"] = config.Secret{Value: "secret"}
-		conf.Secrets["backup-restic-password"] = config.Secret{Value: "pass"}
+		conf.Secrets = config.NewSecrets(nil)
+		conf.Secrets.Set("backup-restic-aws-access-secret", config.Secret{Value: "secret"})
+		conf.Secrets.Set("backup-restic-password", config.Secret{Value: "pass"})
 	}
 	rm := backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
 	rm.PauseWorker()

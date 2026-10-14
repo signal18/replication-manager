@@ -20,7 +20,7 @@ func newTokenTestManager(t *testing.T) (*ReplicationManager, *cluster.Cluster) {
 	dir := t.TempDir()
 	cl := &cluster.Cluster{
 		Name:           "c1",
-		Conf:           &config.Config{Secrets: map[string]config.Secret{}},
+		Conf:           &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{})},
 		APIUsers:       map[string]cluster.APIUser{},
 		Grants:         config.GetGrantType(),
 		Roles:          config.GetRoleType(),
@@ -451,7 +451,7 @@ func TestAPITokenGrantsAndSystemAccount(t *testing.T) {
 		t.Error("system must never issue tokens")
 	}
 	// The grants are stripped from system on every user load.
-	cl.Conf.Secrets = map[string]config.Secret{"api-credentials": {Value: "system:k"}, "api-credentials-external": {Value: ""}}
+	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"api-credentials": {Value: "system:k"}, "api-credentials-external": {Value: ""}})
 	cl.Conf.APIUsersACLAllow = "system:db proxy token"
 	if err := cl.LoadAPIUsers(); err != nil {
 		t.Fatal(err)
@@ -565,7 +565,7 @@ func TestSelfServiceRules(t *testing.T) {
 		t.Error("sponsor must not get cluster-create or global grants")
 	}
 	// Limit counts sponsored clusters.
-	c2 := &cluster.Cluster{Name: "c2", Conf: &config.Config{Secrets: map[string]config.Secret{}}, APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType(), SecurityLogrus: log.New()}
+	c2 := &cluster.Cluster{Name: "c2", Conf: &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{})}, APIUsers: map[string]cluster.APIUser{}, Grants: config.GetGrantType(), Roles: config.GetRoleType(), SecurityLogrus: log.New()}
 	repman.Clusters["c2"] = c2
 	if err := repman.selfServiceCheck("u@x.io"); err != nil {
 		t.Errorf("one of two allowed must pass, got %v", err)

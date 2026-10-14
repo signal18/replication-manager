@@ -1762,9 +1762,9 @@ func (cm *ConfigManager) RotateGitAccessToken(conf *config.Config) error {
 
 	var Secrets config.Secret
 	Secrets.Value = personal_access_token
-	Secrets.OldValue = conf.Secrets["git-acces-token"].Value
+	Secrets.OldValue = conf.Secrets.Get("git-acces-token").Value
 	conf.GitAccesToken = personal_access_token
-	conf.Secrets["git-acces-token"] = Secrets
+	conf.Secrets.Set("git-acces-token", Secrets)
 
 	return nil
 }

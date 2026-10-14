@@ -221,7 +221,7 @@ func TestPasswordActiveAt(t *testing.T) {
 }
 
 func setTestDbPassword(c *Cluster, pass string) {
-	c.Conf.Secrets["db-servers-credential"] = config.Secret{Value: "root:" + pass}
+	c.Conf.Secrets.Set("db-servers-credential", config.Secret{Value: "root:" + pass})
 }
 
 // Encryption alone turns versioning on, and the first encrypted backup

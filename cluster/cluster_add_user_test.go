@@ -15,10 +15,10 @@ func newTestClusterForUsers(t *testing.T) *Cluster {
 	c := &Cluster{Name: "c1", Conf: &config.Config{WorkingDir: t.TempDir()}}
 	c.Grants = config.GetGrantType()
 	c.Roles = config.GetRoleType()
-	c.Conf.Secrets = map[string]config.Secret{
+	c.Conf.Secrets = config.NewSecrets(map[string]config.Secret{
 		"api-credentials":          {Value: "admin:pw"},
 		"api-credentials-external": {},
-	}
+	})
 	c.Log = s18log.NewHttpLog(50)
 	c.LogSecurity = s18log.NewHttpLog(50)
 	return c
@@ -54,7 +54,7 @@ func TestUpdateUserAddsMissingEntry(t *testing.T) {
 // An existing entry is rewritten in place, the other entries are kept.
 func TestUpdateUserRewritesExistingEntry(t *testing.T) {
 	c := newTestClusterForUsers(t)
-	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "bob:pw2"}
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "bob:pw2"})
 	c.Conf.APIUsersACLAllowExternal = "admin:db:c1:dbops,bob:db:c1:dbops"
 	c.LoadAPIUsers()
 
@@ -94,7 +94,7 @@ func TestUpdateUserMainACLUser(t *testing.T) {
 // and reloads as roles without grants.
 func TestUpdateUserEmptyGrants(t *testing.T) {
 	c := newTestClusterForUsers(t)
-	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "bob:pw2"}
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "bob:pw2"})
 	c.Conf.APIUsersACLAllowExternal = "bob:db:c1:dbops"
 	c.LoadAPIUsers()
 
@@ -120,7 +120,7 @@ func TestUpdateUserEmptyGrants(t *testing.T) {
 // others (grants filtered to its own, as before).
 func TestUpdateUserNonSysopsDelegator(t *testing.T) {
 	c := newTestClusterForUsers(t)
-	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "dave:pw3,bob:pw2"}
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "dave:pw3,bob:pw2"})
 	c.Conf.APIUsersACLAllowExternal = "admin:cluster db:c1:sysops dbops,dave:db cluster-grant:c1:dbops,bob:db:c1:dbops"
 	c.LoadAPIUsers()
 
@@ -155,7 +155,7 @@ func TestEnsureSystemServiceUserAfterReset(t *testing.T) {
 	c.Conf.APIUsersExternal = ""
 	c.Conf.APIUsersACLAllowExternal = ""
 	c.Conf.APIUsersACLDiscardExternal = ""
-	c.Conf.Secrets["api-credentials-external"] = config.Secret{}
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{})
 	c.LoadAPIUsers()
 	if _, ok := c.APIUsers["system"]; ok {
 		t.Fatal("fixture: the reset drops system")
@@ -179,7 +179,7 @@ func TestEnsureSystemServiceUserAfterReset(t *testing.T) {
 // (the self-service sponsor, #1971) must not save visitor next to it.
 func TestAppendRolesDropsDefaultVisitor(t *testing.T) {
 	c := newTestClusterForUsers(t)
-	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "bob:pw2"}
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "bob:pw2"})
 	c.LoadAPIUsers()
 	u := c.APIUsers["bob"]
 	if !u.Roles[config.RoleVisitor] {
@@ -218,7 +218,7 @@ func TestEnsureSystemServiceUserAddsSensorToExisting(t *testing.T) {
 	cm := manager.NewConfigManager(config.NewLogrusWrapper(c.Conf, logrus.New()))
 	cm.Stop() // saves become no-ops
 	c.ConfigManager = cm
-	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "system:pw"}
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "system:pw"})
 	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1:dbops"
 	c.LoadAPIUsers()
 	if c.APIUsers["system"].Grants[config.GrantClusterResourceSensor] {
@@ -250,7 +250,7 @@ func TestEnsureSystemServiceUserMainACLNotRewritten(t *testing.T) {
 	cm := manager.NewConfigManager(config.NewLogrusWrapper(c.Conf, logrus.New()))
 	cm.Stop() // saves become no-ops
 	c.ConfigManager = cm
-	c.Conf.Secrets["api-credentials-external"] = config.Secret{Value: "system:pw"}
+	c.Conf.Secrets.Set("api-credentials-external", config.Secret{Value: "system:pw"})
 	c.Conf.APIUsersACLAllow = "admin:cluster db,system:db proxy"
 	c.Conf.APIUsersACLAllowExternal = "system:db proxy:c1"
 	c.LoadAPIUsers()

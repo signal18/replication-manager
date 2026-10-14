@@ -652,9 +652,10 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 			server.DelWaitJobsUpgradeCookie()
 			return true, nil
 		}
-	// Remote tasks only — logical tasks (mysqldump, mydumper, analyze) are
-	// executed directly by replication-manager and must not be dispatched to
-	// the dbjobs script to avoid double execution.
+	// Remote tasks only — logical tasks (mydumper, analyze) are executed
+	// directly by replication-manager and must not be dispatched to the dbjobs
+	// script to avoid double execution. mysqldump is dispatched only when
+	// scheduler-jobs-exec-remote lists it (srv_job_backup_remote.go).
 	case config.ConstTaskXB:
 		if server.HasWaitXtrabackupCookie() {
 			server.DelWaitXtrabackupCookie()
@@ -671,9 +672,19 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 			server.delCookie(postgresJobCookie(checktype))
 			return true, nil
 		}
+	case config.ConstTaskDump:
+		if server.hasCookie(postgresJobCookie(checktype)) {
+			server.delCookie(postgresJobCookie(checktype))
+			return true, nil
+		}
 	case config.ConstTaskOptimize:
 		if server.HasWaitOptimizeCookie() {
 			server.DelWaitOptimizeCookie()
+			return true, nil
+		}
+	case config.ConstTaskMariadbUpgrade:
+		if server.HasWaitMariadbUpgradeCookie() {
+			server.DelWaitMariadbUpgradeCookie()
 			return true, nil
 		}
 	case config.ConstTaskRestart:

@@ -62,7 +62,7 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 	if !cluster.Configurator.HaveDBTag(tag) {
 		cluster.Configurator.AddDBTag(tag)
 		cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
-		cluster.SetClusterCredentialsFromConfig()
+		// tags only, never the credentials (#2017)
 	}
 }
 
@@ -140,7 +140,7 @@ func (cluster *Cluster) AddDBTag(tag string, dynamic bool) {
 func (cluster *Cluster) AddProxyTag(tag string) {
 	cluster.Configurator.AddProxyTag(tag)
 	cluster.Conf.ProvProxTags = cluster.Configurator.GetConfigProxyTags()
-	cluster.SetClusterCredentialsFromConfig()
+	// tags only, never the credentials (#2017)
 	cluster.SetProxiesRestartCookie()
 }
 
@@ -316,7 +316,7 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 		var new_secret config.Secret
 		new_secret.Value = cluster.Conf.APIUsersExternal
 		new_secret.OldValue = cluster.Conf.GetDecryptedValue("api-credentials-external")
-		cluster.Conf.Secrets["api-credentials-external"] = new_secret
+		cluster.Conf.Secrets.Set("api-credentials-external", new_secret)
 
 		// Assign ACL before reloading
 		new_acl := user + ":" + grants + ":" + cluster.Name

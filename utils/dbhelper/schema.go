@@ -10,13 +10,17 @@ package dbhelper
 
 import (
 	"context"
+	"crypto/sha1"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash/crc64"
 	"log"
 	"strings"
 	"time"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/version"
@@ -610,13 +614,45 @@ func SetUserPassword(db *sqlx.DB, myver *version.Version, user_host string, user
 
 	// ALTER USER takes no bound parameter on MariaDB/MySQL (Error 1064 near '?', #1871):
 	// the password is a quoted literal; the returned query masks it for the SQL log.
-	query := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY %s",
-		QuoteMySQLIdentifier(user_name),
-		QuoteMySQLIdentifier(user_host), QuoteMySQLString(new_password))
-	logged := fmt.Sprintf("ALTER USER %s@%s IDENTIFIED BY '*****'", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
+	// On MariaDB the hash is sent, never the password (#2024, execAccountStatement).
+	prefix := fmt.Sprintf("ALTER USER %s@%s", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
+	logged := prefix + " IDENTIFIED BY '*****'"
+	return logged, execAccountStatement(db, myver, prefix, new_password)
+}
 
-	_, err := db.Exec(query)
-	return logged, err
+// passwordHashNative: the mysql_native_password hash of a password, the form MariaDB
+// stores and takes in IDENTIFIED BY PASSWORD ('*' + upper hex SHA1(SHA1(password)))
+func passwordHashNative(password string) string {
+	first := sha1.Sum([]byte(password))
+	second := sha1.Sum(first[:])
+	return "*" + strings.ToUpper(hex.EncodeToString(second[:]))
+}
+
+// errOptionPreventsStatement: MariaDB refuses IDENTIFIED BY PASSWORD 'hash' when
+// strict_password_validation is on with a password validation plugin loaded (1290)
+func errOptionPreventsStatement(err error) bool {
+	var me *mysqldriver.MySQLError
+	return errors.As(err, &me) && me.Number == 1290
+}
+
+// execAccountStatement runs CREATE USER / ALTER USER prefix with the password (#2024):
+// MariaDB writes an account statement verbatim to the binary log, so it gets the hash
+// (IDENTIFIED BY PASSWORD '*...') and the password never reaches a binlog, a relay log,
+// a backup or a replica's error; a server whose strict password validation refuses a
+// hash (1290) gets the password, as before. MySQL and Percona rewrite password
+// statements in their binary log themselves (IDENTIFIED WITH plugin AS 'hash'): they
+// get the password, their default authentication plugin decides the hash.
+func execAccountStatement(db *sqlx.DB, myver *version.Version, prefix, password string) error {
+	clear := prefix + " IDENTIFIED BY " + QuoteMySQLString(password)
+	if myver == nil || !myver.IsMariaDB() {
+		_, err := db.Exec(clear)
+		return err
+	}
+	_, err := db.Exec(prefix + " IDENTIFIED BY PASSWORD " + QuoteMySQLString(passwordHashNative(password)))
+	if errOptionPreventsStatement(err) {
+		_, err = db.Exec(clear)
+	}
+	return err
 }
 
 // validateDBHost validates a MySQL host string.
@@ -1352,13 +1388,10 @@ func CreateUser(db *sqlx.DB, myver *version.Version, user_host string, user_name
 	// account (an app re-added, a replica reseeded after the first creation) stopped its
 	// SQL thread on "Operation CREATE USER failed" (curepipe db1, forgejo1, 2026-10-08).
 	// MariaDB 10.1.3+ and MySQL 5.7+ accept it.
-	query := fmt.Sprintf("CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY %s",
-		QuoteMySQLIdentifier(user_name),
-		QuoteMySQLIdentifier(user_host), QuoteMySQLString(new_password))
-	logged := fmt.Sprintf("CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY '*****'", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
-
-	_, err := db.Exec(query)
-	return logged, err
+	// On MariaDB the hash is sent, never the password (#2024, execAccountStatement).
+	prefix := fmt.Sprintf("CREATE USER IF NOT EXISTS %s@%s", QuoteMySQLIdentifier(user_name), QuoteMySQLIdentifier(user_host))
+	logged := prefix + " IDENTIFIED BY '*****'"
+	return logged, execAccountStatement(db, myver, prefix, new_password)
 }
 
 // RevokeUserGrants revokes all privileges from a user

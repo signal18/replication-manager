@@ -66,7 +66,7 @@ func (repman *ReplicationManager) peerLogin(infra string) (*peerSession, error) 
 	}
 	creds := userCredentials{
 		Username: repman.Conf.Cloud18GitUser,
-		Password: repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets["cloud18-gitlab-password"].Value),
+		Password: repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets.Get("cloud18-gitlab-password").Value),
 	}
 	status, body := repman.PeerLogin(loginURL, creds)
 	if status != http.StatusOK {
@@ -664,7 +664,7 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 	}
 	id := peerIdentityFor(p, func(v string) string { return repman.Conf.GetDecryptedPassword("peer-login", v) },
 		p != nil && repman.isAdminUser(p.User), repman.Conf.Cloud18GitUser,
-		repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets["cloud18-gitlab-password"].Value))
+		repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets.Get("cloud18-gitlab-password").Value))
 	if id.mode == "refused" {
 		return nil, "", errors.New(id.reason)
 	}

@@ -451,7 +451,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 			} else {
 				var Secrets config.Secret
 				Secrets.Value = tok
-				conf.Secrets["git-acces-token"] = Secrets
+				conf.Secrets.Set("git-acces-token", Secrets)
 			}
 
 		} else {
@@ -537,7 +537,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		if personal_access_token != "" {
 			var Secrets config.Secret
 			Secrets.Value = personal_access_token
-			conf.Secrets["git-acces-token"] = Secrets
+			conf.Secrets.Set("git-acces-token", Secrets)
 			path := conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
 			name := conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
 			githelper.GitLabCreateProject(personal_access_token, name, path, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
@@ -668,11 +668,11 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		// directory blocks the checkout of the ../plugins symlink the -pull repo now
 		// ships, which aborts the whole pull. Normalize it up front.
 		repman.normalizePullPluginSymlinks(pullDir)
-		err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
+		err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets.Get("git-acces-token").Value, pullDir)
 		if err != nil {
 			os.RemoveAll(pullDir + "/.git")
 			repman.normalizePullPluginSymlinks(pullDir) // clear any remaining conflict before the retry
-			err = repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets["git-acces-token"].Value, pullDir)
+			err = repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets.Get("git-acces-token").Value, pullDir)
 			if err != nil {
 				pullErr = err
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Error pulling cloud18 git config: %v", err)

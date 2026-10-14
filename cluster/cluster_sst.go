@@ -48,6 +48,7 @@ type SST struct {
 	cluster            *Cluster
 	Filename           string          // destination path, if this receiver writes to a file; used to detect an in-flight receiver for a given path (see IsFileOpenForSSTReceive)
 	progress           *BackupProgress // the running physical backup this receiver is the stream of, nil otherwise (cluster_backup_progress.go)
+	observe            func([]byte)    // reads the stream of a remote dump on its way, nil otherwise (srv_job_backup_remote.go)
 	dbLogWriterRelease func()          // set when outfilewriter is a shared ServerMonitor.getDBLogRotatingWriter borrow; must be called exactly once when this receiver is done writing (see tcp_con_handle_to_file), so a concurrent cache eviction doesn't close the writer out from under this still-streaming receiver
 }
 
@@ -187,6 +188,37 @@ func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename str
 	return strconv.Itoa(destinationPort), nil
 }
 
+// SSTRunReceiverToWriter opens a receiver that hands the stream to w instead of a file (a
+// remote dump split into per-table files, srv_job_backup_remote.go).
+func (cluster *Cluster) SSTRunReceiverToWriter(server *ServerMonitor, w io.Writer, task string) (string, error) {
+	sst := new(SST)
+	sst.cluster = cluster
+	sst.outfilewriter = w
+
+	var err error
+	port := cluster.SSTGetSenderPort()
+	sst.listener, err = net.Listen("tcp", cluster.Conf.BindAddr+":"+port)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Exiting SST on socket listen %s", err)
+		if port != "0" {
+			cluster.SSTSenderFreePort(port)
+		}
+		return "", err
+	}
+	sst.tcplistener = sst.listener.(*net.TCPListener)
+	sst.tcplistener.SetDeadline(time.Now().Add(time.Second * 3600))
+	destinationPort := sst.listener.Addr().(*net.TCPAddr).Port
+	if sst.cluster.Conf.LogSST {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Listening for SST on port to writer %d", destinationPort)
+	}
+	SSTs.Lock()
+	SSTs.SSTconnections[destinationPort] = sst
+	SSTs.Unlock()
+	go sst.tcp_con_handle_to_file(server, task)
+
+	return strconv.Itoa(destinationPort), nil
+}
+
 // SSTRunReceiverToDBLogFile opens a receiver for one fetched DB working-dir
 // log (log_error.log, log_slow_query.log, log_sql_error.log, log_audit.log),
 // identified by kind.
@@ -309,7 +341,12 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 		server.JobFinishReceiveFile(task)
 	}()
 
-	sst.in, err = sst.listener.Accept()
+	var conn net.Conn
+	conn, err = sst.listener.Accept()
+	// published under SSTs: a backup that cuts its stream reads it (srv_job_backup_remote.go)
+	SSTs.Lock()
+	sst.in = conn
+	SSTs.Unlock()
 
 	if err != nil {
 		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener for task %s : %v", task, err)
@@ -317,6 +354,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 	}
 
 	sst.progress = sst.cluster.physicalBackupProgressForTask(server, task)
+	sst.observe = server.streamObserver(task)
 	chan_to_stdout := sst.stream_copy_to_gzip()
 
 	<-chan_to_stdout
@@ -351,7 +389,12 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 		server.JobFinishReceiveFile(task)
 	}()
 
-	sst.in, err = sst.listener.Accept()
+	var conn net.Conn
+	conn, err = sst.listener.Accept()
+	// published under SSTs: a backup that cuts its stream reads it (srv_job_backup_remote.go)
+	SSTs.Lock()
+	sst.in = conn
+	SSTs.Unlock()
 	if err != nil {
 		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener for task %s: %v", task, err)
 		return
@@ -475,6 +518,9 @@ func (sst *SST) stream_copy_to_gzip() <-chan int {
 			}
 
 			sst.progress.AddBytes(int64(nBytes))
+			if sst.observe != nil {
+				sst.observe(buf[0:nBytes])
+			}
 			_, err = sst.outfilegzipwriter.Write(buf[0:nBytes])
 			if err != nil {
 				sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Write error: %s", err)

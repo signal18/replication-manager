@@ -599,9 +599,15 @@ func (server *ServerMonitor) setTaskCookie(task string) error {
 	// PostgreSQL tools — the jobs sidecar runs them
 	case config.ConstTaskPgDump, config.ConstTaskPgBaseBackup, config.ConstTaskPgStandby, config.ConstTaskPgReseed, config.ConstTaskPgSchemaSync, config.ConstTaskPgRestore, config.ConstTaskPgRestoreLogical, config.ConstTaskPgReseedLogical:
 		return server.createCookie(postgresJobCookie(task))
+	// Logical backup — dbjobs runs the dump client on DB host (srv_job_backup_remote.go)
+	case config.ConstTaskDump:
+		return server.createCookie(postgresJobCookie(task))
 	// Optimize — dbjobs runs mysqlcheck on DB host
 	case config.ConstTaskOptimize:
 		return server.SetWaitOptimizeCookie()
+	// mariadb-upgrade — dbjobs runs the upgrade tool of the server's release
+	case config.ConstTaskMariadbUpgrade:
+		return server.SetWaitMariadbUpgradeCookie()
 	// Service control — dbjobs runs systemctl on DB host
 	case config.ConstTaskRestart:
 		return server.SetWaitRestartCookie()
@@ -654,6 +660,8 @@ func (server *ServerMonitor) delTaskCookie(task string) error {
 		return server.DelWaitMariabackupCookie()
 	case config.ConstTaskOptimize:
 		return server.DelWaitOptimizeCookie()
+	case config.ConstTaskMariadbUpgrade:
+		return server.DelWaitMariadbUpgradeCookie()
 	case config.ConstTaskRestart:
 		return server.DelWaitRestartCookie()
 	case config.ConstTaskStop:
@@ -678,6 +686,8 @@ func (server *ServerMonitor) delTaskCookie(task string) error {
 		return server.DelWaitSqlErrorlogCookie()
 	case config.ConstTaskZFS:
 		return server.delCookie("cookie_waitzfssnapback")
+	case config.ConstTaskDump:
+		return server.delCookie(postgresJobCookie(task))
 	default:
 		return nil
 	}
@@ -739,6 +749,28 @@ func (server *ServerMonitor) JobOptimize() (int64, error) {
 		return 0, nil
 	}
 	return server.JobInsertTask("optimize", "0", cluster.Conf.MonitorAddress)
+}
+
+// JobMariadbUpgrade queues the mariadbupgrade task (#2022): the server's jobs container,
+// the database image, runs the upgrade tool of the server's own release
+// (mariadb-upgrade, mysql_upgrade before it) on the system tables only, without writing
+// to the binary log, so each server is upgraded by its own task. A server upgraded
+// without it keeps the system tables of its old release: every dump of it fails
+// ("Column count of mysql.proc is wrong", preprod curepipe db2 on MariaDB 13.0.2).
+// MySQL 8.0.16 and later upgrade their system tables at start, and PostgreSQL has none.
+func (server *ServerMonitor) JobMariadbUpgrade() (int64, error) {
+	cluster := server.ClusterGroup
+	if server.IsDown() {
+		return 0, fmt.Errorf("%s is down", server.URL)
+	}
+	if server.IsPostgreSQLHost() {
+		return 0, fmt.Errorf("%s is a PostgreSQL server: no system tables to upgrade", server.URL)
+	}
+	if server.DBVersion != nil && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.16") {
+		return 0, fmt.Errorf("%s runs %s, which upgrades its system tables at start", server.URL, server.DBVersion.ToString())
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Queuing the upgrade of the system tables of %s", server.URL)
+	return server.JobInsertTask(string(config.ConstTaskMariadbUpgrade), "0", cluster.Conf.MonitorAddress)
 }
 
 // OptimizeSQL runs OPTIMIZE TABLE directly via SQL on the server with

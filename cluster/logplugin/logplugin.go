@@ -69,10 +69,17 @@ type Remediation struct {
 	Risk        string `json:"risk"`
 }
 
+// DomainConfig routes a finding to the cluster ConfigStateMachine (the config pill):
+// a fact about the server's configuration, whatever its level (#2022).
+const DomainConfig = "config"
+
 // Finding is a single alert raised by a plugin evaluation.
 type Finding struct {
 	ErrKey       string
 	Severity     Severity
+	// Domain, when set, picks the state machine and log of the finding independently of
+	// its level (DomainConfig); empty, the severity decides as before.
+	Domain       string
 	Description  string
 	Remediations []Remediation
 	Count        int64
@@ -188,6 +195,17 @@ type StdioExplainRow struct {
 	Extra string `json:"extra"`
 }
 
+// StdioJob is the last job of a task on the server (its jobs cache): the outcome of a
+// backup, a reseed, a dbjob, with the error text of a failure.
+type StdioJob struct {
+	Task   string `json:"task"`
+	Done   int    `json:"done"`   // 1 when ended
+	State  int    `json:"state"`  // 3 finished, 4 success, 5 and 6 error
+	Result string `json:"result"` // the outcome, the error text of a failure
+	Start  int64  `json:"start"`  // unix seconds
+	End    int64  `json:"end"`    // unix seconds, 0 while running
+}
+
 // StdioBinlogEvent is a single QUERY_EVENT captured from a server's binary log.
 // Passed to plugins that inspect binlog content (e.g. cleartext-password, credit-card).
 type StdioBinlogEvent struct {
@@ -238,6 +256,8 @@ type LogSource struct {
 	// BinlogEvents is a snapshot of recent binlog QUERY events.
 	// Populated when Conf.MonitorBinlogEvents is enabled.
 	BinlogEvents []StdioBinlogEvent
+	// Jobs is the last job of each task on the server (backups, reseeds, dbjobs).
+	Jobs []StdioJob
 	// ServerVersion is the pre-parsed database version derived from the live connection.
 	// Use this instead of parsing ServerVariables["version"] — it has correct flavor/case.
 	ServerVersion   StdioServerVersion

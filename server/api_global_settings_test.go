@@ -18,7 +18,7 @@ import (
 // found" despite passing that earlier check.
 func TestSetRepmanSetting_LogHistory(t *testing.T) {
 	repman := &ReplicationManager{
-		Conf:          &config.Config{Secrets: make(map[string]config.Secret)},
+		Conf:          &config.Config{Secrets: config.NewSecrets(nil)},
 		ConfigManager: newConfigManagerForTest(),
 	}
 
@@ -71,7 +71,7 @@ func TestSetRepmanSetting_LogHistoryBounds_ClearResetsToZero(t *testing.T) {
 	for _, setting := range []string{"log-history-max-scan-bytes", "log-history-max-lines", "log-history-max-files"} {
 		t.Run(setting, func(t *testing.T) {
 			repman := &ReplicationManager{
-				Conf:          &config.Config{Secrets: make(map[string]config.Secret), LogHistoryMaxScanBytes: 999, LogHistoryMaxLines: 999, LogHistoryMaxFiles: 999},
+				Conf:          &config.Config{Secrets: config.NewSecrets(nil), LogHistoryMaxScanBytes: 999, LogHistoryMaxLines: 999, LogHistoryMaxFiles: 999},
 				ConfigManager: newConfigManagerForTest(),
 			}
 			if err := repman.setRepmanSetting(setting, ""); err != nil {
@@ -103,7 +103,7 @@ func TestSetRepmanSetting_LogHistoryBounds_ClearResetsToZero(t *testing.T) {
 // "disable").
 func TestSetRepmanSetting_LogHistoryEnable_ClearRestoresDefault(t *testing.T) {
 	repman := &ReplicationManager{
-		Conf:          &config.Config{Secrets: make(map[string]config.Secret), LogHistoryEnable: false},
+		Conf:          &config.Config{Secrets: config.NewSecrets(nil), LogHistoryEnable: false},
 		ConfigManager: newConfigManagerForTest(),
 	}
 	if err := repman.setRepmanSetting("log-history-enable", ""); err != nil {
@@ -128,7 +128,7 @@ func TestSetRepmanSetting_LogHistoryBounds_InvalidInput(t *testing.T) {
 		for _, bad := range badValues {
 			t.Run(setting+"/"+bad, func(t *testing.T) {
 				repman := &ReplicationManager{
-					Conf:          &config.Config{Secrets: make(map[string]config.Secret)},
+					Conf:          &config.Config{Secrets: config.NewSecrets(nil)},
 					ConfigManager: newConfigManagerForTest(),
 				}
 				if err := repman.setRepmanSetting(setting, bad); err == nil {
@@ -144,7 +144,7 @@ func TestSetRepmanSetting_LogHistoryBounds_InvalidInput(t *testing.T) {
 // found".
 func TestSwitchRepmanSetting_LogHistoryEnable(t *testing.T) {
 	repman := &ReplicationManager{
-		Conf:          &config.Config{Secrets: make(map[string]config.Secret), LogHistoryEnable: false},
+		Conf:          &config.Config{Secrets: config.NewSecrets(nil), LogHistoryEnable: false},
 		ConfigManager: newConfigManagerForTest(),
 	}
 

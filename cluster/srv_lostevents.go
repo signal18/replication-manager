@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/sqlmask"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -354,7 +355,9 @@ type LostEventsPage struct {
 }
 
 // ReadLostEventsPage reads one page of a decoded lost-events file starting at
-// byte offset pos, bounded by maxBytes, aligned to line boundaries.
+// byte offset pos, bounded by maxBytes, aligned to line boundaries. The lines served are
+// masked (a lost CREATE USER carries its password, #2025); the offsets are the file's,
+// and the file itself stays exact for the flashback.
 func ReadLostEventsPage(path string, pos int64, maxBytes int64) (*LostEventsPage, error) {
 	if maxBytes <= 0 || maxBytes > 4*1024*1024 {
 		maxBytes = 256 * 1024
@@ -393,7 +396,7 @@ func ReadLostEventsPage(path string, pos int64, maxBytes int64) (*LostEventsPage
 	sc := bufio.NewScanner(bytes.NewReader(chunk))
 	sc.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 	for sc.Scan() {
-		page.Lines = append(page.Lines, sc.Text())
+		page.Lines = append(page.Lines, sqlmask.Secrets(sc.Text()))
 	}
 	return page, sc.Err()
 }

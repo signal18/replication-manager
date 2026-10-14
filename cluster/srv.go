@@ -41,6 +41,7 @@ import (
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -300,6 +301,7 @@ type ServerMonitor struct {
 	rejoinReseedStart               atomic.Int64                         // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
 	reseedFailedAt                  atomic.Int64                         // unix-nanos of the last reseed job that reported a failure (#1866): a reseed armed before it is reconciled as FAILED whatever the replica looks like
 	reseedLastError                 atomic.Value                         // string: the error of that failure
+	logicalRestorePosition          atomic.Pointer[splitdump.Metadata]   // the replication position of the last mysqldump restored (its stream, or the splitdump metadata), read by the reseed to point the replica after the load (pointLogicalReseedReplica)
 	reseedInfo                      atomic.Value                         // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
 	reseedBytes                     atomic.Int64                         // raw bytes streamed so far (compressed input; no decompression accounting yet)
 	reseedTotal                     atomic.Int64                         // total compressed backup file size (0 = unknown)

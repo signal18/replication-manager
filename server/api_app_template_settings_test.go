@@ -20,7 +20,7 @@ func newConfigManagerForTest() *manager.ConfigManager {
 // prov-app-template-repo* keys are accepted and persisted by setClusterSetting.
 func TestSetClusterSetting_ProvAppTemplateRepo(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -67,7 +67,7 @@ func TestSetClusterSetting_ProvAppTemplateRepo(t *testing.T) {
 // decode, assignment, and secret registration.
 func TestSetClusterSetting_ProvAppTemplateRepoPassword(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -80,7 +80,7 @@ func TestSetClusterSetting_ProvAppTemplateRepoPassword(t *testing.T) {
 	if cl.Conf.ProvAppTemplateRepoPassword != plain {
 		t.Errorf("expected password %q, got %q", plain, cl.Conf.ProvAppTemplateRepoPassword)
 	}
-	sec, ok := cl.Conf.Secrets["prov-app-template-repo-password"]
+	sec, ok := cl.Conf.Secrets.Lookup("prov-app-template-repo-password")
 	if !ok {
 		t.Fatal("secret not registered in Secrets map")
 	}
@@ -93,7 +93,7 @@ func TestSetClusterSetting_ProvAppTemplateRepoPassword(t *testing.T) {
 // an invalid base64 value is rejected with an error.
 func TestSetClusterSetting_ProvAppTemplateRepoPassword_InvalidBase64(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -107,7 +107,7 @@ func TestSetClusterSetting_ProvAppTemplateRepoPassword_InvalidBase64(t *testing.
 // prov-app-template-repo* keys are accepted and persisted by setRepmanSetting.
 func TestSetRepmanSetting_ProvAppTemplateRepo(t *testing.T) {
 	repman := &ReplicationManager{
-		Conf:          &config.Config{Secrets: make(map[string]config.Secret)},
+		Conf:          &config.Config{Secrets: config.NewSecrets(nil)},
 		ConfigManager: newConfigManagerForTest(),
 	}
 
@@ -154,7 +154,7 @@ func TestSetRepmanSetting_ProvAppTemplateRepo(t *testing.T) {
 // decoding, assignment, and secret registration.
 func TestSetRepmanSetting_ProvAppTemplateRepoPassword(t *testing.T) {
 	repman := &ReplicationManager{
-		Conf:          &config.Config{Secrets: make(map[string]config.Secret)},
+		Conf:          &config.Config{Secrets: config.NewSecrets(nil)},
 		ConfigManager: newConfigManagerForTest(),
 	}
 
@@ -167,7 +167,7 @@ func TestSetRepmanSetting_ProvAppTemplateRepoPassword(t *testing.T) {
 	if repman.Conf.ProvAppTemplateRepoPassword != plain {
 		t.Errorf("expected %q, got %q", plain, repman.Conf.ProvAppTemplateRepoPassword)
 	}
-	sec, ok := repman.Conf.Secrets["prov-app-template-repo-password"]
+	sec, ok := repman.Conf.Secrets.Lookup("prov-app-template-repo-password")
 	if !ok {
 		t.Fatal("secret not registered in Secrets map")
 	}
@@ -180,7 +180,7 @@ func TestSetRepmanSetting_ProvAppTemplateRepoPassword(t *testing.T) {
 // malformed base64.
 func TestSetRepmanSetting_ProvAppTemplateRepoPassword_InvalidBase64(t *testing.T) {
 	repman := &ReplicationManager{
-		Conf:          &config.Config{Secrets: make(map[string]config.Secret)},
+		Conf:          &config.Config{Secrets: config.NewSecrets(nil)},
 		ConfigManager: newConfigManagerForTest(),
 	}
 	err := repman.setRepmanSetting("prov-app-template-repo-password", "!!!bad!!!")
@@ -193,7 +193,7 @@ func TestSetRepmanSetting_ProvAppTemplateRepoPassword_InvalidBase64(t *testing.T
 // app-template-global-repo-* keys are rejected by setClusterSetting.
 func TestSetClusterSetting_LegacyAppTemplateRepoKeysRejected(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -215,7 +215,7 @@ func TestSetClusterSetting_LegacyAppTemplateRepoKeysRejected(t *testing.T) {
 
 func TestSetClusterSetting_ProvAppTemplateRepo_OverrideDisabled_SingleKey(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.Conf.ProvAppTemplateRepoAllowOverride = false
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
@@ -231,7 +231,7 @@ func TestSetClusterSetting_ProvAppTemplateRepo_OverrideDisabled_SingleKey(t *tes
 
 func TestSetClusterSetting_ProvAppTemplateRepo_OverrideDisabled_AllManagedKeys(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.Conf.ProvAppTemplateRepoAllowOverride = false
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
@@ -262,7 +262,7 @@ func TestSetClusterSetting_ProvAppTemplateRepo_OverrideDisabled_AllManagedKeys(t
 
 func TestSetClusterSetting_ProvAppTemplateRepoTimeout_Invalid(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -274,7 +274,7 @@ func TestSetClusterSetting_ProvAppTemplateRepoTimeout_Invalid(t *testing.T) {
 
 func TestSetRepmanSetting_ProvAppTemplateRepoTimeout_Invalid(t *testing.T) {
 	repman := &ReplicationManager{
-		Conf:          &config.Config{Secrets: make(map[string]config.Secret)},
+		Conf:          &config.Config{Secrets: config.NewSecrets(nil)},
 		ConfigManager: newConfigManagerForTest(),
 	}
 
@@ -290,7 +290,7 @@ func TestSetServerSetting_ProvAppTemplateRepo_GlobalDefaultDoesNotFanOut(t *test
 
 	repman := &ReplicationManager{
 		Conf: &config.Config{
-			Secrets:             make(map[string]config.Secret),
+			Secrets:             config.NewSecrets(nil),
 			ProvAppTemplateRepo: "https://github.com/example/default-before",
 		},
 		ConfigManager: newConfigManagerForTest(),
@@ -318,7 +318,7 @@ func TestSwitchServerSetting_ProvAppTemplateRepo_GlobalDefaultDoesNotFanOut(t *t
 
 	repman := &ReplicationManager{
 		Conf: &config.Config{
-			Secrets:             make(map[string]config.Secret),
+			Secrets:             config.NewSecrets(nil),
 			ProvAppTemplateRepo: "https://github.com/example/default-before",
 		},
 		ConfigManager: newConfigManagerForTest(),

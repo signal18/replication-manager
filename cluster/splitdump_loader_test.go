@@ -71,6 +71,35 @@ func TestClassifySplitdumpStatement(t *testing.T) {
 		{"CREATE TABLE `t` (id int)", splitdumpStmtOther},
 		{"/*!40101 SET NAMES utf8 */", splitdumpStmtOther},
 		{"USE `db`", splitdumpStmtOther},
+		// the dumps' footer statements (lab: MySQL 8.0, 8.4, Percona 8.0, 8.4, MariaDB clients), skipped
+		{"START SLAVE", splitdumpStmtSkip},
+		{"START REPLICA", splitdumpStmtSkip},
+		{"SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN", splitdumpStmtSkip},
+		{"/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */", splitdumpStmtSkip},
+		{"/*!50606 SET GLOBAL INNODB_STATS_AUTO_RECALC=@OLD_INNODB_STATS_AUTO_RECALC */", splitdumpStmtSkip},
+		{"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */", splitdumpStmtSkip},
+		{"/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */", splitdumpStmtSkip},
+		{"/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */", splitdumpStmtSkip},
+		{"/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */", splitdumpStmtSkip},
+		{"/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */", splitdumpStmtSkip},
+		{"/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */", splitdumpStmtSkip},
+		{"/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */", splitdumpStmtSkip},
+		{"/*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */", splitdumpStmtSkip},
+		// run: per-table and header settings, Percona's RocksDB block, data and routines with the same text
+		{"/*!40101 SET @saved_cs_client     = @@character_set_client */", splitdumpStmtOther},
+		{"/*!40101 SET character_set_client = @saved_cs_client */", splitdumpStmtOther},
+		{"/*!40103 SET @OLD_TIME_ZONE=@@TIME_ZONE */", splitdumpStmtOther},
+		{"/*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */", splitdumpStmtOther},
+		{"/*!40103 SET TIME_ZONE='+00:00' */", splitdumpStmtOther},
+		{"/*!50112 SET @disable_bulk_load = IF (@is_rocksdb_supported, 'SET SESSION rocksdb_bulk_load = @old_rocksdb_bulk_load', 'SET @dummy_rocksdb_bulk_load = 0') */", splitdumpStmtOther},
+		{"/*!50112 EXECUTE s */", splitdumpStmtOther},
+		{"STOP SLAVE", splitdumpStmtOther}, // written before the first table only, never in a file
+		{"START SLAVE IO_THREAD", splitdumpStmtOther},
+		{"SET @@GLOBAL.GTID_PURGED=@x", splitdumpStmtOther},
+		{"INSERT INTO `t` VALUES (1,'START SLAVE')", splitdumpStmtInsert},
+		{"INSERT INTO `t` VALUES (1,'/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */')", splitdumpStmtInsert},
+		{"CREATE PROCEDURE `p`() BEGIN START SLAVE; END", splitdumpStmtOther},
+		{"CREATE PROCEDURE `p`() BEGIN SET TIME_ZONE=@OLD_TIME_ZONE; END", splitdumpStmtOther},
 	}
 	for _, c := range cases {
 		if got := classifySplitdumpStatement(c.stmt); got != c.want {

@@ -6983,6 +6983,7 @@ const docTemplate = `{
                             "auditlog",
                             "zfssnapback",
                             "optimize",
+                            "mariadbupgrade",
                             "reseedxtrabackup",
                             "reseedmariabackup",
                             "reseedmysqldump",
@@ -12924,6 +12925,68 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/upgrade-system-tables": {
+            "post": {
+                "description": "Queues the mariadbupgrade task: the server's jobs container runs mariadb-upgrade (mysql_upgrade on older releases) --upgrade-system-tables with the tool of the server's own release, without writing to the binary log; the outcome is the task's job. Refused for MySQL 8.0.16 and later (they upgrade at start) and PostgreSQL.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Upgrade the system tables of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Upgrade of the system tables queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Refused: the reason (server down, MySQL 8.0.16+, PostgreSQL, task already queued)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/wait-innodb-purge": {
             "get": {
                 "description": "Waits for InnoDB purge on a specified server within a cluster.",
@@ -15986,6 +16049,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-task/{taskname}": {
             "post": {
+                "description": "For mysqldump (scheduler-jobs-exec-remote lists it) the receiver opens only while a logical backup of the server waits for it, and the answer also carries the dump arguments: base64 of the arguments, one per line, without the connection arguments the DB host provides.",
                 "tags": [
                     "DatabaseTasks"
                 ],
@@ -16014,13 +16078,26 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Task name (xtrabackup, mariabackup, errorlog, etc.)",
+                        "description": "Task name (xtrabackup, mariabackup, mysqldump, errorlog, etc.)",
                         "name": "taskname",
                         "in": "path",
                         "required": true
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "RECEIVER_PORT=\u003cport\u003e, for mysqldump RECEIVER_PORT=\u003cport\u003e DUMP_ARGS=\u003cbase64\u003e, then LOCK_DDL=1 when dbjobs blocks DDL around the dump client",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No remote mysqldump backup waiting on \u003cserver\u003e",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
             }
         },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade": {
@@ -16700,6 +16777,7 @@ const docTemplate = `{
                             "auditlog",
                             "zfssnapback",
                             "optimize",
+                            "mariadbupgrade",
                             "reseedxtrabackup",
                             "reseedmariabackup",
                             "reseedmysqldump",
@@ -17508,6 +17586,7 @@ const docTemplate = `{
                             "auditlog",
                             "zfssnapback",
                             "optimize",
+                            "mariadbupgrade",
                             "reseedxtrabackup",
                             "reseedmariabackup",
                             "reseedmysqldump",
