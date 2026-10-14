@@ -507,7 +507,9 @@ func (s *MCPServer) registerClusterWriteTools() {
 			if errResult != nil {
 				return errResult, nil
 			}
-			go cl.RotatePasswords()
+			if err := cl.StartPasswordRotation(); err != nil { // #2042
+				return mcp.NewToolResultError("password rotation refused: " + err.Error()), nil
+			}
 			return mcp.NewToolResultText(`{"status":"password rotation initiated"}`), nil
 		},
 	)

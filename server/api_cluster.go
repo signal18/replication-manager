@@ -7533,24 +7533,18 @@ func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, 
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		if err := startPasswordRotation(mycluster); err != nil {
-			http.Error(w, "Password rotation refused: "+err.Error(), http.StatusConflict)
-			return
-		}
+		respondPasswordRotation(w, mycluster)
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
 
-// startPasswordRotation starts the rotation in the background, refused before it starts
-// when CanRotatePasswords says no, so the caller gets the reason (#2042)
-func startPasswordRotation(cl *cluster.Cluster) error {
-	if err := cl.CanRotatePasswords(); err != nil {
-		return err
+// respondPasswordRotation starts the rotation, or answers 409 with the reason (#2042)
+func respondPasswordRotation(w http.ResponseWriter, cl *cluster.Cluster) {
+	if err := cl.StartPasswordRotation(); err != nil {
+		http.Error(w, "Password rotation refused: "+err.Error(), http.StatusConflict)
 	}
-	go cl.RotatePasswords()
-	return nil
 }
 
 // handlerMuxClusterGraphiteFilterList handles the retrieval of Graphite filter list for a given cluster.

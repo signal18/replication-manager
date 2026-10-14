@@ -5,11 +5,13 @@
 package cluster
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
 // rotateGateCluster: a cluster where a rotation outside Vault is allowed, every case
@@ -47,6 +49,20 @@ func TestCanRotatePasswords(t *testing.T) {
 		{"db credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, "db-servers-credential is set in a config file"},
 		{"replication credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, "replication-credential is set in a config file"},
 		{"a database down", func(c *Cluster) { c.Servers = append(c.Servers, &ServerMonitor{State: stateFailed}) }, "databases are down"},
+		{"replication stopped on a replica", func(c *Cluster) {
+			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}, Replications: []dbhelper.SlaveStatus{{
+				SlaveIORunning:  sql.NullString{String: "Yes", Valid: true},
+				SlaveSQLRunning: sql.NullString{String: "No", Valid: true},
+			}}}
+			c.Servers = append(c.Servers, replica)
+			c.slaves = serverList{replica}
+		}, "replication is not running"},
+		{"replication stopped, vault", func(c *Cluster) {
+			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}}
+			c.Servers = append(c.Servers, replica)
+			c.slaves = serverList{replica}
+			c.Conf.VaultServerAddr = "https://vault:8200"
+		}, ""}, // Vault rotates through its own engine, replication is not touched
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

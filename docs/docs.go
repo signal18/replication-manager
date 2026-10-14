@@ -2700,7 +2700,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/actions/rotate-passwords": {
             "post": {
-                "description": "This endpoint rotates the passwords for the specified cluster.",
+                "description": "This endpoint rotates the passwords for the specified cluster. Outside Vault it is refused (409) while monitoring-secret-versioning is off: the new passwords would live only in memory (#2042). Other refusals: a database down, replication stopped on a replica, a credential set in a config file, no encryption key, monitoring-save-config off.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2737,6 +2737,12 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Password rotation refused: \u003creason\u003e",
                         "schema": {
                             "type": "string"
                         }
@@ -23749,6 +23755,10 @@ const docTemplate = `{
                 "endTime": {
                     "type": "string"
                 },
+                "execRemote": {
+                    "description": "the backup tool ran on the DB node (dbjobs), not next to replication-manager",
+                    "type": "boolean"
+                },
                 "fileCount": {
                     "type": "integer"
                 },
@@ -26431,6 +26441,15 @@ const docTemplate = `{
                 },
                 "backupLogicalPostScript": {
                     "type": "string"
+                },
+                "backupLogicalRemoteArmTimeout": {
+                    "type": "integer"
+                },
+                "backupLogicalRemotePickupTimeout": {
+                    "type": "integer"
+                },
+                "backupLogicalRemoteReportTimeout": {
+                    "type": "integer"
                 },
                 "backupLogicalType": {
                     "type": "string"
