@@ -166,6 +166,10 @@ On a MySQL or Percona replica with several channels, the dump's `CHANGE MASTER`
 names no channel and fails: the restore stops there unless
 `backup-mysqlclient-options` has `--force`.
 
+An older splitdump backup keeps the position in its metadata; its replication
+statements are not run by the restore (replication-manager points and starts
+the replica once every file is loaded).
+
 ## Checking a backup
 
 The backup metadata carries `execRemote: true`. Its `backupToolVersion` is the

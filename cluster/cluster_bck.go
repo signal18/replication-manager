@@ -2623,7 +2623,7 @@ func (cluster *Cluster) CheckBackupServerDumpClient() {
 	cluster.CheckDumpClientCompatibility(bcksrv)
 }
 
-// CheckDumpClientCompatibility warns (WARN0244) when the cluster's local dump client can not
+// CheckDumpClientCompatibility warns (WARN0247) when the cluster's local dump client can not
 // back up the server: a backup with it fails at its first statement, or records no GTID.
 // Not checked when the dump runs on the DB node, with the node's own client.
 func (cluster *Cluster) CheckDumpClientCompatibility(server *ServerMonitor) {
@@ -2632,9 +2632,9 @@ func (cluster *Cluster) CheckDumpClientCompatibility(server *ServerMonitor) {
 	}
 	client := cluster.VersionsMap.Get("client-dump")
 	if why := dumpClientIncompatibility(client, server.DBVersion); why != "" {
-		cluster.SetState("WARN0244", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0244"], client.ToString(), cluster.GetMysqlDumpPath(), server.DBVersion.ToString(), why), ErrFrom: "CHECK", ServerUrl: server.URL})
-	} else if cluster.IsInErrorState("WARN0244", server.URL) {
-		cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0244@%s", server.URL))
+		cluster.SetState("WARN0247", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0247"], client.ToString(), cluster.GetMysqlDumpPath(), server.DBVersion.ToString(), why), ErrFrom: "CHECK", ServerUrl: server.URL})
+	} else if cluster.IsInErrorState("WARN0247", server.URL) {
+		cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0247@%s", server.URL))
 	}
 }
 

@@ -1900,7 +1900,7 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 type splitdumpStmtKind int
 
 const (
-	splitdumpStmtSkip   splitdumpStmtKind = iota // LOCK/UNLOCK TABLES, ALTER..DISABLE/ENABLE KEYS
+	splitdumpStmtSkip   splitdumpStmtKind = iota // LOCK/UNLOCK TABLES, ALTER..DISABLE/ENABLE KEYS, the dump's footer statements
 	splitdumpStmtInsert                          // INSERT/REPLACE (batchable)
 	splitdumpStmtOther                           // everything else (autocommit single)
 )
@@ -1916,11 +1916,50 @@ func classifySplitdumpStatement(stmt string) splitdumpStmtKind {
 		return splitdumpStmtSkip
 	case strings.Contains(up, "ALTER TABLE") && (strings.Contains(up, "DISABLE KEYS") || strings.Contains(up, "ENABLE KEYS")):
 		return splitdumpStmtSkip
+	// The statements a dump writes after its last table (isDumpFooterStatement): they land in
+	// the last file, whose position and saved settings the splitter did not keep there.
+	case isDumpFooterStatement(up):
+		return splitdumpStmtSkip
 	case strings.HasPrefix(up, "INSERT"), strings.HasPrefix(up, "REPLACE"):
 		return splitdumpStmtInsert
 	default:
 		return splitdumpStmtOther
 	}
+}
+
+// dumpFooterStatements are the statements mysqldump and mariadb-dump write after their last
+// table, as the clients of MySQL 8.0, 8.4, Percona 8.0, 8.4 and MariaDB write them
+// (upper-cased, whitespace collapsed, terminator stripped): the splitter puts them in the
+// last file, a routines file on MySQL. Their other half is in the dump's header, which the
+// splitter does not keep in the files (the position goes to the splitdump metadata):
+//   - START SLAVE / START REPLICA of an older backup (--apply-slave-statements): the reseed
+//     points and starts the replica once every file is loaded; run in a file, it fails on the
+//     reset replica or starts replication while other files still load;
+//   - the restores of the variables the header saved (@OLD_<name>, sql_log_bin from
+//     @MYSQLDUMP_TEMP_LOG_BIN, the global INNODB_STATS_AUTO_RECALC): the saves are not in
+//     the file, they would set NULL (ERROR 1231); the restore connections keep the settings
+//     the reseed wants.
+var dumpFooterStatements = map[string]bool{
+	"START SLAVE":   true,
+	"START REPLICA": true,
+	"SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN":                           true,
+	"/*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */":                                      true,
+	"/*!50606 SET GLOBAL INNODB_STATS_AUTO_RECALC=@OLD_INNODB_STATS_AUTO_RECALC */": true,
+	"/*!40101 SET SQL_MODE=@OLD_SQL_MODE */":                                        true,
+	"/*!40014 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS */":                    true,
+	"/*!40014 SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS */":                              true,
+	"/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */":                true,
+	"/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */":              true,
+	"/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */":                true,
+	"/*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */":                                      true,
+	"/*M!100616 SET NOTE_VERBOSITY=@OLD_NOTE_VERBOSITY */":                          true,
+}
+
+// isDumpFooterStatement reports whether up, an upper-cased statement, is one of the dump's
+// footer statements, whole (dumpFooterStatements).
+func isDumpFooterStatement(up string) bool {
+	stmt := strings.Join(strings.Fields(up), " ")
+	return dumpFooterStatements[stmt]
 }
 
 // forEachSplitdumpStatement segments the SQL stream into complete statements and

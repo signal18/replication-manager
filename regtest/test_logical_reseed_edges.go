@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	clusterpkg "github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
 // edgeTable is the table the logical reseed edge cases write and compare.
@@ -99,7 +101,8 @@ func (e *edgeRun) result() bool {
 //     own variable name (MariaDB);
 //   - R1: a reseed from it, restored by replication-manager as any logical backup;
 //   - R2/R3: a local backup and a local reseed right after the remote one;
-//   - B2: a remote splitdump backup completes with table files.
+//   - B2: a remote splitdump backup completes with table files, then a reseed from it, and a
+//     local splitdump backup and a reseed from it.
 //
 // It needs dbjobs (the script of this release) next to each database, and dump and restore
 // clients compatible with the servers (backup-mysqldump-path, backup-mysqlclient-path,
@@ -123,9 +126,16 @@ func (regtest *RegTest) TestLogicalReseed(cl *clusterpkg.Cluster, conf string, t
 		e.reseedAndCheck("R2/R3 local reseed after a reseed", gtid)
 	}
 	cl.Conf.BackupMysqldumpSplitDump = true
+	e.seed()
 	if meta, ok := e.backup("B2 remote splitdump backup", true); ok {
 		ok, why := remoteDumpArtifact(meta.Dest, true)
-		e.check("B2 remote splitdump artifact", ok, why)
+		if e.check("B2 remote splitdump artifact", ok, why) {
+			e.reseedAndCheck("R1 remote splitdump reseed", gtid)
+		}
+	}
+	e.seed()
+	if _, ok := e.backup("R2 local splitdump backup", false); ok {
+		e.reseedAndCheck("R2 local splitdump reseed", gtid)
 	}
 	return e.result()
 }
@@ -142,7 +152,7 @@ func (regtest *RegTest) TestLogicalReseed(cl *clusterpkg.Cluster, conf string, t
 //     right after the backup, then back to GTID;
 //   - R5: an older local backup (active CHANGE MASTER, STOP/START SLAVE and, on MySQL,
 //     mysql.slave_worker_info): the last local backup is overwritten with a dump made with
-//     the options such backups had;
+//     the options such backups had, as a single file, then as a splitdump;
 //   - R6: a reseed of a replica stopped on a replication error (a duplicate key it is made
 //     to hit);
 //   - R7: a reseed of a replica whose replication was removed (RESET SLAVE ALL).
@@ -210,6 +220,15 @@ func (regtest *RegTest) TestLogicalReseedEdgeCases(cl *clusterpkg.Cluster, conf 
 			e.reseedAndCheck("R5 reseed from an older backup", gtid)
 		}
 	}
+	// R5 splitdump: the same older backup, taken as a splitdump
+	cl.Conf.BackupMysqldumpSplitDump = true
+	e.seed()
+	if meta, ok := e.backup("R5 splitdump local backup", false); ok {
+		if e.writeOlderSplitdump("R5 older splitdump", meta.Dest) {
+			e.reseedAndCheck("R5 reseed from an older splitdump", gtid)
+		}
+	}
+	cl.Conf.BackupMysqldumpSplitDump = false
 
 	// R6: a replica stopped on a replication error
 	e.seed()
@@ -452,6 +471,75 @@ func (e *edgeRun) writeOlderDump(name, dest string) bool {
 	return e.check(name, err == nil && active > 0, fmt.Sprintf("active CHANGE MASTER lines %d, err %v", active, err))
 }
 
+// writeOlderSplitdump replaces the splitdump backup in dir with the dump writeOlderDump makes,
+// split by replication-manager's splitter: the older backup's final START SLAVE lands in its
+// last file (the statements before the first table are not kept, their position is in the
+// splitdump metadata).
+func (e *edgeRun) writeOlderSplitdump(name, dir string) bool {
+	dump := dir + ".older.sql.gz"
+	defer os.Remove(dump)
+	if !e.writeOlderDump(name+" dump", dump) {
+		return false
+	}
+	split := dir + ".older"
+	os.RemoveAll(split)
+	if err := os.MkdirAll(split, 0o750); err != nil {
+		return e.check(name, false, err.Error())
+	}
+	bus := splitdump.NewSplitDumpChannelBus()
+	go splitdump.SplitDumpLineReader(bus, dump)
+	go splitdump.SplitDumpLineParser(bus, split, splitdump.SplitDumpOptions{})
+	select {
+	case <-bus.Finished:
+	case err := <-bus.Error:
+		os.RemoveAll(split)
+		return e.check(name, false, "split: "+err.Error())
+	}
+	statements := 0
+	files, _ := filepath.Glob(filepath.Join(split, "*.sql.gz"))
+	for _, f := range files {
+		if n, err := countReplicationStatements(f); err == nil {
+			statements += n
+		}
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		return e.check(name, false, err.Error())
+	}
+	if err := os.Rename(split, dir); err != nil {
+		return e.check(name, false, err.Error())
+	}
+	e.logf("TEST", "%s: %d replication statement(s) left in the split files", name, statements)
+	return e.check(name, true, "")
+}
+
+// countReplicationStatements counts the lines of a gzip dump file that start with a
+// replication statement (STOP/START SLAVE or REPLICA, START ALL SLAVES, CHANGE MASTER).
+func countReplicationStatements(path string) (int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	zr, err := gzip.NewReader(f)
+	if err != nil {
+		return 0, err
+	}
+	defer zr.Close()
+	n := 0
+	sc := bufio.NewScanner(zr)
+	sc.Buffer(make([]byte, 0, 64*1024), 64<<20)
+	for sc.Scan() {
+		l := sc.Text()
+		for _, p := range []string{"STOP SLAVE", "STOP ALL SLAVES", "START SLAVE", "START ALL SLAVES", "CHANGE MASTER", "CHANGE REPLICATION SOURCE", "STOP REPLICA", "START REPLICA"} {
+			if strings.HasPrefix(l, p) {
+				n++
+				break
+			}
+		}
+	}
+	return n, sc.Err()
+}
+
 func countActiveChange(dest string) (int, error) {
 	f, err := os.Open(dest)
 	if err != nil {
@@ -663,7 +751,7 @@ func (e *edgeRun) replicaDiff() string {
 	return ""
 }
 
-// TestDumpClientCheck checks the WARN0244 dump client check on a MySQL/Percona cluster: the
+// TestDumpClientCheck checks the WARN0247 dump client check on a MySQL/Percona cluster: the
 // MariaDB client (mariadb-dump in PATH) as the cluster's dump client raises it on the backed
 // up server, the configured client clears it. backup-mysqldump-path is restored after. It
 // raises a warning on purpose: for a dedicated test cluster only.
@@ -697,7 +785,7 @@ func (regtest *RegTest) TestDumpClientCheck(cl *clusterpkg.Cluster, conf string,
 	waitState := func(want bool) bool {
 		for i := 0; i < 45; i++ {
 			cl.CheckBackupServerDumpClient()
-			if cl.IsInErrorState("WARN0244", s.URL) == want {
+			if cl.IsInErrorState("WARN0247", s.URL) == want {
 				return true
 			}
 			time.Sleep(2 * time.Second)
@@ -710,19 +798,19 @@ func (regtest *RegTest) TestDumpClientCheck(cl *clusterpkg.Cluster, conf string,
 		return false
 	}
 	if !waitState(true) {
-		logf(config.LvlErr, "WARN0244 not raised with %s as the dump client of %s", mariadbDump, s.URL)
+		logf(config.LvlErr, "WARN0247 not raised with %s as the dump client of %s", mariadbDump, s.URL)
 		return false
 	}
-	logf("TEST", "WARN0244 raised with %s: PASS", mariadbDump)
+	logf("TEST", "WARN0247 raised with %s: PASS", mariadbDump)
 	cl.Conf.BackupMysqldumpPath = saved
 	if err := cl.RefreshDBClientDumpVersion(); err != nil {
 		logf(config.LvlErr, "refresh the dump client version: %s", err)
 		return false
 	}
 	if !waitState(false) {
-		logf(config.LvlErr, "WARN0244 not cleared with the configured dump client %s", cl.GetMysqlDumpPath())
+		logf(config.LvlErr, "WARN0247 not cleared with the configured dump client %s", cl.GetMysqlDumpPath())
 		return false
 	}
-	logf("TEST", "WARN0244 cleared with %s: PASS", cl.GetMysqlDumpPath())
+	logf("TEST", "WARN0247 cleared with %s: PASS", cl.GetMysqlDumpPath())
 	return true
 }

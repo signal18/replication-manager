@@ -256,7 +256,20 @@ Reseed (`ProcessReseedLogical`, mysqldump, not PITR):
    started; auto-position stays off: a file/position `CHANGE MASTER` under
    auto-position is error 1776), so the dump's statements set the position and
    start replication. Skipped with several channels: without `FOR CHANNEL` it
-   would drop them all.
+   would drop them all. A splitdump is not pointed before the load: the splitter
+   keeps the position (and the GTID set, its lines joined when a MySQL client
+   writes several sources over several lines: `gtidStatementLines`) in the
+   splitdump metadata and keeps nothing before the first table in the files.
+   What a dump writes after its last table lands in the last file, a routines
+   file on MySQL, without that header: an older backup's `START SLAVE` /
+   `START REPLICA`, the restores of the variables the header saved
+   (`@OLD_<name>`, `sql_log_bin`, the global `INNODB_STATS_AUTO_RECALC`).
+   `classifySplitdumpStatement` skips them, as it skips `LOCK TABLES`:
+   `isDumpFooterStatement` matches each whole, from the list the clients of
+   MySQL 8.0, 8.4, Percona 8.0, 8.4 and MariaDB write (`dumpFooterStatements`).
+   Run, they fail on the reset replica (ERROR 1200), set NULL (ERROR 1231), or
+   start replication while other files still load; the reseed sets the GTID
+   state from the metadata and points and starts the replica.
 3. The restore, file or splitdump, by replication-manager wherever the backup
    was made. Each records the
    position it restored in `server.logicalRestorePosition` (the classified
@@ -289,12 +302,12 @@ major.minor; `getDumpParameter`: no `--system=all` on MySQL;
 
 | # | Rule | Applied by |
 |---|---|---|
-| C1 | MariaDB server: MariaDB client. MySQL/Percona server: MySQL client (`mariadb-dump` writes no `GTID_PURGED` and can not dump MySQL 8.4) | the cluster's `backup-mysqldump-path` / `backup-mysqlclient-path` / `backup-mysqlbinlog-path`; a remote dump uses the node's client. Checked: WARN0244 |
-| C2 | MySQL client of the server's line: 8.0 for 5.7 and 8.0, 8.4 for 8.4 (the 8.4 client sends `SHOW BINARY LOG STATUS`, unknown to 8.0; the 8.0 client `SHOW MASTER STATUS`, removed in 8.4). An 8.4 client dumps 5.7 | same. Checked: WARN0244 |
+| C1 | MariaDB server: MariaDB client. MySQL/Percona server: MySQL client (`mariadb-dump` writes no `GTID_PURGED` and can not dump MySQL 8.4) | the cluster's `backup-mysqldump-path` / `backup-mysqlclient-path` / `backup-mysqlbinlog-path`; a remote dump uses the node's client. Checked: WARN0247 |
+| C2 | MySQL client of the server's line: 8.0 for 5.7 and 8.0, 8.4 for 8.4 (the 8.4 client sends `SHOW BINARY LOG STATUS`, unknown to 8.0; the 8.0 client `SHOW MASTER STATUS`, removed in 8.4). An 8.4 client dumps 5.7 | same. Checked: WARN0247 |
 | C3 | `--skip-log-queries` only when the client and the server name the slow log the same way: `slow_query_log` before MariaDB 10.11, `log_slow_query` from 10.11. The dump writes `/*M!100101 SET LOCAL SQL_LOG_OFF=0, LOCAL LOG_SLOW_QUERY=0 */` with a 10.11+ client, which a 10.4-10.6 server rejects (ERROR 1193) | `mariadbSkipLogQueriesCompatible` in `getMysqlDumpOptions`, with the client version: `client-dump` for a local dump, the server's for a remote one (the node's client) |
 
 `CheckDumpClientCompatibility` (`cluster_bck.go`, from `CheckBackupServerDumpClient` every 30
-heartbeats) raises WARN0244 on the backed-up server when the cluster's local dump
+heartbeats) raises WARN0247 on the backed-up server when the cluster's local dump
 client (`client-dump`) is one of the cases seen failing (`dumpClientIncompatibility`): a
 MariaDB client for MySQL/Percona, a pre-8.2 client for an 8.2+ server, an 8.2+ client for an
 8.0/8.1 server. It is skipped when the dump runs on the DB node, and cleared once the client
@@ -346,15 +359,17 @@ fits.
     once per `scheduler-jobs-mode`. A remote backup (execRemote, position as a
     comment, no `STOP`/`START SLAVE`, no `mysql.slave_worker_info`, the server's
     slow-log variable), a reseed from it, a local backup
-    and reseed right after it, a remote splitdump backup.
+    and reseed right after it, a remote splitdump backup and a reseed from it, a
+    local splitdump backup and a reseed from it.
   - `testLogicalReseedEdgeCases`: changes the cluster beyond normal operation,
     for a dedicated test cluster only. Two GTID sources recorded whole by both
     backups (leaves a foreign UUID or domain 97 in the GTID state), positional
     replication (the replica reset right after each backup) and back to GTID,
-    an older local backup (active `CHANGE MASTER`), a replica stopped on a
-    replication error, a replica without replication (`RESET SLAVE ALL`).
+    an older local backup (active `CHANGE MASTER`) as a single file and as a
+    splitdump, a replica stopped on a replication error, a replica without
+    replication (`RESET SLAVE ALL`).
   - `testDumpClientCheck` (MySQL/Percona, dedicated test cluster only):
-    `mariadb-dump` as the dump client raises WARN0244, the configured client
+    `mariadb-dump` as the dump client raises WARN0247, the configured client
     clears it.
 - Regtest `testRemoteMysqldump` (needs dbjobs next to each database, not in the
   ALL list; run it by name, once per `scheduler-jobs-mode`): gzip and splitdump
