@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -675,5 +676,35 @@ func TestDumpPositionLinesMultiSourceGTID(t *testing.T) {
 	l.Flush()
 	if want := "a009676e-c6cb-11f1-9ba6-ea188a944068:1-2,a02894cb-c6cb-11f1-8c66-4eb3d380dfb9:1-30"; strings.ReplaceAll(gtid, "\n", "") != want {
 		t.Fatalf("GTID %q, want %q", gtid, want)
+	}
+}
+
+// A withdrawal that can not be decided is an error, never "withdrawn": the row may still be
+// taken by dbjobs.
+func TestWithdrawRemoteDumpRowUndecided(t *testing.T) {
+	_, server := newTestClusterServer(t)
+	withdrawn, err := server.withdrawRemoteDumpRow("mysqldump")
+	if withdrawn || err == nil {
+		t.Fatalf("no connection pool: withdrawn %v err %v, want false and an error", withdrawn, err)
+	}
+}
+
+// A jobs row that can not be read any more fails the wait after remoteDumpRowReadErrors
+// consecutive reads; a read that succeeds starts the count again.
+func TestRowReadErrorsBound(t *testing.T) {
+	defer func(n int) { remoteDumpRowReadErrors = n }(remoteDumpRowReadErrors)
+	remoteDumpRowReadErrors = 3
+	_, server := newTestClusterServer(t)
+	r := server.newRowReadErrors("mysqldump")
+	readErr := errors.New("connection refused")
+	if r.failed(readErr) || r.failed(readErr) {
+		t.Fatal("failed before the bound")
+	}
+	r.reset()
+	if r.failed(readErr) || r.failed(readErr) {
+		t.Fatal("a successful read must start the count again")
+	}
+	if !r.failed(readErr) {
+		t.Fatal("not failed at the bound")
 	}
 }

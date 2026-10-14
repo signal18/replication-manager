@@ -3113,6 +3113,8 @@ for job in "${JOBS[@]}"; do
         TASK=($(echo "SELECT concat(id,'@',server,':',port,'@',payload) FROM replication_manager_schema.jobs WHERE task='$job' and done=0 AND state=0 AND port<>0 order by id desc limit 1" | $BINARY_CLIENT -N))
         ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))
         ID=($(echo $TASK | awk -F@ '{ print $1 }'))
+        # id@server:port@<dump arguments, base64>@<lock DDL 0|1>: base64 holds no '@' and
+        # replication-manager always sends arguments (--master-data at least)
         DUMP_ARGS_B64=$(echo $TASK | awk -F@ '{ print $3 }')
         DUMP_LOCK_DDL=$(echo $TASK | awk -F@ '{ print $4 }')
         if [ "$ID" != "" ]; then

@@ -393,6 +393,9 @@ func (server *ServerMonitor) jobBackupMysqldumpRemote(ctx context.Context, task,
 	report := secondsOr(cluster.Conf.BackupLogicalRemoteReportTimeout, remoteDumpReportTimeout)
 	var err error
 	if cluster.Conf.SchedulerJobsMode == "api" {
+		// the previous run's report must not end this one: waitRemoteJobReport reads done=1,
+		// which dbjobs' "processing" report clears only when it reaches replication-manager
+		server.JobsUpdateStateRuntimeOnly(task, "requested", JobStateAvailable, 0)
 		if err = server.runStreamTask(ctx, task, filename, pickup); err == nil {
 			err = server.waitRemoteJobReport(ctx, task, report)
 		}
@@ -695,6 +698,28 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 	defer report.Stop()
 	var reportBy <-chan time.Time
 	taken, streamed := false, false
+	rowErrors := server.newRowReadErrors(task)
+	// After the pickup timeout the row is withdrawn while dbjobs has not taken it. When the
+	// withdrawal can not be decided (the jobs table is unreachable), it is tried again on
+	// the next ticks: the row is not taken for granted.
+	withdrawPending := false
+	withdraw := func() (bool, error) {
+		if taken {
+			withdrawPending = false
+			return false, nil
+		}
+		withdrawn, err := server.withdrawRemoteDumpRow(task)
+		if err != nil {
+			return false, nil // tried again on the next tick
+		}
+		withdrawPending = false
+		if withdrawn {
+			cluster.stopRemoteDumpReceiver(port)
+			return true, fmt.Errorf("dbjobs of %s did not take the %s task within %s", server.URL, task, pickupTimeout)
+		}
+		taken = true // taken meanwhile: the row is no longer available
+		return false, nil
+	}
 	for {
 		select {
 		case <-done:
@@ -705,11 +730,10 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 			cluster.stopRemoteDumpReceiver(port)
 			return fmt.Errorf("%s canceled: %w", task, ctx.Err())
 		case <-pickup.C:
-			if !taken && server.withdrawRemoteDumpRow(task) {
-				cluster.stopRemoteDumpReceiver(port)
-				return fmt.Errorf("dbjobs of %s did not take the %s task within %s", server.URL, task, pickupTimeout)
+			withdrawPending = true
+			if failed, err := withdraw(); failed {
+				return err
 			}
-			taken = true // taken meanwhile: the row is no longer available
 		case <-limit.C:
 			cluster.stopRemoteDumpReceiver(port)
 			return fmt.Errorf("%s still streaming after %s", task, postgresJobStreamTimeout)
@@ -720,10 +744,20 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 				cluster.stopRemoteDumpReceiver(port)
 				return errors.New("backup canceled: cluster shutting down")
 			}
+			if withdrawPending {
+				if failed, err := withdraw(); failed {
+					return err
+				}
+			}
 			state, rowDone, result, err := server.remoteDumpRowState(task)
 			if err != nil {
+				if rowErrors.failed(err) {
+					cluster.stopRemoteDumpReceiver(port)
+					return fmt.Errorf("%s: the jobs row of %s can not be read: %w", task, server.URL, err)
+				}
 				continue // the row is read again on the next tick
 			}
+			rowErrors.reset()
 			if state != JobStateAvailable {
 				taken = true
 			}
@@ -742,22 +776,54 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 }
 
 // withdrawRemoteDumpRow takes back the jobs row of task while dbjobs has not taken it, so
-// it can not take it later. False when dbjobs took it meanwhile.
-func (server *ServerMonitor) withdrawRemoteDumpRow(task string) bool {
+// it can not take it later. False when dbjobs took it meanwhile. An error when it can not
+// be decided: the row may still be taken.
+func (server *ServerMonitor) withdrawRemoteDumpRow(task string) (bool, error) {
 	if server.Conn == nil {
-		return true // dbjobs reads the same database: it can not take the row either
+		return false, errors.New("no connection pool")
 	}
 	conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
-		return true
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Can not withdraw the %s row of %s: %s", task, server.URL, err)
+		return false, err
 	}
 	defer conn.Close()
 	withdrawn, query, err := dbhelper.WithdrawJobTask(conn, server.DBVersion, task, JobStateErrorExec, "not taken by dbjobs", JobTimeout)
 	if err != nil {
 		server.ClusterGroup.LogSQL(query, err, server.URL, "RemoteDump", config.LvlWarn, "Failed SQL for server %s: %s ", server.URL, err)
-		return true
+		return false, err
 	}
-	return withdrawn
+	return withdrawn, nil
+}
+
+// remoteDumpRowReadErrors bounds the consecutive failed reads of a jobs row: a node whose
+// jobs table can not be read any more fails the task within about that many seconds (one
+// read a second) instead of holding the backup or reseed until the stream limit.
+var remoteDumpRowReadErrors = 30
+
+// rowReadErrors counts the consecutive failed reads of the jobs row of task.
+type rowReadErrors struct {
+	server *ServerMonitor
+	task   string
+	count  int
+}
+
+func (server *ServerMonitor) newRowReadErrors(task string) *rowReadErrors {
+	return &rowReadErrors{server: server, task: task}
+}
+
+// failed records a failed read, logged on the first one; true once the bound is reached.
+func (r *rowReadErrors) failed(err error) bool {
+	r.count++
+	if r.count == 1 {
+		cluster := r.server.ClusterGroup
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Can not read the %s row of %s, read again each second: %s", r.task, r.server.URL, err)
+	}
+	return r.count >= remoteDumpRowReadErrors
+}
+
+func (r *rowReadErrors) reset() {
+	r.count = 0
 }
 
 // remoteDumpRowState reads the state of the jobs row of task.
@@ -780,7 +846,9 @@ func (cluster *Cluster) stopRemoteDumpReceiver(port string) {
 	SSTs.Lock()
 	defer SSTs.Unlock()
 	if sst := SSTs.SSTconnections[p]; sst != nil {
-		sst.listener.Close()
+		if sst.listener != nil {
+			sst.listener.Close()
+		}
 		if c, ok := sst.in.(net.Conn); ok && c != nil {
 			c.Close()
 		}
