@@ -488,7 +488,7 @@ func (e *edgeRun) breakReplication(name string) bool {
 		if err := e.r.Conn.QueryRowx("SELECT SERVICE_STATE FROM performance_schema.replication_applier_status WHERE CHANNEL_NAME=?", e.r.ReplicationSourceName).Scan(&running); err == nil && running == "OFF" {
 			return e.check(name, true, "")
 		}
-		if ss, err := e.r.GetSlaveStatus(e.r.ReplicationSourceName); err == nil && ss.SlaveSQLRunning.String == "No" {
+		if ss, _, err := dbhelper.GetSlaveStatus(e.r.Conn, e.r.ReplicationSourceName, e.r.DBVersion); err == nil && ss.SlaveSQLRunning.String == "No" {
 			return e.check(name, true, "")
 		}
 		time.Sleep(2 * time.Second)
@@ -551,9 +551,9 @@ func (e *edgeRun) checkReplica(name string, wantGTID bool) bool {
 	if why := e.replicaDiff(); why != "" {
 		return e.check(name, false, why)
 	}
-	// the replication mode is read from the monitor's status, refreshed every tick
-	time.Sleep(3 * time.Duration(e.cl.Conf.MonitoringTicker) * time.Second)
-	ss, err := e.r.GetSlaveStatus(e.r.ReplicationSourceName)
+	// read on the replica: the monitor's status lags a tick behind a reseed, and is empty
+	// right after its RESET SLAVE ALL
+	ss, _, err := dbhelper.GetSlaveStatus(e.r.Conn, e.r.ReplicationSourceName, e.r.DBVersion)
 	if err != nil {
 		return e.check(name, false, "replication status: "+err.Error())
 	}
@@ -625,7 +625,7 @@ func (e *edgeRun) replicaDiff() string {
 	var io, sql string
 	q := "SELECT IFNULL((SELECT SERVICE_STATE FROM performance_schema.replication_connection_status WHERE CHANNEL_NAME=?),'OFF'), IFNULL((SELECT SERVICE_STATE FROM performance_schema.replication_applier_status WHERE CHANNEL_NAME=?),'OFF')"
 	if e.r.IsMariaDB() {
-		ss, err := e.r.GetSlaveStatus(e.r.ReplicationSourceName)
+		ss, _, err := dbhelper.GetSlaveStatus(e.r.Conn, e.r.ReplicationSourceName, e.r.DBVersion)
 		if err != nil {
 			return "replication status: " + err.Error()
 		}
