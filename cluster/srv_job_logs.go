@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/signal18/replication-manager/utils/sqlmask"
 	"io"
 	"os"
 	"os/exec"
@@ -670,6 +671,7 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 		}
 		log.Group = cluster.GetClusterName()
 
+		log.Text = sqlmask.Secrets(log.Text) // a replication error quotes its statement (#2025)
 		server.ErrorLog.Add(log)
 	}
 }
@@ -696,6 +698,7 @@ func (server *ServerMonitor) AuditLogWatcher() {
 		log.Level = "INFO"
 		log.Timestamp = parts[0]
 		log.Text = strings.Join(parts[1:], ", ")
+		log.Text = sqlmask.Secrets(log.Text)
 		server.AuditLog.Add(log)
 	}
 }
@@ -720,6 +723,7 @@ func (server *ServerMonitor) SqlErrorLogWatcher() {
 		log.Timestamp = parts[0] + " " + parts[1]
 		log.Level = parts[5]
 		log.Text = strings.Join(parts[2:], " ")
+		log.Text = sqlmask.Secrets(log.Text)
 		server.SqlErrorLog.Add(log)
 	}
 }
@@ -744,6 +748,7 @@ func (server *ServerMonitor) SlowLogWatcher() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New query %s", log)
 			}
 			if log.Query != "" {
+				log.Query = sqlmask.Secrets(log.Query)
 				server.SlowLog.Add(log)
 			}
 			log = newlog
