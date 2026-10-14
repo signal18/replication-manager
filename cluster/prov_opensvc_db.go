@@ -730,7 +730,27 @@ func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
 	if preload, arenaMax := server.ClusterGroup.GetDBAllocatorEnv(); preload != "" {
 		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + arenaMax
 	}
+	// a new ColumnStore server joins the primary's cluster at its first start (#2021)
+	if primary := server.ClusterGroup.columnstorePrimary(); primary != nil && primary.URL != server.URL && primary.Host != "" {
+		env += " COLUMNSTORE_PRIMARY=" + primary.Host
+	}
 	return env
+}
+
+// columnstorePrimary: the server the others of a ColumnStore cluster join (#2021): the
+// master, else the preferred master, else the first server (the one the replication
+// bootstrap makes master); nil outside the columnstore topology.
+func (cluster *Cluster) columnstorePrimary() *ServerMonitor {
+	if !cluster.HasConfigTopoColumnstore() || len(cluster.Servers) == 0 {
+		return nil
+	}
+	if m := cluster.GetMaster(); m != nil {
+		return m
+	}
+	if p := cluster.getOnePreferedMaster(); p != nil {
+		return p
+	}
+	return cluster.Servers[0]
 }
 
 func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string {

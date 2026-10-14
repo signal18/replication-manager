@@ -28,8 +28,8 @@ CS_PACKAGE_ETC=/usr/share/columnstore/etc-columnstore
 CMAPI_DIR=/usr/share/columnstore/cmapi
 CMAPI_CONF=/etc/columnstore/cmapi_server.conf
 CMAPI_URL=https://127.0.0.1:8640/cmapi/0.4.0
-# the cluster's root password: the UM (database path) and the PMs (prov-app-db-credentials)
-# both receive it, a node never takes the key of whoever reaches its CMAPI first
+# the cluster's root password: every server receives it, a node never takes the key of
+# whoever reaches its CMAPI first
 CMAPI_KEY="${CMAPI_API_KEY:-${MYSQL_ROOT_PASSWORD:-${MARIADB_ROOT_PASSWORD:-}}}"
 
 log() { echo "$(date '+%F %T') columnstore-entrypoint: $*"; }
@@ -268,6 +268,43 @@ stop_columnstore() {
 	fi
 }
 
+# A new server joins the cluster of COLUMNSTORE_PRIMARY, which replication-manager sets on
+# every server but the primary (#2021): the primary's CMAPI adds it (a dbroot, the
+# configuration, the processes restarted on every node). Only a fresh node joins: its
+# configuration a cluster of its own, one node and one dbroot; a node already in a
+# cluster (the CMAPI primary itself after a switchover of the replication included)
+# starts as it is. The primary resolves the joiner's address back to its name (CMAPI's
+# get_dbroots): the DNS needs the reverse records. Before the server starts, bounded:
+# a node that cannot join fails its start rather than serve a cluster of its own.
+fresh_node() {
+	local nodes dbroots
+	nodes="$(grep -oE '<Node>[^<]+' /etc/columnstore/Columnstore.xml 2>/dev/null | sort -u | wc -l)"
+	dbroots="$(/usr/bin/mcsGetConfig SystemConfig DBRootCount 2>/dev/null || echo 0)"
+	[ "$nodes" -le 1 ] && [ "$dbroots" = 1 ]
+}
+
+join_cluster() {
+	local primary="$1" self out i
+	self="$(hostname -f 2>/dev/null || hostname)"
+	for i in $(seq 1 60); do
+		if out="$(curl -sk --max-time 60 "https://$primary:8640/cmapi/0.4.0/cluster/status" -H "x-api-key: $CMAPI_KEY")" &&
+			echo "$out" | grep -q "\"$self\""; then
+			log "already a node of the cluster of $primary"
+			return 0
+		fi
+		if out="$(curl -sk --max-time 600 -X PUT "https://$primary:8640/cmapi/0.4.0/cluster/node" \
+			-H "x-api-key: $CMAPI_KEY" -H 'Content-Type: application/json' \
+			-d "{\"timeout\": 300, \"node\": \"$self\"}")" && echo "$out" | grep -q timestamp; then
+			log "added to the cluster of $primary"
+			return 0
+		fi
+		log "joining the cluster of $primary not done yet: ${out:0:200}"
+		sleep 10
+	done
+	log "could not join the cluster of $primary"
+	return 1
+}
+
 server_pid=""
 on_stop() {
 	log "stop requested"
@@ -288,6 +325,11 @@ case "${1:-}" in
 		sync_hosts_loop &
 		start_cmapi
 		start_node
+		self="$(hostname -f 2>/dev/null || hostname)"
+		if [ -n "${COLUMNSTORE_PRIMARY:-}" ] && [ "$COLUMNSTORE_PRIMARY" != "$self" ] && fresh_node; then
+			wait_port 8640 "the primary's CMAPI" "$COLUMNSTORE_PRIMARY" || true
+			join_cluster "$COLUMNSTORE_PRIMARY" || exit 1
+		fi
 		# the DBRM the server needs: controllernode runs on the primary only, local on the
 		# UM and remote on a PM (a PM waiting on 127.0.0.1 exited after 180 s)
 		wait_port 8616 controllernode "$(/usr/bin/mcsGetConfig DBRM_Controller IPAddr 2>/dev/null || echo 127.0.0.1)"

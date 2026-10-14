@@ -133,28 +133,22 @@ jobs:
           docker volume rm csvol csetc
           [ "$ok" = 1 ] && grep -qx 1 /tmp/vol && echo "ColumnStore on an empty volume works"
 
-      - name: Cluster smoke test (UM + 1 PM through CMAPI)
+      - name: Cluster smoke test (2 servers, the second joins the primary itself)
         run: |
           set -eux
           docker network create csnet
+          # the primary first, its own one-node cluster under its name (the entrypoint
+          # renames 127.0.0.1); the second joins it at its start (COLUMNSTORE_PRIMARY, #2021)
+          docker run -d --name um --hostname um --network csnet -e MARIADB_ROOT_PASSWORD=smoke mariadb-columnstore:test
+          docker run -d --name pm --hostname pm --network csnet -e MARIADB_ROOT_PASSWORD=smoke -e COLUMNSTORE_PRIMARY=um mariadb-columnstore:test
           for n in um pm; do
-            docker run -d --name $n --hostname $n --network csnet -e MARIADB_ROOT_PASSWORD=smoke mariadb-columnstore:test
-          done
-          for n in um pm; do
-            for i in $(seq 1 90); do
+            for i in $(seq 1 180); do
               if docker exec $n mariadb -uroot -psmoke -e 'SELECT 1' >/dev/null 2>&1; then break; fi
               sleep 2
             done
           done
-          add() {
-            docker exec um curl -sk --max-time 600 -X PUT https://127.0.0.1:8640/cmapi/0.4.0/cluster/node \
-              -H 'x-api-key: smoke' -H 'Content-Type: application/json' -d "{\"timeout\": 300, \"node\": \"$1\"}"
-            echo
-          }
-          # the UM is already its own node under its name (the entrypoint renames
-          # 127.0.0.1): only the PM is added, by name
-          docker exec um sh -c 'mcsGetConfig -a | grep -i -E "IPAddr|HostName|ActiveNodes" | head -20' || true
-          add pm
+          joined=0
+          docker logs pm 2>&1 | grep -q "added to the cluster of um" && joined=1
           docker exec um curl -sk https://127.0.0.1:8640/cmapi/0.4.0/cluster/status -H 'x-api-key: smoke' | tee /tmp/cstatus
           echo
           docker exec um mcsGetConfig SystemConfig DBRootCount | tee /tmp/dbroots
@@ -171,7 +165,7 @@ jobs:
           done
           docker rm -f um pm
           docker network rm csnet
-          [ "$ok" = 1 ] && grep -qx 3 /tmp/cl && grep -qx 2 /tmp/dbroots && grep -q '"num_nodes": 2' /tmp/cstatus && echo "UM + PM cluster works"
+          [ "$ok" = 1 ] && [ "$joined" = 1 ] && grep -qx 3 /tmp/cl && grep -qx 2 /tmp/dbroots && grep -q '"num_nodes": 2' /tmp/cstatus && echo "2-server cluster works, the second joined itself"
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
