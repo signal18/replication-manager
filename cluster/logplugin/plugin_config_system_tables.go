@@ -10,6 +10,8 @@
 //
 // It reads what was already observed, never queries the server:
 //   - the last logical backup of the server (mysqldump, mydumper jobs): its error text;
+//   - the last dump of the server by another server's job: a reseed of a replica dumps
+//     its source and is recorded on the replica ("mysqldump on <source>", #2044);
 //   - the server's error log since its start: the same complaint, or "Incorrect
 //     definition of table mysql.<table>" written at start.
 //
@@ -40,6 +42,18 @@ var systemTablesLagRe = regexp.MustCompile(`(Column count of mysql\.[A-Za-z0-9_]
 
 // systemTablesDumpTasks: the jobs that dump this server (its logical backups)
 var systemTablesDumpTasks = map[string]bool{"mysqldump": true, "mydumper": true}
+
+// dumpSourceRe: the server a dump ran against, as a reseed failure names it
+// ("mysqldump on db2.curepipe.svc.cloud18:3306: exit status 2 ...")
+var dumpSourceRe = regexp.MustCompile(`\b(?:mysqldump|mariadb-dump|mydumper) on ([^\s:]+:[0-9]+)`)
+
+// DumpSourceOf returns the server a job's result says it dumped, "" when it names none.
+func DumpSourceOf(result string) string {
+	if m := dumpSourceRe.FindStringSubmatch(result); m != nil {
+		return m[1]
+	}
+	return ""
+}
 
 const (
 	systemTablesUpgradeTask = "mariadbupgrade"
@@ -102,10 +116,23 @@ func (p *SystemTablesPlugin) Evaluate(src LogSource) EvaluateResult {
 			continue
 		}
 		ok := j.State == jobStateFinished || j.State == jobStateSuccess
+		dumped := j.Source
+		if dumped == "" {
+			dumped = DumpSourceOf(j.Result)
+		}
+		// a job of this server that dumped another one (this server was the reseed
+		// destination) says nothing about this server's tables
+		if dumped != "" && dumped != src.ServerURL {
+			continue
+		}
 		switch {
-		case systemTablesDumpTasks[j.Task]:
+		case systemTablesDumpTasks[j.Task] || dumped != "":
+			what := "the last " + j.Task + " backup"
+			if j.Source != "" {
+				what = "the last dump of this server by a " + j.Task + " reseed"
+			}
 			if m := systemTablesLagRe.FindString(j.Result); m != "" {
-				keep(systemTablesEvent{at: j.End, lagging: true, detail: strings.TrimSpace(m), source: "the last " + j.Task + " backup"})
+				keep(systemTablesEvent{at: j.End, lagging: true, detail: strings.TrimSpace(m), source: what})
 			} else if ok {
 				keep(systemTablesEvent{at: j.End})
 			}

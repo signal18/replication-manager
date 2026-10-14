@@ -204,6 +204,9 @@ type StdioJob struct {
 	Result string `json:"result"` // the outcome, the error text of a failure
 	Start  int64  `json:"start"`  // unix seconds
 	End    int64  `json:"end"`    // unix seconds, 0 while running
+	// Source is the server the job dumped when it is another server's job: a reseed
+	// of a replica dumps its source, and the job is recorded on the replica (#2044)
+	Source string `json:"source,omitempty"`
 }
 
 // StdioBinlogEvent is a single QUERY_EVENT captured from a server's binary log.
