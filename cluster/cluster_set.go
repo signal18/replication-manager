@@ -1033,6 +1033,36 @@ func (cluster *Cluster) SetBackupKeepLastN(keep string) error {
 	return nil
 }
 
+// SetBackupLogicalRemotePickupTimeout sets the seconds a remote logical backup waits for dbjobs to take it.
+func (cluster *Cluster) SetBackupLogicalRemotePickupTimeout(value string) error {
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupLogicalRemotePickupTimeout = v
+	return nil
+}
+
+// SetBackupLogicalRemoteReportTimeout sets the seconds a remote logical backup waits for the report of dbjobs.
+func (cluster *Cluster) SetBackupLogicalRemoteReportTimeout(value string) error {
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupLogicalRemoteReportTimeout = v
+	return nil
+}
+
+// SetBackupLogicalRemoteArmTimeout sets the seconds dbjobs' receive-task request waits for a remote logical backup to be ready.
+func (cluster *Cluster) SetBackupLogicalRemoteArmTimeout(value string) error {
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupLogicalRemoteArmTimeout = v
+	return nil
+}
+
 // SetBackupKeepHourly set the number of hourly backups to keep.
 // If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
 func (cluster *Cluster) SetBackupKeepHourly(keep string) error {

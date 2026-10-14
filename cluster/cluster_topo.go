@@ -458,18 +458,14 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				}
 			}
 
-			if !cluster.Conf.MultiMaster && !sl.IsMaxscale {
-				if sl.IsSlave && sl.HasSlaves(cluster.slaves) {
-					if !sl.IsRelay {
-						sl.IsRelay = true
-						sl.SetState(stateRelay)
-					}
-				} else if sl.IsRelay {
-					sl.IsRelay = false
-				}
+			// A relay is a master fed from outside the cluster, never a replica: a replica
+			// with replicas under it is an intermediate replica (intended with
+			// replication-multi-tier-slave, a misplaced replica otherwise, ERR00064 on it).
+			if !sl.IsMaxscale && sl.IsRelay {
+				sl.IsRelay = false
 			}
 			//Tag has relay
-			if sl.IsRelay {
+			if sl.IsRelay || (!cluster.Conf.MultiMaster && sl.IsSlave && sl.HasSlaves(cluster.slaves)) {
 				hasRelay = true
 			}
 		}

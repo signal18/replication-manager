@@ -338,6 +338,12 @@ func (cluster *Cluster) checkReprovDynamicResource() {
 func (cluster *Cluster) GetConfigRemediationPlan() RemediationPlan {
 	plan := RemediationPlan{Cluster: cluster.Name, GeneratedAt: time.Now().UTC().Format(time.RFC3339), Remediations: make([]RemediationEntry, 0)}
 	for _, st := range cluster.ConfigStates {
+		if st.ErrKey == "ERR00116" {
+			if entry, ok := cluster.systemTablesRemediation(st); ok {
+				plan.Remediations = append(plan.Remediations, entry)
+			}
+			continue
+		}
 		if st.ErrKey != "WARN0234" {
 			continue
 		}

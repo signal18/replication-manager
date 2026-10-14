@@ -876,6 +876,9 @@ type Config struct {
 	BackupLogicalLoadThreads                  int               `mapstructure:"backup-logical-load-threads" toml:"backup-logical-load-threads" json:"backupLogicalLoadThreads"`
 	BackupLogicalDumpThreads                  int               `mapstructure:"backup-logical-dump-threads" toml:"backup-logical-dump-threads" json:"backupLogicalDumpThreads"`
 	BackupLogicalDumpSystemTables             bool              `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
+	BackupLogicalRemotePickupTimeout          int               `mapstructure:"backup-logical-remote-pickup-timeout" toml:"backup-logical-remote-pickup-timeout" json:"backupLogicalRemotePickupTimeout"`
+	BackupLogicalRemoteReportTimeout          int               `mapstructure:"backup-logical-remote-report-timeout" toml:"backup-logical-remote-report-timeout" json:"backupLogicalRemoteReportTimeout"`
+	BackupLogicalRemoteArmTimeout             int               `mapstructure:"backup-logical-remote-arm-timeout" toml:"backup-logical-remote-arm-timeout" json:"backupLogicalRemoteArmTimeout"`
 	BackupPhysicalType                        string            `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
 	BackupKeepUntilValid                      bool              `mapstructure:"backup-keep-until-valid" toml:"backup-keep-until-valid" json:"backupKeepUntilValid"`
 	BackupKeepLast                            int               `mapstructure:"backup-keep-last" toml:"backup-keep-last" json:"backupKeepLast"`
@@ -1714,6 +1717,7 @@ const (
 	ConstTaskAuditLog           TaskName = "auditlog"
 	ConstTaskZFS                TaskName = "zfssnapback"
 	ConstTaskOptimize           TaskName = "optimize"
+	ConstTaskMariadbUpgrade     TaskName = "mariadbupgrade" // the jobs container runs mariadb-upgrade (mysql_upgrade) --upgrade-system-tables, #2022
 	ConstTaskReseedXB           TaskName = "reseedxtrabackup"
 	ConstTaskReseedMB           TaskName = "reseedmariabackup"
 	ConstTaskReseedDump         TaskName = "reseedmysqldump"
@@ -1777,6 +1781,8 @@ var TaskRegistry = map[TaskName]TaskDef{
 	ConstTaskSqlError:           {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
 	ConstTaskAuditLog:           {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
 	ConstTaskZFS:                {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
+	// the upgrade tool of the server's own release: the database image's, in its jobs container
+	ConstTaskMariadbUpgrade: {Name: ConstTaskMariadbUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskJobsCheck:          {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
 	ConstTaskJobsUpgrade:        {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskPrintCurrentConfig: {Name: ConstTaskPrintCurrentConfig, Capability: TaskCapRemoteOnly},

@@ -664,6 +664,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 
 	*cluster.Conf = confs.ConfInit
 	cluster.Conf.NormalizeBackupArchiveMode()
+	// the cluster's own scheduler-jobs-exec-remote, not the map parsed for the defaults
+	cluster.Conf.ParseJobsExecOverrides()
 
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
@@ -1062,6 +1064,7 @@ var pstates30 = []string{
 	"WARN0170",             // Configurator prerequisites (CheckConfiguratorPrerequisites runs %30)
 	"WARN0190", "WARN0191", // Rejoin catalog (HasCatalogBackupForRejoin runs %30)
 	"WARN0225", // Local backup storage over the BKU plan (RefreshBackupUnits runs %30)
+	"WARN0247", // Logical dump client (CheckDumpClientCompatibility runs %30)
 }
 
 var pstates3600 = []string{
@@ -1253,6 +1256,7 @@ func (cluster *Cluster) tickBody() {
 					cluster.trackTickGoroutine(cluster.MonitorSchema)
 				}
 				if heartbeats%30 == 0 {
+					cluster.trackTickGoroutine(cluster.CheckBackupServerDumpClient)
 					cluster.trackTickGoroutine(cluster.initOrchetratorNodes)
 					cluster.trackTickGoroutine(cluster.CheckCredentialRotation)
 				}
@@ -2505,6 +2509,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 
 	cluster.Lock()
 	*cluster.Conf = conf
+	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
 
 	cluster.StateMachine.SetFailoverState()

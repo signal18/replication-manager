@@ -46,6 +46,7 @@ export const clusterService = {
 
   // Security / workload remediation APIs
   fixSecState,
+  runServerAction,
   switchClusterSetting,
 
   // Cluster management APIs
@@ -114,6 +115,7 @@ export const clusterService = {
   updateOpensvcTemplate,
   runRemoteJobs,
   optimizeServer,
+  upgradeSystemTables,
   skipReplicationEvent,
   toggleInnodbMonitor,
   toggleSlowQueryCapture,
@@ -634,6 +636,11 @@ function optimizeServer(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/optimize`)
 }
 
+// #2022: the jobs container runs mariadb-upgrade --upgrade-system-tables on this server
+function upgradeSystemTables(clusterName, serverId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/upgrade-system-tables`)
+}
+
 function skipReplicationEvent(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/skip-replication-event`)
 }
@@ -1075,6 +1082,11 @@ function fixSecState(clusterName, errKey, baseURL, tag) {
 
 function switchClusterSetting(settingURL, baseURL) {
   return getApi(baseURL).get(settingURL)
+}
+
+// a remediation of type server_action: the relative API path of a server action (#2022)
+function runServerAction(actionURL, baseURL) {
+  return getApi(baseURL).post(actionURL)
 }
 
 //#region S3 provider CRUD APIs

@@ -103,6 +103,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 			ProcessList:      snapshotProcessList(server),
 			MetaDataLocks:    snapshotMetaDataLocks(server),
 			BinlogEvents:     snapshotBinlogEvents(server),
+			Jobs:             snapshotJobs(server),
 			ServerVersion:    snapshotServerVersion(server),
 			ServerVariables:  snapshotServerVariables(server),
 			ServerStatus:     snapshotServerStatus(server),
@@ -240,12 +241,16 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				cluster.wtagCounters[f.ErrKey] = prev
 			}
 
-			isSecurity := f.Severity == logplugin.SeveritySecurity
-			isWorkload := f.Severity == logplugin.SeverityWorkload
-			isSchema := f.Severity == logplugin.SeveritySchema
+			// the domain, when the finding names one, decides the state machine (#2022)
+			isConfig := f.Domain == logplugin.DomainConfig
+			isSecurity := !isConfig && f.Severity == logplugin.SeveritySecurity
+			isWorkload := !isConfig && f.Severity == logplugin.SeverityWorkload
+			isSchema := !isConfig && f.Severity == logplugin.SeveritySchema
 
 			var sm *state.StateMachine
 			switch {
+			case isConfig:
+				sm = cluster.ConfigStateMachine
 			case isSecurity:
 				sm = cluster.SecurityStateMachine
 			case isWorkload:
@@ -263,6 +268,12 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 					"errkey": f.ErrKey,
 				}
 				switch {
+				case isConfig:
+					// Config findings: the config pill (ConfigStateMachine); no dedicated
+					// config log yet, the plugin module of the cluster log carries the line.
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin,
+						config.LvlWarn, "[config:%s] %s on server %s: %s",
+						p.Name(), f.ErrKey, server.URL, f.Description)
 				case isSecurity:
 					// Security findings go exclusively to security.log + LogSecurity HTTP buffer.
 					// Fall back to main log only when the dedicated logger is not configured.
@@ -332,7 +343,7 @@ func (server *ServerMonitor) RunLogPlugins(spikeCache map[string]*logplugin.Spik
 				}
 			}
 			sm.AddState(compositeKey, st)
-			if !isSecurity && !isWorkload && !isSchema {
+			if !isConfig && !isSecurity && !isWorkload && !isSchema {
 				cluster.SetState(f.ErrKey, st)
 			}
 		}
@@ -1386,4 +1397,19 @@ func hasExecutables(dir string) bool {
 		}
 	}
 	return false
+}
+
+// snapshotJobs: the last job of each task on the server, from its jobs cache
+func snapshotJobs(server *ServerMonitor) []logplugin.StdioJob {
+	if server.JobResults == nil {
+		return nil
+	}
+	var out []logplugin.StdioJob
+	server.JobResults.Callback(func(_ string, t *config.Task) bool {
+		if t != nil {
+			out = append(out, logplugin.StdioJob{Task: t.Task, Done: t.Done, State: t.State, Result: t.Result, Start: t.Start, End: t.End})
+		}
+		return true
+	})
+	return out
 }

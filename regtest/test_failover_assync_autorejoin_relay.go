@@ -54,14 +54,16 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinRelay(cluster *cluster.Clust
 	}
 	time.Sleep(8 * time.Second)
 	relay, _ := cluster.GetMasterFromReplication(SaveMaster)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Pointing to relay %s", relay.URL)
 	if relay == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master is not attach to Relay  ")
 
 		return false
 	}
-	if relay.IsRelay == false {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master is not attach to Relay  ")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Pointing to relay %s", relay.URL)
+	// Multi-tier: the old master rejoins under an intermediate replica (a replica with
+	// replicas), which is not flagged relay (only a master fed from outside is).
+	if !relay.IsSlave || !relay.HasSlaves(cluster.GetSlaves()) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Old master is not attach to an intermediate replica")
 
 		return false
 	}

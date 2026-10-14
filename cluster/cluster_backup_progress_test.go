@@ -189,6 +189,9 @@ func TestPhysicalBackupProgressForTask(t *testing.T) {
 	if c.physicalBackupProgressForTask(s, "pgdump") != lp {
 		t.Fatal("a PostgreSQL dump stream feeds the running logical backup")
 	}
+	if c.physicalBackupProgressForTask(s, "mysqldump") != lp {
+		t.Fatal("a remote mysqldump stream feeds the running logical backup")
+	}
 	c.EndBackupProgress(lp)
 	if c.physicalBackupProgressForTask(s, "errorlog") != nil {
 		t.Fatal("a log fetched during the backup must not count as backup bytes")

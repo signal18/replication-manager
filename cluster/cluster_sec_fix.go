@@ -18,6 +18,8 @@ import (
 //	"cnf_template"    — informational: suggested .cnf file to add to the compliance module
 //	"settings_switch" — toggle a cluster setting via the settings/actions/switch API;
 //	                    URL carries the full relative API path to call.
+//	"server_action"   — a server action of the API (e.g. upgrade-system-tables, #2022);
+//	                    URL carries the full relative API path, called with POST.
 type RemediationFix struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`

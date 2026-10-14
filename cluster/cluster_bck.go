@@ -2612,6 +2612,53 @@ func (cluster *Cluster) CheckBackupToolVersions() {
 	cluster.CheckPhysicalBackupToolVersion(bcksrv)
 }
 
+// CheckBackupServerDumpClient runs CheckDumpClientCompatibility on the server the logical
+// backup is taken from: it only compares the versions already known, so it runs %30 and a
+// misconfigured client is reported soon after a start, not after the hourly tool refresh.
+func (cluster *Cluster) CheckBackupServerDumpClient() {
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = cluster.GetMaster()
+	}
+	cluster.CheckDumpClientCompatibility(bcksrv)
+}
+
+// CheckDumpClientCompatibility warns (WARN0247) when the cluster's local dump client can not
+// back up the server: a backup with it fails at its first statement, or records no GTID.
+// Not checked when the dump runs on the DB node, with the node's own client.
+func (cluster *Cluster) CheckDumpClientCompatibility(server *ServerMonitor) {
+	if server == nil || server.DBVersion == nil || cluster.Conf.BackupLogicalType != config.ConstBackupLogicalTypeMysqldump || server.mysqldumpExecRemote() {
+		return
+	}
+	client := cluster.VersionsMap.Get("client-dump")
+	if why := dumpClientIncompatibility(client, server.DBVersion); why != "" {
+		cluster.SetState("WARN0247", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0247"], client.ToString(), cluster.GetMysqlDumpPath(), server.DBVersion.ToString(), why), ErrFrom: "CHECK", ServerUrl: server.URL})
+	} else if cluster.IsInErrorState("WARN0247", server.URL) {
+		cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0247@%s", server.URL))
+	}
+}
+
+// dumpClientIncompatibility is why a dump client can not back up a server, empty when it can.
+// Only the cases seen failing: a MariaDB client for MySQL/Percona (no GTID_PURGED, MySQL 8.4
+// not dumpable), an 8.0 client for 8.4 (SHOW MASTER STATUS, removed in 8.4), an 8.4 client
+// for 8.0 (SHOW BINARY LOG STATUS, unknown to 8.0). An 8.4 client dumps 5.7.
+func dumpClientIncompatibility(client, server *version.Version) string {
+	if client == nil || server == nil || !server.IsMySQLOrPercona() {
+		return ""
+	}
+	switch {
+	case client.IsMariaDB():
+		return "a MariaDB client writes no GTID_PURGED and can not dump MySQL 8.4: set backup-mysqldump-path to a MySQL client"
+	case !client.IsMySQLOrPercona():
+		return ""
+	case server.GreaterEqual("8.2") && !client.GreaterEqual("8.2"):
+		return "this client sends SHOW MASTER STATUS, removed in MySQL 8.4: set backup-mysqldump-path to an 8.4 client"
+	case server.GreaterEqual("8.0") && !server.GreaterEqual("8.2") && client.GreaterEqual("8.2"):
+		return "this client sends SHOW BINARY LOG STATUS, unknown to MySQL 8.0: set backup-mysqldump-path to an 8.0 client"
+	}
+	return ""
+}
+
 func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) error {
 	if server == nil {
 		return fmt.Errorf("Server is nil")

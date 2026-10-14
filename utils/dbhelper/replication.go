@@ -135,6 +135,9 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			cm += ", " + masterOrSource + "_log_file='" + opt.Logfile + "', " + masterOrSource + "_log_pos=" + opt.Logpos
 			if myver.IsMariaDB() {
 				cm += ", " + masterOrSource + "_USE_GTID=NO"
+			} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.6") {
+				// a channel left on auto-position refuses a file/position (error 1776)
+				cm += ", " + masterOrSource + "_AUTO_POSITION=0"
 			}
 		case "MASTER_AUTO_POSITION":
 			cm += ", " + masterOrSource + "_AUTO_POSITION=1"
@@ -453,7 +456,7 @@ func CheckReplicationAccount(db *sqlx.DB, pass string, user string, host string,
 	return true, stmt, nil
 }
 
-func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveStatus, string, error) {
+func getSlaveStatusRaw(db *sqlx.DB, Channel string, myver *version.Version) (SlaveStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	var err error
 	udb := db.Unsafe()
@@ -546,7 +549,7 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveS
 	return ss, query, err
 }
 
-func GetChannelSlaveStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
+func getChannelSlaveStatusRaw(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
 	var err error
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
@@ -632,7 +635,7 @@ func GetMSlaveStatus(db *sqlx.DB, conn string, myver *version.Version) (SlaveSta
 	return s, logs, err
 }
 
-func GetAllSlavesStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
+func getAllSlavesStatusRaw(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
 	ss := []SlaveStatus{}
@@ -1377,4 +1380,31 @@ func SetEnforceGTIDConsistency(db *sqlx.DB, mode string) (string, error) {
 	query := "SET GLOBAL ENFORCE_GTID_CONSISTENCY = ?"
 	_, err := db.Exec(query, mode)
 	return query, err
+}
+
+// GetSlaveStatus reads the replication status of a channel, its errors' secrets masked
+// (#2025).
+func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveStatus, string, error) {
+	ss, query, err := getSlaveStatusRaw(db, Channel, myver)
+	ss.MaskSecrets()
+	return ss, query, err
+}
+
+// GetChannelSlaveStatus reads the replication status of every channel, their errors'
+// secrets masked (#2025).
+func GetChannelSlaveStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
+	ss, query, err := getChannelSlaveStatusRaw(db, myver)
+	for i := range ss {
+		ss[i].MaskSecrets()
+	}
+	return ss, query, err
+}
+
+// GetAllSlavesStatus reads SHOW ALL SLAVES STATUS, the errors' secrets masked (#2025).
+func GetAllSlavesStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
+	ss, query, err := getAllSlavesStatusRaw(db, myver)
+	for i := range ss {
+		ss[i].MaskSecrets()
+	}
+	return ss, query, err
 }
