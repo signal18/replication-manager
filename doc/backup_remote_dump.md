@@ -111,33 +111,14 @@ with some margin for a node that is busy (for example upgrading its script).
 
 ## Restoring it
 
-A reseed from a backup made on a database node (`execRemote: true` in its
-metadata) is restored on the database node of the reseeded server, by its dbjobs,
-with that node's own client.
-replication-manager streams the backup to dbjobs, preceded by the same restore
-preamble as a local restore, and still restores the users and system tables
-afterwards and restarts replication.
-
-The client on the node runs without `--force`: the first error ends the restore,
-and the reseed fails with the last lines of the client's output (`reseed.out`
-on the node). `backup-mysqlclient-options` is not used there.
-
-Unchanged:
-
-- backups made by replication-manager, and older backups without
-  `execRemote`, are restored by replication-manager as before;
-- a splitdump is restored by replication-manager, wherever it was made;
-- a flashback is restored by replication-manager.
-
-The node's dbjobs script must be the one of this release; with an older one the
-reseed fails once the stream wait (`sst-wait-max-loop`) ends. In api mode the
-task is signalled to dbjobs whatever `scheduler-jobs-exec-remote` says now: the
-restore goes where the backup was made.
+A backup made on a database node is restored by replication-manager like any
+logical backup, with its own client: a reseed does not depend on where the
+backup was made.
 
 ## Replication position of a logical backup and reseed
 
-This applies to every `mysqldump` backup and reseed, local or on the database
-node.
+This applies to every `mysqldump` backup, local or on the database node, and
+to every reseed.
 
 A logical backup writes the replication position as a comment only
 (`--master-data=2` on the primary, `--dump-slave=2` on a replica, without

@@ -163,7 +163,7 @@ readonly -a JOBS=(
     "auditlog" "sqlerrorlog" "zfssnapback" "optimize"
     "reseedxtrabackup" "reseedmariabackup"
     "flashbackxtrabackup" "flashbackmariabackup"
-    "stop" "restart" "start" "mysqldump" "reseedmysqldump"
+    "stop" "restart" "start" "mysqldump"
 )
 
 # Logging levels
@@ -1433,7 +1433,7 @@ process_log_file() {
     "mariabackup"|"xtrabackup"|"mysqldump")
         log_file="$LOG_DIR/backup.out"
         ;;
-    "reseedmariabackup"|"reseedxtrabackup"|"reseedmysqldump")
+    "reseedmariabackup"|"reseedxtrabackup")
         log_file="$LOG_DIR/reseed.out"
         ;;
     "flashbackmariabackup"|"flashbackxtrabackup")
@@ -3134,7 +3134,7 @@ for job in "${JOBS[@]}"; do
             mariabackup|xtrabackup|mysqldump)
                 rm -f "$LOG_DIR/backup.out"
                 ;;
-            reseedmariabackup|reseedxtrabackup|reseedmysqldump)
+            reseedmariabackup|reseedxtrabackup)
                 rm -f "$LOG_DIR/reseed.out"
                 ;;
             flashbackmariabackup|flashbackxtrabackup)
@@ -3170,30 +3170,6 @@ for job in "${JOBS[@]}"; do
             if receiveBackup xbstream; then
                 $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>>"$LOG_DIR/reseed.out"
                 partialRestore
-            fi
-            ;;
-        reseedmysqldump)
-            # Logical reseed from a backup made on a DB node (scheduler-jobs-exec-remote):
-            # replication-manager streams the dump, its restore preamble first, and the
-            # node's own client applies it, without --force: the first error fails the restore
-            PR_STATUS=0
-            echo "Waiting for the dump stream." >>"$LOG_DIR/reseed.out"
-            socatCleaner
-            pauseJob "$job"
-            # accept-timeout bounds the wait for replication-manager's connection; socat older
-            # than 1.7.4 (Ubuntu 20.04 images) rejects the option and would not listen at all,
-            # so it is only given when supported: an old socat waits for the connection, which
-            # replication-manager opens once it reads this job paused
-            SOCAT_LISTEN="TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND"
-            if socat -hhh 2>/dev/null | grep -q "accept-timeout"; then
-                SOCAT_LISTEN="$SOCAT_LISTEN,accept-timeout=600"
-            fi
-            # socat's own errors go to reseed.out with the client's: they end up in the job result
-            socat -u "$SOCAT_LISTEN" STDOUT 2>>"$LOG_DIR/reseed.out" | $BINARY_CLIENT --batch >>"$LOG_DIR/reseed.out" 2>&1
-            RESTORE_RC=("${PIPESTATUS[@]}")
-            if [[ "${RESTORE_RC[0]}" != "0" || "${RESTORE_RC[1]}" != "0" ]]; then
-                PR_STATUS=1
-                echo "Restore failed (stream exit ${RESTORE_RC[0]}, client exit ${RESTORE_RC[1]}): $(tail -n 5 "$LOG_DIR/reseed.out" 2>/dev/null)" >>"$LOG_DIR/$job.out"
             fi
             ;;
         reseedmariabackup)
@@ -3307,7 +3283,7 @@ for job in "${JOBS[@]}"; do
                     api_job_result="error"
                 fi
                 ;;
-            reseedmariabackup|reseedxtrabackup|reseedmysqldump|flashbackmariabackup|flashbackxtrabackup)
+            reseedmariabackup|reseedxtrabackup|flashbackmariabackup|flashbackxtrabackup)
                 # Mirrors doneJob()'s SQL-mode check above: PR_STATUS is the
                 # rollup partialRestore() computes from every actual restore
                 # step (pr_cmd/pr_pipe), so it's the authoritative signal here.

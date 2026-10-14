@@ -28,14 +28,16 @@ import (
 //     log position, a GTID set (when the server has one) that never starts with '+' and
 //     names only sources (MySQL) or domains (MariaDB) of the server, and the artifact
 //     (a complete gzip dump, a splitdump directory with table files);
-//   - a reseed of a replica from the gzip backup: restored on the replica's DB node by dbjobs
-//     with the node's client (the backup was made there), replication running after it;
+//   - a reseed of a replica from the gzip backup, restored by replication-manager as any
+//     logical backup: replication running after it;
 //   - a pickup timeout of 1s: the backup fails and, in sql mode, the jobs row is withdrawn;
 //   - all along, a user and password in backup-mysqldump-options, which the dump run on the
 //     DB node must leave out (with them its client could not log in).
 //
-// It needs a jobs container (dbjobs, the script of this release) next to each database:
-// run it by name, once per scheduler-jobs-mode (dbjobs reads the mode from its script).
+// It needs a jobs container (dbjobs, the script of this release) next to each database, and
+// dump and restore clients compatible with the servers (backup-mysqldump-path,
+// backup-mysqlclient-path, backup-mysqlbinlog-path): run it by name, once per
+// scheduler-jobs-mode (dbjobs reads the mode from its script).
 func (regtest *RegTest) TestRemoteMysqldump(cl *clusterpkg.Cluster, conf string, test *clusterpkg.Test) bool {
 	logf := func(level, format string, args ...any) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, level, "TEST remote mysqldump: "+format, args...)
@@ -86,8 +88,7 @@ func (regtest *RegTest) TestRemoteMysqldump(cl *clusterpkg.Cluster, conf string,
 			return false
 		}
 		logf("TEST", "%s (splitdump %v): client %s, %s:%d, GTID %q, %s", s.URL, split, m.BackupToolVersion, m.BinLogFileName, m.BinLogFilePos, m.BinLogGtid, m.Dest)
-		// a splitdump is restored by replication-manager wherever it was made: only the gzip
-		// dump is reseeded, while it is still the last backup
+		// one reseed is enough: from the gzip dump, while it is still the last backup
 		if !split {
 			if ok, why := remoteDumpReseed(cl, s); !ok {
 				logf(config.LvlErr, "reseed from %s: %s", m.Dest, why)
@@ -124,9 +125,7 @@ func (regtest *RegTest) TestRemoteMysqldump(cl *clusterpkg.Cluster, conf string,
 }
 
 // remoteDumpReseed reseeds a replica from the last logical backup, made on the DB node, and
-// waits for the end of the reseed: it succeeds, in sql mode the reseedmysqldump row of the
-// replica's dbjobs succeeded (the jobs table is never in a dump: the row outlives the
-// restore), and replication runs again.
+// waits for the end of the reseed: it succeeds and replication runs again.
 func remoteDumpReseed(cl *clusterpkg.Cluster, backup *clusterpkg.ServerMonitor) (bool, string) {
 	var replica *clusterpkg.ServerMonitor
 	for _, sl := range cl.GetSlaves() {
@@ -151,12 +150,6 @@ func remoteDumpReseed(cl *clusterpkg.Cluster, backup *clusterpkg.ServerMonitor) 
 	}
 	if t := replica.JobResults.Get(task); t == nil || t.Done != 1 || (t.State != 3 && t.State != 4) {
 		return false, fmt.Sprintf("%s: reseed ended with %+v", replica.URL, t)
-	}
-	if cl.Conf.SchedulerJobsMode != "api" {
-		state, done, result, _, err := dbhelper.GetJobTaskState(replica.Conn, replica.DBVersion, task, time.Second)
-		if err != nil || done != 1 || (state != 3 && state != 4) {
-			return false, fmt.Sprintf("%s: not restored by dbjobs: row state %d done %d result %q err %v", replica.URL, state, done, result, err)
-		}
 	}
 	deadline = time.Now().Add(time.Minute)
 	for !cl.CheckSlavesRunning() {

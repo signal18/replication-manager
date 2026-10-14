@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,8 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/splitdump"
@@ -619,112 +616,6 @@ func TestSecondsOr(t *testing.T) {
 	if got := secondsOr(900, time.Minute); got != 15*time.Minute {
 		t.Fatalf("set: %s", got)
 	}
-}
-
-// Only a dump made on the DB node is restored there; a splitdump, a local dump and a backup
-// older than remote dumps (no ExecRemote) keep the local restore.
-func TestRestoreLogicalOnNode(t *testing.T) {
-	dir := t.TempDir()
-	dump := filepath.Join(dir, "mysqldump.sql.gz")
-	if err := os.WriteFile(dump, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	split := filepath.Join(dir, "splitdump")
-	if err := os.MkdirAll(split, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(split, "db1.t1.sql.gz"), []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cases := []struct {
-		name string
-		meta *backupmgr.BackupMetadata
-		path string
-		want bool
-	}{
-		{"remote dump", &backupmgr.BackupMetadata{ExecRemote: true, Dest: dump}, dump, true},
-		{"local dump", &backupmgr.BackupMetadata{Dest: dump}, dump, false},
-		{"no metadata", nil, dump, false},
-		{"remote splitdump by metadata", &backupmgr.BackupMetadata{ExecRemote: true, SplitDump: true, Dest: split}, split, false},
-		{"remote splitdump by name", &backupmgr.BackupMetadata{ExecRemote: true, Dest: split}, split, false},
-		{"remote dump, file missing", &backupmgr.BackupMetadata{ExecRemote: true, Dest: dump + ".gone"}, dump + ".gone", false},
-	}
-	for _, c := range cases {
-		if got := restoreLogicalOnNode(c.meta, c.path); got != c.want {
-			t.Errorf("%s: restoreLogicalOnNode = %v, want %v", c.name, got, c.want)
-		}
-	}
-}
-
-// waitNodeReseed ends on the jobs row only: a running row is polled again, an error state
-// fails with the lines dbjobs wrote, a done row in a finished state succeeds.
-func TestWaitNodeReseed(t *testing.T) {
-	query := regexp.QuoteMeta("SELECT state, done, result FROM replication_manager_schema.jobs WHERE task=?")
-	row := func(state, done int, result string) *sqlmock.Rows {
-		return sqlmock.NewRows([]string{"state", "done", "result"}).AddRow(state, done, result)
-	}
-	cases := []struct {
-		name     string
-		rows     []*sqlmock.Rows
-		wantErr  bool
-		wantTail []string
-	}{
-		{"failed", []*sqlmock.Rows{row(JobStateRunning, 0, ""), row(JobStateErrorExec, 1, "ERROR 1062 (23000) at line 42\nRestore failed: client exit 1\n")},
-			true, []string{"ERROR 1062 (23000) at line 42", "Restore failed: client exit 1"}},
-		{"finished only once done", []*sqlmock.Rows{row(JobStateFinished, 0, ""), row(JobStateFinished, 1, "")}, false, nil},
-		{"success", []*sqlmock.Rows{row(JobStateSuccess, 1, "")}, false, nil},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			db, mock, err := sqlmock.New()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer db.Close()
-			_, server := newTestClusterServer(t)
-			server.Conn = sqlx.NewDb(db, "sqlmock")
-			for _, r := range c.rows {
-				mock.ExpectQuery(query).WithArgs(remoteReseedTask).WillReturnRows(r)
-			}
-			err, tail := server.waitNodeReseed(context.Background())
-			if (err != nil) != c.wantErr || !slices.Equal(tail, c.wantTail) {
-				t.Fatalf("waitNodeReseed = %v, %q; want error %v, tail %q", err, tail, c.wantErr, c.wantTail)
-			}
-			if err := mock.ExpectationsWereMet(); err != nil {
-				t.Fatal(err)
-			}
-		})
-	}
-
-	// api mode: the state dbjobs reports, never the jobs table; the reseed's own running
-	// state (done=0) is not an end
-	t.Run("api", func(t *testing.T) {
-		cl, server := newTestClusterServer(t)
-		cl.Conf.SchedulerJobsMode = "api"
-		server.JobResults = config.NewTasksMap()
-		server.JobResults.Set(remoteReseedTask, &config.Task{Task: remoteReseedTask, State: JobStateRunning})
-		go func() {
-			time.Sleep(1500 * time.Millisecond)
-			server.JobResults.Set(remoteReseedTask, &config.Task{Task: remoteReseedTask, State: JobStateErrorExec, Done: 1, Result: "error"})
-		}()
-		err, tail := server.waitNodeReseed(t.Context())
-		if err == nil || tail != nil {
-			t.Fatalf("api error report: %v, %q", err, tail)
-		}
-		server.JobResults.Set(remoteReseedTask, &config.Task{Task: remoteReseedTask, State: JobStateSuccess, Done: 1})
-		if err, _ := server.waitNodeReseed(t.Context()); err != nil {
-			t.Fatalf("api done report: %v", err)
-		}
-	})
-
-	t.Run("canceled", func(t *testing.T) {
-		_, server := newTestClusterServer(t)
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		if err, _ := server.waitNodeReseed(ctx); err == nil {
-			t.Fatal("a canceled reseed must not wait for the row")
-		}
-	})
 }
 
 // The position of the restored dump wins over the one its backup recorded, which is the

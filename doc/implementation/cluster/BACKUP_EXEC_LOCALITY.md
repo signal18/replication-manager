@@ -222,46 +222,7 @@ The dump's verbose output (what a local dump reads for tables) stays on the
 node in `backup.out`; dbjobs forwards it through write-log, too late for
 progress (about 140 encrypted posts for a 100 MB lab dump that lasts 5 s).
 
-## Restore on the node
-
-`reseedMysqldumpWithMetadata` routes to `jobReseedMysqldump(..., onNode=true)`
-when the reseed state is `reseedmysqldump` (not a flashback) and
-`restoreLogicalOnNode(meta, path)`: `meta.ExecRemote`, not a splitdump (metadata
-or directory). Old backups have no `ExecRemote` and keep the local restore.
-Splitdump on the node comes later.
-
-Only the client moves. `jobReseedMysqldump` keeps the preamble
-(`buildLogicalRestorePreamble`), the classification of `mysql.*` content and the
-system replay; its client is a `reseedClient{stdin, wait}`:
-
-- `startLocalReseedClient`: replication-manager's client, unchanged
-  (`--force`, `backup-mysqlclient-options`).
-- `startNodeReseedClient` (`srv_job_backup_remote.go`): the task
-  `reseedmysqldump` without payload, an `io.Pipe` as the stream source of
-  `WaitAndSendSSTStream(..., trackProgress=false)`. sql mode: `JobInsertTask`
-  with the node's `SSTPort`. api mode: the cookie only (`setTaskCookie`):
-  `JobInsertTask` refuses a task the reseed already tracks as running, and
-  signals only a task `scheduler-jobs-exec-remote` lists. A stream that never
-  starts withdraws the row (sql) or the cookie (api).
-- `waitNodeReseed`: the row (sql) or `JobResults` (api) each second, bounded
-  by `postgresJobStreamTimeout`, the context and the cluster exit. State 5/6 is
-  a failure (sql: with the result lines), done=1 with 3/4 is success. `wait`
-  then closes the pipe, so a writer is never left blocked.
-
-`trackProgress=false`: the restore already counts the backup file it reads
-(`startReseedProgress`); `WaitAndSendSSTStream`'s own progress would reset it,
-add the sent bytes again and label it with the physical tool.
-
-dbjobs (`reseedmysqldump`): `socat` from `SST_RECEIVER_PORT` into
-`$BINARY_CLIENT --batch`, no `--force`, output in `reseed.out`. Either exit
-code non-zero sets `PR_STATUS=1` and writes "Restore failed (stream exit, client
-exit): <last 5 lines>" to `reseedmysqldump.out`, the row's result (sql); api
-mode reports `error`. `--force` is left out on purpose: a statement that fails
-leaves a replica that differs from its backup, which must fail the reseed, not
-be skipped. The dump never holds `replication_manager_schema.jobs`
-(`--ignore-table`), so the restore never touches the row it is tracked by.
-
-## Replication position: backup and reseed (all mysqldump, local or node)
+## Replication position: backup and reseed (all mysqldump)
 
 Backup: `GetMysqlBackupDumpOptions` (`cluster_get.go`) = the dump options with
 `--master-data=2` / `--dump-slave=2` and without `--apply-slave-statements`,
