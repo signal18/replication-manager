@@ -131,7 +131,8 @@ and MariaDB applies to `default_master_connection`.
 A reseed follows the replica setup procedures of MySQL and MariaDB:
 
 1. stop every replication channel of the replica and, when it has only one,
-   reset it as a new replica (`RESET SLAVE ALL`);
+   reset it as a new replica (`RESET SLAVE ALL`), when the reseed is requested
+   and again before the load;
 2. load the dump;
 3. point the channel replication-manager manages (`replication-source-name`)
    at the primary, from the position of the restored dump: MySQL and Percona

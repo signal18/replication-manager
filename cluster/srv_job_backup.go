@@ -7311,7 +7311,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 
 			uncompress := cluster.shouldUncompressOnSenderForReseed()
 			go func() {
-				err := server.WaitAndSendSSTStream(ctx, task, resticSourcePath, uncompress, 0, streamOpener, true)
+				err := server.WaitAndSendSSTStream(ctx, task, resticSourcePath, uncompress, 0, streamOpener)
 				if err != nil {
 					if server.HasReseedingState(task) {
 						server.SetInReseedBackup("")

@@ -241,22 +241,35 @@ then `START SLAVE`.
 
 Reseed (`ProcessReseedLogical`, mysqldump, not PITR):
 
+0. When the reseed is requested (`JobReseedLogicalBackupPrepare`, mysqldump,
+   one channel): `StopSlave`, `ResetSlave`, as for PITR.
 1. `StopAllSlaves`.
 2. Every single-channel replica, all flavors and modes: `ResetSlave` (`RESET
    SLAVE ALL`), as a new replica. An older backup (`--master-data=1`,
    `--apply-slave-statements`) then applies its own `CHANGE MASTER` to a
-   channel without a primary, and its `START SLAVE` can not start replication
-   before the position is set (started, it applies what follows the dump, and
-   setting the dump's position afterwards replays it: duplicate keys). It is
-   skipped with several channels: without `FOR CHANNEL` it would drop them all.
-3. The restore: local or on the node, file or splitdump. Each records the
+   channel without a primary. On MariaDB its `START ALL SLAVES` starts nothing
+   (only connections with a primary). On MySQL/Percona its `START SLAVE` fails
+   (ERROR 1200) and, without `--force`, the restore with it:
+   `dumpHasActiveChangeMaster` reads the dump's header (up to the first table
+   data) and, on an active `CHANGE MASTER` / `CHANGE REPLICATION SOURCE`, the
+   channel is pointed at the primary before the load (no position, not
+   started; auto-position stays off: a file/position `CHANGE MASTER` under
+   auto-position is error 1776), so the dump's statements set the position and
+   start replication. Skipped with several channels: without `FOR CHANNEL` it
+   would drop them all.
+3. The restore, file or splitdump, by replication-manager wherever the backup
+   was made. Each records the
    position it restored in `server.logicalRestorePosition` (the classified
    stream's `splitdump.Metadata`, or the splitdump metadata).
 4. `pointLogicalReseedReplica`, also after a failed restore (the replica
    keeps its primary): it stops all channels again first (an older backup's
    `START SLAVE` / `START ALL SLAVES` restarts replication at the end of the
-   load, and `gtid_slave_pos` or `CHANGE MASTER` need it stopped); position from `logicalReseedPosition` (the restored
-   one, else the backup metadata). MySQL GTID: auto-position. MariaDB with a
+   load, and `gtid_slave_pos` or `CHANGE MASTER` need it stopped), and the
+   managed channel by name when it was pointed before the load (the monitor's
+   status has no channel since the reset); position from `logicalReseedPosition` (the restored
+   one, else the backup metadata; pointed before the load, the executed
+   position when the dump's `START SLAVE` already went past it, never applied
+   twice). MySQL GTID: auto-position. MariaDB with a
    GTID and GTID replication (not `force-slave-no-gtid-mode`): `SET GLOBAL
    gtid_slave_pos`, then `SLAVE_POS`. Else file/position
    (`POSITIONAL`), else `pointSlaveToMasterAutoDetect`. Then, after a
