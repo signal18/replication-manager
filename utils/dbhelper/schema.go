@@ -15,11 +15,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	mysqldriver "github.com/go-sql-driver/mysql"
 	"hash/crc64"
 	"log"
 	"strings"
 	"time"
+
+	mysqldriver "github.com/go-sql-driver/mysql"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/version"

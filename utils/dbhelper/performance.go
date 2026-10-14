@@ -12,10 +12,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/signal18/replication-manager/utils/sqlmask"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/signal18/replication-manager/utils/sqlmask"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/percona/go-mysql/query"

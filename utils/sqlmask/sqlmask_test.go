@@ -23,6 +23,8 @@ func TestSecrets(t *testing.T) {
 		{"CHANGE MASTER TO MASTER_HOST='db2', MASTER_PASSWORD='rplpw', MASTER_USE_GTID=slave_pos", "rplpw", "MASTER_PASSWORD='*****', MASTER_USE_GTID"},
 		{"CHANGE REPLICATION SOURCE TO SOURCE_PASSWORD = 'srcpw'", "srcpw", "SOURCE_PASSWORD = '*****'"},
 		{"--host=db1 --user=root --password=topsecret --port=3306", "topsecret", "--password=*****"},
+		{"mariadb --password='top secret' -h db1", "secret", "--password='*****' -h db1"},
+		{`Server=db1;Password="a b c";User=x`, "a b c", `Password='*****';User=x`},
 		// a statement cut short by the error message
 		{"Query: 'CREATE USER `a`@`%` IDENTIFIED BY 'cutshortpw", "cutshortpw", "IDENTIFIED BY '*****'"},
 	} {
@@ -35,5 +37,15 @@ func TestSecrets(t *testing.T) {
 		if got := Secrets(s); got != s {
 			t.Errorf("no secret: %q became %q", s, got)
 		}
+	}
+}
+
+// the replica error wraps the statement in quotes: its literal and the wrapper's closing
+// quote end up as one masked literal, the statement stays readable (review of #2031)
+func TestSecretsReplicaErrorExact(t *testing.T) {
+	in := "Error 'Operation CREATE USER failed' on query. Default database: ''. Query: 'CREATE USER `forgejo1`@`%` IDENTIFIED BY 'Xq7kIn9ZpL''"
+	want := "Error 'Operation CREATE USER failed' on query. Default database: ''. Query: 'CREATE USER `forgejo1`@`%` IDENTIFIED BY '*****'"
+	if got := Secrets(in); got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
 	}
 }

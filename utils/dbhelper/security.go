@@ -11,9 +11,10 @@ package dbhelper
 import (
 	"errors"
 	"fmt"
-	"github.com/signal18/replication-manager/utils/sqlmask"
 	"regexp"
 	"strings"
+
+	"github.com/signal18/replication-manager/utils/sqlmask"
 )
 
 // QuoteIdentifier safely quotes a database identifier (table, column, database name)
