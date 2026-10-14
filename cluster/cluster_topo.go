@@ -190,6 +190,12 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	// Check topology Cluster all servers down
 	cluster.IsDown = cluster.AllServersFailed()
+	// the GUI greys out rotate-passwords with the reason (#2042)
+	if err := cluster.CanRotatePasswords(); err != nil {
+		cluster.RotatePasswordsRefusal = err.Error()
+	} else {
+		cluster.RotatePasswordsRefusal = ""
+	}
 
 	// If only one server is present, force runtime active-passive topology and
 	// promote that server as the designated master.

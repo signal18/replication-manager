@@ -7512,7 +7512,7 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 
 // handlerRotatePasswords rotates the passwords for a given cluster.
 // @Summary Rotate passwords for a specific cluster
-// @Description This endpoint rotates the passwords for the specified cluster.
+// @Description This endpoint rotates the passwords for the specified cluster. Outside Vault it is refused (409) while monitoring-secret-versioning is off: the new passwords would live only in memory (#2042). Other refusals: a database down, replication stopped on a replica, a credential set in a config file, no encryption key, monitoring-save-config off.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
@@ -7520,6 +7520,7 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {string} string "Successfully rotated passwords"
 // @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "Password rotation refused: <reason>"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/actions/rotate-passwords [post]
 func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, r *http.Request) {
@@ -7532,11 +7533,24 @@ func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, 
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		go mycluster.RotatePasswords()
+		if err := startPasswordRotation(mycluster); err != nil {
+			http.Error(w, "Password rotation refused: "+err.Error(), http.StatusConflict)
+			return
+		}
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
+}
+
+// startPasswordRotation starts the rotation in the background, refused before it starts
+// when CanRotatePasswords says no, so the caller gets the reason (#2042)
+func startPasswordRotation(cl *cluster.Cluster) error {
+	if err := cl.CanRotatePasswords(); err != nil {
+		return err
+	}
+	go cl.RotatePasswords()
+	return nil
 }
 
 // handlerMuxClusterGraphiteFilterList handles the retrieval of Graphite filter list for a given cluster.

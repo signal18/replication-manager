@@ -32,10 +32,50 @@ import (
 
 var logger = logrus.New()
 
-func (cluster *Cluster) RotatePasswords() error {
+// CanRotatePasswords says whether a password rotation can run now, and why not (#2042).
+// The API checks it before starting the rotation, so a refusal reaches the caller; the
+// GUI shows it. Outside Vault the new passwords must have a durable place: until #2041
+// saves and reloads them, they live only in memory, and a restart after the rotation
+// loses access to every server (the password is unrecoverable). So outside Vault the
+// rotation needs secret versioning on, and the credentials not set in a config file.
+func (cluster *Cluster) CanRotatePasswords() error {
+	if !cluster.Conf.IsVaultUsed() {
+		if err := cluster.canRotatePasswordsOutsideVault(); err != nil {
+			return err
+		}
+	}
+	// the conditions of the moment last: the GUI shows the lasting cause first
 	if !cluster.HasAllDbUp() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No password rotation because databases are down (or one of them).")
-		return nil
+		return errors.New("databases are down (or one of them)")
+	}
+	if !cluster.Conf.IsVaultUsed() && len(cluster.slaves) > 0 && !cluster.slaves.HasAllSlavesRunning() {
+		return errors.New("replication is not running on every replica")
+	}
+	return nil
+}
+
+func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
+	if cluster.Conf.SecretKey == nil {
+		return errors.New("no encryption key: the new passwords cannot be stored encrypted")
+	}
+	if !cluster.GetConf().ConfRewrite {
+		return errors.New("monitoring-save-config is off: the new passwords cannot be saved")
+	}
+	if !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
+		return errors.New("monitoring-secret-versioning is off: the new passwords would live only in memory and a restart would lose access to the servers; turn it on or use Vault")
+	}
+	for _, key := range []string{"db-servers-credential", "replication-credential"} {
+		if cluster.IsVariableImmutable(key) {
+			return fmt.Errorf("%s is set in a config file (immutable)", key)
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) RotatePasswords() error {
+	if err := cluster.CanRotatePasswords(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused: %s", err)
+		return err
 	}
 	if cluster.Conf.IsVaultUsed() {
 
@@ -212,24 +252,8 @@ func (cluster *Cluster) RotatePasswords() error {
 
 		}
 	} else {
-		if cluster.Conf.SecretKey != nil && cluster.GetConf().ConfRewrite {
-			if cluster.IsVariableImmutable("db-servers-credential") {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database user credential is immutable, password rotation cancelled.")
-				return nil
-			}
-
-			if cluster.IsVariableImmutable("replication-credential") {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replication user credential is immutable, password rotation cancelled.")
-				return nil
-			}
-
+		if cluster.Conf.SecretKey != nil && cluster.GetConf().ConfRewrite { // the other preconditions are CanRotatePasswords'
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Start Password rotation")
-			if len(cluster.slaves) > 0 {
-				if !cluster.slaves.HasAllSlavesRunning() {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster replication is not all up, passwords can't be rotated!")
-					return nil
-				}
-			}
 
 			new_password_db := misc.GetUUID()
 			new_password_rpl := misc.GetUUID()
