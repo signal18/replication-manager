@@ -317,6 +317,15 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testRemoteMysqldump" {
 			res = regtest.TestRemoteMysqldump(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testLogicalReseed" {
+			res = regtest.TestLogicalReseed(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testLogicalReseedEdgeCases" {
+			res = regtest.TestLogicalReseedEdgeCases(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testDumpClientCheck" {
+			res = regtest.TestDumpClientCheck(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testConfigPersistBackupOption" {
 			res = regtest.TestConfigPersistBackupOption(cl, test.ConfigFile, &test)
 		}
