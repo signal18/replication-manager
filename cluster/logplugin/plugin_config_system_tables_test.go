@@ -124,3 +124,47 @@ func TestSystemTablesPluginZonesAndTies(t *testing.T) {
 		t.Fatal("same second: the upgrade ended OK wins")
 	}
 }
+
+// the failure of the direct reseed of preprod curepipe db1 from db2, recorded on db1
+const curepipeReseedError = "application restore: Reseed failed: mysqldump on db2.curepipe.svc.cloud18:3306: exit status 2 | stderr: -- Connecting to db2.curepipe.svc.cloud18... / mariadb-dump: Couldn't execute 'SHOW FUNCTION STATUS WHERE Db = 'dotnet1'': Column count of mysql.proc is wrong. Expected 22, found 21. Created with MariaDB 110808, now running 130002. Please use mariadb-upgrade to fix this error (1558)"
+
+// #2044: a reseed dumps its source and is recorded on the replica it rebuilds. The
+// finding belongs to the dumped server, never to the destination.
+func TestSystemTablesPluginReseedSource(t *testing.T) {
+	p := &SystemTablesPlugin{}
+	mariadb := StdioServerVersion{Flavor: "MariaDB", Major: 13}
+	now := time.Now().Unix()
+	status := map[string]string{"uptime": "86400"}
+	reseed := StdioJob{Task: "direct", Done: 1, State: 5, Result: curepipeReseedError, End: now - 600}
+
+	if got := DumpSourceOf(curepipeReseedError); got != "db2.curepipe.svc.cloud18:3306" {
+		t.Fatalf("dump source: %q", got)
+	}
+	if got := DumpSourceOf(curepipeDumpError); got != "" {
+		t.Fatalf("a backup of the server itself names no other source: %q", got)
+	}
+
+	// the destination's own job: nothing about the destination's tables
+	db1 := LogSource{ServerURL: "db1.curepipe.svc.cloud18:3306", ServerVersion: mariadb, ServerStatus: status, Jobs: []StdioJob{reseed}}
+	if res := p.Evaluate(db1); len(res.Findings) != 0 {
+		t.Fatalf("the reseed destination must not be blamed: %+v", res.Findings)
+	}
+
+	// the same job handed to the source (snapshotJobs marks it)
+	onSource := reseed
+	onSource.Source = "db2.curepipe.svc.cloud18:3306"
+	db2 := LogSource{ServerURL: "db2.curepipe.svc.cloud18:3306", ServerVersion: mariadb, ServerStatus: status, Jobs: []StdioJob{onSource}}
+	res := p.Evaluate(db2)
+	if len(res.Findings) != 1 || res.Findings[0].ErrKey != ErrKeySystemTablesUpgrade ||
+		!strings.Contains(res.Findings[0].Description, "Column count of mysql.proc is wrong") ||
+		!strings.Contains(res.Findings[0].Description, "reseed") {
+		t.Fatalf("the dumped server gets ERR00116: %+v", res.Findings)
+	}
+
+	// an upgrade ended OK on the source after it closes it
+	upgraded := StdioJob{Task: "mariadbupgrade", Done: 1, State: 3, End: now - 60}
+	db2.Jobs = []StdioJob{onSource, upgraded}
+	if res := p.Evaluate(db2); len(res.Findings) != 0 {
+		t.Fatal("an upgrade ended OK after the failed reseed closes it")
+	}
+}
