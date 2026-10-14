@@ -306,21 +306,47 @@ fits.
   multi-line 10000-source GTID, CRLF and indentation, a cut statement, the
   1 MiB bound, table lines), connection options left out, receiver close with
   and without a stream, splitdump sink receiver, timeouts default.
-  Restore on the node: `TestRestoreLogicalOnNode` (remote dump, local, no
-  metadata, splitdump by metadata and by name, missing file),
-  `TestWaitNodeReseed` (sql row failed with its lines, finished only once done,
-  success, api reports, canceled). Position: `TestGetMysqlBackupDumpOptionsPositionComment`
+  `TestRowReadErrorsBound` (read errors of the jobs row end the wait after a
+  bound, a successful read starts the count again), `TestDumpHasActiveChangeMaster`
+  (an older dump's active `CHANGE MASTER`, gzip or plain, and the MySQL 8.4
+  syntax; a commented position, the same text in table data, a splitdump
+  directory: none). Position: `TestGetMysqlBackupDumpOptionsPositionComment`
   (cluster_get_test.go: backup dumps comment the position, the direct stream
   keeps it), `TestLogicalReseedPosition` (restored position first, then the
   backup metadata).
   `utils/dbhelper/jobs_test.go`: both jobs table helpers, MariaDB/MySQL and
   PostgreSQL.
+- The regtests below need dump and restore clients compatible with the servers
+  (rules C1-C3): the cluster's `backup-mysqldump-path`, `backup-mysqlclient-path`
+  and `backup-mysqlbinlog-path`. The remote dumps use the client of each DB node.
+- Regtests of the logical reseed (`regtest/test_logical_reseed_edges.go`, need
+  dbjobs next to each database, not in the ALL list, run by name). Each reseed is
+  checked the same way, once the replica's SQL thread has executed up to the
+  primary's binary log position (10 minutes at most; `Seconds_Behind_Master` is 0
+  whenever the SQL thread sees nothing to apply, so it is not used): rows and
+  checksum of `reseedtest.edge` equal to the
+  primary's, both replication threads running, the replication mode, no errant
+  GTID (MySQL/Percona), then inserts, updates, deletes and a mixed transaction
+  on the primary must reach the replica.
+  - `testLogicalReseed`: normal operation only, fit for any test environment,
+    once per `scheduler-jobs-mode`. A remote backup (execRemote, position as a
+    comment, no `STOP`/`START SLAVE`, no `mysql.slave_worker_info`, the server's
+    slow-log variable), a reseed from it, a local backup
+    and reseed right after it, a remote splitdump backup.
+  - `testLogicalReseedEdgeCases`: changes the cluster beyond normal operation,
+    for a dedicated test cluster only. Two GTID sources recorded whole by both
+    backups (leaves a foreign UUID or domain 97 in the GTID state), positional
+    replication (the replica reset right after each backup) and back to GTID,
+    an older local backup (active `CHANGE MASTER`), a replica stopped on a
+    replication error, a replica without replication (`RESET SLAVE ALL`).
+  - `testDumpClientCheck` (MySQL/Percona, dedicated test cluster only):
+    `mariadb-dump` as the dump client raises WARN0244, the configured client
+    clears it.
 - Regtest `testRemoteMysqldump` (needs dbjobs next to each database, not in the
   ALL list; run it by name, once per `scheduler-jobs-mode`): gzip and splitdump
   of the server the scheduler backs up, the designated backup server else the
   primary (metadata, GTID of the server, complete artifact), a reseed of a
-  replica from the gzip dump (restored by the replica's dbjobs: in sql mode its
-  `reseedmysqldump` row succeeded; replication running after it), a 1s pickup
+  replica from the gzip dump (replication running after it), a 1s pickup
   timeout withdrawing the row, with a user and password in
   `backup-mysqldump-options` all along.
 - Lab (OpenSVC, MariaDB 10.11 replica), each in api and sql mode:

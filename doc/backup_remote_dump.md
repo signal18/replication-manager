@@ -149,10 +149,21 @@ Multi-source replication is not supported by the reseed: the replica's other
 channels stay stopped, with a warning naming them, for the operator.
 
 A backup made before this release writes an active `CHANGE MASTER` and
-`STOP`/`START SLAVE`. It is still restored on a replica with one channel: they
-apply to the emptied channel, which has no primary, and its replication starts
-only once the position of the backup is set. On a MySQL or Percona replica with
-several channels, its restore on the database node fails at that statement.
+`STOP`/`START SLAVE`. It is still restored on a replica with one channel:
+
+- MariaDB: they apply to the emptied channel, which has no primary, and its
+  `START ALL SLAVES` starts nothing (it starts only connections with a primary);
+  replication starts once the position of the backup is set;
+- MySQL and Percona: their `START SLAVE` fails on a channel without a primary
+  (ERROR 1200). replication-manager reads the dump's header first and, when it
+  finds an active `CHANGE MASTER`, points the channel at the primary before the
+  load (no position, not started): the dump's `CHANGE MASTER` sets the position
+  and its `START SLAVE` starts replication there, which replication-manager
+  keeps.
+
+On a MySQL or Percona replica with several channels, the dump's `CHANGE MASTER`
+names no channel and fails: the restore stops there unless
+`backup-mysqlclient-options` has `--force`.
 
 ## Checking a backup
 

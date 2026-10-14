@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/splitdump"
@@ -706,5 +707,46 @@ func TestRowReadErrorsBound(t *testing.T) {
 	}
 	if !r.failed(readErr) {
 		t.Fatal("not failed at the bound")
+	}
+}
+
+func TestDumpHasActiveChangeMaster(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string, gz bool) string {
+		path := filepath.Join(dir, name)
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var w io.WriteCloser = f
+		if gz {
+			w = gzip.NewWriter(f)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+		if gz {
+			w.Close()
+		}
+		f.Close()
+		return path
+	}
+	older := "-- MySQL dump\nSTOP SLAVE;\n\nCHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=1526279;\n\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTART SLAVE;\n"
+	current := "-- MySQL dump\n-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=1526279;\n\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES ('CHANGE MASTER TO');\n"
+	for _, c := range []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"older backup, gzip", write("older.sql.gz", older, true), true},
+		{"older backup, plain", write("older.sql", older, false), true},
+		{"position as a comment", write("current.sql.gz", current, true), false},
+		{"MySQL 8.4 syntax", write("source.sql.gz", "CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000002', SOURCE_LOG_POS=4;\n", true), true},
+		{"splitdump directory", dir, false},
+	} {
+		got, err := dumpHasActiveChangeMaster(c.path)
+		if err != nil || got != c.want {
+			t.Errorf("%s: got %v err %v, want %v", c.name, got, err, c.want)
+		}
 	}
 }
