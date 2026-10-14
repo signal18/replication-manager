@@ -33,3 +33,23 @@ other jobs do not count.
 - `TestLastFailedLogicalBackup`: failed opens, later OK closes, a reseed does not count.
 - Acceptance on preprod curepipe, nothing touched: ERR00116 on db2 from db1's cached
   `direct` job.
+
+## Accounts hidden by skip_name_resolve stop the dump (#2046)
+
+With `skip_name_resolve=ON` the server ignores accounts whose host is a DNS name; they
+stay in `mysql.global_priv`. `mariadb-dump` lists the accounts from the table and runs
+`SHOW CREATE USER` on each: the first hidden one stops it with error 1133 (preprod
+curepipe db2: `'forgejo1'@'repman.s18.svc.cloud18'`).
+
+- `utils/hostmatch.IsDNSHost`: one definition of a DNS host, shared by
+  `plugin-security-hardening` (SEC0118) and the backup. A host with a letter is a DNS name
+  (also `%.example.com`); IPs, IP wildcards (`10.60.%`), netmasks and IPv6 are not.
+- `ServerMonitor.AccountsIgnoredBySkipNameResolve()` lists them from the monitored users.
+- `logicalBackupAccountsBlocker`: a logical backup that dumps the accounts (MariaDB
+  mysqldump with `--system=` in its options, or the users sidecar of
+  `backup-split-mysql-user`) is refused before anything runs; the job result names the
+  accounts, so ERR00117 says why. ERR00117 keeps the head and the tail of a long result.
+- SEC0118 says the accounts also stop every logical backup and dump reseed, and that an
+  app account goes to `'%'` (decision 2026-10-14: app deployment accounts use `%`).
+
+Not done yet: the API action converting a hidden account (RENAME USER to `%` or an IP).
