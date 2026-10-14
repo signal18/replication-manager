@@ -676,6 +676,11 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 			server.DelWaitOptimizeCookie()
 			return true, nil
 		}
+	case config.ConstTaskMariadbUpgrade:
+		if server.HasWaitMariadbUpgradeCookie() {
+			server.DelWaitMariadbUpgradeCookie()
+			return true, nil
+		}
 	case config.ConstTaskRestart:
 		if server.HasWaitRestartCookie() {
 			server.DelWaitRestartCookie()

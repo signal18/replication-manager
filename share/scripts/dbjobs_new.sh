@@ -66,11 +66,13 @@ readonly MARIADB_CLIENT="${CLIENT_BASEDIR}/mariadb"
 readonly MARIADB_CHECK="${CLIENT_BASEDIR}/mariadb-check"
 readonly MARIADB_DUMP="${CLIENT_BASEDIR}/mariadb-dump"
 readonly MARIADB_BACKUP="${CLIENT_BASEDIR}/mariabackup"
+readonly MARIADB_UPGRADE="${CLIENT_BASEDIR}/mariadb-upgrade"
 
 # MySQL binaries
 readonly MYSQL_CLIENT="${CLIENT_BASEDIR}/mysql"
 readonly MYSQL_CHECK="${CLIENT_BASEDIR}/mysqlcheck"
 readonly MYSQL_DUMP="${CLIENT_BASEDIR}/mysqldump"
+readonly MYSQL_UPGRADE="${CLIENT_BASEDIR}/mysql_upgrade"
 # the image's own xtrabackup first; else the one on the PATH (the bundle injected by prov-db-docker-xtrabackup-img,
 # which the container definition puts on the PATH)
 XTRABACKUP="${CLIENT_BASEDIR}/xtrabackup"
@@ -160,7 +162,7 @@ readonly JOBS_MODE="$_JOBS_MODE"
 # Job types
 readonly -a JOBS=(
     "xtrabackup" "mariabackup" "errorlog" "slowquery"
-    "auditlog" "sqlerrorlog" "zfssnapback" "optimize"
+    "auditlog" "sqlerrorlog" "zfssnapback" "optimize" "mariadbupgrade"
     "reseedxtrabackup" "reseedmariabackup"
     "flashbackxtrabackup" "flashbackmariabackup"
     "stop" "restart" "start"
@@ -1570,6 +1572,40 @@ socatCleaner() {
     fi
 }
 
+# run_mariadb_upgrade upgrades the system tables of this server with the upgrade tool of
+# its own release (#2022): mariadb-upgrade, mysql_upgrade before it, from the database
+# image this container runs. --upgrade-system-tables: the system tables only, no check of
+# every user table (hours on a large server); --force: also when the server already
+# records its version as upgraded (a stale or missing upgrade marker). Nothing is written
+# to the binary log (the tool's default): every server is upgraded by its own task. The
+# tool's exit code decides the job's outcome (mariadb_upgrade_succeeded).
+run_mariadb_upgrade() {
+    local job="$1" tool="" rc
+    if [[ -x "$MARIADB_UPGRADE" ]]; then
+        tool="$MARIADB_UPGRADE"
+    elif [[ -x "$MYSQL_UPGRADE" ]]; then
+        tool="$MYSQL_UPGRADE"
+    fi
+    rm -f "$LOG_DIR/$job.rc"
+    if [[ -z "$tool" ]]; then
+        echo "No mariadb-upgrade nor mysql_upgrade in $CLIENT_BASEDIR" >"$LOG_DIR/$job.out"
+        echo 127 >"$LOG_DIR/$job.rc"
+        return
+    fi
+    $tool $DB_CONN_PARAMETERS --upgrade-system-tables --force &>"$LOG_DIR/$job.process.out"
+    rc=$?
+    echo "$rc" >"$LOG_DIR/$job.rc"
+    {
+        echo "$(basename "$tool") --upgrade-system-tables exited with $rc"
+        tail -n 20 "$LOG_DIR/$job.process.out"
+    } >"$LOG_DIR/$job.out"
+}
+
+# mariadb_upgrade_succeeded: the upgrade tool ended with 0
+mariadb_upgrade_succeeded() {
+    [[ "$(cat "$LOG_DIR/mariadbupgrade.rc" 2>/dev/null)" == "0" ]]
+}
+
 doneJob() {
     jobstate=3
     done=1
@@ -1591,6 +1627,11 @@ doneJob() {
             jobstate=5
             done=0
         fi
+    fi
+
+    if [[ "$job" == "mariadbupgrade" ]] && ! mariadb_upgrade_succeeded; then
+        jobstate=5
+        done=0
     fi
 
     if [ $jobstate -eq 3 ]; then
@@ -3123,6 +3164,9 @@ for job in "${JOBS[@]}"; do
         optimize)
             $BINARY_CHECK -o $DB_CONN_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.process.out"
             ;;
+        mariadbupgrade)
+            run_mariadb_upgrade "$job"
+            ;;
         restart)
             systemctl restart mysql
             journalctl -u mysql >"$LOG_DIR/$job.process.out"
@@ -3148,6 +3192,11 @@ for job in "${JOBS[@]}"; do
             case "$job" in
             mariabackup|xtrabackup)
                 if ! grep -qE '([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}|\[Xtrabackup\]) completed OK!' "$LOG_DIR/backup.out" 2>/dev/null; then
+                    api_job_result="error"
+                fi
+                ;;
+            mariadbupgrade)
+                if ! mariadb_upgrade_succeeded; then
                     api_job_result="error"
                 fi
                 ;;

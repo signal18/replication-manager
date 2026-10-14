@@ -478,6 +478,10 @@ func (server *ServerMonitor) SetWaitOptimizeCookie() error {
 	return server.createCookie("cookie_waitoptimize")
 }
 
+func (server *ServerMonitor) SetWaitMariadbUpgradeCookie() error {
+	return server.createCookie("cookie_waitmariadbupgrade")
+}
+
 func (server *ServerMonitor) SetWaitReseedXtrabackupCookie() error {
 	return server.createCookie("cookie_waitreseedxtrabackup")
 }

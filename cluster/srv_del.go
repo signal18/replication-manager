@@ -54,6 +54,10 @@ func (server *ServerMonitor) DelWaitOptimizeCookie() error {
 	return server.delCookie("cookie_waitoptimize")
 }
 
+func (server *ServerMonitor) DelWaitMariadbUpgradeCookie() error {
+	return server.delCookie("cookie_waitmariadbupgrade")
+}
+
 func (server *ServerMonitor) DelWaitReseedXtrabackupCookie() error {
 	return server.delCookie("cookie_waitreseedxtrabackup")
 }

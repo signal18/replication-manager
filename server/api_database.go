@@ -391,6 +391,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerOptimize)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/upgrade-system-tables", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerUpgradeSystemTables)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/{backupMethod}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
@@ -1376,6 +1381,44 @@ func (repman *ReplicationManager) handlerMuxServerOptimize(w http.ResponseWriter
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
+}
+
+// handlerMuxServerUpgradeSystemTables queues the upgrade of a server's system tables (#2022).
+// @Summary Upgrade the system tables of a server
+// @Description Queues the mariadbupgrade task: the server's jobs container runs mariadb-upgrade (mysql_upgrade on older releases) --upgrade-system-tables with the tool of the server's own release, without writing to the binary log; the outcome is the task's job. Refused for MySQL 8.0.16 and later (they upgrade at start) and PostgreSQL.
+// @Tags DatabaseActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {string} string "Upgrade of the system tables queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "Refused: the reason (server down, MySQL 8.0.16+, PostgreSQL, task already queued)"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/upgrade-system-tables [post]
+func (repman *ReplicationManager) handlerMuxServerUpgradeSystemTables(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", 500)
+		return
+	}
+	if _, err := node.JobMariadbUpgrade(); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Upgrade of the system tables queued"))
 }
 
 // handlerMuxServerReseed handles the HTTP request to reseed a server within a cluster.

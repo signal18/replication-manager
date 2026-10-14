@@ -209,6 +209,10 @@ func (server *ServerMonitor) HasWaitOptimizeCookie() bool {
 	return server.hasCookie("cookie_waitoptimize")
 }
 
+func (server *ServerMonitor) HasWaitMariadbUpgradeCookie() bool {
+	return server.hasCookie("cookie_waitmariadbupgrade")
+}
+
 func (server *ServerMonitor) HasWaitReseedXtrabackupCookie() bool {
 	return server.hasCookie("cookie_waitreseedxtrabackup")
 }
