@@ -123,7 +123,7 @@ func (server *ServerMonitor) RecoverPhysicalRestore(restoreMeta *PhysicalRestore
 	// there is an actual GTID or restore-confirmed binlog position to
 	// apply -- a restore reporting neither (older dbjobs_new.sh, or none
 	// found in the backup) still restarts channels as before.
-	if (hasGTID || isPositional) && (server.IsRelay || server.HasSlaves(cluster.slaves)) {
+	if (hasGTID || isPositional) && (server.IsRelay || (server.IsSlave && server.HasSlaves(cluster.slaves))) {
 		return "", fmt.Errorf("physical restore recovery blocked on %s: server is a relay (other servers replicate from it) -- automatic recovery not supported, manual review required", server.URL)
 	}
 

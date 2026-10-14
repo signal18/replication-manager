@@ -21,10 +21,12 @@ already pairs it with `IsMaxscale`.
 |---|---|---|
 | `TopologyDiscover` (`cluster_topo.go`) | any replica with a replica in the cluster got `IsRelay` and state Relay | no replica gets it; a stale flag is cleared (MaxScale excepted). `hasRelay` still counts an intermediate, so topology inference is unchanged |
 | `GetRelayServer` (`cluster_get.go`, multi-tier / binlog server failover and rejoin) | the server flagged relay | the MaxScale relay, or with multi-tier the intermediate replica |
-| Physical restore guard (`srv_job_backup.go`) | blocked on a relay | blocked on a relay or a server with replicas (a downstream depends on it) |
-| Heartbeat false-positive check (`cluster_chk.go`) | skipped replicas of a relay | skips replicas whose source is a relay or a replica: only a direct replica sees the master's heartbeat |
+| Physical restore guard (`srv_job_backup.go`) | blocked on a relay | blocked on a relay or an intermediate replica (a downstream depends on it); a master with replicas is not blocked, as before |
+| Heartbeat false-positive check (`cluster_chk.go`) | skipped replicas of a relay | skips replicas whose source is a relay or, outside multi-master, a replica: only a direct replica sees the master's heartbeat |
 | Positional no-relay repair (`srv_rejoin.go`) | source must be flagged relay | source must be a replica |
 | GTID no-relay repair (`rejoinSlave`) | stopped at ERR00065 without a crash electing the master | proceeds when the source is a replica of the current master; ERR00065 kept for any other source |
+
+| Rejoin source of an old master (`rejoinSource`, flashback and sync, #2037) | multi-tier without an intermediate: flashback dereferenced nil (SIGSEGV), sync returned an error and left the old master StandAlone | the intermediate replica when there is one, else the master (as failover does); binlog server without its relay is still an error; resolved before the flashback rewinds anything |
 
 Unchanged: the election skips (`IsRelay`, ERR00036), the master guards (`!master.IsRelay`
 before clearing read-only, ProxySQL writer), ERR00064 detection.
