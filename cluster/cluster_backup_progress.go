@@ -271,8 +271,9 @@ func (cluster *Cluster) physicalBackupProgressForTask(server *ServerMonitor, tas
 	switch task {
 	case config.ConstBackupPhysicalTypeMariaBackup, config.ConstBackupPhysicalTypeXtrabackup, string(config.ConstTaskPgBaseBackup):
 		return cluster.backupProgressFor(server, "physical")
-	case string(config.ConstTaskPgDump):
-		// a PostgreSQL dump is streamed by the jobs sidecar: the receiver counts it too
+	case string(config.ConstTaskPgDump), string(config.ConstTaskDump):
+		// a PostgreSQL dump is streamed by the jobs sidecar, a remote mysqldump by dbjobs
+		// (srv_job_backup_remote.go): the receiver counts it too
 		return cluster.backupProgressFor(server, "logical")
 	}
 	return nil

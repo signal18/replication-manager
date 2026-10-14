@@ -75,6 +75,7 @@ type BackupMetadata struct {
 	Completed         bool   `json:"completed"`
 	SplitUser         bool   `json:"splitUser"`
 	SplitDump         bool   `json:"splitDump"`
+	ExecRemote        bool   `json:"execRemote,omitempty"` // the backup tool ran on the DB node (dbjobs), not next to replication-manager
 	Previous          int64  `json:"previous"`
 	ResticEnabled     bool   `json:"resticEnabled,omitempty"`
 	ResticSnapshotID  string `json:"resticSnapshotID"`

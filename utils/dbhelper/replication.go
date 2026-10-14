@@ -135,6 +135,9 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			cm += ", " + masterOrSource + "_log_file='" + opt.Logfile + "', " + masterOrSource + "_log_pos=" + opt.Logpos
 			if myver.IsMariaDB() {
 				cm += ", " + masterOrSource + "_USE_GTID=NO"
+			} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.6") {
+				// a channel left on auto-position refuses a file/position (error 1776)
+				cm += ", " + masterOrSource + "_AUTO_POSITION=0"
 			}
 		case "MASTER_AUTO_POSITION":
 			cm += ", " + masterOrSource + "_AUTO_POSITION=1"

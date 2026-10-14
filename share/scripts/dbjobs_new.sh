@@ -163,7 +163,7 @@ readonly -a JOBS=(
     "auditlog" "sqlerrorlog" "zfssnapback" "optimize"
     "reseedxtrabackup" "reseedmariabackup"
     "flashbackxtrabackup" "flashbackmariabackup"
-    "stop" "restart" "start"
+    "stop" "restart" "start" "mysqldump"
 )
 
 # Logging levels
@@ -556,7 +556,11 @@ get_task_receiver() {
             RECEIVER_ADDRESS=""
             return 0
         fi
-        local rcv_port=$(echo "$body" | sed -n 's/RECEIVER_PORT=//p')
+        local rcv_port=$(echo "$body" | sed -n 's/^RECEIVER_PORT=\([0-9]*\).*/\1/p')
+        # mysqldump: the dump arguments, one per line, base64 encoded
+        RECEIVER_DUMP_ARGS=$(echo "$body" | sed -n 's/.* DUMP_ARGS=\([A-Za-z0-9+\/=]*\).*/\1/p')
+        # mysqldump: 1 when this job blocks DDL around its dump client (BACKUP STAGE)
+        RECEIVER_LOCK_DDL=$(echo "$body" | sed -n 's/.* LOCK_DDL=\([01]\).*/\1/p')
         if [[ -n "$rcv_port" ]]; then
             RECEIVER_ADDRESS="${api_host}:${rcv_port}"
             return 0
@@ -1426,7 +1430,7 @@ process_log_file() {
     local job="$1"
     local log_file
     case "$job" in
-    "mariabackup"|"xtrabackup")
+    "mariabackup"|"xtrabackup"|"mysqldump")
         log_file="$LOG_DIR/backup.out"
         ;;
     "reseedmariabackup"|"reseedxtrabackup")
@@ -1584,6 +1588,14 @@ doneJob() {
             echo "No successful record (complete OK!) found in $LOG_DIR/backup.out." >>$LOG_DIR/$job.out
         fi
         ;;
+    mysqldump)
+        # the dump client and the stream to the receiver must both succeed
+        if [[ "${DUMP_RC[0]}" != "0" || "${DUMP_RC[1]:-1}" != "0" ]]; then
+            jobstate=5
+            done=0
+            echo "Dump failed (dump client exit ${DUMP_RC[0]}, stream exit ${DUMP_RC[1]:-none}): $(tail -n 5 $LOG_DIR/backup.out 2>/dev/null)" >>$LOG_DIR/$job.out
+        fi
+        ;;
     esac
 
     if [[ "$job" == reseed* || "$job" == flashback* ]]; then
@@ -1606,6 +1618,91 @@ doneJob() {
     # actually running. Nothing after this call does other useful work
     # concurrently, so there's no benefit to backgrounding it.
     $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';"
+}
+
+# stream_dump runs the dump client into the stream to replication-manager and sets
+# DUMP_RC=(<client exit> <stream exit>). The stream is two-way: socat also reads the
+# connection, so it ends when replication-manager closes it (backup cancelled or failed)
+# even while the client sends nothing (blocked on a lock). The client closes its output
+# only when it exits, after its last statements (START SLAVE of --dump-slave): one still
+# running once the stream ended was cut off, and is stopped after a grace period, which
+# ends its session and the DDL lock of lock_ddl_start with it.
+stream_dump() {
+    local fifo="$TMP_DIR/mysqldump.stream"
+    rm -f "$fifo"
+    if ! mkfifo "$fifo"; then
+        DUMP_RC=(1 1)
+        return
+    fi
+    socat stdio TCP:$ADDRESS <"$fifo" &>"$LOG_DIR/$job.out" &
+    local stream_pid=$!
+    $BINARY_DUMP "${DUMP_ARGS[@]}" --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" 2>"$LOG_DIR/backup.out" >"$fifo" &
+    local dump_pid=$!
+    wait "$stream_pid"
+    local stream_rc=$?
+    local i
+    for i in $(seq 1 20); do
+        dump_client_running "$dump_pid" || break
+        sleep 0.5
+    done
+    if dump_client_running "$dump_pid"; then
+        send_lines_to_api "The stream to replication-manager ended before the dump client: stopping it" "$job" "$LVL_WARN"
+        kill "$dump_pid" 2>/dev/null
+    fi
+    wait "$dump_pid"
+    local dump_rc=$?
+    rm -f "$fifo"
+    DUMP_RC=("$dump_rc" "$stream_rc")
+}
+
+# dump_client_running tells whether process $1 still runs (an exited one not yet waited
+# for is a zombie, which kill -0 still finds).
+dump_client_running() {
+    local state
+    state=$(awk '{ print $3 }' "/proc/$1/stat" 2>/dev/null)
+    [[ -n "$state" && "$state" != "Z" ]]
+}
+
+# lock_ddl_start blocks DDL on this server for a dump (BACKUP STAGE BLOCK_DDL, MariaDB
+# 10.4 and later), as replication-manager does around its own: in a client session of its
+# own, held until lock_ddl_end. The server releases it when that session ends, whatever
+# ends this script. As replication-manager's own: the wait is the server's (its
+# lock_wait_timeout), and a lock that fails leaves a warning and the dump goes on.
+lock_ddl_start() {
+    LOCK_DDL_HELD=false
+    # -n (unbuffered): the confirmation must reach this script as soon as the lock is
+    # held, a client writing to a pipe otherwise keeps it until it exits
+    # exec: the coprocess is the client itself, so killing it ends the session
+    coproc LOCK_DDL_SESSION { exec $BINARY_CLIENT -N -n 2>>"$LOG_DIR/lock_ddl.out"; }
+    echo "BACKUP STAGE START; BACKUP STAGE BLOCK_DDL; SELECT 'ddl-blocked';" >&"${LOCK_DDL_SESSION[1]}"
+    local reply=""
+    read -r -u "${LOCK_DDL_SESSION[0]}" reply
+    if [[ "$reply" == "ddl-blocked" ]]; then
+        LOCK_DDL_HELD=true
+        send_lines_to_api "Blocking DDL via BACKUP STAGE" "$job" "$LVL_INFO"
+        return
+    fi
+    # no confirmation (the statements failed): the session ends
+    [[ -n "${LOCK_DDL_SESSION_PID:-}" ]] && kill "$LOCK_DDL_SESSION_PID" 2>/dev/null
+    send_lines_to_api "Could not block DDL via BACKUP STAGE, the dump goes on without: $(tail -n 2 "$LOG_DIR/lock_ddl.out" 2>/dev/null)" "$job" "$LVL_WARN"
+}
+
+# lock_ddl_end ends the BACKUP STAGE of lock_ddl_start and its session. SIGPIPE is ignored
+# for that one write (a subshell can not write to a coprocess): a session that died
+# meanwhile fails the write, not this script.
+lock_ddl_end() {
+    local in="${LOCK_DDL_SESSION[1]:-}" pid="${LOCK_DDL_SESSION_PID:-}"
+    if [[ -n "$in" ]]; then
+        if $LOCK_DDL_HELD; then
+            trap '' PIPE
+            echo "BACKUP STAGE END;" >&"$in" 2>/dev/null
+            trap - PIPE
+        fi
+        eval "exec ${in}>&-"
+    fi
+    [[ -n "$pid" ]] && wait "$pid" 2>/dev/null
+    LOCK_DDL_HELD=false
+    rm -f "$LOG_DIR/lock_ddl.out"
 }
 
 # receiveBackup unpacks the backup stream repman sends into $BACKUPDIR, on the
@@ -2987,6 +3084,8 @@ for job in "${JOBS[@]}"; do
 
     TASK_NEEDED=false
     ADDRESS=""
+    DUMP_ARGS_B64=""
+    DUMP_LOCK_DDL=""
     ID=""
 
     if [[ "$JOBS_MODE" == "api" ]]; then
@@ -2995,15 +3094,31 @@ for job in "${JOBS[@]}"; do
             TASK_NEEDED=true
             # For tasks that stream data, get the receiver address from the API
             case "$job" in
-                mariabackup|xtrabackup|reseedmariabackup|reseedxtrabackup|flashbackmariabackup|flashbackxtrabackup|errorlog|slowquery|auditlog|sqlerrorlog)
+                mariabackup|xtrabackup|mysqldump|reseedmariabackup|reseedxtrabackup|flashbackmariabackup|flashbackxtrabackup|errorlog|slowquery|auditlog|sqlerrorlog)
                     if get_task_receiver "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "$job"; then
                         ADDRESS="$RECEIVER_ADDRESS"
+                        DUMP_ARGS_B64="$RECEIVER_DUMP_ARGS"
+                        DUMP_LOCK_DDL="$RECEIVER_LOCK_DDL"
                     else
                         send_lines_to_api "Failed to get receiver for $job" "$job" "$LVL_ERROR"
                         TASK_NEEDED=false
                     fi
                     ;;
             esac
+        fi
+    elif [[ "$job" == "mysqldump" ]]; then
+        # SQL mode: a remote mysqldump row carries the receiver port and, as its payload,
+        # the dump arguments then whether to block DDL (<args>@<0|1>); the row of
+        # replication-manager's own local run has port 0
+        TASK=($(echo "SELECT concat(id,'@',server,':',port,'@',payload) FROM replication_manager_schema.jobs WHERE task='$job' and done=0 AND state=0 AND port<>0 order by id desc limit 1" | $BINARY_CLIENT -N))
+        ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))
+        ID=($(echo $TASK | awk -F@ '{ print $1 }'))
+        # id@server:port@<dump arguments, base64>@<lock DDL 0|1>: base64 holds no '@' and
+        # replication-manager always sends arguments (--master-data at least)
+        DUMP_ARGS_B64=$(echo $TASK | awk -F@ '{ print $3 }')
+        DUMP_LOCK_DDL=$(echo $TASK | awk -F@ '{ print $4 }')
+        if [ "$ID" != "" ]; then
+            TASK_NEEDED=true
         fi
     else
         # SQL mode (default): poll the jobs table
@@ -3018,7 +3133,7 @@ for job in "${JOBS[@]}"; do
     if $TASK_NEEDED; then
         send_lines_to_api "Job $job initiated. Clearing previous logs..." "$job" "$LVL_INFO"
         case "$job" in
-            mariabackup|xtrabackup)
+            mariabackup|xtrabackup|mysqldump)
                 rm -f "$LOG_DIR/backup.out"
                 ;;
             reseedmariabackup|reseedxtrabackup)
@@ -3102,6 +3217,19 @@ for job in "${JOBS[@]}"; do
             cd /docker-entrypoint-initdb.d
             $MARIADB_BACKUP --defaults-file="$MYSQL_CONF/my.cnf" --backup --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream --target-dir="$LOG_DIR/" 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
+        mysqldump)
+            # Logical backup on the DB node (scheduler-jobs-exec-remote): replication-manager
+            # gives the dump arguments, the connection is the node's own
+            DUMP_RC=(1)
+            if [[ -n "$DUMP_ARGS_B64" ]]; then
+                mapfile -t DUMP_ARGS < <(echo "$DUMP_ARGS_B64" | base64 -d)
+                [[ "$DUMP_LOCK_DDL" == "1" ]] && lock_ddl_start
+                stream_dump
+                [[ "$DUMP_LOCK_DDL" == "1" ]] && lock_ddl_end
+            else
+                echo "No dump arguments received from replication-manager" >"$LOG_DIR/backup.out"
+            fi
+            ;;
         errorlog)
             dblogfile "$ERRORLOG" "$job"
             ;;
@@ -3148,6 +3276,12 @@ for job in "${JOBS[@]}"; do
             case "$job" in
             mariabackup|xtrabackup)
                 if ! grep -qE '([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}|\[Xtrabackup\]) completed OK!' "$LOG_DIR/backup.out" 2>/dev/null; then
+                    api_job_result="error"
+                fi
+                ;;
+            mysqldump)
+                # the dump client and the stream to the receiver must both succeed
+                if [[ "${DUMP_RC[0]}" != "0" || "${DUMP_RC[1]:-1}" != "0" ]]; then
                     api_job_result="error"
                 fi
                 ;;
