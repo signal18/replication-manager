@@ -748,11 +748,17 @@ func (cluster *Cluster) InitBenchTable() error {
 	return nil
 }
 
-func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
-	test.ConfigInit = *cluster.Conf
+// SaveTestConf snapshots the settings and failover counters a test may change;
+// RestoreConf puts them back.
+func (cluster *Cluster) SaveTestConf() {
 	savedConf = *cluster.Conf
 	savedFailoverCtr = cluster.FailoverCtr
 	savedFailoverTs = cluster.FailoverTs
+}
+
+func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
+	test.ConfigInit = *cluster.Conf
+	cluster.SaveTestConf()
 	cluster.CleanAll = true
 	if !cluster.IsProvision {
 		err := cluster.Bootstrap()
@@ -789,7 +795,9 @@ func (cluster *Cluster) RestoreConf() {
 	*cluster.Conf = savedConf
 	cluster.FailoverTs = savedFailoverTs
 	cluster.FailoverCtr = savedFailoverCtr
-
+	// The config saver may have written the test's settings to the cluster TOML:
+	// write the restored ones over them.
+	cluster.Save()
 }
 
 func (cluster *Cluster) DisableSemisync() error {
