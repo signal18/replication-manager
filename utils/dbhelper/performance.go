@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/signal18/replication-manager/utils/sqlmask"
 	"strconv"
 	"strings"
 	"time"
@@ -117,6 +118,7 @@ func GetProcesslist(db *sqlx.DB, version *version.Version) ([]Processlist, strin
 	if err != nil {
 		return nil, query, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
+	maskProcesslist(pl)
 	return pl, query, nil
 }
 
@@ -466,4 +468,14 @@ func KillQuery(db *sqlx.DB, id string, myver *version.Version) (string, error) {
 	query := "KILL QUERY ?"
 	_, err = db.Exec(query, idValue)
 	return query + " (" + id + ")", err
+}
+
+// maskProcesslist masks the password literals of the running statements (#2025): the
+// processlist is stored and served (GUI, plugins)
+func maskProcesslist(pl []Processlist) {
+	for i := range pl {
+		if pl[i].Info.Valid {
+			pl[i].Info.String = sqlmask.Secrets(pl[i].Info.String)
+		}
+	}
 }

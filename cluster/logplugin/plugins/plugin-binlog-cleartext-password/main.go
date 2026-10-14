@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
+	"github.com/signal18/replication-manager/utils/sqlmask"
 )
 
 var cleartextPasswordRe = regexp.MustCompile(
@@ -75,16 +76,21 @@ func main() {
 				}
 			}
 			findings = append(findings, wire.Finding{
-				ErrKey:   "WARN0310",
-				Severity: "ERROR",
-				Description: fmt.Sprintf(
-					"Server %s: cleartext password detected in binlog at %s (schema: %s, password hint: %s): %s",
-					req.ServerURL, ev.Timestamp, ev.Schema, redacted, truncate(ev.Query, 300)),
+				ErrKey:      "WARN0310",
+				Severity:    "ERROR",
+				Description: findingDescription(req.ServerURL, ev.Timestamp, ev.Schema, redacted, ev.Query),
 			})
 		}
 	}
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
+}
+
+// findingDescription: the WARN0310 text, the statement with its password masked (#2026:
+// the finding quoted it raw and showed the password it warned about)
+func findingDescription(serverURL, ts, schema, hint, query string) string {
+	return fmt.Sprintf("Server %s: cleartext password detected in binlog at %s (schema: %s, password hint: %s): %s",
+		serverURL, ts, schema, hint, truncate(sqlmask.Secrets(query), 300))
 }
 
 func truncate(s string, n int) string {

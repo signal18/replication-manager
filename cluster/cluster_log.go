@@ -14,6 +14,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"github.com/signal18/replication-manager/utils/sqlmask"
 	"io"
 	"net/http"
 	"net/url"
@@ -83,6 +84,7 @@ func (cluster *Cluster) LogPrint(msg ...any) {
 }
 
 func (cluster *Cluster) LogSqlGeneralPrintf(level string, url string, from string, format string) {
+	format = sqlmask.Secrets(format) // a statement can carry a password literal (#2025)
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	msg := s18log.HttpMessage{
 		Group:     cluster.Name,
@@ -97,6 +99,13 @@ func (cluster *Cluster) LogSqlGeneralPrintf(level string, url string, from strin
 
 func (cluster *Cluster) LogSqlErrorPrintf(level string, url string, err error, from string, logs string, format string) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+	// the statement and the server's error can carry a password literal (#2025)
+	logs = sqlmask.Secrets(logs)
+	format = sqlmask.Secrets(format)
+	errText := ""
+	if err != nil {
+		errText = sqlmask.Secrets(err.Error())
+	}
 	msg := s18log.HttpMessage{
 		Group:     cluster.Name,
 		Level:     level,
@@ -105,7 +114,7 @@ func (cluster *Cluster) LogSqlErrorPrintf(level string, url string, err error, f
 		Module:    config.ConstLogModSQL,
 	}
 	cluster.SQLErrorLog.Add(msg)
-	cluster.SqlErrorLog.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from, "error": err, "sql": logs}).Error(format)
+	cluster.SqlErrorLog.WithFields(log.Fields{"cluster": cluster.Name, "server": url, "module": from, "error": errText, "sql": logs}).Error(format)
 }
 
 func (cluster *Cluster) LogUpdate(line int, level string, format string, args ...interface{}) int {

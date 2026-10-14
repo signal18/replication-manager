@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestCleartextPasswordRe_Matches verifies that the regex captures passwords
 // from the SQL forms it is designed to detect.
@@ -43,5 +46,14 @@ func TestCleartextPasswordRe_NoMatch(t *testing.T) {
 		if cleartextPasswordRe.MatchString(sql) {
 			t.Errorf("regex unexpectedly matched %q", sql)
 		}
+	}
+}
+
+// #2026: the finding quotes the statement with its password masked, the hint only
+// keeps the first and last characters
+func TestFindingDescriptionMasksStatement(t *testing.T) {
+	d := findingDescription("db1:3306", "2026-10-14 10:39:43", "mysql", "S****R", "CREATE USER `forgejo1`@`%` IDENTIFIED BY 'SecretPassWoR'")
+	if strings.Contains(d, "SecretPassWoR") || !strings.Contains(d, "IDENTIFIED BY '*****'") || !strings.Contains(d, "S****R") {
+		t.Fatalf("description: %s", d)
 	}
 }

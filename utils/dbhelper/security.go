@@ -11,6 +11,7 @@ package dbhelper
 import (
 	"errors"
 	"fmt"
+	"github.com/signal18/replication-manager/utils/sqlmask"
 	"regexp"
 	"strings"
 )
@@ -248,11 +249,10 @@ func ValidateChannel(channel string) error {
 	return nil
 }
 
-// SanitizeStringForLog removes or escapes sensitive data for logging
+// SanitizeStringForLog masks the secrets of a text for logging: password literals of
+// SQL statements and password= of connection strings (sqlmask, #2025)
 func SanitizeStringForLog(s string) string {
-	// Remove potential passwords from connection strings
-	re := regexp.MustCompile(`(?i)(password|pwd)=[^;,\s]+`)
-	return re.ReplaceAllString(s, "${1}=***")
+	return sqlmask.Secrets(s)
 }
 
 // ValidateNumeric validates that a string is a valid positive integer

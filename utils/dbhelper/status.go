@@ -514,5 +514,6 @@ func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_queryin
 	if err != nil {
 		return nil, stmt, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
+	maskProcesslist(pl)
 	return pl, stmt, nil
 }
