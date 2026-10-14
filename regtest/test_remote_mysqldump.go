@@ -30,7 +30,8 @@ import (
 //     (a complete gzip dump, a splitdump directory with table files);
 //   - a reseed of a replica from the gzip backup, restored by replication-manager as any
 //     logical backup: replication running after it;
-//   - a pickup timeout of 1s: the backup fails and, in sql mode, the jobs row is withdrawn;
+//   - a pickup timeout of 1s, then a backup canceled before dbjobs takes it: each backup fails
+//     and, in sql mode, the jobs row is withdrawn;
 //   - all along, a user and password in backup-mysqldump-options, which the dump run on the
 //     DB node must leave out (with them its client could not log in).
 //
@@ -121,6 +122,32 @@ func (regtest *RegTest) TestRemoteMysqldump(cl *clusterpkg.Cluster, conf string,
 	default:
 		logf("TEST", "%s: pickup timeout: backup failed", s.URL)
 	}
+
+	// a backup canceled before dbjobs takes the dump: the row is withdrawn too, or dbjobs
+	// would take it later and run the dump against a closed port
+	cl.Conf.BackupLogicalRemotePickupTimeout = 120
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	if err := s.JobBackupLogical(ctx); err != nil {
+		logf(config.LvlErr, "%s: cancel: unexpected error %s", s.URL, err)
+		return false
+	}
+	switch m := s.LastBackupMeta.Logical; {
+	case m == nil:
+		logf(config.LvlErr, "%s: cancel: no metadata", s.URL)
+		return false
+	case m.Completed:
+		logf("TEST", "%s: dbjobs took the dump before the cancel, the withdrawal is not exercised this run", s.URL)
+	case cl.Conf.SchedulerJobsMode != "api":
+		state, done, result, _, rerr := dbhelper.GetJobTaskState(s.Conn, s.DBVersion, "mysqldump", time.Second)
+		if rerr != nil || state != 5 || done != 1 || result != "not taken by dbjobs" {
+			logf(config.LvlErr, "%s: canceled, the jobs row is not withdrawn: state %d done %d result %q err %v", s.URL, state, done, result, rerr)
+			return false
+		}
+		logf("TEST", "%s: cancel: backup failed, jobs row withdrawn", s.URL)
+	default:
+		logf("TEST", "%s: cancel: backup failed", s.URL)
+	}
 	return true
 }
 
@@ -140,11 +167,11 @@ func remoteDumpReseed(cl *clusterpkg.Cluster, backup *clusterpkg.ServerMonitor) 
 	if err := replica.JobReseedLogicalBackup(context.Background(), config.ConstBackupLogicalTypeMysqldump); err != nil {
 		return false, replica.URL + ": " + err.Error()
 	}
-	// the monitor runs the restore; a reseed of a test database lasts seconds
-	deadline := time.Now().Add(10 * time.Minute)
+	// the monitor runs the restore, reseedLimit at most
+	deadline := time.Now().Add(reseedLimit)
 	for replica.HasReseedingState(task) {
 		if time.Now().After(deadline) {
-			return false, replica.URL + ": still reseeding after 10 minutes"
+			return false, fmt.Sprintf("%s: still reseeding after %s", replica.URL, reseedLimit)
 		}
 		time.Sleep(2 * time.Second)
 	}

@@ -701,8 +701,9 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 	rowErrors := server.newRowReadErrors(task)
 	// After the pickup timeout the row is withdrawn while dbjobs has not taken it. When the
 	// withdrawal can not be decided (the jobs table is unreachable), it is tried again on
-	// the next ticks: the row is not taken for granted.
+	// the next ticks, as many times as a row read: the row is not taken for granted.
 	withdrawPending := false
+	withdrawErrors := 0
 	withdraw := func() (bool, error) {
 		if taken {
 			withdrawPending = false
@@ -710,6 +711,10 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 		}
 		withdrawn, err := server.withdrawRemoteDumpRow(task)
 		if err != nil {
+			if withdrawErrors++; withdrawErrors >= remoteDumpRowReadErrors {
+				cluster.stopRemoteDumpReceiver(port)
+				return true, fmt.Errorf("%s: the jobs row of %s can not be withdrawn: %w", task, server.URL, err)
+			}
 			return false, nil // tried again on the next tick
 		}
 		withdrawPending = false
@@ -720,6 +725,15 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 		taken = true // taken meanwhile: the row is no longer available
 		return false, nil
 	}
+	// abandon ends the task before its end: the receiver is closed and, while dbjobs has not
+	// taken the row, the row is withdrawn too, or dbjobs would take it later and run the dump
+	// against a closed port. Best effort: withdrawRemoteDumpRow logs a failure.
+	abandon := func() {
+		cluster.stopRemoteDumpReceiver(port)
+		if !taken {
+			_, _ = server.withdrawRemoteDumpRow(task)
+		}
+	}
 	for {
 		select {
 		case <-done:
@@ -727,7 +741,7 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 			report.Reset(reportTimeout)
 			reportBy = report.C
 		case <-ctx.Done():
-			cluster.stopRemoteDumpReceiver(port)
+			abandon()
 			return fmt.Errorf("%s canceled: %w", task, ctx.Err())
 		case <-pickup.C:
 			withdrawPending = true
@@ -735,13 +749,13 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 				return err
 			}
 		case <-limit.C:
-			cluster.stopRemoteDumpReceiver(port)
+			abandon()
 			return fmt.Errorf("%s still streaming after %s", task, postgresJobStreamTimeout)
 		case <-reportBy:
 			return fmt.Errorf("%s: no report from the DB node of %s within %s of the end of its stream", task, server.URL, reportTimeout)
 		case <-tick.C:
 			if cluster.exit.Load() {
-				cluster.stopRemoteDumpReceiver(port)
+				abandon()
 				return errors.New("backup canceled: cluster shutting down")
 			}
 			if withdrawPending {
@@ -752,7 +766,7 @@ func (server *ServerMonitor) runRemoteDumpJobsRow(ctx context.Context, task, des
 			state, rowDone, result, err := server.remoteDumpRowState(task)
 			if err != nil {
 				if rowErrors.failed(err) {
-					cluster.stopRemoteDumpReceiver(port)
+					abandon()
 					return fmt.Errorf("%s: the jobs row of %s can not be read: %w", task, server.URL, err)
 				}
 				continue // the row is read again on the next tick

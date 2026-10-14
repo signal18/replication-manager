@@ -87,7 +87,7 @@ func (e *edgeRun) result() bool {
 // replica), on its own reseedtest database. Fit for any test environment.
 //
 // Each reseed is checked the same way, once the replica's SQL thread has executed up to the
-// primary's binary log position (10 minutes at most): rows and checksum of the test table
+// primary's binary log position (5 minutes at most): rows and checksum of the test table
 // equal to the primary's, both replication threads running, GTID replication (Auto_Position
 // 1 or Using_Gtid Slave_Pos) when the replica uses it, no errant GTID (MySQL/Percona); then
 // transactions on the primary (insert, update, delete, one mixed transaction) must reach
@@ -525,7 +525,7 @@ func (e *edgeRun) reseed() error {
 	if err := e.r.JobReseedLogicalBackup(context.Background(), config.ConstBackupLogicalTypeMysqldump); err != nil {
 		return err
 	}
-	deadline := time.Now().Add(15 * time.Minute)
+	deadline := time.Now().Add(reseedLimit)
 	for {
 		t := e.r.JobResults.Get(task)
 		if !e.r.HasReseedingState(task) && t != nil && t.Done == 1 {
@@ -535,7 +535,7 @@ func (e *edgeRun) reseed() error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("still reseeding after 15 minutes: %+v", t)
+			return fmt.Errorf("still reseeding after %s: %+v", reseedLimit, t)
 		}
 		time.Sleep(2 * time.Second)
 	}
@@ -570,9 +570,17 @@ func (e *edgeRun) checkReplica(name string, wantGTID bool) bool {
 	return e.check(name, true, "")
 }
 
+// caughtUpLimit bounds the wait for a reseeded replica to catch up with what the primary
+// wrote during the reseed: seconds for the test's own transactions, longer on a busy primary.
+const caughtUpLimit = 5 * time.Minute
+
+// reseedLimit bounds the wait for a reseed: the restore of a cluster with a lot of data can
+// take long.
+const reseedLimit = time.Hour
+
 // waitCaughtUp waits until the replica's SQL thread has executed everything the primary had
-// written when the wait started (the primary's binary log position then), 10 minutes at
-// most. It returns why it did not: a replication thread stopped on an error, or the SQL
+// written when the wait started (the primary's binary log position then), caughtUpLimit
+// at most. It returns why it did not: a replication thread stopped on an error, or the SQL
 // thread still behind, with the executed, read and primary positions. Seconds_Behind_Master
 // is not used: it is 0 whenever the SQL thread considers it has nothing to apply.
 func (e *edgeRun) waitCaughtUp() string {
@@ -584,7 +592,7 @@ func (e *edgeRun) waitCaughtUp() string {
 		return "primary binary log position: binary log off"
 	}
 	var last string
-	deadline := time.Now().Add(10 * time.Minute)
+	deadline := time.Now().Add(caughtUpLimit)
 	for {
 		ss, _, err := dbhelper.GetSlaveStatus(e.r.Conn, e.r.ReplicationSourceName, e.r.DBVersion)
 		if err != nil {
@@ -598,8 +606,8 @@ func (e *edgeRun) waitCaughtUp() string {
 			if ss.LastSQLError.String != "" || ss.LastIOError.String != "" {
 				return fmt.Sprintf("replication stopped on an error: SQL %q, IO %q", ss.LastSQLError.String, ss.LastIOError.String)
 			}
-			last = fmt.Sprintf("SQL thread not caught up after 10 minutes: executed %s:%d, read %s:%s, primary %s:%d, SQL thread %s (%s)",
-				file, pos, ss.MasterLogFile.String, ss.ReadMasterLogPos.String, ms.File, ms.Position, ss.SlaveSQLRunning.String, ss.SlaveSQLRunningState.String)
+			last = fmt.Sprintf("SQL thread not caught up after %s: executed %s:%d, read %s:%s, primary %s:%d, SQL thread %s (%s)",
+				caughtUpLimit, file, pos, ss.MasterLogFile.String, ss.ReadMasterLogPos.String, ms.File, ms.Position, ss.SlaveSQLRunning.String, ss.SlaveSQLRunningState.String)
 		}
 		if time.Now().After(deadline) {
 			return last

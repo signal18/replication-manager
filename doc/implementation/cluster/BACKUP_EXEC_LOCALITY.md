@@ -335,7 +335,8 @@ fits.
 - Regtests of the logical reseed (`regtest/test_logical_reseed_edges.go`, need
   dbjobs next to each database, not in the ALL list, run by name). Each reseed is
   checked the same way, once the replica's SQL thread has executed up to the
-  primary's binary log position (10 minutes at most; `Seconds_Behind_Master` is 0
+  primary's binary log position (5 minutes at most, the reseed itself an hour at most;
+  `Seconds_Behind_Master` is 0
   whenever the SQL thread sees nothing to apply, so it is not used): rows and
   checksum of `reseedtest.edge` equal to the
   primary's, both replication threads running, the replication mode, no errant
