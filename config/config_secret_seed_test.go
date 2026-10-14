@@ -38,10 +38,10 @@ func TestBootSeedSimpleSecretStable(t *testing.T) {
 
 	conf.DecryptSecretsFromConfig()
 
-	if got := conf.Secrets["mail-smtp-password"].Value; got != "smtp-pass" {
+	if got := conf.Secrets.Get("mail-smtp-password").Value; got != "smtp-pass" {
 		t.Fatalf("decrypted value = %q, want smtp-pass", got)
 	}
-	if got := conf.Secrets["mail-smtp-password"].Crypted; got != cipher1 {
+	if got := conf.Secrets.Get("mail-smtp-password").Crypted; got != cipher1 {
 		t.Errorf("Crypted cache not seeded at load: %q", got)
 	}
 	if got := conf.GetStableEncryptedValue("mail-smtp-password", "smtp-pass"); got != cipher1 {
@@ -57,7 +57,7 @@ func TestBootSeedCompositeSecretStable(t *testing.T) {
 
 	conf.DecryptSecretsFromConfig()
 
-	if got := conf.Secrets["db-servers-credential"].Value; got != "root:dbpass" {
+	if got := conf.Secrets.Get("db-servers-credential").Value; got != "root:dbpass" {
 		t.Fatalf("decrypted value = %q, want root:dbpass", got)
 	}
 	if got := conf.GetStableEncryptedValue("db-servers-credential", "root:dbpass"); got != cipher1 {
@@ -74,7 +74,7 @@ func TestBootSeedMultiUserSecretStable(t *testing.T) {
 
 	conf.DecryptSecretsFromConfig()
 
-	if got := conf.Secrets["api-credentials"].Value; got != "admin:adminpw,viewer:viewerpw" {
+	if got := conf.Secrets.Get("api-credentials").Value; got != "admin:adminpw,viewer:viewerpw" {
 		t.Fatalf("decrypted value = %q", got)
 	}
 	if got := conf.GetStableEncryptedValue("api-credentials", "admin:adminpw,viewer:viewerpw"); got != cipher1 {
@@ -106,7 +106,7 @@ func TestBootSeedMissingRawReencrypts(t *testing.T) {
 	conf := newSeedTestConf(t)
 	conf.DefaultFlagMap["mail-smtp-password"] = "smtp-pass" // plaintext, no hash_
 	conf.DecryptSecretsFromConfig()
-	if got := conf.Secrets["mail-smtp-password"].Crypted; got != "" {
+	if got := conf.Secrets.Get("mail-smtp-password").Crypted; got != "" {
 		t.Fatalf("Crypted unexpectedly seeded: %q", got)
 	}
 	out := conf.GetStableEncryptedValue("mail-smtp-password", "smtp-pass")

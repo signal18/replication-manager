@@ -145,10 +145,10 @@ func (cluster *Cluster) adoptEngineAppCredential(app *App) bool {
 	}
 	credential := user + ":" + pass
 	if cluster.Conf.Secrets == nil {
-		cluster.Conf.Secrets = map[string]config.Secret{}
+		cluster.Conf.Secrets = config.NewSecrets(nil)
 	}
 	cluster.Conf.User = credential
-	cluster.Conf.Secrets["db-servers-credential"] = config.Secret{Value: credential, OldValue: cluster.Conf.GetDecryptedValue("db-servers-credential")}
+	cluster.Conf.Secrets.Set("db-servers-credential", config.Secret{Value: credential, OldValue: cluster.Conf.GetDecryptedValue("db-servers-credential")})
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetReplicationCredential(credential)
 	cluster.Save()

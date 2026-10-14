@@ -11,7 +11,7 @@ import (
 // The sysbench command line of a MariaDB/MySQL cluster is the one 3.1.42 issued, option for
 // option; a PostgreSQL master switches the driver and the option prefix.
 func TestSysbenchConnectionArgsByFlavor(t *testing.T) {
-	cl := &Cluster{Conf: &config.Config{Secrets: map[string]config.Secret{"db-servers-credential": {Value: "app:secret"}}}}
+	cl := &Cluster{Conf: &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "app:secret"}})}}
 	prx := &Proxy{Host: "prx1", WritePort: 3306}
 	want := "--db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=app --mysql-password=secret --mysql-host=prx1 --mysql-port=3306"
 	if got := strings.Join(cl.sysbenchConnectionArgs(prx), " "); got != want {

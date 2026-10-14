@@ -1189,13 +1189,13 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 					//to store new gitlab token
 					cluster.Conf.GitUrl = repman.Conf.OAuthProvider + "/" + cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + ".git"
 					cluster.Conf.GitUsername = tmp[len(tmp)-1]
-					newSecret := cluster.Conf.Secrets["git-acces-token"]
+					newSecret := cluster.Conf.Secrets.Get("git-acces-token")
 					newSecret.OldValue = newSecret.Value
 					newSecret.Value = new_token
-					cluster.Conf.Secrets["git-acces-token"] = newSecret
+					cluster.Conf.Secrets.Set("git-acces-token", newSecret)
 					//cluster.Conf.GitAccesToken = tokenInfo.token
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Clone from git : url %s, tok %s, dir %s\n", cluster.Conf.GitUrl, cluster.Conf.PrintSecret(cluster.Conf.Secrets["git-acces-token"].Value), cluster.Conf.WorkingDir)
-					cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.WorkingDir)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Clone from git : url %s, tok %s, dir %s\n", cluster.Conf.GitUrl, cluster.Conf.PrintSecret(cluster.Conf.Secrets.Get("git-acces-token").Value), cluster.Conf.WorkingDir)
+					cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets.Get("git-acces-token").Value, cluster.Conf.WorkingDir)
 				} else {
 					log.Printf("Failed to get token from gitlab: %v\n", err)
 				}
@@ -1297,7 +1297,7 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	res, err = sjson.SetBytes(res, "clusters", cl)
 
-	for crkey := range repman.Conf.Secrets {
+	for crkey := range repman.Conf.Secrets.Snapshot() {
 		res, err = sjson.SetBytes(res, "config."+strcase.ToLowerCamel(crkey), "*:*")
 	}
 
@@ -1994,7 +1994,7 @@ func (repman *ReplicationManager) createCluster(name string, cForm cluster.Clust
 	cl.Conf.APIUsersACLAllowExternal = ""
 	cl.Conf.APIUsersACLDiscardExternal = ""
 	if cl.Conf.Secrets != nil {
-		cl.Conf.Secrets["api-credentials-external"] = config.Secret{}
+		cl.Conf.Secrets.Set("api-credentials-external", config.Secret{})
 	}
 	cl.LoadAPIUsers()
 
@@ -2353,7 +2353,7 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 			// git credentials the server already holds. (Fixes: admin Enter refused with
 			// "not logged in via Gitlab".)
 			user.Username = repman.Conf.Cloud18GitUser
-			user.Password = repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets["cloud18-gitlab-password"].Value)
+			user.Password = repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets.Get("cloud18-gitlab-password").Value)
 		} else {
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintf(w, "Current user is not logged in via Gitlab!")

@@ -3898,7 +3898,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.User
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("db-servers-credential")
-		mycluster.Conf.Secrets["db-servers-credential"] = new_secret
+		mycluster.Conf.Secrets.Set("db-servers-credential", new_secret)
 		mycluster.SetClusterMonitorCredentialsFromConfig()
 		// mycluster.SetDbServersMonitoringCredential(value)
 	case "db-servers-dns-timeout":
@@ -4290,7 +4290,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.MailSMTPPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("mail-smtp-password")
-		mycluster.Conf.Secrets["mail-smtp-password"] = new_secret
+		mycluster.Conf.Secrets.Set("mail-smtp-password", new_secret)
 		mycluster.Mailer.UpdateAuth(mycluster.Conf.MailSMTPUser, new_secret.Value)
 	case "mail-smtp-user":
 		mycluster.Conf.SetMailSmtpUser(value)
@@ -4327,7 +4327,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.Cloud18GitPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-gitlab-password")
-		mycluster.Conf.Secrets["cloud18-gitlab-password"] = new_secret
+		mycluster.Conf.Secrets.Set("cloud18-gitlab-password", new_secret)
 	case "cloud18-domain-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -4337,7 +4337,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.Cloud18DomainSecret
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-domain-secret")
-		mycluster.Conf.Secrets["cloud18-domain-secret"] = new_secret
+		mycluster.Conf.Secrets.Set("cloud18-domain-secret", new_secret)
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
@@ -4385,7 +4385,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
-		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
+		mycluster.Conf.Secrets.Set("backup-restic-aws-access-secret", new_secret)
 		if err := mycluster.ReloadResticEnv(); err != nil {
 			return err
 		}
@@ -4670,7 +4670,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.HaproxyPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("haproxy-password")
-		mycluster.Conf.Secrets["haproxy-password"] = new_secret
+		mycluster.Conf.Secrets.Set("haproxy-password", new_secret)
 
 	case "maxscale-mode":
 		switch value {
@@ -5316,7 +5316,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.ProvAppTemplateRepoPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("prov-app-template-repo-password")
-		mycluster.Conf.Secrets["prov-app-template-repo-password"] = new_secret
+		mycluster.Conf.Secrets.Set("prov-app-template-repo-password", new_secret)
 	case "prov-app-template-repo-timeout":
 		parsedTimeout, err := parseProvAppTemplateRepoTimeout(value)
 		if err != nil {
@@ -6732,7 +6732,7 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 		return nil, fmt.Errorf("marshal cluster: %w", err)
 	}
 
-	for crkey := range mycluster.Conf.Secrets {
+	for crkey := range mycluster.Conf.Secrets.Snapshot() {
 		cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
 		if err != nil {
 			return nil, fmt.Errorf("mask secret %s: %w", crkey, err)

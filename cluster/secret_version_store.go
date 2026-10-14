@@ -193,7 +193,7 @@ func (cluster *Cluster) getTrackedSecretStoreValuesWithWarnings(logWarnings bool
 		return values
 	}
 
-	for key, secret := range cluster.Conf.Secrets {
+	for key, secret := range cluster.Conf.Secrets.Snapshot() {
 		if secret.Value == "" {
 			continue
 		}

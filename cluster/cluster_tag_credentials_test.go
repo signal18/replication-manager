@@ -16,20 +16,20 @@ import (
 // maps and brought an older password back over the one set at runtime.
 func TestTagChangeKeepsRuntimeCredentials(t *testing.T) {
 	cl := &Cluster{Conf: &config.Config{
-		Secrets: map[string]config.Secret{
+		Secrets: config.NewSecrets(map[string]config.Secret{
 			"db-servers-credential":  {Value: "root:set-at-runtime"},
 			"replication-credential": {Value: "repl:set-at-runtime"},
-		},
+		}),
 		DynamicFlagMap:  map[string]interface{}{"db-servers-credential": "root:older"},
 		ImmuableFlagMap: map[string]interface{}{"replication-credential": "repl:older"},
 		DefaultFlagMap:  map[string]interface{}{},
 	}}
 	check := func(step string) {
 		t.Helper()
-		if v := cl.Conf.Secrets["db-servers-credential"].Value; v != "root:set-at-runtime" {
+		if v := cl.Conf.Secrets.Get("db-servers-credential").Value; v != "root:set-at-runtime" {
 			t.Fatalf("%s: db-servers-credential became %q", step, v)
 		}
-		if v := cl.Conf.Secrets["replication-credential"].Value; v != "repl:set-at-runtime" {
+		if v := cl.Conf.Secrets.Get("replication-credential").Value; v != "repl:set-at-runtime" {
 			t.Fatalf("%s: replication-credential became %q", step, v)
 		}
 	}

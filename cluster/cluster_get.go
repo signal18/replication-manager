@@ -725,22 +725,22 @@ func (cluster *Cluster) GetTestMode() bool {
 }
 
 func (cluster *Cluster) GetDbUser() string {
-	user, _ := misc.SplitPair(cluster.Conf.Secrets["db-servers-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets.Get("db-servers-credential").Value)
 	return user
 }
 
 func (cluster *Cluster) GetDbPass() string {
-	_, pass := misc.SplitPair(cluster.Conf.Secrets["db-servers-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets.Get("db-servers-credential").Value)
 	return pass
 }
 
 func (cluster *Cluster) GetDbaUser() string {
-	user, _ := misc.SplitPair(cluster.Conf.Secrets["cloud18-dba-user-credentials"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets.Get("cloud18-dba-user-credentials").Value)
 	return user
 }
 
 func (cluster *Cluster) GetDbaPass() string {
-	_, pass := misc.SplitPair(cluster.Conf.Secrets["cloud18-dba-user-credentials"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets.Get("cloud18-dba-user-credentials").Value)
 	return pass
 }
 
@@ -754,51 +754,51 @@ func (cluster *Cluster) GetSponsorEmail() string {
 }
 
 func (cluster *Cluster) GetSponsorUser() string {
-	user, _ := misc.SplitPair(cluster.Conf.Secrets["cloud18-sponsor-user-credentials"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets.Get("cloud18-sponsor-user-credentials").Value)
 	return user
 }
 
 func (cluster *Cluster) GetSponsorPass() string {
-	_, pass := misc.SplitPair(cluster.Conf.Secrets["cloud18-sponsor-user-credentials"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets.Get("cloud18-sponsor-user-credentials").Value)
 	return pass
 }
 
 func (cluster *Cluster) GetRplUser() string {
-	user, _ := misc.SplitPair(cluster.Conf.Secrets["replication-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets.Get("replication-credential").Value)
 	return user
 }
 
 func (cluster *Cluster) GetRplPass() string {
-	_, pass := misc.SplitPair(cluster.Conf.Secrets["replication-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets.Get("replication-credential").Value)
 	return pass
 }
 
 func (cluster *Cluster) GetShardUser() string {
-	user, _ := misc.SplitPair(cluster.Conf.Secrets["shardproxy-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets.Get("shardproxy-credential").Value)
 	return user
 }
 
 func (cluster *Cluster) GetShardPass() string {
-	_, pass := misc.SplitPair(cluster.Conf.Secrets["shardproxy-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets.Get("shardproxy-credential").Value)
 	return pass
 }
 func (cluster *Cluster) GetMonitorWriteHearbeatUser() string {
-	user, _ := misc.SplitPair(cluster.Conf.Secrets["monitoring-write-heartbeat-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets.Get("monitoring-write-heartbeat-credential").Value)
 	return user
 }
 
 func (cluster *Cluster) GetMonitorWriteHeartbeatPass() string {
-	_, pass := misc.SplitPair(cluster.Conf.Secrets["monitoring-write-heartbeat-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets.Get("monitoring-write-heartbeat-credential").Value)
 	return pass
 }
 
 func (cluster *Cluster) GetOnPremiseSSHUser() string {
-	user, _ := misc.SplitPair(cluster.Conf.Secrets["onpremise-ssh-credential"].Value)
+	user, _ := misc.SplitPair(cluster.Conf.Secrets.Get("onpremise-ssh-credential").Value)
 	return user
 }
 
 func (cluster *Cluster) GetOnPremiseSSHPass() string {
-	_, pass := misc.SplitPair(cluster.Conf.Secrets["onpremise-ssh-credential"].Value)
+	_, pass := misc.SplitPair(cluster.Conf.Secrets.Get("onpremise-ssh-credential").Value)
 	return pass
 }
 
@@ -1478,7 +1478,7 @@ func (cluster *Cluster) GetVaultMonitorCredentials(client *vault.Client) (string
 }
 func (cluster *Cluster) GetVaultShardProxyCredentials(client *vault.Client) (string, string, error) {
 	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		user, pass := misc.SplitPair(cluster.Conf.Secrets["shardproxy-credential"].Value)
+		user, pass := misc.SplitPair(cluster.Conf.Secrets.Get("shardproxy-credential").Value)
 		if savedConf.IsPath(cluster.Conf.MdbsProxyCredential) {
 
 			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.MdbsProxyCredential)
@@ -1501,8 +1501,8 @@ func (cluster *Cluster) GetVaultShardProxyCredentials(client *vault.Client) (str
 
 func (cluster *Cluster) GetVaultProxySQLCredentials(client *vault.Client) (string, string, error) {
 	if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-		user := cluster.Conf.Secrets["proxysql-user"].Value
-		pass := cluster.Conf.Secrets["proxysql-password"].Value
+		user := cluster.Conf.Secrets.Get("proxysql-user").Value
+		pass := cluster.Conf.Secrets.Get("proxysql-password").Value
 		if savedConf.IsPath(cluster.Conf.ProxysqlUser) {
 			secret, err := client.KVv2(cluster.Conf.VaultMount).Get(context.Background(), cluster.Conf.ProxysqlUser)
 
@@ -1945,7 +1945,7 @@ func (cluster *Cluster) GetCompactJson() ([]byte, error) {
 		return nil, err
 	}
 
-	for crkey := range cluster.Conf.Secrets {
+	for crkey := range cluster.Conf.Secrets.Snapshot() {
 		result, err = sjson.SetBytes(result, fmt.Sprintf("config.%s", strcase.ToLowerCamel(crkey)), "*:*")
 		if err != nil {
 			return nil, err

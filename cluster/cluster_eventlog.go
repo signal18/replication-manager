@@ -219,7 +219,7 @@ func (cluster *Cluster) emitConfigChangeEvents(oldData []byte, newData []byte, s
 		// a random IV, so the same secret re-encrypted (e.g. after a restart
 		// when the ciphertext cache did not survive) produces different
 		// bytes — that is not a config change and must not emit an event.
-		if _, isSecret := cluster.Conf.Secrets[k]; isSecret && ook && nok &&
+		if _, isSecret := cluster.Conf.Secrets.Lookup(k); isSecret && ook && nok &&
 			strings.Contains(ov, "hash_") && strings.Contains(nv, "hash_") &&
 			cluster.Conf.DecryptSecretValue(k, ov) == cluster.Conf.DecryptSecretValue(k, nv) {
 			continue

@@ -121,7 +121,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.Conf.ProxysqlPassword, secretData_proxysql)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
-					new_password_proxysql = cluster.Conf.Secrets["proxysql-password"].Value
+					new_password_proxysql = cluster.Conf.Secrets.Get("proxysql-password").Value
 				}
 				cluster.SetClusterProxyCredentialsFromConfig()
 			}
@@ -241,27 +241,27 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 
 			var new_Secret config.Secret
-			new_Secret.OldValue = cluster.Conf.Secrets["db-servers-credential"].Value
+			new_Secret.OldValue = cluster.Conf.Secrets.Get("db-servers-credential").Value
 			new_Secret.Value = cluster.GetDbUser() + ":" + new_password_db
-			cluster.Conf.Secrets["db-servers-credential"] = new_Secret
+			cluster.Conf.Secrets.Set("db-servers-credential", new_Secret)
 
-			new_Secret.OldValue = cluster.Conf.Secrets["replication-credential"].Value
+			new_Secret.OldValue = cluster.Conf.Secrets.Get("replication-credential").Value
 			new_Secret.Value = cluster.GetRplUser() + ":" + new_password_rpl
-			cluster.Conf.Secrets["replication-credential"] = new_Secret
+			cluster.Conf.Secrets.Set("replication-credential", new_Secret)
 			cluster.MarkSecretVersionStoreDirty()
 
 			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("proxysql-password") {
-				new_Secret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
+				new_Secret.OldValue = cluster.Conf.Secrets.Get("proxysql-password").Value
 				new_Secret.Value = new_password_proxysql
-				cluster.Conf.Secrets["proxysql-password"] = new_Secret
+				cluster.Conf.Secrets.Set("proxysql-password", new_Secret)
 				cluster.SetClusterProxyCredentialsFromConfig()
 			}
 
 			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("shardproxy-credential") {
 				var new_Secret config.Secret
-				new_Secret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
+				new_Secret.OldValue = cluster.Conf.Secrets.Get("shardproxy-credential").Value
 				new_Secret.Value = cluster.GetShardUser() + ":" + new_password_shard
-				cluster.Conf.Secrets["shardproxy-credential"] = new_Secret
+				cluster.Conf.Secrets.Set("shardproxy-credential", new_Secret)
 				cluster.SetClusterProxyCredentialsFromConfig()
 			}
 
@@ -346,7 +346,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 func (cluster *Cluster) SendVaultTokenByMail(Conf *config.Config) error {
 	subj := "Replication-Manager Vault Token"
-	msg := "Here's your vault token: " + Conf.Secrets["vault-token"].Value + ". This token allows you to view your passwords at the following address in complete security.\n" + Conf.VaultServerAddr
+	msg := "Here's your vault token: " + Conf.Secrets.Get("vault-token").Value + ". This token allows you to view your passwords at the following address in complete security.\n" + Conf.VaultServerAddr
 
 	e := email.NewEmail()
 	e.From = Conf.MailFrom
@@ -374,9 +374,9 @@ func (cluster *Cluster) SendVaultTokenByMail(Conf *config.Config) error {
 		}
 	} else {
 		if Conf.MailSMTPTLSSkipVerify {
-			err = e.SendWithTLS(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, strings.Split(Conf.MailSMTPAddr, ":")[0]), &tls.Config{InsecureSkipVerify: true})
+			err = e.SendWithTLS(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets.Get("mail-smtp-password").Value, strings.Split(Conf.MailSMTPAddr, ":")[0]), &tls.Config{InsecureSkipVerify: true})
 		} else {
-			err = e.Send(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, strings.Split(Conf.MailSMTPAddr, ":")[0]))
+			err = e.Send(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets.Get("mail-smtp-password").Value, strings.Split(Conf.MailSMTPAddr, ":")[0]))
 		}
 	}
 	if err != nil {
@@ -419,7 +419,7 @@ func (cluster *Cluster) AddDockerPrivateRegistryCredentials(registry, user, pass
 	var new_secret config.Secret
 	new_secret.Value = cluster.Conf.ProvDockerRegistryCredentials
 	new_secret.OldValue = cluster.Conf.GetDecryptedValue("prov-docker-registry-credentials")
-	cluster.Conf.Secrets["prov-docker-registry-credentials"] = new_secret
+	cluster.Conf.Secrets.Set("prov-docker-registry-credentials", new_secret)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials added for %s", registry)
 
@@ -459,7 +459,7 @@ func (cluster *Cluster) DeleteDockerPrivateRegistryCredentials(registry, user st
 	var new_secret config.Secret
 	new_secret.Value = cluster.Conf.ProvDockerRegistryCredentials
 	new_secret.OldValue = cluster.Conf.GetDecryptedValue("prov-docker-registry-credentials")
-	cluster.Conf.Secrets["prov-docker-registry-credentials"] = new_secret
+	cluster.Conf.Secrets.Set("prov-docker-registry-credentials", new_secret)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials added for %s", registry)
 

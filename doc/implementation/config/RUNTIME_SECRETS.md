@@ -27,9 +27,11 @@ a rebuild: the map's older value comes back, and the next save writes it.
    change `Conf.Secrets` then call `SaveConfig`; the reload that follows rereads the saved
    value. A new setter that does not go through `setClusterSetting` saves too, or calls
    `RememberSecret`.
-4. **`DynamicFlagMap` writes are locked.** `RememberSecret` writes under
-   `dynamicFlagMapMu` (package level: `Config` is copied by value), and the secret reads of
-   `DecryptSecretsFromConfig` / `GetStableEncryptedValue` take it. `Conf.Secrets` itself
-   is not locked: concurrent secret setters race on it (to fix separately).
+4. **Secrets are locked.** `Conf.Secrets` is a `*SecretMap` (#2039): every access goes
+   through `Get`, `Lookup`, `Set`, `Delete`, `Snapshot` (to range over a copy) or
+   `Replace` (the rebuild swaps the whole set at once), under its own RWMutex; copies of
+   a `Config` share the store, as they shared the map. `RememberSecret` writes the
+   `DynamicFlagMap` under `dynamicFlagMapMu` (package level: `Config` is copied by value),
+   and the secret reads of `DecryptSecretsFromConfig` / `GetStableEncryptedValue` take it.
 
-Tests: `config/config_remember_secret_test.go`, `cluster/cluster_tag_credentials_test.go`.
+Tests: `config/config_remember_secret_test.go`, `config/secrets_test.go` (concurrent setters, readers and rebuilds, run with `-race`), `cluster/cluster_tag_credentials_test.go`.

@@ -275,7 +275,7 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 		var new_secret config.Secret
 		new_secret.Value = cluster.Conf.APIUsersExternal
 		new_secret.OldValue = cluster.Conf.GetDecryptedValue("api-credentials-external")
-		cluster.Conf.Secrets["api-credentials-external"] = new_secret
+		cluster.Conf.Secrets.Set("api-credentials-external", new_secret)
 
 		// Assign ACL before reloading
 		new_acl := user + ":" + grants + ":" + cluster.Name

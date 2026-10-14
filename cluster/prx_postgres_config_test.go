@@ -17,10 +17,10 @@ func TestPostgresProxyCredential(t *testing.T) {
 		{"write heartbeat credential", true, "heartbeat", "heartbeatpass"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cl := &Cluster{Conf: &config.Config{Secrets: map[string]config.Secret{
+			cl := &Cluster{Conf: &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{
 				"db-servers-credential":                 {Value: "repman:dbpass"},
 				"monitoring-write-heartbeat-credential": {Value: "heartbeat:heartbeatpass"},
-			}}}
+			})}}
 			if tc.heartbeatConfigured {
 				cl.Conf.MonitorWriteHeartbeatCredential = "configured"
 			}
@@ -48,10 +48,10 @@ func TestPostgresProxySQLUsers(t *testing.T) {
 		{"same user, different passwords", "repman:otherpass", []string{"repman:otherpass"}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cl := &Cluster{Conf: &config.Config{Secrets: map[string]config.Secret{
+			cl := &Cluster{Conf: &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{
 				"db-servers-credential":                 {Value: "repman:dbpass"},
 				"monitoring-write-heartbeat-credential": {Value: tc.heartbeat},
-			}}}
+			})}}
 			if tc.heartbeat != "" {
 				cl.Conf.MonitorWriteHeartbeatCredential = "configured"
 			}

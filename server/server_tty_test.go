@@ -241,9 +241,9 @@ func TestSetSessionValuesFromApp(t *testing.T) {
 			OnPremiseSSHPort:       2200,
 			OnPremiseSSH:           true,
 			OnPremiseSSHPrivateKey: "",
-			Secrets: map[string]config.Secret{
+			Secrets: config.NewSecrets(map[string]config.Secret{
 				"onpremise-ssh-credential": {Value: "sshuser:sshpass"},
-			},
+			}),
 		},
 		OsUser: &user.User{HomeDir: "/tmp"},
 	}

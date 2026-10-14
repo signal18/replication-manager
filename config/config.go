@@ -1100,7 +1100,7 @@ type Config struct {
 	MeasurementAutoClampLimit              bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                             bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Apps                                   []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps" groups:"apps"`
-	Secrets                                map[string]Secret      `toml:"-" json:"-"`
+	Secrets                                *SecretMap             `toml:"-" json:"-"` // locked (#2039)
 	SecretKey                              []byte                 `toml:"-" json:"-"`
 	ImmuableFlagMap                        map[string]interface{} `toml:"-" json:"-"`
 	DynamicFlagMap                         map[string]interface{} `toml:"-" json:"-"`
@@ -1868,12 +1868,13 @@ func (conf *Config) GetInstancePATName() string {
 }
 
 func (conf *Config) GetSecrets() map[string]Secret {
-	// to store the flags to encrypt in the git (in Save() function)
-	return conf.Secrets
+	// to store the flags to encrypt in the git (in Save() function): a copy, read without
+	// holding the lock (#2039)
+	return conf.Secrets.Snapshot()
 }
 
 func (conf *Config) DecryptSecretsFromConfig() {
-	conf.Secrets = map[string]Secret{
+	secrets := map[string]Secret{
 		"api-credentials":                       {},
 		"api-credentials-external":              {},
 		"db-servers-credential":                 {},
@@ -1904,7 +1905,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"api-oauth-client-secret":               {},
 		"meet-token":                            {}}
 
-	for k := range conf.Secrets {
+	for k := range secrets {
 
 		origin_value, ok := conf.dynamicFlag(k)
 		if !ok {
@@ -1929,7 +1930,13 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		}
 		secret.Value = conf.DecryptSecretValue(k, secret.Value)
 		//log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
-		conf.Secrets[k] = secret
+		secrets[k] = secret
+	}
+	// swapped in at once, under the store's lock (#2039)
+	if conf.Secrets == nil {
+		conf.Secrets = NewSecrets(secrets)
+	} else {
+		conf.Secrets.Replace(secrets)
 	}
 }
 
@@ -1939,7 +1946,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 // the map's older value came back and the next save wrote it (#2017: preprod belair-mcs
 // lost the root password a create-child had set, at the first tag added, then at restart).
 func (conf *Config) RememberSecret(key string) {
-	sec, ok := conf.Secrets[key]
+	sec, ok := conf.Secrets.Lookup(key)
 	if !ok || conf.DynamicFlagMap == nil {
 		return
 	}
@@ -2022,7 +2029,7 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	if value == "" {
 		return ""
 	}
-	sec, ok := conf.Secrets[key]
+	sec, ok := conf.Secrets.Lookup(key)
 	if ok && sec.Crypted != "" && conf.DecryptSecretValue(key, sec.Crypted) == value {
 		return sec.Crypted
 	}
@@ -2042,7 +2049,7 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 			if strings.Contains(s, "hash_") && conf.DecryptSecretValue(key, s) == value {
 				if ok {
 					sec.Crypted = s
-					conf.Secrets[key] = sec
+					conf.Secrets.Set(key, sec)
 				}
 				return s
 			}
@@ -2051,7 +2058,7 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	enc := conf.EncryptSecretValue(value)
 	if ok {
 		sec.Crypted = enc
-		conf.Secrets[key] = sec
+		conf.Secrets.Set(key, sec)
 	}
 	return enc
 }
@@ -2077,7 +2084,7 @@ func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key s
 }
 
 func (conf *Config) DecryptSecretsFromVault() {
-	for k, v := range conf.Secrets {
+	for k, v := range conf.Secrets.Snapshot() {
 		origin_value := v.Value
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
@@ -2098,7 +2105,7 @@ func (conf *Config) DecryptSecretsFromVault() {
 			} else {
 				log.Printf("Unable to initialize AppRole auth method: %v", err)
 			}
-			conf.Secrets[k] = secret
+			conf.Secrets.Set(k, secret)
 		}
 	}
 }
@@ -2383,7 +2390,7 @@ func (conf *Config) GetEncryptedString(str string) string {
 }
 
 func (conf *Config) GetDecryptedValue(key string) string {
-	return conf.Secrets[key].Value
+	return conf.Secrets.Get(key).Value
 }
 
 func (conf *Config) PrintSecret(value string) string {
@@ -3797,7 +3804,7 @@ func (conf *Config) GetImmutableChecksum() (hash.Hash, error) {
 	Container := make([]string, 0)
 
 	for k, v := range conf.ImmuableFlagMap {
-		if _, ok := conf.Secrets[k]; !ok {
+		if _, ok := conf.Secrets.Lookup(k); !ok {
 			Container = append(Container, fmt.Sprintf("%s=%v", k, v))
 		}
 	}
@@ -3818,7 +3825,7 @@ func (conf *Config) GetSecretChecksum() (hash.Hash, error) {
 
 	Container := make([]string, 0)
 
-	for k, v := range conf.Secrets {
+	for k, v := range conf.Secrets.Snapshot() {
 		Container = append(Container, fmt.Sprintf("%s=%v", k, v))
 	}
 
@@ -3858,8 +3865,8 @@ func (conf *Config) CreateGitlabProjects() {
 	repopath := conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
 	name := conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
 
-	githelper.GitLabCreateProject(conf.Secrets["git-acces-token"].Value, name, repopath, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
-	githelper.GitLabCreatePullProject(conf.Secrets["git-acces-token"].Value, name, repopath, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
+	githelper.GitLabCreateProject(conf.Secrets.Get("git-acces-token").Value, name, repopath, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
+	githelper.GitLabCreatePullProject(conf.Secrets.Get("git-acces-token").Value, name, repopath, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 }
 
 func (conf *Config) SetMailSmtpAddr(value string) {
