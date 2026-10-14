@@ -142,10 +142,8 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 	columnstore := plan.Topology == config.TopoColumnstore
 	plan.DBCount = req.DBCount
 	if plan.DBCount == 0 {
+		// ColumnStore: equal servers, each a UM and a PM holding a dbroot (#2021)
 		plan.DBCount = mode.dbCount
-		if columnstore {
-			plan.DBCount = 1 // the UM; the PMs join it later
-		}
 	}
 	if plan.DBCount < 1 || plan.DBCount > childMaxDBCount {
 		return plan, fmt.Errorf("dbCount must be between 1 and %d", childMaxDBCount)
@@ -163,6 +161,7 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 	plan.Notes = append(plan.Notes, "configurator tags: the parent's ("+parent.Conf.ProvTags+")")
 	if columnstore {
 		plan.Notes = append(plan.Notes, "each table of the parent's backup is converted to ColumnStore at the seed: keys removed, types widened or mapped (the log lists every change)")
+		plan.Notes = append(plan.Notes, fmt.Sprintf("%d ColumnStore servers, each its own failover service holding a dbroot; the master is seeded, the others replicate its schema", plan.DBCount))
 	}
 	plan.DBUPerNode = parent.Conf.ProvDbDbu
 	plan.Proxy = childProxyType(parent)

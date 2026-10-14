@@ -28,6 +28,12 @@ func TestDBFailoverPlacement(t *testing.T) {
 		t.Fatalf("pinned service on its agent only, got %q", got)
 	}
 
+	// #2021: each ColumnStore server holds a dbroot, none a copy of another
+	cluster.Conf.TopologyTarget = config.TopoColumnstore
+	if !cluster.dbFailoverPlacement() {
+		t.Fatal("columnstore on volumes with a failover pool: each server is placed for failover")
+	}
+
 	cluster.Conf.TopologyTarget = config.TopoActivePassive
 	if !cluster.dbFailoverPlacement() {
 		t.Fatal("active-passive on volumes with a failover pool is placed for failover")
@@ -54,7 +60,7 @@ func TestDBFailoverPlacement(t *testing.T) {
 
 	cluster.Conf.ProvAgents = "s18-fr-5"
 	if err := srv.applyDBFailoverPlacement(dbFailoverTestSections(srv), nil); err == nil {
-		t.Fatal("one agent: refused, an active-passive server on one node is not active-passive")
+		t.Fatal("one agent: refused, a failover server on one node does not fail over")
 	}
 
 	cluster.Conf.ProvVolumeDataFailover = ""

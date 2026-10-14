@@ -20,12 +20,14 @@ import (
 // server's agents (failover, orchestrate ha) over a failover-capable pool
 // (prov-db-volume-data-failover, DRBD), so OpenSVC moves it with its data when its node is
 // lost. Replicated topologies keep one server pinned per node: replication is their HA.
+// ColumnStore is the exception (#2021): each server holds a dbroot of the shared data,
+// none is a copy of another, so each is its own failover service, every dbroot alive.
 // Stop, start and restart already follow the node the service runs on (placementNode).
 
 // dbFailoverPlacement tells whether the cluster's database services are placed for
-// failover: active-passive, volume disks, a failover pool set.
+// failover: active-passive or columnstore, volume disks, a failover pool set.
 func (cluster *Cluster) dbFailoverPlacement() bool {
-	return cluster.HasConfigTopoActivePassive() && cluster.Conf.ProvDiskType == "volume" &&
+	return (cluster.HasConfigTopoActivePassive() || cluster.HasConfigTopoColumnstore()) && cluster.Conf.ProvDiskType == "volume" &&
 		strings.TrimSpace(cluster.Conf.ProvVolumeDataFailover) != ""
 }
 
@@ -49,13 +51,13 @@ func (server *ServerMonitor) dbFailoverNodes() []string {
 // the service's containers shared (one instance at a time; without it the pool provisions the
 // volume's filesystem on every node and the peer's mkfs on the read-only DRBD device fails,
 // then its rollback wipes the peer's DRBD resource: dev3, 2026-10-12). Fewer than two
-// nodes is refused: an active-passive server on one node only is not active-passive.
+// nodes is refused: a failover server on one node only does not fail over.
 func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[string]string, nodes []string) error {
 	if len(nodes) == 0 {
 		nodes = server.dbFailoverNodes()
 	}
 	if len(nodes) < 2 {
-		return fmt.Errorf("active-passive %s needs at least two agents to fail over (prov-db-agents), found %q", server.URL, strings.Join(nodes, ","))
+		return fmt.Errorf("failover database service %s needs at least two agents (prov-db-agents), found %q", server.URL, strings.Join(nodes, ","))
 	}
 	def := svcsection["DEFAULT"]
 	def["nodes"] = strings.Join(nodes, " ")
@@ -78,7 +80,7 @@ func (server *ServerMonitor) applyDBFailoverPlacement(svcsection map[string]map[
 		}
 	}
 	server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
-		"Active-passive %s placed for failover on %s, data on pool %s", server.URL, def["nodes"], server.ClusterGroup.Conf.ProvVolumeDataFailover)
+		"Database service %s placed for failover on %s, data on pool %s", server.URL, def["nodes"], server.ClusterGroup.Conf.ProvVolumeDataFailover)
 	return nil
 }
 
