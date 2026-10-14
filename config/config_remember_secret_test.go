@@ -7,8 +7,8 @@ import (
 	"github.com/signal18/replication-manager/utils/crypto"
 )
 
-// #2017: a credential set at runtime, then a database tag added (which rebuilds the
-// secrets from the config maps): the runtime value stays, not the map's older one.
+// #2017: a credential set at runtime, then a rebuild of the secrets from the config maps
+// (a cluster init): the runtime value stays, not the map's older one.
 func TestRememberSecretSurvivesRederive(t *testing.T) {
 	keyPath := filepath.Join(t.TempDir(), "key")
 	key, _ := crypto.Keygen()
@@ -29,7 +29,7 @@ func TestRememberSecretSurvivesRederive(t *testing.T) {
 	conf.Secrets["db-servers-credential"] = Secret{Value: "root:parent88", OldValue: "root:oldpw7"}
 	conf.RememberSecret("db-servers-credential")
 
-	conf.DecryptSecretsFromConfig() // what AddDBTagConfig does through SetClusterCredentialsFromConfig
+	conf.DecryptSecretsFromConfig() // what a cluster init (InitFromConf) does; tag changes no longer do it
 	if got := conf.Secrets["db-servers-credential"].Value; got != "root:parent88" {
 		t.Fatalf("after re-derivation %q, want root:parent88", got)
 	}

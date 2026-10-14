@@ -62,8 +62,7 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 	if !cluster.Configurator.HaveDBTag(tag) {
 		cluster.Configurator.AddDBTag(tag)
 		cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
-		// no credential rebuild here (#2017): a leftover of SetClusterVariablesFromConfig since
-		// b5a56fddd, it brought an older password back over the one set at runtime
+		// tags only, never the credentials (#2017)
 	}
 }
 
@@ -100,8 +99,7 @@ func (cluster *Cluster) AddDBTag(tag string, dynamic bool) {
 func (cluster *Cluster) AddProxyTag(tag string) {
 	cluster.Configurator.AddProxyTag(tag)
 	cluster.Conf.ProvProxTags = cluster.Configurator.GetConfigProxyTags()
-	// no credential rebuild here (#2017): a leftover of SetClusterVariablesFromConfig since
-	// b5a56fddd, it brought an older password back over the one set at runtime
+	// tags only, never the credentials (#2017)
 	cluster.SetProxiesRestartCookie()
 }
 

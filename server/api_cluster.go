@@ -5365,13 +5365,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		return errors.New("setting not found")
 	}
+	// a secret set here must survive the next re-derivation of the secrets from the config
+	// maps (#2017); recorded before the version store is reconciled
+	mycluster.Conf.RememberSecret(name)
 	if trackedSecretSnapshotChanged(trackedSecretsBefore, mycluster.TrackedSecretCompareSnapshot()) {
 		mycluster.MarkSecretVersionStoreDirty()
 		mycluster.ReconcileSecretVersionStore()
 	}
-	// a secret set here must survive the next re-derivation of the secrets from the config
-	// maps (#2017)
-	mycluster.Conf.RememberSecret(name)
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
