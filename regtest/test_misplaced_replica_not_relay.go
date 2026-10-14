@@ -9,6 +9,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // TestMisplacedReplicaNotRelay covers #2027 and #2028: a replica misplaced under another
@@ -42,6 +43,10 @@ func (regtest *RegTest) TestMisplacedReplicaNotRelay(cl *cluster.Cluster, conf s
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL: "+format, args...)
 		return false
 	}
+	// Server-level states are keyed CODE@url.
+	inState := func(code string, s *cluster.ServerMonitor) bool {
+		return cl.StateMachine.IsInState(state.BuildStateKey(code, s.URL))
+	}
 	isUnder := func(s, parent *cluster.ServerMonitor) bool {
 		src, _ := cl.GetMasterFromReplication(s)
 		return src != nil && src.Id == parent.Id
@@ -69,17 +74,17 @@ func (regtest *RegTest) TestMisplacedReplicaNotRelay(cl *cluster.Cluster, conf s
 		return fail("cannot point %s to %s: %s", misplaced.URL, upper.URL, err)
 	}
 	misplaced.StartSlave()
-	if !waitFor(30*time.Second, func() bool { return isUnder(misplaced, upper) && cl.StateMachine.IsInState("ERR00064") }) {
-		return fail("%s under %s not detected (ERR00064=%t)", misplaced.URL, upper.URL, cl.StateMachine.IsInState("ERR00064"))
+	if !waitFor(30*time.Second, func() bool { return isUnder(misplaced, upper) && inState("ERR00064", misplaced) }) {
+		return fail("%s under %s not detected (under=%t ERR00064=%t)", misplaced.URL, upper.URL, isUnder(misplaced, upper), inState("ERR00064", misplaced))
 	}
 
 	// 2. upper stays a plain, electable Slave.
 	misplaced.StopSlave()
 	ticks := time.Duration(3*cl.Conf.MonitoringTicker) * time.Second
 	if waitFor(ticks, func() bool {
-		return upper.IsRelay || cl.StateMachine.IsInState("ERR00032") || cl.StateMachine.IsInState("ERR00036")
+		return upper.IsRelay || cl.StateMachine.IsInState("ERR00032") || inState("ERR00036", upper)
 	}) {
-		return fail("%s treated as a relay (IsRelay=%t state=%s ERR00032=%t ERR00036=%t)", upper.URL, upper.IsRelay, upper.State, cl.StateMachine.IsInState("ERR00032"), cl.StateMachine.IsInState("ERR00036"))
+		return fail("%s treated as a relay (IsRelay=%t state=%s ERR00032=%t ERR00036=%t)", upper.URL, upper.IsRelay, upper.State, cl.StateMachine.IsInState("ERR00032"), inState("ERR00036", upper))
 	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s stays %s and electable", upper.URL, upper.State)
 
