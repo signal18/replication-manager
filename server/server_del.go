@@ -8,9 +8,11 @@ package server
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/opensvc"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -64,4 +66,33 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Cluster %s is deleted\n", clusterName)
 	return nil
 
+}
+
+// removeLegacyP12Pem repairs the working directory of releases where every om3 call wrote
+// the OpenSVC client key, certificate and chain into the cluster's directory: it removes
+// them from every directory, deleted clusters' included. One that then holds nothing and
+// belongs to no cluster is removed: the late writes left it behind when DeleteCluster ran,
+// and its presence alone made the name unusable ("cluster already exists").
+func (repman *ReplicationManager) removeLegacyP12Pem() {
+	entries, err := os.ReadDir(repman.Conf.WorkingDir)
+	if err != nil {
+		return
+	}
+	known := map[string]bool{}
+	for _, name := range repman.ClusterList {
+		known[name] = true
+	}
+	for _, e := range entries {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		dir := filepath.Join(repman.Conf.WorkingDir, e.Name())
+		opensvc.RemoveLegacyP12Pem(dir)
+		if known[e.Name()] {
+			continue
+		}
+		if rest, err := os.ReadDir(dir); err == nil && len(rest) == 0 && os.Remove(dir) == nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Removed the leftover directory of deleted cluster %s", e.Name())
+		}
+	}
 }
