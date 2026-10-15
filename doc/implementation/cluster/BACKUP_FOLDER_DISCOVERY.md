@@ -71,7 +71,9 @@ foreign archive is read again only when asked.
    `isSplitDumpDir` (reseed path) is unchanged: the manifest only exists since
    2026-04-14 and it runs on the mysqldump reseed path only.
 6. Settle: an entry modified within `backupDiscoverySettle` (1 min; a folder:
-   any of its files, `artifactChangedSince`) is left to the next scan.
+   any of its files, `artifactChangedSince`) is left to the next scan; one that
+   can not be checked (a permission, a walk error) too, logged apart at WARN
+   with its error, not as a copy still running.
 7. `registerDiscoveredBackup`: id = the artifact's mtime (unix), bumped while
    taken in the map or by a meta file (ids follow the folder's sorted order;
    the meta file keeps the id once written); `BackupLine` ad hoc (the meta file name
@@ -105,7 +107,14 @@ position fields, the times, `Completed` and `DiscoveryNote`:
   its completion not checked; without a position it is refused like any.
 - splitdump folder: `splitdump.ReadMetadata` for the position;
   `ReadManifest` + `ValidateManifest`, then each listed file must exist (not
-  read: a splitdump can be large). No manifest: registered, noted.
+  read: a splitdump can be large). No manifest: not completed. The splitter
+  writes it last (`SplitDumpLineParser`, after `metadata`; every splitdump
+  since 3.1.24 has one), so a folder without it may be a dump or a copy that
+  did not end, and its files can not be checked; the manifest arriving changes
+  the file count and the refresh pass inspects it again. The `metadata` and
+  `manifest` of a folder are read through `readDiscoverySmallFile`
+  (`discoveryArchiveSmallFile`, 16 MiB at most), in `classifyBackupArtifact`
+  too: an unrelated folder's large `metadata` is never loaded whole.
 - `.tar.enc`: `readDiscoveredArchive` reads the decrypted tar stream to its
   end through `openRestoreArtifactStream` (its integrity code is checked; a
   foreign key fails it), keeping in memory its members' base names
@@ -203,7 +212,8 @@ unregistered, one scan per server, the per-scan cap, the refusal while a
 backup runs, a backup without a position (noted, refused; a mydumper folder's
 position read), both mydumper metadata forms, an archive classified by its
 content, the archive member cap, the retry on request, a file without a dump
-client's header. `cluster_acl_test.go`: the reseed route needs
+client's header, a splitdump without its manifest (not completed, then
+completed once it arrives), the bounded read of a folder's small files. `cluster_acl_test.go`: the reseed route needs
 `db-restore`.
 
 Regtest (T13, real servers): `testBackupDiscovery` (`regtest/test_backup_discovery.go`,

@@ -128,7 +128,10 @@ func (server *ServerMonitor) discoverBackups(retry bool) ([]*backupmgr.BackupMet
 		if !ok {
 			continue
 		}
-		if changed, err := artifactChangedSince(path, time.Now().Add(-backupDiscoverySettle)); err != nil || changed {
+		if changed, err := artifactChangedSince(path, time.Now().Add(-backupDiscoverySettle)); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: %s can not be checked, left to the next discovery: %s", server.URL, path, err)
+			continue
+		} else if changed {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup discovery on %s: %s changed in the last %s (still being written?), left to the next discovery", server.URL, path, backupDiscoverySettle)
 			continue
 		}
@@ -310,7 +313,7 @@ func classifyBackupArtifact(path string, entry os.DirEntry) (tool string, split,
 	if fileExists(filepath.Join(path, "manifest")) {
 		return config.ConstBackupLogicalTypeMysqldump, true, true
 	}
-	if data, err := os.ReadFile(filepath.Join(path, "metadata")); err == nil {
+	if data, err := readDiscoverySmallFile(filepath.Join(path, "metadata")); err == nil {
 		if strings.Contains(string(data), "Started dump at") {
 			return config.ConstBackupLogicalTypeMydumper, false, true
 		}
@@ -412,7 +415,7 @@ func (server *ServerMonitor) inspectDiscoveredBackup(meta *backupmgr.BackupMetad
 		inspectDiscoveredFolder(meta, archive.read, archive.exists, fail)
 	case meta.SplitDump || meta.BackupTool == config.ConstBackupLogicalTypeMydumper:
 		dir := meta.Dest
-		read := func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(dir, name)) }
+		read := func(name string) ([]byte, error) { return readDiscoverySmallFile(filepath.Join(dir, name)) }
 		exists := func(name string) bool { return fileExists(filepath.Join(dir, name)) }
 		inspectDiscoveredFolder(meta, read, exists, fail)
 	default:
@@ -455,9 +458,11 @@ func inspectDiscoveredFolder(meta *backupmgr.BackupMetadata, read func(string) (
 				meta.BinLogFileName, meta.BinLogFilePos, meta.BinLogGtid = m.File, m.Position, m.GTID
 			}
 		}
+		// splitdump writes its manifest last (every splitdump since 3.1.24 has one): without
+		// it, the dump or its copy may not have ended
 		data, err := read("manifest")
 		if errors.Is(err, os.ErrNotExist) {
-			meta.DiscoveryNote = "no manifest: its files are not checked against one"
+			fail("no manifest: an incomplete dump or copy, or a splitdump written before 3.1.24; its files can not be checked")
 			return
 		}
 		var m *splitdump.Manifest
@@ -516,8 +521,27 @@ func parseDiscoveredMyDumperPosition(data []byte) (file string, pos uint64, gtid
 	return file, pos, gtid
 }
 
-// discoveryArchiveSmallFile bounds the manifest and metadata files read from an archive.
+// discoveryArchiveSmallFile bounds the manifest and metadata files read from an archive or a
+// folder.
 const discoveryArchiveSmallFile = 16 << 20
+
+// readDiscoverySmallFile reads a manifest or metadata file of a folder, discoveryArchiveSmallFile
+// at most: a larger one is no backup's.
+func readDiscoverySmallFile(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, discoveryArchiveSmallFile+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > discoveryArchiveSmallFile {
+		return nil, fmt.Errorf("%s is larger than %d bytes", filepath.Base(path), discoveryArchiveSmallFile)
+	}
+	return data, nil
+}
 
 // discoveredArchive is what the read of an encrypted folder archive kept, in memory: its
 // members' names and its manifest and metadata files. A splitdump or mydumper folder is flat:

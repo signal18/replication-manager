@@ -638,3 +638,49 @@ func TestDiscoverNotADumpClientFile(t *testing.T) {
 		t.Fatalf("reseed: %v", err)
 	}
 }
+
+// A splitdump folder without its manifest, which splitdump writes last, is not completed (an
+// incomplete dump or copy); once the manifest arrives, it is inspected again and completed.
+func TestDiscoverSplitdumpWithoutManifest(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	path := filepath.Join(dir, "copy-split")
+	writeDiscoverySplitdump(t, path, false)
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 {
+		t.Fatalf("found %d, err %v", len(found), err)
+	}
+	m := found[0]
+	if m.Completed || !strings.Contains(m.DiscoveryNote, "no manifest") {
+		t.Fatalf("without a manifest: %+v", m)
+	}
+	if err := c.ReseedFromBackupID(server, m.Id); err == nil || !strings.Contains(err.Error(), "no manifest") {
+		t.Fatalf("reseed: %v", err)
+	}
+	if err := splitdump.WriteManifest(path, &splitdump.Manifest{Version: 1, Schema: []string{"app.t-schema.sql.gz"}, Data: []string{"app.t.00000.sql.gz"}}); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Hour)
+	os.Chtimes(filepath.Join(path, "manifest"), old, old)
+	again, err := server.DiscoverBackups()
+	if err != nil || len(again) != 1 || again[0].Id != m.Id || !again[0].Completed {
+		t.Fatalf("with its manifest: %v %+v", err, again)
+	}
+}
+
+// A metadata or manifest file is read up to discoveryArchiveSmallFile: a larger one is no
+// backup's.
+func TestReadDiscoverySmallFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata")
+	if err := os.WriteFile(path, make([]byte, discoveryArchiveSmallFile+1), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readDiscoverySmallFile(path); err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("over the bound: %v", err)
+	}
+	if err := os.Truncate(path, discoveryArchiveSmallFile); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := readDiscoverySmallFile(path); err != nil || len(data) != discoveryArchiveSmallFile {
+		t.Fatalf("at the bound: %d %v", len(data), err)
+	}
+}

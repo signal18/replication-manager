@@ -69,9 +69,10 @@ The backup is read as a restore would read it:
   `--skip-comments`) is listed with a note saying so: its completion is not
   checked.
 - **splitdump folder**: its position comes from its `metadata` file; every file
-  its manifest lists must be there. A splitdump without a manifest (written
-  before the manifest existed) is registered, its files not checked against
-  one.
+  its manifest lists must be there. splitdump writes its manifest last: a
+  splitdump without one (an incomplete dump or copy, or one written before
+  3.1.24) is registered as not completed, and inspected again once its manifest
+  arrives.
 - **encrypted backup**: decrypted with this replication-manager's backup keys,
   current and previous, and read to its end. An encrypted splitdump or
   mydumper archive (`.tar.enc`) is then checked as its folder would be: the
