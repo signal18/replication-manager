@@ -636,34 +636,48 @@ func (cluster *Cluster) waitLongRunningWrites(server *ServerMonitor) bool {
 		cluster.SetState("WARN0217", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0217"], server.URL, found, cluster.Conf.SwitchWaitWrite, outcome), ErrFrom: "SWITCHOVER", ServerUrl: server.URL})
 	}
 	setWaitState(fmt.Sprintf("waiting up to switchover-wait-trx=%ds for them to complete", cluster.Conf.SwitchWaitTrx))
+	// WARN once when the wait starts, with the sessions, and once with the outcome: a WARN
+	// line goes to the alert channels, so the progress every 2 s is DEBUG (#2065). The live
+	// count is SwitchoverLongWriteWait in the cluster JSON, the outcome is WARN0217.
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long updates running on master %s: %d write query/transaction past switchover-wait-write-query=%ds, waiting up to switchover-wait-trx=%ds for them to complete", server.URL, qt, cluster.Conf.SwitchWaitWrite, cluster.Conf.SwitchWaitTrx)
+	cluster.logLongRunningWrites(server, config.LvlWarn)
 	for qt > 0 && time.Now().Before(deadline) {
 		cluster.SwitchoverLongWriteWait = &LongWriteWait{ServerURL: server.URL, Count: qt, Since: cluster.SwitchoverLongWriteWait.Since, Deadline: deadline}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long updates running on master %s: %d write query/transaction past switchover-wait-write-query=%ds, waiting for them to complete, %ds left of switchover-wait-trx=%ds", server.URL, qt, cluster.Conf.SwitchWaitWrite, int(time.Until(deadline).Seconds()), cluster.Conf.SwitchWaitTrx)
-		cluster.logLongRunningWrites(server)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Long updates running on master %s: %d write query/transaction, %ds left of switchover-wait-trx=%ds", server.URL, qt, int(time.Until(deadline).Seconds()), cluster.Conf.SwitchWaitTrx)
 		time.Sleep(2 * time.Second)
 		qt, logs, err = dbhelper.CheckLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
 		cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "CheckLongRunningWrites")
 	}
 	if qt > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long updates running on master. Cannot switchover: %d write query/transaction on %s still past switchover-wait-write-query=%ds after switchover-wait-trx=%ds, not killed (rollback time unknown)", qt, server.URL, cluster.Conf.SwitchWaitWrite, cluster.Conf.SwitchWaitTrx)
-		cluster.logLongRunningWrites(server)
+		cluster.logLongRunningWrites(server, config.LvlWarn)
 		setWaitState(fmt.Sprintf("still running after switchover-wait-trx=%ds, switchover cancelled", cluster.Conf.SwitchWaitTrx))
 		return false
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Long updates on master %s completed, proceeding with switchover", server.URL)
-	setWaitState(fmt.Sprintf("completed after %ds, switchover proceeding", int(time.Since(since).Seconds())))
+	waited := int(time.Since(since).Seconds())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long updates on master %s completed after %ds, proceeding with switchover", server.URL, waited)
+	setWaitState(fmt.Sprintf("completed after %ds, switchover proceeding", waited))
 	return true
 }
 
-// logLongRunningWrites logs one line per session the long-write guard counts.
-func (cluster *Cluster) logLongRunningWrites(server *ServerMonitor) {
+// longRunningWritesLogged caps the sessions logLongRunningWrites lists: each line goes to
+// the alert channels, a master with hundreds of long sessions must not send hundreds (#2065).
+const longRunningWritesLogged = 10
+
+// logLongRunningWrites logs one line per session the long-write guard counts, at level, the
+// first longRunningWritesLogged of them and a line for the rest.
+func (cluster *Cluster) logLongRunningWrites(server *ServerMonitor, level string) {
 	pl, logs, err := dbhelper.GetLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
 	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "GetLongRunningWrites")
 	if err != nil {
 		return
 	}
+	if len(pl) > longRunningWritesLogged {
+		defer cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, level, "Long update on %s: %d more session(s) not listed", server.URL, len(pl)-longRunningWritesLogged)
+		pl = pl[:longRunningWritesLogged]
+	}
 	for _, p := range pl {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Long update on %s: session %d user %s host %s command %s running %.0fs, trx open %ds rows modified %d rows locked %d: %s", server.URL, p.Id, p.User, p.Host, p.Command, p.Time.Float64, p.TrxTime, p.TrxRowsModified, p.TrxRowsLocked, p.Info.String)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, level, "Long update on %s: session %d user %s host %s command %s running %.0fs, trx open %ds rows modified %d rows locked %d: %s", server.URL, p.Id, p.User, p.Host, p.Command, p.Time.Float64, p.TrxTime, p.TrxRowsModified, p.TrxRowsLocked, p.Info.String)
 	}
 }
 
