@@ -94,6 +94,12 @@ func ReadMetadata(backupPath string) (*Metadata, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read splitdump metadata: %w", err)
 	}
+	return ParseMetadata(data)
+}
+
+// ParseMetadata parses the content of a splitdump metadata file, as ReadMetadata reads it
+// from a folder (an encrypted archive's member is read without extracting it).
+func ParseMetadata(data []byte) (*Metadata, error) {
 	meta := &Metadata{}
 	positionSet := false
 	sourceDataSet := false

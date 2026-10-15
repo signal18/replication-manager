@@ -1269,6 +1269,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 	}
 
 	if useMaster {
+		if cluster.isDiscoveredBackupPath(backupfile) {
+			return nil, fmt.Errorf("No backup file found on master for %s: %s was discovered in the backup folder, reseed from it on request", backtype, backupfile)
+		}
 		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
 			if !masterArchived {
@@ -1585,8 +1588,14 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.C
 }
 
 func findExistingBackupPath(server *ServerMonitor, candidates []string) (string, bool) {
+	discovered := server.ClusterGroup.discoveredBackupPaths()
 	for _, name := range candidates {
 		path := server.GetMyBackupDirectory() + name
+		// a backup found in the folder without metadata is never restored automatically:
+		// its time may be a copy's (backup_discovery.go); it is reseeded on request only
+		if discovered[filepath.Clean(path)] {
+			continue
+		}
 		if _, err := os.Stat(path); err == nil {
 			return path, true
 		}
@@ -3095,6 +3104,11 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 				} else if !archived {
 					bckserver.DelBackupTypeCookie(backtype)
 				}
+			}
+			if useMaster && cluster.isDiscoveredBackupPath(backupfile) {
+				noBackupErr := fmt.Errorf("Cancelling reseed. No logical %s backup found on any node: %s was discovered in the backup folder, reseed from it on request", backtype, backupfile)
+				server.JobsUpdateStateRuntimeOnly(task, noBackupErr.Error(), 5, 1)
+				return noBackupErr
 			}
 			if useMaster {
 				if !cluster.backupArtifactExists(backupfile) {
@@ -7167,6 +7181,9 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 
 		if useMaster {
+			if cluster.isDiscoveredBackupPath(backupfile) {
+				return fmt.Errorf("No backup file found on master for %s: %s was discovered in the backup folder, reseed from it on request", backupType, backupfile)
+			}
 			if !cluster.backupArtifactExists(backupfile) {
 				//Remove false cookie
 				master.DelBackupTypeCookie(backupType)

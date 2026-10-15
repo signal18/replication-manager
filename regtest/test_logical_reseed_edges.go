@@ -593,10 +593,18 @@ func (e *edgeRun) breakReplication(name string) bool {
 // checks it, then runs transactions on the primary and checks they reach the replica.
 // wantGTID is the replication mode the replica must end in.
 func (e *edgeRun) reseedAndCheck(name string, wantGTID bool) {
+	e.reseedWithAndCheck(name, wantGTID, config.ConstBackupLogicalTypeMysqldump, func() error {
+		return e.r.JobReseedLogicalBackup(context.Background(), config.ConstBackupLogicalTypeMysqldump)
+	})
+}
+
+// reseedWithAndCheck is reseedAndCheck with a reseed by tool started by start (a reseed from
+// a chosen backup, testBackupDiscovery).
+func (e *edgeRun) reseedWithAndCheck(name string, wantGTID bool, tool string, start func() error) {
 	if !e.more() {
 		return
 	}
-	if err := e.reseed(); err != nil {
+	if err := e.reseedWith(tool, start); err != nil {
 		e.check(name, false, err.Error())
 		return
 	}
@@ -610,18 +618,20 @@ func (e *edgeRun) reseedAndCheck(name string, wantGTID bool) {
 	e.checkReplica(name+", transactions after", wantGTID)
 }
 
-// reseed reseeds the replica from the primary's last logical backup and waits for its end:
-// the reseeding state cleared and the task's result done. The reseeding state is set when
-// the monitor takes the task, so right after the request it can still be empty.
-func (e *edgeRun) reseed() error {
-	task := "reseed" + config.ConstBackupLogicalTypeMysqldump
-	if err := e.r.JobReseedLogicalBackup(context.Background(), config.ConstBackupLogicalTypeMysqldump); err != nil {
+// reseedWith starts a reseed of the replica by tool with start and waits for its end: the
+// reseeding state cleared and the task's result done, ended after the request (a result of
+// an earlier reseed is not this one's). The reseeding state is set when the monitor takes
+// the task, so right after the request it can still be empty.
+func (e *edgeRun) reseedWith(tool string, start func() error) error {
+	task := "reseed" + tool
+	requested := time.Now().Unix()
+	if err := start(); err != nil {
 		return err
 	}
 	deadline := time.Now().Add(reseedLimit)
 	for {
 		t := e.r.JobResults.Get(task)
-		if !e.r.HasReseedingState(task) && t != nil && t.Done == 1 {
+		if !e.r.HasReseedingState(task) && t != nil && t.Done == 1 && t.End >= requested {
 			if t.State != 3 && t.State != 4 {
 				return fmt.Errorf("reseed ended with %+v", t)
 			}

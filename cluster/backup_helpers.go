@@ -422,8 +422,15 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 		server.ensureBackupSessionID(meta, method, meta.StartTime, meta.BackupLine)
 
 		if cluster != nil {
-			server.closeInterruptedVerification(meta)
-			cluster.BackupMetaMap.Set(meta.Id, meta)
+			// a backup already registered keeps its live entry: a running backup or
+			// verification updates it, the copy just read from its meta file may be older;
+			// a copy registered is first closed when its verification was interrupted
+			if live := cluster.BackupMetaMap.Get(meta.Id); live != nil {
+				meta = live
+			} else {
+				server.closeInterruptedVerification(meta)
+				cluster.BackupMetaMap.Set(meta.Id, meta)
+			}
 		}
 		metas = append(metas, meta)
 	}

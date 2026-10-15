@@ -9,11 +9,12 @@ import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { deleteBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
+import { deleteBackup, discoverBackups, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import CopyToClipboard from '../../components/CopyToClipboard'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh } from 'react-icons/hi'
+import Dropdown from '../../components/Dropdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
@@ -336,6 +337,13 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   const bku = selectedCluster?.backupUnits
   const bkuPlan = parseInt(selectedCluster?.config?.provDbBku) || 0
   const { isOpen: isConfirmModalOpen, title, payload } = confirmState
+  // reseed of a server from a chosen backup: the backup, then the server picked for it
+  const [reseedPick, setReseedPick] = useState({ backup: null, serverId: '' })
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
+  const reseedTargets = (clusterServers || [])
+    .filter((s) => s.state !== 'Master')
+    .map((s) => ({ name: `${s.url} (${s.state})`, value: s.id }))
+  const closeReseedPick = () => setReseedPick({ backup: null, serverId: '' })
 
   const dispatch = useDispatch()
   const columnHelper = createColumnHelper()
@@ -374,6 +382,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       switch (payload.action) {
         case 'backupDelete':
           dispatch(deleteBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId }))
+          break
+        case 'backupDiscover':
+          dispatch(discoverBackups({ clusterName: selectedCluster.name }))
           break
         case 'backupVerify':
           dispatch(verifyBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId, level: payload.data.level }))
@@ -556,11 +567,18 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       columnHelper.accessor(
         (row) => (
           <HStack className={styles.iconRow} spacing={2}>
-            <Tooltip label={row.completed ? 'Completed' : 'Pending'} hasArrow>
+            <Tooltip label={row.completed ? 'Completed' : row.discoveryNote ? `Not completed: ${row.discoveryNote}` : 'Pending'} hasArrow>
               <Box className={`${styles.statusIcon} ${row.completed ? styles.statusIconActive : styles.statusIconPending}`}>
-                {row.completed ? <HiCheckCircle /> : <HiClock />}
+                {row.completed ? <HiCheckCircle /> : row.discoveryNote ? <HiExclamationCircle /> : <HiClock />}
               </Box>
             </Tooltip>
+            {row.discovered && (
+              <Tooltip label={`Discovered in the backup folder: never used by an automatic restore${row.completed && row.discoveryNote ? ` (${row.discoveryNote})` : ''}`} hasArrow>
+                <Box className={`${styles.statusIcon} ${styles.statusIconActive}`}>
+                  <HiFolderAdd />
+                </Box>
+              </Tooltip>
+            )}
             <Tooltip label={row.compressed ? 'Compressed' : 'Not compressed'} hasArrow>
               <Box className={`${styles.statusIcon} ${row.compressed ? styles.statusIconActive : styles.statusIconInactive}`}>
                 {row.compressed ? <HiArchive /> : <HiOutlineArchive />}
@@ -593,6 +611,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         cell: (info) => {
           const backup = info.row.original
           const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.originalRemoved && backup.verification?.status !== 'running'
+          const reseedable = backup.backupMethod !== 2 && ['mysqldump', 'mydumper'].includes(backup.backupTool) && backup.completed && !backup.originalRemoved
           return (
             <HStack spacing={1}>
               <RMIconButton
@@ -606,6 +625,12 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                 tooltip={selectedCluster?.config?.backupVerificationHost ? `Test restore on ${selectedCluster.config.backupVerificationHost}` : 'Test restore: set backup-verification-host first'}
                 onClick={() => openConfirmModal(`Load this backup into ${selectedCluster?.config?.backupVerificationHost} and compare it?`, { action: 'backupVerify', data: { backupId: backup.id, level: 'restore' } })}
                 isDisabled={!user?.grants['db-backup'] || !verifiable || !selectedCluster?.config?.backupVerificationHost}
+              />
+              <RMIconButton
+                icon={HiRefresh}
+                tooltip='Reseed a server from this backup'
+                onClick={() => setReseedPick({ backup, serverId: '' })}
+                isDisabled={!user?.grants['db-restore'] || !reseedable}
               />
               <RMIconButton
                 icon={HiTrash}
@@ -809,7 +834,19 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        headerActions={settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
+        headerActions={
+          <HStack spacing={1}>
+            <RMIconButton
+              icon={HiSearch}
+              tooltip='Discover the backups placed in the backup folders'
+              onClick={() => openConfirmModal('Scan the backup folders and register the backups no metadata describes?', { action: 'backupDiscover' })}
+              isDisabled={!user?.grants['db-backup']}
+              size='xs'
+              variant='ghost'
+            />
+            {settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
+          </HStack>
+        }
         body={
           <VStack className={styles.snapshotContainer}>
             <BKUSlider
@@ -912,6 +949,26 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       {bkuConfirm.isOpen && <ConfirmModal title={bkuConfirm.title} isOpen={bkuConfirm.isOpen}
         onConfirmClick={() => { dispatch(changePlanUnits({ clusterName: selectedCluster?.name, unit: 'BKU', delta: bkuConfirm.delta })); setBkuConfirm({ isOpen: false, title: '', delta: 0 }) }}
         closeModal={() => setBkuConfirm({ isOpen: false, title: '', delta: 0 })} />}
+      {reseedPick.backup && <ConfirmModal title={`Reseed a server from backup ${reseedPick.backup.id}?`} isOpen={!!reseedPick.backup}
+        body={
+          <VStack align='stretch' spacing={3}>
+            <Text>
+              The server's data is replaced by the backup ({reseedPick.backup.dest}), then its replication restarts from the
+              position the backup holds.{reseedPick.backup.discovered ? ' This backup was discovered in a backup folder: check it is the one you mean.' : ''}
+            </Text>
+            <Dropdown options={reseedTargets} placeholder='Server to reseed' selectedValue={reseedPick.serverId}
+              onChange={(option) => setReseedPick((p) => ({ ...p, serverId: option.value }))} />
+          </VStack>
+        }
+        onConfirmClick={() => {
+          if (!reseedPick.serverId) {
+            dispatch(showWarningToast({ title: 'Pick the server to reseed' }))
+            return
+          }
+          dispatch(reseedFromBackup({ clusterName: selectedCluster.name, serverId: reseedPick.serverId, backupId: reseedPick.backup.id }))
+          closeReseedPick()
+        }}
+        closeModal={closeReseedPick} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
         payload={payload}
         queueData={queueData}

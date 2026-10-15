@@ -37,6 +37,15 @@ definitions:
       dest:
         description: backup destination path
         type: string
+      discovered:
+        description: |-
+          Discovered: the backup was found in the server's backup folder without metadata
+          (copied there by hand or by another tool) and registered by replication-manager.
+          It is never picked by an automatic restore; DiscoveryNote says what its scan found
+          (why it is not completed, or a check it could not run).
+        type: boolean
+      discoveryNote:
+        type: string
       encrypted:
         type: boolean
       encryptionAlgo:
@@ -812,19 +821,14 @@ definitions:
   cluster.BillingPrices:
     properties:
       apu:
-        format: float64
         type: number
       bau:
-        format: float64
         type: number
       bku:
-        format: float64
         type: number
       dbu:
-        format: float64
         type: number
       gwu:
-        format: float64
         type: number
       overPct:
         type: integer
@@ -845,7 +849,6 @@ definitions:
       accrued:
         additionalProperties:
           items:
-            format: float64
             type: number
           type: array
         description: |-
@@ -3913,7 +3916,6 @@ definitions:
       channelID:
         type: string
       createAt:
-        format: int64
         type: integer
       extension:
         type: string
@@ -3937,7 +3939,6 @@ definitions:
       channelID:
         type: string
       createAt:
-        format: int64
         type: integer
       fileIds:
         items:
@@ -8937,6 +8938,46 @@ paths:
       summary: Verify a backup by ID and level
       tags:
       - ClusterBackups
+  /api/clusters/{clusterName}/backups/discover:
+    post:
+      description: |-
+        Starts, in the background, the scan of each server's backup folder that registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. A discovered backup not completed (one that could not be read) is inspected again. The backups registered are logged and appear in the backup list. Refused while a backup of the cluster runs.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Backup discovery started
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL, or no db-backup grant
+          schema:
+            type: string
+        "409":
+          description: A backup of the cluster is running
+          schema:
+            type: string
+        "500":
+          description: Discovery not started
+          schema:
+            type: string
+      summary: Discover the backups of the backup folders
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/backups/reconcile:
     post:
       description: |-
@@ -13870,6 +13911,65 @@ paths:
       summary: Reseed a server
       tags:
       - DatabaseBackup
+  /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID}:
+    post:
+      description: |-
+        Reseeds the server from the logical backup backupID (mysqldump, splitdump or mydumper), a discovered one included: its artifact is restored and replication restarts from the position it holds. Refused for a backup not completed, without a replication position, kept only in its archive, missing, or for the primary.
+        Required grant: db-restore
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reseed started
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Backup not usable (not completed, no replication position,
+            archived only, missing, not logical) or the server is the primary
+          schema:
+            type: string
+        "403":
+          description: No valid ACL, or no db-restore grant
+          schema:
+            type: string
+        "404":
+          description: Backup not found
+          schema:
+            type: string
+        "409":
+          description: A backup of the cluster is running
+          schema:
+            type: string
+        "500":
+          description: Cluster or server not found, or reseed not started
+          schema:
+            type: string
+      summary: Reseed a server from a chosen backup
+      tags:
+      - DatabaseActions
   /api/clusters/{clusterName}/servers/{serverName}/actions/reset-master:
     get:
       description: Resets the master on a specified server within a cluster.

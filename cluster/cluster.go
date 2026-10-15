@@ -355,6 +355,7 @@ type Cluster struct {
 	waitOnce                    sync.Once            `json:"-"`
 	bootstrapDR                 bootstrapDRState     `json:"-"` // DR replication-manager URL offered to init containers (bootstrap_dr.go)
 	backupProgress              sync.Map             `json:"-"` // key server/kind -> *BackupProgress (cluster_backup_progress.go)
+	backupDiscoveries           sync.Map             `json:"-"` // key server URL: a backup folder discovery runs (backup_discovery.go)
 	injectTrafficInFlight       atomic.Bool          `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
 	injectTrafficSince          atomic.Int64         `json:"-"` // unix time the running injection started
 	binlogServerIDs             *binlogServerIDPool  `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)

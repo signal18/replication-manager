@@ -37,6 +37,12 @@ func ReadManifest(backupPath string) (*Manifest, error) {
 	return parseManifest(string(data))
 }
 
+// ParseManifest parses the content of a manifest file, as ReadManifest reads it from a
+// folder (an encrypted archive's member is read without extracting it).
+func ParseManifest(data []byte) (*Manifest, error) {
+	return parseManifest(string(data))
+}
+
 // WriteManifest serialises m to backupPath/manifest, creating the file if needed.
 func WriteManifest(outputDir string, m *Manifest) error {
 	manifestPath := filepath.Join(outputDir, manifestFileName)

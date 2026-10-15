@@ -375,6 +375,41 @@ export const markBackupVerificationServer = createGuardedAsyncThunk('cluster/mar
   }
 })
 
+// registers the backups placed in the servers' backup folders without metadata
+export const discoverBackups = createGuardedAsyncThunk('cluster/discoverBackups', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.discoverBackups(clusterName, baseURL)
+    if (status === 202) {
+      // the scan runs in the background: the list shows what it registers once it ends
+      showSuccessBanner('Backup discovery started: discovered backups appear in the list once it ends', status, thunkAPI)
+    } else {
+      showErrorBanner('Backup discovery failed', data, thunkAPI)
+    }
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Backup discovery failed', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+// reseeds a server from a chosen logical backup (a discovered one included)
+export const reseedFromBackup = createGuardedAsyncThunk('cluster/reseedFromBackup', async ({ clusterName, serverId, backupId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.reseedFromBackup(clusterName, serverId, backupId, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`Reseed from backup ${backupId} started`, status, thunkAPI)
+    } else {
+      showErrorBanner(`Reseed from backup ${backupId} not started`, data, thunkAPI)
+    }
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Reseed from backup ${backupId} not started`, error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const getResticSnapshot = createGuardedAsyncThunk(
   'cluster/getResticSnapshot',
   async ({ clusterName, filter = 'latest-per-session' }, thunkAPI) => {

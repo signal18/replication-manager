@@ -17,6 +17,8 @@ export const clusterService = {
   getBackups,
   getBackupStats,
   deleteBackup,
+  discoverBackups,
+  reseedFromBackup,
   verifyBackup,
   getBackupVerificationServer,
   markBackupVerificationServer,
@@ -300,6 +302,14 @@ function getBackups(clusterName, baseURL) {
 
 function getBackupStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups/stats`)
+}
+
+function discoverBackups(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/backups/discover`)
+}
+
+function reseedFromBackup(clusterName, serverId, backupId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/reseed/backup/${backupId}`)
 }
 
 function deleteBackup(clusterName, backupId, baseURL) {
