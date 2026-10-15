@@ -385,9 +385,9 @@ func (repman *ReplicationManager) applyCloudConnect(
 	gitSecret.Value = password
 	gitSecret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
 	if repman.Conf.Secrets == nil {
-		repman.Conf.Secrets = make(map[string]config.Secret)
+		repman.Conf.Secrets = config.NewSecrets(nil)
 	}
-	repman.Conf.Secrets["cloud18-gitlab-password"] = gitSecret
+	repman.Conf.Secrets.Set("cloud18-gitlab-password", gitSecret)
 	if repman.Conf.ImmuableFlagMap == nil {
 		repman.Conf.ImmuableFlagMap = make(map[string]interface{})
 	}

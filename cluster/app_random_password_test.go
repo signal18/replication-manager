@@ -63,7 +63,7 @@ func TestAppEngineSuperuser(t *testing.T) {
 // generated password, and only over the default (or no) cluster password.
 func TestAdoptEngineAppCredentialRefusals(t *testing.T) {
 	c := &Cluster{Name: "c", Conf: &config.Config{}}
-	c.Conf.Secrets = map[string]config.Secret{"db-servers-credential": {Value: "root:mariadb"}}
+	c.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:mariadb"}})
 	a := &App{Name: "pg1", Host: "pg1.c.svc.x", Port: "5432", AppConfig: &config.AppConfig{ProvAppConfigurator: "postgres", Deployment: config.NewDeploymentConfig()}}
 	if c.adoptEngineAppCredential(a) {
 		t.Fatal("no generated password, nothing to adopt")
@@ -76,11 +76,11 @@ func TestAdoptEngineAppCredentialRefusals(t *testing.T) {
 	// app: the credential that was set is kept
 	c.Servers = []*ServerMonitor{{Host: "pg1.c.svc.x", Port: "5432", ClusterGroup: c}, {Host: "db1.c.svc.x", Port: "3306", ClusterGroup: c}}
 	c.Apps = appList{a}
-	c.Conf.Secrets["db-servers-credential"] = config.Secret{Value: "root:SetByTheOwner123"}
+	c.Conf.Secrets.Set("db-servers-credential", config.Secret{Value: "root:SetByTheOwner123"})
 	if c.allServersAreEngineApps() || c.adoptEngineAppCredential(a) {
 		t.Fatal("a credential somebody set is never replaced while another kind of server is monitored")
 	}
-	if !strings.HasSuffix(c.Conf.Secrets["db-servers-credential"].Value, "SetByTheOwner123") {
+	if !strings.HasSuffix(c.Conf.Secrets.Get("db-servers-credential").Value, "SetByTheOwner123") {
 		t.Fatal("the credential must be untouched")
 	}
 	// every monitored server is an engine app: the inherited credential has no other consumer

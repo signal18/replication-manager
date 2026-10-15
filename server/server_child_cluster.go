@@ -92,9 +92,9 @@ func childProxyType(parent *cluster.Cluster) string {
 func childProxyCredential(parent *cluster.Cluster, proxyType string) (key, cred, user, confPass string) {
 	switch proxyType {
 	case config.ConstProxySqlproxy:
-		return "proxysql-servers-credential", parent.Conf.ProxysqlUser + ":" + parent.Conf.Secrets["proxysql-password"].Value, parent.Conf.ProxysqlUser, parent.Conf.ProxysqlPassword
+		return "proxysql-servers-credential", parent.Conf.ProxysqlUser + ":" + parent.Conf.Secrets.Get("proxysql-password").Value, parent.Conf.ProxysqlUser, parent.Conf.ProxysqlPassword
 	case config.ConstProxyMaxscale:
-		return "maxscale-servers-credential", parent.Conf.MxsUser + ":" + parent.Conf.Secrets["maxscale-pass"].Value, parent.Conf.MxsUser, parent.Conf.MxsPass
+		return "maxscale-servers-credential", parent.Conf.MxsUser + ":" + parent.Conf.Secrets.Get("maxscale-pass").Value, parent.Conf.MxsUser, parent.Conf.MxsPass
 	}
 	return "", "", "", ""
 }
@@ -214,7 +214,7 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	// The parent's monitoring and replication accounts, same name same password (staging
 	// doc): provisioned identical, nothing to restore from the parent's backup.
 	for _, key := range []string{"db-servers-credential", "replication-credential"} {
-		if err := repman.SetClusterSetting(cl, key, parent.Conf.Secrets[key].Value); err != nil {
+		if err := repman.SetClusterSetting(cl, key, parent.Conf.Secrets.Get(key).Value); err != nil {
 			return cl, fail(err)
 		}
 	}

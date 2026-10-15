@@ -272,7 +272,9 @@ function ClusterDetail({ selectedCluster, user, readOnly = false, onOpenSettings
         },
         {
           name: 'Rotate Database Credentials',
-          isDisabled: !g['cluster-rotate-passwords'],
+          // refused by repman (CanRotatePasswords, #2042): the reason shows on hover
+          isDisabled: !g['cluster-rotate-passwords'] || !!selectedCluster?.rotatePasswordsRefusal,
+          disabledReason: selectedCluster?.rotatePasswordsRefusal ? `Refused: ${selectedCluster.rotatePasswordsRefusal}` : undefined,
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Rotate database credentials?')

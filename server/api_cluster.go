@@ -2993,7 +2993,11 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			} else {
 				err := repman.setClusterSetting(mycluster, setting, value)
 				if err != nil {
-					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), http.StatusBadRequest)
+					code := http.StatusBadRequest
+					if errors.Is(err, cluster.ErrCredentialChangeRefused) {
+						code = http.StatusConflict
+					}
+					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), code)
 					return
 				}
 			}
@@ -3250,6 +3254,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringPause()
 	case "monitoring-save-config":
 		mycluster.SwitchMonitoringSaveConfig()
+	case "monitoring-secret-versioning":
+		// the secret store records the credentials from the next tick (#2050)
+		mycluster.Conf.MonitoringSecretVersioning = !mycluster.Conf.MonitoringSecretVersioning
+		mycluster.MarkSecretVersionStoreDirty()
 	case "monitoring-queries":
 		mycluster.SwitchMonitoringQueries()
 	case "monitoring-scheduler":
@@ -3467,6 +3475,9 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 				errCode := 500
 				if err.Error() == "Setting not found" {
 					errCode = 501
+				}
+				if errors.Is(err, cluster.ErrCredentialChangeRefused) {
+					errCode = http.StatusConflict
 				}
 
 				http.Error(w, "Failed to set cluster setting: "+err.Error(), errCode)
@@ -3806,6 +3817,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		mycluster.Conf.Cloud18MarketplaceGWUFreeUnits = n
 	case "replication-credential":
+		if err := mycluster.CanSetCredential(name); err != nil {
+			return err
+		}
 		mycluster.SetReplicationCredential(value)
 	case "failover-max-slave-delay":
 		val, _ := strconv.ParseInt(value, 10, 64)
@@ -4143,13 +4157,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "db-servers-hosts":
 		mycluster.SetDbServerHosts(value)
 	case "db-servers-credential":
+		if err := mycluster.CanSetCredential(name); err != nil {
+			return err
+		}
 		mycluster.Conf.User = value
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.User
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("db-servers-credential")
-		mycluster.Conf.Secrets["db-servers-credential"] = new_secret
+		mycluster.Conf.Secrets.Set("db-servers-credential", new_secret)
 		mycluster.SetClusterMonitorCredentialsFromConfig()
-		// mycluster.SetDbServersMonitoringCredential(value)
+		mycluster.ApplyMonitorCredential()
 	case "db-servers-dns-timeout":
 		val, err := strconv.Atoi(value)
 		if err != nil || val < 1 || val > 300 {
@@ -4539,7 +4556,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.MailSMTPPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("mail-smtp-password")
-		mycluster.Conf.Secrets["mail-smtp-password"] = new_secret
+		mycluster.Conf.Secrets.Set("mail-smtp-password", new_secret)
 		mycluster.Mailer.UpdateAuth(mycluster.Conf.MailSMTPUser, new_secret.Value)
 	case "mail-smtp-user":
 		mycluster.Conf.SetMailSmtpUser(value)
@@ -4576,7 +4593,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.Cloud18GitPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-gitlab-password")
-		mycluster.Conf.Secrets["cloud18-gitlab-password"] = new_secret
+		mycluster.Conf.Secrets.Set("cloud18-gitlab-password", new_secret)
 	case "cloud18-domain-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -4586,7 +4603,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.Cloud18DomainSecret
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-domain-secret")
-		mycluster.Conf.Secrets["cloud18-domain-secret"] = new_secret
+		mycluster.Conf.Secrets.Set("cloud18-domain-secret", new_secret)
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
@@ -4634,7 +4651,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
-		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
+		mycluster.Conf.Secrets.Set("backup-restic-aws-access-secret", new_secret)
 		if err := mycluster.ReloadResticEnv(); err != nil {
 			return err
 		}
@@ -4939,7 +4956,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.HaproxyPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("haproxy-password")
-		mycluster.Conf.Secrets["haproxy-password"] = new_secret
+		mycluster.Conf.Secrets.Set("haproxy-password", new_secret)
 
 	case "maxscale-mode":
 		switch value {
@@ -5249,6 +5266,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorPause = applyIsActive(mycluster.Conf.MonitorPause, isactive)
 	case "monitoring-save-config":
 		mycluster.Conf.ConfRewrite = applyIsActive(mycluster.Conf.ConfRewrite, isactive)
+	case "monitoring-secret-versioning":
+		mycluster.Conf.MonitoringSecretVersioning = applyIsActive(mycluster.Conf.MonitoringSecretVersioning, isactive)
+		mycluster.MarkSecretVersionStoreDirty()
 	case "monitoring-queries":
 		mycluster.Conf.MonitorQueries = applyIsActive(mycluster.Conf.MonitorQueries, isactive)
 	case "monitoring-scheduler":
@@ -5587,7 +5607,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.ProvAppTemplateRepoPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("prov-app-template-repo-password")
-		mycluster.Conf.Secrets["prov-app-template-repo-password"] = new_secret
+		mycluster.Conf.Secrets.Set("prov-app-template-repo-password", new_secret)
 	case "prov-app-template-repo-timeout":
 		parsedTimeout, err := parseProvAppTemplateRepoTimeout(value)
 		if err != nil {
@@ -7000,7 +7020,7 @@ func buildClusterAPIPayload(mycluster *cluster.Cluster) ([]byte, error) {
 		return nil, fmt.Errorf("marshal cluster: %w", err)
 	}
 
-	for crkey := range mycluster.Conf.Secrets {
+	for crkey := range mycluster.Conf.Secrets.Snapshot() {
 		cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
 		if err != nil {
 			return nil, fmt.Errorf("mask secret %s: %w", crkey, err)
@@ -7783,7 +7803,7 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 
 // handlerRotatePasswords rotates the passwords for a given cluster.
 // @Summary Rotate passwords for a specific cluster
-// @Description This endpoint rotates the passwords for the specified cluster.
+// @Description This endpoint rotates the passwords for the specified cluster. Outside Vault it is refused (409) while monitoring-secret-versioning is off: the new passwords would live only in memory (#2042). Other refusals: a database down, replication stopped on a replica, a credential set in a config file, no encryption key, monitoring-save-config off.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
@@ -7791,6 +7811,7 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {string} string "Successfully rotated passwords"
 // @Failure 403 {string} string "No valid ACL"
+// @Failure 409 {string} string "Password rotation refused: <reason>"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/actions/rotate-passwords [post]
 func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, r *http.Request) {
@@ -7803,10 +7824,17 @@ func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, 
 			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
-		go mycluster.RotatePasswords()
+		respondPasswordRotation(w, mycluster)
 	} else {
 		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
+	}
+}
+
+// respondPasswordRotation starts the rotation, or answers 409 with the reason (#2042)
+func respondPasswordRotation(w http.ResponseWriter, cl *cluster.Cluster) {
+	if err := cl.StartPasswordRotation(); err != nil {
+		http.Error(w, "Password rotation refused: "+err.Error(), http.StatusConflict)
 	}
 }
 

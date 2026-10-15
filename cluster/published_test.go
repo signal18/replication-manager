@@ -1,0 +1,60 @@
+// replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
+// Copyright 2017-2026 SIGNAL18 CLOUD SAS
+// This source code is licensed under the GNU General Public License, version 3.
+
+package cluster
+
+import (
+	"encoding/json"
+	"fmt"
+	"sync"
+	"testing"
+)
+
+// #2043 review: the monitor writes RotatePasswordsRefusal and Credentials each tick while
+// API goroutines serialize the cluster. Run with -race.
+func TestPublishedStoreWhileMarshal(t *testing.T) {
+	var view struct {
+		Refusal     published[string]           `json:"rotatePasswordsRefusal"`
+		Credentials published[[]CredentialInfo] `json:"credentials"`
+	}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { // the monitor
+		defer wg.Done()
+		for i := 0; i < 2000; i++ {
+			view.Refusal.Store(fmt.Sprintf("refused %d", i))
+			view.Credentials.Store(make([]CredentialInfo, i%5))
+		}
+	}()
+	go func() { // the API
+		defer wg.Done()
+		for i := 0; i < 2000; i++ {
+			if _, err := json.Marshal(&view); err != nil {
+				t.Error(err)
+				return
+			}
+		}
+	}()
+	wg.Wait()
+}
+
+// the JSON is the value itself, as before the fields were published (the GUI reads
+// rotatePasswordsRefusal as a string and credentials as an array)
+func TestPublishedJSON(t *testing.T) {
+	var view struct {
+		Refusal     published[string]           `json:"rotatePasswordsRefusal"`
+		Credentials published[[]CredentialInfo] `json:"credentials"`
+	}
+	out, _ := json.Marshal(&view)
+	if string(out) != `{"rotatePasswordsRefusal":"","credentials":null}` {
+		t.Fatalf("before a store: %s", out)
+	}
+	view.Refusal.Store("versioning off")
+	view.Credentials.Store([]CredentialInfo{{Key: "db-servers-credential", User: "root", Source: "dynamic-config"}})
+	out, _ = json.Marshal(&view)
+	want := `{"rotatePasswordsRefusal":"versioning off","credentials":[{"key":"db-servers-credential","user":"root","source":"dynamic-config","refusal":""}]}`
+	if string(out) != want {
+		t.Fatalf("got %s\nwant %s", out, want)
+	}
+}

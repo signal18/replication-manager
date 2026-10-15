@@ -1057,71 +1057,71 @@ type Config struct {
 	// Cloud18LicenseFile, when set, is the single switch for offline-license mode:
 	// the instance sources its plan from this signed file instead of the CRM (for
 	// air-gapped/PCI instances). Empty = normal online CRM path.
-	Cloud18LicenseFile                      string                 `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
-	Cloud18PeerHealthMode                   string                 `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
-	Cloud18DisablePeers                     bool                   `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
-	Cloud18SelfServiceClusters              bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
-	Cloud18SelfServiceMaxClustersPerUser    int                    `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
-	Cloud18SelfServiceCacheSeconds          int                    `scope:"server" mapstructure:"cloud18-self-service-cache-seconds" toml:"cloud18-self-service-cache-seconds" json:"cloud18SelfServiceCacheSeconds"`
-	Cloud18SelfServiceClustersEnabledScript string                 `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
-	Cloud18SelfServiceClustersCanBorrow     bool                   `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
-	Cloud18DisableForSale                   bool                   `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
-	Cloud18MarketplacePricingMode           string                 `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
-	Cloud18MarketplaceDBUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
-	Cloud18MarketplaceAPUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
-	Cloud18MarketplaceBKUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
-	Cloud18MarketplaceBAUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
+	Cloud18LicenseFile                      string  `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
+	Cloud18PeerHealthMode                   string  `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
+	Cloud18DisablePeers                     bool    `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
+	Cloud18SelfServiceClusters              bool    `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
+	Cloud18SelfServiceMaxClustersPerUser    int     `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
+	Cloud18SelfServiceCacheSeconds          int     `scope:"server" mapstructure:"cloud18-self-service-cache-seconds" toml:"cloud18-self-service-cache-seconds" json:"cloud18SelfServiceCacheSeconds"`
+	Cloud18SelfServiceClustersEnabledScript string  `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
+	Cloud18SelfServiceClustersCanBorrow     bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
+	Cloud18DisableForSale                   bool    `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
+	Cloud18MarketplacePricingMode           string  `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
+	Cloud18MarketplaceDBUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
+	Cloud18MarketplaceAPUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
+	Cloud18MarketplaceBKUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
+	Cloud18MarketplaceBAUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
 	// GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.
 	// Cloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with
 	// cloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).
-	Cloud18GatewayBandwidthMbit             string                 `scope:"server" mapstructure:"cloud18-gateway-bandwidth-mbit" toml:"cloud18-gateway-bandwidth-mbit" json:"cloud18GatewayBandwidthMbit"`
+	Cloud18GatewayBandwidthMbit string `scope:"server" mapstructure:"cloud18-gateway-bandwidth-mbit" toml:"cloud18-gateway-bandwidth-mbit" json:"cloud18GatewayBandwidthMbit"`
 	// GWU for the BO (#1872): the first cloud18-marketplace-gwu-free-units GWU of BANDWIDTH (10 = 1 Gb/s) are free
 	// for every cluster; bandwidth held above them is reported on top (only possible where the gateways give more).
-	Cloud18MarketplaceGWUFreeUnits          int                    `mapstructure:"cloud18-marketplace-gwu-free-units" toml:"cloud18-marketplace-gwu-free-units" json:"cloud18MarketplaceGwuFreeUnits"`
-	Cloud18MarketplaceGWUPrice              float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-price" toml:"cloud18-marketplace-gwu-price" json:"cloud18MarketplaceGwuPrice"`
-	Cloud18MarketplaceGWUUnitMbit           float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-unit-mbit" toml:"cloud18-marketplace-gwu-unit-mbit" json:"cloud18MarketplaceGwuUnitMbit"`
-	Cloud18MarketplaceBAUClientStorage      bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`
-	Cloud18MarketplaceOvercommitPricePct    int                    `scope:"server" mapstructure:"cloud18-marketplace-overcommit-price-pct" toml:"cloud18-marketplace-overcommit-price-pct" json:"cloud18MarketplaceOvercommitPricePct"`
-	Cloud18MarketplaceUndercommitPricePct   int                    `scope:"server" mapstructure:"cloud18-marketplace-undercommit-price-pct" toml:"cloud18-marketplace-undercommit-price-pct" json:"cloud18MarketplaceUndercommitPricePct"`
-	Cloud18OpenSysops                       bool                   `mapstructure:"cloud18-open-sysops"  toml:"cloud18-open-sysops" json:"cloud18OpenSysops"`
-	Cloud18DatabaseReadWriteSplitSrvRecord  string                 `mapstructure:"cloud18-database-read-write-split-srv-record"  toml:"cloud18-database-read-write-split-srv-record" json:"cloud18DatabaseReadWriteSplitSrvRecord"`
-	Cloud18DatabaseReadSrvRecord            string                 `mapstructure:"cloud18-database-read-srv-record"  toml:"cloud18-database-read-srv-record" json:"cloud18DatabaseReadSrvRecord"`
-	Cloud18DatabaseReadWriteSrvRecord       string                 `mapstructure:"cloud18-database-read-write-srv-record"  toml:"cloud18-database-read-write-srv-record" json:"cloud18DatabaseReadWriteSrvRecord"`
-	Cloud18DbaUserCredentials               string                 `mapstructure:"cloud18-dba-user-credentials"  toml:"cloud18-dba-user-credentials" json:"cloud18DbaUserCredential"`
-	Cloud18SponsorUserCredentials           string                 `mapstructure:"cloud18-sponsor-user-credentials"  toml:"cloud18-sponsor-user-credentials" json:"cloud18SponsorUserCredential"`
-	Cloud18SalesSubscriptionScript          string                 `mapstructure:"cloud18-sales-subscription-script"  toml:"cloud18-sales-subscription-script" json:"cloud18SalesSubscriptionScript"`
-	Cloud18SalesSubscriptionValidateScript  string                 `mapstructure:"cloud18-sales-subscription-validate-script"  toml:"cloud18-sales-subscription-validate-script" json:"cloud18SalesSubscriptionValidateScript"`
-	Cloud18SalesUnsubscribeScript           string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
-	Cloud18SalesExternalOpsValidateScript   string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
-	Cloud18SalesExternalOpsStopScript       string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
-	Cloud18Alert                            bool                   `mapstructure:"cloud18-alert"  toml:"cloud18-alert" json:"cloud18Alert"`
-	Cloud18AlertSlackChannel                string                 `mapstructure:"cloud18-alert-slack-channel"  toml:"cloud18-alert-slack-channel" json:"cloud18AlertSlackChannel"`
-	Cloud18AlertSlackURL                    string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
-	Cloud18AlertSlackUser                   string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
-	Cloud18HealthRefreshInterval            int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
-	ProvRegister                            bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
-	ProvAdminUser                           string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
-	Measurement                             bool                   `mapstructure:"measurement" toml:"measurement" json:"measurement"`
-	MeasurementAutoClampLimit               bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
-	LogSecrets                              bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
-	Apps                                    []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps" groups:"apps"`
-	Secrets                                 map[string]Secret      `toml:"-" json:"-"`
-	SecretKey                               []byte                 `toml:"-" json:"-"`
-	ImmuableFlagMap                         map[string]interface{} `toml:"-" json:"-"`
-	DynamicFlagMap                          map[string]interface{} `toml:"-" json:"-"`
-	DefaultFlagMap                          map[string]interface{} `toml:"-" json:"-"`
-	OAuthProvider                           string                 `mapstructure:"api-oauth-provider-url" toml:"api-oauth-provider-url" json:"apiOAuthProvider"`
-	OAuthClientID                           string                 `mapstructure:"api-oauth-client-id" toml:"api-oauth-client-id" json:"apiOAuthClientID"`
-	OAuthClientSecret                       string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
-	CacheStaticMaxAge                       int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
-	TokenTimeout                            int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
-	JobLogBatchSize                         int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
-	APIUserTokens                           bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
-	APIUserTokensDefaultExpireDays          int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`
-	ApiSwaggerEnabled                       bool                   `scope:"server" mapstructure:"api-swagger-enabled" toml:"api-swagger-enabled" json:"apiSwaggerEnabled"`
-	TerminalSessionEnabled                  bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
-	TerminalSessionResume                   bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
-	TerminalSessionManager                  string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
+	Cloud18MarketplaceGWUFreeUnits         int                    `mapstructure:"cloud18-marketplace-gwu-free-units" toml:"cloud18-marketplace-gwu-free-units" json:"cloud18MarketplaceGwuFreeUnits"`
+	Cloud18MarketplaceGWUPrice             float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-price" toml:"cloud18-marketplace-gwu-price" json:"cloud18MarketplaceGwuPrice"`
+	Cloud18MarketplaceGWUUnitMbit          float64                `scope:"server" mapstructure:"cloud18-marketplace-gwu-unit-mbit" toml:"cloud18-marketplace-gwu-unit-mbit" json:"cloud18MarketplaceGwuUnitMbit"`
+	Cloud18MarketplaceBAUClientStorage     bool                   `mapstructure:"cloud18-marketplace-bau-client-storage" toml:"cloud18-marketplace-bau-client-storage" json:"cloud18MarketplaceBauClientStorage"`
+	Cloud18MarketplaceOvercommitPricePct   int                    `scope:"server" mapstructure:"cloud18-marketplace-overcommit-price-pct" toml:"cloud18-marketplace-overcommit-price-pct" json:"cloud18MarketplaceOvercommitPricePct"`
+	Cloud18MarketplaceUndercommitPricePct  int                    `scope:"server" mapstructure:"cloud18-marketplace-undercommit-price-pct" toml:"cloud18-marketplace-undercommit-price-pct" json:"cloud18MarketplaceUndercommitPricePct"`
+	Cloud18OpenSysops                      bool                   `mapstructure:"cloud18-open-sysops"  toml:"cloud18-open-sysops" json:"cloud18OpenSysops"`
+	Cloud18DatabaseReadWriteSplitSrvRecord string                 `mapstructure:"cloud18-database-read-write-split-srv-record"  toml:"cloud18-database-read-write-split-srv-record" json:"cloud18DatabaseReadWriteSplitSrvRecord"`
+	Cloud18DatabaseReadSrvRecord           string                 `mapstructure:"cloud18-database-read-srv-record"  toml:"cloud18-database-read-srv-record" json:"cloud18DatabaseReadSrvRecord"`
+	Cloud18DatabaseReadWriteSrvRecord      string                 `mapstructure:"cloud18-database-read-write-srv-record"  toml:"cloud18-database-read-write-srv-record" json:"cloud18DatabaseReadWriteSrvRecord"`
+	Cloud18DbaUserCredentials              string                 `mapstructure:"cloud18-dba-user-credentials"  toml:"cloud18-dba-user-credentials" json:"cloud18DbaUserCredential"`
+	Cloud18SponsorUserCredentials          string                 `mapstructure:"cloud18-sponsor-user-credentials"  toml:"cloud18-sponsor-user-credentials" json:"cloud18SponsorUserCredential"`
+	Cloud18SalesSubscriptionScript         string                 `mapstructure:"cloud18-sales-subscription-script"  toml:"cloud18-sales-subscription-script" json:"cloud18SalesSubscriptionScript"`
+	Cloud18SalesSubscriptionValidateScript string                 `mapstructure:"cloud18-sales-subscription-validate-script"  toml:"cloud18-sales-subscription-validate-script" json:"cloud18SalesSubscriptionValidateScript"`
+	Cloud18SalesUnsubscribeScript          string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
+	Cloud18SalesExternalOpsValidateScript  string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
+	Cloud18SalesExternalOpsStopScript      string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
+	Cloud18Alert                           bool                   `mapstructure:"cloud18-alert"  toml:"cloud18-alert" json:"cloud18Alert"`
+	Cloud18AlertSlackChannel               string                 `mapstructure:"cloud18-alert-slack-channel"  toml:"cloud18-alert-slack-channel" json:"cloud18AlertSlackChannel"`
+	Cloud18AlertSlackURL                   string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
+	Cloud18AlertSlackUser                  string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
+	Cloud18HealthRefreshInterval           int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
+	ProvRegister                           bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
+	ProvAdminUser                          string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
+	Measurement                            bool                   `mapstructure:"measurement" toml:"measurement" json:"measurement"`
+	MeasurementAutoClampLimit              bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
+	LogSecrets                             bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
+	Apps                                   []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps" groups:"apps"`
+	Secrets                                *SecretMap             `toml:"-" json:"-"` // locked (#2039)
+	SecretKey                              []byte                 `toml:"-" json:"-"`
+	ImmuableFlagMap                        map[string]interface{} `toml:"-" json:"-"`
+	DynamicFlagMap                         map[string]interface{} `toml:"-" json:"-"`
+	DefaultFlagMap                         map[string]interface{} `toml:"-" json:"-"`
+	OAuthProvider                          string                 `mapstructure:"api-oauth-provider-url" toml:"api-oauth-provider-url" json:"apiOAuthProvider"`
+	OAuthClientID                          string                 `mapstructure:"api-oauth-client-id" toml:"api-oauth-client-id" json:"apiOAuthClientID"`
+	OAuthClientSecret                      string                 `mapstructure:"api-oauth-client-secret" toml:"api-oauth-client-secret" json:"apiOAuthClientSecret"`
+	CacheStaticMaxAge                      int                    `mapstructure:"cache-static-max-age" toml:"cache-static-max-age" json:"-"`
+	TokenTimeout                           int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
+	JobLogBatchSize                        int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
+	APIUserTokens                          bool                   `scope:"server" mapstructure:"api-user-tokens" toml:"api-user-tokens" json:"apiUserTokens"`
+	APIUserTokensDefaultExpireDays         int                    `scope:"server" mapstructure:"api-user-tokens-default-expire-days" toml:"api-user-tokens-default-expire-days" json:"apiUserTokensDefaultExpireDays"`
+	ApiSwaggerEnabled                      bool                   `scope:"server" mapstructure:"api-swagger-enabled" toml:"api-swagger-enabled" json:"apiSwaggerEnabled"`
+	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
+	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
+	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
@@ -1160,7 +1160,7 @@ type AppConfig struct {
 	ProvAppAgentsFailover string `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	ProvAppSizingMode     string `mapstructure:"prov-app-sizing-mode" toml:"prov-app-sizing-mode" json:"provAppSizingMode"`
 	ProvAppConfigurator   string `mapstructure:"prov-app-configurator" toml:"prov-app-configurator" json:"provAppConfigurator" groups:"apps"` // engine whose moduleset (share/opensvc/moduleset_<engine>.svc.mrm.db.json) is rendered from the app plan and handed to the container (postgres); empty = none
-	AppRandomPassword     string `mapstructure:"app-random-password" toml:"app-random-password" json:"appRandomPassword" groups:"apps"` // generated when the template references {{app.randompassword}}, stored encrypted
+	AppRandomPassword     string `mapstructure:"app-random-password" toml:"app-random-password" json:"appRandomPassword" groups:"apps"`       // generated when the template references {{app.randompassword}}, stored encrypted
 	AppHost               string `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6          string `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppPort               string `mapstructure:"app-port" toml:"app-port" json:"appPort"`
@@ -1707,11 +1707,11 @@ const (
 	ConstTaskMydumper           TaskName = "mydumper"
 	ConstTaskXB                 TaskName = "xtrabackup"
 	ConstTaskMB                 TaskName = "mariabackup"
-	ConstTaskPgDump             TaskName = "pgdump"       // PostgreSQL logical backup, pg_dumpall run by the jobs sidecar
-	ConstTaskPgBaseBackup       TaskName = "pgbasebackup" // PostgreSQL physical backup, pg_basebackup run by the jobs sidecar
-	ConstTaskPgStandby          TaskName = "pgstandby"    // PostgreSQL: the jobs sidecar arms the next start as a standby of the given primary
-	ConstTaskPgReseed           TaskName = "pgreseed"     // PostgreSQL: the jobs sidecar arms the next start to re-seed from the given primary
-	ConstTaskPgSchemaSync       TaskName = "pgschemasync" // PostgreSQL logical replication: the jobs sidecar creates on this subscriber the published tables it misses
+	ConstTaskPgDump             TaskName = "pgdump"           // PostgreSQL logical backup, pg_dumpall run by the jobs sidecar
+	ConstTaskPgBaseBackup       TaskName = "pgbasebackup"     // PostgreSQL physical backup, pg_basebackup run by the jobs sidecar
+	ConstTaskPgStandby          TaskName = "pgstandby"        // PostgreSQL: the jobs sidecar arms the next start as a standby of the given primary
+	ConstTaskPgReseed           TaskName = "pgreseed"         // PostgreSQL: the jobs sidecar arms the next start to re-seed from the given primary
+	ConstTaskPgSchemaSync       TaskName = "pgschemasync"     // PostgreSQL logical replication: the jobs sidecar creates on this subscriber the published tables it misses
 	ConstTaskPgRestore          TaskName = "pgrestore"        // PostgreSQL: the jobs sidecar receives the stored physical backup and arms the next start to restore it
 	ConstTaskPgReseedLogical    TaskName = "pgreseedlogical"  // PostgreSQL logical replication: the jobs sidecar re-copies this server from the primary at the snapshot of a new slot
 	ConstTaskPgWalArchive       TaskName = "pgwalarchive"     // PostgreSQL: the jobs sidecar ships an archived WAL segment to replication-manager (the binlog copy of PostgreSQL)
@@ -1761,33 +1761,33 @@ type TaskDef struct {
 // Both:       user chooses via scheduler-jobs-exec-{task} config (default in DefaultRemote).
 var TaskRegistry = map[TaskName]TaskDef{
 	// RemoteOnly — requires DB host filesystem or system access
-	ConstTaskXB:       {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
-	ConstTaskMB:       {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
+	ConstTaskXB: {Name: ConstTaskXB, Capability: TaskCapRemoteOnly},
+	ConstTaskMB: {Name: ConstTaskMB, Capability: TaskCapRemoteOnly},
 	// PostgreSQL tools run in the jobs sidecar of the PostgreSQL service
-	ConstTaskPgDump:       {Name: ConstTaskPgDump, Capability: TaskCapRemoteOnly},
-	ConstTaskPgBaseBackup: {Name: ConstTaskPgBaseBackup, Capability: TaskCapRemoteOnly},
-	ConstTaskPgStandby:    {Name: ConstTaskPgStandby, Capability: TaskCapRemoteOnly},
-	ConstTaskPgReseed:     {Name: ConstTaskPgReseed, Capability: TaskCapRemoteOnly},
-	ConstTaskPgSchemaSync: {Name: ConstTaskPgSchemaSync, Capability: TaskCapRemoteOnly},
+	ConstTaskPgDump:           {Name: ConstTaskPgDump, Capability: TaskCapRemoteOnly},
+	ConstTaskPgBaseBackup:     {Name: ConstTaskPgBaseBackup, Capability: TaskCapRemoteOnly},
+	ConstTaskPgStandby:        {Name: ConstTaskPgStandby, Capability: TaskCapRemoteOnly},
+	ConstTaskPgReseed:         {Name: ConstTaskPgReseed, Capability: TaskCapRemoteOnly},
+	ConstTaskPgSchemaSync:     {Name: ConstTaskPgSchemaSync, Capability: TaskCapRemoteOnly},
 	ConstTaskPgRestore:        {Name: ConstTaskPgRestore, Capability: TaskCapRemoteOnly},
 	ConstTaskPgReseedLogical:  {Name: ConstTaskPgReseedLogical, Capability: TaskCapRemoteOnly},
 	ConstTaskPgWalArchive:     {Name: ConstTaskPgWalArchive, Capability: TaskCapRemoteOnly},
 	ConstTaskPgRestoreLogical: {Name: ConstTaskPgRestoreLogical, Capability: TaskCapRemoteOnly},
-	ConstTaskReseedXB: {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
-	ConstTaskReseedMB: {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
-	ConstTaskFlashXB:  {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},
-	ConstTaskFlashMB:  {Name: ConstTaskFlashMB, Capability: TaskCapRemoteOnly},
+	ConstTaskReseedXB:         {Name: ConstTaskReseedXB, Capability: TaskCapRemoteOnly},
+	ConstTaskReseedMB:         {Name: ConstTaskReseedMB, Capability: TaskCapRemoteOnly},
+	ConstTaskFlashXB:          {Name: ConstTaskFlashXB, Capability: TaskCapRemoteOnly},
+	ConstTaskFlashMB:          {Name: ConstTaskFlashMB, Capability: TaskCapRemoteOnly},
 	// Both — orchestrator API (OpenSVC/K8S) handles locally, dbjobs uses systemctl
-	ConstTaskRestart:            {Name: ConstTaskRestart, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskStop:               {Name: ConstTaskStop, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskStart:              {Name: ConstTaskStart, Capability: TaskCapBoth, DefaultRemote: true},
-	ConstTaskError:              {Name: ConstTaskError, Capability: TaskCapRemoteOnly},
-	ConstTaskSlowQuery:          {Name: ConstTaskSlowQuery, Capability: TaskCapRemoteOnly},
-	ConstTaskSqlError:           {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
-	ConstTaskAuditLog:           {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
-	ConstTaskZFS:                {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
+	ConstTaskRestart:   {Name: ConstTaskRestart, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskStop:      {Name: ConstTaskStop, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskStart:     {Name: ConstTaskStart, Capability: TaskCapBoth, DefaultRemote: true},
+	ConstTaskError:     {Name: ConstTaskError, Capability: TaskCapRemoteOnly},
+	ConstTaskSlowQuery: {Name: ConstTaskSlowQuery, Capability: TaskCapRemoteOnly},
+	ConstTaskSqlError:  {Name: ConstTaskSqlError, Capability: TaskCapRemoteOnly},
+	ConstTaskAuditLog:  {Name: ConstTaskAuditLog, Capability: TaskCapRemoteOnly},
+	ConstTaskZFS:       {Name: ConstTaskZFS, Capability: TaskCapRemoteOnly},
 	// the upgrade tool of the server's own release: the database image's, in its jobs container
-	ConstTaskMariadbUpgrade: {Name: ConstTaskMariadbUpgrade, Capability: TaskCapRemoteOnly},
+	ConstTaskMariadbUpgrade:     {Name: ConstTaskMariadbUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskJobsCheck:          {Name: ConstTaskJobsCheck, Capability: TaskCapRemoteOnly},
 	ConstTaskJobsUpgrade:        {Name: ConstTaskJobsUpgrade, Capability: TaskCapRemoteOnly},
 	ConstTaskPrintCurrentConfig: {Name: ConstTaskPrintCurrentConfig, Capability: TaskCapRemoteOnly},
@@ -1879,12 +1879,13 @@ func (conf *Config) GetInstancePATName() string {
 }
 
 func (conf *Config) GetSecrets() map[string]Secret {
-	// to store the flags to encrypt in the git (in Save() function)
-	return conf.Secrets
+	// to store the flags to encrypt in the git (in Save() function): a copy, read without
+	// holding the lock (#2039)
+	return conf.Secrets.Snapshot()
 }
 
 func (conf *Config) DecryptSecretsFromConfig() {
-	conf.Secrets = map[string]Secret{
+	secrets := map[string]Secret{
 		"api-credentials":                       {},
 		"api-credentials-external":              {},
 		"db-servers-credential":                 {},
@@ -1916,7 +1917,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"api-oauth-client-secret":               {},
 		"meet-token":                            {}}
 
-	for k := range conf.Secrets {
+	for k := range secrets {
 
 		origin_value, ok := conf.DynamicFlagMap[k]
 		if !ok {
@@ -1941,7 +1942,17 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		}
 		secret.Value = conf.DecryptSecretValue(k, secret.Value)
 		//log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
-		conf.Secrets[k] = secret
+		secrets[k] = secret
+	}
+	// a reload of this Config replaces its store under the lock (#2039). A copy (a
+	// cluster's Config is a copy of the server's, made after its decrypt) shares the
+	// pointer: it gets its own store, else every cluster would get the last one's secrets
+	if conf.Secrets != nil && conf.Secrets.owner == conf {
+		conf.Secrets.Replace(secrets)
+	} else {
+		s := NewSecrets(secrets)
+		s.owner = conf
+		conf.Secrets = s
 	}
 }
 
@@ -1996,7 +2007,7 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	if value == "" {
 		return ""
 	}
-	sec, ok := conf.Secrets[key]
+	sec, ok := conf.Secrets.Lookup(key)
 	if ok && sec.Crypted != "" && conf.DecryptSecretValue(key, sec.Crypted) == value {
 		return sec.Crypted
 	}
@@ -2011,7 +2022,7 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 			if strings.Contains(s, "hash_") && conf.DecryptSecretValue(key, s) == value {
 				if ok {
 					sec.Crypted = s
-					conf.Secrets[key] = sec
+					conf.Secrets.Set(key, sec)
 				}
 				return s
 			}
@@ -2020,7 +2031,7 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	enc := conf.EncryptSecretValue(value)
 	if ok {
 		sec.Crypted = enc
-		conf.Secrets[key] = sec
+		conf.Secrets.Set(key, sec)
 	}
 	return enc
 }
@@ -2046,7 +2057,7 @@ func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key s
 }
 
 func (conf *Config) DecryptSecretsFromVault() {
-	for k, v := range conf.Secrets {
+	for k, v := range conf.Secrets.Snapshot() {
 		origin_value := v.Value
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
@@ -2067,7 +2078,7 @@ func (conf *Config) DecryptSecretsFromVault() {
 			} else {
 				log.Printf("Unable to initialize AppRole auth method: %v", err)
 			}
-			conf.Secrets[k] = secret
+			conf.Secrets.Set(k, secret)
 		}
 	}
 }
@@ -2352,7 +2363,7 @@ func (conf *Config) GetEncryptedString(str string) string {
 }
 
 func (conf *Config) GetDecryptedValue(key string) string {
-	return conf.Secrets[key].Value
+	return conf.Secrets.Get(key).Value
 }
 
 func (conf *Config) PrintSecret(value string) string {
@@ -3766,7 +3777,7 @@ func (conf *Config) GetImmutableChecksum() (hash.Hash, error) {
 	Container := make([]string, 0)
 
 	for k, v := range conf.ImmuableFlagMap {
-		if _, ok := conf.Secrets[k]; !ok {
+		if _, ok := conf.Secrets.Lookup(k); !ok {
 			Container = append(Container, fmt.Sprintf("%s=%v", k, v))
 		}
 	}
@@ -3787,7 +3798,7 @@ func (conf *Config) GetSecretChecksum() (hash.Hash, error) {
 
 	Container := make([]string, 0)
 
-	for k, v := range conf.Secrets {
+	for k, v := range conf.Secrets.Snapshot() {
 		Container = append(Container, fmt.Sprintf("%s=%v", k, v))
 	}
 
@@ -3827,8 +3838,8 @@ func (conf *Config) CreateGitlabProjects() {
 	repopath := conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
 	name := conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
 
-	githelper.GitLabCreateProject(conf.Secrets["git-acces-token"].Value, name, repopath, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
-	githelper.GitLabCreatePullProject(conf.Secrets["git-acces-token"].Value, name, repopath, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
+	githelper.GitLabCreateProject(conf.Secrets.Get("git-acces-token").Value, name, repopath, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
+	githelper.GitLabCreatePullProject(conf.Secrets.Get("git-acces-token").Value, name, repopath, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 }
 
 func (conf *Config) SetMailSmtpAddr(value string) {

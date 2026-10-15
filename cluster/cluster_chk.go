@@ -1179,15 +1179,15 @@ func (cluster *Cluster) CheckCredentialRotation() {
 	if cluster.HasMonitoringCredentialsRotation() {
 		//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,LvlInfo, "TEST checkCredentialsRotation")
 		cluster.SetClusterMonitorCredentialsFromConfig()
-		cluster.SetDbServersMonitoringCredential(cluster.Conf.Secrets["db-servers-credential"].Value)
+		cluster.SetDbServersMonitoringCredential(cluster.Conf.Secrets.Get("db-servers-credential").Value)
 	}
 	if cluster.HasProxyCredentialsRotation() {
 		cluster.SetClusterProxyCredentialsFromConfig()
 		if cluster.Conf.ProxysqlOn {
-			cluster.SetProxyServersCredential(cluster.Conf.ProxysqlUser+":"+cluster.Conf.Secrets["proxysql-password"].Value, config.ConstProxySqlproxy)
+			cluster.SetProxyServersCredential(cluster.Conf.ProxysqlUser+":"+cluster.Conf.Secrets.Get("proxysql-password").Value, config.ConstProxySqlproxy)
 		}
 		if cluster.Conf.MdbsProxyOn {
-			cluster.SetProxyServersCredential(cluster.Conf.Secrets["shardproxy-credential"].Value, config.ConstProxySpider)
+			cluster.SetProxyServersCredential(cluster.Conf.Secrets.Get("shardproxy-credential").Value, config.ConstProxySpider)
 		}
 
 	}

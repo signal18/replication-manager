@@ -19,6 +19,7 @@ import BackupSettings from './BackupSettings'
 import ArchiveSettings from './ArchiveSettings'
 import SchedulerSettings from './SchedulerSettings'
 import DynamicConfigSettings from './DynamicConfigSettings'
+import CredentialsSettings from './CredentialsSettings'
 import S3ProvidersSettings from './S3ProvidersSettings'
 import AppTemplateRepoSection from './components/AppTemplateRepoSection'
 import { setSetting } from '../../redux/settingsSlice'
@@ -90,6 +91,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const { isOpen: isS3ProvidersOpen, onToggle: onS3ProvidersToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isS3ProvidersOpen')) || false
   })
+  const { isOpen: isCredentialsOpen, onToggle: onCredentialsToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isCredentialsOpen')) || false
+  })
   const { isOpen: isAppTemplateRepoOpen, onToggle: onAppTemplateRepoToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isAppTemplateRepoOpen')) || false
   })
@@ -149,6 +153,9 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
   useEffect(() => {
     localStorage.setItem('isAppTemplateRepoOpen', JSON.stringify(isAppTemplateRepoOpen))
   }, [isAppTemplateRepoOpen])
+  useEffect(() => {
+    localStorage.setItem('isCredentialsOpen', JSON.stringify(isCredentialsOpen))
+  }, [isCredentialsOpen])
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
@@ -184,6 +191,14 @@ function Settings({ selectedCluster, user, onTabChange, monitor }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} monitor={monitor} />}
+      />}
+      {isVisible('isCredentialsOpen') && <AccordionComponent
+        heading={'Database Credentials'}
+        onToggle={onCredentialsToggle}
+        isOpen={isCredentialsOpen}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        body={<CredentialsSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />}
       {isVisible('isRepFailOverOpen') && <AccordionComponent
         heading={'Failover'}

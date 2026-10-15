@@ -231,9 +231,9 @@ func newS3BucketTestConf(endpoint, bucket string) *config.Config {
 		BackupResticAwsAccessKeyId: "AKIAFAKE",
 		BackupResticAwsRegion:      "us-east-1",
 	}
-	conf.Secrets = map[string]config.Secret{
+	conf.Secrets = config.NewSecrets(map[string]config.Secret{
 		"backup-restic-aws-access-secret": {Value: "secret"},
-	}
+	})
 	return conf
 }
 
@@ -392,9 +392,9 @@ func TestHandlerResticCreateBucket_LegacyURLMode(t *testing.T) {
 		BackupResticAwsAccessKeyId: "AKIAFAKE",
 		BackupResticAwsRegion:      "us-east-1",
 	}
-	conf.Secrets = map[string]config.Secret{
+	conf.Secrets = config.NewSecrets(map[string]config.Secret{
 		"backup-restic-aws-access-secret": {Value: "secret"},
-	}
+	})
 	repman, tok := newCreateBucketRepman(t, "test-cluster", conf, map[string]bool{config.GrantDBBackup: true})
 	req := httptest.NewRequest(http.MethodPost, "/api/clusters/test-cluster/restic/create-bucket", nil)
 	req = setMuxVars(req, map[string]string{"clusterName": "test-cluster"})

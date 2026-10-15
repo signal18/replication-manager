@@ -24,7 +24,7 @@ func freshTestServer(t *testing.T, install, up int64, selectPriv string, schemas
 	}
 	t.Cleanup(func() { db.Close() })
 	v, _ := version.NewVersionFromString("MariaDB", "10.11.19-MariaDB")
-	c := &Cluster{Name: "c1", Conf: &config.Config{Secrets: map[string]config.Secret{"db-servers-credential": {Value: "root:pw"}}}}
+	c := &Cluster{Name: "c1", Conf: &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:pw"}})}}
 	c.Log = s18log.NewHttpLog(20)
 	q := mock.ExpectQuery("TIMESTAMPDIFF").WithArgs("global_priv")
 	if ageErr != nil {

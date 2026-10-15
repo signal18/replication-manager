@@ -25,9 +25,9 @@ func TestReconcileSecretVersionStoreBootstrapReconcileAndDedupe(t *testing.T) {
 		Conf: &config.Config{
 			WorkingDir:                 root,
 			MonitoringSecretVersioning: true,
-			Secrets: map[string]config.Secret{
+			Secrets: config.NewSecrets(map[string]config.Secret{
 				"db-servers-credential": {Value: "dbuser:hash_pass_1"},
-			},
+			}),
 		},
 	}
 
@@ -41,7 +41,7 @@ func TestReconcileSecretVersionStoreBootstrapReconcileAndDedupe(t *testing.T) {
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "db-servers-credential", 1)
 
-	cl.Conf.Secrets["db-servers-credential"] = config.Secret{Value: "dbuser:hash_pass_2"}
+	cl.Conf.Secrets.Set("db-servers-credential", config.Secret{Value: "dbuser:hash_pass_2"})
 	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
@@ -52,7 +52,7 @@ func TestReconcileSecretVersionStoreBootstrapReconcileAndDedupe(t *testing.T) {
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
 	assertSecretVersionCount(t, store, "db-servers-credential", 2)
 
-	cl.Conf.Secrets["proxysql-password"] = config.Secret{Value: "hash_proxy_pass"}
+	cl.Conf.Secrets.Set("proxysql-password", config.Secret{Value: "hash_proxy_pass"})
 	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 	store = readSecretStoreForTest(t, filepath.Join(workingDir, secretVersionStoreFilename))
@@ -73,9 +73,9 @@ func TestReconcileSecretVersionStoreDisabledWhenVaultConfigured(t *testing.T) {
 			WorkingDir:                 root,
 			VaultServerAddr:            "https://vault.example",
 			MonitoringSecretVersioning: false,
-			Secrets: map[string]config.Secret{
+			Secrets: config.NewSecrets(map[string]config.Secret{
 				"db-servers-credential": {Value: "dbuser:hash_pass_1"},
-			},
+			}),
 		},
 	}
 
@@ -132,9 +132,9 @@ func TestReconcileSecretVersionStoreSkipsNonEncryptedValues(t *testing.T) {
 		Conf: &config.Config{
 			WorkingDir:                 root,
 			MonitoringSecretVersioning: true,
-			Secrets: map[string]config.Secret{
+			Secrets: config.NewSecrets(map[string]config.Secret{
 				"custom-secret": {Value: "plain-text-value"},
-			},
+			}),
 		},
 	}
 
@@ -159,9 +159,9 @@ func TestReconcileSecretVersionStoreDoesNotAppendForEquivalentEncryptedValues(t 
 			WorkingDir:                 root,
 			MonitoringSecretVersioning: true,
 			SecretKey:                  []byte("01234567890123456789012345678901"),
-			Secrets: map[string]config.Secret{
+			Secrets: config.NewSecrets(map[string]config.Secret{
 				"proxysql-password": {Value: "same-secret"},
-			},
+			}),
 		},
 	}
 
@@ -203,10 +203,10 @@ func TestContainsHashPrefixToken(t *testing.T) {
 func TestTrackedSecretCompareSnapshotIncludesOnlyTrackedSecrets(t *testing.T) {
 	cl := &Cluster{
 		Conf: &config.Config{
-			Secrets: map[string]config.Secret{
+			Secrets: config.NewSecrets(map[string]config.Secret{
 				"db-servers-credential": {Value: "dbuser:hash_pass_1"},
 				"custom-secret":         {Value: "plain-text-value"},
-			},
+			}),
 		},
 	}
 
@@ -580,7 +580,7 @@ func TestReconcileSecretVersionStoreAutoPruneDisabledKeepsHistory(t *testing.T) 
 			MonitoringSecretVersioning:          true,
 			MonitoringSecretVersioningAutoPrune: false,
 			MonitoringSecretVersioningKeepLast:  1,
-			Secrets:                             map[string]config.Secret{"db-servers-credential": {Value: "hash_v3"}},
+			Secrets:                             config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "hash_v3"}}),
 		},
 	}
 
@@ -620,7 +620,7 @@ func TestReconcileSecretVersionStoreAutoPruneKeepsOriginalVersionNumbers(t *test
 			MonitoringSecretVersioning:          true,
 			MonitoringSecretVersioningAutoPrune: true,
 			MonitoringSecretVersioningKeepLast:  2,
-			Secrets:                             map[string]config.Secret{"db-servers-credential": {Value: "hash_v3"}},
+			Secrets:                             config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "hash_v3"}}),
 		},
 	}
 
@@ -663,7 +663,7 @@ func TestReconcileSecretVersionStoreAutoPruneKeepLastZeroHasNoEffect(t *testing.
 			MonitoringSecretVersioning:          true,
 			MonitoringSecretVersioningAutoPrune: true,
 			MonitoringSecretVersioningKeepLast:  0,
-			Secrets:                             map[string]config.Secret{"db-servers-credential": {Value: "hash_v2"}},
+			Secrets:                             config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "hash_v2"}}),
 		},
 	}
 
@@ -689,9 +689,9 @@ func TestReconcileSecretVersionStoreSkipsWhenNotDirty(t *testing.T) {
 		Conf: &config.Config{
 			WorkingDir:                 root,
 			MonitoringSecretVersioning: true,
-			Secrets: map[string]config.Secret{
+			Secrets: config.NewSecrets(map[string]config.Secret{
 				"db-servers-credential": {Value: "hash_v1"},
-			},
+			}),
 		},
 	}
 
@@ -728,9 +728,9 @@ func TestReconcileSecretVersionStoreConcurrentCallsAppendSingleVersion(t *testin
 		Conf: &config.Config{
 			WorkingDir:                 root,
 			MonitoringSecretVersioning: true,
-			Secrets: map[string]config.Secret{
+			Secrets: config.NewSecrets(map[string]config.Secret{
 				"proxysql-password": {Value: "hash_v1"},
-			},
+			}),
 		},
 	}
 
@@ -738,7 +738,7 @@ func TestReconcileSecretVersionStoreConcurrentCallsAppendSingleVersion(t *testin
 	cl.MarkSecretVersionStoreDirty()
 	cl.ReconcileSecretVersionStore()
 
-	cl.Conf.Secrets["proxysql-password"] = config.Secret{Value: "hash_v2"}
+	cl.Conf.Secrets.Set("proxysql-password", config.Secret{Value: "hash_v2"})
 
 	var wg sync.WaitGroup
 	for i := 0; i < 8; i++ {

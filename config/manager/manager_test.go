@@ -98,9 +98,9 @@ func TestPushConfigToGit_WithEnvCredentials(t *testing.T) {
 		WorkingDir:  workDir,
 		GitUrl:      gitURL,
 		GitUsername: gitUser,
-		Secrets: map[string]config.Secret{
+		Secrets: config.NewSecrets(map[string]config.Secret{
 			"git-acces-token": {Value: gitToken},
-		},
+		}),
 	}
 
 	logger := logrus.New()
@@ -146,9 +146,9 @@ func TestPushConfigToGit_ShallowClonePreservesLocalFilesThenPushMaster(t *testin
 		WorkingDir:  workDir,
 		GitUrl:      gitURL,
 		GitUsername: gitUser,
-		Secrets: map[string]config.Secret{
+		Secrets: config.NewSecrets(map[string]config.Secret{
 			"git-acces-token": {Value: gitToken},
-		},
+		}),
 	}
 
 	logger := logrus.New()
@@ -409,9 +409,9 @@ func TestRefreshGitMetadata_PreservesCurrentBranchReference(t *testing.T) {
 		WorkingDir:  workDir,
 		GitUrl:      remoteBare,
 		GitUsername: "local",
-		Secrets: map[string]config.Secret{
+		Secrets: config.NewSecrets(map[string]config.Secret{
 			"git-acces-token": {Value: ""},
-		},
+		}),
 	}
 	logger := logrus.New()
 	cm := NewConfigManager(config.NewLogrusWrapper(conf, logger))
@@ -464,9 +464,9 @@ func TestCountAllCommits_FetchErrorContinuesWithLocalCount(t *testing.T) {
 		GitUsername: "user",
 		LogGit:      true,
 		LogGitLevel: config.NumLvlWarn,
-		Secrets: map[string]config.Secret{
+		Secrets: config.NewSecrets(map[string]config.Secret{
 			"git-acces-token": {Value: "token"},
-		},
+		}),
 	}
 
 	var logs bytes.Buffer

@@ -308,7 +308,7 @@ func (cluster *Cluster) GetClusterUserDiscardACLs(acls string) map[string]ListUs
 
 func (cluster *Cluster) LoadAPIUsers() error {
 	meUsers := make(map[string]APIUser)
-	credentials := strings.Split(cluster.Conf.Secrets["api-credentials"].Value+","+cluster.Conf.Secrets["api-credentials-external"].Value, ",")
+	credentials := strings.Split(cluster.Conf.Secrets.Get("api-credentials").Value+","+cluster.Conf.Secrets.Get("api-credentials-external").Value, ",")
 	listACLs := cluster.GetClusterUserAllowACLs(cluster.Conf.APIUsersACLAllow)
 	listDiscard := cluster.GetClusterUserDiscardACLs(cluster.Conf.APIUsersACLDiscard)
 	listACLsExt := cluster.GetClusterUserAllowACLs(cluster.Conf.APIUsersACLAllowExternal)

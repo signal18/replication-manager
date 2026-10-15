@@ -681,9 +681,9 @@ func (cluster *Cluster) HasReplicationCredentialsRotation() bool {
 		if newpass != cluster.GetRplPass() && err == nil {
 			var new_Secret config.Secret
 
-			new_Secret.OldValue = cluster.Conf.Secrets["replication-credential"].Value
+			new_Secret.OldValue = cluster.Conf.Secrets.Get("replication-credential").Value
 			new_Secret.Value = cluster.GetRplUser() + ":" + newpass
-			cluster.Conf.Secrets["replication-credential"] = new_Secret
+			cluster.Conf.Secrets.Set("replication-credential", new_Secret)
 
 			return true
 		}
@@ -720,7 +720,7 @@ func (cluster *Cluster) HasProxyCredentialsRotation() bool {
 		}
 		if cluster.Conf.ProxysqlOn && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
 			newuser, newpass, err := cluster.GetVaultProxySQLCredentials(client)
-			if (newpass != cluster.Conf.Secrets["proxysql-password"].Value || newuser != cluster.Conf.Secrets["proxysql-user"].Value) && err == nil {
+			if (newpass != cluster.Conf.Secrets.Get("proxysql-password").Value || newuser != cluster.Conf.Secrets.Get("proxysql-user").Value) && err == nil {
 				//cluster.SetClusterProxyCredentialsFromConfig()
 				//cluster.oldDbUser = cluster.GetDbUser()
 				//cluster.oldDbPass = cluster.GetDbPass()

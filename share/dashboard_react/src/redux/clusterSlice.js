@@ -866,6 +866,10 @@ export const setCredentials = createGuardedAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.setCredentials(clusterName, credentialType, credential, baseURL)
+      if (status !== 200) {
+        // a refusal (409) answers with the reason as text (#2048)
+        throw new Error(typeof data === 'string' ? data.trim() : `HTTP ${status}`)
+      }
       showSuccessBanner(`Credentials for ${credentialType} set!`, status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -896,7 +900,12 @@ export const rotateDBCredential = createGuardedAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.rotateDBCredential(clusterName, baseURL)
-      showSuccessBanner('Database rotation successful!', status, thunkAPI)
+      if (status !== 200) {
+        // a refusal (409) answers with the reason as text (#2042)
+        throw new Error(typeof data === 'string' ? data.trim() : `HTTP ${status}`)
+      }
+      // the rotation runs in the background: the log tells when it is done
+      showSuccessBanner('Password rotation started', status, thunkAPI)
       return { data, status }
     } catch (error) {
       showErrorBanner('Database rotation failed!', error, thunkAPI)

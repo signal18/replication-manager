@@ -12,8 +12,10 @@ import (
 	"context"
 	"crypto"
 	"crypto/md5"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -26,6 +28,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -96,7 +99,7 @@ type HostList []*Host
 
 type Collector struct {
 	ClusterConf                 *config.Config
-	ClusterDir                  string
+	PemDir                      string // the om3 client's key and certificate files (GeneratePemFromP12)
 	Logrus                      *log.Logger
 	Host                        string
 	Port                        string
@@ -260,66 +263,97 @@ func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Cer
 	}, nil
 }
 
+// GeneratePemFromP12 returns the key, certificate and CA chain files of the p12 for the om3
+// client, which only takes file paths. They are written once, in PemDir (shared by the
+// clusters, outside their directories), under a name from the p12's content: om3 caches
+// its HTTP client per path for the life of the process (httpclientcache), so a rewrite at
+// every call served nothing, raced the readers, and recreated the files in a cluster's
+// directory while DeleteCluster removed it. A new p12 gets new files, so a new client.
 func (collector *Collector) GeneratePemFromP12(p12Data []byte, password string) (string, string, string, error) {
-	// Get filename from path
-	prefix := filepath.Base(collector.ClusterConf.ProvOpensvcP12Certificate)
+	sum := sha256.Sum256(append(append([]byte{}, p12Data...), password...))
+	base := filepath.Join(collector.PemDir, hex.EncodeToString(sum[:8]))
+	keyPath, certPath, chainPath := base+"-key.pem", base+"-cert.pem", base+"-chain.pem"
 
-	// Decode PKCS#12
+	pemFileMu.Lock()
+	defer pemFileMu.Unlock()
+	if fileExists(keyPath) && fileExists(certPath) {
+		if !fileExists(chainPath) {
+			chainPath = ""
+		}
+		return keyPath, certPath, chainPath, nil
+	}
+
 	privateKey, cert, caCerts, err := pkcs12.DecodeChain(p12Data, password)
 	if err != nil {
 		return "", "", "", err
 	}
-
-	//
-	// Write PRIVATE KEY
-	//
 	keyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
 	if err != nil {
 		return "", "", "", err
 	}
-
-	keyPath := fmt.Sprintf("%s/.%s-key.pem", collector.ClusterDir, prefix)
-	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: keyBytes,
-	}), 0600); err != nil {
+	if err := os.MkdirAll(collector.PemDir, 0700); err != nil {
 		return "", "", "", err
 	}
-
-	//
-	// Write CERTIFICATE
-	//
-	certPath := fmt.Sprintf("%s/.%s-cert.pem", collector.ClusterDir, prefix)
-	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: cert.Raw,
-	}), 0644); err != nil {
-		return "", "", "", err
+	var chain []byte
+	for _, ca := range caCerts {
+		chain = append(chain, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.Raw})...)
 	}
-
-	//
-	// Write CA CHAIN (if any)
-	//
-	chainPath := ""
-	if len(caCerts) > 0 {
-		chainPath = fmt.Sprintf("%s/.%s-chain.pem", collector.ClusterDir, prefix)
-		f, err := os.Create(chainPath)
-		if err != nil {
+	if len(chain) > 0 {
+		if err := writeFileAtomic(chainPath, chain, 0644); err != nil {
 			return "", "", "", err
 		}
-		defer f.Close()
+	} else {
+		chainPath = ""
+	}
+	// the key last: its presence (with the certificate) says the set is complete
+	if err := writeFileAtomic(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}), 0644); err != nil {
+		return "", "", "", err
+	}
+	if err := writeFileAtomic(keyPath, pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes}), 0600); err != nil {
+		return "", "", "", err
+	}
+	return keyPath, certPath, chainPath, nil
+}
 
-		for _, ca := range caCerts {
-			if err := pem.Encode(f, &pem.Block{
-				Type:  "CERTIFICATE",
-				Bytes: ca.Raw,
-			}); err != nil {
-				return "", "", "", err
-			}
+// pemFileMu: one writer at a time, the om3 calls of every cluster share PemDir
+var pemFileMu sync.Mutex
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// writeFileAtomic: a reader sees the whole file or none (temp file, then rename)
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp)
+	if err := f.Chmod(perm); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// RemoveLegacyP12Pem removes the key, certificate and chain files that GeneratePemFromP12
+// wrote into a cluster's directory before they moved to PemDir (".<p12>-key.pem" ...).
+func RemoveLegacyP12Pem(clusterDir string) {
+	for _, suffix := range []string{"-key.pem", "-cert.pem", "-chain.pem"} {
+		files, _ := filepath.Glob(filepath.Join(clusterDir, ".*.p12"+suffix))
+		for _, f := range files {
+			os.Remove(f)
 		}
 	}
-
-	return keyPath, certPath, chainPath, nil
 }
 
 func (collector *Collector) FromPemBytes(bytes []byte, password string) (tls.Certificate, error) {

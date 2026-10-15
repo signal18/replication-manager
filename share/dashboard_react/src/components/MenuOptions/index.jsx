@@ -72,6 +72,7 @@ function MenuOptions({
                       }
                     }}
                     isDisabled={!!subMenuOption.isDisabled}
+                    title={subMenuOption.isDisabled ? subMenuOption.disabledReason : undefined}
                     key={subIndex}>
                     {subMenuOption.name}
                   </MenuItem>
@@ -88,6 +89,7 @@ function MenuOptions({
                 }
               }}
               isDisabled={!!option.isDisabled}
+              title={option.isDisabled ? option.disabledReason : undefined}
               >
               {option.name}
             </MenuItem>

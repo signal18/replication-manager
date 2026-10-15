@@ -1239,6 +1239,7 @@ func (cm *ConfigManager) AddDataDirsToGitignore(conf *config.Config) {
 		"*.pem",         // TLS certs/keys — never in config git cleartext
 		"*.p12",
 		"*.p12-cert.pem",
+		".opensvc-pem/", // the om3 client key and certificate (opensvc.GeneratePemFromP12)
 	})
 }
 
@@ -1762,9 +1763,9 @@ func (cm *ConfigManager) RotateGitAccessToken(conf *config.Config) error {
 
 	var Secrets config.Secret
 	Secrets.Value = personal_access_token
-	Secrets.OldValue = conf.Secrets["git-acces-token"].Value
+	Secrets.OldValue = conf.Secrets.Get("git-acces-token").Value
 	conf.GitAccesToken = personal_access_token
-	conf.Secrets["git-acces-token"] = Secrets
+	conf.Secrets.Set("git-acces-token", Secrets)
 
 	return nil
 }

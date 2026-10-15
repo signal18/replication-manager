@@ -27,7 +27,7 @@ func NewProxySQLProxy(placement int, cluster *Cluster, proxyHost string) *ProxyS
 	prx.Port = conf.ProxysqlAdminPort
 	prx.ReadWritePort, _ = strconv.Atoi(conf.ProxysqlPort)
 	prx.User = cluster.Conf.ProxysqlUser
-	prx.Pass = cluster.Conf.Secrets["proxysql-password"].Value
+	prx.Pass = cluster.Conf.Secrets.Get("proxysql-password").Value
 	prx.ReaderHostgroup, _ = strconv.Atoi(conf.ProxysqlReaderHostgroup)
 	prx.WriterHostgroup, _ = strconv.Atoi(conf.ProxysqlWriterHostgroup)
 	prx.WritePort, _ = strconv.Atoi(conf.ProxysqlPort)
