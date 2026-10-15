@@ -63,7 +63,7 @@ func TestBackupVerificationHelpers(t *testing.T) {
 	t.Run("count is exact", func(t *testing.T) {
 		db, mock := freshMock(t)
 		mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM `app`.`t`").WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(int64(42)))
-		n, _, err := CountTableRows(db, maria, "app", "t")
+		n, _, err := CountTableRows(context.Background(), db, maria, "app", "t")
 		if err != nil || n != 42 {
 			t.Fatalf("n %d err %v", n, err)
 		}
@@ -93,7 +93,7 @@ func TestBackupVerificationHelpers(t *testing.T) {
 		if _, err := UseDatabaseConn(context.Background(), conn, pg, "app"); !errors.Is(err, ErrBackupVerificationPostgreSQL) {
 			t.Fatalf("use: %v", err)
 		}
-		if _, _, err := CountTableRows(db, pg, "app", "t"); !errors.Is(err, ErrBackupVerificationPostgreSQL) {
+		if _, _, err := CountTableRows(context.Background(), db, pg, "app", "t"); !errors.Is(err, ErrBackupVerificationPostgreSQL) {
 			t.Fatalf("count: %v", err)
 		}
 		if _, _, err := GetSchemaObjectNames(db, pg, "app"); !errors.Is(err, ErrBackupVerificationPostgreSQL) {
@@ -123,6 +123,30 @@ func TestBackupVerificationHelpers(t *testing.T) {
 		}
 		if _, err := MarkVerificationServer(db, maria, "c1", "admin"); err != nil {
 			t.Fatal(err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("GTID retention", func(t *testing.T) {
+		mysql, _ := version.NewVersionFromString("MySQL", "8.0.35")
+		db, mock := freshMock(t)
+		mock.ExpectQuery(`SELECT GTID_SUBSET\(@@GLOBAL.gtid_purged, \?\)`).WithArgs("u:1-10").
+			WillReturnRows(sqlmock.NewRows([]string{"ok"}).AddRow(0))
+		mock.ExpectQuery(`SELECT BINLOG_GTID_POS\(\?, 4\)`).WithArgs("bin.000002").
+			WillReturnRows(sqlmock.NewRows([]string{"pos"}).AddRow("0-1-42"))
+		if ok, _, err := GtidPurgedSubsetOf(db, mysql, "u:1-10"); err != nil || ok {
+			t.Fatalf("subset %v err %v", ok, err)
+		}
+		if pos, _, err := BinlogGtidPos(db, maria, "bin.000002"); err != nil || pos != "0-1-42" {
+			t.Fatalf("pos %q err %v", pos, err)
+		}
+		if _, _, err := GtidPurgedSubsetOf(db, maria, "x"); !errors.Is(err, ErrGtidRetentionNotMySQL) {
+			t.Fatalf("subset on MariaDB: %v", err)
+		}
+		if _, _, err := BinlogGtidPos(db, mysql, "x"); !errors.Is(err, ErrGtidRetentionNotMySQL) {
+			t.Fatalf("pos on MySQL: %v", err)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Fatal(err)

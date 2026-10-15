@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
@@ -244,5 +245,52 @@ func TestCheckLogicalRestoreArtifactEncrypted(t *testing.T) {
 	}
 	if err := c.checkLogicalRestoreArtifact(splitMeta.Dest); err == nil {
 		t.Fatal("expected a changed encrypted splitdump to fail")
+	}
+}
+
+// A restore does not read again a backup that passed a verification and is unchanged since:
+// its fingerprint is the one recorded with the pass. Changed, or never verified, it is read.
+func TestCheckLogicalRestoreArtifactSkipsVerifiedBackup(t *testing.T) {
+	c, server := newStagingTestServer(t)
+	c.Servers = append(c.Servers, server)
+	c.BackupMetaMap = backupmgr.NewBackupMetaMap()
+	// a dump without its footer: the check refuses it whenever it reads it
+	path := filepath.Join(t.TempDir(), "mysqldump.sql.gz")
+	writeValidationGzip(t, path, strings.TrimSuffix(validationDump, validationDumpFooter))
+	meta := &backupmgr.BackupMetadata{Id: 3, Dest: path, Source: server.URL}
+	c.BackupMetaMap.Set(meta.Id, meta)
+
+	if err := c.checkLogicalRestoreArtifact(path); err == nil {
+		t.Fatal("never verified: the backup must be read")
+	}
+	fp, err := restoreArtifactFingerprint(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.Verification = &backupmgr.BackupVerification{Level: "integrity", Status: backupmgr.BackupVerificationFailed, Artifact: fp}
+	if err := c.checkLogicalRestoreArtifact(path); err == nil {
+		t.Fatal("failed verification: the backup must be read")
+	}
+	meta.Verification = &backupmgr.BackupVerification{Level: "integrity", Status: backupmgr.BackupVerificationPassed, Artifact: fp}
+	if err := c.checkLogicalRestoreArtifact(path); err != nil {
+		t.Fatalf("passed and unchanged: not read again, got %v", err)
+	}
+	if err := os.Chtimes(path, fp.ModTime.Add(time.Minute), fp.ModTime.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.checkLogicalRestoreArtifact(path); err == nil {
+		t.Fatal("changed since its verification: the backup must be read")
+	}
+
+	// a splitdump directory: a file added changes its fingerprint
+	dir := writeValidSplitDumpForValidation(t)
+	before, err := restoreArtifactFingerprint(dir)
+	if err != nil || before.Files == 0 {
+		t.Fatalf("fingerprint %+v err %v", before, err)
+	}
+	writeValidationGzip(t, filepath.Join(dir, "extra.sql.gz"), "SELECT 1;\n")
+	after, _ := restoreArtifactFingerprint(dir)
+	if after.Files != before.Files+1 {
+		t.Fatalf("fingerprint unchanged by a new file: %+v %+v", before, after)
 	}
 }

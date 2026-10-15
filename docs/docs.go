@@ -23937,6 +23937,20 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "backupmgr.ArtifactFingerprint": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "integer"
+                },
+                "modTime": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                }
+            }
+        },
         "backupmgr.BackupMetadata": {
             "type": "object",
             "properties": {
@@ -24082,6 +24096,14 @@ const docTemplate = `{
         "backupmgr.BackupVerification": {
             "type": "object",
             "properties": {
+                "artifact": {
+                    "description": "Artifact is the backup's file as a passed verification read it, unchanged from its\nstart to its end: a restore of the same file skips its own read of it.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/backupmgr.ArtifactFingerprint"
+                        }
+                    ]
+                },
                 "endTime": {
                     "type": "string"
                 },
@@ -27032,6 +27054,9 @@ const docTemplate = `{
                 },
                 "backupVerificationLevel": {
                     "type": "string"
+                },
+                "backupVerificationTimeout": {
+                    "type": "integer"
                 },
                 "backupWriteStallTimeout": {
                     "type": "integer"

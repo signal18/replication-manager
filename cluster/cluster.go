@@ -581,6 +581,9 @@ type Cluster struct {
 	// backupVerifying holds the backups being verified (#2023): backup id -> level.
 	backupVerificationMu sync.Mutex `json:"-"`
 	backupVerifying      sync.Map   `json:"-"`
+	// backupVerificationReads holds the backups an on-demand verification reads: backup id
+	// -> backupVerificationRead. A backup reusing the file and the archive removal wait.
+	backupVerificationReads sync.Map `json:"-"`
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both

@@ -113,9 +113,11 @@ var (
 	gtidRegexMariaDB    = regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 	binlogRegexMySQL    = regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
 	gtidRegexMySQL      = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:\/\*![^*]*\*\/\s*)?'([^']+)'`)
-	triggerDefinition   = regexp.MustCompile("(?i)\\bCREATE\\b.*\\bTRIGGER\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:`([^`]+)`|([[:alnum:]_$.-]+))")
+	triggerDefinition   = regexp.MustCompile("(?i)\\bCREATE\\b(.*?)\\bTRIGGER\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:`([^`]+)`|([[:alnum:]_$.-]+))")
 	triggerCreateMarker = regexp.MustCompile(`(?i)\bCREATE\s*\*/`)
 	triggerNameLine     = regexp.MustCompile("(?i)\\bTRIGGER\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:`([^`]+)`|([[:alnum:]_$.-]+))")
+	// what a dump writes between CREATE and TRIGGER: version comments, the definer, OR REPLACE
+	triggerCreateInfix = regexp.MustCompile(`(?i)^(?:\s|\*/|/\*!\d*|DEFINER\s*=\s*\S+|OR\s+REPLACE)*$`)
 )
 
 // gtidStatementLines joins the lines of a GTID_PURGED statement: a MySQL client writes the
@@ -170,13 +172,15 @@ func (g *gtidStatementLines) add(line string) string {
 // so the trigger statement itself is the only reliable section boundary.
 func extractTriggerName(line string) string {
 	matches := triggerDefinition.FindStringSubmatch(line)
-	if len(matches) == 0 {
+	// CREATE TABLE ... COMMENT 'TRIGGER x' is not a trigger: only a definer, version
+	// comments or OR REPLACE stand between CREATE and TRIGGER
+	if len(matches) == 0 || !triggerCreateInfix.MatchString(matches[1]) {
 		return ""
 	}
-	if matches[1] != "" {
-		return matches[1]
+	if matches[2] != "" {
+		return matches[2]
 	}
-	return matches[2]
+	return matches[3]
 }
 
 func extractTriggerNameLine(line string) string {
@@ -368,6 +372,17 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	streamSize := int64(0)
 	pendingSplit := false
 	splitReady := false
+	// Trigger sections. A trigger file opens at its CREATE ... TRIGGER statement (the
+	// "Dumping triggers" header is gone from current dump clients), only outside another
+	// file (tableFile == nil):
+	//   - pendingTriggerPreamble: the lines a dump writes before that statement (saved
+	//     session settings, DELIMITER ;;), held until the trigger file opens, then written
+	//     first into it;
+	//   - pendingTriggerCreate: a versioned "CREATE*/" line was seen, its TRIGGER name comes
+	//     on the next line (/*!50003 CREATE*/ /*!50017 DEFINER=...*/ then /*!50003 TRIGGER);
+	//   - inDelimiterBlock: between DELIMITER ;; and DELIMITER ;, a trigger or routine body,
+	//     whose "-- " comments are not section headers; outside it, a "-- " header closes
+	//     a trigger file.
 	pendingTriggerCreate := false
 	var pendingTriggerPreamble []string
 	inDelimiterBlock := false // between DELIMITER ;; and DELIMITER ;: a trigger or routine body

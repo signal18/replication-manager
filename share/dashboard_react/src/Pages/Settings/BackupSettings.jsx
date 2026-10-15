@@ -188,6 +188,7 @@ function BackupSettings({ selectedCluster, user }) {
   const hVerification = `**Backup Verification**\n\nVerifies each logical (mysqldump) backup once it completes, at the verification level below. A backup can also be verified on demand from the backup list (Maintenance).\n\nThe result is shown in the backup list; a failed verification of a server's last logical backup raises ERR00117.\n\nConfig: \`backup-verification\``
   const hVerificationLevel = `**Backup Verification Level**\n\n- **Integrity**: reads the backup as a restore would, without a database: gzip to its end, the dump's \`-- Dump completed\` line, the position against the backup metadata, every file of a splitdump. An encrypted backup has its HMAC checked first.\n- **Test restore**: the integrity checks, then the backup is loaded into the verification server below, and each table's rows and each schema's tables, views, routines, triggers and events are compared with the dump.\n\nConfig: \`backup-verification-level\``
   const hVerificationHost = `**Backup Verification Server**\n\nWhere the test restore loads the backup:\n\n- **External server** (host:port): outside the cluster, of the same flavor and version as the cluster, with the credentials below. **It is disposable**: the whole backup is loaded, the mysql schema (accounts) included, and the backup's other schemas are dropped there before the load and after the comparison. It must be marked as a verification server (the table \`replication_manager_schema.backup_verification_server\`): a server without schemas of its own is marked on its first test restore, one that holds schemas is refused until marked with **Mark as verification server**. Never mark a server that holds data of its own.\n- **A replica of the cluster** (not the primary nor a relay): the test restore reseeds it: maintenance, replication stopped, load and comparison, then replication restarted from the backup's position. A replica not yet in ignored hosts is added to them when picked (never a failover candidate).\n\nConfig: \`backup-verification-host\``
+  const hVerificationTimeout = `**Backup Verification Timeout**\n\nSeconds a test restore may run, its load and its comparison, before it is canceled and fails. A replica of the cluster whose test restore is canceled stays in maintenance, its replication stopped: reseed it. 0 disables the limit.\n\nConfig: \`backup-verification-timeout\``
   const hVerificationCredential = `**Backup Verification Credentials**\n\nThe user:password replication-manager connects to the verification server with. The test restore loads the backup's accounts: use an account the backups hold, such as the cluster's database credentials.\n\nConfig: \`backup-verification-credential\``
   const hSplitDump = `**Mysqldump Splitdump Output**\n\nSends mysqldump output through replication-manager-cli splitdump instead of a single .sql.gz file.\nOutput is written to a splitdump directory (uncompressed).\nRequires the CLI to be available in PATH or configured below.\n\nConfig: \`backup-mysqldump-splitdump\``
   const hSplitDumpSize = `**Splitdump Shard Size**\n\nMaximum shard size for splitdump output. Default: 1G. Set to 0 to disable sharding.\n\nConfig: \`backup-splitdump-file-size\``
@@ -314,6 +315,16 @@ function BackupSettings({ selectedCluster, user }) {
           confirmTitle={`Confirm backup-verification-level to`}
           isDisabled={user?.grants['cluster-settings'] == false}
           onChange={(level) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-verification-level', value: level }))} />
+      )
+    },
+    {
+      key: 'Backup Verification Timeout',
+      help: h(hVerificationTimeout, 'Backup Verification Timeout'),
+      value: (
+        <NumberInput min={0} value={selectedCluster?.config?.backupVerificationTimeout}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-verification-timeout' to: `}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-verification-timeout', value }))} />
       )
     },
     {

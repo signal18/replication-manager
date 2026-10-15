@@ -5,6 +5,7 @@ import (
 	"bytes"
 	stdgzip "compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -379,8 +380,20 @@ func (cluster *Cluster) openBackupVerificationServer(host, credential string) (*
 
 // verifyLogicalBackupRestore is the restore level of backup verification. It returns what
 // it loaded and compared, and the kinds of objects the source has and the backup lacks.
-func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMetadata) ([]string, []string, error) {
+func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMetadata) (notes []string, warnings []string, err error) {
 	cluster := server.ClusterGroup
+	// backup-verification-timeout: the load and the comparison are canceled with ctx
+	ctx := context.Background()
+	if timeout := time.Duration(cluster.Conf.BackupVerificationTimeout) * time.Second; timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+		defer func() {
+			if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				err = fmt.Errorf("canceled after backup-verification-timeout (%s): %w", timeout, err)
+			}
+		}()
+	}
 	// the settings of this run, read once
 	host := strings.TrimSpace(cluster.Conf.BackupVerificationHost)
 	credential := cluster.Conf.GetDecryptedValue("backup-verification-credential")
@@ -395,7 +408,6 @@ func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMe
 		return nil, nil, dbhelper.ErrBackupVerificationPostgreSQL
 	}
 	user, _ := misc.SplitPair(credential)
-	ctx := context.Background()
 	var conn *sqlx.Conn
 	if replica != nil {
 		if replica.HasMySQLGTID() && meta.BinLogGtid == "" {
@@ -404,12 +416,16 @@ func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMe
 		}
 		// the replica's own pool, without binary logging: the load is not a transaction of
 		// the replica, and its binary logs are reset before replication restarts
+		// before the replica is touched: it must replicate from the backup's position after
+		if err := replica.checkVerificationResumable(meta); err != nil {
+			return nil, nil, err
+		}
 		setMaintenance, err := replica.beginVerificationReseed()
 		if err != nil {
 			return nil, nil, err
 		}
-		resumed := false
-		defer func() { replica.endVerificationReseed(setMaintenance, resumed) }()
+		resumed, touched := false, false
+		defer func() { replica.endVerificationReseed(setMaintenance, resumed, touched) }()
 		resumeScheduler, err := server.pauseEventScheduler(db, ver, replica.URL)
 		if err != nil {
 			return nil, nil, err
@@ -425,6 +441,7 @@ func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMe
 		if err := server.prepareRestoreConn(ctx, conn); err != nil {
 			return nil, nil, fmt.Errorf("restore session on %s: %w", host, err)
 		}
+		touched = true // the load replaces the replica's data
 		notes, warnings, err := server.loadAndCompareForVerification(ctx, meta, db, ver, conn, host, user, false)
 		// whatever the result, before the scheduler comes back: the load created its events ENABLE
 		if derr := replica.disableVerificationEvents(); derr != nil && err == nil {
@@ -658,7 +675,7 @@ func (l *backupVerificationLoad) compare() ([]string, error) {
 				continue
 			}
 			want := l.inv.rows[schema][table]
-			n, query, err := dbhelper.CountTableRows(l.db, l.ver, schema, table)
+			n, query, err := dbhelper.CountTableRows(l.ctx, l.db, l.ver, schema, table)
 			l.logSQL(query, err, config.LvlDbg, "Backup verification could not count the rows of %s.%s: %s", schema, table, err)
 			if err != nil {
 				return nil, fmt.Errorf("rows of %s.%s on the verification server: %w", schema, table, err)

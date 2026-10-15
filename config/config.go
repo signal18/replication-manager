@@ -912,6 +912,7 @@ type Config struct {
 	BackupVerificationLevel                   string            `mapstructure:"backup-verification-level" toml:"backup-verification-level" json:"backupVerificationLevel"`
 	BackupVerificationHost                    string            `mapstructure:"backup-verification-host" toml:"backup-verification-host" json:"backupVerificationHost"`
 	BackupVerificationCredential              string            `mapstructure:"backup-verification-credential" toml:"backup-verification-credential" json:"-"`
+	BackupVerificationTimeout                 int               `mapstructure:"backup-verification-timeout" toml:"backup-verification-timeout" json:"backupVerificationTimeout"`
 	BackupRestic                              bool              `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string            `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticLocalRepository               string            `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`

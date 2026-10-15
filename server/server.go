@@ -968,6 +968,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupVerificationLevel, "backup-verification-level", config.ConstBackupVerificationLevelIntegrity, "Backup verification level: integrity (read the backup as a restore would, no database) or restore (integrity, then a test restore on backup-verification-host)")
 	flags.StringVar(&conf.BackupVerificationHost, "backup-verification-host", "", "Verification server (host:port) the restore level loads the backup into, outside the cluster")
 	flags.StringVar(&conf.BackupVerificationCredential, "backup-verification-credential", "", "Verification server user:password")
+	flags.IntVar(&conf.BackupVerificationTimeout, "backup-verification-timeout", 14400, "Seconds a test restore (restore level) may run before it is canceled: the load and the comparison; a replica of the cluster then stays in maintenance. 0 disables")
 	flags.BoolVar(&conf.BackupRestic, "backup-restic", false, "Use restic to archive and restore backups")
 	flags.StringVar(&conf.BackupResticTags, "backup-restic-tags", "tenant,cluster,engine,version,backup-type,backup-tool,line", "Comma-separated restic tags or templates (e.g. cluster,backup-type,line,env:prod). Quote a tag to keep it literal.")
 	flags.StringVar(&conf.BackupResticHost, "backup-restic-host", "", "Restic backup --host override. Empty uses restic default hostname (no alias).")

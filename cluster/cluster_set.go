@@ -2871,6 +2871,20 @@ func (cluster *Cluster) SetBackupVerificationCredential(cred string) {
 	cluster.MarkSecretVersionStoreDirty()
 }
 
+// SetBackupVerificationTimeout sets backup-verification-timeout: the seconds a test restore
+// may run, 0 for no limit.
+func (cluster *Cluster) SetBackupVerificationTimeout(value string) error {
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	if v < 0 {
+		return fmt.Errorf("backup-verification-timeout must be 0 or more seconds, got %d", v)
+	}
+	cluster.Conf.BackupVerificationTimeout = v
+	return nil
+}
+
 // SetBackupVerificationLevel sets backup-verification-level: integrity or restore.
 func (cluster *Cluster) SetBackupVerificationLevel(level string) error {
 	switch level {

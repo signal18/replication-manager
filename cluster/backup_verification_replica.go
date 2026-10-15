@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -74,7 +75,7 @@ func (replica *ServerMonitor) beginVerificationReseed() (bool, error) {
 		err = replica.stopLiveReplication()
 	}
 	if err != nil {
-		replica.endVerificationReseed(setMaintenance, false)
+		replica.endVerificationReseed(setMaintenance, false, false)
 		return false, fmt.Errorf("stop the replication of %s: %w", replica.URL, err)
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification took %s out of service: maintenance, replication stopped", replica.URL)
@@ -106,19 +107,127 @@ func (replica *ServerMonitor) resumeVerificationReplica(meta *backupmgr.BackupMe
 }
 
 // endVerificationReseed releases the reseed flag, and leaves maintenance when the test
-// restore set it and the replica replicates again; a replica whose test restore failed
-// stays in maintenance, its replication stopped: it needs a reseed.
-func (replica *ServerMonitor) endVerificationReseed(setMaintenance, resumed bool) {
+// restore set it and the replica replicates again. A test restore that failed once its load
+// started (touched) leaves the replica in maintenance, its replication stopped: it needs a
+// reseed. One that failed before touching its data restarts its replication and leaves
+// maintenance: the replica is as it was.
+func (replica *ServerMonitor) endVerificationReseed(setMaintenance, resumed, touched bool) {
 	cluster := replica.ClusterGroup
 	replica.SetInReseedBackup("")
-	if !resumed {
+	switch {
+	case resumed:
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification reseeded %s from the backup: replicating from its position", replica.URL)
+	case touched:
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr, "Backup verification left %s in maintenance, its replication stopped: its data is the partial test restore, reseed it", replica.URL)
 		return
+	default:
+		logs, err := replica.StartSlave()
+		cluster.LogSQL(logs, err, replica.URL, "BackupVerification", config.LvlErr, "Backup verification could not restart the replication of %s: %s", replica.URL, err)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr, "Backup verification left %s in maintenance: nothing was loaded, but its replication did not restart, start it", replica.URL)
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification stopped before loading into %s: its replication restarted", replica.URL)
 	}
 	if setMaintenance {
 		replica.DelMaintenance()
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification reseeded %s from the backup: replicating from its position", replica.URL)
+}
+
+// checkVerificationResumable refuses a test restore on replica when the primary no longer
+// has the backup's position: replica would load the backup, then fail to replicate from it
+// (error 1236) for good. It reads the position as pointLogicalReseedReplica uses it.
+func (replica *ServerMonitor) checkVerificationResumable(meta *backupmgr.BackupMetadata) error {
+	cluster := replica.ClusterGroup
+	primary := cluster.GetMaster()
+	if primary == nil || primary.Conn == nil || primary.DBVersion == nil {
+		return fmt.Errorf("no primary to read its binary logs: %s could not resume from backup %d", replica.URL, meta.Id)
+	}
+	gtid, file, _ := logicalReseedPosition(nil, meta)
+	refused := func(why string) error {
+		return fmt.Errorf("backup %d is older than the binary logs of the primary %s (%s): %s could not replicate from its position; verify it on an external server", meta.Id, primary.URL, why, replica.URL)
+	}
+	switch {
+	case replica.HasMySQLGTID():
+		ok, query, err := dbhelper.GtidPurgedSubsetOf(primary.Conn, primary.DBVersion, gtid)
+		cluster.LogSQL(query, err, primary.URL, "BackupVerification", config.LvlErr, "Backup verification could not read the purged GTIDs of %s: %s", primary.URL, err)
+		if err != nil {
+			return fmt.Errorf("purged GTIDs of %s: %w", primary.URL, err)
+		}
+		if !ok {
+			return refused("it purged GTIDs the backup lacks")
+		}
+	case replica.IsMariaDB() && gtid != "" && replica.HasGTIDReplication():
+		oldest, err := oldestBinaryLog(primary)
+		if err != nil {
+			return err
+		}
+		start, query, err := dbhelper.BinlogGtidPos(primary.Conn, primary.DBVersion, oldest)
+		cluster.LogSQL(query, err, primary.URL, "BackupVerification", config.LvlErr, "Backup verification could not read the GTID position of %s on %s: %s", oldest, primary.URL, err)
+		if err != nil {
+			return fmt.Errorf("GTID position of %s on %s: %w", oldest, primary.URL, err)
+		}
+		if domain, ok := mariadbGtidCovers(gtid, start); !ok {
+			return refused(fmt.Sprintf("its oldest binary log %s starts at %s, past the backup in domain %s", oldest, start, domain))
+		}
+	case file != "":
+		oldest, err := oldestBinaryLog(primary)
+		if err != nil {
+			return err
+		}
+		base, oldBase := strings.TrimRight(file, "0123456789"), strings.TrimRight(oldest, "0123456789")
+		if base != oldBase {
+			return fmt.Errorf("backup %d holds the position %s, not a binary log of the primary %s (%s): %s could not replicate from it; verify it on an external server", meta.Id, file, primary.URL, oldest, replica.URL)
+		}
+		if file < oldest {
+			return refused(fmt.Sprintf("its oldest binary log is %s, the backup's %s is purged", oldest, file))
+		}
+	}
+	return nil
+}
+
+// oldestBinaryLog returns the oldest binary log file of server.
+func oldestBinaryLog(server *ServerMonitor) (string, error) {
+	cluster := server.ClusterGroup
+	_, oldest, _, query, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion, dbhelper.NewBinaryLogMetaMap())
+	cluster.LogSQL(query, err, server.URL, "BackupVerification", config.LvlErr, "Backup verification could not list the binary logs of %s: %s", server.URL, err)
+	if err != nil {
+		return "", fmt.Errorf("binary logs of %s: %w", server.URL, err)
+	}
+	if oldest == "" {
+		return "", fmt.Errorf("binary logs of %s: none", server.URL)
+	}
+	return oldest, nil
+}
+
+// mariadbGtidCovers tells whether a MariaDB GTID position (domain-server-seq, comma
+// separated) is at or past start in each of start's domains; else the first domain behind.
+func mariadbGtidCovers(pos, start string) (string, bool) {
+	seqs := map[string]uint64{}
+	for _, g := range strings.Split(pos, ",") {
+		parts := strings.Split(strings.TrimSpace(g), "-")
+		if len(parts) != 3 {
+			continue
+		}
+		n, err := strconv.ParseUint(parts[2], 10, 64)
+		if err == nil && n > seqs[parts[0]] {
+			seqs[parts[0]] = n
+		}
+	}
+	for _, g := range strings.Split(start, ",") {
+		parts := strings.Split(strings.TrimSpace(g), "-")
+		if len(parts) != 3 {
+			continue
+		}
+		n, err := strconv.ParseUint(parts[2], 10, 64)
+		if err != nil {
+			continue
+		}
+		if seqs[parts[0]] < n {
+			return parts[0], false
+		}
+	}
+	return "", true
 }
 
 // sameServerAddress reports whether host:port is server s under another name: the same port

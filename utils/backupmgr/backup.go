@@ -111,6 +111,18 @@ type BackupVerification struct {
 	// lacks (restore level), e.g. events left out of a dump: the backup restores, without
 	// them.
 	Warnings []string `json:"warnings,omitempty"`
+	// Artifact is the backup's file as a passed verification read it, unchanged from its
+	// start to its end: a restore of the same file skips its own read of it.
+	Artifact *ArtifactFingerprint `json:"artifact,omitempty"`
+}
+
+// ArtifactFingerprint identifies a backup's file without reading it: its size and
+// modification time; for a splitdump directory, its files' count, total size and newest
+// modification time.
+type ArtifactFingerprint struct {
+	Files   int       `json:"files"`
+	Size    int64     `json:"size"`
+	ModTime time.Time `json:"modTime"`
 }
 
 type PointInTimeMeta struct {

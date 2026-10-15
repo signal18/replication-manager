@@ -657,6 +657,9 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 			if !ok || now.Before(deadline) {
 				continue
 			}
+			if _, verifying := cluster.backupVerifying.Load(meta.Id); verifying {
+				continue // purged at a later pass, once verified
+			}
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging expired ad-hoc backup %d on %s", meta.Id, server.URL)
 

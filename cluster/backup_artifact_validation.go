@@ -11,7 +11,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
@@ -97,6 +100,10 @@ func (cluster *Cluster) readMysqldumpArtifact(path string, binlogRegex *regexp.R
 // account for every file it lists. An encrypted splitdump is checked by its HMAC only:
 // the restore decrypts it next.
 func (cluster *Cluster) checkLogicalRestoreArtifact(path string) error {
+	if meta := cluster.verifiedRestoreArtifact(path); meta != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore artifact %s not read again: backup %d passed its verification (%s level, %s) and is unchanged since", path, meta.Id, meta.Verification.Level, meta.Verification.EndTime.Format(time.RFC3339))
+		return nil
+	}
 	splitDump, err := isSplitDumpDir(path)
 	if err != nil {
 		return fmt.Errorf("logical backup artifact %s is unavailable: %w", path, err)
@@ -259,4 +266,72 @@ func validateSplitDumpArtifactFile(path, name string) error {
 		return fmt.Errorf("read artifact %s: %w", name, err)
 	}
 	return nil
+}
+
+// restoreArtifactFingerprint returns the fingerprint of the backup artifact at path as a
+// restore reads it: the encrypted archive of a splitdump when it has one, the files of a
+// splitdump directory, else the file.
+func restoreArtifactFingerprint(path string) (*backupmgr.ArtifactFingerprint, error) {
+	if enc := encryptedSplitDumpPath(path); enc != "" {
+		path = enc
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.IsDir() {
+		return &backupmgr.ArtifactFingerprint{Files: 1, Size: fi.Size(), ModTime: fi.ModTime()}, nil
+	}
+	fp := &backupmgr.ArtifactFingerprint{}
+	err = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		fp.Files++
+		fp.Size += info.Size()
+		if info.ModTime().After(fp.ModTime) {
+			fp.ModTime = info.ModTime()
+		}
+		return nil
+	})
+	return fp, err
+}
+
+// verifiedRestoreArtifact returns the backup whose artifact is path when it passed a
+// verification and its fingerprint is the one recorded then; nil otherwise.
+func (cluster *Cluster) verifiedRestoreArtifact(path string) *backupmgr.BackupMetadata {
+	if cluster.BackupMetaMap == nil || path == "" {
+		return nil
+	}
+	path = filepath.Clean(path)
+	var found *backupmgr.BackupMetadata
+	cluster.BackupMetaMap.Callback(func(_ int64, meta *backupmgr.BackupMetadata) bool {
+		if meta != nil && meta.Dest != "" && (filepath.Clean(meta.Dest) == path || filepath.Clean(meta.Dest)+".tar.enc" == path) {
+			found = meta
+			return false
+		}
+		return true
+	})
+	if found == nil {
+		return nil
+	}
+	var v *backupmgr.BackupVerification
+	if server := cluster.GetServerFromURL(found.Source); server != nil {
+		server.backupMetaMutex.Lock()
+		v = found.Verification
+		server.backupMetaMutex.Unlock()
+	}
+	if v == nil || v.Status != backupmgr.BackupVerificationPassed || v.Artifact == nil {
+		return nil
+	}
+	fp, err := restoreArtifactFingerprint(path)
+	// time.Equal: the recorded time may come back from the meta file, without its location
+	if err != nil || fp.Files != v.Artifact.Files || fp.Size != v.Artifact.Size || !fp.ModTime.Equal(v.Artifact.ModTime) {
+		return nil
+	}
+	return found
 }

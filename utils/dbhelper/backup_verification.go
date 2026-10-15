@@ -68,15 +68,43 @@ func SetGtidPurged(db *sqlx.DB, myver *version.Version, gtidSet string) (string,
 }
 
 // CountTableRows returns the exact number of rows of schema.table (COUNT(*), not the
-// estimate of information_schema). PostgreSQL: ErrBackupVerificationPostgreSQL.
-func CountTableRows(db *sqlx.DB, myver *version.Version, schema, table string) (int64, string, error) {
+// estimate of information_schema), canceled with ctx. PostgreSQL: ErrBackupVerificationPostgreSQL.
+func CountTableRows(ctx context.Context, db *sqlx.DB, myver *version.Version, schema, table string) (int64, string, error) {
 	if myver.IsPostgreSQL() {
 		return 0, "", ErrBackupVerificationPostgreSQL
 	}
 	query := "SELECT COUNT(*) FROM " + QuoteMySQLIdentifier(schema) + "." + QuoteMySQLIdentifier(table)
 	var n int64
-	err := db.QueryRowx(query).Scan(&n)
+	err := db.QueryRowxContext(ctx, query).Scan(&n)
 	return n, query, err
+}
+
+// ErrGtidRetentionNotMySQL: gtid_purged is MySQL's, BINLOG_GTID_POS MariaDB's.
+var ErrGtidRetentionNotMySQL = errors.New("GTID retention is read on MySQL/Percona (gtid_purged) or MariaDB (BINLOG_GTID_POS)")
+
+// GtidPurgedSubsetOf tells whether every GTID the server purged from its binary logs is in
+// gtidSet: a replica that executed gtidSet can resume from it with auto-position. MySQL and
+// Percona only: ErrGtidRetentionNotMySQL elsewhere, nothing is sent.
+func GtidPurgedSubsetOf(db *sqlx.DB, myver *version.Version, gtidSet string) (bool, string, error) {
+	if myver.IsPostgreSQL() || myver.IsMariaDB() {
+		return false, "", ErrGtidRetentionNotMySQL
+	}
+	query := "SELECT GTID_SUBSET(@@GLOBAL.gtid_purged, ?)"
+	var ok int
+	err := db.QueryRowx(query, gtidSet).Scan(&ok)
+	return ok == 1, query, err
+}
+
+// BinlogGtidPos returns the GTID position at the start of the binary log file of a MariaDB
+// server: "" when it has none. MariaDB only: ErrGtidRetentionNotMySQL elsewhere.
+func BinlogGtidPos(db *sqlx.DB, myver *version.Version, file string) (string, string, error) {
+	if !myver.IsMariaDB() {
+		return "", "", ErrGtidRetentionNotMySQL
+	}
+	query := "SELECT BINLOG_GTID_POS(?, 4)"
+	var pos sql.NullString
+	err := db.QueryRowx(query, file).Scan(&pos)
+	return pos.String, query, err
 }
 
 // Schema object kinds of GetSchemaObjectNames.

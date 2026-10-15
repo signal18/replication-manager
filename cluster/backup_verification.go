@@ -97,9 +97,91 @@ func (cluster *Cluster) VerifyBackupByID(backupID int64, level string) error {
 			return
 		}
 		defer cluster.ServerGlobals.ReleaseBackupSlot()
+		if !cluster.claimBackupVerificationRead(meta) {
+			return
+		}
+		defer cluster.backupVerificationReads.Delete(meta.Id)
+		if err := verifiableLogicalBackup(meta); err != nil { // its original archived meanwhile
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Backup verification of backup %d not run: %s", meta.Id, err)
+			return
+		}
 		server.verifyBackup(meta, level)
 	}()
 	return nil
+}
+
+// backupVerificationRead is a backup an on-demand verification reads.
+type backupVerificationRead struct {
+	source string // the server backed up
+	reused bool   // a scheduled backup: the next backup of the method writes the same file
+}
+
+// claimBackupVerificationRead waits until no logical backup of the cluster runs, its archive
+// push included, then records that meta is read. A backup of its server that would write the
+// same file (startLogicalBackupAfterVerification), the archive removal of meta
+// (waitBackupVerificationRead) and the delete wait or are refused meanwhile. False when the
+// cluster stops first.
+func (cluster *Cluster) claimBackupVerificationRead(meta *backupmgr.BackupMetadata) bool {
+	waited := false
+	for {
+		cluster.backupVerificationMu.Lock()
+		if !cluster.InLogicalBackup && !cluster.IsInResticBackupForMethod(backupmgr.BackupMethodLogical) {
+			cluster.backupVerificationReads.Store(meta.Id, backupVerificationRead{source: meta.Source, reused: !meta.IsAdhoc()})
+			cluster.backupVerificationMu.Unlock()
+			return true
+		}
+		cluster.backupVerificationMu.Unlock()
+		if cluster.exit.Load() {
+			return false
+		}
+		if !waited {
+			waited = true
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification of backup %d waits for the logical backup running", meta.Id)
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// startLogicalBackupAfterVerification sets the logical backup state of the cluster once no
+// on-demand verification reads a scheduled backup of server: the backup writes its file.
+func (server *ServerMonitor) startLogicalBackupAfterVerification() {
+	cluster := server.ClusterGroup
+	waited := false
+	for {
+		cluster.backupVerificationMu.Lock()
+		reading := false
+		cluster.backupVerificationReads.Range(func(_, v any) bool {
+			r := v.(backupVerificationRead)
+			reading = r.reused && r.source == server.URL
+			return !reading
+		})
+		if !reading || cluster.exit.Load() {
+			cluster.SetInLogicalBackupState(true)
+			cluster.backupVerificationMu.Unlock()
+			return
+		}
+		cluster.backupVerificationMu.Unlock()
+		if !waited {
+			waited = true
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup of %s waits for the verification of its previous backup, whose file it rewrites", server.URL)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// waitBackupVerificationRead waits while an on-demand verification reads backup id.
+func (cluster *Cluster) waitBackupVerificationRead(id int64) {
+	waited := false
+	for !cluster.exit.Load() {
+		if _, reading := cluster.backupVerificationReads.Load(id); !reading {
+			return
+		}
+		if !waited {
+			waited = true
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Removal of the original of backup %d waits for its verification", id)
+		}
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // verifyBackupAfterBackup is the backup-verification hook of a logical backup: it runs in
@@ -134,6 +216,8 @@ func (server *ServerMonitor) verifyBackup(meta *backupmgr.BackupMetadata, level 
 	server.recordBackupVerification(meta, v)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification of %s backup %d (%s level) started on %s", meta.BackupTool, meta.Id, level, server.URL)
 
+	// the file as the levels read it: kept with a pass when unchanged from start to end
+	before, _ := restoreArtifactFingerprint(meta.Dest)
 	var notes, warnings []string
 	var err error
 	func() {
@@ -167,6 +251,9 @@ func (server *ServerMonitor) verifyBackup(meta *backupmgr.BackupMetadata, level 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr, "Backup verification of %s backup %d (%s level) failed on %s: %s", meta.BackupTool, meta.Id, level, server.URL, err)
 	} else {
 		done.Status = backupmgr.BackupVerificationPassed
+		if after, ferr := restoreArtifactFingerprint(meta.Dest); ferr == nil && before != nil && *after == *before {
+			done.Artifact = after
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification of %s backup %d (%s level) passed on %s in %s", meta.BackupTool, meta.Id, level, server.URL, done.EndTime.Sub(done.StartTime).Round(time.Second))
 	}
 	for _, n := range notes {

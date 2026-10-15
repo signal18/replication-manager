@@ -1109,3 +1109,19 @@ func TestIsSystemSectionBoundary(t *testing.T) {
 		}
 	}
 }
+
+// A trigger statement is CREATE, then only a definer, version comments or OR REPLACE, then
+// TRIGGER: a CREATE TABLE whose comment holds the word TRIGGER is not one.
+func TestExtractTriggerName(t *testing.T) {
+	for line, want := range map[string]string{
+		"/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/ /*!50003 TRIGGER `trg_a` BEFORE INSERT ON `t` FOR EACH ROW": "trg_a",
+		"CREATE DEFINER=`root`@`localhost` TRIGGER trg_b AFTER UPDATE ON t FOR EACH ROW":                             "trg_b",
+		"CREATE OR REPLACE TRIGGER IF NOT EXISTS `trg_c` BEFORE DELETE ON t FOR EACH ROW":                            "trg_c",
+		"CREATE TABLE `t` (`id` int) COMMENT 'TRIGGER x'":                                                            "",
+		"CREATE VIEW `v` AS SELECT 'TRIGGER y'":                                                                      "",
+	} {
+		if got := extractTriggerName(line); got != want {
+			t.Errorf("extractTriggerName(%q) = %q, want %q", line, got, want)
+		}
+	}
+}

@@ -122,6 +122,14 @@ func TestVerifyBackupRecordsResult(t *testing.T) {
 	if onDisk.Verification == nil || onDisk.Verification.Status != backupmgr.BackupVerificationPassed {
 		t.Fatalf("meta file verification %+v", onDisk.Verification)
 	}
+	// the pass keeps the file's fingerprint, as read back from the meta file too: a restore
+	// of the unchanged file does not read it again
+	if a, b := meta.Verification.Artifact, onDisk.Verification.Artifact; a == nil || b == nil || a.Size != b.Size || !a.ModTime.Equal(b.ModTime) {
+		t.Fatalf("artifact fingerprint %+v, on disk %+v", a, b)
+	}
+	if c.verifiedRestoreArtifact(meta.Dest) != meta {
+		t.Fatal("a restore of the verified, unchanged backup reads it again")
+	}
 	c.checkBackupVerificationStates()
 	if hasOpenState(c, "ERR00117") {
 		t.Fatal("ERR00117 raised after a passed verification")

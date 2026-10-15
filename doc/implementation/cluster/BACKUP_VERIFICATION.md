@@ -35,6 +35,21 @@ tools, an incomplete backup, or a backup only in its archive
   per backup. Not a refusal when all slots are in use: a backup's slot is freed
   a monitor tick after the backup ends (state resolution), so a verification
   asked right after a backup would be refused.
+- Once it holds its slot, an on-demand run claims the backup it reads
+  (`claimBackupVerificationRead`: `Cluster.backupVerificationReads`, id ->
+  source and whether the file is reused, i.e. not ad hoc), under
+  `backupVerificationMu`, only while no logical backup runs (`InLogicalBackup`,
+  the restic push of a logical backup included); it then checks the backup is
+  still verifiable (its original archived meanwhile). A logical backup sets its
+  state through `startLogicalBackupAfterVerification`, under the same mutex,
+  once no claim holds a reused backup of its server: a scheduled backup
+  rewrites its predecessor's file. `removeArchivedOriginal` waits while its
+  backup is claimed (`waitBackupVerificationRead`). The waits end with the
+  claim: the verification holds its slot already and waits on nothing the
+  backup holds. `PurgeExpiredAdhocBackups` (no caller today) skips a backup in
+  `backupVerifying`. `InLogicalBackup` is a plain flag, written by the backup
+  job without this mutex: the mutex orders the claim against the backup's
+  start, which sets it under the mutex.
 - `backupVerificationMu` makes a reservation and `DeleteBackupByID` exclusive:
   a backup is not deleted between its checks and its reservation, and
   `DeleteBackupByID` refuses a reserved one. It covers the reservation only,
@@ -113,6 +128,20 @@ its footer when it has its header; a plain splitdump goes through
 `validateSplitDumpBackup`; an encrypted splitdump is checked by its HMAC only,
 the restore decrypts it right after. It runs once per restore: not in the
 reseed preparation, which can run inside a request or a monitoring goroutine.
+
+A backup already proven is not read twice: `verifyBackup` takes the
+artifact's fingerprint (`restoreArtifactFingerprint`: size and mtime of the
+file, or of the encrypted splitdump archive; files, total size and newest
+mtime of a splitdump directory) before the levels and after them, and keeps
+it in `BackupVerification.Artifact` with a pass only when both are equal.
+`checkLogicalRestoreArtifact` first looks for the backup whose `Dest` is the
+path (or its `.tar.enc`), reads its verification under the source's
+`backupMetaMutex`, and skips the read when it passed and the fingerprint is
+the same now (`time.Equal`: the recorded time may come back from the meta
+file). Any other case reads the artifact as before: never verified, failed,
+changed, a restic-fetched copy at another path. No override skips a check
+that fails: such a backup is truncated or damaged, its load would fail halfway
+with the server's data half replaced.
 
 ## Restore level
 
@@ -203,6 +232,15 @@ reseed's pieces (no reseed entry point takes a given backup):
 
 - Before: a replica replicating with MySQL GTID and a backup without a GTID set
   is refused (it would resume with auto-position from an empty executed set).
+  `checkVerificationResumable` then refuses a backup the primary no longer has
+  the position of (error 1236 after the load, for good), reading the position
+  as `pointLogicalReseedReplica` uses it (`logicalReseedPosition`): MySQL GTID
+  `dbhelper.GtidPurgedSubsetOf` (`GTID_SUBSET(@@GLOBAL.gtid_purged, set)`);
+  MariaDB GTID `dbhelper.BinlogGtidPos` of the primary's oldest binary log
+  (`BINLOG_GTID_POS(file, 4)`), the backup at or past it in each domain
+  (`mariadbGtidCovers`); positional, the backup's file not older than the
+  oldest binary log of the primary, with the same base name (a file of
+  another server is refused).
 - `beginVerificationReseed`: `TrySetInReseedBackup("verify")` (refused while
   another reseed runs), `SetMaintenance` unless already in maintenance,
   `StopAllSlaves`, then `stopLiveReplication`: the channels read from the
@@ -228,16 +266,32 @@ reseed's pieces (no reseed entry point takes a given backup):
   `pointLogicalReseedReplica(meta, true, false)` with the metadata's position
   (MariaDB `gtid_slave_pos` + `MASTER_USE_GTID=slave_pos`, MySQL
   `MASTER_AUTO_POSITION`, else file/position) and `START SLAVE`.
-- `endVerificationReseed`: releases the reseed flag; leaves maintenance when it
-  set it and replication resumed; after a failure the replica stays in
-  maintenance, replication stopped, with an ERROR line: its data is the partial
-  test restore.
+- `endVerificationReseed(setMaintenance, resumed, touched)`: releases the
+  reseed flag. Resumed: leaves maintenance when it set it. Touched (the load
+  started, `touched` set just before `loadAndCompareForVerification`) and not
+  resumed: the replica stays in maintenance, replication stopped, with an ERROR
+  line: its data is the partial test restore. Neither (a failure of
+  `beginVerificationReseed` after `StopAllSlaves`, `pauseEventScheduler`,
+  `GetConnNoBinlog`, `prepareRestoreConn`): its data is intact, `StartSlave`
+  restarts its managed channel and it leaves maintenance; when the start fails
+  it stays in maintenance with an ERROR line.
+- Timeout: `verifyLogicalBackupRestore` reads `backup-verification-timeout`
+  once and runs the load and the comparison under `context.WithTimeout`: the
+  dump statements (`ExecContext` on the pinned connection) and the row counts
+  (`dbhelper.CountTableRows` takes the context) are canceled; the error then
+  names the setting. A replica canceled during its load is touched: it stays
+  in maintenance. A crash of replication-manager during a replica test restore
+  leaves it in maintenance, its event scheduler off when it was on: no
+  recovery marker is kept (documented for the operator).
 
 `dbhelper` functions (T1, T23): `DropDatabaseIfExists`, `UseDatabaseConn`,
 `CountTableRows`, `GetSchemaObjectNames`, `GetEventScheduler`, `SetEventStatus`
 (the keyword by version, the definer's user and host quoted, not restricted to
-identifier characters: a host is often `%`), `SetGtidPurged` (MySQL/Percona only:
-MariaDB and PostgreSQL get `ErrSetGtidPurgedNotMySQL`); PostgreSQL gets
+identifier characters: a host is often `%`; backquoted with backquotes
+doubled, `` `user`@`host` `` is a valid account name), `SetGtidPurged`
+(MySQL/Percona only: MariaDB and PostgreSQL get `ErrSetGtidPurgedNotMySQL`),
+`GtidPurgedSubsetOf` (MySQL/Percona) and `BinlogGtidPos` (MariaDB), both
+`ErrGtidRetentionNotMySQL` elsewhere; PostgreSQL gets
 `ErrBackupVerificationPostgreSQL`, nothing is sent.
 
 Logging (F10, F11): the dump file is the replayable record of the load, as in a
@@ -253,7 +307,8 @@ these lines and in a failed statement's error, masks password literals
 
 ## GUI
 
-- `Settings/BackupSettings.jsx`: the switch, the level, the verification
+- `Settings/BackupSettings.jsx`: the switch, the level, the timeout
+  (`NumberInput`, `backup-verification-timeout`), the verification
   server, the credentials (`SetCredentialsModal`, base64 like the other `set`
   values). The server is picked from a selector: **External server** (the
   host `TextForm` and the credentials row), or a server of the cluster from

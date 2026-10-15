@@ -4860,7 +4860,8 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		time.Sleep(1 * time.Second)
 	}
 
-	cluster.SetInLogicalBackupState(true)
+	// an on-demand verification reading the previous backup of server: its file is rewritten
+	server.startLogicalBackupAfterVerification()
 	defer cluster.SetInLogicalBackupState(false)
 	// Live progress (cluster_backup_progress.go): level running now, bytes as the dump
 	// writes, schema as the verbose stream crosses tables; the per-table speeds are

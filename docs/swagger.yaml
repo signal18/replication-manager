@@ -1,4 +1,13 @@
 definitions:
+  backupmgr.ArtifactFingerprint:
+    properties:
+      files:
+        type: integer
+      modTime:
+        type: string
+      size:
+        type: integer
+    type: object
   backupmgr.BackupMetadata:
     properties:
       backupLine:
@@ -105,6 +114,12 @@ definitions:
     type: object
   backupmgr.BackupVerification:
     properties:
+      artifact:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ArtifactFingerprint'
+        description: |-
+          Artifact is the backup's file as a passed verification read it, unchanged from its
+          start to its end: a restore of the same file skips its own read of it.
       endTime:
         type: string
       error:
@@ -2127,6 +2142,8 @@ definitions:
         type: string
       backupVerificationLevel:
         type: string
+      backupVerificationTimeout:
+        type: integer
       backupWriteStallTimeout:
         type: integer
       binlogCopyMode:

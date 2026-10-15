@@ -5,10 +5,12 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config/manager"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -392,7 +394,8 @@ func TestVerificationLoadSkipEndsWithItsFile(t *testing.T) {
 }
 
 // The replica a test restore reseeds: taken out of service (reseed flag, maintenance,
-// replication stopped), kept in maintenance after a failure, released after a resume.
+// replication stopped), kept in maintenance after a failure of its load, released after a
+// resume, and released with its replication restarted when it failed before its load.
 func TestVerificationReplicaServiceStates(t *testing.T) {
 	_, server := newStagingTestServer(t)
 	db, mock, err := sqlmock.New()
@@ -407,7 +410,11 @@ func TestVerificationReplicaServiceStates(t *testing.T) {
 	server.SourceClusterName = server.ClusterGroup.Name
 	cols := []string{"Connection_name", "Slave_IO_Running", "Slave_SQL_Running"}
 
-	for _, resumed := range []bool{false, true} {
+	for _, tc := range []struct{ resumed, touched, released bool }{
+		{resumed: false, touched: true, released: false},
+		{resumed: true, touched: true, released: true},
+		{resumed: false, touched: false, released: true},
+	} {
 		mock.ExpectQuery("SHOW ALL SLAVES STATUS").WillReturnRows(sqlmock.NewRows(cols).AddRow("", "No", "No"))
 		setMaintenance, err := server.beginVerificationReseed()
 		if err != nil || !setMaintenance || !server.IsMaintenance || server.IsReseeding != "verify" {
@@ -416,13 +423,89 @@ func TestVerificationReplicaServiceStates(t *testing.T) {
 		if _, err := server.beginVerificationReseed(); err == nil {
 			t.Fatal("a second test restore is refused while one runs")
 		}
-		server.endVerificationReseed(setMaintenance, resumed)
-		if server.IsReseeding != "" || server.IsMaintenance == resumed {
-			t.Fatalf("end (resumed %v): maintenance %v, reseeding %q", resumed, server.IsMaintenance, server.IsReseeding)
+		if !tc.resumed && !tc.touched {
+			mock.ExpectExec("START SLAVE").WillReturnResult(sqlmock.NewResult(0, 0))
+		}
+		server.endVerificationReseed(setMaintenance, tc.resumed, tc.touched)
+		if server.IsReseeding != "" || server.IsMaintenance == tc.released {
+			t.Fatalf("end %+v: maintenance %v, reseeding %q", tc, server.IsMaintenance, server.IsReseeding)
 		}
 		server.IsMaintenance = false
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A MariaDB backup position resumes when it is at or past the start of the primary's oldest
+// binary log in each of its domains.
+func TestMariadbGtidCovers(t *testing.T) {
+	for _, tc := range []struct {
+		pos, start, domain string
+		ok                 bool
+	}{
+		{"0-1-100", "0-1-42", "", true},
+		{"0-1-42", "0-1-42", "", true},
+		{"0-1-41", "0-1-42", "0", false},
+		{"0-1-100,1-2-5", "0-1-42,1-2-9", "1", false},
+		{"0-1-100", "0-1-42,1-2-9", "1", false},
+		{"0-1-100", "", "", true},
+	} {
+		domain, ok := mariadbGtidCovers(tc.pos, tc.start)
+		if ok != tc.ok || domain != tc.domain {
+			t.Errorf("mariadbGtidCovers(%q, %q) = %q, %v; want %q, %v", tc.pos, tc.start, domain, ok, tc.domain, tc.ok)
+		}
+	}
+}
+
+// An on-demand verification reading a scheduled backup holds off the next logical backup of
+// its server (it rewrites the file) and the removal of its original; it waits itself while a
+// logical backup runs.
+func TestBackupVerificationReadExclusion(t *testing.T) {
+	c, server := newStagingTestServer(t)
+	meta := &backupmgr.BackupMetadata{Id: 7, Source: server.URL}
+	if !c.claimBackupVerificationRead(meta) {
+		t.Fatal("claim refused")
+	}
+	started := make(chan struct{})
+	go func() { server.startLogicalBackupAfterVerification(); close(started) }()
+	removed := make(chan struct{})
+	go func() { c.waitBackupVerificationRead(meta.Id); close(removed) }()
+	select {
+	case <-started:
+		t.Fatal("the backup started while its previous file was read")
+	case <-removed:
+		t.Fatal("the original was removed while read")
+	case <-time.After(1500 * time.Millisecond):
+	}
+	c.backupVerificationReads.Delete(meta.Id)
+	for _, ch := range []chan struct{}{started, removed} {
+		select {
+		case <-ch:
+		case <-time.After(5 * time.Second):
+			t.Fatal("still waiting once the read ended")
+		}
+	}
+	if !c.InLogicalBackup {
+		t.Fatal("logical backup state not set")
+	}
+
+	claimed := make(chan bool)
+	go func() { claimed <- c.claimBackupVerificationRead(meta) }()
+	select {
+	case <-claimed:
+		t.Fatal("claimed while a logical backup runs")
+	case <-time.After(1500 * time.Millisecond):
+	}
+	c.backupVerificationMu.Lock() // InLogicalBackup is a plain flag: the claim reads it under this lock
+	c.SetInLogicalBackupState(false)
+	c.backupVerificationMu.Unlock()
+	select {
+	case ok := <-claimed:
+		if !ok {
+			t.Fatal("claim refused")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("claim still waiting once the backup ended")
 	}
 }

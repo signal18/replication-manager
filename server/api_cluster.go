@@ -2549,6 +2549,9 @@ func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.Respon
 // @Failure 409 {string} string "Backup or verification running"
 // @Failure 500 {string} string "Verification not started"
 // @Router /api/clusters/{clusterName}/backups/{backupID}/verify [post]
+//
+// Two handlers on one implementation: swag documents a handler's parameters on each of its
+// routes, and {level} exists on the second route only.
 func (repman *ReplicationManager) handlerMuxClusterBackupVerifyDefault(w http.ResponseWriter, r *http.Request) {
 	repman.handlerMuxClusterBackupVerify(w, r)
 }
@@ -2585,12 +2588,14 @@ func (repman *ReplicationManager) handlerMuxClusterBackupVerify(w http.ResponseW
 		return
 	}
 	// the restore level loads the backup into a server (on a replica of the cluster, a
-	// reseed): the grant of a reseed besides the route's db-backup
-	level := vars["level"]
-	if level == "" {
-		level = mycluster.Conf.BackupVerificationLevel
+	// reseed): the grant of a reseed besides the route's db-backup. The level is read once,
+	// in lower case, for the grant and the run.
+	level := strings.ToLower(strings.TrimSpace(vars["level"]))
+	effective := level
+	if effective == "" {
+		effective = mycluster.Conf.BackupVerificationLevel
 	}
-	if strings.EqualFold(level, config.ConstBackupVerificationLevelRestore) {
+	if effective == config.ConstBackupVerificationLevelRestore {
 		if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBRestore] {
 			http.Error(w, "No db-restore grant: the restore level loads the backup into a server", http.StatusForbidden)
 			return
@@ -2602,7 +2607,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupVerify(w http.ResponseW
 		return
 	}
 
-	if err := mycluster.VerifyBackupByID(backupID, vars["level"]); err != nil {
+	if err := mycluster.VerifyBackupByID(backupID, level); err != nil {
 		switch {
 		case errors.Is(err, cluster.ErrBackupInProgress), errors.Is(err, cluster.ErrBackupVerificationRunning):
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -4697,6 +4702,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupMysqlclientOptions = string(val)
 	case "backup-verification-level":
 		if err := mycluster.SetBackupVerificationLevel(value); err != nil {
+			return err
+		}
+	case "backup-verification-timeout":
+		if err := mycluster.SetBackupVerificationTimeout(value); err != nil {
 			return err
 		}
 	case "backup-verification-host":

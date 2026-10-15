@@ -22,6 +22,7 @@ yet: asking for it returns an error, nothing is recorded.
 | `backup-verification-level` | `integrity` | `integrity` or `restore` |
 | `backup-verification-host` | | the verification server, `host:port`: an external server marked for it (below), or a replica of the cluster |
 | `backup-verification-credential` | | `user:password` on the verification server, encrypted like the other credentials |
+| `backup-verification-timeout` | `14400` | seconds a test restore (its load and comparison) may run before it is canceled and fails; `0` disables |
 
 > **An external verification server is disposable.** A test restore drops
 > there every schema the backup holds (other than the system ones), and loads
@@ -145,8 +146,13 @@ the cluster is refused, the primary and a relay too: a test restore replaces
 the data and the accounts of the server it loads into.
 
 On such a replica the restore level is a reseed from the backup being
-verified (a replica replicating with MySQL GTID needs a backup with a GTID
-set: one without is refused before the replica is touched):
+verified. Before the replica is touched, the backup is refused when the
+replica could not replicate from its position afterwards: a replica
+replicating with MySQL GTID needs a backup with a GTID set, and the primary
+must still have the backup's position in its binary logs (MySQL: the GTIDs it
+purged are all in the backup; MariaDB GTID: the backup is at or past the start
+of its oldest binary log in each domain; positional: the backup's binary log
+file is not purged). An older backup is verified on an external server.
 
 1. the replica goes to maintenance (the proxies stop sending it traffic) and
    its replication stops;
@@ -162,9 +168,18 @@ set: one without is refused before the replica is touched):
 This proves more than a load into a separate server: the backup reseeds a
 replica, and its recorded position is the one replication resumes from. The
 replica is out of service during each verification at the restore level, and
-after every backup with `backup-verification` at the restore level. When the
-test restore fails, the replica stays in maintenance with its replication
-stopped: reseed it.
+after every backup with `backup-verification` at the restore level. The
+comparison counts the rows of every table (`COUNT(*)`): on a large replica it
+reads all its data once more. When the test restore fails once its load has
+started, or `backup-verification-timeout` cancels it, the replica stays in
+maintenance with its replication stopped: reseed it. When it fails before
+anything is loaded (the replica's event scheduler, its session, its
+replication), the replica's data is intact: its replication restarts and it
+leaves maintenance.
+
+If replication-manager stops during a test restore on a replica, the replica
+stays in maintenance, its replication stopped, and its event scheduler off
+when it was on: reseed it and switch its event scheduler back on.
 
 ## Result
 
@@ -175,20 +190,31 @@ the integrity level, blue for one that passed a test restore, amber for one
 that passed but lacks objects its source has, red for a failure,
 pulsing while a verification runs, a dashed outline when it was never
 verified (its tooltip gives the details). Verifications run in a backup slot
-(`backup-concurrent-slots`): one on demand waits for a free slot; the
-automatic one runs in the backup's own slot, right after the backup, before
-its archive push, so that the archive can not remove the original before it
-is verified: at the restore level, the backup completes once the test restore
-has ended.
+(`backup-concurrent-slots`): one on demand waits for a free slot, then for the
+logical backup of the cluster running, its archive push included; while it
+reads a scheduled backup, the next logical backup of that server (which
+rewrites the same file) waits for it, and the archive does not remove the
+original of the backup it reads. The automatic one runs in the backup's own
+slot, right after the backup, before its archive push, so that the archive can
+not remove the original before it is verified: at the restore level, the
+backup completes once the test restore has ended, which lengthens every
+backup window by the test restore.
 
 | State | |
 |---|---|
 | CINF0016 | a backup is being verified |
 | ERR00117 | a server's last logical backup failed its verification: a restore from it would fail, take a new backup |
+| WARN0248 | a server's last logical backup passed its test restore but lacks objects its source has: check `backup-mysqldump-options` and the event scheduler |
 
 ERR00117 stays raised while that backup is the server's last logical backup.
 It clears when a new backup of the server is taken, or when the backup passes
 a new verification (after the cause is fixed, e.g. a verification server
 reachable again). A backup kept only in its archive (its original removed)
 can not be verified again: take a new backup.
-| WARN0248 | a server's last logical backup passed its test restore but lacks objects its source has: check `backup-mysqldump-options` and the event scheduler |
+
+A logical restore (a reseed from a mysqldump backup) reads its backup first,
+as the integrity level does, and refuses a truncated or damaged one before the
+server is touched. It skips that read for a backup that passed a verification
+and is unchanged since: the same size and modification time (for a splitdump
+directory, the same files, total size and newest modification time) as when
+the verification read it.
