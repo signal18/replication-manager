@@ -111,16 +111,18 @@ func (cluster *Cluster) finishColumnstoreChild(target *ServerMonitor, channel, b
 	if f == nil || !ok {
 		return nil
 	}
-	tables, q, err := dbhelper.GetTablesByEngine(target.Conn, target.DBVersion, "Columnstore", "", "")
-	if err != nil {
-		cluster.LogSQL(q, err, target.URL, "ColumnstoreChild", config.LvlErr, "ColumnStore tables of %s: %s", target.URL, err)
-		return err
+	var tables []dbhelper.EngineTable
+	// the user schemas, then replication_manager_schema's load-test tables: the restore sent
+	// both to the plugin
+	for _, schema := range []string{"", "replication_manager_schema"} {
+		t, q, err := dbhelper.GetTablesByEngine(target.Conn, target.DBVersion, "Columnstore", schema, "")
+		if err != nil {
+			cluster.LogSQL(q, err, target.URL, "ColumnstoreChild", config.LvlErr, "ColumnStore tables of %s: %s", target.URL, err)
+			return err
+		}
+		tables = append(tables, t...)
 	}
-	list := make([]string, 0, len(tables))
-	for _, t := range tables {
-		list = append(list, t.Schema+"."+t.Table)
-	}
-	sort.Strings(list)
+	list := columnstoreCarried(tables)
 	meta, err := splitdump.ReadMetadata(backupPath)
 	if err != nil || meta == nil || meta.GTID == "" {
 		return fmt.Errorf("the GTID of the backup %s is unknown (%v)", backupPath, err)
@@ -131,13 +133,26 @@ func (cluster *Cluster) finishColumnstoreChild(target *ServerMonitor, channel, b
 	if len(list) == 0 {
 		return nil
 	}
-	q, err = dbhelper.SetChannelReplicateIgnoreTable(context.Background(), target.Conn, target.DBVersion, channel, list)
+	q, err := dbhelper.SetChannelReplicateIgnoreTable(context.Background(), target.Conn, target.DBVersion, channel, list)
 	cluster.LogSQL(q, err, target.URL, "ColumnstoreChild", config.LvlErr, "Ignore list of channel %s on %s: %s", channel, target.URL, err)
 	if err != nil {
 		return err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ColumnStore child %s: restore done, %d ColumnStore tables carried by replplugin-columnstore from GTID %s, ignored by channel %s", cluster.Name, len(list), meta.GTID, channel)
 	return nil
+}
+
+// columnstoreCarried: the tables the plugin carries, the ColumnStore tables the restore sent
+// it (keepsItsEngine's tables are not converted, never sent), sorted
+func columnstoreCarried(tables []dbhelper.EngineTable) []string {
+	list := make([]string, 0, len(tables))
+	for _, t := range tables {
+		if !keepsItsEngine(t.Schema, t.Table) {
+			list = append(list, t.Schema+"."+t.Table)
+		}
+	}
+	sort.Strings(list)
+	return list
 }
 
 func writeReplPluginConfig(path string, cfg wire.Config) error {

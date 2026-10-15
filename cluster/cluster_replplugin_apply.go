@@ -173,6 +173,11 @@ func readCheckpoint(path string) (wire.Manifest, map[string][]byte, error) {
 
 // applyReplCheckpoint applies one checkpoint to the target server and returns its GTID.
 func (cluster *Cluster) applyReplCheckpoint(ctx context.Context, r *replPluginRunner, path string) (string, error) {
+	start := time.Now()
+	fi, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
 	m, files, err := readCheckpoint(path)
 	if err != nil {
 		return "", err
@@ -243,5 +248,20 @@ func (cluster *Cluster) applyReplCheckpoint(ctx context.Context, r *replPluginRu
 			}
 		}
 	}
+	cluster.logReplCheckpoint(r, m, files, fi, time.Since(start))
 	return m.GTID, nil
+}
+
+// logReplCheckpoint: a debug line per checkpoint applied, its sizes and times (waited: from
+// its writing to its apply), to tune the periods (batch_timeout_ms/batch_mb, restore_*)
+func (cluster *Cluster) logReplCheckpoint(r *replPluginRunner, m wire.Manifest, files map[string][]byte, fi os.FileInfo, took time.Duration) {
+	var csv, dels, ins int64
+	for _, t := range m.Tables {
+		csv += int64(len(files[t.Deletes]) + len(files[t.Inserts]))
+		dels += t.DeleteRows
+		ins += t.InsertRows
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+		"Replication plugin %s of %s: checkpoint %d applied in %s, waited %s: %d tables, %.1f MB gz, %.1f MB CSV, %d keys deleted, %d rows loaded",
+		r.cfg.Plugin, cluster.Name, m.Seq, took.Round(time.Millisecond), (time.Since(fi.ModTime()) - took).Round(time.Millisecond), len(m.Tables), float64(fi.Size())/(1<<20), float64(csv)/(1<<20), dels, ins)
 }
