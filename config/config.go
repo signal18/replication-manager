@@ -1907,7 +1907,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 
 	for k := range secrets {
 
-		origin_value, ok := conf.dynamicFlag(k)
+		origin_value, ok := conf.DynamicFlagMap[k]
 		if !ok {
 			origin_value, ok = conf.ImmuableFlagMap[k]
 			if !ok {
@@ -1938,44 +1938,6 @@ func (conf *Config) DecryptSecretsFromConfig() {
 	} else {
 		conf.Secrets.Replace(secrets)
 	}
-}
-
-// RememberSecret records the in-memory value of secret key, encrypted, in the dynamic flag
-// map: DecryptSecretsFromConfig rebuilds every secret from the config maps (a database tag
-// added re-derives the credentials), and a secret set at runtime lived in Secrets only, so
-// the map's older value came back and the next save wrote it (#2017: preprod belair-mcs
-// lost the root password a create-child had set, at the first tag added, then at restart).
-func (conf *Config) RememberSecret(key string) {
-	sec, ok := conf.Secrets.Lookup(key)
-	if !ok || conf.DynamicFlagMap == nil {
-		return
-	}
-	enc := ""
-	if sec.Value != "" {
-		enc = conf.GetStableEncryptedValue(key, sec.Value) // reads the map: before the lock
-	}
-	dynamicFlagMapMu.Lock()
-	defer dynamicFlagMapMu.Unlock()
-	if enc == "" {
-		delete(conf.DynamicFlagMap, key)
-		return
-	}
-	conf.DynamicFlagMap[key] = enc
-}
-
-// dynamicFlagMapMu serializes RememberSecret's write to a DynamicFlagMap with the secret
-// reads of DecryptSecretsFromConfig and GetStableEncryptedValue: two API calls setting a
-// secret at once, or one during a cluster init, must not write the map concurrently (a
-// fatal error that stops the monitor, F2). Package level: Config is copied by value
-// (ReloadConfig), a mutex field would be copied with it.
-var dynamicFlagMapMu sync.RWMutex
-
-// dynamicFlag reads one key of the DynamicFlagMap under dynamicFlagMapMu
-func (conf *Config) dynamicFlag(key string) (interface{}, bool) {
-	dynamicFlagMapMu.RLock()
-	defer dynamicFlagMapMu.RUnlock()
-	v, ok := conf.DynamicFlagMap[key]
-	return v, ok
 }
 
 // DecryptSecretValue decrypts a secret payload while preserving composite
@@ -2035,16 +1997,11 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	}
 	// Reuse the raw value the config was loaded with when it still encodes
 	// the current value.
-	dyn, dynFound := conf.dynamicFlag(key)
-	for i, m := range []map[string]interface{}{conf.DynamicFlagMap, conf.ImmuableFlagMap} {
+	for _, m := range []map[string]interface{}{conf.DynamicFlagMap, conf.ImmuableFlagMap} {
 		if m == nil {
 			continue
 		}
-		raw, found := dyn, dynFound
-		if i == 1 {
-			raw, found = m[key]
-		}
-		if found {
+		if raw, found := m[key]; found {
 			s := fmt.Sprintf("%v", raw)
 			if strings.Contains(s, "hash_") && conf.DecryptSecretValue(key, s) == value {
 				if ok {

@@ -128,14 +128,14 @@ func (cluster *Cluster) DropDBTag(dtag string, dynamic bool) {
 func (cluster *Cluster) DropDBTagConfig(dtag string) bool {
 	changed := cluster.Configurator.DropDBTag(dtag)
 	cluster.Conf.ProvTags = strings.Join(cluster.Configurator.GetDBTags(), ",")
-	// tags only, never the credentials (#2017)
+	cluster.SetClusterCredentialsFromConfig()
 	return changed
 }
 
 func (cluster *Cluster) DropProxyTag(dtag string) {
 	cluster.Configurator.DropProxyTag(dtag)
 	cluster.Conf.ProvProxTags = strings.Join(cluster.Configurator.GetProxyTags(), ",")
-	// tags only, never the credentials (#2017)
+	cluster.SetClusterCredentialsFromConfig()
 	cluster.SetProxiesRestartCookie()
 }
 

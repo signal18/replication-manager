@@ -39,18 +39,16 @@ func TestSecretsConcurrentAccess(t *testing.T) {
 				if g%2 == 1 {
 					k = "replication-credential"
 				}
-				switch i % 5 {
+				switch i % 4 {
 				case 0:
 					conf.Secrets.Set(k, Secret{Value: fmt.Sprintf("u:pw%d-%d", g, i)})
 				case 1:
-					conf.RememberSecret(k)
-				case 2:
 					_ = conf.Secrets.Get(k).Value
 					_ = conf.GetSecrets()
-				case 3:
+				case 2:
 					for range conf.Secrets.Snapshot() {
 					}
-				case 4:
+				case 3:
 					if g == 0 {
 						conf.DecryptSecretsFromConfig()
 					}
