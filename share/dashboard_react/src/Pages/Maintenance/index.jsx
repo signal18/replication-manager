@@ -9,10 +9,10 @@ import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { deleteBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
+import { deleteBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase } from 'react-icons/hi'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
 import Markdown from 'react-markdown'
@@ -219,6 +219,37 @@ BKUSlider.propTypes = {
   bku: PropTypes.object,
 }
 
+// verificationLabel describes a backup's last verification (#2023) for its status tooltip.
+const verificationLabel = (v) => {
+  if (!v) return 'Not verified'
+  const when = v.endTime && !v.endTime.startsWith('0001') ? ` · ${formatDate(v.endTime)}` : ''
+  const notes = v.notes?.length ? ` · ${v.notes.join(' · ')}` : ''
+  switch (v.status) {
+    case 'running':
+      return `Verification (${v.level}) running`
+    case 'passed':
+      return v.warnings?.length
+        ? `Verified (${v.level})${when}, but the backup lacks objects its source has: ${v.warnings.join(' · ')}${notes}`
+        : `Verified (${v.level})${when}${notes}`
+    default:
+      return `Verification (${v.level}) failed${when}: ${v.error}`
+  }
+}
+
+const verificationClass = (v) => {
+  switch (v?.status) {
+    case 'passed':
+      if (v.warnings?.length) return styles.verifyWarning
+      return v.level === 'restore' ? styles.verifyRestored : styles.verifyPassed
+    case 'failed':
+      return styles.verifyFailed
+    case 'running':
+      return styles.verifyRunning
+    default:
+      return styles.verifyNone
+  }
+}
+
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
 function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenArchiveSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
   const [data, setData] = useState([])
@@ -278,6 +309,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       switch (payload.action) {
         case 'backupDelete':
           dispatch(deleteBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId }))
+          break
+        case 'backupVerify':
+          dispatch(verifyBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId, level: payload.data.level }))
           break
         case 'snapshotPurge':
           dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId: payload.data.snapshotId }))
@@ -475,6 +509,11 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                 {row.encrypted ? <HiLockClosed /> : <HiOutlineLockOpen />}
               </Box>
             </Tooltip>
+            <Tooltip label={verificationLabel(row.verification)} hasArrow>
+              <Box className={`${styles.statusIcon} ${styles.verifyIcon} ${verificationClass(row.verification)}`}>
+                {row.verification?.status === 'failed' || row.verification?.warnings?.length ? <HiShieldExclamation /> : row.verification?.status === 'passed' ? <HiShieldCheck /> : <HiOutlineShieldCheck />}
+              </Box>
+            </Tooltip>
           </HStack>
         ),
         {
@@ -486,15 +525,33 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       columnHelper.display({
         id: 'actions',
         header: 'Actions',
-        cell: (info) => (
-          <RMIconButton
-            icon={HiTrash}
-            colorScheme='red'
-            tooltip='Delete backup'
-            onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: info.row.original.id } })}
-            isDisabled={!user?.grants['db-backup']}
-          />
-        )
+        cell: (info) => {
+          const backup = info.row.original
+          const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.originalRemoved && backup.verification?.status !== 'running'
+          return (
+            <HStack spacing={1}>
+              <RMIconButton
+                icon={HiShieldCheck}
+                tooltip='Verify integrity'
+                onClick={() => openConfirmModal('Verify the integrity of this backup?', { action: 'backupVerify', data: { backupId: backup.id, level: 'integrity' } })}
+                isDisabled={!user?.grants['db-backup'] || !verifiable}
+              />
+              <RMIconButton
+                icon={HiDatabase}
+                tooltip={selectedCluster?.config?.backupVerificationHost ? `Test restore on ${selectedCluster.config.backupVerificationHost}` : 'Test restore: set backup-verification-host first'}
+                onClick={() => openConfirmModal(`Load this backup into ${selectedCluster?.config?.backupVerificationHost} and compare it?`, { action: 'backupVerify', data: { backupId: backup.id, level: 'restore' } })}
+                isDisabled={!user?.grants['db-backup'] || !verifiable || !selectedCluster?.config?.backupVerificationHost}
+              />
+              <RMIconButton
+                icon={HiTrash}
+                colorScheme='red'
+                tooltip='Delete backup'
+                onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: backup.id } })}
+                isDisabled={!user?.grants['db-backup']}
+              />
+            </HStack>
+          )
+        }
       })
     ]
   )
