@@ -54,8 +54,11 @@ tools, an incomplete backup, or a backup only in its archive
   off for good). The backup then goes on (the verification still reading
   fails; the log names the host of its running record, a replica mid-load
   stays in maintenance), the archive removal goes on, a claim gives up with
-  `errBackupVerificationClaimTimeout` and the verification is recorded as
-  failed, "not run" (`errBackupVerificationStopping` records nothing). The
+  `errBackupVerificationClaimTimeout`: on a backup without a result the
+  verification is recorded as `skipped` ("not run": listed, not a failure, no
+  ERR00117); an earlier passed or failed result is kept and the skip only
+  logged (`TestVerificationNotRunIsSkipped`). `errBackupVerificationStopping`
+  records nothing. The
   floor and `backupVerificationPoll` are package variables the tests shorten:
   they restore them before their goroutines end and do not run in parallel. `TestBackupVerificationClaimAndBackupStartExclusive`
   starts both at once, 20 times: one goes on, the other waits until it ends.
@@ -304,7 +307,9 @@ reseed's pieces (no reseed entry point takes a given backup):
   if it was on), and logs it as an error. It decides under
   `backupVerificationMu` against the meta file read again: the copy it was
   given may have been read while a run was running, which since recorded its
-  result there and left `backupVerifying`; that result is kept
+  result there and left `backupVerifying`; that result is kept, and copied into
+  the given copy (under `backupMetaMutex`), which its caller registers in
+  `BackupMetaMap`: the API never shows it running
   (`TestCloseInterruptedVerificationKeepsALaterResult`).
 
 `dbhelper` functions (T1, T23): `DropDatabaseIfExists`, `UseDatabaseConn`,

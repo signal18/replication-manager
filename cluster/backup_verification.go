@@ -98,10 +98,16 @@ func (cluster *Cluster) VerifyBackupByID(backupID int64, level string) error {
 		}
 		defer cluster.ServerGlobals.ReleaseBackupSlot()
 		if err := cluster.claimBackupVerificationRead(meta); err != nil {
-			// not run: recorded, so that the backup list shows it, unless the cluster stops
+			// not run: shown in the backup list as skipped, not a failure (no ERR00117);
+			// a result the backup already has is kept, the skip only logged
 			if errors.Is(err, errBackupVerificationClaimTimeout) {
-				now := time.Now()
-				server.recordBackupVerification(meta, &backupmgr.BackupVerification{Level: level, Status: backupmgr.BackupVerificationFailed, StartTime: now, EndTime: now, Error: "not run: " + err.Error()})
+				server.backupMetaMutex.Lock()
+				hasResult := meta.Verification != nil && meta.Verification.Status != backupmgr.BackupVerificationRunning
+				server.backupMetaMutex.Unlock()
+				if !hasResult {
+					now := time.Now()
+					server.recordBackupVerification(meta, &backupmgr.BackupVerification{Level: level, Status: backupmgr.BackupVerificationSkipped, StartTime: now, EndTime: now, Error: "not run: " + err.Error()})
+				}
 			}
 			return
 		}
@@ -269,7 +275,15 @@ func (server *ServerMonitor) closeInterruptedVerification(meta *backupmgr.Backup
 		return
 	}
 	onDisk, err := readBackupMetadataFile(server.backupMetaFilePath(meta))
-	if err != nil || onDisk.Verification == nil || onDisk.Verification.Status != backupmgr.BackupVerificationRunning {
+	if err != nil {
+		return
+	}
+	if onDisk.Verification == nil || onDisk.Verification.Status != backupmgr.BackupVerificationRunning {
+		// the run ended since meta was read: meta, which its caller registers, takes the
+		// recorded result rather than keep showing it running
+		server.backupMetaMutex.Lock()
+		meta.Verification = onDisk.Verification
+		server.backupMetaMutex.Unlock()
 		return
 	}
 	done := *meta.Verification

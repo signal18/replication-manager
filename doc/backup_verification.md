@@ -203,7 +203,9 @@ caps a test restore, not these waits): then the backup goes on (the
 verification still reading fails; its log names the verification server, a
 replica under a test restore then stays in maintenance: reseed it), the
 archive removes the original, or a verification still waiting for a backup is
-not run and is recorded as failed ("not run"), so the backup list shows it. The automatic one runs in the backup's own
+not run: on a backup with no verification result yet it is recorded as
+skipped ("not run", shown in the backup list, no ERR00117); a backup that has
+one keeps it, and the skip is only logged. The automatic one runs in the backup's own
 slot, right after the backup, before its archive push, so that the archive can
 not remove the original before it is verified: at the restore level, the
 backup completes once the test restore has ended, which lengthens every

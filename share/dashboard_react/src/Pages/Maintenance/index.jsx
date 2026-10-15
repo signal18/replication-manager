@@ -290,6 +290,8 @@ const verificationLabel = (v) => {
   switch (v.status) {
     case 'running':
       return `Verification (${v.level}) running`
+    case 'skipped':
+      return `Verification (${v.level}) not run${when}: ${v.error}`
     case 'passed':
       return v.warnings?.length
         ? `Verified (${v.level})${when}, but the backup lacks objects its source has: ${v.warnings.join(' · ')}${notes}`

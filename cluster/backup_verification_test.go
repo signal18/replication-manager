@@ -274,3 +274,62 @@ func TestCloseInterruptedVerification(t *testing.T) {
 		t.Fatalf("meta file not rewritten: %v", err)
 	}
 }
+
+// An on-demand verification whose wait ends while a logical backup still runs is recorded as
+// skipped (no ERR00117) on a backup without a result, and leaves an earlier result as it is.
+func TestVerificationNotRunIsSkipped(t *testing.T) {
+	c, server, meta := newVerificationTest(t, false, func(dest string) { writeValidationGzip(t, dest, validationDump) })
+	poll, floor := backupVerificationPoll, backupVerificationWaitFloor
+	backupVerificationPoll, backupVerificationWaitFloor = 20*time.Millisecond, 200*time.Millisecond
+	defer func() { backupVerificationPoll, backupVerificationWaitFloor = poll, floor }()
+	// a newer backup of the server runs
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Id: 200, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: server.URL}
+	c.backupVerificationMu.Lock()
+	c.SetInLogicalBackupState(true)
+	c.backupVerificationMu.Unlock()
+	defer func() {
+		c.backupVerificationMu.Lock()
+		c.SetInLogicalBackupState(false)
+		c.backupVerificationMu.Unlock()
+	}()
+	waitDone := func() {
+		t.Helper()
+		for i := 0; i < 200; i++ {
+			if _, running := c.backupVerifying.Load(meta.Id); !running {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatal("the verification still waits")
+	}
+
+	if err := c.VerifyBackupByID(meta.Id, config.ConstBackupVerificationLevelIntegrity); err != nil {
+		t.Fatal(err)
+	}
+	waitDone()
+	server.backupMetaMutex.Lock()
+	v := meta.Verification
+	server.backupMetaMutex.Unlock()
+	if v == nil || v.Status != backupmgr.BackupVerificationSkipped || !strings.Contains(v.Error, "not run") {
+		t.Fatalf("not run: %+v", v)
+	}
+	server.LastBackupMeta.Logical = meta
+	c.checkBackupVerificationStates()
+	if hasOpenState(c, "ERR00117") {
+		t.Fatal("ERR00117 raised for a skipped verification")
+	}
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Id: 200, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: server.URL}
+
+	passed := &backupmgr.BackupVerification{Level: config.ConstBackupVerificationLevelIntegrity, Status: backupmgr.BackupVerificationPassed}
+	server.recordBackupVerification(meta, passed)
+	if err := c.VerifyBackupByID(meta.Id, config.ConstBackupVerificationLevelIntegrity); err != nil {
+		t.Fatal(err)
+	}
+	waitDone()
+	server.backupMetaMutex.Lock()
+	v = meta.Verification
+	server.backupMetaMutex.Unlock()
+	if v != passed {
+		t.Fatalf("the earlier result was replaced: %+v", v)
+	}
+}

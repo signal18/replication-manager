@@ -94,6 +94,9 @@ const (
 	BackupVerificationRunning = "running"
 	BackupVerificationPassed  = "passed"
 	BackupVerificationFailed  = "failed"
+	// BackupVerificationSkipped: an on-demand verification was not run (a logical backup
+	// still ran at the end of its wait); recorded only on a backup with no result yet
+	BackupVerificationSkipped = "skipped"
 )
 
 // BackupVerification is the result of a backup verification: its level (integrity or

@@ -629,6 +629,11 @@ func TestCloseInterruptedVerificationKeepsALaterResult(t *testing.T) {
 	if err != nil || onDisk.Verification == nil || onDisk.Verification.Status != backupmgr.BackupVerificationPassed {
 		t.Fatalf("the passed result was overwritten: %+v, %v", onDisk.Verification, err)
 	}
+	// the stale copy, which its caller registers, takes the recorded result
+	if stale.Verification == nil || stale.Verification.Status != backupmgr.BackupVerificationPassed {
+		t.Fatalf("the stale copy still shows %+v", stale.Verification)
+	}
+	stale.Verification = &backupmgr.BackupVerification{Level: "integrity", Status: backupmgr.BackupVerificationRunning}
 	// the meta file still says running: closed
 	server.recordBackupVerification(meta, &backupmgr.BackupVerification{Level: "integrity", Status: backupmgr.BackupVerificationRunning})
 	server.closeInterruptedVerification(&stale)
