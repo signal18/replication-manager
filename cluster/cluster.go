@@ -708,6 +708,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.VersionsMap = config.NewVersionsMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
+	opensvc.RemoveLegacyP12Pem(cluster.WorkingDir) // the om3 client's key now lives in <working-dir>/.opensvc-pem
 	cluster.InterventionHistory = make([]InterventionEntry, 0)
 	cluster.LoadInterventionHistory()
 	cluster.LoadSysbenchLog()
@@ -2164,7 +2165,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 				s.Delete(key)
 			} else if !ok {
 				s.Delete(key)
-			} else if _, ok = cluster.Conf.Secrets[key]; ok {
+			} else if _, ok = cluster.Conf.Secrets.Lookup(key); ok {
 				s.Delete(key)
 				//to encrypt credentials before writting in the config file
 				encrypt_val := cluster.GetEncryptedValueFromMemory(key)
@@ -2199,7 +2200,7 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 	var buf bytes.Buffer
 	for _, key := range keys {
 		val := cluster.Conf.ImmuableFlagMap[key]
-		_, ok := cluster.Conf.Secrets[key]
+		_, ok := cluster.Conf.Secrets.Lookup(key)
 		if ok {
 			encrypt_val := cluster.GetEncryptedValueFromMemory(key)
 			buf.WriteString(key + " = \"" + encrypt_val + "\"\n")
@@ -2236,7 +2237,7 @@ func (cluster *Cluster) SaveCacheConfig() error {
 	keys = misc.SortKeysAsc(keys)
 
 	for _, key := range keys {
-		if _, ok := cluster.Conf.Secrets[key]; ok {
+		if _, ok := cluster.Conf.Secrets.Lookup(key); ok {
 			encrypt_val := cluster.GetEncryptedValueFromMemory(key)
 			file.WriteString(key + " = \"" + encrypt_val + "\"\n")
 		}
@@ -2261,9 +2262,9 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 				s.Delete(key)
 			} else {
 
-				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (cluster.Conf.Secrets[key].Value == cluster.Conf.Secrets[key].OldValue || cluster.Conf.Secrets[key].OldValue == "") {
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (cluster.Conf.Secrets.Get(key).Value == cluster.Conf.Secrets.Get(key).OldValue || cluster.Conf.Secrets.Get(key).OldValue == "") {
 					s.Delete(key)
-				} else if _, ok = cluster.Conf.Secrets[key]; ok && cluster.Conf.Secrets[key].Value != v {
+				} else if _, ok = cluster.Conf.Secrets.Lookup(key); ok && cluster.Conf.Secrets.Get(key).Value != v {
 					v := cluster.GetEncryptedValueFromMemory(key)
 					if v != "" {
 						s.Set(key, v)
@@ -2295,7 +2296,7 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 	switch key {
 	case "api-credentials", "api-credentials-external":
 		var tab_ApiUser []string
-		lst_Users := strings.Split(cluster.Conf.Secrets[key].Value, ",")
+		lst_Users := strings.Split(cluster.Conf.Secrets.Get(key).Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
 			if APIuser, ok := cluster.APIUsers[user_pass[0]]; ok {
@@ -3553,7 +3554,7 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 		return
 	}
 
-	for k, v := range cluster.Conf.Secrets {
+	for k, v := range cluster.Conf.Secrets.Snapshot() {
 		origin_value := v.Value
 		var secret config.Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
@@ -3574,7 +3575,7 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			}
-			cluster.Conf.Secrets[k] = secret
+			cluster.Conf.Secrets.Set(k, secret)
 		}
 	}
 }

@@ -277,7 +277,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		var new_secret config.Secret
 		new_secret.Value = repman.Conf.Cloud18GitPassword
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
-		repman.Conf.Secrets["cloud18-gitlab-password"] = new_secret
+		repman.Conf.Secrets.Set("cloud18-gitlab-password", new_secret)
 	case "cloud18-gateway-domain-name":
 		repman.Conf.Cloud18GatewayDomainName = value
 	case "cloud18-gateway-service":
@@ -297,7 +297,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		var new_secret config.Secret
 		new_secret.Value = repman.Conf.Cloud18DomainSecret
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-domain-secret")
-		repman.Conf.Secrets["cloud18-domain-secret"] = new_secret
+		repman.Conf.Secrets.Set("cloud18-domain-secret", new_secret)
 	case "cloud18-marketplace-pricing-mode":
 		if value != config.ConstMarketplacePricingModeCsvServicePlan && value != config.ConstMarketplacePricingModeGlobalUnitPricing {
 			return fmt.Errorf("invalid marketplace pricing mode %q, expected %q or %q", value, config.ConstMarketplacePricingModeCsvServicePlan, config.ConstMarketplacePricingModeGlobalUnitPricing)
@@ -384,7 +384,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		var new_secret config.Secret
 		new_secret.Value = repman.Conf.ArbitrationSasSecret
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("arbitration-external-secret")
-		repman.Conf.Secrets["arbitration-external-secret"] = new_secret
+		repman.Conf.Secrets.Set("arbitration-external-secret", new_secret)
 	case "arbitration-external-unique-id":
 		v, _ = strconv.Atoi(value)
 		repman.Conf.ArbitrationSasUniqueId = v
@@ -458,7 +458,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		var new_secret config.Secret
 		new_secret.Value = repman.Conf.ProvAppTemplateRepoPassword
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("prov-app-template-repo-password")
-		repman.Conf.Secrets["prov-app-template-repo-password"] = new_secret
+		repman.Conf.Secrets.Set("prov-app-template-repo-password", new_secret)
 	case "prov-app-template-repo-timeout":
 		parsedTimeout, err := parseProvAppTemplateRepoTimeout(value)
 		if err != nil {
@@ -589,7 +589,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		var new_secret config.Secret
 		new_secret.Value = repman.Conf.MailSMTPPassword
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("mail-smtp-password")
-		repman.Conf.Secrets["mail-smtp-password"] = new_secret
+		repman.Conf.Secrets.Set("mail-smtp-password", new_secret)
 		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, new_secret.Value)
 	case "mail-smtp-user":
 		repman.Conf.SetMailSmtpUser(value)

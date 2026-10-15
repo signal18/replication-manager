@@ -165,7 +165,7 @@ func TestDecodeS3SyncRequestBody(t *testing.T) {
 // ClusterGraphite instance — see doc/implementation/cluster/GRAPHITE_SCOPE.md.
 func TestSetClusterSetting_GraphiteMetricsQueueLimit(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -182,7 +182,7 @@ func TestSetClusterSetting_GraphiteMetricsQueueLimit(t *testing.T) {
 // LIMIT, not a cap on the complete event catalog.
 func TestSetClusterSetting_MonitorSchemaEventsPageSize(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -206,7 +206,7 @@ func TestSetClusterSetting_MonitorSchemaEventsPageSize(t *testing.T) {
 
 func TestSetClusterSetting_MonitorSchemaEventsMax(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -236,12 +236,12 @@ func TestSetClusterSetting_MonitorSchemaEventsMax(t *testing.T) {
 func TestSetClusterSetting_GraphiteMetricsQueueLimit_IndependentPerCluster(t *testing.T) {
 	cl1 := newTestClusterForAPI(t)
 	cl1.Name = "cluster1"
-	cl1.Conf.Secrets = make(map[string]config.Secret)
+	cl1.Conf.Secrets = config.NewSecrets(nil)
 	cl1.ConfigManager = newConfigManagerForTest()
 
 	cl2 := newTestClusterForAPI(t)
 	cl2.Name = "cluster2"
-	cl2.Conf.Secrets = make(map[string]config.Secret)
+	cl2.Conf.Secrets = config.NewSecrets(nil)
 	cl2.ConfigManager = newConfigManagerForTest()
 
 	repman := &ReplicationManager{
@@ -278,7 +278,7 @@ func TestSetClusterSetting_GraphiteMetricsQueueLimit_IndependentPerCluster(t *te
 // graphite-metrics-queue-limit above.
 func TestSwitchClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -309,7 +309,7 @@ func TestSwitchClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 // renders but silently never persists.
 func TestSwitchClusterSetting_ProvKubeImageForcePull(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -332,7 +332,7 @@ func TestSwitchClusterSetting_ProvKubeImageForcePull(t *testing.T) {
 
 func TestSetClusterSetting_ProvKubeImageForcePull(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -358,7 +358,7 @@ func TestSetClusterSetting_ProvKubeImageForcePull(t *testing.T) {
 // setClusterSetting's switch.
 func TestSetClusterSetting_ProvKubeStorageClass(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -376,7 +376,7 @@ func TestSetClusterSetting_ProvKubeStorageClass(t *testing.T) {
 // from the database one, through setClusterSetting's switch.
 func TestSetClusterSetting_ProvKubeProxyStorageClass(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -398,7 +398,7 @@ func TestSetClusterSetting_ProvKubeProxyStorageClass(t *testing.T) {
 func TestSetClusterSetting_ProvDBIdentity(t *testing.T) {
 	cl := newTestClusterForAPI(t)
 	cl.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 	db := &cluster.ServerMonitor{ClusterGroup: cl, Datadir: t.TempDir()}
@@ -475,7 +475,7 @@ func TestSetClusterSetting_ProvDBIdentityRefusedForOtherOrchestrators(t *testing
 		t.Run("orchestrator="+tc.orchestrator, func(t *testing.T) {
 			cl := newTestClusterForAPI(t)
 			cl.Conf.ProvOrchestrator = tc.orchestrator
-			cl.Conf.Secrets = make(map[string]config.Secret)
+			cl.Conf.Secrets = config.NewSecrets(nil)
 			cl.ConfigManager = newConfigManagerForTest()
 			repman := newTestRepmanWithCluster(t, cl.Name, cl)
 			db := &cluster.ServerMonitor{ClusterGroup: cl, Datadir: t.TempDir()}
@@ -505,7 +505,7 @@ func TestSetClusterSetting_ProvDBIdentityRefusedForOtherOrchestrators(t *testing
 
 func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -538,7 +538,7 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers(t *testing.T) {
 // own last-provisioned value (HaproxyProxy.BootstrapServersEnabled).
 func TestSetClusterSetting_HaproxyAPIBootstrapServers_AllowedWhileProvisioned(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -575,7 +575,7 @@ func TestSetClusterSetting_HaproxyAPIBootstrapServers_AllowedWhileProvisioned(t 
 // mode change (including standby) is freely allowed.
 func TestSetClusterSetting_HaproxyMode(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 	prx := newTestProxyForReprov(t, cl)
@@ -604,7 +604,7 @@ func TestSetClusterSetting_HaproxyMode(t *testing.T) {
 // Any haproxy-mode change must be refused while a proxy is provisioned.
 func TestSetClusterSetting_HaproxyMode_BlockedWhileProvisioned(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -633,7 +633,7 @@ func TestSetClusterSetting_HaproxyMode_BlockedWhileProvisioned(t *testing.T) {
 // setting -- HasProvisionedHaproxy is scoped to type "haproxy".
 func TestSetClusterSetting_HaproxyMode_IgnoresOtherProxyTypes(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -656,7 +656,7 @@ func TestSetClusterSetting_HaproxyMode_IgnoresOtherProxyTypes(t *testing.T) {
 // rejected without mutating the existing port.
 func TestSetClusterSetting_HaproxyPorts(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -696,7 +696,7 @@ func TestSetClusterSetting_HaproxyPorts(t *testing.T) {
 // GetDecryptedValue("haproxy-password") reflects it.
 func TestSetClusterSetting_HaproxyPassword(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 
@@ -2156,7 +2156,7 @@ func TestValidateS3SyncApplyRevisionToken(t *testing.T) {
 // the set route (#1933).
 func TestReplicationTLSSettings(t *testing.T) {
 	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = make(map[string]config.Secret)
+	cl.Conf.Secrets = config.NewSecrets(nil)
 	cl.ConfigManager = newConfigManagerForTest()
 	repman := newTestRepmanWithCluster(t, cl.Name, cl)
 

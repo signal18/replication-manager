@@ -526,7 +526,7 @@ func applyRestoreEntriesToRuntime(repman *ReplicationManager, clusterName string
 			var secret config.Secret
 			secret.Value = entry.HashValue
 			secret.OldValue = cl.Conf.GetDecryptedValue(entry.Key)
-			cl.Conf.Secrets[entry.Key] = secret
+			cl.Conf.Secrets.Set(entry.Key, secret)
 			cl.SetClusterMonitorCredentialsFromConfig()
 		case "replication-credential":
 			cl.SetReplicationCredential(entry.HashValue)

@@ -32,7 +32,7 @@ func newEncryptionTestCluster(t *testing.T, pass string) *Cluster {
 		Conf: &config.Config{
 			WorkingDir:              t.TempDir(),
 			BackupEncryption: true,
-			Secrets:                 map[string]config.Secret{"db-servers-credential": {Value: "root:" + pass}},
+			Secrets:                 config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:" + pass}}),
 		},
 		StateMachine: &state.StateMachine{},
 	}

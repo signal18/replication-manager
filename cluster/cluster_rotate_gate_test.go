@@ -86,11 +86,11 @@ func TestCanRotatePasswords(t *testing.T) {
 func TestRotatePasswordsRefusedChangesNothing(t *testing.T) {
 	cl := rotateGateCluster()
 	cl.Conf.MonitoringSecretVersioning = false
-	cl.Conf.Secrets = map[string]config.Secret{"db-servers-credential": {Value: "root:before"}}
+	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:before"}})
 	if err := cl.RotatePasswords(); err == nil {
 		t.Fatal("rotation ran with versioning off")
 	}
-	if v := cl.Conf.Secrets["db-servers-credential"].Value; v != "root:before" {
+	if v := cl.Conf.Secrets.Get("db-servers-credential").Value; v != "root:before" {
 		t.Fatalf("credential changed to %q", v)
 	}
 }
