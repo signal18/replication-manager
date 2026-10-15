@@ -1191,6 +1191,14 @@ func (server *ServerMonitor) JobReseedLogicalBackup(ctx context.Context, backtyp
 func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, backtype string) (*logicalReseedPlan, error) {
 	var err error
 	cluster := server.ClusterGroup
+	// a ColumnStore replica's seed is its schema replicated from the master (#2021)
+	if server.isColumnstoreReplica() {
+		if err := server.RebootstrapColumnstoreReplica(); err != nil {
+			return nil, err
+		}
+		server.DelWaitLogicalBackupCookie()
+		return nil, nil
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1487,6 +1495,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathWithOptions(ctx conte
 func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.Context, backtype, backupPath string, opts JobReseedLogicalOptions) (*logicalReseedPlan, error) {
 	var err error
 	cluster := server.ClusterGroup
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return nil, err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1865,6 +1876,17 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 		}
 	}
 
+	// #2015: the seed of a ColumnStore child feeds replplugin-columnstore the rows of a
+	// ColumnStore table (converted in the schema phase): its checkpoints load them with LOAD
+	// DATA, the INSERTs are not executed
+	toPlugin := false
+	if cluster.columnstoreFeed.Load() != nil && !keepsItsEngine(schema, table) && table != "" &&
+		!splitdump.IsSchemaFile(path) && !splitdump.IsPostFile(path) {
+		if opts, _, err := dbhelper.GetTableOptions(server.Conn, server.DBVersion, schema, table); err == nil && strings.EqualFold(opts.Engine, "Columnstore") {
+			toPlugin = true
+		}
+	}
+
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -1892,6 +1914,27 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 		reader, doneStrip = splitdump.NewDefinerStrippingReader(reader)
 	}
 
+	if toPlugin {
+		err := forEachSplitdumpStatement(reader, func(stmt string) error {
+			if classifySplitdumpStatement(stmt) != splitdumpStmtInsert {
+				return nil
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			_, err := cluster.sendColumnstoreRows(schema, table, []byte(stmt))
+			return err
+		})
+		if doneStrip != nil {
+			doneStrip(err)
+		}
+		if err == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo,
+				"Splitdump restore: %s sent to replplugin-columnstore", filepath.Base(path))
+		}
+		return err
+	}
+
 	if schema != "" {
 		if _, err := conn.ExecContext(ctx, "USE `"+strings.ReplaceAll(schema, "`", "``")+"`"); err != nil {
 			if doneStrip != nil {
@@ -1904,6 +1947,12 @@ func (server *ServerMonitor) restoreSplitdumpFileGo(ctx context.Context, conn *s
 	execErr := server.streamSplitdumpStatements(ctx, conn, reader, path, nil)
 	if doneStrip != nil {
 		doneStrip(execErr)
+	}
+	// #2010: into a ColumnStore cluster, the InnoDB table just created becomes ColumnStore
+	// before the data phase loads it; not the system tables nor the tables replication-manager
+	// writes itself (heartbeat, pseudo-GTID, checksums: keepsItsEngine)
+	if execErr == nil && cluster.HasConfigTopoColumnstore() && !keepsItsEngine(schema, table) && table != "" && splitdump.IsTableSchemaFile(path) {
+		execErr = server.convertTableToColumnstore(ctx, conn, schema, table)
 	}
 	return execErr
 }
@@ -2758,6 +2807,10 @@ func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) 
 		sqlLogBin = 1
 		resetmaster = ""
 	}
+	// the last guard of every logical restore: never into a ColumnStore replica (#2021)
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return "", 0, err
+	}
 
 	cmdstring := fmt.Sprintf("%sSET sql_log_bin=%d;SET long_query_time=10;", resetmaster, sqlLogBin)
 	return cmdstring, sqlLogBin, nil
@@ -3325,6 +3378,9 @@ func (server *ServerMonitor) JobReseedMyLoaderFromParent(backupdir string) error
 
 func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser bool, fromParent bool) error {
 	cluster := server.ClusterGroup
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return err
+	}
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (myloader) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 
@@ -7034,6 +7090,9 @@ func logicalReseedPosition(restored *splitdump.Metadata, meta *backupmgr.BackupM
 func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	cluster := server.ClusterGroup
 	master := cluster.GetMaster()
+	if err := server.refuseColumnstoreReplicaDump(); err != nil {
+		return err
+	}
 
 	//Prevent multiple reseed
 	if !server.HasReseedingState(task) {

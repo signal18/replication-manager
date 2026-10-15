@@ -193,9 +193,13 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 	case PlanUnitDBU:
 		// prov-db-dbu is the PER-NODE DBU reservation the DB configurator moves. All nodes are
 		// identical (any can become master), so the cluster contract = prov-db-dbu x #nodes (the
-		// PlanByCluster rollup). Floor is 1 DBU/node. Client-controlled (dynamic layer), never
-		// pinned in /etc -- the mirror of prov-proxy-apu.
-		return cluster.Conf.ProvDbDbu, 1,
+		// PlanByCluster rollup). Floor is 1 DBU/node, ColumnStore's 2 (ColumnstoreMinDBU).
+		// Client-controlled (dynamic layer), never pinned in /etc -- the mirror of prov-proxy-apu.
+		floor := 1
+		if cluster.HasConfigTopoColumnstore() {
+			floor = ColumnstoreMinDBU
+		}
+		return cluster.Conf.ProvDbDbu, floor,
 			func(v int) { cluster.Conf.ProvDbDbu = v }, nil
 	case PlanUnitAPU:
 		// prov-proxy-apu is the PER-PROXY reservation the proxy configurator moves -- the proxy

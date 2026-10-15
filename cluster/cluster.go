@@ -585,7 +585,11 @@ type Cluster struct {
 	stagingCreation atomic.Pointer[StagingCreation] `json:"-"`
 
 	// storage engine switch progress and outcome (cluster_engine_switch.go, #1999)
-	engineSwitch atomic.Pointer[EngineSwitch] `json:"-"`
+	engineSwitch         atomic.Pointer[EngineSwitch]         `json:"-"`
+	columnstoreRebalance atomic.Pointer[ColumnstoreRebalance] `json:"-"`
+	replPlugins          map[string]*replPluginRunner         `json:"-"` // replication plugins by TOML path (#2015)
+	columnstoreFeed      atomic.Pointer[replFeed]             `json:"-"` // the seed's restore feeding replplugin-columnstore (#2015)
+	replPluginsMu        sync.Mutex                           `json:"-"`
 	// backupVerifying holds the backups being verified (#2023): backup id -> level.
 	backupVerificationMu sync.Mutex `json:"-"`
 	backupVerifying      sync.Map   `json:"-"`
@@ -997,6 +1001,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initConfigDone.Store(true)
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
+	cluster.addColumnstoreTag()
+	cluster.disableColumnstoreDynamic()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -1428,6 +1434,8 @@ func (cluster *Cluster) tickBody() {
 		cluster.CheckReplicationTLS()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
+		// Replication plugins: supervised on the active monitor only (#2015)
+		cluster.CheckReplicationPlugins()
 		// CheckFailed trigger failover code if passing all false positiv and constraints
 		cluster.CheckFailed()
 		// Run any operator-armed rejoin (GUI delta viewer) — independent of
@@ -1735,6 +1743,7 @@ func (cluster *Cluster) Stop() {
 
 		cluster.exit.Store(true)
 
+		phase("replicationPlugins", cluster.StopReplicationPlugins)
 		phase("scheduler", func() {
 			if cluster.scheduler != nil {
 				cluster.scheduler.Stop()

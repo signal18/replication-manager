@@ -41,14 +41,17 @@ var cloud18Flavors = []struct {
 // the default replication bootstrap run, which is master/replica only.
 var cloud18Topologies = map[string][]map[string]any{
 	"mariadb": {
+		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
 		{"topology": config.TopoMultiMasterWsrep, "description": "Galera multi-master", "minNodes": 3, "creatable": false, "note": "needs a topology parameter and the Galera bootstrap in cloud18-create-cluster"},
 	},
 	"mysql": {
+		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
 		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication", "minNodes": 3, "creatable": false, "note": "needs a topology parameter in cloud18-create-cluster"},
 	},
 	"percona": {
+		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
 		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication", "minNodes": 3, "creatable": false, "note": "needs a topology parameter in cloud18-create-cluster"},
 	},

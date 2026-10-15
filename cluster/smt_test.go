@@ -70,6 +70,21 @@ func TestCPUQuotaOnNode(t *testing.T) {
 	}
 }
 
+// docker --cpus is the plan's cap, never prov-db-cpu-cores below it: a 2-DBU server with
+// prov-db-cpu-cores 1 gets 2 cores, as its slice and its --memory (belair-mcs 2026-10-15).
+func TestDockerCPUsFollowPlan(t *testing.T) {
+	s := &ServerMonitor{Agent: "plain"}
+	cl := &Cluster{Name: "mcs", Conf: &config.Config{ProvCores: "1", ProvDbDbu: 2}, resources: NewResourceManager(),
+		Servers: []*ServerMonitor{s}, Agents: []Agent{{HostName: "plain", CpuCores: 32, CpuThreads: 32}}}
+	if got := cl.dockerCPUsOnNode(s); got != "2.0" {
+		t.Errorf("2 DBU, prov-db-cpu-cores 1: --cpus=%s, want 2.0", got)
+	}
+	cl.Conf.ProvCores = "3" // technical cores over the plan: never capped below them
+	if got := cl.dockerCPUsOnNode(s); got != "3.0" {
+		t.Errorf("prov-db-cpu-cores 3 over a 2-DBU plan: --cpus=%s, want 3.0", got)
+	}
+}
+
 // The quota follows the instance's gain held by the ResourceManager, live, never a
 // per-cluster copy (review of #1959: no write into cl.Conf from the API goroutine).
 func TestCPUQuotaFollowsManagerGain(t *testing.T) {

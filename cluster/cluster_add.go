@@ -66,6 +66,64 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 	}
 }
 
+// SetDBTagsConfig replaces the database tags of a cluster whose servers are not
+// provisioned yet: a new child takes its parent's (#2013). Nothing to apply live and no
+// restart: the provisioning renders them.
+func (cluster *Cluster) SetDBTagsConfig(tags []string) {
+	cluster.Configurator.SetDBTags(append([]string(nil), tags...))
+	cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
+	cluster.SetClusterCredentialsFromConfig()
+}
+
+// addColumnstoreTag: the columnstore topology's servers (the UM) run ColumnStore,
+// whose configuration is the mcs tag's ruleset (#2002), and load the replication plugin's
+// checkpoints with LOAD DATA LOCAL INFILE, which the localinfile tag allows (#2015; the
+// default security configuration sets local_infile = 0)
+func (cluster *Cluster) addColumnstoreTag() {
+	if !cluster.HasConfigTopoColumnstore() {
+		return
+	}
+	for _, tag := range []string{"mcs", "localinfile"} {
+		if !cluster.Configurator.HaveDBTag(tag) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag %s for topology %s", tag, config.TopoColumnstore)
+			cluster.AddDBTagConfig(tag)
+		}
+	}
+}
+
+// ErrColumnstoreNoDynamic: the columnstore topology turns down prov-db-dynamic-resource and
+// prov-db-apply-dynamic-config, which size and tune InnoDB (buffer pool, thread pool, IO
+// threads): a ColumnStore server keeps its plan's resources, its memory sized by ColumnStore
+// from the container's cgroup (#2018)
+var ErrColumnstoreNoDynamic = errors.New("the columnstore topology has no dynamic resource nor dynamic configuration: its servers keep the plan's resources")
+
+// disableColumnstoreDynamic turns the dynamic resource and configuration off on the
+// columnstore topology, at load and when the topology is chosen.
+func (cluster *Cluster) disableColumnstoreDynamic() {
+	if !cluster.HasConfigTopoColumnstore() || (!cluster.Conf.ProvDBDynamicResource && !cluster.Conf.ProvDBApplyDynamicConfig) {
+		return
+	}
+	cluster.Conf.ProvDBDynamicResource = false
+	cluster.Conf.ProvDBApplyDynamicConfig = false
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Topology %s: prov-db-dynamic-resource and prov-db-apply-dynamic-config off", config.TopoColumnstore)
+}
+
+// ColumnstoreMinDBU: a ColumnStore server runs both roles (#2021), 1 DBU for the UM side
+// (the server, DML and DDL processing) and 1 for the PM side (PrimProc, WriteEngineServer).
+const ColumnstoreMinDBU = 2
+
+// raiseColumnstoreDBU raises prov-db-dbu to ColumnstoreMinDBU when the columnstore topology
+// is chosen, through the plan change (its pot and script decide, the resources follow the
+// ratio); before provisioning only, never the contract of a running cluster.
+func (cluster *Cluster) raiseColumnstoreDBU() {
+	if cluster.IsProvision || cluster.Conf.ProvDbDbu >= ColumnstoreMinDBU {
+		return
+	}
+	if err := cluster.ChangePlanUnits(PlanUnitDBU, ColumnstoreMinDBU-cluster.Conf.ProvDbDbu); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Topology %s needs %d DBU per server, prov-db-dbu stays %d: %s", config.TopoColumnstore, ColumnstoreMinDBU, cluster.Conf.ProvDbDbu, err)
+	}
+}
+
 func (cluster *Cluster) AddDBTag(tag string, dynamic bool) {
 
 	if !cluster.Configurator.HaveDBTag(tag) {

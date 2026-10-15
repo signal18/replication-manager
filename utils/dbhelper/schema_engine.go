@@ -34,7 +34,8 @@ type EngineTable struct {
 }
 
 // GetTablesByEngine lists the user tables (system schemas and replication_manager_schema
-// excluded) of an engine, "" for any, optionally of one schema and one table.
+// excluded) of an engine, "" for any, optionally of one schema and one table;
+// replication_manager_schema named as the schema lists its tables.
 func GetTablesByEngine(db *sqlx.DB, myver *version.Version, engine, schema, table string) ([]EngineTable, string, error) {
 	if myver != nil && myver.IsPostgreSQL() {
 		return nil, "", ErrNoStorageEngine
@@ -43,7 +44,11 @@ func GetTablesByEngine(db *sqlx.DB, myver *version.Version, engine, schema, tabl
 		"EXISTS (SELECT 1 FROM information_schema.REFERENTIAL_CONSTRAINTS r WHERE (r.CONSTRAINT_SCHEMA = t.TABLE_SCHEMA AND r.TABLE_NAME = t.TABLE_NAME) " +
 		"OR (r.UNIQUE_CONSTRAINT_SCHEMA = t.TABLE_SCHEMA AND r.REFERENCED_TABLE_NAME = t.TABLE_NAME)) " +
 		"FROM information_schema.TABLES t WHERE t.TABLE_TYPE = 'BASE TABLE' " +
-		"AND t.TABLE_SCHEMA NOT IN ('mysql','sys','information_schema','performance_schema','replication_manager_schema')"
+		"AND t.TABLE_SCHEMA NOT IN ('mysql','sys','information_schema','performance_schema'"
+	if schema != "replication_manager_schema" {
+		query += ",'replication_manager_schema'"
+	}
+	query += ")"
 	var args []any
 	if engine != "" {
 		query += " AND UPPER(t.ENGINE) = UPPER(?)"

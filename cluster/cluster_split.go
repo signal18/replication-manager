@@ -182,7 +182,7 @@ func (cl *Cluster) arbitratorMinorityFailSafe(reason string) {
 	// relearns the winner). Suspect is a state srv.go already demotes (Suspect ->
 	// StandAlone once a master is re-established), so no state-machine change is needed.
 	// Idempotent: SetState is a no-op when already in the target state.
-	if cl.IsSplitBrain && cl.Status == ConstMonitorStandby && cl.GetTopologyFromConf() == config.TopoMasterSlave {
+	if cl.IsSplitBrain && cl.Status == ConstMonitorStandby && cl.IsTopologyTargetMasterSlave(cl.GetTopologyFromConf()) {
 		if master := cl.GetMaster(); master != nil {
 			if master.State != stateUnconn {
 				master.SetState(stateUnconn)

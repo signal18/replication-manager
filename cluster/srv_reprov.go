@@ -280,20 +280,25 @@ func (cluster *Cluster) dynamicCPUResizeDue() (grow bool, due bool) {
 
 // SetProvDBDynamicResource sets prov-db-dynamic-resource; turning it on reconciles the
 // pending resource reprovisions (off the API call: a live resize can take a while). Setting
-// the current value is a no-op, so the remediation link is idempotent (#1970 review).
-func (cluster *Cluster) SetProvDBDynamicResource(on bool) {
+// the current value is a no-op, so the remediation link is idempotent (#1970 review). The
+// columnstore topology refuses it (ErrColumnstoreNoDynamic).
+func (cluster *Cluster) SetProvDBDynamicResource(on bool) error {
 	if cluster.Conf.ProvDBDynamicResource == on {
-		return
+		return nil
+	}
+	if on && cluster.HasConfigTopoColumnstore() {
+		return fmt.Errorf("prov-db-dynamic-resource: %w", ErrColumnstoreNoDynamic)
 	}
 	cluster.Conf.ProvDBDynamicResource = on
 	if on {
 		go cluster.ReconcileReprovWithDynamicResource()
 	}
+	return nil
 }
 
 // SwitchProvDBDynamicResource toggles prov-db-dynamic-resource (Settings page switch).
-func (cluster *Cluster) SwitchProvDBDynamicResource() {
-	cluster.SetProvDBDynamicResource(!cluster.Conf.ProvDBDynamicResource)
+func (cluster *Cluster) SwitchProvDBDynamicResource() error {
+	return cluster.SetProvDBDynamicResource(!cluster.Conf.ProvDBDynamicResource)
 }
 
 // reprovResourceServers lists the servers whose pending reprovision holds a reason the

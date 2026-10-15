@@ -37,6 +37,47 @@ func (cluster *Cluster) HasConfigTopoActivePassive() bool {
 	return cluster.Conf.ActivePassive || cluster.Conf.TopologyTarget == config.TopoActivePassive
 }
 
+// HasConfigTopoColumnstore reports whether the cluster targets the columnstore
+// topology: a master-slave of ColumnStore servers with the mcs tag (#2021).
+func (cluster *Cluster) HasConfigTopoColumnstore() bool {
+	return cluster.Conf.TopologyTarget == config.TopoColumnstore
+}
+
+// IsTopologyActivePassive reports whether the discovered topology is
+// active-passive.
+func (cluster *Cluster) IsTopologyActivePassive() bool {
+	return cluster.Topology == config.TopoActivePassive
+}
+
+// hasDesignatedMaster: the master is designated, not discovered from the replication:
+// the active-passive topology, and a lone ColumnStore server, which is discovered as
+// columnstore and not active-passive since #2021 (it stayed Suspect after a monitor
+// restart, preprod belair-mcs 2026-10-14).
+func (cluster *Cluster) hasDesignatedMaster() bool {
+	return cluster.IsTopologyActivePassive() || (cluster.Topology == config.TopoColumnstore && len(cluster.Servers) == 1)
+}
+
+// IsTopologyMasterSlave reports whether the discovered topology is a master and
+// its replicas, the columnstore one included (#2021): its servers replicate the
+// schema from the master like a master-slave.
+func (cluster *Cluster) IsTopologyMasterSlave() bool {
+	return cluster.Topology == config.TopoMasterSlave || cluster.Topology == config.TopoColumnstore
+}
+
+// IsTopologyTargetMasterSlave is IsTopologyMasterSlave for the configured target.
+func (cluster *Cluster) IsTopologyTargetMasterSlave(target string) bool {
+	return target == config.TopoMasterSlave || target == config.TopoColumnstore
+}
+
+// activePassiveTopology is the topology a lone server is discovered as:
+// columnstore when it is the target.
+func (cluster *Cluster) activePassiveTopology() string {
+	if cluster.HasConfigTopoColumnstore() {
+		return config.TopoColumnstore
+	}
+	return config.TopoActivePassive
+}
+
 func (cluster *Cluster) HasValidBackup() bool {
 	logical := false
 	physical := false
@@ -126,7 +167,7 @@ func (cluster *Cluster) HasSchedulerEntry(myname string) bool {
 }
 
 func (cluster *Cluster) HasNoValidSlave() bool {
-	if cluster.Topology == config.TopoActivePassive {
+	if cluster.IsTopologyActivePassive() {
 		return true
 	}
 	//All slave stopped

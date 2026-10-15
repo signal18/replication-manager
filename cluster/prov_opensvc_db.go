@@ -190,7 +190,15 @@ func (cluster *Cluster) OpenSVCUpdateDatabaseTemplate(s *ServerMonitor) error {
 		if _, err = cluster.OpenSVCFoundDatabaseAgent(s); err != nil {
 			return err
 		}
-		res, err = s.GenerateDBTemplateV3()
+		// the live placement is kept: a service provisioned pinned to one node stays
+		// pinned, its data is on that node only (#2004)
+		var liveNodes []string
+		if cluster.dbFailoverPlacement() {
+			if liveNodes, err = cluster.openSVCServiceNodes(svc, s.ServiceName); err != nil {
+				return err
+			}
+		}
+		res, err = s.generateDBTemplateV3(len(liveNodes) > 1, liveNodes)
 		if err != nil {
 			return err
 		}
@@ -558,7 +566,7 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 				}
 			}
 		}
-	} else if err := cluster.openSVCPurgeObjects(svc, server.Agent, cluster.openSVCServiceObjects(server.ServiceName, server.Name)...); err != nil {
+	} else if err := cluster.openSVCPurgeObjects(svc, server.Agent, cluster.openSVCDBServiceObjects(server.ServiceName, server.Name)...); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database:  %s ", err)
 		opErr = err
 	}
@@ -688,6 +696,12 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/mysql-files:/var/lib/mysql-files:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw`
+		if server.ClusterGroup.HasConfigTopoColumnstore() {
+			svccontainer["volume_mounts"] += " {name}/" + columnstoreVolumeDir + ":/var/lib/columnstore:rw {name}/" + columnstoreEtcVolumeDir + ":/etc/columnstore:rw {name}-shm/:/dev/shm:rw"
+			// the image's stop runs the server's shutdown, then ColumnStore's processes and
+			// the BRM save: the 10s default would kill it before the save
+			svccontainer["stop_timeout"] = "5m"
+		}
 		svccontainer["environment"] = server.OpenSVCGetDBContainerEnvironment()
 		if server.ClusterGroup.Conf.ProvOpensvcImageForcePull {
 			svccontainer["image_pull_policy"] = "always"
@@ -716,7 +730,27 @@ func (server *ServerMonitor) OpenSVCGetDBContainerEnvironment() string {
 	if preload, arenaMax := server.ClusterGroup.GetDBAllocatorEnv(); preload != "" {
 		env += " LD_PRELOAD=" + preload + " MALLOC_ARENA_MAX=" + arenaMax
 	}
+	// a new ColumnStore server joins the primary's cluster at its first start (#2021)
+	if primary := server.ClusterGroup.columnstorePrimary(); primary != nil && primary.URL != server.URL && primary.Host != "" {
+		env += " COLUMNSTORE_PRIMARY=" + primary.Host
+	}
 	return env
+}
+
+// columnstorePrimary: the server the others of a ColumnStore cluster join (#2021): the
+// master, else the preferred master, else the first server (the one the replication
+// bootstrap makes master); nil outside the columnstore topology.
+func (cluster *Cluster) columnstorePrimary() *ServerMonitor {
+	if !cluster.HasConfigTopoColumnstore() || len(cluster.Servers) == 0 {
+		return nil
+	}
+	if m := cluster.GetMaster(); m != nil {
+		return m
+	}
+	if p := cluster.getOnePreferedMaster(); p != nil {
+		return p
+	}
+	return cluster.Servers[0]
 }
 
 func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string {
@@ -1163,6 +1197,16 @@ func (cluster *Cluster) OpenSVCGetVolumeDataSection() map[string]string {
 }
 
 // openSVCGetVolumeDataSection renders the data volume from a helper image already resolved for this template.
+// columnstoreVolumeDir: ColumnStore's storage (dbroots, block map, system catalog) on the
+// data volume, mounted at /var/lib/columnstore: it moves with the server like /var/lib/mysql
+// (#2002; in the container, a switch to the other node lost every ColumnStore table)
+const columnstoreVolumeDir = "columnstore"
+
+// columnstoreEtcVolumeDir: ColumnStore's configuration (Columnstore.xml, CMAPI's) on the
+// data volume, mounted at /etc/columnstore: the cluster a CMAPI join writes there must
+// come back with the server after a switch
+const columnstoreEtcVolumeDir = "columnstore-etc"
+
 func (cluster *Cluster) openSVCGetVolumeDataSection(xtrabackupImage string) map[string]string {
 	svcvol := make(map[string]string)
 	ownerUID, ownerGID, _ := cluster.dbVolumeOwner()
@@ -1173,9 +1217,33 @@ func (cluster *Cluster) openSVCGetVolumeDataSection(xtrabackupImage string) map[
 	if xtrabackupImage != "" {
 		svcvol["directories"] += " xtrabackup"
 	}
+	if cluster.HasConfigTopoColumnstore() {
+		svcvol["directories"] += " " + columnstoreVolumeDir + " " + columnstoreEtcVolumeDir
+	}
 	svcvol["user"] = strconv.Itoa(ownerUID)
 	svcvol["group"] = strconv.Itoa(ownerGID)
 	return svcvol
+}
+
+// columnstoreShmSize: the /dev/shm of a ColumnStore node, which holds its BRM (extent map,
+// VSS, VBBM): Docker's 64 MB default is 87% used by a 2-node cluster and a third node's
+// load_brm fails with "No space left on device" (#2007)
+const columnstoreShmSize = "512m"
+
+// openSVCGetColumnstoreShmSection is the /dev/shm of a ColumnStore node: a volume of the shm
+// pool, like {name}-sec, local to each node (the BRM is reloaded from the data volume at
+// start). dirperm 777, not 1777: a remounted tmpfs comes back without the sticky bit, the
+// resource is then warn and a failover service in warn refuses every orchestration.
+func (cluster *Cluster) openSVCGetColumnstoreShmSection() map[string]string {
+	ownerUID, ownerGID, _ := cluster.dbVolumeOwner()
+	return map[string]string{
+		"name":    "{name}-shm",
+		"type":    "shm",
+		"size":    columnstoreShmSize,
+		"user":    strconv.Itoa(ownerUID),
+		"group":   strconv.Itoa(ownerGID),
+		"dirperm": "777",
+	}
 }
 
 func (cluster *Cluster) OpenSVCGetJobsVolumeSecret() map[string]string {
@@ -1219,8 +1287,20 @@ func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 }
 
 func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
+	return server.generateDBTemplateV3(server.ClusterGroup.dbFailoverPlacement(), nil)
+}
+
+// generateDBTemplateV3 renders the service, placed for failover (#2004) or pinned to the
+// server's agent. A failover service on nodes (its live node list) keeps them; nil places
+// it on the server's agents.
+func (server *ServerMonitor) generateDBTemplateV3(failover bool, nodes []string) ([]byte, error) {
 
 	svcsection := server.GenerateDBTemplateMap()
+	if failover {
+		if err := server.applyDBFailoverPlacement(svcsection, nodes); err != nil {
+			return nil, err
+		}
+	}
 	if !server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
 		// The container cap lives on the om3 PG SLICE, not the docker scope (see
 		// WARN0214): same memory ceiling the docker run-args carried (tier + 1 DBU
@@ -1311,6 +1391,9 @@ func (server *ServerMonitor) GenerateDBTemplateMap() map[string]map[string]strin
 	}
 	svcsection["container#db"] = server.OpenSVCGetDBContainerSection()
 	svcsection["volume#02"] = server.ClusterGroup.OpenSVCGetJobsVolumeSecret()
+	if server.ClusterGroup.HasConfigTopoColumnstore() {
+		svcsection["volume#03"] = server.ClusterGroup.openSVCGetColumnstoreShmSection()
+	}
 	svcsection["container#jobs"] = server.openSVCGetJobsContainerSection(xtrabackupImage)
 
 	//	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()

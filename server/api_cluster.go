@@ -931,6 +931,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTableAlterEngine)),
 	)).Methods(http.MethodPost, http.MethodOptions)
+	router.Handle("/api/clusters/{clusterName}/actions/columnstore-rebalance", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterColumnstoreRebalance)),
+	)).Methods(http.MethodPost, http.MethodOptions)
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/columnstore-rebalance", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTableColumnstoreRebalance)),
+	)).Methods(http.MethodPost, http.MethodOptions)
 	router.Handle("/api/clusters/{clusterName}/actions/create-child", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCreateChild)),
@@ -3175,13 +3183,17 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvProxyStartFetchConfig = !mycluster.Conf.ProvProxyStartFetchConfig
 		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
-		mycluster.SwitchDBApplyDynamicConfig()
+		if err := mycluster.SwitchDBApplyDynamicConfig(); err != nil {
+			return err
+		}
 	case "prov-auto-update-compliance":
 		mycluster.Conf.ProvAutoUpdateCompliance = !mycluster.Conf.ProvAutoUpdateCompliance
 	case "prov-db-compliance-auto-agree":
 		mycluster.Conf.ProvDBComplianceAutoAgree = !mycluster.Conf.ProvDBComplianceAutoAgree
 	case "prov-db-dynamic-resource":
-		mycluster.SwitchProvDBDynamicResource()
+		if err := mycluster.SwitchProvDBDynamicResource(); err != nil {
+			return err
+		}
 	case "replication-use-ssl":
 		mycluster.Conf.ReplicationSSL = !mycluster.Conf.ReplicationSSL
 	case "prov-db-docker-run-args-limit":
@@ -4193,7 +4205,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if isactive == nil {
 			return fmt.Errorf("prov-db-dynamic-resource must be true or false")
 		}
-		mycluster.SetProvDBDynamicResource(*isactive)
+		if err := mycluster.SetProvDBDynamicResource(*isactive); err != nil {
+			return err
+		}
 	case "prov-db-memory-shared-pct":
 		mycluster.Conf.ProvMemSharedPct = value
 	case "prov-db-memory-threaded-pct":
@@ -5195,7 +5209,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvProxyStartFetchConfig = applyIsActive(mycluster.Conf.ProvProxyStartFetchConfig, isactive)
 		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
-		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
+		if err := mycluster.SetProvDBApplyDynamicConfig(applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)); err != nil {
+			return err
+		}
 	case "prov-orchestrator-deployment-upgrade-on-start":
 		mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart = applyIsActive(mycluster.Conf.ProvOrchestratorDeploymentUpgradeOnStart, isactive)
 	case "prov-db-upgrade-major-reprov":

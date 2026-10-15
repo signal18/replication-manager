@@ -662,6 +662,7 @@ type Config struct {
 	ProvDiskDockerSize                        string            `measurement:"G,bytes,required" mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
 	ProvVolumeDocker                          string            `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
 	ProvVolumeData                            string            `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
+	ProvVolumeDataFailover                    string            `mapstructure:"prov-db-volume-data-failover" toml:"prov-db-volume-data-failover" json:"provDbVolumeDataFailover"` // active-passive: the failover-capable pool of the single server's data volume (#2004)
 	ProvDBRunAsUID                            string            `mapstructure:"prov-db-run-as-uid" toml:"prov-db-run-as-uid" json:"provDbRunAsUid"`
 	ProvDBVolumeUID                           string            `mapstructure:"prov-db-volume-uid" toml:"prov-db-volume-uid" json:"provDbVolumeUid"`
 	ProvDiskFS                                string            `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
@@ -1180,6 +1181,11 @@ type AppConfig struct {
 	// as APU. A template default (cloud18-templates minio) inherited at creation, overridable
 	// per app in the GUI.
 	AppStateful bool `mapstructure:"app-stateful" toml:"app-stateful" json:"appStateful"`
+	// ProvAppDbCredentials: the app receives the cluster's database root password
+	// (MYSQL_ROOT_PASSWORD from the cluster's env secret), like the cluster's database
+	// servers. For an app that is part of the database itself: a ColumnStore PM, deployed
+	// as an app for its active-passive DRBD placement (#2002). Set by its template.
+	ProvAppDbCredentials bool `mapstructure:"prov-app-db-credentials" toml:"prov-app-db-credentials" json:"provAppDbCredentials"`
 	// AppMonitorMode: how an app without a route is probed. "port" (default) connects to
 	// app-port over TCP; "ping" sends an ICMP echo to the app host, for a process that
 	// listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
@@ -1867,6 +1873,8 @@ const (
 	TopoMasterSlavePgLog    string = "master-slave-pg-logical"
 	TopoMasterSlavePgStream string = "master-slave-pg-stream"
 	TopoActivePassive       string = "active-passive"
+	// MariaDB ColumnStore (#2002): the UM is an active-passive server with the mcs tag
+	TopoColumnstore string = "columnstore"
 )
 
 // GetInstancePATName returns the per-instance GitLab PAT name: the cloud18
@@ -2923,6 +2931,7 @@ func GetTopologyType() map[string]string {
 		TopoMasterSlavePgLog:    TopoMasterSlavePgLog,
 		TopoMasterSlavePgStream: TopoMasterSlavePgStream,
 		TopoActivePassive:       TopoActivePassive,
+		TopoColumnstore:         TopoColumnstore,
 		TopoUnknown:             TopoUnknown,
 	}
 }

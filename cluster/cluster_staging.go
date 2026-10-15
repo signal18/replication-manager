@@ -415,7 +415,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 
 	// The parent's logical backup is the only source (#1989): checked before anything
 	// is touched, with an error naming what is missing.
-	backupfile, _, err := parent.ParentLogicalBackup()
+	backupfile, bcksrv, err := parent.ParentLogicalBackup()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed of %s from parent cluster %s refused: %s", cluster.Name, parent.Name, err)
 		return "", err
@@ -486,12 +486,34 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, target.URL)
 
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
-		if pmaster.LastBackupMeta.Logical != nil && !pmaster.LastBackupMeta.Logical.SplitUser {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed mysqldump with no split user is not supported")
-			target.JobsUpdateStateRuntimeOnly(task, "Reseed mysqldump with no split user is not supported", 5, 1)
-			return "", fmt.Errorf("Reseed mysqldump with no split user is not supported")
+		// a splitdump (#2011): the Go splitdump loader, schema then data, the GTID from
+		// its metadata, as a logical reseed does; ColumnStore conversion included (#2010)
+		meta := bcksrv.LastBackupMeta.Logical
+		split, _ := isSplitDumpDir(backupfile)
+		if split {
+			// a ColumnStore child (#2015): the restore feeds replplugin-columnstore its
+			// ColumnStore tables' rows, the plugin streams the binlog after it
+			feed := cluster.HasConfigTopoColumnstore() && target.IsMaster()
+			if feed {
+				if err := cluster.startColumnstoreChild(parent, target, channel, backupfile); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ColumnStore child %s: %s", cluster.Name, err)
+					return "", fmt.Errorf("ColumnStore child preparation: %w", err)
+				}
+			}
+			err = target.reseedMysqldumpWithMetadata(context.Background(), backupfile, false, meta)
+			if feed {
+				if ferr := cluster.finishColumnstoreChild(target, channel, backupfile, err == nil); ferr != nil && err == nil {
+					err = fmt.Errorf("ColumnStore child: %w", ferr)
+				}
+			}
+		} else {
+			if meta != nil && !meta.SplitUser {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed mysqldump with no split user is not supported")
+				target.JobsUpdateStateRuntimeOnly(task, "Reseed mysqldump with no split user is not supported", 5, 1)
+				return "", fmt.Errorf("Reseed mysqldump with no split user is not supported")
+			}
+			err = target.JobReseedMysqldump(backupfile, false)
 		}
-		err = target.JobReseedMysqldump(backupfile, false)
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
 		// the data only: the staging cluster keeps its own accounts and system tables
 		err = target.JobReseedMyLoaderFromParent(backupfile)
@@ -557,6 +579,13 @@ func (cluster *Cluster) ParentLogicalBackup() (string, *ServerMonitor, error) {
 	switch cluster.Conf.BackupLogicalType {
 	case config.ConstBackupLogicalTypeMysqldump, "script":
 		dest = "mysqldump.sql.gz"
+		// a splitdump parent backs up into a directory (#2011, preprod belair); the
+		// single file is the fallback when the directory is not there
+		if cluster.Conf.BackupMysqldumpSplitDump {
+			if st, err := os.Stat(bcksrv.GetMyBackupDirectory() + "splitdump"); err == nil && st.IsDir() {
+				dest = "splitdump"
+			}
+		}
 	case config.ConstBackupLogicalTypeMydumper:
 		dest = "mydumper"
 	default:

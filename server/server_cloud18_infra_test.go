@@ -245,3 +245,20 @@ func TestCloud18SpecMySQLFamily(t *testing.T) {
 		}
 	}
 }
+
+// #2004: one MariaDB, Percona or MySQL server is active-passive (on a failover volume);
+// active-passive with more than one server is refused.
+func TestCloud18SpecActivePassive(t *testing.T) {
+	for _, img := range []string{"mariadb:lts", "percona/percona-server:8.0", "mysql:8.4"} {
+		s, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "ap", DBImage: img, DBCount: 1})
+		if err != nil || s.Topology != config.TopoActivePassive {
+			t.Fatalf("%s db_count 1: want %s, got %q (%v)", img, config.TopoActivePassive, s.Topology, err)
+		}
+		if s, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "ms", DBImage: img, DBCount: 2}); s.Topology != "" && s.Topology != config.TopoMasterSlave {
+			t.Fatalf("%s db_count 2 stays master-slave, got %q", img, s.Topology)
+		}
+		if _, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "ap", DBImage: img, DBCount: 2, Topology: config.TopoActivePassive}); err == nil {
+			t.Fatalf("%s active-passive with 2 servers must be refused", img)
+		}
+	}
+}

@@ -10,6 +10,7 @@ wired to any build server; everything it did (and more) now runs as GitHub Actio
 |---|---|---|
 | `build-packages.yml` | tag push `v*`, or manual dispatch with a `tag` input | DEB + RPM packages (amd64 + arm64), published to the apt/yum repos; **sole publisher of the signed log-plugin set** |
 | `docker-build-push.yml` | push to `develop`, tag push `v*`, or manual dispatch | All Docker Hub images (release, nightly, dev, arb, slim + rootless variants) |
+| `columnstore-image.yml` | pull request or push to `develop` touching `docker/columnstore/**`, or manual dispatch with a `mariadb_version` input | `signal18/mariadb-columnstore:<version>` and `:<major.minor>` (#2002): the official `mariadb` image + ColumnStore + CMAPI, smoke-tested (plugin ACTIVE); a pull request builds and tests only, never pushes |
 | `release-binaries.yml` | GitHub **release published**, or manual dispatch | Standalone linux amd64/arm64 binaries attached to the release (darwin/windows currently disabled) |
 | `generate-sbom.yml` | GitHub release published | CycloneDX SBOM attached to the release |
 | `update-changelog.yml` → `update-changelog-claude.yml` | GitHub release published | Claude-authored `CHANGELOG.md` entry committed to `develop` |

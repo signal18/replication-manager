@@ -742,6 +742,17 @@ func (cluster *Cluster) openSVCServiceObjects(serviceName, name string) []string
 	return []string{serviceName, cluster.Name + "/vol/" + name, cluster.Name + "/vol/" + name + "-sec"}
 }
 
+// openSVCDBServiceObjects are the objects of a database service: those of every service,
+// and in the columnstore topology its /dev/shm volume {name}-shm (#2007; preprod: left
+// behind by an unprovision of belair-mcs).
+func (cluster *Cluster) openSVCDBServiceObjects(serviceName, name string) []string {
+	objects := cluster.openSVCServiceObjects(serviceName, name)
+	if cluster.HasConfigTopoColumnstore() {
+		objects = append(objects, cluster.Name+"/vol/"+name+"-shm")
+	}
+	return objects
+}
+
 // templateLogBase64 matches a base64 payload embedded in a service template (the
 // xtrabackup bundle script of prov_xtrabackup_bundle.go is one): 256 characters of the
 // base64 alphabet in a row are never a word, a host or a path of the template. The

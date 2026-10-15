@@ -984,6 +984,12 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 			return err
 		}
 	}
+	// a ColumnStore child's channel ignores the plugin's tables (columnstore_replication.go)
+	if line := TemplateEnv[ColumnstoreReplicateIgnoreEnv]; line != "" {
+		if err := configurator.writeColumnstoreReplicateIgnore(Datadir, line); err != nil {
+			return err
+		}
+	}
 	// Galera on MariaDB: the SST account is created at datadir init (init/ is the image's
 	// /docker-entrypoint-initdb.d), so the bootstrap node holds it before any node joins
 	if configurator.galeraSocketSST() {

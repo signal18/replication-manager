@@ -400,3 +400,52 @@ func CountBinaryLogs(db *sqlx.DB, version *version.Version) (int, error) {
 
 	return counter, nil
 }
+
+// GetFirstBinaryLogGtidList returns the oldest binary log of a MariaDB server and the
+// GTID list it starts at (its Gtid_list event, without the brackets): "" when nothing was
+// logged before it, so the binary logs hold every transaction from the origin.
+func GetFirstBinaryLogGtidList(db *sqlx.DB, myver *version.Version) (string, string, string, error) {
+	logs := "SHOW BINARY LOGS"
+	if myver == nil || !myver.IsMariaDB() {
+		return "", "", logs, errors.New("the GTID list of a binary log is MariaDB's")
+	}
+	rows, err := db.Queryx(logs)
+	if err != nil {
+		return "", "", logs, err
+	}
+	first := ""
+	if rows.Next() {
+		cols, err := rows.SliceScan()
+		if err != nil {
+			rows.Close()
+			return "", "", logs, err
+		}
+		if len(cols) > 0 {
+			switch v := cols[0].(type) {
+			case []byte:
+				first = string(v)
+			case string:
+				first = v
+			}
+		}
+	}
+	rows.Close()
+	if first == "" {
+		return "", "", logs, errors.New("no binary log")
+	}
+	if err := ValidateFilename(first); err != nil {
+		return first, "", logs, fmt.Errorf("invalid binlog filename: %w", err)
+	}
+	query := "SHOW BINLOG EVENTS IN ? LIMIT 4"
+	logs += fmt.Sprintf("\nSHOW BINLOG EVENTS IN '%s' LIMIT 4", first)
+	evts := []BinlogEvents{}
+	if err := db.Unsafe().Select(&evts, query, first); err != nil {
+		return first, "", logs, err
+	}
+	for _, e := range evts {
+		if e.Event_type == "Gtid_list" {
+			return first, strings.TrimSpace(strings.Trim(strings.TrimSpace(e.Info), "[]")), logs, nil
+		}
+	}
+	return first, "", logs, fmt.Errorf("no Gtid_list event at the start of %s", first)
+}

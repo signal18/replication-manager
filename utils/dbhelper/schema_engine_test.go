@@ -44,4 +44,18 @@ func TestGetTablesByEngineFilters(t *testing.T) {
 	if err != nil || len(got) != 2 || !got[0].ForeignKey || got[1].ForeignKey || got[0].Bytes != 16384 {
 		t.Fatalf("got %+v, %v", got, err)
 	}
+	// #2015: replication_manager_schema excluded, unless it is the schema asked
+	mock.ExpectQuery(`'performance_schema','replication_manager_schema'\) AND UPPER`).WithArgs("Columnstore").
+		WillReturnRows(sqlmock.NewRows([]string{"s", "t", "e", "b", "fk"}))
+	if _, _, err := GetTablesByEngine(db, ver, "Columnstore", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectQuery(`'performance_schema'\) AND UPPER\(t.ENGINE\) = UPPER\(\?\) AND t.TABLE_SCHEMA = \?`).WithArgs("Columnstore", "replication_manager_schema").
+		WillReturnRows(sqlmock.NewRows([]string{"s", "t", "e", "b", "fk"}).AddRow("replication_manager_schema", "sbtest1", "Columnstore", 0, false))
+	if got, _, err := GetTablesByEngine(db, ver, "Columnstore", "replication_manager_schema", ""); err != nil || len(got) != 1 {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
 }

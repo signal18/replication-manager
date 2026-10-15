@@ -100,6 +100,11 @@ PLUGIN_NAMES    := $(notdir $(PLUGIN_SRC_DIRS))
 PLUGIN_COMMON_SRCS := $(wildcard cluster/logplugin/*.go) $(wildcard cluster/logplugin/plugins/wire/*.go)
 PLUGIN_BINDIR   := build/plugins
 
+# Replication plugins (#2015): long-running, supervised by replication-manager; each one a Go
+# module of its own under cluster/replplugin/plugins/<name>/, built as replplugin-<name>.
+REPLPLUGIN_SRC_DIRS := $(shell find cluster/replplugin/plugins -mindepth 2 -maxdepth 2 -name "go.mod" -exec dirname {} \; 2>/dev/null)
+REPLPLUGIN_NAMES    := $(addprefix replplugin-,$(notdir $(REPLPLUGIN_SRC_DIRS)))
+
 # Wire protocol version — read directly from source so it never drifts.
 # Bump WireVersion in wire.go only when the stdin/stdout JSON protocol changes.
 WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire/wire.go | awk '{print $$NF}')
@@ -183,6 +188,14 @@ plugins: $(PLUGIN_SIGNER_BIN)
 		    --ldflags "-extldflags '-static' -w -s" \
 		    -o $(PLUGIN_BINDIR)/$$name \
 		    ./cluster/logplugin/plugins/$$name/... || exit 1; \
+	done
+	@for dir in $(REPLPLUGIN_SRC_DIRS); do \
+		name=replplugin-$$(basename $$dir); \
+		echo "Building replication plugin: $$name"; \
+		(cd $$dir && env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
+		  go build \
+		    --ldflags "-extldflags '-static' -w -s" \
+		    -o $(CURDIR)/$(PLUGIN_BINDIR)/$$name .) || exit 1; \
 	done
 	$(MAKE) plugin-sigs
 	@if [ "$(PLUGIN_PUSH)" = "ON" ]; then \
@@ -276,7 +289,7 @@ plugin-keys: $(PLUGIN_SIGNER_BIN)
 plugin-sigs: plugin-keys
 	@mkdir -p $(PLUGIN_SIG_DIR)
 	@echo "Signing plugins → $(PLUGIN_SIG_DIR)  [wire-v$(WIRE_VERSION)]"
-	@for name in $(PLUGIN_NAMES); do \
+	@for name in $(PLUGIN_NAMES) $(REPLPLUGIN_NAMES); do \
 		bin=$(PLUGIN_BINDIR)/$$name; \
 		if [ -f $$bin ]; then \
 			$(PLUGIN_SIGNER_BIN) sign \

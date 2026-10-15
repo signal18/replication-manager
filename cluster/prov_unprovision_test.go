@@ -6,8 +6,10 @@ package cluster
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/signal18/replication-manager/config"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -44,5 +46,22 @@ func TestOpenSVCServiceObjects(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("got %v, want %v", got, want)
 		}
+	}
+}
+
+// #2007: a ColumnStore database service also leaves its /dev/shm volume behind.
+func TestOpenSVCDBServiceObjectsColumnstore(t *testing.T) {
+	cl := newColumnstoreTestCluster()
+	cl.Name = "belair-mcs"
+	if err := cl.BootstrapTopology(config.TopoColumnstore); err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(cl.openSVCDBServiceObjects("belair-mcs/svc/db1", "db1"), " ")
+	if got != "belair-mcs/svc/db1 belair-mcs/vol/db1 belair-mcs/vol/db1-sec belair-mcs/vol/db1-shm" {
+		t.Fatalf("got %s", got)
+	}
+	plain := &Cluster{Name: "belair", Conf: &config.Config{}}
+	if got := plain.openSVCDBServiceObjects("belair/svc/db1", "db1"); len(got) != 3 {
+		t.Fatalf("no shm volume outside the columnstore topology: %v", got)
 	}
 }

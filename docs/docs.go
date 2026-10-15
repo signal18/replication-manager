@@ -1548,6 +1548,79 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/columnstore-rebalance": {
+            "post": {
+                "description": "Plans (confirm false) or runs (confirm true) the rebuild of every ColumnStore table, optionally of one schema, whose extents are not on every dbroot (a PM added since it was written). Columnstore topology only. Each table is copied into schema.table__rebalance under FLUSH TABLES ... WITH READ LOCK (its writes wait, its reads go on), then swapped by an atomic RENAME and the original dropped. Runs on the UM in the background, one table at a time, stopping at the first error: progress CINF0018, stop WARN0241. Needs db-optimize.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Rebalance the ColumnStore tables over every dbroot",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "schema, confirm",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.ColumnstoreRebalanceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plan (confirm false)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ColumnstoreRebalancePlan"
+                        }
+                    },
+                    "202": {
+                        "description": "Rebalance started (confirm true)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ColumnstoreRebalancePlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Refused: the reason (not a columnstore cluster, a rebalance running, nothing to rebalance...)",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/create-child": {
             "post": {
                 "description": "Plans (confirm false) or creates (confirm true) a child cluster of {clusterName}, named \u003cclusterName\u003e-child unless a name is given, to test a migration under this cluster's writes: same orchestrator, database image unless dbImage is given (a newer release to test), DBU per node, accounts and proxy type, dbCount databases (default 2), GTID domain this cluster's + 1, this cluster as head cluster; provisioned, then seeded from this cluster's logical backup, data only, its master replicating from this cluster's master through the parent's replication-source-name and its replicas following it through the child's own (child). Needs cluster-replication on this cluster and the right to create a cluster. The progress is the state CINF0014 on the new cluster, WARN0239 where it stopped.",
@@ -1578,7 +1651,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "name, dbImage, dbCount, confirm",
+                        "description": "name, dbImage, dbCount, topology (child only), confirm",
                         "name": "request",
                         "in": "body",
                         "schema": {
@@ -1656,7 +1729,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "name, dbImage, dbCount, confirm",
+                        "description": "name, dbImage, dbCount, topology (child only), confirm",
                         "name": "request",
                         "in": "body",
                         "schema": {
@@ -9971,6 +10044,92 @@ const docTemplate = `{
                         }
                     },
                     "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/columnstore-rebalance": {
+            "post": {
+                "description": "Plans (confirm false) or runs (confirm true) the rebuild of schemaName.tableName so that its extents spread over every dbroot: a copy under a table read lock (writes wait, reads go on), an atomic RENAME, the original dropped. Refused outside the columnstore topology, for a table already on every dbroot, or with a copy of a previous rebalance left. Runs in the background: CINF0018, WARN0241 on a stop. Needs db-optimize.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Rebalance one ColumnStore table over every dbroot",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Schema Name",
+                        "name": "schemaName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Table Name",
+                        "name": "tableName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "confirm",
+                        "name": "request",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.ColumnstoreRebalanceTableRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The plan (confirm false)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ColumnstoreRebalancePlan"
+                        }
+                    },
+                    "202": {
+                        "description": "Rebalance started (confirm true)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ColumnstoreRebalancePlan"
+                        }
+                    },
+                    "400": {
+                        "description": "Refused: the reason",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
                         "description": "No cluster",
                         "schema": {
                             "type": "string"
@@ -25340,6 +25499,76 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.ColumnstoreRebalancePlan": {
+            "type": "object",
+            "properties": {
+                "cluster": {
+                    "type": "string"
+                },
+                "dbroots": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "notes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "schema": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.ColumnstoreRebalanceTable"
+                    }
+                },
+                "tables": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.ColumnstoreRebalanceTable"
+                    }
+                },
+                "totalBytes": {
+                    "type": "integer"
+                }
+            }
+        },
+        "cluster.ColumnstoreRebalanceTable": {
+            "type": "object",
+            "properties": {
+                "bytes": {
+                    "description": "data size of its extents",
+                    "type": "integer"
+                },
+                "columns": {
+                    "description": "columns, each with its own extents",
+                    "type": "integer"
+                },
+                "extents": {
+                    "description": "dbroot -\u003e extents",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "schema": {
+                    "type": "string"
+                },
+                "table": {
+                    "type": "string"
+                }
+            }
+        },
         "cluster.Diff": {
             "type": "object",
             "properties": {
@@ -26186,6 +26415,10 @@ const docTemplate = `{
                 },
                 "provAppCpuCores": {
                     "type": "string"
+                },
+                "provAppDbCredentials": {
+                    "description": "ProvAppDbCredentials: the app receives the cluster's database root password\n(MYSQL_ROOT_PASSWORD from the cluster's env secret), like the cluster's database\nservers. For an app that is part of the database itself: a ColumnStore PM, deployed\nas an app for its active-passive DRBD placement (#2002). Set by its template.",
+                    "type": "boolean"
                 },
                 "provAppDiskIops": {
                     "type": "string"
@@ -28914,6 +29147,10 @@ const docTemplate = `{
                 "provDbVolumeData": {
                     "type": "string"
                 },
+                "provDbVolumeDataFailover": {
+                    "description": "active-passive: the failover-capable pool of the single server's data volume (#2004)",
+                    "type": "string"
+                },
                 "provDbVolumeDocker": {
                     "type": "string"
                 },
@@ -30324,6 +30561,10 @@ const docTemplate = `{
                 "sourceName": {
                     "description": "channel from the parent's master: the parent's replication-source-name",
                     "type": "string"
+                },
+                "topology": {
+                    "description": "the child's topology-target, \"\" the default (#2012)",
+                    "type": "string"
                 }
             }
         },
@@ -30335,7 +30576,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "dbCount": {
-                    "description": "default 3 (staging), 2 (child)",
+                    "description": "default 3 (staging), 2 (child), 1 with topology columnstore",
                     "type": "integer"
                 },
                 "dbImage": {
@@ -30344,6 +30585,10 @@ const docTemplate = `{
                 },
                 "name": {
                     "description": "default \u003cparent\u003e-staging or \u003cparent\u003e-child",
+                    "type": "string"
+                },
+                "topology": {
+                    "description": "Topology: the child's topology-target, set before its bootstrap (#2012); \"\" the\ndefault. columnstore: a ColumnStore child of an OLTP parent, its tables converted at\nthe seed (#2010), image signal18/mariadb-columnstore and 1 database (the UM) by default",
                     "type": "string"
                 }
             }
@@ -30368,6 +30613,26 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "server.ColumnstoreRebalanceRequest": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean"
+                },
+                "schema": {
+                    "description": "optional: one schema only",
+                    "type": "string"
+                }
+            }
+        },
+        "server.ColumnstoreRebalanceTableRequest": {
+            "type": "object",
+            "properties": {
+                "confirm": {
+                    "type": "boolean"
                 }
             }
         },
