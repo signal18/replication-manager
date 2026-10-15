@@ -33,7 +33,12 @@ backup-verification-credential = "root:secret"
 
 Dashboard: **Settings → Backups → Backup Verification**, **Backup
 Verification Level**, **Backup Verification Server** and **Backup
-Verification Credentials**.
+Verification Credentials**. **Backup Verification Server** lists **External
+server** (then the host and the credentials) and the servers of the cluster:
+any replica can be picked, the primary and a relay are shown disabled. Picking
+a replica asks for a confirmation; one not yet in `db-servers-ignored-hosts`
+is added to them with it. The confirmation warns, without blocking, when it is
+the last replica available for failover.
 
 ## On demand
 

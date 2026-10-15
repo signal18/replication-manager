@@ -216,8 +216,18 @@ these lines and in a failed statement's error, masks password literals
 
 ## GUI
 
-- `Settings/BackupSettings.jsx`: the switch, the level, the host, the
-  credentials (`SetCredentialsModal`, base64 like the other `set` values).
+- `Settings/BackupSettings.jsx`: the switch, the level, the verification
+  server, the credentials (`SetCredentialsModal`, base64 like the other `set`
+  values). The server is picked from a selector: **External server** (the
+  host `TextForm` and the credentials row), or a server of the cluster from
+  `clusterServers` by its `url`; the primary and a relay are disabled, as in
+  `verificationReplica`. A picked replica goes through a confirmation that
+  says what a test restore does to it; one not ignored yet is added to the
+  ignored hosts with it (`setAsIgnored`, the server action `set-ignored`), so
+  `verificationReplica` accepts it. The confirmation warns (not blocking)
+  when no other failover candidate would remain: another server not the
+  primary, not ignored, not `Failed`/`Suspect`/`ErrorAuth`. Cancel remounts
+  the selector on the saved value.
 - `Maintenance/index.jsx`: a verification icon in the status column (tooltip:
   level, time, warnings, notes or error; `verificationClass`: green ring for
   integrity, blue for restore, the `--info-secondary-color` token added to both

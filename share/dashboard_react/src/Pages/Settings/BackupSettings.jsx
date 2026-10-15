@@ -18,6 +18,8 @@ import remarkGfm from 'remark-gfm'
 import NumberInput from '../../components/NumberInput'
 import RMButton from '../../components/RMButton'
 import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
+import { setAsIgnored } from '../../redux/clusterSlice'
 
 const sizeGenerator = () => {
   const result = []
@@ -107,6 +109,45 @@ function BackupSettings({ selectedCluster, user }) {
 
   const isUsingScript = selectedCluster?.config?.backupSaveScript.length > 0
   const [isVerificationCredentialOpen, setIsVerificationCredentialOpen] = useState(false)
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
+  // backup-verification-host: a server outside the cluster, or a replica of the cluster listed
+  // in db-servers-ignored-hosts, neither the primary nor a relay (the test restore reseeds it)
+  const [verificationExternal, setVerificationExternal] = useState(false)
+  const [verificationPick, setVerificationPick] = useState(null) // a replica waiting for its confirmation
+  const [verificationDropdownKey, setVerificationDropdownKey] = useState(0) // remount: back to the saved value
+  const verificationHost = selectedCluster?.config?.backupVerificationHost || ''
+  const verificationReplicaOptions = useMemo(
+    () =>
+      (clusterServers || []).map((s) => {
+        const why = s.state === 'Master' ? 'primary' : s.isRelay ? 'relay' : ''
+        return { name: `${s.url} (${why || 'replica'})`, value: s.url, isDisabled: why !== '', server: s }
+      }),
+    [clusterServers]
+  )
+  const verificationOnReplica = verificationReplicaOptions.some((o) => o.value === verificationHost)
+  const verificationTarget = verificationExternal || !verificationOnReplica ? 'external' : verificationHost
+  const verificationTargetOptions = [{ name: 'External server', value: 'external' }, ...verificationReplicaOptions]
+  // the failover candidates left once the picked replica is ignored: not the primary, not
+  // ignored, not failed
+  const verificationPickLastCandidate =
+    verificationPick &&
+    !verificationPick.ignored &&
+    !(clusterServers || []).some(
+      (s) => s.id !== verificationPick.id && s.state !== 'Master' && !s.ignored && !['Failed', 'Suspect', 'ErrorAuth'].includes(s.state)
+    )
+  const cancelVerificationPick = () => {
+    setVerificationPick(null)
+    setVerificationDropdownKey((k) => k + 1)
+  }
+  const confirmVerificationPick = () => {
+    const s = verificationPick
+    if (!s.ignored) {
+      dispatch(setAsIgnored({ clusterName: selectedCluster?.name, serverId: s.id }))
+    }
+    setVerificationExternal(false)
+    dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-verification-host', value: btoa(s.url) }))
+    setVerificationPick(null)
+  }
 
   // Help content
   const hBackupEncryption = `**Backup Encryption**\n\nEncrypts newly created local backup artifacts (physical, logical, mydumper/dumpling, binlog) with the database root password configured in \`db-servers-credential\`, using the standard OpenSSL AES-256-CBC format.\n\nBackups can be decrypted without replication-manager:\n\n\`openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -in backup.enc -out backup\`\n\nA backup needs the root password that was valid when it was taken. Existing plaintext backups are unaffected; only backups created after enabling this switch are encrypted. Disabling it restores plaintext behavior.\n\nConfig: \`backup-encryption\``
@@ -118,7 +159,7 @@ function BackupSettings({ selectedCluster, user }) {
   const hMysqldumpOptions = `**Mysqldump Options**\n\nAdditional command-line flags passed to mysqldump.\nExample: \`--single-transaction --triggers --routines\`\n\nConfig: \`backup-mysqldump-options\``
   const hVerification = `**Backup Verification**\n\nVerifies each logical (mysqldump) backup once it completes, at the verification level below. A backup can also be verified on demand from the backup list (Maintenance).\n\nThe result is shown in the backup list; a failed verification of a server's last logical backup raises ERR00117.\n\nConfig: \`backup-verification\``
   const hVerificationLevel = `**Backup Verification Level**\n\n- **Integrity**: reads the backup as a restore would, without a database: gzip to its end, the dump's \`-- Dump completed\` line, the position against the backup metadata, every file of a splitdump. An encrypted backup has its HMAC checked first.\n- **Test restore**: the integrity checks, then the backup is loaded into the verification server below, and each table's rows and each schema's tables, views, routines, triggers and events are compared with the dump.\n\nConfig: \`backup-verification-level\``
-  const hVerificationHost = `**Backup Verification Server**\n\nThe server (host:port) the test restore loads the backup into: outside the cluster, of the same flavor and version as the cluster. The whole backup is loaded, the mysql schema (accounts) included; the backup's other schemas are dropped before the load and after the comparison.\n\nConfig: \`backup-verification-host\``
+  const hVerificationHost = `**Backup Verification Server**\n\nWhere the test restore loads the backup:\n\n- **External server** (host:port): outside the cluster, of the same flavor and version as the cluster, with the credentials below. The whole backup is loaded, the mysql schema (accounts) included; the backup's other schemas are dropped before the load and after the comparison.\n- **A replica of the cluster** (not the primary nor a relay): the test restore reseeds it: maintenance, replication stopped, load and comparison, then replication restarted from the backup's position. A replica not yet in ignored hosts is added to them when picked (never a failover candidate).\n\nConfig: \`backup-verification-host\``
   const hVerificationCredential = `**Backup Verification Credentials**\n\nThe user:password replication-manager connects to the verification server with. The test restore loads the backup's accounts: use an account the backups hold, such as the cluster's database credentials.\n\nConfig: \`backup-verification-credential\``
   const hSplitDump = `**Mysqldump Splitdump Output**\n\nSends mysqldump output through replication-manager-cli splitdump instead of a single .sql.gz file.\nOutput is written to a splitdump directory (uncompressed).\nRequires the CLI to be available in PATH or configured below.\n\nConfig: \`backup-mysqldump-splitdump\``
   const hSplitDumpSize = `**Splitdump Shard Size**\n\nMaximum shard size for splitdump output. Default: 1G. Set to 0 to disable sharding.\n\nConfig: \`backup-splitdump-file-size\``
@@ -251,20 +292,38 @@ function BackupSettings({ selectedCluster, user }) {
       key: 'Backup Verification Server',
       help: h(hVerificationHost, 'Backup Verification Server'),
       value: (
-        <TextForm value={selectedCluster?.config?.backupVerificationHost} confirmTitle={`Confirm backup-verification-host to `}
-          maxLength={255} className={styles.textbox}
-          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-verification-host', value: btoa(value) }))} />
+        <Flex direction='column' gap={2} align='flex-start'>
+          <Dropdown key={verificationDropdownKey} options={verificationTargetOptions} className={styles.dropdownButton}
+            selectedValue={verificationTarget}
+            isDisabled={user?.grants['cluster-settings'] == false}
+            onChange={(option) => {
+              if (option.value === 'external') {
+                setVerificationExternal(true)
+                return
+              }
+              setVerificationPick(option.server)
+            }} />
+          {verificationTarget === 'external' && (
+            <TextForm value={verificationOnReplica ? '' : verificationHost} confirmTitle={`Confirm backup-verification-host to `}
+              maxLength={255} className={styles.textbox}
+              onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-verification-host', value: btoa(value) }))} />
+          )}
+        </Flex>
       )
     },
-    {
-      key: 'Backup Verification Credentials',
-      help: h(hVerificationCredential, 'Backup Verification Credentials'),
-      value: (
-        <RMButton isDisabled={user?.grants['cluster-settings'] == false} onClick={() => setIsVerificationCredentialOpen(true)}>
-          Set credentials
-        </RMButton>
-      )
-    },
+    ...(verificationTarget === 'external'
+      ? [
+          {
+            key: 'Backup Verification Credentials',
+            help: h(hVerificationCredential, 'Backup Verification Credentials'),
+            value: (
+              <RMButton isDisabled={user?.grants['cluster-settings'] == false} onClick={() => setIsVerificationCredentialOpen(true)}>
+                Set credentials
+              </RMButton>
+            )
+          }
+        ]
+      : []),
     {
       key: 'Mysqldump Splitdump Output',
       help: h(hSplitDump, 'Mysqldump Splitdump Output'),
@@ -610,6 +669,26 @@ function BackupSettings({ selectedCluster, user }) {
           headerClassName={joinClasses(modalStyles.infoModalHeader, styles.infoModalHeader)}
           bodyClassName={joinClasses(modalStyles.infoModalBody, styles.infoModalBody)}
           closeModal={closeCommonModal} />
+      )}
+      {verificationPick && (
+        <ConfirmModal isOpen={!!verificationPick} closeModal={cancelVerificationPick}
+          title={`Use ${verificationPick.url} as the backup verification server?`}
+          body={
+            <>
+              <p>
+                Each test restore reseeds it: maintenance, replication stopped, the backup loaded and compared, then
+                replication restarted from the backup's position.
+                {verificationPick.ignored ? '' : ' It is added to the ignored hosts: an ignored server is never a failover candidate.'}
+              </p>
+              {verificationPickLastCandidate && (
+                <p>
+                  <strong>It is the last replica available for failover:</strong> once it is ignored, a failover of the
+                  primary has no candidate.
+                </p>
+              )}
+            </>
+          }
+          onConfirmClick={confirmVerificationPick} />
       )}
       {isVerificationCredentialOpen && (
         <SetCredentialsModal clusterName={selectedCluster?.name} isOpen={isVerificationCredentialOpen}
