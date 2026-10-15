@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -401,6 +402,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseed)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseedFromBackup)),
+	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/reseed-restic", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerReseedRestic)),
@@ -1420,6 +1425,53 @@ func (repman *ReplicationManager) handlerMuxServerUpgradeSystemTables(w http.Res
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Upgrade of the system tables queued"))
+}
+
+// handlerMuxServerReseedFromBackup reseeds a server from a chosen logical backup.
+// @Summary Reseed a server from a chosen backup
+// @Description Reseeds the server from the logical backup backupID (mysqldump, splitdump or mydumper), a discovered one included: its artifact is restored and replication restarts from the position it holds. Refused for a backup not completed, kept only in its archive, missing, or for the primary.
+// @Description Required grant: db-restore
+// @Tags DatabaseActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param backupID path string true "Backup ID"
+// @Success 200 {object} map[string]interface{} "Reseed started"
+// @Failure 400 {string} string "Backup not usable"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster or server not found, or reseed not started"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID} [post]
+func (repman *ReplicationManager) handlerMuxServerReseedFromBackup(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+	backupID, err := strconv.ParseInt(strings.TrimSpace(vars["backupID"]), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid backup ID", http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.ReseedFromBackupID(node, backupID); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed of %s from backup %d not started: %s", node.URL, backupID, err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"id": backupID, "server": node.URL, "message": "Reseed started"}); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
 }
 
 // handlerMuxServerReseed handles the HTTP request to reseed a server within a cluster.

@@ -327,6 +327,18 @@ func TestReseedCancelORLogic(t *testing.T) {
 			url:      "/api/clusters/testcluster/servers/db1/actions/reseed-cancel",
 			expected: false,
 		},
+		{
+			name:     "User with GrantDBRestore can reseed from a chosen backup",
+			user:     "user_restore",
+			url:      "/api/clusters/testcluster/servers/db1/actions/reseed/backup/1700000000",
+			expected: true,
+		},
+		{
+			name:     "User without GrantDBRestore cannot reseed from a chosen backup",
+			user:     "user_process",
+			url:      "/api/clusters/testcluster/servers/db1/actions/reseed/backup/1700000000",
+			expected: false,
+		},
 	}
 
 	for _, tt := range tests {

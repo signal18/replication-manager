@@ -64,6 +64,10 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No physical backup metadata, but cookie found on %s", server.URL)
 		}
 	}
+	// the backups of the folder no metadata describes, and the ad-hoc ones (backup_discovery.go)
+	if _, err := server.DiscoverBackups(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: %s", server.URL, err)
+	}
 }
 
 func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {

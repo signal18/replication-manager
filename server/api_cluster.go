@@ -148,6 +148,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupReconcile)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/backups/discover", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDiscover)),
+	)).Methods(http.MethodPost)
+
 	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/delete", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDelete)),
@@ -2511,6 +2516,54 @@ func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.Respon
 	err = e.Encode(report)
 	if err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
+	}
+}
+
+// handlerMuxClusterBackupDiscover registers the backups placed in the servers' backup folders without metadata.
+// @Summary Discover the backups of the backup folders
+// @Description Scans each server's backup folder and registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. Refused while a backup of the cluster runs.
+// @Description Required grant: db-backup
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} backupmgr.BackupMetadata "The backups registered"
+// @Failure 403 {string} string "No valid ACL, or no db-backup grant"
+// @Failure 409 {string} string "A backup of the cluster is running"
+// @Failure 500 {string} string "Discovery failed"
+// @Router /api/clusters/{clusterName}/backups/discover [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupDiscover(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	// the discovery writes metadata files into the backup folders: db-backup, checked here
+	// (the ACL rules fall back from /backups/ to the list's /backups rule)
+	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
+		http.Error(w, "No db-backup grant", http.StatusForbidden)
+		return
+	}
+	found, err := mycluster.DiscoverBackups()
+	if errors.Is(err, cluster.ErrBackupDiscoveryInBackup) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if err != nil && len(found) == 0 {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if found == nil {
+		found = []*backupmgr.BackupMetadata{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(found); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 	}
 }
 

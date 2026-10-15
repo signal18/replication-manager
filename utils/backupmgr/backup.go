@@ -81,6 +81,12 @@ type BackupMetadata struct {
 	ResticSnapshotID  string `json:"resticSnapshotID"`
 	ResticFilePath    string `json:"resticFilePath"`
 	BackupSessionID   string `json:"backupSessionID,omitempty"`
+	// Discovered: the backup was found in the server's backup folder without metadata
+	// (copied there by hand or by another tool) and registered by replication-manager.
+	// It is never picked by an automatic restore; DiscoveryNote says what its scan found
+	// (why it is not completed, or a check it could not run).
+	Discovered    bool   `json:"discovered,omitempty"`
+	DiscoveryNote string `json:"discoveryNote,omitempty"`
 	// OriginalRemoved: the artifact at Dest was removed once its archive snapshot
 	// (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
 	// a restore fetches it back from the archive.
