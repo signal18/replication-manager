@@ -358,6 +358,7 @@ function Navbar({ username, user }) {
                 icon={MdSettings}
                 text='Config'
                 count={(clusterData?.configStates || []).length}
+                blink={(clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR')}
                 bubbleStyle={{
                   background: `var(--chakra-colors-${
                     (clusterData?.configStates || []).some((s) => s.ErrType === 'ERROR') ? 'red'

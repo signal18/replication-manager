@@ -1946,3 +1946,25 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 	server.SetWaitJobsCheckCookie()
 	return nil
 }
+
+// logicalBackupTasks: the job names a logical backup of the server runs under
+// (backup-logical-type, or backup-save-script)
+var logicalBackupTasks = []string{config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeDumpling, "script"}
+
+// LastFailedLogicalBackup returns the server's last logical backup job when it ended in
+// error (states 5 and 6), nil when the last one ended OK or none ran.
+func (server *ServerMonitor) LastFailedLogicalBackup() *config.Task {
+	if server.JobResults == nil {
+		return nil
+	}
+	var last *config.Task
+	for _, name := range logicalBackupTasks {
+		if t := server.JobResults.Get(name); t != nil && t.Done == 1 && t.End > 0 && (last == nil || t.End > last.End) {
+			last = t
+		}
+	}
+	if last == nil || last.State < 5 {
+		return nil
+	}
+	return last
+}

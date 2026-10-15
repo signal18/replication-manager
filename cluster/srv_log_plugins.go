@@ -614,6 +614,25 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 			cluster.ConfigStateMachine.AddState("WARN0177", state.State{ErrType: "WARNING", ErrKey: "WARN0177", ErrDesc: fmt.Sprintf(clusterError["WARN0177"], len(pending), strings.Join(pending, ", ")), ErrFrom: "CONFIG"})
 		}
 	}
+	// Config domain: servers whose last logical backup failed (the scheduler showed the
+	// job in error and nothing else said so). Asserted every tick, so a later logical
+	// backup ended OK closes it.
+	if cluster.ConfigStateMachine != nil {
+		for _, srv := range cluster.Servers {
+			if srv == nil {
+				continue
+			}
+			if t := srv.LastFailedLogicalBackup(); t != nil {
+				// the head says what failed, the tail carries the tool's last words
+				reason := strings.TrimSpace(t.Result)
+				if len(reason) > 400 {
+					reason = reason[:200] + " ... " + reason[len(reason)-200:]
+				}
+				cluster.ConfigStateMachine.AddState(state.BuildStateKey("ERR00118", srv.URL), state.State{ErrType: "ERROR", ErrKey: "ERR00118",
+					ErrDesc: fmt.Sprintf(clusterError["ERR00118"], srv.URL, t.Task, time.Unix(t.End, 0).UTC().Format("2006-01-02 15:04:05"), reason), ErrFrom: "CONFIG", ServerUrl: srv.URL})
+			}
+		}
+	}
 	// Schema monitor lifecycle tags: next scheduled run and in-progress runs.
 	if cluster.SchemaStateMachine != nil {
 		if cluster.StateMachine != nil && cluster.StateMachine.IsInSchemaMonitor() {
@@ -1399,17 +1418,32 @@ func hasExecutables(dir string) bool {
 	return false
 }
 
-// snapshotJobs: the last job of each task on the server, from its jobs cache
+// snapshotJobs: the last job of each task on the server, from its jobs cache, and the
+// last jobs of the other servers that dumped it: a reseed is recorded on the replica it
+// rebuilds while the dump ran against its source (#2044)
 func snapshotJobs(server *ServerMonitor) []logplugin.StdioJob {
-	if server.JobResults == nil {
-		return nil
-	}
 	var out []logplugin.StdioJob
-	server.JobResults.Callback(func(_ string, t *config.Task) bool {
-		if t != nil {
-			out = append(out, logplugin.StdioJob{Task: t.Task, Done: t.Done, State: t.State, Result: t.Result, Start: t.Start, End: t.End})
+	if server.JobResults != nil {
+		server.JobResults.Callback(func(_ string, t *config.Task) bool {
+			if t != nil {
+				out = append(out, logplugin.StdioJob{Task: t.Task, Done: t.Done, State: t.State, Result: t.Result, Start: t.Start, End: t.End})
+			}
+			return true
+		})
+	}
+	if server.ClusterGroup == nil {
+		return out
+	}
+	for _, other := range server.ClusterGroup.Servers {
+		if other == nil || other == server || other.JobResults == nil {
+			continue
 		}
-		return true
-	})
+		other.JobResults.Callback(func(_ string, t *config.Task) bool {
+			if t != nil && logplugin.DumpSourceOf(t.Result) == server.URL {
+				out = append(out, logplugin.StdioJob{Task: t.Task, Done: t.Done, State: t.State, Result: t.Result, Start: t.Start, End: t.End, Source: server.URL})
+			}
+			return true
+		})
+	}
 	return out
 }

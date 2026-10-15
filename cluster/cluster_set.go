@@ -2954,3 +2954,12 @@ func (cluster *Cluster) ShouldProbeOrchestratorVersion(interval time.Duration) b
 	cluster.lastOrchestratorProbe = time.Now()
 	return true
 }
+
+// SetAutoTLS records that a server asked for TLS (error 3159), so proxies enable
+// SSL on their backends too. Safe from any goroutine, including one called while
+// the cluster mutex is held (see autoTLSMu).
+func (cluster *Cluster) SetAutoTLS(on bool) {
+	cluster.autoTLSMu.Lock()
+	cluster.HaveAutoTLS = on
+	cluster.autoTLSMu.Unlock()
+}

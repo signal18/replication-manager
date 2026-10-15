@@ -28,13 +28,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster/logplugin/plugins/wire"
+	"github.com/signal18/replication-manager/utils/hostmatch"
 )
 
 func main() {
@@ -239,7 +239,7 @@ func main() {
 	if snrOnVal == "ON" || snrOnVal == "1" {
 		var hostnameAccounts []string
 		for _, u := range req.DatabaseUsers {
-			if isHostname(u.Host) {
+			if hostmatch.IsDNSHost(u.Host) {
 				hostnameAccounts = append(hostnameAccounts, fmt.Sprintf("'%s'@'%s'", u.User, u.Host))
 			}
 		}
@@ -250,8 +250,9 @@ func main() {
 				Severity: "SECURITY",
 				Description: fmt.Sprintf(
 					"Server %s: skip_name_resolve=ON but %d account(s) use DNS hostnames as host —"+
-						" with DNS resolution disabled these accounts can never connect."+
-						" Convert each grant to an IP address (RENAME USER ... TO ...@'<ip>'): %s",
+						" with DNS resolution disabled these accounts can never connect, and every logical"+
+						" backup or dump reseed of this server stops on them (SHOW CREATE USER, error 1133)."+
+						" Convert each grant to an IP address or '%%' for an app account (RENAME USER ... TO ...@'<ip>'): %s",
 					req.ServerURL, len(hostnameAccounts), strings.Join(hostnameAccounts, ", ")),
 			})
 		}
@@ -424,19 +425,6 @@ func main() {
 	}
 
 	json.NewEncoder(os.Stdout).Encode(wire.Response{Findings: findings})
-}
-
-// isHostname returns true if host appears to be a DNS hostname rather than
-// an IP address, a wildcard ('%'), or a local alias ('localhost').
-// Accounts with DNS hostname grants silently fail to connect when skip_name_resolve=ON.
-func isHostname(host string) bool {
-	if host == "" || host == "%" || strings.EqualFold(host, "localhost") {
-		return false
-	}
-	if net.ParseIP(host) != nil {
-		return false
-	}
-	return true
 }
 
 func parseList(raw string) map[string]bool {

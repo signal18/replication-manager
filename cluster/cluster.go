@@ -529,6 +529,11 @@ type Cluster struct {
 	// nested Lock() call. Held only in Run() and ReloadConfig(); do not
 	// acquire it anywhere else.
 	reloadMu sync.Mutex `json:"-"`
+	// autoTLSMu guards the HaveAutoTLS write only. Never the cluster mutex: the
+	// write happens inside GetNewDBConn, which TopologyDiscover's server Pings
+	// call while TopologyDiscover holds cluster.Lock() -- taking it there
+	// deadlocked the monitor of curepipe on the first error 3159 (2026-10-14).
+	autoTLSMu sync.Mutex `json:"-"`
 	// tickWG tracks tickBody's genuinely fire-and-forget goroutines (spawned
 	// via trackTickGoroutine) -- the handful not already joined by a local
 	// wg.Wait() within the same tick. ReloadConfig() waits on it (while

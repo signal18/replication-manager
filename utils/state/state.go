@@ -190,6 +190,15 @@ func (SM *StateMachine) IsInSchemaMonitor() bool {
 // and the key isn't already scoped. Shared between AddState and any code that
 // needs to pre-scope keys before they reach AddState (e.g. batching per-app
 // errors from multiple apps into one map without collisions).
+// BaseKey is the code of a state key built by BuildStateKey ("ERR00116@db2:3306" ->
+// "ERR00116").
+func BaseKey(key string) string {
+	if i := strings.Index(key, "@"); i >= 0 {
+		return key[:i]
+	}
+	return key
+}
+
 func BuildStateKey(key string, serverUrl string) string {
 	if serverUrl != "" && !strings.Contains(key, "@") {
 		return key + "@" + serverUrl
