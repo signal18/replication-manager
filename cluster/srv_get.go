@@ -1260,10 +1260,8 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 					server.Conn = nil
 				}
 				// Propagate to cluster so proxies also enable SSL on their backends.
-				// Use the cluster mutex: multiple server goroutines may set this concurrently.
-				server.ClusterGroup.Lock()
-				server.ClusterGroup.HaveAutoTLS = true
-				server.ClusterGroup.Unlock()
+				// Not under the cluster mutex: TopologyDiscover holds it while it pings.
+				server.ClusterGroup.SetAutoTLS(true)
 				server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 					"Auto-enabled TLS with InsecureSkipVerify=true for %s (error 3159: require_secure_transport=ON)."+
 						" Certificate authenticity is NOT verified — configure monitoring-ssl-ca/cert/key for full TLS validation.", server.URL)

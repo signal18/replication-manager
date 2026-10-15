@@ -1258,9 +1258,7 @@ func (server *ServerMonitor) ScanBinlogQueryEvents() {
 			// monitoring connection, set ForceTLSSkipVerify and retry once.
 			if isMySQLError3159(err) && !server.ForceTLSSkipVerify && !cluster.HaveDBTLSCert {
 				server.ForceTLSSkipVerify = true
-				cluster.Lock()
-				cluster.HaveAutoTLS = true
-				cluster.Unlock()
+				cluster.SetAutoTLS(true)
 				server.SetDSN()
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
 					"[binlog-scan] auto-enabled TLS with InsecureSkipVerify=true for %s (error 3159)."+
