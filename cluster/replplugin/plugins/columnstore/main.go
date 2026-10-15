@@ -10,6 +10,7 @@
 // the source's binlog from that GTID (go-mysql canal, MariaDB compressed events included).
 // Everything it receives is accumulated per period (batch_timeout_ms) and written as a
 // checkpoint at a transaction boundary: per table the keys to delete and the rows to load.
+// The restore's rows close a checkpoint by size instead (restore_batch_mb), not by period.
 // It pauses while the checkpoints not yet applied exceed max_pending_mb: its stdin is not
 // read, the restore slows down; the binlog is not read. Supervised by replication-manager,
 // its passwords in its environment; a wire.Status JSON line on stdout per period; its
@@ -48,9 +49,10 @@ type capture struct {
 	mu       sync.Mutex
 	state    wire.State
 	bufs     map[string]*tableBuf
-	rows     int  // rows buffered in the period
-	inTx     bool // between a transaction's first row and its XID
-	flushDue bool // the period ended inside a transaction
+	rows     int   // rows buffered in the period
+	restored int64 // bytes of the restore's INSERTs buffered in the period
+	inTx     bool  // between a transaction's first row and its XID
+	flushDue bool  // the period ended inside a transaction
 	gtid     string
 	lastTS   uint32 // source time of the last captured transaction
 	st       wire.Status
@@ -178,7 +180,7 @@ func (c *capture) flushLocked() error {
 	if err := wire.WriteState(c.statePath, c.state); err != nil {
 		return err
 	}
-	c.bufs, c.rows = map[string]*tableBuf{}, 0
+	c.bufs, c.rows, c.restored = map[string]*tableBuf{}, 0, 0
 	return nil
 }
 
@@ -278,7 +280,16 @@ func (c *capture) restoreRows(schemaName, tableName string, stmt []byte) error {
 		return nil
 	})
 	c.st.Inserts += int64(n)
-	return err
+	if err != nil {
+		return err
+	}
+	// the INSERT's size stands for the CSV it becomes: the checkpoint closes at
+	// restore_batch_mb, the restore's rows being no transaction of the binlog
+	c.restored += int64(len(stmt))
+	if c.restored >= mbBytes64(c.cfg.RestoreBatchMB) {
+		return c.flushLocked()
+	}
+	return nil
 }
 
 func truncate(s string, n int) string {
@@ -378,9 +389,7 @@ func main() {
 				}
 				break restoring
 			case <-ticker.C:
-				if err := c.tick(); err != nil {
-					fail(c, err)
-				}
+				// no period during the restore: its checkpoints close by size in restoreRows
 				c.status(wire.StateRunning, "")
 			case <-sig:
 				os.Exit(0)

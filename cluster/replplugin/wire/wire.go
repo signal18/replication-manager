@@ -68,6 +68,9 @@ type Config struct {
 	// MaxPendingMB: the plugin pauses (no more input read, no more binlog read) while the
 	// checkpoints waiting to be applied take more than this; 0: 1024
 	MaxPendingMB int `toml:"max_pending_mb" json:"maxPendingMb"`
+	// RestoreBatchMB: during the seed's restore a checkpoint closes at this size of rows
+	// received, not at batch_timeout_ms: bigger files, fewer LOAD DATA; 0: 64
+	RestoreBatchMB int `toml:"restore_batch_mb" json:"restoreBatchMb"`
 	// SourceChannel: the target's native replication channel from the same source, which
 	// ignores the tables this plugin carries (replicate_ignore_table), "" when none
 	SourceChannel string `toml:"source_channel" json:"sourceChannel"`

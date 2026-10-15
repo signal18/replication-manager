@@ -322,6 +322,14 @@ func dumpField(c *schema.TableColumn, v dumpValue) interface{} {
 	return v.Text
 }
 
+// mbBytes64: restore_batch_mb in bytes, 64 MB when unset
+func mbBytes64(mb int) int64 {
+	if mb <= 0 {
+		mb = 64
+	}
+	return mbBytes(mb)
+}
+
 // mbBytes: max_pending_mb in bytes, 1024 MB when unset
 func mbBytes(mb int) int64 {
 	if mb <= 0 {

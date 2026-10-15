@@ -70,6 +70,7 @@ func (cluster *Cluster) startColumnstoreChild(parent *Cluster, target *ServerMon
 		BatchTimeoutMs: 10000,
 		StartGTID:      meta.GTID,
 		MaxPendingMB:   1024,
+		RestoreBatchMB: 64,
 		SourceChannel:  channel,
 	}
 	path := cluster.columnstorePluginPath()
