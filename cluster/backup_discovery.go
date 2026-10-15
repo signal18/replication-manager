@@ -55,6 +55,12 @@ var ErrBackupDiscoveryNotLogical = errors.New("reseed from a chosen backup takes
 // for the tests, which shorten it; they restore it and do not run in parallel.
 var backupDiscoverySettle = time.Minute
 
+// backupDiscoveryMaxPerRun bounds the artifacts one discovery reads (each to its end:
+// decrypted, decompressed): new ones and the ones inspected again. The others are left to the
+// next discovery, so a folder of many large dumps is never read in one go. A package variable
+// for the tests, which shorten it; they restore it and do not run in parallel.
+var backupDiscoveryMaxPerRun = 8
+
 // errBackupDiscoveryRunning: a discovery of the server's folder already runs.
 var errBackupDiscoveryRunning = errors.New("a discovery of the backup folder already runs")
 
@@ -67,6 +73,11 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 	cluster := server.ClusterGroup
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return nil, nil
+	}
+	// a backup running writes its artifact: not discovered half written (the startup
+	// discovery too, not only the API's)
+	if cluster.IsInBackup() {
+		return nil, ErrBackupDiscoveryInBackup
 	}
 	if _, running := cluster.backupDiscoveries.LoadOrStore(server.URL, struct{}{}); running {
 		return nil, errBackupDiscoveryRunning
@@ -85,7 +96,8 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: ad-hoc metadata not all read: %s", server.URL, err)
 	}
 	var found []*backupmgr.BackupMetadata
-	found = append(found, server.refreshDiscoveredBackups()...)
+	budget := backupDiscoveryMaxPerRun
+	found = append(found, server.refreshDiscoveredBackups(&budget)...)
 	known := cluster.knownBackupArtifacts()
 	// a metadata file not loaded (a scheduled backup's without its cookie) still describes
 	// its artifact: it is not discovered again
@@ -97,6 +109,7 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 			addKnownBackupArtifact(known, meta.Dest)
 		}
 	}
+	left := 0
 	for _, entry := range entries {
 		path := filepath.Join(dir, entry.Name())
 		if known[path] {
@@ -110,6 +123,11 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup discovery on %s: %s changed in the last %s (still being written?), left to the next discovery", server.URL, path, backupDiscoverySettle)
 			continue
 		}
+		if budget <= 0 {
+			left++
+			continue
+		}
+		budget--
 		meta, err := server.registerDiscoveredBackup(path, tool, split, 0)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: %s not registered: %s", server.URL, path, err)
@@ -117,14 +135,18 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 		}
 		found = append(found, meta)
 	}
+	if left > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup discovery on %s: %d more artifact(s) left to the next discovery (%d read per discovery)", server.URL, left, backupDiscoveryMaxPerRun)
+	}
 	return found, nil
 }
 
 // refreshDiscoveredBackups goes over the server's discovered backups: one whose artifact has
 // gone is unregistered (its metadata file removed: the discovered entries never outlive their
 // artifacts); one not completed whose artifact changed since its inspection (its size or file
-// count) is inspected again once it has settled. It returns the backups inspected again.
-func (server *ServerMonitor) refreshDiscoveredBackups() []*backupmgr.BackupMetadata {
+// count) is inspected again once it has settled, within budget (the artifacts the discovery may
+// still read). It returns the backups inspected again.
+func (server *ServerMonitor) refreshDiscoveredBackups(budget *int) []*backupmgr.BackupMetadata {
 	cluster := server.ClusterGroup
 	var discovered []*backupmgr.BackupMetadata
 	cluster.BackupMetaMap.Callback(func(_ int64, meta *backupmgr.BackupMetadata) bool {
@@ -154,6 +176,10 @@ func (server *ServerMonitor) refreshDiscoveredBackups() []*backupmgr.BackupMetad
 		if changed, err := artifactChangedSince(meta.Dest, time.Now().Add(-backupDiscoverySettle)); err != nil || changed {
 			continue
 		}
+		if *budget <= 0 {
+			continue // inspected again at the next discovery
+		}
+		*budget--
 		again, err := server.registerDiscoveredBackup(meta.Dest, meta.BackupTool, meta.SplitDump, meta.Id)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: backup %d not inspected again: %s", server.URL, meta.Id, err)

@@ -39,8 +39,10 @@ POST /api/clusters/{clusterName}/backups/discover
 The discovery runs in the background (it reads each new backup to its end):
 the API answers `202` at once, the backups it registers are logged and appear
 in the list when it ends. It is refused (`409`) while a backup of the cluster
-runs: its artifact is not complete yet. One discovery runs at a time per
-server.
+runs: its artifact is not complete yet (the discovery at a server's start
+waits for the next one then). One discovery runs at a time per server, and
+reads at most 8 artifacts: the others are left to the next discovery, so a
+folder of many large dumps is never read in one go.
 
 An entry changed in the last minute is left to the next discovery: a copy
 still running is not registered half written. A backup registered as not
@@ -77,8 +79,10 @@ artifact's modification time: the time of the copy, not of the data.
 
 The backup is written a metadata file (`<tool>.<id>.meta.json`) and listed,
 marked as discovered (a folder icon in the status column; a backup not
-completed shows why). It has no retention: it is never purged automatically,
-it is deleted like any backup.
+completed shows why). It has no retention: no purge (the ad-hoc retention, the
+`backup-keep-until-valid` rotation, the restic purges) touches it; it is
+deleted like any backup, and unregistered when its artifact is removed from
+the folder.
 
 ## Using a discovered backup
 
@@ -97,7 +101,9 @@ the API:
 POST /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID}
 ```
 
-This works for any logical backup of the list, discovered or not. The reseed
+This works for any logical backup of the list, discovered or not. The API
+answers `404` for an unknown backup, `400` for a backup it can not restore or
+for the primary. The reseed
 restores the artifact and restarts replication from the position the artifact
 itself holds (the dump header, the splitdump metadata), as any logical reseed
 does. It is refused for a backup not completed, kept only in its archive, or

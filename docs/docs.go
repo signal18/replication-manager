@@ -11403,13 +11403,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Backup not usable",
+                        "description": "Backup not usable (not completed, archived only, missing, not logical) or the server is the primary",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "403": {
-                        "description": "No valid ACL",
+                        "description": "No valid ACL, or no db-restore grant",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Backup not found",
                         "schema": {
                             "type": "string"
                         }
@@ -25235,24 +25241,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "apu": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "bau": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "bku": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "dbu": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "gwu": {
-                    "type": "number",
-                    "format": "float64"
+                    "type": "number"
                 },
                 "overPct": {
                     "type": "integer"
@@ -25285,8 +25286,7 @@ const docTemplate = `{
                     "additionalProperties": {
                         "type": "array",
                         "items": {
-                            "type": "number",
-                            "format": "float64"
+                            "type": "number"
                         }
                     }
                 },
@@ -29792,8 +29792,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "extension": {
                     "type": "string"
@@ -29828,8 +29827,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer",
-                    "format": "int64"
+                    "type": "integer"
                 },
                 "fileIds": {
                     "type": "array",

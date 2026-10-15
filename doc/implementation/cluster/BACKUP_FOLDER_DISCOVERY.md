@@ -24,7 +24,13 @@ handler answers 202; refused with `ErrBackupDiscoveryInBackup` while
 a scan is never run in a request or the monitor. `Cluster.backupDiscoveries`
 (server URL) lets one scan run per server (`errBackupDiscoveryRunning`): a
 config reload recreating the server, or an API scan during the startup one,
-does not run a second.
+does not run a second. Every scan is refused while `IsInBackup` (the startup one too: a backup
+writing between long pauses, mydumper on a large table, would be read half
+written; the settle window and the refresh pass are the second line). A scan
+reads at most `backupDiscoveryMaxPerRun` (8) artifacts, new or inspected again
+(one budget): the rest is logged and left to the next scan. A config reload
+re-reads only artifacts still unregistered: a registered one has its meta file
+and is known.
 
 1. `os.ReadDir` of `GetMyBackupDirectory`; a missing folder is no error.
 2. `LoadAdhocBackupMetadata`: the ad-hoc and the previously discovered backups
@@ -129,7 +135,9 @@ restore, not from the meta file.
   denies. 409 while a backup runs.
 - `POST /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID}`
   (`handlerMuxServerReseedFromBackup`): ACL rule `/actions/reseed/`
-  (`db-restore`); 400 with the refusal.
+  (`db-restore`), and the handler requires `db-restore` too (the rule matcher
+  falls back to a shorter rule when the specific one denies); 404 for an
+  unknown backup (`ErrBackupNotFound`), 400 for the other refusals.
 
 ## GUI
 
@@ -140,8 +148,16 @@ tooltip; a reseed action per logical, completed backup that opens a
 confirmation with a server dropdown (`clusterServers` without the primary),
 `reseedFromBackup` thunk.
 
-Meta files are written 0644 like every backup meta file (`WriteBackupMetadata`):
-the folder's other readers (restic, the dashboard's copy) read them alike.
+Meta files are written 0644 like every backup meta file (`WriteBackupMetadata`,
+`srv_bck.go`): one permission for the folder's meta files.
+
+Retention: a discovered backup is ad hoc without a retention window
+(`RetentionDays` 0, no `RetentionDuration`): `retentionDeadline` never expires
+it, so the ad-hoc purge leaves it; the `backup-keep-until-valid` rotation
+(`.old`, `.err`) handles the scheduled artifacts only; the restic purges handle
+snapshots. It is bounded by the artifacts in the folder (unregistered when its
+artifact is gone, `refreshDiscoveredBackups`) and deleted by the operator
+(`DeleteBackupByID`).
 
 ## Tests
 
@@ -151,7 +167,8 @@ unfinished dump, damaged splitdump, scheduled backup not re-registered, second
 run and restart register nothing new), a foreign encrypted backup, the
 reseed refusals, encrypted archives, the fallback skip, live entries kept, a
 copy in progress (left, then inspected again under its id), a removed artifact
-unregistered, one scan per server. `cluster_acl_test.go`: the reseed route needs
+unregistered, one scan per server, the per-scan cap, the refusal while a
+backup runs. `cluster_acl_test.go`: the reseed route needs
 `db-restore`.
 
 Regtest (T13, real servers): `testBackupDiscovery` (`regtest/test_backup_discovery.go`,

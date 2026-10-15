@@ -1438,8 +1438,9 @@ func (repman *ReplicationManager) handlerMuxServerUpgradeSystemTables(w http.Res
 // @Param serverName path string true "Server Name"
 // @Param backupID path string true "Backup ID"
 // @Success 200 {object} map[string]interface{} "Reseed started"
-// @Failure 400 {string} string "Backup not usable"
-// @Failure 403 {string} string "No valid ACL"
+// @Failure 400 {string} string "Backup not usable (not completed, archived only, missing, not logical) or the server is the primary"
+// @Failure 403 {string} string "No valid ACL, or no db-restore grant"
+// @Failure 404 {string} string "Backup not found"
 // @Failure 500 {string} string "Cluster or server not found, or reseed not started"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID} [post]
 func (repman *ReplicationManager) handlerMuxServerReseedFromBackup(w http.ResponseWriter, r *http.Request) {
@@ -1451,6 +1452,12 @@ func (repman *ReplicationManager) handlerMuxServerReseedFromBackup(w http.Respon
 	}
 	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	// the reseed replaces the server's data: db-restore, checked here as well (the ACL rules
+	// fall back to a shorter rule when the more specific /actions/reseed/ one denies)
+	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBRestore] {
+		http.Error(w, "No db-restore grant", http.StatusForbidden)
 		return
 	}
 	node := mycluster.GetServerFromName(vars["serverName"])
@@ -1465,7 +1472,11 @@ func (repman *ReplicationManager) handlerMuxServerReseedFromBackup(w http.Respon
 	}
 	if err := mycluster.ReseedFromBackupID(node, backupID); err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed of %s from backup %d not started: %s", node.URL, backupID, err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		status := http.StatusBadRequest
+		if errors.Is(err, cluster.ErrBackupNotFound) {
+			status = http.StatusNotFound
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

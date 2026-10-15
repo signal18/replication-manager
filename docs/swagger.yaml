@@ -821,19 +821,14 @@ definitions:
   cluster.BillingPrices:
     properties:
       apu:
-        format: float64
         type: number
       bau:
-        format: float64
         type: number
       bku:
-        format: float64
         type: number
       dbu:
-        format: float64
         type: number
       gwu:
-        format: float64
         type: number
       overPct:
         type: integer
@@ -854,7 +849,6 @@ definitions:
       accrued:
         additionalProperties:
           items:
-            format: float64
             type: number
           type: array
         description: |-
@@ -3922,7 +3916,6 @@ definitions:
       channelID:
         type: string
       createAt:
-        format: int64
         type: integer
       extension:
         type: string
@@ -3946,7 +3939,6 @@ definitions:
       channelID:
         type: string
       createAt:
-        format: int64
         type: integer
       fileIds:
         items:
@@ -13955,11 +13947,16 @@ paths:
             additionalProperties: true
             type: object
         "400":
-          description: Backup not usable
+          description: Backup not usable (not completed, archived only, missing, not
+            logical) or the server is the primary
           schema:
             type: string
         "403":
-          description: No valid ACL
+          description: No valid ACL, or no db-restore grant
+          schema:
+            type: string
+        "404":
+          description: Backup not found
           schema:
             type: string
         "500":

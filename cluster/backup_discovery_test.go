@@ -414,3 +414,36 @@ INSERT INTO ` + "`t`" + ` VALUES (1);
 		t.Fatalf("position %s:%d %q, completed %v", m.BinLogFileName, m.BinLogFilePos, m.BinLogGtid, m.Completed)
 	}
 }
+
+// One discovery reads at most backupDiscoveryMaxPerRun artifacts: the others are left to the
+// next discoveries, a folder of many large dumps is never read in one go.
+func TestDiscoverCapsArtifactsPerRun(t *testing.T) {
+	_, server, dir := newDiscoveryTest(t)
+	max := backupDiscoveryMaxPerRun
+	backupDiscoveryMaxPerRun = 2
+	t.Cleanup(func() { backupDiscoveryMaxPerRun = max })
+	for _, name := range []string{"a.sql.gz", "b.sql.gz", "c.sql.gz", "d.sql.gz", "e.sql.gz"} {
+		writeDiscoveryGzip(t, filepath.Join(dir, name), discoveryDump+discoveryDumpFooter)
+	}
+	for i, want := range []int{2, 2, 1, 0} {
+		found, err := server.DiscoverBackups()
+		if err != nil || len(found) != want {
+			t.Fatalf("discovery %d: registered %d, want %d (err %v)", i+1, len(found), want, err)
+		}
+	}
+}
+
+// The discovery of a server's folder is refused while a backup of the cluster runs, the
+// startup one too: its artifact is being written.
+func TestDiscoverRefusedWhileBackupRuns(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	writeDiscoveryGzip(t, filepath.Join(dir, "copy.sql.gz"), discoveryDump+discoveryDumpFooter)
+	c.SetInLogicalBackupState(true)
+	if found, err := server.DiscoverBackups(); !errors.Is(err, ErrBackupDiscoveryInBackup) || len(found) != 0 {
+		t.Fatalf("discovered during a backup: %d, %v", len(found), err)
+	}
+	c.SetInLogicalBackupState(false)
+	if found, err := server.DiscoverBackups(); err != nil || len(found) != 1 {
+		t.Fatalf("after the backup: %d, %v", len(found), err)
+	}
+}
