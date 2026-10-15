@@ -64,12 +64,40 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	if !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
 		return errors.New("monitoring-secret-versioning is off: the new passwords would live only in memory and a restart would lose access to the servers; turn it on or use Vault")
 	}
+	// the save skips immutable keys: the config file would win at the next restart. Lifted
+	// once #2041 reloads the secret store at start, after the config, so the store wins.
 	for _, key := range []string{"db-servers-credential", "replication-credential"} {
 		if cluster.IsVariableImmutable(key) {
 			return fmt.Errorf("%s is set in a config file (immutable)", key)
 		}
 	}
 	return nil
+}
+
+// ErrCredentialChangeRefused wraps the reason a credential setter refuses a value (#2048).
+var ErrCredentialChangeRefused = errors.New("credential change refused")
+
+// CanSetCredential says whether a credential set through the API would survive the next
+// restart (#2048). The save skips immutable keys, and saves nothing with
+// monitoring-save-config off: the value would be lost and repman would restart on the
+// former one. Immutable is lifted once #2041 reloads the secret store at start.
+func (cluster *Cluster) CanSetCredential(key string) error {
+	if cluster.IsVariableImmutable(key) {
+		return fmt.Errorf("%w: %s is set in a config file (immutable), a new value would be lost at the next restart", ErrCredentialChangeRefused, key)
+	}
+	if !cluster.Conf.ConfRewrite {
+		return fmt.Errorf("%w: monitoring-save-config is off, a new %s would be lost at the next restart", ErrCredentialChangeRefused, key)
+	}
+	return nil
+}
+
+// ApplyMonitorCredential gives every server the current monitoring credential, as the
+// rotation does: the ping pool uses it at the next tick, the global pool is replaced when
+// its connections are refused (#2048).
+func (cluster *Cluster) ApplyMonitorCredential() {
+	for _, srv := range cluster.Servers {
+		srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
+	}
 }
 
 // StartPasswordRotation starts the rotation in the background, refused before it starts

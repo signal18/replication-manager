@@ -2747,7 +2747,11 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			} else {
 				err := repman.setClusterSetting(mycluster, setting, value)
 				if err != nil {
-					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), http.StatusBadRequest)
+					code := http.StatusBadRequest
+					if errors.Is(err, cluster.ErrCredentialChangeRefused) {
+						code = http.StatusConflict
+					}
+					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), code)
 					return
 				}
 			}
@@ -3220,6 +3224,9 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 				if err.Error() == "Setting not found" {
 					errCode = 501
 				}
+				if errors.Is(err, cluster.ErrCredentialChangeRefused) {
+					errCode = http.StatusConflict
+				}
 
 				http.Error(w, "Failed to set cluster setting: "+err.Error(), errCode)
 				return
@@ -3557,6 +3564,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 		mycluster.Conf.Cloud18MarketplaceGWUFreeUnits = n
 	case "replication-credential":
+		if err := mycluster.CanSetCredential(name); err != nil {
+			return err
+		}
 		mycluster.SetReplicationCredential(value)
 	case "failover-max-slave-delay":
 		val, _ := strconv.ParseInt(value, 10, 64)
@@ -3894,13 +3904,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "db-servers-hosts":
 		mycluster.SetDbServerHosts(value)
 	case "db-servers-credential":
+		if err := mycluster.CanSetCredential(name); err != nil {
+			return err
+		}
 		mycluster.Conf.User = value
 		var new_secret config.Secret
 		new_secret.Value = mycluster.Conf.User
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("db-servers-credential")
 		mycluster.Conf.Secrets["db-servers-credential"] = new_secret
 		mycluster.SetClusterMonitorCredentialsFromConfig()
-		// mycluster.SetDbServersMonitoringCredential(value)
+		mycluster.ApplyMonitorCredential()
 	case "db-servers-dns-timeout":
 		val, err := strconv.Atoi(value)
 		if err != nil || val < 1 || val > 300 {
