@@ -26,9 +26,6 @@ func TestGraphiteHostIsTheSeriesToken(t *testing.T) {
 		if got := srv.graphiteHostname(); got != want {
 			t.Errorf("%q: %q, want %q", hostname, got, want)
 		}
-		if srv.graphiteHostToken() != srv.graphiteHostname() {
-			t.Errorf("%q: the DBU token differs from the series token", hostname)
-		}
 		srv.GraphiteHost.Store(srv.graphiteHostname())
 		out, _ := json.Marshal(&struct {
 			GraphiteHost *published[string] `json:"graphiteHost"`

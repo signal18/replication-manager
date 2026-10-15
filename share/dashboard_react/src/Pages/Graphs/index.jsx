@@ -85,8 +85,15 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // one per server, as with the wildcard.
   const clusterServers = useSelector((state) =>
     state?.cluster?.clusterData?.name === selectedCluster?.name ? state?.cluster?.clusterServers : null)
-  const hostTokens = [...new Set((clusterServers || []).map((srv) => srv?.graphiteHost).filter(Boolean))].sort().join(',')
-  // until the servers are known, the cluster-name wildcard: never the whole fleet (#1756)
+  // The servers whose token is known: graphiteHost is empty until a server's variables load,
+  // and stays empty for a server down since repman started, which writes no series anyway
+  // (requiring every token would bring back the empty on-prem graphs for one dead server).
+  // A token with a graphite glob character ({ } [ ] * , ?) would break the {a,b} list: the
+  // wildcard then.
+  const tokens = (clusterServers || []).map((srv) => srv?.graphiteHost).filter(Boolean)
+  const tokensUsable = tokens.length > 0 && !tokens.some((h) => /[{}[\]*,?]/.test(h))
+  const hostTokens = tokensUsable ? [...new Set(tokens)].sort().join(',') : ''
+  // until then, the cluster-name wildcard: never the whole fleet (#1756)
   const mysqlHosts = !hostTokens
     ? `mysql.*-${clusterToken}-*`
     : hostTokens.includes(',') ? `mysql.{${hostTokens}}` : `mysql.${hostTokens}`

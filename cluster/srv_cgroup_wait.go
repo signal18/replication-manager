@@ -140,7 +140,7 @@ func (cluster *Cluster) emitWaitMetrics(server *ServerMonitor, r *WaitReading) {
 	}
 	ts := r.WindowEnd.Unix()
 	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
-	base := fmt.Sprintf("dbu.%s.%s.", cluster.Name, server.graphiteHostToken())
+	base := fmt.Sprintf("dbu.%s.%s.", cluster.Name, server.graphiteHostname())
 	cluster.AddMetrics([]graphite.Metric{
 		graphite.NewMetric(base+"wait_cpu_throttled", f(r.CpuThrottled), ts),
 		graphite.NewMetric(base+"wait_cpu_throttled_periods", f(r.CpuThrottledPeriods), ts),
