@@ -578,6 +578,9 @@ type Cluster struct {
 
 	// storage engine switch progress and outcome (cluster_engine_switch.go, #1999)
 	engineSwitch atomic.Pointer[EngineSwitch] `json:"-"`
+	// backupVerifying holds the backups being verified (#2023): backup id -> level.
+	backupVerificationMu sync.Mutex `json:"-"`
+	backupVerifying      sync.Map   `json:"-"`
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -2324,6 +2327,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetShardUser()+":"+cluster.GetShardPass())
 	case "backup-restic-password":
 		return cluster.Conf.GetStableEncryptedValue("backup-restic-password", cluster.Conf.GetDecryptedValue("backup-restic-password"))
+	case "backup-verification-credential":
+		return cluster.Conf.GetStableEncryptedValue("backup-verification-credential", cluster.Conf.GetDecryptedValue("backup-verification-credential"))
 	case "haproxy-password":
 		return cluster.Conf.GetStableEncryptedValue("haproxy-password", cluster.Conf.GetDecryptedValue("haproxy-password"))
 	case "maxscale-pass":

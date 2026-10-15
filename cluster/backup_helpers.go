@@ -573,6 +573,10 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return nil, fmt.Errorf("cluster backups not available")
 	}
+	// Keep verification reservation and deletion mutually exclusive. Holding this
+	// only spans the user action; restore work never holds it.
+	cluster.backupVerificationMu.Lock()
+	defer cluster.backupVerificationMu.Unlock()
 	if backupID <= 0 {
 		return nil, fmt.Errorf("%w: %d", ErrBackupInvalidID, backupID)
 	}
@@ -591,6 +595,9 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 	}
 	if cluster.isBackupMetaInProgress(meta, server) {
 		return nil, fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
+	}
+	if _, verifying := cluster.backupVerifying.Load(backupID); verifying {
+		return nil, fmt.Errorf("%w: %d", ErrBackupVerificationRunning, backupID)
 	}
 
 	if meta.Dest != "" {

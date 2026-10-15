@@ -3355,13 +3355,13 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	cluster := server.ClusterGroup
 	var err error
 	defer server.SetInReseedBackup("")
+	if err := cluster.checkLogicalRestoreArtifact(backupfile); err != nil {
+		return err
+	}
 
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (mysqldump) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
-	if err := cluster.checkLogicalRestoreArtifact(backupfile); err != nil {
-		return err
-	}
 
 	server.StopSlave()
 
@@ -5215,8 +5215,12 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		cluster.discardBackupStaging(server.LastBackupMeta.Logical)
 	}
 
+	backupMeta := server.LastBackupMeta.Logical
 	server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
 	if err == nil {
+		// backup-verification: in this backup's slot, before the archive push below can
+		// remove the original (a rolled back backup is not completed, not verified)
+		server.verifyBackupAfterBackup(backupMeta)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", logicalType, server.URL)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", logicalType, server.URL)

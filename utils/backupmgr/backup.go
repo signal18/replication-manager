@@ -85,6 +85,32 @@ type BackupMetadata struct {
 	// (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
 	// a restore fetches it back from the archive.
 	OriginalRemoved bool `json:"originalRemoved,omitempty"`
+	// Verification is the result of the last verification of this backup (#2023).
+	Verification *BackupVerification `json:"verification,omitempty"`
+}
+
+// Backup verification status values.
+const (
+	BackupVerificationRunning = "running"
+	BackupVerificationPassed  = "passed"
+	BackupVerificationFailed  = "failed"
+)
+
+// BackupVerification is the result of a backup verification: its level (integrity or
+// restore), its status, and what it found.
+type BackupVerification struct {
+	Level     string    `json:"level"`
+	Status    string    `json:"status"`
+	StartTime time.Time `json:"startTime"`
+	EndTime   time.Time `json:"endTime,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	// Notes are the checks that could not apply to this backup, e.g. no footer to check
+	// in a dump written without comments.
+	Notes []string `json:"notes,omitempty"`
+	// Warnings are the kinds of objects the backup's source server has and the backup
+	// lacks (restore level), e.g. events left out of a dump: the backup restores, without
+	// them.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 type PointInTimeMeta struct {

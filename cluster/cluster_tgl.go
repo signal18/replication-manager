@@ -813,6 +813,10 @@ func (cluster *Cluster) SwitchBackupArchiveRemoveOriginal() {
 	cluster.Conf.BackupArchiveRemoveOriginal = !cluster.Conf.BackupArchiveRemoveOriginal
 }
 
+func (cluster *Cluster) SwitchBackupVerification() {
+	cluster.Conf.BackupVerification = !cluster.Conf.BackupVerification
+}
+
 func (cluster *Cluster) SwitchCloud18OpenDbops() {
 	cluster.Conf.Cloud18OpenDbops = !cluster.Conf.Cloud18OpenDbops
 }
