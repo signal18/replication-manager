@@ -11,6 +11,7 @@ import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
 import { deleteBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
+import CopyToClipboard from '../../components/CopyToClipboard'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase } from 'react-icons/hi'
 import CommonModal from '../../components/Modals/CommonModal'
@@ -217,6 +218,68 @@ BKUSlider.propTypes = {
   onChange: PropTypes.func,
   unitGB: PropTypes.number,
   bku: PropTypes.object,
+}
+
+// BackupCellLine shows one labelled value of a backup on a single line, cut at the column
+// width: shown is what fits (the value by default), more the number of entries left out,
+// the tooltip gives the value whole and the copy button copies it as is.
+function BackupCellLine({ label, value, shown, more = 0, tooltip, textType }) {
+  if (!value) return null
+  return (
+    <Tooltip label={<Box whiteSpace='pre'>{tooltip || value}</Box>} hasArrow placement='bottom-start' maxW='none'>
+      <Box>
+        <CopyToClipboard text={value} textType={textType} copyIconPosition='end' className={styles.lineCopy}>
+          <HStack spacing={1} className={styles.cellLine}>
+            <Box className={styles.cellLabel}>{label}</Box>
+            <Box className={styles.cellLineValue}>{shown || value}</Box>
+            {more > 0 && <Box className={styles.cellMore}>+{more}</Box>}
+          </HStack>
+        </CopyToClipboard>
+      </Box>
+    </Tooltip>
+  )
+}
+
+BackupCellLine.propTypes = {
+  label: PropTypes.string,
+  value: PropTypes.string,
+  shown: PropTypes.string,
+  more: PropTypes.number,
+  tooltip: PropTypes.string,
+  textType: PropTypes.string
+}
+
+// gtidInlineMax: a GTID set up to this length is shown whole (MariaDB, a young MySQL
+// cluster); a longer one shows its first entry and the number of the others.
+const gtidInlineMax = 48
+
+// BackupGtid shows a backup's GTID set: whole when it is short, else its first entry and a
+// +N chip; the tooltip lists every entry.
+function BackupGtid({ gtid }) {
+  const set = (gtid || '').trim()
+  const entries = set.split(',').map((e) => e.trim()).filter(Boolean)
+  const whole = set.length <= gtidInlineMax
+  return (
+    <BackupCellLine
+      label='GTID:'
+      value={set}
+      shown={whole ? set : entries[0]}
+      more={whole ? 0 : entries.length - 1}
+      tooltip={entries.join(',\n')}
+      textType='GTID'
+    />
+  )
+}
+
+BackupGtid.propTypes = {
+  gtid: PropTypes.string
+}
+
+// backupDestName is the last part of a backup's destination (its file or directory): the
+// directories before it repeat the cluster and the source.
+const backupDestName = (dest) => {
+  const parts = (dest || '').split('/').filter(Boolean)
+  return parts.length > 1 ? `…/${parts[parts.length - 1]}` : dest
 }
 
 // verificationLabel describes a backup's last verification (#2023) for its status tooltip.
@@ -459,8 +522,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       columnHelper.accessor(
         (row) => (
           <VStack className={styles.cellStack} spacing={0.5}>
-            <Box className={styles.cellValue}>{row.source}</Box>
-            <Box className={styles.cellValue}>{row.dest}</Box>
+            <BackupCellLine label='Source:' value={row.source} textType='Source' />
+            <BackupCellLine label='Dest:' value={row.dest} shown={backupDestName(row.dest)} textType='Destination' />
           </VStack>
         ),
         {
@@ -479,7 +542,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         (row) => (
           <VStack className={styles.cellStack} spacing={0.5}>
             <Box className={styles.cellValue}>{`File: ${row.binLogFileName} / Pos: ${row.binLogFilePos}`}</Box>
-            <Box className={styles.cellValue}>{`GTID: ${row.binLogUuid}`}</Box>
+            <BackupGtid gtid={row.binLogUuid} />
           </VStack>
         ),
         {

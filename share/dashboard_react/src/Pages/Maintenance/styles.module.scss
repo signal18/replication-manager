@@ -51,6 +51,33 @@
     .iconRow {
       align-items: center;
     }
+    // a labelled value on one line (source, destination, GTID set): cut at the column
+    // width, +N for the entries left out
+    .lineCopy {
+      font-size: inherit;
+      white-space: nowrap;
+    }
+    .cellLine {
+      max-width: rem(260);
+    }
+    .cellLabel {
+      flex-shrink: 0;
+    }
+    .cellLineValue {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .cellMore {
+      flex-shrink: 0;
+      font-size: rem(11);
+      line-height: 1.4;
+      padding: 0 rem(6);
+      border-radius: rem(8);
+      background-color: var(--gray-color);
+      color: var(--text-color);
+    }
     .statusIcon {
       display: inline-flex;
       align-items: center;
