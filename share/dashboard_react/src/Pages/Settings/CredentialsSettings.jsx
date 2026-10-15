@@ -84,6 +84,10 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
 
   const versioningOn = config.monitoringSecretVersioning || config.backupEncryption
   const vaultOn = !!config.vaultServerAddr
+  // a rotation outside Vault needs both stores (canRotatePasswordsOutsideVault)
+  const storesMissing = !vaultOn && !(config.monitoringSaveConfig && versioningOn)
+  // what a store is for, under its switch
+  const role = (text) => <Text as='span' fontSize='sm' color='gray.500'>{text}</Text>
 
   const hMonitoring = `**Monitoring User**\n\nThe account replication-manager uses to monitor and manage the databases.\n\nSource:\n- **Config file (immutable)**: set in a file under /etc. A change here would be lost at the next restart, so it is refused.\n- **Dynamic config**: set at runtime, saved in the cluster's config file.\n- **Vault**: read from Vault.\n\nA change applies to every database at once. Config: \`db-servers-credential\``
   const hReplication = `**Replication User**\n\nThe account the replicas use to connect to the primary. Same sources and refusals as the monitoring user.\n\nConfig: \`replication-credential\``
@@ -91,9 +95,9 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
   const hTls = `**Replication Use TLS**\n\nReplicas connect to the primary over TLS.\n\nConfig: \`replication-use-ssl\``
   const hSslMode = `**Database TLS Mode**\n\nThe TLS mode replication-manager uses to connect to the databases. Default (empty) uses TLS when available, and VERIFY_CA when the ssl tag is set in the configurator.\n\nConfig: \`db-servers-tls-ssl-mode\``
   const hCerts = `**Certificates**\n\n**Rotate** generates new certificates and deploys them. **Reload** makes the databases and replication-manager read the current ones again.`
-  const hDynamic = `**Store: Dynamic Config**\n\nA credential changed through the API or the GUI is saved, encrypted, in the cluster's config file and read again at start.\n\nConfig: \`monitoring-save-config\``
-  const hLocal = `**Store: Local Encrypted**\n\nKeeps every version of the credentials, encrypted, in secret_store.json, so a former password can be found again. Also on when backup encryption is on.\n\nConfig: \`monitoring-secret-versioning\``
-  const hVault = `**Store: Vault**\n\nThe credentials are read from Vault, and a rotation writes the new passwords there.\n\nConfig: \`vault-server-addr\``
+  const hDynamic = `**Store: Dynamic Config**\n\nA credential changed through the API or the GUI is saved, encrypted, in the cluster's config file and read again at start.\n\nNeeded with Local Encrypted for a rotation outside Vault.\n\nConfig: \`monitoring-save-config\``
+  const hLocal = `**Store: Local Encrypted**\n\nKeeps every version of the credentials, encrypted, in secret_store.json, so a former password can be found again. Also on when backup encryption is on. Not read at start yet: Dynamic Config holds the current value.\n\nConfig: \`monitoring-secret-versioning\``
+  const hVault = `**Store: Vault**\n\nThe credentials are read from Vault, and a rotation writes the new passwords there. Replaces Dynamic Config and Local Encrypted for the credentials.\n\nConfig: \`vault-server-addr\``
 
   const dataObject = [
     { key: 'Monitoring User', help: h(hMonitoring, 'Monitoring User'), value: credentialRow('db-servers-credential') },
@@ -102,12 +106,15 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Rotate Passwords',
       help: h(hRotate, 'Rotate Passwords'),
       value: (
-        <GatedButton
-          reason={selectedCluster?.rotatePasswordsRefusal ? `Refused: ${selectedCluster.rotatePasswordsRefusal}` : ''}
-          isDisabled={!g['cluster-rotate-passwords']}
-          onClick={() => openConfirmModal('Rotate the database passwords?', () => () => dispatch(rotateDBCredential({ clusterName: selectedCluster?.name })))}>
-          Rotate
-        </GatedButton>
+        <Flex align='center' gap='3' wrap='wrap'>
+          <GatedButton
+            reason={selectedCluster?.rotatePasswordsRefusal ? `Refused: ${selectedCluster.rotatePasswordsRefusal}` : ''}
+            isDisabled={!g['cluster-rotate-passwords']}
+            onClick={() => openConfirmModal('Rotate the database passwords?', () => () => dispatch(rotateDBCredential({ clusterName: selectedCluster?.name })))}>
+            Rotate
+          </GatedButton>
+          {storesMissing && role('needs Dynamic Config and Local Encrypted on, or Vault')}
+        </Flex>
       )
     },
     { key: 'Replication Use TLS', help: h(hTls, 'Replication Use TLS'), value: sw('replication-use-ssl', config.replicationUseSsl) },
@@ -140,21 +147,35 @@ function CredentialsSettings({ selectedCluster, user, openConfirmModal }) {
         </Flex>
       )
     },
-    { key: 'Store: Dynamic Config', help: h(hDynamic, 'Store: Dynamic Config'), value: sw('monitoring-save-config', config.monitoringSaveConfig) },
+    {
+      key: 'Store: Dynamic Config',
+      help: h(hDynamic, 'Store: Dynamic Config'),
+      value: (
+        <Flex align='center' gap='3' wrap='wrap'>
+          {sw('monitoring-save-config', config.monitoringSaveConfig)}
+          {role('current value, read at start')}
+        </Flex>
+      )
+    },
     {
       key: 'Store: Local Encrypted',
       help: h(hLocal, 'Store: Local Encrypted'),
       value: (
-        <Flex align='center' gap='3'>
+        <Flex align='center' gap='3' wrap='wrap'>
           {sw('monitoring-secret-versioning', versioningOn, !!config.backupEncryption)}
-          {config.backupEncryption && <Text as='span' fontSize='sm' color='gray.500'>on through backup encryption</Text>}
+          {role(config.backupEncryption ? 'every version (history), on through backup encryption' : 'every version (history)')}
         </Flex>
       )
     },
     {
       key: 'Store: Vault',
       help: h(hVault, 'Store: Vault'),
-      value: vaultOn ? <Badge colorScheme='purple'>{config.vaultServerAddr}</Badge> : <Text as='span' color='gray.500'>not configured</Text>
+      value: (
+        <Flex align='center' gap='3' wrap='wrap'>
+          {vaultOn ? <Badge colorScheme='purple'>{config.vaultServerAddr}</Badge> : <Text as='span' color='gray.500'>not configured</Text>}
+          {role('replaces both')}
+        </Flex>
+      )
     }
   ]
 
