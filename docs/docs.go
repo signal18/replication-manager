@@ -6062,6 +6062,104 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/backups/verification-server": {
+            "get": {
+                "description": "Connects to backup-verification-host and returns whether it is a replica of the cluster, whether it is marked as a verification server (replication_manager_schema.backup_verification_server), and the schemas it holds. An unmarked server without schemas is marked on its first test restore.\nRequired grant: db-backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Backup verification server state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Verification server state",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.BackupVerificationServerState"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Verification server not reachable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/backups/verification-server/mark": {
+            "post": {
+                "description": "Marks the external backup-verification-host as a verification server (replication_manager_schema.backup_verification_server): a test restore then drops there the schemas the backup holds. A replica of the cluster is not marked.\nRequired grant: db-backup and db-restore",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Mark the backup verification server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Verification server state after the mark",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.BackupVerificationServerState"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL, or no db-restore grant",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Mark failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/backups/{backupID}/delete": {
             "post": {
                 "description": "Deletes a non-restic backup for the specified cluster.\nRequired grant: db-backup",
@@ -6124,6 +6222,155 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Delete failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/backups/{backupID}/verify": {
+            "post": {
+                "description": "Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. Without a level, backup-verification-level applies. The result is in the backup's verification field.\nRequired grant: db-backup; the restore level also db-restore",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Verify a backup by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Backup ID",
+                        "name": "backupID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Backup verification started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or backup not verifiable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL, or the restore level without db-restore",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Backup or verification running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Verification not started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/backups/{backupID}/verify/{level}": {
+            "post": {
+                "description": "Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. The result is in the backup's verification field.\nRequired grant: db-backup; the restore level also db-restore",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Verify a backup by ID and level",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Backup ID",
+                        "name": "backupID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "integrity",
+                            "restore"
+                        ],
+                        "type": "string",
+                        "description": "Verification level",
+                        "name": "level",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Backup verification started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request or backup not verifiable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL, or the restore level without db-restore",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Backup or verification running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Verification not started",
                         "schema": {
                             "type": "string"
                         }
@@ -23690,6 +23937,20 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "backupmgr.ArtifactFingerprint": {
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "integer"
+                },
+                "modTime": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                }
+            }
+        },
         "backupmgr.BackupMetadata": {
             "type": "object",
             "properties": {
@@ -23749,6 +24010,10 @@ const docTemplate = `{
                 "endTime": {
                     "type": "string"
                 },
+                "execRemote": {
+                    "description": "the backup tool ran on the DB node (dbjobs), not next to replication-manager",
+                    "type": "boolean"
+                },
                 "fileCount": {
                     "type": "integer"
                 },
@@ -23803,6 +24068,14 @@ const docTemplate = `{
                 "streamSize": {
                     "description": "bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator",
                     "type": "integer"
+                },
+                "verification": {
+                    "description": "Verification is the result of the last verification of this backup (#2023).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/backupmgr.BackupVerification"
+                        }
+                    ]
                 }
             }
         },
@@ -23817,6 +24090,52 @@ const docTemplate = `{
                 },
                 "total_size": {
                     "type": "integer"
+                }
+            }
+        },
+        "backupmgr.BackupVerification": {
+            "type": "object",
+            "properties": {
+                "artifact": {
+                    "description": "Artifact is the backup's file as a passed verification read it, unchanged from its\nstart to its end: a restore of the same file skips its own read of it.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/backupmgr.ArtifactFingerprint"
+                        }
+                    ]
+                },
+                "endTime": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "host": {
+                    "description": "Host is the verification server of a restore level, as the run read it",
+                    "type": "string"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "notes": {
+                    "description": "Notes are the checks that could not apply to this backup, e.g. no footer to check\nin a dump written without comments.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "startTime": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "warnings": {
+                    "description": "Warnings are the kinds of objects the backup's source server has and the backup\nlacks (restore level), e.g. events left out of a dump: the backup restores, without\nthem.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -24750,6 +25069,32 @@ const docTemplate = `{
                 },
                 "weight": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.BackupVerificationServerState": {
+            "type": "object",
+            "properties": {
+                "empty": {
+                    "description": "no schema of its own: marked on its first test restore",
+                    "type": "boolean"
+                },
+                "host": {
+                    "type": "string"
+                },
+                "marked": {
+                    "type": "boolean"
+                },
+                "replica": {
+                    "description": "a replica of the cluster: reseeded, never marked",
+                    "type": "boolean"
+                },
+                "schemas": {
+                    "description": "its schemas, the system ones and an empty replication_manager_schema left out",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -26432,6 +26777,15 @@ const docTemplate = `{
                 "backupLogicalPostScript": {
                     "type": "string"
                 },
+                "backupLogicalRemoteArmTimeout": {
+                    "type": "integer"
+                },
+                "backupLogicalRemotePickupTimeout": {
+                    "type": "integer"
+                },
+                "backupLogicalRemoteReportTimeout": {
+                    "type": "integer"
+                },
                 "backupLogicalType": {
                     "type": "string"
                 },
@@ -26695,6 +27049,18 @@ const docTemplate = `{
                 },
                 "backupStreamingRegion": {
                     "type": "string"
+                },
+                "backupVerification": {
+                    "type": "boolean"
+                },
+                "backupVerificationHost": {
+                    "type": "string"
+                },
+                "backupVerificationLevel": {
+                    "type": "string"
+                },
+                "backupVerificationTimeout": {
+                    "type": "integer"
                 },
                 "backupWriteStallTimeout": {
                     "type": "integer"

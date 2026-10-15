@@ -16,11 +16,11 @@ log. A reseed of a replica dumps its **source** but is recorded on the **replica
   and treats any job naming this server as a dump of it. Same "last observation decides"
   rule: a later dump ended OK or a `mariadbupgrade` ended OK closes ERR00116.
 
-## ERR00117: the last logical backup failed
+## ERR00118: the last logical backup failed
 
 Config domain, server level, error. `ServerMonitor.LastFailedLogicalBackup()` takes the
 most recent ended job among the logical backup tasks (`mysqldump`, `mydumper`, `dumpling`,
-`script`); state 5 or 6 opens ERR00117 with the tool, the end time and the last 300
+`script`); state 5 or 6 opens ERR00118 with the tool, the end time and the last 300
 characters of the error. Asserted every tick in `assertDomainObservabilityStates` (runs
 with log plugins off too), so the next logical backup ended OK closes it. Reseeds and
 other jobs do not count.
@@ -48,7 +48,7 @@ curepipe db2: `'forgejo1'@'repman.s18.svc.cloud18'`).
 - `logicalBackupAccountsBlocker`: a logical backup that dumps the accounts (MariaDB
   mysqldump with `--system=` in its options, or the users sidecar of
   `backup-split-mysql-user`) is refused before anything runs; the job result names the
-  accounts, so ERR00117 says why. ERR00117 keeps the head and the tail of a long result.
+  accounts, so ERR00118 says why. ERR00118 keeps the head and the tail of a long result.
 - SEC0118 says the accounts also stop every logical backup and dump reseed, and that an
   app account goes to `'%'` (decision 2026-10-14: app deployment accounts use `%`).
 

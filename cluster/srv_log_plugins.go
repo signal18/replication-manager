@@ -628,8 +628,8 @@ func (cluster *Cluster) assertDomainObservabilityStates() {
 				if len(reason) > 400 {
 					reason = reason[:200] + " ... " + reason[len(reason)-200:]
 				}
-				cluster.ConfigStateMachine.AddState(state.BuildStateKey("ERR00117", srv.URL), state.State{ErrType: "ERROR", ErrKey: "ERR00117",
-					ErrDesc: fmt.Sprintf(clusterError["ERR00117"], srv.URL, t.Task, time.Unix(t.End, 0).UTC().Format("2006-01-02 15:04:05"), reason), ErrFrom: "CONFIG", ServerUrl: srv.URL})
+				cluster.ConfigStateMachine.AddState(state.BuildStateKey("ERR00118", srv.URL), state.State{ErrType: "ERROR", ErrKey: "ERR00118",
+					ErrDesc: fmt.Sprintf(clusterError["ERR00118"], srv.URL, t.Task, time.Unix(t.End, 0).UTC().Format("2006-01-02 15:04:05"), reason), ErrFrom: "CONFIG", ServerUrl: srv.URL})
 			}
 		}
 	}
