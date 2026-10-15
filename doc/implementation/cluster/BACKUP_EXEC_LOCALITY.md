@@ -291,7 +291,33 @@ Reseed (`ProcessReseedLogical`, mysqldump, not PITR):
    domains). Multi-source is not supported: extra channels stay stopped with a
    warning naming them, for the operator.
 
-mydumper and the backup-load-script path keep their pointing before the load.
+The backup-load-script path keeps its pointing before the load. mydumper keeps
+it too (stopped, pointed at the primary: auto-position on MySQL/Percona with
+GTID, `SLAVE_POS` on MariaDB, else positional), and after myloader
+`applyMyLoaderReplicaPosition` sets the replica's state to the backup's
+position from its metadata (`JobMyLoaderParseMeta`) before replication starts,
+in the reseed and in the flashback. myloader restores the data and nothing
+else: unlike a dump, it runs no `RESET MASTER` / `GTID_PURGED`.
+
+- MySQL/Percona with GTID: `ResetMaster` (`RESET BINARY LOGS AND GTIDS` from
+  8.4), then `SET GLOBAL GTID_PURGED` to the metadata's `executed_gtid_set`
+  (its lines joined). Without it the replica kept the GTIDs of what it applied
+  before the restore: under auto-position it never asked for the transactions
+  written after the backup, which were lost while replication looked healthy.
+  A backup without a GTID set fails the reseed instead.
+- MariaDB with GTID and a GTID set in the backup: `SET GLOBAL
+  gtid_slave_pos`, its error now returned (it was ignored).
+- Otherwise (no GTID, or MariaDB without a GTID set in the backup): `CHANGE
+  MASTER` positional at the metadata's file and position (pointed before the
+  load at the primary's current position, it skipped what the backup lacks).
+  A backup without a binary log file, or no primary known, is an error, not a
+  start from the position before the load.
+
+The GTID set is sanitised once for both vendors (`myLoaderGtidSet`: whitespace
+removed, the set can span lines; quotes doubled). Any failure of this step
+fails the reseed or the flashback and replication is not started. The flashback
+returns it (its callers in `srv_rejoin.go` read the returned error, not only
+the job state), as it now returns a failed myloader load.
 
 ## Dump client compatibility
 
