@@ -305,13 +305,19 @@ else: unlike a dump, it runs no `RESET MASTER` / `GTID_PURGED`.
   before the restore: under auto-position it never asked for the transactions
   written after the backup, which were lost while replication looked healthy.
   A backup without a GTID set fails the reseed instead.
-- MariaDB with GTID: `SET GLOBAL gtid_slave_pos`, as before.
-- Without GTID: `CHANGE MASTER` positional at the metadata's file and position
-  (pointed before the load at the primary's current position, it skipped what
-  the backup lacks).
+- MariaDB with GTID and a GTID set in the backup: `SET GLOBAL
+  gtid_slave_pos`, its error now returned (it was ignored).
+- Otherwise (no GTID, or MariaDB without a GTID set in the backup): `CHANGE
+  MASTER` positional at the metadata's file and position (pointed before the
+  load at the primary's current position, it skipped what the backup lacks).
+  A backup without a binary log file, or no primary known, is an error, not a
+  start from the position before the load.
 
-A failure of this step fails the reseed or the flashback (its job result), and
-replication is not started.
+The GTID set is sanitised once for both vendors (`myLoaderGtidSet`: whitespace
+removed, the set can span lines; quotes doubled). Any failure of this step
+fails the reseed or the flashback and replication is not started. The flashback
+returns it (its callers in `srv_rejoin.go` read the returned error, not only
+the job state), as it now returns a failed myloader load.
 
 ## Dump client compatibility
 
