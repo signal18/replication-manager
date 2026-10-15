@@ -48,7 +48,9 @@ func (cluster *Cluster) CanRotatePasswords() error {
 	if !cluster.HasAllDbUp() {
 		return errors.New("databases are down (or one of them)")
 	}
-	if !cluster.Conf.IsVaultUsed() && len(cluster.slaves) > 0 && !cluster.slaves.HasAllSlavesRunning() {
+	// outside Vault's database engine, repman changes the password on every replica itself
+	vaultEngine := cluster.Conf.IsVaultUsed() && cluster.Conf.VaultMode == VaultDbEngine
+	if !vaultEngine && len(cluster.slaves) > 0 && !cluster.slaves.HasAllSlavesRunning() {
 		return errors.New("replication is not running on every replica")
 	}
 	return nil
@@ -186,8 +188,8 @@ func (cluster *Cluster) RotatePasswords() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Vault config store v2 mode activated")
 			if len(cluster.slaves) > 0 {
 				if !cluster.slaves.HasAllSlavesRunning() {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster replication is not all up, passwords can't be rotated! : %s", err)
-					return nil
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster replication is not all up, passwords can't be rotated!")
+					return errors.New("replication is not running on every replica")
 				}
 			}
 
@@ -275,7 +277,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				for _, ss := range s.Replications {
 					err = s.rejoinSlaveChangePassword(&ss)
 					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password ", err)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password: %s", err)
 					}
 				}
 
@@ -381,7 +383,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			for _, ss := range s.Replications {
 				err := s.rejoinSlaveChangePassword(&ss)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password ", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password: %s", err)
 				}
 			}
 

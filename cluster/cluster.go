@@ -117,8 +117,8 @@ type Cluster struct {
 	IsClusterDown                 bool                           `json:"isClusterDown" groups:"web"`
 	IsMasterDown                  bool                           `json:"isMasterDown" groups:"web"`
 	IsAllDbUp                     bool                           `json:"isAllDbUp" groups:"web"`
-	RotatePasswordsRefusal        string                         `json:"rotatePasswordsRefusal" groups:"web"` // why rotate-passwords is refused now, empty when allowed (CanRotatePasswords, #2042)
-	Credentials                   []CredentialInfo               `json:"credentials" groups:"web"`            // the database credentials for the GUI, never a password (#2050)
+	RotatePasswordsRefusal        published[string]              `json:"rotatePasswordsRefusal" groups:"web"` // why rotate-passwords is refused now, empty when allowed (CanRotatePasswords, #2042)
+	Credentials                   published[[]CredentialInfo]    `json:"credentials" groups:"web"`            // the database credentials for the GUI, never a password (#2050)
 	IsFailable                    bool                           `json:"isFailable" groups:"web"`
 	IsPostgres                    bool                           `json:"isPostgres" groups:"web"`
 	ToolsVersions                 map[string]string              `json:"toolsVersions" groups:"web"` // local tools found by RefreshToolVersions, tool -> version

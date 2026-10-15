@@ -9,11 +9,15 @@ import "sync"
 // SecretMap holds the decrypted secrets of a configuration behind a lock (#2039): API
 // handlers, password rotation, Vault and the credential setters write them while the
 // monitor reads them, and a Go map written concurrently stops the process (F2). Config
-// holds a *SecretMap: copies of a Config (ReloadConfig) share it, as they shared the map.
-// The methods tolerate a nil receiver for reads (an empty store).
+// holds a *SecretMap: copies of a Config (ReloadConfig, a cluster's Config) share it, as
+// they shared the map, until their own DecryptSecretsFromConfig gives them their own.
+// The methods tolerate a nil receiver (reads see an empty store, writes do nothing).
 type SecretMap struct {
 	mu sync.RWMutex
 	m  map[string]Secret
+	// owner is the Config that built the store in DecryptSecretsFromConfig, set once at
+	// creation: a decrypt on another Config (a copy) builds its own store
+	owner *Config
 }
 
 // NewSecrets returns a store holding a copy of m (nil: empty).
@@ -48,8 +52,12 @@ func (s *SecretMap) Has(key string) bool {
 	return ok
 }
 
-// Set stores the secret of key.
+// Set stores the secret of key. On a nil store it does nothing: a write must not crash
+// the monitor (F2); a Config gets its store from NewSecrets / DecryptSecretsFromConfig.
 func (s *SecretMap) Set(key string, v Secret) {
+	if s == nil {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.m == nil {
@@ -82,8 +90,11 @@ func (s *SecretMap) Snapshot() map[string]Secret {
 	return out
 }
 
-// Replace replaces every secret with a copy of m.
+// Replace replaces every secret with a copy of m. On a nil store it does nothing, as Set.
 func (s *SecretMap) Replace(m map[string]Secret) {
+	if s == nil {
+		return
+	}
 	n := make(map[string]Secret, len(m))
 	for k, v := range m {
 		n[k] = v

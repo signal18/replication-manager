@@ -77,3 +77,48 @@ func TestSecretMapNilReads(t *testing.T) {
 		t.Fatal("replace")
 	}
 }
+
+// #2039 review: a cluster's Config is a copy of the server's, made after its decrypt, so
+// it shares the store; its own decrypt must give it its own, never overwrite the server's
+// or another cluster's
+func TestSecretsCopiedConfigKeepsItsOwn(t *testing.T) {
+	newConf := func() *Config {
+		return &Config{DynamicFlagMap: map[string]interface{}{}, ImmuableFlagMap: map[string]interface{}{}, DefaultFlagMap: map[string]interface{}{}}
+	}
+	server := newConf()
+	server.DynamicFlagMap["db-servers-credential"] = "root:server"
+	server.DecryptSecretsFromConfig()
+
+	a, b := *server, *server // GetClusterConfig takes the server's Config by value
+	a.DynamicFlagMap = map[string]interface{}{"db-servers-credential": "root:a"}
+	b.DynamicFlagMap = map[string]interface{}{"db-servers-credential": "root:b"}
+	a.DecryptSecretsFromConfig()
+	b.DecryptSecretsFromConfig()
+
+	for name, c := range map[string]struct {
+		conf *Config
+		want string
+	}{"server": {server, "root:server"}, "a": {&a, "root:a"}, "b": {&b, "root:b"}} {
+		if got := c.conf.Secrets.Get("db-servers-credential").Value; got != c.want {
+			t.Errorf("%s: %q, want %q", name, got, c.want)
+		}
+	}
+
+	// a reload of a's own Config keeps its store (a reader holding it sees the new value)
+	store := a.Secrets
+	a.DynamicFlagMap["db-servers-credential"] = "root:a2"
+	a.DecryptSecretsFromConfig()
+	if a.Secrets != store || store.Get("db-servers-credential").Value != "root:a2" {
+		t.Error("a reload replaced the store of the same Config")
+	}
+}
+
+// writes on a nil store do nothing, they never crash the monitor (F2)
+func TestSecretMapNilWrites(t *testing.T) {
+	var s *SecretMap
+	s.Set("x", Secret{Value: "1"})
+	s.Replace(map[string]Secret{"x": {Value: "1"}})
+	if s.Has("x") {
+		t.Fatal("a nil store holds nothing")
+	}
+}

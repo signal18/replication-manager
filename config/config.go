@@ -1932,11 +1932,15 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		//log.Printf("Decrypting secret variable %s=%s", k, secret.Value)
 		secrets[k] = secret
 	}
-	// swapped in at once, under the store's lock (#2039)
-	if conf.Secrets == nil {
-		conf.Secrets = NewSecrets(secrets)
-	} else {
+	// a reload of this Config replaces its store under the lock (#2039). A copy (a
+	// cluster's Config is a copy of the server's, made after its decrypt) shares the
+	// pointer: it gets its own store, else every cluster would get the last one's secrets
+	if conf.Secrets != nil && conf.Secrets.owner == conf {
 		conf.Secrets.Replace(secrets)
+	} else {
+		s := NewSecrets(secrets)
+		s.owner = conf
+		conf.Secrets = s
 	}
 }
 

@@ -57,12 +57,20 @@ func TestCanRotatePasswords(t *testing.T) {
 			c.Servers = append(c.Servers, replica)
 			c.slaves = serverList{replica}
 		}, "replication is not running"},
-		{"replication stopped, vault", func(c *Cluster) {
+		{"replication stopped, vault database engine", func(c *Cluster) {
 			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}}
 			c.Servers = append(c.Servers, replica)
 			c.slaves = serverList{replica}
 			c.Conf.VaultServerAddr = "https://vault:8200"
+			c.Conf.VaultMode = VaultDbEngine
 		}, ""}, // Vault rotates through its own engine, replication is not touched
+		{"replication stopped, vault kv", func(c *Cluster) {
+			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}}
+			c.Servers = append(c.Servers, replica)
+			c.slaves = serverList{replica}
+			c.Conf.VaultServerAddr = "https://vault:8200"
+			c.Conf.VaultMode = VaultConfigStoreV2
+		}, "replication is not running"}, // repman changes the replicas' passwords itself
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
