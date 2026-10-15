@@ -197,4 +197,6 @@ run by name). For a mysqldump file, a splitdump folder and a mydumper folder
 backdated past the settle window, discovered (position and GTID as the backup
 recorded), the first replica reseeded from it (`ReseedFromBackupID`, checked as
 `TestLogicalReseed` checks a reseed; mydumper needs myloader), then the copy
-deleted through `DeleteBackupByID`.
+deleted through `DeleteBackupByID`. A splitdump copy whose `metadata` holds no
+position is discovered completed with the "no replication position" note, and
+its reseed refused (D5).
