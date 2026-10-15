@@ -423,10 +423,12 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 
 		if cluster != nil {
 			// a backup already registered keeps its live entry: a running backup or
-			// verification updates it, the copy just read from its meta file may be older
+			// verification updates it, the copy just read from its meta file may be older;
+			// a copy registered is first closed when its verification was interrupted
 			if live := cluster.BackupMetaMap.Get(meta.Id); live != nil {
 				meta = live
 			} else {
+				server.closeInterruptedVerification(meta)
 				cluster.BackupMetaMap.Set(meta.Id, meta)
 			}
 		}
@@ -579,6 +581,10 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return nil, fmt.Errorf("cluster backups not available")
 	}
+	// Keep verification reservation and deletion mutually exclusive. Holding this
+	// only spans the user action; restore work never holds it.
+	cluster.backupVerificationMu.Lock()
+	defer cluster.backupVerificationMu.Unlock()
 	if backupID <= 0 {
 		return nil, fmt.Errorf("%w: %d", ErrBackupInvalidID, backupID)
 	}
@@ -597,6 +603,9 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 	}
 	if cluster.isBackupMetaInProgress(meta, server) {
 		return nil, fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
+	}
+	if _, verifying := cluster.backupVerifying.Load(backupID); verifying {
+		return nil, fmt.Errorf("%w: %d", ErrBackupVerificationRunning, backupID)
 	}
 
 	if meta.Dest != "" {
@@ -655,6 +664,9 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 			deadline, ok := retentionDeadline(meta)
 			if !ok || now.Before(deadline) {
 				continue
+			}
+			if _, verifying := cluster.backupVerifying.Load(meta.Id); verifying {
+				continue // purged at a later pass, once verified
 			}
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging expired ad-hoc backup %d on %s", meta.Id, server.URL)

@@ -9,10 +9,11 @@ import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { deleteBackup, discoverBackups, purgeResticSnapshot, reseedFromBackup, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
+import { deleteBackup, discoverBackups, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
+import CopyToClipboard from '../../components/CopyToClipboard'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh } from 'react-icons/hi'
 import Dropdown from '../../components/Dropdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
@@ -220,6 +221,101 @@ BKUSlider.propTypes = {
   bku: PropTypes.object,
 }
 
+// BackupCellLine shows one labelled value of a backup on a single line, cut at the column
+// width: shown is what fits (the value by default), more the number of entries left out,
+// the tooltip gives the value whole and the copy button copies it as is.
+function BackupCellLine({ label, value, shown, more = 0, tooltip, textType }) {
+  if (!value) return null
+  return (
+    <Tooltip label={<Box whiteSpace='pre'>{tooltip || value}</Box>} hasArrow placement='bottom-start' maxW='none'>
+      <Box>
+        <CopyToClipboard text={value} textType={textType} copyIconPosition='end' className={styles.lineCopy}>
+          <HStack spacing={1} className={styles.cellLine}>
+            <Box className={styles.cellLabel}>{label}</Box>
+            <Box className={styles.cellLineValue}>{shown || value}</Box>
+            {more > 0 && <Box className={styles.cellMore}>+{more}</Box>}
+          </HStack>
+        </CopyToClipboard>
+      </Box>
+    </Tooltip>
+  )
+}
+
+BackupCellLine.propTypes = {
+  label: PropTypes.string,
+  value: PropTypes.string,
+  shown: PropTypes.string,
+  more: PropTypes.number,
+  tooltip: PropTypes.string,
+  textType: PropTypes.string
+}
+
+// gtidInlineMax: a GTID set up to this length is shown whole (MariaDB, a young MySQL
+// cluster); a longer one shows its first entry and the number of the others.
+const gtidInlineMax = 48
+
+// BackupGtid shows a backup's GTID set: whole when it is short, else its first entry and a
+// +N chip; the tooltip lists every entry.
+function BackupGtid({ gtid }) {
+  const set = (gtid || '').trim()
+  const entries = set.split(',').map((e) => e.trim()).filter(Boolean)
+  const whole = set.length <= gtidInlineMax
+  return (
+    <BackupCellLine
+      label='GTID:'
+      value={set}
+      shown={whole ? set : entries[0]}
+      more={whole ? 0 : entries.length - 1}
+      tooltip={entries.join(',\n')}
+      textType='GTID'
+    />
+  )
+}
+
+BackupGtid.propTypes = {
+  gtid: PropTypes.string
+}
+
+// backupDestName is the last part of a backup's destination (its file or directory): the
+// directories before it repeat the cluster and the source.
+const backupDestName = (dest) => {
+  const parts = (dest || '').split('/').filter(Boolean)
+  return parts.length > 1 ? `…/${parts[parts.length - 1]}` : dest
+}
+
+// verificationLabel describes a backup's last verification (#2023) for its status tooltip.
+const verificationLabel = (v) => {
+  if (!v) return 'Not verified'
+  const when = v.endTime && !v.endTime.startsWith('0001') ? ` · ${formatDate(v.endTime)}` : ''
+  const notes = v.notes?.length ? ` · ${v.notes.join(' · ')}` : ''
+  switch (v.status) {
+    case 'running':
+      return `Verification (${v.level}) running`
+    case 'skipped':
+      return `Verification (${v.level}) not run${when}: ${v.error}`
+    case 'passed':
+      return v.warnings?.length
+        ? `Verified (${v.level})${when}, but the backup lacks objects its source has: ${v.warnings.join(' · ')}${notes}`
+        : `Verified (${v.level})${when}${notes}`
+    default:
+      return `Verification (${v.level}) failed${when}: ${v.error}`
+  }
+}
+
+const verificationClass = (v) => {
+  switch (v?.status) {
+    case 'passed':
+      if (v.warnings?.length) return styles.verifyWarning
+      return v.level === 'restore' ? styles.verifyRestored : styles.verifyPassed
+    case 'failed':
+      return styles.verifyFailed
+    case 'running':
+      return styles.verifyRunning
+    default:
+      return styles.verifyNone
+  }
+}
+
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
 function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenArchiveSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
   const [data, setData] = useState([])
@@ -289,6 +385,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           break
         case 'backupDiscover':
           dispatch(discoverBackups({ clusterName: selectedCluster.name }))
+          break
+        case 'backupVerify':
+          dispatch(verifyBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId, level: payload.data.level }))
           break
         case 'snapshotPurge':
           dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId: payload.data.snapshotId }))
@@ -436,8 +535,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       columnHelper.accessor(
         (row) => (
           <VStack className={styles.cellStack} spacing={0.5}>
-            <Box className={styles.cellValue}>{row.source}</Box>
-            <Box className={styles.cellValue}>{row.dest}</Box>
+            <BackupCellLine label='Source:' value={row.source} textType='Source' />
+            <BackupCellLine label='Dest:' value={row.dest} shown={backupDestName(row.dest)} textType='Destination' />
           </VStack>
         ),
         {
@@ -456,7 +555,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         (row) => (
           <VStack className={styles.cellStack} spacing={0.5}>
             <Box className={styles.cellValue}>{`File: ${row.binLogFileName} / Pos: ${row.binLogFilePos}`}</Box>
-            <Box className={styles.cellValue}>{`GTID: ${row.binLogUuid}`}</Box>
+            <BackupGtid gtid={row.binLogUuid} />
           </VStack>
         ),
         {
@@ -493,6 +592,11 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                 {row.encrypted ? <HiLockClosed /> : <HiOutlineLockOpen />}
               </Box>
             </Tooltip>
+            <Tooltip label={verificationLabel(row.verification)} hasArrow>
+              <Box className={`${styles.statusIcon} ${styles.verifyIcon} ${verificationClass(row.verification)}`}>
+                {row.verification?.status === 'failed' || row.verification?.warnings?.length ? <HiShieldExclamation /> : row.verification?.status === 'passed' ? <HiShieldCheck /> : <HiOutlineShieldCheck />}
+              </Box>
+            </Tooltip>
           </HStack>
         ),
         {
@@ -505,21 +609,34 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         id: 'actions',
         header: 'Actions',
         cell: (info) => {
-          const row = info.row.original
-          const reseedable = row.backupMethod !== 2 && ['mysqldump', 'mydumper'].includes(row.backupTool) && row.completed && !row.originalRemoved
+          const backup = info.row.original
+          const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.originalRemoved && backup.verification?.status !== 'running'
+          const reseedable = backup.backupMethod !== 2 && ['mysqldump', 'mydumper'].includes(backup.backupTool) && backup.completed && !backup.originalRemoved
           return (
             <HStack spacing={1}>
               <RMIconButton
+                icon={HiShieldCheck}
+                tooltip='Verify integrity'
+                onClick={() => openConfirmModal('Verify the integrity of this backup?', { action: 'backupVerify', data: { backupId: backup.id, level: 'integrity' } })}
+                isDisabled={!user?.grants['db-backup'] || !verifiable}
+              />
+              <RMIconButton
+                icon={HiDatabase}
+                tooltip={selectedCluster?.config?.backupVerificationHost ? `Test restore on ${selectedCluster.config.backupVerificationHost}` : 'Test restore: set backup-verification-host first'}
+                onClick={() => openConfirmModal(`Load this backup into ${selectedCluster?.config?.backupVerificationHost} and compare it?`, { action: 'backupVerify', data: { backupId: backup.id, level: 'restore' } })}
+                isDisabled={!user?.grants['db-backup'] || !verifiable || !selectedCluster?.config?.backupVerificationHost}
+              />
+              <RMIconButton
                 icon={HiRefresh}
                 tooltip='Reseed a server from this backup'
-                onClick={() => setReseedPick({ backup: row, serverId: '' })}
+                onClick={() => setReseedPick({ backup, serverId: '' })}
                 isDisabled={!user?.grants['db-restore'] || !reseedable}
               />
               <RMIconButton
                 icon={HiTrash}
                 colorScheme='red'
                 tooltip='Delete backup'
-                onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: row.id } })}
+                onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: backup.id } })}
                 isDisabled={!user?.grants['db-backup']}
               />
             </HStack>

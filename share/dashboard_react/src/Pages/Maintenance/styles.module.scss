@@ -51,6 +51,33 @@
     .iconRow {
       align-items: center;
     }
+    // a labelled value on one line (source, destination, GTID set): cut at the column
+    // width, +N for the entries left out
+    .lineCopy {
+      font-size: inherit;
+      white-space: nowrap;
+    }
+    .cellLine {
+      max-width: rem(260);
+    }
+    .cellLabel {
+      flex-shrink: 0;
+    }
+    .cellLineValue {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .cellMore {
+      flex-shrink: 0;
+      font-size: rem(11);
+      line-height: 1.4;
+      padding: 0 rem(6);
+      border-radius: rem(8);
+      background-color: var(--gray-color);
+      color: var(--text-color);
+    }
     .statusIcon {
       display: inline-flex;
       align-items: center;
@@ -66,6 +93,41 @@
     .statusIconInactive {
       color: var(--darkgray-color);
       opacity: 0.5;
+    }
+    // backup verification (#2023): a ring that glows green when the backup passed the
+    // integrity level, blue when it passed a test restore, amber when it passed but lacks
+    // objects its source has, red when it failed; it pulses while it runs and stays a
+    // dashed outline when it was never verified
+    .verifyIcon {
+      border-radius: 50%;
+      padding: rem(2);
+    }
+    .verifyPassed {
+      color: var(--success-secondary-color);
+      box-shadow: 0 0 0 rem(1.5) var(--success-secondary-color), 0 0 rem(6) rem(1) var(--success-secondary-color);
+    }
+    .verifyRestored {
+      color: var(--info-secondary-color);
+      box-shadow: 0 0 0 rem(1.5) var(--info-secondary-color), 0 0 rem(6) rem(1) var(--info-secondary-color);
+    }
+    .verifyFailed {
+      color: var(--danger-secondary-color);
+      box-shadow: 0 0 0 rem(1.5) var(--danger-secondary-color), 0 0 rem(6) rem(1) var(--danger-secondary-color);
+    }
+    .verifyWarning {
+      color: var(--warning-secondary-color);
+      box-shadow: 0 0 0 rem(1.5) var(--warning-secondary-color), 0 0 rem(6) rem(1) var(--warning-secondary-color);
+    }
+    .verifyRunning {
+      color: var(--warning-secondary-color);
+      box-shadow: 0 0 0 rem(1.5) var(--warning-secondary-color);
+      animation: verifyPulse 1.2s ease-in-out infinite;
+    }
+    .verifyNone {
+      color: var(--text-color);
+      opacity: 0.45;
+      outline: rem(1) dashed currentColor;
+      outline-offset: rem(-1);
     }
   }
   .snapshotContainer {
@@ -141,5 +203,16 @@
         }
       }
     }
+  }
+}
+
+@keyframes verifyPulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backupContainer .table .verifyRunning {
+    animation: none;
   }
 }

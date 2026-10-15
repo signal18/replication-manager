@@ -15,7 +15,8 @@ function CopyToClipboard({
   className,
   fromModal = false,
   keepOpen = false,
-  printPretty = false
+  printPretty = false,
+  children // shown instead of text when given; the copy is still text
 }) {
   const { isOpen, onOpen, onClose } = useDisclosure()
   const dispatch = useDispatch()
@@ -113,7 +114,9 @@ function CopyToClipboard({
           />
         ))}
 
-      {keepOpen && printPretty ? (
+      {children ? (
+        children
+      ) : keepOpen && printPretty ? (
         <span className={'textToCopy'}>
           <pre>{sanitizedText}</pre>
         </span>

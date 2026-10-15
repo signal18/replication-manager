@@ -148,6 +148,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupReconcile)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/backups/verification-server", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupVerificationServer)),
+	)).Methods(http.MethodGet)
+
+	router.Handle("/api/clusters/{clusterName}/backups/verification-server/mark", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupVerificationServerMark)),
+	)).Methods(http.MethodPost)
+
 	router.Handle("/api/clusters/{clusterName}/backups/discover", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDiscover)),
@@ -157,6 +167,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDelete)),
 	))
+
+	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/verify", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupVerifyDefault)),
+	)).Methods(http.MethodPost)
+
+	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/verify/{level}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupVerifyLevel)),
+	)).Methods(http.MethodPost)
 
 	router.Handle("/api/clusters/{clusterName}/terminals", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerGetTerminalSessionList)),
@@ -2519,6 +2539,181 @@ func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.Respon
 	}
 }
 
+// handlerMuxClusterBackupVerifyDefault starts verification at backup-verification-level.
+// @Summary Verify a backup by ID
+// @Description Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. Without a level, backup-verification-level applies. The result is in the backup's verification field.
+// @Description Required grant: db-backup; the restore level also db-restore
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param backupID path string true "Backup ID"
+// @Success 200 {object} map[string]interface{} "Backup verification started"
+// @Failure 400 {string} string "Invalid request or backup not verifiable"
+// @Failure 403 {string} string "No valid ACL, or the restore level without db-restore"
+// @Failure 409 {string} string "Backup or verification running"
+// @Failure 500 {string} string "Verification not started"
+// @Router /api/clusters/{clusterName}/backups/{backupID}/verify [post]
+//
+// Two handlers on one implementation: swag documents a handler's parameters on each of its
+// routes, and {level} exists on the second route only.
+func (repman *ReplicationManager) handlerMuxClusterBackupVerifyDefault(w http.ResponseWriter, r *http.Request) {
+	repman.handlerMuxClusterBackupVerify(w, r)
+}
+
+// handlerMuxClusterBackupVerifyLevel starts verification at an explicit level.
+// @Summary Verify a backup by ID and level
+// @Description Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. The result is in the backup's verification field.
+// @Description Required grant: db-backup; the restore level also db-restore
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param backupID path string true "Backup ID"
+// @Param level path string true "Verification level" Enums(integrity, restore)
+// @Success 200 {object} map[string]interface{} "Backup verification started"
+// @Failure 400 {string} string "Invalid request or backup not verifiable"
+// @Failure 403 {string} string "No valid ACL, or the restore level without db-restore"
+// @Failure 409 {string} string "Backup or verification running"
+// @Failure 500 {string} string "Verification not started"
+// @Router /api/clusters/{clusterName}/backups/{backupID}/verify/{level} [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupVerifyLevel(w http.ResponseWriter, r *http.Request) {
+	repman.handlerMuxClusterBackupVerify(w, r)
+}
+
+func (repman *ReplicationManager) handlerMuxClusterBackupVerify(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	// the restore level loads the backup into a server (on a replica of the cluster, a
+	// reseed): the grant of a reseed besides the route's db-backup. The level is read once,
+	// in lower case, for the grant and the run.
+	level := strings.ToLower(strings.TrimSpace(vars["level"]))
+	effective := level
+	if effective == "" {
+		effective = mycluster.Conf.BackupVerificationLevel
+	}
+	if effective == config.ConstBackupVerificationLevelRestore {
+		if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBRestore] {
+			http.Error(w, "No db-restore grant: the restore level loads the backup into a server", http.StatusForbidden)
+			return
+		}
+	}
+	backupID, err := strconv.ParseInt(strings.TrimSpace(vars["backupID"]), 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid backup ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := mycluster.VerifyBackupByID(backupID, level); err != nil {
+		switch {
+		case errors.Is(err, cluster.ErrBackupInProgress), errors.Is(err, cluster.ErrBackupVerificationRunning):
+			http.Error(w, err.Error(), http.StatusConflict)
+		case errors.Is(err, cluster.ErrBackupInvalidID), errors.Is(err, cluster.ErrBackupNotFound), errors.Is(err, cluster.ErrBackupNotVerifiable), errors.Is(err, cluster.ErrBackupVerificationLevel):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	if err := e.Encode(map[string]interface{}{
+		"id":      backupID,
+		"message": "Backup verification started",
+	}); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxClusterBackupVerificationServer returns the state of backup-verification-host.
+// @Summary Backup verification server state
+// @Description Connects to backup-verification-host and returns whether it is a replica of the cluster, whether it is marked as a verification server (replication_manager_schema.backup_verification_server), and the schemas it holds. An unmarked server without schemas is marked on its first test restore.
+// @Description Required grant: db-backup
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.BackupVerificationServerState "Verification server state"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Verification server not reachable"
+// @Router /api/clusters/{clusterName}/backups/verification-server [get]
+func (repman *ReplicationManager) handlerMuxClusterBackupVerificationServer(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	state, err := mycluster.GetBackupVerificationServerState()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(state); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterBackupVerificationServerMark marks backup-verification-host as a verification server.
+// @Summary Mark the backup verification server
+// @Description Marks the external backup-verification-host as a verification server (replication_manager_schema.backup_verification_server): a test restore then drops there the schemas the backup holds. A replica of the cluster is not marked.
+// @Description Required grant: db-backup and db-restore
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.BackupVerificationServerState "Verification server state after the mark"
+// @Failure 403 {string} string "No valid ACL, or no db-restore grant"
+// @Failure 500 {string} string "Mark failed"
+// @Router /api/clusters/{clusterName}/backups/verification-server/mark [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupVerificationServerMark(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	// the mark lets the test restore drop schemas there: the grant of the restore level
+	u, ok := repman.requestACLUser(r, mycluster)
+	if !ok || !u.Grants[config.GrantDBRestore] {
+		http.Error(w, "No db-restore grant: a marked server loses the schemas a test restore loads", http.StatusForbidden)
+		return
+	}
+	if err := mycluster.MarkBackupVerificationServer(u.User); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	state, err := mycluster.GetBackupVerificationServerState()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(state); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
+}
+
 // handlerMuxClusterBackupDiscover registers the backups placed in the servers' backup folders without metadata.
 // @Summary Discover the backups of the backup folders
 // @Description Scans each server's backup folder and registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. Refused while a backup of the cluster runs.
@@ -2609,7 +2804,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDelete(w http.ResponseW
 	meta, err := mycluster.DeleteBackupByID(backupIDInt)
 	if err != nil {
 		switch {
-		case errors.Is(err, cluster.ErrBackupInProgress):
+		case errors.Is(err, cluster.ErrBackupInProgress), errors.Is(err, cluster.ErrBackupVerificationRunning):
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		case errors.Is(err, cluster.ErrBackupInvalidID), errors.Is(err, cluster.ErrBackupNotFound):
@@ -3175,6 +3370,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupKeepUntilValid()
 	case "backup-archive-remove-original":
 		mycluster.SwitchBackupArchiveRemoveOriginal()
+	case "backup-verification":
+		mycluster.SwitchBackupVerification()
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.SwitchMailSmtpTlsSkipVerify()
 	case "cloud18-shared":
@@ -3527,6 +3724,7 @@ var base64LogValueSettings = map[string]struct{}{
 	"backup-restic-password":              {},
 	"backup-restic-repository":            {},
 	"backup-save-script":                  {},
+	"backup-verification-host":            {},
 	"cloud18-alert-slack-url":             {},
 	"cloud18-dba-user-credentials":        {},
 	"cloud18-gitlab-password":             {},
@@ -3538,7 +3736,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -4555,6 +4753,26 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMysqlclientOptions = string(val)
+	case "backup-verification-level":
+		if err := mycluster.SetBackupVerificationLevel(value); err != nil {
+			return err
+		}
+	case "backup-verification-timeout":
+		if err := mycluster.SetBackupVerificationTimeout(value); err != nil {
+			return err
+		}
+	case "backup-verification-host":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.Conf.BackupVerificationHost = string(val)
+	case "backup-verification-credential":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		mycluster.SetBackupVerificationCredential(string(val))
 	case "replication-manager-cli-path":
 		_, storeValue, err := resolveExecutablePath(value, "replication-manager-cli-path")
 		if err != nil {
@@ -5335,6 +5553,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupKeepUntilValid = applyIsActive(mycluster.Conf.BackupKeepUntilValid, isactive)
 	case "backup-archive-remove-original":
 		mycluster.Conf.BackupArchiveRemoveOriginal = applyIsActive(mycluster.Conf.BackupArchiveRemoveOriginal, isactive)
+	case "backup-verification":
+		mycluster.Conf.BackupVerification = applyIsActive(mycluster.Conf.BackupVerification, isactive)
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.MailSMTPTLSSkipVerify = applyIsActive(mycluster.Conf.MailSMTPTLSSkipVerify, isactive)
 	case "cloud18-shared":

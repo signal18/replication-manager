@@ -2760,6 +2760,9 @@ func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) 
 }
 
 func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
+	if err := server.ClusterGroup.checkLogicalRestoreArtifact(backupPath); err != nil {
+		return err
+	}
 	return server.restoreSplitdumpWithMysql(ctx, backupPath, restoreUser)
 }
 
@@ -3365,6 +3368,9 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	cluster := server.ClusterGroup
 	var err error
 	defer server.SetInReseedBackup("")
+	if err := cluster.checkLogicalRestoreArtifact(backupfile); err != nil {
+		return err
+	}
 
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (mysqldump) started at %s for: %s", start.Format(time.RFC3339), server.URL)
@@ -4867,7 +4873,8 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		time.Sleep(1 * time.Second)
 	}
 
-	cluster.SetInLogicalBackupState(true)
+	// an on-demand verification reading the previous backup of server: its file is rewritten
+	server.startLogicalBackupAfterVerification()
 	defer cluster.SetInLogicalBackupState(false)
 	// Live progress (cluster_backup_progress.go): level running now, bytes as the dump
 	// writes, schema as the verbose stream crosses tables; the per-table speeds are
@@ -5222,8 +5229,12 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		cluster.discardBackupStaging(server.LastBackupMeta.Logical)
 	}
 
+	backupMeta := server.LastBackupMeta.Logical
 	server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
 	if err == nil {
+		// backup-verification: in this backup's slot, before the archive push below can
+		// remove the original (a rolled back backup is not completed, not verified)
+		server.verifyBackupAfterBackup(backupMeta)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", logicalType, server.URL)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", logicalType, server.URL)

@@ -109,10 +109,15 @@ func SplitDumpLineReader(bus *SplitDumpChannelBus, inputFile string) {
 // SplitDumpLineParser and ClassifyStream, since both must recognize the same
 // position markers regardless of where in the stream they appear.
 var (
-	binlogRegexMariaDB = regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
-	gtidRegexMariaDB   = regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
-	binlogRegexMySQL   = regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
-	gtidRegexMySQL     = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:\/\*![^*]*\*\/\s*)?'([^']+)'`)
+	binlogRegexMariaDB  = regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
+	gtidRegexMariaDB    = regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
+	binlogRegexMySQL    = regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
+	gtidRegexMySQL      = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:\/\*![^*]*\*\/\s*)?'([^']+)'`)
+	triggerDefinition   = regexp.MustCompile("(?i)\\bCREATE\\b(.*?)\\bTRIGGER\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:`([^`]+)`|([[:alnum:]_$.-]+))")
+	triggerCreateMarker = regexp.MustCompile(`(?i)\bCREATE\s*\*/`)
+	triggerNameLine     = regexp.MustCompile("(?i)\\bTRIGGER\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(?:`([^`]+)`|([[:alnum:]_$.-]+))")
+	// what a dump writes between CREATE and TRIGGER: version comments, the definer, OR REPLACE
+	triggerCreateInfix = regexp.MustCompile(`(?i)^(?:\s|\*/|/\*!\d*|DEFINER\s*=\s*\S+|OR\s+REPLACE)*$`)
 )
 
 // gtidStatementLines joins the lines of a GTID_PURGED statement: a MySQL client writes the
@@ -158,6 +163,35 @@ func (g *gtidStatementLines) add(line string) string {
 		return g.stmt.String()
 	}
 	return ""
+}
+
+// extractTriggerName recognises both the plain CREATE TRIGGER form and the
+// versioned-comment form emitted by newer mariadb-dump versions, for example:
+// /*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/ /*!50003 TRIGGER trg ... */
+// Some dump versions do not emit a "Dumping triggers for table" section header,
+// so the trigger statement itself is the only reliable section boundary.
+func extractTriggerName(line string) string {
+	matches := triggerDefinition.FindStringSubmatch(line)
+	// CREATE TABLE ... COMMENT 'TRIGGER x' is not a trigger: only a definer, version
+	// comments or OR REPLACE stand between CREATE and TRIGGER
+	if len(matches) == 0 || !triggerCreateInfix.MatchString(matches[1]) {
+		return ""
+	}
+	if matches[2] != "" {
+		return matches[2]
+	}
+	return matches[3]
+}
+
+func extractTriggerNameLine(line string) string {
+	matches := triggerNameLine.FindStringSubmatch(line)
+	if len(matches) == 0 {
+		return ""
+	}
+	if matches[1] != "" {
+		return matches[1]
+	}
+	return matches[2]
 }
 
 // isSystemSectionBoundary reports whether line is the first line of the
@@ -338,6 +372,20 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 	streamSize := int64(0)
 	pendingSplit := false
 	splitReady := false
+	// Trigger sections. A trigger file opens at its CREATE ... TRIGGER statement (the
+	// "Dumping triggers" header is gone from current dump clients), only outside another
+	// file (tableFile == nil):
+	//   - pendingTriggerPreamble: the lines a dump writes before that statement (saved
+	//     session settings, DELIMITER ;;), held until the trigger file opens, then written
+	//     first into it;
+	//   - pendingTriggerCreate: a versioned "CREATE*/" line was seen, its TRIGGER name comes
+	//     on the next line (/*!50003 CREATE*/ /*!50017 DEFINER=...*/ then /*!50003 TRIGGER);
+	//   - inDelimiterBlock: between DELIMITER ;; and DELIMITER ;, a trigger or routine body,
+	//     whose "-- " comments are not section headers; outside it, a "-- " header closes
+	//     a trigger file.
+	pendingTriggerCreate := false
+	var pendingTriggerPreamble []string
+	inDelimiterBlock := false // between DELIMITER ;; and DELIMITER ;: a trigger or routine body
 	// mysqldump emits complete statements ending in ';' by default.
 	isStatementEnd := func(line string) bool {
 		trimmed := strings.TrimSpace(line)
@@ -402,6 +450,18 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				closeTableWriter()
 			}
 		} else {
+			// A trigger section ends at the next section header outside its DELIMITER
+			// block (a trigger body can hold "-- " comments): what follows, such as a
+			// view's placeholder or the next schema's CREATE DATABASE and USE, is not
+			// part of it, and a placeholder replayed with the triggers after the data
+			// would replace the view it stands for.
+			if trimmed := strings.TrimSpace(line); trimmed == "DELIMITER ;;" {
+				inDelimiterBlock = true
+			} else if trimmed == "DELIMITER ;" {
+				inDelimiterBlock = false
+			} else if !inDelimiterBlock && tableFile != nil && strings.HasSuffix(currentOutputName, "-schema-trigger") && strings.HasPrefix(line, "-- ") {
+				closeTableFile()
+			}
 			if strings.HasPrefix(line, "USE ") {
 				schema = strings.TrimSpace(strings.Replace(strings.Replace(strings.Replace(line, "USE ", "", 1), ";", "", -1), "`", "", -1))
 			} else if strings.HasPrefix(line, "-- Table structure for table") {
@@ -500,6 +560,54 @@ func SplitDumpLineParser(bus *SplitDumpChannelBus, outputDir string, opts SplitD
 				if err = openOutputFile(tableName, true); err != nil {
 					finishWithError(err)
 					return
+				}
+			} else if triggerName := func() string {
+				if name := extractTriggerName(line); name != "" {
+					return name
+				}
+				if pendingTriggerCreate {
+					return extractTriggerNameLine(line)
+				}
+				return ""
+			}(); triggerName != "" && tableFile == nil {
+				// Recent mariadb-dump versions embed trigger definitions directly
+				// after the table data and omit the older "Dumping triggers for
+				// table" header. Detect the versioned CREATE TRIGGER statement,
+				// including the two-line CREATE*/.../TRIGGER form, so it is not
+				// dropped when the previous data artifact is closed.
+				pendingTriggerCreate = false
+				onTableData = false
+				onTableScheme = false
+				dataTableName = ""
+				tableName := schema + "." + triggerName + "-schema-trigger"
+				fmt.Printf("Processing trigger schema %s\n", tableName)
+				if err = openOutputFile(tableName, true); err != nil {
+					finishWithError(err)
+					return
+				}
+				for _, preambleLine := range pendingTriggerPreamble {
+					if _, err = tableFile.Write([]byte(preambleLine)); err != nil {
+						finishWithError(err)
+						return
+					}
+				}
+				pendingTriggerPreamble = nil
+			} else if triggerCreateMarker.MatchString(line) {
+				// mariadb-dump may put CREATE*/ and TRIGGER on adjacent lines.
+				pendingTriggerCreate = true
+				if tableFile == nil {
+					pendingTriggerPreamble = append(pendingTriggerPreamble, line)
+				}
+			} else if tableFile == nil && (strings.HasPrefix(strings.TrimSpace(line), "/*!50003") || strings.HasPrefix(strings.TrimSpace(line), "DELIMITER ")) {
+				// Modern mariadb-dump trigger sections emit saved-session settings
+				// and DELIMITER ;; before the CREATE TRIGGER line. Buffer those
+				// lines until the trigger file is opened. Do not buffer a line that
+				// already contains (or continues) the trigger declaration itself.
+				if extractTriggerNameLine(line) == "" {
+					pendingTriggerPreamble = append(pendingTriggerPreamble, line)
+					if triggerCreateMarker.MatchString(line) {
+						pendingTriggerCreate = true
+					}
 				}
 			} else if isSystemSectionBoundary(line) {
 				onTableData = false

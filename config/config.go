@@ -908,6 +908,11 @@ type Config struct {
 	BackupResticPurgePruneRepackUncompressed  bool              `mapstructure:"backup-restic-purge-prune-repack-uncompressed" toml:"backup-restic-purge-prune-repack-uncompressed" json:"backupResticPurgePruneRepackUncompressed"`
 	BackupArchiveMode                         string            `mapstructure:"backup-archive-mode" toml:"backup-archive-mode" json:"backupArchiveMode"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
+	BackupVerification                        bool              `mapstructure:"backup-verification" toml:"backup-verification" json:"backupVerification"`
+	BackupVerificationLevel                   string            `mapstructure:"backup-verification-level" toml:"backup-verification-level" json:"backupVerificationLevel"`
+	BackupVerificationHost                    string            `mapstructure:"backup-verification-host" toml:"backup-verification-host" json:"backupVerificationHost"`
+	BackupVerificationCredential              string            `mapstructure:"backup-verification-credential" toml:"backup-verification-credential" json:"-"`
+	BackupVerificationTimeout                 int               `mapstructure:"backup-verification-timeout" toml:"backup-verification-timeout" json:"backupVerificationTimeout"`
 	BackupRestic                              bool              `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string            `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticLocalRepository               string            `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
@@ -1587,6 +1592,12 @@ const (
 	ConstBackupPhysicalTypeMariaBackup string = "mariabackup"
 )
 
+// backup-verification-level values (#2023).
+const (
+	ConstBackupVerificationLevelIntegrity string = "integrity" // read the backup as a restore would, no database
+	ConstBackupVerificationLevelRestore   string = "restore"   // integrity, then a test restore on backup-verification-host
+)
+
 const (
 	ConstBackupBinlogTypeMysqlbinlog string = "mysqlbinlog"
 	ConstBackupBinlogTypeSSH         string = "ssh"
@@ -1891,6 +1902,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"backup-restic-aws-access-secret":       {},
 		"backup-streaming-aws-access-secret":    {},
 		"backup-restic-password":                {},
+		"backup-verification-credential":        {},
 		"arbitration-external-secret":           {},
 		"alert-pushover-user-token":             {},
 		"alert-pushover-app-token":              {},
