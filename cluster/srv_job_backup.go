@@ -2752,6 +2752,9 @@ func (server *ServerMonitor) buildLogicalRestorePreamble() (string, int, error) 
 }
 
 func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
+	if err := server.ClusterGroup.checkLogicalRestoreArtifact(backupPath); err != nil {
+		return err
+	}
 	return server.restoreSplitdumpWithMysql(ctx, backupPath, restoreUser)
 }
 
@@ -3356,6 +3359,9 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore (mysqldump) started at %s for: %s", start.Format(time.RFC3339), server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
+	if err := cluster.checkLogicalRestoreArtifact(backupfile); err != nil {
+		return err
+	}
 
 	server.StopSlave()
 
