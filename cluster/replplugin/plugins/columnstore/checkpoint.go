@@ -322,8 +322,8 @@ func dumpField(c *schema.TableColumn, v dumpValue) interface{} {
 	return v.Text
 }
 
-// mbBytes64: restore_batch_mb in bytes, 64 MB when unset
-func mbBytes64(mb int) int64 {
+// sizeBytes: batch_mb or restore_batch_mb in bytes, 64 MB when unset
+func sizeBytes(mb int) int64 {
 	if mb <= 0 {
 		mb = 64
 	}

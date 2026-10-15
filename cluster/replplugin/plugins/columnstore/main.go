@@ -8,9 +8,10 @@
 // the rows of the ColumnStore tables the restore parses from the parent's splitdump backup,
 // then the restore's end, with the backup's GTID and the tables carried; only then it reads
 // the source's binlog from that GTID (go-mysql canal, MariaDB compressed events included).
-// Everything it receives is accumulated per period (batch_timeout_ms) and written as a
-// checkpoint at a transaction boundary: per table the keys to delete and the rows to load.
-// The restore's rows close a checkpoint by size instead (restore_batch_mb), not by period.
+// Everything it receives is accumulated per period and written as a checkpoint at a
+// transaction boundary: per table the keys to delete and the rows to load. A period ends at
+// its time or its size, whichever is reached first: batch_timeout_ms or batch_mb on the
+// binlog, restore_batch_timeout_ms or restore_batch_mb during the restore.
 // It pauses while the checkpoints not yet applied exceed max_pending_mb: its stdin is not
 // read, the restore slows down; the binlog is not read. Supervised by replication-manager,
 // its passwords in its environment; a wire.Status JSON line on stdout per period; its
@@ -50,9 +51,12 @@ type capture struct {
 	state    wire.State
 	bufs     map[string]*tableBuf
 	rows     int   // rows buffered in the period
-	restored int64 // bytes of the restore's INSERTs buffered in the period
-	inTx     bool  // between a transaction's first row and its XID
-	flushDue bool  // the period ended inside a transaction
+	size     int64 // bytes received in the period: the restore's INSERTs, the binlog's row events
+	opened   time.Time
+	maxSize  int64         // the period's size
+	maxAge   time.Duration // the period's time
+	inTx     bool          // between a transaction's first row and its XID
+	flushDue bool          // the period ended inside a transaction
 	gtid     string
 	lastTS   uint32 // source time of the last captured transaction
 	st       wire.Status
@@ -124,6 +128,10 @@ func (c *capture) OnRow(e *canal.RowsEvent) error {
 		}
 	}
 	c.rows += len(e.Rows)
+	c.size += int64(e.Header.EventSize)
+	if c.size >= c.maxSize {
+		c.flushDue = true // at the transaction's end
+	}
 	return nil
 }
 
@@ -164,6 +172,7 @@ func (c *capture) String() string { return "replplugin-columnstore" }
 // wait for room blocks the binlog reading: the pause.
 func (c *capture) flushLocked() error {
 	c.flushDue = false
+	c.opened = time.Now()
 	tables, files := renderTables(c.bufs)
 	if len(tables) == 0 {
 		if c.gtid != "" && c.gtid != c.state.GTID {
@@ -180,14 +189,18 @@ func (c *capture) flushLocked() error {
 	if err := wire.WriteState(c.statePath, c.state); err != nil {
 		return err
 	}
-	c.bufs, c.rows, c.restored = map[string]*tableBuf{}, 0, 0
+	c.bufs, c.rows, c.size = map[string]*tableBuf{}, 0, 0
 	return nil
 }
 
-// tick ends the period: flushed now between transactions, else at the next transaction end.
+// tick ends the period once its time is over: flushed now between transactions, else at the
+// next transaction end.
 func (c *capture) tick() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if time.Since(c.opened) < c.maxAge {
+		return nil
+	}
 	if c.inTx {
 		c.flushDue = true
 		return nil
@@ -283,10 +296,10 @@ func (c *capture) restoreRows(schemaName, tableName string, stmt []byte) error {
 	if err != nil {
 		return err
 	}
-	// the INSERT's size stands for the CSV it becomes: the checkpoint closes at
-	// restore_batch_mb, the restore's rows being no transaction of the binlog
-	c.restored += int64(len(stmt))
-	if c.restored >= mbBytes64(c.cfg.RestoreBatchMB) {
+	// the INSERT's size stands for the CSV it becomes; the restore's rows are no binlog
+	// transaction: the period closes here
+	c.size += int64(len(stmt))
+	if c.size >= c.maxSize {
 		return c.flushLocked()
 	}
 	return nil
@@ -325,6 +338,9 @@ func main() {
 	if cfg.BatchTimeoutMs <= 0 {
 		cfg.BatchTimeoutMs = 10000
 	}
+	if cfg.RestoreBatchTimeoutMs <= 0 {
+		cfg.RestoreBatchTimeoutMs = 30000
+	}
 	statePath := wire.StatePath(*configPath)
 	state, err := wire.ReadState(statePath)
 	if err != nil {
@@ -337,7 +353,8 @@ func main() {
 		cfg.Rules = wire.RulesOf(state.Tables)
 	}
 
-	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID}
+	c := &capture{cfg: cfg, statePath: statePath, state: state, bufs: map[string]*tableBuf{}, keyErrs: map[string]bool{}, gtid: state.GTID, opened: time.Now(),
+		maxSize: sizeBytes(cfg.BatchMB), maxAge: time.Duration(cfg.BatchTimeoutMs) * time.Millisecond}
 	c.w = &checkpointWriter{dir: wire.CheckpointDir(*configPath), maxPending: mbBytes(cfg.MaxPendingMB), paused: func(p int64) {
 		c.mu.Lock()
 		c.st.Description = fmt.Sprintf("paused: %d MB of checkpoints wait to be applied (max_pending_mb %d)", p>>20, mbBytes(cfg.MaxPendingMB)>>20)
@@ -368,8 +385,20 @@ func main() {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	c.status(wire.StateStarting, "")
-	ticker := time.NewTicker(time.Duration(cfg.BatchTimeoutMs) * time.Millisecond)
+	// the ticker checks the period's time; a status line per batch_timeout_ms
+	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
+	statusEvery := time.Duration(cfg.BatchTimeoutMs) * time.Millisecond
+	lastStatus := time.Now()
+	tick := func() {
+		if err := c.tick(); err != nil {
+			fail(c, err)
+		}
+		if time.Since(lastStatus) >= statusEvery {
+			lastStatus = time.Now()
+			c.status(wire.StateRunning, "")
+		}
+	}
 
 	started := make(chan struct{})
 	if state.RestoreDone {
@@ -377,6 +406,7 @@ func main() {
 	} else {
 		c.mu.Lock()
 		c.st.Description = "waiting for the restore's rows"
+		c.maxSize, c.maxAge = sizeBytes(cfg.RestoreBatchMB), time.Duration(cfg.RestoreBatchTimeoutMs)*time.Millisecond
 		c.mu.Unlock()
 		restored := make(chan error, 1)
 		go func() { restored <- c.restore(os.Stdin, started) }()
@@ -389,14 +419,14 @@ func main() {
 				}
 				break restoring
 			case <-ticker.C:
-				// no period during the restore: its checkpoints close by size in restoreRows
-				c.status(wire.StateRunning, "")
+				tick()
 			case <-sig:
 				os.Exit(0)
 			}
 		}
 		c.mu.Lock()
 		c.st.Description = ""
+		c.maxSize, c.maxAge = sizeBytes(cfg.BatchMB), time.Duration(cfg.BatchTimeoutMs)*time.Millisecond
 		c.mu.Unlock()
 	}
 	<-started
@@ -409,10 +439,7 @@ func main() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := c.tick(); err != nil {
-				fail(c, err)
-			}
-			c.status(wire.StateRunning, "")
+			tick()
 		case <-sig:
 			cc.Close()
 			os.Exit(0) // what no checkpoint holds is read again from the State's GTID

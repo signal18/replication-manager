@@ -70,8 +70,11 @@ func (cluster *Cluster) startColumnstoreChild(parent *Cluster, target *ServerMon
 		BatchTimeoutMs: 10000,
 		StartGTID:      meta.GTID,
 		MaxPendingMB:   1024,
-		RestoreBatchMB: 64,
-		SourceChannel:  channel,
+		BatchMB:        64,
+		// the seed's checkpoints at 30 s or 64 MB: bigger CSVs, fewer LOAD DATA
+		RestoreBatchTimeoutMs: 30000,
+		RestoreBatchMB:        64,
+		SourceChannel:         channel,
 	}
 	path := cluster.columnstorePluginPath()
 	// a fresh seed: nothing of an older one kept, the running plugin stopped first (its
