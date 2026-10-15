@@ -128,3 +128,36 @@ func TestLongWriteWaitRefusedAlerts(t *testing.T) {
 		t.Fatalf("the refusal line is missing: %q", hook.lines[2])
 	}
 }
+
+// #2065 review: hundreds of long sessions are listed as the first 10 and one line for the rest
+func TestLongWriteSessionsListCapped(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	cl, srv := newTestClusterServer(t)
+	cl.Conf.Daemon = true
+	cl.Conf.Verbose = true
+	cl.Conf.SwitchWaitWrite = 10
+	hook := &alertLines{}
+	cl.Logrus.AddHook(hook)
+	srv.Conn = sqlx.NewDb(db, "mysql")
+
+	rows := sqlmock.NewRows([]string{"Id", "User", "Host", "Command", "Time", "Info"})
+	for i := 0; i < 250; i++ {
+		rows.AddRow(i, "app", "10.0.0.1", "Query", 300, "UPDATE t SET a=1")
+	}
+	mock.ExpectQuery("SELECT a.Id").WillReturnRows(rows)
+
+	cl.logLongRunningWrites(srv, "WARN")
+	hook.mu.Lock()
+	defer hook.mu.Unlock()
+	if len(hook.lines) != longRunningWritesLogged+1 {
+		t.Fatalf("%d lines for 250 sessions, want %d", len(hook.lines), longRunningWritesLogged+1)
+	}
+	if last := hook.lines[len(hook.lines)-1]; !strings.Contains(last, "240 more session(s)") {
+		t.Fatalf("last line %q", last)
+	}
+}

@@ -660,12 +660,21 @@ func (cluster *Cluster) waitLongRunningWrites(server *ServerMonitor) bool {
 	return true
 }
 
-// logLongRunningWrites logs one line per session the long-write guard counts, at level.
+// longRunningWritesLogged caps the sessions logLongRunningWrites lists: each line goes to
+// the alert channels, a master with hundreds of long sessions must not send hundreds (#2065).
+const longRunningWritesLogged = 10
+
+// logLongRunningWrites logs one line per session the long-write guard counts, at level, the
+// first longRunningWritesLogged of them and a line for the rest.
 func (cluster *Cluster) logLongRunningWrites(server *ServerMonitor, level string) {
 	pl, logs, err := dbhelper.GetLongRunningWrites(server.Conn, cluster.Conf.SwitchWaitWrite)
 	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlDbg, "GetLongRunningWrites")
 	if err != nil {
 		return
+	}
+	if len(pl) > longRunningWritesLogged {
+		defer cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, level, "Long update on %s: %d more session(s) not listed", server.URL, len(pl)-longRunningWritesLogged)
+		pl = pl[:longRunningWritesLogged]
 	}
 	for _, p := range pl {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, level, "Long update on %s: session %d user %s host %s command %s running %.0fs, trx open %ds rows modified %d rows locked %d: %s", server.URL, p.Id, p.User, p.Host, p.Command, p.Time.Float64, p.TrxTime, p.TrxRowsModified, p.TrxRowsLocked, p.Info.String)
