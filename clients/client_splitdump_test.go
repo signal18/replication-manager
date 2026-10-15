@@ -5,6 +5,7 @@ package clients
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,5 +89,26 @@ func TestRunSplitdumpFromFile(t *testing.T) {
 	dataFile := filepath.Join(outputDir, "test.t1.00000.sql.gz")
 	if _, err := os.Stat(dataFile); err != nil {
 		t.Fatalf("data file missing: %v", err)
+	}
+}
+
+// A failed split exits 1, its error on stderr.
+func TestSplitdumpCommandExitsOnFailure(t *testing.T) {
+	if os.Getenv("SPLITDUMP_EXIT_TEST") == "1" {
+		cliInputFile = filepath.Join(t.TempDir(), "missing.sql")
+		cliOutputDir = filepath.Join(t.TempDir(), "splitdump")
+		splitDumpCmd.Run(splitDumpCmd, nil)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSplitdumpCommandExitsOnFailure$")
+	cmd.Env = append(os.Environ(), "SPLITDUMP_EXIT_TEST=1")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode() != 1 {
+		t.Fatalf("want exit 1, got %v (stderr %q)", err, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "missing.sql") {
+		t.Fatalf("stderr %q", stderr.String())
 	}
 }
