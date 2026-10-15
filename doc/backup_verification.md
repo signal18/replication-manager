@@ -177,9 +177,12 @@ anything is loaded (the replica's event scheduler, its session, its
 replication), the replica's data is intact: its replication restarts and it
 leaves maintenance.
 
-If replication-manager stops during a test restore on a replica, the replica
-stays in maintenance, its replication stopped, and its event scheduler off
-when it was on: reseed it and switch its event scheduler back on.
+If replication-manager stops during a verification, the backup's meta file
+still says it runs: at its next start, replication-manager records it as
+failed ("interrupted") and logs it, naming the verification server. When that
+server is a replica of the cluster, the replica stays in maintenance, its
+replication stopped, and its event scheduler off when it was on: reseed it and
+switch its event scheduler back on.
 
 ## Result
 
@@ -194,7 +197,10 @@ verified (its tooltip gives the details). Verifications run in a backup slot
 logical backup of the cluster running, its archive push included; while it
 reads a scheduled backup, the next logical backup of that server (which
 rewrites the same file) waits for it, and the archive does not remove the
-original of the backup it reads. The automatic one runs in the backup's own
+original of the backup it reads. These waits last at most
+`backup-verification-timeout` (4 hours when it is `0`): then the backup goes
+on (the verification still reading fails), the archive removes the original,
+or a verification still waiting for a backup is not run. The automatic one runs in the backup's own
 slot, right after the backup, before its archive push, so that the archive can
 not remove the original before it is verified: at the restore level, the
 backup completes once the test restore has ended, which lengthens every

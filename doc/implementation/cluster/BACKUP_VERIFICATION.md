@@ -46,7 +46,14 @@ tools, an incomplete backup, or a backup only in its archive
   rewrites its predecessor's file. `removeArchivedOriginal` waits while its
   backup is claimed (`waitBackupVerificationRead`). The waits end with the
   claim: the verification holds its slot already and waits on nothing the
-  backup holds. `PurgeExpiredAdhocBackups` (no caller today) skips a backup in
+  backup holds. Each wait polls (`backupVerificationPoll`, 1 s) and ends at
+  `backupVerificationWaitMax`: `backup-verification-timeout`, or 4 h when it is
+  0 (F2/F4: a hung verification, or an integrity read on a dead volume, never
+  holds the backups off for good). The backup then goes on (the verification
+  still reading fails), the archive removal goes on, a claim gives up (the
+  verification is not run). `TestBackupVerificationClaimAndBackupStartExclusive`
+  starts both at once, 20 times: one goes on, the other waits until it ends.
+  `PurgeExpiredAdhocBackups` (no caller today) skips a backup in
   `backupVerifying`. `InLogicalBackup` is a plain flag, written by the backup
   job without this mutex: the mutex orders the claim against the backup's
   start, which sets it under the mutex.
@@ -280,9 +287,15 @@ reseed's pieces (no reseed entry point takes a given backup):
   dump statements (`ExecContext` on the pinned connection) and the row counts
   (`dbhelper.CountTableRows` takes the context) are canceled; the error then
   names the setting. A replica canceled during its load is touched: it stays
-  in maintenance. A crash of replication-manager during a replica test restore
-  leaves it in maintenance, its event scheduler off when it was on: no
-  recovery marker is kept (documented for the operator).
+  in maintenance.
+- Interrupted runs: `verifyBackup` reads the restore level's host and
+  credential once and records the host in the running `BackupVerification`
+  (its meta file). `closeInterruptedVerification`, when the meta file is read
+  (`AppendLastMetadata` at the server's start, `LoadAdhocBackupMetadata`),
+  records a verification still `running` that no run of this process holds
+  (`backupVerifying`) as failed, "interrupted", naming the host and what a
+  replica is left with (maintenance, replication stopped, event scheduler off
+  if it was on), and logs it as an error.
 
 `dbhelper` functions (T1, T23): `DropDatabaseIfExists`, `UseDatabaseConn`,
 `CountTableRows`, `GetSchemaObjectNames`, `GetEventScheduler`, `SetEventStatus`

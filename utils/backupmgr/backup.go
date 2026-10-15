@@ -99,8 +99,10 @@ const (
 // BackupVerification is the result of a backup verification: its level (integrity or
 // restore), its status, and what it found.
 type BackupVerification struct {
-	Level     string    `json:"level"`
-	Status    string    `json:"status"`
+	Level  string `json:"level"`
+	Status string `json:"status"`
+	// Host is the verification server of a restore level, as the run read it
+	Host      string    `json:"host,omitempty"`
 	StartTime time.Time `json:"startTime"`
 	EndTime   time.Time `json:"endTime,omitempty"`
 	Error     string    `json:"error,omitempty"`

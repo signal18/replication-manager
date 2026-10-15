@@ -378,9 +378,10 @@ func (cluster *Cluster) openBackupVerificationServer(host, credential string) (*
 	return db, ver, nil, nil
 }
 
-// verifyLogicalBackupRestore is the restore level of backup verification. It returns what
-// it loaded and compared, and the kinds of objects the source has and the backup lacks.
-func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMetadata) (notes []string, warnings []string, err error) {
+// verifyLogicalBackupRestore is the restore level of backup verification, on host with
+// credential (the settings as the run read them). It returns what it loaded and compared,
+// and the kinds of objects the source has and the backup lacks.
+func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMetadata, host, credential string) (notes []string, warnings []string, err error) {
 	cluster := server.ClusterGroup
 	// backup-verification-timeout: the load and the comparison are canceled with ctx
 	ctx := context.Background()
@@ -394,9 +395,6 @@ func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMe
 			}
 		}()
 	}
-	// the settings of this run, read once
-	host := strings.TrimSpace(cluster.Conf.BackupVerificationHost)
-	credential := cluster.Conf.GetDecryptedValue("backup-verification-credential")
 	db, ver, replica, err := cluster.openBackupVerificationServer(host, credential)
 	if err != nil {
 		return nil, nil, err

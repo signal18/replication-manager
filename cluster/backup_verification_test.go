@@ -248,3 +248,29 @@ func TestVerificationReplica(t *testing.T) {
 		}
 	}
 }
+
+// A verification its meta file records as running, with no run holding it, was interrupted
+// by a stop of replication-manager: it is closed as failed, naming its server; a run of this
+// process is left alone.
+func TestCloseInterruptedVerification(t *testing.T) {
+	c, server, meta := newVerificationTest(t, false, func(dest string) { writeValidationGzip(t, dest, validationDump) })
+	running := &backupmgr.BackupVerification{Level: config.ConstBackupVerificationLevelRestore, Status: backupmgr.BackupVerificationRunning, Host: "db3:3306"}
+
+	meta.Verification = running
+	c.backupVerifying.Store(meta.Id, running.Level)
+	server.closeInterruptedVerification(meta)
+	if meta.Verification.Status != backupmgr.BackupVerificationRunning {
+		t.Fatal("a running verification of this process was closed")
+	}
+	c.backupVerifying.Delete(meta.Id)
+
+	server.closeInterruptedVerification(meta)
+	v := meta.Verification
+	if v.Status != backupmgr.BackupVerificationFailed || !strings.Contains(v.Error, "interrupted") || !strings.Contains(v.Error, "db3:3306") || v.EndTime.IsZero() {
+		t.Fatalf("interrupted verification %+v", v)
+	}
+	raw, err := os.ReadFile(server.backupMetaFilePath(meta))
+	if err != nil || !strings.Contains(string(raw), "interrupted") {
+		t.Fatalf("meta file not rewritten: %v", err)
+	}
+}

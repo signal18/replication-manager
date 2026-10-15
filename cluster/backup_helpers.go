@@ -422,6 +422,7 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 		server.ensureBackupSessionID(meta, method, meta.StartTime, meta.BackupLine)
 
 		if cluster != nil {
+			server.closeInterruptedVerification(meta)
 			cluster.BackupMetaMap.Set(meta.Id, meta)
 		}
 		metas = append(metas, meta)

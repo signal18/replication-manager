@@ -509,3 +509,101 @@ func TestBackupVerificationReadExclusion(t *testing.T) {
 		t.Fatal("claim still waiting once the backup ended")
 	}
 }
+
+// The claim of an on-demand verification and the start of a logical backup exclude each
+// other and never wait on each other: whichever comes first runs, the other waits only until
+// it ends (backupVerificationMu orders them on InLogicalBackup and the claims).
+func TestBackupVerificationClaimAndBackupStartExclusive(t *testing.T) {
+	c, server := newStagingTestServer(t)
+	poll := backupVerificationPoll
+	backupVerificationPoll = 10 * time.Millisecond
+	defer func() { backupVerificationPoll = poll }()
+	meta := &backupmgr.BackupMetadata{Id: 9, Source: server.URL}
+
+	for i := 0; i < 20; i++ {
+		claimed, started := make(chan bool, 1), make(chan struct{})
+		go func() { claimed <- c.claimBackupVerificationRead(meta) }()
+		go func() { server.startLogicalBackupAfterVerification(); close(started) }()
+		var first string
+		select {
+		case <-claimed:
+			first = "claim"
+		case <-started:
+			first = "backup"
+		case <-time.After(5 * time.Second):
+			t.Fatalf("pass %d: neither the claim nor the backup start went on", i)
+		}
+		// the other one waits while the first holds
+		other := map[string]<-chan struct{}{"claim": started}[first]
+		if first == "backup" {
+			ch := make(chan struct{})
+			go func() { <-claimed; close(ch) }()
+			other = ch
+		}
+		select {
+		case <-other:
+			t.Fatalf("pass %d: both went on (%s first)", i, first)
+		case <-time.After(100 * time.Millisecond):
+		}
+		// the first ends: the other goes on
+		c.backupVerificationMu.Lock()
+		if first == "claim" {
+			c.backupVerificationReads.Delete(meta.Id)
+		} else {
+			c.SetInLogicalBackupState(false)
+		}
+		c.backupVerificationMu.Unlock()
+		select {
+		case <-other:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("pass %d: the %s ended, the other still waits", i, first)
+		}
+		c.backupVerificationMu.Lock()
+		c.backupVerificationReads.Delete(meta.Id)
+		c.SetInLogicalBackupState(false)
+		c.backupVerificationMu.Unlock()
+	}
+}
+
+// The waits between a backup and an on-demand verification end at their deadline
+// (backup-verification-timeout): a backup goes on, the archive removal goes on, a claim gives
+// up and its verification is not run.
+func TestBackupVerificationWaitsAreBounded(t *testing.T) {
+	c, server := newStagingTestServer(t)
+	c.Conf.BackupVerificationTimeout = 1
+	poll := backupVerificationPoll
+	backupVerificationPoll = 50 * time.Millisecond
+	defer func() { backupVerificationPoll = poll }()
+	meta := &backupmgr.BackupMetadata{Id: 11, Source: server.URL}
+	if !c.claimBackupVerificationRead(meta) {
+		t.Fatal("claim refused")
+	}
+	for name, wait := range map[string]func(){
+		"backup start":    server.startLogicalBackupAfterVerification,
+		"archive removal": func() { c.waitBackupVerificationRead(meta.Id) },
+	} {
+		start := time.Now()
+		wait()
+		if d := time.Since(start); d < 900*time.Millisecond || d > 5*time.Second {
+			t.Fatalf("%s waited %s, want about 1s", name, d)
+		}
+	}
+	if !c.InLogicalBackup {
+		t.Fatal("the backup did not go on")
+	}
+	c.backupVerificationReads.Delete(meta.Id)
+	start := time.Now()
+	if c.claimBackupVerificationRead(meta) {
+		t.Fatal("claimed while a logical backup runs")
+	}
+	if d := time.Since(start); d < 900*time.Millisecond || d > 5*time.Second {
+		t.Fatalf("the claim waited %s, want about 1s", d)
+	}
+	if c.backupVerificationWaitMax() != time.Second {
+		t.Fatal("wait bound is not backup-verification-timeout")
+	}
+	c.Conf.BackupVerificationTimeout = 0
+	if c.backupVerificationWaitMax() != backupVerificationWaitDefault {
+		t.Fatal("no default bound with backup-verification-timeout 0")
+	}
+}

@@ -24110,6 +24110,10 @@ const docTemplate = `{
                 "error": {
                     "type": "string"
                 },
+                "host": {
+                    "description": "Host is the verification server of a restore level, as the run read it",
+                    "type": "string"
+                },
                 "level": {
                     "type": "string"
                 },
