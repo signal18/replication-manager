@@ -412,6 +412,9 @@ func (repman *ReplicationManager) selfServiceBornDynamic(cl *cluster.Cluster) {
 	default:
 		return
 	}
+	if cl.HasConfigTopoColumnstore() {
+		return // no dynamic resource nor configuration on ColumnStore (ErrColumnstoreNoDynamic)
+	}
 	cl.Conf.ProvDBApplyDynamicConfig = true
 	cl.Conf.ProvDBDynamicResource = true
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,

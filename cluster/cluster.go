@@ -992,6 +992,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
 	cluster.addColumnstoreTag()
+	cluster.disableColumnstoreDynamic()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {

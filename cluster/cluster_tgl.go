@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -21,16 +22,26 @@ func (cluster *Cluster) SwitchForceSlaveNoGtid() {
 	cluster.Conf.ForceSlaveNoGtid = !cluster.Conf.ForceSlaveNoGtid
 }
 
-func (cluster *Cluster) SwitchDBDynamicConfig() {
-	cluster.Conf.ProvDBApplyDynamicConfig = !cluster.Conf.ProvDBApplyDynamicConfig
+func (cluster *Cluster) SwitchDBDynamicConfig() error {
+	return cluster.SetProvDBApplyDynamicConfig(!cluster.Conf.ProvDBApplyDynamicConfig)
+}
+
+// SetProvDBApplyDynamicConfig sets prov-db-apply-dynamic-config; the columnstore topology
+// refuses it (ErrColumnstoreNoDynamic).
+func (cluster *Cluster) SetProvDBApplyDynamicConfig(on bool) error {
+	if on && cluster.HasConfigTopoColumnstore() {
+		return fmt.Errorf("prov-db-apply-dynamic-config: %w", ErrColumnstoreNoDynamic)
+	}
+	cluster.Conf.ProvDBApplyDynamicConfig = on
+	return nil
 }
 
 func (cluster *Cluster) SwitchMonitoringPause() {
 	cluster.Conf.MonitorPause = !cluster.Conf.MonitorPause
 }
 
-func (cluster *Cluster) SwitchDBApplyDynamicConfig() {
-	cluster.Conf.ProvDBApplyDynamicConfig = !cluster.Conf.ProvDBApplyDynamicConfig
+func (cluster *Cluster) SwitchDBApplyDynamicConfig() error {
+	return cluster.SetProvDBApplyDynamicConfig(!cluster.Conf.ProvDBApplyDynamicConfig)
 }
 
 func (cluster *Cluster) SwitchForceSlaveReadOnly() {

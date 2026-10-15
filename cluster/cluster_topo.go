@@ -890,6 +890,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetTopologyTarget(topology)
 		cluster.addColumnstoreTag()
 		cluster.raiseColumnstoreDBU()
+		cluster.disableColumnstoreDynamic()
 	case "master-slave":
 		cluster.SetActivePassive(false)
 		cluster.SetMultiMasterRing(false)

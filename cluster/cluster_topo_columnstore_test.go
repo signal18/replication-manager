@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -155,5 +156,27 @@ func TestColumnstoreReplicateIgnore(t *testing.T) {
 	ap.Name = "belair-mcs"
 	if got := (&ServerMonitor{ClusterGroup: ap}).columnstoreReplicateIgnore(); got != "" {
 		t.Fatalf("not columnstore: %q", got)
+	}
+}
+
+// The columnstore topology has no dynamic resource nor dynamic configuration: both are
+// turned off when it is chosen, and turning either on is refused.
+func TestColumnstoreNoDynamic(t *testing.T) {
+	cl := newColumnstoreTestCluster()
+	cl.Conf.ProvDBDynamicResource, cl.Conf.ProvDBApplyDynamicConfig = true, true
+	if err := cl.BootstrapTopology(config.TopoColumnstore); err != nil {
+		t.Fatalf("bootstrap columnstore: %v", err)
+	}
+	if cl.Conf.ProvDBDynamicResource || cl.Conf.ProvDBApplyDynamicConfig {
+		t.Fatal("columnstore topology kept the dynamic resource or configuration on")
+	}
+	if err := cl.SetProvDBDynamicResource(true); !errors.Is(err, ErrColumnstoreNoDynamic) || cl.Conf.ProvDBDynamicResource {
+		t.Fatalf("prov-db-dynamic-resource on: %v", err)
+	}
+	if err := cl.SwitchDBApplyDynamicConfig(); !errors.Is(err, ErrColumnstoreNoDynamic) || cl.Conf.ProvDBApplyDynamicConfig {
+		t.Fatalf("prov-db-apply-dynamic-config on: %v", err)
+	}
+	if err := cl.SetProvDBDynamicResource(false); err != nil {
+		t.Fatalf("off must stay allowed: %v", err)
 	}
 }

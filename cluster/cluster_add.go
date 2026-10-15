@@ -91,6 +91,23 @@ func (cluster *Cluster) addColumnstoreTag() {
 	}
 }
 
+// ErrColumnstoreNoDynamic: the columnstore topology turns down prov-db-dynamic-resource and
+// prov-db-apply-dynamic-config, which size and tune InnoDB (buffer pool, thread pool, IO
+// threads): a ColumnStore server keeps its plan's resources, its memory sized by ColumnStore
+// from the container's cgroup (#2018)
+var ErrColumnstoreNoDynamic = errors.New("the columnstore topology has no dynamic resource nor dynamic configuration: its servers keep the plan's resources")
+
+// disableColumnstoreDynamic turns the dynamic resource and configuration off on the
+// columnstore topology, at load and when the topology is chosen.
+func (cluster *Cluster) disableColumnstoreDynamic() {
+	if !cluster.HasConfigTopoColumnstore() || (!cluster.Conf.ProvDBDynamicResource && !cluster.Conf.ProvDBApplyDynamicConfig) {
+		return
+	}
+	cluster.Conf.ProvDBDynamicResource = false
+	cluster.Conf.ProvDBApplyDynamicConfig = false
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Topology %s: prov-db-dynamic-resource and prov-db-apply-dynamic-config off", config.TopoColumnstore)
+}
+
 // ColumnstoreMinDBU: a ColumnStore server runs both roles (#2021), 1 DBU for the UM side
 // (the server, DML and DDL processing) and 1 for the PM side (PrimProc, WriteEngineServer).
 const ColumnstoreMinDBU = 2

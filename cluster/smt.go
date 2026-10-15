@@ -9,7 +9,10 @@
 
 package cluster
 
-import "strconv"
+import (
+	"math"
+	"strconv"
+)
 
 // SMT (hyperthreading) and the DBU core (#1958).
 //
@@ -103,17 +106,20 @@ func serverNode(server *ServerMonitor) string {
 	return server.Agent
 }
 
-// dockerCPUsOnNode renders prov-db-cpu-cores as docker --cpus on the server's
-// node, in logical CPUs (cpuQuotaCoresOnNode). A value that does not parse is
-// passed as before.
+// dockerCPUsOnNode renders the container's CPU cap as docker --cpus on the server's
+// node, in logical CPUs (cpuQuotaCoresOnNode): the plan's contract
+// (GetDBContainerCPUCapCores, 2 DBU = 2 cores), as the om3 slice quota and the --memory
+// cap, never prov-db-cpu-cores alone, which left a 2-DBU ColumnStore server on 1 core
+// while its slice allowed 2 (belair-mcs 2026-10-15). A prov-db-cpu-cores that does not
+// parse is passed as before.
 func (cluster *Cluster) dockerCPUsOnNode(server *ServerMonitor) string {
-	cores, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64)
-	if err != nil {
+	if _, err := strconv.ParseFloat(cluster.Conf.ProvCores, 64); err != nil {
 		return cluster.Conf.ProvCores + ".0"
 	}
+	cores := cluster.GetDBContainerCPUCapCores()
 	q := cluster.cpuQuotaCoresOnNode(serverNode(server), cores)
-	if q == cores {
-		return cluster.Conf.ProvCores + ".0" // unchanged rendering without SMT
+	if q == cores && q == math.Trunc(q) {
+		return strconv.FormatFloat(q, 'f', 0, 64) + ".0" // unchanged rendering without SMT
 	}
 	return strconv.FormatFloat(q, 'f', 2, 64)
 }
