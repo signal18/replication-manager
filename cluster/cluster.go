@@ -1695,9 +1695,10 @@ func (cluster *Cluster) launchLogicalReseed(servertoreseed *ServerMonitor) {
 	cluster.trackTickGoroutine(func() {
 		defer srvReseed.logicalReseedDispatching.Store(false)
 		err := srvReseed.ProcessReseedLogical(reseedTask)
+		// the jobs-table row the reseed's prepare inserted (SQL jobs mode) is closed
+		// with this outcome: nothing else closes it (closeLogicalReseedJobRow)
+		defer srvReseed.closeLogicalReseedJobRow(reseedTask, err)
 		if err != nil {
-			// ProcessReseedLogical never calls JobInsertTask, so there is no
-			// DB row for this task regardless of scheduler state.
 			srvReseed.JobsUpdateStateRuntimeOnly(reseedTask, err.Error(), JobStateErrorExec, 1)
 			if srvReseed.HasReseedingState(reseedTask) {
 				srvReseed.SetInReseedBackup("")

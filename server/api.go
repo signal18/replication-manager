@@ -2131,6 +2131,7 @@ func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r 
 			res := server.GetPrometheusMetrics()
 			w.Write([]byte(res))
 		}
+		w.Write([]byte(cluster.GetPrometheusMetrics()))
 	}
 }
 

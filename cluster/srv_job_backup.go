@@ -1372,7 +1372,10 @@ func (server *ServerMonitor) JobReseedLogicalBackupProcess(ctx context.Context, 
 	if plan.task == "" {
 		return errors.New("Logical reseed task is empty")
 	}
-	return server.ProcessReseedLogical(plan.task)
+	err := server.ProcessReseedLogical(plan.task)
+	// the jobs-table row the prepare inserted (SQL jobs mode) is closed with this outcome
+	server.closeLogicalReseedJobRow(plan.task, err)
+	return err
 }
 
 type JobReseedLogicalOptions struct {
