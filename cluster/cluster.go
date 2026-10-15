@@ -580,6 +580,12 @@ type Cluster struct {
 
 	// storage engine switch progress and outcome (cluster_engine_switch.go, #1999)
 	engineSwitch atomic.Pointer[EngineSwitch] `json:"-"`
+	// backupVerifying holds the backups being verified (#2023): backup id -> level.
+	backupVerificationMu sync.Mutex `json:"-"`
+	backupVerifying      sync.Map   `json:"-"`
+	// backupVerificationReads holds the backups an on-demand verification reads: backup id
+	// -> backupVerificationRead. A backup reusing the file and the archive removal wait.
+	backupVerificationReads sync.Map `json:"-"`
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both
@@ -1691,9 +1697,10 @@ func (cluster *Cluster) launchLogicalReseed(servertoreseed *ServerMonitor) {
 	cluster.trackTickGoroutine(func() {
 		defer srvReseed.logicalReseedDispatching.Store(false)
 		err := srvReseed.ProcessReseedLogical(reseedTask)
+		// the jobs-table row the reseed's prepare inserted (SQL jobs mode) is closed
+		// with this outcome: nothing else closes it (closeLogicalReseedJobRow)
+		defer srvReseed.closeLogicalReseedJobRow(reseedTask, err)
 		if err != nil {
-			// ProcessReseedLogical never calls JobInsertTask, so there is no
-			// DB row for this task regardless of scheduler state.
 			srvReseed.JobsUpdateStateRuntimeOnly(reseedTask, err.Error(), JobStateErrorExec, 1)
 			if srvReseed.HasReseedingState(reseedTask) {
 				srvReseed.SetInReseedBackup("")
@@ -2327,6 +2334,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetShardUser()+":"+cluster.GetShardPass())
 	case "backup-restic-password":
 		return cluster.Conf.GetStableEncryptedValue("backup-restic-password", cluster.Conf.GetDecryptedValue("backup-restic-password"))
+	case "backup-verification-credential":
+		return cluster.Conf.GetStableEncryptedValue("backup-verification-credential", cluster.Conf.GetDecryptedValue("backup-verification-credential"))
 	case "haproxy-password":
 		return cluster.Conf.GetStableEncryptedValue("haproxy-password", cluster.Conf.GetDecryptedValue("haproxy-password"))
 	case "maxscale-pass":

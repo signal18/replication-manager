@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -642,7 +643,8 @@ func TestSplitDumpLineParserWritesRoutinesTriggersEventsAndSystemFiles(t *testin
 	if _, err := os.Stat(triggerPath); err != nil {
 		t.Fatalf("expected trigger file: %v", err)
 	}
-	if got := readGzip(triggerPath); !strings.Contains(got, "CREATE TRIGGER") {
+	triggerContent := readGzip(triggerPath)
+	if !strings.Contains(triggerContent, "CREATE TRIGGER") {
 		t.Fatalf("expected trigger file to contain trigger definition")
 	}
 
@@ -664,6 +666,162 @@ func TestSplitDumpLineParserWritesRoutinesTriggersEventsAndSystemFiles(t *testin
 	}
 	if !strings.Contains(systemContent, "INSTALL PLUGIN") {
 		t.Fatalf("expected system file to contain INSTALL PLUGIN")
+	}
+}
+
+// TestSplitDumpLineParserRecognizesModernMariaDBTriggerSections covers the
+// trigger layout emitted by current mariadb-dump versions. Those versions can
+// omit the legacy "Dumping triggers for table" header and put a versioned
+// CREATE TRIGGER statement immediately after the table data. The splitter must
+// preserve that trigger instead of dropping it between sections.
+func TestSplitDumpLineParserRecognizesModernMariaDBTriggerSections(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
+
+	lines := []string{
+		"USE `db`\n",
+		"-- Table structure for table `tbl`\n",
+		"CREATE TABLE `tbl` (id int);\n",
+		"-- Dumping data for table `tbl`\n",
+		"LOCK TABLES `tbl` WRITE;\n",
+		"INSERT INTO `tbl` VALUES (1);\n",
+		"UNLOCK TABLES;\n",
+		"/*!50003 SET @saved_cs_client = @@character_set_client */ ;\n",
+		"/*!50003 SET @saved_sql_mode = @@sql_mode */ ;\n",
+		"DELIMITER ;;\n",
+		"/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/\n",
+		"/*!50003 TRIGGER trg_tbl BEFORE INSERT ON tbl FOR EACH ROW SET NEW.id = NEW.id */;;\n",
+		"DELIMITER ;\n",
+		"/*!50003 SET sql_mode = @saved_sql_mode */ ;\n",
+		"-- Final view structure for view `v_tbl`\n",
+		"CREATE VIEW `v_tbl` AS SELECT `tbl`.`id` AS `id` FROM `tbl`;\n",
+	}
+	for _, line := range lines {
+		bus.CurrentLine <- line
+	}
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for splitdump to finish")
+	}
+
+	triggerPath := filepath.Join(outputDir, "db.trg_tbl-schema-trigger.sql.gz")
+	file, err := os.Open(triggerPath)
+	if err != nil {
+		t.Fatalf("expected modern trigger file: %v", err)
+	}
+	defer file.Close()
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		t.Fatalf("failed to open modern trigger gzip: %v", err)
+	}
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("failed to read modern trigger gzip: %v", err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatalf("failed to close modern trigger gzip: %v", err)
+	}
+	if !strings.Contains(string(content), "TRIGGER trg_tbl") {
+		t.Fatalf("expected modern trigger definition in %s, got %q", triggerPath, content)
+	}
+	if !strings.Contains(string(content), "DELIMITER ;;\n") {
+		t.Fatalf("expected modern trigger file to preserve delimiter, got %q", content)
+	}
+
+	manifest, err := ReadManifest(outputDir)
+	if err != nil {
+		t.Fatalf("expected manifest: %v", err)
+	}
+	if !slices.Contains(manifest.Post, "db.trg_tbl-schema-trigger.sql.gz") {
+		t.Fatalf("expected modern trigger in manifest post phase, got %v", manifest.Post)
+	}
+}
+
+// A trigger section ends at the next section header outside its DELIMITER block. In a
+// MySQL 8.4 dump a view's placeholder follows the last trigger with no table section in
+// between: written in the trigger file, it was replayed after the data and replaced the
+// view with its placeholder. A "-- " comment inside a trigger body does not end it.
+func TestSplitDumpLineParserTriggerSectionEndsAtNextHeader(t *testing.T) {
+	bus := NewSplitDumpChannelBus()
+	outputDir := filepath.Join(t.TempDir(), "splitdump")
+
+	go SplitDumpLineParser(bus, outputDir, SplitDumpOptions{})
+
+	lines := []string{
+		"USE `db`;\n",
+		"-- Table structure for table `tbl`\n",
+		"CREATE TABLE `tbl` (id int);\n",
+		"-- Dumping data for table `tbl`\n",
+		"LOCK TABLES `tbl` WRITE;\n",
+		"INSERT INTO `tbl` VALUES (1);\n",
+		"UNLOCK TABLES;\n",
+		"/*!50003 SET @saved_sql_mode       = @@sql_mode */ ;\n",
+		"DELIMITER ;;\n",
+		"/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/ /*!50003 TRIGGER `trg_tbl` BEFORE INSERT ON `tbl` FOR EACH ROW BEGIN\n",
+		"-- keep the id as given\n",
+		"SET NEW.id = NEW.id;\n",
+		"END */;;\n",
+		"DELIMITER ;\n",
+		"/*!50003 SET sql_mode              = @saved_sql_mode */ ;\n",
+		"\n",
+		"--\n",
+		"-- Temporary view structure for view `v_tbl`\n",
+		"--\n",
+		"\n",
+		"DROP TABLE IF EXISTS `v_tbl`;\n",
+		"/*!50001 DROP VIEW IF EXISTS `v_tbl`*/;\n",
+		"/*!50001 CREATE VIEW `v_tbl` AS SELECT \n",
+		" 1 AS `id`*/;\n",
+		"--\n",
+		"-- Final view structure for view `v_tbl`\n",
+		"--\n",
+		"/*!50001 DROP VIEW IF EXISTS `v_tbl`*/;\n",
+		"/*!50001 VIEW `v_tbl` AS select `tbl`.`id` AS `id` from `tbl` */;\n",
+	}
+	for _, line := range lines {
+		bus.CurrentLine <- line
+	}
+	close(bus.CurrentLine)
+
+	select {
+	case <-bus.Finished:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for splitdump to finish")
+	}
+
+	read := func(name string) string {
+		t.Helper()
+		file, err := os.Open(filepath.Join(outputDir, name))
+		if err != nil {
+			t.Fatalf("expected %s: %v", name, err)
+		}
+		defer file.Close()
+		reader, err := gzip.NewReader(file)
+		if err != nil {
+			t.Fatalf("gzip %s: %v", name, err)
+		}
+		content, err := io.ReadAll(reader)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		return string(content)
+	}
+	trigger := read("db.trg_tbl-schema-trigger.sql.gz")
+	for _, want := range []string{"TRIGGER `trg_tbl`", "-- keep the id as given\n", "END */;;\n", "DELIMITER ;\n"} {
+		if !strings.Contains(trigger, want) {
+			t.Fatalf("trigger file lacks %q: %q", want, trigger)
+		}
+	}
+	if strings.Contains(trigger, "v_tbl") {
+		t.Fatalf("the view placeholder went into the trigger file: %q", trigger)
+	}
+	if view := read("db.v_tbl-schema-view.sql.gz"); !strings.Contains(view, "VIEW `v_tbl` AS select `tbl`.`id`") {
+		t.Fatalf("view file lacks the view: %q", view)
 	}
 }
 
@@ -948,6 +1106,22 @@ func TestIsSystemSectionBoundary(t *testing.T) {
 	for _, c := range cases {
 		if got := isSystemSectionBoundary(c.line); got != c.want {
 			t.Errorf("isSystemSectionBoundary(%q) = %v, want %v", c.line, got, c.want)
+		}
+	}
+}
+
+// A trigger statement is CREATE, then only a definer, version comments or OR REPLACE, then
+// TRIGGER: a CREATE TABLE whose comment holds the word TRIGGER is not one.
+func TestExtractTriggerName(t *testing.T) {
+	for line, want := range map[string]string{
+		"/*!50003 CREATE*/ /*!50017 DEFINER=`root`@`%`*/ /*!50003 TRIGGER `trg_a` BEFORE INSERT ON `t` FOR EACH ROW": "trg_a",
+		"CREATE DEFINER=`root`@`localhost` TRIGGER trg_b AFTER UPDATE ON t FOR EACH ROW":                             "trg_b",
+		"CREATE OR REPLACE TRIGGER IF NOT EXISTS `trg_c` BEFORE DELETE ON t FOR EACH ROW":                            "trg_c",
+		"CREATE TABLE `t` (`id` int) COMMENT 'TRIGGER x'":                                                            "",
+		"CREATE VIEW `v` AS SELECT 'TRIGGER y'":                                                                      "",
+	} {
+		if got := extractTriggerName(line); got != want {
+			t.Errorf("extractTriggerName(%q) = %q, want %q", line, got, want)
 		}
 	}
 }

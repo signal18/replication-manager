@@ -1742,7 +1742,7 @@ func (server *ServerMonitor) freeze() bool {
 		for _, v := range server.EventStatus {
 			if v.Status == 3 {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
-				logs, err := dbhelper.SetEventStatus(server.Conn, v, 3)
+				logs, err := dbhelper.SetEventStatus(server.Conn, v, 3, server.DBVersion)
 				cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Could not Set DISABLE ON SLAVE for event %s %s on old master", v.Db, v.Name)
 			}
 		}

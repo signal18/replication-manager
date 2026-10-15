@@ -31,6 +31,7 @@ func (server *ServerMonitor) removeArchivedOriginal(backtype backupmgr.BackupMet
 	if meta == nil || snapshotID == "" {
 		return
 	}
+	cluster.waitBackupVerificationRead(meta.Id)
 
 	server.backupMetaMutex.Lock()
 	current := server.lastBackupMetaForMethod(backtype)

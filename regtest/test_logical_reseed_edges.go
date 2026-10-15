@@ -31,10 +31,15 @@ type edgeRun struct {
 	cl       *clusterpkg.Cluster
 	m, r     *clusterpkg.ServerMonitor
 	failures []string
+	name     string // the test, in its log lines: logical reseed edges when empty
 }
 
 func (e *edgeRun) logf(level, format string, args ...any) {
-	e.cl.LogModulePrintf(e.cl.Conf.Verbose, config.ConstLogModGeneral, level, "TEST logical reseed edges: "+format, args...)
+	name := e.name
+	if name == "" {
+		name = "logical reseed edges"
+	}
+	e.cl.LogModulePrintf(e.cl.Conf.Verbose, config.ConstLogModGeneral, level, "TEST "+name+": "+format, args...)
 }
 
 // check records one result; a failure is logged and kept for the summary.

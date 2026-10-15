@@ -118,3 +118,31 @@ If `cluster.Conf.BackupLoadScript` is set:
 - `JobsUpdateState` and `JobsUpdatePayload` always update the in-memory `JobResults` cache.
 - When `cluster.Conf.MonitorScheduler` is enabled, these updates are persisted to the jobs table.
 - The polling loop (`JobsUpdateEntries`) reads the jobs table and emits `WARN0075` for logical reseed tasks, which drives the async handoff.
+
+### Closing the jobs row
+
+The row a reseed from a given path inserts
+(`JobReseedLogicalBackupFromPathPrepare`, `JobInsertTaskWithPayload`, SQL jobs
+mode: the restic reseed, a reseed from a chosen backup) is closed when the
+reseed ends, by replication-manager. The default reseed inserts no row (its
+task lives in memory, `JobsUpdateState`): the close finds none.
+replication-manager runs the restore itself (`ProcessReseedLogical` records its outcome in
+memory, `JobsUpdateStateRuntimeOnly`), and dbjobs never takes a logical reseed task
+(`reseedmysqldump` / `reseedmydumper` are not in its `JOBS` list), so nothing
+else closed it. Left open (`done=0, state=0`), it refused the next reseed of the
+server (`jobOpenTaskError`: "still open in the jobs table") and kept `WARN0075`
+coming back.
+
+`closeLogicalReseedJobRow(task, runErr)`, called after `ProcessReseedLogical`
+in `launchLogicalReseed` (async path, deferred, after the error is recorded)
+and in `JobReseedLogicalBackupProcess` (sync path):
+
+- the outcome: the run's error (`state=5`), else the result the run recorded
+  when done (`state=3`, its result), else a failure ("the reseed ended without
+  a result");
+- `dbhelper.WithdrawJobTask` on a connection out of the binary log (no errant
+  GTID on a replica): only the open row no runner took (`done=0 AND state=0`),
+  never the task's past rows (`JobsUpdateState`'s SQL path updates them all);
+- nothing in API mode or on PostgreSQL (no jobs table). A restore that
+  replaced the jobs table (the backup holds `replication_manager_schema`)
+  leaves no row: the update matches none.

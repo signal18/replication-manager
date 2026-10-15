@@ -72,19 +72,15 @@ const (
 	MaxEventChecksumMaxEvents     = 10000
 )
 
-// SetEventStatus enables or disables a database event
-func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
+// SetEventStatus enables (status 1) or disables on the replicas (status 3) a database event:
+// DISABLE ON SLAVE, DISABLE ON REPLICA on MySQL/Percona from 8.2 (8.0 knows only the SLAVE
+// form, 8.4 takes both and deprecates it). The definer's user and host are quoted, not restricted: a host is
+// often '%' or an address. PostgreSQL has no events: ev always comes from GetEventStatus,
+// which reads none there, so the version only chooses the keyword.
+func SetEventStatus(db *sqlx.DB, ev Event, status int64, myver *version.Version) (string, error) {
 	definer := strings.Split(ev.Definer, "@")
-	if len(definer) != 2 {
+	if len(definer) != 2 || definer[0] == "" || definer[1] == "" {
 		return "", errors.New("Incorrect definer format")
-	}
-
-	// Validate all identifiers before using
-	if err := ValidateIdentifier(definer[0]); err != nil {
-		return "", fmt.Errorf("invalid definer user: %w", err)
-	}
-	if err := ValidateIdentifier(definer[1]); err != nil {
-		return "", fmt.Errorf("invalid definer host: %w", err)
 	}
 	if err := ValidateIdentifier(ev.Db); err != nil {
 		return "", fmt.Errorf("invalid database name: %w", err)
@@ -99,17 +95,17 @@ func SetEventStatus(db *sqlx.DB, ev Event, status int64) (string, error) {
 		QuoteMySQLIdentifier(ev.Db),
 		QuoteMySQLIdentifier(ev.Name))
 
-	if status == 3 {
-		stmt += " DISABLE ON SLAVE"
-	} else {
+	switch {
+	case status != 3:
 		stmt += " ENABLE"
+	case myver != nil && myver.IsMySQLOrPercona() && myver.GreaterEqual("8.2.0"):
+		stmt += " DISABLE ON REPLICA"
+	default:
+		stmt += " DISABLE ON SLAVE"
 	}
 
 	_, err := db.Exec(stmt)
-	if err != nil {
-		return stmt, err
-	}
-	return stmt, nil
+	return stmt, err
 }
 
 // GetTableChecksumResult retrieves table checksum results
@@ -871,6 +867,18 @@ func GetProxySQLUsers(db *sqlx.DB, table string) (map[string]Grant, string, erro
 		vars[g.User+":"+g.Password] = g
 	}
 	return vars, query, nil
+}
+
+// GetEventScheduler returns the event scheduler's state: ON, OFF or DISABLED (off since
+// the server started, it can not be switched). PostgreSQL: ErrEventsUnsupported.
+func GetEventScheduler(db *sqlx.DB, myver *version.Version) (string, string, error) {
+	if myver != nil && myver.IsPostgreSQL() {
+		return "", "", ErrEventsUnsupported
+	}
+	query := "SELECT /*replication-manager*/ @@GLOBAL.event_scheduler"
+	var state string
+	err := db.QueryRowx(query).Scan(&state)
+	return strings.ToUpper(state), query, err
 }
 
 // GetEventStatus retrieves event status
@@ -2277,12 +2285,12 @@ func attachJoinWeight(tablemap map[string]*Table, keyA, keyB string, pct float64
 
 // CreateDatabaseIfNotExists creates a schema for an application (#1870); the
 // identifier is validated then quoted, the statement is returned for the SQL log.
-func CreateDatabaseIfNotExists(db *sqlx.DB, schema string) (string, error) {
+func CreateDatabaseIfNotExists(db ContextExecer, schema string) (string, error) {
 	if err := ValidateIdentifier(schema); err != nil {
 		return "", fmt.Errorf("invalid schema name: %w", err)
 	}
 	query := "CREATE DATABASE IF NOT EXISTS " + QuoteMySQLIdentifier(schema)
-	_, err := db.Exec(query)
+	_, err := db.ExecContext(context.Background(), query)
 	return query, err
 }
 

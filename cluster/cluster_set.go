@@ -56,6 +56,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkStagingCreationStates()          // CINF0014 while create-staging/child runs, WARN0239 when it stopped (#1988)
 	cluster.checkEngineSwitchStates()             // CINF0015 while an engine switch runs, WARN0240 when it stopped (#1999)
 	cluster.checkArchiveRemoveOriginalStates()    // WARN0238 while an archived original could not be removed (#1987)
+	cluster.checkBackupVerificationStates()       // CINF0016 while a backup is verified, ERR00117 when a last logical backup failed it (#2023)
 	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
 	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
 	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
@@ -2857,6 +2858,41 @@ func (cluster *Cluster) SetResticPassword(cred string) {
 	new_secret.OldValue = cluster.Conf.GetDecryptedValue("backup-restic-password")
 	cluster.Conf.Secrets.Set("backup-restic-password", new_secret)
 	cluster.MarkSecretVersionStoreDirty()
+}
+
+// SetBackupVerificationCredential sets the verification server's user:password, kept as a
+// secret like the other credentials.
+func (cluster *Cluster) SetBackupVerificationCredential(cred string) {
+	cluster.Conf.BackupVerificationCredential = cred
+	var new_secret config.Secret
+	new_secret.Value = cluster.Conf.BackupVerificationCredential
+	new_secret.OldValue = cluster.Conf.GetDecryptedValue("backup-verification-credential")
+	cluster.Conf.Secrets.Set("backup-verification-credential", new_secret)
+	cluster.MarkSecretVersionStoreDirty()
+}
+
+// SetBackupVerificationTimeout sets backup-verification-timeout: the seconds a test restore
+// may run, 0 for no limit.
+func (cluster *Cluster) SetBackupVerificationTimeout(value string) error {
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	if v < 0 {
+		return fmt.Errorf("backup-verification-timeout must be 0 or more seconds, got %d", v)
+	}
+	cluster.Conf.BackupVerificationTimeout = v
+	return nil
+}
+
+// SetBackupVerificationLevel sets backup-verification-level: integrity or restore.
+func (cluster *Cluster) SetBackupVerificationLevel(level string) error {
+	switch level {
+	case config.ConstBackupVerificationLevelIntegrity, config.ConstBackupVerificationLevelRestore:
+		cluster.Conf.BackupVerificationLevel = level
+		return nil
+	}
+	return fmt.Errorf("backup-verification-level must be %s or %s, got %q", config.ConstBackupVerificationLevelIntegrity, config.ConstBackupVerificationLevelRestore, level)
 }
 
 func (cluster *Cluster) SetStagingServer(srv *ServerMonitor) {
