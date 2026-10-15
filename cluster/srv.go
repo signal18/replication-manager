@@ -173,6 +173,7 @@ type ServerMonitor struct {
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
 	Variables                   *config.StringsMap          `json:"-"`
+	GraphiteHost                published[string]           `json:"graphiteHost"` // this server's <host> in its mysql.<host>.* graphite series (graphiteHostname), for the dashboard graphs (#2063)
 	PrevVariables               *config.StringsMap          `json:"-"`
 	SensitiveVariables          *config.StringsMap          `json:"-"`
 	VariablesMap                *config.VariablesMap        `json:"-"`
@@ -1240,6 +1241,7 @@ func (server *ServerMonitor) Refresh() error {
 			}
 		}
 		server.Variables = config.FromNormalStringMap(server.Variables, vars)
+		server.GraphiteHost.Store(server.graphiteHostname())
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database variables %s %s", server.URL, err)
 		if err != nil {
 			return nil

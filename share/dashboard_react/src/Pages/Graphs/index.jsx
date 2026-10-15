@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react'
+import { useSelector } from 'react-redux'
 import '../../styles/_graphite.scss'
 import styles from '../../styles/Graphs.module.scss';
 import { Flex } from '@chakra-ui/react'
@@ -75,16 +76,37 @@ function Graphs({ selectedCluster, onOpenSettings }) {
   // filters by cluster ALWAYS, with NO dependency on the (possibly not-yet-loaded) server
   // list, so it never falls back to the unscoped whole-fleet '*' that mixes clusters.
   const clusterToken = carbonHost(selectedCluster?.name || '')
+  // The carbon host of each server of THIS cluster, as repman names its series (graphiteHost,
+  // #2063): the cluster-name wildcard below only matches OpenSVC hosts (DB1-<CLUSTER>-SVC-...),
+  // an on-premise host (LXC-MARIADB-01, an IP in db-servers-hosts) never carries the cluster
+  // name, so every mysql.* graph was empty there. Sorted and joined so the target string stays
+  // the same between refreshes (the charts refetch when it changes). Inside maxSeries/sumSeries
+  // a {a,b} list still returns ONE series (checked on the embedded graphite), and aliasByNode
+  // one per server, as with the wildcard.
+  const clusterServers = useSelector((state) =>
+    state?.cluster?.clusterData?.name === selectedCluster?.name ? state?.cluster?.clusterServers : null)
+  // The servers whose token is known: graphiteHost is empty until a server's variables load,
+  // and stays empty for a server down since repman started, which writes no series anyway
+  // (requiring every token would bring back the empty on-prem graphs for one dead server).
+  // A token with a graphite glob character ({ } [ ] * , ?) would break the {a,b} list: the
+  // wildcard then.
+  const tokens = (clusterServers || []).map((srv) => srv?.graphiteHost).filter(Boolean)
+  const tokensUsable = tokens.length > 0 && !tokens.some((h) => /[{}[\]*,?]/.test(h))
+  const hostTokens = tokensUsable ? [...new Set(tokens)].sort().join(',') : ''
+  // until then, the cluster-name wildcard: never the whole fleet (#1756)
+  const mysqlHosts = !hostTokens
+    ? `mysql.*-${clusterToken}-*`
+    : hostTokens.includes(',') ? `mysql.{${hostTokens}}` : `mysql.${hostTokens}`
   // a PostgreSQL cluster: its own workload charts, no InnoDB/mutex/memory sections
   const isPostgres = !!selectedCluster?.isPostgres
-  // mysql.* (DB stats) keeps the old scheme (cluster embedded in the host id -> mysql.*-<CLUSTER>-*).
+  // mysql.* (DB stats) keeps the old scheme, mysql.<host>: scoped to this cluster's hosts (mysqlHosts).
   // dbu.* (DB resource) and apu.* (Compute) use the newer scheme: cluster as its own segment with
   // the RAW cluster name, matching what repman emits (dbu.<cluster>.<host> / apu.<cluster>.<unit>)
   // -- identical string both sides, no Go/JS sanitiser.
   const scope = (s) =>
     typeof s === 'string' && clusterToken
       ? s
-          .replaceAll('mysql.*', `mysql.*-${clusterToken}-*`)
+          .replaceAll('mysql.*', mysqlHosts)
           .replaceAll('dbu.*', `dbu.${selectedCluster?.name}.*`)
           .replaceAll('apu.*', `apu.${selectedCluster?.name}.*`)
           // bku.<cluster>.<series>: no per-unit segment (the BKU is per cluster), so the wildcard

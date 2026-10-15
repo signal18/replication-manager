@@ -661,12 +661,6 @@ func windowExtremum(vals []float64, absent []bool, step int32, window time.Durat
 	return ext, true
 }
 
-// graphiteHostToken is this server's token in the mysql.<host>.* graphite series (same
-// replacer as srv_snd.go's emission).
-func (server *ServerMonitor) graphiteHostToken() string {
-	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
-	return replacer.Replace(server.Variables.Get("HOSTNAME"))
-}
 
 // canScaleSustained is the shared SPEED gate for the scale-due decisions: given the instant
 // over/under axes, the client-set speed, and the per-node reference (config or plan), it returns
@@ -686,7 +680,7 @@ func (server *ServerMonitor) canScaleSustained(up bool, instant []string, speedS
 	}
 	overThrFactor := 1 - clampPct(cluster.Conf.ProvDBCapSafetyPct)/100.0
 	underThrFactor := clampPct(cluster.Conf.ProvDBCapShrinkPct) / 100.0
-	host := server.graphiteHostToken()
+	host := server.graphiteHostname()
 	until := int32(time.Now().Unix())
 	from := until - int32(d.Seconds())
 	var due []string
