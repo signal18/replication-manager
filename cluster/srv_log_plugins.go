@@ -25,8 +25,9 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
-// graphiteHostname returns the metric-safe hostname for the server,
-// matching the format used in srv_snd.go.
+// graphiteHostname returns the metric-safe hostname for the server: the <host> of its
+// mysql.<host>.* graphite series (srv_snd.go), published to the dashboard as
+// graphiteHost (#2063). The only place it is computed.
 func (server *ServerMonitor) graphiteHostname() string {
 	if server.Variables == nil {
 		return ""
