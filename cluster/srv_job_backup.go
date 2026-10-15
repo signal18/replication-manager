@@ -1588,11 +1588,12 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.C
 }
 
 func findExistingBackupPath(server *ServerMonitor, candidates []string) (string, bool) {
+	discovered := server.ClusterGroup.discoveredBackupPaths()
 	for _, name := range candidates {
 		path := server.GetMyBackupDirectory() + name
 		// a backup found in the folder without metadata is never restored automatically:
 		// its time may be a copy's (backup_discovery.go); it is reseeded on request only
-		if server.ClusterGroup.isDiscoveredBackupPath(path) {
+		if discovered[filepath.Clean(path)] {
 			continue
 		}
 		if _, err := os.Stat(path); err == nil {

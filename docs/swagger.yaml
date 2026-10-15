@@ -13914,7 +13914,7 @@ paths:
   /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID}:
     post:
       description: |-
-        Reseeds the server from the logical backup backupID (mysqldump, splitdump or mydumper), a discovered one included: its artifact is restored and replication restarts from the position it holds. Refused for a backup not completed, kept only in its archive, missing, or for the primary.
+        Reseeds the server from the logical backup backupID (mysqldump, splitdump or mydumper), a discovered one included: its artifact is restored and replication restarts from the position it holds. Refused for a backup not completed, without a replication position, kept only in its archive, missing, or for the primary.
         Required grant: db-restore
       parameters:
       - default: Bearer <Add access token here>
@@ -13947,8 +13947,8 @@ paths:
             additionalProperties: true
             type: object
         "400":
-          description: Backup not usable (not completed, archived only, missing, not
-            logical) or the server is the primary
+          description: Backup not usable (not completed, no replication position,
+            archived only, missing, not logical) or the server is the primary
           schema:
             type: string
         "403":
@@ -13957,6 +13957,10 @@ paths:
             type: string
         "404":
           description: Backup not found
+          schema:
+            type: string
+        "409":
+          description: A backup of the cluster is running
           schema:
             type: string
         "500":

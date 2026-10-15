@@ -233,6 +233,58 @@ func TestReseedFromBackupIDRefusals(t *testing.T) {
 	}
 }
 
+// A completed backup without a position is listed with a note and refused by a reseed: the
+// replica would start replicating at the primary's current position, missing what was
+// written since the dump. A mydumper folder's position is read from its metadata.
+func TestDiscoverNoReplicationPosition(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	writeDiscoverySplitdump(t, filepath.Join(dir, "split-nopos"), true)
+	os.WriteFile(filepath.Join(dir, "split-nopos", "metadata"), []byte("[source]\nFile = \nPosition = 0\nExecuted_Gtid_Set = \n"), 0644)
+	writeDiscoveryGzip(t, filepath.Join(dir, "nopos.sql.gz"), "-- MariaDB dump 10.19\nCREATE TABLE `t` (`id` int);\n"+discoveryDumpFooter)
+	os.MkdirAll(filepath.Join(dir, "mydumper-copy"), 0755)
+	os.WriteFile(filepath.Join(dir, "mydumper-copy", "metadata"), []byte("# Started dump at: 2026-10-15 14:13:37\n[source]\nexecuted_gtid_set = \"0-90125166-679,97-90125166-2\"\nSOURCE_LOG_FILE = \"binlog.000022\"\nSOURCE_LOG_POS = 355\n# Finished dump at: 2026-10-15 14:13:37\n"), 0644)
+	found, err := server.DiscoverBackups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]*backupmgr.BackupMetadata{}
+	for _, m := range found {
+		byName[filepath.Base(m.Dest)] = m
+	}
+	for _, name := range []string{"split-nopos", "nopos.sql.gz"} {
+		m := byName[name]
+		if m == nil || !m.Completed || !strings.Contains(m.DiscoveryNote, "no replication position") {
+			t.Fatalf("%s: %+v", name, m)
+		}
+		if err := c.ReseedFromBackupID(server, m.Id); err == nil || !strings.Contains(err.Error(), "no replication position") {
+			t.Fatalf("%s reseed: %v", name, err)
+		}
+	}
+	m := byName["mydumper-copy"]
+	if m == nil || !m.Completed || m.DiscoveryNote != "" || m.BinLogFileName != "binlog.000022" || m.BinLogFilePos != 355 || m.BinLogGtid != "0-90125166-679,97-90125166-2" {
+		t.Fatalf("mydumper: %+v", m)
+	}
+}
+
+// Both forms of mydumper's metadata: since 0.14.1 (MySQL's "File =" and the SOURCE_LOG_*
+// lines), and before (an indented "Log:" / "Pos:" / "GTID:").
+func TestParseDiscoveredMyDumperPosition(t *testing.T) {
+	for _, tc := range []struct {
+		name, data, file, gtid string
+		pos                    uint64
+	}{
+		{"source lines", "[source]\nexecuted_gtid_set = \"a-b:1-5\"\nSOURCE_LOG_FILE = \"binlog.000033\"\nSOURCE_LOG_POS = 310\n", "binlog.000033", "a-b:1-5", 310},
+		{"File lines", "[master]\nFile = mysql-bin.000004\nPosition = 120\nExecuted_Gtid_Set = a-b:1-3\n", "mysql-bin.000004", "a-b:1-3", 120},
+		{"before 0.14.1", "Started dump at: 2020-01-01 00:00:00\nSHOW MASTER STATUS:\n\tLog: mariadb-bin.000002\n\tPos: 42\n\tGTID:0-1-9\n\nFinished dump at: 2020-01-01 00:00:01\n", "mariadb-bin.000002", "0-1-9", 42},
+		{"no position", "Started dump at: 2020-01-01\nFinished dump at: 2020-01-01\n", "", "", 0},
+	} {
+		file, pos, gtid := parseDiscoveredMyDumperPosition([]byte(tc.data))
+		if file != tc.file || pos != tc.pos || gtid != tc.gtid {
+			t.Errorf("%s: %q %d %q", tc.name, file, pos, gtid)
+		}
+	}
+}
+
 func keys(m map[string]*backupmgr.BackupMetadata) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
@@ -445,5 +497,41 @@ func TestDiscoverRefusedWhileBackupRuns(t *testing.T) {
 	c.SetInLogicalBackupState(false)
 	if found, err := server.DiscoverBackups(); err != nil || len(found) != 1 {
 		t.Fatalf("after the backup: %d, %v", len(found), err)
+	}
+}
+
+// A reseed from a chosen backup is refused while a backup of the cluster runs: a scheduled
+// backup may be rewriting the artifact it would restore.
+func TestReseedFromBackupIDRefusedDuringBackup(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	writeDiscoveryGzip(t, filepath.Join(dir, "copy.sql.gz"), discoveryDump+discoveryDumpFooter)
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 {
+		t.Fatalf("found %d, err %v", len(found), err)
+	}
+	c.SetInLogicalBackupState(true)
+	defer c.SetInLogicalBackupState(false)
+	if err := c.ReseedFromBackupID(server, found[0].Id); !errors.Is(err, ErrBackupInProgress) {
+		t.Fatalf("want ErrBackupInProgress, got %v", err)
+	}
+}
+
+// While a backup runs, the discovery is refused but the ad-hoc metadata files are still read:
+// a server monitor created then (a config reload) lists its ad-hoc and discovered backups.
+func TestDiscoverLoadsAdhocMetadataDuringBackup(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	writeDiscoveryGzip(t, filepath.Join(dir, "copy.sql.gz"), discoveryDump+discoveryDumpFooter)
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 {
+		t.Fatalf("found %d, err %v", len(found), err)
+	}
+	c.BackupMetaMap = backupmgr.NewBackupMetaMap() // a new monitor
+	c.SetInLogicalBackupState(true)
+	defer c.SetInLogicalBackupState(false)
+	if _, err := server.DiscoverBackups(); !errors.Is(err, ErrBackupDiscoveryInBackup) {
+		t.Fatalf("want ErrBackupDiscoveryInBackup, got %v", err)
+	}
+	if m := c.BackupMetaMap.Get(found[0].Id); m == nil || !m.Discovered {
+		t.Fatalf("the discovered backup was not loaded during the backup: %+v", m)
 	}
 }

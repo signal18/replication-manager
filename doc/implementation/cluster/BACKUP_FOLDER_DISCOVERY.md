@@ -24,13 +24,17 @@ handler answers 202; refused with `ErrBackupDiscoveryInBackup` while
 a scan is never run in a request or the monitor. `Cluster.backupDiscoveries`
 (server URL) lets one scan run per server (`errBackupDiscoveryRunning`): a
 config reload recreating the server, or an API scan during the startup one,
-does not run a second. Every scan is refused while `IsInBackup` (the startup one too: a backup
+does not run a second. The ad-hoc meta files are read first, even while a backup runs (a live entry
+is kept): a server monitor created then (a config reload) lists its ad-hoc and
+discovered backups at once. Then every scan is refused while `IsInBackup` (the startup one too, logged at INFO: a backup
 writing between long pauses, mydumper on a large table, would be read half
 written; the settle window and the refresh pass are the second line). A scan
 reads at most `backupDiscoveryMaxPerRun` (8) artifacts, new or inspected again
 (one budget): the rest is logged and left to the next scan. A config reload
 re-reads only artifacts still unregistered: a registered one has its meta file
-and is known.
+and is known. An artifact that can not be read (a foreign key, damage) is read
+once: registered as not completed, it is known from then on, and read again
+only if its size or file count changes.
 
 1. `os.ReadDir` of `GetMyBackupDirectory`; a missing folder is no error.
 2. `LoadAdhocBackupMetadata`: the ad-hoc and the previously discovered backups
@@ -105,7 +109,19 @@ position fields, the times, `Completed` and `DiscoveryNote`:
   `inspectDiscoveredFolder` runs the folder's checks through read/exists
   functions, on a plain folder or on that. Base names: the folders are flat, a
   nested member would share one, harmless for the checks.
-- mydumper folder: `Finished dump at` in its `metadata`.
+- mydumper folder: `Finished dump at` in its `metadata`, then the position
+  (`parseDiscoveredMyDumperPosition`): both forms the reseed reads
+  (`JobParseMyDumperMetaNew` / `Old`), `File =` / `SOURCE_LOG_FILE =` and their
+  position and GTID lines, or the indented `Log:` / `Pos:` / `GTID:` of
+  mydumper before 0.14.1; the first of each. Read from the content, not by the
+  installed mydumper's version: a copied folder may be from another.
+
+A completed backup with neither a binary log file nor a GTID set
+(`hasReplicationPosition`) gets the `DiscoveryNote` "no replication position"
+(after a note it already has) and stays completed: listed, refused by
+`ReseedFromBackupID`. Without one, the reseed's last step
+(`pointLogicalReseedReplica`, `pointSlaveToMasterAutoDetect`) would point the
+replica at the primary's current position: a silent divergence.
 
 A discovered dump is read whole once (in the server's start goroutine, or the
 API request); its meta file then makes it known.
@@ -121,7 +137,7 @@ through `findExistingBackupPath`, then `<backup dir>/<fixed name>`) skips them:
 one before their existence check, the backup cookie kept (the backup exists,
 it is not for automatic use). `Cluster.ReseedFromBackupID(server, id)` reseeds on request:
 logical (`mysqldump`, `mydumper`) only (`ErrBackupDiscoveryNotLogical`),
-`Completed`, not `OriginalRemoved`, artifact present (`backupArtifactExists`),
+`Completed`, a position (`hasReplicationPosition`), not `OriginalRemoved`, artifact present (`backupArtifactExists`),
 target not the primary; then `JobReseedLogicalBackupFromPathWithOptions` (the
 restic restore's path). The position comes from the artifact during the
 restore, not from the meta file.
@@ -137,7 +153,10 @@ restore, not from the meta file.
   (`handlerMuxServerReseedFromBackup`): ACL rule `/actions/reseed/`
   (`db-restore`), and the handler requires `db-restore` too (the rule matcher
   falls back to a shorter rule when the specific one denies); 404 for an
-  unknown backup (`ErrBackupNotFound`), 400 for the other refusals.
+  unknown backup (`ErrBackupNotFound`), 409 while a backup of the cluster runs
+  (`ErrBackupInProgress`: a scheduled backup may be rewriting the artifact; a
+  second reseed of the server is refused by `TrySetInReseedBackup`), 400 for
+  the other refusals.
 
 ## GUI
 
@@ -168,7 +187,8 @@ run and restart register nothing new), a foreign encrypted backup, the
 reseed refusals, encrypted archives, the fallback skip, live entries kept, a
 copy in progress (left, then inspected again under its id), a removed artifact
 unregistered, one scan per server, the per-scan cap, the refusal while a
-backup runs. `cluster_acl_test.go`: the reseed route needs
+backup runs, a backup without a position (noted, refused; a mydumper folder's
+position read), both mydumper metadata forms. `cluster_acl_test.go`: the reseed route needs
 `db-restore`.
 
 Regtest (T13, real servers): `testBackupDiscovery` (`regtest/test_backup_discovery.go`,

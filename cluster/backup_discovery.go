@@ -74,6 +74,13 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return nil, nil
 	}
+	dir := server.GetMyBackupDirectory()
+	// ad-hoc backups (and the backups discovered before) have one metadata file each: read
+	// even while a backup runs (a live entry is kept), so a server monitor created then (a
+	// config reload) lists them at once
+	if _, err := server.LoadAdhocBackupMetadata(); err != nil && !os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: ad-hoc metadata not all read: %s", server.URL, err)
+	}
 	// a backup running writes its artifact: not discovered half written (the startup
 	// discovery too, not only the API's)
 	if cluster.IsInBackup() {
@@ -83,17 +90,12 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 		return nil, errBackupDiscoveryRunning
 	}
 	defer cluster.backupDiscoveries.Delete(server.URL)
-	dir := server.GetMyBackupDirectory()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("read backup folder %s: %w", dir, err)
-	}
-	// ad-hoc backups (and the backups discovered before) have one metadata file each
-	if _, err := server.LoadAdhocBackupMetadata(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: ad-hoc metadata not all read: %s", server.URL, err)
 	}
 	var found []*backupmgr.BackupMetadata
 	budget := backupDiscoveryMaxPerRun
@@ -323,9 +325,10 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 		return nil, err
 	}
 	if id == 0 {
-		// the id of an ad-hoc backup, a unix time: the artifact's, unique in the cluster
-		// (an id taken is bumped: ids follow the folder's sorted order, and the metadata
-		// file keeps the id once written)
+		// the id of an ad-hoc backup, a unix time: the artifact's mtime, bumped while taken
+		// (the map or a meta file). Two artifacts with the same mtime get their ids in the
+		// folder's sorted order (os.ReadDir), so which one gets the bump can change after a
+		// deletion; once its meta file is written, a backup keeps its id for good.
 		id = info.ModTime().Unix()
 		for cluster.BackupMetaMap.Get(id) != nil || fileExists(server.buildBackupMetaFileName(tool, id, backupmgr.BackupLineAdhoc)) {
 			id++
@@ -407,6 +410,21 @@ func (server *ServerMonitor) inspectDiscoveredBackup(meta *backupmgr.BackupMetad
 	default:
 		server.inspectDiscoveredDump(meta, fail)
 	}
+	// without a position a reseed would start replication at the primary's current position,
+	// and the replica would miss what was written since the dump: listed, refused by a reseed
+	if meta.Completed && !hasReplicationPosition(meta) {
+		note := "no replication position: a replica can not be reseeded from it"
+		if meta.DiscoveryNote != "" {
+			note = meta.DiscoveryNote + "; " + note
+		}
+		meta.DiscoveryNote = note
+	}
+}
+
+// hasReplicationPosition reports whether meta holds the position of its dump: a binary log
+// file or a GTID set.
+func hasReplicationPosition(meta *backupmgr.BackupMetadata) bool {
+	return strings.TrimSpace(meta.BinLogFileName) != "" || strings.TrimSpace(meta.BinLogGtid) != ""
 }
 
 // inspectDiscoveredFolder checks a splitdump or mydumper folder through read (a file's
@@ -420,6 +438,8 @@ func inspectDiscoveredFolder(meta *backupmgr.BackupMetadata, read func(string) (
 			fail("no mydumper metadata: %s", err)
 		} else if !strings.Contains(string(data), "Finished dump at") {
 			fail("mydumper metadata has no \"Finished dump at\" line: the dump did not finish")
+		} else {
+			meta.BinLogFileName, meta.BinLogFilePos, meta.BinLogGtid = parseDiscoveredMyDumperPosition(data)
 		}
 	case meta.SplitDump:
 		if data, err := read("metadata"); err == nil {
@@ -451,6 +471,41 @@ func inspectDiscoveredFolder(meta *backupmgr.BackupMetadata, read func(string) (
 			}
 		}
 	}
+}
+
+// Both forms of mydumper's metadata, as the reseed reads them (JobParseMyDumperMetaNew,
+// JobParseMyDumperMetaOld): "File = " / "SOURCE_LOG_FILE = " and their position and GTID
+// lines since 0.14.1, an indented "Log: " / "Pos: " / "GTID:" before.
+var (
+	reMyDumperFile = regexp.MustCompile(`(?i)^(?:File|SOURCE_LOG_FILE)\s*=\s*"?(.+?)"?$`)
+	reMyDumperPos  = regexp.MustCompile(`(?i)^(?:Position|SOURCE_LOG_POS)\s*=\s*(\d+)`)
+	reMyDumperGtid = regexp.MustCompile(`(?i)^executed_gtid_set\s*=\s*"?(.+?)"?$`)
+	reMyDumperOld  = regexp.MustCompile(`^(Log|Pos|GTID):\s*(.*)$`)
+)
+
+// parseDiscoveredMyDumperPosition returns the first binary log file, position and GTID set
+// mydumper's metadata holds.
+func parseDiscoveredMyDumperPosition(data []byte) (file string, pos uint64, gtid string) {
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if m := reMyDumperOld.FindStringSubmatch(line); m != nil {
+			switch {
+			case m[1] == "Log" && file == "":
+				file = m[2]
+			case m[1] == "Pos" && pos == 0:
+				pos, _ = strconv.ParseUint(m[2], 10, 64)
+			case m[1] == "GTID" && gtid == "":
+				gtid = m[2]
+			}
+		} else if m := reMyDumperFile.FindStringSubmatch(line); m != nil && file == "" {
+			file = m[1]
+		} else if m := reMyDumperPos.FindStringSubmatch(line); m != nil && pos == 0 {
+			pos, _ = strconv.ParseUint(m[1], 10, 64)
+		} else if m := reMyDumperGtid.FindStringSubmatch(line); m != nil && gtid == "" {
+			gtid = m[1]
+		}
+	}
+	return file, pos, gtid
 }
 
 // discoveryArchiveSmallFile bounds the manifest and metadata files read from an archive.
@@ -663,6 +718,9 @@ func (cluster *Cluster) ReseedFromBackupID(server *ServerMonitor, id int64) erro
 		}
 		return fmt.Errorf("backup %d can not be restored: %s", id, reason)
 	}
+	if !hasReplicationPosition(meta) {
+		return fmt.Errorf("backup %d can not be restored on a replica: it holds no replication position (binary log file or GTID set)", id)
+	}
 	if meta.OriginalRemoved {
 		return fmt.Errorf("backup %d is kept only in its archive: restore it from its snapshot", id)
 	}
@@ -672,22 +730,35 @@ func (cluster *Cluster) ReseedFromBackupID(server *ServerMonitor, id int64) erro
 	if master := cluster.GetMaster(); master != nil && master.URL == server.URL {
 		return fmt.Errorf("%s is the primary: it is not reseeded", server.URL)
 	}
+	// a backup running may rewrite the artifact this reseed restores (a scheduled backup
+	// reuses its file): refused, retried once it ends. A second reseed of the server is
+	// refused by the reseed itself (TrySetInReseedBackup).
+	if cluster.IsInBackup() {
+		return fmt.Errorf("%w: a backup of the cluster is running, reseed %s from backup %d once it ends", ErrBackupInProgress, server.URL, id)
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed of %s from backup %d (%s, %s) requested", server.URL, id, meta.BackupTool, meta.Dest)
 	return server.JobReseedLogicalBackupFromPathWithOptions(nil, meta.BackupTool, meta.Dest, JobReseedLogicalOptions{})
 }
 
-// isDiscoveredBackupPath tells whether path, or its encrypted form, is the artifact of a
-// discovered backup: an automatic restore never takes it (its time may be a copy's).
-func (cluster *Cluster) isDiscoveredBackupPath(path string) bool {
+// discoveredBackupPaths returns the artifacts of the discovered backups, and their encrypted
+// forms: an automatic restore never takes one (its time may be a copy's). Built once per
+// lookup (findExistingBackupPath checks several candidates against it).
+func (cluster *Cluster) discoveredBackupPaths() map[string]bool {
+	discovered := map[string]bool{}
 	if cluster == nil || cluster.BackupMetaMap == nil {
-		return false
+		return discovered
 	}
-	known := map[string]bool{}
 	cluster.BackupMetaMap.Callback(func(_ int64, meta *backupmgr.BackupMetadata) bool {
 		if meta != nil && meta.Discovered {
-			addKnownBackupArtifact(known, meta.Dest)
+			addKnownBackupArtifact(discovered, meta.Dest)
 		}
 		return true
 	})
-	return known[filepath.Clean(path)]
+	return discovered
+}
+
+// isDiscoveredBackupPath tells whether path, or its encrypted form, is the artifact of a
+// discovered backup.
+func (cluster *Cluster) isDiscoveredBackupPath(path string) bool {
+	return cluster.discoveredBackupPaths()[filepath.Clean(path)]
 }

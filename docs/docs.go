@@ -11355,7 +11355,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID}": {
             "post": {
-                "description": "Reseeds the server from the logical backup backupID (mysqldump, splitdump or mydumper), a discovered one included: its artifact is restored and replication restarts from the position it holds. Refused for a backup not completed, kept only in its archive, missing, or for the primary.\nRequired grant: db-restore",
+                "description": "Reseeds the server from the logical backup backupID (mysqldump, splitdump or mydumper), a discovered one included: its artifact is restored and replication restarts from the position it holds. Refused for a backup not completed, without a replication position, kept only in its archive, missing, or for the primary.\nRequired grant: db-restore",
                 "produces": [
                     "application/json"
                 ],
@@ -11403,7 +11403,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Backup not usable (not completed, archived only, missing, not logical) or the server is the primary",
+                        "description": "Backup not usable (not completed, no replication position, archived only, missing, not logical) or the server is the primary",
                         "schema": {
                             "type": "string"
                         }
@@ -11416,6 +11416,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Backup not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A backup of the cluster is running",
                         "schema": {
                             "type": "string"
                         }

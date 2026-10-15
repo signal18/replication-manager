@@ -72,7 +72,12 @@ The backup is read as a restore would read it:
   splitdump's position and manifest, the mydumper's completion. One encrypted
   with another key can not be read: it is registered as not completed.
 - **mydumper folder**: complete when its `metadata` file has mydumper's
-  `Finished dump at` line.
+  `Finished dump at` line; its position comes from that file.
+
+A completed backup without a replication position (no binary log file, no
+GTID set) is listed with the note "no replication position": a replica
+restored from it would start replicating at the primary's current position and
+miss what was written since the dump.
 
 Its time is the dump's own when it records one (mysqldump), else the
 artifact's modification time: the time of the copy, not of the data.
@@ -102,9 +107,9 @@ POST /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{bac
 ```
 
 This works for any logical backup of the list, discovered or not. The API
-answers `404` for an unknown backup, `400` for a backup it can not restore or
-for the primary. The reseed
+answers `404` for an unknown backup, `409` while a backup of the cluster runs
+(retry once it ends), `400` for a backup it can not restore or for the primary. The reseed
 restores the artifact and restarts replication from the position the artifact
 itself holds (the dump header, the splitdump metadata), as any logical reseed
-does. It is refused for a backup not completed, kept only in its archive, or
-missing, and for the primary.
+does. It is refused for a backup not completed, without a replication position,
+kept only in its archive, or missing, and for the primary.

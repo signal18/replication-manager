@@ -66,7 +66,11 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 	}
 	// the backups of the folder no metadata describes, and the ad-hoc ones (backup_discovery.go)
 	if _, err := server.DiscoverBackups(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: %s", server.URL, err)
+		level := config.LvlWarn
+		if errors.Is(err, ErrBackupDiscoveryInBackup) || errors.Is(err, errBackupDiscoveryRunning) {
+			level = config.LvlInfo // expected: the next discovery runs it
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, level, "Backup discovery on %s: %s", server.URL, err)
 	}
 }
 

@@ -1429,7 +1429,7 @@ func (repman *ReplicationManager) handlerMuxServerUpgradeSystemTables(w http.Res
 
 // handlerMuxServerReseedFromBackup reseeds a server from a chosen logical backup.
 // @Summary Reseed a server from a chosen backup
-// @Description Reseeds the server from the logical backup backupID (mysqldump, splitdump or mydumper), a discovered one included: its artifact is restored and replication restarts from the position it holds. Refused for a backup not completed, kept only in its archive, missing, or for the primary.
+// @Description Reseeds the server from the logical backup backupID (mysqldump, splitdump or mydumper), a discovered one included: its artifact is restored and replication restarts from the position it holds. Refused for a backup not completed, without a replication position, kept only in its archive, missing, or for the primary.
 // @Description Required grant: db-restore
 // @Tags DatabaseActions
 // @Produce json
@@ -1438,9 +1438,10 @@ func (repman *ReplicationManager) handlerMuxServerUpgradeSystemTables(w http.Res
 // @Param serverName path string true "Server Name"
 // @Param backupID path string true "Backup ID"
 // @Success 200 {object} map[string]interface{} "Reseed started"
-// @Failure 400 {string} string "Backup not usable (not completed, archived only, missing, not logical) or the server is the primary"
+// @Failure 400 {string} string "Backup not usable (not completed, no replication position, archived only, missing, not logical) or the server is the primary"
 // @Failure 403 {string} string "No valid ACL, or no db-restore grant"
 // @Failure 404 {string} string "Backup not found"
+// @Failure 409 {string} string "A backup of the cluster is running"
 // @Failure 500 {string} string "Cluster or server not found, or reseed not started"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID} [post]
 func (repman *ReplicationManager) handlerMuxServerReseedFromBackup(w http.ResponseWriter, r *http.Request) {
@@ -1473,8 +1474,11 @@ func (repman *ReplicationManager) handlerMuxServerReseedFromBackup(w http.Respon
 	if err := mycluster.ReseedFromBackupID(node, backupID); err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed of %s from backup %d not started: %s", node.URL, backupID, err)
 		status := http.StatusBadRequest
-		if errors.Is(err, cluster.ErrBackupNotFound) {
+		switch {
+		case errors.Is(err, cluster.ErrBackupNotFound):
 			status = http.StatusNotFound
+		case errors.Is(err, cluster.ErrBackupInProgress):
+			status = http.StatusConflict
 		}
 		http.Error(w, err.Error(), status)
 		return
