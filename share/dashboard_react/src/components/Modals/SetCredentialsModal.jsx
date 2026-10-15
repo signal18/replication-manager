@@ -77,6 +77,15 @@ function SetCredentialsModal({ clusterName, isOpen, closeModal, type }) {
           })
         )
         break
+      case 'backup-verification-credential':
+        dispatch(
+          setCredentials({
+            clusterName,
+            credentialType: 'backup-verification-credential',
+            credential: btoa(`${userName}:${password}`)
+          })
+        )
+        break
       case 'cloud18-sponsor-user-credentials':
         dispatch(
           setCredentials({
@@ -131,6 +140,8 @@ function SetCredentialsModal({ clusterName, isOpen, closeModal, type }) {
         return 'Set DBA Credentials'
       case 'cloud18-sponsor-user-credentials':
         return 'Set Sponsor DB Credentials'
+      case 'backup-verification-credential':
+        return 'Set Backup Verification Credentials'
       case 'proxysql-servers-credential':
         return 'Set ProxySQL Credentials'
       case 'maxscale-servers-credential':

@@ -1,4 +1,13 @@
 definitions:
+  backupmgr.ArtifactFingerprint:
+    properties:
+      files:
+        type: integer
+      modTime:
+        type: string
+      size:
+        type: integer
+    type: object
   backupmgr.BackupMetadata:
     properties:
       backupLine:
@@ -43,6 +52,9 @@ definitions:
         type: integer
       endTime:
         type: string
+      execRemote:
+        description: the backup tool ran on the DB node (dbjobs), not next to replication-manager
+        type: boolean
       fileCount:
         type: integer
       id:
@@ -85,6 +97,11 @@ definitions:
         description: bytes received from the backup stream, before compression/encryption
           (physical); the next run's progress denominator
         type: integer
+      verification:
+        allOf:
+        - $ref: '#/definitions/backupmgr.BackupVerification'
+        description: Verification is the result of the last verification of this backup
+          (#2023).
     type: object
   backupmgr.BackupStat:
     properties:
@@ -94,6 +111,44 @@ definitions:
         type: integer
       total_size:
         type: integer
+    type: object
+  backupmgr.BackupVerification:
+    properties:
+      artifact:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ArtifactFingerprint'
+        description: |-
+          Artifact is the backup's file as a passed verification read it, unchanged from its
+          start to its end: a restore of the same file skips its own read of it.
+      endTime:
+        type: string
+      error:
+        type: string
+      host:
+        description: Host is the verification server of a restore level, as the run
+          read it
+        type: string
+      level:
+        type: string
+      notes:
+        description: |-
+          Notes are the checks that could not apply to this backup, e.g. no footer to check
+          in a dump written without comments.
+        items:
+          type: string
+        type: array
+      startTime:
+        type: string
+      status:
+        type: string
+      warnings:
+        description: |-
+          Warnings are the kinds of objects the backup's source server has and the backup
+          lacks (restore level), e.g. events left out of a dump: the backup restores, without
+          them.
+        items:
+          type: string
+        type: array
     type: object
   backupmgr.ManualCheckResult:
     properties:
@@ -734,6 +789,25 @@ definitions:
         type: string
       weight:
         type: string
+    type: object
+  cluster.BackupVerificationServerState:
+    properties:
+      empty:
+        description: 'no schema of its own: marked on its first test restore'
+        type: boolean
+      host:
+        type: string
+      marked:
+        type: boolean
+      replica:
+        description: 'a replica of the cluster: reseeded, never marked'
+        type: boolean
+      schemas:
+        description: its schemas, the system ones and an empty replication_manager_schema
+          left out
+        items:
+          type: string
+        type: array
     type: object
   cluster.BillingPrices:
     properties:
@@ -1880,6 +1954,12 @@ definitions:
         type: integer
       backupLogicalPostScript:
         type: string
+      backupLogicalRemoteArmTimeout:
+        type: integer
+      backupLogicalRemotePickupTimeout:
+        type: integer
+      backupLogicalRemoteReportTimeout:
+        type: integer
       backupLogicalType:
         type: string
       backupMyDumperOptions:
@@ -2060,6 +2140,14 @@ definitions:
         type: string
       backupStreamingRegion:
         type: string
+      backupVerification:
+        type: boolean
+      backupVerificationHost:
+        type: string
+      backupVerificationLevel:
+        type: string
+      backupVerificationTimeout:
+        type: integer
       backupWriteStallTimeout:
         type: integer
       binlogCopyMode:
@@ -8743,6 +8831,112 @@ paths:
       summary: Delete a backup by ID
       tags:
       - ClusterBackups
+  /api/clusters/{clusterName}/backups/{backupID}/verify:
+    post:
+      description: |-
+        Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. Without a level, backup-verification-level applies. The result is in the backup's verification field.
+        Required grant: db-backup; the restore level also db-restore
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Backup verification started
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request or backup not verifiable
+          schema:
+            type: string
+        "403":
+          description: No valid ACL, or the restore level without db-restore
+          schema:
+            type: string
+        "409":
+          description: Backup or verification running
+          schema:
+            type: string
+        "500":
+          description: Verification not started
+          schema:
+            type: string
+      summary: Verify a backup by ID
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/{backupID}/verify/{level}:
+    post:
+      description: |-
+        Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. The result is in the backup's verification field.
+        Required grant: db-backup; the restore level also db-restore
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: string
+      - description: Verification level
+        enum:
+        - integrity
+        - restore
+        in: path
+        name: level
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Backup verification started
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request or backup not verifiable
+          schema:
+            type: string
+        "403":
+          description: No valid ACL, or the restore level without db-restore
+          schema:
+            type: string
+        "409":
+          description: Backup or verification running
+          schema:
+            type: string
+        "500":
+          description: Verification not started
+          schema:
+            type: string
+      summary: Verify a backup by ID and level
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/backups/reconcile:
     post:
       description: |-
@@ -8817,6 +9011,76 @@ paths:
           schema:
             type: string
       summary: Retrieve backup stats for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/verification-server:
+    get:
+      description: |-
+        Connects to backup-verification-host and returns whether it is a replica of the cluster, whether it is marked as a verification server (replication_manager_schema.backup_verification_server), and the schemas it holds. An unmarked server without schemas is marked on its first test restore.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verification server state
+          schema:
+            $ref: '#/definitions/cluster.BackupVerificationServerState'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Verification server not reachable
+          schema:
+            type: string
+      summary: Backup verification server state
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/verification-server/mark:
+    post:
+      description: |-
+        Marks the external backup-verification-host as a verification server (replication_manager_schema.backup_verification_server): a test restore then drops there the schemas the backup holds. A replica of the cluster is not marked.
+        Required grant: db-backup and db-restore
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verification server state after the mark
+          schema:
+            $ref: '#/definitions/cluster.BackupVerificationServerState'
+        "403":
+          description: No valid ACL, or no db-restore grant
+          schema:
+            type: string
+        "500":
+          description: Mark failed
+          schema:
+            type: string
+      summary: Mark the backup verification server
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/certificates:

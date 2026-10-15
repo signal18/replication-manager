@@ -17,6 +17,9 @@ export const clusterService = {
   getBackups,
   getBackupStats,
   deleteBackup,
+  verifyBackup,
+  getBackupVerificationServer,
+  markBackupVerificationServer,
   getJobs,
   getShardSchema,
   getSchemaEvents,
@@ -301,6 +304,18 @@ function getBackupStats(clusterName, baseURL) {
 
 function deleteBackup(clusterName, backupId, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/backups/${backupId}/delete`)
+}
+
+function verifyBackup(clusterName, backupId, level, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/backups/${backupId}/verify/${level}`)
+}
+
+function getBackupVerificationServer(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/backups/verification-server`)
+}
+
+function markBackupVerificationServer(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/backups/verification-server/mark`)
 }
 
 function getResticSnapshot(clusterName, baseURL, filter) {
