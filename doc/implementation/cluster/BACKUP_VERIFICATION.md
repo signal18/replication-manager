@@ -46,11 +46,26 @@ tools, an incomplete backup, or a backup only in its archive
   push, so `backup-archive-remove-original` can not remove the original first.
 - `verifyBackup` records `BackupVerification{Status: running}`, runs the levels,
   records the result: `meta.Verification` under `backupMetaMutex`, and the meta
-  file (`writeBackupMetaFileLocked`).
+  file (`writeBackupMetaFileLocked`). The levels parse untrusted content: a panic
+  there is recovered in `verifyBackup` and recorded as a failed verification
+  (its stack logged, 4 KiB at most), never reaching the monitor or the backup
+  job; a replica's own defers have run by then (it stays in maintenance).
+
+Verification server API: `GET /api/clusters/{clusterName}/backups/verification-server`
+(`GetBackupVerificationServerState`: replica, marked, empty, schemas) and
+`POST .../backups/verification-server/mark` (`MarkBackupVerificationServer`,
+the user's name recorded in the mark; a replica of the cluster is refused).
+ACL rule `/backups/` (`db-backup`); the mark also needs `db-restore`, checked
+in the handler: it lets a test restore drop schemas there. The dashboard row
+shows the state and the **Mark as verification server** button, after a
+confirmation listing the schemas.
 
 API: `POST /api/clusters/{clusterName}/backups/{backupID}/verify[/{level}]`
 (`handlerMuxClusterBackupVerifyDefault` / `handlerMuxClusterBackupVerifyLevel`,
-POST only); ACL rule `/backups/` (`db-backup`). 409 for `ErrBackupInProgress` /
+POST only: two handlers so that Swagger lists `{level}` only on its route);
+ACL rule `/backups/` (`db-backup`); the restore level also needs
+`db-restore` (`GrantDBRestore`, the reseed's), checked in the handler once
+the level is known (the URL can not tell it apart). No wildcard CORS header. 409 for `ErrBackupInProgress` /
 `ErrBackupVerificationRunning`, 400 for an
 unknown id, an unknown level or a backup not verifiable.
 
@@ -103,9 +118,27 @@ reseed preparation, which can run inside a request or a monitoring goroutine.
 
 `verifyLogicalBackupRestore`:
 
-- `openBackupVerificationServer`: `backup-verification-host` must be set. A
-  server outside the cluster is connected with `dbhelper.MySQLConnect` and
-  `backup-verification-credential`, its version read, PostgreSQL refused. A
+- `verifyLogicalBackupRestore` reads `backup-verification-host` and its
+  credential once and passes them down: a setting changed during a run never
+  splits it across servers.
+- `openBackupVerificationServer`: the host must be set. A server outside the
+  cluster is connected with `dbhelper.MySQLConnect` and the credential, its
+  version read, PostgreSQL refused; then `ensureVerificationMark` requires the
+  mark there: the table `replication_manager_schema.backup_verification_server`
+  (`dbhelper.HasVerificationMark`), the statement that the server is
+  disposable, which a VIP, a proxy or another cluster's server never carries.
+  An unmarked server is marked (`dbhelper.MarkVerificationServer`, a row per
+  cluster: who marked it, when) only when `backupVerificationServerState` finds
+  it empty: no schema besides the system ones (`dbhelper.ListDatabases`), and a
+  `replication_manager_schema` without objects other than the mark
+  (`dbhelper.GetSchemaObjectNames`; a server a replication-manager monitors has
+  its tables there). Nothing can be lost on it. Any other is refused, its
+  schemas named, until marked through the API (below). The mark lives in
+  `replication_manager_schema`, which is never loaded there, so a test restore
+  never drops it. On it, `replication_manager_schema`
+  (`backupVerificationSkippedSchemas`) is not loaded: `single` skips its
+  `CREATE DATABASE`, its `USE` and what follows until another schema's
+  `CREATE DATABASE` or `USE`, batches included; a splitdump skips its files. A
   server of the cluster, recognized by name or by resolved address (an alias,
   an IP address in any form, a CNAME: `sameServerAddress`, each resolution
   bounded to 3 s), goes through `verificationReplica`
@@ -142,8 +175,12 @@ reseed preparation, which can run inside a request or a monitoring goroutine.
   the versioned comments opened (`normalizeDumpStatement`): `USE`, `CREATE
   DATABASE`, tables, views, procedures, functions, triggers, events, and the
   rows of each `INSERT`/`REPLACE` (`countInsertRows`: parentheses opened at
-  depth 0 after `VALUES`, outside quoted strings). A view's placeholder table
-  (MariaDB before 10.6) is not expected as a table.
+  depth 0 after `VALUES`, found anywhere in the statement (`valuesKeyword`: a
+  complete insert's column list can pass 4 KiB), outside quoted strings; an
+  `INSERT ... SELECT` counts none, a dump written with `NO_BACKSLASH_ESCAPES`
+  quoting can miscount: documented limits, outside what repman's dumps
+  write). A view's placeholder table (MariaDB before 10.6) is not expected as
+  a table.
 - `compare`: per application schema, every object of the inventory must exist
   (`dbhelper.GetSchemaObjectNames`) and every table must hold its rows
   (`dbhelper.CountTableRows`, an exact `COUNT(*)`); the first 10 differences

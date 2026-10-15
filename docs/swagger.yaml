@@ -771,6 +771,25 @@ definitions:
       weight:
         type: string
     type: object
+  cluster.BackupVerificationServerState:
+    properties:
+      empty:
+        description: 'no schema of its own: marked on its first test restore'
+        type: boolean
+      host:
+        type: string
+      marked:
+        type: boolean
+      replica:
+        description: 'a replica of the cluster: reseeded, never marked'
+        type: boolean
+      schemas:
+        description: its schemas, the system ones and an empty replication_manager_schema
+          left out
+        items:
+          type: string
+        type: array
+    type: object
   cluster.BillingPrices:
     properties:
       apu:
@@ -8795,7 +8814,7 @@ paths:
     post:
       description: |-
         Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. Without a level, backup-verification-level applies. The result is in the backup's verification field.
-        Required grant: db-backup
+        Required grant: db-backup; the restore level also db-restore
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -8826,7 +8845,7 @@ paths:
           schema:
             type: string
         "403":
-          description: No valid ACL
+          description: No valid ACL, or the restore level without db-restore
           schema:
             type: string
         "409":
@@ -8844,7 +8863,7 @@ paths:
     post:
       description: |-
         Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. The result is in the backup's verification field.
-        Required grant: db-backup
+        Required grant: db-backup; the restore level also db-restore
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -8883,7 +8902,7 @@ paths:
           schema:
             type: string
         "403":
-          description: No valid ACL
+          description: No valid ACL, or the restore level without db-restore
           schema:
             type: string
         "409":
@@ -8971,6 +8990,76 @@ paths:
           schema:
             type: string
       summary: Retrieve backup stats for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/verification-server:
+    get:
+      description: |-
+        Connects to backup-verification-host and returns whether it is a replica of the cluster, whether it is marked as a verification server (replication_manager_schema.backup_verification_server), and the schemas it holds. An unmarked server without schemas is marked on its first test restore.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verification server state
+          schema:
+            $ref: '#/definitions/cluster.BackupVerificationServerState'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Verification server not reachable
+          schema:
+            type: string
+      summary: Backup verification server state
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/verification-server/mark:
+    post:
+      description: |-
+        Marks the external backup-verification-host as a verification server (replication_manager_schema.backup_verification_server): a test restore then drops there the schemas the backup holds. A replica of the cluster is not marked.
+        Required grant: db-backup and db-restore
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Verification server state after the mark
+          schema:
+            $ref: '#/definitions/cluster.BackupVerificationServerState'
+        "403":
+          description: No valid ACL, or no db-restore grant
+          schema:
+            type: string
+        "500":
+          description: Mark failed
+          schema:
+            type: string
+      summary: Mark the backup verification server
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/certificates:

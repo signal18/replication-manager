@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -133,13 +134,28 @@ func (server *ServerMonitor) verifyBackup(meta *backupmgr.BackupMetadata, level 
 	server.recordBackupVerification(meta, v)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification of %s backup %d (%s level) started on %s", meta.BackupTool, meta.Id, level, server.URL)
 
-	notes, err := server.verifyLogicalBackupIntegrity(meta)
-	var warnings []string
-	if err == nil && level == config.ConstBackupVerificationLevelRestore {
-		var restoreNotes []string
-		restoreNotes, warnings, err = server.verifyLogicalBackupRestore(meta)
-		notes = append(notes, restoreNotes...)
-	}
+	var notes, warnings []string
+	var err error
+	func() {
+		// the levels parse the backup, untrusted content: a panic there fails this
+		// verification, never the monitor (a replica's own defers have run by then)
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("internal error: %v", r)
+				stack := debug.Stack()
+				if len(stack) > 4096 {
+					stack = stack[:4096]
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr, "Backup verification of %s backup %d panicked: %v\n%s", meta.BackupTool, meta.Id, r, stack)
+			}
+		}()
+		notes, err = server.verifyLogicalBackupIntegrity(meta)
+		if err == nil && level == config.ConstBackupVerificationLevelRestore {
+			var restoreNotes []string
+			restoreNotes, warnings, err = server.verifyLogicalBackupRestore(meta)
+			notes = append(notes, restoreNotes...)
+		}
+	}()
 
 	done := *v
 	done.EndTime = time.Now()

@@ -19,7 +19,7 @@ import NumberInput from '../../components/NumberInput'
 import RMButton from '../../components/RMButton'
 import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { setAsIgnored } from '../../redux/clusterSlice'
+import { getBackupVerificationServer, markBackupVerificationServer, setAsIgnored } from '../../redux/clusterSlice'
 
 const sizeGenerator = () => {
   const result = []
@@ -135,6 +135,34 @@ function BackupSettings({ selectedCluster, user }) {
     !(clusterServers || []).some(
       (s) => s.id !== verificationPick.id && s.state !== 'Master' && !s.ignored && !['Failed', 'Suspect', 'ErrorAuth'].includes(s.state)
     )
+  // an external server: marked as a verification server, or empty (marked on its first test restore)
+  const [verificationServer, setVerificationServer] = useState({ loading: false, state: null, error: '' })
+  const [isVerificationMarkOpen, setIsVerificationMarkOpen] = useState(false)
+  const loadVerificationServer = async () => {
+    if (!selectedCluster?.name || verificationTarget !== 'external' || !verificationHost) {
+      setVerificationServer({ loading: false, state: null, error: '' })
+      return
+    }
+    setVerificationServer({ loading: true, state: null, error: '' })
+    try {
+      const { data, status } = await dispatch(getBackupVerificationServer({ clusterName: selectedCluster.name })).unwrap()
+      setVerificationServer(status === 200 ? { loading: false, state: data, error: '' } : { loading: false, state: null, error: String(data || status) })
+    } catch (e) {
+      setVerificationServer({ loading: false, state: null, error: e?.errorMessage || 'not reachable' })
+    }
+  }
+  useEffect(() => {
+    if (!isVerificationCredentialOpen) loadVerificationServer()
+  }, [selectedCluster?.name, verificationTarget, verificationHost, isVerificationCredentialOpen])
+  const confirmVerificationMark = async () => {
+    setIsVerificationMarkOpen(false)
+    try {
+      await dispatch(markBackupVerificationServer({ clusterName: selectedCluster?.name })).unwrap()
+    } catch (e) {
+      // the banner tells why
+    }
+    loadVerificationServer()
+  }
   const cancelVerificationPick = () => {
     setVerificationPick(null)
     setVerificationDropdownKey((k) => k + 1)
@@ -159,7 +187,7 @@ function BackupSettings({ selectedCluster, user }) {
   const hMysqldumpOptions = `**Mysqldump Options**\n\nAdditional command-line flags passed to mysqldump.\nExample: \`--single-transaction --triggers --routines\`\n\nConfig: \`backup-mysqldump-options\``
   const hVerification = `**Backup Verification**\n\nVerifies each logical (mysqldump) backup once it completes, at the verification level below. A backup can also be verified on demand from the backup list (Maintenance).\n\nThe result is shown in the backup list; a failed verification of a server's last logical backup raises ERR00117.\n\nConfig: \`backup-verification\``
   const hVerificationLevel = `**Backup Verification Level**\n\n- **Integrity**: reads the backup as a restore would, without a database: gzip to its end, the dump's \`-- Dump completed\` line, the position against the backup metadata, every file of a splitdump. An encrypted backup has its HMAC checked first.\n- **Test restore**: the integrity checks, then the backup is loaded into the verification server below, and each table's rows and each schema's tables, views, routines, triggers and events are compared with the dump.\n\nConfig: \`backup-verification-level\``
-  const hVerificationHost = `**Backup Verification Server**\n\nWhere the test restore loads the backup:\n\n- **External server** (host:port): outside the cluster, of the same flavor and version as the cluster, with the credentials below. The whole backup is loaded, the mysql schema (accounts) included; the backup's other schemas are dropped before the load and after the comparison.\n- **A replica of the cluster** (not the primary nor a relay): the test restore reseeds it: maintenance, replication stopped, load and comparison, then replication restarted from the backup's position. A replica not yet in ignored hosts is added to them when picked (never a failover candidate).\n\nConfig: \`backup-verification-host\``
+  const hVerificationHost = `**Backup Verification Server**\n\nWhere the test restore loads the backup:\n\n- **External server** (host:port): outside the cluster, of the same flavor and version as the cluster, with the credentials below. **It is disposable**: the whole backup is loaded, the mysql schema (accounts) included, and the backup's other schemas are dropped there before the load and after the comparison. It must be marked as a verification server (the table \`replication_manager_schema.backup_verification_server\`): a server without schemas of its own is marked on its first test restore, one that holds schemas is refused until marked with **Mark as verification server**. Never mark a server that holds data of its own.\n- **A replica of the cluster** (not the primary nor a relay): the test restore reseeds it: maintenance, replication stopped, load and comparison, then replication restarted from the backup's position. A replica not yet in ignored hosts is added to them when picked (never a failover candidate).\n\nConfig: \`backup-verification-host\``
   const hVerificationCredential = `**Backup Verification Credentials**\n\nThe user:password replication-manager connects to the verification server with. The test restore loads the backup's accounts: use an account the backups hold, such as the cluster's database credentials.\n\nConfig: \`backup-verification-credential\``
   const hSplitDump = `**Mysqldump Splitdump Output**\n\nSends mysqldump output through replication-manager-cli splitdump instead of a single .sql.gz file.\nOutput is written to a splitdump directory (uncompressed).\nRequires the CLI to be available in PATH or configured below.\n\nConfig: \`backup-mysqldump-splitdump\``
   const hSplitDumpSize = `**Splitdump Shard Size**\n\nMaximum shard size for splitdump output. Default: 1G. Set to 0 to disable sharding.\n\nConfig: \`backup-splitdump-file-size\``
@@ -307,6 +335,31 @@ function BackupSettings({ selectedCluster, user }) {
             <TextForm value={verificationOnReplica ? '' : verificationHost} confirmTitle={`Confirm backup-verification-host to `}
               maxLength={255} className={styles.textbox}
               onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-verification-host', value: btoa(value) }))} />
+          )}
+          {verificationTarget === 'external' && verificationHost && (
+            <HStack gap={2} wrap='wrap'>
+              {verificationServer.loading ? (
+                <>
+                  <Spinner size='xs' />
+                  <Text fontSize='sm'>Checking the server</Text>
+                </>
+              ) : verificationServer.error ? (
+                <Text fontSize='sm' color='red.500'>Not reachable: {verificationServer.error}</Text>
+              ) : verificationServer.state?.marked ? (
+                <Text fontSize='sm'>Marked as a verification server</Text>
+              ) : verificationServer.state?.empty ? (
+                <Text fontSize='sm'>No schema of its own: marked on its first test restore</Text>
+              ) : verificationServer.state ? (
+                <>
+                  <Text fontSize='sm' color='orange.500'>
+                    Not marked, holds {verificationServer.state.schemas.join(', ')}: the test restore refuses it
+                  </Text>
+                  <RMButton isDisabled={user?.grants['db-restore'] == false} onClick={() => setIsVerificationMarkOpen(true)}>
+                    Mark as verification server
+                  </RMButton>
+                </>
+              ) : null}
+            </HStack>
           )}
         </Flex>
       )
@@ -689,6 +742,23 @@ function BackupSettings({ selectedCluster, user }) {
             </>
           }
           onConfirmClick={confirmVerificationPick} />
+      )}
+      {isVerificationMarkOpen && verificationServer.state && (
+        <ConfirmModal isOpen={isVerificationMarkOpen} closeModal={() => setIsVerificationMarkOpen(false)}
+          title={`Mark ${verificationServer.state.host} as the backup verification server?`}
+          body={
+            <>
+              <p>
+                It holds {verificationServer.state.schemas.join(', ')}. Each test restore loads the whole backup there,
+                the mysql schema (accounts) included, and drops the schemas the backup holds before the load and after
+                the comparison: a schema of the same name is lost.
+              </p>
+              <p>
+                <strong>Never mark a server that holds data of its own</strong> (a primary, a replica, a VIP or a proxy).
+              </p>
+            </>
+          }
+          onConfirmClick={confirmVerificationMark} />
       )}
       {isVerificationCredentialOpen && (
         <SetCredentialsModal clusterName={selectedCluster?.name} isOpen={isVerificationCredentialOpen}

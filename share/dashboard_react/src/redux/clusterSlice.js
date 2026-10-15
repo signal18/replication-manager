@@ -352,6 +352,29 @@ export const verifyBackup = createGuardedAsyncThunk('cluster/verifyBackup', asyn
   }
 })
 
+// the state of backup-verification-host, shown in Settings > Backups (no banner: the state is shown there)
+export const getBackupVerificationServer = createGuardedAsyncThunk('cluster/getBackupVerificationServer', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getBackupVerificationServer(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const markBackupVerificationServer = createGuardedAsyncThunk('cluster/markBackupVerificationServer', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.markBackupVerificationServer(clusterName, baseURL)
+    showSuccessBanner('Backup verification server marked', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Backup verification server not marked!', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const getResticSnapshot = createGuardedAsyncThunk(
   'cluster/getResticSnapshot',
   async ({ clusterName, filter = 'latest-per-session' }, thunkAPI) => {

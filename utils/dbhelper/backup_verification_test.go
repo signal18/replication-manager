@@ -99,6 +99,31 @@ func TestBackupVerificationHelpers(t *testing.T) {
 		if _, _, err := GetSchemaObjectNames(db, pg, "app"); !errors.Is(err, ErrBackupVerificationPostgreSQL) {
 			t.Fatalf("objects: %v", err)
 		}
+		if _, _, err := HasVerificationMark(db, pg); !errors.Is(err, ErrBackupVerificationPostgreSQL) {
+			t.Fatalf("has mark: %v", err)
+		}
+		if _, err := MarkVerificationServer(db, pg, "c1", "admin"); !errors.Is(err, ErrBackupVerificationPostgreSQL) {
+			t.Fatalf("mark: %v", err)
+		}
+		if err := mock.ExpectationsWereMet(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("the mark is a table of replication_manager_schema", func(t *testing.T) {
+		db, mock := freshMock(t)
+		mock.ExpectQuery("information_schema.TABLES").WithArgs("replication_manager_schema", "backup_verification_server").
+			WillReturnRows(sqlmock.NewRows([]string{"n"}).AddRow(1))
+		mock.ExpectExec("CREATE DATABASE IF NOT EXISTS `replication_manager_schema`").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("CREATE TABLE IF NOT EXISTS `replication_manager_schema`.`backup_verification_server`").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectExec("REPLACE INTO `replication_manager_schema`.`backup_verification_server`").WithArgs("c1", "admin").
+			WillReturnResult(sqlmock.NewResult(0, 1))
+		if marked, _, err := HasVerificationMark(db, maria); err != nil || !marked {
+			t.Fatalf("marked %v err %v", marked, err)
+		}
+		if _, err := MarkVerificationServer(db, maria, "c1", "admin"); err != nil {
+			t.Fatal(err)
+		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Fatal(err)
 		}

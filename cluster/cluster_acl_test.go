@@ -805,6 +805,8 @@ func TestClusterACLRules(t *testing.T) {
 		{"Backups - denied without grant", "process_user", "/api/clusters/test/backups", false},
 		{"Backups - verify", "db_backup_user", "/api/clusters/test/backups/100/verify/restore", true},
 		{"Backups - verify denied without grant", "process_user", "/api/clusters/test/backups/100/verify", false},
+		{"Backups - verification server", "db_backup_user", "/api/clusters/test/backups/verification-server/mark", true},
+		{"Backups - verification server denied without grant", "process_user", "/api/clusters/test/backups/verification-server", false},
 
 		// Certificate tests
 		{"Certificates - reload", "cert_user", "/api/clusters/test/actions/certificates-reload", true},

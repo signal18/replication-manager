@@ -8,6 +8,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -24,6 +25,8 @@ func TestCountInsertRows(t *testing.T) {
 		{"INSERT INTO `t` (`a`, `b`) VALUES (1,2)", 1},
 		{"REPLACE INTO `innodb_index_stats` VALUES ('db','t','PRIMARY','2026-10-14 10:00:00','n_diff_pfx01',1,1,'id')", 1},
 		{"INSERT INTO `t` SELECT 1", 0},
+		// a complete insert whose column list is longer than 4 KiB
+		{"INSERT INTO `t` (" + strings.Repeat("`a_long_column_name_0123456789`, ", 200) + "`id`) VALUES (1),(2)", 2},
 	} {
 		if got := countInsertRows(tc.stmt); got != tc.want {
 			t.Errorf("countInsertRows(%q) = %d, want %d", tc.stmt, got, tc.want)
@@ -247,6 +250,177 @@ func TestStopLiveReplication(t *testing.T) {
 	mock.ExpectQuery("SHOW ALL SLAVES STATUS").WillReturnRows(sqlmock.NewRows(cols).AddRow("", "Connecting", "Yes"))
 	if err := server.stopLiveReplication(); err == nil || !strings.Contains(err.Error(), "still running") {
 		t.Fatalf("running channel: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// An external server receives a test restore when marked, and is marked on its first use
+// when it holds no schema; one holding data, or monitored by a replication-manager (its
+// replication_manager_schema has tables), is refused.
+func TestEnsureVerificationMark(t *testing.T) {
+	c, _ := newStagingTestServer(t)
+	maria := &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+	markCols := []string{"n"}
+	schemaCols := []string{"SCHEMA_NAME"}
+	objCols := []string{"kind", "name"}
+
+	for _, tc := range []struct {
+		name    string
+		expect  func(sqlmock.Sqlmock)
+		refused string
+	}{
+		{"marked", func(m sqlmock.Sqlmock) {
+			m.ExpectQuery("information_schema.TABLES").WillReturnRows(sqlmock.NewRows(markCols).AddRow(1))
+			m.ExpectQuery("information_schema.SCHEMATA").WillReturnRows(sqlmock.NewRows(schemaCols).AddRow("app"))
+		}, ""},
+		{"empty, marked on first use", func(m sqlmock.Sqlmock) {
+			m.ExpectQuery("information_schema.TABLES").WillReturnRows(sqlmock.NewRows(markCols).AddRow(0))
+			m.ExpectQuery("information_schema.SCHEMATA").WillReturnRows(sqlmock.NewRows(schemaCols).AddRow("replication_manager_schema"))
+			m.ExpectQuery("information_schema.TABLES").WillReturnRows(sqlmock.NewRows(objCols))
+			m.ExpectExec("CREATE DATABASE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+			m.ExpectExec("CREATE TABLE IF NOT EXISTS").WillReturnResult(sqlmock.NewResult(0, 0))
+			m.ExpectExec("REPLACE INTO").WithArgs(c.Name, sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+		}, ""},
+		{"monitored by a replication-manager", func(m sqlmock.Sqlmock) {
+			m.ExpectQuery("information_schema.TABLES").WillReturnRows(sqlmock.NewRows(markCols).AddRow(0))
+			m.ExpectQuery("information_schema.SCHEMATA").WillReturnRows(sqlmock.NewRows(schemaCols).AddRow("replication_manager_schema"))
+			m.ExpectQuery("information_schema.TABLES").WillReturnRows(sqlmock.NewRows(objCols).AddRow("table", "jobs"))
+		}, "replication_manager_schema"},
+		{"holds data", func(m sqlmock.Sqlmock) {
+			m.ExpectQuery("information_schema.TABLES").WillReturnRows(sqlmock.NewRows(markCols).AddRow(0))
+			m.ExpectQuery("information_schema.SCHEMATA").WillReturnRows(sqlmock.NewRows(schemaCols).AddRow("app"))
+		}, "app"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			tc.expect(mock)
+			err = c.ensureVerificationMark(sqlx.NewDb(db, "sqlmock"), maria, "verify1:3306")
+			if tc.refused == "" && err != nil {
+				t.Fatalf("refused: %v", err)
+			}
+			if tc.refused != "" && (err == nil || !strings.Contains(err.Error(), "not marked") || !strings.Contains(err.Error(), tc.refused)) {
+				t.Fatalf("want refused for %s, got %v", tc.refused, err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// On an external server, replication-manager's own schema of the source is not loaded:
+// its CREATE DATABASE, USE and statements are skipped until the next schema's USE.
+func TestVerificationLoadSkipsReplicationManagerSchema(t *testing.T) {
+	_, server := newStagingTestServer(t)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	sdb := sqlx.NewDb(db, "sqlmock")
+	conn, err := sdb.Connx(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	l := &backupVerificationLoad{server: server, ctx: context.Background(), conn: conn, db: sdb,
+		ver: &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}, inv: newDumpInventory(), dropped: map[string]bool{},
+		skipSchemas: backupVerificationSkippedSchemas}
+
+	// nothing sent for the skipped schema, then app is dropped, created and used
+	mock.ExpectExec("DROP DATABASE IF EXISTS `app`").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("CREATE DATABASE `app`").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("USE `app`").WillReturnResult(sqlmock.NewResult(0, 0))
+	for _, stmt := range []string{
+		"CREATE DATABASE /*!32312 IF NOT EXISTS*/ `replication_manager_schema`",
+		"USE `replication_manager_schema`",
+		"DROP TABLE IF EXISTS `jobs`",
+		"CREATE TABLE `jobs` (`id` int)",
+		"CREATE DATABASE `app`",
+		"USE `app`",
+	} {
+		if err := l.single(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	if l.inv.objects["replication_manager_schema"] != nil || l.inSkipped {
+		t.Fatalf("skipped schema recorded: %v, in skipped %v", l.inv.objects, l.inSkipped)
+	}
+}
+
+// A splitdump file ends with the next schema's CREATE DATABASE and USE: a file of another
+// schema ending with replication_manager_schema's does not skip the files after it.
+func TestVerificationLoadSkipEndsWithItsFile(t *testing.T) {
+	_, server := newStagingTestServer(t)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	sdb := sqlx.NewDb(db, "sqlmock")
+	conn, err := sdb.Connx(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	l := &backupVerificationLoad{server: server, ctx: context.Background(), conn: conn, db: sdb,
+		ver: &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}, inv: newDumpInventory(), dropped: map[string]bool{"app": true},
+		skipSchemas: backupVerificationSkippedSchemas}
+
+	if err := l.run(strings.NewReader("CREATE DATABASE /*!32312 IF NOT EXISTS*/ `replication_manager_schema`;\nUSE `replication_manager_schema`;\n"), "other"); err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectExec("CREATE TABLE `t`").WillReturnResult(sqlmock.NewResult(0, 0))
+	if err := l.run(strings.NewReader("CREATE TABLE `t` (`id` int);\n"), "app"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("the next file was skipped: %v", err)
+	}
+	if l.inv.objects["app"] == nil {
+		t.Fatalf("table of app not recorded: %v", l.inv.objects)
+	}
+}
+
+// The replica a test restore reseeds: taken out of service (reseed flag, maintenance,
+// replication stopped), kept in maintenance after a failure, released after a resume.
+func TestVerificationReplicaServiceStates(t *testing.T) {
+	_, server := newStagingTestServer(t)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	server.Conn = sqlx.NewDb(db, "sqlmock")
+	server.DBVersion = &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11}
+	// maintenance membership is saved: a bare ConfigManager saves without I/O
+	server.ClusterGroup.ConfigManager = &manager.ConfigManager{}
+	server.SourceClusterName = server.ClusterGroup.Name
+	cols := []string{"Connection_name", "Slave_IO_Running", "Slave_SQL_Running"}
+
+	for _, resumed := range []bool{false, true} {
+		mock.ExpectQuery("SHOW ALL SLAVES STATUS").WillReturnRows(sqlmock.NewRows(cols).AddRow("", "No", "No"))
+		setMaintenance, err := server.beginVerificationReseed()
+		if err != nil || !setMaintenance || !server.IsMaintenance || server.IsReseeding != "verify" {
+			t.Fatalf("begin: set %v, maintenance %v, reseeding %q, err %v", setMaintenance, server.IsMaintenance, server.IsReseeding, err)
+		}
+		if _, err := server.beginVerificationReseed(); err == nil {
+			t.Fatal("a second test restore is refused while one runs")
+		}
+		server.endVerificationReseed(setMaintenance, resumed)
+		if server.IsReseeding != "" || server.IsMaintenance == resumed {
+			t.Fatalf("end (resumed %v): maintenance %v, reseeding %q", resumed, server.IsMaintenance, server.IsReseeding)
+		}
+		server.IsMaintenance = false
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

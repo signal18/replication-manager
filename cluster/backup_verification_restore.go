@@ -38,6 +38,11 @@ import (
 // backupVerificationProblemsMax bounds the differences a failed comparison reports.
 const backupVerificationProblemsMax = 10
 
+// backupVerificationSkippedSchemas are not loaded on an external server: replication-
+// manager's own state of the source (its jobs), not data, which on a server replication-
+// manager monitors would replace that server's own.
+var backupVerificationSkippedSchemas = map[string]bool{"replication_manager_schema": true}
+
 // backupVerificationSystemSchemas are loaded, not dropped nor compared.
 var backupVerificationSystemSchemas = map[string]bool{"mysql": true, "sys": true, "information_schema": true, "performance_schema": true}
 
@@ -111,7 +116,7 @@ func nameAt(re *regexp.Regexp, head, upper string, group int) (string, bool) {
 // countInsertRows counts the rows of an INSERT ... VALUES (...),(...): the parentheses
 // opened at depth 0 after VALUES, outside quoted strings.
 func countInsertRows(stmt string) int64 {
-	i := strings.Index(strings.ToUpper(stmt[:min(len(stmt), 4096)]), " VALUES")
+	i := valuesKeyword(stmt)
 	if i < 0 {
 		return 0
 	}
@@ -146,6 +151,19 @@ func countInsertRows(stmt string) int64 {
 	return n
 }
 
+// valuesKeyword returns where the VALUES keyword of an INSERT starts, -1 without: the
+// first " VALUES" in any case, wherever the column list of a complete insert ends (a
+// backquoted column name is never preceded by a space).
+func valuesKeyword(stmt string) int {
+	const kw = " VALUES"
+	for i := 0; i+len(kw) <= len(stmt); i++ {
+		if strings.EqualFold(stmt[i:i+len(kw)], kw) {
+			return i
+		}
+	}
+	return -1
+}
+
 // dumpStatementSummary is the start of a statement, for an error or a log line, its
 // password literals masked.
 func dumpStatementSummary(stmt string) string {
@@ -170,6 +188,10 @@ type backupVerificationLoad struct {
 	schema  string          // the current schema (USE)
 	dropped map[string]bool // the application schemas dropped before their load
 	skipped int             // replication statements not run
+	// external server: the schemas not loaded (backupVerificationSkippedSchemas), and
+	// whether the statements read are in one of them
+	skipSchemas map[string]bool
+	inSkipped   bool
 }
 
 // logSQL logs a statement repman sends to the verification server itself (F11), and its
@@ -185,11 +207,17 @@ func (l *backupVerificationLoad) skip(why, stmt string) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification on %s skipped a statement of %s (%s): %s", l.host, filepath.Base(l.path), why, dumpStatementSummary(stmt))
 }
 
-// run loads the statements of r, schema being the current one when r starts.
+// run loads the statements of r, schema being the current one when r starts. A splitdump
+// file ends with the next schema's CREATE DATABASE and USE: a skipped schema there does not
+// reach the next file, which starts in its own schema.
 func (l *backupVerificationLoad) run(r io.Reader, schema string) error {
 	l.schema = schema
+	l.inSkipped = l.skipSchemas[schema]
 	return planAndExecSplitdump(r, splitdumpBatchStatements, splitdumpExecutor{
 		batch: func(stmts []string) error {
+			if l.inSkipped {
+				return nil
+			}
 			if err := l.server.execSplitdumpBatch(l.ctx, l.conn, stmts, l.path, nil); err != nil {
 				return err
 			}
@@ -212,6 +240,25 @@ func (l *backupVerificationLoad) single(stmt string) error {
 	if stmtReplication.MatchString(upper) {
 		l.skipped++
 		l.skip("replication state, not data", stmt)
+		return nil
+	}
+	if name, ok := nameAt(stmtUse, head, upper, 1); ok {
+		l.inSkipped = l.skipSchemas[name]
+		if l.inSkipped {
+			l.schema = name
+			l.skip("replication-manager's own state, not data", stmt)
+			return nil
+		}
+	}
+	if name, ok := nameAt(stmtCreateDatabase, head, upper, 1); ok {
+		// a dump creates the next schema before its USE: that ends a skipped one too
+		l.inSkipped = l.skipSchemas[name]
+		if l.inSkipped {
+			l.skip("replication-manager's own state, not data", stmt)
+			return nil
+		}
+	}
+	if l.inSkipped {
 		return nil
 	}
 	if name, ok := nameAt(stmtCreateDatabase, head, upper, 1); ok {
@@ -294,11 +341,11 @@ func (l *backupVerificationLoad) dropApplicationSchema(schema string) error {
 	return nil
 }
 
-// openBackupVerificationServer connects to backup-verification-host. A server of the
-// cluster is returned as the replica the test restore reseeds (verificationReplica), with
-// its own connection pool, which the caller must not close.
-func (cluster *Cluster) openBackupVerificationServer() (*sqlx.DB, *version.Version, *ServerMonitor, error) {
-	host := strings.TrimSpace(cluster.Conf.BackupVerificationHost)
+// openBackupVerificationServer connects to host, backup-verification-host read once by the
+// caller with its credential (a setting changed during a run never splits it). A server of
+// the cluster is returned as the replica the test restore reseeds (verificationReplica),
+// with its own connection pool, which the caller must not close.
+func (cluster *Cluster) openBackupVerificationServer(host, credential string) (*sqlx.DB, *version.Version, *ServerMonitor, error) {
 	if host == "" {
 		return nil, nil, nil, fmt.Errorf("backup-verification-host is not set")
 	}
@@ -316,7 +363,7 @@ func (cluster *Cluster) openBackupVerificationServer() (*sqlx.DB, *version.Versi
 		}
 		return replica.Conn, replica.DBVersion, replica, nil
 	}
-	user, pass := misc.SplitPair(cluster.Conf.GetDecryptedValue("backup-verification-credential"))
+	user, pass := misc.SplitPair(credential)
 	db, err := dbhelper.MySQLConnect(user, pass, dbhelper.GetAddress(misc.Unbracket(name), port, ""), "timeout=10s")
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("connect to the verification server %s: %w", host, err)
@@ -334,7 +381,10 @@ func (cluster *Cluster) openBackupVerificationServer() (*sqlx.DB, *version.Versi
 // it loaded and compared, and the kinds of objects the source has and the backup lacks.
 func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMetadata) ([]string, []string, error) {
 	cluster := server.ClusterGroup
-	db, ver, replica, err := cluster.openBackupVerificationServer()
+	// the settings of this run, read once
+	host := strings.TrimSpace(cluster.Conf.BackupVerificationHost)
+	credential := cluster.Conf.GetDecryptedValue("backup-verification-credential")
+	db, ver, replica, err := cluster.openBackupVerificationServer(host, credential)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -344,8 +394,7 @@ func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMe
 	if ver.IsPostgreSQL() {
 		return nil, nil, dbhelper.ErrBackupVerificationPostgreSQL
 	}
-	host := cluster.Conf.BackupVerificationHost
-	user, _ := misc.SplitPair(cluster.Conf.GetDecryptedValue("backup-verification-credential"))
+	user, _ := misc.SplitPair(credential)
 	ctx := context.Background()
 	var conn *sqlx.Conn
 	if replica != nil {
@@ -390,6 +439,9 @@ func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMe
 		resumed = true
 		return append(notes, "replica "+replica.URL+" reseeded from the backup, replicating from its position"), warnings, nil
 	}
+	if err := cluster.ensureVerificationMark(db, ver, host); err != nil {
+		return nil, nil, err
+	}
 	resumeScheduler, err := server.pauseEventScheduler(db, ver, host)
 	if err != nil {
 		return nil, nil, err
@@ -410,9 +462,13 @@ func (server *ServerMonitor) verifyLogicalBackupRestore(meta *backupmgr.BackupMe
 // with its source. dropAfter drops the backup's schemas when it ends, whatever its result
 // (a verification server); a replica keeps them, they are its data.
 func (server *ServerMonitor) loadAndCompareForVerification(ctx context.Context, meta *backupmgr.BackupMetadata, db *sqlx.DB, ver *version.Version, conn *sqlx.Conn, host, user string, dropAfter bool) ([]string, []string, error) {
+	var skipSchemas map[string]bool
+	if dropAfter { // an external server
+		skipSchemas = backupVerificationSkippedSchemas
+	}
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlInfo, "Backup verification loading %s into %s (%s %s) as %s", meta.Dest, host, ver.Flavor, ver.ToString(), user)
-	l := &backupVerificationLoad{server: server, host: host, path: meta.Dest, ctx: ctx, conn: conn, db: db, ver: ver, inv: newDumpInventory(), dropped: map[string]bool{}}
+	l := &backupVerificationLoad{server: server, host: host, path: meta.Dest, ctx: ctx, conn: conn, db: db, ver: ver, inv: newDumpInventory(), dropped: map[string]bool{}, skipSchemas: skipSchemas}
 	defer func() {
 		if !dropAfter {
 			return
@@ -494,6 +550,9 @@ func (server *ServerMonitor) loadSplitdumpForVerification(l *backupVerificationL
 		return err
 	}
 	for _, schema := range schemas {
+		if l.skipSchemas[schema] {
+			continue
+		}
 		if err := l.dropApplicationSchema(schema); err != nil {
 			return err
 		}
@@ -516,6 +575,9 @@ func (server *ServerMonitor) loadSplitdumpForVerification(l *backupVerificationL
 			continue
 		}
 		schema := splitdump.SchemaFromFilename(file)
+		if l.skipSchemas[schema] {
+			continue // replication-manager's own state, not data
+		}
 		if schema != "" && !splitdump.IsMysqlSystemAll(base) {
 			query, err := dbhelper.UseDatabaseConn(l.ctx, l.conn, l.ver, schema)
 			l.logSQL(query, err, config.LvlDbg, "Backup verification could not use %s: %s", schema, err)
@@ -656,4 +718,114 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// BackupVerificationServerState is what a test restore finds on backup-verification-host.
+// An external server must be marked as a verification server
+// (replication_manager_schema.backup_verification_server): the schemas a backup holds are
+// dropped there. A VIP, a proxy or another cluster's server is never marked.
+type BackupVerificationServerState struct {
+	Host    string   `json:"host"`
+	Replica bool     `json:"replica"` // a replica of the cluster: reseeded, never marked
+	Marked  bool     `json:"marked"`
+	Empty   bool     `json:"empty"`   // no schema of its own: marked on its first test restore
+	Schemas []string `json:"schemas"` // its schemas, the system ones and an empty replication_manager_schema left out
+}
+
+// backupVerificationServerState reads the mark and the schemas of an external server.
+func (cluster *Cluster) backupVerificationServerState(db *sqlx.DB, ver *version.Version, host string) (*BackupVerificationServerState, error) {
+	state := &BackupVerificationServerState{Host: host, Schemas: []string{}}
+	marked, query, err := dbhelper.HasVerificationMark(db, ver)
+	cluster.LogSQL(query, err, host, "BackupVerification", config.LvlDbg, "Backup verification could not read the mark of %s: %s", host, err)
+	if err != nil {
+		return nil, fmt.Errorf("mark of the verification server %s: %w", host, err)
+	}
+	state.Marked = marked
+	schemas, query, err := dbhelper.ListDatabases(db, ver)
+	cluster.LogSQL(query, err, host, "BackupVerification", config.LvlDbg, "Backup verification could not list the schemas of %s: %s", host, err)
+	if err != nil {
+		return nil, fmt.Errorf("schemas of the verification server %s: %w", host, err)
+	}
+	for _, s := range schemas {
+		if s == dbhelper.VerificationMarkSchema {
+			// replication-manager's own schema: the server's only when it holds tables
+			// (a server replication-manager monitors), the mark aside
+			objects, query, err := dbhelper.GetSchemaObjectNames(db, ver, s)
+			cluster.LogSQL(query, err, host, "BackupVerification", config.LvlDbg, "Backup verification could not list the objects of %s on %s: %s", s, host, err)
+			if err != nil {
+				return nil, fmt.Errorf("objects of %s on the verification server %s: %w", s, host, err)
+			}
+			own := 0
+			for kind, names := range objects {
+				for _, name := range names {
+					if kind != dbhelper.SchemaObjectTable || name != dbhelper.VerificationMarkTable {
+						own++
+					}
+				}
+			}
+			if own == 0 {
+				continue
+			}
+		}
+		state.Schemas = append(state.Schemas, s)
+	}
+	state.Empty = len(state.Schemas) == 0
+	return state, nil
+}
+
+// ensureVerificationMark refuses an external server that is not marked as a verification
+// server, unless it is empty: nothing of it can be lost, it is marked on this first use.
+func (cluster *Cluster) ensureVerificationMark(db *sqlx.DB, ver *version.Version, host string) error {
+	state, err := cluster.backupVerificationServerState(db, ver, host)
+	if err != nil {
+		return err
+	}
+	if state.Marked {
+		return nil
+	}
+	if !state.Empty {
+		return fmt.Errorf("backup-verification-host %s is not marked as a verification server and holds schemas (%s): mark it in Settings > Backups if they may be lost (a test restore drops there the schemas the backup holds)", host, strings.Join(state.Schemas, ", "))
+	}
+	query, err := dbhelper.MarkVerificationServer(db, ver, cluster.Name, "replication-manager (empty server)")
+	cluster.LogSQL(query, err, host, "BackupVerification", config.LvlErr, "Backup verification could not mark %s as a verification server: %s", host, err)
+	if err != nil {
+		return fmt.Errorf("mark the verification server %s: %w", host, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backup verification server %s holds no schema: marked as a verification server", host)
+	return nil
+}
+
+// GetBackupVerificationServerState returns the state of backup-verification-host.
+func (cluster *Cluster) GetBackupVerificationServerState() (*BackupVerificationServerState, error) {
+	host := strings.TrimSpace(cluster.Conf.BackupVerificationHost)
+	db, ver, replica, err := cluster.openBackupVerificationServer(host, cluster.Conf.GetDecryptedValue("backup-verification-credential"))
+	if err != nil {
+		return nil, err
+	}
+	if replica != nil {
+		return &BackupVerificationServerState{Host: replica.URL, Replica: true, Schemas: []string{}}, nil
+	}
+	defer db.Close()
+	return cluster.backupVerificationServerState(db, ver, host)
+}
+
+// MarkBackupVerificationServer marks backup-verification-host as a verification server, on
+// the request of user: the schemas a backup holds may then be dropped there.
+func (cluster *Cluster) MarkBackupVerificationServer(user string) error {
+	host := strings.TrimSpace(cluster.Conf.BackupVerificationHost)
+	db, ver, replica, err := cluster.openBackupVerificationServer(host, cluster.Conf.GetDecryptedValue("backup-verification-credential"))
+	if err != nil {
+		return err
+	}
+	if replica != nil {
+		return fmt.Errorf("backup-verification-host %s is a replica of the cluster: it is reseeded, not marked", replica.URL)
+	}
+	defer db.Close()
+	query, err := dbhelper.MarkVerificationServer(db, ver, cluster.Name, user)
+	cluster.LogSQL(query, err, host, "BackupVerification", config.LvlErr, "Backup verification could not mark %s as a verification server: %s", host, err)
+	if err != nil {
+		return fmt.Errorf("mark the verification server %s: %w", host, err)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backup verification server %s marked as a verification server by %s", host, user)
+	return nil
 }

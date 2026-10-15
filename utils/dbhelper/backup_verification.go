@@ -115,3 +115,44 @@ func GetSchemaObjectNames(db *sqlx.DB, myver *version.Version, schema string) (m
 	}
 	return objects, query, rows.Err()
 }
+
+// The table of replication_manager_schema that marks a server as a verification server:
+// its existence is the mark, one row per cluster that marked it.
+const (
+	VerificationMarkSchema = "replication_manager_schema"
+	VerificationMarkTable  = "backup_verification_server"
+)
+
+// HasVerificationMark tells whether the server holds the verification server mark
+// (replication_manager_schema.backup_verification_server). PostgreSQL:
+// ErrBackupVerificationPostgreSQL.
+func HasVerificationMark(db *sqlx.DB, myver *version.Version) (bool, string, error) {
+	if myver.IsPostgreSQL() {
+		return false, "", ErrBackupVerificationPostgreSQL
+	}
+	query := "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
+	var n int
+	err := db.QueryRowx(query, VerificationMarkSchema, VerificationMarkTable).Scan(&n)
+	return n > 0, query, err
+}
+
+// MarkVerificationServer marks the server as a verification server for cluster: the
+// schemas a backup holds may be dropped there. by says who marked it. It returns the last
+// statement sent. PostgreSQL: ErrBackupVerificationPostgreSQL, nothing is sent.
+func MarkVerificationServer(db *sqlx.DB, myver *version.Version, cluster, by string) (string, error) {
+	if myver.IsPostgreSQL() {
+		return "", ErrBackupVerificationPostgreSQL
+	}
+	table := QuoteMySQLIdentifier(VerificationMarkSchema) + "." + QuoteMySQLIdentifier(VerificationMarkTable)
+	for _, query := range []string{
+		"CREATE DATABASE IF NOT EXISTS " + QuoteMySQLIdentifier(VerificationMarkSchema),
+		"CREATE TABLE IF NOT EXISTS " + table + " (cluster VARCHAR(255) NOT NULL PRIMARY KEY, marked_by VARCHAR(255) NOT NULL, marked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP) ENGINE=InnoDB",
+	} {
+		if _, err := db.Exec(query); err != nil {
+			return query, err
+		}
+	}
+	query := "REPLACE INTO " + table + " (cluster, marked_by, marked_at) VALUES (?, ?, NOW())"
+	_, err := db.Exec(query, cluster, by)
+	return query, err
+}

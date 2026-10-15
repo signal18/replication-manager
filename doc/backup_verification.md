@@ -20,8 +20,19 @@ yet: asking for it returns an error, nothing is recorded.
 |---|---|---|
 | `backup-verification` | `false` | verify each logical backup once it completes |
 | `backup-verification-level` | `integrity` | `integrity` or `restore` |
-| `backup-verification-host` | | the verification server, `host:port` |
+| `backup-verification-host` | | the verification server, `host:port`: an external server marked for it (below), or a replica of the cluster |
 | `backup-verification-credential` | | `user:password` on the verification server, encrypted like the other credentials |
+
+> **An external verification server is disposable.** A test restore drops
+> there every schema the backup holds (other than the system ones), and loads
+> the backup's `mysql` schema, its accounts included. replication-manager
+> loads a backup only into an external server marked as a verification server:
+> the table `replication_manager_schema.backup_verification_server` exists
+> there. A server that holds no schema of its own (the system schemas aside,
+> and a `replication_manager_schema` without tables) is marked on its first
+> test restore. One that holds schemas is refused until it is marked with
+> **Mark as verification server** in Settings. Never mark a server that holds
+> data of its own.
 
 ```toml
 [mycluster]
@@ -40,11 +51,22 @@ a replica asks for a confirmation; one not yet in `db-servers-ignored-hosts`
 is added to them with it. The confirmation warns, without blocking, when it is
 the last replica available for failover.
 
+For an external server, the row shows its state: marked, without schemas
+(marked on its first test restore), or not marked with the schemas it holds and
+a **Mark as verification server** button (grant `db-restore`), which lists
+them again before it marks the server. The same from the API:
+
+```
+GET  /api/clusters/{clusterName}/backups/verification-server
+POST /api/clusters/{clusterName}/backups/verification-server/mark
+```
+
 ## On demand
 
 In **Maintenance → Current Backups**, each mysqldump backup has two actions:
 **Verify integrity** and **Test restore** (the latter needs
-`backup-verification-host`). The same from the API (grant `db-backup`):
+`backup-verification-host`). The same from the API (grant `db-backup`; the
+restore level also needs `db-restore`, the grant of a reseed):
 
 ```
 POST /api/clusters/{clusterName}/backups/{backupID}/verify
@@ -102,8 +124,18 @@ The backup is loaded into `backup-verification-host` with one connection, as
   created or dropped since the backup is not a difference. When the source is
   down, the comparison is skipped and noted.
 
-The verification server is a server outside the cluster, or a replica of the
-cluster designated for it.
+The verification server is a server outside the cluster marked for it (the
+`replication_manager_schema.backup_verification_server` table, see above), or a replica of the
+cluster designated for it. On an external server, replication-manager's own
+schema of the source (`replication_manager_schema`, its jobs) is not loaded:
+it is replication-manager's state, not data, and on a server replication-
+manager monitors it would replace that server's own.
+
+The comparison reads the statements of a dump as mysqldump and mariadb-dump
+write them: the rows of each `INSERT`/`REPLACE ... VALUES` are counted, an
+`INSERT ... SELECT` or a dump edited by hand may not count as written and
+fail the comparison. The settings of a verification (the host and its
+credential) are read once when it starts.
 
 ### A replica of the cluster as the verification server
 
@@ -145,10 +177,18 @@ pulsing while a verification runs, a dashed outline when it was never
 verified (its tooltip gives the details). Verifications run in a backup slot
 (`backup-concurrent-slots`): one on demand waits for a free slot; the
 automatic one runs in the backup's own slot, right after the backup, before
-its archive push.
+its archive push, so that the archive can not remove the original before it
+is verified: at the restore level, the backup completes once the test restore
+has ended.
 
 | State | |
 |---|---|
 | CINF0016 | a backup is being verified |
 | ERR00117 | a server's last logical backup failed its verification: a restore from it would fail, take a new backup |
+
+ERR00117 stays raised while that backup is the server's last logical backup.
+It clears when a new backup of the server is taken, or when the backup passes
+a new verification (after the cause is fixed, e.g. a verification server
+reachable again). A backup kept only in its archive (its original removed)
+can not be verified again: take a new backup.
 | WARN0248 | a server's last logical backup passed its test restore but lacks objects its source has: check `backup-mysqldump-options` and the event scheduler |
