@@ -33,8 +33,12 @@ reads at most `backupDiscoveryMaxPerRun` (8) artifacts, new or inspected again
 (one budget): the rest is logged and left to the next scan. A config reload
 re-reads only artifacts still unregistered: a registered one has its meta file
 and is known. An artifact that can not be read (a foreign key, damage) is read
-once: registered as not completed, it is known from then on, and read again
-only if its size or file count changes.
+once by the startup scans: registered as not completed, it is known from then
+on, and read again only if its size or file count changes. The API scan
+(`StartBackupDiscovery`, `discoverBackups(true)`) also inspects again every
+discovered backup not completed whose artifact did not change (a key installed,
+a permission fixed since), within the same budget: an operator's request, so a
+foreign archive is read again only when asked.
 
 1. `os.ReadDir` of `GetMyBackupDirectory`; a missing folder is no error.
 2. `LoadAdhocBackupMetadata`: the ad-hoc and the previously discovered backups
@@ -59,7 +63,7 @@ only if its size or file count changes.
    sidecar (`mysqldumpUserSidecarPath`, plain or `.enc`): a sidecar, not a
    backup, and deleting it as a backup would remove the users of its dump. Files: `.tar.enc`
    is an encrypted splitdump (a mydumper one when its name starts with
-   `mydumper`), `.sql` / `.sql.gz` / `.sql.enc` / `.sql.gz.enc` a mysqldump
+   `mydumper`) until it is read (below), `.sql` / `.sql.gz` / `.sql.enc` / `.sql.gz.enc` a mysqldump
    file. Folders: a `manifest` makes a splitdump; else a `metadata` file is
    mydumper's when it holds `Started dump at`, a splitdump's otherwise; else a
    folder `splitdump.Detect` accepts is a splitdump only under a splitdump name.
@@ -97,15 +101,21 @@ position fields, the times, `Completed` and `DiscoveryNote`:
   `';`, at most 1 MiB, as the backup's own reader joins it; any other line
   drops it. The last line: the
   footer and its time (local time zone). Header without footer: not
-  completed.
+  completed. No header: noted (not a dump client's file, or `--skip-comments`),
+  its completion not checked; without a position it is refused like any.
 - splitdump folder: `splitdump.ReadMetadata` for the position;
   `ReadManifest` + `ValidateManifest`, then each listed file must exist (not
   read: a splitdump can be large). No manifest: registered, noted.
-- `.tar.enc` (splitdump, or mydumper by its name): `readDiscoveredArchive`
-  reads the decrypted tar stream to its end through `openRestoreArtifactStream`
-  (its integrity code is checked; a foreign key fails it), keeping in memory
-  its members' base names and its `manifest` and `metadata` (16 MiB at most;
+- `.tar.enc`: `readDiscoveredArchive` reads the decrypted tar stream to its
+  end through `openRestoreArtifactStream` (its integrity code is checked; a
+  foreign key fails it), keeping in memory its members' base names
+  (`discoveryArchiveMaxMembers`, 500,000 at most: an archive with more is not
+  completed) and its `manifest` and `metadata` (16 MiB at most;
   `splitdump.ParseManifest` / `ParseMetadata`): nothing is written to disk.
+  `discoveredArchive.classify` then sets the tool from that content, as for a
+  folder (a `manifest`: splitdump; mydumper's `Started dump at`: mydumper;
+  another `metadata`: splitdump; neither: the name's guess is kept), so a
+  mydumper archive under any name is never restored as a splitdump.
   `inspectDiscoveredFolder` runs the folder's checks through read/exists
   functions, on a plain folder or on that. Base names: the folders are flat, a
   nested member would share one, harmless for the checks.
@@ -156,7 +166,10 @@ restore, not from the meta file.
   unknown backup (`ErrBackupNotFound`), 409 while a backup of the cluster runs
   (`ErrBackupInProgress`: a scheduled backup may be rewriting the artifact; a
   second reseed of the server is refused by `TrySetInReseedBackup`), 400 for
-  the other refusals.
+  the other refusals. The `IsInBackup` check and the reseed's start are not
+  atomic: a backup started between them may rewrite a scheduled backup's
+  artifact the reseed restores (a discovered one is never rewritten by a
+  backup). Accepted: a window of a few milliseconds on an operator's request.
 
 ## GUI
 
@@ -188,7 +201,9 @@ reseed refusals, encrypted archives, the fallback skip, live entries kept, a
 copy in progress (left, then inspected again under its id), a removed artifact
 unregistered, one scan per server, the per-scan cap, the refusal while a
 backup runs, a backup without a position (noted, refused; a mydumper folder's
-position read), both mydumper metadata forms. `cluster_acl_test.go`: the reseed route needs
+position read), both mydumper metadata forms, an archive classified by its
+content, the archive member cap, the retry on request, a file without a dump
+client's header. `cluster_acl_test.go`: the reseed route needs
 `db-restore`.
 
 Regtest (T13, real servers): `testBackupDiscovery` (`regtest/test_backup_discovery.go`,

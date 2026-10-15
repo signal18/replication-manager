@@ -70,6 +70,13 @@ var errBackupDiscoveryRunning = errors.New("a discovery of the backup folder alr
 // since (a copy that was still running) is inspected again. It returns the backups it
 // registered. One discovery runs at a time per server.
 func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, error) {
+	return server.discoverBackups(false)
+}
+
+// discoverBackups is DiscoverBackups; retry inspects again the discovered backups not
+// completed whose artifact did not change too (the discovery the operator requests: a backup
+// encrypted with a key installed since can be read now).
+func (server *ServerMonitor) discoverBackups(retry bool) ([]*backupmgr.BackupMetadata, error) {
 	cluster := server.ClusterGroup
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return nil, nil
@@ -99,7 +106,7 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 	}
 	var found []*backupmgr.BackupMetadata
 	budget := backupDiscoveryMaxPerRun
-	found = append(found, server.refreshDiscoveredBackups(&budget)...)
+	found = append(found, server.refreshDiscoveredBackups(&budget, retry)...)
 	known := cluster.knownBackupArtifacts()
 	// a metadata file not loaded (a scheduled backup's without its cookie) still describes
 	// its artifact: it is not discovered again
@@ -146,9 +153,9 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 // refreshDiscoveredBackups goes over the server's discovered backups: one whose artifact has
 // gone is unregistered (its metadata file removed: the discovered entries never outlive their
 // artifacts); one not completed whose artifact changed since its inspection (its size or file
-// count) is inspected again once it has settled, within budget (the artifacts the discovery may
-// still read). It returns the backups inspected again.
-func (server *ServerMonitor) refreshDiscoveredBackups(budget *int) []*backupmgr.BackupMetadata {
+// count), or any one not completed with retry, is inspected again once it has settled, within
+// budget (the artifacts the discovery may still read). It returns the backups inspected again.
+func (server *ServerMonitor) refreshDiscoveredBackups(budget *int, retry bool) []*backupmgr.BackupMetadata {
 	cluster := server.ClusterGroup
 	var discovered []*backupmgr.BackupMetadata
 	cluster.BackupMetaMap.Callback(func(_ int64, meta *backupmgr.BackupMetadata) bool {
@@ -172,7 +179,7 @@ func (server *ServerMonitor) refreshDiscoveredBackups(budget *int) []*backupmgr.
 			continue
 		}
 		now := backupmgr.BackupMetadata{Dest: meta.Dest}
-		if err := now.GetSizeAndFileCount(); err != nil || (now.Size == meta.Size && now.FileCount == meta.FileCount) {
+		if err := now.GetSizeAndFileCount(); err != nil || (!retry && now.Size == meta.Size && now.FileCount == meta.FileCount) {
 			continue
 		}
 		if changed, err := artifactChangedSince(meta.Dest, time.Now().Add(-backupDiscoverySettle)); err != nil || changed {
@@ -230,7 +237,7 @@ func (cluster *Cluster) StartBackupDiscovery() error {
 			if server == nil {
 				continue
 			}
-			metas, err := server.DiscoverBackups()
+			metas, err := server.discoverBackups(true)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: %s", server.URL, err)
 			}
@@ -371,7 +378,7 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 	if !meta.Completed {
 		state = "not completed"
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup discovery on %s registered %s backup %d (%s, %s): %s %s", server.URL, tool, meta.Id, describeSplit(split), state, path, meta.DiscoveryNote)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup discovery on %s registered %s backup %d (%s, %s): %s %s", server.URL, meta.BackupTool, meta.Id, describeSplit(meta.SplitDump), state, path, meta.DiscoveryNote)
 	return meta, nil
 }
 
@@ -401,6 +408,7 @@ func (server *ServerMonitor) inspectDiscoveredBackup(meta *backupmgr.BackupMetad
 			fail("can not be read: %s", err)
 			return
 		}
+		archive.classify(meta)
 		inspectDiscoveredFolder(meta, archive.read, archive.exists, fail)
 	case meta.SplitDump || meta.BackupTool == config.ConstBackupLogicalTypeMydumper:
 		dir := meta.Dest
@@ -528,9 +536,28 @@ func (a *discoveredArchive) read(name string) ([]byte, error) {
 
 func (a *discoveredArchive) exists(name string) bool { return a.names[name] }
 
+// classify sets what the archive holds from its content, as classifyBackupArtifact does for a
+// folder: a splitdump with its manifest, mydumper with mydumper's metadata ("Started dump at"),
+// a splitdump with another metadata. Its name, which decided before it was read, is kept for
+// an archive with neither.
+func (a *discoveredArchive) classify(meta *backupmgr.BackupMetadata) {
+	switch data, err := a.read("metadata"); {
+	case a.exists("manifest"):
+		meta.BackupTool, meta.SplitDump = config.ConstBackupLogicalTypeMysqldump, true
+	case err == nil && strings.Contains(string(data), "Started dump at"):
+		meta.BackupTool, meta.SplitDump = config.ConstBackupLogicalTypeMydumper, false
+	case err == nil:
+		meta.BackupTool, meta.SplitDump = config.ConstBackupLogicalTypeMysqldump, true
+	}
+}
+
+// discoveryArchiveMaxMembers bounds the member names an archive's read keeps: an archive with
+// more is not completed. A package variable for the tests, which lower it.
+var discoveryArchiveMaxMembers = 500000
+
 // readDiscoveredArchive reads the encrypted folder archive at path to its end (its integrity
-// is checked, a foreign key fails it) and keeps its members' names and its manifest and
-// metadata files: nothing is written to disk.
+// is checked, a foreign key fails it) and keeps its members' names (discoveryArchiveMaxMembers
+// at most) and its manifest and metadata files: nothing is written to disk.
 func (cluster *Cluster) readDiscoveredArchive(path string) (*discoveredArchive, error) {
 	rc, _, err := cluster.openRestoreArtifactStream(path)
 	if err != nil {
@@ -551,6 +578,9 @@ func (cluster *Cluster) readDiscoveredArchive(path string) (*discoveredArchive, 
 			continue
 		}
 		name := filepath.Base(hdr.Name)
+		if !a.names[name] && len(a.names) >= discoveryArchiveMaxMembers {
+			return nil, fmt.Errorf("more than %d files", discoveryArchiveMaxMembers)
+		}
 		a.names[name] = true
 		if name == "manifest" || name == "metadata" {
 			data, err := io.ReadAll(io.LimitReader(tr, discoveryArchiveSmallFile))
@@ -575,6 +605,9 @@ func (server *ServerMonitor) inspectDiscoveredDump(meta *backupmgr.BackupMetadat
 	meta.BinLogFileName, meta.BinLogFilePos, meta.BinLogGtid = facts.file, facts.pos, facts.gtid
 	if !facts.completedAt.IsZero() {
 		meta.StartTime, meta.EndTime = facts.completedAt, facts.completedAt
+	}
+	if !facts.header {
+		meta.DiscoveryNote = "no \"-- MySQL dump\" / \"-- MariaDB dump\" header (not a dump client's file, or written with --skip-comments): its completion is not checked"
 	}
 	if facts.header && !facts.completed {
 		fail("no \"-- Dump completed\" line: the dump did not finish")

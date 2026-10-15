@@ -535,3 +535,106 @@ func TestDiscoverLoadsAdhocMetadataDuringBackup(t *testing.T) {
 		t.Fatalf("the discovered backup was not loaded during the backup: %+v", m)
 	}
 }
+
+// An encrypted archive is classified by its content once read, not by its name: a mydumper
+// archive under any name is mydumper, a splitdump one named mydumper* a splitdump.
+func TestDiscoverArchiveClassifiedByContent(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	password, err := c.backupEncryptionPassword()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	os.MkdirAll(filepath.Join(src, "mydumper"), 0755)
+	os.WriteFile(filepath.Join(src, "mydumper", "metadata"), []byte("# Started dump at: 2026-10-01 10:00:00\n[source]\nSOURCE_LOG_FILE = \"binlog.000022\"\nSOURCE_LOG_POS = 355\n# Finished dump at: 2026-10-01 10:00:01\n"), 0644)
+	writeDiscoverySplitdump(t, filepath.Join(src, "split"), true)
+	for target, name := range map[string]string{"copy.tar.enc": "mydumper", "mydumper-split.tar.enc": "split"} {
+		if err := backupmgr.EncryptDirectory(filepath.Join(src, name), filepath.Join(dir, target), password); err != nil {
+			t.Fatal(err)
+		}
+	}
+	found, err := server.DiscoverBackups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]*backupmgr.BackupMetadata{}
+	for _, m := range found {
+		byName[filepath.Base(m.Dest)] = m
+	}
+	if m := byName["copy.tar.enc"]; m == nil || !m.Completed || m.SplitDump || m.BackupTool != config.ConstBackupLogicalTypeMydumper || m.BinLogFileName != "binlog.000022" || m.BinLogFilePos != 355 {
+		t.Fatalf("mydumper archive under another name: %+v", m)
+	}
+	if m := byName["mydumper-split.tar.enc"]; m == nil || !m.Completed || !m.SplitDump || m.BackupTool != config.ConstBackupLogicalTypeMysqldump || m.BinLogFileName != "mariadb-bin.000009" {
+		t.Fatalf("splitdump archive named mydumper: %+v", m)
+	}
+}
+
+// The read of an archive keeps discoveryArchiveMaxMembers names at most: an archive with more
+// is not completed.
+func TestDiscoverArchiveMemberCap(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	max := discoveryArchiveMaxMembers
+	discoveryArchiveMaxMembers = 2
+	t.Cleanup(func() { discoveryArchiveMaxMembers = max })
+	password, err := c.backupEncryptionPassword()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "split")
+	writeDiscoverySplitdump(t, src, true)
+	if err := backupmgr.EncryptDirectory(src, filepath.Join(dir, "split.tar.enc"), password); err != nil {
+		t.Fatal(err)
+	}
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 {
+		t.Fatalf("found %d, err %v", len(found), err)
+	}
+	if m := found[0]; m.Completed || !strings.Contains(m.DiscoveryNote, "more than 2 files") {
+		t.Fatalf("archive over the cap: %+v", m)
+	}
+}
+
+// A backup that could not be read is inspected again when the operator requests a discovery,
+// its artifact unchanged (a key installed, a permission fixed); the startup discovery leaves it.
+func TestDiscoverRetryOnRequest(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads a file without permissions")
+	}
+	_, server, dir := newDiscoveryTest(t)
+	path := filepath.Join(dir, "copy.sql.gz")
+	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
+	old := time.Now().Add(-time.Hour)
+	os.Chtimes(path, old, old)
+	os.Chmod(path, 0)
+	t.Cleanup(func() { os.Chmod(path, 0644) })
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 || found[0].Completed || !strings.Contains(found[0].DiscoveryNote, "can not be read") {
+		t.Fatalf("unreadable: %v %+v", err, found)
+	}
+	os.Chmod(path, 0644)
+	if again, err := server.DiscoverBackups(); err != nil || len(again) != 0 {
+		t.Fatalf("startup discovery inspected again: %v %d", err, len(again))
+	}
+	again, err := server.discoverBackups(true)
+	if err != nil || len(again) != 1 || again[0].Id != found[0].Id || !again[0].Completed {
+		t.Fatalf("requested discovery: %v %+v", err, again)
+	}
+}
+
+// A .sql file without a dump client's header is registered with a note saying so; without a
+// position it is refused by a reseed.
+func TestDiscoverNotADumpClientFile(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	writeDiscoveryGzip(t, filepath.Join(dir, "schema.sql.gz"), "CREATE TABLE `t` (`id` int);\n")
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 {
+		t.Fatalf("found %d, err %v", len(found), err)
+	}
+	m := found[0]
+	if !m.Completed || !strings.Contains(m.DiscoveryNote, "header") || !strings.Contains(m.DiscoveryNote, "no replication position") {
+		t.Fatalf("%+v", m)
+	}
+	if err := c.ReseedFromBackupID(server, m.Id); err == nil || !strings.Contains(err.Error(), "no replication position") {
+		t.Fatalf("reseed: %v", err)
+	}
+}

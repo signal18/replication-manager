@@ -2716,7 +2716,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupVerificationServerMark(
 
 // handlerMuxClusterBackupDiscover registers the backups placed in the servers' backup folders without metadata.
 // @Summary Discover the backups of the backup folders
-// @Description Starts, in the background, the scan of each server's backup folder that registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. The backups registered are logged and appear in the backup list. Refused while a backup of the cluster runs.
+// @Description Starts, in the background, the scan of each server's backup folder that registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. A discovered backup not completed (one that could not be read) is inspected again. The backups registered are logged and appear in the backup list. Refused while a backup of the cluster runs.
 // @Description Required grant: db-backup
 // @Tags ClusterBackups
 // @Produce json

@@ -17,7 +17,7 @@ backup:
 |---|---|
 | mysqldump file | its name: `.sql`, `.sql.gz`, encrypted `.sql.enc`, `.sql.gz.enc` |
 | splitdump folder | its `manifest` file, or a `metadata` file without mydumper's `Started dump at` line; any folder name |
-| encrypted splitdump | a `.tar.enc` archive |
+| encrypted splitdump or mydumper | a `.tar.enc` archive; once decrypted, its content decides as for a folder |
 | mydumper folder | its `metadata` file with mydumper's `Started dump at` line |
 
 Physical backups are not discovered. Names ending in `.partial`, `.tmp`,
@@ -48,7 +48,10 @@ An entry changed in the last minute is left to the next discovery: a copy
 still running is not registered half written. A backup registered as not
 completed is inspected again when its size or file count changed since (a
 copy that ran on), and a discovered backup whose artifact was removed by hand
-is unregistered: the discovered entries never outlive their artifacts.
+is unregistered: the discovered entries never outlive their artifacts. A
+backup not completed because it could not be read (encrypted with a key
+installed since, a permission fixed since) is inspected again by the discovery
+you request (the search icon or the API), not by the one at a server's start.
 
 The ad-hoc backups (one metadata file each) are read back by the same scan,
 so they stay listed after a restart.
@@ -61,7 +64,10 @@ The backup is read as a restore would read it:
   replication position comes from the dump client's own lines (`CHANGE MASTER`
   / `CHANGE REPLICATION SOURCE`, `GTID_PURGED`, and MariaDB's `gtid_slave_pos`,
   written after the data), its time from its `-- Dump completed on` footer. A dump with the client's header and no
-  footer did not finish: it is registered as not completed.
+  footer did not finish: it is registered as not completed. A file without the
+  client's header (not a dump client's file, or written with
+  `--skip-comments`) is listed with a note saying so: its completion is not
+  checked.
 - **splitdump folder**: its position comes from its `metadata` file; every file
   its manifest lists must be there. A splitdump without a manifest (written
   before the manifest existed) is registered, its files not checked against
@@ -70,7 +76,8 @@ The backup is read as a restore would read it:
   current and previous, and read to its end. An encrypted splitdump or
   mydumper archive (`.tar.enc`) is then checked as its folder would be: the
   splitdump's position and manifest, the mydumper's completion. One encrypted
-  with another key can not be read: it is registered as not completed.
+  with another key can not be read: it is registered as not completed. An
+  archive of more than 500,000 files is registered as not completed.
 - **mydumper folder**: complete when its `metadata` file has mydumper's
   `Finished dump at` line; its position comes from that file.
 
