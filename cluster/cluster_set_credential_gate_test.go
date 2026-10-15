@@ -47,3 +47,36 @@ func TestCanSetCredential(t *testing.T) {
 		})
 	}
 }
+
+// #2050: the GUI gets each credential's user, source and refusal, never a password
+func TestGetCredentialsInfo(t *testing.T) {
+	c := &Cluster{Conf: &config.Config{
+		ConfRewrite:     true,
+		ImmuableFlagMap: map[string]interface{}{"replication-credential": "repl:x"},
+		Secrets: config.NewSecrets(map[string]config.Secret{
+			"db-servers-credential":  {Value: "monitor:secret-db"},
+			"replication-credential": {Value: "repl:secret-rpl"},
+		}),
+	}}
+	infos := c.GetCredentialsInfo()
+	if len(infos) != 2 {
+		t.Fatalf("got %d credentials", len(infos))
+	}
+	db, rpl := infos[0], infos[1]
+	if db.Key != "db-servers-credential" || db.User != "monitor" || db.Source != "dynamic-config" || db.Refusal != "" {
+		t.Fatalf("db: %+v", db)
+	}
+	if rpl.User != "repl" || rpl.Source != "config-file" || !strings.HasPrefix(rpl.Refusal, "replication-credential is set in a config file") {
+		t.Fatalf("replication: %+v", rpl)
+	}
+	for _, i := range infos {
+		if strings.Contains(i.User+i.Source+i.Refusal, "secret-") {
+			t.Fatalf("a password leaks: %+v", i)
+		}
+	}
+	c.Conf.VaultServerAddr = "https://vault:8200"
+	c.Conf.User = "repman/monitor"
+	if s := c.GetCredentialsInfo()[0].Source; s != "vault" {
+		t.Fatalf("vault path: source %q", s)
+	}
+}

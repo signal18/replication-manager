@@ -3008,6 +3008,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringPause()
 	case "monitoring-save-config":
 		mycluster.SwitchMonitoringSaveConfig()
+	case "monitoring-secret-versioning":
+		// the secret store records the credentials from the next tick (#2050)
+		mycluster.Conf.MonitoringSecretVersioning = !mycluster.Conf.MonitoringSecretVersioning
+		mycluster.MarkSecretVersionStoreDirty()
 	case "monitoring-queries":
 		mycluster.SwitchMonitoringQueries()
 	case "monitoring-scheduler":
@@ -4993,6 +4997,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.MonitorPause = applyIsActive(mycluster.Conf.MonitorPause, isactive)
 	case "monitoring-save-config":
 		mycluster.Conf.ConfRewrite = applyIsActive(mycluster.Conf.ConfRewrite, isactive)
+	case "monitoring-secret-versioning":
+		mycluster.Conf.MonitoringSecretVersioning = applyIsActive(mycluster.Conf.MonitoringSecretVersioning, isactive)
+		mycluster.MarkSecretVersionStoreDirty()
 	case "monitoring-queries":
 		mycluster.Conf.MonitorQueries = applyIsActive(mycluster.Conf.MonitorQueries, isactive)
 	case "monitoring-scheduler":

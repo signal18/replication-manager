@@ -91,6 +91,37 @@ func (cluster *Cluster) CanSetCredential(key string) error {
 	return nil
 }
 
+// CredentialInfo describes a database credential for the GUI: never its password (#2050).
+type CredentialInfo struct {
+	Key     string `json:"key"`
+	User    string `json:"user"`
+	Source  string `json:"source"`  // where the value comes from: config-file (immutable), dynamic-config, vault
+	Refusal string `json:"refusal"` // why a change through the API is refused now, empty when allowed
+}
+
+// GetCredentialsInfo lists the monitoring and replication credentials, computed at each
+// topology check.
+func (cluster *Cluster) GetCredentialsInfo() []CredentialInfo {
+	creds := []struct{ key, user, raw string }{
+		{"db-servers-credential", cluster.GetDbUser(), cluster.Conf.User},
+		{"replication-credential", cluster.GetRplUser(), cluster.Conf.RplUser},
+	}
+	out := make([]CredentialInfo, 0, len(creds))
+	for _, c := range creds {
+		info := CredentialInfo{Key: c.key, User: c.user, Source: "dynamic-config"}
+		if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(c.raw) {
+			info.Source = "vault"
+		} else if cluster.IsVariableImmutable(c.key) {
+			info.Source = "config-file"
+		}
+		if err := cluster.CanSetCredential(c.key); err != nil {
+			info.Refusal = strings.TrimPrefix(err.Error(), ErrCredentialChangeRefused.Error()+": ")
+		}
+		out = append(out, info)
+	}
+	return out
+}
+
 // ApplyMonitorCredential gives every server the current monitoring credential, as the
 // rotation does: the ping pool uses it at the next tick, the global pool is replaced when
 // its connections are refused (#2048).

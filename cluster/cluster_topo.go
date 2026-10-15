@@ -196,6 +196,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	} else {
 		cluster.RotatePasswordsRefusal = ""
 	}
+	cluster.Credentials = cluster.GetCredentialsInfo()
 
 	// If only one server is present, force runtime active-passive topology and
 	// promote that server as the designated master.
