@@ -85,6 +85,49 @@ type BackupMetadata struct {
 	// (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
 	// a restore fetches it back from the archive.
 	OriginalRemoved bool `json:"originalRemoved,omitempty"`
+	// Verification is the result of the last verification of this backup (#2023).
+	Verification *BackupVerification `json:"verification,omitempty"`
+}
+
+// Backup verification status values.
+const (
+	BackupVerificationRunning = "running"
+	BackupVerificationPassed  = "passed"
+	BackupVerificationFailed  = "failed"
+	// BackupVerificationSkipped: an on-demand verification was not run (a logical backup
+	// still ran at the end of its wait); recorded only on a backup with no result yet
+	BackupVerificationSkipped = "skipped"
+)
+
+// BackupVerification is the result of a backup verification: its level (integrity or
+// restore), its status, and what it found.
+type BackupVerification struct {
+	Level  string `json:"level"`
+	Status string `json:"status"`
+	// Host is the verification server of a restore level, as the run read it
+	Host      string    `json:"host,omitempty"`
+	StartTime time.Time `json:"startTime"`
+	EndTime   time.Time `json:"endTime,omitempty"`
+	Error     string    `json:"error,omitempty"`
+	// Notes are the checks that could not apply to this backup, e.g. no footer to check
+	// in a dump written without comments.
+	Notes []string `json:"notes,omitempty"`
+	// Warnings are the kinds of objects the backup's source server has and the backup
+	// lacks (restore level), e.g. events left out of a dump: the backup restores, without
+	// them.
+	Warnings []string `json:"warnings,omitempty"`
+	// Artifact is the backup's file as a passed verification read it, unchanged from its
+	// start to its end: a restore of the same file skips its own read of it.
+	Artifact *ArtifactFingerprint `json:"artifact,omitempty"`
+}
+
+// ArtifactFingerprint identifies a backup's file without reading it: its size and
+// modification time; for a splitdump directory, its files' count, total size and newest
+// modification time.
+type ArtifactFingerprint struct {
+	Files   int       `json:"files"`
+	Size    int64     `json:"size"`
+	ModTime time.Time `json:"modTime"`
 }
 
 type PointInTimeMeta struct {

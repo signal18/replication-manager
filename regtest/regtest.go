@@ -92,6 +92,8 @@ var tests = []string{
 	// testLogicalReseedEdgeCases and testDumpClientCheck are not in this list either: they
 	// break replication, overwrite a backup, change GTID state or raise a warning on purpose,
 	// for a dedicated test cluster only. Run them by name.
+	// testBackupVerification is not in this list either: it cuts the last backup short on
+	// purpose, for a dedicated test cluster only. Run it by name.
 	// testProxySQLPostgresRouting is not in this list either: it needs a
 	// PostgreSQL cluster behind a ProxySQL and switches the master over twice.
 	// Run it by name: /api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting

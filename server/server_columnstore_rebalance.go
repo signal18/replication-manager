@@ -25,7 +25,7 @@ type ColumnstoreRebalanceRequest struct {
 // handlerMuxClusterColumnstoreRebalance spreads the ColumnStore tables over every dbroot (#2008).
 //
 // @Summary Rebalance the ColumnStore tables over every dbroot
-// @Description Plans (confirm false) or runs (confirm true) the rebuild of every ColumnStore table, optionally of one schema, whose extents are not on every dbroot (a PM added since it was written). Columnstore topology only. Each table is copied into schema.table__rebalance under FLUSH TABLES ... WITH READ LOCK (its writes wait, its reads go on), then swapped by an atomic RENAME and the original dropped. Runs on the UM in the background, one table at a time, stopping at the first error: progress CINF0016, stop WARN0241. Needs db-optimize.
+// @Description Plans (confirm false) or runs (confirm true) the rebuild of every ColumnStore table, optionally of one schema, whose extents are not on every dbroot (a PM added since it was written). Columnstore topology only. Each table is copied into schema.table__rebalance under FLUSH TABLES ... WITH READ LOCK (its writes wait, its reads go on), then swapped by an atomic RENAME and the original dropped. Runs on the UM in the background, one table at a time, stopping at the first error: progress CINF0018, stop WARN0241. Needs db-optimize.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json
@@ -60,7 +60,7 @@ type ColumnstoreRebalanceTableRequest struct {
 // handlerMuxTableColumnstoreRebalance spreads one ColumnStore table over every dbroot (#2008).
 //
 // @Summary Rebalance one ColumnStore table over every dbroot
-// @Description Plans (confirm false) or runs (confirm true) the rebuild of schemaName.tableName so that its extents spread over every dbroot: a copy under a table read lock (writes wait, reads go on), an atomic RENAME, the original dropped. Refused outside the columnstore topology, for a table already on every dbroot, or with a copy of a previous rebalance left. Runs in the background: CINF0016, WARN0241 on a stop. Needs db-optimize.
+// @Description Plans (confirm false) or runs (confirm true) the rebuild of schemaName.tableName so that its extents spread over every dbroot: a copy under a table read lock (writes wait, reads go on), an atomic RENAME, the original dropped. Refused outside the columnstore topology, for a table already on every dbroot, or with a copy of a previous rebalance left. Runs in the background: CINF0018, WARN0241 on a stop. Needs db-optimize.
 // @Tags ClusterActions
 // @Accept json
 // @Produce json

@@ -418,7 +418,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 	}
 	s.addTool(
 		mcp.NewTool("cluster-rebalance-columnstore",
-			mcp.WithDescription("Spread the ColumnStore tables over every dbroot (#2008), after a PM was added: every ColumnStore table, optionally of one schema, whose extents are not on every dbroot is rebuilt on the UM, one at a time in the background, stopping at the first error (progress CINF0016, stop WARN0241). Each table is copied into table__rebalance under a table read lock (its writes wait, its reads go on), then swapped by an atomic RENAME and the original dropped; the PMs need the table's size free while it runs. Columnstore topology only. confirm false (default) returns the plan: the dbroots, each table's extents per dbroot, the skipped ones. Needs db-optimize."),
+			mcp.WithDescription("Spread the ColumnStore tables over every dbroot (#2008), after a PM was added: every ColumnStore table, optionally of one schema, whose extents are not on every dbroot is rebuilt on the UM, one at a time in the background, stopping at the first error (progress CINF0018, stop WARN0241). Each table is copied into table__rebalance under a table read lock (its writes wait, its reads go on), then swapped by an atomic RENAME and the original dropped; the PMs need the table's size free while it runs. Columnstore topology only. confirm false (default) returns the plan: the dbroots, each table's extents per dbroot, the skipped ones. Needs db-optimize."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("schema_name", mcp.Description("Only this schema; default every user schema")),
 			mcp.WithBoolean("confirm", mcp.Description("false (default): plan only; true: run")),
@@ -433,7 +433,7 @@ func (s *MCPServer) registerClusterWriteTools() {
 	)
 	s.addTool(
 		mcp.NewTool("cluster-rebalance-columnstore-table",
-			mcp.WithDescription("Spread one ColumnStore table over every dbroot (#2008): a copy under a table read lock (writes wait, reads go on), an atomic RENAME, the original dropped, in the background (CINF0016, WARN0241 on a stop). Refused outside the columnstore topology, for a table already on every dbroot, or with a copy of a previous rebalance left. confirm false (default) returns the plan. Needs db-optimize."),
+			mcp.WithDescription("Spread one ColumnStore table over every dbroot (#2008): a copy under a table read lock (writes wait, reads go on), an atomic RENAME, the original dropped, in the background (CINF0018, WARN0241 on a stop). Refused outside the columnstore topology, for a table already on every dbroot, or with a copy of a previous rebalance left. confirm false (default) returns the plan. Needs db-optimize."),
 			mcp.WithString("cluster_name", mcp.Required(), mcp.Description("Name of the cluster")),
 			mcp.WithString("schema_name", mcp.Required(), mcp.Description("Schema of the table")),
 			mcp.WithString("table_name", mcp.Required(), mcp.Description("Table to rebalance")),

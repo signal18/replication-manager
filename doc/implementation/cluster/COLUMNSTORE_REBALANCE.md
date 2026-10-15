@@ -67,7 +67,7 @@ connections, *lock* and *copy*:
 
 Any failure before the RENAME drops `t__rebalance`, releases the lock and leaves `s.t` as it
 was; a failure of the last drop leaves `t__old` and says so. Progress on the `Cluster`
-(`columnstoreRebalance`), raised every tick: CINF0016 while it runs, WARN0241 with the table
+(`columnstoreRebalance`), raised every tick: CINF0018 while it runs, WARN0241 with the table
 and the error once it stopped (until the next rebalance).
 
 ## Limits

@@ -27,6 +27,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -432,6 +433,51 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 
 func (server *ServerMonitor) JobInsertTaskWithPayload(task string, port string, repmanhost string, payload string) (int64, error) {
 	return server.jobInsertTask(task, port, repmanhost, &payload)
+}
+
+// closeLogicalReseedJobRow closes the open jobs-table row of a logical reseed from a given
+// path, with the outcome of its run: runErr, else the result the run recorded (JobResults).
+//
+// Why: JobReseedLogicalBackupFromPathPrepare inserts the row (SQL jobs mode: the restic reseed,
+// a reseed from a chosen backup), replication-manager runs the restore itself, and dbjobs never
+// takes a logical reseed task, so nothing else closed it. Left open, it refused the next reseed
+// of the server and kept WARN0075 coming back. The default reseed inserts no row: nothing to
+// close.
+//
+// How: only the open row no runner took is closed (WithdrawJobTask, idempotent), never the
+// task's past rows, on a connection out of the binary log. No jobs table in API mode or on
+// PostgreSQL. A restore that replaced the jobs table (the backup holds
+// replication_manager_schema) leaves no row either.
+//
+// Owner: launchLogicalReseed, after its ProcessReseedLogical run. JobReseedLogicalBackupProcess
+// closes it for a synchronous caller (none in production today); a second close finds nothing.
+func (server *ServerMonitor) closeLogicalReseedJobRow(task string, runErr error) {
+	cluster := server.ClusterGroup
+	if cluster.Conf.SchedulerJobsMode == "api" || server.IsPostgreSQLHost() || server.Conn == nil {
+		return
+	}
+	state, result := JobStateErrorExec, "the reseed ended without a result"
+	switch t := server.JobResults.Get(task); {
+	case runErr != nil:
+		result = runErr.Error()
+	case t != nil && t.Done == 1:
+		state, result = t.State, t.Result
+	}
+	conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Can not close the %s row of %s: %s; the next reseed of the server is refused until it is closed", task, server.URL, err)
+		return
+	}
+	defer conn.Close()
+	closed, query, err := dbhelper.WithdrawJobTask(conn, server.DBVersion, task, state, result, JobTimeout)
+	if err != nil {
+		cluster.LogSQL(query, err, server.URL, "Reseed", config.LvlWarn, "Can not close the %s row of %s: %s; the next reseed of the server is refused until it is closed", task, server.URL, err)
+		return
+	}
+	if closed {
+		server.SetNeedRefreshJobs(true)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Jobs row of %s on %s closed: state %d", task, server.URL, state)
+	}
 }
 
 // jobTaskStillOpen reports whether a job row is still open: not ended

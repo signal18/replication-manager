@@ -23,7 +23,7 @@ import (
 // dbroot, and the existing tables stay on the old ones. A rebalance rebuilds a table so
 // that its extents spread over every dbroot: a copy into schema.table__rebalance while a
 // table read lock makes the writers wait, then an atomic rename. One table at a time, one
-// rebalance at a time per cluster, in the background; its progress is a state (CINF0016),
+// rebalance at a time per cluster, in the background; its progress is a state (CINF0018),
 // its stop too (WARN0241).
 
 const (
@@ -248,7 +248,7 @@ func (cluster *Cluster) GetColumnstoreRebalance() *ColumnstoreRebalance {
 	return cluster.columnstoreRebalance.Load()
 }
 
-// checkColumnstoreRebalanceStates: CINF0016 while a rebalance runs, WARN0241 once it
+// checkColumnstoreRebalanceStates: CINF0018 while a rebalance runs, WARN0241 once it
 // stopped on an error (until the next rebalance); nothing once it finished.
 func (cluster *Cluster) checkColumnstoreRebalanceStates() {
 	rb := cluster.columnstoreRebalance.Load()
@@ -257,6 +257,6 @@ func (cluster *Cluster) checkColumnstoreRebalanceStates() {
 	case rb.Error != "":
 		cluster.SetState("WARN0241", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0241"], cluster.Name, rb.Current, rb.Error, rb.Done, rb.Total), ErrFrom: "SCHEMA"})
 	case !rb.Finished:
-		cluster.SetState("CINF0016", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0016"], cluster.Name, rb.Done, rb.Total, rb.Current), ErrFrom: "SCHEMA"})
+		cluster.SetState("CINF0018", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0018"], cluster.Name, rb.Done, rb.Total, rb.Current), ErrFrom: "SCHEMA"})
 	}
 }

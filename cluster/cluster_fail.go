@@ -683,7 +683,7 @@ func (cluster *Cluster) failoverEnableEventScheduler() {
 		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
-				logs, err := dbhelper.SetEventStatus(cluster.master.Conn, v, 1)
+				logs, err := dbhelper.SetEventStatus(cluster.master.Conn, v, 1, cluster.master.DBVersion)
 				cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", config.LvlErr, "Could not Set ENABLE for event %s %s on new master", v.Db, v.Name)
 			}
 		}
@@ -1484,7 +1484,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		for _, v := range cluster.master.EventStatus {
 			if v.Status == 3 {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set ENABLE for event %s %s on new master", v.Db, v.Name)
-				logs, err := dbhelper.SetEventStatus(cluster.vmaster.Conn, v, 1)
+				logs, err := dbhelper.SetEventStatus(cluster.vmaster.Conn, v, 1, cluster.vmaster.DBVersion)
 				cluster.LogSQL(logs, err, cluster.vmaster.URL, "MasterFailover", config.LvlErr, "Could not Set ENABLE for event %s %s on new master", v.Db, v.Name)
 			}
 		}

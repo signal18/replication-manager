@@ -10,7 +10,7 @@ import (
 
 // GH-2046: with skip_name_resolve the server ignores accounts with a DNS host, and the
 // account dump of a logical backup stops on them: the backup is refused up front with
-// the accounts named, so ERR00117 shows why.
+// the accounts named, so ERR00118 shows why.
 func TestLogicalBackupAccountsBlocker(t *testing.T) {
 	c := &Cluster{Name: "curepipe", Conf: &config.Config{BackupMysqldumpOptions: "--single-transaction --all-databases --system=all"}}
 	db2 := &ServerMonitor{URL: "db2.curepipe.svc.cloud18:3306", ClusterGroup: c, Variables: config.NewStringsMap(), Users: dbhelper.NewGrantsMap()}

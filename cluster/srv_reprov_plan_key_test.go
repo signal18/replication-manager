@@ -18,7 +18,7 @@ func TestConfigRemediationPlanServerKeyedStates(t *testing.T) {
 	c.Servers = []*ServerMonitor{db2}
 	c.ConfigStates = []state.State{
 		{ErrKey: "ERR00116@db2.curepipe.svc.cloud18:3306", ServerUrl: db2.URL, ErrDesc: "system tables lag"},
-		{ErrKey: "ERR00117@db2.curepipe.svc.cloud18:3306", ServerUrl: db2.URL, ErrDesc: "last logical backup failed"},
+		{ErrKey: "ERR00118@db2.curepipe.svc.cloud18:3306", ServerUrl: db2.URL, ErrDesc: "last logical backup failed"},
 	}
 	plan := c.GetConfigRemediationPlan()
 	if len(plan.Remediations) != 1 || len(plan.Remediations[0].Fixes) != 1 ||

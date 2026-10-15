@@ -6,7 +6,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// GH-2044: the server's last logical backup decides ERR00117 (config domain): a failed
+// GH-2044: the server's last logical backup decides ERR00118 (config domain): a failed
 // one opens it, a later one ended OK closes it, other jobs (a reseed) do not count.
 func TestLastFailedLogicalBackup(t *testing.T) {
 	s := &ServerMonitor{URL: "db2:3306", JobResults: config.NewTasksMap()}

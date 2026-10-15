@@ -69,6 +69,7 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 	cluster := server.ClusterGroup
 	if meta, err := server.ReadLastMetadata(method); err == nil {
+		server.closeInterruptedVerification(meta)
 		cluster.BackupMetaMap.Set(meta.Id, meta)
 		if *latest < meta.Id {
 			*latest = meta.Id

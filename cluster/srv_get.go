@@ -149,20 +149,6 @@ func (server *ServerMonitor) GetSchemas() ([]string, string, error) {
 	return dbhelper.GetSchemas(server.Conn)
 }
 
-func (server *ServerMonitor) GetPrometheusMetrics() string {
-	metrics := server.GetDatabaseMetrics()
-	var s string
-	for _, m := range metrics {
-		v := strings.Split(m.Name, ".")
-		if v[2] == "pfs" {
-			s = s + v[2] + "_" + v[3] + "{instance=\"" + v[1] + "\"} " + m.Value + "\n"
-		} else {
-			s = s + v[2] + "{instance=\"" + v[1] + "\"} " + m.Value + "\n"
-		}
-	}
-	return s
-}
-
 func (server *ServerMonitor) GetReplicationServerID() uint64 {
 	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
 	if sserr != nil {

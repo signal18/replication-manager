@@ -195,7 +195,7 @@ var clusterACLRules = []ACLRule{
 
 	// Backups — ordered longest-match-first so specific rules win
 	{"/backups/stats", nil, []string{config.GrantClusterShowBackups}},                         // read-only stats
-	{"/backups/", nil, []string{config.GrantDBBackup}},                                        // write sub-paths: delete, reconcile
+	{"/backups/", nil, []string{config.GrantDBBackup}},                                        // write sub-paths: delete, reconcile, verify
 	{"/backups", nil, []string{config.GrantClusterShowBackups}},                               // list (bare path, no slash)
 	{"/restic/purge", nil, []string{config.GrantDBBackup}},                                    // delete a snapshot
 	{"/restic/wipe", nil, []string{config.GrantDBBackup}},                                     // destructive wipe
