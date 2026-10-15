@@ -755,6 +755,10 @@ func TestClusterACLRules(t *testing.T) {
 		User:   "backup_user",
 		Grants: map[string]bool{config.GrantClusterShowBackups: true},
 	}
+	cluster.APIUsers["db_backup_user"] = APIUser{
+		User:   "db_backup_user",
+		Grants: map[string]bool{config.GrantDBBackup: true},
+	}
 	cluster.APIUsers["cert_user"] = APIUser{
 		User:   "cert_user",
 		Grants: map[string]bool{config.GrantClusterCertificatesReload: true, config.GrantClusterCertificatesRotate: true},
@@ -799,6 +803,8 @@ func TestClusterACLRules(t *testing.T) {
 		{"Backups - restic snapshots", "backup_user", "/api/clusters/test/restic/snapshots", true},
 		{"Backups - restic stats", "backup_user", "/api/clusters/test/restic/stats", true},
 		{"Backups - denied without grant", "process_user", "/api/clusters/test/backups", false},
+		{"Backups - verify", "db_backup_user", "/api/clusters/test/backups/100/verify/restore", true},
+		{"Backups - verify denied without grant", "process_user", "/api/clusters/test/backups/100/verify", false},
 
 		// Certificate tests
 		{"Certificates - reload", "cert_user", "/api/clusters/test/actions/certificates-reload", true},

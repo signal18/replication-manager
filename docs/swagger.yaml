@@ -43,6 +43,9 @@ definitions:
         type: integer
       endTime:
         type: string
+      execRemote:
+        description: the backup tool ran on the DB node (dbjobs), not next to replication-manager
+        type: boolean
       fileCount:
         type: integer
       id:
@@ -85,6 +88,11 @@ definitions:
         description: bytes received from the backup stream, before compression/encryption
           (physical); the next run's progress denominator
         type: integer
+      verification:
+        allOf:
+        - $ref: '#/definitions/backupmgr.BackupVerification'
+        description: Verification is the result of the last verification of this backup
+          (#2023).
     type: object
   backupmgr.BackupStat:
     properties:
@@ -94,6 +102,34 @@ definitions:
         type: integer
       total_size:
         type: integer
+    type: object
+  backupmgr.BackupVerification:
+    properties:
+      endTime:
+        type: string
+      error:
+        type: string
+      level:
+        type: string
+      notes:
+        description: |-
+          Notes are the checks that could not apply to this backup, e.g. no footer to check
+          in a dump written without comments.
+        items:
+          type: string
+        type: array
+      startTime:
+        type: string
+      status:
+        type: string
+      warnings:
+        description: |-
+          Warnings are the kinds of objects the backup's source server has and the backup
+          lacks (restore level), e.g. events left out of a dump: the backup restores, without
+          them.
+        items:
+          type: string
+        type: array
     type: object
   backupmgr.ManualCheckResult:
     properties:
@@ -1880,6 +1916,12 @@ definitions:
         type: integer
       backupLogicalPostScript:
         type: string
+      backupLogicalRemoteArmTimeout:
+        type: integer
+      backupLogicalRemotePickupTimeout:
+        type: integer
+      backupLogicalRemoteReportTimeout:
+        type: integer
       backupLogicalType:
         type: string
       backupMyDumperOptions:
@@ -2059,6 +2101,12 @@ definitions:
       backupStreamingEndpoint:
         type: string
       backupStreamingRegion:
+        type: string
+      backupVerification:
+        type: boolean
+      backupVerificationHost:
+        type: string
+      backupVerificationLevel:
         type: string
       backupWriteStallTimeout:
         type: integer
@@ -8741,6 +8789,112 @@ paths:
           schema:
             type: string
       summary: Delete a backup by ID
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/{backupID}/verify:
+    post:
+      description: |-
+        Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. Without a level, backup-verification-level applies. The result is in the backup's verification field.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Backup verification started
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request or backup not verifiable
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: Backup or verification running
+          schema:
+            type: string
+        "500":
+          description: Verification not started
+          schema:
+            type: string
+      summary: Verify a backup by ID
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/{backupID}/verify/{level}:
+    post:
+      description: |-
+        Starts the verification of a logical (mysqldump) backup in the background: integrity reads it as a restore would, restore also loads it into backup-verification-host. The result is in the backup's verification field.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: string
+      - description: Verification level
+        enum:
+        - integrity
+        - restore
+        in: path
+        name: level
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Backup verification started
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request or backup not verifiable
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: Backup or verification running
+          schema:
+            type: string
+        "500":
+          description: Verification not started
+          schema:
+            type: string
+      summary: Verify a backup by ID and level
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/backups/reconcile:
