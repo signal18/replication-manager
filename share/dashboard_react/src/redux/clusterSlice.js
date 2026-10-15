@@ -380,11 +380,9 @@ export const discoverBackups = createGuardedAsyncThunk('cluster/discoverBackups'
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const { data, status } = await clusterService.discoverBackups(clusterName, baseURL)
-    if (status === 200) {
-      const n = Array.isArray(data) ? data.length : 0
-      showSuccessBanner(n === 0 ? 'No new backup in the backup folders' : `${n} backup(s) discovered`, status, thunkAPI)
-      thunkAPI.dispatch(getBackups({ clusterName }))
-      thunkAPI.dispatch(getBackupStats({ clusterName }))
+    if (status === 202) {
+      // the scan runs in the background: the list shows what it registers once it ends
+      showSuccessBanner('Backup discovery started: discovered backups appear in the list once it ends', status, thunkAPI)
     } else {
       showErrorBanner('Backup discovery failed', data, thunkAPI)
     }

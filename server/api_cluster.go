@@ -2716,16 +2716,16 @@ func (repman *ReplicationManager) handlerMuxClusterBackupVerificationServerMark(
 
 // handlerMuxClusterBackupDiscover registers the backups placed in the servers' backup folders without metadata.
 // @Summary Discover the backups of the backup folders
-// @Description Scans each server's backup folder and registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. Refused while a backup of the cluster runs.
+// @Description Starts, in the background, the scan of each server's backup folder that registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. The backups registered are logged and appear in the backup list. Refused while a backup of the cluster runs.
 // @Description Required grant: db-backup
 // @Tags ClusterBackups
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} backupmgr.BackupMetadata "The backups registered"
+// @Success 202 {object} map[string]interface{} "Backup discovery started"
 // @Failure 403 {string} string "No valid ACL, or no db-backup grant"
 // @Failure 409 {string} string "A backup of the cluster is running"
-// @Failure 500 {string} string "Discovery failed"
+// @Failure 500 {string} string "Discovery not started"
 // @Router /api/clusters/{clusterName}/backups/discover [post]
 func (repman *ReplicationManager) handlerMuxClusterBackupDiscover(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -2744,21 +2744,19 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDiscover(w http.Respons
 		http.Error(w, "No db-backup grant", http.StatusForbidden)
 		return
 	}
-	found, err := mycluster.DiscoverBackups()
-	if errors.Is(err, cluster.ErrBackupDiscoveryInBackup) {
-		http.Error(w, err.Error(), http.StatusConflict)
-		return
-	}
-	if err != nil && len(found) == 0 {
+	// in the background: each new artifact is read to its end, never within a request
+	if err := mycluster.StartBackupDiscovery(); err != nil {
+		if errors.Is(err, cluster.ErrBackupDiscoveryInBackup) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if found == nil {
-		found = []*backupmgr.BackupMetadata{}
-	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(found); err != nil {
-		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	w.WriteHeader(http.StatusAccepted)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"message": "Backup discovery started"}); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
 	}
 }
 

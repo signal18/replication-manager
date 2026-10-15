@@ -31,11 +31,17 @@ import (
 
 var (
 	// the position lines of a dump header, from MariaDB, MySQL and Percona clients
-	discoveryBinlogRegex  = regexp.MustCompile(`CHANGE (?:REPLICATION SOURCE|MASTER) (?:'[^']*' )?TO (?:SOURCE|MASTER)_LOG_FILE='([^']+)', (?:SOURCE|MASTER)_LOG_POS=(\d+)`)
-	discoveryGtidMariaDB  = regexp.MustCompile(`gtid_slave_pos='([^']*)'`)
-	discoveryGtidMySQL    = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:/\*![0-9]*\s*'\+'\*/\s*)?(?:/\*![0-9]*\s*'([^'+][^']*)'\*/|'([^'+][^']*)')`)
-	discoveryDumpComplete = regexp.MustCompile(`^-- Dump completed(?: on (\d{4}-\d{2}-\d{2} +\d{1,2}:\d{2}:\d{2}))?`)
+	discoveryBinlogRegex = regexp.MustCompile(`CHANGE (?:REPLICATION SOURCE|MASTER) (?:'[^']*' )?TO (?:SOURCE|MASTER)_LOG_FILE='([^']+)', (?:SOURCE|MASTER)_LOG_POS=(\d+)`)
+	discoveryGtidMariaDB = regexp.MustCompile(`gtid_slave_pos='([^']*)'`)
+	discoveryGtidMySQL   = regexp.MustCompile(`GTID_PURGED\s*=\s*(?:/\*![0-9]*\s*'\+'\*/\s*)?(?:/\*![0-9]*\s*'([^'+][^']*)'\*/|'([^'+][^']*)')`)
+	// a continuation line of a GTID_PURGED statement: a GTID set part, the last one closing it
+	discoveryGtidContinuation = regexp.MustCompile(`^[0-9A-Za-z_:,-]+(?:'\s*;)?$`)
+	discoveryDumpComplete     = regexp.MustCompile(`^-- Dump completed(?: on (\d{4}-\d{2}-\d{2} +\d{1,2}:\d{2}:\d{2}))?`)
 )
+
+// discoveryGtidStatementMax bounds a joined GTID_PURGED statement: 10000 sources with
+// several intervals each are about 650 KB.
+const discoveryGtidStatementMax = 1 << 20
 
 // discoveryLinePrefixMax bounds what is kept of a dump line: the header and footer lines
 // are short, a data line (an INSERT of a whole table) is not kept whole.
@@ -44,14 +50,28 @@ const discoveryLinePrefixMax = 4096
 // ErrBackupDiscoveryNotLogical: a reseed from a chosen backup takes a logical backup only.
 var ErrBackupDiscoveryNotLogical = errors.New("reseed from a chosen backup takes a logical backup (mysqldump, splitdump or mydumper)")
 
+// backupDiscoverySettle is how long an artifact must be left unchanged before it is
+// discovered: one still being copied in is not registered half written. A package variable
+// for the tests, which shorten it; they restore it and do not run in parallel.
+var backupDiscoverySettle = time.Minute
+
+// errBackupDiscoveryRunning: a discovery of the server's folder already runs.
+var errBackupDiscoveryRunning = errors.New("a discovery of the backup folder already runs")
+
 // DiscoverBackups registers the logical backups of the server's backup folder that no
-// metadata describes yet, and loads the ad-hoc metadata files of the folder. It returns the
-// backups it registered.
+// metadata describes yet, and loads the ad-hoc metadata files of the folder. A discovered
+// backup whose artifact has gone is unregistered; one not completed whose artifact changed
+// since (a copy that was still running) is inspected again. It returns the backups it
+// registered. One discovery runs at a time per server.
 func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, error) {
 	cluster := server.ClusterGroup
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return nil, nil
 	}
+	if _, running := cluster.backupDiscoveries.LoadOrStore(server.URL, struct{}{}); running {
+		return nil, errBackupDiscoveryRunning
+	}
+	defer cluster.backupDiscoveries.Delete(server.URL)
 	dir := server.GetMyBackupDirectory()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -64,6 +84,8 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 	if _, err := server.LoadAdhocBackupMetadata(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: ad-hoc metadata not all read: %s", server.URL, err)
 	}
+	var found []*backupmgr.BackupMetadata
+	found = append(found, server.refreshDiscoveredBackups()...)
 	known := cluster.knownBackupArtifacts()
 	// a metadata file not loaded (a scheduled backup's without its cookie) still describes
 	// its artifact: it is not discovered again
@@ -75,7 +97,6 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 			addKnownBackupArtifact(known, meta.Dest)
 		}
 	}
-	var found []*backupmgr.BackupMetadata
 	for _, entry := range entries {
 		path := filepath.Join(dir, entry.Name())
 		if known[path] {
@@ -85,7 +106,11 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 		if !ok {
 			continue
 		}
-		meta, err := server.registerDiscoveredBackup(path, tool, split)
+		if changed, err := artifactChangedSince(path, time.Now().Add(-backupDiscoverySettle)); err != nil || changed {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup discovery on %s: %s changed in the last %s (still being written?), left to the next discovery", server.URL, path, backupDiscoverySettle)
+			continue
+		}
+		meta, err := server.registerDiscoveredBackup(path, tool, split, 0)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: %s not registered: %s", server.URL, path, err)
 			continue
@@ -95,28 +120,97 @@ func (server *ServerMonitor) DiscoverBackups() ([]*backupmgr.BackupMetadata, err
 	return found, nil
 }
 
+// refreshDiscoveredBackups goes over the server's discovered backups: one whose artifact has
+// gone is unregistered (its metadata file removed: the discovered entries never outlive their
+// artifacts); one not completed whose artifact changed since its inspection (its size or file
+// count) is inspected again once it has settled. It returns the backups inspected again.
+func (server *ServerMonitor) refreshDiscoveredBackups() []*backupmgr.BackupMetadata {
+	cluster := server.ClusterGroup
+	var discovered []*backupmgr.BackupMetadata
+	cluster.BackupMetaMap.Callback(func(_ int64, meta *backupmgr.BackupMetadata) bool {
+		if meta != nil && meta.Discovered && meta.Source == server.URL {
+			discovered = append(discovered, meta)
+		}
+		return true
+	})
+	var refreshed []*backupmgr.BackupMetadata
+	for _, meta := range discovered {
+		if _, err := os.Stat(meta.Dest); os.IsNotExist(err) {
+			if err := os.Remove(server.backupMetaFilePath(meta)); err != nil && !os.IsNotExist(err) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: metadata of backup %d not removed: %s", server.URL, meta.Id, err)
+				continue
+			}
+			cluster.BackupMetaMap.Delete(meta.Id)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup discovery on %s: discovered backup %d unregistered, its artifact %s is gone", server.URL, meta.Id, meta.Dest)
+			continue
+		}
+		if meta.Completed {
+			continue
+		}
+		now := backupmgr.BackupMetadata{Dest: meta.Dest}
+		if err := now.GetSizeAndFileCount(); err != nil || (now.Size == meta.Size && now.FileCount == meta.FileCount) {
+			continue
+		}
+		if changed, err := artifactChangedSince(meta.Dest, time.Now().Add(-backupDiscoverySettle)); err != nil || changed {
+			continue
+		}
+		again, err := server.registerDiscoveredBackup(meta.Dest, meta.BackupTool, meta.SplitDump, meta.Id)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: backup %d not inspected again: %s", server.URL, meta.Id, err)
+			continue
+		}
+		refreshed = append(refreshed, again)
+	}
+	return refreshed
+}
+
+// artifactChangedSince tells whether the artifact at path (a file, or a folder's files) was
+// modified after since.
+func artifactChangedSince(path string, since time.Time) (bool, error) {
+	changed := false
+	err := filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		if info.ModTime().After(since) {
+			changed = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return changed, err
+}
+
 // ErrBackupDiscoveryInBackup: a backup of the cluster runs, its artifact is not complete yet.
 var ErrBackupDiscoveryInBackup = errors.New("a backup of the cluster is running: discover its folder once it ends")
 
-// DiscoverBackups runs the discovery on every server of the cluster, not while a backup of
-// the cluster runs.
-func (cluster *Cluster) DiscoverBackups() ([]*backupmgr.BackupMetadata, error) {
+// StartBackupDiscovery runs the discovery on every server of the cluster in the background
+// (it reads each new artifact to its end: never in a request or the monitor), not while a
+// backup of the cluster runs. The backups it registers are logged and listed.
+func (cluster *Cluster) StartBackupDiscovery() error {
 	if cluster.IsInBackup() {
-		return nil, ErrBackupDiscoveryInBackup
+		return ErrBackupDiscoveryInBackup
 	}
-	var found []*backupmgr.BackupMetadata
-	var errs []error
-	for _, server := range cluster.Servers {
-		if server == nil {
-			continue
+	servers := append([]*ServerMonitor(nil), cluster.Servers...)
+	go func() {
+		found := 0
+		for _, server := range servers {
+			if server == nil {
+				continue
+			}
+			metas, err := server.DiscoverBackups()
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: %s", server.URL, err)
+			}
+			found += len(metas)
 		}
-		metas, err := server.DiscoverBackups()
-		if err != nil {
-			errs = append(errs, err)
-		}
-		found = append(found, metas...)
-	}
-	return found, errors.Join(errs...)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup discovery of cluster %s ended: %d backup(s) registered or inspected again", cluster.Name, found)
+	}()
+	return nil
 }
 
 // knownBackupArtifacts returns the paths the registered backups use: their artifact and its
@@ -195,16 +289,21 @@ func classifyBackupArtifact(path string, entry os.DirEntry) (tool string, split,
 
 // registerDiscoveredBackup describes the artifact at path, writes its metadata file and
 // registers it.
-func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split bool) (*backupmgr.BackupMetadata, error) {
+// id 0 registers a new backup; another id inspects that discovered backup again.
+func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split bool, id int64) (*backupmgr.BackupMetadata, error) {
 	cluster := server.ClusterGroup
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
 	}
-	// the id of an ad-hoc backup, a unix time: the artifact's, unique in the cluster
-	id := info.ModTime().Unix()
-	for cluster.BackupMetaMap.Get(id) != nil || fileExists(server.buildBackupMetaFileName(tool, id, backupmgr.BackupLineAdhoc)) {
-		id++
+	if id == 0 {
+		// the id of an ad-hoc backup, a unix time: the artifact's, unique in the cluster
+		// (an id taken is bumped: ids follow the folder's sorted order, and the metadata
+		// file keeps the id once written)
+		id = info.ModTime().Unix()
+		for cluster.BackupMetaMap.Get(id) != nil || fileExists(server.buildBackupMetaFileName(tool, id, backupmgr.BackupLineAdhoc)) {
+			id++
+		}
 	}
 	meta := &backupmgr.BackupMetadata{
 		Id:           id,
@@ -266,44 +365,52 @@ func (server *ServerMonitor) inspectDiscoveredBackup(meta *backupmgr.BackupMetad
 	switch {
 	case strings.HasSuffix(meta.Dest, ".tar.enc"):
 		// an encrypted folder: its archive is read to its end (its integrity code is
-		// checked, which a foreign key fails), its manifest and metadata kept, then the
-		// folder's own checks run on them
-		dir, cleanup, err := server.ClusterGroup.readDiscoveredArchive(meta.Dest)
+		// checked, which a foreign key fails), its members listed and its manifest and
+		// metadata kept in memory, then the folder's own checks run on them
+		archive, err := server.ClusterGroup.readDiscoveredArchive(meta.Dest)
 		if err != nil {
 			fail("can not be read: %s", err)
 			return
 		}
-		defer cleanup()
-		inspectDiscoveredFolder(meta, dir, fail)
+		inspectDiscoveredFolder(meta, archive.read, archive.exists, fail)
 	case meta.SplitDump || meta.BackupTool == config.ConstBackupLogicalTypeMydumper:
-		inspectDiscoveredFolder(meta, meta.Dest, fail)
+		dir := meta.Dest
+		read := func(name string) ([]byte, error) { return os.ReadFile(filepath.Join(dir, name)) }
+		exists := func(name string) bool { return fileExists(filepath.Join(dir, name)) }
+		inspectDiscoveredFolder(meta, read, exists, fail)
 	default:
 		server.inspectDiscoveredDump(meta, fail)
 	}
 }
 
-// inspectDiscoveredFolder checks a splitdump or mydumper folder at dir: a plain one, or the
-// files an encrypted archive listed (readDiscoveredArchive).
-func inspectDiscoveredFolder(meta *backupmgr.BackupMetadata, dir string, fail func(string, ...any)) {
+// inspectDiscoveredFolder checks a splitdump or mydumper folder through read (a file's
+// content) and exists: a plain folder, or what an encrypted archive held
+// (readDiscoveredArchive).
+func inspectDiscoveredFolder(meta *backupmgr.BackupMetadata, read func(string) ([]byte, error), exists func(string) bool, fail func(string, ...any)) {
 	switch {
 	case meta.BackupTool == config.ConstBackupLogicalTypeMydumper:
-		data, err := os.ReadFile(filepath.Join(dir, "metadata"))
+		data, err := read("metadata")
 		if err != nil {
 			fail("no mydumper metadata: %s", err)
 		} else if !strings.Contains(string(data), "Finished dump at") {
 			fail("mydumper metadata has no \"Finished dump at\" line: the dump did not finish")
 		}
 	case meta.SplitDump:
-		if m, err := splitdump.ReadMetadata(dir); err == nil && m != nil {
-			meta.BinLogFileName, meta.BinLogFilePos, meta.BinLogGtid = m.File, m.Position, m.GTID
+		if data, err := read("metadata"); err == nil {
+			if m, err := splitdump.ParseMetadata(data); err == nil && m != nil {
+				meta.BinLogFileName, meta.BinLogFilePos, meta.BinLogGtid = m.File, m.Position, m.GTID
+			}
 		}
-		m, err := splitdump.ReadManifest(dir)
+		data, err := read("manifest")
 		if errors.Is(err, os.ErrNotExist) {
 			meta.DiscoveryNote = "no manifest: its files are not checked against one"
 			return
 		}
+		var m *splitdump.Manifest
 		if err == nil {
-			err = splitdump.ValidateManifest(m)
+			if m, err = splitdump.ParseManifest(data); err == nil {
+				err = splitdump.ValidateManifest(m)
+			}
 		}
 		if err != nil {
 			fail("manifest: %s", err)
@@ -311,7 +418,7 @@ func inspectDiscoveredFolder(meta *backupmgr.BackupMetadata, dir string, fail fu
 		}
 		for _, files := range [][]string{m.Schema, m.Data, m.Post} {
 			for _, f := range files {
-				if !fileExists(filepath.Join(dir, f)) {
+				if !exists(f) {
 					fail("the manifest lists %s, missing", f)
 					return
 				}
@@ -323,48 +430,56 @@ func inspectDiscoveredFolder(meta *backupmgr.BackupMetadata, dir string, fail fu
 // discoveryArchiveSmallFile bounds the manifest and metadata files read from an archive.
 const discoveryArchiveSmallFile = 16 << 20
 
-// readDiscoveredArchive reads the encrypted folder archive at path to its end and returns a
-// temporary folder holding, for its checks, its manifest and metadata files as they are and
-// every other file it holds as an empty placeholder; cleanup removes it.
-func (cluster *Cluster) readDiscoveredArchive(path string) (string, func(), error) {
+// discoveredArchive is what the read of an encrypted folder archive kept, in memory: its
+// members' names and its manifest and metadata files. A splitdump or mydumper folder is flat:
+// a member is known by its base name (a nested one would share it, harmless for the checks).
+type discoveredArchive struct {
+	names map[string]bool
+	small map[string][]byte
+}
+
+func (a *discoveredArchive) read(name string) ([]byte, error) {
+	if data, ok := a.small[name]; ok {
+		return data, nil
+	}
+	return nil, os.ErrNotExist
+}
+
+func (a *discoveredArchive) exists(name string) bool { return a.names[name] }
+
+// readDiscoveredArchive reads the encrypted folder archive at path to its end (its integrity
+// is checked, a foreign key fails it) and keeps its members' names and its manifest and
+// metadata files: nothing is written to disk.
+func (cluster *Cluster) readDiscoveredArchive(path string) (*discoveredArchive, error) {
 	rc, _, err := cluster.openRestoreArtifactStream(path)
 	if err != nil {
-		return "", func() {}, err
+		return nil, err
 	}
 	defer rc.Close()
-	dir, err := os.MkdirTemp("", "repman-discovery-")
-	if err != nil {
-		return "", func() {}, err
-	}
-	cleanup := func() { os.RemoveAll(dir) }
+	a := &discoveredArchive{names: map[string]bool{}, small: map[string][]byte{}}
 	tr := tar.NewReader(rc)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
-			return dir, cleanup, nil
+			return a, nil
 		}
 		if err != nil {
-			cleanup()
-			return "", func() {}, err
+			return nil, err
 		}
-		name := filepath.Base(hdr.Name)
-		if hdr.Typeflag != tar.TypeReg || name == "." || name == string(filepath.Separator) {
+		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
-		var data []byte
+		name := filepath.Base(hdr.Name)
+		a.names[name] = true
 		if name == "manifest" || name == "metadata" {
-			if data, err = io.ReadAll(io.LimitReader(tr, discoveryArchiveSmallFile)); err != nil {
-				cleanup()
-				return "", func() {}, err
+			data, err := io.ReadAll(io.LimitReader(tr, discoveryArchiveSmallFile))
+			if err != nil {
+				return nil, err
 			}
+			a.small[name] = data
 		}
 		if _, err := io.Copy(io.Discard, tr); err != nil { // the rest is read: its integrity
-			cleanup()
-			return "", func() {}, err
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
-			cleanup()
-			return "", func() {}, err
+			return nil, err
 		}
 	}
 }
@@ -415,12 +530,29 @@ func (cluster *Cluster) readDiscoveredStream(path string, facts *discoveredDumpF
 	}
 	lr := bufio.NewReaderSize(r, 64*1024)
 	var last string
+	// a GTID_PURGED statement the client wrote over several lines (one source per line): its
+	// lines joined up to the end of the statement, as the backup's own reader joins them
+	var gtidStmt strings.Builder
 	for {
 		line, err := readDiscoveryLine(lr)
 		if line != "" {
 			trimmed := strings.TrimSpace(line)
 			if trimmed != "" {
 				last = trimmed
+			}
+			if gtidStmt.Len() > 0 {
+				if !discoveryGtidContinuation.MatchString(trimmed) || gtidStmt.Len()+len(trimmed) > discoveryGtidStatementMax {
+					gtidStmt.Reset() // not a GTID set part: the statement is dropped
+				} else {
+					gtidStmt.WriteString(trimmed)
+					if strings.HasSuffix(trimmed, ";") {
+						if m := discoveryGtidMySQL.FindStringSubmatch(gtidStmt.String()); m != nil && facts.gtid == "" {
+							facts.gtid = m[1] + m[2]
+						}
+						gtidStmt.Reset()
+					}
+					continue
+				}
 			}
 			// the client's own lines only: a data line can hold any text. MariaDB writes
 			// its gtid_slave_pos after the data, the other position lines come first
@@ -438,6 +570,10 @@ func (cluster *Cluster) readDiscoveredStream(path string, facts *discoveredDumpF
 					facts.gtid = m[1]
 				}
 			case strings.HasPrefix(stmt, "SET @@GLOBAL.GTID_PURGED"), strings.HasPrefix(stmt, "/*!") && strings.Contains(stmt, "GTID_PURGED"):
+				if !strings.HasSuffix(stmt, ";") && facts.gtid == "" {
+					gtidStmt.WriteString(stmt) // continued on the next lines
+					break
+				}
 				if m := discoveryGtidMySQL.FindStringSubmatch(stmt); m != nil && facts.gtid == "" {
 					facts.gtid = m[1] + m[2]
 				}

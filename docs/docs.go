@@ -5957,7 +5957,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/backups/discover": {
             "post": {
-                "description": "Scans each server's backup folder and registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. Refused while a backup of the cluster runs.\nRequired grant: db-backup",
+                "description": "Starts, in the background, the scan of each server's backup folder that registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. The backups registered are logged and appear in the backup list. Refused while a backup of the cluster runs.\nRequired grant: db-backup",
                 "produces": [
                     "application/json"
                 ],
@@ -5983,13 +5983,11 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "The backups registered",
+                    "202": {
+                        "description": "Backup discovery started",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/backupmgr.BackupMetadata"
-                            }
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "403": {
@@ -6005,7 +6003,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Discovery failed",
+                        "description": "Discovery not started",
                         "schema": {
                             "type": "string"
                         }

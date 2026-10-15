@@ -36,8 +36,17 @@ writes next to its dump with `backup-split-mysql-user`.
 POST /api/clusters/{clusterName}/backups/discover
 ```
 
-The on-demand discovery is refused (`409`) while a backup of the cluster runs:
-its artifact is not complete yet. It returns the backups it registered.
+The discovery runs in the background (it reads each new backup to its end):
+the API answers `202` at once, the backups it registers are logged and appear
+in the list when it ends. It is refused (`409`) while a backup of the cluster
+runs: its artifact is not complete yet. One discovery runs at a time per
+server.
+
+An entry changed in the last minute is left to the next discovery: a copy
+still running is not registered half written. A backup registered as not
+completed is inspected again when its size or file count changed since (a
+copy that ran on), and a discovered backup whose artifact was removed by hand
+is unregistered: the discovered entries never outlive their artifacts.
 
 The ad-hoc backups (one metadata file each) are read back by the same scan,
 so they stay listed after a restart.

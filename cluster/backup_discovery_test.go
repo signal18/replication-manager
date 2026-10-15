@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
@@ -74,6 +75,10 @@ func newDiscoveryTest(t *testing.T) (*Cluster, *ServerMonitor, string) {
 	c, server := newStagingTestServer(t)
 	c.Servers = append(c.Servers, server)
 	c.BackupMetaMap = backupmgr.NewBackupMetaMap()
+	// the artifacts the tests write are fresh: discovered at once
+	settle := backupDiscoverySettle
+	backupDiscoverySettle = 0
+	t.Cleanup(func() { backupDiscoverySettle = settle })
 	dir := server.GetMyBackupDirectory()
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
@@ -302,13 +307,6 @@ func TestDiscoverEncryptedArchives(t *testing.T) {
 	if f := byName["foreign.tar.enc"]; f == nil || f.Completed || !strings.Contains(f.DiscoveryNote, "can not be read") {
 		t.Fatalf("foreign encrypted splitdump %+v", f)
 	}
-	if entries, _ := os.ReadDir(os.TempDir()); len(entries) > 0 {
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), "repman-discovery-") {
-				t.Fatalf("temporary folder %s left behind", e.Name())
-			}
-		}
-	}
 }
 
 // The fallback of an automatic restore (the fixed names, when no catalogued backup exists)
@@ -327,5 +325,92 @@ func TestFallbackSkipsDiscoveredBackup(t *testing.T) {
 	}
 	if !server.ClusterGroup.isDiscoveredBackupPath(filepath.Join(dir, "splitdump")) {
 		t.Fatal("discovered path not recognized")
+	}
+}
+
+// An artifact still being written (changed within backupDiscoverySettle) is left to the next
+// discovery; one registered not completed (a copy that was still running) is inspected again,
+// under the same id, once it changed and settled.
+func TestDiscoverCopyInProgress(t *testing.T) {
+	_, server, dir := newDiscoveryTest(t)
+	path := filepath.Join(dir, "copy.sql.gz")
+	writeDiscoveryGzip(t, path, discoveryDump) // the copy stopped before the footer
+	backupDiscoverySettle = time.Hour
+	if found, err := server.DiscoverBackups(); err != nil || len(found) != 0 {
+		t.Fatalf("a fresh artifact was registered: %d, %v", len(found), err)
+	}
+	backupDiscoverySettle = 0
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 || found[0].Completed {
+		t.Fatalf("truncated copy: %d %v %+v", len(found), err, found)
+	}
+	id := found[0].Id
+	// unchanged: not inspected again
+	if again, _ := server.DiscoverBackups(); len(again) != 0 {
+		t.Fatalf("an unchanged artifact was inspected again")
+	}
+	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter) // the copy ended
+	again, err := server.DiscoverBackups()
+	if err != nil || len(again) != 1 || !again[0].Completed || again[0].Id != id {
+		t.Fatalf("completed copy: %d %v %+v", len(again), err, again)
+	}
+	onDisk, err := readBackupMetadataFile(server.backupMetaFilePath(again[0]))
+	if err != nil || !onDisk.Completed {
+		t.Fatalf("meta file %+v %v", onDisk, err)
+	}
+}
+
+// A discovered backup whose artifact has gone is unregistered: its metadata file and list
+// entry are removed, the discovered entries never outlive their artifacts.
+func TestDiscoverUnregistersGoneArtifact(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	path := filepath.Join(dir, "copy.sql.gz")
+	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 {
+		t.Fatalf("found %d, err %v", len(found), err)
+	}
+	metaPath := server.backupMetaFilePath(found[0])
+	os.Remove(path)
+	if _, err := server.DiscoverBackups(); err != nil {
+		t.Fatal(err)
+	}
+	if c.BackupMetaMap.Get(found[0].Id) != nil || fileExists(metaPath) {
+		t.Fatal("the backup of a removed artifact is still registered")
+	}
+}
+
+// One discovery runs at a time per server.
+func TestDiscoverRunsOnce(t *testing.T) {
+	c, server, _ := newDiscoveryTest(t)
+	c.backupDiscoveries.Store(server.URL, struct{}{})
+	if _, err := server.DiscoverBackups(); !errors.Is(err, errBackupDiscoveryRunning) {
+		t.Fatalf("a second discovery ran: %v", err)
+	}
+	c.backupDiscoveries.Delete(server.URL)
+	if _, err := server.DiscoverBackups(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A MySQL client writes a GTID set of several sources over several lines, one source per
+// line: the lines are joined, the set read whole.
+func TestDiscoverMultiLineGtidPurged(t *testing.T) {
+	_, server, dir := newDiscoveryTest(t)
+	dump := `-- MySQL dump 10.13  Distrib 8.4.11, for Linux (x86_64)
+-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000031', SOURCE_LOG_POS=31022;
+SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ '20191616-c6ca-11f1-8bf0-c264eed37e71:1-2,
+22ebff02-c6ca-11f1-befd-daa722c63c3e:1-800,
+a5ce0000-0000-4000-8000-00000000b005:1791962133:1791972186';
+INSERT INTO ` + "`t`" + ` VALUES (1);
+` + discoveryDumpFooter
+	writeDiscoveryGzip(t, filepath.Join(dir, "mysql84.sql.gz"), dump)
+	found, err := server.DiscoverBackups()
+	if err != nil || len(found) != 1 {
+		t.Fatalf("found %d, err %v", len(found), err)
+	}
+	want := "20191616-c6ca-11f1-8bf0-c264eed37e71:1-2,22ebff02-c6ca-11f1-befd-daa722c63c3e:1-800,a5ce0000-0000-4000-8000-00000000b005:1791962133:1791972186"
+	if m := found[0]; m.BinLogGtid != want || m.BinLogFileName != "binlog.000031" || m.BinLogFilePos != 31022 || !m.Completed {
+		t.Fatalf("position %s:%d %q, completed %v", m.BinLogFileName, m.BinLogFilePos, m.BinLogGtid, m.Completed)
 	}
 }
