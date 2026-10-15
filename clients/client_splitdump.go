@@ -10,6 +10,7 @@ package clients
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -22,8 +23,11 @@ var splitDumpCmd = &cobra.Command{
 	Short: "Split MariaDB MySQL dump file",
 	Long:  `Convert stdin stream to a directory and files similar to mydumper output`,
 	Run: func(cmd *cobra.Command, args []string) {
+		// a failed split exits 1: a script (mysqldump | splitdump) must not take a partial
+		// folder for a backup
 		if err := runSplitdump(cliInputFile, cliOutputDir); err != nil {
-			fmt.Println(err)
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 	},
 	PostRun: func(cmd *cobra.Command, args []string) {
