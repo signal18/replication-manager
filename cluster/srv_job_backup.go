@@ -3203,10 +3203,9 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
 				err = err2
 			} else {
-				// Set GTID position for MariaDB
-				if server.IsMariaDB() && server.HaveMariaDBGTID {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
-					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
+				err = server.applyMyLoaderReplicaPosition(meta)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err)
 				}
 
 				if err == nil {
@@ -3220,10 +3219,57 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 				}
 			}
 
-			server.JobsUpdateStateRuntimeOnly(task, "Flashback completed", 3, 1)
+			// the replication position not restored is a failed flashback: its replication
+			// is not started, it would resume from the wrong position
+			if err != nil {
+				server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+			} else {
+				server.JobsUpdateStateRuntimeOnly(task, "Flashback completed", 3, 1)
+			}
 		}
 	}
 
+	return nil
+}
+
+// applyMyLoaderReplicaPosition sets the replication state of server, which myloader just
+// loaded, to the position of the mydumper backup (its metadata), before its replication
+// starts. myloader puts the data back to the backup's state and nothing else:
+//   - MariaDB with GTID: gtid_slave_pos;
+//   - MySQL/Percona with GTID: the binary logs and GTIDs reset, then GTID_PURGED. The replica
+//     kept the GTIDs of what it applied before the restore: with auto-position it would never
+//     ask for the transactions written after the backup, and diverge;
+//   - without GTID: the backup's binary log file and position (the replica was pointed at the
+//     primary's current position before the restore, past what the backup lacks).
+func (server *ServerMonitor) applyMyLoaderReplicaPosition(meta config.MyDumperMetaData) error {
+	cluster := server.ClusterGroup
+	switch {
+	case server.IsMariaDB() && server.HaveMariaDBGTID:
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
+		server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
+	case server.DBVersion != nil && server.DBVersion.IsMySQLOrPercona() && server.HasMySQLGTID():
+		if strings.TrimSpace(meta.BinLogUuid) == "" {
+			return fmt.Errorf("mydumper backup %s has no executed GTID set: %s replicates with GTID auto-position and could not resume from it", meta.MetaDir, server.URL)
+		}
+		logs, err := server.ResetMaster()
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to reset the binary logs and GTIDs of %s after the mydumper restore: %s", server.URL, err)
+		if err != nil {
+			return fmt.Errorf("reset the binary logs and GTIDs of %s: %w", server.URL, err)
+		}
+		gtid := strings.Join(strings.Fields(meta.BinLogUuid), "")
+		if err := server.ExecQueryNoBinLog("SET @@GLOBAL.GTID_PURGED='"+strings.ReplaceAll(gtid, "'", "''")+"'", time.Second); err != nil {
+			return fmt.Errorf("set GTID_PURGED on %s from the mydumper metadata: %w", server.URL, err)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "GTID_PURGED of %s set from the mydumper metadata: %s", server.URL, gtid)
+	case meta.BinLogFileName != "" && cluster.master != nil:
+		opt := cluster.GetChangeMasterBaseOptForSlave(server, cluster.master, server.IsDelayed)
+		opt.Logfile, opt.Logpos, opt.Mode = meta.BinLogFileName, strconv.FormatUint(meta.BinLogFilePos, 10), "POSITIONAL"
+		logs, err := server.ChangeMaster(opt)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to point %s at the mydumper backup's position: %s", server.URL, err)
+		if err != nil {
+			return fmt.Errorf("point %s at the mydumper backup's position %s:%d: %w", server.URL, meta.BinLogFileName, meta.BinLogFilePos, err)
+		}
+	}
 	return nil
 }
 
@@ -7233,11 +7279,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
 				err = err2
 			} else {
-				// Set GTID position for MariaDB
-				if server.IsMariaDB() && server.HaveMariaDBGTID {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
-					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
-				}
+				err = server.applyMyLoaderReplicaPosition(meta)
 			}
 
 			if err == nil {

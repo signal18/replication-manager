@@ -291,7 +291,27 @@ Reseed (`ProcessReseedLogical`, mysqldump, not PITR):
    domains). Multi-source is not supported: extra channels stay stopped with a
    warning naming them, for the operator.
 
-mydumper and the backup-load-script path keep their pointing before the load.
+The backup-load-script path keeps its pointing before the load. mydumper keeps
+it too (stopped, pointed at the primary: auto-position on MySQL/Percona with
+GTID, `SLAVE_POS` on MariaDB, else positional), and after myloader
+`applyMyLoaderReplicaPosition` sets the replica's state to the backup's
+position from its metadata (`JobMyLoaderParseMeta`) before replication starts,
+in the reseed and in the flashback. myloader restores the data and nothing
+else: unlike a dump, it runs no `RESET MASTER` / `GTID_PURGED`.
+
+- MySQL/Percona with GTID: `ResetMaster` (`RESET BINARY LOGS AND GTIDS` from
+  8.4), then `SET GLOBAL GTID_PURGED` to the metadata's `executed_gtid_set`
+  (its lines joined). Without it the replica kept the GTIDs of what it applied
+  before the restore: under auto-position it never asked for the transactions
+  written after the backup, which were lost while replication looked healthy.
+  A backup without a GTID set fails the reseed instead.
+- MariaDB with GTID: `SET GLOBAL gtid_slave_pos`, as before.
+- Without GTID: `CHANGE MASTER` positional at the metadata's file and position
+  (pointed before the load at the primary's current position, it skipped what
+  the backup lacks).
+
+A failure of this step fails the reseed or the flashback (its job result), and
+replication is not started.
 
 ## Dump client compatibility
 
