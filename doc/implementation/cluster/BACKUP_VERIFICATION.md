@@ -47,11 +47,17 @@ tools, an incomplete backup, or a backup only in its archive
   backup is claimed (`waitBackupVerificationRead`). The waits end with the
   claim: the verification holds its slot already and waits on nothing the
   backup holds. Each wait polls (`backupVerificationPoll`, 1 s) and ends at
-  `backupVerificationWaitMax`: `backup-verification-timeout`, or 4 h when it is
-  0 (F2/F4: a hung verification, or an integrity read on a dead volume, never
-  holds the backups off for good). The backup then goes on (the verification
-  still reading fails), the archive removal goes on, a claim gives up (the
-  verification is not run). `TestBackupVerificationClaimAndBackupStartExclusive`
+  `backupVerificationWaitMax`: `backup-verification-timeout`, at least
+  `backupVerificationWaitFloor` (4 h), so that a timeout set to cap a test
+  restore does not make a claim give up behind a long backup (F2/F4: a hung
+  verification, or an integrity read on a dead volume, never holds the backups
+  off for good). The backup then goes on (the verification still reading
+  fails; the log names the host of its running record, a replica mid-load
+  stays in maintenance), the archive removal goes on, a claim gives up with
+  `errBackupVerificationClaimTimeout` and the verification is recorded as
+  failed, "not run" (`errBackupVerificationStopping` records nothing). The
+  floor and `backupVerificationPoll` are package variables the tests shorten:
+  they restore them before their goroutines end and do not run in parallel. `TestBackupVerificationClaimAndBackupStartExclusive`
   starts both at once, 20 times: one goes on, the other waits until it ends.
   `PurgeExpiredAdhocBackups` (no caller today) skips a backup in
   `backupVerifying`. `InLogicalBackup` is a plain flag, written by the backup
@@ -295,7 +301,11 @@ reseed's pieces (no reseed entry point takes a given backup):
   records a verification still `running` that no run of this process holds
   (`backupVerifying`) as failed, "interrupted", naming the host and what a
   replica is left with (maintenance, replication stopped, event scheduler off
-  if it was on), and logs it as an error.
+  if it was on), and logs it as an error. It decides under
+  `backupVerificationMu` against the meta file read again: the copy it was
+  given may have been read while a run was running, which since recorded its
+  result there and left `backupVerifying`; that result is kept
+  (`TestCloseInterruptedVerificationKeepsALaterResult`).
 
 `dbhelper` functions (T1, T23): `DropDatabaseIfExists`, `UseDatabaseConn`,
 `CountTableRows`, `GetSchemaObjectNames`, `GetEventScheduler`, `SetEventStatus`

@@ -2,6 +2,9 @@ package cluster
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -464,8 +467,8 @@ func TestMariadbGtidCovers(t *testing.T) {
 func TestBackupVerificationReadExclusion(t *testing.T) {
 	c, server := newStagingTestServer(t)
 	meta := &backupmgr.BackupMetadata{Id: 7, Source: server.URL}
-	if !c.claimBackupVerificationRead(meta) {
-		t.Fatal("claim refused")
+	if err := c.claimBackupVerificationRead(meta); err != nil {
+		t.Fatalf("claim refused: %v", err)
 	}
 	started := make(chan struct{})
 	go func() { server.startLogicalBackupAfterVerification(); close(started) }()
@@ -490,7 +493,7 @@ func TestBackupVerificationReadExclusion(t *testing.T) {
 		t.Fatal("logical backup state not set")
 	}
 
-	claimed := make(chan bool)
+	claimed := make(chan error)
 	go func() { claimed <- c.claimBackupVerificationRead(meta) }()
 	select {
 	case <-claimed:
@@ -501,8 +504,8 @@ func TestBackupVerificationReadExclusion(t *testing.T) {
 	c.SetInLogicalBackupState(false)
 	c.backupVerificationMu.Unlock()
 	select {
-	case ok := <-claimed:
-		if !ok {
+	case err := <-claimed:
+		if err != nil {
 			t.Fatal("claim refused")
 		}
 	case <-time.After(5 * time.Second):
@@ -521,7 +524,7 @@ func TestBackupVerificationClaimAndBackupStartExclusive(t *testing.T) {
 	meta := &backupmgr.BackupMetadata{Id: 9, Source: server.URL}
 
 	for i := 0; i < 20; i++ {
-		claimed, started := make(chan bool, 1), make(chan struct{})
+		claimed, started := make(chan error, 1), make(chan struct{})
 		go func() { claimed <- c.claimBackupVerificationRead(meta) }()
 		go func() { server.startLogicalBackupAfterVerification(); close(started) }()
 		var first string
@@ -566,17 +569,16 @@ func TestBackupVerificationClaimAndBackupStartExclusive(t *testing.T) {
 }
 
 // The waits between a backup and an on-demand verification end at their deadline
-// (backup-verification-timeout): a backup goes on, the archive removal goes on, a claim gives
-// up and its verification is not run.
+// (backup-verification-timeout, at least backupVerificationWaitFloor): a backup goes on, the
+// archive removal goes on, a claim gives up and its verification is not run.
 func TestBackupVerificationWaitsAreBounded(t *testing.T) {
 	c, server := newStagingTestServer(t)
-	c.Conf.BackupVerificationTimeout = 1
-	poll := backupVerificationPoll
-	backupVerificationPoll = 50 * time.Millisecond
-	defer func() { backupVerificationPoll = poll }()
+	poll, floor := backupVerificationPoll, backupVerificationWaitFloor
+	backupVerificationPoll, backupVerificationWaitFloor = 50*time.Millisecond, time.Second
+	defer func() { backupVerificationPoll, backupVerificationWaitFloor = poll, floor }()
 	meta := &backupmgr.BackupMetadata{Id: 11, Source: server.URL}
-	if !c.claimBackupVerificationRead(meta) {
-		t.Fatal("claim refused")
+	if err := c.claimBackupVerificationRead(meta); err != nil {
+		t.Fatalf("claim refused: %v", err)
 	}
 	for name, wait := range map[string]func(){
 		"backup start":    server.startLogicalBackupAfterVerification,
@@ -593,17 +595,44 @@ func TestBackupVerificationWaitsAreBounded(t *testing.T) {
 	}
 	c.backupVerificationReads.Delete(meta.Id)
 	start := time.Now()
-	if c.claimBackupVerificationRead(meta) {
-		t.Fatal("claimed while a logical backup runs")
+	if err := c.claimBackupVerificationRead(meta); !errors.Is(err, errBackupVerificationClaimTimeout) {
+		t.Fatalf("claimed while a logical backup runs: %v", err)
 	}
 	if d := time.Since(start); d < 900*time.Millisecond || d > 5*time.Second {
 		t.Fatalf("the claim waited %s, want about 1s", d)
 	}
-	if c.backupVerificationWaitMax() != time.Second {
-		t.Fatal("wait bound is not backup-verification-timeout")
+	// the bound: backup-verification-timeout, never under the floor
+	for timeout, want := range map[int]time.Duration{0: time.Second, 1: time.Second, 3: 3 * time.Second} {
+		c.Conf.BackupVerificationTimeout = timeout
+		if got := c.backupVerificationWaitMax(); got != want {
+			t.Fatalf("timeout %d: bound %s, want %s", timeout, got, want)
+		}
 	}
-	c.Conf.BackupVerificationTimeout = 0
-	if c.backupVerificationWaitMax() != backupVerificationWaitDefault {
-		t.Fatal("no default bound with backup-verification-timeout 0")
+}
+
+// A verification closed as interrupted from a meta file read while it was running keeps the
+// result it recorded since: the meta file is read again before it is closed.
+func TestCloseInterruptedVerificationKeepsALaterResult(t *testing.T) {
+	c, server := newStagingTestServer(t)
+	c.Servers = append(c.Servers, server)
+	meta := &backupmgr.BackupMetadata{Id: 21, BackupTool: "mysqldump", BackupLine: backupmgr.BackupLineAdhoc, Source: server.URL,
+		Dest: filepath.Join(server.GetMyBackupDirectory(), "mysqldump.21.sql.gz")}
+	if err := os.MkdirAll(server.GetMyBackupDirectory(), 0755); err != nil {
+		t.Fatal(err)
+	}
+	stale := *meta
+	stale.Verification = &backupmgr.BackupVerification{Level: "integrity", Status: backupmgr.BackupVerificationRunning}
+	// the run ended: its result is in the meta file, it left backupVerifying
+	server.recordBackupVerification(meta, &backupmgr.BackupVerification{Level: "integrity", Status: backupmgr.BackupVerificationPassed})
+	server.closeInterruptedVerification(&stale)
+	onDisk, err := readBackupMetadataFile(server.backupMetaFilePath(meta))
+	if err != nil || onDisk.Verification == nil || onDisk.Verification.Status != backupmgr.BackupVerificationPassed {
+		t.Fatalf("the passed result was overwritten: %+v, %v", onDisk.Verification, err)
+	}
+	// the meta file still says running: closed
+	server.recordBackupVerification(meta, &backupmgr.BackupVerification{Level: "integrity", Status: backupmgr.BackupVerificationRunning})
+	server.closeInterruptedVerification(&stale)
+	if onDisk, _ = readBackupMetadataFile(server.backupMetaFilePath(meta)); onDisk.Verification.Status != backupmgr.BackupVerificationFailed {
+		t.Fatalf("an interrupted verification was not closed: %+v", onDisk.Verification)
 	}
 }

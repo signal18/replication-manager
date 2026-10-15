@@ -256,7 +256,7 @@ func TestCloseInterruptedVerification(t *testing.T) {
 	c, server, meta := newVerificationTest(t, false, func(dest string) { writeValidationGzip(t, dest, validationDump) })
 	running := &backupmgr.BackupVerification{Level: config.ConstBackupVerificationLevelRestore, Status: backupmgr.BackupVerificationRunning, Host: "db3:3306"}
 
-	meta.Verification = running
+	server.recordBackupVerification(meta, running) // its meta file says running, as a run writes it
 	c.backupVerifying.Store(meta.Id, running.Level)
 	server.closeInterruptedVerification(meta)
 	if meta.Verification.Status != backupmgr.BackupVerificationRunning {

@@ -97,7 +97,12 @@ func (cluster *Cluster) VerifyBackupByID(backupID int64, level string) error {
 			return
 		}
 		defer cluster.ServerGlobals.ReleaseBackupSlot()
-		if !cluster.claimBackupVerificationRead(meta) {
+		if err := cluster.claimBackupVerificationRead(meta); err != nil {
+			// not run: recorded, so that the backup list shows it, unless the cluster stops
+			if errors.Is(err, errBackupVerificationClaimTimeout) {
+				now := time.Now()
+				server.recordBackupVerification(meta, &backupmgr.BackupVerification{Level: level, Status: backupmgr.BackupVerificationFailed, StartTime: now, EndTime: now, Error: "not run: " + err.Error()})
+			}
 			return
 		}
 		defer cluster.backupVerificationReads.Delete(meta.Id)
@@ -116,26 +121,36 @@ type backupVerificationRead struct {
 	reused bool   // a scheduled backup: the next backup of the method writes the same file
 }
 
-// backupVerificationWaitDefault bounds the waits between a backup and an on-demand
-// verification when backup-verification-timeout is 0.
-const backupVerificationWaitDefault = 4 * time.Hour
+// backupVerificationWaitFloor is the least the waits between a backup and an on-demand
+// verification last. A package variable for the tests, which shorten it; they restore it
+// before their goroutines end, and must not run in parallel.
+var backupVerificationWaitFloor = 4 * time.Hour
 
 // backupVerificationWaitMax bounds the waits between a backup and an on-demand verification
 // (F2/F4: a hung verification never holds the backups off for good): backup-verification-
-// timeout, or backupVerificationWaitDefault when it is 0.
+// timeout, at least backupVerificationWaitFloor, so that a short timeout set to cap a test
+// restore does not make a verification give up behind a long backup.
 func (cluster *Cluster) backupVerificationWaitMax() time.Duration {
-	if cluster.Conf.BackupVerificationTimeout > 0 {
-		return time.Duration(cluster.Conf.BackupVerificationTimeout) * time.Second
+	if t := time.Duration(cluster.Conf.BackupVerificationTimeout) * time.Second; t > backupVerificationWaitFloor {
+		return t
 	}
-	return backupVerificationWaitDefault
+	return backupVerificationWaitFloor
 }
+
+// errBackupVerificationClaimTimeout: a logical backup still ran when the wait of a
+// verification ended; errBackupVerificationStopping: the cluster stopped first.
+var (
+	errBackupVerificationClaimTimeout = errors.New("a logical backup of the cluster still ran at the end of the wait")
+	errBackupVerificationStopping     = errors.New("the cluster stops")
+)
 
 // claimBackupVerificationRead waits until no logical backup of the cluster runs, its archive
 // push included, then records that meta is read. A backup of its server that would write the
 // same file (startLogicalBackupAfterVerification) and the archive removal of meta
-// (waitBackupVerificationRead) wait for it meanwhile. False when the cluster stops first, or
-// a logical backup still runs after backupVerificationWaitMax: the verification is not run.
-func (cluster *Cluster) claimBackupVerificationRead(meta *backupmgr.BackupMetadata) bool {
+// (waitBackupVerificationRead) wait for it meanwhile. errBackupVerificationStopping when the
+// cluster stops first, errBackupVerificationClaimTimeout when a logical backup still runs
+// after backupVerificationWaitMax: the verification is not run.
+func (cluster *Cluster) claimBackupVerificationRead(meta *backupmgr.BackupMetadata) error {
 	deadline := time.Now().Add(cluster.backupVerificationWaitMax())
 	waited := false
 	for {
@@ -143,15 +158,16 @@ func (cluster *Cluster) claimBackupVerificationRead(meta *backupmgr.BackupMetada
 		if !cluster.InLogicalBackup && !cluster.IsInResticBackupForMethod(backupmgr.BackupMethodLogical) {
 			cluster.backupVerificationReads.Store(meta.Id, backupVerificationRead{source: meta.Source, reused: !meta.IsAdhoc()})
 			cluster.backupVerificationMu.Unlock()
-			return true
+			return nil
 		}
 		cluster.backupVerificationMu.Unlock()
 		if cluster.exit.Load() {
-			return false
+			return errBackupVerificationStopping
 		}
 		if time.Now().After(deadline) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Backup verification of backup %d not run: a logical backup still runs after %s", meta.Id, cluster.backupVerificationWaitMax())
-			return false
+			err := fmt.Errorf("%w (%s)", errBackupVerificationClaimTimeout, cluster.backupVerificationWaitMax())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Backup verification of backup %d not run: %s", meta.Id, err)
+			return err
 		}
 		if !waited {
 			waited = true
@@ -162,7 +178,8 @@ func (cluster *Cluster) claimBackupVerificationRead(meta *backupmgr.BackupMetada
 }
 
 // backupVerificationPoll is the interval of the waits between a backup and an on-demand
-// verification.
+// verification. A package variable for the tests, which shorten it; they restore it before
+// their goroutines end, and must not run in parallel.
 var backupVerificationPoll = time.Second
 
 // startLogicalBackupAfterVerification sets the logical backup state of the cluster once no
@@ -188,7 +205,19 @@ func (server *ServerMonitor) startLogicalBackupAfterVerification() {
 			cluster.SetInLogicalBackupState(true)
 			cluster.backupVerificationMu.Unlock()
 			if overdue {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical backup of %s goes on: the verification of backup %d still reads the file it rewrites after %s", server.URL, reading, cluster.backupVerificationWaitMax())
+				// the verification fails; on a replica of the cluster, mid-load, the replica
+				// stays in maintenance with its data half replaced: named for the operator
+				on := "its verification server"
+				if cluster.BackupMetaMap != nil {
+					if meta := cluster.BackupMetaMap.Get(reading); meta != nil {
+						server.backupMetaMutex.Lock()
+						if meta.Verification != nil && meta.Verification.Host != "" {
+							on = meta.Verification.Host
+						}
+						server.backupMetaMutex.Unlock()
+					}
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical backup of %s goes on: the verification of backup %d still reads the file it rewrites after %s; it fails, and if %s is a replica of the cluster under a test restore, it stays in maintenance: reseed it", server.URL, reading, cluster.backupVerificationWaitMax(), on)
 			}
 			return
 		}
@@ -231,7 +260,16 @@ func (server *ServerMonitor) closeInterruptedVerification(meta *backupmgr.Backup
 	if meta == nil || meta.Verification == nil || meta.Verification.Status != backupmgr.BackupVerificationRunning {
 		return
 	}
+	// under backupVerificationMu, against the meta file as it is now: meta may have been
+	// read while a run of this process was running, which since recorded its result there
+	// and left backupVerifying; that result is kept
+	cluster.backupVerificationMu.Lock()
+	defer cluster.backupVerificationMu.Unlock()
 	if _, running := cluster.backupVerifying.Load(meta.Id); running {
+		return
+	}
+	onDisk, err := readBackupMetadataFile(server.backupMetaFilePath(meta))
+	if err != nil || onDisk.Verification == nil || onDisk.Verification.Status != backupmgr.BackupVerificationRunning {
 		return
 	}
 	done := *meta.Verification

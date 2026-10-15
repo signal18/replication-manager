@@ -198,9 +198,12 @@ logical backup of the cluster running, its archive push included; while it
 reads a scheduled backup, the next logical backup of that server (which
 rewrites the same file) waits for it, and the archive does not remove the
 original of the backup it reads. These waits last at most
-`backup-verification-timeout` (4 hours when it is `0`): then the backup goes
-on (the verification still reading fails), the archive removes the original,
-or a verification still waiting for a backup is not run. The automatic one runs in the backup's own
+`backup-verification-timeout`, and never less than 4 hours (a short timeout
+caps a test restore, not these waits): then the backup goes on (the
+verification still reading fails; its log names the verification server, a
+replica under a test restore then stays in maintenance: reseed it), the
+archive removes the original, or a verification still waiting for a backup is
+not run and is recorded as failed ("not run"), so the backup list shows it. The automatic one runs in the backup's own
 slot, right after the backup, before its archive push, so that the archive can
 not remove the original before it is verified: at the restore level, the
 backup completes once the test restore has ended, which lengthens every
