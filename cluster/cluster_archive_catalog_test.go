@@ -118,9 +118,10 @@ func TestArchiveListSizesAndBackups(t *testing.T) {
 	}
 
 	// kept across a restart, renamed with the archive
+	// (RenameArchive renames the config's entry first)
+	cl.Conf.Archives[1].Name = "archive-bso-s3"
 	cl.renameArchiveSize("archive-s3-1", "archive-bso-s3")
 	cl.archiveSizes = nil
-	cl.Conf.Archives[1].Name = "archive-bso-s3"
 	for _, e := range cl.ArchiveList().Archives {
 		if e.Name == "archive-bso-s3" && (e.Size == nil || e.Size.Bytes != 42) {
 			t.Fatalf("size after rename and reload %+v", e.Size)
