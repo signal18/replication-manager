@@ -51,6 +51,13 @@ export const clusterService = {
   resticCheckConfig,
   resticCopyRepo,
   resticWipeRepo,
+  getArchiveList,
+  addArchive,
+  editArchive,
+  renameArchive,
+  attachArchive,
+  detachArchive,
+  removeArchive,
   resticCreateBucket,
 
   // Security / workload remediation APIs
@@ -1115,6 +1122,35 @@ function resticCopyRepo(clusterName, payload, baseURL) {
 
 function resticWipeRepo(clusterName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/wipe`, payload)
+}
+
+// archive list (#2091): secrets go in through add and edit and never come back
+function getArchiveList(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/archive-list`)
+}
+
+function addArchive(clusterName, spec, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/add`, spec)
+}
+
+function editArchive(clusterName, archiveName, spec, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/edit/${encodeURIComponent(archiveName)}`, spec)
+}
+
+function renameArchive(clusterName, archiveName, newName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/rename/${encodeURIComponent(archiveName)}/${encodeURIComponent(newName)}`)
+}
+
+function attachArchive(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/attach/${encodeURIComponent(archiveName)}`)
+}
+
+function detachArchive(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/detach`)
+}
+
+function removeArchive(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/remove/${encodeURIComponent(archiveName)}`)
 }
 
 function resticCreateBucket(clusterName, baseURL) {

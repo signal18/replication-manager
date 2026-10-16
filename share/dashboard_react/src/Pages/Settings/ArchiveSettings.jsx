@@ -14,6 +14,7 @@ import RMIconButton from '../../components/RMIconButton'
 import remarkGfm from 'remark-gfm'
 import NumberInput from '../../components/NumberInput'
 import BackupSnapshotsSettings from './BackupSnapshotsSettings'
+import ArchiveListSettings from './ArchiveListSettings'
 
 // ARCHIVE: what leaves the cluster's own backup directory -- the restic repository (local or
 // remote, its purge strategy and mounts) and the S3 target of the streamed backups. Split from
@@ -41,7 +42,14 @@ function ArchiveSettings({ selectedCluster, user }) {
   const hResticPurgeThreshold = `**Custom Threshold for Purging Old Restic Backups**\n\nDisk usage percentage at which the oldest Restic backups are automatically purged.\nSet to 0 to follow the critical threshold.\n\nConfig: \`backup-restic-purge-oldest-on-disk-threshold\``
   const hResticPurgeOnDisk = `**Purge Oldest Restic Backups if Disk Usage Exceeds Threshold**\n\nWhen enabled, automatically removes the oldest Restic backup snapshots when disk usage exceeds the configured threshold.\n\nConfig: \`backup-restic-purge-oldest-on-disk-space\``
 
+  const hArchives = `**Archives**\n\nThe cluster's archives, each a name and a plugin (restic local, sftp or S3) with its settings and secrets. Select one to **attach** it: the backups go to it, and the archive attached before is **detached**: it stays in the list with its content, still invoiced.\n\n**Remove** deletes the archive's content, then takes it out of the list: a backup whose only copy is there is lost.\n\nAn archive can also be pushed in the cluster's \`inject.toml\` as an \`[[archive]]\` block.\n\nConfig: \`backup-archive-name\` and \`[[archive]]\``
+
   const dataObject = [
+    {
+      key: 'Archives',
+      help: h(hArchives, 'Archives'),
+      value: <ArchiveListSettings clusterName={selectedCluster?.name} user={user} />
+    },
     ...BackupSnapshotsSettings({ selectedCluster, user, dispatch, onOpenInfoModal: openInfoModal, isResticRepoConfigOpen, onToggleResticRepoConfig: handleResticRepoToggle }),
     {
       key: 'Restic Disk Usage',
