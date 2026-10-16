@@ -120,6 +120,63 @@ with two backends). `none` is simply an empty list.
 - **States** carry the archive name, so one failing archive is visible without hiding the
   others.
 
+### Required: one local restic and x remote restic
+
+A cluster must be able to run **one local restic archive and any number of remote restic
+archives** (sftp, S3, each its own bucket or host) at the same time. So `archive-restic`
+is **instantiated once per archive entry**, never once per cluster as `ResticManager` is
+today. Each instance has its own:
+
+- repository, password (its own `secret_kv` key: `archive.<name>.password`) and backend
+  credentials (S3 keys, sftp identity);
+- environment (`RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, `AWS_*` built per instance, never
+  shared), cache directory and lock;
+- mount point (only the local one is usually mounted for reseed by mount);
+- queue (two archives push in parallel; one archive runs one operation at a time) and
+  states (WARN0093 etc. name the archive).
+
+Example:
+
+```toml
+[[archive]]                 # 1: local, the read preference
+name    = "local"
+plugin  = "archive-restic"
+backend = "local"           # <WorkingDir>/backups/archive/<cluster>
+takes   = "logical,physical,binlog"
+retention = "keep-daily 7"
+
+[[archive]]                 # 2: remote, filled by copy from "local"
+name    = "s3-paris"
+plugin  = "archive-restic"
+backend = "s3"
+copy-from = "local"         # restic copy: no second read of the backup
+retention = "keep-daily 30, keep-monthly 12"
+
+[[archive]]                 # 3: remote, another provider
+name    = "sftp-dr"
+plugin  = "archive-restic"
+backend = "sftp"
+copy-from = "local"
+retention = "keep-weekly 8"
+```
+
+- **Push or copy**: a remote archive either takes the backup directly from the backup
+  directory (`takes`), or is filled from another archive (`copy-from`) with `restic copy`.
+  Copy reads the local repository, not the backup again, so it can run after the original
+  was removed. A remote created by repman with `copy-from` is initialised with the
+  source's chunker parameters (`copy_chunker_params`, `utils/backupmgr/restic_copy.go`),
+  so deduplication holds across the copy.
+- **Disk pressure** (`backup-restic-purge-oldest-on-disk-space`) applies to the local
+  archive only: forgetting in a remote one frees nothing on the cluster's disk.
+- **Metering**: the local archive is BKU (local disk, walked), each remote is BAU through
+  its `Stats`, labelled by archive name.
+- **Remove original**: with the default rule, the original goes only when the local
+  archive and every remote one that should hold it have proved it; a remote filled by copy
+  proves it after its copy ran.
+- **Migration**: today's single `backup-archive-mode` becomes archive 1 (`restic-local`,
+  `restic-sftp` or `restic-aws`); the existing `restic copy` destination, when set,
+  becomes archive 2 with `copy-from` archive 1.
+
 ## The plugins
 
 | Plugin | Kind | Backends | Caps |
