@@ -4880,6 +4880,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err := mycluster.SetBackupArchiveMode(value); err != nil {
 			return err
 		}
+	case "backup-archive-name":
+		if err := mycluster.SetBackupArchiveName(value); err != nil {
+			return err
+		}
 	case "backup-restic-local-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {

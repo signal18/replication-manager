@@ -174,9 +174,24 @@ func (cluster *Cluster) SwitchBackupResticAws() {
 // restic-aws, restic-sftp), deriving backup-restic / backup-restic-aws, and
 // applies the same side effects as toggling those legacy switches.
 func (cluster *Cluster) SetBackupArchiveMode(mode string) error {
-	if err := cluster.Conf.ApplyBackupArchiveMode(mode); err != nil {
+	// over the archive list (#2077): connects, disconnects or changes the plugin of the
+	// connected archive
+	if err := cluster.Conf.ApplyArchiveMode(mode); err != nil {
 		return err
 	}
+	return cluster.reloadArchive()
+}
+
+// SetBackupArchiveName connects the cluster to another archive of its list ("" for none,
+// #2077): the backups go to it and its snapshots are listed.
+func (cluster *Cluster) SetBackupArchiveName(name string) error {
+	if err := cluster.Conf.SwitchArchive(name); err != nil {
+		return err
+	}
+	return cluster.reloadArchive()
+}
+
+func (cluster *Cluster) reloadArchive() error {
 	cluster.CheckResticInstallation()
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
