@@ -61,6 +61,20 @@ transient error can never rewrite an empty store over the real one.
   cluster). The `system` service account can never hold them: `createAPIToken` refuses it and
   `reconcileSystemServiceGrants` strips both on every user load, whatever an ACL string or the
   user GUI handed it. A machine identity with a derived key must not mint bearer credentials.
+- Explicit ACLs (#2083): an `api-credentials-acl-allow` set in the config replaces the
+  default and, when written before 3.1.43, has no `token`. It stays as written: no grant is
+  implied (an implied grant would hide who can mint bearers from an ACL audit, outlive
+  `api-user-tokens=false` once `SaveAcls` compacts it into the external ACL, and undo a
+  GUI revocation). Instead `LoadAPIUsers` computes, on the fresh user map, whether any user
+  but `system` holds `token-create` (`cluster.apiTokenIssuer`, atomic), and the config check
+  `checkAPITokenIssuers` (CheckLogPlugins, every tick, no preserve) opens **WARN0251** while
+  `api-user-tokens` is on and nobody can issue a token. The tick reads the flag, never the
+  `APIUsers` map that HTTP handlers write.
+- Discard lists (`api-credentials-acl-discard`, `-discard-external`) go through
+  `DiscardUserGrants`: a full grant name removes that grant only (`cluster-checksum` keeps
+  `cluster-checksum-repair`), any other name is a prefix like in the allow lists, so
+  `admin:token` removes `token-create` and `token-manage`. Before #2083 a discard took
+  literal names only and the compact names `SaveAcls` writes (`token`, `db`) matched nothing.
 - A token cannot issue tokens (POST `/api/tokens` requires an interactive login), and a
   token-authenticated `GET /api/tokens` returns the records without the token strings: a
   narrowed token must never read back a wider sibling of the same owner.

@@ -339,10 +339,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		}
 
 		if discardACL, ok := listDiscardExt[newapiuser.User]; ok {
-			acls := strings.Split(discardACL.ACLs, " ")
-			for _, acl := range acls {
-				newapiuser.Grants[acl] = false
-			}
+			cluster.DiscardUserGrants(&newapiuser, discardACL.ACLs)
 		}
 
 		// Apply main config ACLs last using strict override — main config is always authoritative
@@ -352,21 +349,8 @@ func (cluster *Cluster) LoadAPIUsers() error {
 			cluster.SetUserRoles(&newapiuser, userACL.Roles)
 		}
 
-		// The token grants came after many explicit ACLs were written (#2083): while
-		// api-user-tokens is on, a user who administers grants, and could grant
-		// themselves anything, holds them. The main discard below can still remove them
-		// (it takes full grant names: token-create token-manage).
-		if cluster.Conf.APIUserTokens && config.HasAllGrantGrants(newapiuser.Grants) {
-			for _, g := range config.GetGrantToken() {
-				newapiuser.Grants[g] = true
-			}
-		}
-
 		if discardACL, ok := listDiscard[newapiuser.User]; ok {
-			acls := strings.Split(discardACL.ACLs, " ")
-			for _, acl := range acls {
-				newapiuser.Grants[acl] = false
-			}
+			cluster.DiscardUserGrants(&newapiuser, discardACL.ACLs)
 		}
 
 		// No Roles
@@ -389,6 +373,15 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		meUsers[newapiuser.User] = newapiuser
 	}
 
+	// Computed on the fresh map, read by the tick (WARN0251) without touching APIUsers.
+	issuer := false
+	for name, u := range meUsers {
+		if name != "system" && u.Grants[config.GrantTokenCreate] {
+			issuer = true
+			break
+		}
+	}
+	cluster.apiTokenIssuer.Store(issuer)
 	cluster.APIUsers = meUsers
 	// Every (re)load reinstates the persisted `system` password, which can be stale
 	// (an older binary stored a random one before AddUser honoured an explicit password;
@@ -422,19 +415,35 @@ func (cluster *Cluster) reconcileSystemServiceGrants() {
 }
 
 // checkAPITokenIssuers runs with the config states: WARN0251 while api-user-tokens
-// is on and nobody can issue a token on the cluster, the main ACL denying the
-// token grants to every user (#2083).
+// is on and no user holds token-create on the cluster (#2083). It reads the flag
+// LoadAPIUsers computes, never the APIUsers map that HTTP handlers write.
 func (cluster *Cluster) checkAPITokenIssuers() {
-	if !cluster.Conf.APIUserTokens || len(cluster.APIUsers) == 0 {
+	if !cluster.Conf.APIUserTokens || cluster.apiTokenIssuer.Load() {
 		return
-	}
-	for name, u := range cluster.APIUsers {
-		if name != "system" && u.Grants[config.GrantTokenCreate] {
-			return
-		}
 	}
 	cluster.ConfigStateMachine.AddState("WARN0251", state.State{ErrType: "WARNING", ErrKey: "WARN0251", ErrFrom: "CONF",
 		ErrDesc: clusterError["WARN0251"]})
+}
+
+// DiscardUserGrants removes a discard list from a user's grants. A full grant name
+// removes that grant only (cluster-checksum keeps cluster-checksum-repair); any other
+// name is a prefix like in the allow lists, so token removes token-create and
+// token-manage, db every db-* grant (#2083).
+func (cluster *Cluster) DiscardUserGrants(u *APIUser, discard string) {
+	if u.Grants == nil {
+		u.Grants = map[string]bool{}
+	}
+	for _, acl := range strings.Fields(discard) {
+		if _, full := cluster.Grants[acl]; full {
+			u.Grants[acl] = false
+			continue
+		}
+		for key, value := range cluster.Grants {
+			if strings.HasPrefix(key, acl) {
+				u.Grants[value] = false
+			}
+		}
+	}
 }
 
 // logUserGrantAssignment writes the resolved grant set for a user to the
