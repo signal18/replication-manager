@@ -68,11 +68,11 @@ func TestPublishedServerRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var copy *ServerMonitor
-	if err := json.Unmarshal(data, &copy); err != nil {
+	var decoded *ServerMonitor
+	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if got := copy.GraphiteHost.Load(); got != "db1.example.test" {
+	if got := decoded.GraphiteHost.Load(); got != "db1.example.test" {
 		t.Fatalf("graphiteHost %q", got)
 	}
 
@@ -87,10 +87,10 @@ func TestPublishedServerRoundTrip(t *testing.T) {
 	}
 
 	// null stores the zero value, as a fresh published field reads before any Store
-	if err := json.Unmarshal([]byte(`{"graphiteHost":null}`), &copy); err != nil {
+	if err := json.Unmarshal([]byte(`{"graphiteHost":null}`), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if got := copy.GraphiteHost.Load(); got != "" {
+	if got := decoded.GraphiteHost.Load(); got != "" {
 		t.Fatalf("graphiteHost after null %q", got)
 	}
 }
