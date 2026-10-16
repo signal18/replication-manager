@@ -177,13 +177,12 @@ For each discovered backup of the server:
   outcome; logged; not while verified), before any adoption or fingerprint. A
   3.1.44 discovery registered such files; each scheduled backup rewrites them,
   so the record describes nothing. The discovery removes them too
-  (`unregisterGoneDiscoveredBackups`). Until removed, `discoveredBackupRefusal`
+  (`unregisterGoneDiscoveredBackups`). Until removed, `backupUseRefusal`
   refuses it (`ErrBackupDuplicateScheduled`) and `discoveredBackupPaths` skips
   it: the automatic restores take the scheduled backup's file. The name check
-  reads no file. `classifyBackupArtifact` never lists those names as
-  candidates and `RegisterBackup` refuses them: the next scheduled backup would
-  rewrite a backup registered there (the folder keeps the latest backups, their
-  history is the archive's). This narrows the issue's "nothing removed
+  reads no file. A file of those names no record describes is listed as a
+  candidate (`Scheduled`), and registering one, or one replaced by hand, makes
+  it the scheduled backup (see the lock below): one record per file. This narrows the issue's "nothing removed
   automatically" to the records that describe nothing.
 - else `artifactUnchangedBounded(Dest, Registration.Artifact,
   backupProofWalkMax)`: the fingerprint verification uses (#2074), same rules: a
@@ -206,11 +205,49 @@ Restoring the original from its archive puts back a new file (another inode):
 it does not match the registration, the operator registers it (a change). A
 change clears by itself only when the registered file itself comes back.
 
+## The lock on replication-manager's own backups
+
+No backup file is used without being checked. `WriteBackupMetadata` calls
+`recordBackupRegistration` before it writes the metadata of a completed logical
+backup (after `finalizeBackupEncryption`: the final file): its fingerprint in
+`Registration`, under `backupMetaMutex`. A file whose fingerprint can not be
+taken (a folder beyond `backupProofWalkMax`, no inode and ctime off Linux) gets
+none and is used as before. Physical backups get none: Register can not read
+them.
+
+The change check covers every logical backup of the server, discovered or not;
+one without a fingerprint, taken before this release, is adopted in place
+(`adoptOwnBackup`: its fingerprint as its file is now, `Adopted`, its metadata
+file rewritten through a temporary file). A record whose file a newer record
+owns (`isSupersededBackupRecord`, `backupRecordFor`: the newest record of a
+`Dest`; a scheduled backup rewrites its file and its record) and a backup kept
+only in its archive are not compared. No check while `IsInBackup`: a backup
+rewrites, renames (`backup-keep-until-valid`) or encrypts its files; the last
+check's changes are kept until it ends.
+
+The automatic reseeds check the file when they are about to use it
+(`backupFileLocked` at the three call sites of `isDiscoveredBackupPath` in
+`srv_job_backup.go`, and `ReseedFromBackupID`): the newest record of the path,
+`backupUseRefusal`, then `artifactUnchangedBounded` against its fingerprint,
+without waiting for the 30-heartbeat check. A backup restored by
+`restoreArchivedOriginal` from replication-manager's own snapshot
+(`OriginalRemoved`) is not locked.
+
+`RegisterBackupChange` takes any logical backup. For a scheduled backup
+(default line, not discovered) the registered file becomes the scheduled
+backup under a new id: `writeScheduledBackupMeta` writes `<tool>.meta.json`
+(through a temporary file, under `backupMetaMutex`), drops the previous
+scheduled records of the tool from the list, sets `LastBackupMeta.Logical` and
+the backup cookie. `RegisterBackup` on a scheduled file name (replaced by hand,
+or left without a record) does the same: one record per file, never a
+discovered one.
+
 ## Refusals
 
-`discoveredBackupRefusal(meta)`: for a discovered backup, `ErrBackupNotABackup`
-when flagged, `ErrBackupChangedSinceRegistered` (with the change's description)
-while a change is recorded; nil for any other backup. Used by
+`backupUseRefusal(meta)`: for any backup, `ErrBackupChangedSinceRegistered` while
+a change is recorded (with the change's description); for a discovered backup,
+also `ErrBackupDuplicateScheduled` for a record of a scheduled backup file and
+`ErrBackupNotABackup` when flagged; nil otherwise. Used by
 `ReseedFromBackupID` (before the other checks), `buildBackupCatalog` (skipped;
 discovered backups do not reach `LastBackupMeta`, the check makes it explicit)
 and `refreshBackupProofs` (not proven). `verifiableLogicalBackup` refuses a
@@ -290,7 +327,7 @@ to its first table.
 ## Use
 
 Registered discovered backups never enter `buildBackupCatalog` (it takes
-`LastBackupMeta` only, which discovery does not touch; `discoveredBackupRefusal`
+`LastBackupMeta` only, which discovery does not touch; `backupUseRefusal`
 also skips them). The legacy fallback of
 the automatic reseeds and the flashback (no catalogued backup: the fixed names
 through `findExistingBackupPath`, then `<backup dir>/<fixed name>`) skips them:
@@ -299,7 +336,7 @@ through `findExistingBackupPath`, then `<backup dir>/<fixed name>`) skips them:
 one before their existence check, the backup cookie kept (the backup exists,
 it is not for automatic use). `Cluster.ReseedFromBackupID(server, id)` reseeds on request:
 logical (`mysqldump`, `mydumper`) only (`ErrBackupDiscoveryNotLogical`),
-not refused by `discoveredBackupRefusal`, `Completed`, a position (`hasReplicationPosition`), not `OriginalRemoved`, artifact present (`backupArtifactExists`),
+not refused by `backupUseRefusal`, `Completed`, a position (`hasReplicationPosition`), not `OriginalRemoved`, artifact present (`backupArtifactExists`),
 target not the primary; then `JobReseedLogicalBackupFromPathWithOptions` (the
 restic restore's path). The position comes from the artifact during the
 restore, not from the meta file.

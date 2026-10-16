@@ -138,11 +138,18 @@ func (cluster *Cluster) backupChange(id int64) *BackupRegistrationChange {
 	return nil
 }
 
-// discoveredBackupRefusal tells why a discovered backup is not used by a reseed, a restore or
-// the restore catalog: a duplicate scheduled backup, not a backup, or changed since
-// registered. nil for any other backup.
-func (cluster *Cluster) discoveredBackupRefusal(meta *backupmgr.BackupMetadata) error {
-	if meta == nil || !meta.Discovered {
+// backupUseRefusal tells why a backup is not used by a reseed, a restore or the restore
+// catalog: a discovered record of a scheduled backup file, not a backup, or any backup whose
+// file changed since it was written or registered (the change check's record, from memory).
+// nil otherwise.
+func (cluster *Cluster) backupUseRefusal(meta *backupmgr.BackupMetadata) error {
+	if meta == nil {
+		return nil
+	}
+	if c := cluster.backupChange(meta.Id); c != nil {
+		return fmt.Errorf("%w (%s)", ErrBackupChangedSinceRegistered, c.Describe)
+	}
+	if !meta.Discovered {
 		return nil
 	}
 	if cluster.isDuplicateScheduledBackup(meta) {
@@ -151,10 +158,78 @@ func (cluster *Cluster) discoveredBackupRefusal(meta *backupmgr.BackupMetadata) 
 	if meta.NotABackup {
 		return fmt.Errorf("%w: %s", ErrBackupNotABackup, meta.DiscoveryNote)
 	}
-	if c := cluster.backupChange(meta.Id); c != nil {
-		return fmt.Errorf("%w (%s)", ErrBackupChangedSinceRegistered, c.Describe)
-	}
 	return nil
+}
+
+// recordBackupRegistration records the fingerprint of meta's file as written, for a completed
+// logical backup on disk: a file changed since is not used until registered (the change
+// check, backupFileLocked). The caller holds backupMetaMutex. A file whose fingerprint can not
+// be taken (a folder beyond the walk bound, no inode off Linux) is recorded without one, used
+// as before.
+func (server *ServerMonitor) recordBackupRegistration(meta *backupmgr.BackupMetadata) {
+	if meta == nil || !meta.Completed || meta.OriginalRemoved || meta.BackupMethod != backupmgr.BackupMethodLogical || strings.TrimSpace(meta.Dest) == "" {
+		return
+	}
+	fp, err := restoreArtifactFingerprintBounded(meta.Dest, backupProofWalkMax)
+	if err != nil || fp.ChangeTime.IsZero() {
+		return
+	}
+	meta.Registration = &backupmgr.BackupRegistration{Artifact: *fp, RegisteredAt: time.Now()}
+}
+
+// backupRecordFor returns the newest record of the logical backup whose file is path: the one
+// that owns it (a scheduled backup rewrites its file and its record).
+func (cluster *Cluster) backupRecordFor(path string) *backupmgr.BackupMetadata {
+	if cluster == nil || cluster.BackupMetaMap == nil || strings.TrimSpace(path) == "" {
+		return nil
+	}
+	var found *backupmgr.BackupMetadata
+	cluster.BackupMetaMap.Callback(func(_ int64, m *backupmgr.BackupMetadata) bool {
+		if m != nil && m.BackupMethod == backupmgr.BackupMethodLogical && backupArtifactsMatch(m.Dest, path) && (found == nil || m.Id > found.Id) {
+			found = m
+		}
+		return true
+	})
+	return found
+}
+
+// isSupersededBackupRecord tells whether a newer record owns meta's file.
+func (cluster *Cluster) isSupersededBackupRecord(meta *backupmgr.BackupMetadata) bool {
+	newest := cluster.backupRecordFor(meta.Dest)
+	return newest != nil && newest.Id != meta.Id
+}
+
+// backupFileLocked tells, when an automatic reseed is about to restore path, whether its file
+// is not the one its newest record was written or registered with: a replacement put there
+// by hand, an edit, a truncation. It stats the file (walks a folder, bounded) now, the change
+// check runs every 30 heartbeats. A backup kept in its archive and fetched back by
+// replication-manager, or without a fingerprint, is not locked.
+func (cluster *Cluster) backupFileLocked(path string) error {
+	meta := cluster.backupRecordFor(path)
+	if meta == nil {
+		return nil
+	}
+	if err := cluster.backupUseRefusal(meta); err != nil {
+		return fmt.Errorf("backup %d (%s): %w", meta.Id, path, err)
+	}
+	server := cluster.GetServerFromURL(meta.Source)
+	var rec *backupmgr.ArtifactFingerprint
+	removed := false
+	if server != nil {
+		server.backupMetaMutex.Lock()
+	}
+	if meta.Registration != nil {
+		r := meta.Registration.Artifact
+		rec = &r
+	}
+	removed = meta.OriginalRemoved
+	if server != nil {
+		server.backupMetaMutex.Unlock()
+	}
+	if rec == nil || removed || artifactUnchangedBounded(path, rec, backupProofWalkMax) {
+		return nil
+	}
+	return fmt.Errorf("backup %d (%s): %w", meta.Id, path, ErrBackupChangedSinceRegistered)
 }
 
 // RegisterBackup registers the artifact at path of the server's backup folder, a candidate of
@@ -180,14 +255,14 @@ func (cluster *Cluster) RegisterBackup(serverURL, path string, takenAt time.Time
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrBackupNotRegisterable, err)
 	}
-	if server.isScheduledBackupArtifact(path) {
-		return fmt.Errorf("%w: %s is a scheduled backup file, the next scheduled backup rewrites it: copy it under another name to register it", ErrBackupNotRegisterable, filepath.Base(path))
-	}
 	tool, split, ok := classifyBackupArtifact(path, fs.FileInfoToDirEntry(info))
 	if !ok {
 		return fmt.Errorf("%w: %s is not a logical backup (mysqldump, splitdump or mydumper)", ErrBackupNotRegisterable, path)
 	}
-	if entries, err := os.ReadDir(dir); err == nil && server.knownBackupArtifactsOnDisk(entries)[path] {
+	// a scheduled backup file (mysqldump.sql.gz, splitdump...) replaced by hand is registered
+	// under its name as the scheduled backup: its record is replaced, never doubled
+	scheduled := server.isScheduledBackupArtifact(path)
+	if entries, err := os.ReadDir(dir); err == nil && !scheduled && server.knownBackupArtifactsOnDisk(entries)[path] {
 		return fmt.Errorf("%w: %s", ErrBackupAlreadyRegistered, path)
 	}
 	if c, ok := cluster.findBackupCandidate(server.URL, path); ok && !c.Registerable() && c.Status != BackupCandidateSettling {
@@ -208,8 +283,8 @@ func (cluster *Cluster) RegisterBackupChange(id int64, takenAt time.Time) error 
 	if meta == nil {
 		return fmt.Errorf("%w: %d", ErrBackupNotFound, id)
 	}
-	if !meta.Discovered {
-		return fmt.Errorf("%w: backup %d", ErrBackupNotDiscovered, id)
+	if meta.BackupMethod != backupmgr.BackupMethodLogical {
+		return fmt.Errorf("%w: backup %d is %s, only a logical backup is read and registered", ErrBackupNotRegisterable, id, meta.BackupTool)
 	}
 	if !takenAt.IsZero() && takenAt.After(time.Now()) {
 		return fmt.Errorf("%w: its time %s is in the future", ErrBackupNotRegisterable, takenAt.Format(time.RFC3339))
@@ -259,6 +334,7 @@ func (cluster *Cluster) startBackupRegistration(server *ServerMonitor, path, too
 		}
 		cluster.backupRegisterResults.Delete(path)
 		cluster.backupChanges.Delete(meta.Id)
+		cluster.backupChanges.Delete(id) // a scheduled backup's registered change gets a new id
 		cluster.dropBackupCandidate(server.URL, path)
 	}()
 	return nil
@@ -291,10 +367,19 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 	if before.ChangeTime.IsZero() {
 		return nil, errors.New("its file identity (inode, change time) can not be read here: its changes can not be tracked")
 	}
+	// a scheduled backup file replaced by hand becomes the scheduled backup: its record
+	// (<tool>.meta.json) is replaced, it is used as any scheduled backup
+	scheduled := (prev == nil && server.isScheduledBackupArtifact(path)) || (prev != nil && !prev.Discovered && !prev.IsAdhoc())
 	var id int64
-	if prev != nil {
+	switch {
+	case prev != nil && !scheduled:
 		id = prev.Id
-	} else {
+	case scheduled:
+		id = time.Now().Unix()
+		for cluster.BackupMetaMap.Get(id) != nil {
+			id++
+		}
+	default:
 		// the id of an ad-hoc backup, a unix time: the artifact's mtime, bumped while taken
 		// (the map or a meta file); once its meta file is written, a backup keeps its id
 		id = before.ModTime.Unix()
@@ -353,11 +438,24 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 		meta.BackupSessionID = prev.BackupSessionID
 		server.backupMetaMutex.Unlock()
 	}
-	server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime, meta.BackupLine)
-	if err := server.writeDiscoveredBackupMeta(meta, prev); err != nil {
-		return nil, err
+	if prev != nil {
+		// a backup replication-manager took keeps being one; an ad hoc one keeps its line
+		meta.Discovered, meta.BackupLine, meta.RetentionDays, meta.RetentionDuration = prev.Discovered, prev.BackupLine, prev.RetentionDays, prev.RetentionDuration
 	}
 	what := "registered"
+	if scheduled {
+		meta.Discovered, meta.BackupLine = false, backupmgr.BackupLineDefault
+		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime, meta.BackupLine)
+		if err := server.writeScheduledBackupMeta(meta); err != nil {
+			return nil, err
+		}
+		what = "registered, as the scheduled backup,"
+	} else {
+		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime, meta.BackupLine)
+		if err := server.writeDiscoveredBackupMeta(meta, prev); err != nil {
+			return nil, err
+		}
+	}
 	if prev != nil {
 		what = "registered the change of"
 	}
@@ -389,6 +487,49 @@ func (server *ServerMonitor) writeDiscoveredBackupMeta(meta, prev *backupmgr.Bac
 		}
 	}
 	cluster.BackupMetaMap.Set(meta.Id, meta)
+	return nil
+}
+
+// writeScheduledBackupMeta makes meta, a scheduled backup file replaced by hand and read by
+// Register, the server's scheduled backup of its tool: its record (<tool>.meta.json) written
+// in place of the one the scheduled backup wrote, the previous entries of that record dropped
+// from the list, the server's last logical backup and its backup cookie set, as a scheduled
+// backup sets them.
+func (server *ServerMonitor) writeScheduledBackupMeta(meta *backupmgr.BackupMetadata) error {
+	cluster := server.ClusterGroup
+	metaPath := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, backupmgr.BackupLineDefault)
+	if metaPath == "" {
+		return fmt.Errorf("no metadata file for tool %q", meta.BackupTool)
+	}
+	data, err := json.MarshalIndent(meta, "", "\t")
+	if err != nil {
+		return err
+	}
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+	tmp := metaPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, metaPath); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("write %s: %w", metaPath, err)
+	}
+	var replaced []int64
+	cluster.BackupMetaMap.Callback(func(id int64, other *backupmgr.BackupMetadata) bool {
+		if other != nil && id != meta.Id && !other.Discovered && !other.IsAdhoc() && other.Source == server.URL && other.BackupTool == meta.BackupTool && other.BackupMethod == backupmgr.BackupMethodLogical {
+			replaced = append(replaced, id)
+		}
+		return true
+	})
+	for _, id := range replaced {
+		cluster.BackupMetaMap.Delete(id)
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+	server.LastBackupMeta.Logical = meta
+	if err := server.SetBackupLogicalCookie(meta.BackupTool); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup register on %s: backup cookie of %s not set: %s", server.URL, meta.BackupTool, err)
+	}
 	return nil
 }
 
@@ -437,15 +578,22 @@ func (cluster *Cluster) UnregisterBackup(id int64) error {
 	return nil
 }
 
-// checkRegisteredBackups compares each registered discovered backup's file with its recorded
-// fingerprint (a stat, a bounded walk for a folder) and records the changes, which
-// checkBackupDiscoveryStates raises: off the monitor tick (Run, every 30 heartbeats), one run
-// at a time, a server skipped while its folder is discovered or registered. A backup
-// registered by a release that registered every dump it found (no fingerprint) is adopted:
-// its fingerprint recorded as it is now, flagged if it is not a backup (backupDiscoveryMaxPerRun
-// of them per run).
+// checkRegisteredBackups compares each logical backup's file, a registered discovered one or
+// one replication-manager took, with its recorded fingerprint (a stat, a bounded walk for a
+// folder) and records the changes, which checkBackupDiscoveryStates raises and
+// backupUseRefusal refuses: off the monitor tick (Run, every 30 heartbeats), one run at a
+// time, not while a backup runs, a server skipped while its folder is discovered or
+// registered. A backup without a fingerprint (registered by 3.1.44, or taken before backups
+// recorded one) is adopted: its fingerprint recorded as it is now, a discovered one flagged if
+// it is not a backup (backupDiscoveryMaxPerRun of them per run).
 func (cluster *Cluster) checkRegisteredBackups() {
 	if cluster.BackupMetaMap == nil || !cluster.backupRegistrationChecking.CompareAndSwap(false, true) {
+		return
+	}
+	// a backup running rewrites, renames (backup-keep-until-valid) or encrypts its files: the
+	// last check's changes are kept until it ends
+	if cluster.IsInBackup() {
+		cluster.backupRegistrationChecking.Store(false)
 		return
 	}
 	defer cluster.backupRegistrationChecking.Store(false)
@@ -465,38 +613,52 @@ func (cluster *Cluster) checkRegisteredBackups() {
 	cluster.pruneBackupRegisterResults()
 }
 
-// checkRegisteredBackups is Cluster.checkRegisteredBackups for the server's backups.
+// checkRegisteredBackups is Cluster.checkRegisteredBackups for the server's logical backups:
+// the discovered ones and replication-manager's own, scheduled or ad hoc.
 func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 	cluster := server.ClusterGroup
-	var discovered []*backupmgr.BackupMetadata
+	var metas []*backupmgr.BackupMetadata
 	cluster.BackupMetaMap.Callback(func(_ int64, meta *backupmgr.BackupMetadata) bool {
-		if meta != nil && meta.Discovered && meta.Source == server.URL {
-			discovered = append(discovered, meta)
+		if meta != nil && meta.Source == server.URL && meta.BackupMethod == backupmgr.BackupMethodLogical {
+			metas = append(metas, meta)
 		}
 		return true
 	})
-	for _, meta := range discovered {
-		if meta.OriginalRemoved {
-			cluster.backupChanges.Delete(meta.Id) // kept in its archive only: nothing on disk to compare
-			continue
-		}
+	for _, meta := range metas {
 		if cluster.isDuplicateScheduledBackup(meta) {
 			server.removeScheduledBackupRecord(meta)
 			continue
 		}
-		if meta.Registration == nil {
-			if *budget > 0 {
-				*budget--
-				server.adoptDiscoveredBackup(meta)
-			}
-			continue
+		server.backupMetaMutex.Lock()
+		removed, completed := meta.OriginalRemoved, meta.Completed
+		var rec *backupmgr.ArtifactFingerprint
+		if meta.Registration != nil {
+			r := meta.Registration.Artifact
+			rec = &r
 		}
-		rec := meta.Registration.Artifact
-		if artifactUnchangedBounded(meta.Dest, &rec, backupProofWalkMax) {
+		server.backupMetaMutex.Unlock()
+		// kept only in its archive (nothing on disk to compare), or a file a newer record owns
+		// (a scheduled backup rewrote it with its own record)
+		if removed || cluster.isSupersededBackupRecord(meta) {
 			cluster.backupChanges.Delete(meta.Id)
 			continue
 		}
-		change := &BackupRegistrationChange{Server: server.URL, ID: meta.Id, Dest: meta.Dest, Was: rec, Checked: time.Now()}
+		if rec == nil {
+			if *budget > 0 && (meta.Discovered || completed) {
+				*budget--
+				if meta.Discovered {
+					server.adoptDiscoveredBackup(meta)
+				} else {
+					server.adoptOwnBackup(meta)
+				}
+			}
+			continue
+		}
+		if artifactUnchangedBounded(meta.Dest, rec, backupProofWalkMax) {
+			cluster.backupChanges.Delete(meta.Id)
+			continue
+		}
+		change := &BackupRegistrationChange{Server: server.URL, ID: meta.Id, Dest: meta.Dest, Was: *rec, Checked: time.Now()}
 		if now, err := restoreArtifactFingerprintBounded(meta.Dest, backupProofWalkMax); err != nil {
 			change.Error = err.Error()
 		} else {
@@ -505,6 +667,41 @@ func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 		change.Describe = describeBackupChange(meta.Id, change)
 		cluster.backupChanges.Store(meta.Id, change)
 	}
+}
+
+// adoptOwnBackup records the fingerprint of a backup replication-manager took before backups
+// recorded one, as its file is now, in place, and rewrites its metadata file. Its file absent
+// (taken on a DB node, kept elsewhere), still settling or verified: left to a later check.
+func (server *ServerMonitor) adoptOwnBackup(meta *backupmgr.BackupMetadata) {
+	cluster := server.ClusterGroup
+	if _, verifying := cluster.backupVerifying.Load(meta.Id); verifying || !fileExists(meta.Dest) {
+		return
+	}
+	if changed, err := artifactChangedSince(meta.Dest, time.Now().Add(-backupDiscoverySettle)); err != nil || changed {
+		return
+	}
+	fp, err := restoreArtifactFingerprintBounded(meta.Dest, backupProofWalkMax)
+	if err != nil || fp.ChangeTime.IsZero() {
+		return
+	}
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+	meta.Registration = &backupmgr.BackupRegistration{Artifact: *fp, RegisteredAt: time.Now(), Adopted: true}
+	metaPath := server.backupMetaFilePath(meta)
+	data, err := json.MarshalIndent(meta, "", "\t")
+	if err != nil || metaPath == "" {
+		return
+	}
+	tmp := metaPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup %d of %s: fingerprint recorded, metadata file not written: %s", meta.Id, server.URL, err)
+		return
+	}
+	if err := os.Rename(tmp, metaPath); err != nil {
+		os.Remove(tmp)
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup %d of %s taken before fingerprints were recorded: its fingerprint recorded as its file is now (%s)", meta.Id, server.URL, humanBytes(fp.Size))
 }
 
 // adoptDiscoveredBackup records the fingerprint of a backup registered by a release that

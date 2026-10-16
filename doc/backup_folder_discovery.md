@@ -22,10 +22,12 @@ backup:
 | mydumper folder | its `metadata` file with mydumper's `Started dump at` line |
 
 The scheduled backups' own files (`mysqldump.sql.gz`, `splitdump`,
-`mydumper`, `dumpling`, and their `.enc` / `.tar.enc` forms) are never listed
-nor registered, whichever tool or mode wrote them last: the next scheduled
-backup rewrites them. To register a backup placed there by hand, copy it under
-another name. The backup folder holds the latest backups only: keep a backup's
+`mydumper`, `dumpling`, and their `.enc` / `.tar.enc` forms) can be replaced by
+hand under the same name. A replacement is not used until it is registered (see
+"A backup's file changed" below); registered, it becomes the scheduled backup.
+One no record describes (a `mysqldump.sql.gz` left from before the split mode
+was turned on) is listed as a scheduled backup file. The backup folder holds the
+latest backups only: the next scheduled backup rewrites them, keep a backup's
 history in the archive (restic).
 
 Physical backups are not discovered. Names ending in `.partial`, `.tmp`,
@@ -140,13 +142,18 @@ A dump's own times are in the time zone of the server that dumped it, without
 a zone: replication-manager reads them in its own. Its replication position
 orders backups against each other and the primary, not its time.
 
-## A registered backup changed
+## A backup's file changed
 
-A backup's file may be edited on purpose: the edit stays yours, and
-replication-manager waits for you to confirm it. The registered backups are
+A backup is used only as it was written or registered: no backup file is used
+without being checked. replication-manager records the fingerprint of each
+logical backup it takes when it writes its metadata (after its encryption), and
+the fingerprint of each backup registered. A backup's file may be edited or
+replaced on purpose, a scheduled backup's included: the edit stays yours, and
+replication-manager waits for you to confirm it. The logical backups are
 compared with their recorded fingerprint every 30 monitoring ticks, off the
-monitoring loop (a stat, a bounded walk of a folder: a folder of more than
-100,000 entries can not be registered). A difference raises the server-level
+monitoring loop and not while a backup runs (a stat, a bounded walk of a
+folder: a folder of more than 100,000 entries can not be registered), and again
+when a reseed is about to use one. A difference raises the server-level
 backup warning **WARN0249**, naming what changed (e.g. `backup 1759300000
 copy.sql.gz changed since registered: 90.8 MiB -> 12.1 MiB, modified
 2026-10-16 03:40`), and the backup is shown as changed in **Current Backups**.
@@ -154,7 +161,8 @@ copy.sql.gz changed since registered: 90.8 MiB -> 12.1 MiB, modified
 Until the change is registered:
 
 - a reseed or a restore from it is refused: "changed since registered:
-  register the change first";
+  register the change first", the automatic reseeds and rejoins included, which
+  check the file when they are about to use it;
 - the restore catalog skips it: an automatic rejoin does not pick it;
 - it is not proven by a test restore; its verification result stays shown,
   marked as taken before the change;
@@ -167,8 +175,10 @@ What to do:
   **Current Backups**, `POST /api/clusters/{clusterName}/backups/{backupID}/register`,
   or `replication-manager-cli backup register <backupID>`. The file as it is now
   is read and checked as a new backup: refused, with the reason, if the edit
-  broke it; otherwise its new fingerprint, position and size are recorded, the
-  backup keeps its id, and WARN0249 clears.
+  broke it; otherwise its new fingerprint, position and size are recorded and
+  WARN0249 clears. A discovered or ad hoc backup keeps its id; a scheduled
+  backup's file registered this way becomes the scheduled backup under a new id,
+  its record (`<tool>.meta.json`) replaced, used by the automatic reseeds again.
 - **The change is not intended** (a truncated copy, a file replaced under the
   same name, disk corruption, an accidental edit): the backup is not used
   either way. Restore the original from its archive (`backup-archive`, restic)
@@ -189,6 +199,11 @@ or `replication-manager-cli backup unregister <backupID>`. It removes
 replication-manager's metadata file only: the backup file is left as it is, and
 is listed in **Found in backup folders** again. A backup replication-manager
 took is not unregistered: delete it.
+
+## Backups taken before this release
+
+The logical backups replication-manager took before it recorded fingerprints
+get theirs, as their file is, the first time they are checked.
 
 ## Backups registered by 3.1.44
 

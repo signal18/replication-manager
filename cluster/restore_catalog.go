@@ -66,7 +66,7 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 		}
 		for _, m := range []*backupmgr.BackupMetadata{sv.LastBackupMeta.Logical, sv.LastBackupMeta.Physical} {
 			// a discovered backup changed since registered, or not a backup, is not used (#2073)
-			if m == nil || !m.Completed || cluster.discoveredBackupRefusal(m) != nil {
+			if m == nil || !m.Completed || cluster.backupUseRefusal(m) != nil {
 				continue
 			}
 			e := backupMetaToCatalog(sv.URL, m)
@@ -113,7 +113,7 @@ func (cluster *Cluster) refreshBackupProofs() {
 		}
 		sv.backupMetaMutex.Lock()
 		for _, m := range []*backupmgr.BackupMetadata{sv.LastBackupMeta.Logical, sv.LastBackupMeta.Physical} {
-			if m != nil && m.Completed && backupProven(m) && cluster.discoveredBackupRefusal(m) == nil {
+			if m != nil && m.Completed && backupProven(m) && cluster.backupUseRefusal(m) == nil {
 				files = append(files, proofFile{backupProofKey{sv.URL, m.Id, m.Dest}, *m.Verification.Artifact})
 			}
 		}

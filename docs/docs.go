@@ -25800,6 +25800,10 @@ const docTemplate = `{
                     "description": "Registering and RegisterError: the last Register of this artifact, running or refused",
                     "type": "boolean"
                 },
+                "scheduled": {
+                    "description": "Scheduled: a scheduled backup file (mysqldump.sql.gz, splitdump...): registered, it is\nthe scheduled backup, used as any scheduled backup",
+                    "type": "boolean"
+                },
                 "server": {
                     "type": "string"
                 },

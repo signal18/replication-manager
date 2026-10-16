@@ -45,7 +45,9 @@ import (
 //     its reseed refused: the replica would start at the primary's current position;
 //   - D9: an accounts file (GRANT lines only) is listed as not a backup and Register refuses it;
 //   - D10: the record a 3.1.44 discovery made of the scheduled mysqldump.sql.gz is removed,
-//     the file kept.
+//     the file kept;
+//   - D11: the scheduled mysqldump.sql.gz replaced by hand is locked (WARN0249, reseed
+//     refused) until registered, then the automatic logical reseed uses it.
 //
 // It reseeds the cluster's first replica and needs backup-logical-type mysqldump. Run it by
 // name: /api/clusters/<cluster>/tests/actions/run/testBackupDiscovery
@@ -143,7 +145,45 @@ func (regtest *RegTest) TestBackupDiscovery(cl *clusterpkg.Cluster, conf string,
 	}
 	e.discoverCandidate("") // the copies removed: the candidates listed no longer name them
 	e.checkScheduledRecord()
+	e.checkReplacedScheduledBackup(gtid)
 	return e.result()
+}
+
+// checkReplacedScheduledBackup replaces the scheduled mysqldump.sql.gz by hand, under its
+// name: the backup is locked (WARN0249, a reseed refused) until the replacement is
+// registered, then the automatic logical reseed uses it (D11).
+func (e *edgeRun) checkReplacedScheduledBackup(gtid bool) {
+	const name = "D11 scheduled backup replaced by hand"
+	meta := e.m.LastBackupMeta.Logical
+	if meta == nil || filepath.Base(meta.Dest) != "mysqldump.sql.gz" || meta.Registration == nil {
+		e.check(name, false, fmt.Sprintf("no scheduled mysqldump.sql.gz with its fingerprint: %+v", meta))
+		return
+	}
+	id := meta.Id
+	if err := editDump(meta.Dest, "-- replaced by hand\n"); err != nil {
+		e.check(name, false, err.Error())
+		return
+	}
+	// placed by hand a while ago: past the settle window (the backup was just taken)
+	old := time.Now().Add(-2 * time.Hour)
+	os.Chtimes(meta.Dest, old, old)
+	if !e.check(name+": locked, WARN0249", e.waitChange(id, true), "no change recorded") {
+		return
+	}
+	err := e.cl.ReseedFromBackupID(e.r, id)
+	e.check(name+": reseed refused", errors.Is(err, clusterpkg.ErrBackupChangedSinceRegistered), fmt.Sprint(err))
+	if err := e.cl.RegisterBackupChange(id, time.Time{}); err != nil {
+		e.check(name+": registered", false, err.Error())
+		return
+	}
+	time.Sleep(time.Second)
+	e.waitDiscoveryIdle()
+	now := e.m.LastBackupMeta.Logical
+	if !e.check(name+": registered as the scheduled backup", now != nil && now.Id != id && !now.Discovered && now.Registration != nil && e.waitChange(id, false), fmt.Sprintf("%+v", now)) {
+		return
+	}
+	e.seed()
+	e.reseedAndCheck(name+": automatic reseed from it", gtid)
 }
 
 // checkScheduledRecord writes the record a 3.1.44 discovery made of the scheduled backup's own

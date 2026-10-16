@@ -718,7 +718,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                 onClick={() => setReseedPick({ backup, serverId: '' })}
                 isDisabled={!user?.grants['db-restore'] || !!notReseedable}
               />
-              {backup.discovered && change && (
+              {change && (
                 <RMIconButton
                   icon={HiDocumentAdd}
                   tooltip='Register the change: the file as it is now is read and checked, then used'

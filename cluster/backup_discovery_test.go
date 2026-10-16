@@ -109,13 +109,15 @@ func TestClassifyBackupArtifact(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, f), []byte("x"), 0644)
 	}
 	want := map[string]string{
-		"prod-copy":      "mysqldump split",
-		"old-split":      "mysqldump split",
-		"mydumper-copy":  "mydumper",
-		"copy.sql.gz":    "mysqldump",
-		"plain.sql":      "mysqldump",
-		"enc.sql.gz.enc": "mysqldump",
-		"copy.tar.enc":   "mysqldump split", // the scheduled backups' own names are left out
+		"prod-copy":         "mysqldump split",
+		"old-split":         "mysqldump split",
+		"mydumper-copy":     "mydumper",
+		"copy.sql.gz":       "mysqldump",
+		"plain.sql":         "mysqldump",
+		"enc.sql.gz.enc":    "mysqldump",
+		"copy.tar.enc":      "mysqldump split",
+		"splitdump.tar.enc": "mysqldump split",
+		"mysqldump.sql.gz":  "mysqldump",
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -693,8 +695,8 @@ func TestUnregisterBackup(t *testing.T) {
 	if err := c.UnregisterBackup(7); !errors.Is(err, ErrBackupNotDiscovered) {
 		t.Fatalf("unregister a backup replication-manager took: %v", err)
 	}
-	if err := c.RegisterBackupChange(7, time.Time{}); !errors.Is(err, ErrBackupNotDiscovered) {
-		t.Fatalf("register the change of a backup replication-manager took: %v", err)
+	if err := c.RegisterBackupChange(7, time.Time{}); !errors.Is(err, ErrBackupNotRegisterable) {
+		t.Fatalf("register the change of a backup that is not logical: %v", err)
 	}
 }
 
@@ -783,13 +785,64 @@ func TestScheduledBackupRecordRemoved(t *testing.T) {
 	if fileExists(metaPath) || !fileExists(filepath.Join(dir, "mysqldump.sql.gz")) || !fileExists(filepath.Join(dir, "splitdump")) {
 		t.Fatal("the record's metadata file kept, or the scheduled backup file removed")
 	}
-	// not a candidate again, and not registerable: the next scheduled backup rewrites it
+	// no record describes them now: listed, as scheduled backup files
 	cands, err := server.DiscoverBackups()
-	if err != nil || len(cands) != 0 {
-		t.Fatalf("scheduled backup files listed as candidates: %+v %v", cands, err)
+	if err != nil || len(cands) != 2 || !cands[0].Scheduled || !cands[1].Scheduled {
+		t.Fatalf("scheduled backup files without a record: %+v %v", cands, err)
 	}
-	if err := c.RegisterBackup(server.URL, filepath.Join(dir, "mysqldump.sql.gz"), time.Time{}); !errors.Is(err, ErrBackupNotRegisterable) || !strings.Contains(err.Error(), "scheduled backup file") {
-		t.Fatalf("register a scheduled backup file: %v", err)
+}
+
+// A scheduled backup file replaced by hand, under its own name, is registered as the
+// scheduled backup: read and checked, its record (<tool>.meta.json) replaced, never doubled,
+// the server's last logical backup and its cookie set. A replacement that is not a backup is
+// refused, and repman keeps its record.
+func TestRegisterReplacedScheduledBackup(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	requireArtifactIdentity(t)
+	server.Datadir = t.TempDir() // where the backup cookies are
+	path := filepath.Join(dir, "mysqldump.sql.gz")
+	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
+	old := &backupmgr.BackupMetadata{Id: 4001, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineDefault, Source: server.URL, Dest: path, Completed: true, BinLogFileName: "mariadb-bin.000001", BinLogFilePos: 4}
+	data, _ := json.Marshal(old)
+	metaPath := filepath.Join(dir, "mysqldump.meta.json")
+	os.WriteFile(metaPath, data, 0644)
+	c.BackupMetaMap.Set(old.Id, old)
+	server.LastBackupMeta.Logical = old
+
+	// replaced by an accounts file: refused, the scheduled record kept
+	writeDiscoveryGzip(t, path, "GRANT SELECT ON *.* TO `app`@`%`;\n")
+	if _, err := registerAndWait(t, c, server, path, time.Time{}); err == nil || !strings.Contains(err.Error(), "accounts only") {
+		t.Fatalf("a replacement that is not a backup: %v", err)
+	}
+	if c.BackupMetaMap.Get(old.Id) == nil || server.LastBackupMeta.Logical != old {
+		t.Fatal("a refused replacement changed the scheduled record")
+	}
+
+	// replaced by another dump, same name
+	writeDiscoveryGzip(t, path, strings.Replace(discoveryDump, "4521", "9999", 1)+discoveryDumpFooter)
+	m, err := registerAndWait(t, c, server, path, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Discovered || m.IsAdhoc() || m.BinLogFilePos != 9999 || m.BackupStrategy != backupmgr.BackupStrategyFull || m.TimeSource != backupmgr.BackupTimeSourceDumpFooter || m.Registration == nil {
+		t.Fatalf("registered replacement %+v", m)
+	}
+	if c.BackupMetaMap.Get(old.Id) != nil || server.LastBackupMeta.Logical != m || !server.HasBackupLogicalCookie() {
+		t.Fatalf("scheduled record replaced %v, last logical backup %v, cookie %v", c.BackupMetaMap.Get(old.Id) == nil, server.LastBackupMeta.Logical == m, server.HasBackupLogicalCookie())
+	}
+	onDisk, err := readBackupMetadataFile(metaPath)
+	if err != nil || onDisk.Id != m.Id || onDisk.BinLogFilePos != 9999 || onDisk.Discovered {
+		t.Fatalf("scheduled meta file %+v %v", onDisk, err)
+	}
+	if adhoc, _ := filepath.Glob(filepath.Join(dir, "mysqldump.*.meta.json")); len(adhoc) != 0 {
+		t.Fatalf("a second record written: %v", adhoc)
+	}
+	// it is the scheduled backup: an automatic restore takes it, no discovered refusal
+	if got, ok := findExistingBackupPath(server, []string{"mysqldump.sql.gz"}); !ok || got != path {
+		t.Fatalf("automatic restore: %q %v", got, ok)
+	}
+	if err := c.backupUseRefusal(m); err != nil {
+		t.Fatalf("refused as a discovered backup: %v", err)
 	}
 }
 
@@ -802,7 +855,7 @@ func TestScheduledBackupRecordRemovedByDiscovery(t *testing.T) {
 	data, _ := json.Marshal(legacy)
 	metaPath := server.buildBackupMetaFileName("mysqldump", legacy.Id, backupmgr.BackupLineAdhoc)
 	os.WriteFile(metaPath, data, 0644)
-	if cands, err := server.DiscoverBackups(); err != nil || len(cands) != 0 {
+	if cands, err := server.DiscoverBackups(); err != nil || len(cands) != 1 || !cands[0].Scheduled {
 		t.Fatalf("discovery: %+v %v", cands, err)
 	}
 	if c.BackupMetaMap.Get(legacy.Id) != nil || fileExists(metaPath) || !fileExists(path) {
@@ -1148,5 +1201,87 @@ func TestReadDiscoverySmallFile(t *testing.T) {
 	}
 	if data, err := readDiscoverySmallFile(path); err != nil || len(data) != discoveryArchiveSmallFile {
 		t.Fatalf("at the bound: %d %v", len(data), err)
+	}
+}
+
+// A backup replication-manager took is locked once its file changes, like a registered one:
+// its fingerprint recorded when its metadata is written; a file replaced or edited by hand is
+// refused by a reseed at once (the file checked when used) and by the catalog once the change
+// check ran, raises WARN0249, and is used again once its change is registered (read, checked,
+// the scheduled record replaced). Backups written before fingerprints are adopted; a record a
+// newer one replaced, and the check while a backup runs, raise nothing.
+func TestOwnBackupLockedUntilRegistered(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	requireArtifactIdentity(t)
+	server.Datadir = t.TempDir()
+	path := filepath.Join(dir, "mysqldump.sql.gz")
+	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
+	own := &backupmgr.BackupMetadata{Id: 5001, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineDefault, Source: server.URL, Dest: path, Completed: true, BinLogFileName: "mariadb-bin.000007", BinLogFilePos: 4521}
+	server.recordBackupRegistration(own)
+	if own.Registration == nil {
+		t.Fatal("no fingerprint recorded for a completed logical backup")
+	}
+	c.BackupMetaMap.Set(own.Id, own)
+	server.LastBackupMeta.Logical = own
+	if err := c.backupFileLocked(path); err != nil {
+		t.Fatalf("an unchanged backup is locked: %v", err)
+	}
+
+	// replaced by hand under the same name
+	writeDiscoveryGzip(t, path, strings.Replace(discoveryDump, "4521", "7777", 1)+discoveryDumpFooter)
+	if err := c.backupFileLocked(path); !errors.Is(err, ErrBackupChangedSinceRegistered) {
+		t.Fatalf("an automatic reseed takes a replaced file: %v", err)
+	}
+	if err := c.ReseedFromBackupID(server, own.Id); !errors.Is(err, ErrBackupChangedSinceRegistered) {
+		t.Fatalf("a reseed takes a replaced file: %v", err)
+	}
+	// not while a backup runs: its files are being rewritten
+	c.SetInLogicalBackupState(true)
+	c.checkRegisteredBackups()
+	c.SetInLogicalBackupState(false)
+	if c.backupChange(own.Id) != nil {
+		t.Fatal("the change check ran during a backup")
+	}
+	c.checkRegisteredBackups()
+	if c.backupChange(own.Id) == nil || len(c.buildBackupCatalog()) != 0 {
+		t.Fatal("the replaced file is not recorded as changed, or the catalog lists it")
+	}
+	c.checkBackupDiscoveryStates()
+	if !hasOpenState(c, "WARN0249") {
+		t.Fatal("WARN0249 not raised for a backup replication-manager took")
+	}
+
+	// registered: read, checked, the scheduled record replaced, used again
+	if err := c.RegisterBackupChange(own.Id, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	waitDiscoveryIdle(t, c, server)
+	m := server.LastBackupMeta.Logical
+	if m == own || m.BinLogFilePos != 7777 || m.Discovered || m.IsAdhoc() || c.BackupMetaMap.Get(own.Id) != nil {
+		t.Fatalf("registered replacement %+v", m)
+	}
+	if err := c.backupFileLocked(path); err != nil {
+		t.Fatalf("the registered file is still locked: %v", err)
+	}
+	c.checkRegisteredBackups()
+	if c.backupChange(m.Id) != nil || len(c.buildBackupCatalog()) != 1 {
+		t.Fatal("the registered file is still changed, or not in the catalog")
+	}
+
+	// a backup taken before fingerprints: adopted as its file is now
+	split := filepath.Join(dir, "splitdump")
+	writeDiscoverySplitdump(t, split, true)
+	old := &backupmgr.BackupMetadata{Id: 5002, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMydumper, BackupLine: backupmgr.BackupLineDefault, Source: server.URL, Dest: split, Completed: true}
+	c.BackupMetaMap.Set(old.Id, old)
+	c.checkRegisteredBackups()
+	if old.Registration == nil || !old.Registration.Adopted || c.backupChange(old.Id) != nil {
+		t.Fatalf("an older backup not adopted: %+v", old.Registration)
+	}
+	// a record a newer one replaced (the same file rewritten) is not a change
+	stale := &backupmgr.BackupMetadata{Id: 4000, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineDefault, Source: server.URL, Dest: path, Completed: true, Registration: &backupmgr.BackupRegistration{Artifact: own.Registration.Artifact}}
+	c.BackupMetaMap.Set(stale.Id, stale)
+	c.checkRegisteredBackups()
+	if c.backupChange(stale.Id) != nil {
+		t.Fatal("a superseded record reads as changed")
 	}
 }

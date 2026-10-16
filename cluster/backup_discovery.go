@@ -109,6 +109,9 @@ type BackupCandidate struct {
 	// Registering and RegisterError: the last Register of this artifact, running or refused
 	Registering   bool   `json:"registering,omitempty"`
 	RegisterError string `json:"registerError,omitempty"`
+	// Scheduled: a scheduled backup file (mysqldump.sql.gz, splitdump...): registered, it is
+	// the scheduled backup, used as any scheduled backup
+	Scheduled bool `json:"scheduled,omitempty"`
 	// deferred: not checked, left to the next discovery by backupDiscoveryMaxPerRun
 	deferred bool
 }
@@ -210,6 +213,9 @@ func (server *ServerMonitor) discoverBackups(retry bool) ([]BackupCandidate, err
 		if fp != nil {
 			c.Size, c.Files, c.ModTime = fp.Size, fp.Files, fp.ModTime
 		}
+		// a scheduled backup file no record describes (replaced by hand, or left by an
+		// earlier mode): registered, it becomes the scheduled backup
+		c.Scheduled = server.isScheduledBackupArtifact(path)
 		if c.Status == "" {
 			// a dump file's check reads its content (bounded by budget); a folder's, its file
 			// names and small files; an encrypted folder archive's, nothing
@@ -400,11 +406,6 @@ func classifyBackupArtifact(path string, entry os.DirEntry) (tool string, split,
 	// and the users file a backup with backup-split-mysql-user writes next to its dump
 	userSidecar := filepath.Base(mysqldumpUserSidecarPath(path))
 	if name == directReseedSystemArtifactSubdir || name == userSidecar || name == userSidecar+".enc" {
-		return "", false, false
-	}
-	// the scheduled backups' own files: replication-manager's, rewritten by each scheduled
-	// backup, never a discovered backup (isScheduledBackupName)
-	if isScheduledBackupName(name) {
 		return "", false, false
 	}
 	// a backup being written or kept aside by replication-manager: staging, previous copy
@@ -1014,7 +1015,11 @@ func (cluster *Cluster) ReseedFromBackupID(server *ServerMonitor, id int64) erro
 	if meta.BackupMethod == backupmgr.BackupMethodPhysical || (meta.BackupTool != config.ConstBackupLogicalTypeMysqldump && meta.BackupTool != config.ConstBackupLogicalTypeMydumper) {
 		return fmt.Errorf("%w: backup %d is %s", ErrBackupDiscoveryNotLogical, id, meta.BackupTool)
 	}
-	if err := cluster.discoveredBackupRefusal(meta); err != nil {
+	if err := cluster.backupUseRefusal(meta); err != nil {
+		return fmt.Errorf("backup %d can not be restored: %w", id, err)
+	}
+	// the file as it is now: the change check runs every 30 heartbeats
+	if err := cluster.backupFileLocked(meta.Dest); err != nil {
 		return fmt.Errorf("backup %d can not be restored: %w", id, err)
 	}
 	if !meta.Completed {
