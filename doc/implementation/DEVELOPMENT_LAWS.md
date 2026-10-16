@@ -384,6 +384,22 @@ server deleted the child's link; the parent then dropped the server from its top
 and it vanished from the GUI; the reseed failed (a system account) and the link stayed
 deleted; no state explained any of it.
 
+**T28. A PR is "ready to merge" only when its review is on its current head and
+answered.** Before calling a PR ready, to the maintainer or in any summary, check and say:
+- **Reviewed:** a review exists on the PR's *current* head commit. A review of an earlier
+  push does not count; every new commit calls for a new review (`@claude` comment). A PR
+  with no review is not ready, whatever its age.
+- **Answered:** every blocking point is fixed, and every other point is fixed or answered
+  in the PR with a reason. "Approve with comments" is not "ready" while they are open.
+- **Checks:** the PR's CI checks are green, none missing, none pending.
+- **T13 gate:** a change to monitoring, failover, rejoin, reseed or provisioning carries
+  its regtest/Docker results in the PR; local unit tests are not the gate.
+- **Listed honestly:** a status list gives each PR's review state (none / outdated /
+  changes requested / approved with open points / ready), never "ready" by default.
+Example (2026-10-16): four PRs announced "ready to merge": one reviewed on a superseded
+version, one never reviewed, two approved with open points, one of them a real bug (a
+state that could stay open forever).
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a
