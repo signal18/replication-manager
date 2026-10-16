@@ -33,6 +33,10 @@ type CredentialStore interface {
 	Generates() bool                                   // makes its own passwords (Vault database engine)
 }
 
+// ErrNotHeld is a store's CanSet for a key it does not handle at all (ArchiveStore and a
+// key no archive takes): never the reason of a refusal, the next store's is.
+var ErrNotHeld = errors.New("not held by this store")
+
 // ErrChangeRefused is what a refusal is (errors.Is); RefusedError carries its reason.
 var ErrChangeRefused = errors.New("credential change refused")
 
@@ -94,12 +98,16 @@ func (s *ArchiveStore) Get(key string) (string, bool, error) {
 func (s *ArchiveStore) CanSet(key string) error {
 	name, ok := config.ArchiveSecretName(key)
 	if !ok {
-		return fmt.Errorf("%s is not an archive secret", key)
+		return fmt.Errorf("%s is not an archive secret: %w", key, ErrNotHeld)
 	}
 	if _, pinned := s.conf.GetImmuableFlag(key); pinned {
 		return fmt.Errorf("%s is set in a config file (immutable): a new value would be lost at the next restart", key)
 	}
-	return s.conf.CanSetConnectedArchiveSecret(name)
+	if err := s.conf.CanSetConnectedArchiveSecret(name); err != nil {
+		// no archive connected, or its plugin has no such secret: the flat config takes it
+		return fmt.Errorf("%s: %w", err, ErrNotHeld)
+	}
+	return nil
 }
 
 func (s *ArchiveStore) Set(key, value string) error {
@@ -303,7 +311,7 @@ func (c *Chain) writer(key string) (CredentialStore, error) {
 		if err == nil {
 			return s, nil
 		}
-		if first == nil {
+		if first == nil && !errors.Is(err, ErrNotHeld) {
 			first = err
 		}
 	}
