@@ -491,6 +491,8 @@ type Cluster struct {
 	// API-token principals registered by the server per request (issue #1835);
 	// see cluster_acl_token.go. Plain sync.Map for the same reason as above.
 	apiTokenPrincipals sync.Map `json:"-"`
+	// Whether a user holds token-create, set by LoadAPIUsers, read by the tick (WARN0251).
+	apiTokenIssuer atomic.Bool
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}

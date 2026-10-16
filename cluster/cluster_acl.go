@@ -18,6 +18,7 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 	"google.golang.org/grpc/codes"
 )
 
@@ -338,10 +339,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		}
 
 		if discardACL, ok := listDiscardExt[newapiuser.User]; ok {
-			acls := strings.Split(discardACL.ACLs, " ")
-			for _, acl := range acls {
-				newapiuser.Grants[acl] = false
-			}
+			cluster.DiscardUserGrants(&newapiuser, discardACL.ACLs)
 		}
 
 		// Apply main config ACLs last using strict override — main config is always authoritative
@@ -352,10 +350,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		}
 
 		if discardACL, ok := listDiscard[newapiuser.User]; ok {
-			acls := strings.Split(discardACL.ACLs, " ")
-			for _, acl := range acls {
-				newapiuser.Grants[acl] = false
-			}
+			cluster.DiscardUserGrants(&newapiuser, discardACL.ACLs)
 		}
 
 		// No Roles
@@ -378,6 +373,15 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		meUsers[newapiuser.User] = newapiuser
 	}
 
+	// Computed on the fresh map, read by the tick (WARN0251) without touching APIUsers.
+	issuer := false
+	for name, u := range meUsers {
+		if name != "system" && u.Grants[config.GrantTokenCreate] {
+			issuer = true
+			break
+		}
+	}
+	cluster.apiTokenIssuer.Store(issuer)
 	cluster.APIUsers = meUsers
 	// Every (re)load reinstates the persisted `system` password, which can be stale
 	// (an older binary stored a random one before AddUser honoured an explicit password;
@@ -407,6 +411,38 @@ func (cluster *Cluster) reconcileSystemServiceGrants() {
 	if stripped {
 		cluster.APIUsers["system"] = u
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Stripped API token grants from the `system` service account: a machine identity never issues tokens")
+	}
+}
+
+// checkAPITokenIssuers runs with the config states: WARN0251 while api-user-tokens
+// is on and no user holds token-create on the cluster (#2083). It reads the flag
+// LoadAPIUsers computes, never the APIUsers map that HTTP handlers write.
+func (cluster *Cluster) checkAPITokenIssuers() {
+	if !cluster.Conf.APIUserTokens || cluster.apiTokenIssuer.Load() {
+		return
+	}
+	cluster.ConfigStateMachine.AddState("WARN0251", state.State{ErrType: "WARNING", ErrKey: "WARN0251", ErrFrom: "CONF",
+		ErrDesc: clusterError["WARN0251"]})
+}
+
+// DiscardUserGrants removes a discard list from a user's grants. A full grant name
+// removes that grant only (cluster-checksum keeps cluster-checksum-repair); any other
+// name is a prefix like in the allow lists, so token removes token-create and
+// token-manage, db every db-* grant (#2083).
+func (cluster *Cluster) DiscardUserGrants(u *APIUser, discard string) {
+	if u.Grants == nil {
+		u.Grants = map[string]bool{}
+	}
+	for _, acl := range strings.Fields(discard) {
+		if _, full := cluster.Grants[acl]; full {
+			u.Grants[acl] = false
+			continue
+		}
+		for key, value := range cluster.Grants {
+			if strings.HasPrefix(key, acl) {
+				u.Grants[value] = false
+			}
+		}
 	}
 }
 
