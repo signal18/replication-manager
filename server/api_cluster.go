@@ -3830,7 +3830,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err := mycluster.CanSetCredential(name); err != nil {
 			return err
 		}
-		mycluster.SetReplicationCredential(value)
+		if err := mycluster.SetReplicationCredential(value); err != nil {
+			return err
+		}
 	case "failover-max-slave-delay":
 		val, _ := strconv.ParseInt(value, 10, 64)
 		mycluster.SetRplMaxDelay(val)
@@ -4170,11 +4172,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err := mycluster.CanSetCredential(name); err != nil {
 			return err
 		}
+		if err := mycluster.CredentialChain().Set("db-servers-credential", value); err != nil {
+			return err
+		}
 		mycluster.Conf.User = value
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.User
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("db-servers-credential")
-		mycluster.Conf.Secrets.Set("db-servers-credential", new_secret)
 		mycluster.SetClusterMonitorCredentialsFromConfig()
 		mycluster.ApplyMonitorCredential()
 	case "db-servers-dns-timeout":
@@ -4283,15 +4284,21 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-db-scale-down-plan-speed":
 		mycluster.Conf.ScaleDownPlanSpeed = value
 	case "proxysql-servers-credential":
-		mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy)
+		if err := mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy); err != nil {
+			return err
+		}
 	case "proxy-servers-backend-max-connections":
 		mycluster.SetProxyServersBackendMaxConnections(value)
 	case "proxy-servers-backend-max-replication-lag":
 		mycluster.SetProxyServersBackendMaxReplicationLag(value)
 	case "maxscale-servers-credential":
-		mycluster.SetProxyServersCredential(value, config.ConstProxyMaxscale)
+		if err := mycluster.SetProxyServersCredential(value, config.ConstProxyMaxscale); err != nil {
+			return err
+		}
 	case "shardproxy-servers-credential":
-		mycluster.SetProxyServersCredential(value, config.ConstProxySpider)
+		if err := mycluster.SetProxyServersCredential(value, config.ConstProxySpider); err != nil {
+			return err
+		}
 	case "prov-proxy-disk-size":
 		mycluster.SetProxyDiskSize(value)
 	case "prov-proxy-cpu-cores":
@@ -4564,12 +4571,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("mail-smtp-password", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.MailSMTPPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.MailSMTPPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("mail-smtp-password")
-		mycluster.Conf.Secrets.Set("mail-smtp-password", new_secret)
-		mycluster.Mailer.UpdateAuth(mycluster.Conf.MailSMTPUser, new_secret.Value)
+		mycluster.Mailer.UpdateAuth(mycluster.Conf.MailSMTPUser, mycluster.Conf.MailSMTPPassword)
 	case "mail-smtp-user":
 		mycluster.Conf.SetMailSmtpUser(value)
 		mycluster.Mailer.UpdateAuth(value, mycluster.Conf.GetDecryptedValue("mail-smtp-password"))
@@ -4601,21 +4607,19 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("cloud18-gitlab-password", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.Cloud18GitPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.Cloud18GitPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-gitlab-password")
-		mycluster.Conf.Secrets.Set("cloud18-gitlab-password", new_secret)
 	case "cloud18-domain-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("cloud18-domain-secret", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.Cloud18DomainSecret = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.Cloud18DomainSecret
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-domain-secret")
-		mycluster.Conf.Secrets.Set("cloud18-domain-secret", new_secret)
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
@@ -4659,11 +4663,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("backup-restic-aws-access-secret", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.BackupResticAwsAccessSecret = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
-		mycluster.Conf.Secrets.Set("backup-restic-aws-access-secret", new_secret)
 		if err := mycluster.ReloadResticEnv(); err != nil {
 			return err
 		}
@@ -4738,14 +4741,20 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 					// Old password is not valid, just use new password (maybe first time setup)
 					// If both old and new password are not valid, this will be detected later when trying to do a backup
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Both old and new restic password are not valid, assuming first time setup")
-					mycluster.SetResticPassword(newval)
+					if err := mycluster.SetResticPassword(newval); err != nil {
+						return err
+					}
 				}
 			} else {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New restic password is valid, using it")
-				mycluster.SetResticPassword(newval)
+				if err := mycluster.SetResticPassword(newval); err != nil {
+					return err
+				}
 			}
 		} else {
-			mycluster.SetResticPassword(newval)
+			if err := mycluster.SetResticPassword(newval); err != nil {
+				return err
+			}
 		}
 
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic password updated")
@@ -4799,7 +4808,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetBackupVerificationCredential(string(val))
+		if err := mycluster.SetBackupVerificationCredential(string(val)); err != nil {
+			return err
+		}
 	case "replication-manager-cli-path":
 		_, storeValue, err := resolveExecutablePath(value, "replication-manager-cli-path")
 		if err != nil {
@@ -4964,11 +4975,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("haproxy-password", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.HaproxyPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.HaproxyPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("haproxy-password")
-		mycluster.Conf.Secrets.Set("haproxy-password", new_secret)
 
 	case "maxscale-mode":
 		switch value {
@@ -5617,11 +5627,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return fmt.Errorf("unable to base64-decode value: %w", err)
 		}
+		if err := mycluster.CredentialChain().Set("prov-app-template-repo-password", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.ProvAppTemplateRepoPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.ProvAppTemplateRepoPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("prov-app-template-repo-password")
-		mycluster.Conf.Secrets.Set("prov-app-template-repo-password", new_secret)
 	case "prov-app-template-repo-timeout":
 		parsedTimeout, err := parseProvAppTemplateRepoTimeout(value)
 		if err != nil {

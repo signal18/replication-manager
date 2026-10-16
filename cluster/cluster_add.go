@@ -325,15 +325,14 @@ func (cluster *Cluster) addUser(userform UserForm, delegator string, reloadACL b
 		return fmt.Errorf("User %s already exist ", user)
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s already exist ", user)
 	} else {
-		if cluster.Conf.GetDecryptedValue("api-credentials-external") == "" {
-			cluster.Conf.APIUsersExternal = user + ":" + pass
-		} else {
-			cluster.Conf.APIUsersExternal = cluster.Conf.GetDecryptedValue("api-credentials-external") + "," + user + ":" + pass
+		external := user + ":" + pass
+		if current := cluster.Conf.GetDecryptedValue("api-credentials-external"); current != "" {
+			external = current + "," + external
 		}
-		var new_secret config.Secret
-		new_secret.Value = cluster.Conf.APIUsersExternal
-		new_secret.OldValue = cluster.Conf.GetDecryptedValue("api-credentials-external")
-		cluster.Conf.Secrets.Set("api-credentials-external", new_secret)
+		if err := cluster.CredentialChain().Set("api-credentials-external", external); err != nil {
+			return err
+		}
+		cluster.Conf.APIUsersExternal = external
 
 		// Assign ACL before reloading
 		new_acl := user + ":" + grants + ":" + cluster.Name

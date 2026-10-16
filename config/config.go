@@ -1895,48 +1895,77 @@ func (conf *Config) GetSecrets() map[string]Secret {
 	return conf.Secrets.Snapshot()
 }
 
+// SecretKeys are the config keys held as secrets in Conf.Secrets: each is rebuilt from its
+// source by RebuildSecrets. A key written to Conf.Secrets must be listed here, else a reread
+// drops it (#2017, #2075).
+var SecretKeys = []string{
+	"api-credentials",
+	"api-credentials-external",
+	"db-servers-credential",
+	"monitoring-write-heartbeat-credential",
+	"onpremise-ssh-credential",
+	"replication-credential",
+	"shardproxy-credential",
+	"haproxy-password",
+	"maxscale-pass",
+	"myproxy-password",
+	"proxysql-password",
+	"proxyjanitor-password",
+	"vault-secret-id",
+	"opensvc-p12-secret",
+	"backup-restic-aws-access-secret",
+	"backup-streaming-aws-access-secret",
+	"backup-restic-password",
+	"backup-verification-credential",
+	"arbitration-external-secret",
+	"alert-pushover-user-token",
+	"alert-pushover-app-token",
+	"git-acces-token",
+	"mail-smtp-password",
+	"cloud18-gitlab-password",
+	"cloud18-dba-user-credentials",
+	"cloud18-sponsor-user-credentials",
+	"cloud18-domain-secret",
+	"proxysql-user",
+	"vault-token",
+	"api-oauth-client-secret",
+	"meet-token",
+	"prov-app-template-repo-password",
+	"prov-docker-registry-credentials",
+}
+
+// DecryptSecretsFromConfig rebuilds Conf.Secrets from the config maps: DynamicFlagMap, then
+// ImmuableFlagMap, then DefaultFlagMap.
 func (conf *Config) DecryptSecretsFromConfig() {
-	secrets := map[string]Secret{
-		"api-credentials":                       {},
-		"api-credentials-external":              {},
-		"db-servers-credential":                 {},
-		"monitoring-write-heartbeat-credential": {},
-		"onpremise-ssh-credential":              {},
-		"replication-credential":                {},
-		"shardproxy-credential":                 {},
-		"haproxy-password":                      {},
-		"maxscale-pass":                         {},
-		"myproxy-password":                      {},
-		"proxysql-password":                     {},
-		"proxyjanitor-password":                 {},
-		"vault-secret-id":                       {},
-		"opensvc-p12-secret":                    {},
-		"backup-restic-aws-access-secret":       {},
-		"backup-streaming-aws-access-secret":    {},
-		"backup-restic-password":                {},
-		"backup-verification-credential":        {},
-		"arbitration-external-secret":           {},
-		"alert-pushover-user-token":             {},
-		"alert-pushover-app-token":              {},
-		"git-acces-token":                       {},
-		"mail-smtp-password":                    {},
-		"cloud18-gitlab-password":               {},
-		"cloud18-dba-user-credentials":          {},
-		"cloud18-sponsor-user-credentials":      {},
-		"cloud18-domain-secret":                 {},
-		"vault-token":                           {},
-		"api-oauth-client-secret":               {},
-		"meet-token":                            {}}
+	conf.RebuildSecrets(conf.configSecretSource)
+}
+
+// configSecretSource reads a secret key's raw value from the config maps, the dynamic one
+// first, then the pinned one, then the default.
+func (conf *Config) configSecretSource(k string) (interface{}, bool) {
+	if v, ok := conf.DynamicFlagMap[k]; ok {
+		return v, true
+	}
+	if v, ok := conf.ImmuableFlagMap[k]; ok {
+		return v, true
+	}
+	v, ok := conf.DefaultFlagMap[k]
+	return v, ok
+}
+
+// RebuildSecrets rebuilds Conf.Secrets for every SecretKeys key from the raw value source
+// gives (a credential store chain, or the config maps): decrypted, its ciphertext kept as the
+// cache's Crypted.
+func (conf *Config) RebuildSecrets(source func(key string) (interface{}, bool)) {
+	secrets := make(map[string]Secret, len(SecretKeys))
+	for _, k := range SecretKeys {
+		secrets[k] = Secret{}
+	}
 
 	for k := range secrets {
-
-		origin_value, ok := conf.DynamicFlagMap[k]
-		if !ok {
-			origin_value, ok = conf.ImmuableFlagMap[k]
-			if !ok {
-				origin_value = conf.DefaultFlagMap[k]
-			}
-
+		origin_value, ok := source(k)
+		if !ok || origin_value == nil {
+			continue // no source holds it: an empty secret
 		}
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)

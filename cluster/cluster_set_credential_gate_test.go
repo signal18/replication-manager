@@ -63,8 +63,13 @@ func TestGetCredentialsInfo(t *testing.T) {
 		t.Fatalf("got %d credentials", len(infos))
 	}
 	db, rpl := infos[0], infos[1]
-	if db.Key != "db-servers-credential" || db.User != "monitor" || db.Source != "dynamic-config" || db.Refusal != "" {
+	// the source is the store the value comes from (#2075): no store holds it, the default
+	if db.Key != "db-servers-credential" || db.User != "monitor" || db.Source != "default" || db.Refusal != "" {
 		t.Fatalf("db: %+v", db)
+	}
+	c.Conf.DynamicFlagMap = map[string]interface{}{"db-servers-credential": "monitor:secret-db"}
+	if s := c.GetCredentialsInfo()[0].Source; s != "dynamic-config" {
+		t.Fatalf("held by the dynamic config: source %q", s)
 	}
 	if rpl.User != "repl" || rpl.Source != "config-file" || !strings.HasPrefix(rpl.Refusal, "replication-credential is set in a config file") {
 		t.Fatalf("replication: %+v", rpl)

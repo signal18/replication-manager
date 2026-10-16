@@ -55,6 +55,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
@@ -79,6 +80,8 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
+	credChain   *credstore.Chain // CredentialChain (#2075)
+	credChainMu sync.Mutex
 	selfServiceMu                sync.Mutex                         // guards selfServiceSnap and selfServiceVerdicts
 	selfServiceVerdicts          map[string]selfServiceVerdict      // identity -> enabled-script verdict within the cache TTL
 	selfServiceFlight            singleflight.Group                 // one snapshot computation, one script run per identity, at a time
@@ -4788,7 +4791,16 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 
 	for _, key := range keys {
 		_, ok := repman.Conf.ImmuableFlagMap[key]
+		_, dynamic := repman.Conf.DynamicFlagMap[key]
+		_, secret := repman.Conf.Secrets.Lookup(key)
 		if ok {
+			s.Delete(key)
+		} else if secret && dynamic {
+			// a secret the dynamic config store holds (#2075): written whatever its raw
+			// field says, a value set at runtime survives the restart
+			if encrypt_val := repman.GetEncryptedValueFromMemory(key); encrypt_val != "" {
+				file.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			}
 			s.Delete(key)
 		} else {
 			v, ok := repman.DefaultFlagMap[key]
@@ -4892,6 +4904,18 @@ func (repman *ReplicationManager) SetIsSavingConfig(val bool) {
 
 // Save is the event: mark the global/[Default] config needs-save. The repman
 // config-sync gate (serve loop) consumes it and runs SaveCallBack. No I/O.
+// CredentialChain is the server's credential store chain for its own config (#2075): the
+// global settings read and write credentials through it. Built for the current Conf, again
+// when a reload replaces it.
+func (repman *ReplicationManager) CredentialChain() *credstore.Chain {
+	repman.credChainMu.Lock()
+	defer repman.credChainMu.Unlock()
+	if repman.credChain == nil || repman.credChain.Conf() != repman.Conf {
+		repman.credChain = credstore.NewConfigChain(repman.Conf, repman.Save)
+	}
+	return repman.credChain
+}
+
 func (repman *ReplicationManager) Save() {
 	repman.IsNeedConfigSave = true
 }

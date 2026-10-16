@@ -521,25 +521,30 @@ func applyRestoreEntriesToRuntime(repman *ReplicationManager, clusterName string
 	}
 
 	for _, entry := range entries {
+		// the store holds the encrypted value: the credential is its plain value (#2075)
+		value := cl.Conf.DecryptSecretValue(entry.Key, entry.HashValue)
 		switch entry.Key {
 		case "db-servers-credential":
-			var secret config.Secret
-			secret.Value = entry.HashValue
-			secret.OldValue = cl.Conf.GetDecryptedValue(entry.Key)
-			cl.Conf.Secrets.Set(entry.Key, secret)
+			if err := cl.CredentialChain().Set(entry.Key, value); err != nil {
+				return err
+			}
 			cl.SetClusterMonitorCredentialsFromConfig()
 		case "replication-credential":
-			cl.SetReplicationCredential(entry.HashValue)
+			if err := cl.SetReplicationCredential(value); err != nil {
+				return err
+			}
 		case "cloud18-dba-user-credentials":
-			if err := cl.SetDatabaseCredentials("dba", entry.HashValue); err != nil {
+			if err := cl.SetDatabaseCredentials("dba", value); err != nil {
 				return err
 			}
 		case "cloud18-sponsor-user-credentials":
-			if err := cl.SetDatabaseCredentials("sponsor", entry.HashValue); err != nil {
+			if err := cl.SetDatabaseCredentials("sponsor", value); err != nil {
 				return err
 			}
 		case "backup-restic-password":
-			cl.SetResticPassword(entry.HashValue)
+			if err := cl.SetResticPassword(value); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("unsupported runtime restore key: %s", entry.Key)
 		}

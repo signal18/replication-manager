@@ -21,6 +21,8 @@ import RMIconButton from '../../components/RMIconButton'
 const SOURCE_LABEL = {
   'config-file': { label: 'Config file (immutable)', color: 'orange' },
   'dynamic-config': { label: 'Dynamic config', color: 'green' },
+  'runtime-config': { label: 'Runtime only (monitoring-save-config off)', color: 'yellow' },
+  default: { label: 'Default', color: 'gray' },
   vault: { label: 'Vault', color: 'purple' }
 }
 

@@ -24,6 +24,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/jordan-wright/email"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -66,11 +67,13 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	if !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
 		return errors.New("monitoring-secret-versioning is off: the new passwords would live only in memory and a restart would lose access to the servers; turn it on or use Vault")
 	}
-	// the save skips immutable keys: the config file would win at the next restart. Lifted
-	// once #2041 reloads the secret store at start, after the config, so the store wins.
+	// the credential chain must take the new values (#2075): a credential pinned in a config
+	// file is refused, the file would win at the next restart. Lifted when a versioned store
+	// (#2041) heads the chain.
+	chain := cluster.CredentialChain()
 	for _, key := range []string{"db-servers-credential", "replication-credential"} {
-		if cluster.IsVariableImmutable(key) {
-			return fmt.Errorf("%s is set in a config file (immutable)", key)
+		if err := chain.CanSet(key); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -84,10 +87,14 @@ var ErrCredentialChangeRefused = errors.New("credential change refused")
 // monitoring-save-config off: the value would be lost and repman would restart on the
 // former one. Immutable is lifted once #2041 reloads the secret store at start.
 func (cluster *Cluster) CanSetCredential(key string) error {
-	if cluster.IsVariableImmutable(key) {
-		return fmt.Errorf("%w: %s is set in a config file (immutable), a new value would be lost at the next restart", ErrCredentialChangeRefused, key)
+	// the credential chain decides (#2075): a pinned key takes no change; in static mode
+	// (monitoring-save-config off) the change would live in memory only, refused for the
+	// database credentials, whose loss at the next restart locks repman out (#2048)
+	chain := cluster.CredentialChain()
+	if err := chain.CanSet(key); err != nil {
+		return fmt.Errorf("%w: %s", ErrCredentialChangeRefused, strings.TrimPrefix(err.Error(), credstore.ErrChangeRefused.Error()+": "))
 	}
-	if !cluster.Conf.ConfRewrite {
+	if !chain.Persists(key) {
 		return fmt.Errorf("%w: monitoring-save-config is off, a new %s would be lost at the next restart", ErrCredentialChangeRefused, key)
 	}
 	return nil
@@ -97,7 +104,7 @@ func (cluster *Cluster) CanSetCredential(key string) error {
 type CredentialInfo struct {
 	Key     string `json:"key"`
 	User    string `json:"user"`
-	Source  string `json:"source"`  // where the value comes from: config-file (immutable), dynamic-config, vault
+	Source  string `json:"source"`  // where the value comes from (credstore.Source*): config-file (immutable), dynamic-config, runtime-config (monitoring-save-config off), default, vault
 	Refusal string `json:"refusal"` // why a change through the API is refused now, empty when allowed
 }
 
@@ -110,11 +117,9 @@ func (cluster *Cluster) GetCredentialsInfo() []CredentialInfo {
 	}
 	out := make([]CredentialInfo, 0, len(creds))
 	for _, c := range creds {
-		info := CredentialInfo{Key: c.key, User: c.user, Source: "dynamic-config"}
+		info := CredentialInfo{Key: c.key, User: c.user, Source: cluster.CredentialChain().Source(c.key)}
 		if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(c.raw) {
 			info.Source = "vault"
-		} else if cluster.IsVariableImmutable(c.key) {
-			info.Source = "config-file"
 		}
 		if err := cluster.CanSetCredential(c.key); err != nil {
 			info.Refusal = strings.TrimPrefix(err.Error(), ErrCredentialChangeRefused.Error()+": ")
@@ -337,28 +342,35 @@ func (cluster *Cluster) RotatePasswords() error {
 			new_password_rpl = new_password_db
 		}
 
-		var new_Secret config.Secret
-		new_Secret.OldValue = cluster.Conf.Secrets.Get("db-servers-credential").Value
-		new_Secret.Value = cluster.GetDbUser() + ":" + new_password_db
-		cluster.Conf.Secrets.Set("db-servers-credential", new_Secret)
-
-		new_Secret.OldValue = cluster.Conf.Secrets.Get("replication-credential").Value
-		new_Secret.Value = cluster.GetRplUser() + ":" + new_password_rpl
-		cluster.Conf.Secrets.Set("replication-credential", new_Secret)
-		cluster.MarkSecretVersionStoreDirty()
-
-		if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("proxysql-password") {
-			new_Secret.OldValue = cluster.Conf.Secrets.Get("proxysql-password").Value
-			new_Secret.Value = new_password_proxysql
-			cluster.Conf.Secrets.Set("proxysql-password", new_Secret)
-			cluster.SetClusterProxyCredentialsFromConfig()
+		// the new values go through the credential chain (#2075); every key is checked
+		// before any is set, so a refusal changes nothing
+		chain := cluster.CredentialChain()
+		rotated := []struct{ key, value string }{
+			{"db-servers-credential", cluster.GetDbUser() + ":" + new_password_db},
+			{"replication-credential", cluster.GetRplUser() + ":" + new_password_rpl},
 		}
-
-		if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("shardproxy-credential") {
-			var new_Secret config.Secret
-			new_Secret.OldValue = cluster.Conf.Secrets.Get("shardproxy-credential").Value
-			new_Secret.Value = cluster.GetShardUser() + ":" + new_password_shard
-			cluster.Conf.Secrets.Set("shardproxy-credential", new_Secret)
+		rotateProxySQL := cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("proxysql-password")
+		rotateShardProxy := cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("shardproxy-credential")
+		if rotateProxySQL {
+			rotated = append(rotated, struct{ key, value string }{"proxysql-password", new_password_proxysql})
+		}
+		if rotateShardProxy {
+			rotated = append(rotated, struct{ key, value string }{"shardproxy-credential", cluster.GetShardUser() + ":" + new_password_shard})
+		}
+		for _, r := range rotated {
+			if err := chain.CanSet(r.key); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused, nothing changed: %s", err)
+				return err
+			}
+		}
+		for _, r := range rotated {
+			if err := chain.Set(r.key, r.value); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation: %s not set: %s", r.key, err)
+				return err
+			}
+		}
+		cluster.MarkSecretVersionStoreDirty()
+		if rotateProxySQL || rotateShardProxy {
 			cluster.SetClusterProxyCredentialsFromConfig()
 		}
 
@@ -510,12 +522,11 @@ func (cluster *Cluster) AddDockerPrivateRegistryCredentials(registry, user, pass
 	}
 	// If the registry does not exist, add new credentials
 	creds = append(creds, fmt.Sprintf("%s:%s:%s:%s", host, port, user, password))
-	cluster.Conf.ProvDockerRegistryCredentials = strings.Join(creds, ",")
-
-	var new_secret config.Secret
-	new_secret.Value = cluster.Conf.ProvDockerRegistryCredentials
-	new_secret.OldValue = cluster.Conf.GetDecryptedValue("prov-docker-registry-credentials")
-	cluster.Conf.Secrets.Set("prov-docker-registry-credentials", new_secret)
+	value := strings.Join(creds, ",")
+	if err := cluster.CredentialChain().Set("prov-docker-registry-credentials", value); err != nil {
+		return err
+	}
+	cluster.Conf.ProvDockerRegistryCredentials = value
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials added for %s", registry)
 
@@ -550,12 +561,11 @@ func (cluster *Cluster) DeleteDockerPrivateRegistryCredentials(registry, user st
 		}
 	}
 
-	cluster.Conf.ProvDockerRegistryCredentials = strings.Join(creds, ",")
-
-	var new_secret config.Secret
-	new_secret.Value = cluster.Conf.ProvDockerRegistryCredentials
-	new_secret.OldValue = cluster.Conf.GetDecryptedValue("prov-docker-registry-credentials")
-	cluster.Conf.Secrets.Set("prov-docker-registry-credentials", new_secret)
+	value := strings.Join(creds, ",")
+	if err := cluster.CredentialChain().Set("prov-docker-registry-credentials", value); err != nil {
+		return err
+	}
+	cluster.Conf.ProvDockerRegistryCredentials = value
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials added for %s", registry)
 

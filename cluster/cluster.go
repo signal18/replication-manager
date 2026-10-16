@@ -36,6 +36,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/router/maxscale"
@@ -518,9 +519,12 @@ type Cluster struct {
 	// (not when one finishes -- see maybeRefreshAppsAsync for why), so it
 	// stays visible for inspection after a batch completes until the next
 	// one begins.
-	AppRefreshSkippedCount  int        `json:"appRefreshSkippedCount" groups:"web"`
-	secretVersionStoreMu    sync.Mutex `json:"-"`
-	secretVersionStoreDirty bool       `json:"-"`
+	AppRefreshSkippedCount int `json:"appRefreshSkippedCount" groups:"web"`
+	// credChain is the cluster's credential store chain (#2075): CredentialChain
+	credChain               *credstore.Chain `json:"-"`
+	credChainMu             sync.Mutex       `json:"-"`
+	secretVersionStoreMu    sync.Mutex       `json:"-"`
+	secretVersionStoreDirty bool             `json:"-"`
 	// reloadMu serializes Run()'s per-tick synchronous work (topology
 	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
 	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
@@ -2003,6 +2007,18 @@ type ClusterSLAState struct {
 // saving. The single repman config-sync gate (server.go serve loop) consumes
 // the flag and runs SaveCallBack — so the heavy save never rides a caller's
 // goroutine or the cluster tick. See doc/implementation/config/CONFIG_SYNC.md.
+// CredentialChain is the cluster's credential store chain (#2075): every credential is read
+// and written through it. It is built for the current Conf, and built again when a reload
+// replaces Conf.
+func (cluster *Cluster) CredentialChain() *credstore.Chain {
+	cluster.credChainMu.Lock()
+	defer cluster.credChainMu.Unlock()
+	if cluster.credChain == nil || cluster.credChain.Conf() != cluster.Conf {
+		cluster.credChain = credstore.NewConfigChain(cluster.Conf, cluster.Save)
+	}
+	return cluster.credChain
+}
+
 func (cluster *Cluster) Save() {
 	cluster.IsNeedConfigSave = true
 }
@@ -2186,8 +2202,15 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 
 	for _, key := range keys {
 		_, ok := cluster.Conf.ImmuableFlagMap[key]
+		_, dynamic := cluster.Conf.DynamicFlagMap[key]
+		_, secret := cluster.Conf.Secrets.Lookup(key)
 		if ok {
 			s.Delete(key)
+		} else if secret && dynamic {
+			// a secret the dynamic config store holds (#2075): written whatever its raw
+			// field says, a value set at runtime (rotation, API) survives the restart
+			s.Delete(key)
+			buf.WriteString(key + " = \"" + cluster.GetEncryptedValueFromMemory(key) + "\"\n")
 		} else {
 			v, ok := cluster.Conf.DefaultFlagMap[key]
 			if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
