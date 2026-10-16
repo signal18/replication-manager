@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"testing"
 
+	"github.com/jmoiron/sqlx"
+
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -91,5 +93,29 @@ func TestReseedStoppedLinksState(t *testing.T) {
 	sv.checkReseedStoppedLinks()
 	if len(sv.reseedStoppedLinkList()) != 0 || warn0252Open(c) {
 		t.Fatal("every stopped channel runs again: WARN0252 closes")
+	}
+}
+
+// A channel gone from the replica's status (removed by the operator) leaves the list
+// while the server answers: WARN0252 never stays open forever (F3/F4). A server that does
+// not answer keeps the list.
+func TestReseedStoppedLinkRemovedChannel(t *testing.T) {
+	c, sv := reseedLinkFixture()
+	sv.markReseedStoppedLinks([]string{"belair", "crm"}, "restore of /backup")
+	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "No", "No")}
+
+	sv.checkReseedStoppedLinks()
+	if got := sv.reseedStoppedLinkList(); len(got) != 2 {
+		t.Fatalf("a server that does not answer keeps the list: %v", got)
+	}
+
+	c.StateMachine.ClearState()
+	sv.Conn = &sqlx.DB{}
+	sv.checkReseedStoppedLinks()
+	if got := sv.reseedStoppedLinkList(); len(got) != 1 || got[0] != "belair" {
+		t.Fatalf("the removed channel leaves the list, the stopped one stays: %v", got)
+	}
+	if !warn0252Open(c) {
+		t.Fatal("WARN0252 stays for the channel still stopped")
 	}
 }

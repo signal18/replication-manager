@@ -29,7 +29,7 @@ func TestCheckSlavePrerequisites(t *testing.T) {
 		setting  string
 		expected bool
 	}{
-		{"check log_bin", "log_bin", true}, // Most test DBs have this
+		{"check log_bin", "log_bin", true},  // Most test DBs have this
 		{"check invalid", "invalid_var_xyz", false},
 	}
 
@@ -139,7 +139,7 @@ func TestSetSlaveParallelMode_Validation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			lowerMode := strings.ToLower(tt.mode)
 			isValid := lowerMode == "conservative" || lowerMode == "optimistic" ||
-				lowerMode == "aggressive" || lowerMode == "none"
+			          lowerMode == "aggressive" || lowerMode == "none"
 
 			if isValid != tt.isValid {
 				t.Errorf("Mode %q validation = %v, want %v", tt.mode, isValid, tt.isValid)
@@ -194,7 +194,7 @@ func TestSetMySQLGtidMode_Validation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			upperMode := strings.ToUpper(tt.mode)
 			isValid := upperMode == "ON" || upperMode == "OFF" ||
-				upperMode == "ON_PERMISSIVE" || upperMode == "OFF_PERMISSIVE"
+			          upperMode == "ON_PERMISSIVE" || upperMode == "OFF_PERMISSIVE"
 
 			if isValid != tt.isValid {
 				t.Errorf("Mode %q validation = %v, want %v", tt.mode, isValid, tt.isValid)
@@ -385,10 +385,10 @@ func TestChangeMasterOpt_Validation(t *testing.T) {
 		{
 			name: "valid with GTID",
 			opt: ChangeMasterOpt{
-				Host: "db.example.com",
-				Port: "3307",
-				User: "repl",
-				Mode: "SLAVE_POS",
+				Host:   "db.example.com",
+				Port:   "3307",
+				User:   "repl",
+				Mode:   "SLAVE_POS",
 			},
 			wantErr: false,
 		},

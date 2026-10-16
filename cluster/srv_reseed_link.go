@@ -44,25 +44,29 @@ func (server *ServerMonitor) replicationChannels() []string {
 }
 
 // checkReseedStoppedLinks runs with the server refresh, every tick: a channel the reseed
-// stopped leaves the list once it runs again (whoever started it), WARN0252 while any
-// remains.
+// stopped leaves the list once it runs again (whoever started it) or once it is gone from
+// the replica's status while the server answers (removed by the operator: nothing to wait
+// for, F3/F4), WARN0252 while any remains. A server that does not answer keeps the list.
 func (server *ServerMonitor) checkReseedStoppedLinks() {
 	list := server.reseedStoppedLinkList()
 	if len(list) == 0 {
 		return
 	}
+	reachable := server.Conn != nil && !server.IsDown()
 	still := make([]string, 0, len(list))
 	for _, channel := range list {
-		running := false
+		present, running := false, false
 		for _, r := range server.Replications {
 			if r.ConnectionName.String == channel {
+				present = true
 				running = r.SlaveIORunning.String == "Yes" && r.SlaveSQLRunning.String == "Yes"
 				break
 			}
 		}
-		if !running {
-			still = append(still, channel)
+		if running || (reachable && !present) {
+			continue
 		}
+		still = append(still, channel)
 	}
 	if len(still) != len(list) {
 		server.reseedStoppedLinks.Store(still)
@@ -90,7 +94,7 @@ func (server *ServerMonitor) checkReseedStoppedLinks() {
 func (server *ServerMonitor) reseedLinkPointsToPrimary() (bool, string) {
 	cluster := server.ClusterGroup
 	if cluster.master == nil {
-		return false, "no primary known"
+		return false, "no primary known: start replication once a primary is elected"
 	}
 	for _, r := range server.Replications {
 		if r.ConnectionName.String != server.ReplicationSourceName {
