@@ -108,12 +108,17 @@ with two backends). `none` is simply an empty list.
   restic enabled today.
 - Each plugin comes with its **typed config** (its manifest): every setting with its type
   (`string`, `int`, `bool`, `enum` with its values, `secret`) and its capabilities:
-  `edit`, `detach` (the archive leaves the list, its content stays), `drop` (the archive
-  leaves the list and its content is deleted), `probe` (open an existing repository, or
-  initialise a new one). The forms and checks are drawn from it.
-- Getting rid of an old, heavy archive: create `archive-local-2`, connect it, drop
-  `archive-local-1`. Neither detach nor drop applies to the connected archive, and drop is
-  refused while the archive holds the only copy of a backup (#1987).
+  `edit`, `remove` (the plugin can delete its content), `probe` (open an existing
+  repository, or initialise a new one). The forms and checks are drawn from it.
+- **Attach, detach, remove.** The cluster attaches one archive; the one it leaves is
+  detached: it stays in the list with its content, still invoiced (some archives are
+  billed on their content), shown with its size. **Remove always deletes the content**,
+  then takes the archive out of the list, so its invoice stops: content left behind would
+  be invoiced and no longer visible. Refused while attached, and while the archive holds
+  the only copy of a backup (#1987). Exception: an archive attached read-only to another
+  cluster's content (#2089) only leaves this cluster's list; the source is invoiced for it.
+- Getting rid of an old, heavy archive: create `archive-local-2`, attach it
+  (`archive-local-1` is detached), remove `archive-local-1`.
 - The cluster is **connected to one archive**: `backup-archive-name` (a plain cluster
   setting, empty for none). The backups go to it and its snapshots are the ones listed.
   The user switches by changing that one setting; the archive left keeps its settings as
@@ -270,7 +275,7 @@ The end-to-end case the design must serve:
 
 1. **Add the migration archive from its connection infos**: Signal18's restic S3 (or any
    S3 or sftp repository) is an archive added to the list with its settings and secrets,
-   whether the repository already exists or not. Add, edit, rename, detach and drop are
+   whether the repository already exists or not. Add, edit, rename and remove are
    generic: the plugin declares its typed settings, secrets and capabilities. #2091
 2. **Archive the backup to it**: connect it with `backup-archive-name` and push. Works
    with the archive list (#2077), once each archive has its own secrets. #2088
@@ -287,7 +292,7 @@ The end-to-end case the design must serve:
 | Per-archive secrets (`archive.<name>.password`, through the credential store chain) | #2088 | #2077, #2075 |
 | Read-only connection, full repository path | #2089 | #2088 |
 | List and import another cluster's backups | #2090 | #2089 |
-| Add, edit, rename, detach, drop an archive from its connection infos (probe: open existing or init) | #2091 | #2088 |
+| Add, edit, rename, remove an archive from its connection infos (probe: open existing or init) | #2091 | #2088 |
 
 Both repman instances use the same restic password: the target adds the archive with the
 same connection infos, and the probe opens the existing repository (a wrong password is
