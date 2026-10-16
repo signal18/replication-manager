@@ -355,10 +355,14 @@ monitors and repoints the links it manages; it does not own them (F1). So:
 - No `RESET SLAVE ... ALL` / `RESET REPLICA ALL`, `DROP SUBSCRIPTION`, or any statement
   that removes a channel's definition, in any automatic path (reseed, rejoin, failover,
   provision, job). To clear positions, `RESET SLAVE '<channel>'` without `ALL` keeps the
-  link; to move it, `CHANGE MASTER`. Removing a link is an explicit, user-requested
-  action only.
+  link. Removing a link is an explicit, user-requested action only.
+- Moving a link to another source is the failover and switchover code's job, under
+  their guards (election, positions, consistency checks), and nothing else's. Every other
+  path (reseed, rejoin of a server to its current master, provision, job) keeps the
+  source the link has, the one the last failover or switchover set: it may set the
+  position on that source (`CHANGE MASTER` with the same master), never choose another.
 - Only the channel repman manages (`replication-source-name`) is ever stopped or
-  repointed, by name. A statement without a channel name (`RESET SLAVE ALL`, `STOP ALL
+  positioned, by name. A statement without a channel name (`RESET SLAVE ALL`, `STOP ALL
   SLAVES`) acts on channels repman may not manage: it needs the same justification as a
   removal, never "there is only one channel".
 - A path that may fail half-way leaves the link as it found it, stopped at worst: never
