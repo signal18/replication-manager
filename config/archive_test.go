@@ -398,3 +398,94 @@ func TestArchiveNames(t *testing.T) {
 		t.Fatalf("names %v", got)
 	}
 }
+
+// #2091: an archive built from a spec is checked against its plugin's typed config: the
+// values are stored typed, a secret encrypted, an unknown setting or a bad value refused,
+// a name kept to the rule and generated when missing
+func TestArchiveBuildFromSpec(t *testing.T) {
+	conf := archiveTestConf()
+	conf.SecretKey = []byte("0123456789abcdef")
+	a, isNew, err := conf.BuildArchive(ArchiveSpec{Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{
+		"aws-bucket": "backups", "timeout": "120", "purge-prune": "true", "s3-mode": "new", "aws-access-secret": "s3-secret",
+	}}, true, false)
+	if err != nil || !isNew {
+		t.Fatalf("build: %v new %v", err, isNew)
+	}
+	if a.Name != "archive-s3-1" || a.Settings["timeout"] != int64(120) || a.Settings["purge-prune"] != true || a.Settings["aws-bucket"] != "backups" {
+		t.Fatalf("archive %+v", a)
+	}
+	if raw := fmt.Sprintf("%v", a.Settings["aws-access-secret"]); !strings.HasPrefix(raw, "hash_") {
+		t.Fatalf("secret stored in clear: %q", raw)
+	}
+	for _, bad := range []ArchiveSpec{
+		{Name: "Archive BSO", Plugin: ConstArchivePluginResticS3},
+		{Name: "x", Plugin: "archive-nope"},
+		{Name: "x", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"aws-bucket": "b"}},
+		{Name: "x", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"s3-mode": "sideways"}},
+		{Name: "x", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"timeout": "soon"}},
+	} {
+		if _, _, err := conf.BuildArchive(bad, true, false); err == nil {
+			t.Errorf("accepted %+v", bad)
+		}
+	}
+	conf.StoreArchive(a)
+	if _, _, err := conf.BuildArchive(ArchiveSpec{Name: "archive-s3-1", Plugin: ConstArchivePluginResticS3}, true, false); err == nil {
+		t.Error("a second archive-s3-1 accepted")
+	}
+	if _, _, err := conf.BuildArchive(ArchiveSpec{Name: "archive-bso-s3-uk1", Settings: map[string]interface{}{"aws-bucket": "b"}}, false, false); err == nil {
+		t.Error("edit of an unknown archive accepted")
+	}
+	// edit: an empty secret keeps it, unset clears a setting
+	b, _, err := conf.BuildArchive(ArchiveSpec{Name: "archive-s3-1", Settings: map[string]interface{}{"aws-access-secret": "", "aws-prefix": "c1"}, Unset: []string{"timeout"}}, false, false)
+	if err != nil || b.Settings["aws-access-secret"] != a.Settings["aws-access-secret"] || b.Settings["aws-prefix"] != "c1" {
+		t.Fatalf("edit %v %+v", err, b.Settings)
+	}
+	if _, ok := b.Settings["timeout"]; ok {
+		t.Fatal("unset kept timeout")
+	}
+}
+
+// #2091: rename follows the attached archive; delete detaches it
+func TestArchiveRenameAndDelete(t *testing.T) {
+	conf := archiveTestConf()
+	conf.BackupArchiveMode = ConstBackupArchiveModeResticLocal
+	conf.MigrateArchives()
+	if err := conf.RenameArchive("archive-local-1", "archive-bso-s3-uk1"); err != nil {
+		t.Fatal(err)
+	}
+	if conf.BackupArchiveName != "archive-bso-s3-uk1" || !conf.ArchiveExists("archive-bso-s3-uk1") {
+		t.Fatalf("attached %q", conf.BackupArchiveName)
+	}
+	if err := conf.RenameArchive("archive-bso-s3-uk1", "Bad Name"); err == nil {
+		t.Fatal("bad name accepted")
+	}
+	conf.DeleteArchiveEntry("archive-bso-s3-uk1")
+	if len(conf.Archives) != 0 || conf.BackupArchiveName != "" || conf.BackupRestic {
+		t.Fatalf("after delete: %+v attached %q restic %v", conf.Archives, conf.BackupArchiveName, conf.BackupRestic)
+	}
+}
+
+// #2091: the copy for an archive that is not attached runs that archive, with its own
+// secrets, and leaves the cluster's config as it was
+func TestArchiveConfigForArchive(t *testing.T) {
+	conf := archiveTestConf()
+	conf.SecretKey = []byte("0123456789abcdef")
+	conf.DefaultFlagMap["backup-restic-password"] = "secret"
+	conf.BackupArchiveMode = ConstBackupArchiveModeResticLocal
+	conf.BackupResticLocalRepository = "/data/restic"
+	conf.MigrateArchives()
+	conf.RebuildSecrets(func(k string) (interface{}, bool) { v, ok := conf.DefaultFlagMap[k]; return v, ok })
+	other := ArchiveConfig{Name: "archive-bso-s3-uk1", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{
+		"aws-bucket": "uk1", "password": conf.EncryptSecretValue("uk1-pass"),
+	}}
+	view := conf.ConfigForArchive(other)
+	if !view.BackupResticAws || view.BackupResticAwsBucket != "uk1" || view.BackupResticLocalRepository != "" {
+		t.Fatalf("view aws %v bucket %q repo %q", view.BackupResticAws, view.BackupResticAwsBucket, view.BackupResticLocalRepository)
+	}
+	if p := view.GetDecryptedValue("backup-restic-password"); p != "uk1-pass" {
+		t.Fatalf("view password %q", p)
+	}
+	if conf.BackupResticAws || conf.BackupResticLocalRepository != "/data/restic" || conf.GetDecryptedValue("backup-restic-password") != "secret" || len(conf.Archives) != 1 {
+		t.Fatalf("the cluster's config changed: aws %v repo %q archives %d", conf.BackupResticAws, conf.BackupResticLocalRepository, len(conf.Archives))
+	}
+}

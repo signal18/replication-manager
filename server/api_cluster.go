@@ -237,6 +237,36 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCheckConfig)),
 	))
 
+	// archive list (#2091)
+	router.Handle("/api/clusters/{clusterName}/archive-list", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveList)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/add", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveAdd)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/edit/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveEdit)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/rename/{archiveName}/{newName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveRename)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/attach/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveAttach)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/detach", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveAttach)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/remove/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveRemove)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/restic/init", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticInitRepo)),

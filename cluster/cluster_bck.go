@@ -633,16 +633,27 @@ func filterResticEnv(cluster *Cluster, baseEnv []string, repoPath, password, cac
 }
 
 func (cluster *Cluster) ResticGetEnv() []string {
-	cacheDir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/.cache/restic"
-	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	return cluster.resticEnvFor(cluster.Conf)
+}
+
+// resticEnvFor is the restic environment of conf: the cluster's config, or a copy running
+// another archive of its list (config.ConfigForArchive, #2091).
+func (cluster *Cluster) resticEnvFor(conf *config.Config) []string {
+	cacheDir := conf.WorkingDir + "/" + cluster.Name + "/.cache/restic"
+	password := conf.GetDecryptedValue("backup-restic-password")
 	repoPath := ""
 	accessKeyID := ""
 	accessSecret := ""
 	region := ""
-	if cluster.Conf.BackupResticAws {
-		res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if conf.BackupResticAws {
+		// the S3 mode the startup probe resolved is the attached archive's only
+		probed := cluster
+		if conf != cluster.Conf {
+			probed = nil
+		}
+		res, err := resolveResticS3(conf, cluster.Name, probed)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			cluster.LogModulePrintf(conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 				"Restic S3 resolution failed: %s", err)
 		} else {
 			repoPath = res.RepoPath
@@ -651,23 +662,23 @@ func (cluster *Cluster) ResticGetEnv() []string {
 			region = res.Region
 		}
 	} else {
-		localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
-		accessKeyID = cluster.Conf.BackupResticAwsAccessKeyId
-		accessSecret = cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
-		region = cluster.Conf.BackupResticAwsRegion
+		localRepoPath, appendCluster := resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+		accessKeyID = conf.BackupResticAwsAccessKeyId
+		accessSecret = conf.GetDecryptedValue("backup-restic-aws-access-secret")
+		region = conf.BackupResticAwsRegion
 		if localRepoPath != "" {
 			repoPath = localRepoPath
 			if appendCluster && shouldAppendClusterNameLocal(repoPath, cluster.Name) {
 				repoPath = filepath.Join(repoPath, cluster.Name)
 			}
 		} else {
-			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+			repoPath = filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
 		}
 		if !config.IsSftpResticRepository(repoPath) {
 			if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 				err := os.MkdirAll(repoPath, os.ModePerm)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
+					cluster.LogModulePrintf(conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
 				}
 			}
 		}
@@ -682,7 +693,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 		accessKeyID,
 		accessSecret,
 		region,
-		cluster.Conf.BackupResticAdditionalEnv,
+		conf.BackupResticAdditionalEnv,
 	)
 }
 

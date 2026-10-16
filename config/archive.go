@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -943,4 +944,218 @@ func (conf *Config) ArchivesToml(section string) (string, error) {
 		}
 	}
 	return b.String(), nil
+}
+
+// ArchiveSpec is an archive to add or change, from the API, the GUI or a pushed
+// inject.toml (#2091): Settings holds settings and secrets by the names of the plugin's
+// config, Unset the names to clear.
+type ArchiveSpec struct {
+	Name     string                 `json:"name" mapstructure:"name"`
+	Plugin   string                 `json:"plugin" mapstructure:"plugin"`
+	Settings map[string]interface{} `json:"settings" mapstructure:",remain"`
+	Unset    []string               `json:"unset,omitempty" mapstructure:"unset"`
+}
+
+var archiveNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+// ValidateArchiveName: lowercase letters, digits, - and _, starting with a letter or a
+// digit, 64 characters at most. The name goes into the config file and the event keys.
+func ValidateArchiveName(name string) error {
+	if !archiveNameRe.MatchString(name) {
+		return fmt.Errorf("archive name %q: lowercase letters, digits, - and _ only, 64 characters at most", name)
+	}
+	return nil
+}
+
+// ArchiveExists: the list holds name.
+func (conf *Config) ArchiveExists(name string) bool {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	return conf.archiveByName(name) != nil
+}
+
+// ArchiveList is a copy of the list and the attached archive's name.
+func (conf *Config) ArchiveList() ([]ArchiveConfig, string) {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	return cloneArchives(conf.Archives), conf.BackupArchiveName
+}
+
+// typedArchiveValue checks v against the plugin's setting and returns it as stored: a
+// bool, an int64, a string, or an encrypted secret.
+func (conf *Config) typedArchiveValue(st ArchivePluginSetting, v interface{}) (interface{}, error) {
+	s := strings.TrimSpace(fmt.Sprintf("%v", v))
+	if err := st.Validate(s); err != nil {
+		return nil, err
+	}
+	switch st.Type {
+	case ConstArchiveSettingTypeBool:
+		b, _ := strconv.ParseBool(s)
+		return b, nil
+	case ConstArchiveSettingTypeInt:
+		n, _ := strconv.ParseInt(s, 10, 64)
+		return n, nil
+	case ConstArchiveSettingTypeSecret:
+		if strings.HasPrefix(s, "hash_") {
+			return s, nil
+		}
+		return conf.EncryptSecretValue(s), nil
+	}
+	return s, nil
+}
+
+// BuildArchive returns the entry spec gives, checked against its plugin's config, without
+// storing it: create adds a new archive (named archive-<type>-<n> when spec has no name),
+// else spec changes an existing one, or adds it when upsert.
+func (conf *Config) BuildArchive(spec ArchiveSpec, create, upsert bool) (ArchiveConfig, bool, error) {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	var a ArchiveConfig
+	existing := conf.archiveByName(spec.Name)
+	isNew := existing == nil
+	switch {
+	case create && existing != nil:
+		return a, false, fmt.Errorf("archive %s already exists", spec.Name)
+	case !create && existing == nil && !upsert:
+		return a, false, fmt.Errorf("unknown archive %s", spec.Name)
+	}
+	if existing != nil {
+		a = cloneArchives([]ArchiveConfig{*existing})[0]
+	} else {
+		a = ArchiveConfig{Name: spec.Name, Settings: map[string]interface{}{}}
+	}
+	if spec.Plugin != "" {
+		a.Plugin = spec.Plugin
+	}
+	m, ok := ArchivePlugin(a.Plugin)
+	if !ok {
+		return a, false, fmt.Errorf("unknown archive plugin %q", a.Plugin)
+	}
+	if isNew {
+		if a.Name == "" {
+			a.Name = conf.nextArchiveName(a.Plugin)
+		}
+		if err := ValidateArchiveName(a.Name); err != nil {
+			return a, false, err
+		}
+	} else if !m.Can(ConstArchiveCapEdit) && len(spec.Settings)+len(spec.Unset) > 0 {
+		return a, false, fmt.Errorf("archive %s: plugin %s cannot be edited", a.Name, a.Plugin)
+	}
+	cleanArchiveEntry(&a)
+	for name, v := range spec.Settings {
+		st, ok := m.Setting(name)
+		if !ok {
+			return a, false, fmt.Errorf("plugin %s has no setting %s", a.Plugin, name)
+		}
+		if st.Type == ConstArchiveSettingTypeSecret && fmt.Sprintf("%v", v) == "" {
+			continue // an empty secret field in a form keeps the secret
+		}
+		tv, err := conf.typedArchiveValue(st, v)
+		if err != nil {
+			return a, false, err
+		}
+		a.Settings[name] = tv
+	}
+	for _, name := range spec.Unset {
+		delete(a.Settings, name)
+	}
+	return a, isNew, nil
+}
+
+// StoreArchive adds a or replaces the entry of its name; the attached archive is projected
+// again.
+func (conf *Config) StoreArchive(a ArchiveConfig) {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	a = cloneArchives([]ArchiveConfig{a})[0]
+	if cur := conf.archiveByName(a.Name); cur != nil {
+		*cur = a
+	} else {
+		conf.Archives = append(conf.Archives, a)
+	}
+	conf.projectArchive()
+}
+
+// RenameArchive renames an archive; backup-archive-name follows.
+func (conf *Config) RenameArchive(name, newName string) error {
+	if err := ValidateArchiveName(newName); err != nil {
+		return err
+	}
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	a := conf.archiveByName(name)
+	if a == nil {
+		return fmt.Errorf("unknown archive %s", name)
+	}
+	if name == newName {
+		return nil
+	}
+	if conf.archiveByName(newName) != nil {
+		return fmt.Errorf("archive %s already exists", newName)
+	}
+	a.Name = newName
+	if conf.BackupArchiveName == name {
+		conf.BackupArchiveName = newName
+	}
+	return nil
+}
+
+// DeleteArchiveEntry takes name out of the list (its content is the caller's: remove
+// deletes it first). The attached archive is detached.
+func (conf *Config) DeleteArchiveEntry(name string) {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	for i := range conf.Archives {
+		if conf.Archives[i].Name == name {
+			conf.Archives = append(conf.Archives[:i], conf.Archives[i+1:]...)
+			break
+		}
+	}
+	if conf.BackupArchiveName == name {
+		conf.BackupArchiveName = ""
+		conf.projectArchive()
+	}
+}
+
+// ConfigForArchive is a copy of the config running archive a, for an operation on an
+// archive that is not, or not yet, attached (probe, remove): its BackupRestic* fields and
+// its restic password and S3 secret are a's. The copy never writes the config maps.
+func (conf *Config) ConfigForArchive(a ArchiveConfig) *Config {
+	archiveMu.Lock()
+	cp := *conf
+	cp.Archives = cloneArchives(conf.Archives)
+	found := false
+	for i := range cp.Archives {
+		if cp.Archives[i].Name == a.Name {
+			cp.Archives[i] = cloneArchives([]ArchiveConfig{a})[0]
+			found = true
+		}
+	}
+	if !found {
+		cp.Archives = append(cp.Archives, cloneArchives([]ArchiveConfig{a})[0])
+	}
+	cp.BackupArchiveName = a.Name
+	cp.projectArchive()
+	archiveMu.Unlock()
+
+	// the copy's own secret store: the archive's secret, else the flat value (pinned,
+	// dynamic, default), as the credential chain reads it
+	cp.RebuildSecrets(func(key string) (interface{}, bool) {
+		if name, ok := ArchiveSecretName(key); ok {
+			if v, ok := a.Settings[name]; ok && v != nil && archiveEntryHolds(&a, name) {
+				return v, true
+			}
+		}
+		if v, ok := conf.GetImmuableFlag(key); ok && v != nil {
+			return v, true
+		}
+		if v, ok := conf.GetDynamicFlag(key); ok && v != nil {
+			return v, true
+		}
+		if v, ok := conf.DefaultFlagMap[key]; ok && v != nil {
+			return v, true
+		}
+		return nil, false
+	})
+	return &cp
 }

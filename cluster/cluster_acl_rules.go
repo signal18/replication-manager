@@ -205,6 +205,16 @@ var clusterACLRules = []ACLRule{
 	{"/restic/snapshots", nil, []string{config.GrantClusterShowBackups}},
 	{"/restic/stats", nil, []string{config.GrantClusterShowBackups}},
 
+	// Archive list (#2091): one pattern per action and none covering another, so a weaker
+	// grant never reaches a stronger action through the less specific fallback
+	{"/archive-list", nil, []string{config.GrantClusterShowBackups}},
+	{"/archive-actions/add", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/edit/", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/rename/", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/attach/", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/detach", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/remove/", nil, []string{config.GrantDBBackup}}, // deletes the content
+
 	// Routes and Certificates
 	{"/queryrules", nil, []string{config.GrantClusterShowRoutes}},
 	{"/certificates", nil, []string{config.GrantClusterShowCertificates}},

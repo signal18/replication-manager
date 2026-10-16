@@ -534,6 +534,10 @@ type Cluster struct {
 	credChainMu             sync.Mutex       `json:"-"`
 	secretVersionStoreMu    sync.Mutex       `json:"-"`
 	secretVersionStoreDirty bool             `json:"-"`
+
+	// archiveOps: archive name -> a running remove, or its error (#2091)
+	archiveOps   map[string]string `json:"-"`
+	archiveOpsMu sync.Mutex        `json:"-"`
 	// reloadMu serializes Run()'s per-tick synchronous work (topology
 	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
 	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
