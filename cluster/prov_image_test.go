@@ -1,6 +1,8 @@
 package cluster
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -165,5 +167,63 @@ func TestResolveDatabaseImageRunningCluster(t *testing.T) {
 	if err := cl.ResolveDatabaseImage(false); err != nil || cl.Conf.ProvDbImgResolved != "" || cl.deployImage() != "mariadb:latest" {
 		t.Fatalf("a running release absent from the list keeps the declared name, never today's pointer: err=%v record=%q image=%s",
 			err, cl.Conf.ProvDbImgResolved, cl.deployImage())
+	}
+}
+
+// The review's cases (#2095): a provision resolves the list; a provisioned cluster with no
+// known version resolves nothing; a replica's version stands in for an unknown primary;
+// another flavor is not pinned; a valid record is left untouched.
+func TestResolveDatabaseImageProvisionedCases(t *testing.T) {
+	loadImageCatalog = func(c *Cluster) (*releases.Catalog, error) {
+		return &releases.Catalog{Table: releases.Table{LTS: map[string][]string{"mariadb": {"11.8"}}},
+			Tags: map[string][]releases.Tag{"mariadb": {{Name: "13.0.2"}, {Name: "11.8.9"}, {Name: "11.8.8"}}}, Source: "test"}, nil
+	}
+	defer func() { loadImageCatalog = nil }()
+	newCluster := func() *Cluster {
+		return &Cluster{Name: "t", Conf: &config.Config{ProvDbImg: "mariadb:latest", ProvOrchestrator: config.ConstOrchestratorOpenSVC}}
+	}
+	provisioned := func(t *testing.T) *ServerMonitor {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "@cookie_prov"), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return &ServerMonitor{Datadir: dir}
+	}
+
+	cl := newCluster()
+	cl.Servers = []*ServerMonitor{{Datadir: t.TempDir()}}
+	if err := cl.ResolveDatabaseImage(false); err != nil || cl.Conf.ProvDbImgResolved != "mariadb:latest=mariadb:13.0.2" {
+		t.Fatalf("a provision (no cookie, no version) resolves the list: err=%v record=%q", err, cl.Conf.ProvDbImgResolved)
+	}
+
+	cl = newCluster()
+	cl.Servers = []*ServerMonitor{provisioned(t)}
+	if err := cl.ResolveDatabaseImage(false); err != nil || cl.Conf.ProvDbImgResolved != "" || cl.deployImage() != "mariadb:latest" {
+		t.Fatalf("provisioned, no version known: nothing resolved: err=%v record=%q", err, cl.Conf.ProvDbImgResolved)
+	}
+
+	cl = newCluster()
+	replica := provisioned(t)
+	replica.DBVersion, _ = version.NewVersion("MariaDB", 11, 8, 9)
+	cl.Servers = []*ServerMonitor{replica}
+	if err := cl.ResolveDatabaseImage(false); err != nil || cl.Conf.ProvDbImgResolved != "mariadb:latest=mariadb:11.8.9" {
+		t.Fatalf("a replica's version stands in for an unknown primary: err=%v record=%q", err, cl.Conf.ProvDbImgResolved)
+	}
+
+	cl = newCluster()
+	other := provisioned(t)
+	other.DBVersion, _ = version.NewVersion("MySQL", 8, 0, 36)
+	cl.Servers = []*ServerMonitor{other}
+	if err := cl.ResolveDatabaseImage(false); err != nil || cl.Conf.ProvDbImgResolved != "" {
+		t.Fatalf("another flavor is not pinned, and a provisioned cluster is not resolved: err=%v record=%q", err, cl.Conf.ProvDbImgResolved)
+	}
+
+	cl = newCluster()
+	cl.Conf.ProvDbImgResolved = "mariadb:latest=mariadb:11.8.8"
+	running := provisioned(t)
+	running.DBVersion, _ = version.NewVersion("MariaDB", 11, 8, 9)
+	cl.Servers = []*ServerMonitor{running}
+	if err := cl.ResolveDatabaseImage(false); err != nil || cl.Conf.ProvDbImgResolved != "mariadb:latest=mariadb:11.8.8" {
+		t.Fatalf("a valid record is left untouched without force: err=%v record=%q", err, cl.Conf.ProvDbImgResolved)
 	}
 }

@@ -78,7 +78,16 @@ func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 	// (force) resolves the pointer again. A running release the list does not know keeps
 	// the declared name, no record: never today's pointer either.
 	if !force {
-		if running := cluster.runningDatabaseRelease(declared); running != "" {
+		running := cluster.runningDatabaseRelease(declared)
+		if running == "" && cluster.hasProvisionedDatabase() {
+			// provisioned already, but no version known right now (primary down, servers
+			// unreachable): resolving today's pointer could put another major in the service
+			// definitions; the declared name is kept, the next push with a known version pins
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+				"prov-db-image %s not resolved: the cluster is provisioned and no running release is known, the service definition keeps the declared name", declared)
+			return nil
+		}
+		if running != "" {
 			if !cat.InList(repo, running) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
 					"prov-db-image %s: the running release %s is not in the %s, the service definition keeps the declared name", declared, running, cat.Source)
@@ -114,17 +123,38 @@ func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 	return nil
 }
 
-// runningDatabaseRelease is the release the cluster's primary runs (x.y.z), "" when no
-// primary is known yet (a provision) or its flavor is not the declared image's.
+// runningDatabaseRelease is the release the cluster runs (x.y.z): its primary's, else any
+// database server's whose version is known; "" when none is known (a provision, or every
+// server unreachable) or the flavor is not the declared image's (PostgreSQL's "PostgreSQL"
+// never matches "postgres": not pinned, the safe side).
 func (cluster *Cluster) runningDatabaseRelease(declared string) string {
-	m := cluster.GetMaster()
-	if m == nil || m.DBVersion == nil || m.DBVersion.Major == 0 {
-		return ""
+	flavor := releases.FlavorOfImage(declared)
+	release := func(s *ServerMonitor) string {
+		if s == nil || s.DBVersion == nil || s.DBVersion.Major == 0 || !strings.EqualFold(s.DBVersion.Flavor, flavor) {
+			return ""
+		}
+		return fmt.Sprintf("%d.%d.%d", s.DBVersion.Major, s.DBVersion.Minor, s.DBVersion.Release)
 	}
-	if !strings.EqualFold(m.DBVersion.Flavor, releases.FlavorOfImage(declared)) {
-		return ""
+	if r := release(cluster.GetMaster()); r != "" {
+		return r
 	}
-	return fmt.Sprintf("%d.%d.%d", m.DBVersion.Major, m.DBVersion.Minor, m.DBVersion.Release)
+	for _, s := range cluster.Servers {
+		if r := release(s); r != "" {
+			return r
+		}
+	}
+	return ""
+}
+
+// hasProvisionedDatabase reports whether a database server of the cluster was provisioned
+// once (its provision cookie): a template push then is not a provision.
+func (cluster *Cluster) hasProvisionedDatabase() bool {
+	for _, s := range cluster.Servers {
+		if s != nil && s.HasProvisionCookie() {
+			return true
+		}
+	}
+	return false
 }
 
 // DBImageAutoUpgradeEnv says whether the database container gets MARIADB_AUTO_UPGRADE=1:
