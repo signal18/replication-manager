@@ -18,6 +18,10 @@ export const clusterService = {
   getBackupStats,
   deleteBackup,
   discoverBackups,
+  getBackupCandidates,
+  registerBackup,
+  registerBackupChange,
+  unregisterBackup,
   reseedFromBackup,
   verifyBackup,
   getBackupVerificationServer,
@@ -307,6 +311,23 @@ function getBackupStats(clusterName, baseURL) {
 
 function discoverBackups(clusterName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/backups/discover`)
+}
+
+// what the backup discovery found: the candidates per server and the registered backups changed since
+function getBackupCandidates(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/backups/candidates`)
+}
+
+function registerBackup(clusterName, server, path, takenAt, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/backups/register`, { server, path, takenAt: takenAt || '' })
+}
+
+function registerBackupChange(clusterName, backupId, takenAt, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/backups/${backupId}/register`, { takenAt: takenAt || '' })
+}
+
+function unregisterBackup(clusterName, backupId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/backups/${backupId}/unregister`)
 }
 
 function reseedFromBackup(clusterName, serverId, backupId, baseURL) {

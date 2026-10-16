@@ -185,6 +185,8 @@ function BackupSettings({ selectedCluster, user }) {
   const hLogicalPostScript = `**Logical Backup Post-Script**\n\nScript executed after a logical backup completes.\n\nThe script receives:\n1. Cluster name\n2. DB Server Host\n3. DB Server Port\n4. Backup Path\n\nConfig: \`backup-logical-post-script\``
   const hDbClientOptions = `**DB Client Options**\n\nExtra command-line options passed to the MySQL client binary used during backup operations.\n\nConfig: \`backup-mysqlclient-options\``
   const hMysqldumpOptions = `**Mysqldump Options**\n\nAdditional command-line flags passed to mysqldump.\nExample: \`--single-transaction --triggers --routines\`\n\nConfig: \`backup-mysqldump-options\``
+  const hDiscovery = `**Backup Discovery**\n\nAt the start of each server monitor, lists the logical backups placed in the backup folders by hand or by another tool (mysqldump files, splitdump and mydumper folders) that no metadata describes, with what their check found, in **Found in backup folders** (Maintenance). Nothing is registered: a backup is used only once the operator registers it, and never by an automatic restore.\n\nThe **Discover** button runs a discovery whatever this setting, and the registered backups are checked for changes (WARN0249) whatever it.\n\nConfig: \`backup-discovery\``
+  const hDiscoveryCandidateMax = `**Backup Discovery Candidates**\n\nThe artifacts a discovery lists per server: beyond it, the oldest are not listed and WARN0250 is raised. 0: the default (100).\n\nConfig: \`backup-discovery-candidate-max\``
   const hVerification = `**Backup Verification**\n\nVerifies each logical (mysqldump) backup once it completes, at the verification level below. A backup can also be verified on demand from the backup list (Maintenance).\n\nThe result is shown in the backup list; a failed verification of a server's last logical backup raises ERR00117.\n\nConfig: \`backup-verification\``
   const hVerificationLevel = `**Backup Verification Level**\n\n- **Integrity**: reads the backup as a restore would, without a database: gzip to its end, the dump's \`-- Dump completed\` line, the position against the backup metadata, every file of a splitdump. An encrypted backup has its HMAC checked first.\n- **Test restore**: the integrity checks, then the backup is loaded into the verification server below, and each table's rows and each schema's tables, views, routines, triggers and events are compared with the dump.\n\nConfig: \`backup-verification-level\``
   const hVerificationHost = `**Backup Verification Server**\n\nWhere the test restore loads the backup:\n\n- **External server** (host:port): outside the cluster, of the same flavor and version as the cluster, with the credentials below. **It is disposable**: the whole backup is loaded, the mysql schema (accounts) included, and the backup's other schemas are dropped there before the load and after the comparison. It must be marked as a verification server (the table \`replication_manager_schema.backup_verification_server\`): a server without schemas of its own is marked on its first test restore, one that holds schemas is refused until marked with **Mark as verification server**. Never mark a server that holds data of its own.\n- **A replica of the cluster** (not the primary nor a relay): the test restore reseeds it: maintenance, replication stopped, load and comparison, then replication restarted from the backup's position. A replica not yet in ignored hosts is added to them when picked (never a failover candidate).\n\nConfig: \`backup-verification-host\``
@@ -294,6 +296,26 @@ function BackupSettings({ selectedCluster, user }) {
         <TextForm value={selectedCluster?.config?.backupMysqldumpOptions} confirmTitle={`Confirm backup-mysqldump-options to `}
           maxLength={1024} className={styles.textbox}
           onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-mysqldump-options', value: btoa(value) }))} />
+      )
+    },
+    {
+      key: 'Backup Discovery',
+      help: h(hDiscovery, 'Backup Discovery'),
+      value: (
+        <RMSwitch isChecked={selectedCluster?.config?.backupDiscovery}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-discovery?'}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-discovery' }))} />
+      )
+    },
+    {
+      key: 'Backup Discovery Candidates',
+      help: h(hDiscoveryCandidateMax, 'Backup Discovery Candidates'),
+      value: (
+        <NumberInput min={0} value={selectedCluster?.config?.backupDiscoveryCandidateMax}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-discovery-candidate-max' to: `}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-discovery-candidate-max', value }))} />
       )
     },
     {

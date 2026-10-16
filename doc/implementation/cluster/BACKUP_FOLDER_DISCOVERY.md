@@ -1,93 +1,228 @@
 # Backup folder discovery
 
-User doc: `doc/backup_folder_discovery.md`. Code: `cluster/backup_discovery.go`.
+User doc: `doc/backup_folder_discovery.md`. Code: `cluster/backup_discovery.go` (find and
+check), `cluster/backup_discovery_register.go` (register, unregister, change tracking,
+states). Issues: #2051 (discovery), #2073 (register on demand, proper backups, changes).
 
 ## Why
 
 A backup is known only through a `BackupMetadata` in `Cluster.BackupMetaMap`,
 loaded from meta files: at a server's start `FetchLastBackupMetadata` reads the
 fixed `<tool>.meta.json` files, and only when the server has a backup cookie.
-`LoadAdhocBackupMetadata` (the `<tool>.<id>.meta.json` files) had no caller but
-the expired ad-hoc purge, itself without a caller. A backup without a meta file
-was therefore invisible, and a reseed only ever used the server's last
-scheduled backup (`resolveLogicalBackupPathFromMeta`, `buildBackupCatalog`) or,
-without metadata, the fixed names `mysqldump.sql.gz` / `splitdump`
-(`findExistingBackupPath`).
+A backup without a meta file was invisible, and a reseed only ever used the
+server's last scheduled backup (`resolveLogicalBackupPathFromMeta`,
+`buildBackupCatalog`) or, without metadata, the fixed names `mysqldump.sql.gz` /
+`splitdump` (`findExistingBackupPath`).
 
-## Scan
+#2051 registered every `.sql` / `.sql.gz` file and dump folder it found: account
+files (`grants.sql.gz`, `mysql.user.sql.gz` that older releases wrote next to a
+dump) became "completed mysqldump backups" offering Reseed and Verify, every
+discovered dump showed "Unknown" as its strategy, each dump was read to its end
+at each automatic discovery, and the file time was shown as the dump time. #2073
+makes discovery find-and-check only; registration is an operator action limited
+to proper backups, and a registered backup's file is tracked for changes.
 
-`ServerMonitor.DiscoverBackups`, called at the end of `FetchLastBackupMetadata`
-(the goroutine `NewServerMonitor` starts, `srv.go`; never the monitor ticker)
-and by `Cluster.StartBackupDiscovery` (API: a goroutine over the servers, the
-handler answers 202; refused with `ErrBackupDiscoveryInBackup` while
-`IsInBackup`). A new artifact is read to its end (gzip CRC, integrity code), so
-a scan is never run in a request or the monitor. `Cluster.backupDiscoveries`
-(server URL) lets one scan run per server (`errBackupDiscoveryRunning`): a
-config reload recreating the server, or an API scan during the startup one,
-does not run a second. The ad-hoc meta files are read first, even while a backup runs (a live entry
-is kept): a server monitor created then (a config reload) lists its ad-hoc and
-discovered backups at once. Then every scan is refused while `IsInBackup` (the startup one too, logged at INFO: a backup
-writing between long pauses, mydumper on a large table, would be read half
-written; the settle window and the refresh pass are the second line). A scan
-reads at most `backupDiscoveryMaxPerRun` (8) artifacts, new or inspected again
-(one budget): the rest is logged and left to the next scan. A config reload
-re-reads only artifacts still unregistered: a registered one has its meta file
-and is known. An artifact that can not be read (a foreign key, damage) is read
-once by the startup scans: registered as not completed, it is known from then
-on, and read again only if its size or file count changes. The API scan
-(`StartBackupDiscovery`, `discoverBackups(true)`) also inspects again every
-discovered backup not completed whose artifact did not change (a key installed,
-a permission fixed since), within the same budget: an operator's request, so a
-foreign archive is read again only when asked.
+## Discovery (find and check)
 
-1. `os.ReadDir` of `GetMyBackupDirectory`; a missing folder is no error.
-2. `LoadAdhocBackupMetadata`: the ad-hoc and the previously discovered backups
-   are registered from their meta files. A backup already in the map keeps its
-   live entry (a running backup or verification updates it; the copy just read
-   may be older): the loader replaced it before, harmless while only the
-   uncalled purge used it, not once a scan runs it on a live cluster.
-3. `refreshDiscoveredBackups`, over the server's discovered backups: an
-   artifact gone (removed by hand) unregisters its backup (meta file removed,
-   `BackupMetaMap.Delete`), so the discovered entries are bounded by the
-   artifacts present (no retention purges them: they are never auto-purged);
-   one not completed whose size or file count changed since its inspection
-   (a copy that was still running) is inspected again under its id, once
-   settled.
-4. Known artifacts (`knownBackupArtifacts`, `addKnownBackupArtifact`): the
-   `Dest` of every registered backup and of every meta file of the folder,
-   loaded or not (a scheduled backup's file without its cookie), each with its
-   `.enc` / `.tar.enc` forms.
-5. `classifyBackupArtifact` for the other entries. Staging and kept-aside names
-   (`.partial`, `.tmp`, `.new`, `.old`, `.err`) are skipped, and the direct
-   reseeds' working folder (`directReseedSystemArtifactSubdir`) and the users
-   sidecar (`mysqldumpUserSidecarPath`, plain or `.enc`): a sidecar, not a
-   backup, and deleting it as a backup would remove the users of its dump. Files: `.tar.enc`
-   is an encrypted splitdump (a mydumper one when its name starts with
-   `mydumper`) until it is read (below), `.sql` / `.sql.gz` / `.sql.enc` / `.sql.gz.enc` a mysqldump
-   file. Folders: a `manifest` makes a splitdump; else a `metadata` file is
-   mydumper's when it holds `Started dump at`, a splitdump's otherwise; else a
-   folder `splitdump.Detect` accepts is a splitdump only under a splitdump name.
-   File names do not decide: splitdump writes mydumper's.
-   `isSplitDumpDir` (reseed path) is unchanged: the manifest only exists since
-   2026-04-14 and it runs on the mysqldump reseed path only.
-6. Settle: an entry modified within `backupDiscoverySettle` (1 min; a folder:
-   any of its files, `artifactChangedSince`) is left to the next scan; one that
-   can not be checked (a permission, a walk error) too, logged apart at WARN
-   with its error, not as a copy still running.
-7. `registerDiscoveredBackup`: id = the artifact's mtime (unix), bumped while
-   taken in the map or by a meta file (ids follow the folder's sorted order;
-   the meta file keeps the id once written); `BackupLine` ad hoc (the meta file name
-   `<tool>.<id>.meta.json`, read back by `LoadAdhocBackupMetadata`), no
-   retention (`retentionDeadline` never expires it), `Discovered`, size and
-   file count, compression; `inspectDiscoveredBackup`; session id; the meta
-   file written (`backupMetaFilePath`), then `BackupMetaMap.Set`.
+`ServerMonitor.DiscoverBackups` / `discoverBackups(retry)`, called at the end of
+`FetchLastBackupMetadata` (the goroutine `NewServerMonitor` starts, `srv.go`;
+never the monitor ticker) unless `backup-discovery` is off (then only
+`LoadAdhocBackupMetadata`), and by `Cluster.StartBackupDiscovery` (API: a
+goroutine over the servers, `retry` true; 202; refused with
+`ErrBackupDiscoveryInBackup` while `IsInBackup`). It writes nothing to disk but
+for unregistering a discovered backup whose artifact is gone (its own meta file).
+
+`Cluster.backupDiscoveries` (key server URL) is the one guard per server folder:
+a discovery, a Register (its whole background read), an Unregister and the
+server's part of the change check take it; the others get
+`ErrBackupDiscoveryRunning` (API 409) or, for the change check, skip the server
+until its next run. So a meta file is never written by two of them at once, and
+the change check never records a change against a fingerprint a Register is
+replacing.
+
+1. `LoadAdhocBackupMetadata` first, even while a backup runs (a live entry is
+   kept): a server monitor created then lists its ad-hoc and registered backups.
+   `readBackupMetadataFile` loads a discovered entry with no strategy (3.1.44) as
+   `BackupStrategyFull`.
+2. Refused while `IsInBackup`.
+3. `unregisterGoneDiscoveredBackups`: a discovered backup whose artifact is gone
+   loses its meta file and map entry (and its change): the discovered entries
+   never outlive their artifacts. Not one kept only in its archive
+   (`OriginalRemoved`).
+4. Known artifacts (`knownBackupArtifactsOnDisk`: the `Dest` of every
+   registered backup and of every meta file of the folder, loaded or not, with
+   their `.enc` / `.tar.enc` forms) are skipped.
+5. `classifyBackupArtifact` for the other entries (unchanged from #2051: staging
+   and kept-aside names, the direct reseeds' working folder and the current
+   users sidecar are left out; `.tar.enc`, `.sql[.gz][.enc]` files; a folder by
+   its `manifest`, its `metadata` content, or `splitdump.Detect` under a
+   splitdump name). Whether it is a backup is the checks' to tell.
+6. Each candidate's fingerprint (`restoreArtifactFingerprintBounded`, bound
+   `backupProofWalkMax`): its size, file count and newest mtime for the list; a
+   folder beyond the bound is listed unchecked (it can not be registered: its
+   changes could not be tracked). Modified within `backupDiscoverySettle` (1
+   min): `settling`, not read.
+7. The cheap check, `checkBackupCandidate`, reused from the previous discovery's
+   result while the candidate's size, file count and mtime did not change (not
+   with `retry`; never for one deferred by the budget):
+   - a dump file: `readDiscoveredStream` with `stopAtTable` (the read ends at the
+     first `CREATE TABLE`) and `readMax` (`backupCandidateReadMax`, 64 MiB
+     decompressed: beyond it, `unchecked`, Register reads it). No table at its
+     end: `not-backup`, the reason from `notABackupReason` (empty, accounts only
+     when an account line was seen: `CREATE USER` / `ROLE`, `GRANT`, `ALTER
+     USER`, `SET PASSWORD`, `SET DEFAULT ROLE`, a client's version comment before
+     them included; else no `CREATE TABLE`). Not readable: `unreadable`.
+     `backupDiscoveryMaxPerRun` (8) dump files are read per discovery, the others
+     `unchecked` and `deferred`.
+   - a folder: `inspectDiscoveredFolder` on its names and small files (manifest,
+     metadata through `readDiscoverySmallFile`): `incomplete` for a completeness
+     failure, `not-backup` when it holds no table file. Not budgeted: no content
+     is read.
+   - a `.tar.enc`: `unchecked` (its read is a decrypt to its end: Register's).
+8. The candidates, newest first, are bounded by `backup-discovery-candidate-max`
+   (`backupDiscoveryCandidateMax`, default `ConstBackupDiscoveryCandidateMax`
+   100, 0 = default): the oldest are dropped into a fresh slice (T18), the drop
+   count kept in the set; `checkBackupDiscoveryStates` raises WARN0250 while it
+   is not 0. The set (`backupCandidateSet`) replaces the server's in
+   `Cluster.backupCandidates`, whole: readers never see one being built.
+   `pruneBackupRegisterResults` then drops the Register outcomes of artifacts no
+   longer listed.
+
+The cheap checks bound a discovery's reads: a large dump is read to its first
+table, its content once (until it changes).
+
+## Register
+
+`Cluster.RegisterBackup(serverURL, path, takenAt)` (API `POST
+/backups/register`, CLI `backup register PATH --server`): synchronous refusals
+first, no read: unknown server; `path` not a direct entry of the server's backup
+folder (`filepath.Dir(path)` must be the folder: no traversal); `takenAt` in the
+future; not a logical backup (`classifyBackupArtifact`); already known; the last
+discovery found it `not-backup` (`ErrBackupNotABackup`) or `incomplete`
+(`ErrBackupNotRegisterable`). Then `startBackupRegistration`: refused while a
+backup runs, while it is verified (a change), while it settles; the server's
+guard taken; the outcome recorded in `backupRegisterResults` (key path: running,
+then the refusal kept for the list, or deleted on success) and the read run in a
+goroutine: an artifact is read to its end, never in a request.
+
+`registerDiscoveredBackup(path, tool, split, prev, takenAt)`:
+
+1. The fingerprint before (`restoreArtifactFingerprintBounded` with
+   `backupProofWalkMax`; refused beyond it, and without inode and ctime: its
+   changes could not be tracked, `artifactUnchanged` fails closed).
+2. A new id: the artifact's mtime, bumped while taken; a change keeps `prev`'s.
+3. The metadata: logical, ad hoc (`<tool>.<id>.meta.json`), no retention,
+   `Discovered`, `BackupStrategyFull`, `TimeSource` file-time until the read
+   says otherwise.
+4. `inspectDiscoveredBackup` reads it to its end as a restore would (below). Not
+   a backup (`NotABackup`) or not completed: refused with the reason, nothing
+   written.
+5. `takenAt`: set as the time (`TimeSource` operator) only when the backup
+   records none (`file-time`); refused otherwise.
+6. The fingerprint after must equal the one before (`artifactFingerprintsEqual`):
+   a file changed during the read is refused ("register it again once the copy
+   ends").
+7. `Registration{Artifact, RegisteredAt}`. A change (`prev`) carries over what is
+   not read from the file: `Verification`, `VerificationRuns`,
+   `VerificationRunSequence` (the GUI marks the result as taken before the
+   change: its `verification.artifact` differs from `registration.artifact`),
+   the archive snapshot fields, the session.
+8. `writeDiscoveredBackupMeta`: the meta file written to `<path>.tmp` and
+   renamed (never a half-written meta file), `prev`'s removed when its name
+   differs, then `BackupMetaMap.Set` (a new pointer: readers holding the old one
+   see a consistent old entry).
+
+On success the candidate is dropped from the set and the backup's change
+cleared.
+
+`Cluster.RegisterBackupChange(id, takenAt)` (API `POST /backups/{id}/register`,
+CLI `backup register ID`): a discovered backup only (`ErrBackupNotDiscovered`);
+refused when unchanged (no recorded change and `artifactUnchangedBounded`:
+`ErrBackupUnchanged`); then as above with `prev`.
+
+## Unregister
+
+`Cluster.UnregisterBackup(id)` (API `POST /backups/{id}/unregister`, CLI `backup
+unregister`): a discovered backup only; under `backupVerificationMu` (as
+`DeleteBackupByID`) and refused while it is verified; the server's guard taken;
+its meta file removed, its map entry, change and Register outcome dropped. The
+backup file is not touched (F1). A discovery is started so it is listed again.
+
+## Change tracking
+
+`Cluster.checkRegisteredBackups`, started with `trackTickGoroutine` from Run's
+`heartbeats%30` block next to `refreshBackupProofs` (never `goRun`: the tick
+waits for those), one run at a time (`backupRegistrationChecking`
+CompareAndSwap), each server under its guard (skipped while a discovery or a
+registration holds it). It runs whatever `backup-discovery`: the refusals depend
+on it.
+
+For each discovered backup of the server:
+
+- kept only in its archive: no change (nothing on disk to compare);
+- no `Registration` (registered by 3.1.44): adopted, `backupDiscoveryMaxPerRun`
+  per run, not while verified nor while it settles (`adoptDiscoveredBackup`):
+  its fingerprint as it is now (`Adopted`), Full, its time source file-time when
+  its start and end are equal (3.1.44 set both to the file time or the dump
+  footer: the footer can not be told apart, an accepted imprecision of the label
+   only), and the cheap check: `not-backup` flags it `NotABackup`, not completed,
+   the reason in `DiscoveryNote`.
+- a record of a scheduled backup file (`isDuplicateScheduledBackup`: its `Dest`
+  is one of `scheduledLogicalBackupNames`, `mysqldump.sql.gz`, `splitdump`,
+  `mydumper`, `dumpling`, or their `.enc` / `.tar.enc` forms, in the server's
+  backup folder; by name, since the scheduled metadata is one per tool and
+  moves between `mysqldump.sql.gz` and `splitdump` with the split mode, so it
+  does not tell which files the scheduled backups wrote): removed
+  (`removeScheduledBackupRecord`: its meta file, its entry, change and Register
+  outcome; logged; not while verified), before any adoption or fingerprint. A
+  3.1.44 discovery registered such files; each scheduled backup rewrites them,
+  so the record describes nothing. The discovery removes them too
+  (`unregisterGoneDiscoveredBackups`). Until removed, `discoveredBackupRefusal`
+  refuses it (`ErrBackupDuplicateScheduled`) and `discoveredBackupPaths` skips
+  it: the automatic restores take the scheduled backup's file. The name check
+  reads no file. `classifyBackupArtifact` never lists those names as
+  candidates and `RegisterBackup` refuses them: the next scheduled backup would
+  rewrite a backup registered there (the folder keeps the latest backups, their
+  history is the archive's). This narrows the issue's "nothing removed
+  automatically" to the records that describe nothing.
+- else `artifactUnchangedBounded(Dest, Registration.Artifact,
+  backupProofWalkMax)`: the fingerprint verification uses (#2074), same rules: a
+  replaced file (other inode or ctime) is a change, a fingerprint without inode
+  and ctime matches nothing, a folder beyond the bound reads as changed.
+  Unchanged: the change is cleared (the registered file read as registered
+  again, e.g. a mount back). Changed: a `BackupRegistrationChange` (was, now or
+  the error, `describeBackupChange`: sizes, file counts, modification time, or
+  "replaced or rewritten, same size and modification time") replaces the
+  backup's in `Cluster.backupChanges`.
+
+`checkBackupDiscoveryStates` (every tick, `cluster_set.go`, memory only): one
+WARN0249 per server (key + server URL) listing its changed backups; a change
+whose backup was deleted since is dropped there. WARN0250 per server whose last
+discovery dropped candidates. Both `ErrFrom: "BACKUP"`, `ServerUrl` set, like
+the other backup states (WARN0238, WARN0248, ERR00117); they go to the main
+`StateMachine`, as those do: there is no backup state machine.
+
+Restoring the original from its archive puts back a new file (another inode):
+it does not match the registration, the operator registers it (a change). A
+change clears by itself only when the registered file itself comes back.
+
+## Refusals
+
+`discoveredBackupRefusal(meta)`: for a discovered backup, `ErrBackupNotABackup`
+when flagged, `ErrBackupChangedSinceRegistered` (with the change's description)
+while a change is recorded; nil for any other backup. Used by
+`ReseedFromBackupID` (before the other checks), `buildBackupCatalog` (skipped;
+discovered backups do not reach `LastBackupMeta`, the check makes it explicit)
+and `refreshBackupProofs` (not proven). `verifiableLogicalBackup` refuses a
+`NotABackup` entry; a changed backup stays verifiable on demand. Nothing runs on
+a changed file by itself.
 
 ## Inspection
 
 `inspectDiscoveredBackup` reads as a restore reads; what it finds goes to the
 position fields, the times, `Completed` and `DiscoveryNote`:
 
-- mysqldump file: `readDiscoveredStream` through `openRestoreArtifactStream`
+- mysqldump file: `inspectDiscoveredDump`, `readDiscoveredStream` through `openRestoreArtifactStream`
   (decrypts `.enc` with `backupRestorePasswords`: no metadata needed, every
   password of the history is tried), gzip detected by its magic, read to its
   end (gzip CRC). Lines are kept to 4 KiB (`readDiscoveryLine`). Read on the
@@ -102,12 +237,16 @@ position fields, the times, `Completed` and `DiscoveryNote`:
   continuation lines (GTID set parts, `discoveryGtidContinuation`) up to its
   `';`, at most 1 MiB, as the backup's own reader joins it; any other line
   drops it. The last line: the
-  footer and its time (local time zone). Header without footer: not
-  completed. No header: noted (not a dump client's file, or `--skip-comments`),
+  footer and its time (`parseDiscoveryTime`, local time zone; `TimeSource`
+  dump-footer). A `CREATE TABLE` at a line's start sets `table`; none at the
+  end: `NotABackup`, refused. Header without footer: not completed. No header: noted (not a dump client's file, or `--skip-comments`),
   its completion not checked; without a position it is refused like any.
-- splitdump folder: `splitdump.ReadMetadata` for the position;
-  `ReadManifest` + `ValidateManifest`, then each listed file must exist (not
-  read: a splitdump can be large). No manifest: not completed. The splitter
+- splitdump folder: its `metadata` for the position; its manifest parsed and
+  validated, each listed file present, no `.sql` / `.sql.gz` file it does not
+  list, a table file (`discoveryTableFile`, `<db>.<table>-schema.sql[.gz|.zst]`)
+  among its schema files or `NotABackup`. At Register a plain folder is then
+  read to its end by `validateSplitDumpBackup` (the integrity verification's:
+  every listed file, gzip to its end, no recognized artifact unlisted). No manifest: not completed. The splitter
   writes it last (`SplitDumpLineParser`, after `metadata`; every splitdump
   since 3.1.24 has one), so a folder without it may be a dump or a copy that
   did not end, and its files can not be checked; the manifest arriving changes
@@ -128,7 +267,10 @@ position fields, the times, `Completed` and `DiscoveryNote`:
   `inspectDiscoveredFolder` runs the folder's checks through read/exists
   functions, on a plain folder or on that. Base names: the folders are flat, a
   nested member would share one, harmless for the checks.
-- mydumper folder: `Finished dump at` in its `metadata`, then the position
+- mydumper folder: `Finished dump at` in its `metadata`, a table file among its
+  files or `NotABackup`, its start and end (`parseDiscoveredMyDumperTimes`:
+  `Started dump at` / `Finished dump at`, `# ` before them since 0.14.1;
+  `TimeSource` mydumper-metadata), then the position
   (`parseDiscoveredMyDumperPosition`): both forms the reseed reads
   (`JobParseMyDumperMetaNew` / `Old`), `File =` / `SOURCE_LOG_FILE =` and their
   position and GTID lines, or the indented `Log:` / `Pos:` / `GTID:` of
@@ -142,13 +284,14 @@ A completed backup with neither a binary log file nor a GTID set
 (`pointLogicalReseedReplica`, `pointSlaveToMasterAutoDetect`) would point the
 replica at the primary's current position: a silent divergence.
 
-A discovered dump is read whole once (in the server's start goroutine, or the
-API request); its meta file then makes it known.
+A dump is read whole only at Register (and its change); a discovery reads it
+to its first table.
 
 ## Use
 
-Discovered backups never enter `buildBackupCatalog` (it takes
-`LastBackupMeta` only, which discovery does not touch). The legacy fallback of
+Registered discovered backups never enter `buildBackupCatalog` (it takes
+`LastBackupMeta` only, which discovery does not touch; `discoveredBackupRefusal`
+also skips them). The legacy fallback of
 the automatic reseeds and the flashback (no catalogued backup: the fixed names
 through `findExistingBackupPath`, then `<backup dir>/<fixed name>`) skips them:
 `findExistingBackupPath` passes over a discovered artifact
@@ -156,7 +299,7 @@ through `findExistingBackupPath`, then `<backup dir>/<fixed name>`) skips them:
 one before their existence check, the backup cookie kept (the backup exists,
 it is not for automatic use). `Cluster.ReseedFromBackupID(server, id)` reseeds on request:
 logical (`mysqldump`, `mydumper`) only (`ErrBackupDiscoveryNotLogical`),
-`Completed`, a position (`hasReplicationPosition`), not `OriginalRemoved`, artifact present (`backupArtifactExists`),
+not refused by `discoveredBackupRefusal`, `Completed`, a position (`hasReplicationPosition`), not `OriginalRemoved`, artifact present (`backupArtifactExists`),
 target not the primary; then `JobReseedLogicalBackupFromPathWithOptions` (the
 restic restore's path). The position comes from the artifact during the
 restore, not from the meta file.
@@ -168,6 +311,18 @@ restore, not from the meta file.
   requires `db-backup` (`requestACLUser`): the rule matcher falls back from
   `/backups/` to the `/backups` list rule (`show-backups`) when the first
   denies. 409 while a backup runs.
+- `GET /api/clusters/{clusterName}/backups/candidates`
+  (`handlerMuxClusterBackupCandidates`, `GetBackupDiscovery`): ACL rule
+  `/backups/candidates` (`cluster-show-backups`), before `/backups/`. The
+  candidates per server with their last Register's outcome, and the changes.
+- `POST /api/clusters/{clusterName}/backups/register` (body `server`, `path`,
+  `takenAt` RFC 3339), `POST .../backups/{backupID}/register` (body `takenAt`,
+  optional), `POST .../backups/{backupID}/unregister`: ACL rule `/backups/`, and
+  the handlers require `db-backup`. `writeBackupRegisterError`: 404 unknown
+  backup; 409 a backup, a discovery or registration, a verification runs,
+  already registered, unchanged; 422 not a backup, not registerable, not
+  discovered. Register answers 202 (the read runs in the background),
+  Unregister 200.
 - `POST /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID}`
   (`handlerMuxServerReseedFromBackup`): ACL rule `/actions/reseed/`
   (`db-restore`), and the handler requires `db-restore` too (the rule matcher
@@ -182,12 +337,27 @@ restore, not from the meta file.
 
 ## GUI
 
-`Pages/Maintenance/index.jsx`, Current Backups: a search icon in the section
-header (confirmation, `discoverBackups` thunk); in the status column a folder
-icon for a discovered backup and, for one not completed, the reason in the
-tooltip; a reseed action per logical, completed backup that opens a
-confirmation with a server dropdown (`clusterServers` without the primary),
-`reseedFromBackup` thunk.
+`Pages/Maintenance/index.jsx`:
+
+- **Found in backup folders** (accordion): the candidates of every server
+  (`getBackupCandidates`, polled with the backup list in `Home` and
+  `Slideshow`), their check and reason, the Register outcome; the Discover
+  button (moved there from Current Backups); a Register action per registerable
+  candidate opening a dialog with an optional time (`datetime-local`, sent as
+  RFC 3339); the WARN0250 drop per server.
+- **Current Backups**: under the times, where they come from
+  (`timeSourceLabel`); status icons for a backup not a backup and one changed
+  since registered (the change's description, the last refused Register); the
+  verification tooltip marked "taken before the file changed"
+  (`verificationBeforeChange`); Reseed disabled with the reason in its tooltip
+  (`reseedRefusal`: not logical, not a backup, changed, not completed, archived
+  only, no position); for a discovered backup, Register the change (when
+  changed) and Unregister in place of Delete (Delete would remove the backup
+  file, which the operator placed). Verify disabled for a non-backup.
+- **Settings → Backups**: `backup-discovery` (switch), `backup-discovery-candidate-max`.
+
+The strategy column shows Full for discovered backups (`getBackupStrategy`
+unchanged: the backend records 1).
 
 Meta files are written 0644 like every backup meta file (`WriteBackupMetadata`,
 `srv_bck.go`): one permission for the folder's meta files.
@@ -197,31 +367,53 @@ Retention: a discovered backup is ad hoc without a retention window
 it, so the ad-hoc purge leaves it; the `backup-keep-until-valid` rotation
 (`.old`, `.err`) handles the scheduled artifacts only; the restic purges handle
 snapshots. It is bounded by the artifacts in the folder (unregistered when its
-artifact is gone, `refreshDiscoveredBackups`) and deleted by the operator
-(`DeleteBackupByID`).
+artifact is gone, `unregisterGoneDiscoveredBackups`) and unregistered by the
+operator.
+
+Meta files of registered backups are replication-manager's own files in the
+backup folders, not in the config repository: T25 does not apply to them.
 
 ## Tests
 
-`cluster/backup_discovery_test.go`: classification (any splitdump name,
-mydumper, staging names, unrelated files), a discovery (positions, dump time,
-unfinished dump, damaged splitdump, scheduled backup not re-registered, second
-run and restart register nothing new), a foreign encrypted backup, the
-reseed refusals, encrypted archives, the fallback skip, live entries kept, a
-copy in progress (left, then inspected again under its id), a removed artifact
-unregistered, one scan per server, the per-scan cap, the refusal while a
-backup runs, a backup without a position (noted, refused; a mydumper folder's
-position read), both mydumper metadata forms, an archive classified by its
-content, the archive member cap, the retry on request, a file without a dump
-client's header, a splitdump without its manifest (not completed, then
-completed once it arrives), the bounded read of a folder's small files. `cluster_acl_test.go`: the reseed route needs
-`db-restore`.
+`cluster/backup_discovery_test.go`: classification; the candidates (each "not a
+backup" case: accounts with and without the client's header, empty, no `CREATE
+TABLE`, a splitdump of views only, a mydumper dump without table; incomplete
+folders; an archive unchecked; nothing registered); the candidate cap (oldest
+dropped, fresh array, WARN0250 raised and cleared); the cheap read bound;
+Register (Full, position, time source, fingerprint, the candidate dropped,
+already registered, a restart); the refusals (at once after a discovery, after
+the read otherwise, outside the folder); each completeness failure (no footer,
+a listed file missing, an unlisted file, no manifest, mydumper not finished, a
+foreign key, the archive member cap); encrypted archives; each time source and
+the operator's time (refused for a dump with its footer, in the future); the
+mydumper times; a change (WARN0249, reseed refused, catalog skip, verify
+allowed, a broken change refused, a good one registered keeping its id and its
+verification, unchanged refused); a file replaced with its size and mtime put
+back; a change cleared when the file reads as registered again; Unregister
+(file kept, candidate again, a taken backup refused); the adoption of 3.1.44
+entries (Full, fingerprint, a non-backup flagged and refused by a reseed and a
+verification, unregistered); the reseed refusals; no position; live entries
+kept; the fallback skip; a copy in progress; a removed artifact unregistered;
+one discovery or registration per server; a multi-line GTID set; the per-run
+read cap; the refusal while a backup runs; the retry on request; a splitdump
+without its manifest. `cluster_acl_test.go`: the reseed route needs
+`db-restore`; the candidates route `cluster-show-backups`, register and
+unregister `db-backup`.
 
 Regtest (T13, real servers): `testBackupDiscovery` (`regtest/test_backup_discovery.go`,
-run by name). For a mysqldump file, a splitdump folder and a mydumper folder
-(mydumper installed): a backup of the primary is copied under another name,
-backdated past the settle window, discovered (position and GTID as the backup
-recorded), the first replica reseeded from it (`ReseedFromBackupID`, checked as
-`TestLogicalReseed` checks a reseed; mydumper needs myloader), then the copy
-deleted through `DeleteBackupByID`. A splitdump copy whose `metadata` holds no
-position is discovered completed with the "no replication position" note, and
-its reseed refused (D5).
+run by name). An accounts file is listed not a backup and refused (D9). For a
+mysqldump file, a splitdump folder and a mydumper folder (mydumper installed): a
+backup of the primary is copied under another name, backdated past the settle
+window, listed as a candidate and not registered (D2), registered (D3: position
+and GTID as the backup recorded, Full, fingerprint), the first replica reseeded
+from it (D4, checked as `TestLogicalReseed` checks a reseed; mydumper needs
+myloader). The mysqldump copy is then edited (a marker schema before its
+footer): WARN0249, the reseed refused, the change registered, the reseed loads
+the edit (the marker read on the replica, then dropped there with
+`sql_log_bin=0`) (D5); then truncated: WARN0249, Verify fails, Register of the
+change refused (D6). Each copy is unregistered (file kept, state cleared, a
+candidate again) and removed by the test (D7). A splitdump copy whose
+`metadata` holds no position is registered with the "no replication position"
+note, and its reseed refused (D8). Last, the record a 3.1.44 discovery made of the scheduled
+`mysqldump.sql.gz` is written by hand and removed by the next discovery, the
+file kept (D10).

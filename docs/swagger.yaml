@@ -48,9 +48,9 @@ definitions:
       discovered:
         description: |-
           Discovered: the backup was found in the server's backup folder without metadata
-          (copied there by hand or by another tool) and registered by replication-manager.
-          It is never picked by an automatic restore; DiscoveryNote says what its scan found
-          (why it is not completed, or a check it could not run).
+          (copied there by hand or by another tool) and registered by the operator (#2073).
+          It is never picked by an automatic restore; DiscoveryNote says what its read found
+          (a check it could not run).
         type: boolean
       discoveryNote:
         type: string
@@ -80,6 +80,11 @@ definitions:
         type: string
       metaFile:
         type: string
+      notABackup:
+        description: |-
+          NotABackup: a discovered entry that is not a backup (an accounts file, no table), kept
+          listed from a release that registered every dump it found: flagged, never used.
+        type: boolean
       originalRemoved:
         description: |-
           OriginalRemoved: the artifact at Dest was removed once its archive snapshot
@@ -88,6 +93,12 @@ definitions:
         type: boolean
       previous:
         type: integer
+      registration:
+        allOf:
+        - $ref: '#/definitions/backupmgr.BackupRegistration'
+        description: |-
+          Registration is the file of a discovered backup as registered: a change since is not
+          used until it is registered.
       resticEnabled:
         type: boolean
       resticFilePath:
@@ -114,6 +125,11 @@ definitions:
         description: bytes received from the backup stream, before compression/encryption
           (physical); the next run's progress denominator
         type: integer
+      timeSource:
+        description: |-
+          TimeSource tells where StartTime and EndTime come from (BackupTimeSource*): the
+          backup's own record, its file's time, or the operator.
+        type: string
       verification:
         allOf:
         - $ref: '#/definitions/backupmgr.BackupVerification'
@@ -132,6 +148,18 @@ definitions:
         items:
           $ref: '#/definitions/backupmgr.BackupVerificationRun'
         type: array
+    type: object
+  backupmgr.BackupRegistration:
+    properties:
+      adopted:
+        description: |-
+          Adopted: registered by a release that registered every dump it found (v3.1.44), its
+          fingerprint taken when this release first saw it.
+        type: boolean
+      artifact:
+        $ref: '#/definitions/backupmgr.ArtifactFingerprint'
+      registeredAt:
+        type: string
     type: object
   backupmgr.BackupStat:
     properties:
@@ -848,6 +876,72 @@ definitions:
       weight:
         type: string
     type: object
+  cluster.BackupCandidate:
+    properties:
+      encrypted:
+        type: boolean
+      files:
+        type: integer
+      modTime:
+        type: string
+      name:
+        type: string
+      path:
+        type: string
+      reason:
+        type: string
+      registerError:
+        type: string
+      registering:
+        description: 'Registering and RegisterError: the last Register of this artifact,
+          running or refused'
+        type: boolean
+      server:
+        type: string
+      size:
+        type: integer
+      splitDump:
+        type: boolean
+      status:
+        type: string
+      tool:
+        type: string
+    type: object
+  cluster.BackupDiscoveryView:
+    properties:
+      changes:
+        items:
+          $ref: '#/definitions/cluster.BackupRegistrationChange'
+        type: array
+      servers:
+        items:
+          $ref: '#/definitions/cluster.backupCandidateSet'
+        type: array
+    type: object
+  cluster.BackupRegistrationChange:
+    properties:
+      checked:
+        type: string
+      describe:
+        type: string
+      dest:
+        type: string
+      error:
+        type: string
+      id:
+        type: integer
+      now:
+        allOf:
+        - $ref: '#/definitions/backupmgr.ArtifactFingerprint'
+        description: 'nil: missing, or can not be read'
+      registerError:
+        description: 'RegisterError: the last Register of the change, refused'
+        type: string
+      server:
+        type: string
+      was:
+        $ref: '#/definitions/backupmgr.ArtifactFingerprint'
+    type: object
   cluster.BackupVerificationServerState:
     properties:
       empty:
@@ -1502,6 +1596,22 @@ definitions:
       variableName:
         type: string
     type: object
+  cluster.backupCandidateSet:
+    properties:
+      candidates:
+        items:
+          $ref: '#/definitions/cluster.BackupCandidate'
+        type: array
+      dropped:
+        description: |-
+          Dropped: the artifacts the last discovery did not list, beyond
+          backup-discovery-candidate-max (WARN0250)
+        type: integer
+      scannedAt:
+        type: string
+      server:
+        type: string
+    type: object
   config.AgentVariable:
     properties:
       agent:
@@ -2022,6 +2132,10 @@ definitions:
       backupCheckFreeSpace:
         type: boolean
       backupConcurrentSlots:
+        type: integer
+      backupDiscovery:
+        type: boolean
+      backupDiscoveryCandidateMax:
         type: integer
       backupDiskTresholdCrit:
         type: integer
@@ -4832,6 +4946,21 @@ definitions:
         type: boolean
       scope:
         description: '"cluster" | "global"'
+        type: string
+    type: object
+  server.backupRegisterRequest:
+    properties:
+      path:
+        description: Path is the artifact, as the candidates list it
+        type: string
+      server:
+        description: Server is the URL (host:port) of the server whose backup folder
+          holds the artifact
+        type: string
+      takenAt:
+        description: |-
+          TakenAt (RFC 3339) is when the backup was taken, for one that records no time of its
+          own (a splitdump, a dump written with --skip-comments); refused for one that does
         type: string
     type: object
   server.globalAlertsResponse:
@@ -8997,7 +9126,7 @@ paths:
   /api/clusters/{clusterName}/backups/{backupID}/delete:
     post:
       description: |-
-        Deletes a non-restic backup for the specified cluster.
+        Deletes a replication-manager-created non-restic backup for the specified cluster. A discovered backup is never deleted; unregister it instead.
         Required grant: db-backup
       parameters:
       - default: Bearer <Add access token here>
@@ -9036,11 +9165,137 @@ paths:
           description: Backup running
           schema:
             type: string
+        "422":
+          description: 'Discovered backup: unregister it instead'
+          schema:
+            type: string
         "500":
           description: Delete failed
           schema:
             type: string
       summary: Delete a backup by ID
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/{backupID}/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Registers the change of a registered discovered backup's file (WARN0249), in the background: the file as it is now is read to its end and checked as a new backup would be; on success its new fingerprint, position and size are recorded and the state clears, the backup keeping its id; refused, with the reason, if the change broke it. The backup file is not touched.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: integer
+      - description: takenAt only, for a backup that records no time
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/server.backupRegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Registration started
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid backup ID or time
+          schema:
+            type: string
+        "403":
+          description: No valid ACL, or no db-backup grant
+          schema:
+            type: string
+        "404":
+          description: Backup not found
+          schema:
+            type: string
+        "409":
+          description: Unchanged, or a backup, a discovery, a registration or a verification
+            runs
+          schema:
+            type: string
+        "422":
+          description: Not a discovered backup
+          schema:
+            type: string
+        "500":
+          description: Registration not started
+          schema:
+            type: string
+      summary: Register the change of a discovered backup
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/{backupID}/unregister:
+    post:
+      description: |-
+        Unregisters a discovered backup: replication-manager's metadata file is removed, the backup file is left as it is and is listed as a candidate again. Clears its WARN0249. A backup replication-manager took is refused: delete it instead.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Backup unregistered
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid backup ID
+          schema:
+            type: string
+        "403":
+          description: No valid ACL, or no db-backup grant
+          schema:
+            type: string
+        "404":
+          description: Backup not found
+          schema:
+            type: string
+        "409":
+          description: A discovery, a registration or a verification runs
+          schema:
+            type: string
+        "422":
+          description: Not a discovered backup
+          schema:
+            type: string
+        "500":
+          description: Not unregistered
+          schema:
+            type: string
+      summary: Unregister a discovered backup
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/backups/{backupID}/verify:
@@ -9147,10 +9402,45 @@ paths:
       summary: Verify a backup by ID and level
       tags:
       - ClusterBackups
+  /api/clusters/{clusterName}/backups/candidates:
+    get:
+      description: |-
+        Returns, per server, the artifacts of its backup folder no metadata describes, as its last discovery checked them (status backup, not-backup, incomplete, unchecked, unreadable or settling, with the reason, and the outcome of their last Register), and the registered discovered backups whose file changed since registered (WARN0249), with what changed.
+        Required grant: cluster-show-backups
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Candidates per server and changed backups
+          schema:
+            $ref: '#/definitions/cluster.BackupDiscoveryView'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Backup discovery candidates and changes
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/backups/discover:
     post:
       description: |-
-        Starts, in the background, the scan of each server's backup folder that registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. A discovered backup not completed (one that could not be read) is inspected again. The backups registered are logged and appear in the backup list. Refused while a backup of the cluster runs.
+        Starts, in the background, the scan of each server's backup folder that lists the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes, copied there by hand or by another tool, as candidates with their cheap checks (GET /backups/candidates). It registers nothing: a candidate is registered with POST /backups/register. A candidate that could not be read is checked again. Refused while a backup of the cluster runs.
         Required grant: db-backup
       parameters:
       - default: Bearer <Add access token here>
@@ -9226,6 +9516,62 @@ paths:
       summary: Reconcile backup metadata with restic snapshots
       tags:
       - ClusterBackup
+  /api/clusters/{clusterName}/backups/register:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Registers a candidate of the backup discovery, in the background: it is read to its end as a restore would read it and registered only if it is a proper backup (it holds a table and is complete); its fingerprint is recorded, replication-manager's metadata file written next to it, the backup file is not touched. The outcome is listed with the candidates (GET /backups/candidates). Refused at once for a candidate the discovery found is not a backup. takenAt sets the time of a backup that records none.
+        Required grant: db-backup
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: The candidate
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.backupRegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Registration started
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid body or time
+          schema:
+            type: string
+        "403":
+          description: No valid ACL, or no db-backup grant
+          schema:
+            type: string
+        "409":
+          description: A backup, a discovery or a registration runs, or already registered
+          schema:
+            type: string
+        "422":
+          description: Not a backup, or can not be registered
+          schema:
+            type: string
+        "500":
+          description: Registration not started
+          schema:
+            type: string
+      summary: Register a discovered backup
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/backups/stats:
     get:
       description: |-
@@ -14220,7 +14566,8 @@ paths:
             type: object
         "400":
           description: Backup not usable (not completed, no replication position,
-            archived only, missing, not logical) or the server is the primary
+            archived only, missing, not logical, not a backup, changed since registered)
+            or the server is the primary
           schema:
             type: string
         "403":
