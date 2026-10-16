@@ -83,6 +83,13 @@ share it. The maps a loader builds before it publishes them (`InitConfig`'s `Imm
 `GetClusterConfig`'s `clustImmuableMap`) are local and not guarded. The writers outside the
 chain only had their access wrapped: what they write, and when, is unchanged.
 
+A map is shared only by whole-map assignment, so the server creates every map before it
+hands it out: the default ones in `InitConfig`, each cluster's in `GetClusterConfig`
+(published for every named cluster; a cluster added at runtime gets the default ones).
+`DynamicFlagMaps[cluster]` and `ImmuableFlagMaps[cluster]` are never nil once handed out, so
+the nil-map creation in `SetDynamicFlag` / `SetImmuableFlag` never runs in the server; it
+only serves configs built without their maps (unit tests).
+
 `Conf.Secrets` is a `*SecretMap` with its own lock (#2039): readers outside the chain need
 no chain lock.
 
