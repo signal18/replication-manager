@@ -36,6 +36,9 @@ const verificationWait = 30 * time.Minute
 //     passes, warns that the source has an event the backup lacks and raises WARN0248; a
 //     new backup with the scheduler on clears it (skipped without a
 //     backup-verification-host);
+//   - V8: with autorejoin-backup-selector-logical {"proven":true}: a new backup and an
+//     integrity pass do not prove it, a test restore does, and a backup changed since its
+//     test restore is no longer proven;
 //   - V7: the replica as backup-verification-host, listed in db-servers-ignored-hosts: the
 //     test restore reseeds it from the backup, it replicates again from the backup's position
 //     (a write on the primary reaches it, its data matches) and leaves maintenance; with its
@@ -127,6 +130,63 @@ func (regtest *RegTest) TestBackupVerification(cl *clusterpkg.Cluster, conf stri
 		}
 	}
 	cl.Conf.BackupMysqldumpSplitDump = false
+
+	// V8
+	if cl.Conf.BackupVerificationHost == "" {
+		e.logf("TEST", "V8 proven backup skipped: backup-verification-host is not set")
+	} else {
+		savedSelector := cl.Conf.AutorejoinBackupSelectorLogical
+		cl.Conf.AutorejoinBackupSelectorLogical = `{"proven":true}`
+		rejoinable := func() bool { logical, _ := cl.HasCatalogBackupForRejoin(); return logical }
+		// the catalog reads what the proof refresh last found: it runs every 30 heartbeats,
+		// off the monitor tick. A change is seen within two refreshes (one may have started
+		// just before it): wait three, never less than 3 minutes
+		proofWait := 3 * 30 * time.Duration(cl.Conf.MonitoringTicker) * time.Second
+		if proofWait < 3*time.Minute {
+			proofWait = 3 * time.Minute
+		}
+		becomes := func(want bool) bool {
+			deadline := time.Now().Add(proofWait)
+			for {
+				if rejoinable() == want {
+					return true
+				}
+				if time.Now().After(deadline) {
+					return false
+				}
+				time.Sleep(2 * time.Second)
+			}
+		}
+		// another server's last backup proven by an earlier run would answer for the catalog
+		others := ""
+		for _, sv := range cl.Servers {
+			if sv == nil || sv == e.m || sv.LastBackupMeta.Logical == nil {
+				continue
+			}
+			if v := sv.GetBackupVerification(sv.LastBackupMeta.Logical); v != nil && v.Level == config.ConstBackupVerificationLevelRestore && v.Status == backupmgr.BackupVerificationPassed {
+				others += " " + sv.URL
+			}
+		}
+		if meta, ok := e.backup("V8 backup", false); ok {
+			if others != "" {
+				e.logf("TEST", "V8 not-proven checks skipped: the last backup of%s passed a test restore", others)
+			} else {
+				e.check("V8 a new backup is not proven", !rejoinable(), "proven")
+			}
+			if passed("V8 integrity", config.ConstBackupVerificationLevelIntegrity) != nil && others == "" {
+				e.check("V8 an integrity pass does not prove the backup", !rejoinable(), "proven")
+			}
+			if v := passed("V8 restore level", config.ConstBackupVerificationLevelRestore); v != nil && v.Status == backupmgr.BackupVerificationPassed {
+				e.check("V8 a test restore proves the backup", becomes(true), fmt.Sprintf("not proven after %s", proofWait))
+				if err := cutLastByte(meta.Dest); err != nil {
+					e.check("V8 cut the backup", false, err.Error())
+				} else if others == "" {
+					e.check("V8 a backup changed since its test restore is not proven", becomes(false), fmt.Sprintf("still proven after %s", proofWait))
+				}
+			}
+		}
+		cl.Conf.AutorejoinBackupSelectorLogical = savedSelector
+	}
 
 	// V4
 	cl.Conf.BackupVerification = true

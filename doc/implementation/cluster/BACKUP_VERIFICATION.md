@@ -355,6 +355,56 @@ these lines and in a failed statement's error, masks password literals
   verified) and the **Verify integrity** / **Test restore**
   actions (`verifyBackup` thunk).
 
+## Restore catalog
+
+A backup is proven (`BackupCatalogEntry.Proven`) when its last verification is
+a pass of the restore level that recorded the file it loaded (`backupProven`:
+`Artifact` set; warnings included, the backup restored without the objects
+named), that file is still on disk unchanged, and the entry is local: the entry
+of a backup with a restic snapshot is the snapshot, and a test restore proved
+the local file, not the snapshot. An integrity pass, a failed, running or
+skipped result never prove a backup.
+
+`buildBackupCatalog` runs on the monitor tick (`HasCatalogBackupForRejoin`,
+through `goRun`, which the tick waits for) and when a rejoin starts. It takes no
+lock and reads no file: it reads the proof snapshot `Cluster.backupProofs`, an
+`atomic.Pointer` to a map keyed by server, backup id and file (`backupProofKey`:
+an id is a unix time, two servers' backups can share one). No snapshot yet:
+nothing proven.
+
+`refreshBackupProofs` builds that snapshot. `Run` starts it every 30
+heartbeats with `trackTickGoroutine`, which the tick does not wait for; one runs
+at a time (a call while one runs returns at once). Under each server's
+`backupMetaMutex` it copies the last backups `backupProven` accepts (their key
+and fingerprint), then, without the lock, compares each file with its
+fingerprint, reading at most `backupProofWalkMax` entries of a folder (a larger
+one is not proven), and publishes a new map holding the unchanged ones: at most
+two per server, the previous map dropped whole. A backup verified now is proven
+once the next refresh has found its file unchanged; nothing stores a proof
+without that check.
+
+The fingerprint (`backupmgr.ArtifactFingerprint`) is the file's size,
+modification time, inode and ctime (for a folder: its files' count, total size,
+newest modification time and newest ctime, and the folder's inode). `touch` and a
+copy can set the modification time back, not the ctime, and a replaced file gets
+another inode. A fingerprint without inode and ctime (recorded before they were
+added, or on a system other than Linux, where `artifactStatIdentity` reads none)
+matches nothing: not proven, and the reseed reads the file again
+(`verifiedRestoreArtifact`, the same comparison, `artifactUnchanged`).
+
+`Proven` only matters to a selector with `"proven": true`, so the default
+(empty) selectors are unchanged.
+
+## CLI
+
+`clients/client_backup.go`: `replication-manager-cli backup verify ID
+[--level] [--wait] [--timeout]` posts to `backups/{id}/verify[/{level}]` and
+prints the API's error with its status when the run does not start. `--wait`
+also needs `cluster-show-backups`: it polls `GET backups` (a map keyed by
+backup ID) every 5 s until the backup's `verification.status` is no longer
+`running`; exit 0 passed, 1 failed, 3 skipped, 1 after `--timeout` seconds
+(0 waits forever).
+
 ## Tests
 
 - `cluster/backup_artifact_validation_test.go`: the artifact checks, encrypted
@@ -362,6 +412,12 @@ these lines and in a failed statement's error, masks password literals
 - `cluster/backup_verification_test.go`: integrity level cases (footer,
   comments, position, sidecar, splitdump), encrypted backups, the recorded
   result and ERR00117, the on-demand refusals and run.
+- `cluster/restore_catalog_test.go`: `TestBackupProven` (which results prove
+  a backup), `TestBuildBackupCatalogProvenFileUnchanged` (none before a refresh,
+  unchanged, replaced with its size and modification time put back, removed,
+  dropped from the snapshot), `TestBuildBackupCatalogProofKey` (another server's
+  backup with the same id, a restic snapshot entry),
+  `TestArtifactUnchangedNeedsIdentity`, `TestArtifactUnchangedBoundedWalk`.
 - `cluster/backup_verification_restore_test.go`: row counting, the inventory
   of real dump statement forms, the replication statements, the comparison
   with the source.

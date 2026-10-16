@@ -593,6 +593,10 @@ type Cluster struct {
 	// backupVerifying holds the backups being verified (#2023): backup id -> level.
 	backupVerificationMu sync.Mutex `json:"-"`
 	backupVerifying      sync.Map   `json:"-"`
+	// backupProofs: the backups whose passed test restore loaded a file still on disk
+	// unchanged, a snapshot refreshBackupProofs replaces whole (#2023).
+	backupProofs          atomic.Pointer[map[backupProofKey]bool] `json:"-"`
+	backupProofRefreshing atomic.Bool                             `json:"-"`
 	// backupVerificationReads holds the backups an on-demand verification reads: backup id
 	// -> backupVerificationRead. A backup reusing the file and the archive removal wait.
 	backupVerificationReads sync.Map `json:"-"`
@@ -1334,6 +1338,8 @@ func (cluster *Cluster) tickBody() {
 				if heartbeats%30 == 0 {
 					goRun(func() { cluster.IsValidBackup = cluster.HasValidBackup() })
 					goRun(func() { cluster.HasCatalogBackupForRejoin() })
+					// off the tick: it waits for backupMetaMutex and reads backup files (#2023)
+					cluster.trackTickGoroutine(cluster.refreshBackupProofs)
 					goRun(cluster.CheckCanSaveDynamicConfig)
 					goRun(cluster.CheckIsOverwrite)
 					goRun(cluster.CheckAllBackupEstimatedSize)

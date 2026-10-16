@@ -134,6 +134,11 @@ type ArtifactFingerprint struct {
 	Files   int       `json:"files"`
 	Size    int64     `json:"size"`
 	ModTime time.Time `json:"modTime"`
+	// Inode and ChangeTime (ctime) of the file, of the folder's newest change for a folder
+	// (its folder inode): a replaced file, or one whose modification time was set back, does
+	// not match. Absent from fingerprints recorded before, which then match nothing.
+	Inode      uint64    `json:"inode,omitempty"`
+	ChangeTime time.Time `json:"changeTime,omitempty"`
 }
 
 type PointInTimeMeta struct {

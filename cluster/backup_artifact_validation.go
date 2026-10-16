@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	stdgzip "compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -272,6 +273,15 @@ func validateSplitDumpArtifactFile(path, name string) error {
 // restore reads it: the encrypted archive of a splitdump when it has one, the files of a
 // splitdump directory, else the file.
 func restoreArtifactFingerprint(path string) (*backupmgr.ArtifactFingerprint, error) {
+	return restoreArtifactFingerprintBounded(path, 0)
+}
+
+// errArtifactWalkBudget: a folder holds more entries than the walk may read.
+var errArtifactWalkBudget = errors.New("more entries than the fingerprint check reads")
+
+// restoreArtifactFingerprintBounded is restoreArtifactFingerprint reading at most maxEntries
+// entries of a folder (0: all of them).
+func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.ArtifactFingerprint, error) {
 	if enc := encryptedSplitDumpPath(path); enc != "" {
 		path = enc
 	}
@@ -279,13 +289,21 @@ func restoreArtifactFingerprint(path string) (*backupmgr.ArtifactFingerprint, er
 	if err != nil {
 		return nil, err
 	}
+	ino, ctime := artifactStatIdentity(fi)
 	if !fi.IsDir() {
-		return &backupmgr.ArtifactFingerprint{Files: 1, Size: fi.Size(), ModTime: fi.ModTime()}, nil
+		return &backupmgr.ArtifactFingerprint{Files: 1, Size: fi.Size(), ModTime: fi.ModTime(), Inode: ino, ChangeTime: ctime}, nil
 	}
-	fp := &backupmgr.ArtifactFingerprint{}
+	fp := &backupmgr.ArtifactFingerprint{Inode: ino, ChangeTime: ctime}
+	entries := 0
 	err = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
 			return err
+		}
+		if entries++; maxEntries > 0 && entries > maxEntries {
+			return errArtifactWalkBudget
+		}
+		if d.IsDir() {
+			return nil
 		}
 		info, err := d.Info()
 		if err != nil {
@@ -295,6 +313,9 @@ func restoreArtifactFingerprint(path string) (*backupmgr.ArtifactFingerprint, er
 		fp.Size += info.Size()
 		if info.ModTime().After(fp.ModTime) {
 			fp.ModTime = info.ModTime()
+		}
+		if _, c := artifactStatIdentity(info); c.After(fp.ChangeTime) {
+			fp.ChangeTime = c
 		}
 		return nil
 	})
@@ -328,10 +349,30 @@ func (cluster *Cluster) verifiedRestoreArtifact(path string) *backupmgr.BackupMe
 	if v == nil || v.Status != backupmgr.BackupVerificationPassed || v.Artifact == nil {
 		return nil
 	}
-	fp, err := restoreArtifactFingerprint(path)
-	// time.Equal: the recorded time may come back from the meta file, without its location
-	if err != nil || fp.Files != v.Artifact.Files || fp.Size != v.Artifact.Size || !fp.ModTime.Equal(v.Artifact.ModTime) {
+	if !artifactUnchanged(path, v.Artifact) {
 		return nil
 	}
 	return found
+}
+
+// artifactUnchanged: the backup at path is still the one a passed verification read,
+// the same files, size and newest modification time as recorded in rec. It stats the
+// file (walks a splitdump directory): call it without backupMetaMutex.
+func artifactUnchanged(path string, rec *backupmgr.ArtifactFingerprint) bool {
+	return artifactUnchangedBounded(path, rec, 0)
+}
+
+// artifactUnchangedBounded is artifactUnchanged reading at most maxEntries entries of a
+// folder: a larger one does not match.
+func artifactUnchangedBounded(path string, rec *backupmgr.ArtifactFingerprint, maxEntries int) bool {
+	if rec == nil {
+		return false
+	}
+	fp, err := restoreArtifactFingerprintBounded(path, maxEntries)
+	// time.Equal: the recorded time may come back from the meta file, without its location.
+	// Without its inode and ctime (recorded before them, or not Linux) a fingerprint does not
+	// identify the file: it matches nothing.
+	return err == nil && !rec.ChangeTime.IsZero() && !fp.ChangeTime.IsZero() &&
+		fp.Files == rec.Files && fp.Size == rec.Size && fp.ModTime.Equal(rec.ModTime) &&
+		fp.Inode == rec.Inode && fp.ChangeTime.Equal(rec.ChangeTime)
 }

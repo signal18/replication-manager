@@ -4,9 +4,13 @@
 package cluster
 
 import (
+	"os"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
@@ -87,4 +91,206 @@ func TestBuildBackupCatalogExcludesIncompleteEncryptionFailure(t *testing.T) {
 			t.Fatalf("incomplete (failed-encryption) backup must be excluded from the catalog, got entry %+v", entry)
 		}
 	}
+}
+
+// #2023: only a passed test restore that recorded the file it loaded proves a backup;
+// an integrity pass, a failed or running restore, or no verification at all does not
+func TestBackupProven(t *testing.T) {
+	restore, integrity := config.ConstBackupVerificationLevelRestore, config.ConstBackupVerificationLevelIntegrity
+	rec := &backupmgr.ArtifactFingerprint{Files: 1, Size: 10, ModTime: time.Now()}
+	for _, tc := range []struct {
+		name string
+		v    *backupmgr.BackupVerification
+		want bool
+	}{
+		{"not verified", nil, false},
+		{"integrity passed", &backupmgr.BackupVerification{Level: integrity, Status: backupmgr.BackupVerificationPassed, Artifact: rec}, false},
+		{"restore running", &backupmgr.BackupVerification{Level: restore, Status: backupmgr.BackupVerificationRunning}, false},
+		{"restore failed", &backupmgr.BackupVerification{Level: restore, Status: backupmgr.BackupVerificationFailed}, false},
+		{"restore skipped", &backupmgr.BackupVerification{Level: restore, Status: backupmgr.BackupVerificationSkipped}, false},
+		{"restore passed, file changed during the run", &backupmgr.BackupVerification{Level: restore, Status: backupmgr.BackupVerificationPassed}, false},
+		{"restore passed", &backupmgr.BackupVerification{Level: restore, Status: backupmgr.BackupVerificationPassed, Artifact: rec}, true},
+		{"restore passed with warnings", &backupmgr.BackupVerification{Level: restore, Status: backupmgr.BackupVerificationPassed, Artifact: rec, Warnings: []string{"events"}}, true},
+	} {
+		m := &backupmgr.BackupMetadata{BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump", Completed: true, EndTime: time.Now(), Verification: tc.v}
+		if got := backupProven(m); got != tc.want {
+			t.Errorf("%s: proven %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// provenTestBackup writes a dump file and returns a completed backup of it that passed a
+// test restore, with the fingerprint of the file.
+func provenTestBackup(t *testing.T, id int64) *backupmgr.BackupMetadata {
+	t.Helper()
+	dest := filepath.Join(t.TempDir(), "mysqldump.sql.gz")
+	if err := os.WriteFile(dest, []byte("dump"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := restoreArtifactFingerprint(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &backupmgr.BackupMetadata{
+		Id: id, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump", Dest: dest, Completed: true, EndTime: time.Now(),
+		Verification: &backupmgr.BackupVerification{Level: config.ConstBackupVerificationLevelRestore, Status: backupmgr.BackupVerificationPassed, Artifact: rec},
+	}
+}
+
+// F5: the catalog proves the file a test restore loaded, as long as refreshBackupProofs
+// found it on disk unchanged; rewritten, replaced with its size and modification time put
+// back, or removed since, the backup is no longer proven. The catalog itself takes no lock
+// and reads no file: before a refresh, nothing is proven.
+func TestBuildBackupCatalogProvenFileUnchanged(t *testing.T) {
+	m := provenTestBackup(t, 42)
+	dest, rec := m.Dest, m.Verification.Artifact
+	sv := &ServerMonitor{URL: "10.0.0.1:3306"}
+	sv.LastBackupMeta.Logical = m
+	c := &Cluster{Servers: []*ServerMonitor{sv}}
+	proven := func(refresh bool) bool {
+		if refresh {
+			c.refreshBackupProofs()
+		}
+		cat := c.buildBackupCatalog()
+		if len(cat) != 1 {
+			t.Fatalf("catalog %+v", cat)
+		}
+		return cat[0].Proven
+	}
+	if proven(false) {
+		t.Fatal("not checked yet: not proven")
+	}
+	if rec.Inode == 0 || rec.ChangeTime.IsZero() {
+		c.refreshBackupProofs()
+		if proven(false) {
+			t.Fatal("a platform without artifact identity must fail closed")
+		}
+		return
+	}
+	if !proven(true) {
+		t.Fatal("an unchanged file that passed a test restore must be proven")
+	}
+	// the catalog reads the snapshot: the file changing proves nothing until a refresh
+	other := dest + ".other"
+	if err := os.WriteFile(other, []byte("DUMP"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(other, rec.ModTime, rec.ModTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(other, dest); err != nil {
+		t.Fatal(err)
+	}
+	if proven(true) {
+		t.Fatal("a file replaced since its test restore, same size and modification time, must not be proven")
+	}
+	if err := os.Remove(dest); err != nil {
+		t.Fatal(err)
+	}
+	if proven(true) {
+		t.Fatal("a removed file must not be proven")
+	}
+	sv.LastBackupMeta.Logical = nil
+	c.refreshBackupProofs()
+	if p := c.backupProofs.Load(); p == nil || len(*p) != 0 {
+		t.Fatalf("a backup no longer a server's last must leave the snapshot: %v", p)
+	}
+}
+
+// a proof belongs to its server's backup: another server's backup with the same id (a unix
+// time) is not proven by it, nor is a restic snapshot entry
+func TestBuildBackupCatalogProofKey(t *testing.T) {
+	proven := provenTestBackup(t, 100)
+	same := provenTestBackup(t, 100)
+	same.Verification = nil // same id, never test-restored
+	remote := provenTestBackup(t, 101)
+	remote.ResticEnabled, remote.ResticSnapshotID = true, "a1b2c3d4"
+	a, b, r := &ServerMonitor{URL: "db1:3306"}, &ServerMonitor{URL: "db2:3306"}, &ServerMonitor{URL: "db3:3306"}
+	a.LastBackupMeta.Logical, b.LastBackupMeta.Logical, r.LastBackupMeta.Logical = proven, same, remote
+	c := &Cluster{Servers: []*ServerMonitor{a, b, r}}
+	c.refreshBackupProofs()
+	got := map[string]bool{}
+	for _, e := range c.buildBackupCatalog() {
+		got[e.Server] = e.Proven
+	}
+	if !got["db1:3306"] || got["db2:3306"] || got["db3:3306"] {
+		t.Fatalf("proven by server %v, want db1 only", got)
+	}
+}
+
+// without its inode and ctime a fingerprint identifies nothing: recorded before they were
+// added, or on a system where they are not read
+func TestArtifactUnchangedNeedsIdentity(t *testing.T) {
+	m := provenTestBackup(t, 1)
+	rec := *m.Verification.Artifact
+	if !artifactUnchanged(m.Dest, &rec) {
+		t.Fatal("full fingerprint: unchanged")
+	}
+	rec.Inode, rec.ChangeTime = 0, time.Time{}
+	if artifactUnchanged(m.Dest, &rec) {
+		t.Fatal("a fingerprint without inode and ctime must not match")
+	}
+}
+
+// a folder larger than the walk reads is not checked: it does not match
+func TestArtifactUnchangedBoundedWalk(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"a.sql", "b.sql", "c.sql"} {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte(f), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec, err := restoreArtifactFingerprint(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Inode == 0 || rec.ChangeTime.IsZero() {
+		if artifactUnchangedBounded(dir, rec, 10) {
+			t.Fatal("a platform without artifact identity must fail closed")
+		}
+		return
+	}
+	if !artifactUnchangedBounded(dir, rec, 10) {
+		t.Fatal("within the walk's bound: unchanged")
+	}
+	if artifactUnchangedBounded(dir, rec, 2) {
+		t.Fatal("beyond the walk's bound: must not match")
+	}
+}
+
+// the catalog (the monitor tick, a rejoin), the proof refresh and a verification recording
+// its result run at once: run with -race
+func TestBuildBackupCatalogConcurrentWithRefresh(t *testing.T) {
+	m := provenTestBackup(t, 7)
+	sv := &ServerMonitor{URL: "db1:3306"}
+	sv.LastBackupMeta.Logical = m
+	c := &Cluster{Servers: []*ServerMonitor{sv}}
+	passed, failed := *m.Verification, backupmgr.BackupVerification{Level: m.Verification.Level, Status: backupmgr.BackupVerificationFailed}
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() { // a verification recording its result, under backupMetaMutex
+		defer wg.Done()
+		for i := 0; i < 500; i++ {
+			v := passed
+			if i%2 == 1 {
+				v = failed
+			}
+			sv.backupMetaMutex.Lock()
+			m.Verification = &v
+			sv.backupMetaMutex.Unlock()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			c.refreshBackupProofs()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 500; i++ {
+			c.buildBackupCatalog()
+		}
+	}()
+	wg.Wait()
 }
