@@ -35,9 +35,11 @@ type BackupRunOptions struct {
 
 var adhocMetaFilePattern = regexp.MustCompile(`\.(\d+)\.meta\.json$`)
 var (
-	ErrBackupInProgress = errors.New("backup is still running")
-	ErrBackupInvalidID  = errors.New("invalid backup id")
-	ErrBackupNotFound   = errors.New("backup not found")
+	ErrBackupInProgress         = errors.New("backup is still running")
+	ErrBackupInvalidID          = errors.New("invalid backup id")
+	ErrBackupNotFound           = errors.New("backup not found")
+	ErrBackupDiscovered         = errors.New("discovered backup: unregister it instead")
+	ErrBackupDuplicateScheduled = errors.New("a discovered record of a scheduled backup file: it is removed at the next check, use the scheduled backup")
 )
 
 func normalizeBackupLine(value string) string {
@@ -311,6 +313,10 @@ func readBackupMetadataFile(path string) (*backupmgr.BackupMetadata, error) {
 	meta := new(backupmgr.BackupMetadata)
 	if err := json.NewDecoder(file).Decode(meta); err != nil {
 		return nil, err
+	}
+	// a discovered logical dump is a full backup; a release before #2073 left its strategy unset
+	if meta != nil && meta.Discovered && meta.BackupStrategy == 0 {
+		meta.BackupStrategy = backupmgr.BackupStrategyFull
 	}
 	if meta != nil && strings.TrimSpace(meta.Dest) != "" {
 		if compressed, err := backupmgr.DetectCompressionFromDest(meta.Dest); err == nil {
@@ -592,6 +598,9 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 	meta := cluster.BackupMetaMap.Get(backupID)
 	if meta == nil {
 		return nil, fmt.Errorf("%w: %d", ErrBackupNotFound, backupID)
+	}
+	if meta.Discovered {
+		return nil, fmt.Errorf("%w: %d", ErrBackupDiscovered, backupID)
 	}
 	if meta.Source == "" {
 		return nil, fmt.Errorf("backup %d has no source server", backupID)

@@ -1438,7 +1438,7 @@ func (repman *ReplicationManager) handlerMuxServerUpgradeSystemTables(w http.Res
 // @Param serverName path string true "Server Name"
 // @Param backupID path string true "Backup ID"
 // @Success 200 {object} map[string]interface{} "Reseed started"
-// @Failure 400 {string} string "Backup not usable (not completed, no replication position, archived only, missing, not logical) or the server is the primary"
+// @Failure 400 {string} string "Backup not usable (not completed, no replication position, archived only, missing, not logical, not a backup, changed since registered) or the server is the primary"
 // @Failure 403 {string} string "No valid ACL, or no db-restore grant"
 // @Failure 404 {string} string "Backup not found"
 // @Failure 409 {string} string "A backup of the cluster is running"

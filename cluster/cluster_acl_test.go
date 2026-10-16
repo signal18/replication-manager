@@ -1358,3 +1358,28 @@ func TestAlterEngineACL(t *testing.T) {
 		})
 	}
 }
+
+// The backup discovery routes (#2073): the candidates are read with cluster-show-backups;
+// register and unregister are db-backup writes (their handlers check db-backup too, the rule
+// matcher falling back to the list's /backups rule).
+func TestBackupDiscoveryACL(t *testing.T) {
+	cluster := setupACLTestCluster()
+	cluster.APIUsers["user_show_backups"] = APIUser{User: "user_show_backups", Grants: map[string]bool{config.GrantClusterShowBackups: true}}
+	cluster.APIUsers["user_db_backup"] = APIUser{User: "user_db_backup", Grants: map[string]bool{config.GrantDBBackup: true}}
+	for _, tt := range []struct {
+		user, url string
+		expected  bool
+	}{
+		{"user_show_backups", "/api/clusters/test/backups/candidates", true},
+		{"user_start_only", "/api/clusters/test/backups/candidates", false},
+		{"user_db_backup", "/api/clusters/test/backups/register", true},
+		{"user_db_backup", "/api/clusters/test/backups/1700000000/register", true},
+		{"user_db_backup", "/api/clusters/test/backups/1700000000/unregister", true},
+		{"user_start_only", "/api/clusters/test/backups/register", false},
+		{"user_start_only", "/api/clusters/test/backups/1700000000/unregister", false},
+	} {
+		if got := cluster.IsURLPassACL(tt.user, tt.url, false); got != tt.expected {
+			t.Errorf("%s on %s: %v, want %v", tt.user, tt.url, got, tt.expected)
+		}
+	}
+}

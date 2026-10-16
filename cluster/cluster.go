@@ -36,6 +36,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/router/maxscale"
@@ -358,11 +359,20 @@ type Cluster struct {
 	bootstrapDR                 bootstrapDRState     `json:"-"` // DR replication-manager URL offered to init containers (bootstrap_dr.go)
 	backupProgress              sync.Map             `json:"-"` // key server/kind -> *BackupProgress (cluster_backup_progress.go)
 	backupDiscoveries           sync.Map             `json:"-"` // key server URL: a backup folder discovery runs (backup_discovery.go)
-	injectTrafficInFlight       atomic.Bool          `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
-	injectTrafficSince          atomic.Int64         `json:"-"` // unix time the running injection started
-	binlogServerIDs             *binlogServerIDPool  `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
-	binlogServerIDsOnce         sync.Once            `json:"-"`
-	resources                   *ResourceManager     `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
+	// backup discovery (#2073): the candidates of each server's last discovery (key server URL,
+	// a *backupCandidateSet replaced whole), the outcome of a Register (key artifact path, a
+	// backupRegisterResult: a path names one server, each server's backup folder holding its
+	// host_port, GetMyBackupDirectoryPath), the registered discovered backups whose file changed (key backup
+	// id, a *BackupRegistrationChange), and the change check running
+	backupCandidates           sync.Map            `json:"-"`
+	backupRegisterResults      sync.Map            `json:"-"`
+	backupChanges              sync.Map            `json:"-"`
+	backupRegistrationChecking atomic.Bool         `json:"-"`
+	injectTrafficInFlight      atomic.Bool         `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
+	injectTrafficSince         atomic.Int64        `json:"-"` // unix time the running injection started
+	binlogServerIDs            *binlogServerIDPool `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
+	binlogServerIDsOnce        sync.Once           `json:"-"`
+	resources                  *ResourceManager    `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
 	// provisioningMutex serialises every provision/unprovision operation that
 	// reports its result through the shared, unbuffered errorChan (the ~10
 	// receivers in prov.go + srv.go Uprovision). Without it, two overlapping
@@ -518,9 +528,12 @@ type Cluster struct {
 	// (not when one finishes -- see maybeRefreshAppsAsync for why), so it
 	// stays visible for inspection after a batch completes until the next
 	// one begins.
-	AppRefreshSkippedCount  int        `json:"appRefreshSkippedCount" groups:"web"`
-	secretVersionStoreMu    sync.Mutex `json:"-"`
-	secretVersionStoreDirty bool       `json:"-"`
+	AppRefreshSkippedCount int `json:"appRefreshSkippedCount" groups:"web"`
+	// credChain is the cluster's credential store chain (#2075): CredentialChain
+	credChain               *credstore.Chain `json:"-"`
+	credChainMu             sync.Mutex       `json:"-"`
+	secretVersionStoreMu    sync.Mutex       `json:"-"`
+	secretVersionStoreDirty bool             `json:"-"`
 	// reloadMu serializes Run()'s per-tick synchronous work (topology
 	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
 	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
@@ -1341,6 +1354,8 @@ func (cluster *Cluster) tickBody() {
 					goRun(func() { cluster.HasCatalogBackupForRejoin() })
 					// off the tick: it waits for backupMetaMutex and reads backup files (#2023)
 					cluster.trackTickGoroutine(cluster.refreshBackupProofs)
+					// off the tick: it stats or walks the registered discovered backups (#2073)
+					cluster.trackTickGoroutine(cluster.checkRegisteredBackups)
 					goRun(cluster.CheckCanSaveDynamicConfig)
 					goRun(cluster.CheckIsOverwrite)
 					goRun(cluster.CheckAllBackupEstimatedSize)
@@ -2004,6 +2019,18 @@ type ClusterSLAState struct {
 // saving. The single repman config-sync gate (server.go serve loop) consumes
 // the flag and runs SaveCallBack — so the heavy save never rides a caller's
 // goroutine or the cluster tick. See doc/implementation/config/CONFIG_SYNC.md.
+// CredentialChain is the cluster's credential store chain (#2075): every credential is read
+// and written through it. It is built for the current Conf, and built again when a reload
+// replaces Conf.
+func (cluster *Cluster) CredentialChain() *credstore.Chain {
+	cluster.credChainMu.Lock()
+	defer cluster.credChainMu.Unlock()
+	if cluster.credChain == nil || cluster.credChain.Conf() != cluster.Conf {
+		cluster.credChain = credstore.NewConfigChain(cluster.Conf, cluster.Save)
+	}
+	return cluster.credChain
+}
+
 func (cluster *Cluster) Save() {
 	cluster.IsNeedConfigSave = true
 }
@@ -2189,10 +2216,17 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	buf.WriteString(header)
 
 	for _, key := range keys {
-		_, ok := cluster.Conf.ImmuableFlagMap[key]
+		_, ok := cluster.Conf.GetImmuableFlag(key)
+		_, dynamic := cluster.Conf.GetDynamicFlag(key)
+		_, secret := cluster.Conf.Secrets.Lookup(key)
 		if ok || config.IsArchiveLegacyKey(key) {
 			// a legacy archive key is carried by the archive list (#2077)
 			s.Delete(key)
+		} else if secret && dynamic {
+			// a secret the dynamic config store holds (#2075): written whatever its raw
+			// field says, a value set at runtime (rotation, API) survives the restart
+			s.Delete(key)
+			buf.WriteString(key + " = \"" + cluster.GetEncryptedValueFromMemory(key) + "\"\n")
 		} else {
 			v, ok := cluster.Conf.DefaultFlagMap[key]
 			if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
@@ -2212,7 +2246,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	s.WriteTo(&buf)
 
 	// the archive list, unless a config file pins it (#2077)
-	if _, pinned := cluster.Conf.ImmuableFlagMap["archive"]; !pinned {
+	if _, pinned := cluster.Conf.GetImmuableFlag("archive"); !pinned {
 		archives, err := cluster.Conf.ArchivesToml("saved-" + cluster.Name)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the archive list: %s", err)
@@ -2235,7 +2269,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 	// Get Sorted Keys
 	keys := make([]string, 0)
-	for key := range cluster.Conf.ImmuableFlagMap {
+	for key := range config.CopyImmuableFlags(cluster.Conf.ImmuableFlagMap) {
 		keys = append(keys, key)
 	}
 
@@ -2243,7 +2277,7 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 
 	var buf bytes.Buffer
 	for _, key := range keys {
-		val := cluster.Conf.ImmuableFlagMap[key]
+		val, _ := cluster.Conf.GetImmuableFlag(key)
 		_, ok := cluster.Conf.Secrets.Lookup(key)
 		if ok {
 			encrypt_val := cluster.GetEncryptedValueFromMemory(key)
@@ -2274,7 +2308,7 @@ func (cluster *Cluster) SaveCacheConfig() error {
 	defer file.Close()
 
 	keys := make([]string, 0)
-	for key := range cluster.Conf.ImmuableFlagMap {
+	for key := range config.CopyImmuableFlags(cluster.Conf.ImmuableFlagMap) {
 		keys = append(keys, key)
 	}
 
@@ -2301,7 +2335,7 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 		keys = misc.SortKeysAsc(keys)
 
 		for _, key := range keys {
-			v, ok := cluster.Conf.ImmuableFlagMap[key]
+			v, ok := cluster.Conf.GetImmuableFlag(key)
 			if !ok {
 				s.Delete(key)
 			} else {

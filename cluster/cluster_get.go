@@ -1647,7 +1647,7 @@ func (cluster *Cluster) GetVaultToken() {
 			return
 		}
 		cluster.Conf.VaultToken = authInfo.Auth.ClientToken
-		cluster.Conf.DynamicFlagMap["vault-token"] = authInfo.Auth.ClientToken
+		cluster.Conf.SetDynamicFlag("vault-token", authInfo.Auth.ClientToken)
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "COUCOU test %s", authInfo.Auth.ClientToken)
 	}
 }

@@ -944,6 +944,34 @@ func TestDeleteBackupByIDSuccess(t *testing.T) {
 	}
 }
 
+func TestDeleteBackupByIDRefusesDiscoveredBackup(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	dest := filepath.Join(server.GetMyBackupDirectory(), "discovered.sql.gz")
+	if err := os.WriteFile(dest, []byte("client backup"), 0644); err != nil {
+		t.Fatalf("create backup payload: %v", err)
+	}
+	meta := &backupmgr.BackupMetadata{
+		Id:         time.Now().UnixNano(),
+		BackupTool: config.ConstBackupLogicalTypeMysqldump,
+		BackupLine: backupmgr.BackupLineAdhoc,
+		Source:     server.URL,
+		Dest:       dest,
+		Discovered: true,
+	}
+	cluster.BackupMetaMap.Set(meta.Id, meta)
+	metaPath := server.backupMetaFilePath(meta)
+	if err := os.WriteFile(metaPath, []byte("{}"), 0644); err != nil {
+		t.Fatalf("create metadata: %v", err)
+	}
+
+	if _, err := cluster.DeleteBackupByID(meta.Id); !errors.Is(err, ErrBackupDiscovered) {
+		t.Fatalf("expected ErrBackupDiscovered, got %v", err)
+	}
+	if !fileExists(dest) || !fileExists(metaPath) || cluster.BackupMetaMap.Get(meta.Id) == nil {
+		t.Fatal("deleting a discovered backup must leave its artifact and metadata unchanged")
+	}
+}
+
 func TestDeleteBackupByIDRemovesEncryptedIntegritySidecar(t *testing.T) {
 	cluster, server := newTestClusterServer(t)
 	dest := filepath.Join(server.GetMyBackupDirectory(), "mysqldump.sql.gz.enc")

@@ -1255,7 +1255,7 @@ func (cluster *Cluster) CheckInjectConfig() {
 				if len(parts) == 2 {
 					key := strings.TrimSpace(parts[0])
 					value := strings.TrimSpace(parts[1])
-					cluster.Conf.DynamicFlagMap[key] = strings.ReplaceAll(value, `"`, "")
+					cluster.Conf.SetDynamicFlag(key, strings.ReplaceAll(value, `"`, ""))
 					//set data of the inject.toml
 					cluster.SetInjectVariables()
 				}

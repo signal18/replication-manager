@@ -333,6 +333,20 @@ A new file that must reach the config repo is added to `SaveCallBack` and to the
 list together; anything else repman writes (backups, cookies, logs, caches) stays out
 of the staged list. See `doc/implementation/config/CONFIG_SYNC.md`.
 
+**T26. A security fix ends with the SBOM of the releases it concerns updated.** A
+vulnerability in repman is a GitHub security advisory, kept a **draft** (private) until
+the fixed release is out: no public issue, commit message or PR body describes the
+attack before. Its vulnerable version range, patched version, CVSS and CWE are filled
+exactly, because the release SBOM computes each release's status from them. Once the
+fixed release is published, publish the advisory, then refresh the SBOM of the latest
+release and of every release whose status changed: run `generate-sbom.yml` by hand with
+the tag, and check the `vulnerabilities` entry of the downloaded `sbom-cyclonedx.json`
+(affected release `exploitable`, fixed release `resolved`). A dependency vulnerability
+that the SBOM marks `exploitable` (govulncheck finds our code calling it) is a security
+fix too: bump the module or the Go toolchain, release, refresh. A draft advisory never
+reaches the SBOM: the workflow lists published advisories only. Procedure for
+contributors: docs.signal18.io, Contribute, Security Fixes and SBOM (#2086).
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a

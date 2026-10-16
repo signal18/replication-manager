@@ -824,6 +824,10 @@ func (cluster *Cluster) SwitchBackupArchiveRemoveOriginal() {
 	cluster.Conf.BackupArchiveRemoveOriginal = !cluster.Conf.BackupArchiveRemoveOriginal
 }
 
+func (cluster *Cluster) SwitchBackupDiscovery() {
+	cluster.Conf.BackupDiscovery = !cluster.Conf.BackupDiscovery
+}
+
 func (cluster *Cluster) SwitchBackupVerification() {
 	cluster.Conf.BackupVerification = !cluster.Conf.BackupVerification
 }

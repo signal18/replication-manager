@@ -353,7 +353,7 @@ func (repman *ReplicationManager) reconstructImportedClusterConfig(stagedDir, na
 	baseConf := *repman.Conf
 	if cf3 := isolated.Sub("saved-default"); cf3 != nil {
 		for _, f := range cf3.AllKeys() {
-			if v, ok := repman.Conf.ImmuableFlagMap[f]; ok {
+			if v, ok := repman.Conf.GetImmuableFlag(f); ok {
 				cf3.Set(f, v)
 			}
 		}
@@ -547,14 +547,14 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 			conf.GitUrlPull = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + "-pull.git"
 			conf.GitUsername = conf.Cloud18GitUser
 			conf.GitAccesToken = personal_access_token
-			conf.ImmuableFlagMap["git-url"] = conf.GitUrl
-			conf.ImmuableFlagMap["git-url-pull"] = conf.GitUrlPull
-			conf.ImmuableFlagMap["git-username"] = conf.GitUsername
-			conf.ImmuableFlagMap["git-acces-token"] = personal_access_token
+			conf.SetImmuableFlag("git-url", conf.GitUrl)
+			conf.SetImmuableFlag("git-url-pull", conf.GitUrlPull)
+			conf.SetImmuableFlag("git-username", conf.GitUsername)
+			conf.SetImmuableFlag("git-acces-token", personal_access_token)
 
 			if conf.ConfRestoreOnStart {
 				conf.ConfRestoreOnStart = false
-				conf.ImmuableFlagMap["monitoring-restore-config-on-start"] = false
+				conf.SetImmuableFlag("monitoring-restore-config-on-start", false)
 				os.RemoveAll(conf.WorkingDir)
 				conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
 				conf.CloneConfigFromGit(conf.GitUrlPull, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir+"/.pull")

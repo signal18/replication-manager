@@ -142,6 +142,7 @@ const requestWrapper = (authValue, baseUrl = '') => ({
   get: (apiUrl, params) => performRequest('GET', apiUrl, params, authValue, baseUrl),
   post: (apiUrl, params) => performRequest('POST', apiUrl, params, authValue, baseUrl),
   put: (apiUrl, params) => performRequest('PUT', apiUrl, params, authValue, baseUrl),
+  delete: (apiUrl, params) => performRequest('DELETE', apiUrl, params, authValue, baseUrl),
   getAll: (urls, params) => {
     const requests = urls.map((url) => {
       const resolvedUrl = resolveUrl(url, authValue, baseUrl);

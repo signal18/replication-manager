@@ -58,6 +58,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkColumnstoreRebalanceStates()     // CINF0018 while a ColumnStore rebalance runs, WARN0241 when it stopped (#2008)
 	cluster.checkArchiveRemoveOriginalStates()    // WARN0238 while an archived original could not be removed (#1987)
 	cluster.checkBackupVerificationStates()       // CINF0016 while a backup is verified, ERR00117 when a last logical backup failed it (#2023)
+	cluster.checkBackupDiscoveryStates()          // WARN0249 while a registered backup changed, WARN0250 while candidates are dropped (#2073)
 	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
 	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
 	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
@@ -863,7 +864,9 @@ func (cluster *Cluster) SetTestStopCluster(check bool) {
 }
 
 func (cluster *Cluster) SetClusterCredentialsFromConfig() {
-	cluster.Conf.DecryptSecretsFromConfig()
+	// the secrets are the credential chain's cache: rebuilt from its stores, a value set at
+	// runtime is kept (#2017)
+	cluster.CredentialChain().Refresh()
 	cluster.DecryptSecretsFromVault()
 	cluster.SetClusterMonitorCredentialsFromConfig()
 	cluster.SetClusterReplicationCredentialsFromConfig()
@@ -1275,14 +1278,14 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 	}
 }
 
-func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype string) {
+func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype string) error {
+	chain := cluster.CredentialChain()
 	switch proxytype {
 	case config.ConstProxySpider:
 		//cluster.Conf.MdbsProxyCredential = credential
-		var newSecret config.Secret
-		newSecret.OldValue = cluster.Conf.Secrets.Get("shardproxy-credential").Value
-		newSecret.Value = credential
-		cluster.Conf.Secrets.Set("shardproxy-credential", newSecret)
+		if err := chain.Set("shardproxy-credential", credential); err != nil {
+			return err
+		}
 		cluster.MarkSecretVersionStoreDirty()
 
 		for _, pri := range cluster.Proxies {
@@ -1304,13 +1307,15 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 	case config.ConstProxySqlproxy:
 		//cluster.Conf.ProxysqlUser, cluster.Conf.ProxysqlPassword
 		user, pass := misc.SplitPair(credential)
-		var newSecret config.Secret
-		newSecret.OldValue = cluster.Conf.Secrets.Get("proxysql-password").Value
-		newSecret.Value = pass
-		cluster.Conf.Secrets.Set("proxysql-password", newSecret)
-		newSecret.OldValue = cluster.Conf.Secrets.Get("proxysql-user").Value
-		newSecret.Value = user
-		cluster.Conf.Secrets.Set("proxysql-user", newSecret)
+		if err := chain.CanSet("proxysql-user"); err != nil {
+			return err
+		}
+		if err := chain.Set("proxysql-password", pass); err != nil {
+			return err
+		}
+		if err := chain.Set("proxysql-user", user); err != nil {
+			return err
+		}
 		cluster.MarkSecretVersionStoreDirty()
 		for _, pri := range cluster.Proxies {
 			_, pass := misc.SplitPair(credential)
@@ -1325,10 +1330,9 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 		}
 	case config.ConstProxyMaxscale:
 		user, pass := misc.SplitPair(credential)
-		var newSecret config.Secret
-		newSecret.OldValue = cluster.Conf.Secrets.Get("maxscale-pass").Value
-		newSecret.Value = pass
-		cluster.Conf.Secrets.Set("maxscale-pass", newSecret)
+		if err := chain.Set("maxscale-pass", pass); err != nil {
+			return err
+		}
 		cluster.Conf.MxsUser = user
 		cluster.Conf.MxsPass = pass
 		cluster.MarkSecretVersionStoreDirty()
@@ -1340,6 +1344,7 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 
 		}*/
 	}
+	return nil
 }
 
 // Set Cookie for all servers that configuration has changed
@@ -1424,15 +1429,15 @@ func (cluster *Cluster) SetProxiesReprovCookie() {
 	}
 }
 
-func (cluster *Cluster) SetReplicationCredential(credential string) {
+func (cluster *Cluster) SetReplicationCredential(credential string) error {
+	if err := cluster.CredentialChain().Set("replication-credential", credential); err != nil {
+		return err
+	}
 	cluster.Conf.RplUser = credential
-	var new_secret config.Secret
-	new_secret.Value = cluster.Conf.RplUser
-	new_secret.OldValue = cluster.Conf.GetDecryptedValue("replication-credential")
-	cluster.Conf.Secrets.Set("replication-credential", new_secret)
 	cluster.MarkSecretVersionStoreDirty()
 	cluster.SetClusterReplicationCredentialsFromConfig()
 	cluster.SetUnDiscovered()
+	return nil
 }
 
 func (cluster *Cluster) SetUnDiscovered() {
@@ -2244,7 +2249,7 @@ func (cluster *Cluster) Exit() {
 }
 
 func (cluster *Cluster) SetInjectVariables() {
-	for key, val := range cluster.Conf.DynamicFlagMap {
+	for key, val := range config.CopyDynamicFlags(cluster.Conf.DynamicFlagMap) {
 		switch key {
 		case "vault-role-id":
 			cluster.Conf.VaultRoleId = fmt.Sprintf("%v", val)
@@ -2830,20 +2835,16 @@ func (cluster *Cluster) PreserveVariable(variable string, preserve bool) error {
 func (cluster *Cluster) SetDatabaseCredentials(role string, cred string) error {
 	switch role {
 	case "dba":
-		var new_secret config.Secret
-		new_secret.Value = cred
-		new_secret.OldValue = cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials")
-
+		if err := cluster.CredentialChain().Set("cloud18-dba-user-credentials", cred); err != nil {
+			return err
+		}
 		cluster.Conf.Cloud18DbaUserCredentials = cred
-		cluster.Conf.Secrets.Set("cloud18-dba-user-credentials", new_secret)
 		cluster.MarkSecretVersionStoreDirty()
 	case "sponsor":
-		var new_secret config.Secret
-		new_secret.Value = cred
-		new_secret.OldValue = cluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials")
-
+		if err := cluster.CredentialChain().Set("cloud18-sponsor-user-credentials", cred); err != nil {
+			return err
+		}
 		cluster.Conf.Cloud18SponsorUserCredentials = cred
-		cluster.Conf.Secrets.Set("cloud18-sponsor-user-credentials", new_secret)
 		cluster.MarkSecretVersionStoreDirty()
 	default:
 		return errors.New("Unknown secret role")
@@ -2852,24 +2853,24 @@ func (cluster *Cluster) SetDatabaseCredentials(role string, cred string) error {
 	return nil
 }
 
-func (cluster *Cluster) SetResticPassword(cred string) {
+func (cluster *Cluster) SetResticPassword(cred string) error {
+	if err := cluster.CredentialChain().Set("backup-restic-password", cred); err != nil {
+		return err
+	}
 	cluster.Conf.BackupResticPassword = cred
-	var new_secret config.Secret
-	new_secret.Value = cluster.Conf.BackupResticPassword
-	new_secret.OldValue = cluster.Conf.GetDecryptedValue("backup-restic-password")
-	cluster.Conf.Secrets.Set("backup-restic-password", new_secret)
 	cluster.MarkSecretVersionStoreDirty()
+	return nil
 }
 
 // SetBackupVerificationCredential sets the verification server's user:password, kept as a
 // secret like the other credentials.
-func (cluster *Cluster) SetBackupVerificationCredential(cred string) {
+func (cluster *Cluster) SetBackupVerificationCredential(cred string) error {
+	if err := cluster.CredentialChain().Set("backup-verification-credential", cred); err != nil {
+		return err
+	}
 	cluster.Conf.BackupVerificationCredential = cred
-	var new_secret config.Secret
-	new_secret.Value = cluster.Conf.BackupVerificationCredential
-	new_secret.OldValue = cluster.Conf.GetDecryptedValue("backup-verification-credential")
-	cluster.Conf.Secrets.Set("backup-verification-credential", new_secret)
 	cluster.MarkSecretVersionStoreDirty()
+	return nil
 }
 
 // SetBackupVerificationTimeout sets backup-verification-timeout: the seconds a test restore
@@ -2883,6 +2884,20 @@ func (cluster *Cluster) SetBackupVerificationTimeout(value string) error {
 		return fmt.Errorf("backup-verification-timeout must be 0 or more seconds, got %d", v)
 	}
 	cluster.Conf.BackupVerificationTimeout = v
+	return nil
+}
+
+// SetBackupDiscoveryCandidateMax sets backup-discovery-candidate-max: the artifacts a backup
+// discovery lists per server, 0 for the default.
+func (cluster *Cluster) SetBackupDiscoveryCandidateMax(value string) error {
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return err
+	}
+	if v < 0 {
+		return fmt.Errorf("backup-discovery-candidate-max must be 0 (the default) or more, got %d", v)
+	}
+	cluster.Conf.BackupDiscoveryCandidateMax = v
 	return nil
 }
 

@@ -5,6 +5,7 @@ import { HiPlay, HiStop } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import {
   getBackupStats,
+  getBackupCandidates,
   getBackups,
   getClusterAlerts,
   getClusterApps,
@@ -88,6 +89,7 @@ function Slideshow() {
         dispatch(getResticSnapshot({ clusterName, filter: 'latest-per-session' }))
         dispatch(getBackups({ clusterName }))
         dispatch(getBackupStats({ clusterName }))
+        dispatch(getBackupCandidates({ clusterName }))
         dispatch(getResticCurrentTask({ clusterName }))
         dispatch(getJobs({ clusterName }))
       }

@@ -92,6 +92,9 @@ const fulfilledHandlers = {
   'cluster/getBackupStats': (state, action) => {
     state.backups.stats = action.payload.data
   },
+  'cluster/getBackupCandidates': (state, action) => {
+    state.backups.discovery = action.payload.data
+  },
   'cluster/getResticSnapshot': (state, action) => {
     state.restic.snapshots = action.payload?.data?.snapshots || []
     state.restic.stats = action.payload?.data?.stats || null
@@ -375,20 +378,74 @@ export const markBackupVerificationServer = createGuardedAsyncThunk('cluster/mar
   }
 })
 
-// registers the backups placed in the servers' backup folders without metadata
+// lists the backups placed in the servers' backup folders without metadata as candidates
 export const discoverBackups = createGuardedAsyncThunk('cluster/discoverBackups', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const { data, status } = await clusterService.discoverBackups(clusterName, baseURL)
     if (status === 202) {
-      // the scan runs in the background: the list shows what it registers once it ends
-      showSuccessBanner('Backup discovery started: discovered backups appear in the list once it ends', status, thunkAPI)
+      // the scan runs in the background: "Found in backup folders" lists what it finds once it ends
+      showSuccessBanner('Backup discovery started: what it finds is listed in "Found in backup folders" once it ends; register the backups to use them', status, thunkAPI)
     } else {
       showErrorBanner('Backup discovery failed', data, thunkAPI)
     }
     return { data, status }
   } catch (error) {
     showErrorBanner('Backup discovery failed', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+// what the backup discovery found (no banner: shown in the backup list)
+export const getBackupCandidates = createGuardedAsyncThunk('cluster/getBackupCandidates', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getBackupCandidates(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+// registers a candidate of the discovery: read and checked in the background, its outcome listed with it
+export const registerBackup = createGuardedAsyncThunk('cluster/registerBackup', async ({ clusterName, server, path, takenAt }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.registerBackup(clusterName, server, path, takenAt, baseURL)
+    showSuccessBanner('Backup registration started: it is read to its end, its outcome is listed with it', status, thunkAPI)
+    thunkAPI.dispatch(getBackupCandidates({ clusterName }))
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Backup not registered', error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+// registers the change of a registered discovered backup's file (WARN0249)
+export const registerBackupChange = createGuardedAsyncThunk('cluster/registerBackupChange', async ({ clusterName, backupId, takenAt }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.registerBackupChange(clusterName, backupId, takenAt, baseURL)
+    showSuccessBanner(`Registration of the change of backup ${backupId} started`, status, thunkAPI)
+    thunkAPI.dispatch(getBackupCandidates({ clusterName }))
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Change of backup ${backupId} not registered`, error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
+// unregisters a discovered backup: its registration only, its file is left as it is
+export const unregisterBackup = createGuardedAsyncThunk('cluster/unregisterBackup', async ({ clusterName, backupId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.unregisterBackup(clusterName, backupId, baseURL)
+    showSuccessBanner(`Backup ${backupId} unregistered: its file is left as it is`, status, thunkAPI)
+    thunkAPI.dispatch(getBackups({ clusterName }))
+    thunkAPI.dispatch(getBackupCandidates({ clusterName }))
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Backup ${backupId} not unregistered`, error, thunkAPI)
     return handleError(error, thunkAPI)
   }
 })
@@ -2962,7 +3019,8 @@ const initialState = {
   clusterStates: null,
   backups: {
     list: null,
-    stats: null
+    stats: null,
+    discovery: null
   },
   restic: {
     snapshots: null,
@@ -3085,6 +3143,7 @@ export const clusterSlice = createSlice({
         getQueryRules.fulfilled,
         getBackups.fulfilled,
         getBackupStats.fulfilled,
+        getBackupCandidates.fulfilled,
         getResticSnapshot.fulfilled,
         getResticStats.fulfilled,
         getResticCurrentTask.fulfilled,

@@ -221,7 +221,7 @@ func (conf *Config) isDefaultValue(key string, f reflect.Value) bool {
 
 // isPinned: a key set in a config file (or on the command line) wins over the list.
 func (conf *Config) isPinned(key string) bool {
-	_, ok := conf.ImmuableFlagMap[key]
+	_, ok := conf.GetImmuableFlag(key)
 	return ok
 }
 

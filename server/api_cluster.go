@@ -163,6 +163,26 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDiscover)),
 	)).Methods(http.MethodPost)
 
+	router.Handle("/api/clusters/{clusterName}/backups/candidates", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupCandidates)),
+	)).Methods(http.MethodGet)
+
+	router.Handle("/api/clusters/{clusterName}/backups/register", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupRegister)),
+	)).Methods(http.MethodPost)
+
+	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/register", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupRegisterChange)),
+	)).Methods(http.MethodPost)
+
+	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/unregister", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupUnregister)),
+	)).Methods(http.MethodPost)
+
 	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/delete", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDelete)),
@@ -2720,9 +2740,9 @@ func (repman *ReplicationManager) handlerMuxClusterBackupVerificationServerMark(
 	}
 }
 
-// handlerMuxClusterBackupDiscover registers the backups placed in the servers' backup folders without metadata.
+// handlerMuxClusterBackupDiscover lists the backups placed in the servers' backup folders without metadata.
 // @Summary Discover the backups of the backup folders
-// @Description Starts, in the background, the scan of each server's backup folder that registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. A discovered backup not completed (one that could not be read) is inspected again. The backups registered are logged and appear in the backup list. Refused while a backup of the cluster runs.
+// @Description Starts, in the background, the scan of each server's backup folder that lists the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes, copied there by hand or by another tool, as candidates with their cheap checks (GET /backups/candidates). It registers nothing: a candidate is registered with POST /backups/register. A candidate that could not be read is checked again. Refused while a backup of the cluster runs.
 // @Description Required grant: db-backup
 // @Tags ClusterBackups
 // @Produce json
@@ -2744,13 +2764,13 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDiscover(w http.Respons
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
-	// the discovery writes metadata files into the backup folders: db-backup, checked here
-	// (the ACL rules fall back from /backups/ to the list's /backups rule)
+	// the discovery may unregister the discovered backups whose artifact has gone: db-backup,
+	// checked here (the ACL rules fall back from /backups/ to the list's /backups rule)
 	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
 		http.Error(w, "No db-backup grant", http.StatusForbidden)
 		return
 	}
-	// in the background: each new artifact is read to its end, never within a request
+	// in the background: the cheap checks read the start of each new dump, never within a request
 	if err := mycluster.StartBackupDiscovery(); err != nil {
 		if errors.Is(err, cluster.ErrBackupDiscoveryInBackup) {
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -2766,9 +2786,234 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDiscover(w http.Respons
 	}
 }
 
-// handlerMuxClusterBackupDelete handles deletion of a non-restic backup by ID.
+// handlerMuxClusterBackupCandidates returns what the backup discovery found.
+// @Summary Backup discovery candidates and changes
+// @Description Returns, per server, the artifacts of its backup folder no metadata describes, as its last discovery checked them (status backup, not-backup, incomplete, unchecked, unreadable or settling, with the reason, and the outcome of their last Register), and the registered discovered backups whose file changed since registered (WARN0249), with what changed.
+// @Description Required grant: cluster-show-backups
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.BackupDiscoveryView "Candidates per server and changed backups"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/backups/candidates [get]
+func (repman *ReplicationManager) handlerMuxClusterBackupCandidates(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(mycluster.GetBackupDiscovery()); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
+}
+
+// backupRegisterRequest is the body of a Register: the candidate, and the time of a backup
+// that records none.
+type backupRegisterRequest struct {
+	// Server is the URL (host:port) of the server whose backup folder holds the artifact
+	Server string `json:"server"`
+	// Path is the artifact, as the candidates list it
+	Path string `json:"path"`
+	// TakenAt (RFC 3339) is when the backup was taken, for one that records no time of its
+	// own (a splitdump, a dump written with --skip-comments); refused for one that does
+	TakenAt string `json:"takenAt,omitempty"`
+}
+
+// writeBackupRegisterError answers a refused Register, Register of a change or Unregister.
+func writeBackupRegisterError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, cluster.ErrBackupNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, cluster.ErrBackupDiscoveryInBackup), errors.Is(err, cluster.ErrBackupDiscoveryRunning), errors.Is(err, cluster.ErrBackupVerificationRunning), errors.Is(err, cluster.ErrBackupAlreadyRegistered), errors.Is(err, cluster.ErrBackupUnchanged):
+		http.Error(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, cluster.ErrBackupNotABackup), errors.Is(err, cluster.ErrBackupNotRegisterable), errors.Is(err, cluster.ErrBackupNotDiscovered):
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+	default:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// parseBackupTakenAt reads a Register's takenAt: RFC 3339, empty for none.
+func parseBackupTakenAt(value string) (time.Time, error) {
+	if strings.TrimSpace(value) == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse(time.RFC3339, strings.TrimSpace(value))
+}
+
+// handlerMuxClusterBackupRegister registers a backup found in a backup folder.
+// @Summary Register a discovered backup
+// @Description Registers a candidate of the backup discovery, in the background: it is read to its end as a restore would read it and registered only if it is a proper backup (it holds a table and is complete); its fingerprint is recorded, replication-manager's metadata file written next to it, the backup file is not touched. The outcome is listed with the candidates (GET /backups/candidates). Refused at once for a candidate the discovery found is not a backup. takenAt sets the time of a backup that records none.
+// @Description Required grant: db-backup
+// @Tags ClusterBackups
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body backupRegisterRequest true "The candidate"
+// @Success 202 {object} map[string]interface{} "Registration started"
+// @Failure 400 {string} string "Invalid body or time"
+// @Failure 403 {string} string "No valid ACL, or no db-backup grant"
+// @Failure 409 {string} string "A backup, a discovery or a registration runs, or already registered"
+// @Failure 422 {string} string "Not a backup, or can not be registered"
+// @Failure 500 {string} string "Registration not started"
+// @Router /api/clusters/{clusterName}/backups/register [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupRegister(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
+		http.Error(w, "No db-backup grant", http.StatusForbidden)
+		return
+	}
+	var req backupRegisterRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil || strings.TrimSpace(req.Server) == "" || strings.TrimSpace(req.Path) == "" {
+		http.Error(w, "Invalid body: server and path are required", http.StatusBadRequest)
+		return
+	}
+	takenAt, err := parseBackupTakenAt(req.TakenAt)
+	if err != nil {
+		http.Error(w, "Invalid takenAt (RFC 3339): "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.RegisterBackup(req.Server, req.Path, takenAt); err != nil {
+		writeBackupRegisterError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"message": "Backup registration started", "path": req.Path}); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
+	}
+}
+
+// handlerMuxClusterBackupRegisterChange registers the change of a registered discovered backup.
+// @Summary Register the change of a discovered backup
+// @Description Registers the change of a registered discovered backup's file (WARN0249), in the background: the file as it is now is read to its end and checked as a new backup would be; on success its new fingerprint, position and size are recorded and the state clears, the backup keeping its id; refused, with the reason, if the change broke it. The backup file is not touched.
+// @Description Required grant: db-backup
+// @Tags ClusterBackups
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param backupID path int true "Backup ID"
+// @Param body body backupRegisterRequest false "takenAt only, for a backup that records no time"
+// @Success 202 {object} map[string]interface{} "Registration started"
+// @Failure 400 {string} string "Invalid backup ID or time"
+// @Failure 403 {string} string "No valid ACL, or no db-backup grant"
+// @Failure 404 {string} string "Backup not found"
+// @Failure 409 {string} string "Unchanged, or a backup, a discovery, a registration or a verification runs"
+// @Failure 422 {string} string "Not a discovered backup"
+// @Failure 500 {string} string "Registration not started"
+// @Router /api/clusters/{clusterName}/backups/{backupID}/register [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupRegisterChange(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
+		http.Error(w, "No db-backup grant", http.StatusForbidden)
+		return
+	}
+	backupID, err := strconv.ParseInt(strings.TrimSpace(vars["backupID"]), 10, 64)
+	if err != nil || backupID <= 0 {
+		http.Error(w, "Invalid backup ID", http.StatusBadRequest)
+		return
+	}
+	var req backupRegisterRequest
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "Invalid body", http.StatusBadRequest)
+			return
+		}
+	}
+	takenAt, err := parseBackupTakenAt(req.TakenAt)
+	if err != nil {
+		http.Error(w, "Invalid takenAt (RFC 3339): "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.RegisterBackupChange(backupID, takenAt); err != nil {
+		writeBackupRegisterError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"message": "Backup change registration started", "id": backupID}); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
+	}
+}
+
+// handlerMuxClusterBackupUnregister unregisters a discovered backup.
+// @Summary Unregister a discovered backup
+// @Description Unregisters a discovered backup: replication-manager's metadata file is removed, the backup file is left as it is and is listed as a candidate again. Clears its WARN0249. A backup replication-manager took is refused: delete it instead.
+// @Description Required grant: db-backup
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param backupID path int true "Backup ID"
+// @Success 200 {object} map[string]interface{} "Backup unregistered"
+// @Failure 400 {string} string "Invalid backup ID"
+// @Failure 403 {string} string "No valid ACL, or no db-backup grant"
+// @Failure 404 {string} string "Backup not found"
+// @Failure 409 {string} string "A discovery, a registration or a verification runs"
+// @Failure 422 {string} string "Not a discovered backup"
+// @Failure 500 {string} string "Not unregistered"
+// @Router /api/clusters/{clusterName}/backups/{backupID}/unregister [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupUnregister(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if u, ok := repman.requestACLUser(r, mycluster); !ok || !u.Grants[config.GrantDBBackup] {
+		http.Error(w, "No db-backup grant", http.StatusForbidden)
+		return
+	}
+	backupID, err := strconv.ParseInt(strings.TrimSpace(vars["backupID"]), 10, 64)
+	if err != nil || backupID <= 0 {
+		http.Error(w, "Invalid backup ID", http.StatusBadRequest)
+		return
+	}
+	if err := mycluster.UnregisterBackup(backupID); err != nil {
+		writeBackupRegisterError(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"message": "Backup unregistered", "id": backupID}); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
+	}
+}
+
+// handlerMuxClusterBackupDelete handles deletion of a replication-manager-created non-restic backup by ID.
 // @Summary Delete a backup by ID
-// @Description Deletes a non-restic backup for the specified cluster.
+// @Description Deletes a replication-manager-created non-restic backup for the specified cluster. A discovered backup is never deleted; unregister it instead.
 // @Description Required grant: db-backup
 // @Tags ClusterBackups
 // @Produce json
@@ -2778,6 +3023,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDiscover(w http.Respons
 // @Success 200 {object} map[string]interface{} "Backup deleted"
 // @Failure 400 {string} string "Invalid request"
 // @Failure 409 {string} string "Backup running"
+// @Failure 422 {string} string "Discovered backup: unregister it instead"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Delete failed"
 // @Router /api/clusters/{clusterName}/backups/{backupID}/delete [post]
@@ -2813,6 +3059,9 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDelete(w http.ResponseW
 			return
 		case errors.Is(err, cluster.ErrBackupInvalidID), errors.Is(err, cluster.ErrBackupNotFound):
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		case errors.Is(err, cluster.ErrBackupDiscovered):
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		default:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -3386,6 +3635,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupKeepUntilValid()
 	case "backup-archive-remove-original":
 		mycluster.SwitchBackupArchiveRemoveOriginal()
+	case "backup-discovery":
+		mycluster.SwitchBackupDiscovery()
 	case "backup-verification":
 		mycluster.SwitchBackupVerification()
 	case "mail-smtp-tls-skip-verify":
@@ -3830,7 +4081,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err := mycluster.CanSetCredential(name); err != nil {
 			return err
 		}
-		mycluster.SetReplicationCredential(value)
+		if err := mycluster.SetReplicationCredential(value); err != nil {
+			return err
+		}
 	case "failover-max-slave-delay":
 		val, _ := strconv.ParseInt(value, 10, 64)
 		mycluster.SetRplMaxDelay(val)
@@ -4170,11 +4423,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err := mycluster.CanSetCredential(name); err != nil {
 			return err
 		}
+		if err := mycluster.CredentialChain().Set("db-servers-credential", value); err != nil {
+			return err
+		}
 		mycluster.Conf.User = value
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.User
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("db-servers-credential")
-		mycluster.Conf.Secrets.Set("db-servers-credential", new_secret)
 		mycluster.SetClusterMonitorCredentialsFromConfig()
 		mycluster.ApplyMonitorCredential()
 	case "db-servers-dns-timeout":
@@ -4283,15 +4535,21 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "prov-db-scale-down-plan-speed":
 		mycluster.Conf.ScaleDownPlanSpeed = value
 	case "proxysql-servers-credential":
-		mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy)
+		if err := mycluster.SetProxyServersCredential(value, config.ConstProxySqlproxy); err != nil {
+			return err
+		}
 	case "proxy-servers-backend-max-connections":
 		mycluster.SetProxyServersBackendMaxConnections(value)
 	case "proxy-servers-backend-max-replication-lag":
 		mycluster.SetProxyServersBackendMaxReplicationLag(value)
 	case "maxscale-servers-credential":
-		mycluster.SetProxyServersCredential(value, config.ConstProxyMaxscale)
+		if err := mycluster.SetProxyServersCredential(value, config.ConstProxyMaxscale); err != nil {
+			return err
+		}
 	case "shardproxy-servers-credential":
-		mycluster.SetProxyServersCredential(value, config.ConstProxySpider)
+		if err := mycluster.SetProxyServersCredential(value, config.ConstProxySpider); err != nil {
+			return err
+		}
 	case "prov-proxy-disk-size":
 		mycluster.SetProxyDiskSize(value)
 	case "prov-proxy-cpu-cores":
@@ -4564,12 +4822,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("mail-smtp-password", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.MailSMTPPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.MailSMTPPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("mail-smtp-password")
-		mycluster.Conf.Secrets.Set("mail-smtp-password", new_secret)
-		mycluster.Mailer.UpdateAuth(mycluster.Conf.MailSMTPUser, new_secret.Value)
+		mycluster.Mailer.UpdateAuth(mycluster.Conf.MailSMTPUser, mycluster.Conf.MailSMTPPassword)
 	case "mail-smtp-user":
 		mycluster.Conf.SetMailSmtpUser(value)
 		mycluster.Mailer.UpdateAuth(value, mycluster.Conf.GetDecryptedValue("mail-smtp-password"))
@@ -4601,21 +4858,19 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("cloud18-gitlab-password", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.Cloud18GitPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.Cloud18GitPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-gitlab-password")
-		mycluster.Conf.Secrets.Set("cloud18-gitlab-password", new_secret)
 	case "cloud18-domain-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("cloud18-domain-secret", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.Cloud18DomainSecret = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.Cloud18DomainSecret
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-domain-secret")
-		mycluster.Conf.Secrets.Set("cloud18-domain-secret", new_secret)
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
@@ -4659,11 +4914,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("backup-restic-aws-access-secret", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.BackupResticAwsAccessSecret = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
-		mycluster.Conf.Secrets.Set("backup-restic-aws-access-secret", new_secret)
 		if err := mycluster.ReloadResticEnv(); err != nil {
 			return err
 		}
@@ -4738,14 +4992,20 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 					// Old password is not valid, just use new password (maybe first time setup)
 					// If both old and new password are not valid, this will be detected later when trying to do a backup
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Both old and new restic password are not valid, assuming first time setup")
-					mycluster.SetResticPassword(newval)
+					if err := mycluster.SetResticPassword(newval); err != nil {
+						return err
+					}
 				}
 			} else {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New restic password is valid, using it")
-				mycluster.SetResticPassword(newval)
+				if err := mycluster.SetResticPassword(newval); err != nil {
+					return err
+				}
 			}
 		} else {
-			mycluster.SetResticPassword(newval)
+			if err := mycluster.SetResticPassword(newval); err != nil {
+				return err
+			}
 		}
 
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic password updated")
@@ -4788,6 +5048,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err := mycluster.SetBackupVerificationTimeout(value); err != nil {
 			return err
 		}
+	case "backup-discovery-candidate-max":
+		if err := mycluster.SetBackupDiscoveryCandidateMax(value); err != nil {
+			return err
+		}
 	case "backup-verification-host":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -4799,7 +5063,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
-		mycluster.SetBackupVerificationCredential(string(val))
+		if err := mycluster.SetBackupVerificationCredential(string(val)); err != nil {
+			return err
+		}
 	case "replication-manager-cli-path":
 		_, storeValue, err := resolveExecutablePath(value, "replication-manager-cli-path")
 		if err != nil {
@@ -4964,11 +5230,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := mycluster.CredentialChain().Set("haproxy-password", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.HaproxyPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.HaproxyPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("haproxy-password")
-		mycluster.Conf.Secrets.Set("haproxy-password", new_secret)
 
 	case "maxscale-mode":
 		switch value {
@@ -5585,6 +5850,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupKeepUntilValid = applyIsActive(mycluster.Conf.BackupKeepUntilValid, isactive)
 	case "backup-archive-remove-original":
 		mycluster.Conf.BackupArchiveRemoveOriginal = applyIsActive(mycluster.Conf.BackupArchiveRemoveOriginal, isactive)
+	case "backup-discovery":
+		mycluster.Conf.BackupDiscovery = applyIsActive(mycluster.Conf.BackupDiscovery, isactive)
 	case "backup-verification":
 		mycluster.Conf.BackupVerification = applyIsActive(mycluster.Conf.BackupVerification, isactive)
 	case "mail-smtp-tls-skip-verify":
@@ -5617,11 +5884,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return fmt.Errorf("unable to base64-decode value: %w", err)
 		}
+		if err := mycluster.CredentialChain().Set("prov-app-template-repo-password", string(val)); err != nil {
+			return err
+		}
 		mycluster.Conf.ProvAppTemplateRepoPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.ProvAppTemplateRepoPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("prov-app-template-repo-password")
-		mycluster.Conf.Secrets.Set("prov-app-template-repo-password", new_secret)
 	case "prov-app-template-repo-timeout":
 		parsedTimeout, err := parseProvAppTemplateRepoTimeout(value)
 		if err != nil {
