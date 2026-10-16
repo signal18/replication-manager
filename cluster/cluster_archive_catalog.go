@@ -279,7 +279,12 @@ func (cluster *Cluster) SizeArchive(name string) error {
 		stdout, stderr, err := rm.RunCommandWithContext(ctx, backupmgr.ResticStatsArgs(), logrus.DebugLevel, true)
 		if err != nil {
 			msg := strings.TrimSpace(string(stderr))
-			if msg == "" {
+			switch {
+			case resticExitCode(err) == resticExitRepoMissing || strings.Contains(msg, "Is there a repository at the following location"):
+				msg = "no repository at " + rm.GetRepoPath()
+			case resticExitCode(err) == resticExitWrongPassword || strings.Contains(msg, "wrong password"):
+				msg = "the password does not open the repository"
+			case msg == "":
 				msg = err.Error()
 			}
 			cluster.finishArchiveSizing(name, "size failed: "+msg)
