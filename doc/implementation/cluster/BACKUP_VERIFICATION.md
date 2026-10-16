@@ -381,7 +381,14 @@ fingerprint, reading at most `backupProofWalkMax` entries of a folder (a larger
 one is not proven), and publishes a new map holding the unchanged ones: at most
 two per server, the previous map dropped whole. A backup verified now is proven
 once the next refresh has found its file unchanged; nothing stores a proof
-without that check.
+without that check. The snapshot keeps each proven file's fingerprint: a rejoin
+whose selector requires a proven backup checks the file it picked again before
+using it (`provenStillUnchanged`, in `JobFlashbackLogicalBackup`, without a
+lock), since the snapshot can be 30 heartbeats old. `proven` is a hard gate there:
+when the catalog has no proven backup, or the file picked changed since, the
+rejoin is refused ("no proven logical backup"), its job row ends in error and
+the server's reseeding mark is cleared, before any database call; it never falls
+back to the on-disk lookup, which would take any file.
 
 The fingerprint (`backupmgr.ArtifactFingerprint`) is the file's size,
 modification time, inode and ctime (for a folder: its files' count, total size,
@@ -399,11 +406,46 @@ matches nothing: not proven, and the reseed reads the file again
 
 `clients/client_backup.go`: `replication-manager-cli backup verify ID
 [--level] [--wait] [--timeout]` posts to `backups/{id}/verify[/{level}]` and
-prints the API's error with its status when the run does not start. `--wait`
-also needs `cluster-show-backups`: it polls `GET backups` (a map keyed by
-backup ID) every 5 s until the backup's `verification.status` is no longer
-`running`; exit 0 passed, 1 failed, 3 skipped, 1 after `--timeout` seconds
-(0 waits forever).
+prints the API's error with its status when the run does not start.
+
+Each on-demand run is recorded in the backup's run history,
+`BackupMetadata.VerificationRuns` (`BackupVerificationRun`: sequence, run id,
+level, status, start and end time, error), the authoritative record of the run;
+`Verification` stays the backup's result for the GUI, the states and the proof.
+`VerifyBackupByIDRun` reserves the backup (one run in flight per backup), draws
+a random run id, takes the next per-backup sequence
+(`VerificationRunSequence`), appends the run `running` and writes the meta file
+(`startVerificationRun`) before it returns: an accepted run is observable as
+soon as the API answers `cluster.BackupVerificationStart` (`id`, `runId`,
+`sequence`, `message`). The run carries that pair in its result
+(`BackupVerification.RunSequence`, `RunID`) and ends in its own record and no
+other (`endVerificationRunLocked`, by sequence and run id together): passed or failed through
+`recordBackupVerification`; skipped through `recordBackupVerificationSkipped`
+when it ends before running (no backup slot as monitoring stops, its read not
+claimed, the backup no longer verifiable), which sets `Verification` only when
+the backup has no finished result, so an earlier pass or failure, ERR00117 and
+the proof of a test restore stay. The record is replaced in a new slice: the API
+encodes the metadata without the lock.
+
+The history keeps `backup-verification-run-history` runs (default 16; 0 or
+less: the default): when a run is accepted beyond it, the oldest finished runs
+are dropped first, a running one only when no finished one is left, and the kept
+runs are copied into a new slice (`boundVerificationRuns`). Dropping an old run
+is the history's retention, not a failing sink: no state is raised for it. When
+a backup's metadata is registered from its file,
+`closeInterruptedVerificationRuns` (called by `closeInterruptedVerification`)
+ends the records still `running`, failed and interrupted, unless a run of this
+process holds the backup; it reads the file only when a record is running.
+
+`--wait` polls `GET backups` (a map keyed by backup ID; the API has no
+single-backup read) every 10 s for the run with its sequence and id
+(`backupVerifyRunOutcome`): another run's record, earlier or later, is never
+taken for it. Exit 0 passed, 1 failed, 3 skipped, 4 when the run is no longer in
+the history (the oldest kept has a later sequence: expired, reported at once),
+1 after `--timeout` seconds (0 waits forever). The notes and warnings of a run
+that ran are printed from `Verification` while it is that run's. A run lost to a
+crash between its acceptance and the meta file write is recorded nowhere: only
+then does `--timeout` decide.
 
 ## Tests
 
@@ -412,7 +454,26 @@ backup ID) every 5 s until the backup's `verification.status` is no longer
 - `cluster/backup_verification_test.go`: integrity level cases (footer,
   comments, position, sidecar, splitdump), encrypted backups, the recorded
   result and ERR00117, the on-demand refusals and run.
-- `cluster/restore_catalog_test.go`: `TestBackupProven` (which results prove
+- `clients/client_backup_test.go`: `TestBackupVerifyRunOutcome` (`--wait` finds
+  its own run by sequence and id: a later run started before its poll, another
+  run's record, an expired run; exit codes).
+- `cluster/backup_verification_test.go`: `TestVerificationNotRunIsSkipped` (an
+  accepted run in the meta file, running, before the call returns; each skipped
+  run in its own record; a test-restore proof kept through a later skipped run).
+- `cluster/backup_verification_runs_test.go`: `TestBoundVerificationRuns`,
+  `TestEndVerificationRunExactRecord` (passed and failed end their own record),
+  `TestCloseInterruptedVerificationRuns`, `TestVerificationRunHistoryBound`.
+- Outside Linux, the tests whose point is a fingerprint that matches are skipped
+  (`requireArtifactIdentity`); the fail-closed ones assert there that nothing
+  matches and the reseed reads the backup again.
+- `utils/backupmgr/artifact_fingerprint_test.go`: a zero inode and ctime are not
+  written.
+- `cluster/restore_catalog_test.go`: `TestJobFlashbackLogicalBackupRequiresProven`
+  (through the rejoin: no proven backup, or one changed after the refresh, refuses
+  it; job row in error, reseeding mark cleared), `TestProvenStillUnchanged` (a file
+  changed after the refresh is not used as proven),
+  `TestArtifactUnchangedSplitdumpCtime` (a splitdump file rewritten in place, size
+  and modification time put back), `TestBackupProven` (which results prove
   a backup), `TestBuildBackupCatalogProvenFileUnchanged` (none before a refresh,
   unchanged, replaced with its size and modification time put back, removed,
   dropped from the snapshot), `TestBuildBackupCatalogProofKey` (another server's

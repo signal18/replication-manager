@@ -914,6 +914,7 @@ type Config struct {
 	BackupVerificationHost                    string            `mapstructure:"backup-verification-host" toml:"backup-verification-host" json:"backupVerificationHost"`
 	BackupVerificationCredential              string            `mapstructure:"backup-verification-credential" toml:"backup-verification-credential" json:"-"`
 	BackupVerificationTimeout                 int               `mapstructure:"backup-verification-timeout" toml:"backup-verification-timeout" json:"backupVerificationTimeout"`
+	BackupVerificationRunHistory              int               `mapstructure:"backup-verification-run-history" toml:"backup-verification-run-history" json:"backupVerificationRunHistory"`
 	BackupRestic                              bool              `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string            `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticLocalRepository               string            `mapstructure:"backup-restic-local-repository" toml:"backup-restic-local-repository" json:"backupResticLocalRepository"`
@@ -1602,6 +1603,8 @@ const (
 const (
 	ConstBackupVerificationLevelIntegrity string = "integrity" // read the backup as a restore would, no database
 	ConstBackupVerificationLevelRestore   string = "restore"   // integrity, then a test restore on backup-verification-host
+	// ConstBackupVerificationRunHistory: the default backup-verification-run-history
+	ConstBackupVerificationRunHistory = 16
 )
 
 const (

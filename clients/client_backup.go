@@ -42,7 +42,8 @@ var backupVerifyCmd = &cobra.Command{
   --level integrity  read the backup as a restore would, no database
   --level restore    integrity, then a test restore on backup-verification-host (grant db-restore)
   no --level         the cluster's backup-verification-level
-With --wait the command waits for the result: exit 0 passed, 1 failed, 3 not run (skipped).`,
+With --wait the command waits for the outcome of the run it started: exit 0 passed,
+1 failed, 3 not run (skipped), 4 the run expired from the backup's verification history.`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		id, err := strconv.ParseInt(args[0], 10, 64)
@@ -65,74 +66,122 @@ With --wait the command waits for the result: exit 0 passed, 1 failed, 3 not run
 			fmt.Fprintf(os.Stderr, "verification not started (%d): %s\n", status, strings.TrimSpace(string(body)))
 			os.Exit(1)
 		}
-		fmt.Printf("Backup %d: verification started\n", id)
+		// the run's sequence and id: it ends in its own record of the backup's run history,
+		// --wait waits for that record and no other
+		var started struct {
+			RunID    string `json:"runId"`
+			Sequence uint64 `json:"sequence"`
+		}
+		if err := json.Unmarshal(body, &started); err != nil || started.RunID == "" || started.Sequence == 0 {
+			fmt.Fprintf(os.Stderr, "verification started, but the API returned no run: %s\n", strings.TrimSpace(string(body)))
+			os.Exit(1)
+		}
+		fmt.Printf("Backup %d: verification run %d (%s) started\n", id, started.Sequence, started.RunID)
 		if !cliBackupVerifyWait {
 			return
 		}
-		os.Exit(cliBackupVerifyWaitResult(id, time.Duration(cliBackupVerifyTimeout)*time.Second))
+		os.Exit(cliBackupVerifyWaitResult(id, started.Sequence, started.RunID, time.Duration(cliBackupVerifyTimeout)*time.Second))
 	},
 }
 
-// cliBackupVerifyWaitResult polls the backup list until backup id has a finished
-// verification, prints it and returns the exit code.
-func cliBackupVerifyWaitResult(id int64, timeout time.Duration) int {
+// backupVerifyRunOutcome finds run (seq, runID) in a backup's run history. ended: the run
+// finished, with its record and exit code (0 passed, 1 failed, 3 skipped); expired: the run
+// is no longer in the history, the oldest kept being later (exit 4). Neither: still running,
+// or not recorded yet. Another run's record, earlier or later, is never taken for it.
+func backupVerifyRunOutcome(runs []backupmgr.BackupVerificationRun, seq uint64, runID string) (run *backupmgr.BackupVerificationRun, ended, expired bool, code int) {
+	for i := range runs {
+		r := &runs[i]
+		if r.Sequence != seq || r.RunID != runID {
+			continue
+		}
+		switch r.Status {
+		case backupmgr.BackupVerificationRunning:
+			return r, false, false, 0
+		case backupmgr.BackupVerificationPassed:
+			return r, true, false, 0
+		case backupmgr.BackupVerificationSkipped:
+			return r, true, false, 3
+		default:
+			return r, true, false, 1
+		}
+	}
+	if len(runs) > 0 && runs[0].Sequence > seq {
+		return nil, false, true, 4
+	}
+	return nil, false, false, 0
+}
+
+// cliBackupVerifyPoll is how often --wait reads the backup list (the API has no
+// single-backup read).
+const cliBackupVerifyPoll = 10 * time.Second
+
+// cliBackupVerifyWaitResult polls the backup list until run (seq, runID) of backup id ends,
+// prints it and returns the exit code.
+func cliBackupVerifyWaitResult(id int64, seq uint64, runID string, timeout time.Duration) int {
 	deadline := time.Now().Add(timeout)
 	for {
-		v, err := cliBackupVerification(id)
+		b, err := cliBackupVerificationRuns(id)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
-		if v != nil && v.Status != backupmgr.BackupVerificationRunning {
-			fmt.Printf("Backup %d: %s (%s level)", id, v.Status, v.Level)
-			if v.Error != "" {
-				fmt.Printf(": %s", v.Error)
+		r, ended, expired, code := backupVerifyRunOutcome(b.VerificationRuns, seq, runID)
+		if expired {
+			fmt.Fprintf(os.Stderr, "Backup %d: run %d (%s) is no longer in its verification history (backup-verification-run-history): its result expired\n", id, seq, runID)
+			return code
+		}
+		if ended {
+			fmt.Printf("Backup %d: run %d %s (%s level)", id, seq, r.Status, r.Level)
+			if r.Error != "" {
+				fmt.Printf(": %s", r.Error)
 			}
 			fmt.Println()
-			for _, w := range v.Warnings {
-				fmt.Println("  warning:", w)
+			// the details of a run that ran are in the backup's verification, while it is
+			// still this run's
+			if v := b.Verification; v != nil && v.RunID == runID && v.RunSequence == seq {
+				for _, w := range v.Warnings {
+					fmt.Println("  warning:", w)
+				}
+				for _, n := range v.Notes {
+					fmt.Println("  note:", n)
+				}
 			}
-			for _, n := range v.Notes {
-				fmt.Println("  note:", n)
-			}
-			switch v.Status {
-			case backupmgr.BackupVerificationPassed:
-				return 0
-			case backupmgr.BackupVerificationSkipped:
-				return 3
-			default:
-				return 1
-			}
+			return code
 		}
 		if timeout > 0 && time.Now().After(deadline) {
-			fmt.Fprintf(os.Stderr, "Backup %d: no verification result after %s\n", id, timeout)
+			fmt.Fprintf(os.Stderr, "Backup %d: run %d (%s) has no result after %s\n", id, seq, runID, timeout)
 			return 1
 		}
-		time.Sleep(5 * time.Second)
+		time.Sleep(cliBackupVerifyPoll)
 	}
 }
 
-// cliBackupVerification returns the recorded verification of backup id, nil while none.
-func cliBackupVerification(id int64) (*backupmgr.BackupVerification, error) {
+// cliBackupVerificationState is what --wait reads of a backup in the backup list.
+type cliBackupVerificationState struct {
+	Verification     *backupmgr.BackupVerification     `json:"verification"`
+	VerificationRuns []backupmgr.BackupVerificationRun `json:"verificationRuns"`
+}
+
+// cliBackupVerificationRuns returns backup id's verification and run history.
+func cliBackupVerificationRuns(id int64) (cliBackupVerificationState, error) {
+	var none cliBackupVerificationState
 	body, status, err := cliClusterRequest(http.MethodGet, "backups")
 	if err != nil {
-		return nil, err
+		return none, err
 	}
 	if status != http.StatusOK {
-		return nil, fmt.Errorf("backup list (%d): %s", status, strings.TrimSpace(string(body)))
+		return none, fmt.Errorf("backup list (%d): %s", status, strings.TrimSpace(string(body)))
 	}
 	// the list is a map keyed by backup ID
-	var backups map[string]struct {
-		Verification *backupmgr.BackupVerification `json:"verification"`
-	}
+	var backups map[string]cliBackupVerificationState
 	if err := json.Unmarshal(body, &backups); err != nil {
-		return nil, fmt.Errorf("cannot parse the backup list: %w", err)
+		return none, fmt.Errorf("cannot parse the backup list: %w", err)
 	}
 	b, ok := backups[strconv.FormatInt(id, 10)]
 	if !ok {
-		return nil, fmt.Errorf("backup %d not found", id)
+		return none, fmt.Errorf("backup %d not found", id)
 	}
-	return b.Verification, nil
+	return b, nil
 }
 
 // cliClusterRequest calls /api/clusters/{cluster}/{path} and returns the body and the status.
@@ -154,7 +203,7 @@ func cliClusterRequest(method, path string) ([]byte, int, error) {
 func initBackupFlags(cmd *cobra.Command) {
 	initServerApiFlags(backupVerifyCmd)
 	backupVerifyCmd.Flags().StringVar(&cliBackupVerifyLevel, "level", "", "integrity|restore (default: the cluster's backup-verification-level)")
-	backupVerifyCmd.Flags().BoolVar(&cliBackupVerifyWait, "wait", false, "Wait for the result: exit 0 passed, 1 failed, 3 skipped")
+	backupVerifyCmd.Flags().BoolVar(&cliBackupVerifyWait, "wait", false, "Wait for the run's outcome: exit 0 passed, 1 failed, 3 skipped, 4 expired from the history")
 	backupVerifyCmd.Flags().IntVar(&cliBackupVerifyTimeout, "timeout", 14400, "Seconds --wait waits for the result, 0 waits forever")
 	cmd.AddCommand(backupVerifyCmd)
 	initClusterFlags(cmd)

@@ -56,7 +56,7 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 	// the backups refreshBackupProofs last found proven (#2023): the catalog takes no lock
 	// and reads no file, it runs on the monitor tick (HasCatalogBackupForRejoin) and in a
 	// rejoin; none checked yet, none proven
-	var proofs map[backupProofKey]bool
+	var proofs map[backupProofKey]backupmgr.ArtifactFingerprint
 	if p := cluster.backupProofs.Load(); p != nil {
 		proofs = *p
 	}
@@ -70,7 +70,8 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 			}
 			e := backupMetaToCatalog(sv.URL, m)
 			// a test restore proves the local file it loaded, not a restic snapshot of it
-			e.Proven = e.Location == RepoLocal && proofs[backupProofKey{sv.URL, m.Id, m.Dest}]
+			_, proven := proofs[backupProofKey{sv.URL, m.Id, m.Dest}]
+			e.Proven = e.Location == RepoLocal && proven
 			cat = append(cat, e)
 		}
 	}
@@ -117,13 +118,29 @@ func (cluster *Cluster) refreshBackupProofs() {
 		}
 		sv.backupMetaMutex.Unlock()
 	}
-	proofs := make(map[backupProofKey]bool, len(files))
+	proofs := make(map[backupProofKey]backupmgr.ArtifactFingerprint, len(files))
 	for _, f := range files {
 		if artifactUnchangedBounded(f.key.dest, &f.rec, backupProofWalkMax) {
-			proofs[f.key] = true
+			proofs[f.key] = f.rec
 		}
 	}
 	cluster.backupProofs.Store(&proofs)
+}
+
+// provenStillUnchanged checks again, when a restore is about to use it, that the file of a
+// catalog entry proven by the last refresh is unchanged: the refresh runs every 30
+// heartbeats, the file may have changed since. No lock: the fingerprint is the snapshot's.
+func (cluster *Cluster) provenStillUnchanged(e *BackupCatalogEntry) bool {
+	p := cluster.backupProofs.Load()
+	if e == nil || !e.Proven || p == nil {
+		return false
+	}
+	for k, rec := range *p {
+		if k.server == e.Server && k.dest == e.Path {
+			return artifactUnchangedBounded(k.dest, &rec, backupProofWalkMax)
+		}
+	}
+	return false
 }
 
 // backupMetaToCatalog maps one BackupMetadata (Ahmad's) to a catalog entry so
@@ -164,12 +181,11 @@ func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCa
 	}
 
 	return BackupCatalogEntry{
-		Server:   serverURL,
-		Location: loc,
-		Kind:     kind,
-		Tool:     m.BackupTool,
-		Caps:     caps,
-
+		Server:    serverURL,
+		Location:  loc,
+		Kind:      kind,
+		Tool:      m.BackupTool,
+		Caps:      caps,
 		Timestamp: ts,
 		Gtid:      m.BinLogGtid,
 		BinFile:   m.BinLogFileName,

@@ -6402,8 +6402,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Backup verification started",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/cluster.BackupVerificationStart"
                         }
                     },
                     "400": {
@@ -6482,8 +6481,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Backup verification started",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "$ref": "#/definitions/cluster.BackupVerificationStart"
                         }
                     },
                     "400": {
@@ -24243,7 +24241,14 @@ const docTemplate = `{
         "backupmgr.ArtifactFingerprint": {
             "type": "object",
             "properties": {
+                "changeTime": {
+                    "type": "string"
+                },
                 "files": {
+                    "type": "integer"
+                },
+                "inode": {
+                    "description": "Inode and ChangeTime (ctime) of the file, of the folder's newest change for a folder\n(its folder inode): a replaced file, or one whose modification time was set back, does\nnot match. Absent from fingerprints recorded before, which then match nothing.",
                     "type": "integer"
                 },
                 "modTime": {
@@ -24386,6 +24391,17 @@ const docTemplate = `{
                             "$ref": "#/definitions/backupmgr.BackupVerification"
                         }
                     ]
+                },
+                "verificationRunSequence": {
+                    "description": "VerificationRunSequence is the sequence number of the last run accepted.",
+                    "type": "integer"
+                },
+                "verificationRuns": {
+                    "description": "VerificationRuns is the history of the on-demand verification runs of this backup, by\nrun (#2023): each accepted run is recorded running before the API answers, then ends\npassed, failed or skipped in its own record. The oldest finished runs are dropped\nbeyond backup-verification-run-history. Verification stays the backup's result.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/backupmgr.BackupVerificationRun"
+                    }
                 }
             }
         },
@@ -24434,6 +24450,14 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "runId": {
+                    "description": "RunID names the on-demand run that recorded this result, as the API returned it when\nthe run was asked for: a caller waits for its own run's result, not another's",
+                    "type": "string"
+                },
+                "runSequence": {
+                    "description": "RunSequence is that run's sequence in the backup's VerificationRuns: with RunID, the\npair a run's record is ended by",
+                    "type": "integer"
+                },
                 "startTime": {
                     "type": "string"
                 },
@@ -24446,6 +24470,33 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "backupmgr.BackupVerificationRun": {
+            "type": "object",
+            "properties": {
+                "endTime": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "level": {
+                    "type": "string"
+                },
+                "runId": {
+                    "type": "string"
+                },
+                "sequence": {
+                    "type": "integer"
+                },
+                "startTime": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "running, passed, failed or skipped",
+                    "type": "string"
                 }
             }
         },
@@ -25405,6 +25456,24 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "cluster.BackupVerificationStart": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "runId": {
+                    "description": "RunID and Sequence name the run in the backup's verificationRuns: it ends there\npassed, failed or skipped. A sequence below the oldest one kept: dropped, by\nbackup-verification-run-history.",
+                    "type": "string"
+                },
+                "sequence": {
+                    "type": "integer"
                 }
             }
         },
@@ -27436,6 +27505,9 @@ const docTemplate = `{
                 },
                 "backupVerificationLevel": {
                     "type": "string"
+                },
+                "backupVerificationRunHistory": {
+                    "type": "integer"
                 },
                 "backupVerificationTimeout": {
                     "type": "integer"

@@ -3132,6 +3132,21 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
 		pick := ResolveRestore(cluster.buildBackupCatalog(), sel,
 			ResolveContext{MasterURL: master.URL, TargetURL: server.URL})
+		// a backup picked for being proven is checked again now: the proof refresh runs
+		// every 30 heartbeats, its file may have changed since (#2023)
+		if sel.Proven && pick != nil && !cluster.provenStillUnchanged(pick) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup %s on %s changed since its test restore was checked: not used as a proven backup", pick.Path, pick.Server)
+			pick = nil
+		}
+		// proven is a hard gate: without a proven backup there is none to restore, the
+		// on-disk lookup below would take any file
+		if sel.Proven && pick == nil {
+			err = errors.New("no proven logical backup: autorejoin-backup-selector-logical requires one that passed a test restore and is unchanged since")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "flashback %s on %s refused: %s", backtype, server.URL, err)
+			server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+			server.SetInReseedBackup("")
+			return err
+		}
 		if pick != nil && pick.isLocal() {
 			backupfile = pick.Path
 			if s := cluster.GetServerFromURL(pick.Server); s != nil {

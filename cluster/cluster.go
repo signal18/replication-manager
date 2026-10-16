@@ -595,8 +595,8 @@ type Cluster struct {
 	backupVerifying      sync.Map   `json:"-"`
 	// backupProofs: the backups whose passed test restore loaded a file still on disk
 	// unchanged, a snapshot refreshBackupProofs replaces whole (#2023).
-	backupProofs          atomic.Pointer[map[backupProofKey]bool] `json:"-"`
-	backupProofRefreshing atomic.Bool                             `json:"-"`
+	backupProofs          atomic.Pointer[map[backupProofKey]backupmgr.ArtifactFingerprint] `json:"-"`
+	backupProofRefreshing atomic.Bool                                                      `json:"-"`
 	// backupVerificationReads holds the backups an on-demand verification reads: backup id
 	// -> backupVerificationRead. A backup reusing the file and the archive removal wait.
 	backupVerificationReads sync.Map `json:"-"`

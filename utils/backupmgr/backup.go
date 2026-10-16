@@ -93,6 +93,13 @@ type BackupMetadata struct {
 	OriginalRemoved bool `json:"originalRemoved,omitempty"`
 	// Verification is the result of the last verification of this backup (#2023).
 	Verification *BackupVerification `json:"verification,omitempty"`
+	// VerificationRuns is the history of the on-demand verification runs of this backup, by
+	// run (#2023): each accepted run is recorded running before the API answers, then ends
+	// passed, failed or skipped in its own record. The oldest finished runs are dropped
+	// beyond backup-verification-run-history. Verification stays the backup's result.
+	VerificationRuns []BackupVerificationRun `json:"verificationRuns,omitempty"`
+	// VerificationRunSequence is the sequence number of the last run accepted.
+	VerificationRunSequence uint64 `json:"verificationRunSequence,omitempty"`
 }
 
 // Backup verification status values.
@@ -105,11 +112,29 @@ const (
 	BackupVerificationSkipped = "skipped"
 )
 
+// BackupVerificationRun is one on-demand verification run in a backup's history: its
+// sequence (per backup, increasing) and id as the API returned them, and its outcome.
+type BackupVerificationRun struct {
+	Sequence  uint64    `json:"sequence"`
+	RunID     string    `json:"runId"`
+	Level     string    `json:"level"`
+	Status    string    `json:"status"` // running, passed, failed or skipped
+	StartTime time.Time `json:"startTime"`
+	EndTime   time.Time `json:"endTime,omitzero"`
+	Error     string    `json:"error,omitempty"`
+}
+
 // BackupVerification is the result of a backup verification: its level (integrity or
 // restore), its status, and what it found.
 type BackupVerification struct {
 	Level  string `json:"level"`
 	Status string `json:"status"`
+	// RunID names the on-demand run that recorded this result, as the API returned it when
+	// the run was asked for: a caller waits for its own run's result, not another's
+	RunID string `json:"runId,omitempty"`
+	// RunSequence is that run's sequence in the backup's VerificationRuns: with RunID, the
+	// pair a run's record is ended by
+	RunSequence uint64 `json:"runSequence,omitempty"`
 	// Host is the verification server of a restore level, as the run read it
 	Host      string    `json:"host,omitempty"`
 	StartTime time.Time `json:"startTime"`
@@ -138,7 +163,7 @@ type ArtifactFingerprint struct {
 	// (its folder inode): a replaced file, or one whose modification time was set back, does
 	// not match. Absent from fingerprints recorded before, which then match nothing.
 	Inode      uint64    `json:"inode,omitempty"`
-	ChangeTime time.Time `json:"changeTime,omitempty"`
+	ChangeTime time.Time `json:"changeTime,omitzero"`
 }
 
 type PointInTimeMeta struct {

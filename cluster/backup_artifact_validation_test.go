@@ -272,8 +272,10 @@ func TestCheckLogicalRestoreArtifactSkipsVerifiedBackup(t *testing.T) {
 		t.Fatal("failed verification: the backup must be read")
 	}
 	meta.Verification = &backupmgr.BackupVerification{Level: "integrity", Status: backupmgr.BackupVerificationPassed, Artifact: fp}
-	if err := c.checkLogicalRestoreArtifact(path); err != nil {
+	if err := c.checkLogicalRestoreArtifact(path); artifactIdentityRead && err != nil {
 		t.Fatalf("passed and unchanged: not read again, got %v", err)
+	} else if !artifactIdentityRead && err == nil {
+		t.Fatal("without inode and ctime the backup must be read again")
 	}
 	if err := os.Chtimes(path, fp.ModTime.Add(time.Minute), fp.ModTime.Add(time.Minute)); err != nil {
 		t.Fatal(err)

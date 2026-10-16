@@ -293,6 +293,9 @@ func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.
 	if !fi.IsDir() {
 		return &backupmgr.ArtifactFingerprint{Files: 1, Size: fi.Size(), ModTime: fi.ModTime(), Inode: ino, ChangeTime: ctime}, nil
 	}
+	// the folder's own inode and ctime start the fingerprint: a file added, removed or renamed
+	// in the folder changes its ctime; one rewritten in place changes its own ctime, and one
+	// in a subfolder the file count, the size or the newest ctime of the files
 	fp := &backupmgr.ArtifactFingerprint{Inode: ino, ChangeTime: ctime}
 	entries := 0
 	err = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {

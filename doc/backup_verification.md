@@ -23,6 +23,7 @@ yet: asking for it returns an error, nothing is recorded.
 | `backup-verification-host` | | the verification server, `host:port`: an external server marked for it (below), or a replica of the cluster |
 | `backup-verification-credential` | | `user:password` on the verification server, encrypted like the other credentials |
 | `backup-verification-timeout` | `14400` | seconds a test restore (its load and comparison) may run before it is canceled and fails; `0` disables |
+| `backup-verification-run-history` | `16` | on-demand verification runs kept per backup in its run history (`verificationRuns`); beyond it the oldest finished runs are dropped; `0` or less: the default |
 
 > **An external verification server is disposable.** A test restore drops
 > there every schema the backup holds (other than the system ones), and loads
@@ -85,10 +86,18 @@ The same from the command line, through the API:
 replication-manager-cli backup verify <backupID> --cluster <name> [--level integrity|restore] [--wait] [--timeout 14400]
 ```
 
-With `--wait` the command waits for the result and prints it with its
-warnings and notes; it also needs the `cluster-show-backups` grant to poll the
-backup list. It exits 0 when the backup passed, 1 when it failed (or the
-verification did not start), 3 when it was not run (skipped).
+With `--wait` the command waits for the outcome of the run it started, and of no
+other: the API returns the run's `runId` and `sequence`, and each run is recorded
+in the backup's `verificationRuns`, running as soon as it is accepted, then
+passed, failed or skipped. It prints the outcome, with the warnings and notes of
+a run that ran, and needs the `cluster-show-backups` grant to poll the backup
+list. It exits 0 when the backup passed, 1 when it failed (or the verification
+did not start), 3 when it was not run (skipped: no backup slot as
+replication-manager stops, the backup busy too long, or no longer verifiable;
+an earlier result of the backup is kept), 4 when the run is no longer in the
+history (see `backup-verification-run-history`). A run still running when
+replication-manager stops is recorded as failed, interrupted, when it starts
+again.
 
 ## What each level checks
 
@@ -234,7 +243,9 @@ restore catalog (its restic snapshot is not: the test restore loaded the local
 file): an automatic rejoin
 selector that requires it, `autorejoin-backup-selector-logical =
 '{"proven":true}'`, only picks such a backup, and raises WARN0190 while no
-server's last logical backup is proven.
+server's last logical backup is proven. A rejoin with that selector checks the
+picked file again before restoring it, and is refused when there is no proven
+backup, or when the file changed since: it never restores another file instead.
 
 ERR00117 stays raised while that backup is the server's last logical backup.
 It clears when a new backup of the server is taken, or when the backup passes
@@ -249,7 +260,10 @@ and is unchanged since: the same size, modification time, inode and status
 change time (for a splitdump directory, the same files, total size, newest
 modification and change times, and the directory's inode) as when the
 verification read it. A file replaced or rewritten since, even with its size and
-modification time put back, is read again.
+modification time put back, is read again. Backups verified before the inode and
+change time were recorded (replication-manager versions up to 3.1.44) are read
+again once by their next restore, and are not proven, until they are verified
+again.
 
 ## Large backups
 

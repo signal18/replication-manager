@@ -2556,7 +2556,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupReconcile(w http.Respon
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param backupID path string true "Backup ID"
-// @Success 200 {object} map[string]interface{} "Backup verification started"
+// @Success 200 {object} cluster.BackupVerificationStart "Backup verification started"
 // @Failure 400 {string} string "Invalid request or backup not verifiable"
 // @Failure 403 {string} string "No valid ACL, or the restore level without db-restore"
 // @Failure 409 {string} string "Backup or verification running"
@@ -2579,7 +2579,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupVerifyDefault(w http.Re
 // @Param clusterName path string true "Cluster Name"
 // @Param backupID path string true "Backup ID"
 // @Param level path string true "Verification level" Enums(integrity, restore)
-// @Success 200 {object} map[string]interface{} "Backup verification started"
+// @Success 200 {object} cluster.BackupVerificationStart "Backup verification started"
 // @Failure 400 {string} string "Invalid request or backup not verifiable"
 // @Failure 403 {string} string "No valid ACL, or the restore level without db-restore"
 // @Failure 409 {string} string "Backup or verification running"
@@ -2620,7 +2620,8 @@ func (repman *ReplicationManager) handlerMuxClusterBackupVerify(w http.ResponseW
 		return
 	}
 
-	if err := mycluster.VerifyBackupByID(backupID, level); err != nil {
+	started, err := mycluster.VerifyBackupByIDRun(backupID, level)
+	if err != nil {
 		switch {
 		case errors.Is(err, cluster.ErrBackupInProgress), errors.Is(err, cluster.ErrBackupVerificationRunning):
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -2635,10 +2636,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackupVerify(w http.ResponseW
 	w.Header().Set("Content-Type", "application/json")
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
-	if err := e.Encode(map[string]interface{}{
-		"id":      backupID,
-		"message": "Backup verification started",
-	}); err != nil {
+	if err := e.Encode(started); err != nil {
 		http.Error(w, "Encoding error", http.StatusInternalServerError)
 		return
 	}
