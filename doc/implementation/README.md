@@ -42,6 +42,7 @@ Configuration management and refactoring documentation.
 - **PHASE1_SUMMARY.md** - Phase 1 implementation summary
 - **QUICKSTART.md** - Quick start guide for configuration
 - **REFACTORING.md** - Refactoring documentation and decisions
+- **CREDENTIAL_STORES.md** - Design: config, local secret store and Vault behind one credential store interface (#2017, #2041, #2057)
 
 ### `/ui-components/`
 Frontend UI component documentation.
