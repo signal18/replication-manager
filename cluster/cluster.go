@@ -361,7 +361,8 @@ type Cluster struct {
 	backupDiscoveries           sync.Map             `json:"-"` // key server URL: a backup folder discovery runs (backup_discovery.go)
 	// backup discovery (#2073): the candidates of each server's last discovery (key server URL,
 	// a *backupCandidateSet replaced whole), the outcome of a Register (key artifact path, a
-	// backupRegisterResult), the registered discovered backups whose file changed (key backup
+	// backupRegisterResult: a path names one server, each server's backup folder holding its
+	// host_port, GetMyBackupDirectoryPath), the registered discovered backups whose file changed (key backup
 	// id, a *BackupRegistrationChange), and the change check running
 	backupCandidates           sync.Map            `json:"-"`
 	backupRegisterResults      sync.Map            `json:"-"`

@@ -1330,3 +1330,36 @@ func TestDiscoveryReadStopsWithReplicationManager(t *testing.T) {
 		t.Fatalf("read while stopping: %v", err)
 	}
 }
+
+// A registered backup replaced by a symbolic link reads as changed, and its change is not
+// registered: the link's target is never read (the fingerprint refuses a link, before and
+// after the read).
+func TestRegisteredBackupReplacedBySymlink(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	path := filepath.Join(dir, "copy.sql.gz")
+	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
+	m, err := registerAndWait(t, c, server, path, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "other.sql.gz")
+	writeDiscoveryGzip(t, outside, strings.Replace(discoveryDump, "4521", "6666", 1)+discoveryDumpFooter)
+	os.Remove(path)
+	if err := os.Symlink(outside, path); err != nil {
+		t.Skip("no symbolic links here:", err)
+	}
+	c.checkRegisteredBackups()
+	if ch := c.backupChange(m.Id); ch == nil || !strings.Contains(ch.Describe, "symbolic link") {
+		t.Fatalf("a backup replaced by a link: %+v", ch)
+	}
+	if err := c.RegisterBackupChange(m.Id, time.Time{}); err == nil {
+		if _, err = waitRegistration(t, c, server, path); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+			t.Fatalf("the change to a link was registered: %v", err)
+		}
+	} else if !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("register the change to a link: %v", err)
+	}
+	if got := c.BackupMetaMap.Get(m.Id); got == nil || got.BinLogFilePos == 6666 {
+		t.Fatalf("the link's target was recorded: %+v", got)
+	}
+}

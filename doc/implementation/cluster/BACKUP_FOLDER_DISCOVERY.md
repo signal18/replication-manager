@@ -248,7 +248,12 @@ The artifacts are placed by hand: their reads are hardened.
 - Symbolic links: `classifyBackupArtifact` skips a link (never listed),
   `RegisterBackup` reads the entry with `os.Lstat` and refuses a link, and
   `discoveryFolderNames` refuses a dump folder holding one: a link may point
-  outside the backup folder. An archive's link members are not kept (only
+  outside the backup folder. `restoreArtifactFingerprintBounded` takes the
+  entry itself (`os.Lstat`) and refuses a link (`errArtifactSymlink`), its walk
+  never following one: every path through it (Register, the change of a
+  registered backup, the change check, the verification's proof) refuses a
+  backup replaced by a link, and the fingerprint taken before and after the read
+  refuses an entry swapped for one meanwhile. An archive's link members are not kept (only
   regular members are read).
 - Panics: `checkBackupCandidate` and `inspectDiscoveredBackup`, the two entry
   points of the parsing, recover a panic (the candidate unreadable, the

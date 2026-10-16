@@ -276,6 +276,10 @@ func restoreArtifactFingerprint(path string) (*backupmgr.ArtifactFingerprint, er
 	return restoreArtifactFingerprintBounded(path, 0)
 }
 
+// errArtifactSymlink: a backup's artifact is a symbolic link, which may point anywhere: it is
+// not fingerprinted, so never matches, nor read (#2073).
+var errArtifactSymlink = errors.New("a symbolic link: not read")
+
 // errArtifactWalkBudget: a folder holds more entries than the walk may read.
 var errArtifactWalkBudget = errors.New("more entries than the fingerprint check reads")
 
@@ -285,9 +289,13 @@ func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.
 	if enc := encryptedSplitDumpPath(path); enc != "" {
 		path = enc
 	}
-	fi, err := os.Stat(path)
+	// the entry itself: a symbolic link is refused (the walk below does not follow links)
+	fi, err := os.Lstat(path)
 	if err != nil {
 		return nil, err
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("%s is %w", filepath.Base(path), errArtifactSymlink)
 	}
 	ino, ctime := artifactStatIdentity(fi)
 	if !fi.IsDir() {

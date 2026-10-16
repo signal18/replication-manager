@@ -381,7 +381,12 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 	}
 	// a scheduled backup file replaced by hand becomes the scheduled backup: its record
 	// (<tool>.meta.json) is replaced, it is used as any scheduled backup
-	scheduled := (prev == nil && server.isScheduledBackupArtifact(path)) || (prev != nil && !prev.Discovered && !prev.IsAdhoc())
+	scheduled := prev == nil && server.isScheduledBackupArtifact(path)
+	if prev != nil {
+		server.backupMetaMutex.Lock() // as the fields carried over below
+		scheduled = !prev.Discovered && !prev.IsAdhoc()
+		server.backupMetaMutex.Unlock()
+	}
 	var id int64
 	switch {
 	case prev != nil && !scheduled:
