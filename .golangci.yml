@@ -7,6 +7,17 @@ issues:
 linters:
   disable:
     - errcheck
+  settings:
+    govet:
+      settings:
+        printf:
+          # the module loggers prefix the format before fmt sees it, so vet cannot
+          # infer them as printf wrappers (#2069)
+          funcs:
+            - (*github.com/signal18/replication-manager/cluster.Cluster).LogModulePrintf
+            - (*github.com/signal18/replication-manager/cluster.Cluster).LogModuleWithFieldsPrintf
+            - (*github.com/signal18/replication-manager/server.ReplicationManager).LogModulePrintf
+            - (*github.com/signal18/replication-manager/server.ReplicationManager).LogModuleWithFieldsPrintf
   exclusions:
     rules:
       - linters:

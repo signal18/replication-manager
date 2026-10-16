@@ -612,7 +612,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin master incremental %s", server.URL)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info %s", crash)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info %+v", crash)
 	server.Refresh()
 	if cluster.Conf.ReadOnly && !server.IsIgnoredReadonly() {
 		logs, err := server.SetReadOnly()
@@ -640,7 +640,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Cascading failover, consider we cannot flashback")
 			cluster.canFlashBack = false
 		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Found server ID in rejoining ID %s and crash FailoverIOGtid %s Master %s", server.ServerID, crash.FailoverIOGtid.Sprint(), cluster.master.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Found server ID in rejoining ID %d and crash FailoverIOGtid %s Master %s", server.ServerID, crash.FailoverIOGtid.Sprint(), cluster.master.URL)
 		}
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Old server GTID for flashback not found")
@@ -891,9 +891,9 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 					}
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No crash info on current master: %s replicates from %s, a replica of the current master", server.URL, mycurrentmaster.URL)
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info on current master %s", crash)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash info on current master %+v", crash)
 				}
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread  %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning, cluster.master.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Found slave to rejoin %s slave was previously in state %s replication io thread %s, pointing currently to %s", server.URL, server.PrevState, ss.SlaveIORunning.String, cluster.master.URL)
 
 				realmaster := cluster.master
 				// A SLAVE IS ALWAY BEHIND MASTER
@@ -1003,7 +1003,7 @@ func (server *ServerMonitor) isReplicationAheadOfMasterElection(crash *Crash) bo
 			return false
 		}
 		if valid {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No extra events after  file %s, pos %d is equal ", crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No extra events after file %s, pos %s is equal", crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
 			return true
 		}
 		return false

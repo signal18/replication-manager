@@ -85,4 +85,12 @@ func TestPublishedServerRoundTrip(t *testing.T) {
 	if c := view.Credentials.Load(); len(c) != 1 || c[0].User != "root" {
 		t.Fatalf("credentials %+v", c)
 	}
+
+	// null stores the zero value, as a fresh published field reads before any Store
+	if err := json.Unmarshal([]byte(`{"graphiteHost":null}`), &copy); err != nil {
+		t.Fatal(err)
+	}
+	if got := copy.GraphiteHost.Load(); got != "" {
+		t.Fatalf("graphiteHost after null %q", got)
+	}
 }

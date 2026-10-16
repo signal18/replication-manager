@@ -674,7 +674,7 @@ func (server *ServerMonitor) IsRunning() bool {
 
 func (server *ServerMonitor) IsConnected() bool {
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state running state is %s  with topology %s and pool %s ", server.State, server.GetCluster().GetTopology(), server.Conn)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state running state is %s with topology %s", server.State, server.GetCluster().GetTopology())
 
 	if server.State == stateFailed /*&& misc.Contains(cluster.ignoreList, s.URL) == false*/ {
 		return false

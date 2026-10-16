@@ -1270,7 +1270,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 		}
 		err := cluster.ProvisionRotatePasswords(cluster.GetDbPass())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password: %v", err)
 		}
 	}
 }
@@ -2278,7 +2278,7 @@ func (cluster *Cluster) SetSecretsToVault() {
 	if cluster.Conf.VaultRoleId != "" && cluster.Conf.VaultSecretId != "" {
 		//	cluster.Conf.VaultServerAddr = "http://vault.infra.svc.cloud18:8200"
 		if cluster.Conf.VaultServerAddr == "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "No vault-server-addr  defined for writing secrets to Vault: %s")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "No vault-server-addr defined for writing secrets to Vault")
 			return
 		}
 		client, err := cluster.GetVaultConnection()

@@ -276,7 +276,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 
 	filerc, err := os.Open(cmd)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise start database via ssh script %%s failed : %s ", cmd, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise start database via ssh script %s failed: %s", cmd, err)
 		return errors.New("can't open script")
 	}
 

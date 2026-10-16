@@ -102,7 +102,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		select {
 		case err = <-workerFlushTable:
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not flush tables on master %v", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not flush tables on master: %v", err)
 			}
 		case <-time.After(time.Second * time.Duration(cluster.Conf.SwitchWaitTrx)):
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)
@@ -136,7 +136,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Slave %s has been elected as a new master", cluster.slaves[key].URL)
 
 	if fail && !cluster.isSlaveElectable(cluster.slaves[key], true) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Elected slave have issue cancelling failover %v", cluster.slaves[key].URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Elected slave have issue cancelling failover: %v", cluster.slaves[key].URL)
 		return false
 	}
 	// Shuffle the server list
@@ -1366,7 +1366,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		select {
 		case err = <-workerFlushTable:
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not flush tables on master %v", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not flush tables on master: %v", err)
 			}
 		case <-time.After(time.Second * time.Duration(cluster.Conf.SwitchWaitTrx)):
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Long running trx on master at least %d, can not switchover ", cluster.Conf.SwitchWaitTrx)

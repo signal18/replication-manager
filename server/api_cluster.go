@@ -8219,7 +8219,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 		return
 	}
 
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Pending subscription for %s is rejected!")
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Pending subscription for %s is rejected!", userform.Username)
 
 	err = repman.SendPendingRejectionMail(mycluster, userform)
 	if err != nil {
@@ -8819,7 +8819,7 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 		return
 	}
 
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pending partnership for %s is rejected!")
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pending partnership for %s is rejected!", userform.Username)
 
 	err = repman.SendSponsorPendingRejectionExternalOpsMail(mycluster, userform.Roles, partner)
 	if err != nil {

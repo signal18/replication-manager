@@ -1242,7 +1242,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	})
 
 	if !(canCancel || force) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started %v", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started: %v", server.URL)
 	}
 
 	cancelRequested := false

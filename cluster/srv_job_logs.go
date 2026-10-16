@@ -746,7 +746,7 @@ func (server *ServerMonitor) SlowLogWatcher() {
 		if headerRe.MatchString(line.Text) && !headerRe.MatchString(preline) {
 			// new querySelector
 			if cluster.Conf.LogSST {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New query %s", log)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New query %+v", log)
 			}
 			if log.Query != "" {
 				log.Query = sqlmask.Secrets(log.Query)

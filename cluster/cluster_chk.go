@@ -778,7 +778,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not get SQL md5Sum %v", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not get SQL md5Sum: %v", err)
 		t.TableSync = "NA"
 		cluster.master.DictTables.Set(schema+"."+table, t)
 		return "NA"
@@ -820,7 +820,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 
 	_, err = Conn.Exec("/* replication-manager */ CREATE OR REPLACE TABLE replication_manager_schema.table_checksum(chunkId BIGINT,chunkRangeCondition varchar(8000) , " + columnDefPredicate + ",chunkCheckSum BIGINT UNSIGNED ) ENGINE=INNODB")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating checksum table: %w", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating checksum table: %s", err)
 		t.TableSync = "NA"
 		cluster.master.DictTables.Set(schema+"."+table, t)
 		return "NA"
@@ -832,7 +832,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 
 	_, err = Conn.Exec(query)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating chunk table: %w", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error creating chunk table: %s", err)
 		t.TableSync = "NA"
 		cluster.master.DictTables.Set(schema+"."+table, t)
 		return "NA"
