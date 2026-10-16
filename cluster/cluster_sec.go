@@ -79,8 +79,9 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	return nil
 }
 
-// ErrCredentialChangeRefused wraps the reason a credential setter refuses a value (#2048).
-var ErrCredentialChangeRefused = errors.New("credential change refused")
+// ErrCredentialChangeRefused is what a credential setter's refusal is (errors.Is, #2048): the
+// credential chain's (#2075), its reason in credstore.RefusedError.
+var ErrCredentialChangeRefused = credstore.ErrChangeRefused
 
 // CanSetCredential says whether a credential set through the API would survive the next
 // restart (#2048). The save skips immutable keys, and saves nothing with
@@ -92,10 +93,10 @@ func (cluster *Cluster) CanSetCredential(key string) error {
 	// database credentials, whose loss at the next restart locks repman out (#2048)
 	chain := cluster.CredentialChain()
 	if err := chain.CanSet(key); err != nil {
-		return fmt.Errorf("%w: %s", ErrCredentialChangeRefused, strings.TrimPrefix(err.Error(), credstore.ErrChangeRefused.Error()+": "))
+		return err
 	}
 	if !chain.Persists(key) {
-		return fmt.Errorf("%w: monitoring-save-config is off, a new %s would be lost at the next restart", ErrCredentialChangeRefused, key)
+		return &credstore.RefusedError{Reason: fmt.Errorf("monitoring-save-config is off, a new %s would be lost at the next restart", key)}
 	}
 	return nil
 }
@@ -122,7 +123,7 @@ func (cluster *Cluster) GetCredentialsInfo() []CredentialInfo {
 			info.Source = "vault"
 		}
 		if err := cluster.CanSetCredential(c.key); err != nil {
-			info.Refusal = strings.TrimPrefix(err.Error(), ErrCredentialChangeRefused.Error()+": ")
+			info.Refusal = credstore.Reason(err)
 		}
 		out = append(out, info)
 	}
@@ -342,32 +343,25 @@ func (cluster *Cluster) RotatePasswords() error {
 			new_password_rpl = new_password_db
 		}
 
-		// the new values go through the credential chain (#2075); every key is checked
-		// before any is set, so a refusal changes nothing
+		// the new values go through the credential chain (#2075) as one unit, before any
+		// server is changed: a refusal or a failure changes nothing
 		chain := cluster.CredentialChain()
-		rotated := []struct{ key, value string }{
-			{"db-servers-credential", cluster.GetDbUser() + ":" + new_password_db},
-			{"replication-credential", cluster.GetRplUser() + ":" + new_password_rpl},
+		rotated := []credstore.Change{
+			{Key: "db-servers-credential", Value: cluster.GetDbUser() + ":" + new_password_db},
+			{Key: "replication-credential", Value: cluster.GetRplUser() + ":" + new_password_rpl},
 		}
-		rotateProxySQL := cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("proxysql-password")
-		rotateShardProxy := cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("shardproxy-credential")
+		// a proxy credential the chain does not take is not rotated, its proxy left as it is
+		rotateProxySQL := cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && chain.CanSet("proxysql-password") == nil
+		rotateShardProxy := cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && chain.CanSet("shardproxy-credential") == nil
 		if rotateProxySQL {
-			rotated = append(rotated, struct{ key, value string }{"proxysql-password", new_password_proxysql})
+			rotated = append(rotated, credstore.Change{Key: "proxysql-password", Value: new_password_proxysql})
 		}
 		if rotateShardProxy {
-			rotated = append(rotated, struct{ key, value string }{"shardproxy-credential", cluster.GetShardUser() + ":" + new_password_shard})
+			rotated = append(rotated, credstore.Change{Key: "shardproxy-credential", Value: cluster.GetShardUser() + ":" + new_password_shard})
 		}
-		for _, r := range rotated {
-			if err := chain.CanSet(r.key); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused, nothing changed: %s", err)
-				return err
-			}
-		}
-		for _, r := range rotated {
-			if err := chain.Set(r.key, r.value); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation: %s not set: %s", r.key, err)
-				return err
-			}
+		if err := chain.SetAll(rotated...); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused, nothing changed: %s", err)
+			return err
 		}
 		cluster.MarkSecretVersionStoreDirty()
 		if rotateProxySQL || rotateShardProxy {
@@ -401,7 +395,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 		}
 
-		if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("proxysql-password") {
+		if rotateProxySQL {
 			for _, pri := range cluster.Proxies {
 				if prx, ok := pri.(*ProxySQLProxy); ok {
 					prx.RotateMonitoringPasswords(new_password_db)
@@ -411,7 +405,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 			}
 		}
-		if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("shardproxy-credential") {
+		if rotateShardProxy {
 			for _, pri := range cluster.Proxies {
 				if prx, ok := pri.(*MariadbShardProxy); ok {
 					prx.RotateProxyPasswords(new_password_shard)
@@ -555,7 +549,6 @@ func (cluster *Cluster) DeleteDockerPrivateRegistryCredentials(registry, user st
 				creds = []string{}
 			} else {
 				creds = append(creds[:k], creds[k+1:]...)
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials for %s removed", registry)
 			}
 			break
 		}
@@ -567,7 +560,7 @@ func (cluster *Cluster) DeleteDockerPrivateRegistryCredentials(registry, user st
 	}
 	cluster.Conf.ProvDockerRegistryCredentials = value
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials added for %s", registry)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials removed for %s", registry)
 
 	return nil
 }

@@ -33,8 +33,28 @@ type CredentialStore interface {
 	Generates() bool                                   // makes its own passwords (Vault database engine)
 }
 
-// ErrChangeRefused wraps the reason no store of the chain takes a change.
+// ErrChangeRefused is what a refusal is (errors.Is); RefusedError carries its reason.
 var ErrChangeRefused = errors.New("credential change refused")
+
+// RefusedError is the chain's refusal of a change: Reason is the first store's, shown in the
+// GUI.
+type RefusedError struct {
+	Reason error
+}
+
+func (e *RefusedError) Error() string        { return ErrChangeRefused.Error() + ": " + e.Reason.Error() }
+func (e *RefusedError) Is(target error) bool { return target == ErrChangeRefused }
+func (e *RefusedError) Unwrap() error        { return e.Reason }
+
+// Reason is the reason of a refusal, without the "credential change refused" prefix; any
+// other error as it is.
+func Reason(err error) string {
+	var r *RefusedError
+	if errors.As(err, &r) {
+		return r.Reason.Error()
+	}
+	return err.Error()
+}
 
 // Store names, the credential's source in the GUI.
 const (
@@ -77,8 +97,8 @@ func (s *PinnedConfig) Set(key, value string) error {
 //   - off, static mode: memory only. The config files are the source: a change survives a
 //     reread (a tag change) and is gone at the next restart, as that mode intends.
 //
-// Set stores the encrypted value in DynamicFlagMap and calls the save event (in static mode
-// the save writes no config file). A key a config file pins is refused in both scopes: the
+// Set stores the encrypted value in DynamicFlagMap; the chain then calls the save event, once
+// its lock is released (in static mode the save writes no config file). A key a config file pins is refused in both scopes: the
 // file wins at the next restart.
 type DynamicConfig struct {
 	conf *config.Config
@@ -120,11 +140,19 @@ func (s *DynamicConfig) Set(key, value string) error {
 		s.conf.DynamicFlagMap = make(map[string]interface{})
 	}
 	s.conf.DynamicFlagMap[key] = s.conf.EncryptSecretValue(value)
+	return nil
+}
+
+// saveEvent is called by the chain after a change, outside its lock: the save event may
+// reach the chain again.
+func (s *DynamicConfig) saveEvent() {
 	if s.save != nil {
 		s.save()
 	}
-	return nil
 }
+
+// saver is a store whose changes need a save event.
+type saver interface{ saveEvent() }
 
 // Chain is a cluster's (or the server's) ordered list of credential stores, the config last:
 // it is the starting value. Its lock serializes every read of a store and every write, and
@@ -196,7 +224,7 @@ func (c *Chain) writer(key string) (CredentialStore, error) {
 	if first == nil {
 		first = errors.New("no credential store")
 	}
-	return nil, fmt.Errorf("%w: %v", ErrChangeRefused, first)
+	return nil, &RefusedError{Reason: first}
 }
 
 // Persists reports whether the store that would take a change of key keeps it across a
@@ -223,25 +251,68 @@ func (c *Chain) Versioned(key string) bool {
 	return err == nil && s.Versioned()
 }
 
-// Set writes value, the plain credential ("user:password", or a password), into the first
-// store that takes it, then updates the cache. It is the one write point of a credential.
+// Change is a new value for a credential: the plain "user:password", or a password.
+type Change struct {
+	Key, Value string
+}
+
+// Set writes value, the plain credential, into the first store that takes it, then updates
+// the cache. It is the one write point of a credential.
 func (c *Chain) Set(key, value string) error {
+	return c.SetAll(Change{Key: key, Value: value})
+}
+
+// SetAll writes changes that go together (a rotation's credentials) as one unit: every key
+// is checked before any is written, under one lock, and a store failing midway has the
+// ones already written put back to their former value; the cache changes only once all are
+// written. Then the save events, outside the lock.
+func (c *Chain) SetAll(changes ...Change) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	s, err := c.writer(key)
-	if err != nil {
-		return err
-	}
-	if err := s.Set(key, value); err != nil {
-		return fmt.Errorf("%s: %w", s.Name(), err)
+	writers := make([]CredentialStore, len(changes))
+	for i, ch := range changes {
+		w, err := c.writer(ch.Key)
+		if err != nil {
+			c.mu.Unlock()
+			return err
+		}
+		writers[i] = w
 	}
 	if c.conf.Secrets == nil {
 		c.conf.RebuildSecrets(c.rawValue)
 	}
-	old := c.conf.Secrets.Get(key)
-	// the ciphertext is left empty: the save reuses the store's (GetStableEncryptedValue)
-	c.conf.Secrets.Set(key, config.Secret{Value: value, OldValue: old.Value})
+	for i, ch := range changes {
+		if err := writers[i].Set(ch.Key, ch.Value); err != nil {
+			errs := []error{fmt.Errorf("%s: %s: %w", writers[i].Name(), ch.Key, err)}
+			for j := i - 1; j >= 0; j-- {
+				// the cache still holds the former value
+				if uerr := writers[j].Set(changes[j].Key, c.conf.Secrets.Get(changes[j].Key).Value); uerr != nil {
+					errs = append(errs, fmt.Errorf("%s: %s not put back: %w", writers[j].Name(), changes[j].Key, uerr))
+				}
+			}
+			c.mu.Unlock()
+			c.saveEvents(writers[:i])
+			return errors.Join(errs...)
+		}
+	}
+	for _, ch := range changes {
+		old := c.conf.Secrets.Get(ch.Key)
+		// the ciphertext is left empty: the save reuses the store's (GetStableEncryptedValue)
+		c.conf.Secrets.Set(ch.Key, config.Secret{Value: ch.Value, OldValue: old.Value})
+	}
+	c.mu.Unlock()
+	c.saveEvents(writers)
 	return nil
+}
+
+// saveEvents calls each written store's save event once. Call it without the lock.
+func (c *Chain) saveEvents(writers []CredentialStore) {
+	seen := map[CredentialStore]bool{}
+	for _, w := range writers {
+		if sv, ok := w.(saver); ok && !seen[w] {
+			seen[w] = true
+			sv.saveEvent()
+		}
+	}
 }
 
 // Refresh rebuilds the cache, Conf.Secrets, from the stores. Safe from anywhere at any time:

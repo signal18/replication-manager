@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -155,5 +156,90 @@ func TestChainConcurrentSetters(t *testing.T) {
 	wg.Wait()
 	if v := conf.GetDecryptedValue("replication-credential"); v != "repl:p99" {
 		t.Fatalf("last value %q", v)
+	}
+}
+
+// the save event runs outside the chain's lock: a save that reads or rebuilds through the
+// chain (a GUI refresh, SetClusterCredentialsFromConfig) must not deadlock
+func TestChainSaveEventReentersChain(t *testing.T) {
+	conf := testConf()
+	var c *Chain
+	saves := 0
+	c = NewConfigChain(conf, func() {
+		saves++
+		c.Source("replication-credential")
+		c.CanSet("replication-credential")
+		c.Refresh()
+	})
+	c.Refresh()
+	done := make(chan error, 1)
+	go func() {
+		done <- c.SetAll(Change{"replication-credential", "repl:a"}, Change{"backup-verification-credential", "verif:b"})
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("deadlock: the save event re-entered the chain under its lock")
+	}
+	if saves != 1 {
+		t.Fatalf("%d save events for one change of two keys, want 1", saves)
+	}
+	if v := conf.GetDecryptedValue("replication-credential"); v != "repl:a" {
+		t.Fatalf("%q after the re-entering save", v)
+	}
+}
+
+// failingStore takes every key and fails to write one
+type failingStore struct {
+	DynamicConfig
+	failKey string
+}
+
+func (s *failingStore) Set(key, value string) error {
+	if key == s.failKey {
+		return errors.New("store unavailable")
+	}
+	return s.DynamicConfig.Set(key, value)
+}
+
+// a rotation's credentials are one unit: a store failing midway puts back the ones already
+// written, and the cache keeps the former values
+func TestChainSetAllFailureChangesNothing(t *testing.T) {
+	conf := testConf()
+	conf.DynamicFlagMap["replication-credential"] = "repl:before"
+	saves := 0
+	s := &failingStore{DynamicConfig: DynamicConfig{conf: conf, save: func() { saves++ }}, failKey: "backup-verification-credential"}
+	c := NewChain(conf, s, &PinnedConfig{conf: conf})
+	c.Refresh()
+	err := c.SetAll(Change{"replication-credential", "repl:new"}, Change{"backup-verification-credential", "verif:new"})
+	if err == nil || !strings.Contains(err.Error(), "store unavailable") {
+		t.Fatalf("got %v, want the store's failure", err)
+	}
+	if v := conf.GetDecryptedValue("replication-credential"); v != "repl:before" {
+		t.Fatalf("cache %q, want the former value", v)
+	}
+	c.Refresh()
+	if v := conf.GetDecryptedValue("replication-credential"); v != "repl:before" {
+		t.Fatalf("store %q after a reread, want the former value put back", v)
+	}
+	if v := conf.GetDecryptedValue("backup-verification-credential"); v != "" {
+		t.Fatalf("failed key %q, want unchanged", v)
+	}
+}
+
+// a refusal names its reason without the prefix, and still is ErrChangeRefused
+func TestChainRefusalReason(t *testing.T) {
+	conf := testConf()
+	conf.ImmuableFlagMap["replication-credential"] = "repl:pinned"
+	c := NewConfigChain(conf, nil)
+	err := c.CanSet("replication-credential")
+	if !errors.Is(err, ErrChangeRefused) {
+		t.Fatalf("%v is not ErrChangeRefused", err)
+	}
+	if r := Reason(err); strings.HasPrefix(r, ErrChangeRefused.Error()) || !strings.Contains(r, "set in a config file") {
+		t.Fatalf("reason %q", r)
 	}
 }

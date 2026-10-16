@@ -49,6 +49,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.APIToken = repman.regtestAPIToken
 	regtest.APIRequest = repman.regtestAPIRequest
 	regtest.APIRequestBody = repman.regtestAPIRequestBody
+	regtest.LoadClusterConfigFromDisk = repman.regtestLoadClusterConfigFromDisk
 	regtest := new(regtest.RegTest)
 	var allTests map[string]cluster.Test
 	pathdefault := cl.GetShareDir() + "/tests/" + cl.GetOrchestrator() + "/config/masterslave/mariadb/without_traffic/10.5/x2/semisync"
@@ -341,6 +342,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		}
 		if test.Name == "testConfigPersistBackupOption" {
 			res = regtest.TestConfigPersistBackupOption(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testCredentialPersistTagReload" {
+			res = regtest.TestCredentialPersistTagReload(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testGraphiteMetricsQueueBound" {
 			res = regtest.TestGraphiteMetricsQueueBound(cl, test.ConfigFile, &test)

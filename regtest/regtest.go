@@ -102,6 +102,7 @@ var tests = []string{
 	// Run it by name: /api/clusters/<cluster>/tests/actions/run/testProxySQLPostgresRouting
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 	"testConfigPersistBackupOption",
+	"testCredentialPersistTagReload",
 	"testConfigCookiePushBasic",
 	"testConfigCookiePushLifecycle",
 	"testConfigCookiePushMultipleServers",
