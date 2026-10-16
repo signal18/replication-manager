@@ -374,6 +374,9 @@ func init() {
 	rootClientCmd.AddCommand(tokenCmd)
 	initTokenFlags()
 
+	rootClientCmd.AddCommand(backupCmd)
+	initBackupFlags(backupCmd)
+
 	rootClientCmd.AddCommand(regTestCmd)
 	initRegTestFlags(regTestCmd)
 	initClusterFlags(regTestCmd)

@@ -36,7 +36,7 @@ const (
 	TimeAny             = "any"
 	TimeNotAfterHead    = "notafterlastmasterbinlog" // position not beyond the master's head
 	TimeNotBeforeOldest = "nobeforemasterbinlog"     // position not before the master's oldest live binlog
-	TimePITR            = "pitr"                      // restore + binlog replay toward StartGtid/StartTime
+	TimePITR            = "pitr"                     // restore + binlog replay toward StartGtid/StartTime
 )
 
 // RestoreSelector declares WHAT backup to restore from. Grouped by field type.
@@ -69,6 +69,7 @@ type RestoreSelector struct {
 // took, local or repo, self-describing so every selector dimension can be
 // evaluated against it.
 type BackupCatalogEntry struct {
+	ID        int64    // the backup's id (BackupMetadata.Id)
 	Server    string   // node it was taken from            -> origin
 	Location  string   // local | remote (repo)             -> repo
 	Kind      string   // logical | physical                -> type

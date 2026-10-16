@@ -107,8 +107,9 @@ func TestVerifyLogicalBackupIntegrityEncrypted(t *testing.T) {
 func TestVerifyBackupRecordsResult(t *testing.T) {
 	c, server, meta := newVerificationTest(t, false, func(dest string) { writeValidationGzip(t, dest, validationDump) })
 
-	server.verifyBackup(meta, config.ConstBackupVerificationLevelIntegrity)
-	if meta.Verification == nil || meta.Verification.Status != backupmgr.BackupVerificationPassed || meta.Verification.Level != config.ConstBackupVerificationLevelIntegrity {
+	// an on-demand run's id is recorded with its result (CLI --wait waits for it)
+	server.verifyBackupRun(meta, config.ConstBackupVerificationLevelIntegrity, "a1b2c3d4e5f60718", 1)
+	if meta.Verification == nil || meta.Verification.Status != backupmgr.BackupVerificationPassed || meta.Verification.Level != config.ConstBackupVerificationLevelIntegrity || meta.Verification.RunID != "a1b2c3d4e5f60718" || meta.Verification.RunSequence != 1 {
 		t.Fatalf("verification %+v", meta.Verification)
 	}
 	var onDisk backupmgr.BackupMetadata
@@ -127,8 +128,10 @@ func TestVerifyBackupRecordsResult(t *testing.T) {
 	if a, b := meta.Verification.Artifact, onDisk.Verification.Artifact; a == nil || b == nil || a.Size != b.Size || !a.ModTime.Equal(b.ModTime) {
 		t.Fatalf("artifact fingerprint %+v, on disk %+v", a, b)
 	}
-	if c.verifiedRestoreArtifact(meta.Dest) != meta {
+	if got := c.verifiedRestoreArtifact(meta.Dest); artifactIdentityRead && got != meta {
 		t.Fatal("a restore of the verified, unchanged backup reads it again")
+	} else if !artifactIdentityRead && got != nil {
+		t.Fatal("without inode and ctime a restore must read the backup again")
 	}
 	c.checkBackupVerificationStates()
 	if hasOpenState(c, "ERR00117") {
@@ -303,15 +306,41 @@ func TestVerificationNotRunIsSkipped(t *testing.T) {
 		t.Fatal("the verification still waits")
 	}
 
-	if err := c.VerifyBackupByID(meta.Id, config.ConstBackupVerificationLevelIntegrity); err != nil {
-		t.Fatal(err)
+	readMeta := func() backupmgr.BackupMetadata {
+		t.Helper()
+		var onDisk backupmgr.BackupMetadata
+		raw, err := os.ReadFile(server.backupMetaFilePath(meta))
+		if err != nil || json.Unmarshal(raw, &onDisk) != nil {
+			t.Fatalf("meta file: %v", err)
+		}
+		return onDisk
+	}
+	runOf := func(runs []backupmgr.BackupVerificationRun, seq uint64) *backupmgr.BackupVerificationRun {
+		for i := range runs {
+			if runs[i].Sequence == seq {
+				return &runs[i]
+			}
+		}
+		return nil
+	}
+
+	first, err := c.VerifyBackupByIDRun(meta.Id, config.ConstBackupVerificationLevelIntegrity)
+	if err != nil || len(first.RunID) != 16 || first.Sequence != 1 {
+		t.Fatalf("run %+v, err %v", first, err)
+	}
+	// the accepted run is in the meta file, running, before the call returns
+	if r := runOf(readMeta().VerificationRuns, first.Sequence); r == nil || r.RunID != first.RunID || r.Status != backupmgr.BackupVerificationRunning {
+		t.Fatalf("accepted run not persisted running: %+v", readMeta().VerificationRuns)
 	}
 	waitDone()
 	server.backupMetaMutex.Lock()
 	v := meta.Verification
 	server.backupMetaMutex.Unlock()
-	if v == nil || v.Status != backupmgr.BackupVerificationSkipped || !strings.Contains(v.Error, "not run") {
-		t.Fatalf("not run: %+v", v)
+	if v == nil || v.Status != backupmgr.BackupVerificationSkipped || !strings.Contains(v.Error, "not run") || v.RunID != first.RunID {
+		t.Fatalf("not run: %+v, want run id %s", v, first.RunID)
+	}
+	if r := runOf(readMeta().VerificationRuns, first.Sequence); r == nil || r.Status != backupmgr.BackupVerificationSkipped {
+		t.Fatalf("the run's record is not skipped: %+v", r)
 	}
 	server.LastBackupMeta.Logical = meta
 	c.checkBackupVerificationStates()
@@ -320,16 +349,31 @@ func TestVerificationNotRunIsSkipped(t *testing.T) {
 	}
 	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Id: 200, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: server.URL}
 
-	passed := &backupmgr.BackupVerification{Level: config.ConstBackupVerificationLevelIntegrity, Status: backupmgr.BackupVerificationPassed}
-	server.recordBackupVerification(meta, passed)
-	if err := c.VerifyBackupByID(meta.Id, config.ConstBackupVerificationLevelIntegrity); err != nil {
+	// a backup proven by a test restore, then a run that does not run: the proof stays
+	fp, err := restoreArtifactFingerprint(meta.Dest)
+	if err != nil {
 		t.Fatal(err)
+	}
+	passed := &backupmgr.BackupVerification{Level: config.ConstBackupVerificationLevelRestore, Status: backupmgr.BackupVerificationPassed, Artifact: fp}
+	server.recordBackupVerification(meta, passed)
+	second, err := c.VerifyBackupByIDRun(meta.Id, config.ConstBackupVerificationLevelIntegrity)
+	if err != nil || second.Sequence != 2 || second.RunID == first.RunID {
+		t.Fatalf("second run %+v, err %v", second, err)
 	}
 	waitDone()
 	server.backupMetaMutex.Lock()
 	v = meta.Verification
+	proven := backupProven(meta)
 	server.backupMetaMutex.Unlock()
-	if v != passed {
-		t.Fatalf("the earlier result was replaced: %+v", v)
+	if v != passed || !proven {
+		t.Fatalf("the earlier result or its proof was replaced: %+v proven %v", v, proven)
+	}
+	// each run ends in its own record, in the meta file too
+	runs := readMeta().VerificationRuns
+	if r := runOf(runs, second.Sequence); r == nil || r.RunID != second.RunID || r.Status != backupmgr.BackupVerificationSkipped {
+		t.Fatalf("the skipped run %d is not recorded: %+v", second.Sequence, runs)
+	}
+	if r := runOf(runs, first.Sequence); r == nil || r.RunID != first.RunID || r.Status != backupmgr.BackupVerificationSkipped {
+		t.Fatalf("the first run's record changed: %+v", runs)
 	}
 }

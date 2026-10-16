@@ -23,6 +23,7 @@ yet: asking for it returns an error, nothing is recorded.
 | `backup-verification-host` | | the verification server, `host:port`: an external server marked for it (below), or a replica of the cluster |
 | `backup-verification-credential` | | `user:password` on the verification server, encrypted like the other credentials |
 | `backup-verification-timeout` | `14400` | seconds a test restore (its load and comparison) may run before it is canceled and fails; `0` disables |
+| `backup-verification-run-history` | `16` | on-demand verification runs kept per backup in its run history (`verificationRuns`); beyond it the oldest finished runs are dropped; `0` or less: the default |
 
 > **An external verification server is disposable.** A test restore drops
 > there every schema the backup holds (other than the system ones), and loads
@@ -78,6 +79,25 @@ Without a level, `backup-verification-level` applies. The call returns once
 the verification started (`409` while the backup or a verification of it
 runs, `400` for a backup that is not verifiable). A backup can not be deleted
 while it is verified.
+
+The same from the command line, through the API:
+
+```
+replication-manager-cli backup verify <backupID> --cluster <name> [--level integrity|restore] [--wait] [--timeout 14400]
+```
+
+With `--wait` the command waits for the outcome of the run it started, and of no
+other: the API returns the run's `runId` and `sequence`, and each run is recorded
+in the backup's `verificationRuns`, running as soon as it is accepted, then
+passed, failed or skipped. It prints the outcome, with the warnings and notes of
+a run that ran, and needs the `cluster-show-backups` grant to poll the backup
+list. It exits 0 when the backup passed, 1 when it failed (or the verification
+did not start), 3 when it was not run (skipped: no backup slot as
+replication-manager stops, the backup busy too long, or no longer verifiable;
+an earlier result of the backup is kept), 4 when the run is no longer in the
+history (see `backup-verification-run-history`). A run still running when
+replication-manager stops is recorded as failed, interrupted, when it starts
+again.
 
 ## What each level checks
 
@@ -217,6 +237,16 @@ backup window by the test restore.
 | ERR00117 | a server's last logical backup failed its verification: a restore from it would fail, take a new backup |
 | WARN0248 | a server's last logical backup passed its test restore but lacks objects its source has: check `backup-mysqldump-options` and the event scheduler |
 
+A backup that passed a test restore (the restore level; an integrity pass
+does not count), whose file is still on disk unchanged, is **proven** in the
+restore catalog (its restic snapshot is not: the test restore loaded the local
+file): an automatic rejoin
+selector that requires it, `autorejoin-backup-selector-logical =
+'{"proven":true}'`, only picks such a backup, and raises WARN0190 while no
+server's last logical backup is proven. A rejoin with that selector checks the
+picked file again before restoring it, and is refused when there is no proven
+backup, or when the file changed since: it never restores another file instead.
+
 ERR00117 stays raised while that backup is the server's last logical backup.
 It clears when a new backup of the server is taken, or when the backup passes
 a new verification (after the cause is fixed, e.g. a verification server
@@ -226,6 +256,43 @@ can not be verified again: take a new backup.
 A logical restore (a reseed from a mysqldump backup) reads its backup first,
 as the integrity level does, and refuses a truncated or damaged one before the
 server is touched. It skips that read for a backup that passed a verification
-and is unchanged since: the same size and modification time (for a splitdump
-directory, the same files, total size and newest modification time) as when
-the verification read it.
+and is unchanged since: the same size, modification time, inode and status
+change time (for a splitdump directory, the same files, total size, newest
+modification and change times, and the directory's inode) as when the
+verification read it. A file replaced or rewritten since, even with its size and
+modification time put back, is read again. Backups verified before the inode and
+change time were recorded (replication-manager versions up to 3.1.44) are read
+again once by their next restore, and are not proven, until they are verified
+again: after an upgrade, run a test restore of a backup that must be proven
+(Test restore, or `replication-manager-cli backup verify <id> --level restore`).
+
+## Large backups
+
+The time a verification takes grows with the size of the backup; checking
+whether a proven backup is unchanged does not (it reads the files' status, not
+their content: one file for a single-file dump, one per file for a splitdump).
+
+- **Integrity level**: the backup is read and decompressed once, end to end, on
+  the replication-manager host. Decompression runs on one core, typically a few
+  hundred MB of dump per second: count minutes per tens of GB, and more when the
+  backup storage reads slower than that.
+- **Restore level**: the whole backup is loaded into the verification server by
+  replication-manager itself, over one connection, statement after statement (a
+  splitdump file after file), then compared. For hundreds of GB, count hours,
+  which can exceed the default `backup-verification-timeout` (4 hours): the test
+  restore is then canceled and fails, and a replica used as the verification
+  server stays in maintenance until it is reseeded.
+- With `backup-verification` on, the automatic verification runs inside the
+  backup's slot: every backup completes only once it has ended, so a restore
+  level lengthens each backup window by a test restore.
+
+For a cluster with large backups:
+
+- keep `backup-verification-level = integrity` for the automatic verification,
+  and run the restore level on demand (Test restore, `replication-manager-cli
+  backup verify <id> --level restore --wait`), when a long run suits;
+- raise `backup-verification-timeout` to what a test restore of that backup
+  takes on the verification server, with margin;
+- time one verification of each level on the cluster's own backup before
+  relying on it: the figures above depend on the storage, the CPU and the
+  verification server.

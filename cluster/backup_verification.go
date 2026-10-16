@@ -1,6 +1,8 @@
 package cluster
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -57,68 +59,196 @@ func (cluster *Cluster) backupVerificationLevel(level string) (string, error) {
 // (backup-verification-level when empty). It returns once the verification started, or
 // why it can not start.
 func (cluster *Cluster) VerifyBackupByID(backupID int64, level string) error {
+	_, err := cluster.VerifyBackupByIDRun(backupID, level)
+	return err
+}
+
+// VerifyBackupByIDRun is VerifyBackupByID returning the run it starts: its id and sequence,
+// in the backup's run history (VerificationRuns), recorded running and written to the meta
+// file before it returns. The run ends in that record, passed, failed or skipped.
+func (cluster *Cluster) VerifyBackupByIDRun(backupID int64, level string) (BackupVerificationStart, error) {
 	if cluster == nil || cluster.BackupMetaMap == nil {
-		return fmt.Errorf("cluster backups not available")
+		return BackupVerificationStart{}, fmt.Errorf("cluster backups not available")
 	}
 	// Reserve the backup before examining or deleting it. The same mutex protects
 	// DeleteBackupByID, so a verification and deletion cannot cross in flight.
 	cluster.backupVerificationMu.Lock()
 	defer cluster.backupVerificationMu.Unlock()
 	if backupID <= 0 {
-		return fmt.Errorf("%w: %d", ErrBackupInvalidID, backupID)
+		return BackupVerificationStart{}, fmt.Errorf("%w: %d", ErrBackupInvalidID, backupID)
 	}
 	meta := cluster.BackupMetaMap.Get(backupID)
 	if meta == nil {
-		return fmt.Errorf("%w: %d", ErrBackupNotFound, backupID)
+		return BackupVerificationStart{}, fmt.Errorf("%w: %d", ErrBackupNotFound, backupID)
 	}
 	level, err := cluster.backupVerificationLevel(level)
 	if err != nil {
-		return err
+		return BackupVerificationStart{}, err
 	}
 	if err := verifiableLogicalBackup(meta); err != nil {
-		return err
+		return BackupVerificationStart{}, err
 	}
 	server := cluster.GetServerFromURL(meta.Source)
 	if server == nil {
-		return fmt.Errorf("source server %s not found", meta.Source)
+		return BackupVerificationStart{}, fmt.Errorf("source server %s not found", meta.Source)
 	}
 	if cluster.isBackupMetaInProgress(meta, server) {
-		return fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
+		return BackupVerificationStart{}, fmt.Errorf("%w: %d", ErrBackupInProgress, backupID)
 	}
 	// reserved before the wait for a slot: at most one waiting goroutine per backup (a
 	// backup's slot is freed a tick after it ends, a refusal would fail a verification asked
 	// right after a backup)
 	if _, running := cluster.backupVerifying.LoadOrStore(backupID, level); running {
-		return fmt.Errorf("%w: %d", ErrBackupVerificationRunning, backupID)
+		return BackupVerificationStart{}, fmt.Errorf("%w: %d", ErrBackupVerificationRunning, backupID)
+	}
+	runID, err := newBackupVerificationRunID()
+	if err != nil {
+		cluster.backupVerifying.Delete(backupID)
+		return BackupVerificationStart{}, err
+	}
+	seq, err := server.startVerificationRun(meta, level, runID)
+	if err != nil {
+		cluster.backupVerifying.Delete(backupID)
+		return BackupVerificationStart{}, err
 	}
 	go func() {
 		defer cluster.backupVerifying.Delete(backupID)
+		// every exit before the run ends this run's record as skipped: its caller (CLI
+		// --wait) waits for this run's outcome, not another run's
 		if !cluster.waitForBackupSlot() {
+			server.recordBackupVerificationSkipped(meta, level, runID, seq, "not run: replication-manager is stopping")
 			return
 		}
 		defer cluster.ServerGlobals.ReleaseBackupSlot()
 		if err := cluster.claimBackupVerificationRead(meta); err != nil {
 			// not run: shown in the backup list as skipped, not a failure (no ERR00117);
-			// a result the backup already has is kept, the skip only logged
-			if errors.Is(err, errBackupVerificationClaimTimeout) {
-				server.backupMetaMutex.Lock()
-				hasResult := meta.Verification != nil && meta.Verification.Status != backupmgr.BackupVerificationRunning
-				server.backupMetaMutex.Unlock()
-				if !hasResult {
-					now := time.Now()
-					server.recordBackupVerification(meta, &backupmgr.BackupVerification{Level: level, Status: backupmgr.BackupVerificationSkipped, StartTime: now, EndTime: now, Error: "not run: " + err.Error()})
-				}
-			}
+			// a result the backup already has is kept
+			server.recordBackupVerificationSkipped(meta, level, runID, seq, "not run: "+err.Error())
 			return
 		}
 		defer cluster.backupVerificationReads.Delete(meta.Id)
 		if err := verifiableLogicalBackup(meta); err != nil { // its original archived meanwhile
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Backup verification of backup %d not run: %s", meta.Id, err)
+			server.recordBackupVerificationSkipped(meta, level, runID, seq, "not run: "+err.Error())
 			return
 		}
-		server.verifyBackup(meta, level)
+		server.verifyBackupRun(meta, level, runID, seq)
 	}()
-	return nil
+	return BackupVerificationStart{ID: backupID, RunID: runID, Sequence: seq, Message: "Backup verification started"}, nil
+}
+
+// BackupVerificationStart is the API's answer to an on-demand verification it started.
+type BackupVerificationStart struct {
+	ID int64 `json:"id"`
+	// RunID and Sequence name the run in the backup's verificationRuns: it ends there
+	// passed, failed or skipped. A sequence below the oldest one kept: dropped, by
+	// backup-verification-run-history.
+	RunID    string `json:"runId"`
+	Sequence uint64 `json:"sequence"`
+	Message  string `json:"message"`
+}
+
+// recordBackupVerificationSkipped ends on-demand run runID, which did not run, as skipped:
+// in its run record, and as the backup's verification only when it has no finished result
+// (a result, and the proof of a test restore, are kept). The meta file is rewritten.
+func (server *ServerMonitor) recordBackupVerificationSkipped(meta *backupmgr.BackupMetadata, level, runID string, seq uint64, reason string) {
+	cluster := server.ClusterGroup
+	now := time.Now()
+	v := &backupmgr.BackupVerification{Level: level, Status: backupmgr.BackupVerificationSkipped, RunID: runID, RunSequence: seq, StartTime: now, EndTime: now, Error: reason}
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+	endVerificationRunLocked(meta, v)
+	if meta.Verification == nil || meta.Verification.Status == backupmgr.BackupVerificationRunning {
+		meta.Verification = v
+	}
+	if err := server.writeBackupMetaFileLocked(meta); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Backup verification run %s of backup %d not recorded in its meta file on %s: %s", runID, meta.Id, server.URL, err)
+	}
+}
+
+// startVerificationRun records an accepted on-demand run in the backup's run history, running,
+// and writes the meta file: the run is visible before the API answers. It returns the run's
+// sequence. The history keeps backup-verification-run-history runs, the oldest finished
+// dropped first.
+func (server *ServerMonitor) startVerificationRun(meta *backupmgr.BackupMetadata, level, runID string) (uint64, error) {
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+	prevRuns, prevSeq := meta.VerificationRuns, meta.VerificationRunSequence
+	seq := prevSeq + 1
+	// a new slice: the history kept on a failed write is the previous one, untouched
+	runs := append(append([]backupmgr.BackupVerificationRun(nil), prevRuns...), backupmgr.BackupVerificationRun{Sequence: seq, RunID: runID, Level: level, Status: backupmgr.BackupVerificationRunning, StartTime: time.Now()})
+	meta.VerificationRuns = boundVerificationRuns(runs, server.ClusterGroup.verificationRunHistory())
+	meta.VerificationRunSequence = seq
+	if err := server.writeBackupMetaFileLocked(meta); err != nil {
+		// not accepted: the run is not left running in memory
+		meta.VerificationRuns, meta.VerificationRunSequence = prevRuns, prevSeq
+		return 0, fmt.Errorf("verification run not recorded in the meta file of backup %d: %w", meta.Id, err)
+	}
+	return seq, nil
+}
+
+// verificationRunHistory is backup-verification-run-history, its default when unset.
+func (cluster *Cluster) verificationRunHistory() int {
+	if n := cluster.Conf.BackupVerificationRunHistory; n > 0 {
+		return n
+	}
+	return config.ConstBackupVerificationRunHistory
+}
+
+// boundVerificationRuns keeps at most max runs, in their order: the oldest finished ones are
+// dropped first, a running one only when no finished one is left. The runs kept are copied
+// into a new slice, which drops the old backing array.
+func boundVerificationRuns(runs []backupmgr.BackupVerificationRun, max int) []backupmgr.BackupVerificationRun {
+	drop := len(runs) - max
+	if drop <= 0 {
+		return runs
+	}
+	dropped := make([]bool, len(runs))
+	for pass := 0; pass < 2 && drop > 0; pass++ {
+		for i := range runs {
+			if drop == 0 {
+				break
+			}
+			if !dropped[i] && (pass == 1 || runs[i].Status != backupmgr.BackupVerificationRunning) {
+				dropped[i] = true
+				drop--
+			}
+		}
+	}
+	kept := make([]backupmgr.BackupVerificationRun, 0, max)
+	for i, r := range runs {
+		if !dropped[i] {
+			kept = append(kept, r)
+		}
+	}
+	return kept
+}
+
+// endVerificationRunLocked ends the run record of (v.RunSequence, v.RunID), the pair the API
+// returned, with v's outcome. A run dropped from the history, or none (an automatic
+// verification), changes nothing. Call it under backupMetaMutex.
+func endVerificationRunLocked(meta *backupmgr.BackupMetadata, v *backupmgr.BackupVerification) {
+	if v == nil || v.RunID == "" {
+		return
+	}
+	for i, r := range meta.VerificationRuns {
+		if r.Sequence == v.RunSequence && r.RunID == v.RunID {
+			// a new slice: the API encodes the metadata without the lock
+			runs := append([]backupmgr.BackupVerificationRun(nil), meta.VerificationRuns...)
+			runs[i].Status, runs[i].EndTime, runs[i].Error = v.Status, v.EndTime, v.Error
+			meta.VerificationRuns = runs
+			return
+		}
+	}
+}
+
+// newBackupVerificationRunID returns a random id for an on-demand verification run.
+func newBackupVerificationRunID() (string, error) {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("verification run id: %w", err)
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // backupVerificationRead is a backup an on-demand verification reads.
@@ -263,6 +393,7 @@ func (cluster *Cluster) waitBackupVerificationRead(id int64) {
 // scheduler off when it was on: logged for the operator.
 func (server *ServerMonitor) closeInterruptedVerification(meta *backupmgr.BackupMetadata) {
 	cluster := server.ClusterGroup
+	server.closeInterruptedVerificationRuns(meta)
 	if meta == nil || meta.Verification == nil || meta.Verification.Status != backupmgr.BackupVerificationRunning {
 		return
 	}
@@ -297,6 +428,57 @@ func (server *ServerMonitor) closeInterruptedVerification(meta *backupmgr.Backup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlErr, "Backup verification of %s backup %d (%s level) on %s %s", meta.BackupTool, meta.Id, done.Level, server.URL, done.Error)
 }
 
+// closeInterruptedVerificationRuns ends, failed and interrupted, the run records of meta's
+// history still running when no run of this process holds the backup: replication-manager
+// stopped during them, or before they ran. A caller waiting for such a run (CLI --wait)
+// then gets its outcome. Read against the meta file as it is now, as
+// closeInterruptedVerification does.
+func (server *ServerMonitor) closeInterruptedVerificationRuns(meta *backupmgr.BackupMetadata) {
+	cluster := server.ClusterGroup
+	if meta == nil {
+		return
+	}
+	server.backupMetaMutex.Lock()
+	anyRunning := false
+	for _, r := range meta.VerificationRuns {
+		anyRunning = anyRunning || r.Status == backupmgr.BackupVerificationRunning
+	}
+	server.backupMetaMutex.Unlock()
+	if !anyRunning {
+		return
+	}
+	cluster.backupVerificationMu.Lock()
+	defer cluster.backupVerificationMu.Unlock()
+	if _, running := cluster.backupVerifying.Load(meta.Id); running {
+		return
+	}
+	onDisk, err := readBackupMetadataFile(server.backupMetaFilePath(meta))
+	if err != nil {
+		return
+	}
+	now := time.Now()
+	runs := append([]backupmgr.BackupVerificationRun(nil), onDisk.VerificationRuns...)
+	closed := 0
+	for i := range runs {
+		if runs[i].Status == backupmgr.BackupVerificationRunning {
+			runs[i].Status, runs[i].EndTime = backupmgr.BackupVerificationFailed, now
+			runs[i].Error = "interrupted: replication-manager stopped before the run ended"
+			closed++
+		}
+	}
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+	meta.VerificationRuns, meta.VerificationRunSequence = runs, onDisk.VerificationRunSequence
+	if closed == 0 {
+		return
+	}
+	if err := server.writeBackupMetaFileLocked(meta); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Interrupted verification runs of backup %d not recorded in its meta file on %s: %s", meta.Id, server.URL, err)
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Backup %d on %s: %d verification run(s) interrupted when replication-manager stopped, recorded as failed", meta.Id, server.URL, closed)
+}
+
 // verifyBackupAfterBackup is the backup-verification hook of a logical backup: it runs in
 // the backup's own slot and state, before the archive push can remove the original.
 func (server *ServerMonitor) verifyBackupAfterBackup(meta *backupmgr.BackupMetadata) {
@@ -324,8 +506,14 @@ func (server *ServerMonitor) verifyBackupAfterBackup(meta *backupmgr.BackupMetad
 // verifyBackup runs the verification of meta at level and records its result in the
 // backup metadata and its meta file.
 func (server *ServerMonitor) verifyBackup(meta *backupmgr.BackupMetadata, level string) {
+	server.verifyBackupRun(meta, level, "", 0)
+}
+
+// verifyBackupRun is verifyBackup recording the on-demand run (seq, runID) in its result,
+// which ends that run's record.
+func (server *ServerMonitor) verifyBackupRun(meta *backupmgr.BackupMetadata, level, runID string, seq uint64) {
 	cluster := server.ClusterGroup
-	v := &backupmgr.BackupVerification{Level: level, Status: backupmgr.BackupVerificationRunning, StartTime: time.Now()}
+	v := &backupmgr.BackupVerification{Level: level, Status: backupmgr.BackupVerificationRunning, RunID: runID, RunSequence: seq, StartTime: time.Now()}
 	// the settings of a test restore, read once: recorded while it runs, so that a run
 	// interrupted by a stop of replication-manager names its server (closeInterruptedVerification)
 	var host, credential string
@@ -392,6 +580,9 @@ func (server *ServerMonitor) recordBackupVerification(meta *backupmgr.BackupMeta
 	server.backupMetaMutex.Lock()
 	defer server.backupMetaMutex.Unlock()
 	meta.Verification = v
+	if v != nil && v.Status != backupmgr.BackupVerificationRunning {
+		endVerificationRunLocked(meta, v)
+	}
 	if err := server.writeBackupMetaFileLocked(meta); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Backup verification result of backup %d not written to its meta file on %s: %s", meta.Id, server.URL, err)
 	}

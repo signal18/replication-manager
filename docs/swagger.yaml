@@ -1,7 +1,15 @@
 definitions:
   backupmgr.ArtifactFingerprint:
     properties:
+      changeTime:
+        type: string
       files:
+        type: integer
+      inode:
+        description: |-
+          Inode and ChangeTime (ctime) of the file, of the folder's newest change for a folder
+          (its folder inode): a replaced file, or one whose modification time was set back, does
+          not match. Absent from fingerprints recorded before, which then match nothing.
         type: integer
       modTime:
         type: string
@@ -111,6 +119,19 @@ definitions:
         - $ref: '#/definitions/backupmgr.BackupVerification'
         description: Verification is the result of the last verification of this backup
           (#2023).
+      verificationRunSequence:
+        description: VerificationRunSequence is the sequence number of the last run
+          accepted.
+        type: integer
+      verificationRuns:
+        description: |-
+          VerificationRuns is the history of the on-demand verification runs of this backup, by
+          run (#2023): each accepted run is recorded running before the API answers, then ends
+          passed, failed or skipped in its own record. The oldest finished runs are dropped
+          beyond backup-verification-run-history. Verification stays the backup's result.
+        items:
+          $ref: '#/definitions/backupmgr.BackupVerificationRun'
+        type: array
     type: object
   backupmgr.BackupStat:
     properties:
@@ -146,6 +167,16 @@ definitions:
         items:
           type: string
         type: array
+      runId:
+        description: |-
+          RunID names the on-demand run that recorded this result, as the API returned it when
+          the run was asked for: a caller waits for its own run's result, not another's
+        type: string
+      runSequence:
+        description: |-
+          RunSequence is that run's sequence in the backup's VerificationRuns: with RunID, the
+          pair a run's record is ended by
+        type: integer
       startTime:
         type: string
       status:
@@ -158,6 +189,24 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  backupmgr.BackupVerificationRun:
+    properties:
+      endTime:
+        type: string
+      error:
+        type: string
+      level:
+        type: string
+      runId:
+        type: string
+      sequence:
+        type: integer
+      startTime:
+        type: string
+      status:
+        description: running, passed, failed or skipped
+        type: string
     type: object
   backupmgr.ManualCheckResult:
     properties:
@@ -817,6 +866,21 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  cluster.BackupVerificationStart:
+    properties:
+      id:
+        type: integer
+      message:
+        type: string
+      runId:
+        description: |-
+          RunID and Sequence name the run in the backup's verificationRuns: it ends there
+          passed, failed or skipped. A sequence below the oldest one kept: dropped, by
+          backup-verification-run-history.
+        type: string
+      sequence:
+        type: integer
     type: object
   cluster.BillingPrices:
     properties:
@@ -2203,6 +2267,8 @@ definitions:
         type: string
       backupVerificationLevel:
         type: string
+      backupVerificationRunHistory:
+        type: integer
       backupVerificationTimeout:
         type: integer
       backupWriteStallTimeout:
@@ -9005,8 +9071,7 @@ paths:
         "200":
           description: Backup verification started
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/cluster.BackupVerificationStart'
         "400":
           description: Invalid request or backup not verifiable
           schema:
@@ -9062,8 +9127,7 @@ paths:
         "200":
           description: Backup verification started
           schema:
-            additionalProperties: true
-            type: object
+            $ref: '#/definitions/cluster.BackupVerificationStart'
         "400":
           description: Invalid request or backup not verifiable
           schema:
