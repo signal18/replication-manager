@@ -40,7 +40,7 @@ func TestArchiveNoMigrationWhenDefault(t *testing.T) {
 	}
 }
 
-// #2077: a cluster with an archive and no list gets archive-1 from its settings, connected,
+// #2077: a cluster with an archive and no list gets archive-local-1 from its settings, connected,
 // and the runtime fields keep their values
 func TestArchiveMigrationFromLegacy(t *testing.T) {
 	conf := archiveTestConf()
@@ -55,7 +55,7 @@ func TestArchiveMigrationFromLegacy(t *testing.T) {
 		t.Fatalf("archives %+v, want one", conf.Archives)
 	}
 	a := conf.Archives[0]
-	if a.Name != "archive-1" || a.Plugin != ConstArchivePluginResticS3 || conf.BackupArchiveName != "archive-1" {
+	if a.Name != "archive-s3-1" || a.Plugin != ConstArchivePluginResticS3 || conf.BackupArchiveName != "archive-s3-1" {
 		t.Fatalf("archive %+v connected %q", a, conf.BackupArchiveName)
 	}
 	want := map[string]interface{}{"aws-bucket": "bk", "aws-endpoint": "https://s3.example", "timeout": int64(7200), "purge-prune": true}
@@ -72,13 +72,13 @@ func TestArchiveMigrationFromLegacy(t *testing.T) {
 	}
 }
 
-// #2077: archive mode none but customised settings: archive-1 is kept, not connected, so
+// #2077: archive mode none but customised settings: archive-local-1 is kept, not connected, so
 // the settings survive the legacy keys leaving the saved config
 func TestArchiveMigrationNotConnectedKeepsSettings(t *testing.T) {
 	conf := archiveTestConf()
 	conf.BackupResticLocalRepository = "sftp:backup@dr:/srv/restic"
 	conf.MigrateArchives()
-	if len(conf.Archives) != 1 || conf.Archives[0].Name != "archive-1" || conf.Archives[0].Plugin != ConstArchivePluginResticSftp || conf.BackupArchiveName != "" {
+	if len(conf.Archives) != 1 || conf.Archives[0].Name != "archive-sftp-1" || conf.Archives[0].Plugin != ConstArchivePluginResticSftp || conf.BackupArchiveName != "" {
 		t.Fatalf("archives %+v connected %q, want one sftp archive not connected", conf.Archives, conf.BackupArchiveName)
 	}
 	if conf.BackupArchiveMode != ConstBackupArchiveModeNone || conf.BackupRestic {
@@ -87,7 +87,7 @@ func TestArchiveMigrationNotConnectedKeepsSettings(t *testing.T) {
 }
 
 // #2077: dev3's saved config: mode none and a local repository path. The default
-// backup-restic-repository is an s3: URL and must not make archive-1 an s3 archive.
+// backup-restic-repository is an s3: URL and must not make archive-local-1 an s3 archive.
 func TestArchiveMigrationNotConnectedLocalNotS3(t *testing.T) {
 	conf := archiveTestConf()
 	conf.DefaultFlagMap["backup-restic-repository"] = "s3:https://s3.signal18.io/backups"
@@ -113,8 +113,8 @@ func TestArchiveProjectionAndPin(t *testing.T) {
 	conf := archiveTestConf()
 	conf.ImmuableFlagMap["backup-restic-timeout"] = 600
 	conf.BackupResticTimeout = 600
-	conf.BackupArchiveName = "archive-1"
-	conf.Archives = []ArchiveConfig{{Name: "archive-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{
+	conf.BackupArchiveName = "archive-local-1"
+	conf.Archives = []ArchiveConfig{{Name: "archive-local-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{
 		"local-repository": " /data/restic ", "timeout": int64(9999), "purge-prune": true, "disabled": true,
 	}}}
 	conf.MigrateArchives()
@@ -138,8 +138,8 @@ func TestArchiveProjectionAndPin(t *testing.T) {
 }
 
 // #2077: a setter changes a field; the save captures it into the connected archive, a
-// value back at its default leaves the list; the mode setter disconnects, then connects
-// the archive again with another plugin
+// value back at its default leaves the list; the mode setter disconnects, connects a new
+// archive of another type, then the first archive of a type again (a plugin never changes)
 func TestArchiveSyncFromSetters(t *testing.T) {
 	conf := archiveTestConf()
 	conf.BackupArchiveMode = ConstBackupArchiveModeResticLocal
@@ -159,14 +159,14 @@ func TestArchiveSyncFromSetters(t *testing.T) {
 	if err := conf.ApplyArchiveMode(ConstBackupArchiveModeResticAws); err != nil {
 		t.Fatal(err)
 	}
-	if len(conf.Archives) != 2 || conf.BackupArchiveName != "archive-2" || conf.Archives[1].Plugin != ConstArchivePluginResticS3 || !conf.BackupResticAws {
-		t.Fatalf("archives %+v connected %q, want a new s3 archive-2", conf.Archives, conf.BackupArchiveName)
+	if len(conf.Archives) != 2 || conf.BackupArchiveName != "archive-s3-1" || conf.Archives[1].Plugin != ConstArchivePluginResticS3 || !conf.BackupResticAws {
+		t.Fatalf("archives %+v connected %q, want a new archive-s3-1", conf.Archives, conf.BackupArchiveName)
 	}
 	if err := conf.ApplyArchiveMode(ConstBackupArchiveModeResticLocal); err != nil {
 		t.Fatal(err)
 	}
-	if conf.BackupArchiveName != "archive-2" || conf.Archives[1].Plugin != ConstArchivePluginResticLocal {
-		t.Fatalf("the connected archive did not change plugin: %+v connected %q", conf.Archives, conf.BackupArchiveName)
+	if len(conf.Archives) != 2 || conf.BackupArchiveName != "archive-local-1" || conf.Archives[1].Plugin != ConstArchivePluginResticS3 || conf.BackupResticAws {
+		t.Fatalf("archives %+v connected %q, want archive-local-1 back and archive-s3-1 unchanged", conf.Archives, conf.BackupArchiveName)
 	}
 }
 
@@ -179,7 +179,7 @@ func TestArchiveModeKeepsSettingsSetBefore(t *testing.T) {
 	if err := conf.ApplyArchiveMode(ConstBackupArchiveModeResticLocal); err != nil {
 		t.Fatal(err)
 	}
-	if conf.BackupArchiveName != "archive-1" || conf.Archives[0].Settings["local-repository"] != "/data/restic" || conf.BackupResticLocalRepository != "/data/restic" {
+	if conf.BackupArchiveName != "archive-local-1" || conf.Archives[0].Settings["local-repository"] != "/data/restic" || conf.BackupResticLocalRepository != "/data/restic" {
 		t.Fatalf("archives %+v connected %q repository %q", conf.Archives, conf.BackupArchiveName, conf.BackupResticLocalRepository)
 	}
 }
@@ -188,24 +188,24 @@ func TestArchiveModeKeepsSettingsSetBefore(t *testing.T) {
 // new one with its own settings only: nothing of the previous archive leaks
 func TestArchiveSwitch(t *testing.T) {
 	conf := archiveTestConf()
-	conf.BackupArchiveName = "archive-1"
+	conf.BackupArchiveName = "archive-local-1"
 	conf.Archives = []ArchiveConfig{
-		{Name: "archive-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"local-repository": "/data/restic"}},
-		{Name: "archive-2", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"aws-bucket": "migration"}},
+		{Name: "archive-local-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"local-repository": "/data/restic"}},
+		{Name: "archive-s3-1", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"aws-bucket": "migration"}},
 	}
 	conf.MigrateArchives()
-	conf.BackupResticTimeout = 1800 // set at runtime on archive-1
-	if err := conf.SwitchArchive("archive-2"); err != nil {
+	conf.BackupResticTimeout = 1800 // set at runtime on archive-local-1
+	if err := conf.SwitchArchive("archive-s3-1"); err != nil {
 		t.Fatal(err)
 	}
 	if conf.BackupArchiveMode != ConstBackupArchiveModeResticAws || conf.BackupResticAwsBucket != "migration" {
 		t.Fatalf("mode %s bucket %q", conf.BackupArchiveMode, conf.BackupResticAwsBucket)
 	}
 	if conf.BackupResticTimeout != 3600 || conf.BackupResticLocalRepository != "" {
-		t.Fatalf("archive-1 leaked: timeout %d repository %q", conf.BackupResticTimeout, conf.BackupResticLocalRepository)
+		t.Fatalf("archive-local-1 leaked: timeout %d repository %q", conf.BackupResticTimeout, conf.BackupResticLocalRepository)
 	}
 	if conf.Archives[0].Settings["timeout"] != int64(1800) {
-		t.Fatalf("archive-1 lost its runtime change: %+v", conf.Archives[0].Settings)
+		t.Fatalf("archive-local-1 lost its runtime change: %+v", conf.Archives[0].Settings)
 	}
 	if err := conf.SwitchArchive("archive-9"); err == nil {
 		t.Fatal("unknown archive accepted")
@@ -219,8 +219,8 @@ func TestArchiveSwitch(t *testing.T) {
 func TestArchivesTomlRoundTrip(t *testing.T) {
 	conf := archiveTestConf()
 	conf.Archives = []ArchiveConfig{
-		{Name: "archive-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"local-repository": "/data/restic", "purge-prune": true}},
-		{Name: "archive-2", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"aws-bucket": "bk", "timeout": int64(7200)}},
+		{Name: "archive-local-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"local-repository": "/data/restic", "purge-prune": true}},
+		{Name: "archive-s3-1", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"aws-bucket": "bk", "timeout": int64(7200)}},
 	}
 	out, err := conf.ArchivesToml("saved-c1")
 	if err != nil {
@@ -228,21 +228,21 @@ func TestArchivesTomlRoundTrip(t *testing.T) {
 	}
 	v := viper.New()
 	v.SetConfigType("toml")
-	if err := v.ReadConfig(strings.NewReader("[saved-c1]\ntitle = \"c1\"\nbackup-archive-name = \"archive-2\"\n" + out)); err != nil {
+	if err := v.ReadConfig(strings.NewReader("[saved-c1]\ntitle = \"c1\"\nbackup-archive-name = \"archive-s3-1\"\n" + out)); err != nil {
 		t.Fatalf("%s\n%s", err, out)
 	}
 	var back Config
 	if err := v.Sub("saved-c1").Unmarshal(&back); err != nil {
 		t.Fatal(err)
 	}
-	if len(back.Archives) != 2 || back.BackupArchiveName != "archive-2" {
+	if len(back.Archives) != 2 || back.BackupArchiveName != "archive-s3-1" {
 		t.Fatalf("read back %+v connected %q from\n%s", back.Archives, back.BackupArchiveName, out)
 	}
-	if back.Archives[0].Name != "archive-1" || back.Archives[0].Settings["local-repository"] != "/data/restic" || back.Archives[0].Settings["purge-prune"] != true {
-		t.Fatalf("archive-1 %+v", back.Archives[0])
+	if back.Archives[0].Name != "archive-local-1" || back.Archives[0].Settings["local-repository"] != "/data/restic" || back.Archives[0].Settings["purge-prune"] != true {
+		t.Fatalf("archive-local-1 %+v", back.Archives[0])
 	}
-	if back.Archives[1].Name != "archive-2" || back.Archives[1].Settings["aws-bucket"] != "bk" {
-		t.Fatalf("archive-2 %+v", back.Archives[1])
+	if back.Archives[1].Name != "archive-s3-1" || back.Archives[1].Settings["aws-bucket"] != "bk" {
+		t.Fatalf("archive-s3-1 %+v", back.Archives[1])
 	}
 	if _, ok := back.Archives[1].Settings["name"]; ok {
 		t.Fatalf("name kept as a setting: %+v", back.Archives[1].Settings)
@@ -255,25 +255,25 @@ func TestArchiveSetSettingFromEvent(t *testing.T) {
 	conf := archiveTestConf()
 	conf.BackupArchiveMode = ConstBackupArchiveModeResticLocal
 	conf.MigrateArchives()
-	if err := conf.SetArchiveSetting("archive-1", "timeout", "1200", false); err != nil {
+	if err := conf.SetArchiveSetting("archive-local-1", "timeout", "1200", false); err != nil {
 		t.Fatal(err)
 	}
 	if conf.BackupResticTimeout != 1200 || conf.Archives[0].Settings["timeout"] != int64(1200) {
 		t.Fatalf("timeout %d settings %+v", conf.BackupResticTimeout, conf.Archives[0].Settings)
 	}
-	if err := conf.SetArchiveSetting("archive-2", "timeout", "60", false); err != nil {
+	if err := conf.SetArchiveSetting("archive-s3-1", "timeout", "60", false); err != nil {
 		t.Fatal(err)
 	}
 	if conf.BackupResticTimeout != 1200 {
 		t.Fatalf("another archive's setting changed the runtime: %d", conf.BackupResticTimeout)
 	}
-	if err := conf.SetArchiveSetting("archive-1", "timeout", "", true); err != nil {
+	if err := conf.SetArchiveSetting("archive-local-1", "timeout", "", true); err != nil {
 		t.Fatal(err)
 	}
 	if conf.BackupResticTimeout != 3600 {
 		t.Fatalf("unset left timeout %d, want the default", conf.BackupResticTimeout)
 	}
-	if err := conf.SetArchiveSetting("archive-1", "nonsense", "1", false); err == nil {
+	if err := conf.SetArchiveSetting("archive-local-1", "nonsense", "1", false); err == nil {
 		t.Fatal("unknown setting accepted")
 	}
 }
@@ -281,7 +281,7 @@ func TestArchiveSetSettingFromEvent(t *testing.T) {
 // #2077: a Config copy never shares its list entries with the original
 func TestArchiveMigrationClonesList(t *testing.T) {
 	src := archiveTestConf()
-	src.Archives = []ArchiveConfig{{Name: "archive-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"tags": "a"}}}
+	src.Archives = []ArchiveConfig{{Name: "archive-local-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"tags": "a"}}}
 	cp := *src
 	cp.MigrateArchives()
 	cp.Archives[0].Settings["tags"] = "b"
@@ -316,7 +316,7 @@ func TestArchivePluginManifests(t *testing.T) {
 }
 
 // #2088: the migration moves the restic password and S3 secret set at runtime into
-// archive-1, encrypted, out of the flat config; a pinned one stays in its file
+// archive-local-1, encrypted, out of the flat config; a pinned one stays in its file
 func TestArchiveMigrationMovesSecrets(t *testing.T) {
 	conf := archiveTestConf()
 	conf.SecretKey = []byte("0123456789abcdef")
@@ -351,7 +351,7 @@ func TestArchiveMigrationMovesSecrets(t *testing.T) {
 
 // #2088: the API never shows a secret, only that it is set
 func TestArchiveJSONHidesSecrets(t *testing.T) {
-	a := ArchiveConfig{Name: "archive-1", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"aws-bucket": "bk", "password": "hash_x", "aws-access-secret": "hash_y"}}
+	a := ArchiveConfig{Name: "archive-s3-1", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"aws-bucket": "bk", "password": "hash_x", "aws-access-secret": "hash_y"}}
 	b, err := json.Marshal(a)
 	if err != nil {
 		t.Fatal(err)
@@ -362,8 +362,9 @@ func TestArchiveJSONHidesSecrets(t *testing.T) {
 	}
 }
 
-// #2088: a mode change to another plugin drops what the new plugin does not declare
-func TestArchiveModeChangeCleansEntry(t *testing.T) {
+// #2088: a mode change to another type connects another archive: the archive left keeps
+// its settings and secrets, the new one starts from the plugin's defaults
+func TestArchiveModeChangeKeepsTheArchiveLeft(t *testing.T) {
 	conf := archiveTestConf()
 	conf.BackupArchiveMode = ConstBackupArchiveModeResticAws
 	conf.BackupResticAwsBucket = "bk"
@@ -372,10 +373,28 @@ func TestArchiveModeChangeCleansEntry(t *testing.T) {
 	if err := conf.ApplyArchiveMode(ConstBackupArchiveModeResticLocal); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := conf.Archives[0].Settings["aws-bucket"]; ok {
-		t.Errorf("s3 setting kept on a local archive: %+v", conf.Archives[0].Settings)
+	if len(conf.Archives) != 2 || conf.BackupArchiveName != "archive-local-1" || conf.Archives[1].Plugin != ConstArchivePluginResticLocal {
+		t.Fatalf("archives %+v connected %q", conf.Archives, conf.BackupArchiveName)
 	}
-	if _, ok := conf.Archives[0].Settings["aws-access-secret"]; ok {
-		t.Errorf("s3 secret kept on a local archive")
+	if conf.Archives[0].Settings["aws-bucket"] != "bk" || conf.Archives[0].Settings["aws-access-secret"] != "hash_y" {
+		t.Errorf("archive-s3-1 lost its settings: %+v", conf.Archives[0].Settings)
+	}
+	if conf.BackupResticAwsBucket != "" || len(conf.Archives[1].Settings) != 0 {
+		t.Errorf("archive-local-1 got s3 settings: bucket %q %+v", conf.BackupResticAwsBucket, conf.Archives[1].Settings)
+	}
+}
+
+// #2077: names say the type and count per type
+func TestArchiveNames(t *testing.T) {
+	conf := archiveTestConf()
+	for _, p := range []string{ConstArchivePluginResticS3, ConstArchivePluginResticLocal, ConstArchivePluginResticS3, ConstArchivePluginResticSftp} {
+		conf.addArchive(p)
+	}
+	got := []string{}
+	for _, a := range conf.Archives {
+		got = append(got, a.Name)
+	}
+	if strings.Join(got, ",") != "archive-s3-1,archive-local-1,archive-s3-2,archive-sftp-1" {
+		t.Fatalf("names %v", got)
 	}
 }

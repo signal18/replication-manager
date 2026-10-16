@@ -18,7 +18,8 @@ import (
 
 // A cluster's archives (#2077, doc/implementation/cluster/BACKUP_ARCHIVE_PLUGINS.md):
 // a TOML array of tables, [[<cluster>.archive]] in a config file, [[saved-<cluster>.archive]]
-// in the saved <cluster>.toml, each entry named archive-1 to archive-x with its plugin.
+// in the saved <cluster>.toml, each entry named by its type and number (archive-local-1,
+// archive-sftp-1, archive-s3-1, archive-s3-2 ...) with its plugin, which never changes.
 // The cluster is connected to one of them, backup-archive-name ("" for none). In this
 // step the runtime still runs one restic archive from the BackupRestic* fields: the
 // connected archive is projected onto them at load, at a switch and at a peer replay, and
@@ -376,17 +377,26 @@ func (conf *Config) archiveByName(name string) *ArchiveConfig {
 	return nil
 }
 
-// nextArchiveName is the first free name of archive-1 to archive-x.
-func (conf *Config) nextArchiveName() string {
+// archiveType is the type part of a plugin's archive names: local, sftp, s3 for the restic
+// plugins, the plugin name without "archive-" for another one.
+func archiveType(plugin string) string {
+	if t, ok := strings.CutPrefix(plugin, "archive-restic-"); ok {
+		return t
+	}
+	return strings.TrimPrefix(plugin, "archive-")
+}
+
+// nextArchiveName is the first free name of the plugin's type: archive-<type>-1, -2 ...
+func (conf *Config) nextArchiveName(plugin string) string {
 	for n := 1; ; n++ {
-		if name := fmt.Sprintf("archive-%d", n); conf.archiveByName(name) == nil {
+		if name := fmt.Sprintf("archive-%s-%d", archiveType(plugin), n); conf.archiveByName(name) == nil {
 			return name
 		}
 	}
 }
 
 func (conf *Config) addArchive(plugin string) *ArchiveConfig {
-	conf.Archives = append(conf.Archives, ArchiveConfig{Name: conf.nextArchiveName(), Plugin: plugin, Settings: map[string]interface{}{}})
+	conf.Archives = append(conf.Archives, ArchiveConfig{Name: conf.nextArchiveName(plugin), Plugin: plugin, Settings: map[string]interface{}{}})
 	return &conf.Archives[len(conf.Archives)-1]
 }
 
@@ -525,7 +535,7 @@ func cloneArchives(in []ArchiveConfig) []ArchiveConfig {
 
 // MigrateArchives resolves the archive list at cluster init, by inspecting the config: a
 // cluster without a list whose archive settings differ from their defaults, or whose
-// backup-archive-mode is not none, gets archive-1 built from them, connected when the
+// backup-archive-mode is not none, gets archive-<type>-1 built from them, connected when the
 // mode is not none (not connected, its settings survive the legacy keys leaving the saved
 // config). A cluster with every archive setting at its default gets no list. Then the
 // connected archive is projected onto the BackupRestic* fields the runtime reads.
@@ -602,7 +612,7 @@ func (conf *Config) archiveSettingsCustomised() bool {
 	return false
 }
 
-// unconnectedArchivePlugin is the plugin of an archive-1 built with the mode none, from the
+// unconnectedArchivePlugin is the plugin of an archive-<type>-1 built with the mode none, from the
 // settings the cluster customised: a local repository (sftp: prefix for sftp), else an S3
 // setting, else local. The default backup-restic-repository is an s3: URL, so it never
 // decides alone.
@@ -756,7 +766,7 @@ func (conf *Config) ArchiveHoldsSecret(key string) bool {
 // SyncArchiveFromConfig captures the BackupRestic* fields into the connected archive before
 // a save: a setter (API, GUI, MCP) changed the field the runtime reads. No archive
 // connected: the fields belong to no archive, except with an empty list, where customised
-// settings become an archive-1 not connected (nothing set at runtime is lost).
+// settings become an archive-<type>-1 not connected (nothing set at runtime is lost).
 func (conf *Config) SyncArchiveFromConfig() {
 	archiveMu.Lock()
 	defer archiveMu.Unlock()
@@ -766,11 +776,6 @@ func (conf *Config) SyncArchiveFromConfig() {
 			conf.captureArchive(conf.addArchive(conf.unconnectedArchivePlugin()))
 		}
 		return
-	}
-	if !conf.isPinned("backup-archive-mode") {
-		if plugin := ArchivePluginForMode(conf.BackupArchiveMode); plugin != "" {
-			a.Plugin = plugin
-		}
 	}
 	conf.captureArchive(a)
 }
@@ -798,9 +803,10 @@ func (conf *Config) SwitchArchive(name string) error {
 }
 
 // ApplyArchiveMode is the backup-archive-mode setter over the list: none disconnects the
-// cluster; another mode changes the connected archive's plugin, or connects the first
-// archive with that plugin, or a new archive-x (holding the fields when the list was
-// empty, so settings set before the mode are kept).
+// cluster; another mode keeps the connected archive when it has that plugin, else connects
+// the first archive with that plugin, else a new archive-<type>-1 (holding the fields when
+// the list was empty, so settings set before the mode are kept). An archive's plugin never
+// changes: its name says its type.
 func (conf *Config) ApplyArchiveMode(mode string) error {
 	if err := conf.ValidateBackupArchiveMode(mode); err != nil {
 		return err
@@ -815,9 +821,7 @@ func (conf *Config) ApplyArchiveMode(mode string) error {
 	switch {
 	case plugin == "":
 		conf.BackupArchiveName = ""
-	case cur != nil:
-		cur.Plugin = plugin
-		cleanArchiveEntry(cur)
+	case cur != nil && cur.Plugin == plugin:
 	default:
 		var a *ArchiveConfig
 		for i := range conf.Archives {

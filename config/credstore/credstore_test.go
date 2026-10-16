@@ -310,16 +310,16 @@ func archiveChainConf() *config.Config {
 	conf := testConf()
 	conf.DefaultFlagMap["backup-restic-password"] = "secret"
 	conf.DefaultFlagMap["backup-restic-aws-access-secret"] = "secret"
-	conf.BackupArchiveName = "archive-1"
+	conf.BackupArchiveName = "archive-local-1"
 	conf.Archives = []config.ArchiveConfig{
-		{Name: "archive-1", Plugin: config.ConstArchivePluginResticLocal, Settings: map[string]interface{}{}},
-		{Name: "archive-2", Plugin: config.ConstArchivePluginResticS3, Settings: map[string]interface{}{}},
+		{Name: "archive-local-1", Plugin: config.ConstArchivePluginResticLocal, Settings: map[string]interface{}{}},
+		{Name: "archive-s3-1", Plugin: config.ConstArchivePluginResticS3, Settings: map[string]interface{}{}},
 	}
 	conf.MigrateArchives()
 	return conf
 }
 
-// #2088: the restic password is the connected archive's: set on archive-1, set on archive-2,
+// #2088: the restic password is the connected archive's: set on archive-local-1, set on archive-s3-1,
 // each archive gets its own back when connected, and the entry holds it encrypted
 func TestChainArchiveSecretsFollowTheConnection(t *testing.T) {
 	conf := archiveChainConf()
@@ -340,30 +340,30 @@ func TestChainArchiveSecretsFollowTheConnection(t *testing.T) {
 		t.Fatalf("aws secret on a local archive: source %s err %v", src, err)
 	}
 
-	if err := conf.SwitchArchive("archive-2"); err != nil {
+	if err := conf.SwitchArchive("archive-s3-1"); err != nil {
 		t.Fatal(err)
 	}
 	c.Refresh()
 	if v := conf.GetDecryptedValue("backup-restic-password"); v != "secret" {
-		t.Fatalf("archive-2 reads archive-1's password: %q", v)
+		t.Fatalf("archive-s3-1 reads archive-local-1's password: %q", v)
 	}
 	if err := c.SetAll(Change{"backup-restic-password", "pass-two"}, Change{"backup-restic-aws-access-secret", "s3-two"}); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := conf.SwitchArchive("archive-1"); err != nil {
+	if err := conf.SwitchArchive("archive-local-1"); err != nil {
 		t.Fatal(err)
 	}
 	c.Refresh()
 	if v := conf.GetDecryptedValue("backup-restic-password"); v != "pass-one" {
-		t.Fatalf("archive-1 password %q", v)
+		t.Fatalf("archive-local-1 password %q", v)
 	}
-	if err := conf.SwitchArchive("archive-2"); err != nil {
+	if err := conf.SwitchArchive("archive-s3-1"); err != nil {
 		t.Fatal(err)
 	}
 	c.Refresh()
 	if p, s := conf.GetDecryptedValue("backup-restic-password"), conf.GetDecryptedValue("backup-restic-aws-access-secret"); p != "pass-two" || s != "s3-two" {
-		t.Fatalf("archive-2 password %q secret %q", p, s)
+		t.Fatalf("archive-s3-1 password %q secret %q", p, s)
 	}
 }
 
@@ -381,7 +381,7 @@ func TestChainArchiveSecretsFallBack(t *testing.T) {
 	if src := c.Source("backup-restic-password"); src != SourceDynamic {
 		t.Fatalf("source %s", src)
 	}
-	if err := conf.SwitchArchive("archive-1"); err != nil {
+	if err := conf.SwitchArchive("archive-local-1"); err != nil {
 		t.Fatal(err)
 	}
 	conf.ImmuableFlagMap["backup-restic-password"] = "pinned"
