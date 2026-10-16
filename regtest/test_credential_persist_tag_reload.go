@@ -122,7 +122,7 @@ func (regtest *RegTest) TestCredentialPersistTagReload(cl *cluster.Cluster, conf
 	// a credential pinned in a config file is refused, its value unchanged: the value sent
 	// is the current one, so even a wrongly accepted change changes nothing
 	for _, pinned := range []string{"db-servers-credential", "replication-credential"} {
-		if _, ok := cl.Conf.ImmuableFlagMap[pinned]; !ok {
+		if _, ok := cl.Conf.GetImmuableFlag(pinned); !ok {
 			continue
 		}
 		before := cl.Conf.GetDecryptedValue(pinned)

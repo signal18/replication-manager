@@ -262,9 +262,11 @@ func TestChainRefusalReason(t *testing.T) {
 	}
 }
 
-// the chain and the writers outside it share DynamicFlagMap: a credential Set and Refresh,
-// a peer event replay writing a key (SetDynamicFlag), and a save reading the map
-// (CopyDynamicFlags, GetStableEncryptedValue) at once. Run with -race: an unguarded access is
+// the chain and the writers outside it share DynamicFlagMap and ImmuableFlagMap: a
+// credential Set, Refresh, CanSet and Source, a peer event replay writing a key
+// (SetDynamicFlag), the global settings API writing the immutable map (SetImmuableFlag), and
+// a save reading the maps (CopyDynamicFlags, CopyImmuableFlags, GetStableEncryptedValue) at
+// once. Run with -race: an unguarded access is
 // a fatal concurrent map read and write
 func TestChainAndOutsideWritersShareDynamicMap(t *testing.T) {
 	conf := testConf()
@@ -283,12 +285,17 @@ func TestChainAndOutsideWritersShareDynamicMap(t *testing.T) {
 					// the peer event replay, the inject.toml check, the Vault token
 					conf.SetDynamicFlag(fmt.Sprintf("replayed-key-%d", i%10), "v")
 				case 2:
-					// the save
+					// the save; the global settings API writing the immutable map
 					for range config.CopyDynamicFlags(conf.DynamicFlagMap) {
 					}
+					for range config.CopyImmuableFlags(conf.ImmuableFlagMap) {
+					}
+					conf.SetImmuableFlag("log-heartbeat", i%2 == 0)
 					conf.GetStableEncryptedValue("replication-credential", conf.GetDecryptedValue("replication-credential"))
 				default:
 					c.Refresh()
+					c.CanSet("replication-credential")
+					c.Source("backup-verification-credential")
 				}
 			}
 		}(g)

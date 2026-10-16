@@ -2177,7 +2177,7 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 	clustDynamicMap := make(map[string]interface{})
 
 	//to copy default immuable flag in the immuable flag cluster map
-	for k, v := range ImmuableMap {
+	for k, v := range config.CopyImmuableFlags(ImmuableMap) {
 		clustImmuableMap[k] = v
 	}
 
@@ -3506,7 +3506,7 @@ func (repman *ReplicationManager) ReconstructLiveClusterConfig(clusterName strin
 	}
 	if cf3 := isolated.Sub("saved-default"); cf3 != nil {
 		for _, f := range cf3.AllKeys() {
-			if v, ok := repman.Conf.ImmuableFlagMap[f]; ok {
+			if v, ok := repman.Conf.GetImmuableFlag(f); ok {
 				cf3.Set(f, v)
 			}
 		}
@@ -4708,7 +4708,7 @@ func (repman *ReplicationManager) Overwrite() (bool, error) {
 		keys = misc.SortKeysAsc(keys)
 
 		for _, key := range keys {
-			v, ok := repman.Conf.ImmuableFlagMap[key]
+			v, ok := repman.Conf.GetImmuableFlag(key)
 			if !ok {
 				s.Delete(key)
 			} else {
@@ -4790,7 +4790,7 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 	file.WriteString(header)
 
 	for _, key := range keys {
-		_, ok := repman.Conf.ImmuableFlagMap[key]
+		_, ok := repman.Conf.GetImmuableFlag(key)
 		_, dynamic := repman.Conf.GetDynamicFlag(key)
 		_, secret := repman.Conf.Secrets.Lookup(key)
 		if ok {
@@ -4849,7 +4849,7 @@ func (repman *ReplicationManager) SaveImmutable() (bool, error) {
 
 	// Get Sorted Keys
 	keys := make([]string, 0)
-	for key := range repman.Conf.ImmuableFlagMap {
+	for key := range config.CopyImmuableFlags(repman.Conf.ImmuableFlagMap) {
 		keys = append(keys, key)
 	}
 
@@ -4866,7 +4866,7 @@ func (repman *ReplicationManager) SaveImmutable() (bool, error) {
 	defer file2.Close()
 
 	for _, key := range keys {
-		val := repman.Conf.ImmuableFlagMap[key]
+		val, _ := repman.Conf.GetImmuableFlag(key)
 		_, ok := repman.Conf.Secrets.Lookup(key)
 		if ok {
 			encrypt_val := repman.GetEncryptedValueFromMemory(key)

@@ -1940,27 +1940,28 @@ func (conf *Config) DecryptSecretsFromConfig() {
 	conf.RebuildSecrets(conf.configSecretSource)
 }
 
-// dynamicFlagMu guards the content of every DynamicFlagMap (#2075). A map is shared by the
-// configs that hold it (Config is copied by value, the server keeps it in DynamicFlagMaps)
-// and written from several goroutines: API setters through the credential chain, the
-// monitor tick (inject.toml, Vault token), the peer event replay; the save reads it. A map
-// read during a write is a fatal error that stops repman (F2): every read and write of a
-// DynamicFlagMap's content goes through the functions below. One lock for all of them, held
-// only for the map access itself.
-var dynamicFlagMu sync.RWMutex
+// flagMapMu guards the content of every DynamicFlagMap and ImmuableFlagMap (#2075). A map
+// is shared by the configs that hold it (Config is copied by value, the server keeps them in
+// DynamicFlagMaps and ImmuableFlagMaps, a cluster added at runtime gets the default ones) and
+// written while repman runs: API setters through the credential chain, the monitor tick
+// (inject.toml, Vault token), the peer event replay, the global settings API and the git
+// setup (ImmuableFlagMap); the save, the reloads and the credential chain read them. A map
+// read during a write is a fatal error that stops repman (F2): every read and write of these
+// maps' content goes through the functions below, held only for the map access itself.
+var flagMapMu sync.RWMutex
 
 // GetDynamicFlag reads key from the dynamic config map.
 func (conf *Config) GetDynamicFlag(key string) (interface{}, bool) {
-	dynamicFlagMu.RLock()
-	defer dynamicFlagMu.RUnlock()
+	flagMapMu.RLock()
+	defer flagMapMu.RUnlock()
 	v, ok := conf.DynamicFlagMap[key]
 	return v, ok
 }
 
 // SetDynamicFlag writes key into the dynamic config map, created when there is none.
 func (conf *Config) SetDynamicFlag(key string, value interface{}) {
-	dynamicFlagMu.Lock()
-	defer dynamicFlagMu.Unlock()
+	flagMapMu.Lock()
+	defer flagMapMu.Unlock()
 	if conf.DynamicFlagMap == nil {
 		conf.DynamicFlagMap = make(map[string]interface{})
 	}
@@ -1969,20 +1970,44 @@ func (conf *Config) SetDynamicFlag(key string, value interface{}) {
 
 // DeleteDynamicFlag removes key from the dynamic config map.
 func (conf *Config) DeleteDynamicFlag(key string) {
-	dynamicFlagMu.Lock()
-	defer dynamicFlagMu.Unlock()
+	flagMapMu.Lock()
+	defer flagMapMu.Unlock()
 	delete(conf.DynamicFlagMap, key)
 }
 
 // CopyDynamicFlags returns a copy of a dynamic config map, to range over without the lock.
 func CopyDynamicFlags(m map[string]interface{}) map[string]interface{} {
-	dynamicFlagMu.RLock()
-	defer dynamicFlagMu.RUnlock()
+	flagMapMu.RLock()
+	defer flagMapMu.RUnlock()
 	out := make(map[string]interface{}, len(m))
 	for k, v := range m {
 		out[k] = v
 	}
 	return out
+}
+
+// GetImmuableFlag reads key from the immutable config map (the files repman never writes).
+func (conf *Config) GetImmuableFlag(key string) (interface{}, bool) {
+	flagMapMu.RLock()
+	defer flagMapMu.RUnlock()
+	v, ok := conf.ImmuableFlagMap[key]
+	return v, ok
+}
+
+// SetImmuableFlag writes key into the immutable config map, created when there is none.
+func (conf *Config) SetImmuableFlag(key string, value interface{}) {
+	flagMapMu.Lock()
+	defer flagMapMu.Unlock()
+	if conf.ImmuableFlagMap == nil {
+		conf.ImmuableFlagMap = make(map[string]interface{})
+	}
+	conf.ImmuableFlagMap[key] = value
+}
+
+// CopyImmuableFlags returns a copy of an immutable config map, to range over without the
+// lock.
+func CopyImmuableFlags(m map[string]interface{}) map[string]interface{} {
+	return CopyDynamicFlags(m)
 }
 
 // configSecretSource reads a secret key's raw value from the config maps, the dynamic one
@@ -1991,7 +2016,7 @@ func (conf *Config) configSecretSource(k string) (interface{}, bool) {
 	if v, ok := conf.GetDynamicFlag(k); ok {
 		return v, true
 	}
-	if v, ok := conf.ImmuableFlagMap[k]; ok {
+	if v, ok := conf.GetImmuableFlag(k); ok {
 		return v, true
 	}
 	v, ok := conf.DefaultFlagMap[k]
@@ -2099,7 +2124,7 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	// Reuse the raw value the config was loaded with when it still encodes
 	// the current value.
 	dynamicRaw, inDynamic := conf.GetDynamicFlag(key)
-	immuableRaw, inImmuable := conf.ImmuableFlagMap[key]
+	immuableRaw, inImmuable := conf.GetImmuableFlag(key)
 	for _, m := range []struct {
 		raw   interface{}
 		found bool
@@ -3780,12 +3805,12 @@ type LogEntry struct {
 }
 
 func (conf *Config) IsVariableImmutable(v string) bool {
-	_, ok := conf.ImmuableFlagMap[v]
+	_, ok := conf.GetImmuableFlag(v)
 	return ok
 }
 
 func (conf *Config) IsVariableServerLevel(v string) bool {
-	_, ok := conf.ImmuableFlagMap[v]
+	_, ok := conf.GetImmuableFlag(v)
 	return ok
 }
 
@@ -3864,7 +3889,7 @@ func (conf *Config) GetImmutableChecksum() (hash.Hash, error) {
 
 	Container := make([]string, 0)
 
-	for k, v := range conf.ImmuableFlagMap {
+	for k, v := range CopyImmuableFlags(conf.ImmuableFlagMap) {
 		if _, ok := conf.Secrets.Lookup(k); !ok {
 			Container = append(Container, fmt.Sprintf("%s=%v", k, v))
 		}

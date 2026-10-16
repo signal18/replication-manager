@@ -60,19 +60,31 @@ It fixes #2017 (`TestTagChangeKeepsRuntimeCredentials`).
   field differed from the default; they now also write a secret present in
   `DynamicFlagMap`, encrypted (`GetEncryptedValueFromMemory`, stable ciphertext).
 
-## The dynamic config map is shared: one lock
+## The config maps are shared: one lock
 
-`DynamicFlagMap` is shared by every config holding it (Config is copied by value; the server
-keeps it in `DynamicFlagMaps`) and written from several goroutines: API setters through the
-chain, the monitor tick (`CheckInjectConfig`, `GetVaultToken`), the peer event replay
-(`applyGenericClusterKey`); the save (`SaveConfigFile`, `SaveDynamic`,
-`GetStableEncryptedValue`), `SetInjectVariables` and `GetClusterConfig` read it. A map read
-during a write is a fatal error that stops repman (F2), so every access to a dynamic map's
-content goes through `config.GetDynamicFlag`, `SetDynamicFlag`, `DeleteDynamicFlag` and
-`CopyDynamicFlags` (a copy to range over): one package lock, `dynamicFlagMu`, held only for
-the map access, never while calling out. A package lock and not a field: a `Config` copy
-would copy a field lock and not share it. The writers outside the chain only had their
-write line wrapped: what they write, and when, is unchanged.
+`DynamicFlagMap` and `ImmuableFlagMap` are shared by every config holding them (Config is
+copied by value; the server keeps them in `DynamicFlagMaps` / `ImmuableFlagMaps`; a cluster
+added at runtime gets the default ones) and written while repman runs:
+
+- `DynamicFlagMap`: API setters through the chain, the monitor tick (`CheckInjectConfig`,
+  `GetVaultToken`), the peer event replay (`applyGenericClusterKey`);
+- `ImmuableFlagMap`: the global settings API (`log-level-heartbeat`, `log-heartbeat`) and
+  `InitGitConfig`, run from the git settings API and cloud18 register.
+
+The save (`SaveConfigFile`, `SaveDynamic`, `GetStableEncryptedValue`), the reloads
+(`GetClusterConfig`, `ReconstructLiveClusterConfig`), `SetInjectVariables`,
+`IsVariableImmutable` and the chain read them. A map read during a write is a fatal error
+that stops repman (F2), so every access to these maps' content goes through
+`config.GetDynamicFlag` / `SetDynamicFlag` / `DeleteDynamicFlag` / `CopyDynamicFlags` and
+`GetImmuableFlag` / `SetImmuableFlag` / `CopyImmuableFlags` (a copy to range over): one
+package lock, `flagMapMu`, held only for the map access, never while calling out, never
+taken twice. A package lock and not a field: a `Config` copy would copy a field lock and not
+share it. The maps a loader builds before it publishes them (`InitConfig`'s `ImmuableMap`,
+`GetClusterConfig`'s `clustImmuableMap`) are local and not guarded. The writers outside the
+chain only had their access wrapped: what they write, and when, is unchanged.
+
+`Conf.Secrets` is a `*SecretMap` with its own lock (#2039): readers outside the chain need
+no chain lock.
 
 ## Known limits of step 1
 
@@ -82,6 +94,11 @@ write line wrapped: what they write, and when, is unchanged.
 - **A store read error falls through** to the next store or the default (`Chain.raw`). The
   two config stores never fail; step 2 (external stores) must make a read error keep the
   cached value and report it, not return a stale or default credential.
+- **Before external stores (steps 2 to 4)**, from the third review: a store that writes
+  should implement `restorer` (part of its contract), since the fallback rollback re-sets
+  the cached value, which may never have been in that store; a rollback followed by a save
+  event can persist an intermediate state in a store that saves on its own; a read error
+  must be logged (key only, never the value) rather than fall through silently.
 - **`monitoring-save-config` is read without a lock** by `DynamicConfig.Persistent`, as
   everywhere in repman: it is toggled at runtime by its API switch. A change made exactly at
   the toggle takes the scope read at that moment.

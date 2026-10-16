@@ -2201,7 +2201,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	buf.WriteString(header)
 
 	for _, key := range keys {
-		_, ok := cluster.Conf.ImmuableFlagMap[key]
+		_, ok := cluster.Conf.GetImmuableFlag(key)
 		_, dynamic := cluster.Conf.GetDynamicFlag(key)
 		_, secret := cluster.Conf.Secrets.Lookup(key)
 		if ok {
@@ -2243,7 +2243,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 	// Get Sorted Keys
 	keys := make([]string, 0)
-	for key := range cluster.Conf.ImmuableFlagMap {
+	for key := range config.CopyImmuableFlags(cluster.Conf.ImmuableFlagMap) {
 		keys = append(keys, key)
 	}
 
@@ -2251,7 +2251,7 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 
 	var buf bytes.Buffer
 	for _, key := range keys {
-		val := cluster.Conf.ImmuableFlagMap[key]
+		val, _ := cluster.Conf.GetImmuableFlag(key)
 		_, ok := cluster.Conf.Secrets.Lookup(key)
 		if ok {
 			encrypt_val := cluster.GetEncryptedValueFromMemory(key)
@@ -2282,7 +2282,7 @@ func (cluster *Cluster) SaveCacheConfig() error {
 	defer file.Close()
 
 	keys := make([]string, 0)
-	for key := range cluster.Conf.ImmuableFlagMap {
+	for key := range config.CopyImmuableFlags(cluster.Conf.ImmuableFlagMap) {
 		keys = append(keys, key)
 	}
 
@@ -2309,7 +2309,7 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 		keys = misc.SortKeysAsc(keys)
 
 		for _, key := range keys {
-			v, ok := cluster.Conf.ImmuableFlagMap[key]
+			v, ok := cluster.Conf.GetImmuableFlag(key)
 			if !ok {
 				s.Delete(key)
 			} else {

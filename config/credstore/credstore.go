@@ -75,7 +75,7 @@ func (s *PinnedConfig) Versioned() bool { return false }
 func (s *PinnedConfig) Generates() bool { return false }
 
 func (s *PinnedConfig) Get(key string) (string, bool, error) {
-	v, ok := s.conf.ImmuableFlagMap[key]
+	v, ok := s.conf.GetImmuableFlag(key)
 	if !ok || v == nil {
 		return "", false, nil
 	}
@@ -126,7 +126,7 @@ func (s *DynamicConfig) Get(key string) (string, bool, error) {
 }
 
 func (s *DynamicConfig) CanSet(key string) error {
-	if _, pinned := s.conf.ImmuableFlagMap[key]; pinned {
+	if _, pinned := s.conf.GetImmuableFlag(key); pinned {
 		return fmt.Errorf("%s is set in a config file (immutable): a new value would be lost at the next restart", key)
 	}
 	return nil
@@ -283,6 +283,9 @@ func (c *Chain) Set(key, value string) error {
 // ones already written put back to their former value; the cache changes only once all are
 // written. A store that can (restorer) gets each key back exactly, absent included. Then
 // the save events, outside the lock.
+//
+// A key given twice is written twice, in order: the last value wins, and a rollback still
+// puts back the value from before the call (every key is snapshot before any write).
 func (c *Chain) SetAll(changes ...Change) error {
 	c.mu.Lock()
 	writers := make([]CredentialStore, len(changes))
