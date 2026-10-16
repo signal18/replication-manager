@@ -165,7 +165,7 @@ func TestArchiveSharingLocation(t *testing.T) {
 	if other, loc := cl.archiveSharingLocation(cl.Conf.Archives[1]); other != "a" || loc != "/var/lib/replication-manager/backups/archive/c1" {
 		t.Fatalf("b inside the default folder: shares %q at %q", other, loc)
 	}
-	if other, loc := cl.archiveSharingLocation(cl.Conf.Archives[2]); other != "" || loc != "/data/restic/c1" {
+	if other, loc := cl.archiveSharingLocation(cl.Conf.Archives[2]); other != "" || loc != "/data/restic" {
 		t.Fatalf("c: shares %q at %q", other, loc)
 	}
 }
