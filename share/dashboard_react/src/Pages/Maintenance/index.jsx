@@ -4,16 +4,16 @@ import { sizeOf, convertObjectToArray, formatBytes, formatDate, getBackupMethod,
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
-import { Box, Flex, HStack, Progress, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
+import { Box, Flex, HStack, Input, Progress, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { deleteBackup, discoverBackups, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
+import { deleteBackup, discoverBackups, registerBackup, registerBackupChange, unregisterBackup, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import CopyToClipboard from '../../components/CopyToClipboard'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh, HiDocumentAdd, HiDocumentRemove, HiExclamation, HiBan } from 'react-icons/hi'
 import Dropdown from '../../components/Dropdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
@@ -316,6 +316,54 @@ const verificationClass = (v) => {
   }
 }
 
+// timeSourceLabel says where a backup's time comes from (#2073): its own record, its file's
+// time (when it was placed, not dumped), or the operator.
+const timeSourceLabel = (source) => {
+  switch (source) {
+    case 'dump-footer':
+      return 'taken: the dump footer'
+    case 'mydumper-metadata':
+      return 'taken: mydumper metadata'
+    case 'file-time':
+      return 'file time: when the file was placed, not when it was dumped'
+    case 'operator':
+      return 'taken: set by the operator'
+    default:
+      return ''
+  }
+}
+
+// sameArtifact compares two fingerprints of a backup's file (#2023, #2073).
+const sameArtifact = (a, b) => !!a && !!b && a.size === b.size && a.files === b.files && a.modTime === b.modTime && (a.inode || 0) === (b.inode || 0)
+
+// verificationBeforeChange: the verification of a discovered backup read its file before the
+// file changed, or before the change was registered.
+const verificationBeforeChange = (backup, change) => {
+  const v = backup.verification
+  if (!backup.discovered || !v?.artifact) return false
+  return !!change || (backup.registration && !sameArtifact(v.artifact, backup.registration.artifact))
+}
+
+// reseedRefusal is why a backup can not reseed a server, '' when it can.
+const reseedRefusal = (backup, change) => {
+  if (backup.backupMethod === 2 || !['mysqldump', 'mydumper'].includes(backup.backupTool)) return 'A reseed from a chosen backup takes a logical backup'
+  if (backup.notABackup) return `Not a backup: ${backup.discoveryNote}`
+  if (change) return 'Changed since registered: register the change first'
+  if (!backup.completed) return 'Not completed'
+  if (backup.originalRemoved) return 'Kept only in its archive: restore it from its snapshot'
+  if (!backup.binLogFileName && !backup.binLogUuid) return 'No replication position: a replica can not be reseeded from it'
+  return ''
+}
+
+const candidateStatusLabel = {
+  backup: 'Backup',
+  'not-backup': 'Not a backup',
+  incomplete: 'Incomplete',
+  unchecked: 'Not checked',
+  unreadable: 'Unreadable',
+  settling: 'Being copied?'
+}
+
 // section: undefined = full page, 'backup' = backup accordions only, 'jobs' = jobs accordion only
 function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onOpenArchiveSettings, onOpenSchedulerSettings, onOpenLogsSettings }) {
   const [data, setData] = useState([])
@@ -361,6 +409,22 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   })
 
   const list = useSelector((state) => state.cluster.backups.list)
+  // what the backup discovery found (#2073): candidates per server, registered backups changed since
+  const discovery = useSelector((state) => state.cluster.backups.discovery)
+  const changesById = useMemo(() => {
+    const out = {}
+    for (const c of discovery?.changes || []) out[c.id] = c
+    return out
+  }, [discovery])
+  const candidateData = useMemo(() => (discovery?.servers || []).flatMap((s) => s.candidates || []), [discovery])
+  const droppedCandidates = (discovery?.servers || []).filter((s) => s.dropped > 0)
+  const { isOpen: isCandidatesOpen, onToggle: onCandidatesToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isBackupCandidatesOpen')) === false ? false : true
+  })
+  // Register of a candidate or of a registered backup's change: the target, and the time of
+  // a backup that records none (optional)
+  const [registerPick, setRegisterPick] = useState({ candidate: null, backup: null, takenAt: '' })
+  const closeRegisterPick = () => setRegisterPick({ candidate: null, backup: null, takenAt: '' })
   const backupStats = useSelector((state) => state.cluster.backups.stats)
 
   const snapshots = useSelector((state) => state.cluster.restic.snapshots)
@@ -385,6 +449,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           break
         case 'backupDiscover':
           dispatch(discoverBackups({ clusterName: selectedCluster.name }))
+          break
+        case 'backupUnregister':
+          dispatch(unregisterBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId }))
           break
         case 'backupVerify':
           dispatch(verifyBackup({ clusterName: selectedCluster.name, backupId: payload.data.backupId, level: payload.data.level }))
@@ -440,6 +507,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   useEffect(() => {
     localStorage.setItem('isBackupsOpen', JSON.stringify(isBackupsOpen))
   }, [isBackupsOpen])
+  useEffect(() => {
+    localStorage.setItem('isBackupCandidatesOpen', JSON.stringify(isCandidatesOpen))
+  }, [isCandidatesOpen])
 
   useEffect(() => {
     if (list) {
@@ -509,6 +579,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           <>
             {formatDate(row.startTime)} <br />
             {formatDate(row.endTime)}
+            {row.timeSource && <Box fontSize='xs' opacity={0.7}>{timeSourceLabel(row.timeSource)}</Box>}
           </>
         ),
         {
@@ -573,9 +644,23 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               </Box>
             </Tooltip>
             {row.discovered && (
-              <Tooltip label={`Discovered in the backup folder: never used by an automatic restore${row.completed && row.discoveryNote ? ` (${row.discoveryNote})` : ''}`} hasArrow>
+              <Tooltip label={`Registered from a backup folder${row.registration?.adopted ? ' (by a previous release)' : ''}: never used by an automatic restore${row.completed && row.discoveryNote ? ` (${row.discoveryNote})` : ''}`} hasArrow>
                 <Box className={`${styles.statusIcon} ${styles.statusIconActive}`}>
                   <HiFolderAdd />
+                </Box>
+              </Tooltip>
+            )}
+            {row.notABackup && (
+              <Tooltip label={`Not a backup: ${row.discoveryNote}. Never used: unregister it`} hasArrow>
+                <Box className={`${styles.statusIcon} ${styles.verifyFailed}`}>
+                  <HiBan />
+                </Box>
+              </Tooltip>
+            )}
+            {changesById[row.id] && (
+              <Tooltip label={`${changesById[row.id].describe} (WARN0249). Not used until the change is registered: register it, or restore the original from its archive, or unregister it${changesById[row.id].registerError ? `. Last register refused: ${changesById[row.id].registerError}` : ''}`} hasArrow>
+                <Box className={`${styles.statusIcon} ${styles.verifyFailed}`}>
+                  <HiExclamation />
                 </Box>
               </Tooltip>
             )}
@@ -592,7 +677,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                 {row.encrypted ? <HiLockClosed /> : <HiOutlineLockOpen />}
               </Box>
             </Tooltip>
-            <Tooltip label={verificationLabel(row.verification)} hasArrow>
+            <Tooltip label={verificationLabel(row.verification) + (verificationBeforeChange(row, changesById[row.id]) ? ' · taken before the file changed' : '')} hasArrow>
               <Box className={`${styles.statusIcon} ${styles.verifyIcon} ${verificationClass(row.verification)}`}>
                 {row.verification?.status === 'failed' || row.verification?.warnings?.length ? <HiShieldExclamation /> : row.verification?.status === 'passed' ? <HiShieldCheck /> : <HiOutlineShieldCheck />}
               </Box>
@@ -610,8 +695,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         header: 'Actions',
         cell: (info) => {
           const backup = info.row.original
-          const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.originalRemoved && backup.verification?.status !== 'running'
-          const reseedable = backup.backupMethod !== 2 && ['mysqldump', 'mydumper'].includes(backup.backupTool) && backup.completed && !backup.originalRemoved
+          const change = changesById[backup.id]
+          const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.notABackup && !backup.originalRemoved && backup.verification?.status !== 'running'
+          const notReseedable = reseedRefusal(backup, change)
           return (
             <HStack spacing={1}>
               <RMIconButton
@@ -628,18 +714,78 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               />
               <RMIconButton
                 icon={HiRefresh}
-                tooltip='Reseed a server from this backup'
+                tooltip={notReseedable ? `Reseed: ${notReseedable}` : 'Reseed a server from this backup'}
                 onClick={() => setReseedPick({ backup, serverId: '' })}
-                isDisabled={!user?.grants['db-restore'] || !reseedable}
+                isDisabled={!user?.grants['db-restore'] || !!notReseedable}
               />
-              <RMIconButton
-                icon={HiTrash}
-                colorScheme='red'
-                tooltip='Delete backup'
-                onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: backup.id } })}
-                isDisabled={!user?.grants['db-backup']}
-              />
+              {change && (
+                <RMIconButton
+                  icon={HiDocumentAdd}
+                  tooltip='Register the change: the file as it is now is read and checked, then used'
+                  onClick={() => setRegisterPick({ candidate: null, backup, takenAt: '' })}
+                  isDisabled={!user?.grants['db-backup']}
+                />
+              )}
+              {backup.discovered ? (
+                <RMIconButton
+                  icon={HiDocumentRemove}
+                  colorScheme='red'
+                  tooltip='Unregister: the registration is removed, the file is left as it is'
+                  onClick={() => openConfirmModal(`Unregister backup ${backup.id}? Its file is left as it is and listed in "Found in backup folders" again.`, { action: 'backupUnregister', data: { backupId: backup.id } })}
+                  isDisabled={!user?.grants['db-backup']}
+                />
+              ) : (
+                <RMIconButton
+                  icon={HiTrash}
+                  colorScheme='red'
+                  tooltip='Delete backup'
+                  onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: backup.id } })}
+                  isDisabled={!user?.grants['db-backup']}
+                />
+              )}
             </HStack>
+          )
+        }
+      })
+    ]
+  )
+
+  // the candidates of the backup discovery (#2073): what was found in the backup folders, the
+  // files that are not backups included, with why; a backup is registered on request only
+  const candidateColumns = useMemo(
+    () => [
+      columnHelper.accessor((row) => row.server, { header: 'Server', id: 'server' }),
+      columnHelper.accessor(
+        (row) => <BackupCellLine label='' value={row.path} shown={row.name} textType='Path' />,
+        { cell: (info) => info.getValue(), header: 'Found', id: 'path' }
+      ),
+      columnHelper.accessor((row) => (row.splitDump ? 'splitdump' : row.tool), { header: 'Tool', id: 'tool' }),
+      columnHelper.accessor((row) => formatBytes(row.size), { header: 'Size', id: 'size' }),
+      columnHelper.accessor((row) => formatDate(row.modTime), { header: 'File time', id: 'modTime' }),
+      columnHelper.accessor(
+        (row) => (
+          <VStack className={styles.cellStack} spacing={0.5} align='start'>
+            <Box className={styles.cellValue} fontWeight='semibold'>{candidateStatusLabel[row.status] || row.status}</Box>
+            {row.reason && <Box className={styles.cellValue} fontSize='xs'>{row.reason}</Box>}
+            {row.registering && <Box className={styles.cellValue} fontSize='xs'>Registering: being read…</Box>}
+            {row.registerError && <Box className={styles.cellValue} fontSize='xs' color='red.500'>Register refused: {row.registerError}</Box>}
+          </VStack>
+        ),
+        { cell: (info) => info.getValue(), header: 'Check', id: 'status' }
+      ),
+      columnHelper.display({
+        id: 'actions',
+        header: 'Actions',
+        cell: (info) => {
+          const c = info.row.original
+          const registerable = ['backup', 'unchecked', 'unreadable'].includes(c.status) && !c.registering
+          return (
+            <RMIconButton
+              icon={HiDocumentAdd}
+              tooltip={registerable ? 'Register: it is read to its end, registered only if it is a proper backup' : `Not registerable: ${c.reason || candidateStatusLabel[c.status]}`}
+              onClick={() => setRegisterPick({ candidate: c, backup: null, takenAt: '' })}
+              isDisabled={!user?.grants['db-backup'] || !registerable}
+            />
           )
         }
       })
@@ -836,14 +982,6 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         panelClassName={styles.accordionPanel}
         headerActions={
           <HStack spacing={1}>
-            <RMIconButton
-              icon={HiSearch}
-              tooltip='Discover the backups placed in the backup folders'
-              onClick={() => openConfirmModal('Scan the backup folders and register the backups no metadata describes?', { action: 'backupDiscover' })}
-              isDisabled={!user?.grants['db-backup']}
-              size='xs'
-              variant='ghost'
-            />
             {settingsButton(onOpenBackupSettings, 'Open Backup Settings')}
           </HStack>
         }
@@ -879,6 +1017,37 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               <Text>{gwu ? `plan ${gwu.plan.toFixed(2)} GWU = ${gwu.planMbps.toFixed(0)} Mb/s${gwu.pinned ? ' (pinned)' : ' (gateway capacity / clusters present)'}, consumed ${gwu.units.toFixed(3)} GWU = ${gwu.mbps.toFixed(1)} Mb/s, ${gwu.units > gwu.plan ? `borrowing ${(gwu.units - gwu.plan).toFixed(2)}` : `giving away ${(gwu.plan - gwu.units).toFixed(2)}`} GWU; ${gwu.freeUnits} GWU free, ${gwu.onTop.toFixed(3)} GWU held above it now, ${gwu.onTopGbit.toFixed(3)} Gbit moved above it this month (reported to the back office); ${gwu.gbit.toFixed(2)} Gbit moved in total on ${gwu.gateways} gateway(s)` : 'no reading yet'}</Text>
             </Flex>)}
             <DataTable key="backups" data={data} columns={columns} className={styles.table} />
+          </VStack>
+        }
+      />
+      <AccordionComponent
+        heading={`Found in backup folders${candidateData.length ? ` (${candidateData.length})` : ''}`}
+        isOpen={isCandidatesOpen}
+        onToggle={onCandidatesToggle}
+        className={styles.accordion}
+        headerClassName={styles.accordionHeader}
+        panelClassName={styles.accordionPanel}
+        headerActions={
+          <RMIconButton
+            icon={HiSearch}
+            tooltip='Discover: scan the backup folders for the backups no metadata describes'
+            onClick={() => openConfirmModal('Scan the backup folders for the backups no metadata describes? Nothing is registered: register the backups you want used.', { action: 'backupDiscover' })}
+            isDisabled={!user?.grants['db-backup']}
+            size='xs'
+            variant='ghost'
+          />
+        }
+        body={
+          <VStack className={styles.snapshotContainer}>
+            <Text fontSize='sm'>
+              Backups placed in the backup folders by hand or by another tool are listed here with what their check found; they are used only once registered, and never by an automatic restore.
+            </Text>
+            {droppedCandidates.map((s) => (
+              <Text key={s.server} fontSize='sm' color='orange.500'>
+                {s.server}: {s.dropped} more not listed, beyond backup-discovery-candidate-max (WARN0250)
+              </Text>
+            ))}
+            <DataTable key="candidates" data={candidateData} columns={candidateColumns} className={styles.table} />
           </VStack>
         }
       />
@@ -969,6 +1138,30 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           closeReseedPick()
         }}
         closeModal={closeReseedPick} />}
+      {(registerPick.candidate || registerPick.backup) && <ConfirmModal
+        title={registerPick.candidate ? `Register ${registerPick.candidate.name}?` : `Register the change of backup ${registerPick.backup.id}?`}
+        isOpen={!!(registerPick.candidate || registerPick.backup)}
+        body={
+          <VStack align='stretch' spacing={3}>
+            <Text>
+              {registerPick.candidate
+                ? 'It is read to its end as a restore would read it and registered only if it is a proper backup: it holds a table and is complete. Its file is not touched.'
+                : `${changesById[registerPick.backup.id]?.describe || 'Its file changed'}. The file as it is now is read and checked as a new backup; once registered, it is used. If the change was not intended, restore the original from its archive or unregister it instead.`}
+            </Text>
+            <Text fontSize='sm'>Taken at (only for a backup that records no time of its own, such as a splitdump; otherwise leave empty):</Text>
+            <Input type='datetime-local' value={registerPick.takenAt} onChange={(e) => setRegisterPick((p) => ({ ...p, takenAt: e.target.value }))} />
+          </VStack>
+        }
+        onConfirmClick={() => {
+          const takenAt = registerPick.takenAt ? new Date(registerPick.takenAt).toISOString() : ''
+          if (registerPick.candidate) {
+            dispatch(registerBackup({ clusterName: selectedCluster.name, server: registerPick.candidate.server, path: registerPick.candidate.path, takenAt }))
+          } else {
+            dispatch(registerBackupChange({ clusterName: selectedCluster.name, backupId: registerPick.backup.id, takenAt }))
+          }
+          closeRegisterPick()
+        }}
+        closeModal={closeRegisterPick} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
         payload={payload}
         queueData={queueData}

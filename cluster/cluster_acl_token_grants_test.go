@@ -9,7 +9,7 @@ import (
 
 // An explicit main ACL written before the token grants existed (#2083): the grant
 // administrator gets them while api-user-tokens is on, a main discard removes them,
-// and WARN0249 opens when nobody can issue a token.
+// and WARN0251 opens when nobody can issue a token.
 func TestAPITokenGrantsWithExplicitACL(t *testing.T) {
 	load := func(tokens bool, allow, discard string) *Cluster {
 		c := newTestClusterForUsers(t)
@@ -28,20 +28,20 @@ func TestAPITokenGrantsWithExplicitACL(t *testing.T) {
 	if g := c.APIUsers["admin"].Grants; !g[config.GrantTokenCreate] || !g[config.GrantTokenManage] {
 		t.Fatalf("the grant administrator must hold the token grants: %v %v", g[config.GrantTokenCreate], g[config.GrantTokenManage])
 	}
-	if c.ConfigStateMachine.IsInState("WARN0249") {
-		t.Fatal("WARN0249 while admin can issue tokens")
+	if c.ConfigStateMachine.IsInState("WARN0251") {
+		t.Fatal("WARN0251 while admin can issue tokens")
 	}
 
 	c = load(true, explicit, "admin:token-create token-manage")
 	if c.APIUsers["admin"].Grants[config.GrantTokenCreate] {
 		t.Fatal("a main discard of the token grants must win")
 	}
-	if !c.ConfigStateMachine.IsInState("WARN0249") {
-		t.Fatal("WARN0249 must open when nobody can issue a token")
+	if !c.ConfigStateMachine.IsInState("WARN0251") {
+		t.Fatal("WARN0251 must open when nobody can issue a token")
 	}
 
 	c = load(false, explicit, "")
-	if c.APIUsers["admin"].Grants[config.GrantTokenCreate] || c.ConfigStateMachine.IsInState("WARN0249") {
+	if c.APIUsers["admin"].Grants[config.GrantTokenCreate] || c.ConfigStateMachine.IsInState("WARN0251") {
 		t.Fatal("api-user-tokens off: no implied grant, no state")
 	}
 

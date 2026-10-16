@@ -8,6 +8,7 @@
 package clients
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,9 +23,11 @@ import (
 )
 
 var (
-	cliBackupVerifyLevel   string
-	cliBackupVerifyWait    bool
-	cliBackupVerifyTimeout int
+	cliBackupVerifyLevel     string
+	cliBackupVerifyWait      bool
+	cliBackupVerifyTimeout   int
+	cliBackupRegisterServer  string
+	cliBackupRegisterTakenAt string
 )
 
 var backupCmd = &cobra.Command{
@@ -186,11 +189,27 @@ func cliBackupVerificationRuns(id int64) (cliBackupVerificationState, error) {
 
 // cliClusterRequest calls /api/clusters/{cluster}/{path} and returns the body and the status.
 func cliClusterRequest(method, path string) ([]byte, int, error) {
-	req, err := http.NewRequest(method, "https://"+cliHost+":"+cliPort+"/api/clusters/"+cliClusters[cliClusterIndex]+"/"+path, nil)
+	return cliClusterRequestBody(method, path, nil)
+}
+
+// cliClusterRequestBody is cliClusterRequest sending payload as its JSON body (none if nil).
+func cliClusterRequestBody(method, path string, payload any) ([]byte, int, error) {
+	var reqBody io.Reader
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return nil, 0, err
+		}
+		reqBody = bytes.NewReader(data)
+	}
+	req, err := http.NewRequest(method, "https://"+cliHost+":"+cliPort+"/api/clusters/"+cliClusters[cliClusterIndex]+"/"+path, reqBody)
 	if err != nil {
 		return nil, 0, err
 	}
 	req.Header.Set("Authorization", "Bearer "+cliToken)
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := cliConn.Do(req)
 	if err != nil {
 		return nil, 0, err
@@ -200,7 +219,160 @@ func cliClusterRequest(method, path string) ([]byte, int, error) {
 	return body, resp.StatusCode, err
 }
 
+// backupCandidatesCmd lists what the backup discovery found (#2073): the artifacts of the
+// backup folders no metadata describes, and the registered backups changed since registered.
+var backupCandidatesCmd = &cobra.Command{
+	Use:   "candidates",
+	Short: "List the backups found in the backup folders, and the registered ones changed since",
+	Long: `Lists, per server, the artifacts of its backup folder no metadata describes, as its last
+discovery checked them (backup, not-backup, incomplete, unchecked, unreadable, settling), with
+the reason and the outcome of their last register; then the registered discovered backups whose
+file changed since registered (WARN0249).`,
+	Args: cobra.NoArgs,
+	Run: func(cmd *cobra.Command, args []string) {
+		cliInit(true)
+		body, status, err := cliClusterRequest(http.MethodGet, "backups/candidates")
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if status != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "candidates (%d): %s\n", status, strings.TrimSpace(string(body)))
+			os.Exit(1)
+		}
+		var view struct {
+			Servers []struct {
+				Server     string `json:"server"`
+				Dropped    int    `json:"dropped"`
+				Candidates []struct {
+					Path          string `json:"path"`
+					Tool          string `json:"tool"`
+					SplitDump     bool   `json:"splitDump"`
+					Size          int64  `json:"size"`
+					Status        string `json:"status"`
+					Reason        string `json:"reason"`
+					Registering   bool   `json:"registering"`
+					RegisterError string `json:"registerError"`
+				} `json:"candidates"`
+			} `json:"servers"`
+			Changes []struct {
+				ID            int64  `json:"id"`
+				Server        string `json:"server"`
+				Describe      string `json:"describe"`
+				RegisterError string `json:"registerError"`
+			} `json:"changes"`
+		}
+		if err := json.Unmarshal(body, &view); err != nil {
+			fmt.Fprintln(os.Stderr, "cannot parse the candidates:", err)
+			os.Exit(1)
+		}
+		for _, s := range view.Servers {
+			fmt.Printf("%s: %d candidate(s)", s.Server, len(s.Candidates))
+			if s.Dropped > 0 {
+				fmt.Printf(", %d more not listed (backup-discovery-candidate-max)", s.Dropped)
+			}
+			fmt.Println()
+			for _, c := range s.Candidates {
+				tool := c.Tool
+				if c.SplitDump {
+					tool = "splitdump"
+				}
+				fmt.Printf("  %-11s %-10s %10d  %s", c.Status, tool, c.Size, c.Path)
+				if c.Reason != "" {
+					fmt.Printf("  (%s)", c.Reason)
+				}
+				if c.Registering {
+					fmt.Print("  [registering]")
+				}
+				if c.RegisterError != "" {
+					fmt.Printf("  [register refused: %s]", c.RegisterError)
+				}
+				fmt.Println()
+			}
+		}
+		for _, c := range view.Changes {
+			fmt.Printf("changed since registered: %s (%s)", c.Describe, c.Server)
+			if c.RegisterError != "" {
+				fmt.Printf("  [register refused: %s]", c.RegisterError)
+			}
+			fmt.Println()
+		}
+	},
+}
+
+// backupRegisterCmd registers a candidate of the backup discovery, or the change of a
+// registered discovered backup (#2073).
+var backupRegisterCmd = &cobra.Command{
+	Use:   "register (PATH --server HOST:PORT | BACKUP_ID)",
+	Short: "Register a backup found in a backup folder, or the change of a registered one",
+	Long: `Register PATH, a candidate of the backup discovery in the backup folder of --server: it is
+read to its end and registered only if it is a proper backup (it holds a table and is
+complete). With a BACKUP_ID instead, registers the change of that registered discovered backup's
+file (WARN0249). The registration runs in the background: see "backup candidates" for its
+outcome. --taken-at (RFC 3339) sets the time of a backup that records none.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		cliInit(true)
+		payload := map[string]string{}
+		if cliBackupRegisterTakenAt != "" {
+			payload["takenAt"] = cliBackupRegisterTakenAt
+		}
+		path := "backups/register"
+		if cliBackupRegisterServer == "" {
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "give a BACKUP_ID, or a PATH with --server")
+				os.Exit(2)
+			}
+			path = fmt.Sprintf("backups/%d/register", id)
+		} else {
+			payload["server"], payload["path"] = cliBackupRegisterServer, args[0]
+		}
+		body, status, err := cliClusterRequestBody(http.MethodPost, path, payload)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if status != http.StatusAccepted {
+			fmt.Fprintf(os.Stderr, "not registered (%d): %s\n", status, strings.TrimSpace(string(body)))
+			os.Exit(1)
+		}
+		fmt.Printf("Registration of %s started: see \"backup candidates\" for its outcome\n", args[0])
+	},
+}
+
+// backupUnregisterCmd unregisters a discovered backup (#2073): its metadata only.
+var backupUnregisterCmd = &cobra.Command{
+	Use:   "unregister BACKUP_ID",
+	Short: "Unregister a discovered backup: its registration is removed, its file left as it is",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "invalid backup ID:", args[0])
+			os.Exit(2)
+		}
+		cliInit(true)
+		body, status, err := cliClusterRequest(http.MethodPost, fmt.Sprintf("backups/%d/unregister", id))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if status != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "not unregistered (%d): %s\n", status, strings.TrimSpace(string(body)))
+			os.Exit(1)
+		}
+		fmt.Printf("Backup %d unregistered: its file is left as it is\n", id)
+	},
+}
+
 func initBackupFlags(cmd *cobra.Command) {
+	for _, c := range []*cobra.Command{backupCandidatesCmd, backupRegisterCmd, backupUnregisterCmd} {
+		initServerApiFlags(c)
+		cmd.AddCommand(c)
+	}
+	backupRegisterCmd.Flags().StringVar(&cliBackupRegisterServer, "server", "", "The server (host:port) whose backup folder holds PATH")
+	backupRegisterCmd.Flags().StringVar(&cliBackupRegisterTakenAt, "taken-at", "", "When the backup was taken (RFC 3339), for one that records no time")
 	initServerApiFlags(backupVerifyCmd)
 	backupVerifyCmd.Flags().StringVar(&cliBackupVerifyLevel, "level", "", "integrity|restore (default: the cluster's backup-verification-level)")
 	backupVerifyCmd.Flags().BoolVar(&cliBackupVerifyWait, "wait", false, "Wait for the run's outcome: exit 0 passed, 1 failed, 3 skipped, 4 expired from the history")

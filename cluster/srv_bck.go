@@ -64,10 +64,15 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No physical backup metadata, but cookie found on %s", server.URL)
 		}
 	}
-	// the backups of the folder no metadata describes, and the ad-hoc ones (backup_discovery.go)
-	if _, err := server.DiscoverBackups(); err != nil {
+	// the backups of the folder no metadata describes, and the ad-hoc ones (backup_discovery.go);
+	// with backup-discovery off, the ad-hoc and registered ones only
+	if !cluster.Conf.BackupDiscovery {
+		if _, err := server.LoadAdhocBackupMetadata(); err != nil && !os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup metadata on %s: ad-hoc metadata not all read: %s", server.URL, err)
+		}
+	} else if _, err := server.DiscoverBackups(); err != nil {
 		level := config.LvlWarn
-		if errors.Is(err, ErrBackupDiscoveryInBackup) || errors.Is(err, errBackupDiscoveryRunning) {
+		if errors.Is(err, ErrBackupDiscoveryInBackup) || errors.Is(err, ErrBackupDiscoveryRunning) {
 			level = config.LvlInfo // expected: the next discovery runs it
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, level, "Backup discovery on %s: %s", server.URL, err)

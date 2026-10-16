@@ -20,8 +20,14 @@ contents:
   - src: share/
     dst: /usr/share/replication-manager
     type: tree
-depends:
-  - replication-manager-client    
+# the CLI of the same release: a server upgrade alone must not leave an older client
+overrides:
+  deb:
+    depends:
+      - replication-manager-client (>= ${version})
+  rpm:
+    depends:
+      - replication-manager-client >= ${version}
 
 scripts:
   postinstall: ./scripts/post_install.sh

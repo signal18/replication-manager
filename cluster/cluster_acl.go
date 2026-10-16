@@ -421,7 +421,7 @@ func (cluster *Cluster) reconcileSystemServiceGrants() {
 	}
 }
 
-// checkAPITokenIssuers runs with the config states: WARN0249 while api-user-tokens
+// checkAPITokenIssuers runs with the config states: WARN0251 while api-user-tokens
 // is on and nobody can issue a token on the cluster, the main ACL denying the
 // token grants to every user (#2083).
 func (cluster *Cluster) checkAPITokenIssuers() {
@@ -433,8 +433,8 @@ func (cluster *Cluster) checkAPITokenIssuers() {
 			return
 		}
 	}
-	cluster.ConfigStateMachine.AddState("WARN0249", state.State{ErrType: "WARNING", ErrKey: "WARN0249", ErrFrom: "CONF",
-		ErrDesc: clusterError["WARN0249"]})
+	cluster.ConfigStateMachine.AddState("WARN0251", state.State{ErrType: "WARNING", ErrKey: "WARN0251", ErrFrom: "CONF",
+		ErrDesc: clusterError["WARN0251"]})
 }
 
 // logUserGrantAssignment writes the resolved grant set for a user to the

@@ -6034,9 +6034,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/backups/candidates": {
+            "get": {
+                "description": "Returns, per server, the artifacts of its backup folder no metadata describes, as its last discovery checked them (status backup, not-backup, incomplete, unchecked, unreadable or settling, with the reason, and the outcome of their last Register), and the registered discovered backups whose file changed since registered (WARN0249), with what changed.\nRequired grant: cluster-show-backups",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Backup discovery candidates and changes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Candidates per server and changed backups",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.BackupDiscoveryView"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/backups/discover": {
             "post": {
-                "description": "Starts, in the background, the scan of each server's backup folder that registers the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes yet, copied there by hand or by another tool. A registered backup is listed, marked as discovered, never picked by an automatic restore; a server can be reseeded from it on request. A discovered backup not completed (one that could not be read) is inspected again. The backups registered are logged and appear in the backup list. Refused while a backup of the cluster runs.\nRequired grant: db-backup",
+                "description": "Starts, in the background, the scan of each server's backup folder that lists the logical backups (mysqldump files, splitdump and mydumper folders) no metadata describes, copied there by hand or by another tool, as candidates with their cheap checks (GET /backups/candidates). It registers nothing: a candidate is registered with POST /backups/register. A candidate that could not be read is checked again. Refused while a backup of the cluster runs.\nRequired grant: db-backup",
                 "produces": [
                     "application/json"
                 ],
@@ -6138,6 +6187,86 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Reconciliation failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/backups/register": {
+            "post": {
+                "description": "Registers a candidate of the backup discovery, in the background: it is read to its end as a restore would read it and registered only if it is a proper backup (it holds a table and is complete); its fingerprint is recorded, replication-manager's metadata file written next to it, the backup file is not touched. The outcome is listed with the candidates (GET /backups/candidates). Refused at once for a candidate the discovery found is not a backup. takenAt sets the time of a backup that records none.\nRequired grant: db-backup",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Register a discovered backup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The candidate",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.backupRegisterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Registration started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid body or time",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL, or no db-backup grant",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A backup, a discovery or a registration runs, or already registered",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "422": {
+                        "description": "Not a backup, or can not be registered",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Registration not started",
                         "schema": {
                             "type": "string"
                         }
@@ -6297,7 +6426,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/backups/{backupID}/delete": {
             "post": {
-                "description": "Deletes a non-restic backup for the specified cluster.\nRequired grant: db-backup",
+                "description": "Deletes a replication-manager-created non-restic backup for the specified cluster. A discovered backup is never deleted; unregister it instead.\nRequired grant: db-backup",
                 "produces": [
                     "application/json"
                 ],
@@ -6355,8 +6484,187 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "422": {
+                        "description": "Discovered backup: unregister it instead",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "500": {
                         "description": "Delete failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/backups/{backupID}/register": {
+            "post": {
+                "description": "Registers the change of a registered discovered backup's file (WARN0249), in the background: the file as it is now is read to its end and checked as a new backup would be; on success its new fingerprint, position and size are recorded and the state clears, the backup keeping its id; refused, with the reason, if the change broke it. The backup file is not touched.\nRequired grant: db-backup",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Register the change of a discovered backup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Backup ID",
+                        "name": "backupID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "takenAt only, for a backup that records no time",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.backupRegisterRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Registration started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid backup ID or time",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL, or no db-backup grant",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Backup not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Unchanged, or a backup, a discovery, a registration or a verification runs",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "422": {
+                        "description": "Not a discovered backup",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Registration not started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/backups/{backupID}/unregister": {
+            "post": {
+                "description": "Unregisters a discovered backup: replication-manager's metadata file is removed, the backup file is left as it is and is listed as a candidate again. Clears its WARN0249. A backup replication-manager took is refused: delete it instead.\nRequired grant: db-backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Unregister a discovered backup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Backup ID",
+                        "name": "backupID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Backup unregistered",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid backup ID",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL, or no db-backup grant",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Backup not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A discovery, a registration or a verification runs",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "422": {
+                        "description": "Not a discovered backup",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Not unregistered",
                         "schema": {
                             "type": "string"
                         }
@@ -11566,7 +11874,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Backup not usable (not completed, no replication position, archived only, missing, not logical) or the server is the primary",
+                        "description": "Backup not usable (not completed, no replication position, archived only, missing, not logical, not a backup, changed since registered) or the server is the primary",
                         "schema": {
                             "type": "string"
                         }
@@ -24303,7 +24611,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "discovered": {
-                    "description": "Discovered: the backup was found in the server's backup folder without metadata\n(copied there by hand or by another tool) and registered by replication-manager.\nIt is never picked by an automatic restore; DiscoveryNote says what its scan found\n(why it is not completed, or a check it could not run).",
+                    "description": "Discovered: the backup was found in the server's backup folder without metadata\n(copied there by hand or by another tool) and registered by the operator (#2073).\nIt is never picked by an automatic restore; DiscoveryNote says what its read found\n(a check it could not run).",
                     "type": "boolean"
                 },
                 "discoveryNote": {
@@ -24341,12 +24649,24 @@ const docTemplate = `{
                 "metaFile": {
                     "type": "string"
                 },
+                "notABackup": {
+                    "description": "NotABackup: a discovered entry that is not a backup (an accounts file, no table), kept\nlisted from a release that registered every dump it found: flagged, never used.",
+                    "type": "boolean"
+                },
                 "originalRemoved": {
                     "description": "OriginalRemoved: the artifact at Dest was removed once its archive snapshot\n(ResticSnapshotID) was verified to hold it (backup-archive-remove-original);\na restore fetches it back from the archive.",
                     "type": "boolean"
                 },
                 "previous": {
                     "type": "integer"
+                },
+                "registration": {
+                    "description": "Registration is the file of a discovered backup as registered: a change since is not\nused until it is registered.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/backupmgr.BackupRegistration"
+                        }
+                    ]
                 },
                 "resticEnabled": {
                     "type": "boolean"
@@ -24384,6 +24704,10 @@ const docTemplate = `{
                     "description": "bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator",
                     "type": "integer"
                 },
+                "timeSource": {
+                    "description": "TimeSource tells where StartTime and EndTime come from (BackupTimeSource*): the\nbackup's own record, its file's time, or the operator.",
+                    "type": "string"
+                },
                 "verification": {
                     "description": "Verification is the result of the last verification of this backup (#2023).",
                     "allOf": [
@@ -24402,6 +24726,21 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/backupmgr.BackupVerificationRun"
                     }
+                }
+            }
+        },
+        "backupmgr.BackupRegistration": {
+            "type": "object",
+            "properties": {
+                "adopted": {
+                    "description": "Adopted: registered by a release that registered every dump it found (v3.1.44), its\nfingerprint taken when this release first saw it.",
+                    "type": "boolean"
+                },
+                "artifact": {
+                    "$ref": "#/definitions/backupmgr.ArtifactFingerprint"
+                },
+                "registeredAt": {
+                    "type": "string"
                 }
             }
         },
@@ -25433,6 +25772,110 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.BackupCandidate": {
+            "type": "object",
+            "properties": {
+                "encrypted": {
+                    "type": "boolean"
+                },
+                "files": {
+                    "type": "integer"
+                },
+                "modTime": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "registerError": {
+                    "type": "string"
+                },
+                "registering": {
+                    "description": "Registering and RegisterError: the last Register of this artifact, running or refused",
+                    "type": "boolean"
+                },
+                "scheduled": {
+                    "description": "Scheduled: a scheduled backup file (mysqldump.sql.gz, splitdump...): registered, it is\nthe scheduled backup, used as any scheduled backup",
+                    "type": "boolean"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "splitDump": {
+                    "type": "boolean"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "tool": {
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.BackupDiscoveryView": {
+            "type": "object",
+            "properties": {
+                "changes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.BackupRegistrationChange"
+                    }
+                },
+                "servers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.backupCandidateSet"
+                    }
+                }
+            }
+        },
+        "cluster.BackupRegistrationChange": {
+            "type": "object",
+            "properties": {
+                "checked": {
+                    "type": "string"
+                },
+                "describe": {
+                    "type": "string"
+                },
+                "dest": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "now": {
+                    "description": "nil: missing, or can not be read",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/backupmgr.ArtifactFingerprint"
+                        }
+                    ]
+                },
+                "registerError": {
+                    "description": "RegisterError: the last Register of the change, refused",
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "was": {
+                    "$ref": "#/definitions/backupmgr.ArtifactFingerprint"
+                }
+            }
+        },
         "cluster.BackupVerificationServerState": {
             "type": "object",
             "properties": {
@@ -26410,6 +26853,27 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.backupCandidateSet": {
+            "type": "object",
+            "properties": {
+                "candidates": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.BackupCandidate"
+                    }
+                },
+                "dropped": {
+                    "description": "Dropped: the artifacts the last discovery did not list, beyond\nbackup-discovery-candidate-max (WARN0250)",
+                    "type": "integer"
+                },
+                "scannedAt": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                }
+            }
+        },
         "config.AgentVariable": {
             "type": "object",
             "properties": {
@@ -27144,6 +27608,12 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "backupConcurrentSlots": {
+                    "type": "integer"
+                },
+                "backupDiscovery": {
+                    "type": "boolean"
+                },
+                "backupDiscoveryCandidateMax": {
                     "type": "integer"
                 },
                 "backupDiskTresholdCrit": {
@@ -31263,6 +31733,23 @@ const docTemplate = `{
                 },
                 "scope": {
                     "description": "\"cluster\" | \"global\"",
+                    "type": "string"
+                }
+            }
+        },
+        "server.backupRegisterRequest": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "description": "Path is the artifact, as the candidates list it",
+                    "type": "string"
+                },
+                "server": {
+                    "description": "Server is the URL (host:port) of the server whose backup folder holds the artifact",
+                    "type": "string"
+                },
+                "takenAt": {
+                    "description": "TakenAt (RFC 3339) is when the backup was taken, for one that records no time of its\nown (a splitdump, a dump written with --skip-comments); refused for one that does",
                     "type": "string"
                 }
             }

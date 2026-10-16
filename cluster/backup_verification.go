@@ -30,10 +30,14 @@ var (
 
 // verifiableLogicalBackup reports why meta can not be verified: only a completed
 // mysqldump backup, single file or splitdump, still on disk.
-func verifiableLogicalBackup(meta *backupmgr.BackupMetadata) error {
+func (cluster *Cluster) verifiableLogicalBackup(meta *backupmgr.BackupMetadata) error {
 	switch {
 	case meta.BackupMethod != backupmgr.BackupMethodLogical || meta.BackupTool != config.ConstBackupLogicalTypeMysqldump:
 		return fmt.Errorf("%w: %s backups are on the roadmap, only mysqldump is verified", ErrBackupNotVerifiable, meta.BackupTool)
+	case meta.NotABackup:
+		return fmt.Errorf("%w: not a backup (%s)", ErrBackupNotVerifiable, meta.DiscoveryNote)
+	case cluster.isDuplicateScheduledBackup(meta):
+		return fmt.Errorf("%w: discovered duplicate of a scheduled backup: unregister it instead", ErrBackupNotVerifiable)
 	case !meta.Completed:
 		return fmt.Errorf("%w: the backup did not complete", ErrBackupNotVerifiable)
 	case meta.OriginalRemoved:
@@ -85,7 +89,7 @@ func (cluster *Cluster) VerifyBackupByIDRun(backupID int64, level string) (Backu
 	if err != nil {
 		return BackupVerificationStart{}, err
 	}
-	if err := verifiableLogicalBackup(meta); err != nil {
+	if err := cluster.verifiableLogicalBackup(meta); err != nil {
 		return BackupVerificationStart{}, err
 	}
 	server := cluster.GetServerFromURL(meta.Source)
@@ -127,7 +131,7 @@ func (cluster *Cluster) VerifyBackupByIDRun(backupID int64, level string) (Backu
 			return
 		}
 		defer cluster.backupVerificationReads.Delete(meta.Id)
-		if err := verifiableLogicalBackup(meta); err != nil { // its original archived meanwhile
+		if err := cluster.verifiableLogicalBackup(meta); err != nil { // its original archived meanwhile
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Backup verification of backup %d not run: %s", meta.Id, err)
 			server.recordBackupVerificationSkipped(meta, level, runID, seq, "not run: "+err.Error())
 			return
@@ -483,7 +487,7 @@ func (server *ServerMonitor) closeInterruptedVerificationRuns(meta *backupmgr.Ba
 // the backup's own slot and state, before the archive push can remove the original.
 func (server *ServerMonitor) verifyBackupAfterBackup(meta *backupmgr.BackupMetadata) {
 	cluster := server.ClusterGroup
-	if !cluster.Conf.BackupVerification || meta == nil || verifiableLogicalBackup(meta) != nil {
+	if !cluster.Conf.BackupVerification || meta == nil || cluster.verifiableLogicalBackup(meta) != nil {
 		return
 	}
 	level, err := cluster.backupVerificationLevel("")

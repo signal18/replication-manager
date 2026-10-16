@@ -22,6 +22,7 @@ import {
   setRefreshInterval,
   pauseAutoReload,
   getBackupStats,
+  getBackupCandidates,
   clearCluster,
   getClusterApps,
   getOpenSVCStats,
@@ -217,6 +218,7 @@ function Home() {
     dispatch(getResticSnapshot({ clusterName, filter: 'latest-per-session' }))
     dispatch(getBackups({ clusterName }))
     dispatch(getBackupStats({ clusterName }))
+    dispatch(getBackupCandidates({ clusterName }))
     dispatch(getResticCurrentTask({ clusterName }))
     dispatch(getJobs({ clusterName }))
   }
