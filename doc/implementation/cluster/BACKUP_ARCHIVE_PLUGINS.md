@@ -123,7 +123,7 @@ with two backends). `none` is simply an empty list.
 ### Required: one local restic and x remote restic
 
 A cluster must be able to run **one local restic archive and any number of remote restic
-archives** (sftp, S3, each its own bucket or host) at the same time. So `archive-restic`
+archives** (sftp, S3, each its own bucket or host) at the same time. So each restic plugin
 is **instantiated once per archive entry**, never once per cluster as `ResticManager` is
 today. Each instance has its own:
 
@@ -140,22 +140,23 @@ Example:
 ```toml
 [[archive]]                 # 1: local, the read preference
 name    = "local"
-plugin  = "archive-restic"
-backend = "local"           # <WorkingDir>/backups/archive/<cluster>
+plugin  = "archive-restic-local"   # <WorkingDir>/backups/archive/<cluster>
 takes   = "logical,physical,binlog"
 retention = "keep-daily 7"
 
 [[archive]]                 # 2: remote, filled by copy from "local"
 name    = "s3-paris"
-plugin  = "archive-restic"
-backend = "s3"
+plugin  = "archive-restic-s3"
+bucket  = "backups-paris"
+endpoint = "https://s3.fr-par.example"
 copy-from = "local"         # restic copy: no second read of the backup
 retention = "keep-daily 30, keep-monthly 12"
 
 [[archive]]                 # 3: remote, another provider
 name    = "sftp-dr"
-plugin  = "archive-restic"
-backend = "sftp"
+plugin  = "archive-restic-sftp"
+host    = "dr-backup.example"
+path    = "/srv/restic/<cluster>"
 copy-from = "local"
 retention = "keep-weekly 8"
 ```
@@ -180,18 +181,36 @@ retention = "keep-weekly 8"
 
 ## The plugins
 
-| Plugin | Kind | Backends | Caps |
+| Plugin | Kind | Remote | Its own settings (from today's `backup-restic-*`) |
 |---|---|---|---|
-| `archive-restic` | **internal**: today's `utils/backupmgr` restic code behind the interface | local path, sftp, S3 (one plugin, the backend is its setting) | Versioned, Encrypts, Mount, Copy, ChangeKey; Remote for sftp/S3 |
-| `archive-<name>` | **external**: signed executable in `<ShareDir>/plugins/` | anything else: native S3, rclone, a client's storage | as declared in its manifest |
+| `archive-restic-local` | **internal** | no (BKU) | `repository` (path, default `<WorkingDir>/backups/archive/<cluster>`), `dir-mode`, `file-mode`, `purge-oldest-on-disk-space`, `purge-oldest-on-disk-threshold`, the `mount-*` settings |
+| `archive-restic-sftp` | **internal** | yes (BAU) | `host`, `port`, `user`, `path`, `identity` (a `secret_kv` key; today there is no sftp setting: it relies on the repman user's ssh config or `additional-env`), `known-hosts` |
+| `archive-restic-s3` | **internal** | yes (BAU) | `bucket`, `endpoint`, `region`, `prefix`, `access-key-id`, `access-secret` (a `secret_kv` key), `s3-mode` (legacy URL / bucket fields), `create-bucket` |
+| `archive-<name>` | **external**: signed executable in `<ShareDir>/plugins/` | as declared | as declared in its manifest |
+
+- **One plugin per backend, because each has its own settings**: the GUI page, the
+  validation and the error messages of each plugin only show what applies to it (no S3
+  fields on an sftp archive, no disk-pressure purge on a remote one).
+- **One restic engine under the three**: the restic code (`utils/backupmgr`: exec, JSON
+  parsing, task execution, copy, check, unlock, key change) is a shared library; each
+  plugin only builds its repository string, its environment and its settings, and
+  declares its capabilities.
+- **Settings common to the three** stay on each archive entry: `password` (a `secret_kv`
+  key per archive), `tags`, `host`, `retention` (today's `purge-*`), `timeout`,
+  `dump-timeout`, `auto-init`, `repo-append-cluster`, `additional-env` (reserved
+  variables still refused).
+- **Copy across the family**: `restic copy` works between any two restic repositories, so
+  `Copy` is native between `archive-restic-local`, `-sftp` and `-s3` (same engine), not
+  only within one plugin.
 
 - **Config**: `backup-archive-mode` becomes the cluster's archive list, each entry a plugin
-  name plus its settings (`plugin-config.<name>`, as the log plugins). `restic-local` / `restic-sftp` /
-  `restic-aws` migrate to `archive-restic` with its backend setting; the legacy
+  name plus its settings (`plugin-config.<name>`, as the log plugins). `restic-local`,
+  `restic-sftp` and `restic-aws` migrate to `archive-restic-local`, `archive-restic-sftp`
+  and `archive-restic-s3`, their `backup-restic-*` settings moved onto the entry; the legacy
   `BackupRestic*` bools go away, so mode and flags can no longer disagree.
 - **Manifest**: `<bin>.manifest.json` as for the log plugins (`description`, `tier`,
   `config_keys`, prerequisites), plus `capabilities`. The archive settings page is drawn
-  from it; the restic pages stay for `archive-restic`.
+  from it; each restic plugin's page comes from its own manifest.
 - **Wire** (external): the log plugins' one-shot 5 s request does not fit. An archive
   plugin is a long-lived child process speaking JSON lines on stdin/stdout: each request
   carries an id; the plugin answers with progress events and one result; repman can send
@@ -205,7 +224,7 @@ retention = "keep-weekly 8"
 ## API and GUI
 
 - New generic routes `/api/clusters/{c}/archive/...` (refs, stats, fetch, forget, check,
-  unlock, queue); the `/restic/...` routes stay as aliases for `archive-restic` until the
+  unlock, queue); the `/restic/...` routes stay as aliases for the first restic archive until the
   GUI and the MCP tools have moved.
 - The reseed modal offers "from the archive" for any plugin (`Fetch`), and "by mount" only
   with the `Mount` capability.
@@ -214,7 +233,7 @@ retention = "keep-weekly 8"
 
 ## Plan
 
-1. the interface and the internal `archive-restic` plugin wrapping today's code; the queue,
+1. the interface and the three internal restic plugins (`archive-restic-local`, `-sftp`, `-s3`) over today's restic code as a shared engine; the queue,
    retention decisions and remove-original moved into repman; the archive list (one
    entry, migrated from `backup-archive-mode`) and `ArchiveRefs` in metadata; no behaviour
    change, the restic regtests must pass unchanged;
@@ -229,7 +248,7 @@ retention = "keep-weekly 8"
 
 ## Open questions
 
-- **Tiers**: is `archive-restic` free (it is today), and which external plugins are pro or
+- **Tiers**: are the three restic plugins free (restic is today), and which external plugins are pro or
   enterprise?
 - **Backup streaming** (`backup-streaming*`): keep it as a filesystem mount outside the
   family, or retire it once an S3 archive plugin exists?
