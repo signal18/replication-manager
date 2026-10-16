@@ -1,6 +1,8 @@
 package cluster
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -112,5 +114,29 @@ func TestVerificationRunHistoryBound(t *testing.T) {
 	c.Conf.BackupVerificationRunHistory = 0
 	if c.verificationRunHistory() != config.ConstBackupVerificationRunHistory {
 		t.Fatal("0: the default")
+	}
+}
+
+// a run whose record can not be written is not accepted, and leaves the history and the
+// sequence as they were: no run left running in memory
+func TestStartVerificationRunWriteFailure(t *testing.T) {
+	_, server, meta := newVerificationTest(t, false, func(dest string) { writeValidationGzip(t, dest, validationDump) })
+	if _, err := server.startVerificationRun(meta, "integrity", "run-a"); err != nil {
+		t.Fatal(err)
+	}
+	before := append([]backupmgr.BackupVerificationRun(nil), meta.VerificationRuns...)
+	// a directory where the meta file is: the write fails
+	path := server.backupMetaFilePath(meta)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(path, "x"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.startVerificationRun(meta, "integrity", "run-b"); err == nil {
+		t.Fatal("a run whose record can not be written must not be accepted")
+	}
+	if meta.VerificationRunSequence != 1 || len(meta.VerificationRuns) != len(before) || meta.VerificationRuns[0] != before[0] {
+		t.Fatalf("history changed by a failed start: sequence %d runs %+v", meta.VerificationRunSequence, meta.VerificationRuns)
 	}
 }

@@ -173,11 +173,15 @@ func (server *ServerMonitor) recordBackupVerificationSkipped(meta *backupmgr.Bac
 func (server *ServerMonitor) startVerificationRun(meta *backupmgr.BackupMetadata, level, runID string) (uint64, error) {
 	server.backupMetaMutex.Lock()
 	defer server.backupMetaMutex.Unlock()
-	seq := meta.VerificationRunSequence + 1
-	runs := append(meta.VerificationRuns, backupmgr.BackupVerificationRun{Sequence: seq, RunID: runID, Level: level, Status: backupmgr.BackupVerificationRunning, StartTime: time.Now()})
+	prevRuns, prevSeq := meta.VerificationRuns, meta.VerificationRunSequence
+	seq := prevSeq + 1
+	// a new slice: the history kept on a failed write is the previous one, untouched
+	runs := append(append([]backupmgr.BackupVerificationRun(nil), prevRuns...), backupmgr.BackupVerificationRun{Sequence: seq, RunID: runID, Level: level, Status: backupmgr.BackupVerificationRunning, StartTime: time.Now()})
 	meta.VerificationRuns = boundVerificationRuns(runs, server.ClusterGroup.verificationRunHistory())
 	meta.VerificationRunSequence = seq
 	if err := server.writeBackupMetaFileLocked(meta); err != nil {
+		// not accepted: the run is not left running in memory
+		meta.VerificationRuns, meta.VerificationRunSequence = prevRuns, prevSeq
 		return 0, fmt.Errorf("verification run not recorded in the meta file of backup %d: %w", meta.Id, err)
 	}
 	return seq, nil

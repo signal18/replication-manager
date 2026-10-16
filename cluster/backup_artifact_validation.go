@@ -295,7 +295,9 @@ func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.
 	}
 	// the folder's own inode and ctime start the fingerprint: a file added, removed or renamed
 	// in the folder changes its ctime; one rewritten in place changes its own ctime, and one
-	// in a subfolder the file count, the size or the newest ctime of the files
+	// in a subfolder the file count, the size or the newest ctime of the files. A file of a
+	// subfolder rewritten in place, its size and modification time put back, changes neither
+	// folder's ctime but its own, which is the newest ctime the walk reads.
 	fp := &backupmgr.ArtifactFingerprint{Inode: ino, ChangeTime: ctime}
 	entries := 0
 	err = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {

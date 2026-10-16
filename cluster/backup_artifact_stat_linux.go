@@ -17,7 +17,8 @@ import (
 // inode, so a backup changed since it was verified does not match its fingerprint.
 func artifactStatIdentity(fi os.FileInfo) (ino uint64, ctime time.Time) {
 	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
-		return st.Ino, time.Unix(st.Ctim.Sec, st.Ctim.Nsec)
+		// int64: Timespec fields are int32 on 32-bit Linux (arm, 386)
+		return uint64(st.Ino), time.Unix(int64(st.Ctim.Sec), int64(st.Ctim.Nsec))
 	}
 	return 0, time.Time{}
 }
