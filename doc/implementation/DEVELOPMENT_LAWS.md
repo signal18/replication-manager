@@ -363,10 +363,12 @@ monitors and repoints the links it manages; it does not own them (F1). So:
   load and restore the GTID state the backup carries (`gtid_slave_pos`); the link stays
   as the last failover, switchover or rejoin left it. A link that must be set or moved
   after a restore is the rejoin's job. Provision and jobs do not change a link either.
-- Only the channel repman manages (`replication-source-name`) is ever stopped or
-  positioned, by name. A statement without a channel name (`RESET SLAVE ALL`, `STOP ALL
-  SLAVES`) acts on channels repman may not manage: it needs the same justification as a
-  removal, never "there is only one channel".
+- STOP is not DROP. Stopping every channel (`STOP ALL SLAVES`) is right when the
+  operation replaces the data all of them apply to (a restore): each channel stopped is
+  started again at the end, or left stopped with a state saying why. Positioning or
+  resetting acts on the channel repman manages (`replication-source-name`) only, by name:
+  a statement without a channel name that removes or rewrites (`RESET SLAVE ALL`) is never
+  justified by "there is only one channel".
 - A path that may fail half-way leaves the link as it found it, stopped at worst: never
   "delete now, recreate at the end". The end may never come.
 - Any change to a link (stop, repoint, reset of positions) opens a state naming the
