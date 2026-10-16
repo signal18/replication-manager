@@ -28,7 +28,11 @@ func TestClusterOptionsLocalDimensions(t *testing.T) {
 	}
 	out, _ = repman.Cloud18ClusterOptions(nil, "topology", "mariadb", "")
 	topo := out["topology"].(map[string]any)["mariadb"].([]map[string]any)
-	if topo[0]["topology"] != config.TopoMasterSlave || topo[0]["creatable"] != true || topo[1]["creatable"] != false {
+	creatable := map[any]any{}
+	for _, tp := range topo {
+		creatable[tp["topology"]] = tp["creatable"]
+	}
+	if creatable[config.TopoActivePassive] != true || creatable[config.TopoMasterSlave] != true || creatable[config.TopoMultiMasterWsrep] != false {
 		t.Fatalf("mariadb topologies: %v", topo)
 	}
 	if _, err := repman.Cloud18ClusterOptions(nil, "color", "", ""); err == nil {
@@ -39,9 +43,10 @@ func TestClusterOptionsLocalDimensions(t *testing.T) {
 	}
 }
 
-func TestCreateRefusesNonValidatedFlavor(t *testing.T) {
-	if _, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBImage: "mysql:8.4"}); err == nil {
-		t.Fatal("mysql is not validated for self-service creation")
+// every flavor is creatable since #1963
+func TestCreateAcceptsEveryFlavor(t *testing.T) {
+	if _, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBImage: "mysql:8.4"}); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBImage: "mariadb:11.8"}); err != nil {
 		t.Fatal(err)

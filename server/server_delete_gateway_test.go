@@ -77,10 +77,13 @@ func TestDeleteCluster_EndToEnd_UnblocksGatewayPeer(t *testing.T) {
 		Name: "clusterA",
 		Conf: &config.Config{
 			Cloud18GatewayService: "  NS/SVC/SHARED-GW  ", // messy — normalization under test
-			MonitoringTicker:      1,                       // prevents time.NewTicker(0) panic
-			MonitorWaitRetry:      0,                       // loop exits immediately
+			WorkingDir:            t.TempDir(),            // Stop saves the config here
+			MonitoringTicker:      1,                      // prevents time.NewTicker(0) panic
+			MonitorWaitRetry:      0,                      // loop exits immediately
 		},
-		StateMachine: sm,
+		StateMachine:           sm,
+		RefreshTemplateMD5Chan: make(chan *cluster.App, 10), // DeleteCluster stops the cluster (#2016)
+		ConfigManager:          newConfigManagerForTest(),   // Stop saves the config
 	}
 
 	appBCnf := &config.AppConfig{

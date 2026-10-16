@@ -77,7 +77,7 @@ func TestDecodeS3ProviderRequestBody(t *testing.T) {
 }
 
 func TestS3ProviderCRUDRoutes_MethodConstraints(t *testing.T) {
-	repman := &ReplicationManager{}
+	repman := &ReplicationManager{Conf: &config.Config{}}
 	router := mux.NewRouter()
 	repman.apiClusterProtectedHandler(router)
 
@@ -1487,6 +1487,7 @@ func TestHandlerMuxClusterS3ProvidersGet_EmptyList(t *testing.T) {
 func newTestRepmanWithCluster(t *testing.T, name string, cl *cluster.Cluster) *ReplicationManager {
 	t.Helper()
 	repman := &ReplicationManager{
+		Conf: &config.Config{},
 		Clusters: map[string]*cluster.Cluster{
 			name: cl,
 		},

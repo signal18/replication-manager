@@ -410,7 +410,7 @@ func TestHandlerMuxFetchDynamicClustersFromGit_RequiresAuth(t *testing.T) {
 // with 401 before the handler's own admin check ever runs. Mirrors
 // TestS3ProviderCRUDRoutes_MethodConstraints's approach in api_cluster_test.go.
 func TestFetchDynamicClustersFromGitRoute_MethodAndAuth(t *testing.T) {
-	repman := &ReplicationManager{}
+	repman := &ReplicationManager{Conf: &config.Config{}}
 	router := mux.NewRouter()
 	repman.apiClusterProtectedHandler(router)
 

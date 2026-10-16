@@ -794,7 +794,7 @@ func TestReseedFromParentCluster_UnsupportedType_DoesNotCreateRunningTask(t *tes
 	if err == nil {
 		t.Fatal("expected ReseedFromParentCluster to reject unsupported parent logical backup type")
 	}
-	if err.Error() != "Unknown backup type unsupported" {
+	if !strings.Contains(err.Error(), `backup-logical-type "unsupported" cannot seed a child cluster`) {
 		t.Fatalf("unexpected ReseedFromParentCluster error: %v", err)
 	}
 	if got := target.JobResults.Get("reseedunsupported"); got != nil {
