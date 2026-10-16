@@ -64,7 +64,8 @@ const (
 // Archive plugin capabilities.
 const (
 	ConstArchiveCapEdit   = "edit"   // its settings and secrets can be changed
-	ConstArchiveCapRemove = "remove" // its entry can be removed (never its repository)
+	ConstArchiveCapDetach = "detach" // its entry leaves the list, its content stays
+	ConstArchiveCapDrop   = "drop"   // its entry leaves the list and its content is deleted
 	ConstArchiveCapProbe  = "probe"  // opens an existing repository, or initialises a new one
 )
 
@@ -84,7 +85,7 @@ var archiveResticEnums = map[string][]string{
 	"s3-mode": {ConstResticS3ModeAuto, ConstResticS3ModeNew, ConstResticS3ModeLegacy},
 }
 
-var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapRemove, ConstArchiveCapProbe}
+var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapDetach, ConstArchiveCapDrop, ConstArchiveCapProbe}
 
 // resticSettings types each setting from the backup-restic-* field it replaces, so a type
 // is never written twice.
