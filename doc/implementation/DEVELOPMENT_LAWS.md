@@ -358,9 +358,11 @@ monitors and repoints the links it manages; it does not own them (F1). So:
   link. Removing a link is an explicit, user-requested action only.
 - Moving a link to another source is the job of the failover, switchover and rejoin
   code, under their guards (election, positions, consistency checks), and nothing else's.
-  Every other path (reseed, provision, job) keeps the source the link has, the one the
-  last failover, switchover or rejoin set: it may set the position on that source
-  (`CHANGE MASTER` with the same master), never choose another.
+- Restoring a backup (a reseed, logical or physical) changes no link: no `CHANGE MASTER`,
+  no other source, no definition. It may stop and start the managed channel around the
+  load and restore the GTID state the backup carries (`gtid_slave_pos`); the link stays
+  as the last failover, switchover or rejoin left it. A link that must be set or moved
+  after a restore is the rejoin's job. Provision and jobs do not change a link either.
 - Only the channel repman manages (`replication-source-name`) is ever stopped or
   positioned, by name. A statement without a channel name (`RESET SLAVE ALL`, `STOP ALL
   SLAVES`) acts on channels repman may not manage: it needs the same justification as a
