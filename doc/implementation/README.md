@@ -18,6 +18,7 @@ This directory contains detailed implementation documentation for various featur
 ### `/cluster/`
 Cluster monitoring, backup, and resilience.
 
+- **BACKUP_ARCHIVE_PLUGINS.md** - Design: backup archives behind one ArchiveStore interface, restic as the internal plugin, other backends as signed external plugins
 - **BACKUP_DEAD_VOLUME_STALL.md** - Why a lost backup volume must not stall the monitor: the write-stall watchdog (`backup-write-stall-timeout`), the monitoring-hot-path sleep fix, and the controllable-mount reproduction
 - **HEARTBEAT_AND_ARBITRATION.md** - Peer heartbeat and arbitration; peer transport (http-port, scheme fallback) and failure states GWARN018-020 (#1940)
 - **CONFIGURATOR_BUFFER_ROUNDING.md** - Engine buffer sizing: power of two for every buffer, 128 MB chunks for the InnoDB buffer pool, page cache left for the redo log (#1950, #1951)
