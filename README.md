@@ -1,6 +1,6 @@
-## Replication Manager for MariaDB and MySQL
+## Replication Manager for MariaDB, MySQL and PostgreSQL
 
-Replication Manager is an open-source MariaDB monitoring, backup, and high-availability tool. It provides automated failover, scheduled maintenance, and full observability for MariaDB, MySQL, and Percona Server replication topologies.
+Replication Manager is an open-source database monitoring, backup, and high-availability tool. It provides automated failover, scheduled maintenance, and full observability for MariaDB, MySQL, and Percona Server replication topologies, and, since 3.1.43, for PostgreSQL clusters.
 
 ### Key features
 
@@ -32,8 +32,17 @@ Replication Manager is an open-source MariaDB monitoring, backup, and high-avail
  * Near-zero data loss targeting across most failure scenarios
  * Automatic database rejoining and reseeding
 
+**PostgreSQL**
+ * Clusters monitored like MariaDB and MySQL, with their own switchover, failover, and rejoin path
+ * Three topologies: active-passive, WAL streaming (primary and physical standbys), and logical replication (publisher and subscribers, DDL through pglogical)
+ * Switchover and failover with the routes moved on HAProxy and ProxySQL 3; rejoin of the former primary by `pg_rewind`
+ * Logical and physical backups via `pg_dumpall` and `pg_basebackup`, restore and reseed from them, WAL archive shipped to replication-manager
+ * Processlist, variables, table sizes, workload, WAL, and vacuum graphs from `pg_stat_*`; scheduled `vacuumdb --analyze`
+ * See [PostgreSQL Topologies](https://docs.signal18.io/architecture/topologies/postgresql) for what is available compared with MariaDB
+
 **Proxy Integration**
  * Automated backend management for ProxySQL, MaxScale, HAProxy, and Spider
+ * ProxySQL 3 PostgreSQL backends, with read/write split
 
 **Observability & Alerting**
  * Metrics history exposed via the Carbon/Graphite API
@@ -65,4 +74,4 @@ It also includes derivative work from the `go-carbon` library by Roman Lomonosov
 
 ## Copyright and support
 
-Replication Manager for MySQL and MariaDB is developed and supported by [SIGNAL18 CLOUD SAS](https://signal18.io/products).
+Replication Manager for MariaDB, MySQL and PostgreSQL is developed and supported by [SIGNAL18 CLOUD SAS](https://signal18.io/products).
