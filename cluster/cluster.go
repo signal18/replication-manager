@@ -2580,7 +2580,7 @@ func (cluster *Cluster) FailoverForce() error {
 	}
 	err = sf.read()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not read values from state file:", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not read values from state file: %v", err)
 	} else {
 		cluster.FailoverCtr = int(sf.Count)
 		cluster.FailoverTs = sf.Timestamp
@@ -3116,7 +3116,7 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 							!strings.Contains(t.TableName, "_back") &&
 							!strings.Contains(t.TableName, "_old") &&
 							!strings.Contains(t.TableName, "_reshard") {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Shard proxy vtable %s.%s found on %d servers", t.TableSchema, t.TableName, len(duplicates))
 							cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
 						}
 					}

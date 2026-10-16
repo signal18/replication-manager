@@ -1058,7 +1058,7 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 		e.SetIndent("", "\t")
 		err = e.Encode(res.servers)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -1137,7 +1137,7 @@ func (repman *ReplicationManager) handlerMuxGetServersByState(w http.ResponseWri
 		e.SetIndent("", "\t")
 		err = e.Encode(res.servers)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -1306,7 +1306,7 @@ func (repman *ReplicationManager) handlerMuxSlaves(w http.ResponseWriter, r *htt
 
 		err := json.Unmarshal(data, &srvs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -1317,7 +1317,7 @@ func (repman *ReplicationManager) handlerMuxSlaves(w http.ResponseWriter, r *htt
 		e.SetIndent("", "\t")
 		err = e.Encode(srvs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -1504,7 +1504,7 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 		var prxs []*cluster.Proxy
 		err := json.Unmarshal(data, &prxs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -1512,7 +1512,7 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 		e.SetIndent("", "\t")
 		err = e.Encode(prxs)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -1544,7 +1544,7 @@ func (repman *ReplicationManager) handlerMuxAlerts(w http.ResponseWriter, r *htt
 		e.SetIndent("", "\t")
 		err := e.Encode(a)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -2316,7 +2316,7 @@ func (repman *ReplicationManager) handlerMuxMaster(w http.ResponseWriter, r *htt
 
 			err := json.Unmarshal(data, &srvs)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: %v", err)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
@@ -6229,7 +6229,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 		if len(res) > 0 {
 			err := e.Encode(res[0])
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
@@ -6241,7 +6241,7 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 			test.Name = vars["testName"]
 			err := e.Encode(test)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				mycluster.SetTestStartCluster(false)
 				mycluster.SetTestStopCluster(false)
@@ -6286,7 +6286,7 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 		e.SetIndent("", "\t")
 		err := e.Encode(res)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -8219,7 +8219,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 		return
 	}
 
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Pending subscription for %s is rejected!")
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Pending subscription for %s is rejected!", userform.Username)
 
 	err = repman.SendPendingRejectionMail(mycluster, userform)
 	if err != nil {
@@ -8819,7 +8819,7 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 		return
 	}
 
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pending partnership for %s is rejected!")
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pending partnership for %s is rejected!", userform.Username)
 
 	err = repman.SendSponsorPendingRejectionExternalOpsMail(mycluster, userform.Roles, partner)
 	if err != nil {
@@ -9903,7 +9903,7 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 
 		apps, err := json.MarshalIndent(views, "", "\t")
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
 		}
@@ -9912,7 +9912,7 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(apps)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %v", err)
 			http.Error(w, "Error writing response", http.StatusInternalServerError)
 			return
 		}
@@ -10047,7 +10047,7 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 		cacheDir := filepath.Join(mycluster.WorkingDir, ".cache", "docker", "images")
 		results, err := dockerhelper.GetFileTreeCache(cacheDir, imageRef)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error listing files in image directory: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error listing files in image directory: %v", err)
 			http.Error(w, "Error listing files in image directory: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -10057,7 +10057,7 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 		encoder := json.NewEncoder(w)
 		encoder.SetIndent("", "\t") // Pretty print
 		if err := encoder.Encode(results); err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding JSON: %v", err)
 			http.Error(w, "Error encoding JSON: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -10092,7 +10092,7 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 		for _, gwRef := range mycluster.Conf.GatewayServices() { // #1873: every gateway
 			gwNodes, err := svc.GetServiceNodeFromState(gwRef)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: %v", err)
 				http.Error(w, "Error getting gateway nodes: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -10110,7 +10110,7 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(nodesJSON)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %v", err)
 			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -10143,7 +10143,7 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 
 		stats, err := mycluster.GetOpenSVCStats()
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting OpenSVC stats: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting OpenSVC stats: %v", err)
 			http.Error(w, "Error getting OpenSVC stats: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -10159,7 +10159,7 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(statsJSON)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %v", err)
 			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -10286,7 +10286,7 @@ func (repman *ReplicationManager) handlerMuxClusterIsInErrState(w http.ResponseW
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte(fmt.Sprintf("%t", isInErrorState)))
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: %v", err)
 			http.Error(w, "Error writing response: "+err.Error(), http.StatusInternalServerError)
 			return
 		}

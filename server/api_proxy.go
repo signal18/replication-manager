@@ -95,7 +95,7 @@ func (repman *ReplicationManager) handlerMuxProxy(w http.ResponseWriter, r *http
 			var prx cluster.Proxy
 			err := json.Unmarshal(data, &prx)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 				http.Error(w, "Encoding error", 500)
 				return
 			}
@@ -103,7 +103,7 @@ func (repman *ReplicationManager) handlerMuxProxy(w http.ResponseWriter, r *http
 			e.SetIndent("", "\t")
 			err = e.Encode(&prx)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 				http.Error(w, "Encoding error", 500)
 				return
 			}

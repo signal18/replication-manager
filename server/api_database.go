@@ -647,7 +647,7 @@ func (repman *ReplicationManager) handlerMuxServer(w http.ResponseWriter, r *htt
 		e.SetIndent("", "\t")
 		err = e.Encode(cont)
 		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 			http.Error(w, "Encoding error", 500)
 			return
 		}
