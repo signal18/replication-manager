@@ -101,9 +101,19 @@ with two backends). `none` is simply an empty list.
 
 ### Names and the connected archive
 
-- An archive is a **name and a plugin type** plus the plugin's settings. Names are
-  `archive-1` to `archive-x`, given by repman in order (the first free one), never derived
-  from the plugin: an archive keeps its name when its plugin changes.
+- An archive is a **name and a plugin type** plus the plugin's settings. The name is a
+  label the user chooses (`archive-bso-s3`) and can rename: unique in the cluster,
+  lowercase letters, digits, `-` and `_`. Repman names the archive the migration creates,
+  and one created without a name, `archive-<type>-<n>`: `archive-local-1` is the archive of
+  restic enabled today.
+- Each plugin comes with its **typed config** (its manifest): every setting with its type
+  (`string`, `int`, `bool`, `enum` with its values, `secret`) and its capabilities:
+  `edit`, `detach` (the archive leaves the list, its content stays), `drop` (the archive
+  leaves the list and its content is deleted), `probe` (open an existing repository, or
+  initialise a new one). The forms and checks are drawn from it.
+- Getting rid of an old, heavy archive: create `archive-local-2`, connect it, drop
+  `archive-local-1`. Neither detach nor drop applies to the connected archive, and drop is
+  refused while the archive holds the only copy of a backup (#1987).
 - The cluster is **connected to one archive**: `backup-archive-name` (a plain cluster
   setting, empty for none). The backups go to it and its snapshots are the ones listed.
   The user switches by changing that one setting; the archive left keeps its settings as
@@ -112,11 +122,13 @@ with two backends). `none` is simply an empty list.
   to be connected.
 - `backup-archive-mode` stays as a setter over the list: `none` disconnects; another mode
   changes the connected archive's plugin, or connects the first archive with that plugin,
-  or a new `archive-x`.
-- Migration (#2077): a cluster without a list gets `archive-1` from its `backup-restic-*`
-  settings, connected when `backup-archive-mode` is not none. With the mode none and
+  or a new `archive-<type>-1`.
+- Migration (#2077): a cluster without a list gets `archive-local-1` (or `archive-sftp-1`,
+  `archive-s3-1`) from its `backup-restic-*` settings and secrets, connected when `backup-archive-mode` is not none. With the mode none and
   customised settings, it is kept but not connected, so nothing is lost. With every
-  setting at its default, there is no list.
+  setting at its default, there is no list. The legacy keys are not written any more (no
+  downgrade copy, decided): after the upgrade, don't go back to 3.1.44, and upgrade an
+  active/standby pair together.
 
 - **Each archive has its own policy**: which backup kinds it takes (logical, physical,
   binlogs), and its retention. A backup is pushed to every archive whose policy takes it,
@@ -158,27 +170,27 @@ today. Each instance has its own:
 Example:
 
 ```toml
-backup-archive-name = "archive-1"   # the connected archive: the backups go to it
+backup-archive-name = "archive-local-1"   # the connected archive: the backups go to it
 
 [[archive]]                 # 1: local, the read preference
-name    = "archive-1"
+name    = "archive-local-1"
 plugin  = "archive-restic-local"   # <WorkingDir>/backups/archive/<cluster>
 retention = "keep-daily 7"
 
-[[archive]]                 # 2: remote, filled by copy from archive-1
-name    = "archive-2"
+[[archive]]                 # 2: remote, filled by copy from archive-local-1
+name    = "archive-bso-s3"
 plugin  = "archive-restic-s3"
 bucket  = "backups-paris"
 endpoint = "https://s3.fr-par.example"
-copy-from = "archive-1"     # restic copy: no second read of the backup
+copy-from = "archive-local-1"     # restic copy: no second read of the backup
 retention = "keep-daily 30, keep-monthly 12"
 
 [[archive]]                 # 3: remote, another provider
-name    = "archive-3"
+name    = "archive-dr-sftp"
 plugin  = "archive-restic-sftp"
 host    = "dr-backup.example"
 path    = "/srv/restic/<cluster>"
-copy-from = "archive-1"
+copy-from = "archive-local-1"
 retention = "keep-weekly 8"
 ```
 
@@ -258,8 +270,8 @@ The end-to-end case the design must serve:
 
 1. **Add the migration archive from its connection infos**: Signal18's restic S3 (or any
    S3 or sftp repository) is an archive added to the list with its settings and secrets,
-   whether the repository already exists or not. Add, edit and remove are generic: the
-   plugin declares its settings, secrets and capabilities (`edit`, `remove`, `probe`). #2091
+   whether the repository already exists or not. Add, edit, rename, detach and drop are
+   generic: the plugin declares its typed settings, secrets and capabilities. #2091
 2. **Archive the backup to it**: connect it with `backup-archive-name` and push. Works
    with the archive list (#2077), once each archive has its own secrets. #2088
 3. **Connect another repman instance to this archive**, **read-only**, with the source's
@@ -275,7 +287,7 @@ The end-to-end case the design must serve:
 | Per-archive secrets (`archive.<name>.password`, through the credential store chain) | #2088 | #2077, #2075 |
 | Read-only connection, full repository path | #2089 | #2088 |
 | List and import another cluster's backups | #2090 | #2089 |
-| Add, edit, remove an archive from its connection infos (probe: open existing or init) | #2091 | #2088 |
+| Add, edit, rename, detach, drop an archive from its connection infos (probe: open existing or init) | #2091 | #2088 |
 
 Both repman instances use the same restic password: the target adds the archive with the
 same connection infos, and the probe opens the existing repository (a wrong password is
