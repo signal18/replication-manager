@@ -23,6 +23,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"runtime/pprof"
 	"slices"
@@ -721,7 +722,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")
 	flags.StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	flags.BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
-	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", true , "Need JWT token to download config tar.gz")
+	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", true, "Need JWT token to download config tar.gz")
 	flags.BoolVar(&conf.APIAutologin, "api-autologin", false, "Enable unauthenticated auto-login token endpoint (trusted networks only)")
 	flags.StringVar(&conf.APIAutologinUser, "api-autologin-user", "admin", "Username to generate a token for when api-autologin is enabled")
 	flags.StringVar(&conf.APIDashboardUser, "api-dashboard-user", "", "Read-only user for the /dashboard public endpoint (empty = disabled)")
@@ -2089,7 +2090,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 				v := cf3.Get(f)
 				if v != nil {
 					imm_v, ok := ImmuableMap[f]
-					if ok && imm_v != v {
+					if ok && !reflect.DeepEqual(imm_v, v) { // DeepEqual: a list value (the archive tables, #2077) panics with !=
 						DynamicMap[f] = v
 					}
 					if !ok {
@@ -2267,7 +2268,7 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 					v := cf3.Get(f)
 					if v != nil {
 						imm_v, ok := clustImmuableMap[f]
-						if ok && imm_v != v {
+						if ok && !reflect.DeepEqual(imm_v, v) { // DeepEqual: a list value (the archive tables, #2077) panics with !=
 							clustDynamicMap[f] = v
 						}
 						if !ok {

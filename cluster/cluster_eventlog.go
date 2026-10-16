@@ -141,6 +141,12 @@ func flattenTomlValues(data []byte) (map[string]string, error) {
 			}
 			if sub, ok := v.(*toml.Tree); ok {
 				walk(key, sub)
+			} else if subs, ok := v.([]*toml.Tree); ok && namedTables(subs) {
+				// an array of named tables (the archive list, #2077) diffs per entry:
+				// "archive.<name>.<key>", so one changed setting is one event
+				for _, sub := range subs {
+					walk(key+"."+fmt.Sprintf("%v", sub.Get("name")), sub)
+				}
 			} else {
 				out[key] = fmt.Sprintf("%v", v)
 			}
@@ -148,6 +154,16 @@ func flattenTomlValues(data []byte) (map[string]string, error) {
 	}
 	walk("", t)
 	return out, nil
+}
+
+// namedTables: every table of the array has a name, the key its entries diff by.
+func namedTables(subs []*toml.Tree) bool {
+	for _, sub := range subs {
+		if name, ok := sub.Get("name").(string); !ok || name == "" {
+			return false
+		}
+	}
+	return len(subs) > 0
 }
 
 // stripTomlSection reduces a flattened map to the keys under the given
@@ -226,6 +242,11 @@ func (cluster *Cluster) emitConfigChangeEvents(oldData []byte, newData []byte, s
 		}
 		action, val := "set", nv
 		if !nok {
+			// a legacy archive key leaves the saved config for the archive list (#2077):
+			// not a change, and a peer replaying the unset would reset its value
+			if config.IsArchiveLegacyKey(k) {
+				continue
+			}
 			action, val = "unset", ""
 		}
 		// Echo subtraction: this value was just replayed from a peer, it is

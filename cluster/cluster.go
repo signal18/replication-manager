@@ -681,7 +681,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	go cluster.ConsumeMessageChan()
 
 	*cluster.Conf = confs.ConfInit
-	cluster.Conf.NormalizeBackupArchiveMode()
+	// the archive list, migrated from backup-archive-mode / backup-restic-* (#2077)
+	cluster.Conf.MigrateArchives()
 	// the cluster's own scheduler-jobs-exec-remote, not the map parsed for the defaults
 	cluster.Conf.ParseJobsExecOverrides()
 
@@ -2084,6 +2085,9 @@ func (cluster *Cluster) SaveCallBack() error {
 		// Check and inject config
 		cluster.CheckInjectConfig()
 
+		// a setter changed a BackupRestic* field: archive 1 carries it into the save (#2077)
+		cluster.Conf.SyncArchiveFromConfig()
+
 		// Save the main configuration file
 		changed, err := cluster.SaveConfigFile()
 		if err != nil {
@@ -2186,7 +2190,8 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 
 	for _, key := range keys {
 		_, ok := cluster.Conf.ImmuableFlagMap[key]
-		if ok {
+		if ok || config.IsArchiveLegacyKey(key) {
+			// a legacy archive key is carried by the archive list (#2077)
 			s.Delete(key)
 		} else {
 			v, ok := cluster.Conf.DefaultFlagMap[key]
@@ -2205,6 +2210,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	}
 
 	s.WriteTo(&buf)
+
+	// the archive list, unless a config file pins it (#2077)
+	if _, pinned := cluster.Conf.ImmuableFlagMap["archive"]; !pinned {
+		archives, err := cluster.Conf.ArchivesToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the archive list: %s", err)
+			return false, err
+		}
+		buf.WriteString(archives)
+	}
 
 	has_changed, err = cluster.saveConfigArtifact(filePath, buf.Bytes(), "saved-"+cluster.Name, true)
 	if err == nil && has_changed {
@@ -2534,6 +2549,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 
 	cluster.Lock()
 	*cluster.Conf = conf
+	cluster.Conf.MigrateArchives()
 	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
 

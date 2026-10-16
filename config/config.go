@@ -908,6 +908,7 @@ type Config struct {
 	BackupResticPurgePruneRepackSmall         bool              `mapstructure:"backup-restic-purge-prune-repack-small" toml:"backup-restic-purge-prune-repack-small" json:"backupResticPurgePruneRepackSmall"`
 	BackupResticPurgePruneRepackUncompressed  bool              `mapstructure:"backup-restic-purge-prune-repack-uncompressed" toml:"backup-restic-purge-prune-repack-uncompressed" json:"backupResticPurgePruneRepackUncompressed"`
 	BackupArchiveMode                         string            `mapstructure:"backup-archive-mode" toml:"backup-archive-mode" json:"backupArchiveMode"`
+	Archives                                  []ArchiveConfig   `mapstructure:"archive" toml:"archive" json:"archives"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
 	BackupVerification                        bool              `mapstructure:"backup-verification" toml:"backup-verification" json:"backupVerification"`
 	BackupVerificationLevel                   string            `mapstructure:"backup-verification-level" toml:"backup-verification-level" json:"backupVerificationLevel"`
