@@ -347,6 +347,35 @@ fix too: bump the module or the Go toolchain, release, refresh. A draft advisory
 reaches the SBOM: the workflow lists published advisories only. Procedure for
 contributors: docs.signal18.io, Contribute, Security Fixes and SBOM (#2086).
 
+**T27. A replication link belongs to the client's topology: never delete one, and never
+change one without a state that says so.** A channel (its master host, user, name,
+position) is how the client wired their databases, often across clusters: a parent and
+its child or staging cluster, an external source, a client's own multi-source. repman
+monitors and repoints the links it manages; it does not own them (F1). So:
+- No `RESET SLAVE ... ALL` / `RESET REPLICA ALL`, `DROP SUBSCRIPTION`, or any statement
+  that removes a channel's definition, in any automatic path (reseed, rejoin, failover,
+  provision, job). To clear positions, `RESET SLAVE '<channel>'` without `ALL` keeps the
+  link; to move it, `CHANGE MASTER`. Removing a link is an explicit, user-requested
+  action only.
+- Only the channel repman manages (`replication-source-name`) is ever stopped or
+  repointed, by name. A statement without a channel name (`RESET SLAVE ALL`, `STOP ALL
+  SLAVES`) acts on channels repman may not manage: it needs the same justification as a
+  removal, never "there is only one channel".
+- A path that may fail half-way leaves the link as it found it, stopped at worst: never
+  "delete now, recreate at the end". The end may never come.
+- Any change to a link (stop, repoint, reset of positions) opens a state naming the
+  server, the channel, the reason and the action that did it, so the GUI shows why the
+  link is down. A log line is not enough (T3/T4: states, not logs).
+- An AI assistant changing a reseed, rejoin or failover path reads this law first and
+  says, in the PR, which channels its change stops, repoints or resets, and why.
+Example (PR #2020, v3.1.44): to fix older dumps and an idle MariaDB replica, the
+mysqldump reseed added `STOP ALL SLAVES` then `RESET SLAVE '<name>' ALL` (a plain
+`RESET SLAVE ALL` when no name is set), at request time and before the load, recreating
+the link only after a successful load. A reseed launched from a parent on its child's
+server deleted the child's link; the parent then dropped the server from its topology
+and it vanished from the GUI; the reseed failed (a system account) and the link stayed
+deleted; no state explained any of it.
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a
