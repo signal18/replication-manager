@@ -358,6 +358,7 @@ var ClusterError = map[string]string{
 	"WARN0230":  "Cluster: traffic injection runs in pseudo-GTID DDL mode (CREATE OR REPLACE VIEW replication_manager_schema.pseudo_gtid_v): meant for testing and for positional (no-GTID) replication only, every marker is a binlog event that flashback cannot reverse%s; set inject-traffic-mode to dml for safe traffic",
 	"WARN0229":  "Cluster: the traffic marker injection started %s ago (at %s) is still running, probably waiting for a metadata lock on the primary (backup in progress?); no new marker until it returns, the monitoring tick is not affected",
 	"WARN0248":  "Backup %d of %s lacks objects its source has: %s -- check backup-mysqldump-options and the event scheduler",
+	"WARN0249":  "API tokens are enabled (api-user-tokens) but no user can issue one on this cluster: the main api-credentials-acl-allow gives nobody the token grant; add token (or token-create) to the users who should issue tokens",
 	"WARN0247":  "Logical dump client %s of %s can not back up its %s server: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",

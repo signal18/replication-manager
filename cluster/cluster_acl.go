@@ -18,6 +18,7 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 	"google.golang.org/grpc/codes"
 )
 
@@ -351,6 +352,16 @@ func (cluster *Cluster) LoadAPIUsers() error {
 			cluster.SetUserRoles(&newapiuser, userACL.Roles)
 		}
 
+		// The token grants came after many explicit ACLs were written (#2083): while
+		// api-user-tokens is on, a user who administers grants, and could grant
+		// themselves anything, holds them. The main discard below can still remove them
+		// (it takes full grant names: token-create token-manage).
+		if cluster.Conf.APIUserTokens && config.HasAllGrantGrants(newapiuser.Grants) {
+			for _, g := range config.GetGrantToken() {
+				newapiuser.Grants[g] = true
+			}
+		}
+
 		if discardACL, ok := listDiscard[newapiuser.User]; ok {
 			acls := strings.Split(discardACL.ACLs, " ")
 			for _, acl := range acls {
@@ -408,6 +419,22 @@ func (cluster *Cluster) reconcileSystemServiceGrants() {
 		cluster.APIUsers["system"] = u
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Stripped API token grants from the `system` service account: a machine identity never issues tokens")
 	}
+}
+
+// checkAPITokenIssuers runs with the config states: WARN0249 while api-user-tokens
+// is on and nobody can issue a token on the cluster, the main ACL denying the
+// token grants to every user (#2083).
+func (cluster *Cluster) checkAPITokenIssuers() {
+	if !cluster.Conf.APIUserTokens || len(cluster.APIUsers) == 0 {
+		return
+	}
+	for name, u := range cluster.APIUsers {
+		if name != "system" && u.Grants[config.GrantTokenCreate] {
+			return
+		}
+	}
+	cluster.ConfigStateMachine.AddState("WARN0249", state.State{ErrType: "WARNING", ErrKey: "WARN0249", ErrFrom: "CONF",
+		ErrDesc: clusterError["WARN0249"]})
 }
 
 // logUserGrantAssignment writes the resolved grant set for a user to the
