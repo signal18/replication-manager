@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -78,6 +79,19 @@ var backupDiscoveryMaxPerRun = 8
 // ErrBackupDiscoveryRunning: a discovery, a Register or an Unregister of the server's
 // folder already runs.
 var ErrBackupDiscoveryRunning = errors.New("a discovery or a registration of the backup folder already runs")
+
+// errBackupDiscoveryStopping: replication-manager stops, a read of a backup ends.
+var errBackupDiscoveryStopping = errors.New("replication-manager is stopping")
+
+// logDiscoveryPanic logs a panic the read of an artifact recovered, with its stack (4 KiB at
+// most).
+func (cluster *Cluster) logDiscoveryPanic(path string, r any) {
+	stack := debug.Stack()
+	if len(stack) > 4096 {
+		stack = stack[:4096]
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Backup discovery: the read of %s panicked: %v\n%s", path, r, stack)
+}
 
 // ErrBackupDiscoveryInBackup: a backup of the cluster runs, its artifact is not complete yet.
 var ErrBackupDiscoveryInBackup = errors.New("a backup of the cluster is running: discover its folder once it ends")
@@ -402,6 +416,10 @@ func addKnownBackupArtifact(known map[string]bool, dest string) {
 // checks' to tell.
 func classifyBackupArtifact(path string, entry os.DirEntry) (tool string, split, ok bool) {
 	name := entry.Name()
+	// a symbolic link may point outside the backup folder: never read
+	if entry.Type()&os.ModeSymlink != 0 {
+		return "", false, false
+	}
 	// replication-manager's own working folder of the direct reseeds (srv_job_reseed.go),
 	// and the users file a backup with backup-split-mysql-user writes next to its dump
 	userSidecar := filepath.Base(mysqldumpUserSidecarPath(path))
@@ -448,6 +466,14 @@ func classifyBackupArtifact(path string, entry os.DirEntry) (tool string, split,
 // reads it to its end. It returns the candidate's status and why, and its tool, which a
 // folder's content may correct.
 func (cluster *Cluster) checkBackupCandidate(path, tool string, split bool) (status, reason, toolOut string, splitOut bool) {
+	// the check parses untrusted content: a panic marks the candidate unreadable, never the
+	// monitor
+	defer func() {
+		if r := recover(); r != nil {
+			status, reason, toolOut, splitOut = BackupCandidateUnreadable, fmt.Sprintf("can not be read: internal error: %v", r), tool, split
+			cluster.logDiscoveryPanic(path, r)
+		}
+	}()
 	if strings.HasSuffix(path, ".tar.enc") {
 		return BackupCandidateUnchecked, "an encrypted dump folder: Register reads it to its end", tool, split
 	}
@@ -493,6 +519,10 @@ func discoveryFolderNames(dir string) (map[string]bool, error) {
 	}
 	names := make(map[string]bool, len(entries))
 	for _, e := range entries {
+		// a symbolic link may point outside the backup folder: the folder is not read
+		if e.Type()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("it holds a symbolic link (%s): not read", e.Name())
+		}
 		if !e.IsDir() {
 			names[e.Name()] = true
 		}
@@ -517,6 +547,13 @@ func (server *ServerMonitor) inspectDiscoveredBackup(meta *backupmgr.BackupMetad
 		meta.Completed = false
 		meta.DiscoveryNote = fmt.Sprintf(format, args...)
 	}
+	// the read parses untrusted content: a panic fails this registration, never the monitor
+	defer func() {
+		if r := recover(); r != nil {
+			fail("can not be read: internal error: %v", r)
+			server.ClusterGroup.logDiscoveryPanic(meta.Dest, r)
+		}
+	}()
 	switch {
 	case strings.HasSuffix(meta.Dest, ".tar.enc"):
 		// an encrypted folder: its archive is read to its end (its integrity code is
@@ -787,6 +824,9 @@ func (cluster *Cluster) readDiscoveredArchive(path string) (*discoveredArchive, 
 	a := &discoveredArchive{names: map[string]bool{}, small: map[string][]byte{}}
 	tr := tar.NewReader(rc)
 	for {
+		if cluster.exit.Load() {
+			return nil, errBackupDiscoveryStopping
+		}
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			return a, nil
@@ -907,6 +947,9 @@ func (cluster *Cluster) readDiscoveredStream(path string, facts *discoveredDumpF
 	// lines joined up to the end of the statement, as the backup's own reader joins them
 	var gtidStmt strings.Builder
 	for {
+		if cluster.exit.Load() {
+			return errBackupDiscoveryStopping
+		}
 		line, err := readDiscoveryLine(lr)
 		if line != "" {
 			trimmed := strings.TrimSpace(line)

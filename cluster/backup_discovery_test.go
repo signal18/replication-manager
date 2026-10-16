@@ -1285,3 +1285,48 @@ func TestOwnBackupLockedUntilRegistered(t *testing.T) {
 		t.Fatal("a superseded record reads as changed")
 	}
 }
+
+// A symbolic link in a backup folder may point outside it: never listed, never registered,
+// and a dump folder holding one is not read.
+func TestDiscoverIgnoresSymlinks(t *testing.T) {
+	c, server, dir := newDiscoveryTest(t)
+	outside := filepath.Join(t.TempDir(), "other.sql.gz")
+	writeDiscoveryGzip(t, outside, discoveryDump+discoveryDumpFooter)
+	link := filepath.Join(dir, "link.sql.gz")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skip("no symbolic links here:", err)
+	}
+	split := filepath.Join(dir, "linked-split")
+	writeDiscoverySplitdump(t, split, true)
+	os.Remove(filepath.Join(split, "app.t.00000.sql.gz"))
+	os.Symlink(outside, filepath.Join(split, "app.t.00000.sql.gz"))
+	cands, err := server.DiscoverBackups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := candidatesByName(cands)
+	if _, listed := got["link.sql.gz"]; listed {
+		t.Fatal("a symbolic link was listed")
+	}
+	if s := got["linked-split"]; s.Status != BackupCandidateUnreadable || !strings.Contains(s.Reason, "symbolic link") {
+		t.Fatalf("a folder holding a symbolic link: %+v", s)
+	}
+	if err := c.RegisterBackup(server.URL, link, time.Time{}); !errors.Is(err, ErrBackupNotRegisterable) || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("register a symbolic link: %v", err)
+	}
+	if _, err := registerAndWait(t, c, server, split, time.Time{}); err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("register a folder holding a symbolic link: %v", err)
+	}
+}
+
+// A read of a dump or an archive ends when replication-manager stops.
+func TestDiscoveryReadStopsWithReplicationManager(t *testing.T) {
+	c, _, dir := newDiscoveryTest(t)
+	path := filepath.Join(dir, "copy.sql.gz")
+	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
+	c.exit.Store(true)
+	t.Cleanup(func() { c.exit.Store(false) })
+	if err := c.readDiscoveredStream(path, &discoveredDumpFacts{}); !errors.Is(err, errBackupDiscoveryStopping) {
+		t.Fatalf("read while stopping: %v", err)
+	}
+}

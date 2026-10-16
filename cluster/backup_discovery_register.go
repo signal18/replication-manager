@@ -251,9 +251,13 @@ func (cluster *Cluster) RegisterBackup(serverURL, path string, takenAt time.Time
 	if !takenAt.IsZero() && takenAt.After(time.Now()) {
 		return fmt.Errorf("%w: its time %s is in the future", ErrBackupNotRegisterable, takenAt.Format(time.RFC3339))
 	}
-	info, err := os.Stat(path)
+	// the entry itself, not what a symbolic link points to: one may point outside the folder
+	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrBackupNotRegisterable, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%w: %s is a symbolic link, not read", ErrBackupNotRegisterable, filepath.Base(path))
 	}
 	tool, split, ok := classifyBackupArtifact(path, fs.FileInfoToDirEntry(info))
 	if !ok {
@@ -326,6 +330,14 @@ func (cluster *Cluster) startBackupRegistration(server *ServerMonitor, path, too
 	cluster.backupRegisterResults.Store(path, backupRegisterResult{server: server.URL, id: id, running: true})
 	go func() {
 		defer cluster.backupDiscoveries.Delete(server.URL)
+		// the reads recover their own panics (inspectDiscoveredBackup): this one keeps any
+		// other from ending the process, the registration refused
+		defer func() {
+			if r := recover(); r != nil {
+				cluster.backupRegisterResults.Store(path, backupRegisterResult{server: server.URL, id: id, err: fmt.Sprintf("internal error: %v", r)})
+				cluster.logDiscoveryPanic(path, r)
+			}
+		}()
 		meta, err := server.registerDiscoveredBackup(path, tool, split, prev, takenAt)
 		if err != nil {
 			cluster.backupRegisterResults.Store(path, backupRegisterResult{server: server.URL, id: id, err: err.Error()})
@@ -424,7 +436,7 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 	}
 	after, err := restoreArtifactFingerprintBounded(path, backupProofWalkMax)
 	if err != nil || !artifactFingerprintsEqual(before, after) {
-		return nil, errors.New("changed while it was read: register it again once the copy ends")
+		return nil, errors.New("changed while it was read (a copy still running, or a backup that started meanwhile): register it again once it ends")
 	}
 	meta.Registration = &backupmgr.BackupRegistration{Artifact: *after, RegisteredAt: time.Now()}
 	if prev != nil {
@@ -436,11 +448,9 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 		meta.Verification, meta.VerificationRuns, meta.VerificationRunSequence = prev.Verification, prev.VerificationRuns, prev.VerificationRunSequence
 		meta.ResticEnabled, meta.ResticSnapshotID, meta.ResticFilePath = prev.ResticEnabled, prev.ResticSnapshotID, prev.ResticFilePath
 		meta.BackupSessionID = prev.BackupSessionID
-		server.backupMetaMutex.Unlock()
-	}
-	if prev != nil {
 		// a backup replication-manager took keeps being one; an ad hoc one keeps its line
 		meta.Discovered, meta.BackupLine, meta.RetentionDays, meta.RetentionDuration = prev.Discovered, prev.BackupLine, prev.RetentionDays, prev.RetentionDuration
+		server.backupMetaMutex.Unlock()
 	}
 	what := "registered"
 	if scheduled {

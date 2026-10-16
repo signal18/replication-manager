@@ -242,6 +242,24 @@ the backup cookie. `RegisterBackup` on a scheduled file name (replaced by hand,
 or left without a record) does the same: one record per file, never a
 discovered one.
 
+## Untrusted content
+
+The artifacts are placed by hand: their reads are hardened.
+- Symbolic links: `classifyBackupArtifact` skips a link (never listed),
+  `RegisterBackup` reads the entry with `os.Lstat` and refuses a link, and
+  `discoveryFolderNames` refuses a dump folder holding one: a link may point
+  outside the backup folder. An archive's link members are not kept (only
+  regular members are read).
+- Panics: `checkBackupCandidate` and `inspectDiscoveredBackup`, the two entry
+  points of the parsing, recover a panic (the candidate unreadable, the
+  registration refused, `logDiscoveryPanic` logs it with its stack), as the
+  backup verification does; the register goroutine recovers any other.
+- Bounds: memory is bounded (lines kept to 4 KiB, a GTID statement to 1 MiB,
+  an archive's names and small files); a full read is not bounded in time, a
+  dump being read whole at Register, but it ends when replication-manager
+  stops (`cluster.exit`, `errBackupDiscoveryStopping`, checked per line and per
+  archive member).
+
 ## Refusals
 
 `backupUseRefusal(meta)`: for any backup, `ErrBackupChangedSinceRegistered` while
