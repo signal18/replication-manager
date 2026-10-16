@@ -82,11 +82,20 @@ type BackupMetadata struct {
 	ResticFilePath    string `json:"resticFilePath"`
 	BackupSessionID   string `json:"backupSessionID,omitempty"`
 	// Discovered: the backup was found in the server's backup folder without metadata
-	// (copied there by hand or by another tool) and registered by replication-manager.
-	// It is never picked by an automatic restore; DiscoveryNote says what its scan found
-	// (why it is not completed, or a check it could not run).
+	// (copied there by hand or by another tool) and registered by the operator (#2073).
+	// It is never picked by an automatic restore; DiscoveryNote says what its read found
+	// (a check it could not run).
 	Discovered    bool   `json:"discovered,omitempty"`
 	DiscoveryNote string `json:"discoveryNote,omitempty"`
+	// NotABackup: a discovered entry that is not a backup (an accounts file, no table), kept
+	// listed from a release that registered every dump it found: flagged, never used.
+	NotABackup bool `json:"notABackup,omitempty"`
+	// Registration is the file of a discovered backup as registered: a change since is not
+	// used until it is registered.
+	Registration *BackupRegistration `json:"registration,omitempty"`
+	// TimeSource tells where StartTime and EndTime come from (BackupTimeSource*): the
+	// backup's own record, its file's time, or the operator.
+	TimeSource string `json:"timeSource,omitempty"`
 	// OriginalRemoved: the artifact at Dest was removed once its archive snapshot
 	// (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
 	// a restore fetches it back from the archive.
@@ -165,6 +174,24 @@ type ArtifactFingerprint struct {
 	Inode      uint64    `json:"inode,omitempty"`
 	ChangeTime time.Time `json:"changeTime,omitzero"`
 }
+
+// BackupRegistration is a discovered backup's file as registered: its fingerprint (the one
+// a backup verification records) and when it was taken.
+type BackupRegistration struct {
+	Artifact     ArtifactFingerprint `json:"artifact"`
+	RegisteredAt time.Time           `json:"registeredAt"`
+	// Adopted: registered by a release that registered every dump it found (v3.1.44), its
+	// fingerprint taken when this release first saw it.
+	Adopted bool `json:"adopted,omitempty"`
+}
+
+// Where a backup's StartTime and EndTime come from.
+const (
+	BackupTimeSourceDumpFooter       = "dump-footer"       // the dump client's "-- Dump completed on" line
+	BackupTimeSourceMydumperMetadata = "mydumper-metadata" // mydumper's "Started dump at" / "Finished dump at"
+	BackupTimeSourceFileTime         = "file-time"         // the file's modification time: when it was placed
+	BackupTimeSourceOperator         = "operator"          // set by the operator at Register
+)
 
 type PointInTimeMeta struct {
 	IsInPITR    bool

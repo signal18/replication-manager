@@ -359,11 +359,20 @@ type Cluster struct {
 	bootstrapDR                 bootstrapDRState     `json:"-"` // DR replication-manager URL offered to init containers (bootstrap_dr.go)
 	backupProgress              sync.Map             `json:"-"` // key server/kind -> *BackupProgress (cluster_backup_progress.go)
 	backupDiscoveries           sync.Map             `json:"-"` // key server URL: a backup folder discovery runs (backup_discovery.go)
-	injectTrafficInFlight       atomic.Bool          `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
-	injectTrafficSince          atomic.Int64         `json:"-"` // unix time the running injection started
-	binlogServerIDs             *binlogServerIDPool  `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
-	binlogServerIDsOnce         sync.Once            `json:"-"`
-	resources                   *ResourceManager     `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
+	// backup discovery (#2073): the candidates of each server's last discovery (key server URL,
+	// a *backupCandidateSet replaced whole), the outcome of a Register (key artifact path, a
+	// backupRegisterResult: a path names one server, each server's backup folder holding its
+	// host_port, GetMyBackupDirectoryPath), the registered discovered backups whose file changed (key backup
+	// id, a *BackupRegistrationChange), and the change check running
+	backupCandidates           sync.Map            `json:"-"`
+	backupRegisterResults      sync.Map            `json:"-"`
+	backupChanges              sync.Map            `json:"-"`
+	backupRegistrationChecking atomic.Bool         `json:"-"`
+	injectTrafficInFlight      atomic.Bool         `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
+	injectTrafficSince         atomic.Int64        `json:"-"` // unix time the running injection started
+	binlogServerIDs            *binlogServerIDPool `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
+	binlogServerIDsOnce        sync.Once           `json:"-"`
+	resources                  *ResourceManager    `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
 	// provisioningMutex serialises every provision/unprovision operation that
 	// reports its result through the shared, unbuffered errorChan (the ~10
 	// receivers in prov.go + srv.go Uprovision). Without it, two overlapping
@@ -1344,6 +1353,8 @@ func (cluster *Cluster) tickBody() {
 					goRun(func() { cluster.HasCatalogBackupForRejoin() })
 					// off the tick: it waits for backupMetaMutex and reads backup files (#2023)
 					cluster.trackTickGoroutine(cluster.refreshBackupProofs)
+					// off the tick: it stats or walks the registered discovered backups (#2073)
+					cluster.trackTickGoroutine(cluster.checkRegisteredBackups)
 					goRun(cluster.CheckCanSaveDynamicConfig)
 					goRun(cluster.CheckIsOverwrite)
 					goRun(cluster.CheckAllBackupEstimatedSize)

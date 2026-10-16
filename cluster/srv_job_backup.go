@@ -1280,6 +1280,9 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 		if cluster.isDiscoveredBackupPath(backupfile) {
 			return nil, fmt.Errorf("No backup file found on master for %s: %s was discovered in the backup folder, reseed from it on request", backtype, backupfile)
 		}
+		if err := cluster.backupFileLocked(backupfile); err != nil {
+			return nil, fmt.Errorf("No usable backup file on master for %s: %w", backtype, err)
+		}
 		if !cluster.backupArtifactExists(backupfile) {
 			//Remove false cookie
 			if !masterArchived {
@@ -3175,6 +3178,11 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 			}
 			if useMaster && cluster.isDiscoveredBackupPath(backupfile) {
 				noBackupErr := fmt.Errorf("Cancelling reseed. No logical %s backup found on any node: %s was discovered in the backup folder, reseed from it on request", backtype, backupfile)
+				server.JobsUpdateStateRuntimeOnly(task, noBackupErr.Error(), 5, 1)
+				return noBackupErr
+			}
+			if err := cluster.backupFileLocked(backupfile); err != nil {
+				noBackupErr := fmt.Errorf("Cancelling reseed. No usable logical %s backup: %w", backtype, err)
 				server.JobsUpdateStateRuntimeOnly(task, noBackupErr.Error(), 5, 1)
 				return noBackupErr
 			}
@@ -7284,6 +7292,9 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			if cluster.isDiscoveredBackupPath(backupfile) {
 				return fmt.Errorf("No backup file found on master for %s: %s was discovered in the backup folder, reseed from it on request", backupType, backupfile)
 			}
+			if err := cluster.backupFileLocked(backupfile); err != nil {
+				return fmt.Errorf("No usable backup file on master for %s: %w", backupType, err)
+			}
 			if !cluster.backupArtifactExists(backupfile) {
 				//Remove false cookie
 				master.DelBackupTypeCookie(backupType)
@@ -7789,6 +7800,10 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
 	}
+
+	// a logical backup's file as written (after its encryption): a file changed since, a
+	// replacement put in its place by hand, is not used until registered (#2073)
+	server.recordBackupRegistration(lastmeta)
 
 	bjson, err := json.MarshalIndent(lastmeta, "", "\t")
 	if err != nil {

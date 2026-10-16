@@ -909,6 +909,8 @@ type Config struct {
 	BackupResticPurgePruneRepackUncompressed  bool              `mapstructure:"backup-restic-purge-prune-repack-uncompressed" toml:"backup-restic-purge-prune-repack-uncompressed" json:"backupResticPurgePruneRepackUncompressed"`
 	BackupArchiveMode                         string            `mapstructure:"backup-archive-mode" toml:"backup-archive-mode" json:"backupArchiveMode"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
+	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
+	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
 	BackupVerification                        bool              `mapstructure:"backup-verification" toml:"backup-verification" json:"backupVerification"`
 	BackupVerificationLevel                   string            `mapstructure:"backup-verification-level" toml:"backup-verification-level" json:"backupVerificationLevel"`
 	BackupVerificationHost                    string            `mapstructure:"backup-verification-host" toml:"backup-verification-host" json:"backupVerificationHost"`
@@ -1605,6 +1607,9 @@ const (
 	ConstBackupVerificationLevelRestore   string = "restore"   // integrity, then a test restore on backup-verification-host
 	// ConstBackupVerificationRunHistory: the default backup-verification-run-history
 	ConstBackupVerificationRunHistory = 16
+	// ConstBackupDiscoveryCandidateMax: the default backup-discovery-candidate-max, the
+	// artifacts a backup discovery lists per server
+	ConstBackupDiscoveryCandidateMax = 100
 )
 
 const (
