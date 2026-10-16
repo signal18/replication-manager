@@ -256,8 +256,10 @@ retention = "keep-weekly 8"
 
 The end-to-end case the design must serve:
 
-1. **Pick an archive provided for migration** (an S3 archive hosted by Signal18): the
-   entry and its secrets are delivered, not typed by the user. #2091
+1. **Add the migration archive from its connection infos**: Signal18's restic S3 (or any
+   S3 or sftp repository) is an archive added to the list with its settings and secrets,
+   whether the repository already exists or not. Add, edit and remove are generic: the
+   plugin declares its settings, secrets and capabilities (`edit`, `remove`, `probe`). #2091
 2. **Archive the backup to it**: connect it with `backup-archive-name` and push. Works
    with the archive list (#2077), once each archive has its own secrets. #2088
 3. **Connect another repman instance to this archive**, **read-only**, with the source's
@@ -273,10 +275,12 @@ The end-to-end case the design must serve:
 | Per-archive secrets (`archive.<name>.password`, through the credential store chain) | #2088 | #2077, #2075 |
 | Read-only connection, full repository path | #2089 | #2088 |
 | List and import another cluster's backups | #2090 | #2089 |
-| Archive provided for migration | #2091 | #2088 |
+| Add, edit, remove an archive from its connection infos (probe: open existing or init) | #2091 | #2088 |
 
-Both repman instances use the same restic password, so it is delivered with the archive
-through the secret store, never in clear. A read-only connection refuses push, forget,
+Both repman instances use the same restic password: the target adds the archive with the
+same connection infos, and the probe opens the existing repository (a wrong password is
+refused, an existing repository is never re-initialised). Secrets go through the secret
+store, never in clear. A read-only connection refuses push, forget,
 prune, init, unlock and key change with a state, never silently.
 
 ## Plan
