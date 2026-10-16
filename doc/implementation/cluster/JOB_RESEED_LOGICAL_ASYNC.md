@@ -107,6 +107,30 @@ If `cluster.Conf.BackupLoadScript` is set:
 - If successful and not PITR, parse mydumper metadata to apply MariaDB GTID and restart replication.
 - Update job state to completed or failed.
 
+## The replica's replication links (law T27, #2093)
+
+A reseed restores data; it does not own the replica's links. Since #2093:
+
+- **Stop, never delete.** The restore stops every channel (`STOP ALL SLAVES`: the load
+  replaces the data all of them apply to) and clears the managed channel's positions and
+  relay logs with `RESET SLAVE '<channel>'` **without `ALL`** (`ResetSlavePositions`), at
+  request time (`JobReseedLogicalBackupPrepare`) and before the load. The link's definition
+  (host, user, channel) stays: a reseed that fails half-way leaves the link stopped, never
+  gone. #2020 (v3.1.44) used `RESET ... ALL` there, which deleted the link; for a child's
+  server reseeded from its parent, the parent then dropped the server from its topology.
+- **Position, never move.** After the load the managed channel is positioned
+  (`pointLogicalReseedReplica`, and the mydumper position) only when it points to the
+  cluster's primary, or does not exist yet (a new replica). A link pointing to another
+  source is left as it is, stopped: moving it is the failover, switchover and rejoin's job
+  (`reseedLinkPointsToPrimary`).
+- **A state, not a log.** The channels the reseed stopped are recorded
+  (`markReseedStoppedLinks`); every server refresh (`checkReseedStoppedLinks`) drops those
+  that run again, whoever started them, and keeps **WARN0252** open while one does not,
+  naming the channels and the reason (the restore, a link pointing elsewhere, the other
+  sources of a multi-source replica left for review).
+- `dbhelper.ResetSlaveStatement` names the channel with or without `ALL`: MySQL's
+  `RESET REPLICA` without `FOR CHANNEL` resets every channel.
+
 ## Cleanup and error handling
 
 - `ProcessReseedLogical` always clears the reseed state on exit via a deferred reset.
