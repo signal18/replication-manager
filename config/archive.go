@@ -984,8 +984,11 @@ func (conf *Config) ArchiveList() ([]ArchiveConfig, string) {
 	return cloneArchives(conf.Archives), conf.BackupArchiveName
 }
 
-// AttachedArchive is the attached archive's name ("" none).
+// AttachedArchive is the attached archive's name ("" none, or no config).
 func (conf *Config) AttachedArchive() string {
+	if conf == nil {
+		return ""
+	}
 	archiveMu.Lock()
 	defer archiveMu.Unlock()
 	return conf.BackupArchiveName
@@ -995,6 +998,9 @@ func (conf *Config) AttachedArchive() string {
 // the archive the legacy settings became, attached by the migration, else the first of the
 // list. "" when the cluster has no archive.
 func (conf *Config) LegacyArchiveName() string {
+	if conf == nil {
+		return ""
+	}
 	archiveMu.Lock()
 	defer archiveMu.Unlock()
 	if conf.BackupArchiveName != "" {
