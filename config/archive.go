@@ -18,8 +18,9 @@ import (
 
 // A cluster's archives (#2077, doc/implementation/cluster/BACKUP_ARCHIVE_PLUGINS.md):
 // a TOML array of tables, [[<cluster>.archive]] in a config file, [[saved-<cluster>.archive]]
-// in the saved <cluster>.toml, each entry named by its type and number (archive-local-1,
-// archive-sftp-1, archive-s3-1, archive-s3-2 ...) with its plugin, which never changes.
+// in the saved <cluster>.toml, each entry a name and its plugin. The name is a label the
+// user chooses (archive-bso-s3); repman names the one the migration creates, and one
+// created without a name, archive-<type>-<n> (archive-local-1: restic enabled today).
 // The cluster is connected to one of them, backup-archive-name ("" for none). In this
 // step the runtime still runs one restic archive from the BackupRestic* fields: the
 // connected archive is projected onto them at load, at a switch and at a peer replay, and
@@ -803,10 +804,9 @@ func (conf *Config) SwitchArchive(name string) error {
 }
 
 // ApplyArchiveMode is the backup-archive-mode setter over the list: none disconnects the
-// cluster; another mode keeps the connected archive when it has that plugin, else connects
-// the first archive with that plugin, else a new archive-<type>-1 (holding the fields when
-// the list was empty, so settings set before the mode are kept). An archive's plugin never
-// changes: its name says its type.
+// cluster; another mode changes the connected archive's plugin (its name is only a label),
+// or connects the first archive with that plugin, or a new archive-<type>-1 (holding the
+// fields when the list was empty, so settings set before the mode are kept).
 func (conf *Config) ApplyArchiveMode(mode string) error {
 	if err := conf.ValidateBackupArchiveMode(mode); err != nil {
 		return err
@@ -821,7 +821,9 @@ func (conf *Config) ApplyArchiveMode(mode string) error {
 	switch {
 	case plugin == "":
 		conf.BackupArchiveName = ""
-	case cur != nil && cur.Plugin == plugin:
+	case cur != nil:
+		cur.Plugin = plugin
+		cleanArchiveEntry(cur)
 	default:
 		var a *ArchiveConfig
 		for i := range conf.Archives {

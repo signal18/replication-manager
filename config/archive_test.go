@@ -139,7 +139,7 @@ func TestArchiveProjectionAndPin(t *testing.T) {
 
 // #2077: a setter changes a field; the save captures it into the connected archive, a
 // value back at its default leaves the list; the mode setter disconnects, connects a new
-// archive of another type, then the first archive of a type again (a plugin never changes)
+// archive of another type, then changes the connected archive's plugin
 func TestArchiveSyncFromSetters(t *testing.T) {
 	conf := archiveTestConf()
 	conf.BackupArchiveMode = ConstBackupArchiveModeResticLocal
@@ -165,8 +165,8 @@ func TestArchiveSyncFromSetters(t *testing.T) {
 	if err := conf.ApplyArchiveMode(ConstBackupArchiveModeResticLocal); err != nil {
 		t.Fatal(err)
 	}
-	if len(conf.Archives) != 2 || conf.BackupArchiveName != "archive-local-1" || conf.Archives[1].Plugin != ConstArchivePluginResticS3 || conf.BackupResticAws {
-		t.Fatalf("archives %+v connected %q, want archive-local-1 back and archive-s3-1 unchanged", conf.Archives, conf.BackupArchiveName)
+	if len(conf.Archives) != 2 || conf.BackupArchiveName != "archive-s3-1" || conf.Archives[1].Plugin != ConstArchivePluginResticLocal || conf.BackupResticAws {
+		t.Fatalf("archives %+v connected %q, want archive-s3-1 changed to local", conf.Archives, conf.BackupArchiveName)
 	}
 }
 
@@ -362,9 +362,9 @@ func TestArchiveJSONHidesSecrets(t *testing.T) {
 	}
 }
 
-// #2088: a mode change to another type connects another archive: the archive left keeps
-// its settings and secrets, the new one starts from the plugin's defaults
-func TestArchiveModeChangeKeepsTheArchiveLeft(t *testing.T) {
+// #2088: a mode change to another plugin changes the connected archive's plugin and drops
+// what the new plugin does not declare
+func TestArchiveModeChangeCleansEntry(t *testing.T) {
 	conf := archiveTestConf()
 	conf.BackupArchiveMode = ConstBackupArchiveModeResticAws
 	conf.BackupResticAwsBucket = "bk"
@@ -373,18 +373,18 @@ func TestArchiveModeChangeKeepsTheArchiveLeft(t *testing.T) {
 	if err := conf.ApplyArchiveMode(ConstBackupArchiveModeResticLocal); err != nil {
 		t.Fatal(err)
 	}
-	if len(conf.Archives) != 2 || conf.BackupArchiveName != "archive-local-1" || conf.Archives[1].Plugin != ConstArchivePluginResticLocal {
+	if len(conf.Archives) != 1 || conf.BackupArchiveName != "archive-s3-1" || conf.Archives[0].Plugin != ConstArchivePluginResticLocal {
 		t.Fatalf("archives %+v connected %q", conf.Archives, conf.BackupArchiveName)
 	}
-	if conf.Archives[0].Settings["aws-bucket"] != "bk" || conf.Archives[0].Settings["aws-access-secret"] != "hash_y" {
-		t.Errorf("archive-s3-1 lost its settings: %+v", conf.Archives[0].Settings)
+	if _, ok := conf.Archives[0].Settings["aws-bucket"]; ok {
+		t.Errorf("s3 setting kept on a local archive: %+v", conf.Archives[0].Settings)
 	}
-	if conf.BackupResticAwsBucket != "" || len(conf.Archives[1].Settings) != 0 {
-		t.Errorf("archive-local-1 got s3 settings: bucket %q %+v", conf.BackupResticAwsBucket, conf.Archives[1].Settings)
+	if _, ok := conf.Archives[0].Settings["aws-access-secret"]; ok {
+		t.Errorf("s3 secret kept on a local archive")
 	}
 }
 
-// #2077: names say the type and count per type
+// #2077: a generated name says the type and counts per type
 func TestArchiveNames(t *testing.T) {
 	conf := archiveTestConf()
 	for _, p := range []string{ConstArchivePluginResticS3, ConstArchivePluginResticLocal, ConstArchivePluginResticS3, ConstArchivePluginResticSftp} {
