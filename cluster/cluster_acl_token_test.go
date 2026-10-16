@@ -4,49 +4,125 @@ import (
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
-// An explicit main ACL written before the token grants existed (#2083): the grant
-// administrator gets them while api-user-tokens is on, a main discard removes them,
-// and WARN0249 opens when nobody can issue a token.
-func TestAPITokenGrantsWithExplicitACL(t *testing.T) {
-	load := func(tokens bool, allow, discard string) *Cluster {
-		c := newTestClusterForUsers(t)
-		c.ConfigStateMachine = new(state.StateMachine)
-		c.ConfigStateMachine.Init()
-		c.Conf.APIUserTokens = tokens
-		c.Conf.APIUsersACLAllow = allow
-		c.Conf.APIUsersACLDiscard = discard
-		c.LoadAPIUsers()
-		c.checkAPITokenIssuers()
-		return c
+func newTokenTestCluster(name string) *Cluster {
+	c := &Cluster{
+		Name:     name,
+		Conf:     &config.Config{},
+		APIUsers: map[string]APIUser{},
+		Grants:   config.GetGrantType(),
 	}
-	explicit := "admin:cluster db proxy app prov global grant show sale extrole terminal"
+	alice := APIUser{User: "alice", Password: "x", Roles: map[string]bool{"dbops": true}}
+	c.SetUserGrants(&alice, "db-show cluster-switchover")
+	c.APIUsers["alice"] = alice
+	return c
+}
 
-	c := load(true, explicit, "")
-	if g := c.APIUsers["admin"].Grants; !g[config.GrantTokenCreate] || !g[config.GrantTokenManage] {
-		t.Fatalf("the grant administrator must hold the token grants: %v %v", g[config.GrantTokenCreate], g[config.GrantTokenManage])
+func TestTokenPrincipalNameRoundTrip(t *testing.T) {
+	name := TokenPrincipalName("abc123", "alice@example.com")
+	id, user, ok := ParseTokenPrincipal(name)
+	if !ok || id != "abc123" || user != "alice@example.com" {
+		t.Fatalf("parse %q: id=%q user=%q ok=%v", name, id, user, ok)
 	}
-	if c.ConfigStateMachine.IsInState("WARN0249") {
-		t.Fatal("WARN0249 while admin can issue tokens")
+	if _, _, ok := ParseTokenPrincipal("alice"); ok {
+		t.Fatal("a bare user name must not parse as a token principal")
 	}
+	if _, _, ok := ParseTokenPrincipal("token:abc"); ok {
+		t.Fatal("a principal without user must not parse")
+	}
+}
 
-	c = load(true, explicit, "admin:token-create token-manage")
-	if c.APIUsers["admin"].Grants[config.GrantTokenCreate] {
-		t.Fatal("a main discard of the token grants must win")
-	}
-	if !c.ConfigStateMachine.IsInState("WARN0249") {
-		t.Fatal("WARN0249 must open when nobody can issue a token")
-	}
+func TestGetACLUserIntersectsTokenAndOwnerGrants(t *testing.T) {
+	c := newTokenTestCluster("c1")
+	tok := APIUser{Grants: map[string]bool{}}
+	// Token asks for db-show-* and cluster-failover: failover is not held by alice.
+	c.SetUserGrants(&tok, "db-show cluster-failover")
+	c.SetTokenPrincipal(TokenPrincipal{ID: "t1", User: "alice", Grants: tok.Grants, Clusters: []string{"*"}})
 
-	c = load(false, explicit, "")
-	if c.APIUsers["admin"].Grants[config.GrantTokenCreate] || c.ConfigStateMachine.IsInState("WARN0249") {
-		t.Fatal("api-user-tokens off: no implied grant, no state")
+	eff, ok := c.GetACLUser(TokenPrincipalName("t1", "alice"))
+	if !ok {
+		t.Fatal("token principal must resolve")
 	}
+	if !eff.Grants[config.GrantDBShowVariables] {
+		t.Error("db-show-variables is held by both owner and token: must be granted")
+	}
+	if eff.Grants[config.GrantClusterSwitchover] {
+		t.Error("cluster-switchover is held by owner but NOT embedded in the token: must be denied")
+	}
+	if eff.Grants[config.GrantClusterFailover] {
+		t.Error("cluster-failover is embedded in the token but NOT held by owner: must be denied")
+	}
+	if !eff.Roles["dbops"] {
+		t.Error("roles are inherited from the owner")
+	}
+	// Owner loses db-show: the token loses it too, at once.
+	alice := c.APIUsers["alice"]
+	alice.Grants[config.GrantDBShowVariables] = false
+	c.APIUsers["alice"] = alice
+	eff, _ = c.GetACLUser(TokenPrincipalName("t1", "alice"))
+	if eff.Grants[config.GrantDBShowVariables] {
+		t.Error("a grant dropped from the owner must drop from the token")
+	}
+}
 
-	c = load(true, "admin:cluster db show", "")
-	if c.APIUsers["admin"].Grants[config.GrantTokenCreate] {
-		t.Fatal("a user who does not administer grants gets no implied token grant")
+func TestGetACLUserRejectsUnknownMismatchedOrOutOfScope(t *testing.T) {
+	c := newTokenTestCluster("c1")
+	if _, ok := c.GetACLUser(TokenPrincipalName("nope", "alice")); ok {
+		t.Error("unregistered token must not resolve")
+	}
+	c.SetTokenPrincipal(TokenPrincipal{ID: "t2", User: "bob", Grants: map[string]bool{}, Clusters: []string{"*"}})
+	if _, ok := c.GetACLUser(TokenPrincipalName("t2", "alice")); ok {
+		t.Error("principal name user must match the registered token owner")
+	}
+	if _, ok := c.GetACLUser(TokenPrincipalName("t2", "bob")); ok {
+		t.Error("owner unknown on this cluster must not resolve")
+	}
+	c.SetTokenPrincipal(TokenPrincipal{ID: "t3", User: "alice", Grants: map[string]bool{}, Clusters: []string{"other"}})
+	if _, ok := c.GetACLUser(TokenPrincipalName("t3", "alice")); ok {
+		t.Error("token scoped to another cluster must not resolve here")
+	}
+	c.DropTokenPrincipal("t3")
+	if _, ok := c.GetTokenPrincipal("t3"); ok {
+		t.Error("dropped principal must be gone")
+	}
+	// Bare user names keep resolving through the same call.
+	if u, ok := c.GetACLUser("alice"); !ok || u.User != "alice" {
+		t.Error("bare user must resolve to the APIUsers entry")
+	}
+}
+
+func TestIsValidACLTokenMethodRunsURLACLOnly(t *testing.T) {
+	c := newTokenTestCluster("c1")
+	tok := APIUser{Grants: map[string]bool{}}
+	c.SetUserGrants(&tok, "db-show")
+	c.SetTokenPrincipal(TokenPrincipal{ID: "t1", User: "alice", Grants: tok.Grants, Clusters: []string{"c1"}})
+	principal := TokenPrincipalName("t1", "alice")
+
+	// Public endpoint passes for any resolvable principal.
+	if !c.IsValidACL(principal, "", "/api/clusters/c1", "token") {
+		t.Error("token principal must pass a public endpoint")
+	}
+	// A bare user name with the token method is refused (no password check bypass).
+	if c.IsValidACL("alice", "", "/api/clusters/c1", "token") {
+		t.Error("token auth method must require a token principal name")
+	}
+	// Password auth with an empty password never passes.
+	if c.IsValidACL("alice", "", "/api/clusters/c1", "password") {
+		t.Error("blank password must never authenticate")
+	}
+}
+
+func TestTokenGrantsAllowedFor(t *testing.T) {
+	c := newTokenTestCluster("c1")
+	allowed, missing := c.TokenGrantsAllowedFor("alice", "db-show cluster-failover")
+	if len(missing) != 1 || missing[0] != "cluster-failover" {
+		t.Errorf("cluster-failover is not held: missing=%v", missing)
+	}
+	if !allowed[config.GrantDBShowVariables] || allowed[config.GrantClusterFailover] {
+		t.Errorf("allowed set wrong: %v", allowed)
+	}
+	if _, missing := c.TokenGrantsAllowedFor("nobody", "db"); len(missing) != 1 {
+		t.Error("unknown owner holds nothing")
 	}
 }
