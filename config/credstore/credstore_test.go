@@ -230,6 +230,24 @@ func TestChainSetAllFailureChangesNothing(t *testing.T) {
 	}
 }
 
+// a key absent before a failed SetAll is absent after it: its source stays the default and
+// the save does not write it
+func TestChainSetAllFailureLeavesNoKey(t *testing.T) {
+	conf := testConf()
+	s := &failingStore{DynamicConfig: DynamicConfig{conf: conf}, failKey: "backup-verification-credential"}
+	c := NewChain(conf, s, &PinnedConfig{conf: conf})
+	c.Refresh()
+	if err := c.SetAll(Change{"replication-credential", "repl:new"}, Change{"backup-verification-credential", "verif:new"}); err == nil {
+		t.Fatal("want the store's failure")
+	}
+	if _, ok := conf.DynamicFlagMap["replication-credential"]; ok {
+		t.Fatal("the rolled-back key was left in the dynamic config")
+	}
+	if src := c.Source("replication-credential"); src != SourceDefault {
+		t.Fatalf("source %s after the rollback, want %s", src, SourceDefault)
+	}
+}
+
 // a refusal names its reason without the prefix, and still is ErrChangeRefused
 func TestChainRefusalReason(t *testing.T) {
 	conf := testConf()
@@ -241,5 +259,42 @@ func TestChainRefusalReason(t *testing.T) {
 	}
 	if r := Reason(err); strings.HasPrefix(r, ErrChangeRefused.Error()) || !strings.Contains(r, "set in a config file") {
 		t.Fatalf("reason %q", r)
+	}
+}
+
+// the chain and the writers outside it share DynamicFlagMap: a credential Set and Refresh,
+// a peer event replay writing a key (SetDynamicFlag), and a save reading the map
+// (CopyDynamicFlags, GetStableEncryptedValue) at once. Run with -race: an unguarded access is
+// a fatal concurrent map read and write
+func TestChainAndOutsideWritersShareDynamicMap(t *testing.T) {
+	conf := testConf()
+	c := NewConfigChain(conf, func() {})
+	c.Refresh()
+	var wg sync.WaitGroup
+	for g := 0; g < 4; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				switch g {
+				case 0:
+					c.Set("replication-credential", fmt.Sprintf("repl:p%d", i))
+				case 1:
+					// the peer event replay, the inject.toml check, the Vault token
+					conf.SetDynamicFlag(fmt.Sprintf("replayed-key-%d", i%10), "v")
+				case 2:
+					// the save
+					for range config.CopyDynamicFlags(conf.DynamicFlagMap) {
+					}
+					conf.GetStableEncryptedValue("replication-credential", conf.GetDecryptedValue("replication-credential"))
+				default:
+					c.Refresh()
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	if v := conf.GetDecryptedValue("replication-credential"); v != "repl:p199" {
+		t.Fatalf("last value %q", v)
 	}
 }

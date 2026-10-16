@@ -2202,7 +2202,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 
 	for _, key := range keys {
 		_, ok := cluster.Conf.ImmuableFlagMap[key]
-		_, dynamic := cluster.Conf.DynamicFlagMap[key]
+		_, dynamic := cluster.Conf.GetDynamicFlag(key)
 		_, secret := cluster.Conf.Secrets.Lookup(key)
 		if ok {
 			s.Delete(key)

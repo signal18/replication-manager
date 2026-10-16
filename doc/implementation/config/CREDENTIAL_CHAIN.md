@@ -12,8 +12,9 @@ It fixes #2017 (`TestTagChangeKeepsRuntimeCredentials`).
 - `DynamicConfig` reads and writes `DynamicFlagMap`. `Set` stores
   `conf.EncryptSecretValue(value)` (the user in clear, the password `hash_`-encrypted); the
   chain then calls its save event (`cluster.Save` / `repman.Save`, no I/O: SaveCallBack
-  writes, T25). It refuses only a pinned key. Its name, and `Persistent()`, follow `monitoring-save-config`
-  (`Conf.ConfRewrite`): `dynamic-config` when on, `runtime-config` (memory only) when off.
+  writes, T25). It refuses only a pinned key. Its name, and `Persistent()`, follow
+  `monitoring-save-config` (`Conf.ConfRewrite`): `dynamic-config` when on, `runtime-config`
+  (memory only) when off.
 - `Chain`: `NewConfigChain(conf, save)` = DynamicConfig, then PinnedConfig, then the flag
   default (`DefaultFlagMap`, source `default`).
   - read: the first store holding the key; `Source(key)` names it;
@@ -53,11 +54,39 @@ It fixes #2017 (`TestTagChangeKeepsRuntimeCredentials`).
 - `cluster.ErrCredentialChangeRefused` is `credstore.ErrChangeRefused`.
 - Refusals: `CanSetCredential` and `canRotatePasswordsOutsideVault` use `chain.CanSet`;
   `CanSetCredential` (database and replication credentials) also refuses when
-  `!chain.Persists`: in static mode their loss at the next restart locks repman out (#2048). `GetCredentialsInfo.Source` is `chain.Source` (Vault
-  still overrides it). The GUI labels `runtime-config` and `default`.
+  `!chain.Persists`: in static mode their loss at the next restart locks repman out
+  (#2048). `GetCredentialsInfo.Source` is `chain.Source` (Vault still overrides it). The GUI labels `runtime-config` and `default`.
 - Save: `SaveConfigFile` (cluster) and `SaveDynamic` (server) wrote a secret only when its
   field differed from the default; they now also write a secret present in
   `DynamicFlagMap`, encrypted (`GetEncryptedValueFromMemory`, stable ciphertext).
+
+## The dynamic config map is shared: one lock
+
+`DynamicFlagMap` is shared by every config holding it (Config is copied by value; the server
+keeps it in `DynamicFlagMaps`) and written from several goroutines: API setters through the
+chain, the monitor tick (`CheckInjectConfig`, `GetVaultToken`), the peer event replay
+(`applyGenericClusterKey`); the save (`SaveConfigFile`, `SaveDynamic`,
+`GetStableEncryptedValue`), `SetInjectVariables` and `GetClusterConfig` read it. A map read
+during a write is a fatal error that stops repman (F2), so every access to a dynamic map's
+content goes through `config.GetDynamicFlag`, `SetDynamicFlag`, `DeleteDynamicFlag` and
+`CopyDynamicFlags` (a copy to range over): one package lock, `dynamicFlagMu`, held only for
+the map access, never while calling out. A package lock and not a field: a `Config` copy
+would copy a field lock and not share it. The writers outside the chain only had their
+write line wrapped: what they write, and when, is unchanged.
+
+## Known limits of step 1
+
+- **A failed save is not reported to the setter**: the save event only marks the config
+  for SaveCallBack (T25), which logs its own failure; until the next save succeeds the value
+  lives in memory.
+- **A store read error falls through** to the next store or the default (`Chain.raw`). The
+  two config stores never fail; step 2 (external stores) must make a read error keep the
+  cached value and report it, not return a stale or default credential.
+- **`monitoring-save-config` is read without a lock** by `DynamicConfig.Persistent`, as
+  everywhere in repman: it is toggled at runtime by its API switch. A change made exactly at
+  the toggle takes the scope read at that moment.
+- **The peer event replay** writes a replayed secret into the dynamic map without updating
+  the cache: it is read at the next `Refresh`, as before (unchanged on purpose).
 
 ## Left on direct `Secrets.Set` on purpose
 

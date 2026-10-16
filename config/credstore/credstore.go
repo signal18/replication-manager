@@ -97,9 +97,9 @@ func (s *PinnedConfig) Set(key, value string) error {
 //   - off, static mode: memory only. The config files are the source: a change survives a
 //     reread (a tag change) and is gone at the next restart, as that mode intends.
 //
-// Set stores the encrypted value in DynamicFlagMap; the chain then calls the save event, once
-// its lock is released (in static mode the save writes no config file). A key a config file pins is refused in both scopes: the
-// file wins at the next restart.
+// Set stores the encrypted value in DynamicFlagMap; the chain then calls the save event,
+// once its lock is released (in static mode the save writes no config file). A key a config
+// file pins is refused in both scopes: the file wins at the next restart.
 type DynamicConfig struct {
 	conf *config.Config
 	save func() // the save event: cluster.Save, no I/O
@@ -118,7 +118,7 @@ func (s *DynamicConfig) Versioned() bool  { return false }
 func (s *DynamicConfig) Generates() bool  { return false }
 
 func (s *DynamicConfig) Get(key string) (string, bool, error) {
-	v, ok := s.conf.DynamicFlagMap[key]
+	v, ok := s.conf.GetDynamicFlag(key)
 	if !ok || v == nil {
 		return "", false, nil
 	}
@@ -136,10 +136,7 @@ func (s *DynamicConfig) Set(key, value string) error {
 	if err := s.CanSet(key); err != nil {
 		return err
 	}
-	if s.conf.DynamicFlagMap == nil {
-		s.conf.DynamicFlagMap = make(map[string]interface{})
-	}
-	s.conf.DynamicFlagMap[key] = s.conf.EncryptSecretValue(value)
+	s.conf.SetDynamicFlag(key, s.conf.EncryptSecretValue(value))
 	return nil
 }
 
@@ -153,6 +150,25 @@ func (s *DynamicConfig) saveEvent() {
 
 // saver is a store whose changes need a save event.
 type saver interface{ saveEvent() }
+
+// restorer is a store that can put a key back exactly as it was, absent included: a failed
+// SetAll then leaves no trace in it.
+type restorer interface {
+	snapshot(key string) (raw interface{}, present bool)
+	restore(key string, raw interface{}, present bool)
+}
+
+func (s *DynamicConfig) snapshot(key string) (interface{}, bool) {
+	return s.conf.GetDynamicFlag(key)
+}
+
+func (s *DynamicConfig) restore(key string, raw interface{}, present bool) {
+	if !present {
+		s.conf.DeleteDynamicFlag(key)
+		return
+	}
+	s.conf.SetDynamicFlag(key, raw)
+}
 
 // Chain is a cluster's (or the server's) ordered list of credential stores, the config last:
 // it is the starting value. Its lock serializes every read of a store and every write, and
@@ -265,7 +281,8 @@ func (c *Chain) Set(key, value string) error {
 // SetAll writes changes that go together (a rotation's credentials) as one unit: every key
 // is checked before any is written, under one lock, and a store failing midway has the
 // ones already written put back to their former value; the cache changes only once all are
-// written. Then the save events, outside the lock.
+// written. A store that can (restorer) gets each key back exactly, absent included. Then
+// the save events, outside the lock.
 func (c *Chain) SetAll(changes ...Change) error {
 	c.mu.Lock()
 	writers := make([]CredentialStore, len(changes))
@@ -280,10 +297,24 @@ func (c *Chain) SetAll(changes ...Change) error {
 	if c.conf.Secrets == nil {
 		c.conf.RebuildSecrets(c.rawValue)
 	}
+	type before struct {
+		raw     interface{}
+		present bool
+	}
+	befores := make([]before, len(changes))
+	for i, ch := range changes {
+		if r, ok := writers[i].(restorer); ok {
+			befores[i].raw, befores[i].present = r.snapshot(ch.Key)
+		}
+	}
 	for i, ch := range changes {
 		if err := writers[i].Set(ch.Key, ch.Value); err != nil {
 			errs := []error{fmt.Errorf("%s: %s: %w", writers[i].Name(), ch.Key, err)}
 			for j := i - 1; j >= 0; j-- {
+				if r, ok := writers[j].(restorer); ok {
+					r.restore(changes[j].Key, befores[j].raw, befores[j].present)
+					continue
+				}
 				// the cache still holds the former value
 				if uerr := writers[j].Set(changes[j].Key, c.conf.Secrets.Get(changes[j].Key).Value); uerr != nil {
 					errs = append(errs, fmt.Errorf("%s: %s not put back: %w", writers[j].Name(), changes[j].Key, uerr))

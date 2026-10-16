@@ -2248,7 +2248,7 @@ func (cluster *Cluster) Exit() {
 }
 
 func (cluster *Cluster) SetInjectVariables() {
-	for key, val := range cluster.Conf.DynamicFlagMap {
+	for key, val := range config.CopyDynamicFlags(cluster.Conf.DynamicFlagMap) {
 		switch key {
 		case "vault-role-id":
 			cluster.Conf.VaultRoleId = fmt.Sprintf("%v", val)

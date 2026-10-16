@@ -80,8 +80,8 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
-	credChain   *credstore.Chain // CredentialChain (#2075)
-	credChainMu sync.Mutex
+	credChain                    *credstore.Chain // CredentialChain (#2075)
+	credChainMu                  sync.Mutex
 	selfServiceMu                sync.Mutex                         // guards selfServiceSnap and selfServiceVerdicts
 	selfServiceVerdicts          map[string]selfServiceVerdict      // identity -> enabled-script verdict within the cache TTL
 	selfServiceFlight            singleflight.Group                 // one snapshot computation, one script run per identity, at a time
@@ -724,7 +724,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")
 	flags.StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	flags.BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
-	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", true , "Need JWT token to download config tar.gz")
+	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", true, "Need JWT token to download config tar.gz")
 	flags.BoolVar(&conf.APIAutologin, "api-autologin", false, "Enable unauthenticated auto-login token endpoint (trusted networks only)")
 	flags.StringVar(&conf.APIAutologinUser, "api-autologin-user", "admin", "Username to generate a token for when api-autologin is enabled")
 	flags.StringVar(&conf.APIDashboardUser, "api-dashboard-user", "", "Read-only user for the /dashboard public endpoint (empty = disabled)")
@@ -2182,7 +2182,7 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 	}
 
 	//to copy default dynamic flag in the dynamic flag cluster map
-	for k, v := range DynamicMap {
+	for k, v := range config.CopyDynamicFlags(DynamicMap) {
 		clustDynamicMap[k] = v
 	}
 
@@ -4791,7 +4791,7 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 
 	for _, key := range keys {
 		_, ok := repman.Conf.ImmuableFlagMap[key]
-		_, dynamic := repman.Conf.DynamicFlagMap[key]
+		_, dynamic := repman.Conf.GetDynamicFlag(key)
 		_, secret := repman.Conf.Secrets.Lookup(key)
 		if ok {
 			s.Delete(key)
