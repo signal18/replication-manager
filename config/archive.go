@@ -63,10 +63,11 @@ const (
 
 // Archive plugin capabilities.
 const (
-	ConstArchiveCapEdit   = "edit"   // its settings and secrets can be changed
-	ConstArchiveCapDetach = "detach" // its entry leaves the list, its content stays
-	ConstArchiveCapDrop   = "drop"   // its entry leaves the list and its content is deleted
-	ConstArchiveCapProbe  = "probe"  // opens an existing repository, or initialises a new one
+	ConstArchiveCapEdit = "edit" // its settings and secrets can be changed
+	// its content is deleted, then it leaves the list: content left behind would still be
+	// invoiced and no longer visible. An archive the cluster left (detached) stays listed.
+	ConstArchiveCapRemove = "remove"
+	ConstArchiveCapProbe  = "probe" // opens an existing repository, or initialises a new one
 )
 
 // settings every restic plugin holds: tags, timeouts, retention, mount
@@ -85,7 +86,7 @@ var archiveResticEnums = map[string][]string{
 	"s3-mode": {ConstResticS3ModeAuto, ConstResticS3ModeNew, ConstResticS3ModeLegacy},
 }
 
-var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapDetach, ConstArchiveCapDrop, ConstArchiveCapProbe}
+var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapRemove, ConstArchiveCapProbe}
 
 // resticSettings types each setting from the backup-restic-* field it replaces, so a type
 // is never written twice.
