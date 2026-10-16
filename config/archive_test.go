@@ -84,6 +84,27 @@ func TestArchiveMigrationDisabledKeepsSettings(t *testing.T) {
 	}
 }
 
+// #2077: dev3's saved config: mode none and a local repository path. The default
+// backup-restic-repository is an s3: URL and must not make archive 1 an s3 archive.
+func TestArchiveMigrationDisabledLocalNotS3(t *testing.T) {
+	conf := archiveTestConf()
+	conf.DefaultFlagMap["backup-restic-repository"] = "s3:https://s3.signal18.io/backups"
+	conf.BackupResticRepository = "s3:https://s3.signal18.io/backups"
+	conf.BackupResticLocalRepository = "/var/lib/replication-manager/backups/archive/dev3"
+	conf.MigrateArchives()
+	if len(conf.Archives) != 1 || !conf.Archives[0].Disabled || conf.Archives[0].Plugin != ConstArchivePluginResticLocal || conf.Archives[0].Name != "local" {
+		t.Fatalf("archives %+v, want one disabled local archive", conf.Archives)
+	}
+	// a customised S3 setting and no local repository: s3
+	conf = archiveTestConf()
+	conf.DefaultFlagMap["backup-restic-repository"] = "s3:https://s3.signal18.io/backups"
+	conf.BackupResticRepository = "s3:https://s3.example/bk"
+	conf.MigrateArchives()
+	if len(conf.Archives) != 1 || conf.Archives[0].Plugin != ConstArchivePluginResticS3 {
+		t.Fatalf("archives %+v, want one disabled s3 archive", conf.Archives)
+	}
+}
+
 // #2077: a list loaded from the saved config sets the runtime fields; a key pinned in a
 // config file wins over it
 func TestArchiveProjectionAndPin(t *testing.T) {

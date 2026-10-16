@@ -268,6 +268,28 @@ func (conf *Config) archiveSettingsCustomised() bool {
 	return false
 }
 
+// disabledArchivePlugin is the plugin of an archive 1 built with the mode none, from the
+// settings the cluster customised: a local repository (sftp: prefix for sftp), else an S3
+// setting, else local. The default backup-restic-repository is an s3: URL, so it never
+// decides alone.
+func (conf *Config) disabledArchivePlugin() string {
+	if repo := strings.TrimSpace(conf.BackupResticLocalRepository); repo != "" && !conf.isPinned("backup-restic-local-repository") {
+		if IsSftpResticRepository(repo) {
+			return ConstArchivePluginResticSftp
+		}
+		return ConstArchivePluginResticLocal
+	}
+	for _, key := range archiveLegacyKeys {
+		if key != "backup-restic-repository" && !strings.HasPrefix(key, "backup-restic-aws") {
+			continue
+		}
+		if f, ok := configField(conf, key); ok && !conf.isPinned(key) && !conf.isDefaultValue(key, f) {
+			return ConstArchivePluginResticS3
+		}
+	}
+	return ConstArchivePluginResticLocal
+}
+
 // firstResticArchive is the archive the runtime runs in this step.
 func (conf *Config) firstResticArchive() *ArchiveConfig {
 	for i := range conf.Archives {
@@ -331,7 +353,7 @@ func (conf *Config) SyncArchiveFromConfig() {
 		}
 		plugin := ArchivePluginForMode(conf.BackupArchiveMode)
 		if plugin == "" {
-			plugin = ArchivePluginForMode(conf.DeriveBackupArchiveModeFromFlags(true, IsS3ResticRepository(strings.TrimSpace(conf.BackupResticRepository))))
+			plugin = conf.disabledArchivePlugin()
 		}
 		conf.Archives = append(conf.Archives, ArchiveConfig{Name: archiveNameForPlugin(plugin), Plugin: plugin, Settings: map[string]interface{}{}})
 		a = &conf.Archives[len(conf.Archives)-1]
