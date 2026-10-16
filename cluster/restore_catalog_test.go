@@ -37,7 +37,7 @@ func TestBackupMetaToCatalogEncryptCapability(t *testing.T) {
 
 	t.Run("plaintext backup has no encrypt capability", func(t *testing.T) {
 		m := base()
-		entry := backupMetaToCatalog("10.0.0.1:3306", m)
+		entry := backupMetaToCatalog("10.0.0.1:3306", m, "")
 		if hasCap(entry.Caps, "encrypt") {
 			t.Fatalf("plaintext metadata should not carry the encrypt capability, got %v", entry.Caps)
 		}
@@ -51,7 +51,7 @@ func TestBackupMetaToCatalogEncryptCapability(t *testing.T) {
 		m.Dest = m.Dest + ".enc"
 		m.Encrypted = true
 		m.EncryptionAlgo = backupmgr.EncryptionFormatOpenSSL
-		entry := backupMetaToCatalog("10.0.0.1:3306", m)
+		entry := backupMetaToCatalog("10.0.0.1:3306", m, "")
 		if !hasCap(entry.Caps, "encrypt") {
 			t.Fatalf("encrypted+completed metadata should carry the encrypt capability, got %v", entry.Caps)
 		}
@@ -64,7 +64,7 @@ func TestBackupMetaToCatalogEncryptCapability(t *testing.T) {
 		// Simulates a pre-existing backup record written before this feature
 		// existed: Encrypted/EncryptionAlgo are simply absent (zero values).
 		m := base()
-		entry := backupMetaToCatalog("10.0.0.1:3306", m)
+		entry := backupMetaToCatalog("10.0.0.1:3306", m, "")
 		if hasCap(entry.Caps, "encrypt") {
 			t.Fatalf("legacy unset-encryption metadata must not be reported as encrypted, got %v", entry.Caps)
 		}

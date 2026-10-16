@@ -179,3 +179,26 @@ func (repman *ReplicationManager) handlerMuxArchiveRemove(w http.ResponseWriter,
 		w.Write([]byte("Archive removal started"))
 	})
 }
+
+// handlerMuxArchiveSize reads an archive's size.
+// @Summary Read an archive's size
+// @Description Reads the bytes the archive's content takes, in the background: the list shows the archive as sizing, then its size, or the error. A detached archive keeps the size it had when it was detached; this reads it again.
+// @Tags ClusterArchive
+// @Produce plain
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param archiveName path string true "Archive Name"
+// @Success 202 {string} string "Archive size read started"
+// @Failure 400 {string} string "Unknown archive, or its size cannot be read"
+// @Failure 403 {string} string "No valid ACL"
+// @Router /api/clusters/{clusterName}/archive-actions/size/{archiveName} [post]
+func (repman *ReplicationManager) handlerMuxArchiveSize(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		if err := mycluster.SizeArchive(vars["archiveName"]); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Archive size read started"))
+	})
+}

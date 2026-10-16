@@ -538,6 +538,9 @@ type Cluster struct {
 	// archiveOps: archive name -> a running remove, or its error (#2091)
 	archiveOps   map[string]string `json:"-"`
 	archiveOpsMu sync.Mutex        `json:"-"`
+	// archiveSizes: archive name -> its size as last read, kept in archive-sizes.json;
+	// guarded by archiveOpsMu, nil until read
+	archiveSizes map[string]ArchiveSize `json:"-"`
 	// reloadMu serializes Run()'s per-tick synchronous work (topology
 	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
 	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
@@ -2591,6 +2594,8 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Conf.MigrateArchives()
 	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
+	// the backups already read glued to the archive list as the config is (#2091)
+	go cluster.glueCatalogue()
 
 	cluster.StateMachine.SetFailoverState()
 	cluster.ResetStates()

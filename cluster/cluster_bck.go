@@ -1606,7 +1606,7 @@ func getSnapshotSizeBytes(cluster *Cluster, snapshotID string) (uint64, bool) {
 		if !ok || meta == nil {
 			return true
 		}
-		if strings.TrimSpace(meta.ResticSnapshotID) != snapshotID {
+		if !meta.HoldsSnapshot(snapshotID) {
 			return true
 		}
 		if selected == nil {

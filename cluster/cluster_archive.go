@@ -33,7 +33,12 @@ const (
 type ArchiveListEntry struct {
 	config.ArchiveConfig
 	Attached bool   `json:"attached"`
-	Status   string `json:"status,omitempty"` // a running remove, or the error of the last one
+	Status   string `json:"status,omitempty"` // a running remove or size read, or the error of the last one
+	// Size is the content's size: the attached archive's from its last fetch, another's as
+	// last read (when it was detached, or by a size read); nil when never read
+	Size *ArchiveSize `json:"size,omitempty"`
+	// Backups is the number of backups of the catalogue glued to the archive
+	Backups int `json:"backups"`
 }
 
 // ArchiveListResult is the archive list, the attached archive and the plugins' configs.
@@ -47,9 +52,35 @@ type ArchiveListResult struct {
 func (cluster *Cluster) ArchiveList() ArchiveListResult {
 	list, attached := cluster.Conf.ArchiveList()
 	out := ArchiveListResult{Attached: attached, Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins()}
+	backups := map[string]int{}
+	if cluster.BackupMetaMap != nil {
+		legacy := cluster.Conf.LegacyArchiveName()
+		cluster.BackupMetaMap.Callback(func(_ int64, meta *backupmgr.BackupMetadata) bool {
+			if meta == nil {
+				return true
+			}
+			names := meta.ArchiveNames()
+			if len(names) == 0 && legacy != "" && meta.ArchiveSnapshot(legacy) != "" {
+				names = []string{legacy} // not glued yet
+			}
+			for _, n := range names {
+				backups[n]++
+			}
+			return true
+		})
+	}
+	live := cluster.attachedArchiveSize()
 	cluster.archiveOpsMu.Lock()
+	cluster.loadArchiveSizesLocked()
 	for _, a := range list {
-		out.Archives = append(out.Archives, ArchiveListEntry{ArchiveConfig: a, Attached: a.Name == attached, Status: cluster.archiveOps[a.Name]})
+		e := ArchiveListEntry{ArchiveConfig: a, Attached: a.Name == attached, Status: cluster.archiveOps[a.Name], Backups: backups[a.Name]}
+		if e.Attached && live != nil {
+			e.Size = live
+		} else if s, ok := cluster.archiveSizes[a.Name]; ok {
+			s := s
+			e.Size = &s
+		}
+		out.Archives = append(out.Archives, e)
 	}
 	cluster.archiveOpsMu.Unlock()
 	return out
@@ -187,6 +218,8 @@ func (cluster *Cluster) RenameArchive(name, newName string) error {
 	if err := cluster.Conf.RenameArchive(name, newName); err != nil {
 		return err
 	}
+	cluster.renameArchiveSize(name, newName)
+	cluster.renameArchiveInCatalogue(name, newName)
 	cluster.Save()
 	return nil
 }
@@ -210,8 +243,11 @@ func (cluster *Cluster) RemoveArchive(name string) error {
 	if m, _ := config.ArchivePlugin(a.Plugin); !m.Can(config.ConstArchiveCapRemove) {
 		return fmt.Errorf("archive %s: plugin %s cannot delete its content", name, a.Plugin)
 	}
-	if cluster.archiveOp(name) == ArchiveOpRemoving {
+	switch cluster.archiveOp(name) {
+	case ArchiveOpRemoving:
 		return fmt.Errorf("archive %s is already being removed", name)
+	case ArchiveOpSizing:
+		return fmt.Errorf("archive %s: its size is being read, remove it once read", name)
 	}
 
 	var rm *backupmgr.ResticManager
@@ -249,6 +285,8 @@ func (cluster *Cluster) RemoveArchive(name string) error {
 		}
 		cluster.Conf.DeleteArchiveEntry(name)
 		cluster.setArchiveOp(name, "")
+		cluster.setArchiveSize(name, nil)
+		cluster.dropArchiveFromCatalogue(name)
 		if name == attached {
 			if err := cluster.reloadArchive(); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlWarn, "Archive %s: restic reload after detach failed: %s", name, err)

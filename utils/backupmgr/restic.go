@@ -4518,10 +4518,28 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	return nil
 }
 
+// ResticStatsArgs is the stats command repman reads a repository's size with.
+func ResticStatsArgs() []string { return []string{"stats", "--mode", "raw-data", "--json"} }
+
+// ParseResticStats reads the output of ResticStatsArgs. restic stats --json writes a
+// progress line to stdout before the JSON object (e.g. "[0:00] 100% ..."): everything before
+// the first '{' is skipped.
+func ParseResticStats(stdout []byte) (BackupStat, error) {
+	var backupstat BackupStat
+	jsonStart := bytes.IndexByte(stdout, '{')
+	if jsonStart < 0 {
+		return backupstat, fmt.Errorf("no JSON object in stats output: %q", stdout)
+	}
+	if err := json.Unmarshal(stdout[jsonStart:], &backupstat); err != nil {
+		return backupstat, fmt.Errorf("failed to unmarshal backup stat: %w", err)
+	}
+	return backupstat, nil
+}
+
 // fetchRepoStat performs the statistic fetch
 func (repo *ResticManager) fetchRepoStat() error {
 	// Prepare the arguments for the "forget" command
-	args := []string{"stats", "--mode", "raw-data", "--json"}
+	args := ResticStatsArgs()
 
 	// Execute the Restic "stats" command using RunCommand
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true) // Capture output
@@ -4530,16 +4548,9 @@ func (repo *ResticManager) fetchRepoStat() error {
 		return fmt.Errorf("failed to fetch repo: %v, stderr: %s", err, stderr)
 	}
 
-	// restic stats --json writes a progress line to stdout before the JSON object
-	// (e.g. "[0:00] 100% ..."). Skip everything before the first '{'.
-	jsonStart := bytes.IndexByte(stdout, '{')
-	if jsonStart < 0 {
-		return fmt.Errorf("no JSON object in stats output: %q", stdout)
-	}
-	var backupstat BackupStat
-	err = json.Unmarshal(stdout[jsonStart:], &backupstat)
+	backupstat, err := ParseResticStats(stdout)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal backup stat: %w", err)
+		return err
 	}
 
 	// Update the Backups field with the fetched backups

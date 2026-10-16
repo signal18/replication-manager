@@ -69,6 +69,9 @@ const (
 	// invoiced and no longer visible. An archive the cluster left (detached) stays listed.
 	ConstArchiveCapRemove = "remove"
 	ConstArchiveCapProbe  = "probe" // opens an existing repository, or initialises a new one
+	// the bytes its content takes, what an archive billed on its content is invoiced on:
+	// shown in the list, and in remove's confirmation
+	ConstArchiveCapSize = "size"
 )
 
 // settings every restic plugin holds: tags, timeouts, retention, mount
@@ -87,7 +90,7 @@ var archiveResticEnums = map[string][]string{
 	"s3-mode": {ConstResticS3ModeAuto, ConstResticS3ModeNew, ConstResticS3ModeLegacy},
 }
 
-var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapRemove, ConstArchiveCapProbe}
+var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapRemove, ConstArchiveCapProbe, ConstArchiveCapSize}
 
 // resticSettings types each setting from the backup-restic-* field it replaces, so a type
 // is never written twice.
@@ -979,6 +982,28 @@ func (conf *Config) ArchiveList() ([]ArchiveConfig, string) {
 	archiveMu.Lock()
 	defer archiveMu.Unlock()
 	return cloneArchives(conf.Archives), conf.BackupArchiveName
+}
+
+// AttachedArchive is the attached archive's name ("" none).
+func (conf *Config) AttachedArchive() string {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	return conf.BackupArchiveName
+}
+
+// LegacyArchiveName is the archive a snapshot recorded before the archive list belongs to:
+// the archive the legacy settings became, attached by the migration, else the first of the
+// list. "" when the cluster has no archive.
+func (conf *Config) LegacyArchiveName() string {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	if conf.BackupArchiveName != "" {
+		return conf.BackupArchiveName
+	}
+	if len(conf.Archives) > 0 {
+		return conf.Archives[0].Name
+	}
+	return ""
 }
 
 // typedArchiveValue checks v against the plugin's setting and returns it as stored: a

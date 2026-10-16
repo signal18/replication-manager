@@ -58,6 +58,7 @@ export const clusterService = {
   attachArchive,
   detachArchive,
   removeArchive,
+  sizeArchive,
   resticCreateBucket,
 
   // Security / workload remediation APIs
@@ -1151,6 +1152,10 @@ function detachArchive(clusterName, baseURL) {
 
 function removeArchive(clusterName, archiveName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/remove/${encodeURIComponent(archiveName)}`)
+}
+
+function sizeArchive(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/size/${encodeURIComponent(archiveName)}`)
 }
 
 function resticCreateBucket(clusterName, baseURL) {

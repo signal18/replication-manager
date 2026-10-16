@@ -368,7 +368,7 @@ func getSnapshotCompression(cluster *Cluster, snapshotID string) (bool, bool) {
 		if !ok || meta == nil {
 			return true
 		}
-		if strings.TrimSpace(meta.ResticSnapshotID) != snapshotID {
+		if !meta.HoldsSnapshot(snapshotID) {
 			return true
 		}
 		if selected == nil {
@@ -406,7 +406,7 @@ func getSnapshotLogicalSplitUser(cluster *Cluster, snapshotID string) (bool, boo
 		if !ok || meta == nil {
 			return true
 		}
-		if strings.TrimSpace(meta.ResticSnapshotID) != snapshotID {
+		if !meta.HoldsSnapshot(snapshotID) {
 			return true
 		}
 		if meta.BackupMethod != backupmgr.BackupMethodLogical {

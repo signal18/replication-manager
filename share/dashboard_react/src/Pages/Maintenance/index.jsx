@@ -224,6 +224,20 @@ BKUSlider.propTypes = {
 // BackupCellLine shows one labelled value of a backup on a single line, cut at the column
 // width: shown is what fits (the value by default), more the number of entries left out,
 // the tooltip gives the value whole and the copy button copies it as is.
+// the archives holding a backup, by name (#2091): one detached is restored from once attached
+function backupArchives(row, attached) {
+  const names = Object.keys(row.archiveRefs || {}).sort()
+  if (names.length === 0) return row.resticSnapshotID ? 'archived' : ''
+  return names.map((n) => (attached && n !== attached ? `${n} (detached)` : n)).join(', ')
+}
+
+function backupArchivesTooltip(row, attached) {
+  const refs = row.archiveRefs || {}
+  const names = Object.keys(refs).sort()
+  if (names.length === 0) return row.resticSnapshotID ? `snapshot ${row.resticSnapshotID}` : ''
+  return names.map((n) => `${n}: snapshot ${refs[n]}${attached && n !== attached ? ' (detached: attach it to restore from it)' : ''}`).join('\n')
+}
+
 function BackupCellLine({ label, value, shown, more = 0, tooltip, textType }) {
   if (!value) return null
   return (
@@ -608,6 +622,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           <VStack className={styles.cellStack} spacing={0.5}>
             <BackupCellLine label='Source:' value={row.source} textType='Source' />
             <BackupCellLine label='Dest:' value={row.dest} shown={backupDestName(row.dest)} textType='Destination' />
+            <BackupCellLine label='Archive:' value={backupArchives(row, selectedCluster?.config?.backupArchiveName)}
+              tooltip={backupArchivesTooltip(row, selectedCluster?.config?.backupArchiveName)} textType='Archive' />
           </VStack>
         ),
         {

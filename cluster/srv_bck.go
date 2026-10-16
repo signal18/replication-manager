@@ -83,6 +83,8 @@ func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 	cluster := server.ClusterGroup
 	if meta, err := server.ReadLastMetadata(method); err == nil {
 		server.closeInterruptedVerification(meta)
+		// a snapshot recorded before the archive list joins the cluster's archive (#2091)
+		server.glueLegacyArchiveRef(meta)
 		cluster.BackupMetaMap.Set(meta.Id, meta)
 		if *latest < meta.Id {
 			*latest = meta.Id
@@ -280,7 +282,8 @@ func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.B
 		return
 	}
 
-	lastmeta.ResticSnapshotID = snapshotID
+	// glued to the attached archive by its name (#2091)
+	lastmeta.SetArchiveSnapshot(cluster.Conf.AttachedArchive(), snapshotID)
 	lastmeta.ResticFilePath = cluster.ResticManager.GetRepoPath()
 
 	snapshotLabel := snapshotID

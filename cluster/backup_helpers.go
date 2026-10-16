@@ -435,6 +435,7 @@ func (server *ServerMonitor) LoadAdhocBackupMetadata() ([]*backupmgr.BackupMetad
 				meta = live
 			} else {
 				server.closeInterruptedVerification(meta)
+				server.glueLegacyArchiveRef(meta)
 				cluster.BackupMetaMap.Set(meta.Id, meta)
 			}
 		}
@@ -680,13 +681,15 @@ func (cluster *Cluster) PurgeExpiredAdhocBackups() {
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging expired ad-hoc backup %d on %s", meta.Id, server.URL)
 
-			if meta.ResticSnapshotID != "" {
+			// the snapshot in the attached archive; one in a detached archive stays there, with
+			// that archive's content, until the archive is removed
+			if snapshotID := cluster.attachedSnapshot(meta); snapshotID != "" {
 				if cluster.Conf.BackupRestic {
-					if err := cluster.AddPurgeTask(meta.ResticSnapshotID); err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to purge restic snapshot %s on %s: %s", meta.ResticSnapshotID, server.URL, err)
+					if err := cluster.AddPurgeTask(snapshotID); err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to purge restic snapshot %s on %s: %s", snapshotID, server.URL, err)
 					}
 				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Restic disabled; skip purging snapshot %s on %s", meta.ResticSnapshotID, server.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Restic disabled; skip purging snapshot %s on %s", snapshotID, server.URL)
 				}
 			}
 

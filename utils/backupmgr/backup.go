@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -78,9 +79,16 @@ type BackupMetadata struct {
 	ExecRemote        bool   `json:"execRemote,omitempty"` // the backup tool ran on the DB node (dbjobs), not next to replication-manager
 	Previous          int64  `json:"previous"`
 	ResticEnabled     bool   `json:"resticEnabled,omitempty"`
-	ResticSnapshotID  string `json:"resticSnapshotID"`
-	ResticFilePath    string `json:"resticFilePath"`
-	BackupSessionID   string `json:"backupSessionID,omitempty"`
+	// ResticSnapshotID is the snapshot of a backup recorded before the archive list: at load
+	// it is glued to the cluster's archive in ArchiveRefs, then empty. Read a snapshot with
+	// ArchiveSnapshot.
+	ResticSnapshotID string `json:"resticSnapshotID"`
+	ResticFilePath   string `json:"resticFilePath"`
+	// ArchiveRefs glues the backup to the archives by name (#2091): an archive's name maps
+	// to the backup's snapshot there. A renamed archive is renamed here; a removed one leaves.
+	// Never changed in place (read while marshalled): set through SetArchiveSnapshot.
+	ArchiveRefs     map[string]string `json:"archiveRefs,omitempty"`
+	BackupSessionID string            `json:"backupSessionID,omitempty"`
 	// Discovered: the backup was found in the server's backup folder without metadata
 	// (copied there by hand or by another tool) and registered by the operator (#2073).
 	// It is never picked by an automatic restore; DiscoveryNote says what its read found
@@ -403,6 +411,105 @@ func (bs *BackupSnapshot) GetMountSubdir() string {
 		return ""
 	}
 	return bsTime.Format(time.RFC3339)
+}
+
+// ArchiveSnapshot is the backup's snapshot in archive ("" none). A backup recorded before the
+// archive list and not glued yet reads its snapshot as the one of any archive.
+func (bm *BackupMetadata) ArchiveSnapshot(archive string) string {
+	refs := bm.ArchiveRefs
+	if len(refs) == 0 {
+		return bm.ResticSnapshotID
+	}
+	return refs[archive]
+}
+
+// HoldsSnapshot: id is one of the backup's snapshots, in any archive (an id is unique).
+func (bm *BackupMetadata) HoldsSnapshot(id string) bool {
+	if id == "" {
+		return false
+	}
+	refs := bm.ArchiveRefs
+	if len(refs) == 0 {
+		return strings.TrimSpace(bm.ResticSnapshotID) == id
+	}
+	for _, ref := range refs {
+		if ref == id {
+			return true
+		}
+	}
+	return false
+}
+
+// ArchiveNames are the archives holding the backup, sorted.
+func (bm *BackupMetadata) ArchiveNames() []string {
+	refs := bm.ArchiveRefs
+	names := make([]string, 0, len(refs))
+	for name := range refs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// setArchiveRefs replaces the refs by a new map: the old one may be read concurrently.
+func (bm *BackupMetadata) setArchiveRefs(change func(refs map[string]string)) {
+	refs := make(map[string]string, len(bm.ArchiveRefs)+1)
+	for k, v := range bm.ArchiveRefs {
+		refs[k] = v
+	}
+	change(refs)
+	if len(refs) == 0 {
+		refs = nil
+	}
+	bm.ArchiveRefs = refs
+}
+
+// SetArchiveSnapshot records the backup's snapshot in archive. With no archive name (no
+// archive list) it is recorded as before the list.
+func (bm *BackupMetadata) SetArchiveSnapshot(archive, id string) {
+	if archive == "" {
+		bm.ResticSnapshotID = id
+		return
+	}
+	bm.GlueLegacySnapshot(archive)
+	bm.setArchiveRefs(func(refs map[string]string) { refs[archive] = id })
+}
+
+// GlueLegacySnapshot glues a snapshot recorded before the archive list to archive, the
+// archive the cluster's legacy settings became; it reports a change.
+func (bm *BackupMetadata) GlueLegacySnapshot(archive string) bool {
+	id := strings.TrimSpace(bm.ResticSnapshotID)
+	if archive == "" || id == "" {
+		return false
+	}
+	bm.ResticSnapshotID = ""
+	if _, ok := bm.ArchiveRefs[archive]; ok {
+		return true
+	}
+	bm.setArchiveRefs(func(refs map[string]string) { refs[archive] = id })
+	return true
+}
+
+// RenameArchiveRef follows an archive's rename; it reports a change.
+func (bm *BackupMetadata) RenameArchiveRef(name, newName string) bool {
+	id, ok := bm.ArchiveRefs[name]
+	if !ok || name == newName {
+		return false
+	}
+	bm.setArchiveRefs(func(refs map[string]string) {
+		delete(refs, name)
+		refs[newName] = id
+	})
+	return true
+}
+
+// DropArchiveRef takes a removed archive out of the backup's refs; it reports a change.
+func (bm *BackupMetadata) DropArchiveRef(name string) bool {
+	if _, ok := bm.ArchiveRefs[name]; !ok {
+		return false
+	}
+	bm.setArchiveRefs(func(refs map[string]string) { delete(refs, name) })
+	return true
 }
 
 type BackupMetaMap struct {

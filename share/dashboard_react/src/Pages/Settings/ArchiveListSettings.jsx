@@ -32,11 +32,14 @@ import TextInputModal from '../../components/Modals/TextInputModal'
 import parentStyles from '../../components/Modals/styles.module.scss'
 import { clusterService } from '../../services/clusterService'
 import { useTheme } from '../../ThemeProvider'
+import { formatBytes } from '../../utility/common'
 
 // The cluster's archive list (#2091): selecting an archive attaches it (the one attached
 // before is detached and stays listed with its content, still invoiced); remove deletes the
 // content then the entry. The forms are drawn from each plugin's typed config, and secrets
-// are only ever sent: the list gives the names of the secrets set.
+// are only ever sent: the list gives the names of the secrets set. Each archive shows its size
+// (an archive billed on its content is invoiced on it) and the number of backups of the
+// catalogue it holds; remove's confirmation reads the size first and shows what is deleted.
 
 const NAME_PATTERN = '^[a-z0-9][a-z0-9_-]{0,63}$'
 // the settings every restic plugin shares start here in a manifest: shown under "More"
@@ -49,6 +52,19 @@ function summary(archive) {
   if (s['local-repository']) return s['local-repository']
   return 'default repository'
 }
+
+function sizeText(archive) {
+  if (!archive?.size) return 'not read'
+  return formatBytes(archive.size.bytes)
+}
+
+function sizeTitle(archive) {
+  if (!archive?.size?.at) return ''
+  return `read ${new Date(archive.size.at).toLocaleString()}${archive.attached ? '' : ' (detached: unchanged since)'}`
+}
+
+const can = (list, archive, capability) =>
+  (list.plugins.find((p) => p.name === archive.plugin)?.capabilities || []).includes(capability)
 
 function splitSettings(manifest) {
   const settings = manifest?.settings || []
@@ -183,6 +199,7 @@ function ArchiveListSettings({ clusterName, user }) {
   const [form, setForm] = useState(null) // { archive } for edit, {} for add
   const [confirm, setConfirm] = useState(null) // { title, body, run }
   const [rename, setRename] = useState(null)
+  const [removeName, setRemoveName] = useState('') // the archive whose remove is being confirmed
   const canSet = user?.grants?.['cluster-settings'] !== false
   const canRemove = user?.grants?.['db-backup'] !== false
 
@@ -202,13 +219,13 @@ function ArchiveListSettings({ clusterName, user }) {
 
   useEffect(() => { fetchList() }, [fetchList])
 
-  // a remove runs in the background: follow it until the archive is gone
-  const removing = list.archives.some((a) => a.status === 'removing')
+  // a remove or a size read runs in the background: follow it until it ends
+  const running = list.archives.some((a) => a.status === 'removing' || a.status === 'sizing')
   useEffect(() => {
-    if (!removing) return undefined
-    const t = setInterval(fetchList, 5000)
+    if (!running) return undefined
+    const t = setInterval(fetchList, running && removeName ? 2000 : 5000)
     return () => clearInterval(t)
-  }, [removing, fetchList])
+  }, [running, removeName, fetchList])
 
   const call = async (fn) => {
     setError('')
@@ -250,12 +267,22 @@ function ArchiveListSettings({ clusterName, user }) {
     run: () => call(() => clusterService.detachArchive(clusterName))
   })
 
-  const askRemove = (a) => setConfirm({
-    title: `Remove ${a.name}?`,
-    body: `The content of ${a.name} (${summary(a)}) is deleted, then the archive leaves the list.${a.attached ? ' It is attached: the cluster is left with no archive.' : ''} A backup whose only copy is there is lost. This cannot be undone.`,
-    confirmText: 'Remove and delete the content',
-    run: () => call(() => clusterService.removeArchive(clusterName, a.name))
-  })
+  const readSize = (a) => call(() => clusterService.sizeArchive(clusterName, a.name))
+
+  // remove's confirmation reads the size first: it shows what is deleted
+  const askRemove = (a) => {
+    setRemoveName(a.name)
+    if (can(list, a, 'size')) readSize(a)
+  }
+  const removeTarget = list.archives.find((a) => a.name === removeName)
+  const removeBody = (a) => {
+    if (!a) return ''
+    const size = a.status === 'sizing'
+      ? 'Reading its size...'
+      : a.size ? `${formatBytes(a.size.bytes)} will be deleted.` : 'Its size could not be read.'
+    const backups = a.backups > 0 ? ` ${a.backups} backup(s) of the catalogue are held there: a backup whose only copy is there leaves the catalogue.` : ''
+    return `The content of ${a.name} (${summary(a)}) is deleted, then the archive leaves the list. ${size}${a.attached ? ' It is attached: the cluster is left with no archive.' : ''}${backups} This cannot be undone.`
+  }
 
   const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
 
@@ -271,11 +298,11 @@ function ArchiveListSettings({ clusterName, user }) {
       {error && <Text color='red.500' fontSize='sm' mb='2'>{error}</Text>}
       <Table size='sm'>
         <Thead>
-          <Tr><Th>Attached</Th><Th>Name</Th><Th>Plugin</Th><Th>Repository</Th><Th>Secrets set</Th><Th>Status</Th><Th /></Tr>
+          <Tr><Th>Attached</Th><Th>Name</Th><Th>Plugin</Th><Th>Repository</Th><Th>Size</Th><Th>Backups</Th><Th>Secrets set</Th><Th>Status</Th><Th /></Tr>
         </Thead>
         <Tbody>
           {list.archives.length === 0 && (
-            <Tr><Td colSpan={7}><Text fontSize='sm'>No archive: add one.</Text></Td></Tr>
+            <Tr><Td colSpan={9}><Text fontSize='sm'>No archive: add one.</Text></Td></Tr>
           )}
           {list.archives.map((a) => (
             <Tr key={a.name}>
@@ -285,10 +312,19 @@ function ArchiveListSettings({ clusterName, user }) {
               <Td><Text fontSize='sm'>{a.name}</Text></Td>
               <Td><Text fontSize='sm'>{a.plugin}</Text></Td>
               <Td><Text fontSize='sm'>{summary(a)}</Text></Td>
+              <Td>
+                <Flex gap='1' align='center'>
+                  <Text fontSize='sm' title={sizeTitle(a)}>{a.status === 'sizing' ? 'reading...' : sizeText(a)}</Text>
+                  {can(list, a, 'size') && (
+                    <RMButton size='xs' variant='link' isDisabled={a.status === 'sizing' || a.status === 'removing'} onClick={() => readSize(a)}>read</RMButton>
+                  )}
+                </Flex>
+              </Td>
+              <Td><Text fontSize='sm'>{a.backups || 0}</Text></Td>
               <Td><Text fontSize='sm'>{(a.secretsSet || []).join(', ') || 'none'}</Text></Td>
               <Td>
                 {a.status
-                  ? <Badge colorScheme={a.status === 'removing' ? 'orange' : 'red'} variant={badgeVariant}>{a.status}</Badge>
+                  ? <Badge colorScheme={a.status === 'removing' || a.status === 'sizing' ? 'orange' : 'red'} variant={badgeVariant}>{a.status}</Badge>
                   : a.attached ? <Badge colorScheme='green' variant={badgeVariant}>attached</Badge>
                     : <Badge colorScheme='gray' variant={badgeVariant}>detached</Badge>}
               </Td>
@@ -314,6 +350,17 @@ function ArchiveListSettings({ clusterName, user }) {
           onSave={async (value) => {
             const err = await call(() => clusterService.renameArchive(clusterName, rename.name, value))
             if (!err) setRename(null)
+          }} />
+      )}
+      {removeTarget && (
+        <ConfirmModal isOpen={!!removeTarget} closeModal={() => setRemoveName('')} title={`Remove ${removeTarget.name}?`}
+          body={removeBody(removeTarget)} confirmButtonText={removeTarget.status === 'sizing' ? 'Reading the size...' : 'Remove and delete the content'}
+          confirmButtonProps={{ isDisabled: removeTarget.status === 'sizing', colorScheme: 'red' }}
+          onConfirmClick={async () => {
+            if (removeTarget.status === 'sizing') return
+            const name = removeTarget.name
+            setRemoveName('')
+            await call(() => clusterService.removeArchive(clusterName, name))
           }} />
       )}
       {confirm && (

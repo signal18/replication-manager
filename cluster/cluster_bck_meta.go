@@ -619,7 +619,9 @@ func backupMethodToString(method backupmgr.BackupMethod) string {
 	}
 }
 
-func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupmgr.BackupMethod, basepath string) *SnapshotMetadataSummary {
+// snapshotID is the snapshot the summary is for: the summary carries it when the backup is
+// held there.
+func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupmgr.BackupMethod, basepath, snapshotID string) *SnapshotMetadataSummary {
 	if meta == nil {
 		return nil
 	}
@@ -636,9 +638,17 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		EndTime:          meta.EndTime,
 		Compressed:       compressed,
 		BackupSessionID:  meta.BackupSessionID,
-		ResticSnapshotID: meta.ResticSnapshotID,
+		ResticSnapshotID: heldSnapshot(meta, snapshotID),
 		ResticBasePath:   strings.TrimSpace(basepath),
 	}
+}
+
+// heldSnapshot is snapshotID when the backup is held there, "" otherwise.
+func heldSnapshot(meta *backupmgr.BackupMetadata, snapshotID string) string {
+	if meta.HoldsSnapshot(snapshotID) {
+		return snapshotID
+	}
+	return ""
 }
 
 func isCompressedDest(dest string) bool {
@@ -703,7 +713,7 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 		if dest == "" {
 			return true
 		}
-		resticID := strings.TrimSpace(meta.ResticSnapshotID)
+		held := meta.HoldsSnapshot(snapshot.Id)
 		for _, base := range snapshot.Paths {
 			if base == "" {
 				continue
@@ -711,7 +721,7 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 			if strings.HasPrefix(dest, base) {
 				method := inferBackupMethod(meta)
 				key := snapshotMetadataKey(method, meta.BackupLine)
-				summary := buildSnapshotMetadataSummary(meta, method, base)
+				summary := buildSnapshotMetadataSummary(meta, method, base, snapshot.Id)
 				if summary == nil {
 					break
 				}
@@ -720,7 +730,7 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 					selection = &metadataSelection{}
 					summaryMap[key] = selection
 				}
-				if resticID != "" && resticID == snapshot.Id {
+				if held {
 					if selection.exact == nil || summary.StartTime.After(selection.exact.StartTime) {
 						selection.exact = summary
 					}
@@ -1055,8 +1065,9 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 				lastErr = err
 				continue
 			}
-			if strings.TrimSpace(meta.ResticSnapshotID) == "" {
-				meta.ResticSnapshotID = snapshot.Id
+			// the record found in the snapshot is this snapshot's backup
+			if !meta.HoldsSnapshot(snapshot.Id) {
+				meta.ArchiveRefs, meta.ResticSnapshotID = nil, snapshot.Id
 			}
 			if strings.TrimSpace(meta.BackupTool) == "" {
 				meta.BackupTool = candidate.Tool
@@ -1080,7 +1091,7 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 					continue
 				}
 			}
-			summary := buildSnapshotMetadataSummary(&meta, candidate.Method, base)
+			summary := buildSnapshotMetadataSummary(&meta, candidate.Method, base, snapshot.Id)
 			if summary == nil {
 				continue
 			}

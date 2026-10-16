@@ -215,7 +215,7 @@ func (cluster *Cluster) restoreArchivedOriginal(src *ServerMonitor, backtype bac
 	var size int64
 	var encrypted bool
 	if meta != nil && meta.OriginalRemoved {
-		dest, snapshotID, metaTool, size = meta.Dest, meta.ResticSnapshotID, meta.BackupTool, meta.Size
+		dest, snapshotID, metaTool, size = meta.Dest, cluster.attachedSnapshot(meta), meta.BackupTool, meta.Size
 		encrypted = meta.Encrypted || isEncryptedBackupArtifact(dest)
 	}
 	src.backupMetaMutex.Unlock()

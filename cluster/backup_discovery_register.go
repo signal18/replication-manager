@@ -451,7 +451,7 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 		// (a verification writes them under backupMetaMutex)
 		server.backupMetaMutex.Lock()
 		meta.Verification, meta.VerificationRuns, meta.VerificationRunSequence = prev.Verification, prev.VerificationRuns, prev.VerificationRunSequence
-		meta.ResticEnabled, meta.ResticSnapshotID, meta.ResticFilePath = prev.ResticEnabled, prev.ResticSnapshotID, prev.ResticFilePath
+		meta.ResticEnabled, meta.ResticSnapshotID, meta.ArchiveRefs, meta.ResticFilePath = prev.ResticEnabled, prev.ResticSnapshotID, prev.ArchiveRefs, prev.ResticFilePath
 		meta.BackupSessionID = prev.BackupSessionID
 		// a backup replication-manager took keeps being one; an ad hoc one keeps its line
 		meta.Discovered, meta.BackupLine, meta.RetentionDays, meta.RetentionDuration = prev.Discovered, prev.BackupLine, prev.RetentionDays, prev.RetentionDuration

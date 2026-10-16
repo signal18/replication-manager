@@ -53,6 +53,7 @@ func (cluster *Cluster) getAutorejoinBackupSelector(method string) RestoreSelect
 // per node" set is already enough to stop looking only on the master.
 func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 	cat := make([]BackupCatalogEntry, 0, len(cluster.Servers)*2)
+	attached := cluster.Conf.AttachedArchive()
 	// the backups refreshBackupProofs last found proven (#2023): the catalog takes no lock
 	// and reads no file, it runs on the monitor tick (HasCatalogBackupForRejoin) and in a
 	// rejoin; none checked yet, none proven
@@ -69,7 +70,7 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 			if m == nil || !m.Completed || cluster.backupUseRefusal(m) != nil {
 				continue
 			}
-			e := backupMetaToCatalog(sv.URL, m)
+			e := backupMetaToCatalog(sv.URL, m, attached)
 			// a test restore proves the local file it loaded, not a restic snapshot of it
 			_, proven := proofs[backupProofKey{sv.URL, m.Id, m.Dest}]
 			e.Proven = e.Location == RepoLocal && proven
@@ -142,14 +143,18 @@ func (cluster *Cluster) provenStillUnchanged(e *BackupCatalogEntry) bool {
 
 // backupMetaToCatalog maps one BackupMetadata (Ahmad's) to a catalog entry so
 // every selector dimension can be evaluated against it.
-func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCatalogEntry {
+//
+// attached is the attached archive's name: a backup is remote when that archive holds it. A
+// backup held by a detached archive only is restored from it once attached.
+func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata, attached string) BackupCatalogEntry {
 	kind := "logical"
 	if m.BackupMethod == backupmgr.BackupMethodPhysical {
 		kind = "physical"
 	}
 
+	snapshotID := strings.TrimSpace(m.ArchiveSnapshot(attached))
 	loc := RepoLocal
-	if m.ResticEnabled && m.ResticSnapshotID != "" {
+	if m.ResticEnabled && snapshotID != "" {
 		loc = RepoRemote
 	}
 
@@ -173,8 +178,8 @@ func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCa
 	}
 
 	path := m.Dest
-	if loc == RepoRemote && m.ResticSnapshotID != "" {
-		path = m.ResticSnapshotID
+	if loc == RepoRemote {
+		path = snapshotID
 	}
 
 	return BackupCatalogEntry{
