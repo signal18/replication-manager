@@ -40,4 +40,4 @@ for a feature — not a Go unit test. State what you ran.
 
 <!-- The milestone is assigned by the maintainer when the fix actually lands (merged/ready), not speculatively (T12). Closing keyword above carries this PR's milestone to the issue on merge. -->
 
-> Reference: `doc/implementation/DEVELOPMENT_LAWS.md` (F1–F11 functional, T1–T20 technical).
+> Reference: `doc/implementation/DEVELOPMENT_LAWS.md` (F1–F11 functional, T1–T25 technical).

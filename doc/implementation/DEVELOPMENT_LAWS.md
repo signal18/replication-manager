@@ -317,6 +317,22 @@ The commit's author is the person who commits it and answers for it. This applie
 now on: commits already pushed are not rewritten to remove such a trailer (a history
 rewrite and a force-push are not worth it).
 
+**T25. A file the config git repo tracks is written only by the save callback —
+never from anywhere else.** The config repo (`git-url`) stages each cluster's
+`<cluster>/*.toml`, `agents.json` and `queryrules.json`, and the `event-changed.*.log`
+event logs (`config.go` `PushConfigToGit`). Those files are written by
+`cluster.SaveCallBack()` (and `repman.SaveCallBack()` for the global config), which the
+single config-sync gate runs; every other piece of code changes the in-memory state and
+calls `cluster.Save()`, the event, which does no I/O. Never an `os.WriteFile`, a
+`toml.Marshal` to disk or a sed on one of these files from an API handler, a job, a
+plugin or the monitor tick. A file written outside the gate races it: go-git can stage
+it half-written and push it to every peer, the next save overwrites it from the
+in-memory state (the change is lost), and it skips the key diff that feeds the event log,
+so peers never replay it. One writer, one place to look when a pushed config is wrong.
+A new file that must reach the config repo is added to `SaveCallBack` and to the staged
+list together; anything else repman writes (backups, cookies, logs, caches) stays out
+of the staged list. See `doc/implementation/config/CONFIG_SYNC.md`.
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a
