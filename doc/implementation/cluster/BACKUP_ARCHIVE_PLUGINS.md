@@ -1,6 +1,7 @@
 # Backup archives as plugins (design)
 
-Status: **design, not implemented** (2026-10-16). Same model as the credential stores
+Status: **design**, first step coding (2026-10-16): the archive list and its migration,
+#2077 (branch `feat/archive-list`). Same model as the credential stores
 (`doc/implementation/config/CREDENTIAL_STORES.md`): one interface, an internal plugin
 for what every repman ships, external plugins for the rest. Related: #1987 (remove the
 original once archived), #2023 (backup verification), BKU/BAU metering, T2, T25.
@@ -98,6 +99,25 @@ A cluster has **1 to N archives**, each one an `ArchiveStore` with its own plugi
 settings (for example a local restic repository and an S3 one, or the same plugin twice
 with two backends). `none` is simply an empty list.
 
+### Names and the connected archive
+
+- An archive is a **name and a plugin type** plus the plugin's settings. Names are
+  `archive-1` to `archive-x`, given by repman in order (the first free one), never derived
+  from the plugin: an archive keeps its name when its plugin changes.
+- The cluster is **connected to one archive**: `backup-archive-name` (a plain cluster
+  setting, empty for none). The backups go to it and its snapshots are the ones listed.
+  The user switches by changing that one setting; the archive left keeps its settings as
+  they were run.
+- The other archives of the list are filled from the connected one (`copy-from`), or wait
+  to be connected.
+- `backup-archive-mode` stays as a setter over the list: `none` disconnects; another mode
+  changes the connected archive's plugin, or connects the first archive with that plugin,
+  or a new `archive-x`.
+- Migration (#2077): a cluster without a list gets `archive-1` from its `backup-restic-*`
+  settings, connected when `backup-archive-mode` is not none. With the mode none and
+  customised settings, it is kept but not connected, so nothing is lost. With every
+  setting at its default, there is no list.
+
 - **Each archive has its own policy**: which backup kinds it takes (logical, physical,
   binlogs), and its retention. A backup is pushed to every archive whose policy takes it,
   one queued operation per archive.
@@ -138,31 +158,32 @@ today. Each instance has its own:
 Example:
 
 ```toml
+backup-archive-name = "archive-1"   # the connected archive: the backups go to it
+
 [[archive]]                 # 1: local, the read preference
-name    = "local"
+name    = "archive-1"
 plugin  = "archive-restic-local"   # <WorkingDir>/backups/archive/<cluster>
-takes   = "logical,physical,binlog"
 retention = "keep-daily 7"
 
-[[archive]]                 # 2: remote, filled by copy from "local"
-name    = "s3-paris"
+[[archive]]                 # 2: remote, filled by copy from archive-1
+name    = "archive-2"
 plugin  = "archive-restic-s3"
 bucket  = "backups-paris"
 endpoint = "https://s3.fr-par.example"
-copy-from = "local"         # restic copy: no second read of the backup
+copy-from = "archive-1"     # restic copy: no second read of the backup
 retention = "keep-daily 30, keep-monthly 12"
 
 [[archive]]                 # 3: remote, another provider
-name    = "sftp-dr"
+name    = "archive-3"
 plugin  = "archive-restic-sftp"
 host    = "dr-backup.example"
 path    = "/srv/restic/<cluster>"
-copy-from = "local"
+copy-from = "archive-1"
 retention = "keep-weekly 8"
 ```
 
-- **Push or copy**: a remote archive either takes the backup directly from the backup
-  directory (`takes`), or is filled from another archive (`copy-from`) with `restic copy`.
+- **Push or copy**: the connected archive takes the backup from the backup directory; a
+  remote archive is filled from another archive (`copy-from`) with `restic copy`.
   Copy reads the local repository, not the backup again, so it can run after the original
   was removed. A remote created by repman with `copy-from` is initialised with the
   source's chunker parameters (`copy_chunker_params`, `utils/backupmgr/restic_copy.go`),
@@ -230,6 +251,33 @@ retention = "keep-weekly 8"
   with the `Mount` capability.
 - T6: every generic route has its GUI, swagger and ACL; the settings page reads the
   manifest.
+
+## Goal: move a cluster's backups to another repman through an archive
+
+The end-to-end case the design must serve:
+
+1. **Pick an archive provided for migration** (an S3 archive hosted by Signal18): the
+   entry and its secrets are delivered, not typed by the user. #2091
+2. **Archive the backup to it**: connect it with `backup-archive-name` and push. Works
+   with the archive list (#2077), once each archive has its own secrets. #2088
+3. **Connect another repman instance to this archive**, **read-only**, with the source's
+   full repository path: `repo-append-cluster` would otherwise point a cluster with another
+   name at an empty repository, and the target's retention would forget the source's
+   snapshots. #2089
+4. **Import the backup**: list the snapshots the source wrote and register one as a backup
+   of the target cluster, then restore or reseed from it (extends the discovery and
+   register of #2073). #2090
+
+| Step | Issue | Needs |
+|---|---|---|
+| Per-archive secrets (`archive.<name>.password`, through the credential store chain) | #2088 | #2077, #2075 |
+| Read-only connection, full repository path | #2089 | #2088 |
+| List and import another cluster's backups | #2090 | #2089 |
+| Archive provided for migration | #2091 | #2088 |
+
+Both repman instances use the same restic password, so it is delivered with the archive
+through the secret store, never in clear. A read-only connection refuses push, forget,
+prune, init, unlock and key change with a state, never silently.
 
 ## Plan
 
