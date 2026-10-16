@@ -174,8 +174,9 @@ retention = "keep-weekly 8"
   archive and every remote one that should hold it have proved it; a remote filled by copy
   proves it after its copy ran.
 - **Migration**: today's single `backup-archive-mode` becomes archive 1 (`restic-local`,
-  `restic-sftp` or `restic-aws`); the existing `restic copy` destination, when set,
-  becomes archive 2 with `copy-from` archive 1.
+  `restic-sftp` or `restic-aws`). Today's `restic copy` is a one-off action that copies
+  *into* the cluster's repository from a source repository (`/restic/copy`); it stays as
+  the archive's `Copy` operation, and a standing remote copy is a new archive entry.
 
 ## The plugins
 
