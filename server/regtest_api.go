@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 )
 
 // Hooks the regtest package uses to call repman's own API, so a scenario
@@ -96,4 +97,23 @@ func (repman *ReplicationManager) regtestAPIRequestBody(token, method, path stri
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	return resp.StatusCode, resp.Header, body, err
+}
+
+// regtestLoadClusterConfigFromDisk returns the config a start would build for clusterName
+// from the files on disk (ReconstructLiveClusterConfig: config.toml, the include directory,
+// default.toml and <cluster>/<cluster>.toml, layered as InitConfig does), with its config
+// maps. Reading leaves the running server as it was: GetClusterConfig replaces the server's
+// maps of the cluster, they are put back.
+func (repman *ReplicationManager) regtestLoadClusterConfigFromDisk(clusterName string) (config.Config, error) {
+	repman.Lock()
+	imm, dyn, ver := repman.ImmuableFlagMaps[clusterName], repman.DynamicFlagMaps[clusterName], repman.VersionConfs[clusterName]
+	repman.Unlock()
+	conf, err := repman.ReconstructLiveClusterConfig(clusterName)
+	repman.Lock()
+	conf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
+	conf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
+	conf.DefaultFlagMap = repman.DefaultFlagMap
+	repman.ImmuableFlagMaps[clusterName], repman.DynamicFlagMaps[clusterName], repman.VersionConfs[clusterName] = imm, dyn, ver
+	repman.Unlock()
+	return conf, err
 }

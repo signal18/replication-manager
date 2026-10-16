@@ -273,11 +273,10 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := repman.CredentialChain().Set("cloud18-gitlab-password", string(val)); err != nil {
+			return err
+		}
 		repman.Conf.Cloud18GitPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = repman.Conf.Cloud18GitPassword
-		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
-		repman.Conf.Secrets.Set("cloud18-gitlab-password", new_secret)
 	case "cloud18-gateway-domain-name":
 		repman.Conf.Cloud18GatewayDomainName = value
 	case "cloud18-gateway-service":
@@ -293,11 +292,10 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := repman.CredentialChain().Set("cloud18-domain-secret", string(val)); err != nil {
+			return err
+		}
 		repman.Conf.Cloud18DomainSecret = string(val)
-		var new_secret config.Secret
-		new_secret.Value = repman.Conf.Cloud18DomainSecret
-		new_secret.OldValue = repman.Conf.GetDecryptedValue("cloud18-domain-secret")
-		repman.Conf.Secrets.Set("cloud18-domain-secret", new_secret)
 	case "cloud18-marketplace-pricing-mode":
 		if value != config.ConstMarketplacePricingModeCsvServicePlan && value != config.ConstMarketplacePricingModeGlobalUnitPricing {
 			return fmt.Errorf("invalid marketplace pricing mode %q, expected %q or %q", value, config.ConstMarketplacePricingModeCsvServicePlan, config.ConstMarketplacePricingModeGlobalUnitPricing)
@@ -380,11 +378,10 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := repman.CredentialChain().Set("arbitration-external-secret", string(val)); err != nil {
+			return err
+		}
 		repman.Conf.ArbitrationSasSecret = string(val)
-		var new_secret config.Secret
-		new_secret.Value = repman.Conf.ArbitrationSasSecret
-		new_secret.OldValue = repman.Conf.GetDecryptedValue("arbitration-external-secret")
-		repman.Conf.Secrets.Set("arbitration-external-secret", new_secret)
 	case "arbitration-external-unique-id":
 		v, _ = strconv.Atoi(value)
 		repman.Conf.ArbitrationSasUniqueId = v
@@ -454,11 +451,10 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		if err != nil {
 			return fmt.Errorf("unable to base64-decode value: %w", err)
 		}
+		if err := repman.CredentialChain().Set("prov-app-template-repo-password", string(val)); err != nil {
+			return err
+		}
 		repman.Conf.ProvAppTemplateRepoPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = repman.Conf.ProvAppTemplateRepoPassword
-		new_secret.OldValue = repman.Conf.GetDecryptedValue("prov-app-template-repo-password")
-		repman.Conf.Secrets.Set("prov-app-template-repo-password", new_secret)
 	case "prov-app-template-repo-timeout":
 		parsedTimeout, err := parseProvAppTemplateRepoTimeout(value)
 		if err != nil {
@@ -547,7 +543,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "log-heartbeat-level", "log-level-heartbeat":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.LogHeartbeatLevel = val
-		repman.Conf.ImmuableFlagMap["log-level-heartbeat"] = val
+		repman.Conf.SetImmuableFlag("log-level-heartbeat", val)
 	case "log-history-enable":
 		if value == "" {
 			// Clearing (/actions/clear/{settingName} routes here with no
@@ -585,12 +581,11 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		if err != nil {
 			return errors.New("unable to decode")
 		}
+		if err := repman.CredentialChain().Set("mail-smtp-password", string(val)); err != nil {
+			return err
+		}
 		repman.Conf.MailSMTPPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = repman.Conf.MailSMTPPassword
-		new_secret.OldValue = repman.Conf.GetDecryptedValue("mail-smtp-password")
-		repman.Conf.Secrets.Set("mail-smtp-password", new_secret)
-		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, new_secret.Value)
+		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
 	case "mail-smtp-user":
 		repman.Conf.SetMailSmtpUser(value)
 		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"))
@@ -823,7 +818,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.LogSupport = !repman.Conf.LogSupport
 	case "log-heartbeat":
 		repman.Conf.LogHeartbeat = !repman.Conf.LogHeartbeat
-		repman.Conf.ImmuableFlagMap["log-heartbeat"] = repman.Conf.LogHeartbeat
+		repman.Conf.SetImmuableFlag("log-heartbeat", repman.Conf.LogHeartbeat)
 	case "monitoring-log-api-login":
 		repman.Conf.MonitoringLogAPILogin = !repman.Conf.MonitoringLogAPILogin
 	case "log-history-enable":

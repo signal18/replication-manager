@@ -1993,8 +1993,9 @@ func (repman *ReplicationManager) createCluster(name string, cForm cluster.Clust
 	cl.Conf.APIUsersExternal = ""
 	cl.Conf.APIUsersACLAllowExternal = ""
 	cl.Conf.APIUsersACLDiscardExternal = ""
-	if cl.Conf.Secrets != nil {
-		cl.Conf.Secrets.Set("api-credentials-external", config.Secret{})
+	// through the credential chain (#2075): a reread keeps the cleared value
+	if err := cl.CredentialChain().Set("api-credentials-external", ""); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Cluster %s: the inherited external API users are not cleared: %s", cl.Name, err)
 	}
 	cl.LoadAPIUsers()
 

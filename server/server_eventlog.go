@@ -262,7 +262,7 @@ func (repman *ReplicationManager) applyGenericClusterKey(cl *cluster.Cluster, ke
 		return err
 	}
 	if cl.Conf.DynamicFlagMap != nil {
-		cl.Conf.DynamicFlagMap[key] = value
+		cl.Conf.SetDynamicFlag(key, value)
 	}
 	return nil
 }

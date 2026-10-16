@@ -1895,48 +1895,147 @@ func (conf *Config) GetSecrets() map[string]Secret {
 	return conf.Secrets.Snapshot()
 }
 
+// SecretKeys are the config keys held as secrets in Conf.Secrets: each is rebuilt from its
+// source by RebuildSecrets. A key written to Conf.Secrets must be listed here, else a reread
+// drops it (#2017, #2075).
+var SecretKeys = []string{
+	"api-credentials",
+	"api-credentials-external",
+	"db-servers-credential",
+	"monitoring-write-heartbeat-credential",
+	"onpremise-ssh-credential",
+	"replication-credential",
+	"shardproxy-credential",
+	"haproxy-password",
+	"maxscale-pass",
+	"myproxy-password",
+	"proxysql-password",
+	"proxyjanitor-password",
+	"vault-secret-id",
+	"opensvc-p12-secret",
+	"backup-restic-aws-access-secret",
+	"backup-streaming-aws-access-secret",
+	"backup-restic-password",
+	"backup-verification-credential",
+	"arbitration-external-secret",
+	"alert-pushover-user-token",
+	"alert-pushover-app-token",
+	"git-acces-token",
+	"mail-smtp-password",
+	"cloud18-gitlab-password",
+	"cloud18-dba-user-credentials",
+	"cloud18-sponsor-user-credentials",
+	"cloud18-domain-secret",
+	"proxysql-user",
+	"vault-token",
+	"api-oauth-client-secret",
+	"meet-token",
+	"prov-app-template-repo-password",
+	"prov-docker-registry-credentials",
+}
+
+// DecryptSecretsFromConfig rebuilds Conf.Secrets from the config maps: DynamicFlagMap, then
+// ImmuableFlagMap, then DefaultFlagMap.
 func (conf *Config) DecryptSecretsFromConfig() {
-	secrets := map[string]Secret{
-		"api-credentials":                       {},
-		"api-credentials-external":              {},
-		"db-servers-credential":                 {},
-		"monitoring-write-heartbeat-credential": {},
-		"onpremise-ssh-credential":              {},
-		"replication-credential":                {},
-		"shardproxy-credential":                 {},
-		"haproxy-password":                      {},
-		"maxscale-pass":                         {},
-		"myproxy-password":                      {},
-		"proxysql-password":                     {},
-		"proxyjanitor-password":                 {},
-		"vault-secret-id":                       {},
-		"opensvc-p12-secret":                    {},
-		"backup-restic-aws-access-secret":       {},
-		"backup-streaming-aws-access-secret":    {},
-		"backup-restic-password":                {},
-		"backup-verification-credential":        {},
-		"arbitration-external-secret":           {},
-		"alert-pushover-user-token":             {},
-		"alert-pushover-app-token":              {},
-		"git-acces-token":                       {},
-		"mail-smtp-password":                    {},
-		"cloud18-gitlab-password":               {},
-		"cloud18-dba-user-credentials":          {},
-		"cloud18-sponsor-user-credentials":      {},
-		"cloud18-domain-secret":                 {},
-		"vault-token":                           {},
-		"api-oauth-client-secret":               {},
-		"meet-token":                            {}}
+	conf.RebuildSecrets(conf.configSecretSource)
+}
+
+// flagMapMu guards the content of every DynamicFlagMap and ImmuableFlagMap (#2075). A map
+// is shared by the configs that hold it (Config is copied by value, the server keeps them in
+// DynamicFlagMaps and ImmuableFlagMaps, a cluster added at runtime gets the default ones) and
+// written while repman runs: API setters through the credential chain, the monitor tick
+// (inject.toml, Vault token), the peer event replay, the global settings API and the git
+// setup (ImmuableFlagMap); the save, the reloads and the credential chain read them. A map
+// read during a write is a fatal error that stops repman (F2): every read and write of these
+// maps' content goes through the functions below, held only for the map access itself.
+var flagMapMu sync.RWMutex
+
+// GetDynamicFlag reads key from the dynamic config map.
+func (conf *Config) GetDynamicFlag(key string) (interface{}, bool) {
+	flagMapMu.RLock()
+	defer flagMapMu.RUnlock()
+	v, ok := conf.DynamicFlagMap[key]
+	return v, ok
+}
+
+// SetDynamicFlag writes key into the dynamic config map, created when there is none.
+func (conf *Config) SetDynamicFlag(key string, value interface{}) {
+	flagMapMu.Lock()
+	defer flagMapMu.Unlock()
+	if conf.DynamicFlagMap == nil {
+		conf.DynamicFlagMap = make(map[string]interface{})
+	}
+	conf.DynamicFlagMap[key] = value
+}
+
+// DeleteDynamicFlag removes key from the dynamic config map.
+func (conf *Config) DeleteDynamicFlag(key string) {
+	flagMapMu.Lock()
+	defer flagMapMu.Unlock()
+	delete(conf.DynamicFlagMap, key)
+}
+
+// CopyDynamicFlags returns a copy of a dynamic config map, to range over without the lock.
+func CopyDynamicFlags(m map[string]interface{}) map[string]interface{} {
+	flagMapMu.RLock()
+	defer flagMapMu.RUnlock()
+	out := make(map[string]interface{}, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+// GetImmuableFlag reads key from the immutable config map (the files repman never writes).
+func (conf *Config) GetImmuableFlag(key string) (interface{}, bool) {
+	flagMapMu.RLock()
+	defer flagMapMu.RUnlock()
+	v, ok := conf.ImmuableFlagMap[key]
+	return v, ok
+}
+
+// SetImmuableFlag writes key into the immutable config map, created when there is none.
+func (conf *Config) SetImmuableFlag(key string, value interface{}) {
+	flagMapMu.Lock()
+	defer flagMapMu.Unlock()
+	if conf.ImmuableFlagMap == nil {
+		conf.ImmuableFlagMap = make(map[string]interface{})
+	}
+	conf.ImmuableFlagMap[key] = value
+}
+
+// CopyImmuableFlags returns a copy of an immutable config map, to range over without the
+// lock.
+func CopyImmuableFlags(m map[string]interface{}) map[string]interface{} {
+	return CopyDynamicFlags(m)
+}
+
+// configSecretSource reads a secret key's raw value from the config maps, the dynamic one
+// first, then the pinned one, then the default.
+func (conf *Config) configSecretSource(k string) (interface{}, bool) {
+	if v, ok := conf.GetDynamicFlag(k); ok {
+		return v, true
+	}
+	if v, ok := conf.GetImmuableFlag(k); ok {
+		return v, true
+	}
+	v, ok := conf.DefaultFlagMap[k]
+	return v, ok
+}
+
+// RebuildSecrets rebuilds Conf.Secrets for every SecretKeys key from the raw value source
+// gives (a credential store chain, or the config maps): decrypted, its ciphertext kept as the
+// cache's Crypted.
+func (conf *Config) RebuildSecrets(source func(key string) (interface{}, bool)) {
+	secrets := make(map[string]Secret, len(SecretKeys))
+	for _, k := range SecretKeys {
+		secrets[k] = Secret{}
+	}
 
 	for k := range secrets {
-
-		origin_value, ok := conf.DynamicFlagMap[k]
-		if !ok {
-			origin_value, ok = conf.ImmuableFlagMap[k]
-			if !ok {
-				origin_value = conf.DefaultFlagMap[k]
-			}
-
+		origin_value, ok := source(k)
+		if !ok || origin_value == nil {
+			continue // no source holds it: an empty secret
 		}
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
@@ -2024,11 +2123,13 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 	}
 	// Reuse the raw value the config was loaded with when it still encodes
 	// the current value.
-	for _, m := range []map[string]interface{}{conf.DynamicFlagMap, conf.ImmuableFlagMap} {
-		if m == nil {
-			continue
-		}
-		if raw, found := m[key]; found {
+	dynamicRaw, inDynamic := conf.GetDynamicFlag(key)
+	immuableRaw, inImmuable := conf.GetImmuableFlag(key)
+	for _, m := range []struct {
+		raw   interface{}
+		found bool
+	}{{dynamicRaw, inDynamic}, {immuableRaw, inImmuable}} {
+		if raw, found := m.raw, m.found; found {
 			s := fmt.Sprintf("%v", raw)
 			if strings.Contains(s, "hash_") && conf.DecryptSecretValue(key, s) == value {
 				if ok {
@@ -3704,12 +3805,12 @@ type LogEntry struct {
 }
 
 func (conf *Config) IsVariableImmutable(v string) bool {
-	_, ok := conf.ImmuableFlagMap[v]
+	_, ok := conf.GetImmuableFlag(v)
 	return ok
 }
 
 func (conf *Config) IsVariableServerLevel(v string) bool {
-	_, ok := conf.ImmuableFlagMap[v]
+	_, ok := conf.GetImmuableFlag(v)
 	return ok
 }
 
@@ -3788,7 +3889,7 @@ func (conf *Config) GetImmutableChecksum() (hash.Hash, error) {
 
 	Container := make([]string, 0)
 
-	for k, v := range conf.ImmuableFlagMap {
+	for k, v := range CopyImmuableFlags(conf.ImmuableFlagMap) {
 		if _, ok := conf.Secrets.Lookup(k); !ok {
 			Container = append(Container, fmt.Sprintf("%s=%v", k, v))
 		}

@@ -55,6 +55,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
@@ -79,6 +80,8 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
+	credChain                    *credstore.Chain // CredentialChain (#2075)
+	credChainMu                  sync.Mutex
 	selfServiceMu                sync.Mutex                         // guards selfServiceSnap and selfServiceVerdicts
 	selfServiceVerdicts          map[string]selfServiceVerdict      // identity -> enabled-script verdict within the cache TTL
 	selfServiceFlight            singleflight.Group                 // one snapshot computation, one script run per identity, at a time
@@ -721,7 +724,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")
 	flags.StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	flags.BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
-	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", true , "Need JWT token to download config tar.gz")
+	flags.BoolVar(&conf.APISecureConfig, "api-credentials-secure-config", true, "Need JWT token to download config tar.gz")
 	flags.BoolVar(&conf.APIAutologin, "api-autologin", false, "Enable unauthenticated auto-login token endpoint (trusted networks only)")
 	flags.StringVar(&conf.APIAutologinUser, "api-autologin-user", "admin", "Username to generate a token for when api-autologin is enabled")
 	flags.StringVar(&conf.APIDashboardUser, "api-dashboard-user", "", "Read-only user for the /dashboard public endpoint (empty = disabled)")
@@ -2174,12 +2177,12 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 	clustDynamicMap := make(map[string]interface{})
 
 	//to copy default immuable flag in the immuable flag cluster map
-	for k, v := range ImmuableMap {
+	for k, v := range config.CopyImmuableFlags(ImmuableMap) {
 		clustImmuableMap[k] = v
 	}
 
 	//to copy default dynamic flag in the dynamic flag cluster map
-	for k, v := range DynamicMap {
+	for k, v := range config.CopyDynamicFlags(DynamicMap) {
 		clustDynamicMap[k] = v
 	}
 
@@ -3503,7 +3506,7 @@ func (repman *ReplicationManager) ReconstructLiveClusterConfig(clusterName strin
 	}
 	if cf3 := isolated.Sub("saved-default"); cf3 != nil {
 		for _, f := range cf3.AllKeys() {
-			if v, ok := repman.Conf.ImmuableFlagMap[f]; ok {
+			if v, ok := repman.Conf.GetImmuableFlag(f); ok {
 				cf3.Set(f, v)
 			}
 		}
@@ -4705,7 +4708,7 @@ func (repman *ReplicationManager) Overwrite() (bool, error) {
 		keys = misc.SortKeysAsc(keys)
 
 		for _, key := range keys {
-			v, ok := repman.Conf.ImmuableFlagMap[key]
+			v, ok := repman.Conf.GetImmuableFlag(key)
 			if !ok {
 				s.Delete(key)
 			} else {
@@ -4787,8 +4790,17 @@ func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 	file.WriteString(header)
 
 	for _, key := range keys {
-		_, ok := repman.Conf.ImmuableFlagMap[key]
+		_, ok := repman.Conf.GetImmuableFlag(key)
+		_, dynamic := repman.Conf.GetDynamicFlag(key)
+		_, secret := repman.Conf.Secrets.Lookup(key)
 		if ok {
+			s.Delete(key)
+		} else if secret && dynamic {
+			// a secret the dynamic config store holds (#2075): written whatever its raw
+			// field says, a value set at runtime survives the restart
+			if encrypt_val := repman.GetEncryptedValueFromMemory(key); encrypt_val != "" {
+				file.WriteString(key + " = \"" + encrypt_val + "\"\n")
+			}
 			s.Delete(key)
 		} else {
 			v, ok := repman.DefaultFlagMap[key]
@@ -4837,7 +4849,7 @@ func (repman *ReplicationManager) SaveImmutable() (bool, error) {
 
 	// Get Sorted Keys
 	keys := make([]string, 0)
-	for key := range repman.Conf.ImmuableFlagMap {
+	for key := range config.CopyImmuableFlags(repman.Conf.ImmuableFlagMap) {
 		keys = append(keys, key)
 	}
 
@@ -4854,7 +4866,7 @@ func (repman *ReplicationManager) SaveImmutable() (bool, error) {
 	defer file2.Close()
 
 	for _, key := range keys {
-		val := repman.Conf.ImmuableFlagMap[key]
+		val, _ := repman.Conf.GetImmuableFlag(key)
 		_, ok := repman.Conf.Secrets.Lookup(key)
 		if ok {
 			encrypt_val := repman.GetEncryptedValueFromMemory(key)
@@ -4892,6 +4904,18 @@ func (repman *ReplicationManager) SetIsSavingConfig(val bool) {
 
 // Save is the event: mark the global/[Default] config needs-save. The repman
 // config-sync gate (serve loop) consumes it and runs SaveCallBack. No I/O.
+// CredentialChain is the server's credential store chain for its own config (#2075): the
+// global settings read and write credentials through it. Built for the current Conf, again
+// when a reload replaces it.
+func (repman *ReplicationManager) CredentialChain() *credstore.Chain {
+	repman.credChainMu.Lock()
+	defer repman.credChainMu.Unlock()
+	if repman.credChain == nil || repman.credChain.Conf() != repman.Conf {
+		repman.credChain = credstore.NewConfigChain(repman.Conf, repman.Save)
+	}
+	return repman.credChain
+}
+
 func (repman *ReplicationManager) Save() {
 	repman.IsNeedConfigSave = true
 }

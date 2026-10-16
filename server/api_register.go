@@ -379,15 +379,14 @@ func (repman *ReplicationManager) applyCloudConnect(
 	repman.Conf.Cloud18SubDomain = subdomain
 	repman.Conf.Cloud18SubDomainZone = zone
 	repman.Conf.Cloud18GitUser = email
-	repman.Conf.Cloud18GitPassword = password
-
-	var gitSecret config.Secret
-	gitSecret.Value = password
-	gitSecret.OldValue = repman.Conf.GetDecryptedValue("cloud18-gitlab-password")
-	if repman.Conf.Secrets == nil {
-		repman.Conf.Secrets = config.NewSecrets(nil)
+	// through the credential chain (#2075): a refusal (the password pinned in a config file)
+	// ends the registration with the reason
+	if err := repman.CredentialChain().Set("cloud18-gitlab-password", password); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "register: the gitlab password can not be stored: %s", err)
+		repman.RegStatus.set(RegStateError, "Registration failed: the gitlab password can not be stored: "+err.Error(), nil)
+		return
 	}
-	repman.Conf.Secrets.Set("cloud18-gitlab-password", gitSecret)
+	repman.Conf.Cloud18GitPassword = password
 	if repman.Conf.ImmuableFlagMap == nil {
 		repman.Conf.ImmuableFlagMap = make(map[string]interface{})
 	}
