@@ -356,11 +356,11 @@ monitors and repoints the links it manages; it does not own them (F1). So:
   that removes a channel's definition, in any automatic path (reseed, rejoin, failover,
   provision, job). To clear positions, `RESET SLAVE '<channel>'` without `ALL` keeps the
   link. Removing a link is an explicit, user-requested action only.
-- Moving a link to another source is the failover and switchover code's job, under
-  their guards (election, positions, consistency checks), and nothing else's. Every other
-  path (reseed, rejoin of a server to its current master, provision, job) keeps the
-  source the link has, the one the last failover or switchover set: it may set the
-  position on that source (`CHANGE MASTER` with the same master), never choose another.
+- Moving a link to another source is the job of the failover, switchover and rejoin
+  code, under their guards (election, positions, consistency checks), and nothing else's.
+  Every other path (reseed, provision, job) keeps the source the link has, the one the
+  last failover, switchover or rejoin set: it may set the position on that source
+  (`CHANGE MASTER` with the same master), never choose another.
 - Only the channel repman manages (`replication-source-name`) is ever stopped or
   positioned, by name. A statement without a channel name (`RESET SLAVE ALL`, `STOP ALL
   SLAVES`) acts on channels repman may not manage: it needs the same justification as a
@@ -370,7 +370,7 @@ monitors and repoints the links it manages; it does not own them (F1). So:
 - Any change to a link (stop, repoint, reset of positions) opens a state naming the
   server, the channel, the reason and the action that did it, so the GUI shows why the
   link is down. A log line is not enough (T3/T4: states, not logs).
-- An AI assistant changing a reseed, rejoin or failover path reads this law first and
+- An AI assistant changing a reseed, rejoin, failover or switchover path reads this law first and
   says, in the PR, which channels its change stops, repoints or resets, and why.
 Example (PR #2020, v3.1.44): to fix older dumps and an idle MariaDB replica, the
 mysqldump reseed added `STOP ALL SLAVES` then `RESET SLAVE '<name>' ALL` (a plain
