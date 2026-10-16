@@ -92,6 +92,34 @@ type ArchiveCaps struct {
 | **local encryption** (`backup-encryption`, HMAC sidecar): the artifact and its sidecar are pushed together as one `Artifact` | its own at-rest encryption, if `Encrypts` |
 | **credentials**: from the credential chain (`secret_kv`), handed to the plugin at start | uses them, never stores them |
 
+## One to N archives per cluster
+
+A cluster has **1 to N archives**, each one an `ArchiveStore` with its own plugin and
+settings (for example a local restic repository and an S3 one, or the same plugin twice
+with two backends). `none` is simply an empty list.
+
+- **Each archive has its own policy**: which backup kinds it takes (logical, physical,
+  binlogs), and its retention. A backup is pushed to every archive whose policy takes it,
+  one queued operation per archive.
+- **Metadata keeps one ref per archive**: `ArchiveRefs map[archive]ArchiveRef` replaces the
+  single snapshot id (an existing `ResticSnapshotID` reads as the ref of the first restic
+  archive).
+- **Order is the read preference**: restore, reseed, fetch-back and verification read from
+  the first archive in the list that holds the backup, then the next one when it is
+  unreachable or misses it.
+- **Remove original** (#1987): the original is removed only when every archive that should
+  hold the backup has proved it (`Contains`); the setting can lower that to "at least one"
+  per archive policy. WARN0238 names the archive that refused.
+- **Protected refs**: while the original is removed, the backup's ref is protected in every
+  archive, so the last copy is never forgotten by one archive's retention.
+- **Copy**: an archive can be filled from another (a new S3 archive seeded from the local
+  one): the plugin's native `Copy` when both are the same plugin (`restic copy` today),
+  else repman fetches from one and pushes to the other.
+- **Metering**: BAU is the sum of `Stats` of the `Remote` archives, BKU counts the local
+  ones on disk; the BAU series gets an archive label.
+- **States** carry the archive name, so one failing archive is visible without hiding the
+  others.
+
 ## The plugins
 
 | Plugin | Kind | Backends | Caps |
@@ -99,8 +127,8 @@ type ArchiveCaps struct {
 | `archive-restic` | **internal**: today's `utils/backupmgr` restic code behind the interface | local path, sftp, S3 (one plugin, the backend is its setting) | Versioned, Encrypts, Mount, Copy, ChangeKey; Remote for sftp/S3 |
 | `archive-<name>` | **external**: signed executable in `<ShareDir>/plugins/` | anything else: native S3, rclone, a client's storage | as declared in its manifest |
 
-- **Config**: `backup-archive-mode` becomes the plugin name plus its settings
-  (`plugin-config.<name>`, as the log plugins). `restic-local` / `restic-sftp` /
+- **Config**: `backup-archive-mode` becomes the cluster's archive list, each entry a plugin
+  name plus its settings (`plugin-config.<name>`, as the log plugins). `restic-local` / `restic-sftp` /
   `restic-aws` migrate to `archive-restic` with its backend setting; the legacy
   `BackupRestic*` bools go away, so mode and flags can no longer disagree.
 - **Manifest**: `<bin>.manifest.json` as for the log plugins (`description`, `tier`,
@@ -129,11 +157,14 @@ type ArchiveCaps struct {
 ## Plan
 
 1. the interface and the internal `archive-restic` plugin wrapping today's code; the queue,
-   retention decisions and remove-original moved into repman; `ArchiveRef` in metadata;
-   no behaviour change, the restic regtests must pass unchanged;
+   retention decisions and remove-original moved into repman; the archive list (one
+   entry, migrated from `backup-archive-mode`) and `ArchiveRefs` in metadata; no behaviour
+   change, the restic regtests must pass unchanged;
 2. restic syntax out of cluster code (S3 resolution, env, tags, filters into the plugin);
    the mode migration; BAU from `Stats` (and the remote check bug, its own issue);
-3. protected refs in retention, and verification of the archived copy;
+3. N archives: per-archive policy, push to each, read preference, remove-original over all
+   archives, copy between archives; protected refs in retention, and verification of the
+   archived copy;
 4. the external wire, loader, manifest capabilities, signature, states;
 5. the generic routes and GUI;
 6. a first external plugin, to prove the boundary.
@@ -142,8 +173,6 @@ type ArchiveCaps struct {
 
 - **Tiers**: is `archive-restic` free (it is today), and which external plugins are pro or
   enterprise?
-- **Several archives per cluster**: one primary plus copies (local then S3, as
-  `restic copy` does today), or one archive only?
 - **Backup streaming** (`backup-streaming*`): keep it as a filesystem mount outside the
   family, or retire it once an S3 archive plugin exists?
 - **Binlogs and WAL**: push them as their own artifacts (one ref per segment range)
