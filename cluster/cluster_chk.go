@@ -352,7 +352,7 @@ func (cluster *Cluster) isMaxscaleSupectRunning() bool {
 	m := mxsProxy.newMaxscaleClient()
 	err := m.Connect()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not connect to MaxScale:", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not connect to MaxScale: %v", err)
 		return false
 	}
 	defer m.Close()
@@ -778,7 +778,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) string {
 	var md5Sum string
 	err = Conn.QueryRowx("SELECT CONCAT( \"SUM(CRC32(CONCAT(\" , GROUP_CONCAT( CONCAT( \"IFNULL(\" , COLUMN_NAME, \",'N')\")),\")))\") as fields FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA ='" + schema + "' AND TABLE_NAME='" + table + "'").Scan(&md5Sum)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not get SQL md5Sum", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ERROR: Could not get SQL md5Sum %v", err)
 		t.TableSync = "NA"
 		cluster.master.DictTables.Set(schema+"."+table, t)
 		return "NA"

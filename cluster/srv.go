@@ -1143,7 +1143,7 @@ func (server *ServerMonitor) ProcessFailedSlave() {
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Replication error script complete:", string(out))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Replication error script complete: %v", string(out))
 		}
 		if server.HasReplicationSQLThreadRunning() && cluster.Conf.ReplicationRestartOnSQLErrorMatch != "" {
 			ss, err := server.GetSlaveStatus(server.ReplicationSourceName)
@@ -1608,7 +1608,7 @@ func (server *ServerMonitor) Refresh() error {
 			var sid uint64
 			sid, err = strconv.ParseUint(strconv.FormatUint(crc64.Checksum([]byte(server.SlaveStatus.MasterHost.String+server.SlaveStatus.MasterPort.String), cluster.GetCrcTable()), 10), 10, 64)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PG Could not assign server_id s", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "PG Could not assign server_id: %v", err)
 			}
 			// the primary is one of the monitored servers: use ITS internal id, which is
 			// built from its monitored address (name + domain + port) and is what the
@@ -2542,7 +2542,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	if cluster.Conf.MultiMasterGrouprep {
 		//MySQL group replication
 		logs, err = server.ChangeMaster(cluster.GetChangeMasterBaseOptForReplGroup(server))
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Group Replication bootstrapped  for", server.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Group Replication bootstrapped for %v", server.URL)
 	} else if !cluster.Conf.ForceSlaveNoGtid && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 		//mariadb using GTID
 		master.Refresh()

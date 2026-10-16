@@ -11,7 +11,8 @@ import (
 
 // published holds a value the monitor writes and the API reads: each Store publishes a
 // new copy at once, so a reader never sees half of a write (a string or a slice header
-// is several words). No lock on the monitor tick (F2). The JSON is the value itself.
+// is several words). No lock on the monitor tick (F2). The JSON is the value itself,
+// both ways: the API deep-copies a server through JSON and the CLI decodes it.
 type published[T any] struct {
 	p atomic.Pointer[T]
 }
@@ -31,4 +32,13 @@ func (a *published[T]) Load() T {
 
 func (a *published[T]) MarshalJSON() ([]byte, error) {
 	return json.Marshal(a.Load())
+}
+
+func (a *published[T]) UnmarshalJSON(data []byte) error {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	a.Store(v)
+	return nil
 }

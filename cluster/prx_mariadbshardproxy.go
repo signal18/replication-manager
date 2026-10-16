@@ -732,7 +732,7 @@ func (cluster *Cluster) ShardProxyReshardTable(proxy *MariadbShardProxy, schema 
 				err := myconn.QueryRow(query).Scan(&res)
 				//	err = cluster.RunQueryWithLog(pr.ShardProxy, query)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "copy error...", err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "copy error... %v", err)
 					if ct == 2 {
 						return err
 					}

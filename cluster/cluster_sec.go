@@ -310,7 +310,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 			err = cluster.ProvisionRotatePasswords(new_password_db)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password %v", err)
 			}
 
 			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
@@ -416,7 +416,7 @@ func (cluster *Cluster) RotatePasswords() error {
 		}
 		err := cluster.ProvisionRotatePasswords(new_password_db)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password %v", err)
 		}
 
 		if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {

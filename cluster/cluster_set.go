@@ -1270,7 +1270,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 		}
 		err := cluster.ProvisionRotatePasswords(cluster.GetDbPass())
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password %v", err)
 		}
 	}
 }

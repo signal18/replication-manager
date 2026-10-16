@@ -582,7 +582,7 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	var count int
 	err = cluster.master.Conn.QueryRowx("select count(*) from " + table).Scan(&count)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could count record in bench table", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could count record in bench table %v", err)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Number of rows master table %s = %d %s", table, count, cluster.master.URL)
 	}
@@ -591,7 +591,7 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 
 		err = cluster.master.Conn.QueryRowx("select max(val) from " + table).Scan(&max)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could get max val in bench table", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could get max val in bench table %v", err)
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Max Value in bench table %s = %d %s", table, max, cluster.master.URL)
 		}
@@ -616,7 +616,7 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 		if cluster.benchmarkType == "table" {
 			err = s.Conn.QueryRowx("select max(val) from " + table).Scan(&maxslave)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could get max val in bench table", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could get max val in bench table %v", err)
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Max Value in bench table %s = %d %s", table, maxslave, s.URL)
 			}

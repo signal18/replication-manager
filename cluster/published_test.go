@@ -58,3 +58,31 @@ func TestPublishedJSON(t *testing.T) {
 		t.Fatalf("got %s\nwant %s", out, want)
 	}
 }
+
+// the API masks a server through a JSON round trip (topology/master, topology/slaves)
+// and the CLI decodes the same JSON: a published field must decode what it encodes
+func TestPublishedServerRoundTrip(t *testing.T) {
+	srv := &ServerMonitor{}
+	srv.GraphiteHost.Store("db1.example.test")
+	data, err := json.Marshal(srv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var copy *ServerMonitor
+	if err := json.Unmarshal(data, &copy); err != nil {
+		t.Fatal(err)
+	}
+	if got := copy.GraphiteHost.Load(); got != "db1.example.test" {
+		t.Fatalf("graphiteHost %q", got)
+	}
+
+	var view struct {
+		Credentials published[[]CredentialInfo] `json:"credentials"`
+	}
+	if err := json.Unmarshal([]byte(`{"credentials":[{"key":"db-servers-credential","user":"root"}]}`), &view); err != nil {
+		t.Fatal(err)
+	}
+	if c := view.Credentials.Load(); len(c) != 1 || c[0].User != "root" {
+		t.Fatalf("credentials %+v", c)
+	}
+}

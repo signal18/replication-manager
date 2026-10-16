@@ -2580,7 +2580,7 @@ func (cluster *Cluster) FailoverForce() error {
 	}
 	err = sf.read()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not read values from state file:", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not read values from state file: %v", err)
 	} else {
 		cluster.FailoverCtr = int(sf.Count)
 		cluster.FailoverTs = sf.Timestamp

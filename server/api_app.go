@@ -623,7 +623,7 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 			var app cluster.App
 			err := json.Unmarshal(data, &app)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
@@ -631,7 +631,7 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 			e.SetIndent("", "\t")
 			err = e.Encode(app)
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
@@ -1299,14 +1299,14 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 			snapshot, snapErr := json.Marshal(node.AppConfig.Deployment)
 			node.Unlock()
 			if snapErr != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", snapErr)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", snapErr)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
 
 			var depCopy config.Deployment
 			if unmarshalErr := json.Unmarshal(snapshot, &depCopy); unmarshalErr != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: ", unmarshalErr)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error decoding JSON: %v", unmarshalErr)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
@@ -1314,7 +1314,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 			dep, err := json.MarshalIndent(&depCopy, "", "\t")
 			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
@@ -1323,7 +1323,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				if v.Type == "secret" {
 					dep, err = sjson.SetBytes(dep, fmt.Sprintf("variables.%d.value", vidx), "*****")
 					if err != nil {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: %v", err)
 						http.Error(w, "Encoding error", http.StatusInternalServerError)
 						return
 					}
@@ -1333,7 +1333,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 			for gidx := range depCopy.Storages.GitClones {
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.gitClones.%d.pass", gidx), "*****")
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: %v", err)
 					http.Error(w, "Encoding error", http.StatusInternalServerError)
 					return
 				}
@@ -1342,7 +1342,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 			for midx := range depCopy.Storages.S3Mounts {
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.s3Mounts.%d.secretkey", midx), "*****")
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: %v", err)
 					http.Error(w, "Encoding error", http.StatusInternalServerError)
 					return
 				}
@@ -1877,7 +1877,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// unresolved/incomplete path mappings at provisioning time.
 				err := deployment.ResolvePath(pm)
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error resolving path after modification: ", err)
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error resolving path after modification: %v", err)
 				}
 			default:
 				http.Error(w, "Invalid field", http.StatusInternalServerError)
