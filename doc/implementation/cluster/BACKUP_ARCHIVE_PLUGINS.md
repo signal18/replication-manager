@@ -114,8 +114,9 @@ with two backends). `none` is simply an empty list.
   detached: it stays in the list with its content, still invoiced (some archives are
   billed on their content), shown with its size. **Remove always deletes the content**,
   then takes the archive out of the list, so its invoice stops: content left behind would
-  be invoiced and no longer visible. Refused while attached, and while the archive holds
-  the only copy of a backup (#1987). Exception: an archive attached read-only to another
+  be invoiced and no longer visible. No check (decided): removing the attached archive
+  detaches it first, and a backup whose only copy was there leaves the catalogue with it;
+  one confirmation shows the size deleted. Exception: an archive attached read-only to another
   cluster's content (#2089) only leaves this cluster's list; the source is invoiced for it.
 - **The backup catalogue is glued by name**: each entry's `ArchiveRefs` maps an archive
   name to its snapshot there. A rename rewrites the name in every catalogue entry glued to
