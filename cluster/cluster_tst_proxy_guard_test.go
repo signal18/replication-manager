@@ -22,8 +22,8 @@ func TestBenchmarkMethodsReturnErrorWithoutProxy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := tt.call(); err == nil || err.Error() != "No proxy" {
-				t.Fatalf("got error %v, want No proxy", err)
+			if err := tt.call(); err == nil || err.Error() != "No proxy and no master to benchmark" {
+				t.Fatalf("got error %v, want No proxy and no master to benchmark", err)
 			}
 		})
 	}
