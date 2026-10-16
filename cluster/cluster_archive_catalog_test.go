@@ -5,6 +5,7 @@
 package cluster
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -126,5 +127,27 @@ func TestArchiveListSizesAndBackups(t *testing.T) {
 		if e.Name == "archive-bso-s3" && (e.Size == nil || e.Size.Bytes != 42) {
 			t.Fatalf("size after rename and reload %+v", e.Size)
 		}
+	}
+}
+
+// #2091: a listed archive carries its state with its config, its secrets by name only
+func TestArchiveListEntryJSON(t *testing.T) {
+	e := ArchiveListEntry{
+		ArchiveConfig: config.ArchiveConfig{Name: "archive-s3-1", Plugin: config.ConstArchivePluginResticS3, Settings: map[string]interface{}{"aws-bucket": "bk", "password": "enc"}},
+		Attached:      true, Status: ArchiveOpSizing, Size: &ArchiveSize{Bytes: 7}, Backups: 3,
+	}
+	data, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["name"] != "archive-s3-1" || got["attached"] != true || got["status"] != ArchiveOpSizing || got["backups"] != float64(3) || got["size"].(map[string]interface{})["bytes"] != float64(7) {
+		t.Fatalf("entry %s", data)
+	}
+	if settings := got["settings"].(map[string]interface{}); settings["password"] != nil || settings["aws-bucket"] != "bk" {
+		t.Fatalf("settings %v", settings)
 	}
 }

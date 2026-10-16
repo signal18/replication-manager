@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -39,6 +40,33 @@ type ArchiveListEntry struct {
 	Size *ArchiveSize `json:"size,omitempty"`
 	// Backups is the number of backups of the catalogue glued to the archive
 	Backups int `json:"backups"`
+}
+
+// MarshalJSON writes the archive (its secrets by name only) and its state: the embedded
+// ArchiveConfig's own MarshalJSON would otherwise be promoted and drop the state.
+func (e ArchiveListEntry) MarshalJSON() ([]byte, error) {
+	archive, err := json.Marshal(e.ArchiveConfig)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]json.RawMessage{}
+	if err := json.Unmarshal(archive, &out); err != nil {
+		return nil, err
+	}
+	type state struct {
+		Attached bool         `json:"attached"`
+		Status   string       `json:"status,omitempty"`
+		Size     *ArchiveSize `json:"size,omitempty"`
+		Backups  int          `json:"backups"`
+	}
+	st, err := json.Marshal(state{e.Attached, e.Status, e.Size, e.Backups})
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(st, &out); err != nil {
+		return nil, err
+	}
+	return json.Marshal(out)
 }
 
 // ArchiveListResult is the archive list, the attached archive and the plugins' configs.
