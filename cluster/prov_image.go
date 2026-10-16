@@ -5,6 +5,7 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -70,6 +71,27 @@ func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 		return err
 	}
 	repo, tag := releases.SplitImage(declared)
+	// A cluster already running without a record (provisioned before #1862) is pinned on
+	// the release it runs: resolving its pointer against today's list would put another
+	// release, maybe another major, in the service definitions, applied at its next restart
+	// without anyone asking (preprod belair: latest -> 13.0.2 under 11.8.6). Only an upgrade
+	// (force) resolves the pointer again. A running release the list does not know keeps
+	// the declared name, no record: never today's pointer either.
+	if !force {
+		if running := cluster.runningDatabaseRelease(declared); running != "" {
+			if !cat.InList(repo, running) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+					"prov-db-image %s: the running release %s is not in the %s, the service definition keeps the declared name", declared, running, cat.Source)
+				return nil
+			}
+			record := declared + "=" + repo + ":" + running
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"prov-db-image %s pinned on %s:%s, the release the cluster runs (no record yet): only an upgrade moves it", declared, repo, running)
+			cluster.Conf.ProvDbImgResolved = record
+			cluster.Save()
+			return nil
+		}
+	}
 	release := cat.Resolve(repo, releases.FlavorOfImage(declared), tag)
 	if release == tag {
 		// Not in the list: the input comes back unchanged and the service definition
@@ -90,6 +112,19 @@ func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 		cluster.Save()
 	}
 	return nil
+}
+
+// runningDatabaseRelease is the release the cluster's primary runs (x.y.z), "" when no
+// primary is known yet (a provision) or its flavor is not the declared image's.
+func (cluster *Cluster) runningDatabaseRelease(declared string) string {
+	m := cluster.GetMaster()
+	if m == nil || m.DBVersion == nil || m.DBVersion.Major == 0 {
+		return ""
+	}
+	if !strings.EqualFold(m.DBVersion.Flavor, releases.FlavorOfImage(declared)) {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d", m.DBVersion.Major, m.DBVersion.Minor, m.DBVersion.Release)
 }
 
 // DBImageAutoUpgradeEnv says whether the database container gets MARIADB_AUTO_UPGRADE=1:

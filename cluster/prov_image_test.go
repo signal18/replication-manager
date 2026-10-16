@@ -6,6 +6,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/releases"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 func TestDeployImageRule(t *testing.T) {
@@ -133,5 +134,36 @@ func TestPlanRollingUpgradeFromEmbeddedList(t *testing.T) {
 	}
 	if _, err := cl.PrepareRollingUpgrade("next-lts", ""); err == nil {
 		t.Fatal("prepare must refuse to move a pinned image")
+	}
+}
+
+// A running cluster without a record is pinned on the release its primary runs, never on
+// today's pointer (preprod belair: latest -> 13.0.2 under 11.8.6); only an upgrade resolves
+// the pointer again. A running release the list does not know keeps the declared name.
+func TestResolveDatabaseImageRunningCluster(t *testing.T) {
+	loadImageCatalog = func(c *Cluster) (*releases.Catalog, error) {
+		return &releases.Catalog{Table: releases.Table{LTS: map[string][]string{"mariadb": {"11.8"}}},
+			Tags: map[string][]releases.Tag{"mariadb": {{Name: "13.0.2"}, {Name: "11.8.9"}, {Name: "11.8.8"}}}, Source: "test"}, nil
+	}
+	defer func() { loadImageCatalog = nil }()
+	running := func(maj, min, rel int) *Cluster {
+		v, _ := version.NewVersion("MariaDB", maj, min, rel)
+		cl := &Cluster{Name: "t", Conf: &config.Config{ProvDbImg: "mariadb:latest", ProvOrchestrator: config.ConstOrchestratorOpenSVC}}
+		cl.master = &ServerMonitor{DBVersion: v}
+		return cl
+	}
+
+	cl := running(11, 8, 8)
+	if err := cl.ResolveDatabaseImage(false); err != nil || cl.Conf.ProvDbImgResolved != "mariadb:latest=mariadb:11.8.8" {
+		t.Fatalf("a running cluster is pinned on its running release: err=%v record=%q", err, cl.Conf.ProvDbImgResolved)
+	}
+	if err := cl.ResolveDatabaseImage(true); err != nil || cl.deployImage() != "mariadb:13.0.2" {
+		t.Fatalf("an upgrade (force) resolves the pointer: err=%v image=%s", err, cl.deployImage())
+	}
+
+	cl = running(11, 8, 6)
+	if err := cl.ResolveDatabaseImage(false); err != nil || cl.Conf.ProvDbImgResolved != "" || cl.deployImage() != "mariadb:latest" {
+		t.Fatalf("a running release absent from the list keeps the declared name, never today's pointer: err=%v record=%q image=%s",
+			err, cl.Conf.ProvDbImgResolved, cl.deployImage())
 	}
 }
