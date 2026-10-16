@@ -361,7 +361,8 @@ func (conf *Config) ProjectArchive() {
 }
 
 // projectArchive: a pinned key keeps its value; a setting the archive does not hold goes
-// back to its default, so a switch never keeps the previous archive's value. No archive
+// back to its default (no default: its zero value), so a switch never keeps the previous
+// archive's value. No archive
 // connected: the mode is none.
 func (conf *Config) projectArchive() {
 	a := conf.connectedArchive()
@@ -391,6 +392,8 @@ func (conf *Config) projectArchive() {
 				setField(f, v)
 			} else if def, ok := conf.DefaultFlagMap[key]; ok {
 				setField(f, def)
+			} else {
+				f.Set(reflect.Zero(f.Type()))
 			}
 		}
 	}
