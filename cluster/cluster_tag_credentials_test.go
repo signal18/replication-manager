@@ -6,6 +6,8 @@ package cluster
 
 import (
 	"testing"
+
+	"github.com/signal18/replication-manager/config/manager"
 )
 
 // #2017: a credential set at runtime, through the same setters the API calls, survives
@@ -13,6 +15,7 @@ import (
 // which rebuilds the secrets from the config maps loaded at start.
 func TestTagChangeKeepsRuntimeCredentials(t *testing.T) {
 	cl, _ := newTestClusterServer(t)
+	cl.ConfigManager = &manager.ConfigManager{} // a save is an event, no I/O
 	cl.Conf.DynamicFlagMap = map[string]interface{}{
 		"replication-credential":         "repl:loaded-at-start",
 		"backup-verification-credential": "verif:loaded-at-start",
