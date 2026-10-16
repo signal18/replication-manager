@@ -40,6 +40,8 @@ type ArchiveListEntry struct {
 	Size *ArchiveSize `json:"size,omitempty"`
 	// Backups is the number of backups of the catalogue glued to the archive
 	Backups int `json:"backups"`
+	// Location is the repository the archive runs, as resolved from its settings
+	Location string `json:"location"`
 }
 
 // MarshalJSON writes the archive (its secrets by name only) and its state: the embedded
@@ -58,8 +60,9 @@ func (e ArchiveListEntry) MarshalJSON() ([]byte, error) {
 		Status   string       `json:"status,omitempty"`
 		Size     *ArchiveSize `json:"size,omitempty"`
 		Backups  int          `json:"backups"`
+		Location string       `json:"location"`
 	}
-	st, err := json.Marshal(state{e.Attached, e.Status, e.Size, e.Backups})
+	st, err := json.Marshal(state{e.Attached, e.Status, e.Size, e.Backups, e.Location})
 	if err != nil {
 		return nil, err
 	}
@@ -98,10 +101,14 @@ func (cluster *Cluster) ArchiveList() ArchiveListResult {
 		})
 	}
 	live := cluster.attachedArchiveSize()
+	locations := make(map[string]string, len(list))
+	for _, a := range list {
+		locations[a.Name] = cluster.ArchiveLocation(a)
+	}
 	cluster.archiveOpsMu.Lock()
 	cluster.loadArchiveSizesLocked()
 	for _, a := range list {
-		e := ArchiveListEntry{ArchiveConfig: a, Attached: a.Name == attached, Status: cluster.archiveOps[a.Name], Backups: backups[a.Name]}
+		e := ArchiveListEntry{ArchiveConfig: a, Attached: a.Name == attached, Status: cluster.archiveOps[a.Name], Backups: backups[a.Name], Location: locations[a.Name]}
 		if e.Attached && live != nil {
 			e.Size = live
 		} else if s, ok := cluster.archiveSizes[a.Name]; ok {
@@ -112,6 +119,28 @@ func (cluster *Cluster) ArchiveList() ArchiveListResult {
 	}
 	cluster.archiveOpsMu.Unlock()
 	return out
+}
+
+// ArchiveLocation is the repository archive a runs.
+func (cluster *Cluster) ArchiveLocation(a config.ArchiveConfig) string {
+	return cluster.resticRepoPathFor(cluster.Conf.ConfigForArchive(a))
+}
+
+// archiveSharingLocation is another archive of the list running the same repository as a
+// ("" none): two names on one repository would mix their backups, and removing one would
+// delete the other's content.
+func (cluster *Cluster) archiveSharingLocation(a config.ArchiveConfig) (string, string) {
+	loc := cluster.ArchiveLocation(a)
+	if loc == "" {
+		return "", ""
+	}
+	list, _ := cluster.Conf.ArchiveList()
+	for _, o := range list {
+		if o.Name != a.Name && cluster.ArchiveLocation(o) == loc {
+			return o.Name, loc
+		}
+	}
+	return "", loc
 }
 
 func (cluster *Cluster) setArchiveOp(name, status string) {
@@ -222,6 +251,9 @@ func (cluster *Cluster) PutArchive(spec config.ArchiveSpec, create, upsert bool)
 	if m, _ := config.ArchivePlugin(a.Plugin); !m.Can(config.ConstArchiveCapProbe) {
 		return "", "", fmt.Errorf("archive %s: plugin %s cannot open a repository", a.Name, a.Plugin)
 	}
+	if other, loc := cluster.archiveSharingLocation(a); other != "" {
+		return "", "", fmt.Errorf("archive %s would run the repository of archive %s (%s): choose another location", a.Name, other, loc)
+	}
 	probe, err := cluster.ProbeArchive(a)
 	if err != nil {
 		return "", "", err
@@ -270,6 +302,9 @@ func (cluster *Cluster) RemoveArchive(name string) error {
 	}
 	if m, _ := config.ArchivePlugin(a.Plugin); !m.Can(config.ConstArchiveCapRemove) {
 		return fmt.Errorf("archive %s: plugin %s cannot delete its content", name, a.Plugin)
+	}
+	if other, loc := cluster.archiveSharingLocation(*a); other != "" {
+		return fmt.Errorf("archive %s runs the same repository as archive %s (%s): removing it would delete the content of both; change the location of one first", name, other, loc)
 	}
 	switch cluster.archiveOp(name) {
 	case ArchiveOpRemoving:

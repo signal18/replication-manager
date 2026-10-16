@@ -151,3 +151,21 @@ func TestArchiveListEntryJSON(t *testing.T) {
 		t.Fatalf("settings %v", settings)
 	}
 }
+
+// #2091: two archives resolving to one repository are refused: a path inside the default
+// archive folder runs the default repository
+func TestArchiveSharingLocation(t *testing.T) {
+	cl := newCatalogueTestCluster(t)
+	cl.Conf.WorkingDir = "/var/lib/replication-manager"
+	cl.Conf.Archives = []config.ArchiveConfig{
+		{Name: "a", Plugin: config.ConstArchivePluginResticLocal, Settings: map[string]interface{}{}},
+		{Name: "b", Plugin: config.ConstArchivePluginResticLocal, Settings: map[string]interface{}{"local-repository": "/var/lib/replication-manager/backups/archive/other"}},
+		{Name: "c", Plugin: config.ConstArchivePluginResticLocal, Settings: map[string]interface{}{"local-repository": "/data/restic"}},
+	}
+	if other, loc := cl.archiveSharingLocation(cl.Conf.Archives[1]); other != "a" || loc != "/var/lib/replication-manager/backups/archive/c1" {
+		t.Fatalf("b inside the default folder: shares %q at %q", other, loc)
+	}
+	if other, loc := cl.archiveSharingLocation(cl.Conf.Archives[2]); other != "" || loc != "/data/restic/c1" {
+		t.Fatalf("c: shares %q at %q", other, loc)
+	}
+}

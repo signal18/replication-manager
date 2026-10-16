@@ -636,6 +636,27 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	return cluster.resticEnvFor(cluster.Conf)
 }
 
+// resticRepoPathFor is the repository conf runs: an S3 URL, an sftp path, or the local path
+// after the repository policy (a path inside the default archive folder is the default
+// one, the cluster's name appended). It logs nothing and creates nothing.
+func (cluster *Cluster) resticRepoPathFor(conf *config.Config) string {
+	if conf.BackupResticAws {
+		res, err := resolveResticS3(conf, cluster.Name, nil)
+		if err != nil {
+			return ""
+		}
+		return res.RepoPath
+	}
+	localRepoPath, appendCluster := resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, nil)
+	if localRepoPath == "" {
+		return filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+	}
+	if appendCluster && shouldAppendClusterNameLocal(localRepoPath, cluster.Name) {
+		return filepath.Join(localRepoPath, cluster.Name)
+	}
+	return localRepoPath
+}
+
 // resticEnvFor is the restic environment of conf: the cluster's config, or a copy running
 // another archive of its list (config.ConfigForArchive, #2091).
 func (cluster *Cluster) resticEnvFor(conf *config.Config) []string {
@@ -801,14 +822,42 @@ func (cluster *Cluster) CheckResticErrors() {
 // returned option may be upgraded to restic-sftp when the resolved path matches
 // SFTP syntax. keyHint is passed through unchanged.
 func (cluster *Cluster) resticResolveSavedCopySource(requestedMode, keyHint string) (backupmgr.ResticCopySourceOption, error) {
-	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	return cluster.resticResolveCopySourceFrom(cluster.Conf, requestedMode, keyHint)
+}
+
+// resticResolveArchiveCopySource resolves an archive of the list as a copy source (#2091),
+// from a config copy running it. The attached archive is the destination, never a source.
+func (cluster *Cluster) resticResolveArchiveCopySource(name, keyHint string) (backupmgr.ResticCopySourceOption, error) {
+	list, attached := cluster.Conf.ArchiveList()
+	if name == attached {
+		return backupmgr.ResticCopySourceOption{}, fmt.Errorf("archive %s is the attached archive: the copy goes into it", name)
+	}
+	for _, a := range list {
+		if a.Name != name {
+			continue
+		}
+		mode, ok := config.ArchiveModeForPlugin(a.Plugin)
+		if !ok {
+			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("archive %s: plugin %s cannot be a copy source", name, a.Plugin)
+		}
+		if mode == config.ConstBackupArchiveModeResticSftp {
+			mode = config.ConstBackupArchiveModeResticLocal // the path tells sftp
+		}
+		return cluster.resticResolveCopySourceFrom(cluster.Conf.ConfigForArchive(a), mode, keyHint)
+	}
+	return backupmgr.ResticCopySourceOption{}, fmt.Errorf("unknown archive %s", name)
+}
+
+// resticResolveCopySourceFrom resolves the repository conf runs as a copy source.
+func (cluster *Cluster) resticResolveCopySourceFrom(conf *config.Config, requestedMode, keyHint string) (backupmgr.ResticCopySourceOption, error) {
+	password := conf.GetDecryptedValue("backup-restic-password")
 	if password == "" {
 		return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved source config is incomplete: backup-restic-password is empty")
 	}
 
 	switch requestedMode {
 	case config.ConstBackupArchiveModeResticLocal:
-		localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+		localRepoPath, appendCluster := resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
 		var repoPath string
 		if localRepoPath != "" {
 			repoPath = localRepoPath
@@ -816,7 +865,7 @@ func (cluster *Cluster) resticResolveSavedCopySource(requestedMode, keyHint stri
 				repoPath = filepath.Join(repoPath, cluster.Name)
 			}
 		} else {
-			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+			repoPath = filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
 		}
 		if repoPath == "" {
 			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved Local/SFTP source config is incomplete: effective repository path could not be resolved")
@@ -840,9 +889,13 @@ func (cluster *Cluster) resticResolveSavedCopySource(requestedMode, keyHint stri
 		// have since switched the destination away from AWS while the saved-source
 		// preset still points at an S3 repository.  We temporarily override the aws
 		// flag to force S3 resolution.
-		confCopy := *cluster.Conf
+		confCopy := *conf
 		confCopy.BackupResticAws = true
-		res, err := resolveResticS3(&confCopy, cluster.Name, cluster)
+		probeCache := cluster
+		if conf != cluster.Conf {
+			probeCache = nil // the S3 probe cache is the attached archive's
+		}
+		res, err := resolveResticS3(&confCopy, cluster.Name, probeCache)
 		if err != nil {
 			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved S3 source config is incomplete: %w", err)
 		}
@@ -884,7 +937,17 @@ func (cluster *Cluster) ResticCopyRepoWithOptions(opt backupmgr.ResticCopyOption
 	// requested backend type into a concrete source option before validation/queueing.
 	// Hybrid payloads that mix use_saved_config with inline manual fields are rejected
 	// to avoid ambiguous resolution (Guardrail S1/S3).
-	if opt.Source.UseSavedConfig {
+	if opt.Source.Archive != "" {
+		src := opt.Source
+		if src.UseSavedConfig || src.Repository != "" || src.Password != "" || src.AWS != nil {
+			return fmt.Errorf("archive-source payload is invalid: name the archive only")
+		}
+		resolved, err := cluster.resticResolveArchiveCopySource(src.Archive, src.KeyHint)
+		if err != nil {
+			return err
+		}
+		opt.Source = resolved
+	} else if opt.Source.UseSavedConfig {
 		src := opt.Source
 		hasInline := src.Repository != "" || src.Password != "" || src.AWS != nil
 		if hasInline {
