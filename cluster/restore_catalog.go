@@ -135,12 +135,8 @@ func (cluster *Cluster) provenStillUnchanged(e *BackupCatalogEntry) bool {
 	if e == nil || !e.Proven || p == nil {
 		return false
 	}
-	for k, rec := range *p {
-		if k.server == e.Server && k.dest == e.Path {
-			return artifactUnchangedBounded(k.dest, &rec, backupProofWalkMax)
-		}
-	}
-	return false
+	rec, ok := (*p)[backupProofKey{e.Server, e.ID, e.Path}]
+	return ok && artifactUnchangedBounded(e.Path, &rec, backupProofWalkMax)
 }
 
 // backupMetaToCatalog maps one BackupMetadata (Ahmad's) to a catalog entry so
@@ -181,6 +177,7 @@ func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCa
 	}
 
 	return BackupCatalogEntry{
+		ID:        m.Id,
 		Server:    serverURL,
 		Location:  loc,
 		Kind:      kind,

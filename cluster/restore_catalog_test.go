@@ -335,6 +335,33 @@ func TestProvenStillUnchanged(t *testing.T) {
 	if c.provenStillUnchanged(nil) || c.provenStillUnchanged(&BackupCatalogEntry{Server: "db1:3306", Path: m.Dest}) {
 		t.Fatal("no entry, or one not proven: not proven at use")
 	}
+	other := cat[0]
+	other.ID++
+	if c.provenStillUnchanged(&other) {
+		t.Fatal("another backup id with the same server and file: not this proof")
+	}
+}
+
+// only the file's ctime changes after the refresh (a chmod: same content, size and
+// modification time): the use-time check sees it
+func TestProvenStillUnchangedCtimeOnly(t *testing.T) {
+	requireArtifactIdentity(t)
+	m := provenTestBackup(t, 12)
+	sv := &ServerMonitor{URL: "db1:3306"}
+	sv.LastBackupMeta.Logical = m
+	c := &Cluster{Servers: []*ServerMonitor{sv}}
+	c.refreshBackupProofs()
+	cat := c.buildBackupCatalog()
+	if len(cat) != 1 || !c.provenStillUnchanged(&cat[0]) {
+		t.Fatalf("precondition: proven and unchanged, catalog %+v", cat)
+	}
+	if err := os.Chmod(m.Dest, 0640); err != nil {
+		t.Fatal(err)
+	}
+	onlyCtimeChanged(t, m.Dest, m.Verification.Artifact)
+	if c.provenStillUnchanged(&cat[0]) {
+		t.Fatal("a file whose ctime changed after the refresh must not be used as proven")
+	}
 }
 
 // #2023: with a selector requiring a proven backup, a rejoin restores only a proven one: none
@@ -404,17 +431,32 @@ func TestArtifactUnchangedSplitdumpCtime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(10 * time.Millisecond) // a later ctime than the recorded one
 	if err := os.WriteFile(data, []byte("APP.T.00000.SQL.GZ"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(data, info.ModTime(), info.ModTime()); err != nil {
 		t.Fatal(err)
 	}
-	if fp, _ := restoreArtifactFingerprint(dir); fp.Files != rec.Files || fp.Size != rec.Size || !fp.ModTime.Equal(rec.ModTime) {
-		t.Fatalf("precondition: same count, size and modification time, got %+v want %+v", fp, rec)
-	}
+	onlyCtimeChanged(t, dir, rec)
 	if artifactUnchanged(dir, rec) {
 		t.Fatal("a file rewritten in place, size and modification time put back, must not match")
+	}
+}
+
+// onlyCtimeChanged takes the fingerprint of path now and checks that it differs from rec by
+// its ctime alone: the same files, size, modification time and inode. The test is skipped
+// when the filesystem's ctime did not change (a resolution too coarse to tell the change),
+// since it could then not show that the ctime is what a mismatch comes from.
+func onlyCtimeChanged(t *testing.T, path string, rec *backupmgr.ArtifactFingerprint) {
+	t.Helper()
+	fp, err := restoreArtifactFingerprint(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fp.ChangeTime.Equal(rec.ChangeTime) {
+		t.Skipf("the filesystem's ctime did not change (%s): its resolution can not tell this change", fp.ChangeTime)
+	}
+	if fp.Files != rec.Files || fp.Size != rec.Size || !fp.ModTime.Equal(rec.ModTime) || fp.Inode != rec.Inode {
+		t.Fatalf("precondition: only the ctime changes, got %+v recorded %+v", fp, rec)
 	}
 }

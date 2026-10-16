@@ -263,7 +263,8 @@ verification read it. A file replaced or rewritten since, even with its size and
 modification time put back, is read again. Backups verified before the inode and
 change time were recorded (replication-manager versions up to 3.1.44) are read
 again once by their next restore, and are not proven, until they are verified
-again.
+again: after an upgrade, run a test restore of a backup that must be proven
+(Test restore, or `replication-manager-cli backup verify <id> --level restore`).
 
 ## Large backups
 
