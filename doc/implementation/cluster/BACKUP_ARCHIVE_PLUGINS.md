@@ -117,6 +117,10 @@ with two backends). `none` is simply an empty list.
   be invoiced and no longer visible. Refused while attached, and while the archive holds
   the only copy of a backup (#1987). Exception: an archive attached read-only to another
   cluster's content (#2089) only leaves this cluster's list; the source is invoiced for it.
+- **The backup catalogue is glued by name**: each entry's `ArchiveRefs` maps an archive
+  name to its snapshot there. A rename rewrites the name in every catalogue entry glued to
+  that archive (decided, rather than a hidden archive id). Entries glued to a detached
+  archive stay listed with their archive name; restoring from one needs it attached.
 - Getting rid of an old, heavy archive: create `archive-local-2`, attach it
   (`archive-local-1` is detached), remove `archive-local-1`.
 - The cluster is **connected to one archive**: `backup-archive-name` (a plain cluster
