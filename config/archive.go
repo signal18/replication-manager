@@ -5,6 +5,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sort"
@@ -30,8 +31,209 @@ const (
 	ConstArchivePluginResticS3    = "archive-restic-s3"
 )
 
-// ArchiveConfig is one entry of the archive list. Settings holds the plugin's own
-// settings; in this step they are the legacy backup-restic-* keys without their prefix.
+// ArchivePluginManifest is the config an archive plugin comes with: the typed settings an
+// entry of that plugin holds (secrets included) and what can be done with it. The add and
+// edit forms and their checks are drawn from it. The internal restic plugins have theirs
+// below; an external plugin ships it as <bin>.manifest.json.
+type ArchivePluginManifest struct {
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description"`
+	Settings     []ArchivePluginSetting `json:"settings"`
+	Capabilities []string               `json:"capabilities"`
+}
+
+// ArchivePluginSetting is one setting of a plugin's config.
+type ArchivePluginSetting struct {
+	Name   string   `json:"name"`
+	Type   string   `json:"type"`             // ConstArchiveSettingType*
+	Values []string `json:"values,omitempty"` // the allowed values of an enum
+}
+
+// Archive plugin setting types. A secret is held encrypted in the entry, read and written
+// through the credential chain, never shown (#2088).
+const (
+	ConstArchiveSettingTypeString = "string"
+	ConstArchiveSettingTypeInt    = "int"
+	ConstArchiveSettingTypeBool   = "bool"
+	ConstArchiveSettingTypeEnum   = "enum"
+	ConstArchiveSettingTypeSecret = "secret"
+)
+
+// Archive plugin capabilities.
+const (
+	ConstArchiveCapEdit   = "edit"   // its settings and secrets can be changed
+	ConstArchiveCapRemove = "remove" // its entry can be removed (never its repository)
+	ConstArchiveCapProbe  = "probe"  // opens an existing repository, or initialises a new one
+)
+
+// settings every restic plugin holds: tags, timeouts, retention, mount
+var archiveResticCommonSettings = []string{
+	"repo-append-cluster", "additional-env", "tags", "host", "timeout", "dump-timeout", "auto-init",
+	"purge-group-by", "purge-keep-tag", "purge-host", "purge-tag", "purge-path",
+	"purge-prune", "purge-prune-compact", "purge-prune-max-unused", "purge-prune-max-repack-size",
+	"purge-prune-repack-cacheable-only", "purge-prune-repack-small", "purge-prune-repack-uncompressed",
+	"mount-target-dir", "mount-host", "mount-tag", "mount-path", "mount-path-template", "mount-time-template",
+	"mount-allow-other", "mount-no-default-permissions", "mount-owner-root", "mount-no-lock",
+	"mount-verbose", "mount-quiet", "mount-recovery-enabled",
+}
+
+// enums of the restic settings
+var archiveResticEnums = map[string][]string{
+	"s3-mode": {ConstResticS3ModeAuto, ConstResticS3ModeNew, ConstResticS3ModeLegacy},
+}
+
+var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapRemove, ConstArchiveCapProbe}
+
+// resticSettings types each setting from the backup-restic-* field it replaces, so a type
+// is never written twice.
+func resticSettings(names []string, secrets ...string) []ArchivePluginSetting {
+	t := reflect.TypeOf(Config{})
+	byKey := map[string]reflect.Kind{}
+	for i := 0; i < t.NumField(); i++ {
+		if tag := strings.Split(t.Field(i).Tag.Get("mapstructure"), ",")[0]; tag != "" {
+			byKey[tag] = t.Field(i).Type.Kind()
+		}
+	}
+	out := make([]ArchivePluginSetting, 0, len(names)+len(secrets))
+	for _, name := range names {
+		st := ArchivePluginSetting{Name: name, Type: ConstArchiveSettingTypeString}
+		switch byKey[archiveLegacyPrefix+name] {
+		case reflect.Bool:
+			st.Type = ConstArchiveSettingTypeBool
+		case reflect.Int, reflect.Int32, reflect.Int64:
+			st.Type = ConstArchiveSettingTypeInt
+		}
+		if values, ok := archiveResticEnums[name]; ok {
+			st.Type, st.Values = ConstArchiveSettingTypeEnum, values
+		}
+		out = append(out, st)
+	}
+	for _, name := range secrets {
+		out = append(out, ArchivePluginSetting{Name: name, Type: ConstArchiveSettingTypeSecret})
+	}
+	return out
+}
+
+var (
+	archivePluginsOnce     sync.Once
+	archivePluginManifests map[string]ArchivePluginManifest
+)
+
+func archiveManifests() map[string]ArchivePluginManifest {
+	archivePluginsOnce.Do(func() {
+		archivePluginManifests = map[string]ArchivePluginManifest{
+			ConstArchivePluginResticLocal: {
+				Name:         ConstArchivePluginResticLocal,
+				Description:  "Restic repository on a local path",
+				Settings:     resticSettings(append([]string{"local-repository", "dir-mode", "file-mode", "purge-oldest-on-disk-space", "purge-oldest-on-disk-threshold"}, archiveResticCommonSettings...), "password"),
+				Capabilities: archiveResticCaps,
+			},
+			ConstArchivePluginResticSftp: {
+				Name:         ConstArchivePluginResticSftp,
+				Description:  "Restic repository over sftp (local-repository sftp:user@host:/path)",
+				Settings:     resticSettings(append([]string{"local-repository"}, archiveResticCommonSettings...), "password"),
+				Capabilities: archiveResticCaps,
+			},
+			ConstArchivePluginResticS3: {
+				Name:         ConstArchivePluginResticS3,
+				Description:  "Restic repository in an S3 bucket",
+				Settings:     resticSettings(append([]string{"repository", "aws-access-key-id", "aws-region", "aws-endpoint", "aws-bucket", "aws-prefix", "s3-mode"}, archiveResticCommonSettings...), "password", "aws-access-secret"),
+				Capabilities: archiveResticCaps,
+			},
+		}
+	})
+	return archivePluginManifests
+}
+
+// ArchivePlugin is the manifest of an archive plugin.
+func ArchivePlugin(name string) (ArchivePluginManifest, bool) {
+	m, ok := archiveManifests()[name]
+	return m, ok
+}
+
+// ArchivePlugins lists the archive plugin manifests, by name.
+func ArchivePlugins() []ArchivePluginManifest {
+	out := make([]ArchivePluginManifest, 0, len(archiveManifests()))
+	for _, m := range archiveManifests() {
+		out = append(out, m)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// Setting is the declared setting name.
+func (m ArchivePluginManifest) Setting(name string) (ArchivePluginSetting, bool) {
+	for _, st := range m.Settings {
+		if st.Name == name {
+			return st, true
+		}
+	}
+	return ArchivePluginSetting{}, false
+}
+
+// HasSetting: the plugin declares name, a setting that is not a secret.
+func (m ArchivePluginManifest) HasSetting(name string) bool {
+	st, ok := m.Setting(name)
+	return ok && st.Type != ConstArchiveSettingTypeSecret
+}
+
+// HasSecret: the plugin declares name, a secret.
+func (m ArchivePluginManifest) HasSecret(name string) bool {
+	st, ok := m.Setting(name)
+	return ok && st.Type == ConstArchiveSettingTypeSecret
+}
+
+func (m ArchivePluginManifest) Can(capability string) bool {
+	for _, c := range m.Capabilities {
+		if c == capability {
+			return true
+		}
+	}
+	return false
+}
+
+// Validate checks value against the setting's type (an enum's allowed values included).
+func (st ArchivePluginSetting) Validate(value string) error {
+	switch st.Type {
+	case ConstArchiveSettingTypeBool:
+		if _, err := strconv.ParseBool(value); err != nil {
+			return fmt.Errorf("%s: %q is not a bool", st.Name, value)
+		}
+	case ConstArchiveSettingTypeInt:
+		if _, err := strconv.ParseInt(value, 10, 64); err != nil {
+			return fmt.Errorf("%s: %q is not an integer", st.Name, value)
+		}
+	case ConstArchiveSettingTypeEnum:
+		for _, v := range st.Values {
+			if v == value {
+				return nil
+			}
+		}
+		return fmt.Errorf("%s: %q is not one of %s", st.Name, value, strings.Join(st.Values, ", "))
+	}
+	return nil
+}
+
+// archiveSecretKeys are the flat secrets an archive's secret replaces, by secret name: the
+// runtime reads them, the credential chain answers them from the connected archive (#2088).
+var archiveSecretKeys = map[string]string{
+	"password":          "backup-restic-password",
+	"aws-access-secret": "backup-restic-aws-access-secret",
+}
+
+// ArchiveSecretName is the archive secret a flat key is, when it is one.
+func ArchiveSecretName(key string) (string, bool) {
+	for name, k := range archiveSecretKeys {
+		if k == key {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// ArchiveConfig is one entry of the archive list. Settings holds the settings and the
+// secrets (encrypted) its plugin's manifest declares; in this step the settings are the
+// legacy backup-restic-* keys without their prefix.
 type ArchiveConfig struct {
 	Name     string                 `mapstructure:"name" toml:"name" json:"name"`
 	Plugin   string                 `mapstructure:"plugin" toml:"plugin" json:"plugin"`
@@ -141,6 +343,26 @@ func ArchiveModeForPlugin(plugin string) (string, bool) {
 	return "", false
 }
 
+// MarshalJSON never shows a secret: the API gets the names of the secrets set.
+func (a ArchiveConfig) MarshalJSON() ([]byte, error) {
+	settings := make(map[string]interface{}, len(a.Settings))
+	secrets := []string{}
+	for k, v := range a.Settings {
+		if _, secret := archiveSecretKeys[k]; secret {
+			secrets = append(secrets, k)
+			continue
+		}
+		settings[k] = v
+	}
+	sort.Strings(secrets)
+	return json.Marshal(struct {
+		Name       string                 `json:"name"`
+		Plugin     string                 `json:"plugin"`
+		Settings   map[string]interface{} `json:"settings"`
+		SecretsSet []string               `json:"secretsSet"`
+	}{a.Name, a.Plugin, settings, secrets})
+}
+
 // archiveMu guards the archive list: the save (config-sync goroutine), the API setters and
 // the peer replay all write it, and a concurrent map write stops repman (F2).
 var archiveMu sync.Mutex
@@ -184,18 +406,30 @@ func (conf *Config) connectedArchive() *ArchiveConfig {
 	return a
 }
 
-// cleanArchiveSettings drops what is not an archive setting from the entries read.
-func (conf *Config) cleanArchiveSettings() {
-	known := make(map[string]bool, len(archiveLegacyKeys))
-	for _, key := range archiveLegacyKeys {
-		known[ArchiveSettingName(key)] = true
+// archiveEntryHolds: the entry's plugin manifest declares setting or secret name; an entry
+// of an unknown plugin keeps every name an archive can hold.
+func archiveEntryHolds(a *ArchiveConfig, name string) bool {
+	if m, ok := ArchivePlugin(a.Plugin); ok {
+		return m.HasSetting(name) || m.HasSecret(name)
 	}
-	for i := range conf.Archives {
-		for k := range conf.Archives[i].Settings {
-			if !known[k] {
-				delete(conf.Archives[i].Settings, k)
-			}
+	if _, ok := archiveSecretKeys[name]; ok {
+		return true
+	}
+	return IsArchiveLegacyKey(archiveLegacyPrefix + name)
+}
+
+func cleanArchiveEntry(a *ArchiveConfig) {
+	for k := range a.Settings {
+		if !archiveEntryHolds(a, k) {
+			delete(a.Settings, k)
 		}
+	}
+}
+
+// cleanArchiveSettings drops from the entries read what their plugin does not declare.
+func (conf *Config) cleanArchiveSettings() {
+	for i := range conf.Archives {
+		cleanArchiveEntry(&conf.Archives[i])
 	}
 }
 
@@ -305,19 +539,56 @@ func (conf *Config) MigrateArchives() {
 
 	if len(conf.Archives) == 0 {
 		connect := conf.BackupArchiveMode != ConstBackupArchiveModeNone
-		if connect || conf.archiveSettingsCustomised() {
+		if connect || conf.archiveSettingsCustomised() || conf.archiveSecretsCustomised() {
 			plugin := ArchivePluginForMode(conf.BackupArchiveMode)
 			if plugin == "" {
 				plugin = conf.unconnectedArchivePlugin()
 			}
 			a := conf.addArchive(plugin)
 			conf.captureArchive(a)
+			conf.moveFlatSecrets(a)
 			if connect && !conf.isPinned("backup-archive-name") {
 				conf.BackupArchiveName = a.Name
 			}
 		}
 	}
 	conf.projectArchive()
+}
+
+// moveFlatSecrets moves the archive secrets set at runtime (DynamicFlagMap: the saved config,
+// a setter) into a, encrypted, and out of the flat config (#2088). A pinned secret stays in
+// its file; a secret a's plugin does not declare stays flat.
+func (conf *Config) moveFlatSecrets(a *ArchiveConfig) {
+	for name, key := range archiveSecretKeys {
+		if !archiveEntryHolds(a, name) || conf.isPinned(key) {
+			continue
+		}
+		v, ok := conf.GetDynamicFlag(key)
+		if !ok || v == nil || fmt.Sprintf("%v", v) == "" {
+			continue
+		}
+		raw := fmt.Sprintf("%v", v)
+		if !strings.Contains(raw, "hash_") {
+			raw = conf.EncryptSecretValue(raw)
+		}
+		a.Settings[name] = raw
+		conf.DeleteDynamicFlag(key)
+		if f, ok := configField(conf, key); ok {
+			if def, ok := conf.DefaultFlagMap[key]; ok {
+				setField(f, def)
+			}
+		}
+	}
+}
+
+// archiveSecretsCustomised: a flat archive secret was set at runtime.
+func (conf *Config) archiveSecretsCustomised() bool {
+	for _, key := range archiveSecretKeys {
+		if v, ok := conf.GetDynamicFlag(key); ok && v != nil && fmt.Sprintf("%v", v) != "" && !conf.isPinned(key) {
+			return true
+		}
+	}
+	return false
 }
 
 // archiveSettingsCustomised: an archive setting differs from its default, a pinned one
@@ -411,12 +682,75 @@ func (conf *Config) captureArchive(a *ArchiveConfig) {
 	for _, key := range archiveLegacyKeys {
 		name := ArchiveSettingName(key)
 		f, ok := configField(conf, key)
-		if !ok || conf.isPinned(key) || conf.isDefaultValue(key, f) {
+		if !ok || !archiveEntryHolds(a, name) || conf.isPinned(key) || conf.isDefaultValue(key, f) {
 			delete(a.Settings, name)
 			continue
 		}
 		a.Settings[name] = fieldValue(f)
 	}
+}
+
+// ConnectedArchiveSecret is the raw (encrypted) secret name of the connected archive.
+func (conf *Config) ConnectedArchiveSecret(name string) (string, bool) {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	a := conf.connectedArchive()
+	if a == nil || !archiveEntryHolds(a, name) {
+		return "", false
+	}
+	v, ok := a.Settings[name]
+	if !ok || v == nil {
+		return "", false
+	}
+	return fmt.Sprintf("%v", v), true
+}
+
+// CanSetConnectedArchiveSecret is nil when the connected archive takes secret name.
+func (conf *Config) CanSetConnectedArchiveSecret(name string) error {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	a := conf.connectedArchive()
+	if a == nil {
+		return fmt.Errorf("no archive connected")
+	}
+	if !archiveEntryHolds(a, name) {
+		return fmt.Errorf("archive %s (%s) has no secret %s", a.Name, a.Plugin, name)
+	}
+	return nil
+}
+
+// SetConnectedArchiveSecret stores the raw (encrypted) secret name in the connected archive;
+// present false removes it.
+func (conf *Config) SetConnectedArchiveSecret(name, raw string, present bool) error {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	a := conf.connectedArchive()
+	if a == nil {
+		return fmt.Errorf("no archive connected")
+	}
+	if !archiveEntryHolds(a, name) {
+		return fmt.Errorf("archive %s (%s) has no secret %s", a.Name, a.Plugin, name)
+	}
+	if a.Settings == nil {
+		a.Settings = map[string]interface{}{}
+	}
+	if present {
+		a.Settings[name] = raw
+	} else {
+		delete(a.Settings, name)
+	}
+	return nil
+}
+
+// ArchiveHoldsSecret: the connected archive holds the flat secret key, so the save leaves the
+// flat key out.
+func (conf *Config) ArchiveHoldsSecret(key string) bool {
+	name, ok := ArchiveSecretName(key)
+	if !ok {
+		return false
+	}
+	_, held := conf.ConnectedArchiveSecret(name)
+	return held
 }
 
 // SyncArchiveFromConfig captures the BackupRestic* fields into the connected archive before
@@ -483,6 +817,7 @@ func (conf *Config) ApplyArchiveMode(mode string) error {
 		conf.BackupArchiveName = ""
 	case cur != nil:
 		cur.Plugin = plugin
+		cleanArchiveEntry(cur)
 	default:
 		var a *ArchiveConfig
 		for i := range conf.Archives {
@@ -537,6 +872,14 @@ func (conf *Config) SetArchiveSetting(archive, setting, value string, unset bool
 			conf.Archives = append(conf.Archives[:idx], conf.Archives[idx+1:]...)
 		} else {
 			a.Plugin = value
+		}
+	case "password", "aws-access-secret":
+		// the peer's ciphertext: peers share the encryption key, the chain reads it at its
+		// next refresh
+		if unset {
+			delete(a.Settings, setting)
+		} else {
+			a.Settings[setting] = value
 		}
 	default:
 		key := archiveLegacyPrefix + setting

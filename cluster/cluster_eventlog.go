@@ -247,6 +247,10 @@ func (cluster *Cluster) emitConfigChangeEvents(oldData []byte, newData []byte, s
 			if config.IsArchiveLegacyKey(k) {
 				continue
 			}
+			if _, secret := config.ArchiveSecretName(k); secret {
+				// #2088: the secret moved into its archive's entry
+				continue
+			}
 			action, val = "unset", ""
 		}
 		// Echo subtraction: this value was just replayed from a peer, it is

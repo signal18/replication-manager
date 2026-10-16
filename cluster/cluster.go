@@ -2219,8 +2219,9 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		_, ok := cluster.Conf.GetImmuableFlag(key)
 		_, dynamic := cluster.Conf.GetDynamicFlag(key)
 		_, secret := cluster.Conf.Secrets.Lookup(key)
-		if ok || config.IsArchiveLegacyKey(key) {
-			// a legacy archive key is carried by the archive list (#2077)
+		if ok || config.IsArchiveLegacyKey(key) || cluster.Conf.ArchiveHoldsSecret(key) {
+			// a legacy archive key is carried by the archive list (#2077), a secret the
+			// connected archive holds by its entry (#2088)
 			s.Delete(key)
 		} else if secret && dynamic {
 			// a secret the dynamic config store holds (#2075): written whatever its raw

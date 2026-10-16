@@ -209,6 +209,10 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 				cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
 				return false
 			}
+			if _, secret := config.ArchiveSecretName("backup-restic-" + rest[i+1:]); secret {
+				// an archive secret: the chain's cache reads it now (#2088)
+				cl.CredentialChain().Refresh()
+			}
 			cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
 			return true
 		}

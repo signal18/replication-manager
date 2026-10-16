@@ -192,6 +192,8 @@ func (cluster *Cluster) SetBackupArchiveName(name string) error {
 }
 
 func (cluster *Cluster) reloadArchive() error {
+	// the restic password and S3 secret are the connected archive's (#2088)
+	cluster.CredentialChain().Refresh()
 	cluster.CheckResticInstallation()
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()

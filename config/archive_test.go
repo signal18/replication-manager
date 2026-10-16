@@ -5,6 +5,8 @@
 package config
 
 import (
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -285,5 +287,95 @@ func TestArchiveMigrationClonesList(t *testing.T) {
 	cp.Archives[0].Settings["tags"] = "b"
 	if src.Archives[0].Settings["tags"] != "a" {
 		t.Fatal("the copy's list shares its settings with the original")
+	}
+}
+
+// #2088: each plugin comes with its typed config: settings typed from the fields they
+// replace, an enum with its values, secrets as type secret
+func TestArchivePluginManifests(t *testing.T) {
+	s3, ok := ArchivePlugin(ConstArchivePluginResticS3)
+	if !ok {
+		t.Fatal("no s3 manifest")
+	}
+	cases := map[string]string{"aws-bucket": ConstArchiveSettingTypeString, "timeout": ConstArchiveSettingTypeInt, "purge-prune": ConstArchiveSettingTypeBool, "s3-mode": ConstArchiveSettingTypeEnum, "password": ConstArchiveSettingTypeSecret, "aws-access-secret": ConstArchiveSettingTypeSecret}
+	for name, typ := range cases {
+		if st, ok := s3.Setting(name); !ok || st.Type != typ {
+			t.Errorf("%s: %+v, want type %s", name, st, typ)
+		}
+	}
+	if st, _ := s3.Setting("s3-mode"); st.Validate("new") != nil || st.Validate("bogus") == nil {
+		t.Errorf("s3-mode validation")
+	}
+	local, _ := ArchivePlugin(ConstArchivePluginResticLocal)
+	if local.HasSetting("aws-bucket") || local.HasSecret("aws-access-secret") || !local.HasSecret("password") || !local.Can(ConstArchiveCapProbe) {
+		t.Errorf("local manifest %+v", local)
+	}
+	if len(ArchivePlugins()) != 3 {
+		t.Errorf("plugins %+v", ArchivePlugins())
+	}
+}
+
+// #2088: the migration moves the restic password and S3 secret set at runtime into
+// archive-1, encrypted, out of the flat config; a pinned one stays in its file
+func TestArchiveMigrationMovesSecrets(t *testing.T) {
+	conf := archiveTestConf()
+	conf.SecretKey = []byte("0123456789abcdef")
+	conf.DefaultFlagMap["backup-restic-password"] = "secret"
+	conf.BackupArchiveMode = ConstBackupArchiveModeResticAws
+	conf.DynamicFlagMap["backup-restic-password"] = conf.EncryptSecretValue("repo-pass")
+	conf.DynamicFlagMap["backup-restic-aws-access-secret"] = "plain-s3"
+	conf.MigrateArchives()
+	a := conf.Archives[0]
+	for _, name := range []string{"password", "aws-access-secret"} {
+		raw := fmt.Sprintf("%v", a.Settings[name])
+		if !strings.Contains(raw, "hash_") {
+			t.Errorf("%s not moved encrypted: %q", name, raw)
+		}
+	}
+	if conf.DecryptSecretValue("backup-restic-aws-access-secret", fmt.Sprintf("%v", a.Settings["aws-access-secret"])) != "plain-s3" {
+		t.Error("aws secret does not decrypt back")
+	}
+	if _, ok := conf.DynamicFlagMap["backup-restic-password"]; ok {
+		t.Error("the flat password stayed")
+	}
+
+	pinned := archiveTestConf()
+	pinned.BackupArchiveMode = ConstBackupArchiveModeResticLocal
+	pinned.ImmuableFlagMap["backup-restic-password"] = "file"
+	pinned.DynamicFlagMap["backup-restic-password"] = "dyn"
+	pinned.MigrateArchives()
+	if _, ok := pinned.Archives[0].Settings["password"]; ok {
+		t.Error("a pinned password moved into the list")
+	}
+}
+
+// #2088: the API never shows a secret, only that it is set
+func TestArchiveJSONHidesSecrets(t *testing.T) {
+	a := ArchiveConfig{Name: "archive-1", Plugin: ConstArchivePluginResticS3, Settings: map[string]interface{}{"aws-bucket": "bk", "password": "hash_x", "aws-access-secret": "hash_y"}}
+	b, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(b)
+	if strings.Contains(out, "hash_") || !strings.Contains(out, `"secretsSet":["aws-access-secret","password"]`) || !strings.Contains(out, `"aws-bucket":"bk"`) {
+		t.Fatalf("json %s", out)
+	}
+}
+
+// #2088: a mode change to another plugin drops what the new plugin does not declare
+func TestArchiveModeChangeCleansEntry(t *testing.T) {
+	conf := archiveTestConf()
+	conf.BackupArchiveMode = ConstBackupArchiveModeResticAws
+	conf.BackupResticAwsBucket = "bk"
+	conf.MigrateArchives()
+	conf.Archives[0].Settings["aws-access-secret"] = "hash_y"
+	if err := conf.ApplyArchiveMode(ConstBackupArchiveModeResticLocal); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := conf.Archives[0].Settings["aws-bucket"]; ok {
+		t.Errorf("s3 setting kept on a local archive: %+v", conf.Archives[0].Settings)
+	}
+	if _, ok := conf.Archives[0].Settings["aws-access-secret"]; ok {
+		t.Errorf("s3 secret kept on a local archive")
 	}
 }
