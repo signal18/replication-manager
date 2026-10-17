@@ -190,6 +190,21 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 	return plan, nil
 }
 
+// childDumpClients gives a child the parent's dump and restore clients (a MySQL parent sets
+// its MySQL ones) when it runs the parent's image: the default is the MariaDB client, which can
+// not dump MySQL 8.4. A child on another image keeps the default, the dump client check names a
+// mismatch. It reports whether a path changed, the client versions to be read again.
+func childDumpClients(child, parent *config.Config, image string) bool {
+	if image != parent.ProvDbImg {
+		return false
+	}
+	changed := child.BackupMysqldumpPath != parent.BackupMysqldumpPath || child.BackupMysqlclientPath != parent.BackupMysqlclientPath || child.BackupMysqlbinlogPath != parent.BackupMysqlbinlogPath
+	child.BackupMysqldumpPath = parent.BackupMysqldumpPath
+	child.BackupMysqlclientPath = parent.BackupMysqlclientPath
+	child.BackupMysqlbinlogPath = parent.BackupMysqlbinlogPath
+	return changed
+}
+
 // CreateChildCluster creates the planned cluster for a creator already authorised
 // (clusterAddAuthorize), configures it and adds its servers, then provisions and seeds
 // it in the background. Every step is recorded on the new cluster (CINF0014 while it
@@ -248,6 +263,11 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	// refreshes, use the parent's (dev3: the default mysqldump failed, the parent runs mydumper)
 	if err := repman.SetClusterSetting(cl, "backup-logical-type", plan.BackupLogicalType); err != nil {
 		return cl, fail(err)
+	}
+	// the client versions follow the binaries: detected at the cluster's creation with the
+	// default paths, they decide the options (--ssl-mode of a MySQL 8 client, not --ssl)
+	if childDumpClients(cl.Conf, parent.Conf, plan.DBImage) {
+		cl.RefreshToolVersions()
 	}
 	// The parent's monitoring and replication accounts, same name same password (staging
 	// doc): provisioned identical, nothing to restore from the parent's backup.

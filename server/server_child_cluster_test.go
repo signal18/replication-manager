@@ -47,3 +47,29 @@ func TestChildProxyTypeWithoutProxy(t *testing.T) {
 		t.Fatalf("a parent without proxy gives a staging cluster without proxy, got %q", got)
 	}
 }
+
+// A child on the parent's image takes its dump and restore clients; on another image it keeps
+// the default.
+func TestChildDumpClients(t *testing.T) {
+	parent := &config.Config{ProvDbImg: "mysql:8.4.11",
+		BackupMysqldumpPath:   "/usr/share/replication-manager/mysql/8.4/mysqldump",
+		BackupMysqlclientPath: "/usr/share/replication-manager/mysql/8.4/mysql",
+		BackupMysqlbinlogPath: "/usr/share/replication-manager/mysql/8.4/mysqlbinlog"}
+	child := &config.Config{}
+	if !childDumpClients(child, parent, "mysql:8.4.11") {
+		t.Fatal("paths set: a change reported")
+	}
+	if childDumpClients(child, parent, "mysql:8.4.11") {
+		t.Fatal("the same paths again: no change")
+	}
+	if child.BackupMysqldumpPath != parent.BackupMysqldumpPath || child.BackupMysqlclientPath != parent.BackupMysqlclientPath || child.BackupMysqlbinlogPath != parent.BackupMysqlbinlogPath {
+		t.Fatalf("same image: %+v", child)
+	}
+	other := &config.Config{}
+	if childDumpClients(other, parent, "mysql:9.3.0") {
+		t.Fatal("another image: no change")
+	}
+	if other.BackupMysqldumpPath != "" || other.BackupMysqlclientPath != "" || other.BackupMysqlbinlogPath != "" {
+		t.Fatalf("another image keeps the default: %+v", other)
+	}
+}
