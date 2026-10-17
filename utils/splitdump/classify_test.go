@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
@@ -435,5 +436,24 @@ func TestClassifyStreamSkipStatement(t *testing.T) {
 	}
 	if len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0], "binlog.000026") || !strings.HasSuffix(res.Skipped[0], "(test)") {
 		t.Fatalf("Skipped = %q", res.Skipped)
+	}
+}
+
+// Skipped keeps the first classifySkippedKeep lines left out and counts the others.
+func TestClassifyStreamSkippedIsBounded(t *testing.T) {
+	var in strings.Builder
+	for i := 0; i < classifySkippedKeep+5; i++ {
+		in.WriteString("START SLAVE;\n")
+	}
+	res, err := ClassifyStream(strings.NewReader(in.String()), ClassifyOptions{
+		ApplicationWriter: io.Discard,
+		SystemWriter:      io.Discard,
+		SkipStatement:     func(string) (bool, string) { return true, "test" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Skipped) != classifySkippedKeep || res.SkippedOmitted != 5 {
+		t.Fatalf("Skipped %d, omitted %d", len(res.Skipped), res.SkippedOmitted)
 	}
 }

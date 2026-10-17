@@ -53,9 +53,15 @@ type ClassifyOptions struct {
 type ClassifyResult struct {
 	HasSystemContent bool
 	Metadata         Metadata
-	// Skipped lists each line SkipStatement left out, with its reason.
-	Skipped []string
+	// Skipped lists the lines SkipStatement left out, with their reason, the first
+	// classifySkippedKeep of them; SkippedOmitted counts the others.
+	Skipped        []string
+	SkippedOmitted int
 }
+
+// classifySkippedKeep bounds ClassifyResult.Skipped: a dump carries a handful of replication
+// statements, a stream of many skipped lines is counted, not kept.
+const classifySkippedKeep = 100
 
 // ClassifyStream splits a single mariadb-dump/mysqldump stream into
 // application SQL and system-catalogue SQL (mysql.system-all), reusing the
@@ -143,7 +149,11 @@ func classifyStream(r io.Reader, opts ClassifyOptions, maxLineSize int) (Classif
 		}
 		if !inTableData && opts.SkipStatement != nil {
 			if skip, reason := opts.SkipStatement(line); skip {
-				result.Skipped = append(result.Skipped, strings.TrimSpace(line)+" ("+reason+")")
+				if len(result.Skipped) < classifySkippedKeep {
+					result.Skipped = append(result.Skipped, strings.TrimSpace(line)+" ("+reason+")")
+				} else {
+					result.SkippedOmitted++
+				}
 				if !sourceDataDisabled {
 					captureStreamMetadata(line, &sourceDataDisabled, &bgtid, &bfile, &bpos)
 				}

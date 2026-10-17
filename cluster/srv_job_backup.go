@@ -3654,6 +3654,9 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	for _, skipped := range pr.result.Skipped {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore of %s on %s: statement left out: %s", backupfile, server.URL, skipped)
 	}
+	if pr.result.SkippedOmitted > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore of %s on %s: %d more statements left out", backupfile, server.URL, pr.result.SkippedOmitted)
+	}
 
 	if clientErr != nil || pr.err != nil {
 		artifactWriter.discard()
@@ -7115,23 +7118,37 @@ func dumpHasActiveChangeMaster(path string) (bool, error) {
 	return false, sc.Err()
 }
 
-// restoreStatementSkip is the per-statement decision of a logical restore on this server. On
-// MySQL/Percona with GTID, the dump's file/position CHANGE MASTER / CHANGE REPLICATION SOURCE
-// (--master-data=1, --dump-slave=1) is left out once its SET @@GLOBAL.GTID_PURGED has gone
-// through: that GTID set is the position, and the channel stays on auto-position, which
-// refuses a file and position (error 1776). Nil, nothing left out, on any other server.
+// restoreStatementSkip is the per-statement decision of a logical restore on this server, on
+// the replication statements of the dump (--apply-slave-statements, --master-data=1,
+// --dump-slave=1), which name no channel (law T27):
+//   - STOP/START [ALL] SLAVE(S) / REPLICA are left out: they act on every channel (MariaDB
+//     STOP/START ALL SLAVES, an unnamed MySQL STOP/START), and the reseed stops the channels
+//     before the load and starts the managed one after, once its link is checked;
+//   - CHANGE MASTER / CHANGE REPLICATION SOURCE is left out where it would act on another
+//     channel than the managed one (a named managed channel, or several channels: MariaDB
+//     applies it to the default connection, MySQL refuses it), and on MySQL/Percona with GTID
+//     once SET @@GLOBAL.GTID_PURGED has gone through: that GTID set is the position, and the
+//     channel stays on auto-position, which refuses a file and position (error 1776).
 func (server *ServerMonitor) restoreStatementSkip() func(string) (bool, string) {
-	if server.DBVersion == nil || !server.DBVersion.IsMySQLOrPercona() || !server.HasMySQLGTID() {
-		return nil
-	}
+	otherChannel := server.ReplicationSourceName != "" || len(server.Replications) > 1
+	mysqlGTID := server.DBVersion != nil && server.DBVersion.IsMySQLOrPercona() && server.HasMySQLGTID()
 	gtidPurged := false
 	return func(line string) (bool, string) {
 		up := strings.ToUpper(strings.TrimSpace(line))
 		switch {
 		case strings.HasPrefix(up, "SET @@GLOBAL.GTID_PURGED"):
 			gtidPurged = true
-		case gtidPurged && (strings.HasPrefix(up, "CHANGE MASTER TO MASTER_LOG_FILE") || strings.HasPrefix(up, "CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE")):
-			return true, "GTID replica on auto-position: the dump's GTID_PURGED is the position"
+		case strings.HasPrefix(up, "STOP ALL SLAVES"), strings.HasPrefix(up, "START ALL SLAVES"),
+			strings.HasPrefix(up, "STOP SLAVE"), strings.HasPrefix(up, "START SLAVE"),
+			strings.HasPrefix(up, "STOP REPLICA"), strings.HasPrefix(up, "START REPLICA"):
+			return true, "the reseed stops the channels before the load and starts the managed one after"
+		case strings.HasPrefix(up, "CHANGE MASTER TO"), strings.HasPrefix(up, "CHANGE REPLICATION SOURCE TO"):
+			if otherChannel {
+				return true, "it names no channel and the managed channel is not the only default one"
+			}
+			if mysqlGTID && gtidPurged && (strings.HasPrefix(up, "CHANGE MASTER TO MASTER_LOG_FILE") || strings.HasPrefix(up, "CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE")) {
+				return true, "GTID replica on auto-position: the dump's GTID_PURGED is the position"
+			}
 		}
 		return false, ""
 	}
@@ -7150,16 +7167,21 @@ func (server *ServerMonitor) dumpPositionsServer(path string) bool {
 	if !mysqlGTID && !server.IsMariaDB() {
 		return false
 	}
+	cluster := server.ClusterGroup
+	unread := func(err error) bool {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Can not read the replication statements of %s, the position is set after the load: %s", path, err)
+		return false
+	}
 	f, err := os.Open(path)
 	if err != nil {
-		return false
+		return unread(err)
 	}
 	defer f.Close()
 	var r io.Reader = f
 	if strings.HasSuffix(path, ".gz") {
 		zr, err := gzip.NewReader(f)
 		if err != nil {
-			return false
+			return unread(err)
 		}
 		defer zr.Close()
 		r = zr
@@ -7176,6 +7198,9 @@ func (server *ServerMonitor) dumpPositionsServer(path string) bool {
 		case strings.HasPrefix(l, "-- Dumping data for table") || strings.HasPrefix(l, "INSERT INTO"):
 			return false
 		}
+	}
+	if err := sc.Err(); err != nil {
+		return unread(err)
 	}
 	return false
 }
@@ -7512,28 +7537,27 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		} else {
 			err = server.reseedMysqldumpWithMetadata(ctx, backupfile, restoreUser, meta)
 		}
-		if ok, why := server.reseedLinkPointsToPrimary(); pointAfterRestore && err == nil && dumpPositioned && !ok {
-			// a link pointing to another source is left as it is, stopped (law T27): the dump's
-			// own START SLAVE (--apply-slave-statements) may have started it
-			if logs, serr := server.StopSlave(); serr != nil {
-				cluster.LogSQL(logs, serr, server.URL, "Rejoin", config.LvlErr, "Failed stop slave after dump on %s: %s", server.URL, serr)
-			}
-			server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, why+": the reseed does not move a link, rejoin the server")
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-				"Reseed of %s: %s; the link is left stopped, a rejoin moves it", server.URL, why)
-		} else if pointAfterRestore && err == nil && dumpPositioned {
-			// the dump set the position itself (dumpPositionsServer): the managed channel is started.
-			// A replica without a primary yet (a new replica) is first pointed at the primary in
-			// GTID mode only: the dump's GTID stays the position.
-			if ss, _, serr := dbhelper.GetSlaveStatus(server.Conn, server.ReplicationSourceName, server.DBVersion); channelWithoutPrimary(ss, serr) && cluster.master != nil {
-				if logs, perr := cluster.pointSlaveToMasterWithMode(server, server.gtidPointingMode()); perr != nil {
-					cluster.LogSQL(logs, perr, server.URL, "Rejoin", config.LvlErr, "Failed to point %s to the primary after the restore: %s", server.URL, perr)
+		if pointAfterRestore && err == nil && dumpPositioned {
+			// the dump set the position itself (dumpPositionsServer); its STOP/START were left out
+			// (restoreStatementSkip). A link pointing to another source is left as it is, stopped
+			// (law T27); else the managed channel is started. A replica without a primary yet (a
+			// new replica) is first pointed at the primary in GTID mode only: the dump's GTID stays
+			// the position.
+			if ok, why := server.reseedLinkPointsToPrimary(); !ok {
+				server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, why+": the reseed does not move a link, rejoin the server")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Reseed of %s: %s; the link is left stopped, a rejoin moves it", server.URL, why)
+			} else {
+				if ss, _, serr := dbhelper.GetSlaveStatus(server.Conn, server.ReplicationSourceName, server.DBVersion); channelWithoutPrimary(ss, serr) && cluster.master != nil {
+					if logs, perr := cluster.pointSlaveToMasterWithMode(server, server.gtidPointingMode()); perr != nil {
+						cluster.LogSQL(logs, perr, server.URL, "Rejoin", config.LvlErr, "Failed to point %s to the primary after the restore: %s", server.URL, perr)
+					}
 				}
-			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s (position set by the dump)", server.URL)
-			if logs, serr := server.StartSlave(); serr != nil {
-				cluster.LogSQL(logs, serr, server.URL, "Rejoin", config.LvlErr, "Failed start slave after dump on %s: %s", server.URL, serr)
-				err = fmt.Errorf("start replication of %s after the restore: %w", server.URL, serr)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s (position set by the dump)", server.URL)
+				if logs, serr := server.StartSlave(); serr != nil {
+					cluster.LogSQL(logs, serr, server.URL, "Rejoin", config.LvlErr, "Failed start slave after dump on %s: %s", server.URL, serr)
+					err = fmt.Errorf("start replication of %s after the restore: %w", server.URL, serr)
+				}
 			}
 		} else if pointAfterRestore {
 			// a failed restore too: the replica is never left without its primary

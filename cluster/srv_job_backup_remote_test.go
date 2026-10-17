@@ -537,10 +537,14 @@ func TestGetRemoteMysqlDumpOptionsDropsConnection(t *testing.T) {
 			t.Fatalf("%q reaches the DB node arguments: %s", leak, joined)
 		}
 	}
-	for _, keep := range []string{"--hex-blob", "--single-transaction", "--routines"} {
+	for _, keep := range []string{"--hex-blob", "--single-transaction", "--routines", "--apply-slave-statements"} {
 		if !slices.Contains(args, keep) {
 			t.Fatalf("%s must be kept: %s", keep, joined)
 		}
+	}
+	// the active position, as a local backup writes it (GetMysqlDumpOptions)
+	if !slices.Contains(args, "--master-data=1") && !slices.Contains(args, "--dump-slave=1") {
+		t.Fatalf("the active position must reach the DB node: %s", joined)
 	}
 	names := strings.Join(dropped, " ")
 	for _, v := range []string{"secret1", "secret2", "evil", "root2"} {
@@ -753,8 +757,9 @@ func TestDumpHasActiveChangeMaster(t *testing.T) {
 	}
 }
 
-// On MySQL/Percona with GTID the dump's file/position statement is left out once its
-// GTID_PURGED went through; nothing is left out elsewhere. A dump positions the server by
+// The dump's STOP/START act on every channel and are left out on every server; its unnamed
+// CHANGE MASTER is left out where it would act on another channel than the managed one, and
+// on MySQL/Percona with GTID once GTID_PURGED went through. A dump positions the server by
 // itself through its GTID: MariaDB's active CHANGE MASTER TO MASTER_USE_GTID, MySQL's active
 // GTID_PURGED.
 func TestRestoreStatementSkipAndDumpPositions(t *testing.T) {
@@ -769,8 +774,34 @@ func TestRestoreStatementSkipAndDumpPositions(t *testing.T) {
 		}
 		return s
 	}
-	if newServer("MariaDB", "").restoreStatementSkip() != nil || newServer("MySQL", "OFF").restoreStatementSkip() != nil {
-		t.Fatal("only MySQL/Percona with GTID leave a statement out")
+	for _, flavor := range []string{"MariaDB", "MySQL", "Percona"} {
+		skip := newServer(flavor, "ON").restoreStatementSkip()
+		for _, stmt := range []string{"STOP ALL SLAVES;", "START ALL SLAVES;", "STOP SLAVE;", "START SLAVE;", "STOP REPLICA;", "START REPLICA;"} {
+			if s, _ := skip(stmt); !s {
+				t.Errorf("%s: %s is left out", flavor, stmt)
+			}
+		}
+		if s, _ := skip("SET GLOBAL gtid_slave_pos='0-1-5';"); s {
+			t.Errorf("%s: the GTID state is kept", flavor)
+		}
+	}
+	// the default channel, alone: the dump's CHANGE MASTER applies to it
+	if s, _ := newServer("MariaDB", "").restoreStatementSkip()("CHANGE MASTER TO MASTER_USE_GTID=slave_pos;"); s {
+		t.Fatal("MariaDB, default channel: CHANGE MASTER TO MASTER_USE_GTID is kept")
+	}
+	if s, _ := newServer("MySQL", "OFF").restoreStatementSkip()("CHANGE MASTER TO MASTER_LOG_FILE='binlog.000029', MASTER_LOG_POS=831;"); s {
+		t.Fatal("MySQL without GTID, default channel: the file/position statement is kept")
+	}
+	// a named managed channel, or several channels: the unnamed statement is left out
+	named := newServer("MariaDB", "")
+	named.ReplicationSourceName = "child"
+	if s, _ := named.restoreStatementSkip()("CHANGE MASTER TO MASTER_USE_GTID=slave_pos;"); !s {
+		t.Fatal("MariaDB, named managed channel: the unnamed CHANGE MASTER is left out")
+	}
+	multi := newServer("MySQL", "OFF")
+	multi.Replications = []dbhelper.SlaveStatus{{}, {}}
+	if s, _ := multi.restoreStatementSkip()("CHANGE MASTER TO MASTER_LOG_FILE='binlog.000029', MASTER_LOG_POS=831;"); !s {
+		t.Fatal("MySQL, two channels: the unnamed CHANGE MASTER is left out")
 	}
 	skip := newServer("Percona", "ON").restoreStatementSkip()
 	if s, _ := skip("CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=1182;"); s {
@@ -782,9 +813,6 @@ func TestRestoreStatementSkipAndDumpPositions(t *testing.T) {
 	}
 	if s, _ := skip("CHANGE MASTER TO MASTER_LOG_FILE='binlog.000029', MASTER_LOG_POS=831;"); !s {
 		t.Fatal("the 8.0 file/position statement after GTID_PURGED is left out")
-	}
-	if s, _ := skip("START SLAVE;"); s {
-		t.Fatal("other statements are kept")
 	}
 
 	dir := t.TempDir()
