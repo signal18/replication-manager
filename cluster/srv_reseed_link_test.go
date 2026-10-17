@@ -119,3 +119,29 @@ func TestReseedStoppedLinkRemovedChannel(t *testing.T) {
 		t.Fatal("WARN0252 stays for the channel still stopped")
 	}
 }
+
+// Within two ticks of a recording a running status may predate the STOP: the channel stays
+// and WARN0252 opens. Records and checks from two goroutines never lose an update.
+func TestReseedStoppedLinksGraceAndConcurrency(t *testing.T) {
+	c, sv := reseedLinkFixture()
+	c.Conf.MonitoringTicker = 2
+	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes")}
+	sv.markReseedStoppedLinks([]string{"belair"}, "restore of /backup")
+	sv.checkReseedStoppedLinks()
+	if got := sv.reseedStoppedLinkList(); len(got) != 1 || !warn0252Open(c) {
+		t.Fatalf("a running status read before the stop does not clear a fresh record: %v", got)
+	}
+
+	c.Conf.MonitoringTicker = 0
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 500; i++ {
+			sv.markReseedStoppedLinks([]string{"belair"}, "restore")
+		}
+		close(done)
+	}()
+	for i := 0; i < 500; i++ {
+		sv.checkReseedStoppedLinks()
+	}
+	<-done
+}

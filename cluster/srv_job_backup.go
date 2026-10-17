@@ -7006,7 +7006,7 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 	// another source than the primary is left as it is, stopped, WARN0252 saying why;
 	// moving it is the rejoin's job.
 	if ok, why := server.reseedLinkPointsToPrimary(); !ok {
-		server.markReseedStoppedLinks(server.reseedStoppedLinkList(), why+": the reseed does not move a link, rejoin the server")
+		server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, why+": the reseed does not move a link, rejoin the server")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
 			"Reseed of %s: %s; the link is left stopped, a rejoin moves it", server.URL, why)
 		return nil
@@ -7426,6 +7426,9 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	pointAfterRestore := !isPITR && backupType == config.ConstBackupLogicalTypeMysqldump
 	pointedBeforeRestore := false
 	dumpPositioned := pointAfterRestore && server.dumpPositionsServer(backupfile)
+	// false once the gate finds the link pointing to another source: nothing positions or
+	// starts it after the restore, it stays stopped with WARN0252 (law T27, #2093)
+	linkOnSource := true
 
 	// Set replication master to current master if not PITR
 	if pointAfterRestore {
@@ -7475,6 +7478,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 
 		// positioned on its source only: a link pointing elsewhere is not moved (law T27)
 		if ok, why := server.reseedLinkPointsToPrimary(); !ok {
+			linkOnSource = false
 			server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, why+": the reseed does not move a link, rejoin the server")
 		} else if server.DBVersion.IsMySQLOrPercona() {
 			if server.HasMySQLGTID() {
@@ -7508,7 +7512,16 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		} else {
 			err = server.reseedMysqldumpWithMetadata(ctx, backupfile, restoreUser, meta)
 		}
-		if pointAfterRestore && err == nil && dumpPositioned {
+		if ok, why := server.reseedLinkPointsToPrimary(); pointAfterRestore && err == nil && dumpPositioned && !ok {
+			// a link pointing to another source is left as it is, stopped (law T27): the dump's
+			// own START SLAVE (--apply-slave-statements) may have started it
+			if logs, serr := server.StopSlave(); serr != nil {
+				cluster.LogSQL(logs, serr, server.URL, "Rejoin", config.LvlErr, "Failed stop slave after dump on %s: %s", server.URL, serr)
+			}
+			server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, why+": the reseed does not move a link, rejoin the server")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Reseed of %s: %s; the link is left stopped, a rejoin moves it", server.URL, why)
+		} else if pointAfterRestore && err == nil && dumpPositioned {
 			// the dump set the position itself (dumpPositionsServer): the managed channel is started.
 			// A replica without a primary yet (a new replica) is first pointed at the primary in
 			// GTID mode only: the dump's GTID stays the position.
@@ -7535,7 +7548,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			return err
 		}
 
-		if server.IsSlave && !isPITR && !pointAfterRestore {
+		if server.IsSlave && !isPITR && !pointAfterRestore && linkOnSource {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
 			server.StartSlave()
 		}
@@ -7547,8 +7560,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	if backupType == config.ConstBackupLogicalTypeMydumper {
 		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
 		// the primary's position applies to a link pointing to the primary only (law T27)
-		onSource, _ := server.reseedLinkPointsToPrimary()
-		if err == nil && server.IsSlave && !isPITR && onSource {
+		if err == nil && server.IsSlave && !isPITR && linkOnSource {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
 			meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
 			if err2 != nil {
