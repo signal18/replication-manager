@@ -100,6 +100,14 @@ const SETTING_HELP = {
   'purge-prune': 'After the purge, delete the data no snapshot uses any more, so the space is really freed.'
 }
 
+// kindLabel names an archive's plugin first (restic is one plugin family among others to
+// come), then what it stores into: restic-local (Local folder)
+export function kindLabel(plugin, manifest) {
+  const name = (plugin || '').replace(/^archive-/, '')
+  const what = KIND_LABELS[plugin] || manifest?.description
+  return what ? `${name} (${what})` : name
+}
+
 export function settingLabel(name, plugin) {
   if (name === 'local-repository' && plugin === 'archive-restic-sftp') return 'Server and path'
   if (SETTING_LABELS[name]) return SETTING_LABELS[name]
@@ -246,9 +254,9 @@ export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave 
             {!isEdit && (
               <>
                 <FormControl>
-                  <FormLabel fontSize='sm' mb='1'>Kind</FormLabel>
+                  <FormLabel fontSize='sm' mb='1'>Plugin</FormLabel>
                   <Select size='sm' value={plugin} onChange={(e) => { setPlugin(e.target.value); setValues({}) }}>
-                    {plugins.map((p) => <option key={p.name} value={p.name}>{KIND_LABELS[p.name] || p.name}</option>)}
+                    {plugins.map((p) => <option key={p.name} value={p.name}>{kindLabel(p.name, p)}</option>)}
                   </Select>
                 </FormControl>
                 <FormControl>
@@ -408,7 +416,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     const busy = a.status === 'removing'
     const others = list.archives.filter((o) => o.name !== a.name)
     const rows = [
-      { key: 'Kind', value: <Text fontSize='sm'>{KIND_LABELS[a.plugin] || a.plugin}</Text> },
+      { key: 'Plugin', value: <Text fontSize='sm'>{kindLabel(a.plugin, manifest)}</Text> },
       { key: 'Location', value: <Text fontSize='sm'>{a.location || summary(a)}</Text> },
       {
         key: 'Size',
@@ -546,17 +554,19 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     },
     // the attached archive first, then the others
     ...[...list.archives].sort((x, y) => (y.attached ? 1 : 0) - (x.attached ? 1 : 0)).map(archiveRows),
-    // the program the restic archives run
+    // the program the restic plugins run: shown only with a restic archive
+    ...(list.archives.some((a) => (a.plugin || '').startsWith('archive-restic')) ? [
     {
       key: 'Restic program',
       value: [
         {
           key: 'Program path',
-          help: help('**Restic program path**\n\nThe restic program every archive runs. A server-wide setting, set in the config file.\n\nConfig: `backup-restic-binary-path`', 'Restic program path'),
+          help: help('**Restic program path**\n\nThe restic program the restic archives run. A server-wide setting, set in the config file.\n\nConfig: `backup-restic-binary-path`', 'Restic program path'),
           value: <Text fontSize='sm'>{config?.backupResticBinaryPath || '/usr/bin/restic'}</Text>
         }
       ]
     }
+    ] : [])
   ]
 
   const removeTarget = list.archives.find((a) => a.name === removeName)
