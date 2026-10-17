@@ -12,6 +12,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -507,12 +508,38 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 				}
 			}
 		} else {
-			if meta != nil && !meta.SplitUser {
+			// Without a split user, the parent's accounts are in the dump: as mysql table data on
+			// MySQL/Percona, or on MariaDB without --system, which the restore would load over the
+			// child's own. A MariaDB --system dump writes them as statements, left out of a restore
+			// without restore-user (reseedMysqldumpSystemReplaySource).
+			if meta != nil && !meta.SplitUser && !(target.IsMariaDB() && strings.Contains(parent.getDumpParameter(), "--system=")) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed mysqldump with no split user is not supported")
 				target.JobsUpdateStateRuntimeOnly(task, "Reseed mysqldump with no split user is not supported", 5, 1)
 				return "", fmt.Errorf("Reseed mysqldump with no split user is not supported")
 			}
 			err = target.JobReseedMysqldump(backupfile, false)
+			// MariaDB: the dump writes the parent's position as a comment only, so the target keeps
+			// its old gtid_slave_pos and its channel would resume from it. It takes the backup's GTID
+			// for the domains the backup has, and keeps the other domains it replicates.
+			if pos, _, _ := logicalReseedPosition(target.logicalRestorePosition.Load(), meta); err == nil && target.IsMariaDB() && pos != "" {
+				slavePos := *gtid.NewList(pos)
+				backupDomains := make(map[uint64]bool)
+				for _, g := range slavePos {
+					backupDomains[g.DomainID] = true
+				}
+				if target.SlaveGtid != nil {
+					for _, g := range *target.SlaveGtid {
+						if !backupDomains[g.DomainID] {
+							slavePos = append(slavePos, g)
+						}
+					}
+				}
+				masterGTIDList = slavePos.Sprint()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set to %s (backup %s)", target.URL, masterGTIDList, pos)
+				if logs, err = dbhelper.SetGTIDSlavePos(target.Conn, masterGTIDList); err != nil {
+					cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed to set gtid_slave_pos on %s: %s", target.URL, err)
+				}
+			}
 		}
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
 		// the data only: the staging cluster keeps its own accounts and system tables
