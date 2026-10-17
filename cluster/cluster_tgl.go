@@ -185,6 +185,15 @@ func (cluster *Cluster) SetBackupArchiveMode(mode string) error {
 // SetBackupArchiveName connects the cluster to another archive of its list ("" for none,
 // #2077): the backups go to it and its snapshots are listed.
 func (cluster *Cluster) SetBackupArchiveName(name string) error {
+	if name != "" {
+		for _, a := range cluster.Conf.Archives {
+			if a.Name == name {
+				if err := cluster.Conf.ArchivePluginAllowed(a.Plugin); err != nil {
+					return err
+				}
+			}
+		}
+	}
 	// the archive left keeps its size as last read: nothing writes to it while detached
 	detached := cluster.Conf.AttachedArchive()
 	size := cluster.attachedArchiveSize()

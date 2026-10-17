@@ -6,6 +6,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -41,6 +42,7 @@ const (
 type ArchivePluginManifest struct {
 	Name         string                 `json:"name"`
 	Description  string                 `json:"description"`
+	Tier         string                 `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
 	Settings     []ArchivePluginSetting `json:"settings"`
 	Capabilities []string               `json:"capabilities"`
 }
@@ -59,6 +61,20 @@ const (
 	ConstArchiveSettingGroupPurge    = "purge"
 	ConstArchiveSettingGroupAdvanced = "advanced"
 )
+
+// ConstArchiveTierEnterprise: the plugin needs an enterprise plan (IsEnterprisePlan).
+const ConstArchiveTierEnterprise = "enterprise"
+
+// ErrArchiveEnterprisePlan: an enterprise plugin on a plan that does not grant it.
+var ErrArchiveEnterprisePlan = errors.New("an enterprise archive plugin: it needs a partner or support plan")
+
+// ArchivePluginAllowed is nil when this config may add or attach an archive of the plugin.
+func (conf *Config) ArchivePluginAllowed(plugin string) error {
+	if m, ok := ArchivePlugin(plugin); ok && m.Tier == ConstArchiveTierEnterprise && !conf.IsEnterprisePlan() {
+		return fmt.Errorf("plugin %s is %w", plugin, ErrArchiveEnterprisePlan)
+	}
+	return nil
+}
 
 // Archive plugin setting types. A secret is held encrypted in the entry, read and written
 // through the credential chain, never shown (#2088).

@@ -74,15 +74,17 @@ func (e ArchiveListEntry) MarshalJSON() ([]byte, error) {
 
 // ArchiveListResult is the archive list, the attached archive and the plugins' configs.
 type ArchiveListResult struct {
-	Attached string                         `json:"attached"`
-	Archives []ArchiveListEntry             `json:"archives"`
-	Plugins  []config.ArchivePluginManifest `json:"plugins"`
+	Attached string `json:"attached"`
+	// the plan grants the enterprise plugins (a partner or support plan)
+	EnterprisePlan bool                           `json:"enterprisePlan"`
+	Archives       []ArchiveListEntry             `json:"archives"`
+	Plugins        []config.ArchivePluginManifest `json:"plugins"`
 }
 
 // ArchiveList lists the cluster's archives.
 func (cluster *Cluster) ArchiveList() ArchiveListResult {
 	list, attached := cluster.Conf.ArchiveList()
-	out := ArchiveListResult{Attached: attached, Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins()}
+	out := ArchiveListResult{Attached: attached, EnterprisePlan: cluster.Conf.IsEnterprisePlan(), Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins()}
 	backups := map[string]int{}
 	if cluster.BackupMetaMap != nil {
 		legacy := cluster.Conf.LegacyArchiveName()
@@ -246,6 +248,9 @@ func (cluster *Cluster) PutArchive(spec config.ArchiveSpec, create, upsert bool)
 	}
 	a, _, err := cluster.Conf.BuildArchive(spec, create, upsert)
 	if err != nil {
+		return "", "", err
+	}
+	if err := cluster.Conf.ArchivePluginAllowed(a.Plugin); err != nil {
 		return "", "", err
 	}
 	if m, _ := config.ArchivePlugin(a.Plugin); !m.Can(config.ConstArchiveCapProbe) {

@@ -3858,12 +3858,19 @@ func (conf *Config) MonitorAPIURL() string {
 	return "https://" + conf.MonitorAddress + ":" + conf.APIPort
 }
 
-func (conf *Config) IsEligibleForArbitration() bool {
+// IsEnterprisePlan: registered to Cloud18 on a partner or support plan, which grants the
+// enterprise features (arbitration, the enterprise plugins). The plan is self-declared; the
+// CRM checks it afterwards.
+func (conf *Config) IsEnterprisePlan() bool {
 	if conf.Cloud18GitUser == "" {
 		return false
 	}
 	plan := strings.ToLower(strings.TrimSpace(conf.Cloud18SubscriptionPlan))
 	return plan == "support" || plan == "partner" || plan == "support-services"
+}
+
+func (conf *Config) IsEligibleForArbitration() bool {
+	return conf.IsEnterprisePlan()
 }
 
 func (conf *Config) SetRestoreConfigOnStart(val bool) {

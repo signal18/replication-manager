@@ -197,10 +197,10 @@ function SettingField({ st, value, onChange, secretSet }) {
   )
 }
 
-export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave }) {
+export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave, enterprisePlan }) {
   const { theme } = useTheme()
   const isEdit = !!archive
-  const [plugin, setPlugin] = useState(archive?.plugin || plugins?.[0]?.name || '')
+  const [plugin, setPlugin] = useState(archive?.plugin || plugins?.find((p) => p.tier !== 'enterprise' || enterprisePlan)?.name || '')
   const [name, setName] = useState(archive?.name || '')
   const [values, setValues] = useState({ ...(archive?.settings || {}) })
   const [showMore, setShowMore] = useState(false)
@@ -256,7 +256,14 @@ export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave 
                 <FormControl>
                   <FormLabel fontSize='sm' mb='1'>Plugin</FormLabel>
                   <Select size='sm' value={plugin} onChange={(e) => { setPlugin(e.target.value); setValues({}) }}>
-                    {plugins.map((p) => <option key={p.name} value={p.name}>{kindLabel(p.name, p)}</option>)}
+                    {plugins.map((p) => {
+                      const locked = p.tier === 'enterprise' && !enterprisePlan
+                      return (
+                        <option key={p.name} value={p.name} disabled={locked}>
+                          {kindLabel(p.name, p)}{p.tier === 'enterprise' ? (locked ? ' (Enterprise: needs a partner or support plan)' : ' (Enterprise)') : ''}
+                        </option>
+                      )
+                    })}
                   </Select>
                 </FormControl>
                 <FormControl>
@@ -310,7 +317,7 @@ function SecretRow({ isSet, isDisabled, onSave }) {
 export function useArchiveSettings({ clusterName, user, help, config }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
-  const [list, setList] = useState({ attached: '', archives: [], plugins: [] })
+  const [list, setList] = useState({ attached: '', archives: [], plugins: [], enterprisePlan: false })
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
   const [rename, setRename] = useState(null)
@@ -328,7 +335,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     try {
       const { data, status } = await clusterService.getArchiveList(clusterName)
       if (status >= 200 && status < 300 && data) {
-        setList({ attached: data.attached || '', archives: data.archives || [], plugins: data.plugins || [] })
+        setList({ attached: data.attached || '', archives: data.archives || [], plugins: data.plugins || [], enterprisePlan: !!data.enterprisePlan })
       } else {
         setError(typeof data === 'string' ? data : `Failed to list the archives (status ${status})`)
       }
@@ -581,7 +588,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
   const modals = (
     <>
       {adding && (
-        <ArchiveFormModal isOpen={adding} closeModal={() => setAdding(false)} plugins={list.plugins}
+        <ArchiveFormModal isOpen={adding} closeModal={() => setAdding(false)} plugins={list.plugins} enterprisePlan={list.enterprisePlan}
           onSave={async (spec) => {
             const err = await call(() => clusterService.addArchive(clusterName, { name: spec.name, plugin: spec.plugin, settings: spec.settings }))
             if (!err) setAdding(false)

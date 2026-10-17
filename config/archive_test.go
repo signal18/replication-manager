@@ -489,3 +489,27 @@ func TestArchiveConfigForArchive(t *testing.T) {
 		t.Fatalf("the cluster's config changed: aws %v repo %q archives %d", conf.BackupResticAws, conf.BackupResticLocalRepository, len(conf.Archives))
 	}
 }
+
+// an enterprise archive plugin needs a partner or support plan, registered to Cloud18
+func TestArchivePluginEnterpriseGate(t *testing.T) {
+	archiveManifests()
+	archivePluginManifests["test-enterprise"] = ArchivePluginManifest{Name: "test-enterprise", Tier: ConstArchiveTierEnterprise}
+	defer delete(archivePluginManifests, "test-enterprise")
+	conf := &Config{Cloud18GitUser: "acme", Cloud18SubscriptionPlan: "free"}
+	if err := conf.ArchivePluginAllowed("test-enterprise"); err == nil {
+		t.Fatal("a free plan must not add an enterprise plugin")
+	}
+	if err := conf.ArchivePluginAllowed(ConstArchivePluginResticLocal); err != nil {
+		t.Fatalf("restic-local on a free plan: %v", err)
+	}
+	for _, plan := range []string{"partner", "support", "Support-Services"} {
+		conf.Cloud18SubscriptionPlan = plan
+		if err := conf.ArchivePluginAllowed("test-enterprise"); err != nil {
+			t.Errorf("%s: %v", plan, err)
+		}
+	}
+	conf.Cloud18GitUser = ""
+	if conf.IsEnterprisePlan() {
+		t.Fatal("not registered: no enterprise plan")
+	}
+}
