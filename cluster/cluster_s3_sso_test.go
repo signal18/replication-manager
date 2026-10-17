@@ -52,13 +52,11 @@ func TestCloud18SSOProvider(t *testing.T) {
 	tok := func(payload string) string {
 		return "h." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".s"
 	}
-	if u, err := identityTokenUser(tok(`{"preferred_username":"acme"}`)); err != nil || u != "acme" {
+	// the folder is the permanent GitLab user id, never the username
+	if u, err := identityTokenUser(tok(`{"sub":"42","preferred_username":"acme"}`)); err != nil || u != "42" {
 		t.Fatalf("user %q %v", u, err)
 	}
-	if u, _ := identityTokenUser(tok(`{"nickname":"bob"}`)); u != "bob" {
-		t.Fatalf("nickname fallback %q", u)
-	}
-	for _, bad := range []string{"x.y", tok(`{}`), tok(`{"preferred_username":"a/b"}`)} {
+	for _, bad := range []string{"x.y", tok(`{}`), tok(`{"preferred_username":"acme"}`), tok(`{"sub":"a/b"}`)} {
 		if _, err := identityTokenUser(bad); err == nil {
 			t.Errorf("%q must be refused", bad)
 		}

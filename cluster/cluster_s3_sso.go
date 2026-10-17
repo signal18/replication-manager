@@ -27,7 +27,8 @@ import (
 // Connect identity token for the application the storage trusts (cloud18-sso-client-id), and
 // trades it at the storage's STS (AssumeRoleWithWebIdentity) for short-lived keys, renewed
 // before they expire. The storage's policy opens to that identity its own folder only, named
-// after it (${jwt:preferred_username}): two SSO users never see each other's backups.
+// after its permanent GitLab user id (${jwt:sub}, never its username, which can change hands):
+// two SSO users never see each other's backups.
 
 // ErrCloud18SSONotRegistered: an SSO provider needs a replication-manager registered to Cloud18.
 var ErrCloud18SSONotRegistered = errors.New("the S3 provider is reached with the Cloud18 SSO: this replication-manager is not registered to Cloud18")
@@ -65,15 +66,18 @@ func (cluster *Cluster) cloud18SSOConfig() (cloud18SSOConfig, error) {
 }
 
 // cloud18IdentityToken logs in to the Cloud18 GitLab and returns the OpenID Connect identity
-// token and its preferred_username claim.
+// token and its sub claim, the GitLab user id. The application is not confidential: the
+// instance's own login is the proof, no shared secret is handed out (sent only when set).
 func cloud18IdentityToken(cfg cloud18SSOConfig) (string, string, error) {
 	form := url.Values{
-		"grant_type":    {"password"},
-		"username":      {cfg.user},
-		"password":      {cfg.password},
-		"client_id":     {cfg.clientID},
-		"client_secret": {cfg.clientSecret},
-		"scope":         {"openid profile email"},
+		"grant_type": {"password"},
+		"username":   {cfg.user},
+		"password":   {cfg.password},
+		"client_id":  {cfg.clientID},
+		"scope":      {"openid profile email"},
+	}
+	if cfg.clientSecret != "" {
+		form.Set("client_secret", cfg.clientSecret)
 	}
 	resp, err := (&http.Client{Timeout: cloud18SSOHTTPTimeout}).PostForm(cfg.issuer+"/oauth/token", form)
 	if err != nil {
@@ -97,8 +101,8 @@ func cloud18IdentityToken(cfg cloud18SSOConfig) (string, string, error) {
 	return tok.IDToken, user, nil
 }
 
-// identityTokenUser reads the preferred_username claim of an identity token (the storage
-// checks the signature; this side only needs the name its folder carries).
+// identityTokenUser reads the sub claim of an identity token, the GitLab user id the folder is
+// named after (the storage checks the signature; this side only needs the folder's name).
 func identityTokenUser(idToken string) (string, error) {
 	parts := strings.Split(idToken, ".")
 	if len(parts) != 3 {
@@ -109,16 +113,12 @@ func identityTokenUser(idToken string) (string, error) {
 		return "", errors.New("Cloud18 SSO: malformed identity token")
 	}
 	var claims struct {
-		PreferredUsername string `json:"preferred_username"`
-		Nickname          string `json:"nickname"`
+		Sub string `json:"sub"`
 	}
 	if err := json.Unmarshal(payload, &claims); err != nil {
 		return "", errors.New("Cloud18 SSO: malformed identity token")
 	}
-	user := claims.PreferredUsername
-	if user == "" {
-		user = claims.Nickname
-	}
+	user := claims.Sub
 	if user == "" || strings.ContainsAny(user, "/\\") {
 		return "", errors.New("Cloud18 SSO: the identity token names no user")
 	}

@@ -3858,6 +3858,11 @@ func (conf *Config) MonitorAPIURL() string {
 	return "https://" + conf.MonitorAddress + ":" + conf.APIPort
 }
 
+// ConstCloud18StorageSSOClientID is the GitLab application the Cloud18 storages trust (#2091),
+// cloud18-sso-client-id's default: a client id is public, the same for every instance, and the
+// application is not confidential, so nothing has to be delivered.
+const ConstCloud18StorageSSOClientID = "8af77a6d3cde0dc816de9f2072829a1d6f5e7f0f2e3d059df21b45b6b13a3821"
+
 // IsEnterprisePlan: registered to Cloud18 on a partner or support plan, which grants the
 // enterprise features (arbitration, the enterprise plugins). The plan is self-declared; the
 // CRM checks it afterwards.
