@@ -7127,7 +7127,7 @@ func dumpHasActiveChangeMaster(path string) (bool, error) {
 // replication at the end of its own load from the position it sets: an older backup written
 // with --apply-slave-statements (--apply-replica-statements) stops replication in its header
 // (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES) and starts it in its footer. The position must be
-// active too (CHANGE MASTER, CHANGE REPLICATION SOURCE, SET GLOBAL gtid_slave_pos): with
+// active too (dumpReplicationStatements): with
 // --master-data=2 / --dump-slave=2 it is a comment and the START resumes from the server's old
 // position. Only the header is read. A splitdump directory has none: the splitter leaves the
 // START out of its files.
@@ -7138,7 +7138,8 @@ func dumpStartsReplication(path string) (bool, error) {
 
 // dumpStartsReplicationUnpositioned reports a mysqldump file that stops and starts replication
 // (--apply-slave-statements) with its position as a comment (--dump-slave=2): its START would
-// resume from the server's old position before repman positions it, so a reseed refuses it.
+// resume from the server's old position before repman positions it, so a reseed refuses it. A
+// header that can not be read is not refused: the restore reads the same file and fails.
 func dumpStartsReplicationUnpositioned(path string) (bool, error) {
 	stops, positioned, err := dumpReplicationStatements(path)
 	return stops && !positioned, err
@@ -7150,19 +7151,22 @@ func errDumpStartsUnpositioned(path string) error {
 	return fmt.Errorf("backup %s starts replication from the old position (--apply-slave-statements, position as a comment): take a new backup", path)
 }
 
-// dumpReplicationStatements reads the header of the mysqldump file at path: whether it stops
-// replication (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES, written with the START of its footer)
-// and whether it sets an active position (CHANGE MASTER, CHANGE REPLICATION SOURCE, SET GLOBAL
-// gtid_slave_pos, not as a comment).
+// dumpReplicationStatements reads the header of the mysqldump file at path, in one pass: whether
+// it stops replication (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES, written with the START of its
+// footer) and whether it sets an active position, not as a comment: SET GLOBAL gtid_slave_pos,
+// or a CHANGE MASTER / CHANGE REPLICATION SOURCE naming a binary log file. MariaDB's CHANGE
+// MASTER TO MASTER_USE_GTID=slave_pos alone sets the mode, not the position.
 func dumpReplicationStatements(path string) (stops, positioned bool, err error) {
-	stops, err = dumpHeaderHas(path, func(l string) bool {
-		return l == "STOP SLAVE;" || l == "STOP REPLICA;" || l == "STOP ALL SLAVES;"
-	})
-	if err != nil || !stops {
-		return stops, false, err
-	}
-	positioned, err = dumpHeaderHas(path, func(l string) bool {
-		return strings.HasPrefix(l, "CHANGE MASTER ") || strings.HasPrefix(l, "CHANGE REPLICATION SOURCE TO") || strings.HasPrefix(l, "SET GLOBAL gtid_slave_pos")
+	_, err = dumpHeaderHas(path, func(l string) bool {
+		if l == "STOP SLAVE;" || l == "STOP REPLICA;" || l == "STOP ALL SLAVES;" {
+			stops = true
+		}
+		if strings.HasPrefix(l, "SET GLOBAL gtid_slave_pos") ||
+			((strings.HasPrefix(l, "CHANGE MASTER ") || strings.HasPrefix(l, "CHANGE REPLICATION SOURCE TO")) &&
+				(strings.Contains(l, "MASTER_LOG_FILE") || strings.Contains(l, "SOURCE_LOG_FILE"))) {
+			positioned = true
+		}
+		return stops && positioned
 	})
 	return stops, positioned, err
 }

@@ -848,3 +848,42 @@ func TestDumpStartsReplicationUnpositioned(t *testing.T) {
 		t.Errorf("splitdump directory: got %v err %v", got, err)
 	}
 }
+
+// TestDumpReplicationStatements: the header lines as the MariaDB 11.4 and MySQL 8.4 clients
+// write them (read in the lab), and a mixed MariaDB header: MASTER_USE_GTID alone sets the
+// mode, not the position.
+func TestDumpReplicationStatements(t *testing.T) {
+	dir := t.TempDir()
+	for _, c := range []struct {
+		name, header      string
+		stops, positioned bool
+	}{
+		{"MariaDB primary --master-data=1 --apply-slave-statements --gtid",
+			"STOP ALL SLAVES;\nCHANGE MASTER TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000001', MASTER_LOG_POS=3773689;\nSET GLOBAL gtid_slave_pos='97-90125166-9,0-90125166-4772';\n", true, true},
+		{"MariaDB replica --dump-slave=1 --apply-slave-statements --gtid",
+			"STOP ALL SLAVES;\nCHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER '' TO MASTER_LOG_FILE='binlog.000001', MASTER_LOG_POS=2801290;\nSET GLOBAL gtid_slave_pos='0-90125166-4087,97-90125166-7';\n", true, true},
+		{"MariaDB --dump-slave=2 --apply-slave-statements --gtid",
+			"STOP ALL SLAVES;\n-- CHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER '' TO MASTER_LOG_FILE='binlog.000001', MASTER_LOG_POS=3364044;\n-- SET GLOBAL gtid_slave_pos='0-90125166-4396,97-90125166-8';\n", true, false},
+		{"MariaDB mixed: MASTER_USE_GTID active, gtid_slave_pos a comment",
+			"STOP ALL SLAVES;\nCHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\n-- SET GLOBAL gtid_slave_pos='0-90125166-4396';\n", true, false},
+		{"MySQL 8.4 --source-data=1 --apply-replica-statements",
+			"STOP REPLICA;\nSET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a:1-2';\nCHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=4244238;\n", true, true},
+		{"MySQL 8.4 --source-data=2 --apply-replica-statements",
+			"STOP REPLICA;\nSET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a:1-2';\n-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=4244238;\n", true, false},
+		{"older client STOP SLAVE, positional",
+			"STOP SLAVE;\nCHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=4;\n", true, true},
+		{"MariaDB --master-data=1 --gtid without the apply statements",
+			"CHANGE MASTER TO MASTER_USE_GTID=slave_pos;\nSET GLOBAL gtid_slave_pos='0-1-4';\n", false, true},
+		{"current backup: position a comment, no STOP",
+			"-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=4;\n-- SET GLOBAL gtid_slave_pos='0-1-4';\n", false, false},
+	} {
+		path := filepath.Join(dir, strings.NewReplacer(" ", "_", "/", "_", ":", "", ",", "", "=", "").Replace(c.name)+".sql")
+		if err := os.WriteFile(path, []byte("-- dump\n"+c.header+"-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTOP SLAVE;\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		stops, positioned, err := dumpReplicationStatements(path)
+		if err != nil || stops != c.stops || positioned != c.positioned {
+			t.Errorf("%s: stops %v positioned %v err %v, want %v %v", c.name, stops, positioned, err, c.stops, c.positioned)
+		}
+	}
+}
