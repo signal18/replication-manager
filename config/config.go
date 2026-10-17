@@ -3943,7 +3943,8 @@ func (conf *Config) CreateGitlabProjects() {
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
-			log.Error(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+			// the user, never the password
+			log.Errorf("GitLab login of %s failed: %s", conf.Cloud18GitUser, err)
 		}
 		return
 	}
