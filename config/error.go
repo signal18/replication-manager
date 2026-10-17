@@ -361,6 +361,7 @@ var ClusterError = map[string]string{
 	"WARN0248":  "Backup %d of %s lacks objects its source has: %s -- check backup-mysqldump-options and the event scheduler",
 	"WARN0249":  "Backup of %s changed since registered, not used until the change is registered: %s -- register the change (Register), or restore the original from its archive (the state clears once the file matches), or unregister it",
 	"WARN0251":  "Backups folder mount of %s not mounted: %s",
+	"WARN0252":  "Backups folder mount of %s slow: %d request(s) answered I/O error past their %s deadline, the last %s (the S3 storage too slow or unreachable)",
 	"WARN0250":  "Backup discovery on %s: %d artifact(s) not listed beyond backup-discovery-candidate-max (%d), the oldest dropped: register or move them, or raise the limit",
 	"WARN0247":  "Logical dump client %s of %s can not back up its %s server: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",

@@ -10,9 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/signal18/replication-manager/cluster/s3mount"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -146,65 +144,18 @@ func TestBackupFolderMoving(t *testing.T) {
 	}
 }
 
-// a fake repman-s3mount: its status line, then it waits for SIGTERM (or exits when told to)
-const fakeMountHelper = `#!/bin/sh
-cfg=$(cat)
-case "$cfg" in *'"bucket":"fail'*) echo '{"mounted":false,"error":"no such bucket"}'; exit 1;; esac
-echo '{"mounted":true}'
-case "$cfg" in *'"bucket":"exit'*) exit 3;; esac
-trap 'exit 0' TERM
-while true; do sleep 1; done
-`
-
-// #2091: the mount is served by repman-s3mount, a process of its own: mounted on its status
-// line, stopped with SIGTERM, a helper that exits on its own leaves an error state; the keys
-// file is the owner's only
-func TestBackupMountHelper(t *testing.T) {
+// #2091: the keys of a provider with keys are static; the empty folders go before a mount, a
+// folder holding a file stays
+func TestBackupMountKeysAndEmptyDirs(t *testing.T) {
 	cl := newEventLogTestCluster(t, 1)
-	cl.WorkingDir = filepath.Join(cl.Conf.WorkingDir, cl.Name)
-	os.MkdirAll(filepath.Join(cl.Conf.WorkingDir, "plugins"), 0o755)
-	if err := os.WriteFile(filepath.Join(cl.Conf.WorkingDir, "plugins", s3mount.BinaryName), []byte(fakeMountHelper), 0o755); err != nil {
-		t.Fatal(err)
+	k, err := cl.backupMountKeys(&mountTarget{accessKey: "id", secretKey: "sk"})
+	if err != nil || k.ssoUser != "" {
+		t.Fatalf("keys %+v %v", k, err)
 	}
-	keys := &mountKeys{value: s3mount.Keys{AccessKey: "id", SecretKey: "sk"}}
-	run := func(bucket string) {
-		cl.backupMount.mu.Lock()
-		cl.backupMount.starting = true
-		cl.backupMount.mu.Unlock()
-		cl.startMountHelper(&mountTarget{sig: bucket, bucket: bucket, prefix: "c1"}, keys)
+	if v, err := k.creds.Get(); err != nil || v.AccessKeyID != "id" || v.SecretAccessKey != "sk" {
+		t.Fatalf("static keys %+v %v", v, err)
 	}
 
-	go run("ok")
-	deadline := time.Now().Add(10 * time.Second)
-	for !cl.BackupMountStatus().Mounted && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if st := cl.BackupMountStatus(); !st.Mounted || st.Bucket != "ok:c1" {
-		t.Fatalf("mounted: %+v", st)
-	}
-	info, err := os.Stat(cl.backupMountKeysFile())
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("keys file: %v %v", info, err)
-	}
-	if k, err := s3mount.ReadKeys(cl.backupMountKeysFile()); err != nil || k.AccessKey != "id" {
-		t.Fatalf("keys: %+v %v", k, err)
-	}
-	cl.UnmountBackupFolder()
-	if st := cl.BackupMountStatus(); st.Mounted || cl.backupMount.helper != nil {
-		t.Fatalf("stopped: %+v", st)
-	}
-
-	run("fail")
-	if st := cl.BackupMountStatus(); st.Mounted || !strings.Contains(st.Error, "no such bucket") {
-		t.Fatalf("a refused mount: %+v", st)
-	}
-
-	run("exit")
-	if st := cl.BackupMountStatus(); st.Mounted || !strings.Contains(st.Error, "exited") {
-		t.Fatalf("a helper that exits: %+v", st)
-	}
-
-	// the empty folders go before a mount, a folder holding a file stays
 	d := t.TempDir()
 	os.MkdirAll(filepath.Join(d, "db1_3306", "x"), 0o755)
 	os.MkdirAll(filepath.Join(d, "db2_3306"), 0o755)
@@ -216,8 +167,7 @@ func TestBackupMountHelper(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(d, "db2_3306", "keep")); err != nil {
 		t.Fatal("a folder holding a file must stay")
 	}
-
-	if isMountPoint(t.TempDir()) {
+	if isMountPoint(d) {
 		t.Fatal("a plain folder is no mount point")
 	}
 }
