@@ -54,6 +54,7 @@ func (cluster *Cluster) getDumpParameter() string {
 			dump_param = re.ReplaceAllString(dump_param, "")
 			if cluster.master.HasMySQLGTID() {
 				dump_param = strings.ReplaceAll(dump_param, "--master-data=1", "")
+				dump_param = strings.ReplaceAll(dump_param, "--source-data=1", "")
 			}
 
 		}
@@ -91,10 +92,17 @@ func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid strin
 	if positionComment {
 		position = "2"
 	}
+	// A MySQL/Percona client from 8.0.26 names them --source-data, --dump-replica and
+	// --apply-replica-statements; --master-data, --dump-slave and --apply-slave-statements are
+	// deprecated aliases there. MariaDB's client keeps --master-data and --dump-slave.
+	sourceData, dumpReplica, applyReplica := "--master-data=", "--dump-slave=", "--apply-slave-statements"
+	if dumpver != nil && dumpver.IsMySQLOrPercona() && dumpver.GreaterEqual("8.0.26") {
+		sourceData, dumpReplica, applyReplica = "--source-data=", "--dump-replica=", "--apply-replica-statements"
+	}
 	if server.IsMaster() {
-		dumpslave = "--master-data=" + position
+		dumpslave = sourceData + position
 	} else {
-		dumpslave = "--dump-slave=" + position
+		dumpslave = dumpReplica + position
 	}
 
 	if server.HasEventScheduler() {
@@ -115,7 +123,7 @@ func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid strin
 
 	dumpargs = append(dumpargs, cluster.GetDumpCredentials(server)...)
 	if !positionComment {
-		dumpargs = append(dumpargs, "--apply-slave-statements")
+		dumpargs = append(dumpargs, applyReplica)
 	}
 	dumpargs = append(dumpargs, "--ignore-table=replication_manager_schema.jobs")
 	if server.DBVersion.IsMySQLOrPercona() {
