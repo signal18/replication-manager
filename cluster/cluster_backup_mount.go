@@ -21,8 +21,8 @@ import (
 )
 
 // The backups folder mount (#2091): with backup-streaming, the cluster's backups folder
-// <working-dir>/backups/<cluster> is a mount of backup-streaming-bucket, its folder <cluster>
-// (the layout the bucket had when the whole backups folder was mounted). The endpoint,
+// <working-dir>/backups/<cluster> is a mount of backup-streaming-bucket, its folder <cluster>,
+// under the instance's URI on Cloud18 (backupMountPrefix). The endpoint,
 // region and keys are those of an S3 provider of the cluster (backup-streaming-provider);
 // with none set, one is added from the backup-streaming-* values and set.
 
@@ -51,6 +51,17 @@ type backupMount struct {
 // backupMountPoint is the cluster's backups folder.
 func (cluster *Cluster) backupMountPoint() string {
 	return filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, cluster.Name)
+}
+
+// backupMountPrefix is the folder of the bucket mounted: the cluster name, under the
+// instance's URI on Cloud18 (<cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>,
+// as its secrets and billing name it), so instances sharing a bucket never mix.
+func (cluster *Cluster) backupMountPrefix() string {
+	c := cluster.Conf
+	if c.Cloud18 && c.Cloud18Domain != "" && c.Cloud18SubDomain != "" {
+		return c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone + "/" + cluster.Name
+	}
+	return cluster.Name
 }
 
 // ensureBackupMountProvider: backup-streaming on and no provider set, the provider is
@@ -118,7 +129,7 @@ func (cluster *Cluster) backupMountTarget() (string, string, *common.FlagStorage
 	if endpoint == "" {
 		return "", "", nil, fmt.Errorf("S3 provider %q has no endpoint", name)
 	}
-	bucket := cluster.Conf.BackupStreamingBucket + ":" + cluster.Name
+	bucket := cluster.Conf.BackupStreamingBucket + ":" + cluster.backupMountPrefix()
 	flags := &common.FlagStorage{
 		MountPoint: cluster.backupMountPoint(),
 		DirMode:    os.ModePerm,

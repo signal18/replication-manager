@@ -47,6 +47,13 @@ func TestBackupMountProvider(t *testing.T) {
 		t.Fatalf("target %q %q %+v %v", sig, bucket, flags, err)
 	}
 
+	// on Cloud18 the instance's URI comes first
+	cl.Conf.Cloud18, cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = true, "signal18", "ovh", "fr"
+	if _, bucket, _, _ := cl.backupMountTarget(); bucket != "repman:signal18/ovh-fr/c1" {
+		t.Fatalf("cloud18 bucket spec %q", bucket)
+	}
+	cl.Conf.Cloud18 = false
+
 	cl.Conf.BackupStreamingProvider = "missing"
 	if _, _, _, err := cl.backupMountTarget(); err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("a missing provider: %v", err)

@@ -58,6 +58,11 @@ function BackupSettings({ selectedCluster, user }) {
   const s3Providers = useSelector(selectClusterS3Providers)
   const mountProvider = s3Providers.find((p) => p.name === selectedCluster?.config?.backupStreamingProvider)
   const backupMount = selectedCluster?.backupMount
+  // the bucket's folder: the cluster name, under the instance's URI on Cloud18
+  const c18 = selectedCluster?.config
+  const mountPrefix = c18?.cloud18 && c18?.cloud18Domain && c18?.cloud18SubDomain
+    ? `${c18.cloud18Domain}/${c18.cloud18SubDomain}-${c18.cloud18SubDomainZone || ''}/${selectedCluster?.name}`
+    : selectedCluster?.name
 
   const openCommonModal = () => setIsCommonModalOpen(true)
   const closeCommonModal = () => setIsCommonModalOpen(false)
@@ -236,7 +241,7 @@ function BackupSettings({ selectedCluster, user }) {
   const hBackupMount = `**Backups Folder Mount**\n\nThe backups folder can be an S3 bucket mounted in its place: the backups are then written to the bucket.\n\nConfig: \`backup-streaming\``
   const hMountProvider = `**Backups Mount S3 Provider**\n\nThe S3 provider (the S3 Providers settings) whose endpoint, region and keys the mount uses. With the mount on and none set, one named backup-mount is added from the backup-streaming endpoint, region and keys, and set here.\n\nConfig: \`backup-streaming-provider\``
   const hMountBucket = `**Backups Mount S3 Bucket**\n\nThe bucket mounted as the backups folder: the cluster's backups are in its folder named as the cluster.\n\nConfig: \`backup-streaming-bucket\``
-  const hMountPoint = `**Backups Mount Folder**\n\nThe cluster's backups folder, mounted from the bucket's folder named as the cluster. A folder holding local files is never mounted over: move them first.`
+  const hMountPoint = `**Backups Mount Folder**\n\nThe cluster's backups folder, mounted from the bucket's folder named as the cluster (on Cloud18: under the instance's URI, <domain>/<sub-domain>-<zone>/<cluster>). A folder holding local files is never mounted over: move them first.`
   const hMountDebug = `**Backups Mount Debug**\n\nLogs the mount's S3 calls.\n\nConfig: \`backup-streaming-debug\``
   const hArchiveMountDir = `**Archive Mount Folder**\n\nWhere an archive is mounted to browse it or to reseed from it. Empty: \`<working-dir>/<cluster>/mount\`; a relative path is resolved under it.\n\nConfig: \`backup-restic-mount-dir\``
   const hUnsafeMount = `**Allow Unsafe Mount**\n\nUse an archive mount another process made. Unsafe: that process can unmount it while it is used.\n\nConfig: \`backup-restic-allow-unsafe-mount\``
@@ -788,7 +793,7 @@ function BackupSettings({ selectedCluster, user }) {
         {
           key: 'Mounted Folder',
           help: h(hMountPoint, 'Backups Mount Folder'),
-          value: (<Text fontSize='sm'>{(backupMount?.mountPoint || `<working-dir>/backups/${selectedCluster?.name}`)} = {selectedCluster?.config?.backupStreamingBucket || '?'}/{selectedCluster?.name}</Text>)
+          value: (<Text fontSize='sm'>{(backupMount?.mountPoint || `<working-dir>/backups/${selectedCluster?.name}`)} = {selectedCluster?.config?.backupStreamingBucket || '?'}/{mountPrefix}</Text>)
         },
         {
           key: 'Mount Status',
