@@ -1136,7 +1136,8 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 		RedirectURL:  repman.Conf.APIPublicURL + "/api/auth/callback",
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
 	}
-	log.Printf("OAuth oidc to gitlab: %v\n", OAuthConfig)
+	// the client id, never the secret
+	log.Printf("OAuth oidc to gitlab %s, client %s\n", repman.Conf.OAuthProvider, OAuthConfig.ClientID)
 	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
 	if err != nil {
 		http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
