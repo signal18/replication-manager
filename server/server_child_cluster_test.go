@@ -73,3 +73,18 @@ func TestChildDumpClients(t *testing.T) {
 		t.Fatalf("another image keeps the default: %+v", other)
 	}
 }
+
+// TestChildXtrabackupImage: the parent's XtraBackup image on the parent's database image, empty
+// on another image or when the parent has none.
+func TestChildXtrabackupImage(t *testing.T) {
+	parent := &config.Config{ProvDbImg: "mysql:8.4", ProvDbDockerXtrabackupImg: "auto"}
+	if got := childXtrabackupImage(parent, "mysql:8.4"); got != "auto" {
+		t.Fatalf("same image: got %q, want auto", got)
+	}
+	if got := childXtrabackupImage(parent, "mysql:9.1"); got != "" {
+		t.Fatalf("another image: got %q, want empty", got)
+	}
+	if got := childXtrabackupImage(&config.Config{ProvDbImg: "mysql:8.4"}, "mysql:8.4"); got != "" {
+		t.Fatalf("parent without image: got %q, want empty", got)
+	}
+}

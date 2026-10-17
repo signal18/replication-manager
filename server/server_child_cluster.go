@@ -205,6 +205,17 @@ func childDumpClients(child, parent *config.Config, image string) bool {
 	return changed
 }
 
+// childXtrabackupImage is the XtraBackup image a child gets from its parent: the parent's, when
+// the child runs the parent's database image (an explicit image matches one server version);
+// empty otherwise, the child keeps its default. On a MySQL/Percona image the jobs container gets
+// its tools from it, socat among them, through which dbjobs reaches replication-manager.
+func childXtrabackupImage(parent *config.Config, image string) string {
+	if image != parent.ProvDbImg {
+		return ""
+	}
+	return parent.ProvDbDockerXtrabackupImg
+}
+
 // CreateChildCluster creates the planned cluster for a creator already authorised
 // (clusterAddAuthorize), configures it and adds its servers, then provisions and seeds
 // it in the background. Every step is recorded on the new cluster (CINF0014 while it
@@ -268,6 +279,12 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	// default paths, they decide the options (--ssl-mode of a MySQL 8 client, not --ssl)
 	if childDumpClients(cl.Conf, parent.Conf, plan.DBImage) {
 		cl.RefreshToolVersions()
+	}
+	// before the servers are provisioned: their jobs containers get their tools from it
+	if img := childXtrabackupImage(parent.Conf, plan.DBImage); img != "" {
+		if err := repman.SetClusterSetting(cl, "prov-db-docker-xtrabackup-img", img); err != nil {
+			return cl, fail(err)
+		}
 	}
 	// The parent's monitoring and replication accounts, same name same password (staging
 	// doc): provisioned identical, nothing to restore from the parent's backup.
