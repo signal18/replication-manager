@@ -846,6 +846,13 @@ func (cluster *Cluster) SwitchBackupKeepUntilValid() {
 	cluster.Conf.BackupKeepUntilValid = !cluster.Conf.BackupKeepUntilValid
 }
 
+// SwitchBackupStreaming turns the cluster's backups folder mount on or off; the mount
+// follows at once (#2091)
+func (cluster *Cluster) SwitchBackupStreaming() {
+	cluster.Conf.BackupStreaming = !cluster.Conf.BackupStreaming
+	go cluster.RefreshBackupMount()
+}
+
 func (cluster *Cluster) SwitchBackupArchiveRemoveOriginal() {
 	cluster.Conf.BackupArchiveRemoveOriginal = !cluster.Conf.BackupArchiveRemoveOriginal
 }

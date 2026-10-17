@@ -769,7 +769,9 @@ function BackupSettings({ selectedCluster, user }) {
         {
           key: 'Mount S3 Bucket',
           help: h(hBackupMount, 'Backups Folder Mount'),
-          value: (<Text fontSize='sm'>{selectedCluster?.config?.backupStreaming ? 'on' : 'off'}</Text>)
+          value: (<RMSwitch isChecked={!!selectedCluster?.config?.backupStreaming}
+            confirmTitle={selectedCluster?.config?.backupStreaming ? 'Unmount the backups folder?' : 'Mount the backups folder on the S3 provider below?'}
+            onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming' }))} />)
         },
         {
           key: 'S3 Provider',

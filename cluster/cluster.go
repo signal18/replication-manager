@@ -846,6 +846,7 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"LoadS3Providers: %v", err)
 	}
+	cluster.ensureCloud18Provider() // registered to Cloud18: the Cloud18 storage, SSO (#2091)
 
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()

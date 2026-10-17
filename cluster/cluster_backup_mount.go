@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -64,11 +65,66 @@ func (cluster *Cluster) backupMountPrefix() string {
 	return cluster.Name
 }
 
-// ensureBackupMountProvider: backup-streaming on and no provider set, the provider is
-// added from the backup-streaming-* values when the cluster has none of that name, and set.
+// ConstCloud18Provider is the S3 provider a replication-manager registered to Cloud18 gets:
+// the Cloud18 storage of backup-streaming-endpoint, reached with the Cloud18 SSO.
+const ConstCloud18Provider = "cloud18"
+
+// cloud18Registered: this replication-manager is registered to Cloud18 with its own identity.
+func (cluster *Cluster) cloud18Registered() bool {
+	return cluster.Conf.Cloud18 && cluster.Conf.Cloud18GitUser != ""
+}
+
+// ensureCloud18Provider: registered to Cloud18, the cluster's S3 providers hold the Cloud18
+// storage, reached with the Cloud18 SSO (no keys, its role computed), added once.
+func (cluster *Cluster) ensureCloud18Provider() {
+	if !cluster.cloud18Registered() || strings.TrimSpace(cluster.Conf.BackupStreamingEndpoint) == "" {
+		return
+	}
+	for _, p := range cluster.GetS3ProvidersSnapshot() {
+		if p.Name == ConstCloud18Provider {
+			return
+		}
+	}
+	p := config.S3Provider{
+		Name:           ConstCloud18Provider,
+		ProviderSource: config.S3ProviderSourceCustom,
+		Endpoint:       strings.TrimRight(strings.TrimSpace(cluster.Conf.BackupStreamingEndpoint), "/"),
+		Region:         cluster.Conf.BackupStreamingRegion,
+		Cloud18SSO:     true,
+	}
+	err := cluster.WithS3ProviderCRUDLock(func() error {
+		if err := cluster.AddS3Provider(p); err != nil {
+			return err
+		}
+		if err := cluster.SaveS3Providers(); err != nil {
+			cluster.RemoveS3Provider(p.Name)
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cloud18 S3 provider: not added: %s", err)
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cloud18 S3 provider %s added: %s, reached with the Cloud18 SSO", p.Name, p.Endpoint)
+}
+
+// ensureBackupMountProvider: backup-streaming on and no provider set, the mount uses the
+// Cloud18 storage when registered; else a provider is added from the backup-streaming-* keys
+// when the cluster has none of that name, and set (an on-premise instance, its own bucket).
 func (cluster *Cluster) ensureBackupMountProvider() {
+	cluster.ensureCloud18Provider()
 	if !cluster.Conf.BackupStreaming || cluster.Conf.BackupStreamingProvider != "" {
 		return
+	}
+	if cluster.cloud18Registered() {
+		for _, p := range cluster.GetS3ProvidersSnapshot() {
+			if p.Name == ConstCloud18Provider {
+				cluster.Conf.BackupStreamingProvider = ConstCloud18Provider
+				cluster.Save()
+				return
+			}
+		}
 	}
 	exists := false
 	for _, p := range cluster.GetS3ProvidersSnapshot() {

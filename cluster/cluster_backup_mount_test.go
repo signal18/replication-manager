@@ -94,3 +94,34 @@ func TestBackupMountProvider(t *testing.T) {
 		t.Fatal("a local backup must block the mount")
 	}
 }
+
+// #2091: registered to Cloud18, the cluster gets the Cloud18 storage as an SSO provider, once,
+// and the mount turned on uses it; not registered, nothing is added
+func TestCloud18ProviderAutoAdded(t *testing.T) {
+	cl := newEventLogTestCluster(t, 1)
+	cl.WorkingDir = t.TempDir()
+	cl.Conf.BackupStreamingEndpoint = "https://minio.example/"
+	cl.Conf.BackupStreamingRegion = "eu-west-1"
+
+	cl.ensureCloud18Provider()
+	if len(cl.GetS3ProvidersSnapshot()) != 0 {
+		t.Fatal("not registered: no Cloud18 provider")
+	}
+
+	cl.Conf.Cloud18, cl.Conf.Cloud18GitUser = true, "acme"
+	cl.ensureCloud18Provider()
+	cl.ensureCloud18Provider()
+	ps := cl.GetS3ProvidersSnapshot()
+	if len(ps) != 1 || ps[0].Name != ConstCloud18Provider || !ps[0].Cloud18SSO || ps[0].Endpoint != "https://minio.example" || ps[0].AccessKey != "" {
+		t.Fatalf("providers %+v", ps)
+	}
+
+	cl.Conf.BackupStreaming = true
+	cl.ensureBackupMountProvider()
+	if cl.Conf.BackupStreamingProvider != ConstCloud18Provider {
+		t.Fatalf("the mount uses %q, want the Cloud18 storage", cl.Conf.BackupStreamingProvider)
+	}
+	if len(cl.GetS3ProvidersSnapshot()) != 1 {
+		t.Fatal("no keyed provider when registered")
+	}
+}

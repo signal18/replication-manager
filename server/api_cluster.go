@@ -3669,6 +3669,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupKeepUntilValid()
 	case "backup-archive-remove-original":
 		mycluster.SwitchBackupArchiveRemoveOriginal()
+	case "backup-streaming":
+		mycluster.SwitchBackupStreaming()
 	case "backup-discovery":
 		mycluster.SwitchBackupDiscovery()
 	case "backup-verification":
@@ -5900,6 +5902,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupKeepUntilValid = applyIsActive(mycluster.Conf.BackupKeepUntilValid, isactive)
 	case "backup-archive-remove-original":
 		mycluster.Conf.BackupArchiveRemoveOriginal = applyIsActive(mycluster.Conf.BackupArchiveRemoveOriginal, isactive)
+	case "backup-streaming":
+		mycluster.Conf.BackupStreaming = applyIsActive(mycluster.Conf.BackupStreaming, isactive)
+		go mycluster.RefreshBackupMount()
 	case "backup-discovery":
 		mycluster.Conf.BackupDiscovery = applyIsActive(mycluster.Conf.BackupDiscovery, isactive)
 	case "backup-verification":
