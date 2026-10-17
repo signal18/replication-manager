@@ -50,7 +50,7 @@ backup-mysqldump-path = "/usr/local/bin/mysqldump"
 backup-streaming = true
 backup-streaming-aws-access-key-id = "admin"
 backup-streaming-aws-access-secret = "xxxx"
-backup-streaming-endpoint= "https://s3.signal18.io/"
+backup-streaming-endpoint= "https://minio.crm.ovh-fr-2.signal18.cloud18.io/"
 backup-streaming-region= "fr-1"
 backup-streaming-bucket= "repman"
 
