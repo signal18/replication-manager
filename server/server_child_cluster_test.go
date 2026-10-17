@@ -48,29 +48,33 @@ func TestChildProxyTypeWithoutProxy(t *testing.T) {
 	}
 }
 
-// A child on the parent's image takes its dump and restore clients; on another image it keeps
-// the default.
+// A child on the parent's image takes its dump and restore clients, as settings, only those that
+// differ; on another image it keeps the default.
 func TestChildDumpClients(t *testing.T) {
 	parent := &config.Config{ProvDbImg: "mysql:8.4.11",
 		BackupMysqldumpPath:   "/usr/share/replication-manager/mysql/8.4/mysqldump",
 		BackupMysqlclientPath: "/usr/share/replication-manager/mysql/8.4/mysql",
 		BackupMysqlbinlogPath: "/usr/share/replication-manager/mysql/8.4/mysqlbinlog"}
-	child := &config.Config{}
-	if !childDumpClients(child, parent, "mysql:8.4.11") {
-		t.Fatal("paths set: a change reported")
+	got := childDumpClients(&config.Config{}, parent, "mysql:8.4.11")
+	want := [][2]string{
+		{"backup-mysqldump-path", parent.BackupMysqldumpPath},
+		{"backup-mysqlclient-path", parent.BackupMysqlclientPath},
+		{"backup-mysqlbinlog-path", parent.BackupMysqlbinlogPath},
 	}
-	if childDumpClients(child, parent, "mysql:8.4.11") {
-		t.Fatal("the same paths again: no change")
+	if len(got) != len(want) {
+		t.Fatalf("same image, default child: got %v, want %v", got, want)
 	}
-	if child.BackupMysqldumpPath != parent.BackupMysqldumpPath || child.BackupMysqlclientPath != parent.BackupMysqlclientPath || child.BackupMysqlbinlogPath != parent.BackupMysqlbinlogPath {
-		t.Fatalf("same image: %+v", child)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("same image, default child: got %v, want %v", got, want)
+		}
 	}
-	other := &config.Config{}
-	if childDumpClients(other, parent, "mysql:9.3.0") {
-		t.Fatal("another image: no change")
+	same := &config.Config{BackupMysqldumpPath: parent.BackupMysqldumpPath, BackupMysqlclientPath: parent.BackupMysqlclientPath, BackupMysqlbinlogPath: "/x/mysqlbinlog"}
+	if got := childDumpClients(same, parent, "mysql:8.4.11"); len(got) != 1 || got[0] != [2]string{"backup-mysqlbinlog-path", parent.BackupMysqlbinlogPath} {
+		t.Fatalf("only the differing path: got %v", got)
 	}
-	if other.BackupMysqldumpPath != "" || other.BackupMysqlclientPath != "" || other.BackupMysqlbinlogPath != "" {
-		t.Fatalf("another image keeps the default: %+v", other)
+	if got := childDumpClients(&config.Config{}, parent, "mysql:9.3.0"); got != nil {
+		t.Fatalf("another image keeps the default: got %v", got)
 	}
 }
 

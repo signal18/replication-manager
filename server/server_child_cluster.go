@@ -190,19 +190,26 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 	return plan, nil
 }
 
-// childDumpClients gives a child the parent's dump and restore clients (a MySQL parent sets
-// its MySQL ones) when it runs the parent's image: the default is the MariaDB client, which can
-// not dump MySQL 8.4. A child on another image keeps the default, the dump client check names a
-// mismatch. It reports whether a path changed, the client versions to be read again.
-func childDumpClients(child, parent *config.Config, image string) bool {
+// childDumpClients lists the settings that give a child the parent's dump and restore clients
+// (a MySQL parent sets its MySQL ones) when it runs the parent's image: the default is the
+// MariaDB client, which can not dump MySQL 8.4. Only the paths that differ from the child's,
+// as setting name and value. A child on another image keeps the default, the dump client check
+// names a mismatch.
+func childDumpClients(child, parent *config.Config, image string) [][2]string {
 	if image != parent.ProvDbImg {
-		return false
+		return nil
 	}
-	changed := child.BackupMysqldumpPath != parent.BackupMysqldumpPath || child.BackupMysqlclientPath != parent.BackupMysqlclientPath || child.BackupMysqlbinlogPath != parent.BackupMysqlbinlogPath
-	child.BackupMysqldumpPath = parent.BackupMysqldumpPath
-	child.BackupMysqlclientPath = parent.BackupMysqlclientPath
-	child.BackupMysqlbinlogPath = parent.BackupMysqlbinlogPath
-	return changed
+	var set [][2]string
+	for _, p := range []struct{ key, child, parent string }{
+		{"backup-mysqldump-path", child.BackupMysqldumpPath, parent.BackupMysqldumpPath},
+		{"backup-mysqlclient-path", child.BackupMysqlclientPath, parent.BackupMysqlclientPath},
+		{"backup-mysqlbinlog-path", child.BackupMysqlbinlogPath, parent.BackupMysqlbinlogPath},
+	} {
+		if p.child != p.parent {
+			set = append(set, [2]string{p.key, p.parent})
+		}
+	}
+	return set
 }
 
 // childXtrabackupImage is the XtraBackup image a child gets from its parent: the parent's, when
@@ -275,10 +282,12 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	if err := repman.SetClusterSetting(cl, "backup-logical-type", plan.BackupLogicalType); err != nil {
 		return cl, fail(err)
 	}
-	// the client versions follow the binaries: detected at the cluster's creation with the
-	// default paths, they decide the options (--ssl-mode of a MySQL 8 client, not --ssl)
-	if childDumpClients(cl.Conf, parent.Conf, plan.DBImage) {
-		cl.RefreshToolVersions()
+	// the parent's clients, saved as the child's settings; the setting reads the client versions
+	// again, they decide the options (--ssl-mode of a MySQL 8 client, not --ssl)
+	for _, s := range childDumpClients(cl.Conf, parent.Conf, plan.DBImage) {
+		if err := repman.SetClusterSetting(cl, s[0], s[1]); err != nil {
+			return cl, fail(err)
+		}
 	}
 	// before the servers are provisioned: their jobs containers get their tools from it
 	if img := childXtrabackupImage(parent.Conf, plan.DBImage); img != "" {

@@ -185,6 +185,9 @@ function BackupSettings({ selectedCluster, user }) {
   const hLogicalPostScript = `**Logical Backup Post-Script**\n\nScript executed after a logical backup completes.\n\nThe script receives:\n1. Cluster name\n2. DB Server Host\n3. DB Server Port\n4. Backup Path\n\nConfig: \`backup-logical-post-script\``
   const hDbClientOptions = `**DB Client Options**\n\nExtra command-line options passed to the MySQL client binary used during backup operations.\n\nConfig: \`backup-mysqlclient-options\``
   const hMysqldumpOptions = `**Mysqldump Options**\n\nAdditional command-line flags passed to mysqldump.\nExample: \`--single-transaction --triggers --routines\`\n\nConfig: \`backup-mysqldump-options\``
+  const hMysqldumpPath = `**Mysqldump Path**\n\nThe dump client of this cluster's logical backups and reseeds. A MySQL/Percona cluster needs a MySQL client (the default is the MariaDB client, which can not dump MySQL 8.4). Empty: the default. The client version is read again when it changes.\n\nConfig: \`backup-mysqldump-path\``
+  const hMysqlclientPath = `**MySQL Client Path**\n\nThe client that loads a logical backup into this cluster's servers. Empty: the default.\n\nConfig: \`backup-mysqlclient-path\``
+  const hMysqlbinlogPath = `**Mysqlbinlog Path**\n\nThe binary log client of this cluster. Empty: the default.\n\nConfig: \`backup-mysqlbinlog-path\``
   const hDiscovery = `**Backup Discovery**\n\nAt the start of each server monitor, lists the logical backups placed in the backup folders by hand or by another tool (mysqldump files, splitdump and mydumper folders) that no metadata describes, with what their check found, in **Found in backup folders** (Maintenance). Nothing is registered: a backup is used only once the operator registers it, and never by an automatic restore.\n\nThe **Discover** button runs a discovery whatever this setting, and the registered backups are checked for changes (WARN0249) whatever it.\n\nConfig: \`backup-discovery\``
   const hDiscoveryCandidateMax = `**Backup Discovery Candidates**\n\nThe artifacts a discovery lists per server: beyond it, the oldest are not listed and WARN0250 is raised. 0: the default (100).\n\nConfig: \`backup-discovery-candidate-max\``
   const hVerification = `**Backup Verification**\n\nVerifies each logical (mysqldump) backup once it completes, at the verification level below. A backup can also be verified on demand from the backup list (Maintenance).\n\nThe result is shown in the backup list; a failed verification of a server's last logical backup raises ERR00117.\n\nConfig: \`backup-verification\``
@@ -296,6 +299,33 @@ function BackupSettings({ selectedCluster, user }) {
         <TextForm value={selectedCluster?.config?.backupMysqldumpOptions} confirmTitle={`Confirm backup-mysqldump-options to `}
           maxLength={1024} className={styles.textbox}
           onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-mysqldump-options', value: btoa(value) }))} />
+      )
+    },
+    {
+      key: 'Mysqldump Path',
+      help: h(hMysqldumpPath, 'Mysqldump Path'),
+      value: (
+        <TextForm value={selectedCluster?.config?.backupMysqldumpPath} confirmTitle={`Confirm backup-mysqldump-path to `}
+          maxLength={1024} className={styles.textbox}
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-mysqldump-path', value }))} />
+      )
+    },
+    {
+      key: 'MySQL Client Path',
+      help: h(hMysqlclientPath, 'MySQL Client Path'),
+      value: (
+        <TextForm value={selectedCluster?.config?.backupMysqlclientPath} confirmTitle={`Confirm backup-mysqlclient-path to `}
+          maxLength={1024} className={styles.textbox}
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-mysqlclient-path', value }))} />
+      )
+    },
+    {
+      key: 'Mysqlbinlog Path',
+      help: h(hMysqlbinlogPath, 'Mysqlbinlog Path'),
+      value: (
+        <TextForm value={selectedCluster?.config?.backupMysqlbinlogPath} confirmTitle={`Confirm backup-mysqlbinlog-path to `}
+          maxLength={1024} className={styles.textbox}
+          onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-mysqlbinlog-path', value }))} />
       )
     },
     {

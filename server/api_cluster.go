@@ -5040,6 +5040,22 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMysqlclientOptions = string(val)
+	case "backup-mysqldump-path", "backup-mysqlclient-path", "backup-mysqlbinlog-path":
+		// the cluster's own dump and restore clients (a MySQL cluster needs MySQL ones); the
+		// client-dependent options follow the binary, its version is read again
+		_, storeValue, err := resolveExecutablePath(value, name)
+		if err != nil {
+			return err
+		}
+		switch name {
+		case "backup-mysqldump-path":
+			mycluster.Conf.BackupMysqldumpPath = storeValue
+		case "backup-mysqlclient-path":
+			mycluster.Conf.BackupMysqlclientPath = storeValue
+		default:
+			mycluster.Conf.BackupMysqlbinlogPath = storeValue
+		}
+		mycluster.RefreshToolVersions()
 	case "backup-verification-level":
 		if err := mycluster.SetBackupVerificationLevel(value); err != nil {
 			return err
