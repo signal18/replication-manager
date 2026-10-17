@@ -20,6 +20,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	goofys "github.com/signal18/replication-manager/goofys/api"
 	common "github.com/signal18/replication-manager/goofys/api/common"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // The backups folder mount (#2091): with backup-streaming, the cluster's backups folder
@@ -324,13 +325,30 @@ func (cluster *Cluster) RefreshBackupMount() {
 	}()
 }
 
-// backupFolderMoving refuses a backup while the local backups move into the bucket.
+// checkBackupMountStates, every tick, from memory only: CINF0019 while the local backups
+// move into the bucket, WARN0251 while a mount turned on is not mounted.
+func (cluster *Cluster) checkBackupMountStates() {
+	bm := &cluster.backupMount
+	bm.mu.Lock()
+	st, moving := bm.state, bm.moving
+	bm.mu.Unlock()
+	switch {
+	case moving:
+		cluster.SetState("CINF0019", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0019"], cluster.Name, st.Bucket, st.MovedFiles, st.TotalFiles, st.MovedBytes, st.TotalBytes), ErrFrom: "BACKUP"})
+	case cluster.Conf.BackupStreaming && !st.Mounted && st.Error != "":
+		cluster.SetState("WARN0251", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0251"], cluster.Name, st.Error), ErrFrom: "BACKUP"})
+	}
+}
+
+// backupFolderMoving refuses a backup while the local backups move into the bucket: the
+// CINF0019 state, or the move just started (before the tick raised it).
 func (cluster *Cluster) backupFolderMoving() error {
 	bm := &cluster.backupMount
 	bm.mu.Lock()
-	defer bm.mu.Unlock()
-	if bm.moving {
-		return errors.New("backup refused: the cluster's backups are moving into the S3 bucket of its backups folder mount")
+	moving := bm.moving
+	bm.mu.Unlock()
+	if moving || (cluster.StateMachine != nil && cluster.StateMachine.IsInState("CINF0019")) {
+		return errors.New("backup refused: the cluster's backups are moving into the S3 bucket of its backups folder mount (CINF0019)")
 	}
 	return nil
 }
