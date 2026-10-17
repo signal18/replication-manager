@@ -68,7 +68,10 @@ func main() {
 	region := cfg.Region
 	backend := (&common.S3Config{Region: region, RegionSet: region != "", Credentials: credentials.NewCredentials(keys)}).Init()
 	flags := &common.FlagStorage{
-		MountPoint:  cfg.MountPoint,
+		MountPoint: cfg.MountPoint,
+		// the files are the helper's user's, replication-manager's: it writes its backups there
+		Uid:         uint32(os.Getuid()),
+		Gid:         uint32(os.Getgid()),
 		DirMode:     0o755,
 		FileMode:    0o644,
 		Endpoint:    cfg.Endpoint,
