@@ -1028,6 +1028,8 @@ type Config struct {
 	Cloud18SubDomainZone             string  `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" groups:"apps"`
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
+	Cloud18SSOClientID               string  `scope:"server" mapstructure:"cloud18-sso-client-id" toml:"cloud18-sso-client-id" json:"cloud18SsoClientId"`
+	Cloud18SSOClientSecret           string  `scope:"server" mapstructure:"cloud18-sso-client-secret" toml:"cloud18-sso-client-secret" json:"-"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
@@ -1936,6 +1938,7 @@ var SecretKeys = []string{
 	"cloud18-dba-user-credentials",
 	"cloud18-sponsor-user-credentials",
 	"cloud18-domain-secret",
+	"cloud18-sso-client-secret",
 	"proxysql-user",
 	"vault-token",
 	"api-oauth-client-secret",

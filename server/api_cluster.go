@@ -10897,6 +10897,7 @@ type s3ProviderRequest struct {
 	Region         string                  `json:"region,omitempty"`
 	AccessKey      string                  `json:"accesskey,omitempty"`
 	SecretKey      string                  `json:"secretkey,omitempty"`
+	Cloud18SSO     bool                    `json:"cloud18Sso,omitempty"`
 }
 
 const s3ProviderRequestBodyMaxBytes int64 = 1 << 20 // 1 MiB
@@ -11101,6 +11102,7 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 			Region:         req.Region,
 			AccessKey:      req.AccessKey,
 			SecretKey:      req.SecretKey,
+			Cloud18SSO:     req.Cloud18SSO,
 		}
 		if err := p.Validate(); err != nil {
 			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: fmt.Sprintf("Validation error: %v", err)}
@@ -11144,6 +11146,7 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 		Region:         req.Region,
 		AccessKey:      req.AccessKey,
 		SecretKey:      req.SecretKey,
+		Cloud18SSO:     req.Cloud18SSO,
 	}
 
 	// Capture old state and merge blank credentials before validation.
@@ -11155,7 +11158,8 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 			break
 		}
 	}
-	if oldProvider != nil && p.ProviderSource == oldProvider.ProviderSource {
+	// a provider reached with the Cloud18 SSO keeps no keys (#2091)
+	if oldProvider != nil && p.ProviderSource == oldProvider.ProviderSource && !p.Cloud18SSO {
 		if p.AccessKey == "" {
 			p.AccessKey = oldProvider.AccessKey
 		}

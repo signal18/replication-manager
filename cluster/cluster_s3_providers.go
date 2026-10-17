@@ -40,6 +40,7 @@ type s3ProviderOnDisk struct {
 	Region         string                  `json:"region,omitempty"`
 	AccessKey      string                  `json:"accesskey,omitempty"`
 	SecretKey      string                  `json:"secretkey,omitempty"`
+	Cloud18SSO     bool                    `json:"cloud18Sso,omitempty"`
 }
 
 func toOnDisk(p config.S3Provider) s3ProviderOnDisk {
@@ -51,6 +52,7 @@ func toOnDisk(p config.S3Provider) s3ProviderOnDisk {
 		Region:         p.Region,
 		AccessKey:      p.AccessKey,
 		SecretKey:      p.SecretKey,
+		Cloud18SSO:     p.Cloud18SSO,
 	}
 }
 
@@ -63,6 +65,7 @@ func fromOnDisk(d s3ProviderOnDisk) config.S3Provider {
 		Region:         d.Region,
 		AccessKey:      d.AccessKey,
 		SecretKey:      d.SecretKey,
+		Cloud18SSO:     d.Cloud18SSO,
 	}
 }
 
