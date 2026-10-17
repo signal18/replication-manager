@@ -348,6 +348,16 @@ func (cluster *Cluster) RefreshBackupMount() {
 	if err != nil || t == nil {
 		return
 	}
+	// a mount left by a previous run (replication-manager killed before it stopped its helper):
+	// detached, never mistaken for local backups
+	if bm.helper == nil && isMountPoint(mountPoint) {
+		lazyUnmount(mountPoint)
+		if isMountPoint(mountPoint) {
+			bm.state.Error = mountPoint + " is still mounted by a previous run and could not be detached"
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: a mount left on %s by a previous run detached", mountPoint)
+	}
 	os.MkdirAll(mountPoint, os.ModePerm)
 	// local backups: uploaded into the bucket first, their records with them, so the catalogue
 	// finds them at the same paths once mounted; never during a backup
@@ -425,6 +435,7 @@ func (cluster *Cluster) startMountHelper(t *mountTarget, keys *mountKeys) {
 	var in bytes.Buffer
 	json.NewEncoder(&in).Encode(s3mount.Config{MountPoint: point, Bucket: spec, Endpoint: t.endpoint, Region: t.region, KeysFile: keysFile, Debug: cluster.Conf.BackupStreamingDebug})
 	cmd := exec.Command(bin)
+	helperDiesWithParent(cmd)
 	cmd.Env = archivePluginBaseEnv()
 	cmd.Stdin = &in
 	cmd.Stderr = io.Discard
