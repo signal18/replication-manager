@@ -150,22 +150,37 @@ A reseed restores data; it does not own the replica's links. Since #2093:
   account: `GRANT … TO CURRENT_USER()` stopped them ("Can't find any matching row in the
   user table"). The mysqldump restore passes `splitdump.IsImportRoleBracket` as the
   classifier's `Skip` when restore-user is off; the number of lines left out is logged.
-  With restore-user on, nothing changes.
+  `IsImportRoleBracket` matches the seven statements of the bracket whole, as the client
+  writes them, never a view, routine or row that mentions the role, and `Skip` acts on the
+  application side only. The #1980 routing of these lines is unchanged. With restore-user
+  on, nothing changes.
 - **An older backup's own replication statements run.** A backup with active replication
-  statements (`--master-data=1`, `--dump-slave=1`, `--apply-slave-statements`, as written
-  before v3.1.44) carries an unnamed `CHANGE MASTER` and `STOP`/`START [ALL] SLAVE(S)`; the
-  restore runs them as written, as v3.1.43 did:
+  statements (as written before v3.1.44) carries an unnamed `CHANGE MASTER`; the restore runs
+  its statements as written, as v3.1.43 did. Two forms:
+  - taken from a primary (`--master-data=1`): the position only (`CHANGE MASTER`, with
+    `--gtid` `SET GLOBAL gtid_slave_pos`), no `START`. The channel stays stopped;
+    `pointLogicalReseedReplica` positions and starts it as for any backup;
+  - taken from a replica (`--dump-slave=1 --apply-slave-statements`): `STOP SLAVE` /
+    `STOP REPLICA` / `STOP ALL SLAVES` in its header, before any table data, the
+    `CHANGE MASTER` (`CHANGE MASTER '' TO` on MariaDB), and `START SLAVE` / `START REPLICA` /
+    `START ALL SLAVES` in its footer: the dump starts replication itself
+    (`dumpStartsReplication` reads that header).
   - MySQL/Percona with GTID: the channel keeps its auto-position. The dump's
     `SET @@GLOBAL.GTID_PURGED` sets the position; its file/position `CHANGE MASTER` is refused
-    (error 1776): skipped with `--force` in `backup-mysqlclient-options` (the default), its
-    `START SLAVE` then starts replication on auto-position. Without `--force` the restore
+    (error 1776): skipped with `--force` in `backup-mysqlclient-options` (the default); the
+    replica form's `START SLAVE` then starts replication on auto-position, the primary form
+    is started by `pointLogicalReseedReplica`. Without `--force` the restore
     stops there, before any data, and the reseed fails; repman does not add `--force`
     itself: the operator adds it to `backup-mysqlclient-options`, or takes a new backup
     (written by this release, it has no such statement).
-  - The channels were stopped before the load, so a managed channel running after it was
-    started by the dump, from the position the dump set. `pointLogicalReseedReplica` leaves
-    it as it is (after the link check): stopped, set back and started again, what it executed
-    meanwhile would be applied twice.
+  - A dump that starts replication itself, restored on stopped channels: a managed channel
+    with a thread running, or its IO thread still connecting (right after `START SLAVE`),
+    was started by that dump, from the position it set. `pointLogicalReseedReplica` leaves it
+    as it is (after the link check): stopped, set back and started again, what it executed
+    meanwhile would be applied twice. Without such a dump (every other backup, a splitdump,
+    the backup verification restore) a running channel is positioned and started like a
+    stopped one: its state alone is no proof of who started it. A status read that fails is
+    logged.
 
 ## Cleanup and error handling
 

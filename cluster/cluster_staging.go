@@ -398,6 +398,41 @@ func (cluster *Cluster) GetStagingProxyHosts() []string {
 	return strings.Split(cluster.Conf.StagingProxyHosts, ",")
 }
 
+// mariadbDumpWritesAccounts reports whether MariaDB dump options write the accounts as
+// statements (--system=all or a list holding users), and leave their tables out of the dump.
+// Another --system value (timezones, plugins, ...) dumps the account tables as data.
+func mariadbDumpWritesAccounts(dumpOptions string) bool {
+	for _, opt := range strings.Fields(dumpOptions) {
+		if !strings.HasPrefix(opt, "--system=") {
+			continue
+		}
+		for _, v := range strings.Split(strings.TrimPrefix(opt, "--system="), ",") {
+			if v == "all" || v == "users" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// reseedGTIDSlavePos is the gtid_slave_pos of a MariaDB server seeded from a backup at pos:
+// the backup's GTID for the domains the backup carries, current's for the other domains.
+func reseedGTIDSlavePos(pos string, current *gtid.List) string {
+	slavePos := *gtid.NewList(pos)
+	backupDomains := make(map[uint64]bool)
+	for _, g := range slavePos {
+		backupDomains[g.DomainID] = true
+	}
+	if current != nil {
+		for _, g := range *current {
+			if !backupDomains[g.DomainID] {
+				slavePos = append(slavePos, g)
+			}
+		}
+	}
+	return slavePos.Sprint()
+}
+
 func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor, masterGTIDList string) (string, error) {
 	var err error
 	var logs, masterCurrentGTID string
@@ -509,10 +544,12 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			}
 		} else {
 			// Without a split user, the parent's accounts are in the dump: as mysql table data on
-			// MySQL/Percona, or on MariaDB without --system, which the restore would load over the
-			// child's own. A MariaDB --system dump writes them as statements, left out of a restore
-			// without restore-user (reseedMysqldumpSystemReplaySource).
-			if meta != nil && !meta.SplitUser && !(target.IsMariaDB() && strings.Contains(parent.getDumpParameter(), "--system=")) {
+			// MySQL/Percona, or on MariaDB without --system=all or users, which the restore would
+			// load over the child's own. A MariaDB dump with --system=all or users writes them as
+			// statements, left out of a restore without restore-user
+			// (reseedMysqldumpSystemReplaySource). The backup metadata does not record the dump
+			// options: the parent's are read.
+			if meta != nil && !meta.SplitUser && !(target.IsMariaDB() && mariadbDumpWritesAccounts(parent.getDumpParameter())) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed mysqldump with no split user is not supported")
 				target.JobsUpdateStateRuntimeOnly(task, "Reseed mysqldump with no split user is not supported", 5, 1)
 				return "", fmt.Errorf("Reseed mysqldump with no split user is not supported")
@@ -522,22 +559,12 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			// its old gtid_slave_pos and its channel would resume from it. It takes the backup's GTID
 			// for the domains the backup has, and keeps the other domains it replicates.
 			if pos, _, _ := logicalReseedPosition(target.logicalRestorePosition.Load(), meta); err == nil && target.IsMariaDB() && pos != "" {
-				slavePos := *gtid.NewList(pos)
-				backupDomains := make(map[uint64]bool)
-				for _, g := range slavePos {
-					backupDomains[g.DomainID] = true
-				}
-				if target.SlaveGtid != nil {
-					for _, g := range *target.SlaveGtid {
-						if !backupDomains[g.DomainID] {
-							slavePos = append(slavePos, g)
-						}
-					}
-				}
-				masterGTIDList = slavePos.Sprint()
+				masterGTIDList = reseedGTIDSlavePos(pos, target.SlaveGtid)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set to %s (backup %s)", target.URL, masterGTIDList, pos)
+				// err, not a local: a seed whose position is not set fails, its channel would
+				// resume from the old position
 				if logs, err = dbhelper.SetGTIDSlavePos(target.Conn, masterGTIDList); err != nil {
-					cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed to set gtid_slave_pos on %s: %s", target.URL, err)
+					cluster.LogSQL(logs, err, target.URL, "Reseed", config.LvlErr, "Failed to set gtid_slave_pos on %s: %s", target.URL, err)
 				}
 			}
 		}
