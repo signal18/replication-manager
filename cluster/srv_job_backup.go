@@ -1301,6 +1301,14 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 		return nil, fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
+	// refused before the reseed takes its lock or touches anything: its START would run
+	// replication from the old position before the reseed positions it
+	if backtype == config.ConstBackupLogicalTypeMysqldump && !isPITR {
+		if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); derr == nil && unpositioned {
+			return nil, errDumpStartsUnpositioned(backupfile)
+		}
+	}
+
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
 		err := fmt.Errorf("Server is in reseeding state by %s", currentTask)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Concurrent reseed blocked: server %s already reseeding with %s, cannot start %s", server.URL, currentTask, task)
@@ -1333,13 +1341,6 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 			}
 		}
 		server.SetState(stateUnconn)
-	} else if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); backtype == config.ConstBackupLogicalTypeMysqldump && derr == nil && unpositioned {
-		// refused when requested, before its channel is stopped or reset: its START would run
-		// replication from the old position before the reseed positions it
-		resetReseed()
-		err := errDumpStartsUnpositioned(backupfile)
-		server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
-		return nil, err
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump && len(server.Replications) <= 1 {
 		// The replica's positions are cleared when the reseed is requested, not only right
 		// before the restore: cleared there, a MariaDB replica with parallel replication that

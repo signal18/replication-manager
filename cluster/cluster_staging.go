@@ -458,8 +458,10 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	}
 	// a dump that stops and starts replication with its position as a comment would start
 	// the channel from the old position: refused before the channel is stopped or repointed
-	if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); backtype == config.ConstBackupLogicalTypeMysqldump && derr == nil && unpositioned {
-		return "", errDumpStartsUnpositioned(backupfile)
+	if backtype == config.ConstBackupLogicalTypeMysqldump {
+		if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); derr == nil && unpositioned {
+			return "", errDumpStartsUnpositioned(backupfile)
+		}
 	}
 
 	pmaster := parent.GetMaster()

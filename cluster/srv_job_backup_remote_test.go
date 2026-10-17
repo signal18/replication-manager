@@ -874,6 +874,8 @@ func TestDumpReplicationStatements(t *testing.T) {
 			"STOP SLAVE;\nCHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=4;\n", true, true},
 		{"MariaDB --master-data=1 --gtid without the apply statements",
 			"CHANGE MASTER TO MASTER_USE_GTID=slave_pos;\nSET GLOBAL gtid_slave_pos='0-1-4';\n", false, true},
+		{"CRLF line endings (the default line split strips \\r)",
+			"STOP ALL SLAVES;\r\nCHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\r\nSET GLOBAL gtid_slave_pos='0-1-4';\r\n", true, true},
 		{"current backup: position a comment, no STOP",
 			"-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=4;\n-- SET GLOBAL gtid_slave_pos='0-1-4';\n", false, false},
 	} {
