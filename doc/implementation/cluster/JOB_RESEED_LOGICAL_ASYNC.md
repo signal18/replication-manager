@@ -139,6 +139,21 @@ A reseed restores data; it does not own the replica's links. Since #2093:
   monitoring ticks of a recording a running status, possibly read before the STOP, is ignored.
 - `dbhelper.ResetSlaveStatement` names the channel with or without `ALL`: MySQL's
   `RESET REPLICA` without `FOR CHANNEL` resets every channel.
+- **An older backup's own replication statements run.** A backup with active replication
+  statements (`--master-data=1`, `--dump-slave=1`, `--apply-slave-statements`, as written
+  before v3.1.44) carries an unnamed `CHANGE MASTER` and `STOP`/`START [ALL] SLAVE(S)`; the
+  restore runs them as written, as v3.1.43 did:
+  - MySQL/Percona with GTID: the channel keeps its auto-position. The dump's
+    `SET @@GLOBAL.GTID_PURGED` sets the position; its file/position `CHANGE MASTER` is refused
+    (error 1776): skipped with `--force` in `backup-mysqlclient-options` (the default), its
+    `START SLAVE` then starts replication on auto-position. Without `--force` the restore
+    stops there, before any data, and the reseed fails; repman does not add `--force`
+    itself: the operator adds it to `backup-mysqlclient-options`, or takes a new backup
+    (written by this release, it has no such statement).
+  - The channels were stopped before the load, so a managed channel running after it was
+    started by the dump, from the position the dump set. `pointLogicalReseedReplica` leaves
+    it as it is (after the link check): stopped, set back and started again, what it executed
+    meanwhile would be applied twice.
 
 ## Cleanup and error handling
 

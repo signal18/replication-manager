@@ -7007,6 +7007,14 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 			"Reseed of %s: %s; the link is left stopped, a rejoin moves it", server.URL, why)
 		return nil
 	}
+	// The channels were stopped before the load: a managed channel running now was started by
+	// the dump itself (an older backup: its CHANGE MASTER and START SLAVE / START ALL SLAVES),
+	// from the position it set. It is left as it is: stopped, set back and started again, what it
+	// executed meanwhile would be applied twice.
+	if ss, _, serr := dbhelper.GetSlaveStatus(server.Conn, server.ReplicationSourceName, server.DBVersion); start && serr == nil && ss.SlaveIORunning.String == "Yes" && ss.SlaveSQLRunning.String == "Yes" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Replication of %s started by the restored dump, left as it is", server.URL)
+		return nil
+	}
 	gtid, file, pos := logicalReseedPosition(server.logicalRestorePosition.Load(), meta)
 	// an older backup (--apply-slave-statements) restarts replication at the end of its own load
 	// (START SLAVE / START ALL SLAVES): the position is set on stopped channels only
