@@ -319,6 +319,25 @@ func (e *edgeRun) after() error {
 	return tx.Commit()
 }
 
+// nextGTIDNumber is the transaction number after the highest one uuid has in the MySQL GTID
+// set executed, 1 when it has none.
+func nextGTIDNumber(executed, uuid string) uint64 {
+	var highest uint64
+	for _, source := range strings.Split(strings.ReplaceAll(executed, "\n", ""), ",") {
+		parts := strings.Split(strings.TrimSpace(source), ":")
+		if len(parts) < 2 || !strings.EqualFold(parts[0], uuid) {
+			continue
+		}
+		for _, interval := range parts[1:] {
+			bounds := strings.SplitN(interval, "-", 2)
+			if n, err := strconv.ParseUint(bounds[len(bounds)-1], 10, 64); err == nil && n > highest {
+				highest = n
+			}
+		}
+	}
+	return highest + 1
+}
+
 // addGTIDSource gives the primary's GTID state a second source, replicated like any
 // transaction: an empty transaction under a foreign UUID (MySQL/Percona with GTID) or a
 // write in domain 97 (MariaDB). It returns what the backup's GTID set must name.
@@ -335,8 +354,15 @@ func (e *edgeRun) addGTIDSource() string {
 	switch {
 	case e.m.HasMySQLGTID():
 		want = "a5ce0000-0000-4000-8000-00000000b005"
+		// the number after this source's highest one, so its transactions stay one range in the
+		// GTID set instead of a number per run
+		var executed string
+		if err := conn.QueryRowContext(ctx, "SELECT @@GLOBAL.gtid_executed").Scan(&executed); err != nil {
+			e.check("B5 second GTID source", false, err.Error())
+			return ""
+		}
 		stmts = []string{
-			fmt.Sprintf("SET GTID_NEXT='%s:%d'", want, time.Now().Unix()),
+			fmt.Sprintf("SET GTID_NEXT='%s:%d'", want, nextGTIDNumber(executed, want)),
 			"BEGIN", "COMMIT", "SET GTID_NEXT='AUTOMATIC'",
 		}
 	case e.m.IsMariaDB():
