@@ -44,6 +44,11 @@ func TestCloud18SSOProvider(t *testing.T) {
 		t.Fatalf("a provider with keys: %v", err)
 	}
 
+	// the role MinIO printed for the crm storage's client id
+	if r := minioRoleArn("eu-west-1", "8af77a6d3cde0dc816de9f2072829a1d6f5e7f0f2e3d059df21b45b6b13a3821"); r != "arn:minio:iam:eu-west-1::role/M0hK6Ax3bHi3m7boieYiRr-ApYQ" {
+		t.Fatalf("computed role %s", r)
+	}
+
 	tok := func(payload string) string {
 		return "h." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".s"
 	}

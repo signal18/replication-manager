@@ -107,8 +107,8 @@ func (cluster *Cluster) ensureBackupMountProvider() {
 
 // backupMountSSO is what an SSO provider's mount needs to get its keys, at the mount only.
 type backupMountSSO struct {
-	endpoint, roleArn, bucket, prefix string
-	backend                           *common.S3Config
+	endpoint, region, roleArn, bucket, prefix string
+	backend                                   *common.S3Config
 }
 
 // backupMountTarget is what the mount should be: its signature ("" for no mount), the
@@ -151,7 +151,7 @@ func (cluster *Cluster) backupMountTarget() (string, string, *common.FlagStorage
 	}
 	var sso *backupMountSSO
 	if provider.Cloud18SSO {
-		sso = &backupMountSSO{endpoint: endpoint, roleArn: provider.RoleArn, bucket: cluster.Conf.BackupStreamingBucket, prefix: cluster.backupMountPrefix(), backend: backend}
+		sso = &backupMountSSO{endpoint: endpoint, region: region, roleArn: provider.RoleArn, bucket: cluster.Conf.BackupStreamingBucket, prefix: cluster.backupMountPrefix(), backend: backend}
 		accessKey, secretKey = "cloud18-sso:"+cluster.Conf.Cloud18GitUser, provider.RoleArn
 	}
 	sig := fmt.Sprintf("%s|%s|%s|%s|%s|%x", name, bucket, endpoint, region, accessKey, sha256.Sum256([]byte(secretKey)))
@@ -208,7 +208,7 @@ func (cluster *Cluster) RefreshBackupMount() {
 	}
 	// an SSO provider: the keys, renewed inside the mount, and the SSO user's folder
 	if err == nil && sso != nil {
-		creds, src, cerr := cluster.newCloud18SSOCredentials(sso.endpoint, sso.roleArn)
+		creds, src, cerr := cluster.newCloud18SSOCredentials(sso.endpoint, sso.region, sso.roleArn)
 		if cerr != nil {
 			err = cerr
 		} else {

@@ -49,8 +49,8 @@ type S3Provider struct {
 	// registered replication-manager gets short-lived ones from its STS with its Cloud18
 	// identity. A replication-manager not registered cannot use it.
 	Cloud18SSO bool `json:"cloud18Sso,omitempty" groups:"web"`
-	// RoleArn: the storage's role the SSO identity assumes, required by a storage with a role
-	// policy (MinIO's MINIO_IDENTITY_OPENID_ROLE_POLICY prints it at its start)
+	// RoleArn: the storage's role the SSO identity assumes; empty, it is computed as MinIO
+	// names it (arn:minio:iam:<region>::role/<base64url(sha1(client id))>): set only to override
 	RoleArn string `json:"roleArn,omitempty" groups:"web"`
 }
 

@@ -722,11 +722,11 @@ function S3ProvidersSettings({ selectedCluster }) {
           </FormControl>
           {formData.cloud18Sso && (
           <FormControl>
-            <FormLabel>Storage role (ARN)</FormLabel>
+            <FormLabel>Storage role (ARN, optional)</FormLabel>
             <Input
               value={formData.roleArn}
               onChange={(e) => handleFieldChange('roleArn', e.target.value)}
-              placeholder='e.g. arn:minio:iam:eu-west-1::role/…'
+              placeholder='empty: computed from the storage client (MinIO)'
             />
           </FormControl>
           )}

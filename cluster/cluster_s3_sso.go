@@ -5,6 +5,7 @@
 package cluster
 
 import (
+	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
@@ -124,6 +125,13 @@ func identityTokenUser(idToken string) (string, error) {
 	return user, nil
 }
 
+// minioRoleArn is the role MinIO gives an OpenID configuration with a role policy:
+// arn:minio:iam:<region>::role/<base64url(sha1(client id))>, so nobody copies it from its log.
+func minioRoleArn(region, clientID string) string {
+	sum := sha1.Sum([]byte(clientID))
+	return "arn:minio:iam:" + region + "::role/" + base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
 // stsResponse is the part of an AssumeRoleWithWebIdentity answer this side reads.
 type stsResponse struct {
 	Result struct {
@@ -170,7 +178,8 @@ type cloud18SSOCredentials struct {
 	credentials.Expiry
 	cluster  *Cluster
 	endpoint string
-	roleArn  string
+	region   string
+	roleArn  string // "": computed from the client id (minioRoleArn)
 	mu       sync.Mutex
 	user     string
 }
@@ -186,7 +195,11 @@ func (p *cloud18SSOCredentials) Retrieve() (credentials.Value, error) {
 	if err != nil {
 		return credentials.Value{}, err
 	}
-	v, exp, err := assumeRoleWithWebIdentity(p.endpoint, p.roleArn, idToken)
+	role := p.roleArn
+	if role == "" {
+		role = minioRoleArn(p.region, cfg.clientID)
+	}
+	v, exp, err := assumeRoleWithWebIdentity(p.endpoint, role, idToken)
 	if err != nil {
 		return credentials.Value{}, err
 	}
@@ -204,8 +217,8 @@ func (p *cloud18SSOCredentials) User() string {
 
 // newCloud18SSOCredentials gets the first keys at once, so a refused identity is a state of
 // the caller and not a failure inside a running mount.
-func (cluster *Cluster) newCloud18SSOCredentials(endpoint, roleArn string) (*credentials.Credentials, *cloud18SSOCredentials, error) {
-	src := &cloud18SSOCredentials{cluster: cluster, endpoint: endpoint, roleArn: roleArn}
+func (cluster *Cluster) newCloud18SSOCredentials(endpoint, region, roleArn string) (*credentials.Credentials, *cloud18SSOCredentials, error) {
+	src := &cloud18SSOCredentials{cluster: cluster, endpoint: endpoint, region: region, roleArn: roleArn}
 	creds := credentials.NewCredentials(src)
 	if _, err := creds.Get(); err != nil {
 		return nil, nil, err
