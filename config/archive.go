@@ -40,13 +40,13 @@ const (
 // edit forms and their checks are drawn from it. The internal restic plugins have theirs
 // below; an external plugin ships it as <bin>.manifest.json.
 type ArchivePluginManifest struct {
-	Name         string                 `json:"name"`
-	Description  string                 `json:"description"`
-	Tier         string                 `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Tier        string `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
 	// External: the plugin is a program (archiveplugin-<binary>, cluster/archiveplugin/wire)
 	// that keeps its archives with its own engine; restic plugins are run by replication-manager
-	External bool   `json:"external,omitempty"`
-	Binary   string `json:"-"` // the external plugin's program
+	External     bool                   `json:"external,omitempty"`
+	Binary       string                 `json:"-"` // the external plugin's program
 	Settings     []ArchivePluginSetting `json:"settings"`
 	Capabilities []string               `json:"capabilities"`
 }
@@ -70,11 +70,21 @@ const (
 const ConstArchiveTierEnterprise = "enterprise"
 
 // ErrArchiveEnterprisePlan: an enterprise plugin on a plan that does not grant it.
-var ErrArchiveEnterprisePlan = errors.New("an enterprise archive plugin: it needs a partner or support plan")
+var ErrArchiveEnterprisePlan = errors.New("an enterprise archive plugin: it needs a partner, support or developer plan")
+
+// EnterprisePluginsPlan: the plans that may run the enterprise plugins: the enterprise plans,
+// and for now the developer plan, so the plugins can be tested on the development instances
+// (arbitration keeps IsEnterprisePlan).
+func (conf *Config) EnterprisePluginsPlan() bool {
+	if conf.IsEnterprisePlan() {
+		return true
+	}
+	return conf.Cloud18GitUser != "" && strings.EqualFold(strings.TrimSpace(conf.Cloud18SubscriptionPlan), "developer")
+}
 
 // ArchivePluginAllowed is nil when this config may add or attach an archive of the plugin.
 func (conf *Config) ArchivePluginAllowed(plugin string) error {
-	if m, ok := ArchivePlugin(plugin); ok && m.Tier == ConstArchiveTierEnterprise && !conf.IsEnterprisePlan() {
+	if m, ok := ArchivePlugin(plugin); ok && m.Tier == ConstArchiveTierEnterprise && !conf.EnterprisePluginsPlan() {
 		return fmt.Errorf("plugin %s is %w", plugin, ErrArchiveEnterprisePlan)
 	}
 	return nil

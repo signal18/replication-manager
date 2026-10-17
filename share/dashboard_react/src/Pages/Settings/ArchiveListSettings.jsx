@@ -260,7 +260,7 @@ export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave,
                       const locked = p.tier === 'enterprise' && !enterprisePlan
                       return (
                         <option key={p.name} value={p.name} disabled={locked}>
-                          {kindLabel(p.name, p)}{p.tier === 'enterprise' ? (locked ? ' (Enterprise: needs a partner or support plan)' : ' (Enterprise)') : ''}
+                          {kindLabel(p.name, p)}{p.tier === 'enterprise' ? (locked ? ' (Enterprise: needs a partner, support or developer plan)' : ' (Enterprise)') : ''}
                         </option>
                       )
                     })}

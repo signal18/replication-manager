@@ -85,7 +85,7 @@ type ArchiveListResult struct {
 // ArchiveList lists the cluster's archives.
 func (cluster *Cluster) ArchiveList() ArchiveListResult {
 	list, attached := cluster.Conf.ArchiveList()
-	out := ArchiveListResult{Attached: attached, EnterprisePlan: cluster.Conf.IsEnterprisePlan(), Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins()}
+	out := ArchiveListResult{Attached: attached, EnterprisePlan: cluster.Conf.EnterprisePluginsPlan(), Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins()}
 	backups := map[string]int{}
 	if cluster.BackupMetaMap != nil {
 		legacy := cluster.Conf.LegacyArchiveName()

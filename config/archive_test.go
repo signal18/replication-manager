@@ -502,11 +502,14 @@ func TestArchivePluginEnterpriseGate(t *testing.T) {
 	if err := conf.ArchivePluginAllowed(ConstArchivePluginResticLocal); err != nil {
 		t.Fatalf("restic-local on a free plan: %v", err)
 	}
-	for _, plan := range []string{"partner", "support", "Support-Services"} {
+	for _, plan := range []string{"partner", "support", "Support-Services", "developer"} {
 		conf.Cloud18SubscriptionPlan = plan
 		if err := conf.ArchivePluginAllowed("test-enterprise"); err != nil {
 			t.Errorf("%s: %v", plan, err)
 		}
+	}
+	if conf.IsEnterprisePlan() {
+		t.Fatal("the developer plan opens the enterprise plugins, not arbitration")
 	}
 	conf.Cloud18GitUser = ""
 	if conf.IsEnterprisePlan() {
