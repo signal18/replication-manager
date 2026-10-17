@@ -204,6 +204,19 @@ func TestBackupMountHelper(t *testing.T) {
 		t.Fatalf("a helper that exits: %+v", st)
 	}
 
+	// the empty folders go before a mount, a folder holding a file stays
+	d := t.TempDir()
+	os.MkdirAll(filepath.Join(d, "db1_3306", "x"), 0o755)
+	os.MkdirAll(filepath.Join(d, "db2_3306"), 0o755)
+	os.WriteFile(filepath.Join(d, "db2_3306", "keep"), []byte("x"), 0o644)
+	removeEmptyDirs(d)
+	if _, err := os.Stat(filepath.Join(d, "db1_3306")); !os.IsNotExist(err) {
+		t.Fatal("empty folders must go")
+	}
+	if _, err := os.Stat(filepath.Join(d, "db2_3306", "keep")); err != nil {
+		t.Fatal("a folder holding a file must stay")
+	}
+
 	if isMountPoint(t.TempDir()) {
 		t.Fatal("a plain folder is no mount point")
 	}

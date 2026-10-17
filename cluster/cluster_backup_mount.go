@@ -371,8 +371,26 @@ func (cluster *Cluster) RefreshBackupMount() {
 		go cluster.moveLocalBackupsIntoBucket(t, keys)
 		return
 	}
+	// the empty folders replication-manager made while unmounted (one per server): FUSE 2
+	// refuses a mount point that is not empty; holdsFiles said there is no file below it
+	removeEmptyDirs(mountPoint)
 	bm.starting = true
 	go cluster.startMountHelper(t, keys)
+}
+
+// removeEmptyDirs removes the empty folders under dir, deepest first, never dir itself nor a
+// folder holding anything.
+func removeEmptyDirs(dir string) {
+	var dirs []string
+	filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() && path != dir {
+			dirs = append(dirs, path)
+		}
+		return nil
+	})
+	for i := len(dirs) - 1; i >= 0; i-- {
+		os.Remove(dirs[i]) // fails, and keeps it, when the folder is not empty
+	}
 }
 
 // mountHelperBinary finds repman-s3mount next to the plugins, signed when the key is there.
