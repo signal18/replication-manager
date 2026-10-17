@@ -243,8 +243,6 @@ function BackupSettings({ selectedCluster, user }) {
   const hMountBucket = `**Backups Mount S3 Bucket**\n\nThe bucket mounted as the backups folder: the cluster's backups are in its folder named as the cluster.\n\nConfig: \`backup-streaming-bucket\``
   const hMountPoint = `**Backups Mount Folder**\n\nThe cluster's backups folder, mounted from the bucket's folder named as the cluster (on Cloud18: under the instance's URI, <domain>/<sub-domain>-<zone>/<cluster>). A folder holding local files is never mounted over: move them first.`
   const hMountDebug = `**Backups Mount Debug**\n\nLogs the mount's S3 calls.\n\nConfig: \`backup-streaming-debug\``
-  const hArchiveMountDir = `**Archive Mount Folder**\n\nWhere an archive is mounted to browse it or to reseed from it. Empty: \`<working-dir>/<cluster>/mount\`; a relative path is resolved under it.\n\nConfig: \`backup-restic-mount-dir\``
-  const hUnsafeMount = `**Allow Unsafe Mount**\n\nUse an archive mount another process made. Unsafe: that process can unmount it while it is used.\n\nConfig: \`backup-restic-allow-unsafe-mount\``
 
   const dataObject = [
     {
@@ -805,18 +803,6 @@ function BackupSettings({ selectedCluster, user }) {
           key: 'Mount Debug',
           help: h(hMountDebug, 'Backups Mount Debug'),
           value: (<Text fontSize='sm'>{selectedCluster?.config?.backupStreamingDebug ? 'on' : 'off'}</Text>)
-        },
-        {
-          key: 'Archive Mount Folder',
-          help: h(hArchiveMountDir, 'Archive Mount Folder'),
-          value: (<Text fontSize='sm'>{selectedCluster?.config?.backupResticMountDir || '<working-dir>/<cluster>/mount'}</Text>)
-        },
-        {
-          key: 'Allow Unsafe Mount',
-          help: h(hUnsafeMount, 'Allow Unsafe Mount'),
-          value: (<RMSwitch isChecked={!!selectedCluster?.config?.backupResticAllowUnsafeMount}
-            confirmTitle='Confirm switch settings for backup-restic-allow-unsafe-mount?'
-            onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-allow-unsafe-mount' }))} />)
         }
       ]
     },

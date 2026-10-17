@@ -570,6 +570,18 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
           key: 'Program path',
           help: help('**Restic program path**\n\nThe restic program the restic archives run. A server-wide setting, set in the config file.\n\nConfig: `backup-restic-binary-path`', 'Restic program path'),
           value: <Text fontSize='sm'>{config?.backupResticBinaryPath || '/usr/bin/restic'}</Text>
+        },
+        {
+          key: 'Mount folder',
+          help: help('**Restic archive mount folder**\n\nWhere a restic archive is mounted to browse its snapshots or reseed from it. Empty: `<working-dir>/<cluster>/mount`; a relative path is resolved under it.\n\nConfig: `backup-restic-mount-dir`', 'Restic archive mount folder'),
+          value: <Text fontSize='sm'>{config?.backupResticMountDir || '<working-dir>/<cluster>/mount'}</Text>
+        },
+        {
+          key: 'Allow unsafe mount',
+          help: help('**Allow unsafe mount**\n\nUse a restic mount found at the mount folder that replication-manager did not start (made by hand, by a helper with FUSE rights, or lost track of after a restart). Unsafe: it may be of another archive, and whoever made it can unmount it during a reseed.\n\nConfig: `backup-restic-allow-unsafe-mount`', 'Allow unsafe mount'),
+          value: <RMSwitch isChecked={!!config?.backupResticAllowUnsafeMount} isDisabled={!canSet}
+            confirmTitle='Confirm switch settings for backup-restic-allow-unsafe-mount?'
+            onChange={() => dispatch(switchSetting({ clusterName, setting: 'backup-restic-allow-unsafe-mount' }))} />
         }
       ]
     }
