@@ -92,6 +92,29 @@ with the same parameters. A stale embedded list means "the newest release this i
 knows"; a fresher meaning comes with the next list the back office delivers, never from a
 live lookup.
 
+## A running cluster without a record (#2095)
+
+The first versions treated "no record" as "first provision": a cluster provisioned before
+pinning, declared `mariadb:latest` and running 11.8.6, got its pointer resolved against
+the list of the day at its first template push (a resize, a template update): `13.0.2`
+written into its service definitions, a major upgrade applied at the next restart that
+nobody asked for. Now, without force, a cluster whose primary is known is pinned on the
+release that primary runs (`runningDatabaseRelease`, same flavor as the image) when the
+list has that tag; when it does not, the declared name is kept with no record, never the
+pointer of the day. A provision (no primary yet) and the rolling upgrade (force) resolve
+against the list as before. Details:
+- the running release is the primary's, else any database server's whose version is known;
+- a provisioned cluster (a server carries its provision cookie) with no version known at
+  that moment (primary down, servers unreachable) resolves nothing: the declared name
+  stays, the next push with a known version pins;
+- the flavor must match the image's (`MariaDB`/`MySQL`/`Percona` vs `mariadb`/`mysql`/
+  `percona`); PostgreSQL's `PostgreSQL` never matches `postgres`: not pinned;
+- the release is `major.minor.patch`: a tag carrying a suffix (Percona `8.0.36-28`) is not
+  found in the list, the declared name stays (safe, not pinned);
+- an operator who changes `prov-db-image` on a running cluster (`mariadb:10.6` to
+  `mariadb:latest`) gets the new declaration pinned on the running release: only an
+  upgrade moves it.
+
 ## Where it plugs in
 
 | path | call |

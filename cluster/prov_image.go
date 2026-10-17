@@ -5,6 +5,7 @@
 package cluster
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -70,6 +71,36 @@ func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 		return err
 	}
 	repo, tag := releases.SplitImage(declared)
+	// A cluster already running without a record (provisioned before #1862) is pinned on
+	// the release it runs: resolving its pointer against today's list would put another
+	// release, maybe another major, in the service definitions, applied at its next restart
+	// without anyone asking (preprod belair: latest -> 13.0.2 under 11.8.6). Only an upgrade
+	// (force) resolves the pointer again. A running release the list does not know keeps
+	// the declared name, no record: never today's pointer either.
+	if !force {
+		running := cluster.runningDatabaseRelease(declared)
+		if running == "" && cluster.hasProvisionedDatabase() {
+			// provisioned already, but no version known right now (primary down, servers
+			// unreachable): resolving today's pointer could put another major in the service
+			// definitions; the declared name is kept, the next push with a known version pins
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+				"prov-db-image %s not resolved: the cluster is provisioned and no running release is known, the service definition keeps the declared name", declared)
+			return nil
+		}
+		if running != "" {
+			if !cat.InList(repo, running) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+					"prov-db-image %s: the running release %s is not in the %s, the service definition keeps the declared name", declared, running, cat.Source)
+				return nil
+			}
+			record := declared + "=" + repo + ":" + running
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+				"prov-db-image %s pinned on %s:%s, the release the cluster runs (no record yet): only an upgrade moves it", declared, repo, running)
+			cluster.Conf.ProvDbImgResolved = record
+			cluster.Save()
+			return nil
+		}
+	}
 	release := cat.Resolve(repo, releases.FlavorOfImage(declared), tag)
 	if release == tag {
 		// Not in the list: the input comes back unchanged and the service definition
@@ -90,6 +121,40 @@ func (cluster *Cluster) ResolveDatabaseImage(force bool) error {
 		cluster.Save()
 	}
 	return nil
+}
+
+// runningDatabaseRelease is the release the cluster runs (x.y.z): its primary's, else any
+// database server's whose version is known; "" when none is known (a provision, or every
+// server unreachable) or the flavor is not the declared image's (PostgreSQL's "PostgreSQL"
+// never matches "postgres": not pinned, the safe side).
+func (cluster *Cluster) runningDatabaseRelease(declared string) string {
+	flavor := releases.FlavorOfImage(declared)
+	release := func(s *ServerMonitor) string {
+		if s == nil || s.DBVersion == nil || s.DBVersion.Major == 0 || !strings.EqualFold(s.DBVersion.Flavor, flavor) {
+			return ""
+		}
+		return fmt.Sprintf("%d.%d.%d", s.DBVersion.Major, s.DBVersion.Minor, s.DBVersion.Release)
+	}
+	if r := release(cluster.GetMaster()); r != "" {
+		return r
+	}
+	for _, s := range cluster.Servers {
+		if r := release(s); r != "" {
+			return r
+		}
+	}
+	return ""
+}
+
+// hasProvisionedDatabase reports whether a database server of the cluster was provisioned
+// once (its provision cookie): a template push then is not a provision.
+func (cluster *Cluster) hasProvisionedDatabase() bool {
+	for _, s := range cluster.Servers {
+		if s != nil && s.HasProvisionCookie() {
+			return true
+		}
+	}
+	return false
 }
 
 // DBImageAutoUpgradeEnv says whether the database container gets MARIADB_AUTO_UPGRADE=1:
