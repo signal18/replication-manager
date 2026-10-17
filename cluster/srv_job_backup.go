@@ -6238,7 +6238,15 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dumpCmd := exec.CommandContext(ctx, cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(source, dest.JobGetDumpGtidParameter())...)
+	// On MySQL/Percona with GTID the dump's SET @@GLOBAL.GTID_PURGED is the position and the
+	// channel's auto-position finds the rest: the active positional CHANGE REPLICATION SOURCE
+	// of --source-data=1 is refused on an auto-position channel (error 1776) and stops the
+	// load, so the position is only written as a comment there.
+	dumpOptions := cluster.GetMysqlDumpOptions(source, dest.JobGetDumpGtidParameter())
+	if source.HasMySQLGTID() {
+		dumpOptions = cluster.GetMysqlBackupDumpOptions(source, dest.JobGetDumpGtidParameter())
+	}
+	dumpCmd := exec.CommandContext(ctx, cluster.GetMysqlDumpPath(), dumpOptions...)
 
 	cliParams := append(cluster.GetDumpCredentials(dest), dest.GetSSLClientParam("client")...)
 	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)

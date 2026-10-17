@@ -116,6 +116,48 @@ func TestGetMysqlBackupDumpOptionsPositionComment(t *testing.T) {
 	}
 }
 
+// A MySQL/Percona client from 8.0.26 gets the current option names; MariaDB's client and an
+// older or unknown MySQL client keep --master-data, --dump-slave and --apply-slave-statements.
+func TestGetMysqlDumpOptionsSourceDataNames(t *testing.T) {
+	v := func(flavor string, major, minor, release int) *version.Version {
+		return &version.Version{Flavor: flavor, Major: major, Minor: minor, Release: release}
+	}
+	for _, c := range []struct {
+		name                       string
+		client                     *version.Version
+		replica                    bool
+		backup, direct, applyStmts string
+	}{
+		{"MySQL 8.4 client, primary", v("MySQL", 8, 4, 10), false, "--source-data=2", "--source-data=1", "--apply-replica-statements"},
+		{"MySQL 8.0.45 client, replica", v("MySQL", 8, 0, 45), true, "--dump-replica=2", "--dump-replica=1", "--apply-replica-statements"},
+		{"Percona 8.0.26 client, primary", v("Percona", 8, 0, 26), false, "--source-data=2", "--source-data=1", "--apply-replica-statements"},
+		{"MySQL 8.0.25 client, primary", v("MySQL", 8, 0, 25), false, "--master-data=2", "--master-data=1", "--apply-slave-statements"},
+		{"MariaDB client, replica", v("MariaDB", 11, 4, 13), true, "--dump-slave=2", "--dump-slave=1", "--apply-slave-statements"},
+		{"unknown client, primary", nil, false, "--master-data=2", "--master-data=1", "--apply-slave-statements"},
+	} {
+		cl, server := newTestClusterServer(t)
+		server.Id = "db1"
+		server.DBVersion = &version.Version{Flavor: "MySQL", Major: 8, Minor: 4, Release: 10}
+		server.Variables = config.NewStringsMap()
+		cl.VersionsMap = config.NewVersionsMap()
+		if c.client != nil {
+			cl.VersionsMap.Set("client-dump", c.client)
+		}
+		cl.master = server
+		if c.replica {
+			cl.master = &ServerMonitor{Id: "db2", ClusterGroup: cl}
+		}
+		backup := cl.GetMysqlBackupDumpOptions(server, "")
+		if !slices.Contains(backup, c.backup) || slices.Contains(backup, c.applyStmts) {
+			t.Errorf("%s backup: want %s without %s: %v", c.name, c.backup, c.applyStmts, backup)
+		}
+		direct := cl.GetMysqlDumpOptions(server, "")
+		if !slices.Contains(direct, c.direct) || !slices.Contains(direct, c.applyStmts) {
+			t.Errorf("%s direct: want %s and %s: %v", c.name, c.direct, c.applyStmts, direct)
+		}
+	}
+}
+
 // --skip-log-queries only when the dump client and the server name the slow log the same way
 // (slow_query_log before MariaDB 10.11, log_slow_query from 10.11): a 10.11+ client's dump
 // fails on a 10.6 server (ERROR 1193 Unknown system variable 'LOG_SLOW_QUERY').
