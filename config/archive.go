@@ -53,6 +53,13 @@ type ArchivePluginSetting struct {
 	Group  string   `json:"group,omitempty"`  // ConstArchiveSettingGroup*, "" for the main settings
 }
 
+// Archive setting groups, how a form lays a plugin's settings out: the location and
+// credentials first (no group), then how the plugin applies the purge, then the rest.
+const (
+	ConstArchiveSettingGroupPurge    = "purge"
+	ConstArchiveSettingGroupAdvanced = "advanced"
+)
+
 // Archive plugin setting types. A secret is held encrypted in the entry, read and written
 // through the credential chain, never shown (#2088).
 const (
@@ -73,18 +80,13 @@ const (
 	// the bytes its content takes, what an archive billed on its content is invoiced on:
 	// shown in the list, and in remove's confirmation
 	ConstArchiveCapSize = "size"
+	// it applies the cluster's retention policy (backup-keep-*): the policy is the user's,
+	// the plugin only says how its content is purged (its purge-* settings)
+	ConstArchiveCapPurge = "purge"
 )
 
-// the retention every restic plugin holds: how many snapshots the purge keeps, and whether
-// the original leaves the backup folder once archived. Each archive keeps its own (#2091).
-var archiveResticRetentionSettings = []string{
-	"keep-last", "keep-hourly", "keep-daily", "keep-weekly", "keep-monthly", "keep-yearly",
-	"keep-within", "keep-within-hourly", "keep-within-daily", "keep-within-weekly", "keep-within-monthly", "keep-within-yearly",
-	"remove-original",
-}
-
-// settings every restic plugin holds: retention, tags, timeouts, purge options, mount
-var archiveResticCommonSettings = append(append([]string{}, archiveResticRetentionSettings...),
+// settings every restic plugin holds: tags, timeouts, retention, mount
+var archiveResticCommonSettings = []string{
 	"repo-append-cluster", "additional-env", "tags", "host", "timeout", "dump-timeout", "auto-init",
 	"purge-group-by", "purge-keep-tag", "purge-host", "purge-tag", "purge-path",
 	"purge-prune", "purge-prune-compact", "purge-prune-max-unused", "purge-prune-max-repack-size",
@@ -92,56 +94,6 @@ var archiveResticCommonSettings = append(append([]string{}, archiveResticRetenti
 	"mount-target-dir", "mount-host", "mount-tag", "mount-path", "mount-path-template", "mount-time-template",
 	"mount-allow-other", "mount-no-default-permissions", "mount-owner-root", "mount-no-lock",
 	"mount-verbose", "mount-quiet", "mount-recovery-enabled",
-)
-
-// archiveFlatKeys are the archive settings whose flat key is not backup-restic-<setting>:
-// the retention, moved from the cluster into each archive (#2091).
-var archiveFlatKeys = map[string]string{
-	"keep-last":           "backup-keep-last",
-	"keep-hourly":         "backup-keep-hourly",
-	"keep-daily":          "backup-keep-daily",
-	"keep-weekly":         "backup-keep-weekly",
-	"keep-monthly":        "backup-keep-monthly",
-	"keep-yearly":         "backup-keep-yearly",
-	"keep-within":         "backup-keep-within",
-	"keep-within-hourly":  "backup-keep-within-hourly",
-	"keep-within-daily":   "backup-keep-within-daily",
-	"keep-within-weekly":  "backup-keep-within-weekly",
-	"keep-within-monthly": "backup-keep-within-monthly",
-	"keep-within-yearly":  "backup-keep-within-yearly",
-	"remove-original":     "backup-archive-remove-original",
-}
-
-// archiveFlatKey is the flat key an archive setting replaces.
-func archiveFlatKey(setting string) string {
-	if k, ok := archiveFlatKeys[setting]; ok {
-		return k
-	}
-	return archiveLegacyPrefix + setting
-}
-
-// Archive setting groups, how a form lays a plugin's settings out: the location and
-// credentials first (no group), then the retention, then the advanced settings.
-const (
-	ConstArchiveSettingGroupRetention = "retention"
-	ConstArchiveSettingGroupAdvanced  = "advanced"
-)
-
-// archiveSettingGroup is the group of a restic setting.
-func archiveSettingGroup(name string) string {
-	for _, r := range archiveResticRetentionSettings {
-		if r == name {
-			return ConstArchiveSettingGroupRetention
-		}
-	}
-	switch {
-	case strings.HasPrefix(name, "purge-"):
-		return ConstArchiveSettingGroupRetention
-	case name == "repo-append-cluster", name == "additional-env", name == "tags", name == "host",
-		name == "timeout", name == "dump-timeout", name == "auto-init", strings.HasPrefix(name, "mount-"):
-		return ConstArchiveSettingGroupAdvanced
-	}
-	return ""
 }
 
 // enums of the restic settings
@@ -149,7 +101,21 @@ var archiveResticEnums = map[string][]string{
 	"s3-mode": {ConstResticS3ModeAuto, ConstResticS3ModeNew, ConstResticS3ModeLegacy},
 }
 
-var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapRemove, ConstArchiveCapProbe, ConstArchiveCapSize}
+var archiveResticCaps = []string{ConstArchiveCapEdit, ConstArchiveCapRemove, ConstArchiveCapProbe, ConstArchiveCapSize, ConstArchiveCapPurge}
+
+// archiveSettingGroup is the group of a restic setting: the purge-* settings say how the
+// plugin purges, the other settings every restic plugin shares are advanced.
+func archiveSettingGroup(name string) string {
+	if strings.HasPrefix(name, "purge-") {
+		return ConstArchiveSettingGroupPurge
+	}
+	for _, common := range archiveResticCommonSettings {
+		if common == name {
+			return ConstArchiveSettingGroupAdvanced
+		}
+	}
+	return ""
+}
 
 // resticSettings types each setting from the backup-restic-* field it replaces, so a type
 // is never written twice.
@@ -164,7 +130,7 @@ func resticSettings(names []string, secrets ...string) []ArchivePluginSetting {
 	out := make([]ArchivePluginSetting, 0, len(names)+len(secrets))
 	for _, name := range names {
 		st := ArchivePluginSetting{Name: name, Type: ConstArchiveSettingTypeString, Group: archiveSettingGroup(name)}
-		switch byKey[archiveFlatKey(name)] {
+		switch byKey[archiveLegacyPrefix+name] {
 		case reflect.Bool:
 			st.Type = ConstArchiveSettingTypeBool
 		case reflect.Int, reflect.Int32, reflect.Int64:
@@ -278,9 +244,6 @@ func (st ArchivePluginSetting) Validate(value string) error {
 		}
 		return fmt.Errorf("%s: %q is not one of %s", st.Name, value, strings.Join(st.Values, ", "))
 	}
-	if strings.HasPrefix(st.Name, "keep-within") && !ResticDurationChecker(value) {
-		return fmt.Errorf("%s: %q is not a duration like 2y5m7d3h", st.Name, value)
-	}
 	return nil
 }
 
@@ -310,11 +273,11 @@ type ArchiveConfig struct {
 	Settings map[string]interface{} `mapstructure:",remain" toml:"-" json:"settings"`
 }
 
-// archiveLegacyKeys are the flat keys archive 1 carries: an archive setting named as the
-// key without "backup-restic-", or as archiveFlatKeys names it (the retention). Not here
-// and still flat: the secrets (backup-restic-password, backup-restic-aws-access-secret)
-// until the credential store chain, and what is not an archive's (binary path, reseed,
-// metadata extractor, the server-scope mount dir, unsafe mount, verification).
+// archiveLegacyKeys are the backup-restic-* keys archive 1 carries: an archive setting
+// named as the key without "backup-restic-". Not here and still flat: the secrets
+// (backup-restic-password, backup-restic-aws-access-secret) until the credential store
+// chain, and what is not an archive's (binary path, reseed, metadata extractor, the
+// server-scope mount dir, retention backup-keep-*, verification).
 var archiveLegacyKeys = []string{
 	"backup-restic-local-repository",
 	"backup-restic-repository",
@@ -360,20 +323,6 @@ var archiveLegacyKeys = []string{
 	"backup-restic-mount-verbose",
 	"backup-restic-mount-quiet",
 	"backup-restic-mount-recovery-enabled",
-	// the retention (#2091)
-	"backup-keep-last",
-	"backup-keep-hourly",
-	"backup-keep-daily",
-	"backup-keep-weekly",
-	"backup-keep-monthly",
-	"backup-keep-yearly",
-	"backup-keep-within",
-	"backup-keep-within-hourly",
-	"backup-keep-within-daily",
-	"backup-keep-within-weekly",
-	"backup-keep-within-monthly",
-	"backup-keep-within-yearly",
-	"backup-archive-remove-original",
 }
 
 // archiveModeKeys are replaced by backup-archive-name and the connected archive's plugin.
@@ -383,11 +332,6 @@ const archiveLegacyPrefix = "backup-restic-"
 
 // ArchiveSettingName is the archive setting a legacy key becomes.
 func ArchiveSettingName(legacyKey string) string {
-	for name, k := range archiveFlatKeys {
-		if k == legacyKey {
-			return name
-		}
-	}
 	return strings.TrimPrefix(legacyKey, archiveLegacyPrefix)
 }
 
@@ -513,7 +457,7 @@ func archiveEntryHolds(a *ArchiveConfig, name string) bool {
 	if _, ok := archiveSecretKeys[name]; ok {
 		return true
 	}
-	return IsArchiveLegacyKey(archiveFlatKey(name))
+	return IsArchiveLegacyKey(archiveLegacyPrefix + name)
 }
 
 func cleanArchiveEntry(a *ArchiveConfig) {
@@ -649,40 +593,8 @@ func (conf *Config) MigrateArchives() {
 				conf.BackupArchiveName = a.Name
 			}
 		}
-	} else if a := conf.legacyArchive(); a != nil {
-		conf.adoptFlatSettings(a)
 	}
 	conf.projectArchive()
-}
-
-// legacyArchive is the archive the flat settings belong to: the attached one, else the
-// first of the list.
-func (conf *Config) legacyArchive() *ArchiveConfig {
-	if a := conf.archiveByName(conf.BackupArchiveName); a != nil {
-		return a
-	}
-	if len(conf.Archives) > 0 {
-		return &conf.Archives[0]
-	}
-	return nil
-}
-
-// adoptFlatSettings moves into a the archive settings still customised as flat keys and
-// that a does not hold yet: a list saved before a setting became an archive's (the
-// retention, #2091) keeps its value, and the save then leaves the flat key out.
-func (conf *Config) adoptFlatSettings(a *ArchiveConfig) {
-	if a.Settings == nil {
-		a.Settings = map[string]interface{}{}
-	}
-	for _, key := range archiveLegacyKeys {
-		name := ArchiveSettingName(key)
-		if _, held := a.Settings[name]; held || !archiveEntryHolds(a, name) || conf.isPinned(key) {
-			continue
-		}
-		if f, ok := configField(conf, key); ok && !conf.isDefaultValue(key, f) {
-			a.Settings[name] = fieldValue(f)
-		}
-	}
 }
 
 // moveFlatSecrets moves the archive secrets set at runtime (DynamicFlagMap: the saved config,
@@ -780,10 +692,7 @@ func (conf *Config) projectArchive() {
 			conf.BackupArchiveMode, _ = ArchiveModeForPlugin(a.Plugin)
 		}
 	}
-	// a list with nothing attached: the settings go back to their defaults too, so the
-	// archive left never lends its values to the next one. An empty list keeps the fields:
-	// set before any archive, the save captures them into a new one.
-	if a != nil || len(conf.Archives) > 0 {
+	if a != nil {
 		for _, key := range archiveLegacyKeys {
 			if conf.isPinned(key) {
 				continue
@@ -792,12 +701,7 @@ func (conf *Config) projectArchive() {
 			if !ok {
 				continue
 			}
-			var v interface{}
-			held := false
-			if a != nil {
-				v, held = a.Settings[ArchiveSettingName(key)]
-			}
-			if held {
+			if v, ok := a.Settings[ArchiveSettingName(key)]; ok {
 				setField(f, v)
 			} else if def, ok := conf.DefaultFlagMap[key]; ok {
 				setField(f, def)
@@ -1015,7 +919,7 @@ func (conf *Config) SetArchiveSetting(archive, setting, value string, unset bool
 			a.Settings[setting] = value
 		}
 	default:
-		key := archiveFlatKey(setting)
+		key := archiveLegacyPrefix + setting
 		f, ok := configField(conf, key)
 		if !ok {
 			return fmt.Errorf("unknown archive setting %s", setting)

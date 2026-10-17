@@ -1056,6 +1056,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupKeepWithinWeekly, "backup-keep-within-weekly", "", "Only for compatible version. Keep this duration of weekly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
 	flags.StringVar(&conf.BackupKeepWithinMonthly, "backup-keep-within-monthly", "", "Only for compatible version. Keep this duration of monthly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
 	flags.StringVar(&conf.BackupKeepWithinYearly, "backup-keep-within-yearly", "", "Only for compatible version. Keep this duration of yearly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
+	flags.StringVar(&conf.BackupArchivePurgeTrigger, "backup-archive-purge-trigger", config.ConstArchivePurgeAfterBackup, "When the attached archive is asked to apply the retention policy (backup-keep-*): after-backup (each backup it receives) or schedule (scheduler-archive-purge-cron, needs monitoring-scheduler)")
+	flags.StringVar(&conf.BackupArchivePurgeCron, "scheduler-archive-purge-cron", "0 0 * * * *", "Archive purge cron expression, 6 space-separated fields, with backup-archive-purge-trigger schedule")
 
 	flags.StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")

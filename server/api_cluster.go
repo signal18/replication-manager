@@ -4612,6 +4612,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitoringAddress(value)
 	case "scheduler-db-servers-logical-backup-cron":
 		mycluster.SetSchedulerDbServersLogicalBackupCron(value)
+	case "scheduler-archive-purge-cron":
+		mycluster.SetSchedulerArchivePurgeCron(value)
+	case "backup-archive-purge-trigger":
+		if err := mycluster.SetArchivePurgeTrigger(value); err != nil {
+			return err
+		}
 	case "scheduler-db-servers-logs-cron":
 		mycluster.SetSchedulerDbServersLogsCron(value)
 	case "scheduler-db-servers-logs-table-rotate-cron":

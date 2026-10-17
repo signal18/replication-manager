@@ -1083,6 +1083,7 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerAlertDisable()
 		cluster.SetSchedulerMonitorSchema()
 		cluster.SetSchedulerMonitorChecksum()
+		cluster.SetSchedulerArchivePurge()
 		if cluster.Status == ConstMonitorActif {
 			cluster.scheduler.Start()
 		} else {
@@ -1339,7 +1340,6 @@ func (cluster *Cluster) tickBody() {
 					cluster.startInjectProxiesTraffic()
 				}
 				if heartbeats%3600 == 0 {
-					goRun(func() { cluster.ResticPurgeRepo(false) })
 					goRun(cluster.PurgeExpiredDirectReseedSystemArtifacts)
 					goRun(cluster.RefreshToolVersions)
 					goRun(cluster.CheckBackupToolVersions)

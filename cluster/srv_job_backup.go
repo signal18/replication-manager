@@ -5710,6 +5710,10 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, m
 					server.removeArchivedOriginal(backupMethod, meta, result.SnapshotID)
 				}
 			}
+			// the archive received a backup: it is asked to apply the retention policy (#2091)
+			if cluster.Conf.ArchivePurgeAfterBackup() {
+				cluster.ResticPurgeRepo(false)
+			}
 		}
 	}()
 }

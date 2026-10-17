@@ -1253,94 +1253,96 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 	return cluster.ResticPurgeRepoWithOptions(now, false)
 }
 
+// ResticPurgeRepoWithOptions asks the attached archive to apply the cluster's retention
+// policy (#2091): the policy is the user's (backup-keep-*), the plugin applies it its own way.
 func (cluster *Cluster) ResticPurgeRepoWithOptions(now bool, dryRun bool) error {
-	if cluster.Conf.BackupRestic {
-		err := cluster.Conf.CheckKeepWithin() // Check if backup-keep-within is valid
-		if err != nil {
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
-			return err
-		}
-
-		if cluster.ResticManager == nil {
-			cluster.StartResticManager()
-		}
-
-		hasKeepN := cluster.Conf.BackupKeepLast > 0 ||
-			cluster.Conf.BackupKeepHourly > 0 ||
-			cluster.Conf.BackupKeepDaily > 0 ||
-			cluster.Conf.BackupKeepWeekly > 0 ||
-			cluster.Conf.BackupKeepMonthly > 0 ||
-			cluster.Conf.BackupKeepYearly > 0
-		hasKeepWithin := strings.TrimSpace(cluster.Conf.BackupKeepWithin) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinHourly) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinDaily) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinWeekly) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinMonthly) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinYearly) != ""
-		if !hasKeepN && !hasKeepWithin {
-			err := fmt.Errorf("restic purge skipped: no keep-last/keep-within policy configured")
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
-			return err
-		}
-
-		groupBy := strings.TrimSpace(cluster.Conf.BackupResticPurgeGroupBy)
-		if groupBy == "" || strings.EqualFold(groupBy, "default") {
-			groupBy = ""
-		} else if strings.EqualFold(groupBy, "none") {
-			groupBy = "none"
-		}
-
-		keepTemplates := parseResticKeepTagTemplates(cluster.Conf.BackupResticPurgeKeepTag, cluster)
-		keepValues := map[string]string{
-			"tenant":  cluster.Conf.Cloud18GitUser,
-			"cluster": cluster.Name,
-		}
-		keepTags := make([]string, 0, len(keepTemplates))
-		for _, template := range keepTemplates {
-			rendered, ok := renderResticKeepTagTemplate(template, keepValues, cluster)
-			if !ok {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to render restic keep-tag template %q", template)
-				continue
-			}
-			if strings.TrimSpace(rendered) == "" {
-				continue
-			}
-			keepTags = append(keepTags, rendered)
-		}
-
-		purgeHosts := splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgeHost)
-		purgeTags := parseResticTagFilterValues(cluster.Conf.BackupResticPurgeTag, cluster, "purge")
-		purgePaths := filterResticAbsolutePaths(splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgePath), cluster)
-		cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
-			KeepLast:          cluster.Conf.BackupKeepLast,
-			KeepHourly:        cluster.Conf.BackupKeepHourly,
-			KeepDaily:         cluster.Conf.BackupKeepDaily,
-			KeepWeekly:        cluster.Conf.BackupKeepWeekly,
-			KeepMonthly:       cluster.Conf.BackupKeepMonthly,
-			KeepYearly:        cluster.Conf.BackupKeepYearly,
-			KeepWithin:        cluster.Conf.BackupKeepWithin,
-			KeepWithinHourly:  cluster.Conf.BackupKeepWithinHourly,
-			KeepWithinDaily:   cluster.Conf.BackupKeepWithinDaily,
-			KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
-			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
-			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
-			GroupBy:           groupBy,
-			KeepTag:           keepTags,
-			Host:              purgeHosts,
-			Tag:               purgeTags,
-			Path:              purgePaths,
-			Compact:           cluster.Conf.BackupResticPurgePruneCompact,
-			Prune:             cluster.Conf.BackupResticPurgePrune,
-			PruneOption: backupmgr.ResticPruneOption{
-				MaxUnused:           cluster.Conf.BackupResticPurgePruneMaxUnused,
-				MaxRepackSize:       cluster.Conf.BackupResticPurgePruneMaxRepackSize,
-				RepackCacheableOnly: cluster.Conf.BackupResticPurgePruneRepackCacheableOnly,
-				RepackSmall:         cluster.Conf.BackupResticPurgePruneRepackSmall,
-				RepackUncompressed:  cluster.Conf.BackupResticPurgePruneRepackUncompressed,
-			},
-			DryRun: dryRun,
-		}, now)
+	if !cluster.Conf.BackupRestic {
+		return nil
 	}
+	policy := cluster.Conf.ArchivePurgePolicy()
+	if err := policy.Validate(); err != nil {
+		cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+	if policy.IsEmpty() {
+		err := fmt.Errorf("restic purge skipped: no keep-last/keep-within policy configured")
+		cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+	if name := cluster.Conf.AttachedArchive(); name != "" {
+		for _, a := range cluster.Conf.Archives {
+			if m, ok := config.ArchivePlugin(a.Plugin); a.Name == name && ok && !m.Can(config.ConstArchiveCapPurge) {
+				return fmt.Errorf("archive %s (%s) cannot purge", name, a.Plugin)
+			}
+		}
+	}
+	return cluster.resticPurgeWithPolicy(policy, now, dryRun)
+}
+
+// resticPurgeWithPolicy is the restic plugins' purge: the policy, applied with the attached
+// archive's purge-* settings.
+func (cluster *Cluster) resticPurgeWithPolicy(policy config.ArchivePurgePolicy, now bool, dryRun bool) error {
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	groupBy := strings.TrimSpace(cluster.Conf.BackupResticPurgeGroupBy)
+	if groupBy == "" || strings.EqualFold(groupBy, "default") {
+		groupBy = ""
+	} else if strings.EqualFold(groupBy, "none") {
+		groupBy = "none"
+	}
+
+	keepTemplates := parseResticKeepTagTemplates(cluster.Conf.BackupResticPurgeKeepTag, cluster)
+	keepValues := map[string]string{
+		"tenant":  cluster.Conf.Cloud18GitUser,
+		"cluster": cluster.Name,
+	}
+	keepTags := make([]string, 0, len(keepTemplates))
+	for _, template := range keepTemplates {
+		rendered, ok := renderResticKeepTagTemplate(template, keepValues, cluster)
+		if !ok {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to render restic keep-tag template %q", template)
+			continue
+		}
+		if strings.TrimSpace(rendered) == "" {
+			continue
+		}
+		keepTags = append(keepTags, rendered)
+	}
+
+	purgeHosts := splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgeHost)
+	purgeTags := parseResticTagFilterValues(cluster.Conf.BackupResticPurgeTag, cluster, "purge")
+	purgePaths := filterResticAbsolutePaths(splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgePath), cluster)
+	cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
+		KeepLast:          policy.KeepLast,
+		KeepHourly:        policy.KeepHourly,
+		KeepDaily:         policy.KeepDaily,
+		KeepWeekly:        policy.KeepWeekly,
+		KeepMonthly:       policy.KeepMonthly,
+		KeepYearly:        policy.KeepYearly,
+		KeepWithin:        policy.KeepWithin,
+		KeepWithinHourly:  policy.KeepWithinHourly,
+		KeepWithinDaily:   policy.KeepWithinDaily,
+		KeepWithinWeekly:  policy.KeepWithinWeekly,
+		KeepWithinMonthly: policy.KeepWithinMonthly,
+		KeepWithinYearly:  policy.KeepWithinYearly,
+		GroupBy:           groupBy,
+		KeepTag:           keepTags,
+		Host:              purgeHosts,
+		Tag:               purgeTags,
+		Path:              purgePaths,
+		Compact:           cluster.Conf.BackupResticPurgePruneCompact,
+		Prune:             cluster.Conf.BackupResticPurgePrune,
+		PruneOption: backupmgr.ResticPruneOption{
+			MaxUnused:           cluster.Conf.BackupResticPurgePruneMaxUnused,
+			MaxRepackSize:       cluster.Conf.BackupResticPurgePruneMaxRepackSize,
+			RepackCacheableOnly: cluster.Conf.BackupResticPurgePruneRepackCacheableOnly,
+			RepackSmall:         cluster.Conf.BackupResticPurgePruneRepackSmall,
+			RepackUncompressed:  cluster.Conf.BackupResticPurgePruneRepackUncompressed,
+		},
+		DryRun: dryRun,
+	}, now)
 	return nil
 }
 

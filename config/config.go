@@ -893,6 +893,8 @@ type Config struct {
 	BackupKeepWithinWeekly                    string            `mapstructure:"backup-keep-within-weekly" toml:"backup-keep-within-weekly" json:"backupKeepWithinWeekly"`
 	BackupKeepWithinMonthly                   string            `mapstructure:"backup-keep-within-monthly" toml:"backup-keep-within-monthly" json:"backupKeepWithinMonthly"`
 	BackupKeepWithinYearly                    string            `mapstructure:"backup-keep-within-yearly" toml:"backup-keep-within-yearly" json:"backupKeepWithinYearly"`
+	BackupArchivePurgeTrigger                 string            `mapstructure:"backup-archive-purge-trigger" toml:"backup-archive-purge-trigger" json:"backupArchivePurgeTrigger"`
+	BackupArchivePurgeCron                    string            `mapstructure:"scheduler-archive-purge-cron" toml:"scheduler-archive-purge-cron" json:"schedulerArchivePurgeCron"`
 	BackupResticTags                          string            `mapstructure:"backup-restic-tags" toml:"backup-restic-tags" json:"backupResticTags"`
 	BackupResticHost                          string            `mapstructure:"backup-restic-host" toml:"backup-restic-host" json:"backupResticHost"`
 	BackupResticPurgeGroupBy                  string            `mapstructure:"backup-restic-purge-group-by" toml:"backup-restic-purge-group-by" json:"backupResticPurgeGroupBy"`

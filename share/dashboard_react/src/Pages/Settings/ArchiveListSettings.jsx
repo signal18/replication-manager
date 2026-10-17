@@ -26,7 +26,8 @@ import TextForm from '../../components/TextForm'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import TextInputModal from '../../components/Modals/TextInputModal'
 import { resticCopyRepo } from '../../redux/clusterSlice'
-import { switchSetting } from '../../redux/settingsSlice'
+import { setSetting, switchSetting } from '../../redux/settingsSlice'
+import NumberInput from '../../components/NumberInput'
 import parentStyles from '../../components/Modals/styles.module.scss'
 import { clusterService } from '../../services/clusterService'
 import { useTheme } from '../../ThemeProvider'
@@ -73,19 +74,6 @@ const SETTING_LABELS = {
   'timeout': 'Timeout (s)',
   'dump-timeout': 'Dump timeout (s)',
   'auto-init': 'Create if missing',
-  'keep-last': 'Keep last',
-  'keep-hourly': 'Keep hourly',
-  'keep-daily': 'Keep daily',
-  'keep-weekly': 'Keep weekly',
-  'keep-monthly': 'Keep monthly',
-  'keep-yearly': 'Keep yearly',
-  'keep-within': 'Keep all within',
-  'keep-within-hourly': 'Keep hourly within',
-  'keep-within-daily': 'Keep daily within',
-  'keep-within-weekly': 'Keep weekly within',
-  'keep-within-monthly': 'Keep monthly within',
-  'keep-within-yearly': 'Keep yearly within',
-  'remove-original': 'Remove original once archived',
   'purge-group-by': 'Group snapshots by',
   'purge-keep-tag': 'Always keep tag',
   'purge-host': 'Purge only host',
@@ -107,19 +95,6 @@ const SETTING_HELP = {
   'repo-append-cluster': 'Adds the cluster name at the end of the path.',
   's3-mode': 'auto, new or legacy: how the bucket path is built. Leave on auto.',
   'purge-oldest-on-disk-space': 'When the disk is nearly full, the oldest snapshots are deleted first.',
-  'keep-last': 'How many of the newest snapshots the purge keeps. 0: not part of the policy.',
-  'keep-hourly': 'For the last N hours that have a snapshot, keep the newest of each hour. 0: not part of the policy.',
-  'keep-daily': 'For the last N days that have a snapshot, keep the newest of each day. 0: not part of the policy.',
-  'keep-weekly': 'For the last N weeks that have a snapshot, keep the newest of each week. 0: not part of the policy.',
-  'keep-monthly': 'For the last N months that have a snapshot, keep the newest of each month. 0: not part of the policy.',
-  'keep-yearly': 'For the last N years that have a snapshot, keep the newest of each year. 0: not part of the policy.',
-  'keep-within': 'Keep every snapshot newer than this, counted from the newest one. Example 2y5m7d3h. Empty: not part of the policy.',
-  'keep-within-hourly': 'Keep the newest snapshot of each hour within this duration. Example 7d. Empty: not part of the policy.',
-  'keep-within-daily': 'Keep the newest snapshot of each day within this duration. Example 1m. Empty: not part of the policy.',
-  'keep-within-weekly': 'Keep the newest snapshot of each week within this duration. Example 3m. Empty: not part of the policy.',
-  'keep-within-monthly': 'Keep the newest snapshot of each month within this duration. Example 1y. Empty: not part of the policy.',
-  'keep-within-yearly': 'Keep the newest snapshot of each year within this duration. Example 5y. Empty: not part of the policy.',
-  'remove-original': 'Once the snapshot in this archive is checked, the backup is deleted from the server\'s backup folder. A restore fetches it back from the archive first.',
   'purge-group-by': 'How snapshots are grouped before the keep rules apply: host, paths, tags, or a mix (host,tags).',
   'purge-keep-tag': 'Snapshots with this tag are never purged.',
   'purge-prune': 'After the purge, delete the data no snapshot uses any more, so the space is really freed.'
@@ -154,22 +129,41 @@ const can = (list, archive, capability) =>
   (list.plugins.find((p) => p.name === archive.plugin)?.capabilities || []).includes(capability)
 
 // splitSettings lays a plugin's settings out by their group: the main ones (location,
-// credentials), the retention, the advanced ones
+// credentials), how it purges, the advanced ones
 function splitSettings(manifest) {
   const settings = manifest?.settings || []
   const grouped = settings.some((st) => st.group)
   const idx = settings.findIndex((st) => st.name === FIRST_COMMON_SETTING)
   const main = []
-  const retention = []
+  const purge = []
   const more = []
   settings.forEach((st, i) => {
     if (st.type === 'secret') main.push(st)
-    else if (grouped) (st.group === 'retention' ? retention : st.group ? more : main).push(st)
+    else if (grouped) (st.group === 'purge' ? purge : st.group ? more : main).push(st)
     else if (idx < 0 || i < idx) main.push(st)
     else more.push(st)
   })
-  return { main, retention, more }
+  return { main, purge, more }
 }
+
+// the cluster's retention policy: the user's, applied by the attached archive
+const KEEP_COUNTS = [
+  ['backup-keep-last', 'backupKeepLast', 'Keep last', 'How many of the newest backups are kept.'],
+  ['backup-keep-hourly', 'backupKeepHourly', 'Keep hourly', 'For the last N hours that have a backup, the newest of each hour is kept.'],
+  ['backup-keep-daily', 'backupKeepDaily', 'Keep daily', 'For the last N days that have a backup, the newest of each day is kept.'],
+  ['backup-keep-weekly', 'backupKeepWeekly', 'Keep weekly', 'For the last N weeks that have a backup, the newest of each week is kept.'],
+  ['backup-keep-monthly', 'backupKeepMonthly', 'Keep monthly', 'For the last N months that have a backup, the newest of each month is kept.'],
+  ['backup-keep-yearly', 'backupKeepYearly', 'Keep yearly', 'For the last N years that have a backup, the newest of each year is kept.']
+]
+const KEEP_WITHIN = [
+  ['backup-keep-within', 'backupKeepWithin', 'Keep all within', 'Every backup newer than this is kept, counted from the newest one.'],
+  ['backup-keep-within-hourly', 'backupKeepWithinHourly', 'Keep hourly within', 'The newest backup of each hour within this duration is kept.'],
+  ['backup-keep-within-daily', 'backupKeepWithinDaily', 'Keep daily within', 'The newest backup of each day within this duration is kept.'],
+  ['backup-keep-within-weekly', 'backupKeepWithinWeekly', 'Keep weekly within', 'The newest backup of each week within this duration is kept.'],
+  ['backup-keep-within-monthly', 'backupKeepWithinMonthly', 'Keep monthly within', 'The newest backup of each month within this duration is kept.'],
+  ['backup-keep-within-yearly', 'backupKeepWithinYearly', 'Keep yearly within', 'The newest backup of each year within this duration is kept.']
+]
+const DURATION_PATTERN = '^(\\d+y)?(\\d+m)?(\\d+d)?(\\d+h)?$'
 
 function SettingField({ st, value, onChange, secretSet }) {
   if (st.type === 'bool') {
@@ -205,8 +199,8 @@ export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave 
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const manifest = plugins.find((p) => p.name === plugin)
-  const { main, retention, more: advanced } = splitSettings(manifest)
-  const more = [...retention, ...advanced]
+  const { main, purge, more: advanced } = splitSettings(manifest)
+  const more = [...purge, ...advanced]
 
   const setValue = (k, v) => setValues((prev) => ({ ...prev, [k]: v }))
 
@@ -315,7 +309,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
   const [removeName, setRemoveName] = useState('')
   const [open, setOpen] = useState({}) // archive name -> its settings shown
   const [advanced, setAdvanced] = useState({}) // archive name -> its advanced settings shown
-  const [retentionShown, setRetentionShown] = useState({}) // archive name -> its retention shown
+  const [purgeShown, setPurgeShown] = useState({}) // archive name -> its purge options shown
   const [copySource, setCopySource] = useState('')
   const canSet = user?.grants?.['cluster-settings'] !== false
   const canRemove = user?.grants?.['db-backup'] !== false
@@ -409,7 +403,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
 
   const archiveRows = (a) => {
     const manifest = list.plugins.find((p) => p.name === a.plugin)
-    const { main, retention, more } = splitSettings(manifest)
+    const { main, purge, more } = splitSettings(manifest)
     const isOpen = open[a.name] ?? a.attached
     const busy = a.status === 'removing'
     const others = list.archives.filter((o) => o.name !== a.name)
@@ -428,14 +422,13 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     ]
     if (isOpen) {
       rows.push(...main.map((st) => settingRow(a, st)))
-      if (retention.length > 0) {
-        const shownR = retentionShown[a.name] ?? true
+      if (purge.length > 0 && can(list, a, 'purge')) {
         rows.push({
-          key: <Text as='span' fontWeight='bold'>Retention</Text>,
-          help: help('**Retention**\n\nHow long this archive keeps its snapshots: the purge keeps the snapshots any rule below keeps and deletes the others. Each archive has its own.\n\nRemove original: the backup leaves the server once this archive holds it.', 'Retention'),
-          value: <RMButton size='xs' variant='outline' onClick={() => setRetentionShown((p) => ({ ...p, [a.name]: !shownR }))}>{shownR ? 'Hide' : `Show (${retention.length})`}</RMButton>
+          key: 'Purge options',
+          help: help('**Purge options**\n\nHow this archive applies the cluster\'s retention policy: which snapshots are compared, which are always kept, and whether the space is freed. The policy itself (what to keep) is the cluster\'s, above.', 'Purge options'),
+          value: <RMButton size='xs' variant='outline' onClick={() => setPurgeShown((p) => ({ ...p, [a.name]: !p[a.name] }))}>{purgeShown[a.name] ? 'Hide' : `Show (${purge.length})`}</RMButton>
         })
-        if (shownR) rows.push(...retention.map((st) => settingRow(a, st)))
+        if (purgeShown[a.name]) rows.push(...purge.map((st) => settingRow(a, st)))
       }
       if (more.length > 0) {
         rows.push({
@@ -479,6 +472,54 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     }
   }
 
+  const setClusterSetting = (setting, value) => dispatch(setSetting({ clusterName, setting, value }))
+  const onSchedule = config?.backupArchivePurgeTrigger === 'schedule'
+  const policyRows = [
+    ...KEEP_COUNTS.map(([setting, field, label, text]) => ({
+      key: label,
+      help: help(`**${label}**\n\n${text} 0: not part of the policy.\n\nConfig: \`${setting}\``, label),
+      value: <NumberInput value={config?.[field]} min={0} isDisabled={!canSet} showEditButton={true} showConfirmModal={true}
+        confirmTitle={`Confirm update '${setting}':`} onConfirm={(v) => setClusterSetting(setting, v)} />
+    })),
+    ...KEEP_WITHIN.map(([setting, field, label, text]) => ({
+      key: label,
+      help: help(`**${label}**\n\n${text} Example 2y5m7d3h. Empty: not part of the policy.\n\nConfig: \`${setting}\``, label),
+      value: <TextForm value={config?.[field] || ''} isDisabled={!canSet} regexPattern={DURATION_PATTERN}
+        confirmTitle={`Confirm update '${setting}' to `} onSave={(v) => setClusterSetting(setting, v)} />
+    })),
+    {
+      key: 'Remove original once archived',
+      help: help('**Remove original once archived**\n\nOnce the attached archive holds a backup and it is checked, the backup is deleted from the server\'s backup folder. A restore fetches it back from the archive first.\n\nConfig: `backup-archive-remove-original`', 'Remove original once archived'),
+      value: <RMSwitch isChecked={!!config?.backupArchiveRemoveOriginal} isDisabled={!canSet}
+        confirmTitle='Confirm switch settings for backup-archive-remove-original?'
+        onChange={() => dispatch(switchSetting({ clusterName, setting: 'backup-archive-remove-original' }))} />
+    },
+    {
+      key: 'Purge',
+      help: help('**Purge**\n\nWhen the attached archive is asked to apply the policy. After each backup: every backup it receives is followed by a purge. On schedule: at the cron below (needs the cluster scheduler, `monitoring-scheduler`).\n\n**Purge now** asks it at once.\n\nConfig: `backup-archive-purge-trigger`', 'Purge'),
+      value: (
+        <Flex gap='2' align='center' wrap='wrap'>
+          <Dropdown options={[{ name: 'After each backup', value: 'after-backup' }, { name: 'On schedule', value: 'schedule' }]}
+            selectedValue={onSchedule ? 'schedule' : 'after-backup'} isDisabled={!canSet} confirmTitle='Change when the archive purges?'
+            onChange={(v) => setClusterSetting('backup-archive-purge-trigger', v)} />
+          <RMButton size='xs' variant='outline' isDisabled={!canRemove || !list.attached}
+            onClick={() => call(() => clusterService.purgeResticByPolicy(clusterName))}>Purge now</RMButton>
+        </Flex>
+      )
+    },
+    ...(onSchedule ? [{
+      key: 'Purge schedule',
+      help: help('**Purge schedule**\n\nCron with 6 fields (seconds first). Default: every hour.\n\nConfig: `scheduler-archive-purge-cron`', 'Purge schedule'),
+      value: (
+        <Stack spacing='1'>
+          <TextForm value={config?.schedulerArchivePurgeCron || ''} isDisabled={!canSet}
+            confirmTitle="Confirm update 'scheduler-archive-purge-cron' to " onSave={(v) => setClusterSetting('scheduler-archive-purge-cron', v)} />
+          {!config?.monitoringScheduler && <Text fontSize='sm' color='orange.400'>The cluster scheduler is off: the schedule does not run.</Text>}
+        </Stack>
+      )
+    }] : [])
+  ]
+
   const attachOptions = [{ name: 'None', value: '__none__' }, ...list.archives.map((a) => ({ name: a.name, value: a.name }))]
   const rows = [
     {
@@ -497,6 +538,11 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
           {error && <Text color='red.500' fontSize='sm'>{error}</Text>}
         </Stack>
       )
+    },
+    {
+      key: 'Retention policy',
+      help: help('**Retention policy**\n\nWhat the cluster keeps: the backups any rule keeps stay, the others are purged. The policy is the cluster\'s, whatever archive is attached; the attached archive is asked to apply it, its own way (its Purge options).', 'Retention policy'),
+      value: policyRows
     },
     // the attached archive first, then the others
     ...[...list.archives].sort((x, y) => (y.attached ? 1 : 0) - (x.attached ? 1 : 0)).map(archiveRows),

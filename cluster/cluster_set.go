@@ -1862,6 +1862,23 @@ func (cluster *Cluster) SetMonitoringAddress(value string) error {
 	return nil
 }
 
+// SetArchivePurgeTrigger sets when the attached archive is asked to apply the retention
+// policy: after-backup or schedule (#2091).
+func (cluster *Cluster) SetArchivePurgeTrigger(value string) error {
+	if err := config.ValidateArchivePurgeTrigger(value); err != nil {
+		return err
+	}
+	cluster.Conf.BackupArchivePurgeTrigger = value
+	cluster.SetSchedulerArchivePurge()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerArchivePurgeCron(value string) error {
+	cluster.Conf.BackupArchivePurgeCron = value
+	cluster.SetSchedulerArchivePurge()
+	return nil
+}
+
 func (cluster *Cluster) SetSchedulerDbServersLogicalBackupCron(value string) error {
 	cluster.Conf.BackupLogicalCron = value
 	cluster.SetSchedulerBackupLogical()
