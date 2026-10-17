@@ -5055,7 +5055,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		default:
 			mycluster.Conf.BackupMysqlbinlogPath = storeValue
 		}
-		mycluster.RefreshToolVersions()
+		mycluster.RefreshDBClientVersions()
 	case "backup-verification-level":
 		if err := mycluster.SetBackupVerificationLevel(value); err != nil {
 			return err
