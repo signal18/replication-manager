@@ -19,7 +19,7 @@ import NumberInput from '../../components/NumberInput'
 import RMButton from '../../components/RMButton'
 import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { getBackupVerificationServer, markBackupVerificationServer, setAsIgnored } from '../../redux/clusterSlice'
+import { getBackupVerificationServer, markBackupVerificationServer, setAsIgnored, selectClusterS3Providers } from '../../redux/clusterSlice'
 
 const sizeGenerator = () => {
   const result = []
@@ -55,6 +55,9 @@ function BackupSettings({ selectedCluster, user }) {
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
 
   const { globalClusters: { monitor } } = useSelector((state) => state)
+  const s3Providers = useSelector(selectClusterS3Providers)
+  const mountProvider = s3Providers.find((p) => p.name === selectedCluster?.config?.backupStreamingProvider)
+  const backupMount = selectedCluster?.backupMount
 
   const openCommonModal = () => setIsCommonModalOpen(true)
   const closeCommonModal = () => setIsCommonModalOpen(false)
@@ -231,10 +234,9 @@ function BackupSettings({ selectedCluster, user }) {
   const hEstimatePercentage = `**Backup Estimation Percentage from information_schema**\n\nPercentage of the information_schema size used as the backup size estimate when no previous backup exists.\n\nConfig: \`backup-estimate-size-percentage\``
 
   const hBackupMount = `**Backups Folder Mount**\n\nThe backups folder can be an S3 bucket mounted in its place: the backups are then written to the bucket.\n\nConfig: \`backup-streaming\``
-  const hMountEndpoint = `**Backups Mount S3 Endpoint**\n\nEndpoint URL of the S3 bucket mounted as the backups folder.\nExample: \`https://s3.amazonaws.com\`\n\nConfig: \`backup-streaming-endpoint\``
-  const hMountRegion = `**Backups Mount S3 Region**\n\nRegion of the S3 bucket mounted as the backups folder.\nExample: \`eu-west-1\`\n\nConfig: \`backup-streaming-region\``
-  const hMountBucket = `**Backups Mount S3 Bucket**\n\nName of the S3 bucket mounted as the backups folder.\n\nConfig: \`backup-streaming-bucket\``
-  const hMountCredentials = `**Backups Mount S3 Access Key and Secret**\n\nThe credentials of the bucket. Never shown.\n\nConfig: \`backup-streaming-aws-access-key-id\`, \`backup-streaming-aws-access-secret\``
+  const hMountProvider = `**Backups Mount S3 Provider**\n\nThe S3 provider (the S3 Providers settings) whose endpoint, region and keys the mount uses. With the mount on and none set, one named backup-mount is added from the backup-streaming endpoint, region and keys, and set here.\n\nConfig: \`backup-streaming-provider\``
+  const hMountBucket = `**Backups Mount S3 Bucket**\n\nThe bucket mounted as the backups folder: the cluster's backups are in its folder named as the cluster.\n\nConfig: \`backup-streaming-bucket\``
+  const hMountPoint = `**Backups Mount Folder**\n\nThe cluster's backups folder, mounted from the bucket's folder named as the cluster. A folder holding local files is never mounted over: move them first.`
   const hMountDebug = `**Backups Mount Debug**\n\nLogs the mount's S3 calls.\n\nConfig: \`backup-streaming-debug\``
   const hArchiveMountDir = `**Archive Mount Folder**\n\nWhere an archive is mounted to browse it or to reseed from it. Empty: \`<working-dir>/<cluster>/mount\`; a relative path is resolved under it.\n\nConfig: \`backup-restic-mount-dir\``
   const hUnsafeMount = `**Allow Unsafe Mount**\n\nUse an archive mount another process made. Unsafe: that process can unmount it while it is used.\n\nConfig: \`backup-restic-allow-unsafe-mount\``
@@ -765,16 +767,17 @@ function BackupSettings({ selectedCluster, user }) {
           value: (<Text fontSize='sm'>{selectedCluster?.config?.backupStreaming ? 'on' : 'off'}</Text>)
         },
         {
-          key: 'S3 Endpoint',
-          help: h(hMountEndpoint, 'Backups Mount S3 Endpoint'),
-          value: (<TextForm value={selectedCluster?.config?.backupStreamingEndpoint} confirmTitle={`Confirm backup-streaming-endpoint to `} className={styles.textbox}
-            onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-endpoint', value }))} />)
-        },
-        {
-          key: 'S3 Region',
-          help: h(hMountRegion, 'Backups Mount S3 Region'),
-          value: (<TextForm value={selectedCluster?.config?.backupStreamingRegion} confirmTitle={`Confirm backup-streaming-region to `} className={styles.textbox}
-            onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-region', value }))} />)
+          key: 'S3 Provider',
+          help: h(hMountProvider, 'Backups Mount S3 Provider'),
+          value: (
+            <Stack spacing='1'>
+              <Dropdown options={[{ name: 'none', value: '__none__' }, ...s3Providers.map((p) => ({ name: p.name, value: p.name }))]}
+                selectedValue={selectedCluster?.config?.backupStreamingProvider || '__none__'}
+                confirmTitle='Change the S3 provider of the backups folder mount?'
+                onChange={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-provider', value: value === '__none__' ? '' : value }))} />
+              {mountProvider && <Text fontSize='sm' opacity='0.7'>{mountProvider.providerSource === 'app' ? `app ${mountProvider.providerApp}` : mountProvider.endpoint}{mountProvider.region ? ` (${mountProvider.region})` : ''}</Text>}
+            </Stack>
+          )
         },
         {
           key: 'S3 Bucket',
@@ -783,9 +786,13 @@ function BackupSettings({ selectedCluster, user }) {
             onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-bucket', value }))} />)
         },
         {
-          key: 'S3 Access Key and Secret',
-          help: h(hMountCredentials, 'Backups Mount S3 Access Key and Secret'),
-          value: (<Text fontSize='sm'>set in the config file, never shown</Text>)
+          key: 'Mounted Folder',
+          help: h(hMountPoint, 'Backups Mount Folder'),
+          value: (<Text fontSize='sm'>{(backupMount?.mountPoint || `<working-dir>/backups/${selectedCluster?.name}`)} = {selectedCluster?.config?.backupStreamingBucket || '?'}/{selectedCluster?.name}</Text>)
+        },
+        {
+          key: 'Mount Status',
+          value: (<Text fontSize='sm' color={backupMount?.error ? 'red.400' : undefined}>{!selectedCluster?.config?.backupStreaming ? 'local folder, not mounted' : backupMount?.mounted ? 'mounted' : backupMount?.error ? `not mounted: ${backupMount.error}` : 'not mounted yet'}</Text>)
         },
         {
           key: 'Mount Debug',

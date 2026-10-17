@@ -977,6 +977,7 @@ type Config struct {
 	BackupStreamingEndpoint          string  `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`
 	BackupStreamingRegion            string  `mapstructure:"backup-streaming-region" toml:"backup-streaming-region" json:"backupStreamingRegion"`
 	BackupStreamingBucket            string  `mapstructure:"backup-streaming-bucket" toml:"backup-streaming-bucket" json:"backupStreamingBucket"`
+	BackupStreamingProvider          string  `mapstructure:"backup-streaming-provider" toml:"backup-streaming-provider" json:"backupStreamingProvider"`
 	BackupMysqldumpPath              string  `mapstructure:"backup-mysqldump-path" toml:"backup-mysqldump-path" json:"backupMysqldumpPath"`
 	BackupMysqldumpOptions           string  `mapstructure:"backup-mysqldump-options" toml:"backup-mysqldump-options" json:"backupMysqldumpOptions"`
 	BackupMyDumperPath               string  `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`

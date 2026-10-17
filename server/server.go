@@ -1041,6 +1041,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupStreamingEndpoint, "backup-streaming-endpoint", "https://s3.signal18.io/", "Backup AWS endpoint")
 	flags.StringVar(&conf.BackupStreamingRegion, "backup-streaming-region", "fr-1", "Backup AWS region")
 	flags.StringVar(&conf.BackupStreamingBucket, "backup-streaming-bucket", "repman", "Backup AWS bucket")
+	flags.StringVar(&conf.BackupStreamingProvider, "backup-streaming-provider", "", "S3 provider of the cluster (its S3 providers) the backups folder mount uses; empty with backup-streaming on: one is added from the backup-streaming-* values and set here")
 
 	//flags.StringVar(&conf.BackupResticStoragePolicy, "backup-restic-storage-policy", "--prune --keep-last 10 --keep-hourly 24 --keep-daily 7 --keep-weekly 52 --keep-monthly 120 --keep-yearly 102", "Restic keep backup policy")
 	flags.IntVar(&conf.BackupKeepLast, "backup-keep-last", 10, "Keep this number of last recent backup. Zero value will be omitted from the policy")
@@ -2938,8 +2939,6 @@ func (repman *ReplicationManager) Run() error {
 		repman.Logrus.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
 
-	go repman.MountS3()
-
 	//repman.InitRestic()
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
 	repman.Logrus.Infof("repman.Conf.ShareDir : %s", repman.Conf.ShareDir)
@@ -3118,10 +3117,6 @@ func (repman *ReplicationManager) Run() error {
 		repman.exit.Store(true)
 
 		shutStart := time.Now()
-		repman.Logrus.Info("Shutdown: unmounting S3")
-		s3t := time.Now()
-		repman.UnMountS3()
-		repman.Logrus.Infof("Shutdown: S3 unmount took %s", time.Since(s3t))
 
 		repman.Logrus.Info("Shutdown: stopping ticker goroutines")
 		close(quit_GitPull)

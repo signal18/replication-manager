@@ -1879,6 +1879,30 @@ func (cluster *Cluster) SetSchedulerArchivePurgeCron(value string) error {
 	return nil
 }
 
+// SetBackupStreamingProvider sets the S3 provider of the backups folder mount; the mount
+// follows at once (#2091).
+func (cluster *Cluster) SetBackupStreamingProvider(value string) error {
+	if value != "" {
+		found := false
+		for _, p := range cluster.GetS3ProvidersSnapshot() {
+			found = found || p.Name == value
+		}
+		if !found {
+			return fmt.Errorf("no S3 provider %q", value)
+		}
+	}
+	cluster.Conf.BackupStreamingProvider = value
+	go cluster.RefreshBackupMount()
+	return nil
+}
+
+// SetBackupStreamingBucket sets the bucket of the backups folder mount.
+func (cluster *Cluster) SetBackupStreamingBucket(value string) error {
+	cluster.Conf.BackupStreamingBucket = value
+	go cluster.RefreshBackupMount()
+	return nil
+}
+
 func (cluster *Cluster) SetSchedulerDbServersLogicalBackupCron(value string) error {
 	cluster.Conf.BackupLogicalCron = value
 	cluster.SetSchedulerBackupLogical()

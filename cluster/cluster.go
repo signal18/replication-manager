@@ -218,6 +218,8 @@ type Cluster struct {
 	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
 	// CRUD transaction lock helpers instead of direct field mutation.
 	s3Providers    s3ProviderState
+	backupMount    backupMount                // the backups folder mount (#2091)
+	BackupMount    BackupMountState           `json:"backupMount" groups:"web"` // its state, for the Backup settings
 	Agents         []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq   map[string]int64           `json:"-"`
 	hostList       []string                   `json:"-"`
@@ -1333,6 +1335,9 @@ func (cluster *Cluster) tickBody() {
 				if heartbeats%30 == 0 {
 					goRun(cluster.MonitorQueryRules)
 				}
+				if heartbeats%60 == 0 {
+					goRun(cluster.RefreshBackupMount) // the backups folder mount (#2091), never blocks
+				}
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 					// Background and non-reentrant (Stéphane 2026-10-05): the tick never waits
 					// for the marker, and a marker still stuck from an earlier tick is not
@@ -1781,6 +1786,7 @@ func (cluster *Cluster) Stop() {
 		phase("templateMD5Worker", func() {
 			cluster.CloseRefreshTemplateMD5Worker()
 		})
+		phase("backupFolderUnmount", cluster.UnmountBackupFolder)
 		if cluster.ResticManager != nil {
 			phase("resticUnmount", func() {
 				// Shutdown uses ForceUnmountRepo (lazy detach, no 5-min wait for
