@@ -558,13 +558,26 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			// MariaDB: the dump writes the parent's position as a comment only, so the target keeps
 			// its old gtid_slave_pos and its channel would resume from it. It takes the backup's GTID
 			// for the domains the backup has, and keeps the other domains it replicates.
-			if pos, _, _ := logicalReseedPosition(target.logicalRestorePosition.Load(), meta); err == nil && target.IsMariaDB() && pos != "" {
-				masterGTIDList = reseedGTIDSlavePos(pos, target.SlaveGtid)
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set to %s (backup %s)", target.URL, masterGTIDList, pos)
-				// err, not a local: a seed whose position is not set fails, its channel would
-				// resume from the old position
-				if logs, err = dbhelper.SetGTIDSlavePos(target.Conn, masterGTIDList); err != nil {
-					cluster.LogSQL(logs, err, target.URL, "Reseed", config.LvlErr, "Failed to set gtid_slave_pos on %s: %s", target.URL, err)
+			if err == nil && target.IsMariaDB() {
+				// an older backup that starts replication itself (--apply-slave-statements) set
+				// gtid_slave_pos and started the channel: the server refuses another set while it
+				// runs (error 1198)
+				dumpStarted, derr := dumpStartsReplication(backupfile)
+				if derr != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Can not read the replication statements of %s: %s", backupfile, derr)
+				}
+				if dumpStarted {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set by the restored dump %s, which started replication", target.URL, backupfile)
+				} else if pos, _, _ := logicalReseedPosition(target.logicalRestorePosition.Load(), meta); pos != "" {
+					// the other domains are the monitor's last read of gtid_slave_pos, before the
+					// restore: the restore replaced only the data of the backup's domains
+					masterGTIDList = reseedGTIDSlavePos(pos, target.SlaveGtid)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set to %s (backup %s)", target.URL, masterGTIDList, pos)
+					// err, not a local: a seed whose position is not set fails, its channel would
+					// resume from the old position
+					if logs, err = dbhelper.SetGTIDSlavePos(target.Conn, masterGTIDList); err != nil {
+						cluster.LogSQL(logs, err, target.URL, "Reseed", config.LvlErr, "Failed to set gtid_slave_pos on %s: %s", target.URL, err)
+					}
 				}
 			}
 		}
