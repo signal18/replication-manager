@@ -191,7 +191,9 @@ func isDumpSessionWrapper(line string) bool {
 }
 
 // importRoleBracket are the statements of the account-import role bracket mariadb-dump (11.x)
-// puts around the accounts it dumps, one per line, as it writes them.
+// puts around the accounts it dumps, one per line, as it writes them. SET ROLE NONE is the one
+// not naming the role: the skip is for dumps this client wrote (outside table data, application
+// side only), never for SQL files written by hand.
 var importRoleBracket = map[string]bool{
 	"SELECT COALESCE(CURRENT_ROLE(),'NONE') into @current_role;":          true,
 	"CREATE ROLE IF NOT EXISTS mariadb_dump_import_role;":                 true,

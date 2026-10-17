@@ -774,6 +774,10 @@ func TestDumpStartsReplication(t *testing.T) {
 	mysqlReplica := "-- MySQL dump\nSTOP REPLICA;\nSET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a:1-2';\nCHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=3860777;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTART REPLICA;\n"
 	olderClient := "-- MySQL dump\nSTOP SLAVE;\nCHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=4;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTART SLAVE;\n"
 	afterData := "-- MySQL dump\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTOP SLAVE;\n"
+	// --dump-slave=2 / --dump-replica=2 with the apply statements: STOP ... START, the position
+	// a comment, the START resumes from the server's old position
+	mariadbCommented := "-- MariaDB dump\nSTOP ALL SLAVES;\n-- CHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER '' TO MASTER_LOG_FILE='binlog.000001', MASTER_LOG_POS=3364044;\n-- SET GLOBAL gtid_slave_pos='0-90125166-4396,97-90125166-8';\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTART ALL SLAVES;\n"
+	mysqlCommented := "-- MySQL dump\nSTOP REPLICA;\nSET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a:1-2';\n-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=4244238;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTART REPLICA;\n"
 	for _, c := range []struct {
 		name string
 		path string
@@ -784,6 +788,8 @@ func TestDumpStartsReplication(t *testing.T) {
 		{"MySQL 8.4 --dump-replica --apply-replica-statements", write("myreplica.sql.gz", mysqlReplica), true},
 		{"older client STOP SLAVE", write("older.sql.gz", olderClient), true},
 		{"STOP after the first table data", write("after.sql.gz", afterData), false},
+		{"MariaDB --dump-slave=2 --apply-slave-statements: position a comment", write("mdbcomment.sql.gz", mariadbCommented), false},
+		{"MySQL 8.4 --dump-replica=2 --apply-replica-statements: position a comment", write("mycomment.sql.gz", mysqlCommented), false},
 		{"splitdump directory", dir, false},
 	} {
 		got, err := dumpStartsReplication(c.path)
@@ -809,5 +815,36 @@ func TestReseedChannelActive(t *testing.T) {
 		if got := reseedChannelActive(c.io, c.sql); got != c.want {
 			t.Errorf("IO %q SQL %q: got %v, want %v", c.io, c.sql, got, c.want)
 		}
+	}
+}
+
+// TestDumpStartsReplicationUnpositioned: STOP ... START with the position as a comment
+// (--dump-slave=2 / --dump-replica=2 with the apply statements) is refused by a reseed; a
+// dump with an active position, or without STOP, is not.
+func TestDumpStartsReplicationUnpositioned(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	for _, c := range []struct {
+		name, content string
+		want          bool
+	}{
+		{"MariaDB --dump-slave=2", "STOP ALL SLAVES;\n-- CHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\n-- SET GLOBAL gtid_slave_pos='0-1-4396';\n-- Dumping data for table `t`\nSTART ALL SLAVES;\n", true},
+		{"MySQL 8.4 --dump-replica=2", "STOP REPLICA;\nSET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a:1-2';\n-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=4;\n-- Dumping data for table `t`\nSTART REPLICA;\n", true},
+		{"MariaDB --dump-slave=1", "STOP ALL SLAVES;\nCHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\nSET GLOBAL gtid_slave_pos='0-1-4396';\n-- Dumping data for table `t`\nSTART ALL SLAVES;\n", false},
+		{"current backup, position a comment, no STOP", "-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=4;\n-- Dumping data for table `t`\n", false},
+	} {
+		got, err := dumpStartsReplicationUnpositioned(write(strings.ReplaceAll(c.name, " ", "_")+".sql", c.content))
+		if err != nil || got != c.want {
+			t.Errorf("%s: got %v err %v, want %v", c.name, got, err, c.want)
+		}
+	}
+	if got, err := dumpStartsReplicationUnpositioned(dir); err != nil || got {
+		t.Errorf("splitdump directory: got %v err %v", got, err)
 	}
 }

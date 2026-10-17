@@ -156,20 +156,29 @@ A reseed restores data; it does not own the replica's links. Since #2093:
   on, nothing changes.
 - **An older backup's own replication statements run.** A backup with active replication
   statements (as written before v3.1.44) carries an unnamed `CHANGE MASTER`; the restore runs
-  its statements as written, as v3.1.43 did. Two forms:
-  - taken from a primary (`--master-data=1`): the position only (`CHANGE MASTER`, with
-    `--gtid` `SET GLOBAL gtid_slave_pos`), no `START`. The channel stays stopped;
+  its statements as written, as v3.1.43 did. The forms depend on `--apply-slave-statements`
+  (`--apply-replica-statements`), not on whether the backup was taken from a primary or a
+  replica:
+  - without it (`--master-data=1` / `--dump-slave=1`): the position only (`CHANGE MASTER`,
+    with `--gtid` `SET GLOBAL gtid_slave_pos`), no `START`. The channel stays stopped;
     `pointLogicalReseedReplica` positions and starts it as for any backup;
-  - taken from a replica (`--dump-slave=1 --apply-slave-statements`): `STOP SLAVE` /
+  - with it, from a primary or a replica (as v3.1.43 wrote its backups): `STOP SLAVE` /
     `STOP REPLICA` / `STOP ALL SLAVES` in its header, before any table data, the
-    `CHANGE MASTER` (`CHANGE MASTER '' TO` on MariaDB), and `START SLAVE` / `START REPLICA` /
-    `START ALL SLAVES` in its footer: the dump starts replication itself
-    (`dumpStartsReplication` reads that header).
+    `CHANGE MASTER` (`CHANGE MASTER '' TO` on MariaDB from a replica), and `START SLAVE` /
+    `START REPLICA` / `START ALL SLAVES` in its footer: the dump starts replication itself
+    (`dumpStartsReplication` reads that header). The position must be active there: with
+    `--master-data=2` / `--dump-slave=2` and the apply statements the clients still write
+    `STOP` ... `START` but
+    the `CHANGE MASTER` and `gtid_slave_pos` as comments, so the `START` resumes from the
+    server's old position, before repman positions it: left alone it resumes from an unrelated
+    position, positioned afterwards what it applied meanwhile is applied twice. A reseed and a
+    child seed refuse such a dump before anything is stopped or loaded
+    (`dumpStartsReplicationUnpositioned`); a new backup has no such statement.
   - MySQL/Percona with GTID: the channel keeps its auto-position. The dump's
     `SET @@GLOBAL.GTID_PURGED` sets the position; its file/position `CHANGE MASTER` is refused
     (error 1776): skipped with `--force` in `backup-mysqlclient-options` (the default); the
-    replica form's `START SLAVE` then starts replication on auto-position, the primary form
-    is started by `pointLogicalReseedReplica`. Without `--force` the restore
+    dump's `START SLAVE`, when it has the apply statements, then starts replication on
+    auto-position, otherwise `pointLogicalReseedReplica` starts it. Without `--force` the restore
     stops there, before any data, and the reseed fails; repman does not add `--force`
     itself: the operator adds it to `backup-mysqlclient-options`, or takes a new backup
     (written by this release, it has no such statement).

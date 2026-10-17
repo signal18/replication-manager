@@ -1333,6 +1333,13 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 			}
 		}
 		server.SetState(stateUnconn)
+	} else if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); backtype == config.ConstBackupLogicalTypeMysqldump && derr == nil && unpositioned {
+		// refused when requested, before its channel is stopped or reset: its START would run
+		// replication from the old position before the reseed positions it
+		resetReseed()
+		err := errDumpStartsUnpositioned(backupfile)
+		server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+		return nil, err
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump && len(server.Replications) <= 1 {
 		// The replica's positions are cleared when the reseed is requested, not only right
 		// before the restore: cleared there, a MariaDB replica with parallel replication that
@@ -7117,14 +7124,47 @@ func dumpHasActiveChangeMaster(path string) (bool, error) {
 }
 
 // dumpStartsReplication reports whether the mysqldump file at path (gzip or plain SQL) starts
-// replication at the end of its own load: an older backup written with --apply-slave-statements
-// (--apply-replica-statements) stops replication in its header (STOP SLAVE, STOP REPLICA, STOP
-// ALL SLAVES) and starts it in its footer, after its CHANGE MASTER. Only the header is read. A
-// splitdump directory has none: the splitter leaves the START out of its files.
+// replication at the end of its own load from the position it sets: an older backup written
+// with --apply-slave-statements (--apply-replica-statements) stops replication in its header
+// (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES) and starts it in its footer. The position must be
+// active too (CHANGE MASTER, CHANGE REPLICATION SOURCE, SET GLOBAL gtid_slave_pos): with
+// --master-data=2 / --dump-slave=2 it is a comment and the START resumes from the server's old
+// position. Only the header is read. A splitdump directory has none: the splitter leaves the
+// START out of its files.
 func dumpStartsReplication(path string) (bool, error) {
-	return dumpHeaderHas(path, func(l string) bool {
+	stops, positioned, err := dumpReplicationStatements(path)
+	return stops && positioned, err
+}
+
+// dumpStartsReplicationUnpositioned reports a mysqldump file that stops and starts replication
+// (--apply-slave-statements) with its position as a comment (--dump-slave=2): its START would
+// resume from the server's old position before repman positions it, so a reseed refuses it.
+func dumpStartsReplicationUnpositioned(path string) (bool, error) {
+	stops, positioned, err := dumpReplicationStatements(path)
+	return stops && !positioned, err
+}
+
+// errDumpStartsUnpositioned is the refusal of a reseed or child seed from such a dump, returned
+// for the caller to log once.
+func errDumpStartsUnpositioned(path string) error {
+	return fmt.Errorf("backup %s starts replication from the old position (--apply-slave-statements, position as a comment): take a new backup", path)
+}
+
+// dumpReplicationStatements reads the header of the mysqldump file at path: whether it stops
+// replication (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES, written with the START of its footer)
+// and whether it sets an active position (CHANGE MASTER, CHANGE REPLICATION SOURCE, SET GLOBAL
+// gtid_slave_pos, not as a comment).
+func dumpReplicationStatements(path string) (stops, positioned bool, err error) {
+	stops, err = dumpHeaderHas(path, func(l string) bool {
 		return l == "STOP SLAVE;" || l == "STOP REPLICA;" || l == "STOP ALL SLAVES;"
 	})
+	if err != nil || !stops {
+		return stops, false, err
+	}
+	positioned, err = dumpHeaderHas(path, func(l string) bool {
+		return strings.HasPrefix(l, "CHANGE MASTER ") || strings.HasPrefix(l, "CHANGE REPLICATION SOURCE TO") || strings.HasPrefix(l, "SET GLOBAL gtid_slave_pos")
+	})
+	return stops, positioned, err
 }
 
 // dumpHeaderHas reports whether a line of the header of the mysqldump file at path (gzip or
@@ -7390,6 +7430,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	// channel, and pointed with auto-position before the load a MySQL replica refuses the
 	// file/position CHANGE MASTER of an older --master-data=1 backup (error 1776).
 	pointAfterRestore := !isPITR && backupType == config.ConstBackupLogicalTypeMysqldump
+	if pointAfterRestore {
+		// refused before anything is stopped or loaded: its START would run replication from
+		// the old position before the reseed positions it
+		if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); derr == nil && unpositioned {
+			return errDumpStartsUnpositioned(backupfile)
+		}
+	}
 	pointedBeforeRestore := false
 	// false once the gate finds the link pointing to another source: nothing positions or
 	// starts it after the restore, it stays stopped with WARN0252 (law T27, #2093)
