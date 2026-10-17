@@ -230,6 +230,15 @@ function BackupSettings({ selectedCluster, user }) {
   const hGrowthPercentage = `**Last Backup Growth Percentage**\n\nExpected growth percentage applied to the last backup size when estimating the next backup size.\nSet to 0 to use the last backup size without adjustment.\n\nConfig: \`backup-growth-percentage\``
   const hEstimatePercentage = `**Backup Estimation Percentage from information_schema**\n\nPercentage of the information_schema size used as the backup size estimate when no previous backup exists.\n\nConfig: \`backup-estimate-size-percentage\``
 
+  const hBackupMount = `**Backups Folder Mount**\n\nThe backups folder can be an S3 bucket mounted in its place: the backups are then written to the bucket.\n\nConfig: \`backup-streaming\``
+  const hMountEndpoint = `**Backups Mount S3 Endpoint**\n\nEndpoint URL of the S3 bucket mounted as the backups folder.\nExample: \`https://s3.amazonaws.com\`\n\nConfig: \`backup-streaming-endpoint\``
+  const hMountRegion = `**Backups Mount S3 Region**\n\nRegion of the S3 bucket mounted as the backups folder.\nExample: \`eu-west-1\`\n\nConfig: \`backup-streaming-region\``
+  const hMountBucket = `**Backups Mount S3 Bucket**\n\nName of the S3 bucket mounted as the backups folder.\n\nConfig: \`backup-streaming-bucket\``
+  const hMountCredentials = `**Backups Mount S3 Access Key and Secret**\n\nThe credentials of the bucket. Never shown.\n\nConfig: \`backup-streaming-aws-access-key-id\`, \`backup-streaming-aws-access-secret\``
+  const hMountDebug = `**Backups Mount Debug**\n\nLogs the mount's S3 calls.\n\nConfig: \`backup-streaming-debug\``
+  const hArchiveMountDir = `**Archive Mount Folder**\n\nWhere an archive is mounted to browse it or to reseed from it. Empty: \`<working-dir>/<cluster>/mount\`; a relative path is resolved under it.\n\nConfig: \`backup-restic-mount-dir\``
+  const hUnsafeMount = `**Allow Unsafe Mount**\n\nUse an archive mount another process made. Unsafe: that process can unmount it while it is used.\n\nConfig: \`backup-restic-allow-unsafe-mount\``
+
   const dataObject = [
     {
       key: 'Backup Encryption',
@@ -742,6 +751,59 @@ function BackupSettings({ selectedCluster, user }) {
             { key: 'Estimation from information_schema (%)', help: h(hEstimatePercentage, 'Backup Estimation Percentage from information_schema'), value: (<NumberInput min={1} value={selectedCluster?.config?.backupEstimateSizePercentage} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-estimate-size-percentage' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-estimate-size-percentage', value }))} />) },
           ] : [])
         ] : [])
+      ]
+    },
+    // where the backups folder and the archive mounts live (#2091): moved from the Archive
+    // section, a property of the backups, not of an archive
+    {
+      key: 'Backups Folder Mount',
+      help: h(hBackupMount, 'Backups Folder Mount'),
+      value: [
+        {
+          key: 'Mount S3 Bucket',
+          help: h(hBackupMount, 'Backups Folder Mount'),
+          value: (<Text fontSize='sm'>{selectedCluster?.config?.backupStreaming ? 'on' : 'off'}</Text>)
+        },
+        {
+          key: 'S3 Endpoint',
+          help: h(hMountEndpoint, 'Backups Mount S3 Endpoint'),
+          value: (<TextForm value={selectedCluster?.config?.backupStreamingEndpoint} confirmTitle={`Confirm backup-streaming-endpoint to `} className={styles.textbox}
+            onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-endpoint', value }))} />)
+        },
+        {
+          key: 'S3 Region',
+          help: h(hMountRegion, 'Backups Mount S3 Region'),
+          value: (<TextForm value={selectedCluster?.config?.backupStreamingRegion} confirmTitle={`Confirm backup-streaming-region to `} className={styles.textbox}
+            onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-region', value }))} />)
+        },
+        {
+          key: 'S3 Bucket',
+          help: h(hMountBucket, 'Backups Mount S3 Bucket'),
+          value: (<TextForm value={selectedCluster?.config?.backupStreamingBucket} confirmTitle={`Confirm backup-streaming-bucket to `} className={styles.textbox}
+            onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-bucket', value }))} />)
+        },
+        {
+          key: 'S3 Access Key and Secret',
+          help: h(hMountCredentials, 'Backups Mount S3 Access Key and Secret'),
+          value: (<Text fontSize='sm'>set in the config file, never shown</Text>)
+        },
+        {
+          key: 'Mount Debug',
+          help: h(hMountDebug, 'Backups Mount Debug'),
+          value: (<Text fontSize='sm'>{selectedCluster?.config?.backupStreamingDebug ? 'on' : 'off'}</Text>)
+        },
+        {
+          key: 'Archive Mount Folder',
+          help: h(hArchiveMountDir, 'Archive Mount Folder'),
+          value: (<Text fontSize='sm'>{selectedCluster?.config?.backupResticMountDir || '<working-dir>/<cluster>/mount'}</Text>)
+        },
+        {
+          key: 'Allow Unsafe Mount',
+          help: h(hUnsafeMount, 'Allow Unsafe Mount'),
+          value: (<RMSwitch isChecked={!!selectedCluster?.config?.backupResticAllowUnsafeMount}
+            confirmTitle='Confirm switch settings for backup-restic-allow-unsafe-mount?'
+            onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-allow-unsafe-mount' }))} />)
+        }
       ]
     },
   ]

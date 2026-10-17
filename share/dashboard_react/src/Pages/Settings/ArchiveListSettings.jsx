@@ -546,7 +546,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     },
     // the attached archive first, then the others
     ...[...list.archives].sort((x, y) => (y.attached ? 1 : 0) - (x.attached ? 1 : 0)).map(archiveRows),
-    // what runs every archive: the restic program and its mounts
+    // the program the restic archives run
     {
       key: 'Restic program',
       value: [
@@ -554,18 +554,6 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
           key: 'Program path',
           help: help('**Restic program path**\n\nThe restic program every archive runs. A server-wide setting, set in the config file.\n\nConfig: `backup-restic-binary-path`', 'Restic program path'),
           value: <Text fontSize='sm'>{config?.backupResticBinaryPath || '/usr/bin/restic'}</Text>
-        },
-        {
-          key: 'Mount folder',
-          help: help('**Mount folder**\n\nWhere an archive is mounted to browse it or to reseed from it. Empty: `<working-dir>/<cluster>/mount`. A server-wide setting, set in the config file.\n\nConfig: `backup-restic-mount-dir`', 'Mount folder'),
-          value: <Text fontSize='sm'>{config?.backupResticMountDir || '<working-dir>/<cluster>/mount'}</Text>
-        },
-        {
-          key: 'Allow unsafe mount',
-          help: help('**Allow unsafe mount**\n\nUse a mount another process made. Unsafe: that process can unmount it while it is used.\n\nConfig: `backup-restic-allow-unsafe-mount`', 'Allow unsafe mount'),
-          value: <RMSwitch isChecked={!!config?.backupResticAllowUnsafeMount} isDisabled={!canSet}
-            confirmTitle='Confirm switch settings for backup-restic-allow-unsafe-mount?'
-            onChange={() => dispatch(switchSetting({ clusterName, setting: 'backup-restic-allow-unsafe-mount' }))} />
         }
       ]
     }
