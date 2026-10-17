@@ -5,21 +5,27 @@
 package cluster
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/signal18/replication-manager/cluster/s3mount"
 	"github.com/signal18/replication-manager/config"
-	goofys "github.com/signal18/replication-manager/goofys/api"
-	common "github.com/signal18/replication-manager/goofys/api/common"
+	"github.com/signal18/replication-manager/utils/s3helper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -27,7 +33,9 @@ import (
 // <working-dir>/backups/<cluster> is a mount of backup-streaming-bucket, its folder <cluster>,
 // under the instance's URI on Cloud18 (backupMountPrefix). The endpoint,
 // region and keys are those of an S3 provider of the cluster (backup-streaming-provider);
-// with none set, one is added from the backup-streaming-* values and set.
+// with none set, one is added from the backup-streaming-* values and set. The mount is served
+// by repman-s3mount, a process of its own (cluster/s3mount), never by replication-manager: a
+// stalled S3 or a stuck FUSE request can then never freeze the monitor.
 
 // ConstBackupMountProvider is the name of the S3 provider added from the backup-streaming-*
 // values.
@@ -53,9 +61,10 @@ type BackupMountState struct {
 
 type backupMount struct {
 	mu        sync.Mutex
-	mounting  bool
-	moving    bool   // the local backups are being copied into the bucket
-	signature string // what is mounted, "" for nothing
+	starting  bool         // the helper is starting
+	moving    bool         // the local backups are being uploaded into the bucket
+	signature string       // what is mounted, "" for nothing
+	helper    *mountHelper // the running repman-s3mount
 	state     BackupMountState
 }
 
@@ -171,18 +180,28 @@ func (cluster *Cluster) ensureBackupMountProvider() {
 	cluster.Save()
 }
 
-// backupMountSSO is what an SSO provider's mount needs to get its keys, at the mount only.
-type backupMountSSO struct {
-	endpoint, region, roleArn, bucket, prefix string
-	backend                                   *common.S3Config
+// mountTarget is what the backups folder mount should be, without its keys: an SSO provider's
+// are fetched only when a mount or a move needs them.
+type mountTarget struct {
+	sig, provider, bucket, prefix, endpoint, region string
+	accessKey, secretKey                            string // a provider with keys
+	sso                                             bool
+	roleArn                                         string
 }
 
-// backupMountTarget is what the mount should be: its signature ("" for no mount), the
-// goofys bucket spec and storage flags; for an SSO provider, what gets the keys at the
-// mount (the bucket's folder then starts with the SSO user).
-func (cluster *Cluster) backupMountTarget() (string, string, *common.FlagStorage, *backupMountSSO, error) {
+// spec is the goofys bucket spec of the target, its folder under the SSO user's when ssoUser.
+func (t *mountTarget) spec(ssoUser string) (string, string) {
+	prefix := t.prefix
+	if t.sso {
+		prefix = ssoUser + "/" + prefix
+	}
+	return t.bucket + ":" + prefix, prefix
+}
+
+// backupMountTarget is what the mount should be, nil when it is off.
+func (cluster *Cluster) backupMountTarget() (*mountTarget, error) {
 	if !cluster.Conf.BackupStreaming {
-		return "", "", nil, nil, nil
+		return nil, nil
 	}
 	name := cluster.Conf.BackupStreamingProvider
 	var provider *config.S3Provider
@@ -193,35 +212,60 @@ func (cluster *Cluster) backupMountTarget() (string, string, *common.FlagStorage
 		}
 	}
 	if provider == nil {
-		return "", "", nil, nil, fmt.Errorf("no S3 provider %q", name)
+		return nil, fmt.Errorf("no S3 provider %q", name)
 	}
 	if err := cluster.s3ProviderUsable(*provider); err != nil {
-		return "", "", nil, nil, err
+		return nil, err
 	}
 	if cluster.Conf.BackupStreamingBucket == "" {
-		return "", "", nil, nil, errors.New("no bucket (backup-streaming-bucket)")
+		return nil, errors.New("no bucket (backup-streaming-bucket)")
 	}
 	endpoint, region, accessKey, secretKey := cluster.resolveProviderEffectiveValues(provider)
 	if endpoint == "" {
-		return "", "", nil, nil, fmt.Errorf("S3 provider %q has no endpoint", name)
+		return nil, fmt.Errorf("S3 provider %q has no endpoint", name)
 	}
-	bucket := cluster.Conf.BackupStreamingBucket + ":" + cluster.backupMountPrefix()
-	backend := (&common.S3Config{AccessKey: accessKey, SecretKey: secretKey, Region: region}).Init()
-	flags := &common.FlagStorage{
-		MountPoint: cluster.backupMountPoint(),
-		DirMode:    os.ModePerm,
-		FileMode:   os.ModePerm,
-		Endpoint:   endpoint,
-		DebugS3:    cluster.Conf.BackupStreamingDebug,
-		Backend:    backend,
+	t := &mountTarget{provider: name, bucket: cluster.Conf.BackupStreamingBucket, prefix: cluster.backupMountPrefix(), endpoint: endpoint, region: region, accessKey: accessKey, secretKey: secretKey, sso: provider.Cloud18SSO, roleArn: provider.RoleArn}
+	who := accessKey
+	if t.sso {
+		who = "cloud18-sso:" + cluster.Conf.Cloud18GitUser + ":" + provider.RoleArn
 	}
-	var sso *backupMountSSO
-	if provider.Cloud18SSO {
-		sso = &backupMountSSO{endpoint: endpoint, region: region, roleArn: provider.RoleArn, bucket: cluster.Conf.BackupStreamingBucket, prefix: cluster.backupMountPrefix(), backend: backend}
-		accessKey, secretKey = "cloud18-sso:"+cluster.Conf.Cloud18GitUser, provider.RoleArn
+	t.sig = fmt.Sprintf("%s|%s|%s|%s|%s|%s|%t|%x", name, t.bucket, t.prefix, endpoint, region, who, cluster.Conf.BackupStreamingDebug, sha256.Sum256([]byte(secretKey)))
+	return t, nil
+}
+
+// mountKeys are the S3 keys of a target and the SSO user its folder starts with; for the
+// SSO, keys renews them (nil for static keys).
+type mountKeys struct {
+	value   s3mount.Keys
+	ssoUser string
+	renew   *credentials.Credentials
+	src     *cloud18SSOCredentials
+}
+
+func (cluster *Cluster) backupMountKeys(t *mountTarget) (*mountKeys, error) {
+	if !t.sso {
+		return &mountKeys{value: s3mount.Keys{AccessKey: t.accessKey, SecretKey: t.secretKey}}, nil
 	}
-	sig := fmt.Sprintf("%s|%s|%s|%s|%s|%x", name, bucket, endpoint, region, accessKey, sha256.Sum256([]byte(secretKey)))
-	return sig, bucket, flags, sso, nil
+	creds, src, err := cluster.newCloud18SSOCredentials(t.endpoint, t.region, t.roleArn)
+	if err != nil {
+		return nil, err
+	}
+	k := &mountKeys{ssoUser: src.User(), renew: creds, src: src}
+	return k, k.refresh()
+}
+
+// refresh reads the current SSO keys, a new exchange when they near their end.
+func (k *mountKeys) refresh() error {
+	if k.renew == nil {
+		return nil
+	}
+	v, err := k.renew.Get()
+	if err != nil {
+		return err
+	}
+	exp, _ := k.renew.ExpiresAt()
+	k.value = s3mount.Keys{AccessKey: v.AccessKeyID, SecretKey: v.SecretAccessKey, SessionToken: v.SessionToken, Expiration: exp}
+	return nil
 }
 
 // holdsFiles: dir has a regular file somewhere below it. A mount over it would hide them.
@@ -240,58 +284,73 @@ func holdsFiles(dir string) bool {
 	return found
 }
 
-// RefreshBackupMount makes the backups folder mount what the settings say: mounted,
-// remounted after a change, unmounted when turned off. A failed mount is retried at the
-// next refresh. Never blocks: the mount runs in the background.
+const (
+	backupMountStartTimeout = time.Minute
+	backupMountStopGrace    = 15 * time.Second
+	backupMountProbeTimeout = 30 * time.Second
+	backupMountRenewBefore  = 5 * time.Minute
+)
+
+// RefreshBackupMount makes the backups folder mount what the settings say: mounted (local
+// backups moved into the bucket first), remounted after a change, unmounted when turned off;
+// mounted, it checks the mount still answers and kills a stalled helper. A failure is retried
+// at the next refresh. Never blocks: the helper starts, and the move runs, in the background.
 func (cluster *Cluster) RefreshBackupMount() {
 	cluster.ensureBackupMountProvider()
 	bm := &cluster.backupMount
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
 	defer cluster.publishBackupMountLocked() // runs before the unlock
-	if bm.mounting || bm.moving {
+	if bm.starting || bm.moving {
 		return
 	}
-	sig, bucket, flags, sso, err := cluster.backupMountTarget()
-	if err == nil && sig == bm.signature && (sig == "" || bm.state.Mounted) {
+	t, err := cluster.backupMountTarget()
+	sig := ""
+	if t != nil {
+		sig = t.sig
+	}
+	if err == nil && sig != "" && sig == bm.signature && bm.state.Mounted {
+		go cluster.probeBackupMount(bm.helper)
+		return
+	}
+	if err == nil && sig == "" && bm.signature == "" && bm.helper == nil {
+		bm.state = BackupMountState{}
 		return
 	}
 	mountPoint := cluster.backupMountPoint()
-	if bm.signature != "" {
-		if uerr := goofys.TryUnmount(mountPoint); uerr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: unmount %s: %s", mountPoint, uerr)
-			return
-		}
+	if bm.helper != nil {
+		h := bm.helper
+		bm.helper, bm.signature = nil, ""
+		bm.mu.Unlock()
+		cluster.stopMountHelper(h)
+		bm.mu.Lock()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: %s unmounted", mountPoint)
-		bm.signature = ""
 	}
-	state := BackupMountState{Enabled: cluster.Conf.BackupStreaming, Provider: cluster.Conf.BackupStreamingProvider, Bucket: bucket, MountPoint: mountPoint, At: time.Now()}
-	if err == nil && sig != "" {
-		os.MkdirAll(mountPoint, os.ModePerm)
+	st := BackupMountState{Enabled: cluster.Conf.BackupStreaming, Provider: cluster.Conf.BackupStreamingProvider, MountPoint: mountPoint, At: time.Now()}
+	var keys *mountKeys
+	if err == nil && t != nil {
+		keys, err = cluster.backupMountKeys(t)
 	}
-	// an SSO provider: the keys, renewed inside the mount, and the SSO user's folder
-	if err == nil && sso != nil {
-		creds, src, cerr := cluster.newCloud18SSOCredentials(sso.endpoint, sso.region, sso.roleArn)
-		if cerr != nil {
-			err = cerr
-		} else {
-			sso.backend.Credentials = creds
-			bucket = sso.bucket + ":" + src.User() + "/" + sso.prefix
-			state.Bucket = bucket
+	if err == nil && t != nil {
+		st.Bucket, _ = t.spec(keys.ssoUser)
+		if _, ferr := cluster.mountHelperBinary(); ferr != nil {
+			err = ferr
 		}
 	}
 	if err != nil {
-		state.Error = err.Error()
-		if bm.state.Error != state.Error {
+		st.Error = err.Error()
+		if bm.state.Error != st.Error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s", err)
 		}
 	}
-	bm.state = state
-	if err != nil || sig == "" {
+	st.LocalKeptAt = bm.state.LocalKeptAt
+	bm.state = st
+	if err != nil || t == nil {
 		return
 	}
-	// local backups: they move into the bucket first, their records with them, so the
-	// catalogue finds them at the same paths once mounted; never during a backup
+	os.MkdirAll(mountPoint, os.ModePerm)
+	// local backups: uploaded into the bucket first, their records with them, so the catalogue
+	// finds them at the same paths once mounted; never during a backup
 	if holdsFiles(mountPoint) {
 		if cluster.IsInBackup() {
 			bm.state.Error = "a backup is running: the local backups move into the bucket after it"
@@ -299,30 +358,253 @@ func (cluster *Cluster) RefreshBackupMount() {
 		}
 		bm.moving = true
 		bm.state.Moving = true
-		go cluster.moveLocalBackupsIntoBucket(bucket, flags)
+		go cluster.moveLocalBackupsIntoBucket(t, keys)
 		return
 	}
-	bm.mounting = true
-	go func() {
-		_, mfs, merr := goofys.Mount(context.Background(), bucket, flags)
-		bm.mu.Lock()
-		bm.mounting = false
-		bm.state.At = time.Now()
-		if merr != nil {
-			bm.state.Error = merr.Error()
-			cluster.publishBackupMountLocked()
-			bm.mu.Unlock()
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s on %s: %s", bucket, mountPoint, merr)
-			return
+	bm.starting = true
+	go cluster.startMountHelper(t, keys)
+}
+
+// mountHelperBinary finds repman-s3mount next to the plugins, signed when the key is there.
+func (cluster *Cluster) mountHelperBinary() (string, error) {
+	for _, dir := range cluster.archivePluginDirs() {
+		p := filepath.Join(dir, s3mount.BinaryName)
+		if info, err := os.Stat(p); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			if err := cluster.archivePluginSigned(p); err != nil {
+				return "", fmt.Errorf("%s: %w", s3mount.BinaryName, err)
+			}
+			return p, nil
 		}
-		bm.signature = sig
-		bm.state.Mounted = true
-		bm.state.Error = ""
+	}
+	return "", fmt.Errorf("%s not found in %s", s3mount.BinaryName, strings.Join(cluster.archivePluginDirs(), ", "))
+}
+
+// mountHelper is a running repman-s3mount.
+type mountHelper struct {
+	cmd       *exec.Cmd
+	done      chan struct{}
+	stopRenew chan struct{}
+	point     string
+}
+
+// backupMountKeysFile is the helper's keys file, readable by repman's user only.
+func (cluster *Cluster) backupMountKeysFile() string {
+	return filepath.Join(cluster.WorkingDir, ".s3mount", "keys.json")
+}
+
+// startMountHelper starts repman-s3mount and waits for its status line; mounted, it watches
+// its exit and, for the SSO, renews its keys file before the keys end.
+func (cluster *Cluster) startMountHelper(t *mountTarget, keys *mountKeys) {
+	bm := &cluster.backupMount
+	fail := func(err error) {
+		bm.mu.Lock()
+		bm.starting = false
+		bm.state.Mounted = false
+		bm.state.Error = err.Error()
+		bm.state.At = time.Now()
 		cluster.publishBackupMountLocked()
 		bm.mu.Unlock()
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: %s mounted on %s", bucket, mountPoint)
-		mfs.Join(context.Background())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s", err)
+	}
+	bin, err := cluster.mountHelperBinary()
+	if err != nil {
+		fail(err)
+		return
+	}
+	keysFile := cluster.backupMountKeysFile()
+	if err := os.MkdirAll(filepath.Dir(keysFile), 0o700); err != nil {
+		fail(err)
+		return
+	}
+	if err := s3mount.WriteKeys(keysFile, keys.value); err != nil {
+		fail(err)
+		return
+	}
+	spec, _ := t.spec(keys.ssoUser)
+	point := cluster.backupMountPoint()
+	var in bytes.Buffer
+	json.NewEncoder(&in).Encode(s3mount.Config{MountPoint: point, Bucket: spec, Endpoint: t.endpoint, Region: t.region, KeysFile: keysFile, Debug: cluster.Conf.BackupStreamingDebug})
+	cmd := exec.Command(bin)
+	cmd.Env = archivePluginBaseEnv()
+	cmd.Stdin = &in
+	cmd.Stderr = io.Discard
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		fail(err)
+		return
+	}
+	if err := cmd.Start(); err != nil {
+		fail(err)
+		return
+	}
+	h := &mountHelper{cmd: cmd, done: make(chan struct{}), stopRenew: make(chan struct{}), point: point}
+	line := make(chan string, 1)
+	go func() {
+		sc := bufio.NewScanner(out)
+		if sc.Scan() {
+			line <- sc.Text()
+		}
+		close(line)
+		io.Copy(io.Discard, out)
 	}()
+	go func() {
+		cmd.Wait()
+		close(h.done)
+	}()
+	var status s3mount.Status
+	select {
+	case l, ok := <-line:
+		if !ok || json.Unmarshal([]byte(l), &status) != nil {
+			status.Error = "the helper exited without a status"
+		}
+	case <-time.After(backupMountStartTimeout):
+		status.Error = "the helper did not mount within " + backupMountStartTimeout.String()
+	}
+	if !status.Mounted {
+		cluster.killMountHelper(h)
+		fail(fmt.Errorf("mount of %s on %s: %s", spec, point, status.Error))
+		return
+	}
+	bm.mu.Lock()
+	bm.starting = false
+	bm.helper = h
+	bm.signature = t.sig
+	bm.state.Mounted = true
+	bm.state.Error = ""
+	bm.state.Bucket = spec
+	bm.state.At = time.Now()
+	cluster.publishBackupMountLocked()
+	bm.mu.Unlock()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: %s mounted on %s (repman-s3mount pid %d)", spec, point, cmd.Process.Pid)
+
+	if keys.renew != nil {
+		go cluster.renewMountKeys(h, keys, keysFile)
+	}
+	<-h.done
+	close(h.stopRenew)
+	bm.mu.Lock()
+	if bm.helper == h {
+		// it ended on its own: the mount is gone, retried at the next refresh
+		bm.helper, bm.signature = nil, ""
+		bm.state.Mounted = false
+		bm.state.Error = "repman-s3mount exited: " + exitText(cmd)
+		bm.state.At = time.Now()
+		cluster.publishBackupMountLocked()
+		bm.mu.Unlock()
+		lazyUnmount(point)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: repman-s3mount exited (%s), unmounted %s", exitText(cmd), point)
+		return
+	}
+	bm.mu.Unlock()
+}
+
+func exitText(cmd *exec.Cmd) string {
+	if cmd.ProcessState == nil {
+		return "unknown"
+	}
+	return cmd.ProcessState.String()
+}
+
+// renewMountKeys rewrites the keys file before the SSO keys end; the helper reads it again.
+func (cluster *Cluster) renewMountKeys(h *mountHelper, keys *mountKeys, keysFile string) {
+	for {
+		wait := time.Until(keys.value.Expiration.Add(-backupMountRenewBefore))
+		if wait < time.Minute {
+			wait = time.Minute
+		}
+		select {
+		case <-h.stopRenew:
+			return
+		case <-time.After(wait):
+		}
+		if err := keys.refresh(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: the SSO keys were not renewed: %s", err)
+			continue
+		}
+		if err := s3mount.WriteKeys(keysFile, keys.value); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: keys file: %s", err)
+		}
+	}
+}
+
+// probeBackupMount checks the mount answers; a stat that does not return within
+// backupMountProbeTimeout means a stalled helper: it is killed, which makes every pending
+// request on the mount fail instead of hang, and the next refresh mounts again.
+func (cluster *Cluster) probeBackupMount(h *mountHelper) {
+	if h == nil {
+		return
+	}
+	answered := make(chan struct{})
+	go func() {
+		os.Stat(h.point)
+		close(answered)
+	}()
+	select {
+	case <-answered:
+	case <-h.done:
+	case <-time.After(backupMountProbeTimeout):
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s did not answer within %s, repman-s3mount killed", h.point, backupMountProbeTimeout)
+		cluster.killMountHelper(h)
+	}
+}
+
+// stopMountHelper asks the helper to unmount and exit, kills it when it does not in time.
+func (cluster *Cluster) stopMountHelper(h *mountHelper) {
+	if h == nil || h.cmd.Process == nil {
+		return
+	}
+	h.cmd.Process.Signal(syscall.SIGTERM)
+	select {
+	case <-h.done:
+	case <-time.After(backupMountStopGrace):
+		cluster.killMountHelper(h)
+	}
+	lazyUnmount(h.point)
+}
+
+// killMountHelper kills the helper: the kernel then fails every request on its mount.
+func (cluster *Cluster) killMountHelper(h *mountHelper) {
+	if h == nil || h.cmd.Process == nil {
+		return
+	}
+	h.cmd.Process.Kill()
+	select {
+	case <-h.done:
+	case <-time.After(backupMountStopGrace):
+	}
+	lazyUnmount(h.point)
+}
+
+// lazyUnmount detaches a mount left behind by a helper that died, when there is one.
+func lazyUnmount(point string) {
+	if !isMountPoint(point) {
+		return
+	}
+	for _, bin := range []string{"fusermount3", "fusermount"} {
+		if p, err := exec.LookPath(bin); err == nil {
+			ctx, cancel := context.WithTimeout(context.Background(), backupMountStopGrace)
+			exec.CommandContext(ctx, p, "-uz", point).Run()
+			cancel()
+			return
+		}
+	}
+}
+
+// isMountPoint: point is mounted (from /proc/self/mounts, never by touching point itself,
+// which a dead FUSE mount would hang).
+func isMountPoint(point string) bool {
+	b, err := os.ReadFile("/proc/self/mounts")
+	if err != nil {
+		return false
+	}
+	clean := filepath.Clean(point)
+	for _, l := range strings.Split(string(b), "\n") {
+		f := strings.Fields(l)
+		if len(f) > 1 && f[1] == clean {
+			return true
+		}
+	}
+	return false
 }
 
 // checkBackupMountStates, every tick, from memory only: CINF0019 while the local backups
@@ -353,19 +635,15 @@ func (cluster *Cluster) backupFolderMoving() error {
 	return nil
 }
 
-// backupMoveStagingPoint is where the bucket is mounted while the local backups move into it.
-func (cluster *Cluster) backupMoveStagingPoint() string {
-	return filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "."+cluster.Name+".mount")
-}
-
-// moveLocalBackupsIntoBucket copies the cluster's local backups into the bucket mounted on a
-// staging point, each file checked by its size, then keeps the local folder aside as
-// <cluster>.local-<time> (never deleted) and leaves the real mount to the next refresh. On
-// any failure the staging mount goes and the local folder stays as it was.
-func (cluster *Cluster) moveLocalBackupsIntoBucket(bucket string, flags *common.FlagStorage) {
+// moveLocalBackupsIntoBucket uploads the cluster's local backups into the bucket's folder,
+// each file checked by its size in the bucket, straight through the S3 API (no FUSE mount, so
+// nothing can hang the monitor), then keeps the local folder aside as <cluster>.local-<time>
+// (never deleted) and leaves the mount to the next refresh. On any failure the local folder
+// stays as it was; files already uploaded are uploaded again next time.
+func (cluster *Cluster) moveLocalBackupsIntoBucket(t *mountTarget, keys *mountKeys) {
 	bm := &cluster.backupMount
 	local := cluster.backupMountPoint()
-	staging := cluster.backupMoveStagingPoint()
+	spec, prefix := t.spec(keys.ssoUser)
 	finish := func(err error, keptAt string) {
 		bm.mu.Lock()
 		bm.moving = false
@@ -380,10 +658,10 @@ func (cluster *Cluster) moveLocalBackupsIntoBucket(bucket string, flags *common.
 		cluster.publishBackupMountLocked()
 		bm.mu.Unlock()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: the local backups did not move into %s: %s", bucket, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: the local backups did not move into %s: %s", spec, err)
 			return
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: the local backups moved into %s, the local copy kept as %s", bucket, keptAt)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: the local backups moved into %s, the local copy kept as %s", spec, keptAt)
 		go cluster.RefreshBackupMount()
 	}
 
@@ -407,42 +685,37 @@ func (cluster *Cluster) moveLocalBackupsIntoBucket(bucket string, flags *common.
 		return
 	}
 	bm.mu.Lock()
+	bm.state.Bucket = spec
 	bm.state.TotalFiles, bm.state.TotalBytes, bm.state.MovedFiles, bm.state.MovedBytes = len(files), total, 0, 0
 	cluster.publishBackupMountLocked()
 	bm.mu.Unlock()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: moving %d local files (%d bytes) of %s into %s", len(files), total, local, bucket)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: uploading %d local files (%d bytes) of %s into %s", len(files), total, local, spec)
 
-	// the bucket on the staging point
-	if err := os.MkdirAll(staging, os.ModePerm); err != nil {
-		finish(err, "")
-		return
-	}
-	stagingFlags := *flags
-	stagingFlags.MountPoint = staging
-	if _, _, err := goofys.Mount(context.Background(), bucket, &stagingFlags); err != nil {
-		os.Remove(staging)
-		finish(fmt.Errorf("mounting the bucket on %s: %w", staging, err), "")
-		return
-	}
-	unstage := func() {
-		if err := goofys.TryUnmount(staging); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: unmount %s: %s", staging, err)
-			return
-		}
-		os.Remove(staging)
-	}
-
+	ctx := context.Background()
 	for _, src := range files {
 		if cluster.IsInBackup() {
-			unstage()
 			finish(errors.New("a backup started while the local backups moved: moved again at the next refresh"), "")
 			return
 		}
-		rel, _ := filepath.Rel(local, src)
-		n, err := copyFileChecked(src, filepath.Join(staging, rel))
+		if err := keys.refresh(); err != nil {
+			finish(err, "")
+			return
+		}
+		client, err := s3helper.NewUploadClient(keys.value.AccessKey, keys.value.SecretKey, keys.value.SessionToken, t.region, t.endpoint)
 		if err != nil {
-			unstage()
-			finish(fmt.Errorf("copying %s: %w", rel, err), "")
+			finish(err, "")
+			return
+		}
+		rel, _ := filepath.Rel(local, src)
+		key := strings.TrimSuffix(prefix, "/") + "/" + filepath.ToSlash(rel)
+		n, err := s3helper.UploadFile(ctx, client, t.bucket, key, src)
+		if err != nil {
+			finish(fmt.Errorf("uploading %s: %w", rel, err), "")
+			return
+		}
+		got, err := s3helper.ObjectSize(ctx, client, t.bucket, key)
+		if err != nil || got != n {
+			finish(fmt.Errorf("checking %s in the bucket: %d bytes there, %d local (%v)", rel, got, n, err), "")
 			return
 		}
 		bm.mu.Lock()
@@ -451,9 +724,8 @@ func (cluster *Cluster) moveLocalBackupsIntoBucket(bucket string, flags *common.
 		cluster.publishBackupMountLocked()
 		bm.mu.Unlock()
 	}
-	unstage()
 
-	// the local copy aside, an empty folder for the real mount
+	// the local copy aside, an empty folder for the mount
 	keptAt := local + ".local-" + time.Now().UTC().Format("20060102-150405")
 	if err := os.Rename(local, keptAt); err != nil {
 		finish(fmt.Errorf("keeping the local copy as %s: %w", keptAt, err), "")
@@ -466,60 +738,16 @@ func (cluster *Cluster) moveLocalBackupsIntoBucket(bucket string, flags *common.
 	finish(nil, keptAt)
 }
 
-// copyFileChecked copies src to dst (its folders created) and checks dst has src's size.
-func copyFileChecked(src, dst string) (int64, error) {
-	in, err := os.Open(src)
-	if err != nil {
-		return 0, err
-	}
-	defer in.Close()
-	info, err := in.Stat()
-	if err != nil {
-		return 0, err
-	}
-	if err := os.MkdirAll(filepath.Dir(dst), os.ModePerm); err != nil {
-		return 0, err
-	}
-	out, err := os.Create(dst)
-	if err != nil {
-		return 0, err
-	}
-	n, err := io.Copy(out, in)
-	if cerr := out.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return n, err
-	}
-	got, err := os.Stat(dst)
-	if err != nil {
-		return n, err
-	}
-	if got.Size() != info.Size() {
-		return n, fmt.Errorf("%d bytes in the bucket, %d local", got.Size(), info.Size())
-	}
-	return n, nil
-}
-
-// UnmountBackupFolder unmounts the backups folder, at the cluster's stop.
+// UnmountBackupFolder stops the backups folder mount's helper, at the cluster's stop.
 func (cluster *Cluster) UnmountBackupFolder() {
 	bm := &cluster.backupMount
 	bm.mu.Lock()
-	defer bm.mu.Unlock()
-	if bm.moving {
-		// stopped while the local backups moved: the staging mount goes, the local folder stays
-		goofys.TryUnmount(cluster.backupMoveStagingPoint())
-	}
-	if bm.signature == "" {
-		return
-	}
-	if err := goofys.TryUnmount(cluster.backupMountPoint()); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: unmount: %s", err)
-		return
-	}
-	bm.signature = ""
+	h := bm.helper
+	bm.helper, bm.signature = nil, ""
 	bm.state.Mounted = false
 	cluster.publishBackupMountLocked()
+	bm.mu.Unlock()
+	cluster.stopMountHelper(h)
 }
 
 // publishBackupMountLocked copies the state where the cluster's JSON shows it; bm.mu held.

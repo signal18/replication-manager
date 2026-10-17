@@ -203,6 +203,10 @@ plugins: $(PLUGIN_SIGNER_BIN)
 		    --ldflags "-extldflags '-static' -w -s" \
 		    -o $(CURDIR)/$(PLUGIN_BINDIR)/$$name .) || exit 1; \
 	done
+	@echo "Building the backups folder mount helper: repman-s3mount"; \
+	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build \
+	  --ldflags "-extldflags '-static' -w -s" \
+	  -o $(PLUGIN_BINDIR)/repman-s3mount ./cluster/s3mount/helper || exit 1
 	@for dir in $(ARCHPLUGIN_SRC_DIRS); do \
 		name=archiveplugin-$$(basename $$dir); \
 		echo "Building archive plugin: $$name"; \
@@ -303,7 +307,7 @@ plugin-keys: $(PLUGIN_SIGNER_BIN)
 plugin-sigs: plugin-keys
 	@mkdir -p $(PLUGIN_SIG_DIR)
 	@echo "Signing plugins → $(PLUGIN_SIG_DIR)  [wire-v$(WIRE_VERSION)]"
-	@for name in $(PLUGIN_NAMES) $(REPLPLUGIN_NAMES) $(ARCHPLUGIN_NAMES); do \
+	@for name in $(PLUGIN_NAMES) $(REPLPLUGIN_NAMES) $(ARCHPLUGIN_NAMES) repman-s3mount; do \
 		bin=$(PLUGIN_BINDIR)/$$name; \
 		if [ -f $$bin ]; then \
 			$(PLUGIN_SIGNER_BIN) sign \

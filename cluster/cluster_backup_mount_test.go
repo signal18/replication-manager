@@ -10,9 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/signal18/replication-manager/cluster/s3mount"
 	"github.com/signal18/replication-manager/config"
-	common "github.com/signal18/replication-manager/goofys/api/common"
 )
 
 // #2091: backup-streaming on and no provider: one is added from the backup-streaming-*
@@ -29,8 +30,8 @@ func TestBackupMountProvider(t *testing.T) {
 
 	// off: nothing added, nothing mounted
 	cl.ensureBackupMountProvider()
-	if sig, _, _, _, err := cl.backupMountTarget(); sig != "" || err != nil || len(cl.GetS3ProvidersSnapshot()) != 0 {
-		t.Fatalf("off: sig %q err %v providers %d", sig, err, len(cl.GetS3ProvidersSnapshot()))
+	if tg, err := cl.backupMountTarget(); tg != nil || err != nil || len(cl.GetS3ProvidersSnapshot()) != 0 {
+		t.Fatalf("off: %+v err %v providers %d", tg, err, len(cl.GetS3ProvidersSnapshot()))
 	}
 
 	cl.Conf.BackupStreaming = true
@@ -46,20 +47,25 @@ func TestBackupMountProvider(t *testing.T) {
 		t.Fatal("the provider was added twice")
 	}
 
-	sig, bucket, flags, sso, err := cl.backupMountTarget()
-	if err != nil || sig == "" || sso != nil || bucket != "repman:c1" || flags.MountPoint != filepath.Join(cl.Conf.WorkingDir, "backups", "c1") || flags.Endpoint != "https://s3.example" {
-		t.Fatalf("target %q %q %+v %v", sig, bucket, flags, err)
+	tg, err := cl.backupMountTarget()
+	if err != nil || tg == nil || tg.sig == "" || tg.sso || tg.endpoint != "https://s3.example" || cl.backupMountPoint() != filepath.Join(cl.Conf.WorkingDir, "backups", "c1") {
+		t.Fatalf("target %+v %v", tg, err)
+	}
+	if spec, _ := tg.spec(""); spec != "repman:c1" {
+		t.Fatalf("spec %q", spec)
 	}
 
 	// on Cloud18 the instance's URI comes first
 	cl.Conf.Cloud18, cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = true, "signal18", "ovh", "fr"
-	if _, bucket, _, _, _ := cl.backupMountTarget(); bucket != "repman:signal18/ovh-fr/c1" {
-		t.Fatalf("cloud18 bucket spec %q", bucket)
+	if tg, _ := cl.backupMountTarget(); tg == nil {
+		t.Fatal("no target")
+	} else if spec, _ := tg.spec(""); spec != "repman:signal18/ovh-fr/c1" {
+		t.Fatalf("cloud18 bucket spec %q", spec)
 	}
 	cl.Conf.Cloud18 = false
 
 	cl.Conf.BackupStreamingProvider = "missing"
-	if _, _, _, _, err := cl.backupMountTarget(); err == nil || !strings.Contains(err.Error(), "missing") {
+	if _, err := cl.backupMountTarget(); err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("a missing provider: %v", err)
 	}
 
@@ -70,17 +76,19 @@ func TestBackupMountProvider(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl.Conf.BackupStreamingProvider = "cloud18"
-	if _, _, _, _, err := cl.backupMountTarget(); !errors.Is(err, ErrCloud18SSONotRegistered) {
+	if _, err := cl.backupMountTarget(); !errors.Is(err, ErrCloud18SSONotRegistered) {
 		t.Fatalf("not registered: %v", err)
 	}
 	cl.Conf.Cloud18, cl.Conf.Cloud18GitUser, cl.Conf.OAuthProvider, cl.Conf.Cloud18SSOClientID = true, "acme-fr-1", "https://gitlab.example", "client"
+	cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = "signal18", "ovh", "fr"
 	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"cloud18-gitlab-password": {Value: "pw"}})
-	sig, _, flags, target, err := cl.backupMountTarget()
-	if err != nil || target == nil || target.roleArn != ssoProvider.RoleArn || strings.Contains(sig, "pw") {
-		t.Fatalf("sso target %+v sig %q err %v", target, sig, err)
+	target, err := cl.backupMountTarget()
+	if err != nil || target == nil || !target.sso || target.roleArn != ssoProvider.RoleArn || target.accessKey != "" || strings.Contains(target.sig, "pw") {
+		t.Fatalf("sso target %+v err %v", target, err)
 	}
-	if b, ok := flags.Backend.(*common.S3Config); !ok || b.AccessKey != "" {
-		t.Fatalf("an SSO mount must not carry static keys: %+v", flags.Backend)
+	// the SSO user's folder comes first: what the storage's policy opens to that identity
+	if spec, prefix := target.spec("2"); spec != "repman:2/signal18/ovh-fr/c1" || prefix != "2/signal18/ovh-fr/c1" {
+		t.Fatalf("sso spec %q prefix %q", spec, prefix)
 	}
 	cl.Conf.Cloud18 = false
 
@@ -126,20 +134,8 @@ func TestCloud18ProviderAutoAdded(t *testing.T) {
 	}
 }
 
-// #2091: the local backups move into the bucket file by file, each checked by its size, and
-// no backup starts while they move
-func TestBackupFolderMove(t *testing.T) {
-	src := filepath.Join(t.TempDir(), "db1_3306", "mydumper.1.meta.json")
-	os.MkdirAll(filepath.Dir(src), 0o755)
-	os.WriteFile(src, []byte(`{"id":1}`), 0o644)
-	dst := filepath.Join(t.TempDir(), "db1_3306", "mydumper.1.meta.json")
-	if n, err := copyFileChecked(src, dst); err != nil || n != 8 {
-		t.Fatalf("copy: %d %v", n, err)
-	}
-	if b, _ := os.ReadFile(dst); string(b) != `{"id":1}` {
-		t.Fatalf("copied %q", b)
-	}
-
+// #2091: no backup starts while the local backups move into the bucket
+func TestBackupFolderMoving(t *testing.T) {
 	cl := newEventLogTestCluster(t, 1)
 	if err := cl.backupFolderMoving(); err != nil {
 		t.Fatalf("no move: %v", err)
@@ -147,5 +143,68 @@ func TestBackupFolderMove(t *testing.T) {
 	cl.backupMount.moving = true
 	if err := cl.backupFolderMoving(); err == nil {
 		t.Fatal("a backup must be refused while the local backups move")
+	}
+}
+
+// a fake repman-s3mount: its status line, then it waits for SIGTERM (or exits when told to)
+const fakeMountHelper = `#!/bin/sh
+cfg=$(cat)
+case "$cfg" in *'"bucket":"fail'*) echo '{"mounted":false,"error":"no such bucket"}'; exit 1;; esac
+echo '{"mounted":true}'
+case "$cfg" in *'"bucket":"exit'*) exit 3;; esac
+trap 'exit 0' TERM
+while true; do sleep 1; done
+`
+
+// #2091: the mount is served by repman-s3mount, a process of its own: mounted on its status
+// line, stopped with SIGTERM, a helper that exits on its own leaves an error state; the keys
+// file is the owner's only
+func TestBackupMountHelper(t *testing.T) {
+	cl := newEventLogTestCluster(t, 1)
+	cl.WorkingDir = filepath.Join(cl.Conf.WorkingDir, cl.Name)
+	os.MkdirAll(filepath.Join(cl.Conf.WorkingDir, "plugins"), 0o755)
+	if err := os.WriteFile(filepath.Join(cl.Conf.WorkingDir, "plugins", s3mount.BinaryName), []byte(fakeMountHelper), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keys := &mountKeys{value: s3mount.Keys{AccessKey: "id", SecretKey: "sk"}}
+	run := func(bucket string) {
+		cl.backupMount.mu.Lock()
+		cl.backupMount.starting = true
+		cl.backupMount.mu.Unlock()
+		cl.startMountHelper(&mountTarget{sig: bucket, bucket: bucket, prefix: "c1"}, keys)
+	}
+
+	go run("ok")
+	deadline := time.Now().Add(10 * time.Second)
+	for !cl.BackupMountStatus().Mounted && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if st := cl.BackupMountStatus(); !st.Mounted || st.Bucket != "ok:c1" {
+		t.Fatalf("mounted: %+v", st)
+	}
+	info, err := os.Stat(cl.backupMountKeysFile())
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("keys file: %v %v", info, err)
+	}
+	if k, err := s3mount.ReadKeys(cl.backupMountKeysFile()); err != nil || k.AccessKey != "id" {
+		t.Fatalf("keys: %+v %v", k, err)
+	}
+	cl.UnmountBackupFolder()
+	if st := cl.BackupMountStatus(); st.Mounted || cl.backupMount.helper != nil {
+		t.Fatalf("stopped: %+v", st)
+	}
+
+	run("fail")
+	if st := cl.BackupMountStatus(); st.Mounted || !strings.Contains(st.Error, "no such bucket") {
+		t.Fatalf("a refused mount: %+v", st)
+	}
+
+	run("exit")
+	if st := cl.BackupMountStatus(); st.Mounted || !strings.Contains(st.Error, "exited") {
+		t.Fatalf("a helper that exits: %+v", st)
+	}
+
+	if isMountPoint(t.TempDir()) {
+		t.Fatal("a plain folder is no mount point")
 	}
 }

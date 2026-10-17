@@ -16,7 +16,7 @@ import CrashesModal from '../Modals/CrashesModal'
 import ReseedProgressModal from '../Modals/ReseedProgressModal'
 import { FaUserPlus, FaUserCircle } from 'react-icons/fa'
 import { MdSecurity, MdNotificationsOff, MdSchema, MdSettings, MdHistory, MdHourglassTop, MdBackup } from 'react-icons/md'
-import { HiRefresh } from 'react-icons/hi'
+import { HiRefresh, HiCloudUpload } from 'react-icons/hi'
 import { RiSpeedFill } from 'react-icons/ri'
 import InterventionPanel from '../Modals/InterventionPanel'
 import UserInfoPanel from '../Modals/UserInfoPanel'
@@ -409,6 +409,29 @@ function Navbar({ username, user }) {
                   showText={!isMobile}
                 />
               )}
+              {clusterData?.backupMount?.moving && (() => {
+                // LIVE (#2091): the cluster's local backups are being uploaded into the S3
+                // bucket of its backups folder mount (state CINF0019, backups wait meanwhile)
+                const m = clusterData.backupMount
+                const mb = (b) => `${((b || 0) / 1048576).toFixed(0)} MB`
+                return (
+                  <Tooltip label={`Moving the backups into ${m.bucket}: ${m.movedFiles || 0}/${m.totalFiles || 0} files, ${mb(m.movedBytes)}/${mb(m.totalBytes)}. Backups wait until they are in.`}>
+                    <span>
+                      <AlertBadge
+                        colorScheme={'blue'}
+                        icon={HiCloudUpload}
+                        text={`Backups to S3 ${m.movedFiles || 0}/${m.totalFiles || 0}`}
+                        blink={true}
+                        bubbleStyle={{
+                          background: 'var(--chakra-colors-blue-500)',
+                          color: 'white',
+                        }}
+                        showText={!isMobile}
+                      />
+                    </span>
+                  </Tooltip>
+                )
+              })()}
               {clusterData?.switchoverLongWriteWait && (() => {
                 // LIVE: the switchover long-write guard is waiting on the master. The
                 // cluster object carries switchoverLongWriteWait for the duration of the
