@@ -3638,7 +3638,12 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	pumpResultCh := make(chan reseedPumpResult, 1)
 	go func() {
 		defer clientStdin.Close()
-		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, fz, artifactWriter)
+		// without the accounts, the dump's account-import role bracket is left out too
+		var skip func(string) bool
+		if !restoreUser {
+			skip = splitdump.IsImportRoleBracket
+		}
+		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, fz, artifactWriter, skip)
 		pumpResultCh <- reseedPumpResult{result: result, err: pumpErr, fromClassify: fromClassify}
 	}()
 
@@ -3651,6 +3656,9 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	clientErr := clientCmd.Wait()
 	wg.Wait()
 	pr := <-pumpResultCh
+	if pr.result.Skipped > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore of %s on %s: %d line(s) of the dump's account-import role bracket left out (accounts not restored)", backupfile, server.URL, pr.result.Skipped)
+	}
 
 	if clientErr != nil || pr.err != nil {
 		artifactWriter.discard()
@@ -3773,13 +3781,14 @@ func reseedMysqldumpSystemReplaySource(restoreUser bool, mainDumpHasSystemConten
 // ClassifyStream itself (system extraction) rather than while writing the
 // preamble beforehand (application restore) -- callers use this to pick the
 // right reseedStage for the returned error.
-func runReseedMysqldumpPump(appWriter io.Writer, cmdstring string, dumpReader io.Reader, systemWriter io.Writer) (result splitdump.ClassifyResult, err error, fromClassify bool) {
+func runReseedMysqldumpPump(appWriter io.Writer, cmdstring string, dumpReader io.Reader, systemWriter io.Writer, skip func(string) bool) (result splitdump.ClassifyResult, err error, fromClassify bool) {
 	if _, err := io.WriteString(appWriter, cmdstring); err != nil {
 		return splitdump.ClassifyResult{}, fmt.Errorf("writing restore preamble to mysql client stdin: %w", err), false
 	}
 	result, err = splitdump.ClassifyStream(dumpReader, splitdump.ClassifyOptions{
 		ApplicationWriter: appWriter,
 		SystemWriter:      systemWriter,
+		Skip:              skip,
 	})
 	if err != nil {
 		return result, fmt.Errorf("classifying mysqldump output into application/system SQL: %w", err), true

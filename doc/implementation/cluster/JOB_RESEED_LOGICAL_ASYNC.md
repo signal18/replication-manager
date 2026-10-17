@@ -139,6 +139,18 @@ A reseed restores data; it does not own the replica's links. Since #2093:
   monitoring ticks of a recording a running status, possibly read before the STOP, is ignored.
 - `dbhelper.ResetSlaveStatement` names the channel with or without `ALL`: MySQL's
   `RESET REPLICA` without `FOR CHANNEL` resets every channel.
+- **Without the accounts, the dump's account-import role bracket is left out.**
+  `mariadb-dump` 11.x wraps the accounts it dumps in a temporary role
+  (`SELECT … INTO @current_role`, `CREATE ROLE IF NOT EXISTS mariadb_dump_import_role`,
+  `GRANT mariadb_dump_import_role TO CURRENT_USER()`, `SET ROLE …`, then `SET ROLE NONE`,
+  `DROP ROLE …` and `SET ROLE @current_role`). The classifier keeps these lines on the
+  application side (#1980, so a system artifact replayed alone does not fail), so a restore
+  without restore-user ran them with the data. On a master restored with its binary log on
+  (a child master reseeded from its parent) they reached its replicas, whose applier is no
+  account: `GRANT … TO CURRENT_USER()` stopped them ("Can't find any matching row in the
+  user table"). The mysqldump restore passes `splitdump.IsImportRoleBracket` as the
+  classifier's `Skip` when restore-user is off; the number of lines left out is logged.
+  With restore-user on, nothing changes.
 - **An older backup's own replication statements run.** A backup with active replication
   statements (`--master-data=1`, `--dump-slave=1`, `--apply-slave-statements`, as written
   before v3.1.44) carries an unnamed `CHANGE MASTER` and `STOP`/`START [ALL] SLAVE(S)`; the

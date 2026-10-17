@@ -32,6 +32,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -130,7 +131,7 @@ func TestReseedMysqldumpPumpNoSystemContentDiscardsArtifact(t *testing.T) {
 	}
 
 	var app bytes.Buffer
-	result, pumpErr, fromClassify := runReseedMysqldumpPump(&app, "RESET MASTER;", strings.NewReader(dump), artifactWriter)
+	result, pumpErr, fromClassify := runReseedMysqldumpPump(&app, "RESET MASTER;", strings.NewReader(dump), artifactWriter, nil)
 	if pumpErr != nil {
 		t.Fatalf("unexpected pump error: %v", pumpErr)
 	}
@@ -178,7 +179,7 @@ func TestReseedMysqldumpPumpSystemAllRoutesAndPublishes(t *testing.T) {
 	}
 
 	var app bytes.Buffer
-	result, pumpErr, fromClassify := runReseedMysqldumpPump(&app, "RESET MASTER;SET sql_log_bin=0;", strings.NewReader(dump), artifactWriter)
+	result, pumpErr, fromClassify := runReseedMysqldumpPump(&app, "RESET MASTER;SET sql_log_bin=0;", strings.NewReader(dump), artifactWriter, nil)
 	if pumpErr != nil {
 		t.Fatalf("unexpected pump error: %v", pumpErr)
 	}
@@ -424,5 +425,40 @@ func TestReseedMysqldumpSystemReplayConnMasterKeepsBinlogOn(t *testing.T) {
 	defer conn.Close()
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet sqlmock expectations: %v", err)
+	}
+}
+
+// Without the accounts, the restore leaves the dump's account-import role bracket out: on a
+// master its binary log would carry GRANT ... TO CURRENT_USER() to the replicas.
+func TestRunReseedMysqldumpPumpSkipsImportRoleBracket(t *testing.T) {
+	dump := strings.Join([]string{
+		"USE `tlscheck`;",
+		"CREATE USER `root`@`%` IDENTIFIED BY PASSWORD '*54958E764CE10E50764C2EECBB71D01F08549980';",
+		"SELECT COALESCE(CURRENT_ROLE(),'NONE') into @current_role;",
+		"CREATE ROLE IF NOT EXISTS mariadb_dump_import_role;",
+		"GRANT mariadb_dump_import_role TO CURRENT_USER();",
+		"SET ROLE mariadb_dump_import_role;",
+		"GRANT ALL PRIVILEGES ON *.* TO `root`@`%` WITH GRANT OPTION;",
+		"SET ROLE NONE;",
+		"DROP ROLE mariadb_dump_import_role;",
+		"/*M!100203 EXECUTE IMMEDIATE CONCAT('SET ROLE ', @current_role) */;",
+	}, "\n") + "\n"
+	var app, sys bytes.Buffer
+	result, err, _ := runReseedMysqldumpPump(&app, "", strings.NewReader(dump), &sys, splitdump.IsImportRoleBracket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(app.String()+sys.String(), "import_role") || strings.Contains(app.String()+sys.String(), "@current_role") || strings.Contains(app.String(), "SET ROLE NONE") {
+		t.Fatalf("role bracket kept: app %q system %q", app.String(), sys.String())
+	}
+	if result.Skipped != 7 || !strings.Contains(sys.String(), "CREATE USER `root`@`%`") {
+		t.Fatalf("skipped %d, system %q", result.Skipped, sys.String())
+	}
+	// with the accounts restored, nothing is left out
+	app.Reset()
+	sys.Reset()
+	result, err, _ = runReseedMysqldumpPump(&app, "", strings.NewReader(dump), &sys, nil)
+	if err != nil || result.Skipped != 0 || !strings.Contains(app.String(), "GRANT mariadb_dump_import_role TO CURRENT_USER()") {
+		t.Fatalf("restore-user on: err %v skipped %d app %q", err, result.Skipped, app.String())
 	}
 }

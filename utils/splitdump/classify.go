@@ -43,6 +43,8 @@ func scanLineKeepTerminator(data []byte, atEOF bool) (advance int, token []byte,
 type ClassifyOptions struct {
 	ApplicationWriter io.Writer
 	SystemWriter      io.Writer
+	// Skip, when set, leaves out of both writers each line outside table data it reports.
+	Skip func(line string) bool
 }
 
 // ClassifyResult reports whether any mysql.system-all content was found, and
@@ -50,6 +52,8 @@ type ClassifyOptions struct {
 type ClassifyResult struct {
 	HasSystemContent bool
 	Metadata         Metadata
+	// Skipped counts the lines Skip left out.
+	Skipped int
 }
 
 // ClassifyStream splits a single mariadb-dump/mysqldump stream into
@@ -136,6 +140,10 @@ func classifyStream(r io.Reader, opts ClassifyOptions, maxLineSize int) (Classif
 		if inSystemSection && !isDumpSessionWrapper(line) {
 			dest = opts.SystemWriter
 		}
+		if !inTableData && opts.Skip != nil && opts.Skip(line) {
+			result.Skipped++
+			continue
+		}
 		if _, writeErr := io.WriteString(dest, line); writeErr != nil {
 			return ClassifyResult{}, fmt.Errorf("splitdump: classify stream write: %w", writeErr)
 		}
@@ -177,6 +185,16 @@ func isDumpSessionWrapper(line string) bool {
 	if (strings.HasPrefix(t, "/*!") || strings.HasPrefix(t, "/*M!")) && strings.Contains(t, "=@OLD_") {
 		return true
 	}
+	return IsImportRoleBracket(t)
+}
+
+// IsImportRoleBracket reports a line of the account-import role bracket mariadb-dump (11.x)
+// puts around the accounts it dumps: SELECT ... INTO @current_role, CREATE ROLE / GRANT ... TO
+// CURRENT_USER() / SET ROLE mariadb_dump_import_role, then SET ROLE NONE, DROP ROLE and SET
+// ROLE @current_role. A restore without the accounts leaves it out: on a master its binary log
+// would carry GRANT ... TO CURRENT_USER() to the replicas, where the applier is no account.
+func IsImportRoleBracket(line string) bool {
+	t := strings.TrimSpace(line)
 	return strings.Contains(t, "mariadb_dump_import_role") || strings.Contains(t, "@current_role") || t == "SET ROLE NONE;"
 }
 
