@@ -72,6 +72,37 @@ type Manifest struct {
 	Capabilities []string  `json:"capabilities"`
 }
 
+// ManifestList is what a plugin binary prints for ManifestFlag: one Manifest per archive
+// plugin it serves (archiveplugin-plakar serves archive-plakar-local and archive-plakar-s3).
+type ManifestList []Manifest
+
+// WriteManifests prints a plugin binary's manifests.
+func WriteManifests(w io.Writer, list []Manifest) error {
+	for i := range list {
+		list[i].WireVersion = WireVersion
+	}
+	return json.NewEncoder(w).Encode(list)
+}
+
+// ReadManifests reads the manifests a plugin binary printed, refusing another wire version.
+func ReadManifests(r io.Reader) (ManifestList, error) {
+	var list ManifestList
+	if err := json.NewDecoder(r).Decode(&list); err != nil {
+		return nil, fmt.Errorf("archive plugin manifest: %w", err)
+	}
+	for _, m := range list {
+		if m.WireVersion != WireVersion {
+			return nil, fmt.Errorf("archive plugin manifest %s: wire version %d, replication-manager speaks %d", m.Name, m.WireVersion, WireVersion)
+		}
+	}
+	return list, nil
+}
+
+// CapS3 is the capability of a plugin whose archives are in an S3 bucket: replication-manager
+// adds an s3-provider setting, sends the provider's endpoint and region in the Store and its
+// keys in the environment.
+const CapS3 = "s3"
+
 // Store is the archive an operation runs on: its plugin, its settings (secrets excluded,
 // they are in the environment) and, for an S3 archive, its provider's endpoint and region.
 type Store struct {

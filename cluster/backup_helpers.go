@@ -99,7 +99,12 @@ func hasRetentionDurationOpt(opts BackupRunOptions) bool {
 // It respects cluster config and an optional per-run override.
 func (server *ServerMonitor) shouldRunRestic(opts BackupRunOptions) bool {
 	cluster := server.ClusterGroup
-	if cluster == nil || !cluster.Conf.BackupRestic {
+	// an attached external archive plugin archives the backups as restic does (#2091)
+	external := false
+	if cluster != nil {
+		_, external = cluster.attachedExternalArchive()
+	}
+	if cluster == nil || (!cluster.Conf.BackupRestic && !external) {
 		if opts.ResticEnabled != nil && *opts.ResticEnabled && cluster != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic requested but disabled for %s", server.URL)
 		}

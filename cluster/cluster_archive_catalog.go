@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/signal18/replication-manager/cluster/archiveplugin/wire"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/sirupsen/logrus"
@@ -261,6 +262,21 @@ func (cluster *Cluster) SizeArchive(name string) error {
 		return fmt.Errorf("archive %s is being removed", name)
 	case ArchiveOpSizing:
 		return nil // already reading
+	}
+	if _, ok := externalArchive(*a); ok {
+		cluster.setArchiveOp(name, ArchiveOpSizing)
+		go func(a config.ArchiveConfig) {
+			resp, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpSize})
+			if err != nil {
+				cluster.finishArchiveSizing(name, "size failed: "+err.Error())
+				return
+			}
+			if cluster.Conf.ArchiveExists(name) {
+				cluster.setArchiveSize(name, &ArchiveSize{Bytes: resp.Size, Files: resp.Files, At: time.Now()})
+			}
+			cluster.finishArchiveSizing(name, "")
+		}(*a)
+		return nil
 	}
 	view := cluster.Conf.ConfigForArchive(*a)
 	rm, err := cluster.archiveRestic(view)

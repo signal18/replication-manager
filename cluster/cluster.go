@@ -847,6 +847,7 @@ func (cluster *Cluster) InitFromConf() {
 			"LoadS3Providers: %v", err)
 	}
 	cluster.ensureCloud18Provider() // registered to Cloud18: the Cloud18 storage, SSO (#2091)
+	cluster.LoadArchivePlugins()    // the external archive plugins' manifests, once per process (#2091)
 
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()

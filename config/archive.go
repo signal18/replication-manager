@@ -43,6 +43,10 @@ type ArchivePluginManifest struct {
 	Name         string                 `json:"name"`
 	Description  string                 `json:"description"`
 	Tier         string                 `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
+	// External: the plugin is a program (archiveplugin-<binary>, cluster/archiveplugin/wire)
+	// that keeps its archives with its own engine; restic plugins are run by replication-manager
+	External bool   `json:"external,omitempty"`
+	Binary   string `json:"-"` // the external plugin's program
 	Settings     []ArchivePluginSetting `json:"settings"`
 	Capabilities []string               `json:"capabilities"`
 }
@@ -194,18 +198,56 @@ func archiveManifests() map[string]ArchivePluginManifest {
 	return archivePluginManifests
 }
 
+// ConstArchiveSettingS3Provider is the setting replication-manager adds to an external plugin
+// with the s3 capability: the S3 provider (the cluster's S3 providers) of its bucket.
+const ConstArchiveSettingS3Provider = "s3-provider"
+
+// ConstArchiveCapS3 is the capability of an external plugin whose archives are in a bucket.
+const ConstArchiveCapS3 = "s3"
+
+// RegisterArchivePlugin adds the manifest of an external archive plugin, run by binary; the
+// internal restic plugins cannot be replaced. A plugin with the s3 capability gets the
+// s3-provider setting.
+func RegisterArchivePlugin(m ArchivePluginManifest, binary string) error {
+	if m.Name == "" || !strings.HasPrefix(m.Name, "archive-") {
+		return fmt.Errorf("archive plugin name %q: must start with archive-", m.Name)
+	}
+	if _, internal := ArchiveModeForPlugin(m.Name); internal {
+		return fmt.Errorf("archive plugin %s is internal", m.Name)
+	}
+	m.External, m.Binary = true, binary
+	if m.Can(ConstArchiveCapS3) {
+		if _, ok := m.Setting(ConstArchiveSettingS3Provider); !ok {
+			m.Settings = append([]ArchivePluginSetting{{Name: ConstArchiveSettingS3Provider, Type: ConstArchiveSettingTypeString}}, m.Settings...)
+		}
+	}
+	archiveManifests()
+	archivePluginsMu.Lock()
+	defer archivePluginsMu.Unlock()
+	archivePluginManifests[m.Name] = m
+	return nil
+}
+
+var archivePluginsMu sync.RWMutex
+
 // ArchivePlugin is the manifest of an archive plugin.
 func ArchivePlugin(name string) (ArchivePluginManifest, bool) {
-	m, ok := archiveManifests()[name]
+	manifests := archiveManifests()
+	archivePluginsMu.RLock()
+	defer archivePluginsMu.RUnlock()
+	m, ok := manifests[name]
 	return m, ok
 }
 
 // ArchivePlugins lists the archive plugin manifests, by name.
 func ArchivePlugins() []ArchivePluginManifest {
-	out := make([]ArchivePluginManifest, 0, len(archiveManifests()))
-	for _, m := range archiveManifests() {
+	manifests := archiveManifests()
+	archivePluginsMu.RLock()
+	out := make([]ArchivePluginManifest, 0, len(manifests))
+	for _, m := range manifests {
 		out = append(out, m)
 	}
+	archivePluginsMu.RUnlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
@@ -470,10 +512,8 @@ func archiveEntryHolds(a *ArchiveConfig, name string) bool {
 	if m, ok := ArchivePlugin(a.Plugin); ok {
 		return m.HasSetting(name) || m.HasSecret(name)
 	}
-	if _, ok := archiveSecretKeys[name]; ok {
-		return true
-	}
-	return IsArchiveLegacyKey(archiveLegacyPrefix + name)
+	// an unknown plugin: an external one not loaded yet keeps its settings
+	return true
 }
 
 func cleanArchiveEntry(a *ArchiveConfig) {
@@ -839,7 +879,9 @@ func (conf *Config) SwitchArchive(name string) error {
 			return fmt.Errorf("unknown archive %s", name)
 		}
 		if _, ok := ArchiveModeForPlugin(a.Plugin); !ok {
-			return fmt.Errorf("archive %s: plugin %s is not supported", name, a.Plugin)
+			if m, known := ArchivePlugin(a.Plugin); !known || !m.External {
+				return fmt.Errorf("archive %s: plugin %s is not supported", name, a.Plugin)
+			}
 		}
 	}
 	if cur := conf.connectedArchive(); cur != nil {

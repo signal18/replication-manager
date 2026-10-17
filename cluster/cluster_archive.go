@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml"
+	"github.com/signal18/replication-manager/cluster/archiveplugin/wire"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/sirupsen/logrus"
@@ -125,7 +126,25 @@ func (cluster *Cluster) ArchiveList() ArchiveListResult {
 
 // ArchiveLocation is the repository archive a runs.
 func (cluster *Cluster) ArchiveLocation(a config.ArchiveConfig) string {
+	if m, ok := externalArchive(a); ok {
+		return externalArchiveLocation(a, m)
+	}
 	return cluster.resticRepoPathFor(cluster.Conf.ConfigForArchive(a))
+}
+
+// externalArchiveLocation is where an external plugin's archive is: its plugin and its
+// location settings (a folder, or provider, bucket and folder in the bucket).
+func externalArchiveLocation(a config.ArchiveConfig, m config.ArchivePluginManifest) string {
+	get := func(k string) string {
+		if v, ok := a.Settings[k]; ok && v != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return ""
+	}
+	if m.Can(config.ConstArchiveCapS3) {
+		return strings.TrimRight(fmt.Sprintf("%s:%s/%s/%s", a.Plugin, get(config.ConstArchiveSettingS3Provider), get("bucket"), get("prefix")), "/")
+	}
+	return a.Plugin + ":" + get("location")
 }
 
 // archiveSharingLocation is another archive of the list running the same repository as a
@@ -206,6 +225,9 @@ const (
 // wrong password or an unreachable backend is an error: an existing repository is never
 // initialised again.
 func (cluster *Cluster) ProbeArchive(a config.ArchiveConfig) (string, error) {
+	if _, ok := externalArchive(a); ok {
+		return cluster.archivePluginProbe(a)
+	}
 	view := cluster.Conf.ConfigForArchive(a)
 	rm, err := cluster.archiveRestic(view)
 	if err != nil {
@@ -316,6 +338,25 @@ func (cluster *Cluster) RemoveArchive(name string) error {
 		return fmt.Errorf("archive %s is already being removed", name)
 	case ArchiveOpSizing:
 		return fmt.Errorf("archive %s: its size is being read, remove it once read", name)
+	}
+
+	if _, ok := externalArchive(*a); ok {
+		// an external plugin deletes its archive's content itself
+		cluster.setArchiveOp(name, ArchiveOpRemoving)
+		go func(a config.ArchiveConfig) {
+			if _, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpRemove}); err != nil {
+				cluster.setArchiveOp(name, "remove failed: "+err.Error())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Archive %s: content not deleted, the archive stays in the list: %s", name, err)
+				return
+			}
+			cluster.Conf.DeleteArchiveEntry(name)
+			cluster.setArchiveOp(name, "")
+			cluster.setArchiveSize(name, nil)
+			cluster.dropArchiveFromCatalogue(name)
+			cluster.Save()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s removed: content deleted (%s)", name, cluster.ArchiveLocation(a))
+		}(*a)
+		return nil
 	}
 
 	var rm *backupmgr.ResticManager

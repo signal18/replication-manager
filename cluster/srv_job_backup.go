@@ -5590,6 +5590,12 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, tags ...string) {
 	cluster := server.ClusterGroup
 
+	// the attached archive is an external plugin's: it archives the backup itself (#2091)
+	if a, ok := cluster.attachedExternalArchive(); ok {
+		server.pushExternalArchive(a, backupMethod, meta, backupPath, tags)
+		return
+	}
+
 	// Defensive checks - clear flag and return early if prerequisites not met
 	if !cluster.Conf.BackupRestic {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Restic backup called but disabled for %s", server.URL)
