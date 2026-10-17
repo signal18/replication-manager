@@ -20,13 +20,13 @@ import (
 // they were given, to check it is a copy
 type slowFS struct {
 	fuseutil.NotImplementedFileSystem
-	stuck   bool
+	stuck   atomic.Bool
 	release chan struct{}
 	written atomic.Value // []byte
 }
 
 func (f *slowFS) ReadFile(ctx context.Context, op *fuseops.ReadFileOp) error {
-	if f.stuck {
+	if f.stuck.Load() {
 		<-f.release
 	}
 	for i := range op.Dst {
@@ -46,7 +46,8 @@ func (f *slowFS) WriteFile(ctx context.Context, op *fuseops.WriteFileOp) error {
 // writes into the FUSE server's buffers afterwards; a request in time is copied back whole
 func TestDeadlineFS(t *testing.T) {
 	var late atomic.Int32
-	inner := &slowFS{stuck: true, release: make(chan struct{})}
+	inner := &slowFS{release: make(chan struct{})}
+	inner.stuck.Store(true)
 	d := DeadlineFS{Fs: inner, Timeout: 100 * time.Millisecond, OnLate: func(string) { late.Add(1) }}
 
 	buf := bytes.Repeat([]byte{'x'}, 8)
@@ -61,7 +62,7 @@ func TestDeadlineFS(t *testing.T) {
 		t.Fatalf("a late read wrote into the caller's buffer: %q", buf)
 	}
 
-	inner.stuck = false
+	inner.stuck.Store(false)
 	op := &fuseops.ReadFileOp{Dst: make([]byte, 4)}
 	if err := d.ReadFile(context.Background(), op); err != nil || op.BytesRead != 4 || string(op.Dst) != "yyyy" {
 		t.Fatalf("a read in time: %v %d %q", err, op.BytesRead, op.Dst)
