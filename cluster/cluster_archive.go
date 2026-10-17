@@ -394,6 +394,24 @@ func (cluster *Cluster) applyInjectConfig(data []byte) {
 			}
 			continue
 		}
+		if key == "s3-provider" {
+			blocks, ok := v.([]*toml.Tree)
+			if !ok {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "inject.toml: s3-provider must be [[s3-provider]] blocks")
+				continue
+			}
+			for _, b := range blocks {
+				p := injectS3Provider(b.ToMap())
+				changed, err := cluster.putInjectedS3Provider(p)
+				switch {
+				case err != nil:
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "inject.toml: S3 provider %s not stored: %s", p.Name, err)
+				case changed:
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo, "inject.toml: S3 provider %s stored", p.Name)
+				}
+			}
+			continue
+		}
 		if _, isTable := v.(*toml.Tree); isTable {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "inject.toml: table %s ignored", key)
 			continue
@@ -419,6 +437,85 @@ func injectArchiveSpec(m map[string]interface{}) config.ArchiveSpec {
 		}
 	}
 	return spec
+}
+
+// injectS3Provider reads an [[s3-provider]] block of inject.toml (#2091): the storages the BO
+// offers, a custom provider by default, cloud18-sso and role-arn for one reached with the
+// Cloud18 SSO.
+func injectS3Provider(m map[string]interface{}) config.S3Provider {
+	p := config.S3Provider{ProviderSource: config.S3ProviderSourceCustom}
+	for k, v := range m {
+		s := fmt.Sprintf("%v", v)
+		switch k {
+		case "name":
+			p.Name = s
+		case "provider-source":
+			p.ProviderSource = config.S3ProviderSource(s)
+		case "provider-app":
+			p.ProviderApp = s
+		case "endpoint":
+			p.Endpoint = s
+		case "region":
+			p.Region = s
+		case "access-key":
+			p.AccessKey = s
+		case "secret-key":
+			p.SecretKey = s
+		case "cloud18-sso":
+			p.Cloud18SSO = s == "true"
+		case "role-arn":
+			p.RoleArn = s
+		}
+	}
+	return p
+}
+
+// putInjectedS3Provider adds p, or replaces the provider of that name, and saves the list;
+// an unchanged provider is left as it is (inject.toml is applied again at each pull). A
+// provider with keys given without them keeps its keys.
+func (cluster *Cluster) putInjectedS3Provider(p config.S3Provider) (bool, error) {
+	if err := p.Validate(); err != nil {
+		return false, err
+	}
+	changed := false
+	err := cluster.WithS3ProviderCRUDLock(func() error {
+		var old *config.S3Provider
+		for _, e := range cluster.GetS3ProvidersSnapshot() {
+			if e.Name == p.Name {
+				e := e
+				old = &e
+			}
+		}
+		if old != nil && !p.Cloud18SSO && p.AccessKey == "" && p.SecretKey == "" {
+			p.AccessKey, p.SecretKey = old.AccessKey, old.SecretKey
+		}
+		if old != nil && *old == p {
+			return nil
+		}
+		var err error
+		if old == nil {
+			err = cluster.AddS3Provider(p)
+		} else {
+			err = cluster.UpdateS3Provider(p)
+		}
+		if err != nil {
+			return err
+		}
+		if err := cluster.SaveS3Providers(); err != nil {
+			if old == nil {
+				cluster.RemoveS3Provider(p.Name)
+			} else {
+				cluster.UpdateS3Provider(*old)
+			}
+			return err
+		}
+		changed = true
+		return nil
+	})
+	if changed {
+		go cluster.RefreshBackupMount()
+	}
+	return changed, err
 }
 
 // applyInjectLines is the inject.toml reader before #2091: one key = value per line.

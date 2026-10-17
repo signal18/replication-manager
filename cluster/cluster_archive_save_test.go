@@ -77,3 +77,32 @@ func TestInjectArchiveSpec(t *testing.T) {
 		t.Fatalf("spec %+v", spec)
 	}
 }
+
+// #2091: an [[s3-provider]] block of inject.toml adds the storage, an unchanged block is a
+// no-op, a changed one replaces it, an invalid one is refused
+func TestInjectS3Provider(t *testing.T) {
+	cl := newEventLogTestCluster(t, 1)
+	cl.WorkingDir = t.TempDir()
+	block := map[string]interface{}{"name": "cloud18-ovh-fr-2", "endpoint": "https://minio.example", "region": "eu-west-1", "cloud18-sso": true, "role-arn": "arn:minio:iam:eu-west-1::role/x"}
+	p := injectS3Provider(block)
+	if p.ProviderSource != "custom" || !p.Cloud18SSO || p.RoleArn != "arn:minio:iam:eu-west-1::role/x" {
+		t.Fatalf("provider %+v", p)
+	}
+	if changed, err := cl.putInjectedS3Provider(p); !changed || err != nil {
+		t.Fatalf("add: %v %v", changed, err)
+	}
+	if changed, err := cl.putInjectedS3Provider(p); changed || err != nil {
+		t.Fatalf("an unchanged block must be a no-op: %v %v", changed, err)
+	}
+	block["region"] = "eu-west-3"
+	if changed, err := cl.putInjectedS3Provider(injectS3Provider(block)); !changed || err != nil {
+		t.Fatalf("update: %v %v", changed, err)
+	}
+	if ps := cl.GetS3ProvidersSnapshot(); len(ps) != 1 || ps[0].Region != "eu-west-3" {
+		t.Fatalf("providers %+v", ps)
+	}
+	block["access-key"] = "id"
+	if _, err := cl.putInjectedS3Provider(injectS3Provider(block)); err == nil {
+		t.Fatal("an SSO provider with keys must be refused")
+	}
+}
