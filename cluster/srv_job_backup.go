@@ -425,6 +425,9 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	if err := cluster.preflightBackupEncryptionKey(); err != nil {
 		return err
 	}
+	if err := cluster.backupFolderMoving(); err != nil {
+		return err
+	}
 	if !cluster.waitForBackupSlot() {
 		return errors.New("backup canceled: cluster shutting down")
 	}
@@ -4996,6 +4999,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	// PostgreSQL server (srv_job_postgres.go) -- one path for every tool
 	logicalType := server.logicalBackupType()
 	if err := cluster.preflightBackupEncryptionKey(); err != nil {
+		return err
+	}
+	if err := cluster.backupFolderMoving(); err != nil {
 		return err
 	}
 

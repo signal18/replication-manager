@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -40,11 +41,19 @@ type BackupMountState struct {
 	Mounted    bool      `json:"mounted"`
 	Error      string    `json:"error,omitempty"`
 	At         time.Time `json:"at"`
+	// the local backups moving into the bucket before the first mount
+	Moving      bool   `json:"moving,omitempty"`
+	MovedFiles  int    `json:"movedFiles,omitempty"`
+	TotalFiles  int    `json:"totalFiles,omitempty"`
+	MovedBytes  int64  `json:"movedBytes,omitempty"`
+	TotalBytes  int64  `json:"totalBytes,omitempty"`
+	LocalKeptAt string `json:"localKeptAt,omitempty"` // where the local copy was kept, never deleted
 }
 
 type backupMount struct {
 	mu        sync.Mutex
 	mounting  bool
+	moving    bool   // the local backups are being copied into the bucket
 	signature string // what is mounted, "" for nothing
 	state     BackupMountState
 }
@@ -239,7 +248,7 @@ func (cluster *Cluster) RefreshBackupMount() {
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
 	defer cluster.publishBackupMountLocked() // runs before the unlock
-	if bm.mounting {
+	if bm.mounting || bm.moving {
 		return
 	}
 	sig, bucket, flags, sso, err := cluster.backupMountTarget()
@@ -258,9 +267,6 @@ func (cluster *Cluster) RefreshBackupMount() {
 	state := BackupMountState{Enabled: cluster.Conf.BackupStreaming, Provider: cluster.Conf.BackupStreamingProvider, Bucket: bucket, MountPoint: mountPoint, At: time.Now()}
 	if err == nil && sig != "" {
 		os.MkdirAll(mountPoint, os.ModePerm)
-		if holdsFiles(mountPoint) {
-			err = fmt.Errorf("%s holds local files: a mount would hide them, move them first", mountPoint)
-		}
 	}
 	// an SSO provider: the keys, renewed inside the mount, and the SSO user's folder
 	if err == nil && sso != nil {
@@ -281,6 +287,18 @@ func (cluster *Cluster) RefreshBackupMount() {
 	}
 	bm.state = state
 	if err != nil || sig == "" {
+		return
+	}
+	// local backups: they move into the bucket first, their records with them, so the
+	// catalogue finds them at the same paths once mounted; never during a backup
+	if holdsFiles(mountPoint) {
+		if cluster.IsInBackup() {
+			bm.state.Error = "a backup is running: the local backups move into the bucket after it"
+			return
+		}
+		bm.moving = true
+		bm.state.Moving = true
+		go cluster.moveLocalBackupsIntoBucket(bucket, flags)
 		return
 	}
 	bm.mounting = true
@@ -306,11 +324,174 @@ func (cluster *Cluster) RefreshBackupMount() {
 	}()
 }
 
+// backupFolderMoving refuses a backup while the local backups move into the bucket.
+func (cluster *Cluster) backupFolderMoving() error {
+	bm := &cluster.backupMount
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+	if bm.moving {
+		return errors.New("backup refused: the cluster's backups are moving into the S3 bucket of its backups folder mount")
+	}
+	return nil
+}
+
+// backupMoveStagingPoint is where the bucket is mounted while the local backups move into it.
+func (cluster *Cluster) backupMoveStagingPoint() string {
+	return filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "."+cluster.Name+".mount")
+}
+
+// moveLocalBackupsIntoBucket copies the cluster's local backups into the bucket mounted on a
+// staging point, each file checked by its size, then keeps the local folder aside as
+// <cluster>.local-<time> (never deleted) and leaves the real mount to the next refresh. On
+// any failure the staging mount goes and the local folder stays as it was.
+func (cluster *Cluster) moveLocalBackupsIntoBucket(bucket string, flags *common.FlagStorage) {
+	bm := &cluster.backupMount
+	local := cluster.backupMountPoint()
+	staging := cluster.backupMoveStagingPoint()
+	finish := func(err error, keptAt string) {
+		bm.mu.Lock()
+		bm.moving = false
+		bm.state.Moving = false
+		bm.state.At = time.Now()
+		if err != nil {
+			bm.state.Error = err.Error()
+		} else {
+			bm.state.Error = ""
+			bm.state.LocalKeptAt = keptAt
+		}
+		cluster.publishBackupMountLocked()
+		bm.mu.Unlock()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: the local backups did not move into %s: %s", bucket, err)
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: the local backups moved into %s, the local copy kept as %s", bucket, keptAt)
+		go cluster.RefreshBackupMount()
+	}
+
+	// what moves
+	var files []string
+	var total int64
+	walkErr := filepath.WalkDir(local, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type().IsRegular() {
+			if info, err := d.Info(); err == nil {
+				files = append(files, path)
+				total += info.Size()
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		finish(fmt.Errorf("reading %s: %w", local, walkErr), "")
+		return
+	}
+	bm.mu.Lock()
+	bm.state.TotalFiles, bm.state.TotalBytes, bm.state.MovedFiles, bm.state.MovedBytes = len(files), total, 0, 0
+	cluster.publishBackupMountLocked()
+	bm.mu.Unlock()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: moving %d local files (%d bytes) of %s into %s", len(files), total, local, bucket)
+
+	// the bucket on the staging point
+	if err := os.MkdirAll(staging, os.ModePerm); err != nil {
+		finish(err, "")
+		return
+	}
+	stagingFlags := *flags
+	stagingFlags.MountPoint = staging
+	if _, _, err := goofys.Mount(context.Background(), bucket, &stagingFlags); err != nil {
+		os.Remove(staging)
+		finish(fmt.Errorf("mounting the bucket on %s: %w", staging, err), "")
+		return
+	}
+	unstage := func() {
+		if err := goofys.TryUnmount(staging); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: unmount %s: %s", staging, err)
+			return
+		}
+		os.Remove(staging)
+	}
+
+	for _, src := range files {
+		if cluster.IsInBackup() {
+			unstage()
+			finish(errors.New("a backup started while the local backups moved: moved again at the next refresh"), "")
+			return
+		}
+		rel, _ := filepath.Rel(local, src)
+		n, err := copyFileChecked(src, filepath.Join(staging, rel))
+		if err != nil {
+			unstage()
+			finish(fmt.Errorf("copying %s: %w", rel, err), "")
+			return
+		}
+		bm.mu.Lock()
+		bm.state.MovedFiles++
+		bm.state.MovedBytes += n
+		cluster.publishBackupMountLocked()
+		bm.mu.Unlock()
+	}
+	unstage()
+
+	// the local copy aside, an empty folder for the real mount
+	keptAt := local + ".local-" + time.Now().UTC().Format("20060102-150405")
+	if err := os.Rename(local, keptAt); err != nil {
+		finish(fmt.Errorf("keeping the local copy as %s: %w", keptAt, err), "")
+		return
+	}
+	if err := os.MkdirAll(local, os.ModePerm); err != nil {
+		finish(err, keptAt)
+		return
+	}
+	finish(nil, keptAt)
+}
+
+// copyFileChecked copies src to dst (its folders created) and checks dst has src's size.
+func copyFileChecked(src, dst string) (int64, error) {
+	in, err := os.Open(src)
+	if err != nil {
+		return 0, err
+	}
+	defer in.Close()
+	info, err := in.Stat()
+	if err != nil {
+		return 0, err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), os.ModePerm); err != nil {
+		return 0, err
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		return 0, err
+	}
+	n, err := io.Copy(out, in)
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return n, err
+	}
+	got, err := os.Stat(dst)
+	if err != nil {
+		return n, err
+	}
+	if got.Size() != info.Size() {
+		return n, fmt.Errorf("%d bytes in the bucket, %d local", got.Size(), info.Size())
+	}
+	return n, nil
+}
+
 // UnmountBackupFolder unmounts the backups folder, at the cluster's stop.
 func (cluster *Cluster) UnmountBackupFolder() {
 	bm := &cluster.backupMount
 	bm.mu.Lock()
 	defer bm.mu.Unlock()
+	if bm.moving {
+		// stopped while the local backups moved: the staging mount goes, the local folder stays
+		goofys.TryUnmount(cluster.backupMoveStagingPoint())
+	}
 	if bm.signature == "" {
 		return
 	}

@@ -125,3 +125,27 @@ func TestCloud18ProviderAutoAdded(t *testing.T) {
 		t.Fatal("no keyed provider when registered")
 	}
 }
+
+// #2091: the local backups move into the bucket file by file, each checked by its size, and
+// no backup starts while they move
+func TestBackupFolderMove(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "db1_3306", "mydumper.1.meta.json")
+	os.MkdirAll(filepath.Dir(src), 0o755)
+	os.WriteFile(src, []byte(`{"id":1}`), 0o644)
+	dst := filepath.Join(t.TempDir(), "db1_3306", "mydumper.1.meta.json")
+	if n, err := copyFileChecked(src, dst); err != nil || n != 8 {
+		t.Fatalf("copy: %d %v", n, err)
+	}
+	if b, _ := os.ReadFile(dst); string(b) != `{"id":1}` {
+		t.Fatalf("copied %q", b)
+	}
+
+	cl := newEventLogTestCluster(t, 1)
+	if err := cl.backupFolderMoving(); err != nil {
+		t.Fatalf("no move: %v", err)
+	}
+	cl.backupMount.moving = true
+	if err := cl.backupFolderMoving(); err == nil {
+		t.Fatal("a backup must be refused while the local backups move")
+	}
+}
