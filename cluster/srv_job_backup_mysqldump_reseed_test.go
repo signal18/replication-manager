@@ -130,7 +130,7 @@ func TestReseedMysqldumpPumpNoSystemContentDiscardsArtifact(t *testing.T) {
 	}
 
 	var app bytes.Buffer
-	result, pumpErr, fromClassify := runReseedMysqldumpPump(&app, "RESET MASTER;", strings.NewReader(dump), artifactWriter)
+	result, pumpErr, fromClassify := runReseedMysqldumpPump(&app, "RESET MASTER;", strings.NewReader(dump), artifactWriter, nil)
 	if pumpErr != nil {
 		t.Fatalf("unexpected pump error: %v", pumpErr)
 	}
@@ -178,7 +178,7 @@ func TestReseedMysqldumpPumpSystemAllRoutesAndPublishes(t *testing.T) {
 	}
 
 	var app bytes.Buffer
-	result, pumpErr, fromClassify := runReseedMysqldumpPump(&app, "RESET MASTER;SET sql_log_bin=0;", strings.NewReader(dump), artifactWriter)
+	result, pumpErr, fromClassify := runReseedMysqldumpPump(&app, "RESET MASTER;SET sql_log_bin=0;", strings.NewReader(dump), artifactWriter, nil)
 	if pumpErr != nil {
 		t.Fatalf("unexpected pump error: %v", pumpErr)
 	}

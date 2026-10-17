@@ -448,7 +448,7 @@ func (e *edgeRun) checkDumpFile(name, dest string) {
 // options replication-manager still uses for the direct rejoin stream.
 func (e *edgeRun) writeOlderDump(name, dest string) bool {
 	var args []string
-	for _, a := range e.cl.GetMysqlDumpOptions(e.m, e.m.JobGetDumpGtidParameter()) {
+	for _, a := range e.cl.GetMysqlDumpOptions(e.m, e.m.JobGetDumpGtidParameter(), e.cl.VersionsMap.Get("client-dump")) {
 		if a != "--ignore-table=mysql.slave_worker_info" && a != "--verbose" {
 			args = append(args, a)
 		}

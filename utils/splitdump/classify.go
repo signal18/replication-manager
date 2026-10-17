@@ -43,6 +43,9 @@ func scanLineKeepTerminator(data []byte, atEOF bool) (advance int, token []byte,
 type ClassifyOptions struct {
 	ApplicationWriter io.Writer
 	SystemWriter      io.Writer
+	// SkipStatement, when set, decides for each line outside table data whether it is left
+	// out of the restore, and why. Table data lines are never offered.
+	SkipStatement func(line string) (skip bool, reason string)
 }
 
 // ClassifyResult reports whether any mysql.system-all content was found, and
@@ -50,6 +53,8 @@ type ClassifyOptions struct {
 type ClassifyResult struct {
 	HasSystemContent bool
 	Metadata         Metadata
+	// Skipped lists each line SkipStatement left out, with its reason.
+	Skipped []string
 }
 
 // ClassifyStream splits a single mariadb-dump/mysqldump stream into
@@ -135,6 +140,15 @@ func classifyStream(r io.Reader, opts ClassifyOptions, maxLineSize int) (Classif
 		dest := opts.ApplicationWriter
 		if inSystemSection && !isDumpSessionWrapper(line) {
 			dest = opts.SystemWriter
+		}
+		if !inTableData && opts.SkipStatement != nil {
+			if skip, reason := opts.SkipStatement(line); skip {
+				result.Skipped = append(result.Skipped, strings.TrimSpace(line)+" ("+reason+")")
+				if !sourceDataDisabled {
+					captureStreamMetadata(line, &sourceDataDisabled, &bgtid, &bfile, &bpos)
+				}
+				continue
+			}
 		}
 		if _, writeErr := io.WriteString(dest, line); writeErr != nil {
 			return ClassifyResult{}, fmt.Errorf("splitdump: classify stream write: %w", writeErr)

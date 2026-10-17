@@ -83,17 +83,17 @@ func TestGetReplicationManagerCliPathUsesExecutableDir(t *testing.T) {
 	}
 }
 
-// A backup writes the replication position as a comment only, without STOP/START SLAVE: a
-// statement without a channel can not be replayed on a multi-source replica. The direct
-// reseed stream keeps the active position it is restored with.
-func TestGetMysqlBackupDumpOptionsPositionComment(t *testing.T) {
+// A logical backup, local or on the DB node, and the direct rejoin stream write the active
+// position (--master-data=1 on a primary, --dump-slave=1 on a replica) with
+// --apply-slave-statements: the dump positions the server it is restored on.
+func TestGetMysqlDumpOptionsPosition(t *testing.T) {
 	for _, c := range []struct {
 		name          string
 		replica       bool
-		backup, other string
+		active, other string
 	}{
-		{"master", false, "--master-data=2", "--master-data=1"},
-		{"replica", true, "--dump-slave=2", "--dump-slave=1"},
+		{"master", false, "--master-data=1", "--master-data=2"},
+		{"replica", true, "--dump-slave=1", "--dump-slave=2"},
 	} {
 		cl, server := newTestClusterServer(t)
 		server.Id = "db1"
@@ -105,13 +105,9 @@ func TestGetMysqlBackupDumpOptionsPositionComment(t *testing.T) {
 		if c.replica {
 			cl.master = &ServerMonitor{Id: "db2", ClusterGroup: cl}
 		}
-		backup := cl.GetMysqlBackupDumpOptions(server, "--gtid=true")
-		if !slices.Contains(backup, c.backup) || slices.Contains(backup, c.other) || slices.Contains(backup, "--apply-slave-statements") {
-			t.Fatalf("%s backup: want %s, no %s, no --apply-slave-statements: %v", c.name, c.backup, c.other, backup)
-		}
-		direct := cl.GetMysqlDumpOptions(server, "--gtid=true")
-		if !slices.Contains(direct, c.other) || !slices.Contains(direct, "--apply-slave-statements") {
-			t.Fatalf("%s direct: want %s and --apply-slave-statements: %v", c.name, c.other, direct)
+		args := cl.GetMysqlDumpOptions(server, "--gtid=true", cl.VersionsMap.Get("client-dump"))
+		if !slices.Contains(args, c.active) || slices.Contains(args, c.other) || !slices.Contains(args, "--apply-slave-statements") {
+			t.Fatalf("%s: want %s and --apply-slave-statements, no %s: %v", c.name, c.active, c.other, args)
 		}
 	}
 }
@@ -179,10 +175,9 @@ func TestGetMysqlDumpOptionsIgnoreWorkerInfo(t *testing.T) {
 		cl.VersionsMap = config.NewVersionsMap()
 		cl.VersionsMap.Set("client-dump", server.DBVersion)
 		cl.master = server
-		for _, args := range [][]string{cl.GetMysqlBackupDumpOptions(server, ""), cl.GetMysqlDumpOptions(server, "")} {
-			if got := slices.Contains(args, "--ignore-table=mysql.slave_worker_info"); got != want {
-				t.Fatalf("%s: --ignore-table=mysql.slave_worker_info %v, want %v: %v", flavor, got, want, args)
-			}
+		args := cl.GetMysqlDumpOptions(server, "", cl.VersionsMap.Get("client-dump"))
+		if got := slices.Contains(args, "--ignore-table=mysql.slave_worker_info"); got != want {
+			t.Fatalf("%s: --ignore-table=mysql.slave_worker_info %v, want %v: %v", flavor, got, want, args)
 		}
 	}
 }

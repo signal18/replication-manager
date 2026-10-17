@@ -3,6 +3,7 @@ package cluster
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/splitdump"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -748,5 +750,114 @@ func TestDumpHasActiveChangeMaster(t *testing.T) {
 		if err != nil || got != c.want {
 			t.Errorf("%s: got %v err %v, want %v", c.name, got, err, c.want)
 		}
+	}
+}
+
+// On MySQL/Percona with GTID the dump's file/position statement is left out once its
+// GTID_PURGED went through; nothing is left out elsewhere. A dump positions the server by
+// itself through its GTID: MariaDB's active CHANGE MASTER TO MASTER_USE_GTID, MySQL's active
+// GTID_PURGED.
+func TestRestoreStatementSkipAndDumpPositions(t *testing.T) {
+	newServer := func(flavor, gtidMode string) *ServerMonitor {
+		s := &ServerMonitor{ClusterGroup: &Cluster{Conf: &config.Config{}}, Variables: config.NewStringsMap()}
+		s.DBVersion = &version.Version{Flavor: flavor, Major: 10, Minor: 11}
+		if flavor != "MariaDB" {
+			s.DBVersion = &version.Version{Flavor: flavor, Major: 8, Minor: 4}
+		}
+		if gtidMode != "" {
+			s.Variables.Set("GTID_MODE", gtidMode)
+		}
+		return s
+	}
+	if newServer("MariaDB", "").restoreStatementSkip() != nil || newServer("MySQL", "OFF").restoreStatementSkip() != nil {
+		t.Fatal("only MySQL/Percona with GTID leave a statement out")
+	}
+	skip := newServer("Percona", "ON").restoreStatementSkip()
+	if s, _ := skip("CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=1182;"); s {
+		t.Fatal("a file/position statement before GTID_PURGED is kept")
+	}
+	skip("SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'uuid:1-5';")
+	if s, _ := skip("CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=1182;"); !s {
+		t.Fatal("the 8.4 file/position statement after GTID_PURGED is left out")
+	}
+	if s, _ := skip("CHANGE MASTER TO MASTER_LOG_FILE='binlog.000029', MASTER_LOG_POS=831;"); !s {
+		t.Fatal("the 8.0 file/position statement after GTID_PURGED is left out")
+	}
+	if s, _ := skip("START SLAVE;"); s {
+		t.Fatal("other statements are kept")
+	}
+
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		path := filepath.Join(dir, name)
+		f, err := os.Create(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		w := gzip.NewWriter(f)
+		w.Write([]byte(content))
+		w.Close()
+		f.Close()
+		return path
+	}
+	mariaGtid := write("ma.sql.gz", "STOP ALL SLAVES;\nCHANGE MASTER TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER TO MASTER_LOG_FILE='b.1', MASTER_LOG_POS=4;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSET GLOBAL gtid_slave_pos='0-1-5';\nSTART ALL SLAVES;\n")
+	mariaPositional := write("mp.sql.gz", "CHANGE MASTER TO MASTER_LOG_FILE='b.1', MASTER_LOG_POS=4;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\n")
+	mariaComment := write("mc.sql.gz", "-- CHANGE MASTER TO MASTER_USE_GTID=slave_pos;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\n")
+	mysqlGtid := write("mg.sql.gz", "STOP SLAVE;\nSET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'uuid:1-5';\nCHANGE MASTER TO MASTER_LOG_FILE='b.1', MASTER_LOG_POS=4;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\n")
+	for _, c := range []struct {
+		name   string
+		server *ServerMonitor
+		path   string
+		want   bool
+	}{
+		{"MariaDB GTID dump", newServer("MariaDB", ""), mariaGtid, true},
+		{"MariaDB positional dump", newServer("MariaDB", ""), mariaPositional, false},
+		{"MariaDB commented position", newServer("MariaDB", ""), mariaComment, false},
+		{"MariaDB splitdump", newServer("MariaDB", ""), dir, false},
+		{"MySQL GTID dump", newServer("MySQL", "ON"), mysqlGtid, true},
+		{"MySQL dump, replica without GTID", newServer("MySQL", "OFF"), mysqlGtid, false},
+	} {
+		if got := c.server.dumpPositionsServer(c.path); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// A dump that positions the server leaves a new replica's channel without a primary: it is
+// pointed at the primary in GTID mode only (auto-position on MySQL/Percona with GTID,
+// slave_pos on MariaDB), never with a file and position.
+func TestChannelWithoutPrimaryAndGtidPointingMode(t *testing.T) {
+	host := func(h string) dbhelper.SlaveStatus {
+		return dbhelper.SlaveStatus{MasterHost: sql.NullString{String: h, Valid: h != ""}}
+	}
+	for _, c := range []struct {
+		name string
+		ss   dbhelper.SlaveStatus
+		err  error
+		want bool
+	}{
+		{"no channel", dbhelper.SlaveStatus{}, errors.New("no such channel"), true},
+		{"channel without a source host (new replica)", host(""), nil, true},
+		{"channel with its primary", host("n1.rmmdb1011.svc.repman-lab"), nil, false},
+	} {
+		if got := channelWithoutPrimary(c.ss, c.err); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+	server := func(flavor, gtidMode string) *ServerMonitor {
+		s := &ServerMonitor{ClusterGroup: &Cluster{Conf: &config.Config{}}, Variables: config.NewStringsMap(), DBVersion: &version.Version{Flavor: flavor, Major: 8, Minor: 0}}
+		if gtidMode != "" {
+			s.Variables.Set("GTID_MODE", gtidMode)
+		}
+		return s
+	}
+	if m := server("MariaDB", "").gtidPointingMode(); m != "SLAVE_POS" {
+		t.Errorf("MariaDB: %s, want SLAVE_POS", m)
+	}
+	if m := server("MySQL", "ON").gtidPointingMode(); m != "MASTER_AUTO_POSITION" {
+		t.Errorf("MySQL GTID: %s, want MASTER_AUTO_POSITION", m)
+	}
+	if m := server("Percona", "ON").gtidPointingMode(); m != "MASTER_AUTO_POSITION" {
+		t.Errorf("Percona GTID: %s, want MASTER_AUTO_POSITION", m)
 	}
 }

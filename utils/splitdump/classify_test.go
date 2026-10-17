@@ -396,3 +396,44 @@ func TestClassifyStreamKeepsDumpSessionWrapperOutOfSystem(t *testing.T) {
 		t.Errorf("the wrapper stays with its header:\n%s", app.String())
 	}
 }
+
+// A line SkipStatement leaves out reaches no writer and is listed with its reason; table data
+// is never offered to it.
+func TestClassifyStreamSkipStatement(t *testing.T) {
+	input := strings.Join([]string{
+		"SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'uuid:1-5';",
+		"CHANGE MASTER TO MASTER_LOG_FILE='binlog.000026', MASTER_LOG_POS=531154;",
+		"USE `db`;",
+		"LOCK TABLES `t` WRITE;",
+		"CHANGE MASTER TO MASTER_LOG_FILE='in-data', MASTER_LOG_POS=1;",
+		"UNLOCK TABLES;",
+		"",
+	}, "\n")
+	var app, sys bytes.Buffer
+	var offered []string
+	res, err := ClassifyStream(strings.NewReader(input), ClassifyOptions{
+		ApplicationWriter: &app,
+		SystemWriter:      &sys,
+		SkipStatement: func(line string) (bool, string) {
+			offered = append(offered, strings.TrimSpace(line))
+			return strings.HasPrefix(line, "CHANGE MASTER TO MASTER_LOG_FILE"), "test"
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(app.String(), "binlog.000026") {
+		t.Fatalf("skipped statement reached the restore: %q", app.String())
+	}
+	if !strings.Contains(app.String(), "MASTER_LOG_FILE='in-data'") || !strings.Contains(app.String(), "GTID_PURGED") {
+		t.Fatalf("a kept line was left out: %q", app.String())
+	}
+	for _, l := range offered {
+		if strings.Contains(l, "in-data") {
+			t.Fatalf("a table data line was offered to SkipStatement: %q", l)
+		}
+	}
+	if len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0], "binlog.000026") || !strings.HasSuffix(res.Skipped[0], "(test)") {
+		t.Fatalf("Skipped = %q", res.Skipped)
+	}
+}
