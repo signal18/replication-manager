@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func TestDecodeS3ProviderRequestBody(t *testing.T) {
@@ -2170,5 +2171,60 @@ func TestReplicationTLSSettings(t *testing.T) {
 	}
 	if err := repman.setClusterSetting(cl, "replication-ssl-ca", " /srv/tls/repl-ca.pem "); err != nil || cl.Conf.ReplicationSSLCa != "/srv/tls/repl-ca.pem" {
 		t.Fatalf("set replication-ssl-ca: %v %q", err, cl.Conf.ReplicationSSLCa)
+	}
+}
+
+// TestSetClusterSetting_DumpClientPaths covers the cluster's own dump, restore and binlog
+// client paths (#2103): an executable is stored as an absolute path, a missing binary is
+// refused with the path unchanged, an empty value stores "" (the default client).
+func TestSetClusterSetting_DumpClientPaths(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "mysqldump")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho \"mysqldump  Ver 8.0.45 for Linux on x86_64\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(dir, "absent")
+
+	for _, tc := range []struct {
+		name, tool string
+		get        func(*config.Config) string
+	}{
+		{"backup-mysqldump-path", "client-dump", func(c *config.Config) string { return c.BackupMysqldumpPath }},
+		{"backup-mysqlclient-path", "client", func(c *config.Config) string { return c.BackupMysqlclientPath }},
+		{"backup-mysqlbinlog-path", "client-binlog", func(c *config.Config) string { return c.BackupMysqlbinlogPath }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cl := newTestClusterForAPI(t)
+			cl.Conf.Secrets = config.NewSecrets(nil)
+			cl.ConfigManager = newConfigManagerForTest()
+			cl.VersionsMap = config.NewVersionsMap()
+			cl.StateMachine = new(state.StateMachine)
+			cl.StateMachine.Init()
+			repman := newTestRepmanWithCluster(t, cl.Name, cl)
+
+			if err := repman.setClusterSetting(cl, tc.name, bin); err != nil {
+				t.Fatalf("setClusterSetting(%s, executable): unexpected error: %v", tc.name, err)
+			}
+			if got := tc.get(cl.Conf); got != bin {
+				t.Fatalf("%s = %q, want %q", tc.name, got, bin)
+			}
+			if v, ok := cl.GetToolsVersion(tc.tool); !ok || v.ToString() != "8.0.45" {
+				t.Fatalf("%s version after setting %s = %v, want 8.0.45", tc.tool, tc.name, v)
+			}
+
+			if err := repman.setClusterSetting(cl, tc.name, missing); err == nil {
+				t.Fatalf("setClusterSetting(%s, missing binary): expected an error", tc.name)
+			}
+			if got := tc.get(cl.Conf); got != bin {
+				t.Fatalf("%s changed to %q after a refused value, want %q", tc.name, got, bin)
+			}
+
+			if err := repman.setClusterSetting(cl, tc.name, ""); err != nil {
+				t.Fatalf("setClusterSetting(%s, empty): unexpected error: %v", tc.name, err)
+			}
+			if got := tc.get(cl.Conf); got != "" {
+				t.Fatalf("%s = %q after an empty value, want the default \"\"", tc.name, got)
+			}
+		})
 	}
 }
