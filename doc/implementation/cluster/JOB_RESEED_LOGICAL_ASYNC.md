@@ -140,6 +140,36 @@ A reseed restores data; it does not own the replica's links. Since #2093:
 - `dbhelper.ResetSlaveStatement` names the channel with or without `ALL`: MySQL's
   `RESET REPLICA` without `FOR CHANNEL` resets every channel.
 
+### The dump's position and replication statements
+
+mysqldump backups carry the active position again (`GetMysqlDumpOptions`, local and on the
+DB node): `--master-data=1` on a primary, `--dump-slave=1` on a replica, with
+`--apply-slave-statements`, so a dump loaded by hand ends positioned. In the reseed the
+backup's GTID state is the position: MariaDB's `SET GLOBAL gtid_slave_pos`, MySQL/Percona's
+`SET @@GLOBAL.GTID_PURGED`. The dump's replication statements name no channel, so the
+restore decides on each of them (`restoreStatementSkip`, through the classifier's
+`SkipStatement`; each statement left out is logged, the first 100 kept, the rest counted):
+
+| Dump statement | Restore |
+|---|---|
+| `STOP`/`START ALL SLAVES` (MariaDB), `STOP`/`START SLAVE`/`REPLICA` (MySQL) | left out on every server: they act on every channel; the reseed stops the channels before the load and starts the managed one after its link is checked |
+| `CHANGE MASTER TO` / `CHANGE REPLICATION SOURCE TO`, managed channel named or several channels | left out: MariaDB would apply it to the default connection (and create it), MySQL refuses it |
+| the same, MySQL/Percona with GTID, after `GTID_PURGED` | left out: the channel stays on auto-position (error 1776 otherwise) |
+| the same, the default channel alone | kept: it positions that channel |
+| `SET GLOBAL gtid_slave_pos`, `SET @@GLOBAL.GTID_PURGED` | kept: the backup's GTID state |
+
+When the dump positions the server by itself (`dumpPositionsServer`: MariaDB's active
+`CHANGE MASTER TO MASTER_USE_GTID`, MySQL's active `GTID_PURGED`, read in the header; a read
+error is logged and the position is set after the load instead), the reseed does not set the
+position again: the managed channel is started if its link points to the primary, pointed
+at the primary in GTID mode first if it has none yet (a new replica), and left stopped with
+WARN0252 if it points to another source. Other dumps keep `pointLogicalReseedReplica`.
+
+Channels touched (law T27): every channel is stopped before the load; only the managed
+channel (`replication-source-name`) is positioned or started; the other channels of a
+multi-source replica stay stopped with WARN0252. Their GTID domains come from the dump's
+`gtid_slave_pos`, which replaces every domain.
+
 ## Cleanup and error handling
 
 - `ProcessReseedLogical` always clears the reseed state on exit via a deferred reset.

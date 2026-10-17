@@ -65,36 +65,19 @@ func (cluster *Cluster) GetShareDir() string {
 	return cluster.Conf.ShareDir
 }
 
-// This will use installed mysqldump first
-func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid string) []string {
-	return cluster.getMysqlDumpOptions(server, usegtid, false, cluster.VersionsMap.Get("client-dump"))
-}
-
-// GetMysqlBackupDumpOptions are the dump options of a logical backup: the replication
-// position is only written as a comment (--master-data=2, --dump-slave=2, no
-// --apply-slave-statements) and recorded in the backup metadata. An active CHANGE MASTER
-// can not name a channel: MySQL refuses it on a replica with several channels, MariaDB applies
-// it to default_master_connection, and its STOP/START SLAVE act on every channel. The reseed
-// points the managed channel itself after the restore (ProcessReseedLogical), as the MySQL
-// and MariaDB replica setup procedures do.
-func (cluster *Cluster) GetMysqlBackupDumpOptions(server *ServerMonitor, usegtid string) []string {
-	return cluster.getMysqlDumpOptions(server, usegtid, true, cluster.VersionsMap.Get("client-dump"))
-}
-
-// getMysqlDumpOptions builds the options for the dump client of version dumpver: the options
-// that depend on the client (and the server) follow the client that runs the dump.
-func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid string, positionComment bool, dumpver *version.Version) []string {
+// GetMysqlDumpOptions are the mysqldump options of a logical backup, local or on the DB
+// node, and of the direct rejoin stream, for the dump client of version dumpver: the options
+// that depend on the client (and the server) follow the client that runs the dump. The dump
+// positions the server it is restored on: the active position (--master-data=1 on a primary,
+// --dump-slave=1 on a replica) and --apply-slave-statements.
+func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid string, dumpver *version.Version) []string {
 	events := ""
 	dumpslave := ""
 
-	position := "1"
-	if positionComment {
-		position = "2"
-	}
 	if server.IsMaster() {
-		dumpslave = "--master-data=" + position
+		dumpslave = "--master-data=1"
 	} else {
-		dumpslave = "--dump-slave=" + position
+		dumpslave = "--dump-slave=1"
 	}
 
 	if server.HasEventScheduler() {
@@ -114,9 +97,7 @@ func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid strin
 	}
 
 	dumpargs = append(dumpargs, cluster.GetDumpCredentials(server)...)
-	if !positionComment {
-		dumpargs = append(dumpargs, "--apply-slave-statements")
-	}
+	dumpargs = append(dumpargs, "--apply-slave-statements")
 	dumpargs = append(dumpargs, "--ignore-table=replication_manager_schema.jobs")
 	if server.DBVersion.IsMySQLOrPercona() {
 		// The replica's own parallel applier state, which mysqldump does not leave out like the
