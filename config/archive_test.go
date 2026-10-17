@@ -489,3 +489,62 @@ func TestArchiveConfigForArchive(t *testing.T) {
 		t.Fatalf("the cluster's config changed: aws %v repo %q archives %d", conf.BackupResticAws, conf.BackupResticLocalRepository, len(conf.Archives))
 	}
 }
+
+// #2091: the retention is each archive's own. A cluster with no list moves its retention
+// into archive-local-1; a list saved before keeps the flat value, adopted by the attached
+// archive; a switch carries each archive's value; nothing attached goes back to the default.
+func TestArchiveRetentionPerArchive(t *testing.T) {
+	conf := archiveTestConf()
+	conf.DefaultFlagMap["backup-keep-last"] = 10
+	conf.BackupArchiveMode = ConstBackupArchiveModeResticLocal
+	conf.BackupResticLocalRepository = "/data/restic"
+	conf.BackupKeepLast = 3
+	conf.BackupArchiveRemoveOriginal = true
+	conf.MigrateArchives()
+	a := conf.Archives[0]
+	if a.Settings["keep-last"] != int64(3) || a.Settings["remove-original"] != true {
+		t.Fatalf("archive settings %+v, want keep-last 3 and remove-original", a.Settings)
+	}
+	if !IsArchiveLegacyKey("backup-keep-last") || !IsArchiveLegacyKey("backup-archive-remove-original") {
+		t.Fatal("the save must leave the flat retention keys out")
+	}
+
+	// a list saved before the retention moved: the flat value is adopted
+	old := archiveTestConf()
+	old.DefaultFlagMap["backup-keep-last"] = 10
+	old.Archives = []ArchiveConfig{{Name: "archive-local-1", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"local-repository": "/data/restic"}}}
+	old.BackupArchiveName = "archive-local-1"
+	old.BackupKeepLast = 4
+	old.MigrateArchives()
+	if old.Archives[0].Settings["keep-last"] != int64(4) || old.BackupKeepLast != 4 {
+		t.Fatalf("adopted %+v field %d, want 4", old.Archives[0].Settings, old.BackupKeepLast)
+	}
+
+	// each archive keeps its own, nothing attached is the default
+	old.Archives = append(old.Archives, ArchiveConfig{Name: "archive-local-2", Plugin: ConstArchivePluginResticLocal, Settings: map[string]interface{}{"local-repository": "/data/r2", "keep-last": int64(7)}})
+	if err := old.SwitchArchive("archive-local-2"); err != nil || old.BackupKeepLast != 7 {
+		t.Fatalf("switch: %v keep-last %d, want 7", err, old.BackupKeepLast)
+	}
+	if err := old.SwitchArchive(""); err != nil || old.BackupKeepLast != 10 {
+		t.Fatalf("detach: %v keep-last %d, want the default 10", err, old.BackupKeepLast)
+	}
+	if old.Archives[0].Settings["keep-last"] != int64(4) {
+		t.Fatalf("archive-local-1 lost its keep-last: %+v", old.Archives[0].Settings)
+	}
+
+	// the manifest groups and checks them
+	m, _ := ArchivePlugin(ConstArchivePluginResticS3)
+	st, ok := m.Setting("keep-within")
+	if !ok || st.Group != ConstArchiveSettingGroupRetention || st.Validate("2y5m") != nil || st.Validate("two years") == nil {
+		t.Fatalf("keep-within %+v", st)
+	}
+	if st, _ := m.Setting("keep-last"); st.Type != ConstArchiveSettingTypeInt {
+		t.Fatalf("keep-last %+v, want an int", st)
+	}
+	if st, _ := m.Setting("remove-original"); st.Type != ConstArchiveSettingTypeBool {
+		t.Fatalf("remove-original %+v, want a bool", st)
+	}
+	if st, _ := m.Setting("mount-host"); st.Group != ConstArchiveSettingGroupAdvanced {
+		t.Fatalf("mount-host %+v, want advanced", st)
+	}
+}
