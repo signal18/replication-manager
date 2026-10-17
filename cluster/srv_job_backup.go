@@ -13,6 +13,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1298,6 +1299,14 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 	if err != nil && cluster.Conf.BackupRestoreVersionStrict {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
 		return nil, fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
+	}
+
+	// refused before the reseed takes its lock or touches anything: its START would run
+	// replication from the old position before the reseed positions it
+	if backtype == config.ConstBackupLogicalTypeMysqldump && !isPITR {
+		if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); derr == nil && unpositioned {
+			return nil, errDumpStartsUnpositioned(backupfile)
+		}
 	}
 
 	if ok, currentTask := server.TrySetInReseedBackup(task); !ok {
@@ -3638,7 +3647,12 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	pumpResultCh := make(chan reseedPumpResult, 1)
 	go func() {
 		defer clientStdin.Close()
-		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, fz, artifactWriter)
+		// without the accounts, the dump's account-import role bracket is left out too
+		var skip func(string) bool
+		if !restoreUser {
+			skip = splitdump.IsImportRoleBracket
+		}
+		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, fz, artifactWriter, skip)
 		pumpResultCh <- reseedPumpResult{result: result, err: pumpErr, fromClassify: fromClassify}
 	}()
 
@@ -3651,6 +3665,9 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	clientErr := clientCmd.Wait()
 	wg.Wait()
 	pr := <-pumpResultCh
+	if pr.result.Skipped > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical restore of %s on %s: %d line(s) of the dump's account-import role bracket left out (accounts not restored)", backupfile, server.URL, pr.result.Skipped)
+	}
 
 	if clientErr != nil || pr.err != nil {
 		artifactWriter.discard()
@@ -3773,13 +3790,14 @@ func reseedMysqldumpSystemReplaySource(restoreUser bool, mainDumpHasSystemConten
 // ClassifyStream itself (system extraction) rather than while writing the
 // preamble beforehand (application restore) -- callers use this to pick the
 // right reseedStage for the returned error.
-func runReseedMysqldumpPump(appWriter io.Writer, cmdstring string, dumpReader io.Reader, systemWriter io.Writer) (result splitdump.ClassifyResult, err error, fromClassify bool) {
+func runReseedMysqldumpPump(appWriter io.Writer, cmdstring string, dumpReader io.Reader, systemWriter io.Writer, skip func(string) bool) (result splitdump.ClassifyResult, err error, fromClassify bool) {
 	if _, err := io.WriteString(appWriter, cmdstring); err != nil {
 		return splitdump.ClassifyResult{}, fmt.Errorf("writing restore preamble to mysql client stdin: %w", err), false
 	}
 	result, err = splitdump.ClassifyStream(dumpReader, splitdump.ClassifyOptions{
 		ApplicationWriter: appWriter,
 		SystemWriter:      systemWriter,
+		Skip:              skip,
 	})
 	if err != nil {
 		return result, fmt.Errorf("classifying mysqldump output into application/system SQL: %w", err), true
@@ -6993,7 +7011,7 @@ func (server *ServerMonitor) WaitAndSendSSTStream(ctx context.Context, task stri
 // Multi-source replication is not supported: extra channels stay stopped, with a warning,
 // for the operator. The GTID state is the backup's, as it is: the restore replaced the one
 // their sources would resume from.
-func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMetadata, start, pointedBeforeRestore bool) error {
+func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMetadata, start, pointedBeforeRestore, dumpStarted bool) error {
 	cluster := server.ClusterGroup
 	if cluster.master == nil {
 		return fmt.Errorf("point %s after the restore: no primary known", server.URL)
@@ -7006,6 +7024,20 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
 			"Reseed of %s: %s; the link is left stopped, a rejoin moves it", server.URL, why)
 		return nil
+	}
+	// The channels were stopped before the load. A dump that starts replication itself
+	// (dumpStarted: an older backup's STOP SLAVE ... CHANGE MASTER ... START SLAVE) has started
+	// the managed channel from the position it set: running or still connecting now, it is left
+	// as it is; stopped, set back and started again, what it executed meanwhile would be applied
+	// twice. Without that dump, a running channel is positioned as any other.
+	if start && dumpStarted {
+		ss, _, serr := dbhelper.GetSlaveStatus(server.Conn, server.ReplicationSourceName, server.DBVersion)
+		if serr != nil && !errors.Is(serr, sql.ErrNoRows) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Reseed of %s: replication status after the restore: %s", server.URL, serr)
+		} else if serr == nil && reseedChannelActive(ss.SlaveIORunning.String, ss.SlaveSQLRunning.String) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Replication of %s started by the restored dump, left as it is", server.URL)
+			return nil
+		}
 	}
 	gtid, file, pos := logicalReseedPosition(server.logicalRestorePosition.Load(), meta)
 	// an older backup (--apply-slave-statements) restarts replication at the end of its own load
@@ -7074,12 +7106,75 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 	return nil
 }
 
+// reseedChannelActive reports whether a channel's thread states (Slave_IO_Running,
+// Slave_SQL_Running) show it started: a thread running, or the IO thread still connecting, as
+// it is right after START SLAVE.
+func reseedChannelActive(ioRunning, sqlRunning string) bool {
+	return ioRunning == "Yes" || ioRunning == "Connecting" || sqlRunning == "Yes"
+}
+
 // dumpHasActiveChangeMaster reports whether the mysqldump file at path (gzip or plain SQL) sets
 // a replication position with an active CHANGE MASTER / CHANGE REPLICATION SOURCE, as older
 // backups (--master-data=1, --apply-slave-statements) do; the backups of this release write it
 // as a comment. Only the header is read: the position comes before the first table data. A
 // splitdump directory has none.
 func dumpHasActiveChangeMaster(path string) (bool, error) {
+	return dumpHeaderHas(path, func(l string) bool {
+		return strings.HasPrefix(l, "CHANGE MASTER TO") || strings.HasPrefix(l, "CHANGE REPLICATION SOURCE TO")
+	})
+}
+
+// dumpStartsReplication reports whether the mysqldump file at path (gzip or plain SQL) starts
+// replication at the end of its own load from the position it sets: an older backup written
+// with --apply-slave-statements (--apply-replica-statements) stops replication in its header
+// (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES) and starts it in its footer. The position must be
+// active too (dumpReplicationStatements): with
+// --master-data=2 / --dump-slave=2 it is a comment and the START resumes from the server's old
+// position. Only the header is read. A splitdump directory has none: the splitter leaves the
+// START out of its files.
+func dumpStartsReplication(path string) (bool, error) {
+	stops, positioned, err := dumpReplicationStatements(path)
+	return stops && positioned, err
+}
+
+// dumpStartsReplicationUnpositioned reports a mysqldump file that stops and starts replication
+// (--apply-slave-statements) with its position as a comment (--dump-slave=2): its START would
+// resume from the server's old position before repman positions it, so a reseed refuses it. A
+// header that can not be read is not refused: the restore reads the same file and fails.
+func dumpStartsReplicationUnpositioned(path string) (bool, error) {
+	stops, positioned, err := dumpReplicationStatements(path)
+	return stops && !positioned, err
+}
+
+// errDumpStartsUnpositioned is the refusal of a reseed or child seed from such a dump, returned
+// for the caller to log once.
+func errDumpStartsUnpositioned(path string) error {
+	return fmt.Errorf("backup %s starts replication from the old position (--apply-slave-statements, position as a comment): take a new backup", path)
+}
+
+// dumpReplicationStatements reads the header of the mysqldump file at path, in one pass: whether
+// it stops replication (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES, written with the START of its
+// footer) and whether it sets an active position, not as a comment: SET GLOBAL gtid_slave_pos,
+// or a CHANGE MASTER / CHANGE REPLICATION SOURCE naming a binary log file. MariaDB's CHANGE
+// MASTER TO MASTER_USE_GTID=slave_pos alone sets the mode, not the position.
+func dumpReplicationStatements(path string) (stops, positioned bool, err error) {
+	_, err = dumpHeaderHas(path, func(l string) bool {
+		if l == "STOP SLAVE;" || l == "STOP REPLICA;" || l == "STOP ALL SLAVES;" {
+			stops = true
+		}
+		if strings.HasPrefix(l, "SET GLOBAL gtid_slave_pos") ||
+			((strings.HasPrefix(l, "CHANGE MASTER ") || strings.HasPrefix(l, "CHANGE REPLICATION SOURCE TO")) &&
+				(strings.Contains(l, "MASTER_LOG_FILE") || strings.Contains(l, "SOURCE_LOG_FILE"))) {
+			positioned = true
+		}
+		return stops && positioned
+	})
+	return stops, positioned, err
+}
+
+// dumpHeaderHas reports whether a line of the header of the mysqldump file at path (gzip or
+// plain SQL), before its first table data, matches. A splitdump directory has no header.
+func dumpHeaderHas(path string, match func(line string) bool) (bool, error) {
 	if !strings.HasSuffix(path, ".sql.gz") && !strings.HasSuffix(path, ".sql") {
 		return false, nil
 	}
@@ -7101,7 +7196,7 @@ func dumpHasActiveChangeMaster(path string) (bool, error) {
 	sc.Buffer(make([]byte, 0, 64*1024), 64<<20)
 	for sc.Scan() {
 		l := sc.Text()
-		if strings.HasPrefix(l, "CHANGE MASTER TO") || strings.HasPrefix(l, "CHANGE REPLICATION SOURCE TO") {
+		if match(l) {
 			return true, nil
 		}
 		if strings.HasPrefix(l, "-- Dumping data for table") || strings.HasPrefix(l, "INSERT INTO") {
@@ -7340,6 +7435,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 	// channel, and pointed with auto-position before the load a MySQL replica refuses the
 	// file/position CHANGE MASTER of an older --master-data=1 backup (error 1776).
 	pointAfterRestore := !isPITR && backupType == config.ConstBackupLogicalTypeMysqldump
+	if pointAfterRestore {
+		// refused before anything is stopped or loaded: its START would run replication from
+		// the old position before the reseed positions it
+		if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); derr == nil && unpositioned {
+			return errDumpStartsUnpositioned(backupfile)
+		}
+	}
 	pointedBeforeRestore := false
 	// false once the gate finds the link pointing to another source: nothing positions or
 	// starts it after the restore, it stays stopped with WARN0252 (law T27, #2093)
@@ -7423,8 +7525,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 			err = server.reseedMysqldumpWithMetadata(ctx, backupfile, restoreUser, meta)
 		}
 		if pointAfterRestore {
+			// an older backup's own STOP SLAVE ... START SLAVE (--apply-slave-statements)
+			dumpStarted, derr := dumpStartsReplication(backupfile)
+			if derr != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Can not read the replication statements of %s: %s", backupfile, derr)
+			}
 			// a failed restore too: the replica is never left without its primary
-			if perr := server.pointLogicalReseedReplica(matchLogicalReseedBackupMeta(meta, backupfile), err == nil, pointedBeforeRestore); perr != nil && err == nil {
+			if perr := server.pointLogicalReseedReplica(matchLogicalReseedBackupMeta(meta, backupfile), err == nil, pointedBeforeRestore, dumpStarted); perr != nil && err == nil {
 				err = perr
 			}
 		}

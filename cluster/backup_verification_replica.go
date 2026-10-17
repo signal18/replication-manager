@@ -100,7 +100,7 @@ func (replica *ServerMonitor) resumeVerificationReplica(meta *backupmgr.BackupMe
 		}
 	}
 	replica.logicalRestorePosition.Store(nil) // the position of the backup's metadata
-	if err := replica.pointLogicalReseedReplica(meta, true, false); err != nil {
+	if err := replica.pointLogicalReseedReplica(meta, true, false, false); err != nil {
 		return fmt.Errorf("restart the replication of %s: %w", replica.URL, err)
 	}
 	return nil
