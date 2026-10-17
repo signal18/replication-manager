@@ -125,6 +125,9 @@ A reseed restores data; it does not own the replica's links. Since #2093:
   (`reseedLinkPointsToPrimary`). The match is the primary's host or IP and port: a link
   reaching the primary through a proxy, a VIP or another alias counts as another source
   and is left stopped (the conservative side); with no primary known nothing is positioned.
+  A managed channel with an empty host counts as "no link yet" and may be positioned (rare).
+  A link left in place is not started either: the final START of the older branch and the
+  mydumper start check the same gate (`linkOnSource`).
 - **A state, not a log.** The channels the reseed stopped are recorded
   (`markReseedStoppedLinks`); every server refresh (`checkReseedStoppedLinks`) drops those
   that run again, whoever started them, and keeps **WARN0252** open while one does not,
@@ -132,6 +135,8 @@ A reseed restores data; it does not own the replica's links. Since #2093:
   sources of a multi-source replica left for review).
   A channel that disappears from the replica's status while the server answers (removed by
   the operator) leaves the list too: the state never stays open forever (F3/F4).
+  The record is guarded by a mutex (the reseed records, the refresh drops), and within two
+  monitoring ticks of a recording a running status, possibly read before the STOP, is ignored.
 - `dbhelper.ResetSlaveStatement` names the channel with or without `ALL`: MySQL's
   `RESET REPLICA` without `FOR CHANNEL` resets every channel.
 

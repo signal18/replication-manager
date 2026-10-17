@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -19,18 +20,26 @@ import (
 // WARN0252 stays open, tick after tick, until each runs again: the GUI tells why a link
 // is down instead of a log line.
 
-// markReseedStoppedLinks records the channels the reseed stops, each with the reason.
+// reseedStoppedLinks is what WARN0252 reports: the channels a reseed stopped, why, and
+// when it recorded them.
+type reseedStoppedLinks struct {
+	channels []string
+	reason   string
+	at       time.Time
+}
+
+// markReseedStoppedLinks records the channels the reseed stops, with the reason.
 func (server *ServerMonitor) markReseedStoppedLinks(channels []string, reason string) {
-	server.reseedStoppedLinks.Store(append([]string(nil), channels...))
-	server.reseedStoppedLinkReason.Store(reason)
+	server.reseedLinksMu.Lock()
+	defer server.reseedLinksMu.Unlock()
+	server.reseedLinks = reseedStoppedLinks{channels: append([]string(nil), channels...), reason: reason, at: time.Now()}
 }
 
 // reseedStoppedLinkList is the channels a reseed stopped and are not known to run again.
 func (server *ServerMonitor) reseedStoppedLinkList() []string {
-	if l, ok := server.reseedStoppedLinks.Load().([]string); ok {
-		return l
-	}
-	return nil
+	server.reseedLinksMu.Lock()
+	defer server.reseedLinksMu.Unlock()
+	return append([]string(nil), server.reseedLinks.channels...)
 }
 
 // replicationChannels lists the replica's channel names from its last status (the
@@ -48,13 +57,20 @@ func (server *ServerMonitor) replicationChannels() []string {
 // the replica's status while the server answers (removed by the operator: nothing to wait
 // for, F3/F4), WARN0252 while any remains. A server that does not answer keeps the list.
 func (server *ServerMonitor) checkReseedStoppedLinks() {
-	list := server.reseedStoppedLinkList()
-	if len(list) == 0 {
+	cluster := server.ClusterGroup
+	// Under the lock end to end: a reseed recording between the read and the write would
+	// otherwise be overwritten (#2093 review). Within two ticks of a recording a running
+	// status may predate the STOP: the channel stays.
+	server.reseedLinksMu.Lock()
+	links := server.reseedLinks
+	if len(links.channels) == 0 {
+		server.reseedLinksMu.Unlock()
 		return
 	}
+	fresh := time.Since(links.at) < 2*time.Duration(cluster.Conf.MonitoringTicker)*time.Second
 	reachable := server.Conn != nil && !server.IsDown()
-	still := make([]string, 0, len(list))
-	for _, channel := range list {
+	still := make([]string, 0, len(links.channels))
+	for _, channel := range links.channels {
 		present, running := false, false
 		for _, r := range server.Replications {
 			if r.ConnectionName.String == channel {
@@ -63,19 +79,16 @@ func (server *ServerMonitor) checkReseedStoppedLinks() {
 				break
 			}
 		}
-		if running || (reachable && !present) {
+		if !fresh && (running || (reachable && !present)) {
 			continue
 		}
 		still = append(still, channel)
 	}
-	if len(still) != len(list) {
-		server.reseedStoppedLinks.Store(still)
-	}
+	server.reseedLinks.channels = still
+	server.reseedLinksMu.Unlock()
 	if len(still) == 0 {
 		return
 	}
-	cluster := server.ClusterGroup
-	reason, _ := server.reseedStoppedLinkReason.Load().(string)
 	names := make([]string, 0, len(still))
 	for _, c := range still {
 		if c == "" {
@@ -84,7 +97,7 @@ func (server *ServerMonitor) checkReseedStoppedLinks() {
 		names = append(names, "'"+c+"'")
 	}
 	cluster.SetState("WARN0252", state.State{ErrType: "WARNING", ErrFrom: "TOPO", ServerUrl: server.URL,
-		ErrDesc: fmt.Sprintf(clusterError["WARN0252"], server.URL, strings.Join(names, ", "), reason)})
+		ErrDesc: fmt.Sprintf(clusterError["WARN0252"], server.URL, strings.Join(names, ", "), links.reason)})
 }
 
 // reseedLinkPointsToPrimary reports whether the reseed may position the managed channel:
