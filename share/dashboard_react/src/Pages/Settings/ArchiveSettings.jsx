@@ -37,7 +37,7 @@ function ArchiveSettings({ selectedCluster, user }) {
 
 
   // the archives, each with its own settings (#2091), then the streamed backups' S3 target
-  const { rows: archiveRows, modals: archiveModals } = useArchiveSettings({ clusterName: selectedCluster?.name, user, help: h })
+  const { rows: archiveRows, modals: archiveModals } = useArchiveSettings({ clusterName: selectedCluster?.name, user, help: h, config: selectedCluster?.config })
 
   const dataObject = [
     ...archiveRows,

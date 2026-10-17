@@ -3,7 +3,6 @@ import {
   Box,
   Flex,
   FormControl,
-  FormHelperText,
   FormLabel,
   Input,
   Modal,
@@ -27,6 +26,7 @@ import TextForm from '../../components/TextForm'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import TextInputModal from '../../components/Modals/TextInputModal'
 import { resticCopyRepo } from '../../redux/clusterSlice'
+import { switchSetting } from '../../redux/settingsSlice'
 import parentStyles from '../../components/Modals/styles.module.scss'
 import { clusterService } from '../../services/clusterService'
 import { useTheme } from '../../ThemeProvider'
@@ -41,7 +41,7 @@ import { formatBytes } from '../../utility/common'
 // catalogue it holds; remove's confirmation reads the size first and shows what is deleted.
 
 const NAME_PATTERN = '^[a-z0-9][a-z0-9_-]{0,63}$'
-// the settings every restic plugin shares start here in a manifest: shown under "More"
+// a manifest without groups (an older external plugin): its settings from this one on are advanced
 const FIRST_COMMON_SETTING = 'repo-append-cluster'
 
 // plain labels of the plugins and their settings; a setting not named here shows its key
@@ -72,7 +72,32 @@ const SETTING_LABELS = {
   'host': 'Host name',
   'timeout': 'Timeout (s)',
   'dump-timeout': 'Dump timeout (s)',
-  'auto-init': 'Create if missing'
+  'auto-init': 'Create if missing',
+  'keep-last': 'Keep last',
+  'keep-hourly': 'Keep hourly',
+  'keep-daily': 'Keep daily',
+  'keep-weekly': 'Keep weekly',
+  'keep-monthly': 'Keep monthly',
+  'keep-yearly': 'Keep yearly',
+  'keep-within': 'Keep all within',
+  'keep-within-hourly': 'Keep hourly within',
+  'keep-within-daily': 'Keep daily within',
+  'keep-within-weekly': 'Keep weekly within',
+  'keep-within-monthly': 'Keep monthly within',
+  'keep-within-yearly': 'Keep yearly within',
+  'remove-original': 'Remove original once archived',
+  'purge-group-by': 'Group snapshots by',
+  'purge-keep-tag': 'Always keep tag',
+  'purge-host': 'Purge only host',
+  'purge-tag': 'Purge only tag',
+  'purge-path': 'Purge only path',
+  'purge-prune': 'Free the space (prune)',
+  'purge-prune-compact': 'Prune: compact',
+  'purge-prune-max-unused': 'Prune: max unused',
+  'purge-prune-max-repack-size': 'Prune: max repack size',
+  'purge-prune-repack-cacheable-only': 'Prune: repack cacheable only',
+  'purge-prune-repack-small': 'Prune: repack small',
+  'purge-prune-repack-uncompressed': 'Prune: repack uncompressed'
 }
 
 const SETTING_HELP = {
@@ -81,7 +106,23 @@ const SETTING_HELP = {
   'password': 'Encrypts the archive. Needed to open it: keep it safe, a lost password loses the archive.',
   'repo-append-cluster': 'Adds the cluster name at the end of the path.',
   's3-mode': 'auto, new or legacy: how the bucket path is built. Leave on auto.',
-  'purge-oldest-on-disk-space': 'When the disk is nearly full, the oldest snapshots are deleted first.'
+  'purge-oldest-on-disk-space': 'When the disk is nearly full, the oldest snapshots are deleted first.',
+  'keep-last': 'How many of the newest snapshots the purge keeps. 0: not part of the policy.',
+  'keep-hourly': 'For the last N hours that have a snapshot, keep the newest of each hour. 0: not part of the policy.',
+  'keep-daily': 'For the last N days that have a snapshot, keep the newest of each day. 0: not part of the policy.',
+  'keep-weekly': 'For the last N weeks that have a snapshot, keep the newest of each week. 0: not part of the policy.',
+  'keep-monthly': 'For the last N months that have a snapshot, keep the newest of each month. 0: not part of the policy.',
+  'keep-yearly': 'For the last N years that have a snapshot, keep the newest of each year. 0: not part of the policy.',
+  'keep-within': 'Keep every snapshot newer than this, counted from the newest one. Example 2y5m7d3h. Empty: not part of the policy.',
+  'keep-within-hourly': 'Keep the newest snapshot of each hour within this duration. Example 7d. Empty: not part of the policy.',
+  'keep-within-daily': 'Keep the newest snapshot of each day within this duration. Example 1m. Empty: not part of the policy.',
+  'keep-within-weekly': 'Keep the newest snapshot of each week within this duration. Example 3m. Empty: not part of the policy.',
+  'keep-within-monthly': 'Keep the newest snapshot of each month within this duration. Example 1y. Empty: not part of the policy.',
+  'keep-within-yearly': 'Keep the newest snapshot of each year within this duration. Example 5y. Empty: not part of the policy.',
+  'remove-original': 'Once the snapshot in this archive is checked, the backup is deleted from the server\'s backup folder. A restore fetches it back from the archive first.',
+  'purge-group-by': 'How snapshots are grouped before the keep rules apply: host, paths, tags, or a mix (host,tags).',
+  'purge-keep-tag': 'Snapshots with this tag are never purged.',
+  'purge-prune': 'After the purge, delete the data no snapshot uses any more, so the space is really freed.'
 }
 
 export function settingLabel(name, plugin) {
@@ -112,16 +153,22 @@ function sizeTitle(archive) {
 const can = (list, archive, capability) =>
   (list.plugins.find((p) => p.name === archive.plugin)?.capabilities || []).includes(capability)
 
+// splitSettings lays a plugin's settings out by their group: the main ones (location,
+// credentials), the retention, the advanced ones
 function splitSettings(manifest) {
   const settings = manifest?.settings || []
+  const grouped = settings.some((st) => st.group)
   const idx = settings.findIndex((st) => st.name === FIRST_COMMON_SETTING)
   const main = []
+  const retention = []
   const more = []
   settings.forEach((st, i) => {
-    if (st.type === 'secret' || idx < 0 || i < idx) main.push(st)
+    if (st.type === 'secret') main.push(st)
+    else if (grouped) (st.group === 'retention' ? retention : st.group ? more : main).push(st)
+    else if (idx < 0 || i < idx) main.push(st)
     else more.push(st)
   })
-  return { main, more }
+  return { main, retention, more }
 }
 
 function SettingField({ st, value, onChange, secretSet }) {
@@ -158,7 +205,8 @@ export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave 
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const manifest = plugins.find((p) => p.name === plugin)
-  const { main, more } = splitSettings(manifest)
+  const { main, retention, more: advanced } = splitSettings(manifest)
+  const more = [...retention, ...advanced]
 
   const setValue = (k, v) => setValues((prev) => ({ ...prev, [k]: v }))
 
@@ -223,9 +271,9 @@ export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave 
               </RMButton>
             )}
             {showMore && more.map(renderField)}
-            <FormHelperText>
+            <Text fontSize='sm' opacity='0.7'>
               The repository is checked first: an existing one is opened (a wrong password is refused), a missing one is created.
-            </FormHelperText>
+            </Text>
             {error && <Text color='red.500' fontSize='sm'>{error}</Text>}
           </Stack>
         </ModalBody>
@@ -257,7 +305,7 @@ function SecretRow({ isSet, isDisabled, onSave }) {
 
 // useArchiveSettings is the archive part of the Archive settings: its rows, and the modals
 // they open
-export function useArchiveSettings({ clusterName, user, help }) {
+export function useArchiveSettings({ clusterName, user, help, config }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
   const [list, setList] = useState({ attached: '', archives: [], plugins: [] })
@@ -267,6 +315,7 @@ export function useArchiveSettings({ clusterName, user, help }) {
   const [removeName, setRemoveName] = useState('')
   const [open, setOpen] = useState({}) // archive name -> its settings shown
   const [advanced, setAdvanced] = useState({}) // archive name -> its advanced settings shown
+  const [retentionShown, setRetentionShown] = useState({}) // archive name -> its retention shown
   const [copySource, setCopySource] = useState('')
   const canSet = user?.grants?.['cluster-settings'] !== false
   const canRemove = user?.grants?.['db-backup'] !== false
@@ -360,7 +409,7 @@ export function useArchiveSettings({ clusterName, user, help }) {
 
   const archiveRows = (a) => {
     const manifest = list.plugins.find((p) => p.name === a.plugin)
-    const { main, more } = splitSettings(manifest)
+    const { main, retention, more } = splitSettings(manifest)
     const isOpen = open[a.name] ?? a.attached
     const busy = a.status === 'removing'
     const others = list.archives.filter((o) => o.name !== a.name)
@@ -379,6 +428,15 @@ export function useArchiveSettings({ clusterName, user, help }) {
     ]
     if (isOpen) {
       rows.push(...main.map((st) => settingRow(a, st)))
+      if (retention.length > 0) {
+        const shownR = retentionShown[a.name] ?? true
+        rows.push({
+          key: <Text as='span' fontWeight='bold'>Retention</Text>,
+          help: help('**Retention**\n\nHow long this archive keeps its snapshots: the purge keeps the snapshots any rule below keeps and deletes the others. Each archive has its own.\n\nRemove original: the backup leaves the server once this archive holds it.', 'Retention'),
+          value: <RMButton size='xs' variant='outline' onClick={() => setRetentionShown((p) => ({ ...p, [a.name]: !shownR }))}>{shownR ? 'Hide' : `Show (${retention.length})`}</RMButton>
+        })
+        if (shownR) rows.push(...retention.map((st) => settingRow(a, st)))
+      }
       if (more.length > 0) {
         rows.push({
           key: 'Advanced settings',
@@ -441,7 +499,30 @@ export function useArchiveSettings({ clusterName, user, help }) {
       )
     },
     // the attached archive first, then the others
-    ...[...list.archives].sort((x, y) => (y.attached ? 1 : 0) - (x.attached ? 1 : 0)).map(archiveRows)
+    ...[...list.archives].sort((x, y) => (y.attached ? 1 : 0) - (x.attached ? 1 : 0)).map(archiveRows),
+    // what runs every archive: the restic program and its mounts
+    {
+      key: 'Restic program',
+      value: [
+        {
+          key: 'Program path',
+          help: help('**Restic program path**\n\nThe restic program every archive runs. A server-wide setting, set in the config file.\n\nConfig: `backup-restic-binary-path`', 'Restic program path'),
+          value: <Text fontSize='sm'>{config?.backupResticBinaryPath || '/usr/bin/restic'}</Text>
+        },
+        {
+          key: 'Mount folder',
+          help: help('**Mount folder**\n\nWhere an archive is mounted to browse it or to reseed from it. Empty: `<working-dir>/<cluster>/mount`. A server-wide setting, set in the config file.\n\nConfig: `backup-restic-mount-dir`', 'Mount folder'),
+          value: <Text fontSize='sm'>{config?.backupResticMountDir || '<working-dir>/<cluster>/mount'}</Text>
+        },
+        {
+          key: 'Allow unsafe mount',
+          help: help('**Allow unsafe mount**\n\nUse a mount another process made. Unsafe: that process can unmount it while it is used.\n\nConfig: `backup-restic-allow-unsafe-mount`', 'Allow unsafe mount'),
+          value: <RMSwitch isChecked={!!config?.backupResticAllowUnsafeMount} isDisabled={!canSet}
+            confirmTitle='Confirm switch settings for backup-restic-allow-unsafe-mount?'
+            onChange={() => dispatch(switchSetting({ clusterName, setting: 'backup-restic-allow-unsafe-mount' }))} />
+        }
+      ]
+    }
   ]
 
   const removeTarget = list.archives.find((a) => a.name === removeName)
