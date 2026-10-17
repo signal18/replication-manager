@@ -23,6 +23,14 @@ func TestCloud18SSOProvider(t *testing.T) {
 	if p.Validate() == nil {
 		t.Fatal("an SSO provider must refuse keys")
 	}
+	p.AccessKey, p.RoleArn = "", "arn:minio:iam:eu-west-1::role/x"
+	if err := p.Validate(); err != nil {
+		t.Fatalf("an SSO provider with its role: %v", err)
+	}
+	keyed := config.S3Provider{Name: "k", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example", RoleArn: "arn:x"}
+	if keyed.Validate() == nil {
+		t.Fatal("a role is for an SSO provider only")
+	}
 	app := config.S3Provider{Name: "app", ProviderSource: config.S3ProviderSourceApp, ProviderApp: "minio:9000", Cloud18SSO: true}
 	if app.Validate() == nil {
 		t.Fatal("an app provider never takes cloud18Sso")

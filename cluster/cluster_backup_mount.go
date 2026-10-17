@@ -105,11 +105,18 @@ func (cluster *Cluster) ensureBackupMountProvider() {
 	cluster.Save()
 }
 
+// backupMountSSO is what an SSO provider's mount needs to get its keys, at the mount only.
+type backupMountSSO struct {
+	endpoint, roleArn, bucket, prefix string
+	backend                           *common.S3Config
+}
+
 // backupMountTarget is what the mount should be: its signature ("" for no mount), the
-// goofys bucket spec and storage flags.
-func (cluster *Cluster) backupMountTarget() (string, string, *common.FlagStorage, error) {
+// goofys bucket spec and storage flags; for an SSO provider, what gets the keys at the
+// mount (the bucket's folder then starts with the SSO user).
+func (cluster *Cluster) backupMountTarget() (string, string, *common.FlagStorage, *backupMountSSO, error) {
 	if !cluster.Conf.BackupStreaming {
-		return "", "", nil, nil
+		return "", "", nil, nil, nil
 	}
 	name := cluster.Conf.BackupStreamingProvider
 	var provider *config.S3Provider
@@ -120,26 +127,35 @@ func (cluster *Cluster) backupMountTarget() (string, string, *common.FlagStorage
 		}
 	}
 	if provider == nil {
-		return "", "", nil, fmt.Errorf("no S3 provider %q", name)
+		return "", "", nil, nil, fmt.Errorf("no S3 provider %q", name)
+	}
+	if err := cluster.s3ProviderUsable(*provider); err != nil {
+		return "", "", nil, nil, err
 	}
 	if cluster.Conf.BackupStreamingBucket == "" {
-		return "", "", nil, errors.New("no bucket (backup-streaming-bucket)")
+		return "", "", nil, nil, errors.New("no bucket (backup-streaming-bucket)")
 	}
 	endpoint, region, accessKey, secretKey := cluster.resolveProviderEffectiveValues(provider)
 	if endpoint == "" {
-		return "", "", nil, fmt.Errorf("S3 provider %q has no endpoint", name)
+		return "", "", nil, nil, fmt.Errorf("S3 provider %q has no endpoint", name)
 	}
 	bucket := cluster.Conf.BackupStreamingBucket + ":" + cluster.backupMountPrefix()
+	backend := (&common.S3Config{AccessKey: accessKey, SecretKey: secretKey, Region: region}).Init()
 	flags := &common.FlagStorage{
 		MountPoint: cluster.backupMountPoint(),
 		DirMode:    os.ModePerm,
 		FileMode:   os.ModePerm,
 		Endpoint:   endpoint,
 		DebugS3:    cluster.Conf.BackupStreamingDebug,
-		Backend:    (&common.S3Config{AccessKey: accessKey, SecretKey: secretKey, Region: region}).Init(),
+		Backend:    backend,
+	}
+	var sso *backupMountSSO
+	if provider.Cloud18SSO {
+		sso = &backupMountSSO{endpoint: endpoint, roleArn: provider.RoleArn, bucket: cluster.Conf.BackupStreamingBucket, prefix: cluster.backupMountPrefix(), backend: backend}
+		accessKey, secretKey = "cloud18-sso:"+cluster.Conf.Cloud18GitUser, provider.RoleArn
 	}
 	sig := fmt.Sprintf("%s|%s|%s|%s|%s|%x", name, bucket, endpoint, region, accessKey, sha256.Sum256([]byte(secretKey)))
-	return sig, bucket, flags, nil
+	return sig, bucket, flags, sso, nil
 }
 
 // holdsFiles: dir has a regular file somewhere below it. A mount over it would hide them.
@@ -170,7 +186,7 @@ func (cluster *Cluster) RefreshBackupMount() {
 	if bm.mounting {
 		return
 	}
-	sig, bucket, flags, err := cluster.backupMountTarget()
+	sig, bucket, flags, sso, err := cluster.backupMountTarget()
 	if err == nil && sig == bm.signature && (sig == "" || bm.state.Mounted) {
 		return
 	}
@@ -188,6 +204,17 @@ func (cluster *Cluster) RefreshBackupMount() {
 		os.MkdirAll(mountPoint, os.ModePerm)
 		if holdsFiles(mountPoint) {
 			err = fmt.Errorf("%s holds local files: a mount would hide them, move them first", mountPoint)
+		}
+	}
+	// an SSO provider: the keys, renewed inside the mount, and the SSO user's folder
+	if err == nil && sso != nil {
+		creds, src, cerr := cluster.newCloud18SSOCredentials(sso.endpoint, sso.roleArn)
+		if cerr != nil {
+			err = cerr
+		} else {
+			sso.backend.Credentials = creds
+			bucket = sso.bucket + ":" + src.User() + "/" + sso.prefix
+			state.Bucket = bucket
 		}
 	}
 	if err != nil {

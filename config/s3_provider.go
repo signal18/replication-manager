@@ -49,6 +49,9 @@ type S3Provider struct {
 	// registered replication-manager gets short-lived ones from its STS with its Cloud18
 	// identity. A replication-manager not registered cannot use it.
 	Cloud18SSO bool `json:"cloud18Sso,omitempty" groups:"web"`
+	// RoleArn: the storage's role the SSO identity assumes, required by a storage with a role
+	// policy (MinIO's MINIO_IDENTITY_OPENID_ROLE_POLICY prints it at its start)
+	RoleArn string `json:"roleArn,omitempty" groups:"web"`
 }
 
 // s3ProviderWeb is the JSON representation used for all API/web serialization.
@@ -60,6 +63,7 @@ type s3ProviderWeb struct {
 	Endpoint       string           `json:"endpoint,omitempty"`
 	Region         string           `json:"region,omitempty"`
 	Cloud18SSO     bool             `json:"cloud18Sso,omitempty"`
+	RoleArn        string           `json:"roleArn,omitempty"`
 }
 
 // MarshalJSON emits only non-sensitive fields.
@@ -74,6 +78,7 @@ func (p S3Provider) MarshalJSON() ([]byte, error) {
 		Endpoint:       p.Endpoint,
 		Region:         p.Region,
 		Cloud18SSO:     p.Cloud18SSO,
+		RoleArn:        p.RoleArn,
 	})
 }
 
@@ -125,6 +130,9 @@ func (p *S3Provider) Validate() error {
 		}
 		if p.ProviderApp != "" {
 			return fmt.Errorf("providerApp must be empty when providerSource is %q", S3ProviderSourceCustom)
+		}
+		if p.RoleArn != "" && !p.Cloud18SSO {
+			return fmt.Errorf("roleArn is for a provider reached with the Cloud18 SSO (cloud18Sso)")
 		}
 		if p.Cloud18SSO && (p.AccessKey != "" || p.SecretKey != "") {
 			return fmt.Errorf("accesskey and secretkey must be empty with cloud18Sso: the keys come from the Cloud18 SSO")

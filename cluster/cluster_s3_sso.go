@@ -137,12 +137,15 @@ type stsResponse struct {
 }
 
 // assumeRoleWithWebIdentity trades the identity token for short-lived keys at endpoint.
-func assumeRoleWithWebIdentity(endpoint, idToken string) (credentials.Value, time.Time, error) {
+func assumeRoleWithWebIdentity(endpoint, roleArn, idToken string) (credentials.Value, time.Time, error) {
 	form := url.Values{
 		"Action":           {"AssumeRoleWithWebIdentity"},
 		"Version":          {"2011-06-15"},
 		"WebIdentityToken": {idToken},
 		"DurationSeconds":  {fmt.Sprintf("%d", cloud18SSOSessionSeconds)},
+	}
+	if roleArn != "" {
+		form.Set("RoleArn", roleArn)
 	}
 	resp, err := (&http.Client{Timeout: cloud18SSOHTTPTimeout}).PostForm(strings.TrimRight(endpoint, "/")+"/", form)
 	if err != nil {
@@ -167,6 +170,7 @@ type cloud18SSOCredentials struct {
 	credentials.Expiry
 	cluster  *Cluster
 	endpoint string
+	roleArn  string
 	mu       sync.Mutex
 	user     string
 }
@@ -182,7 +186,7 @@ func (p *cloud18SSOCredentials) Retrieve() (credentials.Value, error) {
 	if err != nil {
 		return credentials.Value{}, err
 	}
-	v, exp, err := assumeRoleWithWebIdentity(p.endpoint, idToken)
+	v, exp, err := assumeRoleWithWebIdentity(p.endpoint, p.roleArn, idToken)
 	if err != nil {
 		return credentials.Value{}, err
 	}
@@ -200,8 +204,8 @@ func (p *cloud18SSOCredentials) User() string {
 
 // newCloud18SSOCredentials gets the first keys at once, so a refused identity is a state of
 // the caller and not a failure inside a running mount.
-func (cluster *Cluster) newCloud18SSOCredentials(endpoint string) (*credentials.Credentials, *cloud18SSOCredentials, error) {
-	src := &cloud18SSOCredentials{cluster: cluster, endpoint: endpoint}
+func (cluster *Cluster) newCloud18SSOCredentials(endpoint, roleArn string) (*credentials.Credentials, *cloud18SSOCredentials, error) {
+	src := &cloud18SSOCredentials{cluster: cluster, endpoint: endpoint, roleArn: roleArn}
 	creds := credentials.NewCredentials(src)
 	if _, err := creds.Get(); err != nil {
 		return nil, nil, err
