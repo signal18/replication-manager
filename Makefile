@@ -105,6 +105,12 @@ PLUGIN_BINDIR   := build/plugins
 REPLPLUGIN_SRC_DIRS := $(shell find cluster/replplugin/plugins -mindepth 2 -maxdepth 2 -name "go.mod" -exec dirname {} \; 2>/dev/null)
 REPLPLUGIN_NAMES    := $(addprefix replplugin-,$(notdir $(REPLPLUGIN_SRC_DIRS)))
 
+# Archive plugins (#2091): an archive engine embedded (archiveplugin-plakar: plakar's kloset),
+# run once per operation; each one a Go module of its own under cluster/archiveplugin/plugins/<name>/,
+# built as archiveplugin-<name>, so its dependencies never enter replication-manager's go.mod.
+ARCHPLUGIN_SRC_DIRS := $(shell find cluster/archiveplugin/plugins -mindepth 2 -maxdepth 2 -name "go.mod" -exec dirname {} \; 2>/dev/null)
+ARCHPLUGIN_NAMES    := $(addprefix archiveplugin-,$(notdir $(ARCHPLUGIN_SRC_DIRS)))
+
 # Wire protocol version — read directly from source so it never drifts.
 # Bump WireVersion in wire.go only when the stdin/stdout JSON protocol changes.
 WIRE_VERSION := $(shell grep -m1 'WireVersion = ' cluster/logplugin/plugins/wire/wire.go | awk '{print $$NF}')
@@ -192,6 +198,14 @@ plugins: $(PLUGIN_SIGNER_BIN)
 	@for dir in $(REPLPLUGIN_SRC_DIRS); do \
 		name=replplugin-$$(basename $$dir); \
 		echo "Building replication plugin: $$name"; \
+		(cd $$dir && env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
+		  go build \
+		    --ldflags "-extldflags '-static' -w -s" \
+		    -o $(CURDIR)/$(PLUGIN_BINDIR)/$$name .) || exit 1; \
+	done
+	@for dir in $(ARCHPLUGIN_SRC_DIRS); do \
+		name=archiveplugin-$$(basename $$dir); \
+		echo "Building archive plugin: $$name"; \
 		(cd $$dir && env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) \
 		  go build \
 		    --ldflags "-extldflags '-static' -w -s" \
@@ -289,7 +303,7 @@ plugin-keys: $(PLUGIN_SIGNER_BIN)
 plugin-sigs: plugin-keys
 	@mkdir -p $(PLUGIN_SIG_DIR)
 	@echo "Signing plugins → $(PLUGIN_SIG_DIR)  [wire-v$(WIRE_VERSION)]"
-	@for name in $(PLUGIN_NAMES) $(REPLPLUGIN_NAMES); do \
+	@for name in $(PLUGIN_NAMES) $(REPLPLUGIN_NAMES) $(ARCHPLUGIN_NAMES); do \
 		bin=$(PLUGIN_BINDIR)/$$name; \
 		if [ -f $$bin ]; then \
 			$(PLUGIN_SIGNER_BIN) sign \
