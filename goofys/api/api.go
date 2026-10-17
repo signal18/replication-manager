@@ -115,7 +115,12 @@ func Mount(
 		err = fmt.Errorf("Mount: initialization failed")
 		return
 	}
-	server := fuseutil.NewFileSystemServer(FusePanicLogger{fs})
+	var served fuseutil.FileSystem = FusePanicLogger{fs}
+	if flags.OpTimeout > 0 {
+		// replication-manager (#2091): a mount served in-process answers every request in time
+		served = DeadlineFS{Fs: served, Timeout: flags.OpTimeout, OnLate: flags.OnLate}
+	}
+	server := fuseutil.NewFileSystemServer(served)
 
 	mfs, err = fuse.Mount(flags.MountPoint, server, mountCfg)
 	if err != nil {

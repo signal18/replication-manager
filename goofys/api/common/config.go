@@ -26,6 +26,10 @@ import (
 type FlagStorage struct {
 	// File system
 	MountOptions      map[string]string
+	// OpTimeout: every FUSE request is answered within it, EIO when late (DeadlineFS); 0: none.
+	// OnLate is told each late request.
+	OpTimeout time.Duration
+	OnLate    func(op string)
 	MountPoint        string
 	MountPointArg     string
 	MountPointCreated string
