@@ -59,6 +59,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkArchiveRemoveOriginalStates()    // WARN0238 while an archived original could not be removed (#1987)
 	cluster.checkBackupVerificationStates()       // CINF0016 while a backup is verified, ERR00117 when a last logical backup failed it (#2023)
 	cluster.checkBackupDiscoveryStates()          // WARN0249 while a registered backup changed, WARN0250 while candidates are dropped (#2073)
+	cluster.checkRegisteredVerificationStates()   // WARN0253 while a registered backup's last verification failed (#2108)
 	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
 	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
 	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)

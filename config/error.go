@@ -361,6 +361,7 @@ var ClusterError = map[string]string{
 	"WARN0249":  "Backup of %s changed since registered, not used until the change is registered: %s -- register the change (Register), or restore the original from its archive (the state clears once the file matches), or unregister it",
 	"WARN0250":  "Backup discovery on %s: %d artifact(s) not listed beyond backup-discovery-candidate-max (%d), the oldest dropped: register or move them, or raise the limit",
 	"WARN0252":  "Replication of %s: channel(s) %s stopped by the reseed and not running: %s -- the reseed starts them again when the restore succeeds; otherwise start replication or rejoin the server",
+	"WARN0253":  "Registered backup %d of %s failed its %s verification: %s -- not reseeded from nor archived: verify it again, register a fixed file, or unregister it",
 	"WARN0247":  "Logical dump client %s of %s can not back up its %s server: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",

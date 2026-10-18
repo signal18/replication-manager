@@ -1062,6 +1062,10 @@ func (cluster *Cluster) ReseedFromBackupID(server *ServerMonitor, id int64) erro
 	if err := cluster.backupUseRefusal(meta); err != nil {
 		return fmt.Errorf("backup %d can not be restored: %w", id, err)
 	}
+	// a registered backup: proven, or at least not failed on its current file (#2108)
+	if err := cluster.registeredReseedRefusal(meta); err != nil {
+		return fmt.Errorf("backup %d can not be restored: %w", id, err)
+	}
 	// the file as it is now: the change check runs every 30 heartbeats
 	if err := cluster.backupFileLocked(meta.Dest); err != nil {
 		return fmt.Errorf("backup %d can not be restored: %w", id, err)

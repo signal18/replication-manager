@@ -3639,6 +3639,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupDiscovery()
 	case "backup-verification":
 		mycluster.SwitchBackupVerification()
+	case "backup-verification-registered-proven":
+		mycluster.SwitchBackupVerificationRegisteredProven()
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.SwitchMailSmtpTlsSkipVerify()
 	case "cloud18-shared":
@@ -5870,6 +5872,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupDiscovery = applyIsActive(mycluster.Conf.BackupDiscovery, isactive)
 	case "backup-verification":
 		mycluster.Conf.BackupVerification = applyIsActive(mycluster.Conf.BackupVerification, isactive)
+	case "backup-verification-registered-proven":
+		mycluster.Conf.BackupVerificationRegisteredProven = applyIsActive(mycluster.Conf.BackupVerificationRegisteredProven, isactive)
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.MailSMTPTLSSkipVerify = applyIsActive(mycluster.Conf.MailSMTPTLSSkipVerify, isactive)
 	case "cloud18-shared":
