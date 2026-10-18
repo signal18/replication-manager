@@ -179,8 +179,9 @@ func (server *ServerMonitor) discoverBackups(retry bool) ([]BackupCandidate, err
 	if _, err := server.LoadAdhocBackupMetadata(); err != nil && !os.IsNotExist(err) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: ad-hoc metadata not all read: %s", server.URL, err)
 	}
-	// a backup running writes its artifact: not checked half written
-	if cluster.IsInBackup() {
+	// a backup running writes its artifact: not checked half written (an archive push only
+	// reads the artifacts with metadata, which a discovery passes over)
+	if cluster.IsInBackupJob() {
 		return nil, ErrBackupDiscoveryInBackup
 	}
 	if _, running := cluster.backupDiscoveries.LoadOrStore(server.URL, struct{}{}); running {
@@ -360,7 +361,7 @@ func (server *ServerMonitor) knownBackupArtifactsOnDisk(entries []os.DirEntry) m
 // StartBackupDiscovery runs the discovery on every server of the cluster in the background,
 // not while a backup of the cluster runs. It registers nothing: the candidates are listed.
 func (cluster *Cluster) StartBackupDiscovery() error {
-	if cluster.IsInBackup() {
+	if cluster.IsInBackupJob() {
 		return ErrBackupDiscoveryInBackup
 	}
 	servers := append([]*ServerMonitor(nil), cluster.Servers...)
