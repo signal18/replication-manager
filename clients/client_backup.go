@@ -28,6 +28,8 @@ var (
 	cliBackupVerifyTimeout   int
 	cliBackupRegisterServer  string
 	cliBackupRegisterTakenAt string
+	cliBackupArchiveRemove   bool
+	cliBackupArchiveVerify   bool
 )
 
 var backupCmd = &cobra.Command{
@@ -366,13 +368,51 @@ var backupUnregisterCmd = &cobra.Command{
 	},
 }
 
+// backupArchiveCmd archives a registered backup (#2108): its push queued in the restic task
+// queue, the removal of its file and a test restore first opt-in.
+var backupArchiveCmd = &cobra.Command{
+	Use:   "archive BACKUP_ID",
+	Short: "Archive a registered backup to restic",
+	Long: `Queues the push of a registered backup's file in the restic task queue; its snapshot is
+recorded in the backup.
+  --remove-original  remove the backup file once its snapshot holds it
+  --verify-restore   run a test restore on backup-verification-host first (grant db-restore):
+                     the push is queued only when it passes`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		id, err := strconv.ParseInt(args[0], 10, 64)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "invalid backup ID:", args[0])
+			os.Exit(2)
+		}
+		cliInit(true)
+		payload := map[string]bool{"removeOriginal": cliBackupArchiveRemove, "verifyRestore": cliBackupArchiveVerify}
+		body, status, err := cliClusterRequestBody(http.MethodPost, fmt.Sprintf("backups/%d/archive", id), payload)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if status != http.StatusAccepted {
+			fmt.Fprintf(os.Stderr, "not archived (%d): %s\n", status, strings.TrimSpace(string(body)))
+			os.Exit(1)
+		}
+		if cliBackupArchiveVerify {
+			fmt.Printf("Test restore of backup %d started: its archive is queued when it passes\n", id)
+			return
+		}
+		fmt.Printf("Archive of backup %d queued\n", id)
+	},
+}
+
 func initBackupFlags(cmd *cobra.Command) {
-	for _, c := range []*cobra.Command{backupCandidatesCmd, backupRegisterCmd, backupUnregisterCmd} {
+	for _, c := range []*cobra.Command{backupCandidatesCmd, backupRegisterCmd, backupUnregisterCmd, backupArchiveCmd} {
 		initServerApiFlags(c)
 		cmd.AddCommand(c)
 	}
 	backupRegisterCmd.Flags().StringVar(&cliBackupRegisterServer, "server", "", "The server (host:port) whose backup folder holds PATH")
 	backupRegisterCmd.Flags().StringVar(&cliBackupRegisterTakenAt, "taken-at", "", "When the backup was taken (RFC 3339), for one that records no time")
+	backupArchiveCmd.Flags().BoolVar(&cliBackupArchiveRemove, "remove-original", false, "Remove the backup file once its snapshot holds it")
+	backupArchiveCmd.Flags().BoolVar(&cliBackupArchiveVerify, "verify-restore", false, "Run a test restore first: the push is queued only when it passes")
 	initServerApiFlags(backupVerifyCmd)
 	backupVerifyCmd.Flags().StringVar(&cliBackupVerifyLevel, "level", "", "integrity|restore (default: the cluster's backup-verification-level)")
 	backupVerifyCmd.Flags().BoolVar(&cliBackupVerifyWait, "wait", false, "Wait for the run's outcome: exit 0 passed, 1 failed, 3 skipped, 4 expired from the history")
