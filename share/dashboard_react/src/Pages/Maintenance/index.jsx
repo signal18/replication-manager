@@ -1212,7 +1212,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             </Text>
             <Checkbox isChecked={archivePick.removeOriginal}
               onChange={(e) => setArchivePick((p) => ({ ...p, removeOriginal: e.target.checked }))}>
-              Remove the original once restic holds it
+              Delete the backup file from the backup folder once restic holds it
             </Checkbox>
             {selectedCluster?.config?.backupVerificationHost && archivePick.backup.backupTool === 'mysqldump' && (
               <Checkbox isChecked={archivePick.verifyRestore} isDisabled={!user?.grants['db-restore']}

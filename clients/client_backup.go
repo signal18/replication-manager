@@ -375,7 +375,7 @@ var backupArchiveCmd = &cobra.Command{
 	Short: "Archive a registered backup to restic",
 	Long: `Queues the push of a registered backup's file in the restic task queue; its snapshot is
 recorded in the backup.
-  --remove-original  remove the backup file once its snapshot holds it
+  --remove-original  delete the backup file from the backup folder once its snapshot holds it
   --verify-restore   run a test restore on backup-verification-host first (grant db-restore):
                      the push is queued only when it passes`,
 	Args: cobra.ExactArgs(1),
@@ -411,7 +411,7 @@ func initBackupFlags(cmd *cobra.Command) {
 	}
 	backupRegisterCmd.Flags().StringVar(&cliBackupRegisterServer, "server", "", "The server (host:port) whose backup folder holds PATH")
 	backupRegisterCmd.Flags().StringVar(&cliBackupRegisterTakenAt, "taken-at", "", "When the backup was taken (RFC 3339), for one that records no time")
-	backupArchiveCmd.Flags().BoolVar(&cliBackupArchiveRemove, "remove-original", false, "Remove the backup file once its snapshot holds it")
+	backupArchiveCmd.Flags().BoolVar(&cliBackupArchiveRemove, "remove-original", false, "Delete the backup file from the backup folder once its snapshot holds it")
 	backupArchiveCmd.Flags().BoolVar(&cliBackupArchiveVerify, "verify-restore", false, "Run a test restore first: the push is queued only when it passes")
 	initServerApiFlags(backupVerifyCmd)
 	backupVerifyCmd.Flags().StringVar(&cliBackupVerifyLevel, "level", "", "integrity|restore (default: the cluster's backup-verification-level)")

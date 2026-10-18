@@ -162,6 +162,37 @@ func TestArchiveBackupRefusals(t *testing.T) {
 	}
 }
 
+// The step after an on-demand verification (an archive tested first) runs once the run ended
+// and released the backup: no longer verifying nor read, its result recorded. It relies on the
+// order of the run's defers, which this pins.
+func TestVerificationThenRunsAfterRelease(t *testing.T) {
+	c, server, m := newRegisteredBackupTest(t)
+	type seen struct {
+		verifying, reading bool
+		status             string
+	}
+	got := make(chan seen, 1)
+	if _, err := c.verifyBackupByIDRunThen(m.Id, config.ConstBackupVerificationLevelIntegrity, func() {
+		_, verifying := c.backupVerifying.Load(m.Id)
+		_, reading := c.backupVerificationReads.Load(m.Id)
+		s := seen{verifying: verifying, reading: reading}
+		if v := server.GetBackupVerification(m); v != nil {
+			s.status = v.Status
+		}
+		got <- s
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case s := <-got:
+		if s.verifying || s.reading || s.status == "" || s.status == backupmgr.BackupVerificationRunning {
+			t.Fatalf("the step ran before the run released the backup: %+v", s)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the step did not run")
+	}
+}
+
 // An archive push running alone (restic task queue) reads the artifacts: the discovery and a
 // registration go on; the change check still waits for it (a push with
 // backup-archive-remove-original removes its backup's file), and so does a reseed.

@@ -286,8 +286,8 @@ queues the push of its file in the restic task queue, after the pushes already
 queued (the **Restic task queue** shows it); its snapshot is recorded in the
 backup and listed with the snapshots. Two options, both off unless asked:
 
-- **Remove the original once restic holds it** (`removeOriginal`): the file is
-  removed once its snapshot is checked to hold it, as
+- **Delete the backup file from the backup folder once restic holds it**
+  (`removeOriginal`): the file is deleted once its snapshot is checked to hold it, as
   [`backup-archive-remove-original`](backup_archive_remove_original.md) does
   for the backups it covers; that setting does not apply to this action. A
   removal refused is WARN0238. A backup kept only in its archive is no longer
