@@ -236,6 +236,12 @@ backup window by the test restore.
 | CINF0016 | a backup is being verified |
 | ERR00117 | a server's last logical backup failed its verification: a restore from it would fail, take a new backup |
 | WARN0248 | a server's last logical backup passed its test restore but lacks objects its source has: check `backup-mysqldump-options` and the event scheduler |
+| WARN0253 | a registered backup (registered from a backup folder) failed its verification: it is not reseeded from nor archived without a new test restore, see [Backups placed in a backup folder](backup_folder_discovery.md) |
+
+A registered backup is reseeded from on request only once proven, with
+`backup-verification-registered-proven` (on by default), and its archive can
+run a test restore first; see [Backups placed in a backup
+folder](backup_folder_discovery.md).
 
 A backup that passed a test restore (the restore level; an integrity pass
 does not count), whose file is still on disk unchanged, is **proven** in the

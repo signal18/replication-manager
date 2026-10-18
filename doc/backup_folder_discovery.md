@@ -61,7 +61,8 @@ The discovery runs:
   (grant `db-backup`), or the API `POST /api/clusters/{clusterName}/backups/discover`.
 
 It runs in the background: the API answers `202` at once. It is refused
-(`409`) while a backup of the cluster runs. One discovery, registration or
+(`409`) while a backup job of the cluster runs; not for an archive push (restic
+task queue), which only reads the backups. One discovery, registration or
 unregistration runs at a time per server.
 
 It lists what it finds in **Maintenance → Found in backup folders** (API
@@ -249,14 +250,74 @@ position (the reseed icon is disabled, its tooltip says why), kept only in its
 archive, missing, not a backup, or changed since registered, and for the
 primary.
 
+### A registered backup is reseeded from once proven
+
+A registered backup is a file replication-manager did not take: reading it to
+its end, as Register and the integrity verification do, does not load it. A dump
+that reads fine can still fail to load (a duplicated primary key row, an object
+the server refuses). With `backup-verification-registered-proven` (on by
+default), the reseed from a registered backup is refused until it is
+**proven**: its last verification is a passed test restore of its file as it is
+now (**Test restore** in its row, on `backup-verification-host`; see
+[Backup verification](backup_verification.md)). The automatic rejoin already
+requires the same when its backup selector asks for a `Proven` backup.
+
+Whatever this setting, the reseed is refused while the last verification of the
+backup's current file failed (WARN0253): verify it again, register a fixed file
+(Register of the change), or unregister it. A verification of the file before a
+registered change does not count. Backups replication-manager took are not
+concerned.
+
+Turning `backup-verification-registered-proven` off gives back the reseed from a
+registered backup never verified.
+
+## Archive a registered backup
+
+A registered backup never goes through a backup job, whose end pushes the backup
+to the archive (restic). **Archive** in its row of **Maintenance → Current
+Backups** (grant `db-backup`), or the API:
+
+```
+POST /api/clusters/{clusterName}/backups/{backupID}/archive
+{"removeOriginal": false, "verifyRestore": false}
+```
+
+queues the push of its file in the restic task queue, after the pushes already
+queued (the **Restic task queue** shows it); its snapshot is recorded in the
+backup and listed with the snapshots. Two options, both off unless asked:
+
+- **Remove the original once restic holds it** (`removeOriginal`): the file is
+  removed once its snapshot is checked to hold it, as
+  [`backup-archive-remove-original`](backup_archive_remove_original.md) does
+  for the backups it covers; that setting does not apply to this action. A
+  removal refused is WARN0238. A backup kept only in its archive is no longer
+  reseeded from on request.
+- **Verify by test restore first** (`verifyRestore`, offered when
+  `backup-verification-host` is set and the backup is a mysqldump, grant
+  `db-restore`): the test restore runs first; the push is queued only when it
+  passes. A test restore that fails pushes nothing and keeps the file; its
+  result is the backup's verification (WARN0253).
+
+The API answers `202` once the archive started, `404` for an unknown backup,
+`409` for a backup already archived or being archived, changed since
+registered, or being verified or registered, `422` for a backup not registered,
+without restic (`backup-restic` off), whose last verification of its current
+file failed (archive it with a test restore first), or for a test restore that
+can not run. The CLI:
+
+```
+replication-manager-cli backup archive BACKUP_ID [--remove-original] [--verify-restore]
+```
+
 ## Settings
 
 | Setting | Default | |
 |---|---|---|
 | `backup-discovery` | `true` | the discovery at the start of each server's monitoring; the Discover button runs one whatever it, and the registered backups are checked for changes whatever it |
 | `backup-discovery-candidate-max` | `100` | the artifacts a discovery lists per server, the oldest dropped beyond (WARN0250); `0` or less: the default |
+| `backup-verification-registered-proven` | `true` | the reseed from a registered backup requires it proven (a passed test restore of its current file); off: refused only while its last verification of its current file failed |
 
-Both are in **Settings → Backups**.
+All are in **Settings → Backups**.
 
 ## States
 
@@ -264,3 +325,4 @@ Both are in **Settings → Backups**.
 |---|---|---|---|
 | WARN0249 | server | warning (backup) | a registered discovered backup's file is not the one registered |
 | WARN0250 | server | warning (backup) | the last discovery of the server's folder did not list every artifact, beyond `backup-discovery-candidate-max` |
+| WARN0253 | server | warning (backup) | the last verification of a registered backup's current file failed: it is not reseeded from nor archived without a new test restore |
