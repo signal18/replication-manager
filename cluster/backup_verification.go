@@ -71,6 +71,13 @@ func (cluster *Cluster) VerifyBackupByID(backupID int64, level string) error {
 // in the backup's run history (VerificationRuns), recorded running and written to the meta
 // file before it returns. The run ends in that record, passed, failed or skipped.
 func (cluster *Cluster) VerifyBackupByIDRun(backupID int64, level string) (BackupVerificationStart, error) {
+	return cluster.verifyBackupByIDRunThen(backupID, level, nil)
+}
+
+// verifyBackupByIDRunThen is VerifyBackupByIDRun; then, when not nil and the run started,
+// is called in its goroutine once the run ended (passed, failed or skipped, in the backup's
+// record) and released the backup: the archive of a backup tested first (ArchiveBackup).
+func (cluster *Cluster) verifyBackupByIDRunThen(backupID int64, level string, then func()) (BackupVerificationStart, error) {
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return BackupVerificationStart{}, fmt.Errorf("cluster backups not available")
 	}
@@ -116,6 +123,10 @@ func (cluster *Cluster) VerifyBackupByIDRun(backupID int64, level string) (Backu
 		return BackupVerificationStart{}, err
 	}
 	go func() {
+		// deferred first, run last: after the backup is released
+		if then != nil {
+			defer then()
+		}
 		defer cluster.backupVerifying.Delete(backupID)
 		// every exit before the run ends this run's record as skipped: its caller (CLI
 		// --wait) waits for this run's outcome, not another run's
