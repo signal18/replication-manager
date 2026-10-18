@@ -169,7 +169,7 @@ func TestRemoveArchivedOriginalKeepsIncompleteOrSupersededBackup(t *testing.T) {
 	}
 
 	// A newer scheduled backup reuses the name: the old meta must not remove it.
-	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, "", "")
+	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, "", "", false)
 	meta.Completed = true
 	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Id: 2, BackupTool: "mysqldump", BackupLine: backupmgr.BackupLineDefault, Dest: meta.Dest}
 	server.removeArchivedOriginal(backupmgr.BackupMethodLogical, meta, snapID)
@@ -352,7 +352,7 @@ func TestArchiveRemoveOriginalGlobCharactersInPath(t *testing.T) {
 
 func TestArchiveRemoveOriginalRefusalFollowsObservedState(t *testing.T) {
 	cl, server, meta, _ := newArchiveRemoveOriginalTest(t)
-	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, meta.Dest, "snapshot does not hold it")
+	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, meta.Dest, "snapshot does not hold it", false)
 	cl.checkArchiveRemoveOriginalStates()
 	if !hasOpenState(cl, "WARN0238") {
 		t.Fatalf("WARN0238 not raised for a kept original")
@@ -369,7 +369,7 @@ func TestArchiveRemoveOriginalRefusalFollowsObservedState(t *testing.T) {
 	}
 
 	// The kept original is gone (deleted, purged): the refusal no longer applies.
-	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, meta.Dest, "snapshot does not hold it")
+	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, meta.Dest, "snapshot does not hold it", false)
 	if err := os.Remove(meta.Dest); err != nil {
 		t.Fatal(err)
 	}

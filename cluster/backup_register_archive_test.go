@@ -109,6 +109,59 @@ func TestRegisteredVerificationState(t *testing.T) {
 	}
 }
 
+// ArchiveBackup refuses what it can not push now, and keeps one archive of a backup at a
+// time; a refusal takes its reservation back.
+func TestArchiveBackupRefusals(t *testing.T) {
+	c, server, m := newRegisteredBackupTest(t)
+	if err := c.ArchiveBackup(999, false, false); !errors.Is(err, ErrBackupNotFound) {
+		t.Fatalf("unknown backup: %v", err)
+	}
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupArchiveUnavailable) {
+		t.Fatalf("restic off: %v", err)
+	}
+	c.Conf.BackupRestic = true
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupArchiveUnavailable) {
+		t.Fatalf("no restic manager: %v", err)
+	}
+	c.ResticManager = &backupmgr.ResticManager{}
+	if err := c.ArchiveBackup(m.Id, false, true); !errors.Is(err, ErrBackupNotVerifiable) {
+		t.Fatalf("test restore without a verification server: %v", err)
+	}
+
+	setVerification(server, m, &backupmgr.BackupVerification{Level: config.ConstBackupVerificationLevelRestore, Status: backupmgr.BackupVerificationFailed, EndTime: m.Registration.RegisteredAt.Add(time.Minute), Error: "Error 1062"})
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupVerificationFailed) {
+		t.Fatalf("failed verification: %v", err)
+	}
+	setVerification(server, m, nil)
+
+	c.backupVerifying.Store(m.Id, config.ConstBackupVerificationLevelIntegrity)
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupVerificationRunning) {
+		t.Fatalf("being verified: %v", err)
+	}
+	c.backupVerifying.Delete(m.Id)
+	if _, held := c.backupArchiving.Load(m.Id); held {
+		t.Fatal("a refused archive kept its reservation")
+	}
+
+	c.backupArchiving.Store(m.Id, struct{}{})
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupArchiving) {
+		t.Fatalf("already being archived: %v", err)
+	}
+	c.backupArchiving.Delete(m.Id)
+
+	server.backupMetaMutex.Lock()
+	m.ResticSnapshotID = "0123456789abcdef"
+	server.backupMetaMutex.Unlock()
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupArchived) {
+		t.Fatalf("already archived: %v", err)
+	}
+
+	m.Discovered = false
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupNotDiscovered) {
+		t.Fatalf("own backup: %v", err)
+	}
+}
+
 // An archive push running alone (restic task queue) reads the artifacts: the discovery and a
 // registration go on; the change check still waits for it (a push with
 // backup-archive-remove-original removes its backup's file), and so does a reseed.
@@ -130,5 +183,42 @@ func TestDiscoveryAndRegisterDuringArchivePush(t *testing.T) {
 	}
 	if err := c.ReseedFromBackupID(server, m.Id); !errors.Is(err, ErrBackupInProgress) {
 		t.Fatalf("reseed during a push: %v", err)
+	}
+}
+
+// A push without the in-archive flag (an archive of a registered backup) leaves the flag of
+// the pushes before it as it is, and reports its end.
+func TestBackupResticWithoutFlag(t *testing.T) {
+	c, server, m := newRegisteredBackupTest(t)
+	c.SetInResticLogicalBackupState(true)
+	var got error
+	server.backupResticWith(backupmgr.BackupMethodLogical, m, m.Dest, resticPushOptions{removeOriginal: func() bool { return false }, noFlag: true, done: func(err error) { got = err }})
+	if !errors.Is(got, ErrBackupArchiveUnavailable) {
+		t.Fatalf("restic off: done(%v)", got)
+	}
+	if !c.IsInResticBackupForMethod(backupmgr.BackupMethodLogical) {
+		t.Fatal("the in-archive flag of another push was cleared")
+	}
+	server.backupResticWith(backupmgr.BackupMethodLogical, m, m.Dest, resticPushOptions{removeOriginal: func() bool { return false }})
+	if c.IsInResticBackupForMethod(backupmgr.BackupMethodLogical) {
+		t.Fatal("a push with the flag did not clear it")
+	}
+}
+
+// A removal refused in an archive asked for one backup is WARN0238 whatever
+// backup-archive-remove-original.
+func TestArchiveRemoveOriginalAskedRefusalKept(t *testing.T) {
+	cl, server, meta, _ := newArchiveRemoveOriginalTest(t)
+	cl.Conf.BackupArchiveRemoveOriginal = false
+	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, meta.Dest, "snapshot does not hold it", true)
+	cl.checkArchiveRemoveOriginalStates()
+	if !hasOpenState(cl, "WARN0238") {
+		t.Fatal("WARN0238 not raised for an asked removal kept")
+	}
+	cl.StateMachine.Init()
+	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, meta.Dest, "snapshot does not hold it", false)
+	cl.checkArchiveRemoveOriginalStates()
+	if hasOpenState(cl, "WARN0238") {
+		t.Fatal("WARN0238 raised for a refusal of the switch, switch off")
 	}
 }

@@ -5603,27 +5603,57 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 // removed once the snapshot holds it. nil (binary log copies) records nothing.
 func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, tags ...string) {
 	cluster := server.ClusterGroup
+	server.backupResticWith(backupMethod, meta, backupPath, resticPushOptions{removeOriginal: func() bool { return cluster.Conf.BackupArchiveRemoveOriginal }}, tags...)
+}
+
+// resticPushOptions is how backupResticWith ends a push.
+type resticPushOptions struct {
+	// removeOriginal, called once the snapshot holds the backup, decides its removal
+	removeOriginal func() bool
+	// asked: the archive of one backup (ArchiveBackup) decides the removal itself, not
+	// backup-archive-remove-original
+	asked bool
+	// noFlag: the push neither sets nor clears the in-archive flag a backup waits for (the
+	// archive of a registered backup, whose file no backup rewrites); the restic task queue
+	// orders it after the pushes before it
+	noFlag bool
+	// done, when not nil, is called once the push ended: nil with its snapshot recorded
+	// (and the original removed or kept), else why it did not push
+	done func(err error)
+}
+
+// backupResticWith is BackupRestic ending the push as opt says.
+func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, opt resticPushOptions, tags ...string) {
+	cluster := server.ClusterGroup
+	done := func(err error) {
+		if opt.done != nil {
+			opt.done(err)
+		}
+	}
+	setFlag := func(value bool) {
+		if opt.noFlag {
+			return
+		}
+		switch backupMethod {
+		case backupmgr.BackupMethodLogical:
+			cluster.SetInResticLogicalBackupState(value)
+		case backupmgr.BackupMethodPhysical:
+			cluster.SetInResticPhysicalBackupState(value)
+		}
+	}
 
 	// Defensive checks - clear flag and return early if prerequisites not met
 	if !cluster.Conf.BackupRestic {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Restic backup called but disabled for %s", server.URL)
-		switch backupMethod {
-		case backupmgr.BackupMethodLogical:
-			cluster.SetInResticLogicalBackupState(false)
-		case backupmgr.BackupMethodPhysical:
-			cluster.SetInResticPhysicalBackupState(false)
-		}
+		setFlag(false)
+		done(ErrBackupArchiveUnavailable)
 		return
 	}
 
 	if cluster.ResticManager == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic manager not initialized for %s, cannot backup", server.URL)
-		switch backupMethod {
-		case backupmgr.BackupMethodLogical:
-			cluster.SetInResticLogicalBackupState(false)
-		case backupmgr.BackupMethodPhysical:
-			cluster.SetInResticPhysicalBackupState(false)
-		}
+		setFlag(false)
+		done(ErrBackupArchiveUnavailable)
 		return
 	}
 
@@ -5637,12 +5667,7 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, m
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Restic backup flag already set for %s, proceeding with queue", server.URL)
 	} else {
 		// Set flag if not already set (for binlog backups, etc.)
-		switch backupMethod {
-		case backupmgr.BackupMethodLogical:
-			cluster.SetInResticLogicalBackupState(true)
-		case backupmgr.BackupMethodPhysical:
-			cluster.SetInResticPhysicalBackupState(true)
-		}
+		setFlag(true)
 	}
 
 	var needpurge bool
@@ -5707,18 +5732,12 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, m
 
 	// Launch goroutine to wait for result and update metadata
 	go func() {
-		defer func() {
-			switch backupMethod {
-			case backupmgr.BackupMethodLogical:
-				cluster.SetInResticLogicalBackupState(false)
-			case backupmgr.BackupMethodPhysical:
-				cluster.SetInResticPhysicalBackupState(false)
-			}
-		}()
+		defer setFlag(false)
 
 		result := <-resultCh
 		if result.Error != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Restic backup failed for %s: %s", server.URL, result.Error)
+			done(result.Error)
 			return
 		}
 
@@ -5726,11 +5745,14 @@ func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, m
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Restic backup completed for %s: snapshot %s", server.URL, result.SnapshotID[:8])
 			if meta != nil {
 				server.UpdateBackupMetadataWithRestic(backupMethod, meta, result.SnapshotID)
-				if cluster.Conf.BackupArchiveRemoveOriginal {
-					server.removeArchivedOriginal(backupMethod, meta, result.SnapshotID)
+				if opt.removeOriginal() {
+					server.removeArchivedOriginalAsked(backupMethod, meta, result.SnapshotID, opt.asked)
 				}
 			}
+			done(nil)
+			return
 		}
+		done(errors.New("restic returned no snapshot"))
 	}()
 }
 
