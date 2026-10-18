@@ -194,6 +194,7 @@ function BackupSettings({ selectedCluster, user }) {
   const hVerificationLevel = `**Backup Verification Level**\n\n- **Integrity**: reads the backup as a restore would, without a database: gzip to its end, the dump's \`-- Dump completed\` line, the position against the backup metadata, every file of a splitdump. An encrypted backup has its HMAC checked first.\n- **Test restore**: the integrity checks, then the backup is loaded into the verification server below, and each table's rows and each schema's tables, views, routines, triggers and events are compared with the dump.\n\nConfig: \`backup-verification-level\``
   const hVerificationHost = `**Backup Verification Server**\n\nWhere the test restore loads the backup:\n\n- **External server** (host:port): outside the cluster, of the same flavor and version as the cluster, with the credentials below. **It is disposable**: the whole backup is loaded, the mysql schema (accounts) included, and the backup's other schemas are dropped there before the load and after the comparison. It must be marked as a verification server (the table \`replication_manager_schema.backup_verification_server\`): a server without schemas of its own is marked on its first test restore, one that holds schemas is refused until marked with **Mark as verification server**. Never mark a server that holds data of its own.\n- **A replica of the cluster** (not the primary nor a relay): the test restore reseeds it: maintenance, replication stopped, load and comparison, then replication restarted from the backup's position. A replica not yet in ignored hosts is added to them when picked (never a failover candidate).\n\nConfig: \`backup-verification-host\``
   const hVerificationTimeout = `**Backup Verification Timeout**\n\nSeconds a test restore may run, its load and its comparison, before it is canceled and fails. A replica of the cluster whose test restore is canceled stays in maintenance, its replication stopped: reseed it. 0 disables the limit.\n\nConfig: \`backup-verification-timeout\``
+  const hVerificationRegisteredProven = `**Reseed From Registered Backups Once Proven**\n\nA registered backup (registered from a backup folder) is a file replication-manager did not take. When on, **Reseed from this backup** is refused for it until a test restore of its file passed (the verification server above); the automatic rejoin already requires the same with a \`Proven\` backup selector.\n\nWhen off, a registered backup is reseeded from unless its last verification of its current file failed (WARN0253), which always refuses it.\n\nConfig: \`backup-verification-registered-proven\``
   const hVerificationCredential = `**Backup Verification Credentials**\n\nThe user:password replication-manager connects to the verification server with. The test restore loads the backup's accounts: use an account the backups hold, such as the cluster's database credentials.\n\nConfig: \`backup-verification-credential\``
   const hSplitDump = `**Mysqldump Splitdump Output**\n\nSends mysqldump output through replication-manager-cli splitdump instead of a single .sql.gz file.\nOutput is written to a splitdump directory (uncompressed).\nRequires the CLI to be available in PATH or configured below.\n\nConfig: \`backup-mysqldump-splitdump\``
   const hSplitDumpSize = `**Splitdump Shard Size**\n\nMaximum shard size for splitdump output. Default: 1G. Set to 0 to disable sharding.\n\nConfig: \`backup-splitdump-file-size\``
@@ -440,6 +441,16 @@ function BackupSettings({ selectedCluster, user }) {
           }
         ]
       : []),
+    {
+      key: 'Reseed From Registered Backups Once Proven',
+      help: h(hVerificationRegisteredProven, 'Reseed From Registered Backups Once Proven'),
+      value: (
+        <RMSwitch isChecked={selectedCluster?.config?.backupVerificationRegisteredProven}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-verification-registered-proven?'}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-verification-registered-proven' }))} />
+      )
+    },
     {
       key: 'Mysqldump Splitdump Output',
       help: h(hSplitDump, 'Mysqldump Splitdump Output'),

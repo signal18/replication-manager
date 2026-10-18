@@ -22,6 +22,7 @@ export const clusterService = {
   registerBackup,
   registerBackupChange,
   unregisterBackup,
+  archiveBackup,
   reseedFromBackup,
   verifyBackup,
   getBackupVerificationServer,
@@ -324,6 +325,11 @@ function registerBackup(clusterName, server, path, takenAt, baseURL) {
 
 function registerBackupChange(clusterName, backupId, takenAt, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/backups/${backupId}/register`, { takenAt: takenAt || '' })
+}
+
+// archives a registered backup (#2108): removeOriginal and verifyRestore are opt-in
+function archiveBackup(clusterName, backupId, removeOriginal, verifyRestore, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/backups/${backupId}/archive`, { removeOriginal: !!removeOriginal, verifyRestore: !!verifyRestore })
 }
 
 function unregisterBackup(clusterName, backupId, baseURL) {

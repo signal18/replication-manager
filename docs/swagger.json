@@ -6413,6 +6413,98 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/backups/{backupID}/archive": {
+            "post": {
+                "description": "Queues the push of a registered backup's file in the restic task queue; its snapshot is recorded in the backup. removeOriginal removes the backup file once the snapshot holds it, whatever backup-archive-remove-original (a refusal is WARN0238). verifyRestore runs a test restore of the backup first, on backup-verification-host: the push is queued only when it passes, its result is the backup's verification. Refused for a backup already archived, changed since registered, being verified or registered, or whose last verification of its current file failed (unless verifyRestore).\nRequired grant: db-backup; db-restore too with verifyRestore",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Archive a registered backup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Backup ID",
+                        "name": "backupID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The options, both off by default",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/server.backupArchiveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Archive started",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid backup ID or body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL, or no db-backup (db-restore) grant",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Backup not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Already archived or being archived, changed since registered, or a verification or a registration runs",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "422": {
+                        "description": "Not a registered backup, no archive, its last verification failed, or no test restore possible",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Archive not started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/backups/{backupID}/delete": {
             "post": {
                 "description": "Deletes a replication-manager-created non-restic backup for the specified cluster. A discovered backup is never deleted; unregister it instead.\nRequired grant: db-backup",
@@ -27965,6 +28057,9 @@
                 "backupVerificationLevel": {
                     "type": "string"
                 },
+                "backupVerificationRegisteredProven": {
+                    "type": "boolean"
+                },
                 "backupVerificationRunHistory": {
                     "type": "integer"
                 },
@@ -31723,6 +31818,19 @@
                 "scope": {
                     "description": "\"cluster\" | \"global\"",
                     "type": "string"
+                }
+            }
+        },
+        "server.backupArchiveRequest": {
+            "type": "object",
+            "properties": {
+                "removeOriginal": {
+                    "description": "RemoveOriginal removes the backup file once its snapshot holds it, whatever\nbackup-archive-remove-original",
+                    "type": "boolean"
+                },
+                "verifyRestore": {
+                    "description": "VerifyRestore runs a test restore of the backup first, on backup-verification-host:\nthe push is queued only when it passes",
+                    "type": "boolean"
                 }
             }
         },

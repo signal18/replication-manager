@@ -2386,6 +2386,8 @@ definitions:
         type: string
       backupVerificationLevel:
         type: string
+      backupVerificationRegisteredProven:
+        type: boolean
       backupVerificationRunHistory:
         type: integer
       backupVerificationTimeout:
@@ -4952,6 +4954,19 @@ definitions:
       scope:
         description: '"cluster" | "global"'
         type: string
+    type: object
+  server.backupArchiveRequest:
+    properties:
+      removeOriginal:
+        description: |-
+          RemoveOriginal removes the backup file once its snapshot holds it, whatever
+          backup-archive-remove-original
+        type: boolean
+      verifyRestore:
+        description: |-
+          VerifyRestore runs a test restore of the backup first, on backup-verification-host:
+          the push is queued only when it passes
+        type: boolean
     type: object
   server.backupRegisterRequest:
     properties:
@@ -9126,6 +9141,72 @@ paths:
           schema:
             type: string
       summary: Retrieve backups for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/{backupID}/archive:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Queues the push of a registered backup's file in the restic task queue; its snapshot is recorded in the backup. removeOriginal removes the backup file once the snapshot holds it, whatever backup-archive-remove-original (a refusal is WARN0238). verifyRestore runs a test restore of the backup first, on backup-verification-host: the push is queued only when it passes, its result is the backup's verification. Refused for a backup already archived, changed since registered, being verified or registered, or whose last verification of its current file failed (unless verifyRestore).
+        Required grant: db-backup; db-restore too with verifyRestore
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Backup ID
+        in: path
+        name: backupID
+        required: true
+        type: integer
+      - description: The options, both off by default
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/server.backupArchiveRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Archive started
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid backup ID or body
+          schema:
+            type: string
+        "403":
+          description: No valid ACL, or no db-backup (db-restore) grant
+          schema:
+            type: string
+        "404":
+          description: Backup not found
+          schema:
+            type: string
+        "409":
+          description: Already archived or being archived, changed since registered,
+            or a verification or a registration runs
+          schema:
+            type: string
+        "422":
+          description: Not a registered backup, no archive, its last verification
+            failed, or no test restore possible
+          schema:
+            type: string
+        "500":
+          description: Archive not started
+          schema:
+            type: string
+      summary: Archive a registered backup
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/backups/{backupID}/delete:

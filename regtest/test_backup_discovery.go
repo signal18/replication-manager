@@ -59,6 +59,11 @@ func (regtest *RegTest) TestBackupDiscovery(cl *clusterpkg.Cluster, conf string,
 	defer saveConf(cl)()
 	logicalType := cl.Conf.BackupLogicalType
 	defer func() { cl.Conf.BackupLogicalType = logicalType }()
+	// its reseeds test the registration, not the proof a registered backup's reseed requires
+	// by default (#2108, testBackupRegisterArchive)
+	proven := cl.Conf.BackupVerificationRegisteredProven
+	cl.Conf.BackupVerificationRegisteredProven = false
+	defer func() { cl.Conf.BackupVerificationRegisteredProven = proven }()
 	cl.Conf.SchedulerJobsExecRemote = ""
 	cl.Conf.ParseJobsExecOverrides()
 	gtid := e.r.HasGTIDReplication()

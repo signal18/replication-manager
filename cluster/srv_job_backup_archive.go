@@ -27,6 +27,13 @@ import (
 // to hold it. Any doubt keeps the original and is reported as WARN0238 until a later
 // backup of the method is removed.
 func (server *ServerMonitor) removeArchivedOriginal(backtype backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, snapshotID string) {
+	server.removeArchivedOriginalAsked(backtype, meta, snapshotID, false)
+}
+
+// removeArchivedOriginalAsked is removeArchivedOriginal; asked: the removal was asked with
+// the archive of this backup (ArchiveBackup), its refusal reported whatever
+// backup-archive-remove-original.
+func (server *ServerMonitor) removeArchivedOriginalAsked(backtype backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, snapshotID string, asked bool) {
 	cluster := server.ClusterGroup
 	if meta == nil || snapshotID == "" {
 		return
@@ -50,7 +57,7 @@ func (server *ServerMonitor) removeArchivedOriginal(backtype backupmgr.BackupMet
 		return
 	}
 	if reason := server.archivedOriginalRefusal(dest, completed, encrypted, snapshotID); reason != "" {
-		server.setArchiveRemoveOriginalRefusal(backtype, dest, reason)
+		server.setArchiveRemoveOriginalRefusal(backtype, dest, reason, asked)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Keeping original backup %s of %s: %s", dest, server.URL, reason)
 		return
 	}
@@ -63,11 +70,11 @@ func (server *ServerMonitor) removeArchivedOriginal(backtype backupmgr.BackupMet
 	}
 	if err != nil {
 		reason := fmt.Sprintf("remove %s: %s", dest, err)
-		server.setArchiveRemoveOriginalRefusal(backtype, dest, reason)
+		server.setArchiveRemoveOriginalRefusal(backtype, dest, reason, asked)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Keeping original backup of %s: %s", server.URL, reason)
 		return
 	}
-	server.setArchiveRemoveOriginalRefusal(backtype, "", "")
+	server.setArchiveRemoveOriginalRefusal(backtype, "", "", false)
 
 	server.backupMetaMutex.Lock()
 	meta.OriginalRemoved = true
@@ -154,12 +161,15 @@ func (cluster *Cluster) snapshotMissingPath(snapshotID string, paths []string) (
 type archiveRemoveOriginalRefusal struct {
 	Dest   string
 	Reason string
+	// Asked: the removal was asked with the archive of one backup (ArchiveBackup), not by
+	// backup-archive-remove-original, and is reported whatever that switch
+	Asked bool
 }
 
-func (server *ServerMonitor) setArchiveRemoveOriginalRefusal(backtype backupmgr.BackupMethod, dest, reason string) {
+func (server *ServerMonitor) setArchiveRemoveOriginalRefusal(backtype backupmgr.BackupMethod, dest, reason string, asked bool) {
 	server.backupMetaMutex.Lock()
 	defer server.backupMetaMutex.Unlock()
-	refusal := archiveRemoveOriginalRefusal{Dest: dest, Reason: reason}
+	refusal := archiveRemoveOriginalRefusal{Dest: dest, Reason: reason, Asked: asked}
 	switch backtype {
 	case backupmgr.BackupMethodLogical:
 		server.archiveRemoveOriginalRefusalLogical = refusal
@@ -170,8 +180,9 @@ func (server *ServerMonitor) setArchiveRemoveOriginalRefusal(backtype backupmgr.
 
 // checkArchiveRemoveOriginalStates, every tick: WARN0238 for each server whose last
 // original could not be removed after its archive push, while backup-archive-remove-original
-// is on. A refusal is dropped when the switch is off, and once its original is no longer on
-// disk (deleted, purged, or removed by a later run): the state follows what is observed.
+// is on, or asked with the archive of that backup (ArchiveBackup). A refusal is dropped when
+// the switch is off (one not asked), and once its original is no longer on disk (deleted,
+// purged, or removed by a later run): the state follows what is observed.
 func (cluster *Cluster) checkArchiveRemoveOriginalStates() {
 	for _, s := range cluster.Servers {
 		if s == nil {
@@ -186,7 +197,7 @@ func (cluster *Cluster) checkArchiveRemoveOriginalStates() {
 			if r.refusal.Reason == "" {
 				continue
 			}
-			if !cluster.Conf.BackupArchiveRemoveOriginal || !fileExists(r.refusal.Dest) {
+			if (!cluster.Conf.BackupArchiveRemoveOriginal && !r.refusal.Asked) || !fileExists(r.refusal.Dest) {
 				*r.refusal = archiveRemoveOriginalRefusal{}
 				continue
 			}
