@@ -4,16 +4,16 @@ import { sizeOf, convertObjectToArray, formatBytes, formatDate, getBackupMethod,
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
 import styles from './styles.module.scss'
-import { Box, Flex, HStack, Input, Progress, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
+import { Box, Checkbox, Flex, HStack, Input, Progress, Slider, SliderFilledTrack, SliderThumb, SliderTrack, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { deleteBackup, discoverBackups, registerBackup, registerBackupChange, unregisterBackup, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
+import { archiveBackup, deleteBackup, discoverBackups, registerBackup, registerBackupChange, unregisterBackup, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import CopyToClipboard from '../../components/CopyToClipboard'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh, HiDocumentAdd, HiDocumentRemove, HiExclamation, HiBan } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh, HiDocumentAdd, HiDocumentRemove, HiExclamation, HiBan, HiCloudUpload } from 'react-icons/hi'
 import Dropdown from '../../components/Dropdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
@@ -344,14 +344,41 @@ const verificationBeforeChange = (backup, change) => {
   return !!change || (backup.registration && !sameArtifact(v.artifact, backup.registration.artifact))
 }
 
+// registeredVerificationFailed: the last verification of a registered backup failed on its
+// current file, ended after the file was registered (#2108).
+const registeredVerificationFailed = (backup) => {
+  const v = backup.verification
+  return !!backup.discovered && !!backup.registration && v?.status === 'failed' && new Date(v.endTime) >= new Date(backup.registration.registeredAt)
+}
+
+// registeredProven: the last verification of a registered backup is a passed test restore of
+// its current file (#2108).
+const registeredProven = (backup) => {
+  const v = backup.verification
+  return !!backup.discovered && !!backup.registration && v?.level === 'restore' && v?.status === 'passed' && sameArtifact(v.artifact, backup.registration.artifact)
+}
+
 // reseedRefusal is why a backup can not reseed a server, '' when it can.
-const reseedRefusal = (backup, change) => {
+const reseedRefusal = (backup, change, requireProven) => {
   if (backup.backupMethod === 2 || !['mysqldump', 'mydumper'].includes(backup.backupTool)) return 'A reseed from a chosen backup takes a logical backup'
   if (backup.notABackup) return `Not a backup: ${backup.discoveryNote}`
   if (change) return 'Changed since registered: register the change first'
   if (!backup.completed) return 'Not completed'
   if (backup.originalRemoved) return 'Kept only in its archive: restore it from its snapshot'
   if (!backup.binLogFileName && !backup.binLogUuid) return 'No replication position: a replica can not be reseeded from it'
+  if (registeredVerificationFailed(backup)) return `Its last verification failed (WARN0253): verify it again, register a fixed file or unregister it`
+  if (requireProven && backup.discovered && !registeredProven(backup)) return 'A registered backup is reseeded from once a test restore of its file passed (backup-verification-registered-proven)'
+  return ''
+}
+
+// archiveRefusal is why a registered backup can not be archived now, '' when it can (#2108);
+// the API decides, this greys the button out.
+const archiveRefusal = (backup, change, resticOn) => {
+  if (!resticOn) return 'Archive: turn backup-restic on first'
+  if (backup.resticSnapshotID || backup.originalRemoved) return 'Already archived'
+  if (backup.notABackup) return `Not a backup: ${backup.discoveryNote}`
+  if (change) return 'Changed since registered: register the change first'
+  if (backup.verification?.status === 'running') return 'Being verified'
   return ''
 }
 
@@ -425,6 +452,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   // a backup that records none (optional)
   const [registerPick, setRegisterPick] = useState({ candidate: null, backup: null, takenAt: '' })
   const closeRegisterPick = () => setRegisterPick({ candidate: null, backup: null, takenAt: '' })
+  // Archive of a registered backup (#2108): its two opt-ins, off by default
+  const [archivePick, setArchivePick] = useState({ backup: null, removeOriginal: false, verifyRestore: false })
+  const closeArchivePick = () => setArchivePick({ backup: null, removeOriginal: false, verifyRestore: false })
   const backupStats = useSelector((state) => state.cluster.backups.stats)
 
   const snapshots = useSelector((state) => state.cluster.restic.snapshots)
@@ -697,7 +727,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           const backup = info.row.original
           const change = changesById[backup.id]
           const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.notABackup && !backup.originalRemoved && backup.verification?.status !== 'running'
-          const notReseedable = reseedRefusal(backup, change)
+          const notReseedable = reseedRefusal(backup, change, selectedCluster?.config?.backupVerificationRegisteredProven)
+          const notArchivable = backup.discovered ? archiveRefusal(backup, change, selectedCluster?.config?.backupRestic) : ''
           return (
             <HStack spacing={1}>
               <RMIconButton
@@ -724,6 +755,14 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
                   tooltip='Register the change: the file as it is now is read and checked, then used'
                   onClick={() => setRegisterPick({ candidate: null, backup, takenAt: '' })}
                   isDisabled={!user?.grants['db-backup']}
+                />
+              )}
+              {backup.discovered && (
+                <RMIconButton
+                  icon={HiCloudUpload}
+                  tooltip={notArchivable ? `Archive: ${notArchivable}` : 'Archive this backup to restic'}
+                  onClick={() => setArchivePick({ backup, removeOriginal: false, verifyRestore: false })}
+                  isDisabled={!user?.grants['db-backup'] || !!notArchivable}
                 />
               )}
               {backup.discovered ? (
@@ -1162,6 +1201,32 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           closeRegisterPick()
         }}
         closeModal={closeRegisterPick} />}
+      {archivePick.backup && <ConfirmModal
+        title={`Archive backup ${archivePick.backup.id} to restic?`}
+        isOpen={!!archivePick.backup}
+        body={
+          <VStack align='stretch' spacing={3}>
+            <Text>
+              Its file ({archivePick.backup.dest}) is pushed in the restic task queue, after the pushes already queued; its
+              snapshot is recorded in the backup.
+            </Text>
+            <Checkbox isChecked={archivePick.removeOriginal}
+              onChange={(e) => setArchivePick((p) => ({ ...p, removeOriginal: e.target.checked }))}>
+              Remove the original once restic holds it
+            </Checkbox>
+            {selectedCluster?.config?.backupVerificationHost && archivePick.backup.backupTool === 'mysqldump' && (
+              <Checkbox isChecked={archivePick.verifyRestore} isDisabled={!user?.grants['db-restore']}
+                onChange={(e) => setArchivePick((p) => ({ ...p, verifyRestore: e.target.checked }))}>
+                {`Verify by test restore on ${selectedCluster.config.backupVerificationHost} first: archived only if it passes`}
+              </Checkbox>
+            )}
+          </VStack>
+        }
+        onConfirmClick={() => {
+          dispatch(archiveBackup({ clusterName: selectedCluster.name, backupId: archivePick.backup.id, removeOriginal: archivePick.removeOriginal, verifyRestore: archivePick.verifyRestore }))
+          closeArchivePick()
+        }}
+        closeModal={closeArchivePick} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
         payload={payload}
         queueData={queueData}
