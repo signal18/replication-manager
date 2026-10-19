@@ -452,19 +452,20 @@ func (cluster *Cluster) resyncBackupCatalogue() {
 		if server == nil {
 			continue
 		}
-		server.forgetBackupsGoneFromFolder()
+		server.forgetFolderBackups()
 		server.FetchLastBackupMetadata() // the folder's records
 		server.lastBackupsFromCatalogue()
 	}
 }
 
-// forgetBackupsGoneFromFolder drops from memory the completed backups of the server whose
-// record was in its backups folder and is not any more: they stay where they are (the bucket,
-// or the local folder kept aside) and come back with that folder. Only "no such file" drops
-// one: a mount answering an error keeps them. A backup that did not complete goes as well
-// (a failed one, as a restart forgets it), except while a backup runs: the running one
-// writes its record at its end.
-func (server *ServerMonitor) forgetBackupsGoneFromFolder() {
+// forgetFolderBackups drops from memory the backups of the server whose record is in its
+// backups folder, for the folder now in use to load its own: the records of the previous
+// folder stay where they are (the bucket, or the local folder kept aside) and come back with
+// it, and a loaded record never replaces one in memory (LoadAdhocBackupMetadata), so a record
+// the move rewrote for the bucket would not be read. Kept: a backup being verified, and one
+// that did not complete while a backup runs (the running one writes its record at its end); a
+// failed one goes, as a restart forgets it.
+func (server *ServerMonitor) forgetFolderBackups() {
 	cluster := server.ClusterGroup
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return
@@ -475,6 +476,9 @@ func (server *ServerMonitor) forgetBackupsGoneFromFolder() {
 		if m == nil || m.Source != server.URL || (!m.Completed && running) {
 			return true
 		}
+		if _, verifying := cluster.backupVerifying.Load(id); verifying {
+			return true
+		}
 		rec := m.MetaFile
 		if rec == "" {
 			rec = server.backupMetaFilePath(m)
@@ -482,10 +486,8 @@ func (server *ServerMonitor) forgetBackupsGoneFromFolder() {
 		if rec == "" || !strings.HasPrefix(filepath.Clean(rec), dir) {
 			return true
 		}
-		if _, err := os.Stat(rec); errors.Is(err, os.ErrNotExist) {
-			cluster.BackupMetaMap.Delete(id)
-			cluster.backupChanges.Delete(id)
-		}
+		cluster.BackupMetaMap.Delete(id)
+		cluster.backupChanges.Delete(id)
 		return true
 	})
 }

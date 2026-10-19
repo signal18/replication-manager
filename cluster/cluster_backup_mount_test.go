@@ -175,11 +175,11 @@ func TestBackupMountKeysAndEmptyDirs(t *testing.T) {
 	}
 }
 
-// #2091: the backups folder switched (the mount turned off): the backups whose record was in
-// the folder and is not any more leave memory, their change state with them, and the server's
-// last backup is its newest one left; a record still there, another server's and a record
-// kept elsewhere stay; a backup that did not complete stays while a backup runs, goes after.
-func TestForgetBackupsGoneFromFolder(t *testing.T) {
+// #2091: the backups folder switched: the backups whose record is in the folder leave memory,
+// their change state with them, for the folder now in use to load its own, and the server's
+// last backup is its newest one left; another server's, a record kept elsewhere and a backup
+// being verified stay; a backup that did not complete stays while a backup runs, goes after.
+func TestForgetFolderBackups(t *testing.T) {
 	cl := newEventLogTestCluster(t, 1)
 	cl.BackupMetaMap = backupmgr.NewBackupMetaMap()
 	s := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", ClusterGroup: cl}
@@ -198,26 +198,30 @@ func TestForgetBackupsGoneFromFolder(t *testing.T) {
 	meta(300, "db1:3306", false, filepath.Join(dir, "mydumper.300.meta.json"))
 	meta(400, "db2:3306", true, filepath.Join(dir, "mydumper.400.meta.json"))
 	meta(500, "db1:3306", true, filepath.Join(t.TempDir(), "mydumper.500.meta.json"))
+	meta(600, "db1:3306", true, filepath.Join(dir, "mydumper.600.meta.json"))
+	cl.backupVerifying.Store(int64(600), struct{}{})
 	cl.backupChanges.Store(int64(200), &BackupRegistrationChange{Server: "db1:3306", ID: 200})
 	s.LastBackupMeta.Logical = gone
 	s.LastBackupMeta.Physical = new(backupmgr.BackupMetadata)
 
 	cl.InLogicalBackup = true
-	s.forgetBackupsGoneFromFolder()
+	s.forgetFolderBackups()
 	s.lastBackupsFromCatalogue()
 
-	if cl.BackupMetaMap.Get(200) != nil {
-		t.Fatal("its record left the folder: forgotten")
+	for _, id := range []int64{100, 200} {
+		if cl.BackupMetaMap.Get(id) != nil {
+			t.Fatalf("backup %d of the folder: forgotten, its record (if still there) loaded again", id)
+		}
 	}
 	if _, ok := cl.backupChanges.Load(int64(200)); ok {
 		t.Fatal("a forgotten backup keeps no change state (WARN0249)")
 	}
-	for _, id := range []int64{100, 300, 400, 500} {
+	for _, id := range []int64{300, 400, 500, 600} {
 		if cl.BackupMetaMap.Get(id) == nil {
 			t.Fatalf("backup %d stays", id)
 		}
 	}
-	if got := s.LastBackupMeta.Logical; got == nil || got.Id != 500 {
+	if got := s.LastBackupMeta.Logical; got == nil || got.Id != 600 {
 		t.Fatalf("the last logical backup is the newest left of the server: %+v", got)
 	}
 	if s.LastBackupMeta.Physical == nil || s.LastBackupMeta.Physical.Id != 0 {
@@ -226,11 +230,11 @@ func TestForgetBackupsGoneFromFolder(t *testing.T) {
 
 	// no backup running: the one that did not complete was a failed one
 	cl.InLogicalBackup = false
-	s.forgetBackupsGoneFromFolder()
+	s.forgetFolderBackups()
 	if cl.BackupMetaMap.Get(300) != nil {
 		t.Fatal("a failed backup whose record left the folder is forgotten")
 	}
-	for _, id := range []int64{100, 400, 500} {
+	for _, id := range []int64{400, 500, 600} {
 		if cl.BackupMetaMap.Get(id) == nil {
 			t.Fatalf("backup %d stays", id)
 		}
