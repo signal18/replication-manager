@@ -301,7 +301,21 @@ func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.
 	if err := artifactSyncBucket(target); err != nil {
 		return nil, fmt.Errorf("%s: %w (%v)", filepath.Base(target), errArtifactNotInBucket, err)
 	}
-	return artifactFingerprint(path, maxEntries, artifactETag)
+	// the bucket's listing, not GeeseFS's attribute: after an upload in parts it is the
+	// file's MD5, the listing the bucket's ETag
+	etags, err := s3fuse.ETags(target, maxEntries)
+	if errors.Is(err, s3fuse.ErrTooManyObjects) {
+		return nil, errArtifactWalkBudget
+	}
+	if err != nil {
+		return nil, err
+	}
+	return artifactFingerprint(path, maxEntries, func(file string) (string, error) {
+		if etag := etags[filepath.Clean(file)]; etag != "" {
+			return etag, nil
+		}
+		return "", os.ErrNotExist
+	})
 }
 
 // errArtifactNotInBucket: a file of the backups folder mount has no S3 ETag yet, written and

@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"os"
-	"strings"
 	"syscall"
 	"time"
 
@@ -24,17 +23,6 @@ func artifactStatIdentity(fi os.FileInfo) (ino uint64, ctime time.Time) {
 		return uint64(st.Ino), time.Unix(int64(st.Ctim.Sec), int64(st.Ctim.Nsec))
 	}
 	return 0, time.Time{}
-}
-
-// artifactETag returns the S3 ETag of a file of the backups folder mount, its s3.etag
-// attribute: ENODATA while the file is not uploaded yet (written, still buffered).
-func artifactETag(path string) (string, error) {
-	buf := make([]byte, 256)
-	n, err := unix.Lgetxattr(path, "s3.etag", buf)
-	if err != nil {
-		return "", err
-	}
-	return strings.Trim(string(buf[:n]), `"`), nil
 }
 
 // artifactSyncBucket waits until the backup at path, a file or a folder of the backups folder
