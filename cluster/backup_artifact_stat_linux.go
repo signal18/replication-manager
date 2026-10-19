@@ -36,3 +36,16 @@ func artifactETag(path string) (string, error) {
 	}
 	return strings.Trim(string(buf[:n]), `"`), nil
 }
+
+// artifactSyncBucket waits until the backup at path, a file or a folder of the backups folder
+// mount, is uploaded: GeeseFS keeps a file written in memory and uploads it in the background,
+// its s3.etag meanwhile the one of its previous upload. An fsync uploads what it holds, the
+// whole tree for a folder, and returns at once when nothing is pending.
+func artifactSyncBucket(path string) error {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	return unix.Fsync(fd)
+}

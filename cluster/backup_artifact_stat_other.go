@@ -22,3 +22,6 @@ func artifactStatIdentity(fi os.FileInfo) (ino uint64, ctime time.Time) {
 func artifactETag(path string) (string, error) {
 	return "", errors.New("no S3 ETag off Linux")
 }
+
+// artifactSyncBucket: the backups folder mount runs on Linux only.
+func artifactSyncBucket(path string) error { return nil }

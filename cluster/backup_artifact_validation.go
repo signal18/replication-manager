@@ -290,11 +290,18 @@ var errArtifactWalkBudget = errors.New("more entries than the fingerprint check 
 // entries of a folder (0: all of them). On the backups folder mount it is a bucket
 // fingerprint, its files' S3 ETags in place of the mount's inodes and times.
 func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.ArtifactFingerprint, error) {
-	var etagOf func(string) (string, error)
-	if s3fuse.Serves(path) {
-		etagOf = artifactETag
+	if !s3fuse.Serves(path) {
+		return artifactFingerprint(path, maxEntries, nil)
 	}
-	return artifactFingerprint(path, maxEntries, etagOf)
+	// the ETags of what is uploaded, not of a previous upload of a file still buffered
+	target := path
+	if enc := encryptedSplitDumpPath(path); enc != "" {
+		target = enc
+	}
+	if err := artifactSyncBucket(target); err != nil {
+		return nil, fmt.Errorf("%s: %w (%v)", filepath.Base(target), errArtifactNotInBucket, err)
+	}
+	return artifactFingerprint(path, maxEntries, artifactETag)
 }
 
 // errArtifactNotInBucket: a file of the backups folder mount has no S3 ETag yet, written and
