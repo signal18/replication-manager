@@ -171,7 +171,7 @@ func (server *ServerMonitor) recordBackupRegistration(meta *backupmgr.BackupMeta
 		return
 	}
 	fp, err := restoreArtifactFingerprintBounded(meta.Dest, backupProofWalkMax)
-	if err != nil || fp.ChangeTime.IsZero() {
+	if err != nil || !fp.Identifies() {
 		return
 	}
 	meta.Registration = &backupmgr.BackupRegistration{Artifact: *fp, RegisteredAt: time.Now()}
@@ -378,8 +378,8 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 	if err != nil {
 		return nil, err
 	}
-	if before.ChangeTime.IsZero() {
-		return nil, errors.New("its file identity (inode, change time) can not be read here: its changes can not be tracked")
+	if !before.Identifies() {
+		return nil, errors.New("its file identity (inode, change time, or S3 ETags in the bucket) can not be read here: its changes can not be tracked")
 	}
 	// a scheduled backup file replaced by hand becomes the scheduled backup: its record
 	// (<tool>.meta.json) is replaced, it is used as any scheduled backup
@@ -552,7 +552,7 @@ func (server *ServerMonitor) writeScheduledBackupMeta(meta *backupmgr.BackupMeta
 
 // artifactFingerprintsEqual compares two fingerprints of the same read.
 func artifactFingerprintsEqual(a, b *backupmgr.ArtifactFingerprint) bool {
-	return a != nil && b != nil && a.Files == b.Files && a.Size == b.Size && a.ModTime.Equal(b.ModTime) && a.Inode == b.Inode && a.ChangeTime.Equal(b.ChangeTime)
+	return a != nil && b != nil && a.Files == b.Files && a.Size == b.Size && a.ModTime.Equal(b.ModTime) && a.Inode == b.Inode && a.ChangeTime.Equal(b.ChangeTime) && a.ETags == b.ETags
 }
 
 // UnregisterBackup unregisters a discovered backup: its metadata file (replication-manager's
@@ -698,7 +698,7 @@ func (server *ServerMonitor) adoptOwnBackup(meta *backupmgr.BackupMetadata) {
 		return
 	}
 	fp, err := restoreArtifactFingerprintBounded(meta.Dest, backupProofWalkMax)
-	if err != nil || fp.ChangeTime.IsZero() {
+	if err != nil || !fp.Identifies() {
 		return
 	}
 	server.backupMetaMutex.Lock()
@@ -841,11 +841,18 @@ func describeBackupChange(id int64, c *BackupRegistrationChange) string {
 	if was.Files != now.Files {
 		parts = append(parts, fmt.Sprintf("files %d -> %d", was.Files, now.Files))
 	}
-	if !was.ModTime.Equal(now.ModTime) {
+	// in the bucket the times are the mount's: the ETags tell
+	if !was.ModTime.Equal(now.ModTime) && was.ETags == "" && now.ETags == "" {
 		parts = append(parts, fmt.Sprintf("modified %s", now.ModTime.Local().Format("2006-01-02 15:04")))
 	}
 	if len(parts) == 0 {
-		if was.ChangeTime.IsZero() {
+		if was.ETags != "" && now.ETags == "" {
+			parts = append(parts, "registered in the bucket, not read from it now (the backups folder mount is off, or the file not uploaded yet)")
+		} else if was.ETags == "" && now.ETags != "" {
+			parts = append(parts, "registered on a disk, now in the bucket: its S3 objects can not prove it is the same file")
+		} else if was.ETags != "" {
+			parts = append(parts, "its S3 objects were rewritten (other ETags)")
+		} else if !was.Identifies() {
 			parts = append(parts, "its registration does not identify the file (no inode, change time)")
 		} else {
 			parts = append(parts, fmt.Sprintf("replaced or rewritten, same size and modification time (changed %s)", now.ChangeTime.Local().Format("2006-01-02 15:04")))

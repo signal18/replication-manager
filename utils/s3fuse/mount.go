@@ -14,6 +14,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -40,6 +43,25 @@ type Options struct {
 	Debug       bool
 	OnLate      func(op string)
 	OnPanic     func(op string, recovered interface{}, stack []byte)
+}
+
+// mounted holds the mount points this process serves.
+var mounted sync.Map
+
+// Serves tells whether path is on a mount this process serves: its files are S3 objects,
+// their inodes and times are the mount's, their S3 ETags (the s3.etag attribute) the bucket's.
+func Serves(path string) bool {
+	path = filepath.Clean(path)
+	in := false
+	mounted.Range(func(k, _ any) bool {
+		point := k.(string)
+		if path == point || strings.HasPrefix(path, point+string(os.PathSeparator)) {
+			in = true
+			return false
+		}
+		return true
+	})
+	return in
 }
 
 // Mount is a mounted folder.
@@ -93,20 +115,28 @@ func New(ctx context.Context, o Options) (*Mount, error) {
 		fs.Shutdown()
 		return nil, fmt.Errorf("s3fuse: mount %s on %s: %w", o.Bucket, o.MountPoint, err)
 	}
-	m := &Mount{point: o.MountPoint, fs: fs, mfs: mfs}
+	m := &Mount{point: filepath.Clean(o.MountPoint), fs: fs, mfs: mfs}
 	// before anything else opens a file of the mount: without it the process can freeze
 	if err := disablePoll(o.MountPoint); err != nil {
 		m.Unmount()
 		return nil, err
 	}
+	mounted.Store(m.point, struct{}{})
 	return m, nil
 }
 
 // Join waits until the mount ends.
-func (m *Mount) Join(ctx context.Context) error { return m.mfs.Join(ctx) }
+func (m *Mount) Join(ctx context.Context) error {
+	err := m.mfs.Join(ctx)
+	if ctx.Err() == nil { // the mount ended, not the wait
+		mounted.Delete(m.point)
+	}
+	return err
+}
 
 // Unmount flushes what is buffered, unmounts and stops the file system.
 func (m *Mount) Unmount() error {
+	mounted.Delete(m.point)
 	err := core.TryUnmount(m.point)
 	m.fs.Shutdown()
 	return err

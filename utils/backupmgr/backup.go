@@ -181,6 +181,28 @@ type ArtifactFingerprint struct {
 	// not match. Absent from fingerprints recorded before, which then match nothing.
 	Inode      uint64    `json:"inode,omitempty"`
 	ChangeTime time.Time `json:"changeTime,omitzero"`
+	// ETags, for a backup in the bucket of the backups folder mount: a digest of its files'
+	// S3 ETags in walk order, which an object rewritten changes. The mount gives inodes and
+	// times that do not hold across mounts, so a bucket fingerprint holds the files, the size
+	// and this digest, and has no inode nor ctime (#2091).
+	ETags string `json:"etags,omitempty"`
+}
+
+// Identifies tells whether the fingerprint identifies the file, not only its size and time:
+// by its inode and ctime on a disk, by its S3 ETags in the bucket.
+func (fp ArtifactFingerprint) Identifies() bool {
+	return fp.ETags != "" || !fp.ChangeTime.IsZero()
+}
+
+// Same tells whether two fingerprints are of the same file, unchanged: in the bucket by the
+// files, the size and the ETags; on a disk by the files, the size, the modification time,
+// the inode and the ctime. A fingerprint that does not identify its file matches nothing.
+func (fp ArtifactFingerprint) Same(o ArtifactFingerprint) bool {
+	if fp.ETags != "" || o.ETags != "" {
+		return fp.ETags == o.ETags && fp.Files == o.Files && fp.Size == o.Size
+	}
+	return fp.Identifies() && o.Identifies() && fp.Files == o.Files && fp.Size == o.Size &&
+		fp.ModTime.Equal(o.ModTime) && fp.Inode == o.Inode && fp.ChangeTime.Equal(o.ChangeTime)
 }
 
 // BackupRegistration is a discovered backup's file as registered: its fingerprint (the one

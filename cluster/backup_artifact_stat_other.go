@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"errors"
 	"os"
 	"time"
 )
@@ -15,4 +16,9 @@ import (
 // Elsewhere a fingerprint has none and matches nothing (artifactUnchangedBounded).
 func artifactStatIdentity(fi os.FileInfo) (ino uint64, ctime time.Time) {
 	return 0, time.Time{}
+}
+
+// artifactETag: the backups folder mount runs on Linux only.
+func artifactETag(path string) (string, error) {
+	return "", errors.New("no S3 ETag off Linux")
 }

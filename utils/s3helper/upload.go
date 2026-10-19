@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -100,11 +101,27 @@ func UploadFile(ctx context.Context, client *s3.Client, bucket, key, path string
 
 // ObjectSize is the size of bucket/key, for checking an upload.
 func ObjectSize(ctx context.Context, client *s3.Client, bucket, key string) (int64, error) {
+	size, _, err := ObjectSizeETag(ctx, client, bucket, key)
+	return size, err
+}
+
+// ObjectSizeETag is the size and the ETag (unquoted) of bucket/key.
+func ObjectSizeETag(ctx context.Context, client *s3.Client, bucket, key string) (int64, string, error) {
 	rctx, cancel := context.WithTimeout(ctx, UploadPartTimeout)
 	defer cancel()
 	out, err := client.HeadObject(rctx, &s3.HeadObjectInput{Bucket: aws.String(bucket), Key: aws.String(key)})
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
-	return aws.ToInt64(out.ContentLength), nil
+	return aws.ToInt64(out.ContentLength), strings.Trim(aws.ToString(out.ETag), `"`), nil
+}
+
+// UploadBytes puts data, a small file, at bucket/key.
+func UploadBytes(ctx context.Context, client *s3.Client, bucket, key string, data []byte) (int64, error) {
+	rctx, cancel := context.WithTimeout(ctx, UploadPartTimeout)
+	defer cancel()
+	if _, err := client.PutObject(rctx, &s3.PutObjectInput{Bucket: aws.String(bucket), Key: aws.String(key), Body: bytes.NewReader(data), ContentLength: aws.Int64(int64(len(data)))}); err != nil {
+		return 0, fmt.Errorf("put %s: %w", key, err)
+	}
+	return int64(len(data)), nil
 }

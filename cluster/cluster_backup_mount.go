@@ -7,12 +7,14 @@ package cluster
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -459,15 +461,18 @@ func (cluster *Cluster) resyncBackupCatalogue() {
 // forgetBackupsGoneFromFolder drops from memory the completed backups of the server whose
 // record was in its backups folder and is not any more: they stay where they are (the bucket,
 // or the local folder kept aside) and come back with that folder. Only "no such file" drops
-// one: a mount answering an error keeps them. A backup running writes its record at its end.
+// one: a mount answering an error keeps them. A backup that did not complete goes as well
+// (a failed one, as a restart forgets it), except while a backup runs: the running one
+// writes its record at its end.
 func (server *ServerMonitor) forgetBackupsGoneFromFolder() {
 	cluster := server.ClusterGroup
 	if cluster == nil || cluster.BackupMetaMap == nil {
 		return
 	}
 	dir := filepath.Clean(server.GetMyBackupDirectoryPath()) + string(os.PathSeparator)
+	running := cluster.IsInBackup()
 	cluster.BackupMetaMap.Callback(func(id int64, m *backupmgr.BackupMetadata) bool {
-		if m == nil || m.Source != server.URL || !m.Completed {
+		if m == nil || m.Source != server.URL || (!m.Completed && running) {
 			return true
 		}
 		rec := m.MetaFile
@@ -669,6 +674,16 @@ func (cluster *Cluster) moveLocalBackupsIntoBucket(t *mountTarget, keys *mountKe
 	bm.mu.Unlock()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: uploading %d local files (%d bytes) of %s into %s", len(files), total, local, spec)
 
+	// the records of the backups whose fingerprints hold go up last, with the fingerprint of
+	// their files in the bucket: the mount gives other inodes and times, the ETags hold
+	proven := cluster.backupsProvenForMove(local)
+	sort.SliceStable(files, func(i, j int) bool {
+		_, ri := proven[files[i]]
+		_, rj := proven[files[j]]
+		return !ri && rj
+	})
+	etags := map[string]string{}
+
 	ctx := context.Background()
 	for _, src := range files {
 		if cluster.IsInBackup() {
@@ -687,16 +702,26 @@ func (cluster *Cluster) moveLocalBackupsIntoBucket(t *mountTarget, keys *mountKe
 		}
 		rel, _ := filepath.Rel(local, src)
 		key := strings.TrimSuffix(prefix, "/") + "/" + filepath.ToSlash(rel)
-		n, err := s3helper.UploadFile(ctx, client, t.bucket, key, src)
+		var n int64
+		if id, ok := proven[src]; ok {
+			if data := cluster.recordWithBucketFingerprint(src, id, etags); data != nil {
+				n, err = s3helper.UploadBytes(ctx, client, t.bucket, key, data)
+			} else {
+				n, err = s3helper.UploadFile(ctx, client, t.bucket, key, src)
+			}
+		} else {
+			n, err = s3helper.UploadFile(ctx, client, t.bucket, key, src)
+		}
 		if err != nil {
 			finish(fmt.Errorf("uploading %s: %w", rel, err), "")
 			return
 		}
-		got, err := s3helper.ObjectSize(ctx, client, t.bucket, key)
+		got, etag, err := s3helper.ObjectSizeETag(ctx, client, t.bucket, key)
 		if err != nil || got != n {
 			finish(fmt.Errorf("checking %s in the bucket: %d bytes there, %d local (%v)", rel, got, n, err), "")
 			return
 		}
+		etags[src] = etag
 		bm.mu.Lock()
 		bm.state.MovedFiles++
 		bm.state.MovedBytes += n
@@ -715,6 +740,88 @@ func (cluster *Cluster) moveLocalBackupsIntoBucket(t *mountTarget, keys *mountKe
 		return
 	}
 	finish(nil, keptAt)
+}
+
+// backupsProvenForMove returns, by their record's path, the completed backups of the cluster
+// whose file and record are in the local folder and whose recorded fingerprints (registration,
+// passed verification) still hold: the move proves their files went up by their size and
+// records their bucket fingerprint. A backup changed already, or without a fingerprint, goes
+// up as it is (WARN0249, or adopted on the mount).
+func (cluster *Cluster) backupsProvenForMove(local string) map[string]int64 {
+	proven := map[string]int64{}
+	if cluster.BackupMetaMap == nil {
+		return proven
+	}
+	dir := filepath.Clean(local) + string(os.PathSeparator)
+	under := func(p string) bool { return p != "" && strings.HasPrefix(filepath.Clean(p), dir) }
+	cluster.BackupMetaMap.Callback(func(id int64, m *backupmgr.BackupMetadata) bool {
+		server := cluster.GetServerFromURL(m.Source)
+		if server == nil || !under(m.Dest) {
+			return true
+		}
+		server.backupMetaMutex.Lock()
+		completed, removed := m.Completed, m.OriginalRemoved
+		var recs []backupmgr.ArtifactFingerprint
+		if m.Registration != nil {
+			recs = append(recs, m.Registration.Artifact)
+		}
+		if v := m.Verification; v != nil && v.Status == backupmgr.BackupVerificationPassed && v.Artifact != nil {
+			recs = append(recs, *v.Artifact)
+		}
+		rec := server.backupMetaFilePath(m)
+		server.backupMetaMutex.Unlock()
+		if !completed || removed || len(recs) == 0 || !under(rec) {
+			return true
+		}
+		for i := range recs {
+			if !artifactUnchangedBounded(m.Dest, &recs[i], backupProofWalkMax) {
+				return true
+			}
+		}
+		// a record rewritten by a newer backup of the same file is that one's
+		if prev, ok := proven[filepath.Clean(rec)]; !ok || id > prev {
+			proven[filepath.Clean(rec)] = id
+		}
+		return true
+	})
+	return proven
+}
+
+// recordWithBucketFingerprint returns the record file rec of backup id with its registration
+// and passed verification fingerprinted as its files are in the bucket, from the ETags their
+// upload got; nil when the record is not that backup's or its files did not all go up (it then
+// goes up as it is).
+func (cluster *Cluster) recordWithBucketFingerprint(rec string, id int64, etags map[string]string) []byte {
+	raw, err := os.ReadFile(rec)
+	if err != nil {
+		return nil
+	}
+	meta := new(backupmgr.BackupMetadata)
+	if err := json.Unmarshal(raw, meta); err != nil || meta.Id != id {
+		return nil
+	}
+	fp, err := artifactFingerprint(meta.Dest, backupProofWalkMax, func(file string) (string, error) {
+		if etag := etags[filepath.Clean(file)]; etag != "" {
+			return etag, nil
+		}
+		return "", os.ErrNotExist
+	})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: backup %d goes into the bucket with its disk fingerprint: %s", id, err)
+		return nil
+	}
+	if meta.Registration != nil {
+		meta.Registration.Artifact = *fp
+	}
+	if v := meta.Verification; v != nil && v.Status == backupmgr.BackupVerificationPassed && v.Artifact != nil {
+		bucket := *fp
+		v.Artifact = &bucket
+	}
+	data, err := json.MarshalIndent(meta, "", "\t")
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 // UnmountBackupFolder unmounts the backups folder, at the cluster's stop.

@@ -5,11 +5,13 @@
 package cluster
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
@@ -175,8 +177,8 @@ func TestBackupMountKeysAndEmptyDirs(t *testing.T) {
 
 // #2091: the backups folder switched (the mount turned off): the backups whose record was in
 // the folder and is not any more leave memory, their change state with them, and the server's
-// last backup is its newest one left; a record still there, a backup running, another server's
-// and a record kept elsewhere stay.
+// last backup is its newest one left; a record still there, another server's and a record
+// kept elsewhere stay; a backup that did not complete stays while a backup runs, goes after.
 func TestForgetBackupsGoneFromFolder(t *testing.T) {
 	cl := newEventLogTestCluster(t, 1)
 	cl.BackupMetaMap = backupmgr.NewBackupMetaMap()
@@ -200,6 +202,7 @@ func TestForgetBackupsGoneFromFolder(t *testing.T) {
 	s.LastBackupMeta.Logical = gone
 	s.LastBackupMeta.Physical = new(backupmgr.BackupMetadata)
 
+	cl.InLogicalBackup = true
 	s.forgetBackupsGoneFromFolder()
 	s.lastBackupsFromCatalogue()
 
@@ -219,5 +222,91 @@ func TestForgetBackupsGoneFromFolder(t *testing.T) {
 	}
 	if s.LastBackupMeta.Physical == nil || s.LastBackupMeta.Physical.Id != 0 {
 		t.Fatal("no physical backup: left as it was")
+	}
+
+	// no backup running: the one that did not complete was a failed one
+	cl.InLogicalBackup = false
+	s.forgetBackupsGoneFromFolder()
+	if cl.BackupMetaMap.Get(300) != nil {
+		t.Fatal("a failed backup whose record left the folder is forgotten")
+	}
+	for _, id := range []int64{100, 400, 500} {
+		if cl.BackupMetaMap.Get(id) == nil {
+			t.Fatalf("backup %d stays", id)
+		}
+	}
+}
+
+// #2091: in the bucket a backup is fingerprinted by its files, size and S3 ETags: the mount's
+// times do not count, an object rewritten (another ETag) or a file not uploaded yet does; the
+// move gives a backup's record the same fingerprint the mount reads.
+func TestBucketFingerprint(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "db1_3306", "mydumper-1")
+	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
+	a, b := filepath.Join(dir, "a.sql"), filepath.Join(dir, "sub", "b.sql")
+	os.WriteFile(a, []byte("aa"), 0o644)
+	os.WriteFile(b, []byte("bbb"), 0o644)
+	etags := map[string]string{a: "e-a", b: "e-b"}
+	of := func(file string) (string, error) {
+		if e := etags[file]; e != "" {
+			return e, nil
+		}
+		return "", os.ErrNotExist
+	}
+
+	fp, err := artifactFingerprint(dir, 0, of)
+	if err != nil || fp.Files != 2 || fp.Size != 5 || fp.ETags == "" || fp.Inode != 0 || !fp.ChangeTime.IsZero() || !fp.Identifies() {
+		t.Fatalf("bucket fingerprint %+v %v", fp, err)
+	}
+	// the mount's times differ from the disk's: the same objects match
+	later := time.Now().Add(time.Hour)
+	os.Chtimes(a, later, later)
+	if again, err := artifactFingerprint(dir, 0, of); err != nil || !again.Same(*fp) {
+		t.Fatalf("same objects, other times: %+v %v", again, err)
+	}
+	// an object rewritten
+	etags[b] = "e-b2"
+	if again, _ := artifactFingerprint(dir, 0, of); again.Same(*fp) {
+		t.Fatal("another ETag is another file")
+	}
+	// a file not uploaded yet
+	delete(etags, b)
+	if _, err := artifactFingerprint(dir, 0, of); !errors.Is(err, errArtifactNotInBucket) {
+		t.Fatalf("no ETag: %v", err)
+	}
+	// a disk fingerprint never matches a bucket one
+	disk, _ := artifactFingerprint(dir, 0, nil)
+	if disk.Same(*fp) || fp.Same(*disk) {
+		t.Fatal("a disk fingerprint matches no bucket one")
+	}
+	if (backupmgr.ArtifactFingerprint{Files: 1, Size: 1}).Same(backupmgr.ArtifactFingerprint{Files: 1, Size: 1}) {
+		t.Fatal("a fingerprint without identity matches nothing")
+	}
+
+	// the move: the record gets the bucket fingerprint, registration and passed verification
+	etags[b] = "e-b"
+	cl := newEventLogTestCluster(t, 1)
+	reg := *disk
+	meta := &backupmgr.BackupMetadata{Id: 7, Dest: dir, Completed: true,
+		Registration: &backupmgr.BackupRegistration{Artifact: reg},
+		Verification: &backupmgr.BackupVerification{Status: backupmgr.BackupVerificationPassed, Artifact: &reg}}
+	raw, _ := json.Marshal(meta)
+	rec := filepath.Join(filepath.Dir(dir), "mydumper.7.meta.json")
+	os.WriteFile(rec, raw, 0o644)
+	if cl.recordWithBucketFingerprint(rec, 8, etags) != nil {
+		t.Fatal("a record of another backup goes up as it is")
+	}
+	data := cl.recordWithBucketFingerprint(rec, 7, etags)
+	got := new(backupmgr.BackupMetadata)
+	if data == nil || json.Unmarshal(data, got) != nil {
+		t.Fatalf("record %s", data)
+	}
+	want, _ := artifactFingerprint(dir, 0, of)
+	if !got.Registration.Artifact.Same(*want) || got.Verification.Artifact == nil || !got.Verification.Artifact.Same(*want) {
+		t.Fatalf("moved record %+v %+v, want %+v", got.Registration.Artifact, got.Verification.Artifact, want)
+	}
+	delete(etags, a)
+	if cl.recordWithBucketFingerprint(rec, 7, etags) != nil {
+		t.Fatal("a file that did not go up: the record goes up as it is")
 	}
 }
