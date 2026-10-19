@@ -38,6 +38,7 @@ func TestLastFailedLogicalBackup(t *testing.T) {
 // server's or a physical one never does.
 func TestLastFailedLogicalBackupCatalogue(t *testing.T) {
 	cl := newEventLogTestCluster(t, 1)
+	cl.BackupMetaMap = backupmgr.NewBackupMetaMap()
 	s := &ServerMonitor{URL: "db1:3306", JobResults: config.NewTasksMap(), ClusterGroup: cl}
 	s.JobResults.Set("mysqldump", &config.Task{Task: "mysqldump", Done: 1, State: 5, End: 1000, Result: "mysqldump: exit status 2"})
 	s.JobResults.Set("mydumper", &config.Task{Task: "mydumper", Done: 0, State: 0}) // never run
