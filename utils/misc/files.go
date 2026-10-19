@@ -19,12 +19,18 @@ import (
 	"github.com/signal18/replication-manager/share"
 )
 
+// ChownR gives path and everything below it to uid:gid. A file already owned by them is left
+// alone: a chown, even to the same owner, updates the file's ctime, which the backup
+// fingerprints hold, and every registered backup would then read as replaced (#2114).
 func ChownR(path string, uid, gid int) error {
 	return filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
-		if err == nil {
-			err = os.Chown(name, uid, gid)
+		if err != nil {
+			return err
 		}
-		return err
+		if st, ok := info.Sys().(*syscall.Stat_t); ok && info.Mode()&os.ModeSymlink == 0 && int(st.Uid) == uid && int(st.Gid) == gid {
+			return nil
+		}
+		return os.Chown(name, uid, gid)
 	})
 }
 

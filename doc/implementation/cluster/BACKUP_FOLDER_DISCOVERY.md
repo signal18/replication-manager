@@ -203,6 +203,14 @@ discovery dropped candidates. Both `ErrFrom: "BACKUP"`, `ServerUrl` set, like
 the other backup states (WARN0238, WARN0248, ERR00117); they go to the main
 `StateMachine`, as those do: there is no backup state machine.
 
+The ctime moves on any change to the inode, not only the content: a chown (even to
+the same owner), a chmod, an ACL or an attribute restore makes the backup read as
+"replaced or rewritten, same size and modification time" until it is registered
+again. replication-manager's own start (`LimitPrivileges`, `misc.ChownR` of the
+working directory) chowned every file and so marked every registered backup at
+each restart (WARN0249, then WARN0190 with no backup left for a rejoin); since
+#2114 `ChownR` leaves a file already owned by the target user alone.
+
 Restoring the original from its archive puts back a new file (another inode):
 it does not match the registration, the operator registers it (a change). A
 change clears by itself only when the registered file itself comes back.
