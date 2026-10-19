@@ -93,7 +93,13 @@ func New(ctx context.Context, o Options) (*Mount, error) {
 		fs.Shutdown()
 		return nil, fmt.Errorf("s3fuse: mount %s on %s: %w", o.Bucket, o.MountPoint, err)
 	}
-	return &Mount{point: o.MountPoint, fs: fs, mfs: mfs}, nil
+	m := &Mount{point: o.MountPoint, fs: fs, mfs: mfs}
+	// before anything else opens a file of the mount: without it the process can freeze
+	if err := disablePoll(o.MountPoint); err != nil {
+		m.Unmount()
+		return nil, err
+	}
+	return m, nil
 }
 
 // Join waits until the mount ends.
