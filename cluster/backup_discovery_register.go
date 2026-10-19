@@ -307,7 +307,9 @@ func (cluster *Cluster) RegisterBackupChange(id int64, takenAt time.Time) error 
 // startBackupRegistration starts the read and registration of path in the background, one
 // per server folder at a time (with the discoveries and the change check).
 func (cluster *Cluster) startBackupRegistration(server *ServerMonitor, path, tool string, split bool, prev *backupmgr.BackupMetadata, takenAt time.Time) error {
-	if cluster.IsInBackup() {
+	// a backup job only: an archive push reads, and a file it removes meanwhile fails the
+	// fingerprint check of the registration
+	if cluster.IsInBackupJob() {
 		return ErrBackupDiscoveryInBackup
 	}
 	if prev != nil {

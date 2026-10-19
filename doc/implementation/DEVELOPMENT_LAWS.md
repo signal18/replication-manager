@@ -347,6 +347,59 @@ fix too: bump the module or the Go toolchain, release, refresh. A draft advisory
 reaches the SBOM: the workflow lists published advisories only. Procedure for
 contributors: docs.signal18.io, Contribute, Security Fixes and SBOM (#2086).
 
+**T27. A replication link belongs to the client's topology: never delete one, and never
+change one without a state that says so.** A channel (its master host, user, name,
+position) is how the client wired their databases, often across clusters: a parent and
+its child or staging cluster, an external source, a client's own multi-source. repman
+monitors and repoints the links it manages; it does not own them (F1). So:
+- No `RESET SLAVE ... ALL` / `RESET REPLICA ALL`, `DROP SUBSCRIPTION`, or any statement
+  that removes a channel's definition, in any automatic path (reseed, rejoin, failover,
+  provision, job). To clear positions, `RESET SLAVE '<channel>'` without `ALL` keeps the
+  link. Removing a link is an explicit, user-requested action only.
+- Moving a link to another source is the job of the failover, switchover and rejoin
+  code, under their guards (election, positions, consistency checks), and nothing else's.
+- Restoring a backup (a reseed, logical or physical) changes no link: no `CHANGE MASTER`,
+  no other source, no definition. It may stop and start the managed channel around the
+  load and restore the GTID state the backup carries (`gtid_slave_pos`); the link stays
+  as the last failover, switchover or rejoin left it. A link that must be set or moved
+  after a restore is the rejoin's job. Provision and jobs do not change a link either.
+- STOP is not DROP. Stopping every channel (`STOP ALL SLAVES`) is right when the
+  operation replaces the data all of them apply to (a restore): each channel stopped is
+  started again at the end, or left stopped with a state saying why. Positioning or
+  resetting acts on the channel repman manages (`replication-source-name`) only, by name:
+  a statement without a channel name that removes or rewrites (`RESET SLAVE ALL`) is never
+  justified by "there is only one channel".
+- A path that may fail half-way leaves the link as it found it, stopped at worst: never
+  "delete now, recreate at the end". The end may never come.
+- Any change to a link (stop, repoint, reset of positions) opens a state naming the
+  server, the channel, the reason and the action that did it, so the GUI shows why the
+  link is down. A log line is not enough (T3/T4: states, not logs).
+- An AI assistant changing a reseed, rejoin, failover or switchover path reads this law first and
+  says, in the PR, which channels its change stops, repoints or resets, and why.
+Example (PR #2020, v3.1.44): to fix older dumps and an idle MariaDB replica, the
+mysqldump reseed added `STOP ALL SLAVES` then `RESET SLAVE '<name>' ALL` (a plain
+`RESET SLAVE ALL` when no name is set), at request time and before the load, recreating
+the link only after a successful load. A reseed launched from a parent on its child's
+server deleted the child's link; the parent then dropped the server from its topology
+and it vanished from the GUI; the reseed failed (a system account) and the link stayed
+deleted; no state explained any of it.
+
+**T28. A PR is "ready to merge" only when its review is on its current head and
+answered.** Before calling a PR ready, to the maintainer or in any summary, check and say:
+- **Reviewed:** a review exists on the PR's *current* head commit. A review of an earlier
+  push does not count; every new commit calls for a new review (`@claude` comment). A PR
+  with no review is not ready, whatever its age.
+- **Answered:** every blocking point is fixed, and every other point is fixed or answered
+  in the PR with a reason. "Approve with comments" is not "ready" while they are open.
+- **Checks:** the PR's CI checks are green, none missing, none pending.
+- **T13 gate:** a change to monitoring, failover, rejoin, reseed or provisioning carries
+  its regtest/Docker results in the PR; local unit tests are not the gate.
+- **Listed honestly:** a status list gives each PR's review state (none / outdated /
+  changes requested / approved with open points / ready), never "ready" by default.
+Example (2026-10-16): four PRs announced "ready to merge": one reviewed on a superseded
+version, one never reviewed, two approved with open points, one of them a real bug (a
+state that could stay open forever).
+
 ## Debugging discipline — investigate FULLY before you unblock
 
 **Never unblock a stuck issue before you have investigated it fully.** A restart, a

@@ -1185,33 +1185,40 @@ func StartSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, er
 }
 
 func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *version.Version) (string, error) {
-	stmt := ""
-	if myver.IsPostgreSQL() {
-		if Channel == "" {
-			Channel = "alltables"
-		}
-		stmt += "DROP SUBSCRIPTION " + Channel
-	} else {
-		if myver.IsMySQLOrPerconaGreater84() {
-			stmt += "RESET REPLICA"
-		} else {
-			stmt += "RESET SLAVE"
-		}
-		if myver.IsMariaDB() && Channel != "" {
-			stmt += " '" + Channel + "'"
-		}
-		if all == true {
-			stmt += " ALL"
-			if myver.IsMySQLOrPercona() && Channel != "" {
-				stmt += " FOR CHANNEL '" + Channel + "'"
-			}
-		}
-	}
+	stmt := ResetSlaveStatement(all, Channel, myver)
 	if myver.IsPostgreSQL() {
 		return stmt, PostgresExecReadWrite(db, stmt) // a read-only default may be in place
 	}
 	_, err := db.Exec(stmt)
 	return stmt, err
+}
+
+// ResetSlaveStatement is the statement ResetSlave runs. all=false clears the channel's
+// positions and relay logs and keeps the link; all=true also deletes the link's definition.
+// A named channel is always named, ALL or not: MySQL's RESET REPLICA without FOR CHANNEL
+// resets every channel (#2093). PostgreSQL: dropping the subscription is the only reset
+// (all is not used): its callers decide whether that is wanted.
+func ResetSlaveStatement(all bool, Channel string, myver *version.Version) string {
+	if myver.IsPostgreSQL() {
+		if Channel == "" {
+			Channel = "alltables"
+		}
+		return "DROP SUBSCRIPTION " + Channel
+	}
+	stmt := "RESET SLAVE"
+	if myver.IsMySQLOrPerconaGreater84() {
+		stmt = "RESET REPLICA"
+	}
+	if myver.IsMariaDB() && Channel != "" {
+		stmt += " '" + Channel + "'"
+	}
+	if all {
+		stmt += " ALL"
+	}
+	if myver.IsMySQLOrPercona() && Channel != "" {
+		stmt += " FOR CHANNEL '" + Channel + "'"
+	}
+	return stmt
 }
 
 func ResetMaster(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {

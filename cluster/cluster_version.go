@@ -12,17 +12,7 @@ import (
 )
 
 func (cluster *Cluster) RefreshToolVersions() {
-	if err := cluster.RefreshDBClientVersion(); err != nil {
-		cluster.SetState("WARN0117", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0117"], err), ErrFrom: "CLUSTER"})
-	}
-
-	if err := cluster.RefreshDBClientDumpVersion(); err != nil {
-		cluster.SetState("WARN0118", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0118"], err), ErrFrom: "CLUSTER"})
-	}
-
-	if err := cluster.RefreshDBClientBinlogVersion(); err != nil {
-		cluster.SetState("WARN0119", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0119"], err), ErrFrom: "CLUSTER"})
-	}
+	cluster.refreshDBClientVersions()
 
 	if err := cluster.RefreshMyDumperVersion(); err != nil {
 		cluster.SetState("WARN0120", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0120"], err), ErrFrom: "CLUSTER"})
@@ -40,6 +30,27 @@ func (cluster *Cluster) RefreshToolVersions() {
 		}
 	}
 	cluster.ToolsVersions = cluster.GetToolsVersions()
+}
+
+// RefreshDBClientVersions reads again the versions of the dump, restore and binlog clients
+// only, after one of their paths changed: the other tools are not probed.
+func (cluster *Cluster) RefreshDBClientVersions() {
+	cluster.refreshDBClientVersions()
+	cluster.ToolsVersions = cluster.GetToolsVersions()
+}
+
+func (cluster *Cluster) refreshDBClientVersions() {
+	if err := cluster.RefreshDBClientVersion(); err != nil {
+		cluster.SetState("WARN0117", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0117"], err), ErrFrom: "CLUSTER"})
+	}
+
+	if err := cluster.RefreshDBClientDumpVersion(); err != nil {
+		cluster.SetState("WARN0118", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0118"], err), ErrFrom: "CLUSTER"})
+	}
+
+	if err := cluster.RefreshDBClientBinlogVersion(); err != nil {
+		cluster.SetState("WARN0119", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0119"], err), ErrFrom: "CLUSTER"})
+	}
 }
 
 // assertToolsVersionsConfigState is the local tools line of the Config pill (CINF0012,

@@ -435,6 +435,21 @@ export const registerBackupChange = createGuardedAsyncThunk('cluster/registerBac
   }
 })
 
+// archives a registered backup (#2108): its push queued in the restic task queue, after a
+// test restore when verifyRestore
+export const archiveBackup = createGuardedAsyncThunk('cluster/archiveBackup', async ({ clusterName, backupId, removeOriginal, verifyRestore }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.archiveBackup(clusterName, backupId, removeOriginal, verifyRestore, baseURL)
+    showSuccessBanner(verifyRestore ? `Test restore of backup ${backupId} started: its archive is queued when it passes` : `Archive of backup ${backupId} queued`, status, thunkAPI)
+    thunkAPI.dispatch(getBackups({ clusterName }))
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Backup ${backupId} not archived`, error, thunkAPI)
+    return handleError(error, thunkAPI)
+  }
+})
+
 // unregisters a discovered backup: its registration only, its file is left as it is
 export const unregisterBackup = createGuardedAsyncThunk('cluster/unregisterBackup', async ({ clusterName, backupId }, thunkAPI) => {
   try {

@@ -3095,6 +3095,12 @@ func (repo *ResticManager) CancelTask(taskId int) {
 		if task.ID == taskId {
 			repo.TaskQueue = append(repo.TaskQueue[:i], repo.TaskQueue[i+1:]...)
 			repo.Printf(logrus.InfoLevel, "Cancelled restic task ID: %d", taskId)
+			// the task never runs: its caller (BackupRestic, which then clears its in-archive
+			// flag) gets its result now, not a wait forever (#2110)
+			if task.resultCh != nil {
+				task.resultCh <- ResticResult{TaskID: task.ID, TaskType: task.Type, Error: fmt.Errorf("task cancelled")}
+				close(task.resultCh)
+			}
 			return
 		}
 	}
@@ -3111,6 +3117,11 @@ func (repo *ResticManager) ClearQueue() {
 	tasklist := []string{}
 	for _, task := range repo.TaskQueue {
 		tasklist = append(tasklist, fmt.Sprintf("ID: %d, Type: %s", task.ID, GetTaskName(task.Type)))
+		// the task never runs: its caller gets its result now, not a wait forever (#2110)
+		if task.resultCh != nil {
+			task.resultCh <- ResticResult{TaskID: task.ID, TaskType: task.Type, Error: fmt.Errorf("task queue reset")}
+			close(task.resultCh)
+		}
 	}
 
 	if len(tasklist) > 0 {

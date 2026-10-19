@@ -396,3 +396,58 @@ func TestClassifyStreamKeepsDumpSessionWrapperOutOfSystem(t *testing.T) {
 		t.Errorf("the wrapper stays with its header:\n%s", app.String())
 	}
 }
+
+// TestIsImportRoleBracket: the 7 statements of the bracket as the MariaDB 11.4 dump client
+// writes them match, whole; a view, routine or row that mentions the role does not.
+func TestIsImportRoleBracket(t *testing.T) {
+	for _, l := range []string{
+		"SELECT COALESCE(CURRENT_ROLE(),'NONE') into @current_role;",
+		"CREATE ROLE IF NOT EXISTS mariadb_dump_import_role;",
+		"GRANT mariadb_dump_import_role TO CURRENT_USER();",
+		"SET ROLE mariadb_dump_import_role;",
+		"SET ROLE NONE;",
+		"DROP ROLE mariadb_dump_import_role;",
+		"/*M!100203 EXECUTE IMMEDIATE CONCAT('SET ROLE ', @current_role) */;",
+		"  SET ROLE NONE;  ",
+	} {
+		if !IsImportRoleBracket(l) {
+			t.Errorf("%q is a bracket statement", l)
+		}
+	}
+	for _, l := range []string{
+		"/*!50001 VIEW `v` AS select 'mariadb_dump_import_role' AS `r` */;",
+		"  SET @r = @current_role;",
+		"CREATE DEFINER=`root`@`%` PROCEDURE `p`() SELECT CURRENT_ROLE() INTO @current_role",
+		"GRANT mariadb_dump_import_role TO `app`@`%`;",
+	} {
+		if IsImportRoleBracket(l) {
+			t.Errorf("%q is not a bracket statement", l)
+		}
+	}
+}
+
+// TestClassifyStreamSkipLeavesSystemSide: Skip leaves lines out of the application stream
+// only; a system line it reports is written to the system stream.
+func TestClassifyStreamSkipLeavesSystemSide(t *testing.T) {
+	dump := strings.Join([]string{
+		"-- MariaDB dump 10.19-11.4.12-MariaDB, for debian-linux-gnu (x86_64)",
+		"SELECT COALESCE(CURRENT_ROLE(),'NONE') into @current_role;",
+		"CREATE ROLE IF NOT EXISTS mariadb_dump_import_role;",
+		"CREATE USER IF NOT EXISTS `repl`@`%`;",
+		"GRANT REPLICATION SLAVE ON *.* TO `repl`@`%`;",
+		"DROP ROLE mariadb_dump_import_role;",
+		"",
+	}, "\n")
+	var app, sys strings.Builder
+	res, err := ClassifyStream(strings.NewReader(dump), ClassifyOptions{ApplicationWriter: &app, SystemWriter: &sys,
+		Skip: func(l string) bool { return IsImportRoleBracket(l) || strings.HasPrefix(l, "CREATE USER") }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sys.String(), "CREATE USER IF NOT EXISTS `repl`@`%`;") {
+		t.Errorf("a system line was skipped:\n%s", sys.String())
+	}
+	if strings.Contains(app.String(), "mariadb_dump_import_role") || res.Skipped != 3 {
+		t.Errorf("skipped %d, application:\n%s", res.Skipped, app.String())
+	}
+}

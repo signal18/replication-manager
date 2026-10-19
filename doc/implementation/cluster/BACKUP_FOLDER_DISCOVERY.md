@@ -29,7 +29,7 @@ to proper backups, and a registered backup's file is tracked for changes.
 never the monitor ticker) unless `backup-discovery` is off (then only
 `LoadAdhocBackupMetadata`), and by `Cluster.StartBackupDiscovery` (API: a
 goroutine over the servers, `retry` true; 202; refused with
-`ErrBackupDiscoveryInBackup` while `IsInBackup`). It writes nothing to disk but
+`ErrBackupDiscoveryInBackup` while `IsInBackupJob`). It writes nothing to disk but
 for unregistering a discovered backup whose artifact is gone (its own meta file).
 
 `Cluster.backupDiscoveries` (key server URL) is the one guard per server folder:
@@ -44,7 +44,8 @@ replacing.
    kept): a server monitor created then lists its ad-hoc and registered backups.
    `readBackupMetadataFile` loads a discovered entry with no strategy (3.1.44) as
    `BackupStrategyFull`.
-2. Refused while `IsInBackup`.
+2. Refused while `IsInBackupJob` (#2108: a backup job, not an archive push, which
+   only reads the artifacts with metadata the discovery passes over).
 3. `unregisterGoneDiscoveredBackups`: a discovered backup whose artifact is gone
    loses its meta file and map entry (and its change): the discovered entries
    never outlive their artifacts. Not one kept only in its archive
@@ -100,7 +101,8 @@ folder (`filepath.Dir(path)` must be the folder: no traversal); `takenAt` in the
 future; not a logical backup (`classifyBackupArtifact`); already known; the last
 discovery found it `not-backup` (`ErrBackupNotABackup`) or `incomplete`
 (`ErrBackupNotRegisterable`). Then `startBackupRegistration`: refused while a
-backup runs, while it is verified (a change), while it settles; the server's
+backup job runs (`IsInBackupJob`, #2108: an archive push reads, and a file it
+removes meanwhile fails the fingerprint check), while it is verified (a change), while it settles; the server's
 guard taken; the outcome recorded in `backupRegisterResults` (key path: running,
 then the refusal kept for the list, or deleted on success) and the read run in a
 goroutine: an artifact is read to its end, never in a request.
@@ -221,7 +223,10 @@ one without a fingerprint, taken before this release, is adopted in place
 file rewritten through a temporary file). A record whose file a newer record
 owns (`isSupersededBackupRecord`, `backupRecordFor`: the newest record of a
 `Dest`; a scheduled backup rewrites its file and its record) and a backup kept
-only in its archive are not compared. No check while `IsInBackup`: a backup
+only in its archive are not compared. No check while `IsInBackup` (an archive
+push included, unlike the discovery and the registration: with
+`backup-archive-remove-original` it removes its backup's file before marking it
+removed, a check between would record a change): a backup
 rewrites, renames (`backup-keep-until-valid`) or encrypts its files; the last
 check's changes are kept until it ends.
 
@@ -359,10 +364,70 @@ through `findExistingBackupPath`, then `<backup dir>/<fixed name>`) skips them:
 one before their existence check, the backup cookie kept (the backup exists,
 it is not for automatic use). `Cluster.ReseedFromBackupID(server, id)` reseeds on request:
 logical (`mysqldump`, `mydumper`) only (`ErrBackupDiscoveryNotLogical`),
-not refused by `backupUseRefusal`, `Completed`, a position (`hasReplicationPosition`), not `OriginalRemoved`, artifact present (`backupArtifactExists`),
+not refused by `backupUseRefusal` nor `registeredReseedRefusal` (below), `Completed`, a position (`hasReplicationPosition`), not `OriginalRemoved`, artifact present (`backupArtifactExists`),
 target not the primary; then `JobReseedLogicalBackupFromPathWithOptions` (the
 restic restore's path). The position comes from the artifact during the
 restore, not from the meta file.
+
+## Verification gate and archive (#2108)
+
+`cluster/backup_register_archive.go`. Reproduced on a MariaDB 10.11 lab
+cluster before the change: a dump with a duplicated primary key row registered,
+passed the integrity level, failed its test restore (1062), raised no state
+(ERR00117 covers `LastBackupMeta.Logical` only), and `ReseedFromBackupID`
+accepted it, leaving the replica with its replication stopped.
+
+- **Current file.** A failed verification records no fingerprint, so
+  `registeredVerificationFailed` takes a failure as the current file's when it
+  ended at or after `Registration.RegisteredAt` (a registered change sets it
+  again, and carries the previous verification, now older). `registeredBackupProven`
+  is `backupProven` (restore level, passed, an artifact) with that artifact equal to
+  `Registration.Artifact` (`artifactFingerprintsEqual`): `Proven` as the
+  restore selector means it, on the registered file. Both read the verification
+  through `GetBackupVerification` (a copy under `backupMetaMutex`).
+- **Reseed.** `registeredReseedRefusal`, in `ReseedFromBackupID` after
+  `backupUseRefusal`, for `Discovered` backups only: `ErrBackupVerificationFailed`
+  whatever the setting, `ErrBackupNotProven` while
+  `backup-verification-registered-proven` (default true; T14 off switch). Not in
+  `backupUseRefusal`: that one also feeds the catalog and the change lock, which
+  registered backups never reach for automatic use; the automatic rejoin has its
+  own `Proven` selector gate. A registered scheduled-file replacement
+  (`Discovered` false) is replication-manager's scheduled backup and is not gated.
+- **WARN0253**, `checkRegisteredVerificationStates` on the tick (after
+  `checkBackupDiscoveryStates`): server level, main state machine, warning, as
+  WARN0249 (T3). From memory only (the meta map, the verification copy); bounded
+  by the registered backups.
+- **Archive.** `ArchiveBackup(id, removeOriginal, testFirst)`: `archiveRefusal`
+  (registered, `backup-restic` and its manager, no snapshot nor
+  `OriginalRemoved`, `backupUseRefusal`, `backupFileLocked`, not being verified,
+  no discovery or registration of its folder, last verification not failed
+  unless `testFirst`), then the push. One archive per backup:
+  `backupArchiving` (sync.Map, id), taken before the checks, released on a
+  refusal, at the end of the test restore when it did not pass or a recheck
+  refused, and by the push's `done`. Bounded by the backups (T18).
+- **Push.** `pushRegisteredBackup` calls `backupResticWith` (what `BackupRestic`
+  became, `BackupRestic` keeping its signature and behavior) with
+  `resticPushOptions{removeOriginal, asked: true, noFlag: true, done}`. The push
+  is queued in the restic task queue like any other; `noFlag`: it neither sets
+  nor clears `InResticLogicalBackup`. That flag makes a backup wait behind a
+  push and is a single bool per method: a manual push clearing it at its end
+  would release a scheduled push's hold early. A registered file has its own
+  name and no backup rewrites it, so the manual push needs no hold; the queue
+  orders it. `done` reports every end (restic off, no manager, the push's error,
+  no snapshot, or the snapshot recorded).
+- **Removal.** `removeOriginal` is the request's, not
+  `backup-archive-remove-original`, read when the snapshot holds the file
+  (`removeArchivedOriginalAsked`, the checks of `removeArchivedOriginal`). A
+  refusal is recorded `Asked` and `checkArchiveRemoveOriginalStates` keeps its
+  WARN0238 while the switch is off (a refusal of the switch is still dropped
+  then).
+- **Test first.** `verifyBackupByIDRunThen(id, restore, then)`: `VerifyBackupByIDRun`
+  with a step deferred first in its goroutine, so it runs after the run released
+  the backup (`backupVerifying`, the slot, the read). `then` reads the recorded
+  verification: not passed, nothing is pushed (WARN0253 when failed); passed,
+  `archiveRefusal` again (the test restore took time), then the push.
+  `VerifyBackupByIDRun` calls it with nil: the Verify button, the CLI `--wait`
+  and the post-backup verification are unchanged.
 
 ## API and ACL
 
@@ -383,6 +448,17 @@ restore, not from the meta file.
   already registered, unchanged; 422 not a backup, not registerable, not
   discovered. Register answers 202 (the read runs in the background),
   Unregister 200.
+- `POST /api/clusters/{clusterName}/backups/{backupID}/archive` (body
+  `removeOriginal`, `verifyRestore`, both optional, false;
+  `handlerMuxClusterBackupArchive`): ACL rule `/backups/` (`db-backup`, its
+  comment lists `archive`), the handler requires `db-backup`, and `db-restore`
+  with `verifyRestore` as the restore level of Verify does.
+  `writeBackupArchiveError`: 404 unknown; 409 already archived, being archived,
+  changed since registered, a verification or a registration runs; 422 not
+  registered, no archive, last verification failed, not verifiable (no
+  `backup-verification-host`, not a mysqldump), not a backup. 202 once queued
+  or once the test restore started. CLI `backup archive BACKUP_ID
+  [--remove-original] [--verify-restore]`.
 - `POST /api/clusters/{clusterName}/servers/{serverName}/actions/reseed/backup/{backupID}`
   (`handlerMuxServerReseedFromBackup`): ACL rule `/actions/reseed/`
   (`db-restore`), and the handler requires `db-restore` too (the rule matcher
@@ -414,7 +490,18 @@ restore, not from the meta file.
   only, no position); for a discovered backup, Register the change (when
   changed) and Unregister in place of Delete (Delete would remove the backup
   file, which the operator placed). Verify disabled for a non-backup.
-- **Settings → Backups**: `backup-discovery` (switch), `backup-discovery-candidate-max`.
+  `reseedRefusal` also refuses a registered backup whose last verification of
+  its current file failed (`registeredVerificationFailed`) or, with
+  `backupVerificationRegisteredProven`, not proven (`registeredProven`): the
+  backend's rules, for the tooltip; the API decides. Archive (`HiCloudUpload`)
+  for a registered backup, disabled with the reason (`archiveRefusal`: restic
+  off, archived, not a backup, changed, being verified); its dialog has the two
+  opt-ins unticked, the test restore only with `backup-verification-host` and a
+  mysqldump (disabled without `db-restore`). The queued push shows in the
+  restic task queue, its snapshot in the snapshot list and the backup: no
+  separate archive status.
+- **Settings → Backups**: `backup-discovery` (switch), `backup-discovery-candidate-max`,
+  `backup-verification-registered-proven` (switch, after the verification settings).
 
 The strategy column shows Full for discovered backups (`getBackupStrategy`
 unchanged: the backend records 1).
@@ -460,6 +547,15 @@ without its manifest. `cluster_acl_test.go`: the reseed route needs
 `db-restore`; the candidates route `cluster-show-backups`, register and
 unregister `db-backup`.
 
+`cluster/backup_register_archive_test.go` (#2108): the reseed gate (never
+verified, integrity only, a test restore of another file refused while the
+switch is on, proven passes; switch off: never verified passes, failed refused,
+a failure before the registration ignored; a backup replication-manager took
+not gated); WARN0253 raised and cleared; the archive refusals (each, and the
+reservation taken back); a push with `noFlag` leaves the flag of another push
+and reports its end; an asked removal's refusal kept as WARN0238 with the
+switch off.
+
 Regtest (T13, real servers): `testBackupDiscovery` (`regtest/test_backup_discovery.go`,
 run by name). An accounts file is listed not a backup and refused (D9). For a
 mysqldump file, a splitdump folder and a mydumper folder (mydumper installed): a
@@ -476,4 +572,17 @@ candidate again) and removed by the test (D7). A splitdump copy whose
 `metadata` holds no position is registered with the "no replication position"
 note, and its reseed refused (D8). Last, the record a 3.1.44 discovery made of the scheduled
 `mysqldump.sql.gz` is written by hand and removed by the next discovery, the
-file kept (D10).
+file kept (D10). It turns `backup-verification-registered-proven` off while it
+runs: its reseeds test the registration, not the proof.
+
+Regtest `testBackupRegisterArchive` (`regtest/test_backup_register_archive.go`,
+run by name; needs `backup-restic` and `backup-verification-host`), with the
+proof required and `backup-archive-remove-original` off: a registered copy's
+reseed refused while not proven (A1); its test restore passes and the replica
+is reseeded from it (A2); archived without removal: snapshot, file kept, a
+second archive refused (A3); a second copy archived with a test restore first
+and the removal: passed, snapshot, file removed (A4); a copy with a duplicated
+primary key row archived with a test restore first: 1062, nothing pushed, file
+kept, WARN0253, reseed refused also with the switch off, archive without a
+test restore refused, cleared by its unregister (A5). Copies unregistered and
+removed, snapshots purged.

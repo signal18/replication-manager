@@ -92,6 +92,10 @@ var tests = []string{
 	// testBackupDiscovery is not in this list either: it copies backups in the primary's
 	// backup folder and reseeds the first replica from them. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testBackupDiscovery
+	// testBackupRegisterArchive is not in this list either: it registers copies of a backup,
+	// archives them to restic, reseeds the first replica and needs backup-restic and
+	// backup-verification-host. Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testBackupRegisterArchive
 	// testLogicalReseedEdgeCases and testDumpClientCheck are not in this list either: they
 	// break replication, overwrite a backup, change GTID state or raise a warning on purpose,
 	// for a dedicated test cluster only. Run them by name.

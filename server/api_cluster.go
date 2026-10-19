@@ -178,6 +178,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupRegisterChange)),
 	)).Methods(http.MethodPost)
 
+	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/archive", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupArchive)),
+	)).Methods(http.MethodPost)
+
 	router.Handle("/api/clusters/{clusterName}/backups/{backupID}/unregister", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupUnregister)),
@@ -2998,6 +3003,96 @@ func (repman *ReplicationManager) handlerMuxClusterBackupRegisterChange(w http.R
 	}
 }
 
+// backupArchiveRequest is the body of an archive of a registered backup (#2108).
+type backupArchiveRequest struct {
+	// RemoveOriginal removes the backup file once its snapshot holds it, whatever
+	// backup-archive-remove-original
+	RemoveOriginal bool `json:"removeOriginal"`
+	// VerifyRestore runs a test restore of the backup first, on backup-verification-host:
+	// the push is queued only when it passes
+	VerifyRestore bool `json:"verifyRestore"`
+}
+
+// writeBackupArchiveError answers a refused archive of a registered backup.
+func writeBackupArchiveError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, cluster.ErrBackupNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, cluster.ErrBackupArchiving), errors.Is(err, cluster.ErrBackupArchived), errors.Is(err, cluster.ErrBackupVerificationRunning), errors.Is(err, cluster.ErrBackupDiscoveryRunning), errors.Is(err, cluster.ErrBackupChangedSinceRegistered):
+		http.Error(w, err.Error(), http.StatusConflict)
+	case errors.Is(err, cluster.ErrBackupNotDiscovered), errors.Is(err, cluster.ErrBackupArchiveUnavailable), errors.Is(err, cluster.ErrBackupVerificationFailed), errors.Is(err, cluster.ErrBackupNotVerifiable), errors.Is(err, cluster.ErrBackupNotABackup), errors.Is(err, cluster.ErrBackupDuplicateScheduled):
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+	default:
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxClusterBackupArchive archives a registered backup.
+// @Summary Archive a registered backup
+// @Description Queues the push of a registered backup's file in the restic task queue; its snapshot is recorded in the backup. removeOriginal removes the backup file once the snapshot holds it, whatever backup-archive-remove-original (a refusal is WARN0238). verifyRestore runs a test restore of the backup first, on backup-verification-host: the push is queued only when it passes, its result is the backup's verification. Refused for a backup already archived, changed since registered, being verified or registered, or whose last verification of its current file failed (unless verifyRestore).
+// @Description Required grant: db-backup; db-restore too with verifyRestore
+// @Tags ClusterBackups
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param backupID path int true "Backup ID"
+// @Param body body backupArchiveRequest false "The options, both off by default"
+// @Success 202 {object} map[string]interface{} "Archive started"
+// @Failure 400 {string} string "Invalid backup ID or body"
+// @Failure 403 {string} string "No valid ACL, or no db-backup (db-restore) grant"
+// @Failure 404 {string} string "Backup not found"
+// @Failure 409 {string} string "Already archived or being archived, changed since registered, or a verification or a registration runs"
+// @Failure 422 {string} string "Not a registered backup, no archive, its last verification failed, or no test restore possible"
+// @Failure 500 {string} string "Archive not started"
+// @Router /api/clusters/{clusterName}/backups/{backupID}/archive [post]
+func (repman *ReplicationManager) handlerMuxClusterBackupArchive(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	u, ok := repman.requestACLUser(r, mycluster)
+	if !ok || !u.Grants[config.GrantDBBackup] {
+		http.Error(w, "No db-backup grant", http.StatusForbidden)
+		return
+	}
+	backupID, err := strconv.ParseInt(strings.TrimSpace(vars["backupID"]), 10, 64)
+	if err != nil || backupID <= 0 {
+		http.Error(w, "Invalid backup ID", http.StatusBadRequest)
+		return
+	}
+	var req backupArchiveRequest
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			http.Error(w, "Invalid body", http.StatusBadRequest)
+			return
+		}
+	}
+	if req.VerifyRestore && !u.Grants[config.GrantDBRestore] {
+		http.Error(w, "No db-restore grant: the test restore loads the backup into a server", http.StatusForbidden)
+		return
+	}
+	if err := mycluster.ArchiveBackup(backupID, req.RemoveOriginal, req.VerifyRestore); err != nil {
+		writeBackupArchiveError(w, err)
+		return
+	}
+	message := "Backup archive queued"
+	if req.VerifyRestore {
+		message = "Backup test restore started, the archive is queued when it passes"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	if err := json.NewEncoder(w).Encode(map[string]interface{}{"message": message, "id": backupID}); err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
+	}
+}
+
 // handlerMuxClusterBackupUnregister unregisters a discovered backup.
 // @Summary Unregister a discovered backup
 // @Description Unregisters a discovered backup: replication-manager's metadata file is removed, the backup file is left as it is and is listed as a candidate again. Clears its WARN0249. A backup replication-manager took is refused: delete it instead.
@@ -3675,6 +3770,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupDiscovery()
 	case "backup-verification":
 		mycluster.SwitchBackupVerification()
+	case "backup-verification-registered-proven":
+		mycluster.SwitchBackupVerificationRegisteredProven()
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.SwitchMailSmtpTlsSkipVerify()
 	case "cloud18-shared":
@@ -5092,6 +5189,22 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMysqlclientOptions = string(val)
+	case "backup-mysqldump-path", "backup-mysqlclient-path", "backup-mysqlbinlog-path":
+		// the cluster's own dump and restore clients (a MySQL cluster needs MySQL ones); the
+		// client-dependent options follow the binary, its version is read again
+		_, storeValue, err := resolveExecutablePath(value, name)
+		if err != nil {
+			return err
+		}
+		switch name {
+		case "backup-mysqldump-path":
+			mycluster.Conf.BackupMysqldumpPath = storeValue
+		case "backup-mysqlclient-path":
+			mycluster.Conf.BackupMysqlclientPath = storeValue
+		default:
+			mycluster.Conf.BackupMysqlbinlogPath = storeValue
+		}
+		mycluster.RefreshDBClientVersions()
 	case "backup-verification-level":
 		if err := mycluster.SetBackupVerificationLevel(value); err != nil {
 			return err
@@ -5909,6 +6022,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupDiscovery = applyIsActive(mycluster.Conf.BackupDiscovery, isactive)
 	case "backup-verification":
 		mycluster.Conf.BackupVerification = applyIsActive(mycluster.Conf.BackupVerification, isactive)
+	case "backup-verification-registered-proven":
+		mycluster.Conf.BackupVerificationRegisteredProven = applyIsActive(mycluster.Conf.BackupVerificationRegisteredProven, isactive)
 	case "mail-smtp-tls-skip-verify":
 		mycluster.Conf.MailSMTPTLSSkipVerify = applyIsActive(mycluster.Conf.MailSMTPTLSSkipVerify, isactive)
 	case "cloud18-shared":

@@ -874,6 +874,10 @@ func (cluster *Cluster) SwitchBackupVerification() {
 	cluster.Conf.BackupVerification = !cluster.Conf.BackupVerification
 }
 
+func (cluster *Cluster) SwitchBackupVerificationRegisteredProven() {
+	cluster.Conf.BackupVerificationRegisteredProven = !cluster.Conf.BackupVerificationRegisteredProven
+}
+
 func (cluster *Cluster) SwitchCloud18OpenDbops() {
 	cluster.Conf.Cloud18OpenDbops = !cluster.Conf.Cloud18OpenDbops
 }

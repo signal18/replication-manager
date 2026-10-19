@@ -230,64 +230,32 @@ func TestSetEnforceGTIDConsistency_Validation(t *testing.T) {
 }
 
 func TestResetSlave_CommandGeneration(t *testing.T) {
+	mariadb, _ := version.NewVersion("MariaDB", 11, 8, 9)
+	mysql80, _ := version.NewVersion("MySQL", 8, 0, 36)
+	mysql84, _ := version.NewVersion("MySQL", 8, 4, 2)
+	pg, _ := version.NewVersion("PostgreSQL", 16, 4)
 	tests := []struct {
 		name    string
 		all     bool
 		channel string
-		flavor  string
-		version string
-		wantCmd string
+		ver     *version.Version
+		want    string
 	}{
-		{
-			name:    "MySQL basic reset",
-			all:     false,
-			channel: "",
-			flavor:  "MySQL",
-			version: "8.0.32",
-			wantCmd: "RESET SLAVE",
-		},
-		{
-			name:    "MySQL reset all",
-			all:     true,
-			channel: "",
-			flavor:  "MySQL",
-			version: "8.0.32",
-			wantCmd: "RESET SLAVE ALL",
-		},
-		{
-			name:    "MySQL with channel",
-			all:     false,
-			channel: "channel1",
-			flavor:  "MySQL",
-			version: "8.0.32",
-			wantCmd: "RESET SLAVE FOR CHANNEL",
-		},
-		{
-			name:    "MariaDB basic",
-			all:     false,
-			channel: "",
-			flavor:  "MariaDB",
-			version: "10.6.12",
-			wantCmd: "RESET SLAVE",
-		},
+		{"MariaDB positions, default channel", false, "", mariadb, "RESET SLAVE"},
+		{"MariaDB positions, named channel keeps the link", false, "belair", mariadb, "RESET SLAVE 'belair'"},
+		{"MariaDB link deleted", true, "belair", mariadb, "RESET SLAVE 'belair' ALL"},
+		{"MySQL positions, named channel", false, "belair", mysql80, "RESET SLAVE FOR CHANNEL 'belair'"},
+		{"MySQL link deleted", true, "belair", mysql80, "RESET SLAVE ALL FOR CHANNEL 'belair'"},
+		{"MySQL 8.4 positions, named channel", false, "belair", mysql84, "RESET REPLICA FOR CHANNEL 'belair'"},
+		{"MySQL default channel", false, "", mysql80, "RESET SLAVE"},
+		{"PostgreSQL drops the subscription", false, "", pg, "DROP SUBSCRIPTION alltables"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test command generation logic
-			var cmd string
-			if tt.all {
-				cmd = "RESET SLAVE ALL"
-			} else {
-				cmd = "RESET SLAVE"
-			}
-
-			if tt.channel != "" {
-				cmd += " FOR CHANNEL '" + tt.channel + "'"
-			}
-
-			if !strings.Contains(cmd, tt.wantCmd) {
-				t.Errorf("Generated command %q doesn't contain expected %q", cmd, tt.wantCmd)
+			// #2093: a named channel is always named, ALL or not (MySQL's RESET without
+			// FOR CHANNEL resets every channel)
+			if got := ResetSlaveStatement(tt.all, tt.channel, tt.ver); got != tt.want {
+				t.Errorf("ResetSlaveStatement(%v, %q) = %q, want %q", tt.all, tt.channel, got, tt.want)
 			}
 		})
 	}

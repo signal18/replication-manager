@@ -310,6 +310,8 @@ type ServerMonitor struct {
 	reseedRateWindow                atomic.Value                         // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
 	reseedPhase                     atomic.Value                         // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
 	logicalReseedDispatching        atomic.Bool                          // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
+	reseedLinksMu                   sync.Mutex                           // guards reseedLinks: the reseed records, the refresh drops (#2093)
+	reseedLinks                     reseedStoppedLinks                   // the channels a reseed stopped and has not started again, WARN0252 while one does not run
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
@@ -1670,6 +1672,7 @@ func (server *ServerMonitor) Refresh() error {
 		}
 	}
 	server.ReplicationHealth = server.CheckReplication()
+	server.checkReseedStoppedLinks() // WARN0252: links a reseed stopped and that do not run (#2093)
 
 	if server.IsSlave {
 		if cluster.Conf.DelayStatCapture {
@@ -2002,6 +2005,13 @@ func (server *ServerMonitor) StopSlaveSQLThread() (string, error) {
 func (server *ServerMonitor) ResetSlave() (string, error) {
 	cluster := server.ClusterGroup
 	return dbhelper.ResetSlave(server.Conn, true, cluster.Conf.MasterConn, server.DBVersion)
+}
+
+// ResetSlavePositions clears the managed channel's positions and relay logs and keeps the
+// link (RESET SLAVE without ALL): what a reseed may do, never delete the link (law T27, #2093).
+func (server *ServerMonitor) ResetSlavePositions() (string, error) {
+	cluster := server.ClusterGroup
+	return dbhelper.ResetSlave(server.Conn, false, cluster.Conf.MasterConn, server.DBVersion)
 }
 
 func (server *ServerMonitor) FlushLogs() (string, error) {
