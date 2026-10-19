@@ -19,6 +19,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/s3fuse"
 	"github.com/signal18/replication-manager/utils/s3helper"
 	"github.com/signal18/replication-manager/utils/state"
@@ -306,6 +307,7 @@ func (cluster *Cluster) RefreshBackupMount() {
 		bm.mount, bm.signature = nil, ""
 		bm.mu.Unlock()
 		cluster.unmountBackupFolder(m)
+		go cluster.resyncBackupCatalogue()
 		bm.mu.Lock()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: %s unmounted", mountPoint)
 	}
@@ -419,6 +421,7 @@ func (cluster *Cluster) startBackupMount(t *mountTarget, keys *mountKeys) {
 	cluster.publishBackupMountLocked()
 	bm.mu.Unlock()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: %s mounted on %s", spec, point)
+	go cluster.resyncBackupCatalogue()
 
 	m.Join(context.Background())
 	bm.mu.Lock()
@@ -431,10 +434,79 @@ func (cluster *Cluster) startBackupMount(t *mountTarget, keys *mountKeys) {
 		cluster.publishBackupMountLocked()
 		bm.mu.Unlock()
 		lazyUnmount(point)
+		go cluster.resyncBackupCatalogue()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s ended, mounted again at the next check", point)
 		return
 	}
 	bm.mu.Unlock()
+}
+
+// resyncBackupCatalogue makes the catalogue the backups folder now in use, as a restart would
+// load it, once the folder switched between local and the bucket (the mount came up, was
+// turned off or ended): the folder holds each server's current backups, their history is in
+// the archives. Run off the monitor tick.
+func (cluster *Cluster) resyncBackupCatalogue() {
+	for _, server := range cluster.Servers {
+		if server == nil {
+			continue
+		}
+		server.forgetBackupsGoneFromFolder()
+		server.FetchLastBackupMetadata() // the folder's records
+		server.lastBackupsFromCatalogue()
+	}
+}
+
+// forgetBackupsGoneFromFolder drops from memory the completed backups of the server whose
+// record was in its backups folder and is not any more: they stay where they are (the bucket,
+// or the local folder kept aside) and come back with that folder. Only "no such file" drops
+// one: a mount answering an error keeps them. A backup running writes its record at its end.
+func (server *ServerMonitor) forgetBackupsGoneFromFolder() {
+	cluster := server.ClusterGroup
+	if cluster == nil || cluster.BackupMetaMap == nil {
+		return
+	}
+	dir := filepath.Clean(server.GetMyBackupDirectoryPath()) + string(os.PathSeparator)
+	cluster.BackupMetaMap.Callback(func(id int64, m *backupmgr.BackupMetadata) bool {
+		if m == nil || m.Source != server.URL || !m.Completed {
+			return true
+		}
+		rec := m.MetaFile
+		if rec == "" {
+			rec = server.backupMetaFilePath(m)
+		}
+		if rec == "" || !strings.HasPrefix(filepath.Clean(rec), dir) {
+			return true
+		}
+		if _, err := os.Stat(rec); errors.Is(err, os.ErrNotExist) {
+			cluster.BackupMetaMap.Delete(id)
+			cluster.backupChanges.Delete(id)
+		}
+		return true
+	})
+}
+
+// lastBackupsFromCatalogue moves the server's last logical and physical backups, when they
+// left the catalogue, to its newest ones left.
+func (server *ServerMonitor) lastBackupsFromCatalogue() {
+	cluster := server.ClusterGroup
+	if cluster == nil || cluster.BackupMetaMap == nil {
+		return
+	}
+	server.backupMetaMutex.Lock()
+	defer server.backupMetaMutex.Unlock()
+	for _, last := range []struct {
+		method string
+		meta   **backupmgr.BackupMetadata
+	}{{"logical", &server.LastBackupMeta.Logical}, {"physical", &server.LastBackupMeta.Physical}} {
+		if m := *last.meta; m == nil || m.Id == 0 || cluster.BackupMetaMap.Get(m.Id) != nil {
+			continue
+		}
+		if _, newest := server.GetLatestMetaForLine(last.method, ""); newest != nil {
+			*last.meta = newest
+		} else {
+			*last.meta = new(backupmgr.BackupMetadata)
+		}
+	}
 }
 
 // probeBackupMount checks the mount answers: with every request bounded, a stat that does not

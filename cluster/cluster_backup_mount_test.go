@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
 // #2091: backup-streaming on and no provider: one is added from the backup-streaming-*
@@ -169,5 +170,54 @@ func TestBackupMountKeysAndEmptyDirs(t *testing.T) {
 	}
 	if isMountPoint(d) {
 		t.Fatal("a plain folder is no mount point")
+	}
+}
+
+// #2091: the backups folder switched (the mount turned off): the backups whose record was in
+// the folder and is not any more leave memory, their change state with them, and the server's
+// last backup is its newest one left; a record still there, a backup running, another server's
+// and a record kept elsewhere stay.
+func TestForgetBackupsGoneFromFolder(t *testing.T) {
+	cl := newEventLogTestCluster(t, 1)
+	cl.BackupMetaMap = backupmgr.NewBackupMetaMap()
+	s := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", ClusterGroup: cl}
+	dir := s.GetMyBackupDirectory()
+	meta := func(id int64, src string, completed bool, rec string) *backupmgr.BackupMetadata {
+		m := &backupmgr.BackupMetadata{Id: id, Source: src, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mydumper", BackupLine: backupmgr.BackupLineAdhoc, Completed: completed, MetaFile: rec}
+		cl.BackupMetaMap.Set(id, m)
+		return m
+	}
+	here := filepath.Join(dir, "mydumper.100.meta.json")
+	if err := os.WriteFile(here, []byte("{}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	meta(100, "db1:3306", true, here)
+	gone := meta(200, "db1:3306", true, filepath.Join(dir, "mydumper.200.meta.json"))
+	meta(300, "db1:3306", false, filepath.Join(dir, "mydumper.300.meta.json"))
+	meta(400, "db2:3306", true, filepath.Join(dir, "mydumper.400.meta.json"))
+	meta(500, "db1:3306", true, filepath.Join(t.TempDir(), "mydumper.500.meta.json"))
+	cl.backupChanges.Store(int64(200), &BackupRegistrationChange{Server: "db1:3306", ID: 200})
+	s.LastBackupMeta.Logical = gone
+	s.LastBackupMeta.Physical = new(backupmgr.BackupMetadata)
+
+	s.forgetBackupsGoneFromFolder()
+	s.lastBackupsFromCatalogue()
+
+	if cl.BackupMetaMap.Get(200) != nil {
+		t.Fatal("its record left the folder: forgotten")
+	}
+	if _, ok := cl.backupChanges.Load(int64(200)); ok {
+		t.Fatal("a forgotten backup keeps no change state (WARN0249)")
+	}
+	for _, id := range []int64{100, 300, 400, 500} {
+		if cl.BackupMetaMap.Get(id) == nil {
+			t.Fatalf("backup %d stays", id)
+		}
+	}
+	if got := s.LastBackupMeta.Logical; got == nil || got.Id != 500 {
+		t.Fatalf("the last logical backup is the newest left of the server: %+v", got)
+	}
+	if s.LastBackupMeta.Physical == nil || s.LastBackupMeta.Physical.Id != 0 {
+		t.Fatal("no physical backup: left as it was")
 	}
 }
