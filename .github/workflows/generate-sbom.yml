@@ -1,8 +1,20 @@
 name: Generate SBOM on release
 
+# The release SBOM carries its vulnerabilities (#2086): our published security
+# advisories and the dependency vulnerabilities, each with its analysis. Re-run it
+# by hand with a tag to refresh a published release after a new advisory or fix.
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to regenerate the SBOM of (e.g. v3.1.44)'
+        required: true
+
+env:
+  GRYPE_VERSION: '0.120.1'
+  GOVULNCHECK_VERSION: 'v1.1.4'
 
 jobs:
   sbom:
@@ -10,22 +22,64 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
+      - name: Resolve the tag
+        id: tag
+        run: echo "tag=${{ github.event.release.tag_name || inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      # The merge script comes from the workflow's branch, the scanned source from the tag:
+      # an older tag has no script.
+      - name: Checkout the workflow scripts
         uses: actions/checkout@v4
+        with:
+          path: ci
+
+      - name: Checkout the release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          path: src
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
 
       - name: Generate SBOM (CycloneDX JSON)
         uses: anchore/sbom-action@v0
         with:
-          path: .
+          path: src
           format: cyclonedx-json
-          output-file: sbom-cyclonedx.json
+          output-file: sbom-components.json
+          # one asset, uploaded below once the vulnerabilities are in
+          upload-release-asset: false
+          upload-artifact: false
 
-      - name: Upload SBOM to release
-        uses: actions/upload-release-asset@v1
+      - name: Scan the dependencies (grype)
+        run: |
+          curl -sSfL "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" | tar xz grype
+          ./grype sbom:sbom-components.json -o json --file grype.json
+
+      - name: Reachability of the Go vulnerabilities (govulncheck)
+        run: |
+          go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+          (cd src && "$(go env GOPATH)/bin/govulncheck" -format json -tags server ./...) > govulncheck.json
+
+      # state=published: a draft advisory (an unfixed issue) is never listed
+      - name: Published security advisories
+        run: |
+          curl -sSf -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/security-advisories?state=published&per_page=100" > advisories.json
+
+      - name: Add the vulnerabilities to the SBOM
+        run: |
+          python3 ci/.github/scripts/sbom_vulns.py sbom-components.json "${{ steps.tag.outputs.tag }}" \
+            advisories.json grype.json govulncheck.json > sbom-cyclonedx.json
+
+      - name: Upload SBOM to the release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: sbom-cyclonedx.json
-          asset_name: sbom-cyclonedx.json
-          asset_content_type: application/json
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.tag.outputs.tag }}"
+          gh release upload "$tag" sbom-cyclonedx.json --clobber -R "${{ github.repository }}"
+          # the duplicate the sbom-action used to upload on its own
+          gh release delete-asset "$tag" replication-manager-sbom.cyclonedx.json -y -R "${{ github.repository }}" || true
