@@ -1,0 +1,9 @@
+This package is pbscommon from NimbusBackupClient (RDEM Systems), itself a fork of
+tizbac/proxmoxbackupclient_go, licensed under the GNU General Public License v3 (LICENSE).
+
+Source: https://github.com/rdemsystems/NimbusBackupClient, directory pbscommon/
+Commit: 96d77594b24926a54f6a7782a1f722c0dab31cda (2026-10-12)
+
+Copied unchanged except: the tests and their testdata are not copied, and paperkey.go
+(QR paper keys, the only user of rsc.io/qr) is left out; paperkey_markers.go keeps from
+it the paper key markers and stripPaperKeyMarkers, which crypt.go uses.
