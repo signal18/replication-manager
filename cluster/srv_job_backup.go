@@ -432,6 +432,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		return err
 	}
 	if err := cluster.snapbackLock(server.URL); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Physical backup of %s refused: %s", server.URL, err)
 		return err
 	}
 	if !cluster.waitForBackupSlot() {
@@ -5030,6 +5031,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		return err
 	}
 	if err := cluster.snapbackLock(server.URL); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical backup of %s refused: %s", server.URL, err)
 		return err
 	}
 
