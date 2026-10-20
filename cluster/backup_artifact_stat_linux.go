@@ -37,3 +37,18 @@ func artifactSyncBucket(path string) error {
 	defer unix.Close(fd)
 	return unix.Fsync(fd)
 }
+
+// onSameDevice: a and b are on one file system (a rename between them moves no data).
+func onSameDevice(a, b string) bool {
+	ia, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	ib, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	sa, ok := ia.Sys().(*syscall.Stat_t)
+	sb, ok2 := ib.Sys().(*syscall.Stat_t)
+	return ok && ok2 && sa.Dev == sb.Dev
+}

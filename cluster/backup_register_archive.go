@@ -119,6 +119,9 @@ func (cluster *Cluster) archiveRefusal(meta *backupmgr.BackupMetadata, testFirst
 	if cluster.IsInBackupJob() {
 		return ErrBackupJobRunning
 	}
+	if err := cluster.snapbackLock(meta.Source); err != nil {
+		return err
+	}
 	if err := cluster.backupUseRefusal(meta); err != nil {
 		return err
 	}

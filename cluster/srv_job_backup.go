@@ -431,6 +431,9 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	if err := cluster.backupFolderMoving(); err != nil {
 		return err
 	}
+	if err := cluster.snapbackLock(server.URL); err != nil {
+		return err
+	}
 	if !cluster.waitForBackupSlot() {
 		return errors.New("backup canceled: cluster shutting down")
 	}
@@ -5026,6 +5029,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	if err := cluster.backupFolderMoving(); err != nil {
 		return err
 	}
+	if err := cluster.snapbackLock(server.URL); err != nil {
+		return err
+	}
 
 	backupLine := server.resolveBackupLine(opts)
 	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
@@ -5659,6 +5665,13 @@ type resticPushOptions struct {
 	// done, when not nil, is called once the push ended: nil with its snapshot recorded
 	// (and the original removed or kept), else why it did not push
 	done func(err error)
+	// snapshot, when not nil, gets the snapshot the push made, before done
+	snapshot func(id string)
+	// noPurge: the archive is not asked to apply the retention policy after this push (the
+	// snapshot taken before a snapback: a purge could take the snapshot it restores)
+	noPurge bool
+	// snapback: the push of a snapback, let through the snapback lock (snapbackLock)
+	snapback bool
 }
 
 // backupResticWith is BackupRestic ending the push as opt says.
@@ -5678,6 +5691,16 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 			cluster.SetInResticLogicalBackupState(value)
 		case backupmgr.BackupMethodPhysical:
 			cluster.SetInResticPhysicalBackupState(value)
+		}
+	}
+
+	// a directory not at its latest snapshot is never snapshotted (snapbackLock, #2091)
+	if !opt.snapback {
+		if err := cluster.snapbackLock(server.URL); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Archive of %s not pushed: %s", server.URL, err)
+			setFlag(false)
+			done(err)
+			return
 		}
 	}
 
@@ -5794,8 +5817,11 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 					server.removeArchivedOriginalAsked(backupMethod, meta, result.SnapshotID, opt.asked)
 				}
 			}
+			if opt.snapshot != nil {
+				opt.snapshot(result.SnapshotID)
+			}
 			// the archive received a backup: it is asked to apply the retention policy (#2091)
-			if cluster.Conf.ArchivePurgeAfterBackup() {
+			if cluster.Conf.ArchivePurgeAfterBackup() && !opt.noPurge {
 				cluster.ResticPurgeRepo(false)
 			}
 			done(nil)

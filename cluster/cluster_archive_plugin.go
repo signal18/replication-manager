@@ -375,7 +375,10 @@ func (server *ServerMonitor) pushExternalArchive(a config.ArchiveConfig, backupM
 			server.removeArchivedOriginalAsked(backupMethod, meta, id, opt.asked)
 		}
 	}
-	if cluster.Conf.ArchivePurgeAfterBackup() {
+	if opt.snapshot != nil {
+		opt.snapshot(id)
+	}
+	if cluster.Conf.ArchivePurgeAfterBackup() && !opt.noPurge {
 		cluster.purgeExternalArchive(a, false)
 	}
 	done(nil)

@@ -117,6 +117,33 @@ Snapshot entries leave when the archive deletes the snapshot (its retention), ba
 when no copy is left: the catalogue holds what exists, no history beyond it. A detached
 archive's list is kept as last read, with the time it was read.
 
+## Snapback (coded, `cluster/cluster_archive_snapback.go`)
+
+A server's backup directory put back as it was in a snapshot of the attached archive, every
+archive kind (restic, plakar, pbs), from the snapshot rows of the Maintenance tab or
+`POST /api/clusters/{cluster}/archive-actions/snapback/{snapshot}` (db-restore grant). Never
+twice the size on disk:
+
+1. the directory as it is now is snapshotted first: its **latest snapshot** (head); no snapshot,
+   nothing deleted;
+2. the directory is emptied: all it held is in the head;
+3. the snapshot is restored into it: an archive plugin straight into it (wire `restore`: the
+   pushed folder's content under Target), restic into a work folder outside the backups folder
+   (`<cluster working dir>/backup/restic_temp/`), then moved in;
+4. the server's backups are read again from the records the snapshot brought back.
+
+Refused while a backup is written, the backups folder moves, a snapback of the server runs, for
+a snapshot that is not a server's whole backup directory, or without room measured for the
+snapshot (the current directory counted as freed when on the same disk). No retention purge
+after the head's push: it could take the snapshot being restored.
+
+**Not at its latest snapshot = locked** (Stéphane, 2026-10-20): the server's backups, archive
+pushes and Archive button are refused (`snapbackLock`), WARN0255 open, until a snapback to the
+head or a **release** (`.../snapback-release/{server}`: the directory kept as it is, its next
+backup's snapshot is the new latest). The state is kept in `<cluster working dir>/snapbacks.json`
+(a restart keeps the lock; a snapback running at a stop reads as failed, WARN0256, naming the
+head to snap back to). CINF0020 while one runs.
+
 ## What it gives
 
 - **Dashboard**: every archive, attached or not, with its size, its snapshot count and how many

@@ -19,3 +19,6 @@ func artifactStatIdentity(fi os.FileInfo) (ino uint64, ctime time.Time) {
 
 // artifactSyncBucket: the backups folder mount runs on Linux only.
 func artifactSyncBucket(path string) error { return nil }
+
+// onSameDevice: not known off Linux, so never counted on.
+func onSameDevice(a, b string) bool { return false }

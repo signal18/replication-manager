@@ -80,12 +80,14 @@ type ArchiveListResult struct {
 	EnterprisePlan bool                           `json:"enterprisePlan"`
 	Archives       []ArchiveListEntry             `json:"archives"`
 	Plugins        []config.ArchivePluginManifest `json:"plugins"`
+	// the servers' backup directories put back from a snapshot (snapback)
+	Snapbacks []SnapbackState `json:"snapbacks"`
 }
 
 // ArchiveList lists the cluster's archives.
 func (cluster *Cluster) ArchiveList() ArchiveListResult {
 	list, attached := cluster.Conf.ArchiveList()
-	out := ArchiveListResult{Attached: attached, EnterprisePlan: cluster.Conf.EnterprisePluginsPlan(), Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins()}
+	out := ArchiveListResult{Attached: attached, EnterprisePlan: cluster.Conf.EnterprisePluginsPlan(), Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins(), Snapbacks: cluster.Snapbacks()}
 	backups := map[string]int{}
 	if cluster.BackupMetaMap != nil {
 		legacy := cluster.Conf.LegacyArchiveName()

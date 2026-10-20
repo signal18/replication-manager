@@ -219,6 +219,8 @@ type Cluster struct {
 	// CRUD transaction lock helpers instead of direct field mutation.
 	s3Providers    s3ProviderState
 	backupMount    backupMount                // the backups folder mount (#2091)
+	snapbackMu     sync.Mutex                 // guards snapbacks
+	snapbacks      map[string]*SnapbackState  // server URL -> its backup directory's snapback (#2091), nil until read
 	BackupMount    BackupMountState           `json:"backupMount" groups:"web"` // its state, for the Backup settings
 	Agents         []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq   map[string]int64           `json:"-"`

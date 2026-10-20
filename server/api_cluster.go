@@ -255,6 +255,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveForget)),
 	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/snapback/{snapshotID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveSnapback)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/snapback-release/{serverName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveSnapbackRelease)),
+	))
 	router.Handle("/api/clusters/{clusterName}/archive-actions/add", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveAdd)),

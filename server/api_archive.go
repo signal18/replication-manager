@@ -226,6 +226,52 @@ func (repman *ReplicationManager) handlerMuxArchiveForget(w http.ResponseWriter,
 	})
 }
 
+// handlerMuxArchiveSnapback puts a server's backup directory back as it was in a snapshot.
+// @Summary Snapback a backup directory
+// @Description Puts the backup directory a snapshot of the attached archive holds back as it was in it, in the background: the directory as it is now is snapshotted first (its latest snapshot), then emptied, then the snapshot is restored into it, and the server's backups are read again. Never twice its size on disk. Until a snapback to its latest snapshot or a release, the server's backups and archive pushes are locked (WARN0255). Refused while a backup is written, the backups folder moves, a snapback of the server runs, or without room for the snapshot.
+// @Tags ClusterArchive
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param snapshotID path string true "Snapshot ID (or its first 8 characters)"
+// @Success 202 {object} map[string]string
+// @Failure 400 {string} string "Refused: no archive attached, unknown snapshot, not a server's backup directory, a backup running, no room"
+// @Failure 403 {string} string "No valid ACL"
+// @Router /api/clusters/{clusterName}/archive-actions/snapback/{snapshotID} [post]
+func (repman *ReplicationManager) handlerMuxArchiveSnapback(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		server, err := mycluster.Snapback(vars["snapshotID"])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		writeArchiveJSON(w, map[string]string{"server": server, "snapshot": vars["snapshotID"], "message": "Snapback started"})
+	})
+}
+
+// handlerMuxArchiveSnapbackRelease keeps a server's backup directory as a snapback left it.
+// @Summary Release a snapback
+// @Description Keeps the server's backup directory as the snapback left it and unlocks its backups (WARN0255 resolved): its next backup's snapshot is its new latest one. A running snapback is not released.
+// @Tags ClusterArchive
+// @Produce plain
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {string} string "Snapback released"
+// @Failure 400 {string} string "No snapback, or one running"
+// @Failure 403 {string} string "No valid ACL"
+// @Router /api/clusters/{clusterName}/archive-actions/snapback-release/{serverName} [post]
+func (repman *ReplicationManager) handlerMuxArchiveSnapbackRelease(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		if err := mycluster.ReleaseSnapback(vars["serverName"]); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Write([]byte("Snapback released"))
+	})
+}
+
 // handlerMuxArchiveSize reads an archive's size.
 // @Summary Read an archive's size
 // @Description Reads the bytes the archive's content takes, in the background: the list shows the archive as sizing, then its size, or the error. A detached archive keeps the size it had when it was detached; this reads it again.
