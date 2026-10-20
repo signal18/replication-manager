@@ -778,11 +778,26 @@ func TestDumpStartsReplication(t *testing.T) {
 	// a comment, the START resumes from the server's old position
 	mariadbCommented := "-- MariaDB dump\nSTOP ALL SLAVES;\n-- CHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER '' TO MASTER_LOG_FILE='binlog.000001', MASTER_LOG_POS=3364044;\n-- SET GLOBAL gtid_slave_pos='0-90125166-4396,97-90125166-8';\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTART ALL SLAVES;\n"
 	mysqlCommented := "-- MySQL dump\nSTOP REPLICA;\nSET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a:1-2';\n-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=4244238;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTART REPLICA;\n"
+	// #2118: MariaDB 11.4.13 with --master-data=1 --gtid=true --apply-slave-statements, as
+	// v3.1.43 wrote its backups (read in the lab): the position after the table data, before
+	// the START. With --master-data=2 the same two lines are comments.
+	mariadbV3143 := "/*M!999999\\- enable the sandbox mode */ \n-- MariaDB dump 10.19-11.4.13-MariaDB, for debian-linux-gnu (x86_64)\nSTOP ALL SLAVES;\nCHANGE MASTER TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=1058291;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSET GLOBAL gtid_slave_pos='97-90125166-10,0-90125166-5436';\nSTART ALL SLAVES;\n"
+	mariadbMasterData2 := "/*M!999999\\- enable the sandbox mode */ \n-- MariaDB dump 10.19-11.4.13-MariaDB, for debian-linux-gnu (x86_64)\nSTOP ALL SLAVES;\n-- CHANGE MASTER TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=1058291;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\n-- SET GLOBAL gtid_slave_pos='97-90125166-10,0-90125166-5436';\nSTART ALL SLAVES;\n"
+	positionAfterStart := "-- MariaDB dump\nSTOP ALL SLAVES;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSTART ALL SLAVES;\nSET GLOBAL gtid_slave_pos='0-1-4';\n"
+	// only the MariaDB layout read in the lab is read on: a MySQL dump, and a CHANGE MASTER after
+	// the data, are decided by the header as before
+	mysqlAfterData := "-- MySQL dump 10.13  Distrib 8.4.11\nSTOP REPLICA;\n-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=4;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSET GLOBAL gtid_slave_pos='0-1-4';\nCHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=4;\nSTART REPLICA;\n"
+	mariadbChangeAfterData := "-- MariaDB dump\nSTOP ALL SLAVES;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nCHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=4;\nSTART ALL SLAVES;\n"
 	for _, c := range []struct {
 		name string
 		path string
 		want bool
 	}{
+		{"MariaDB --master-data=1 --apply-slave-statements --gtid (v3.1.43): position after the data", write("mdbv3143.sql.gz", mariadbV3143), true},
+		{"MariaDB --master-data=2 --apply-slave-statements --gtid: position after the data a comment", write("mdbmd2.sql.gz", mariadbMasterData2), false},
+		{"position only after the START", write("afterstart.sql.gz", positionAfterStart), false},
+		{"MySQL dump: a position after the data is not read", write("myafterdata.sql.gz", mysqlAfterData), false},
+		{"MariaDB dump: a CHANGE MASTER after the data is not read", write("mdbchangeafter.sql.gz", mariadbChangeAfterData), false},
 		{"MariaDB --dump-slave --apply-slave-statements", write("mdbreplica.sql.gz", mariadbReplica), true},
 		{"MariaDB --master-data=1: a position, no START", write("mdbprimary.sql.gz", mariadbPrimary), false},
 		{"MySQL 8.4 --dump-replica --apply-replica-statements", write("myreplica.sql.gz", mysqlReplica), true},
@@ -838,6 +853,9 @@ func TestDumpStartsReplicationUnpositioned(t *testing.T) {
 		{"MySQL 8.4 --dump-replica=2", "STOP REPLICA;\nSET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'a:1-2';\n-- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='binlog.000028', SOURCE_LOG_POS=4;\n-- Dumping data for table `t`\nSTART REPLICA;\n", true},
 		{"MariaDB --dump-slave=1", "STOP ALL SLAVES;\nCHANGE MASTER '' TO MASTER_USE_GTID=slave_pos;\nSET GLOBAL gtid_slave_pos='0-1-4396';\n-- Dumping data for table `t`\nSTART ALL SLAVES;\n", false},
 		{"current backup, position a comment, no STOP", "-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=4;\n-- Dumping data for table `t`\n", false},
+		// #2118: the v3.1.43 backup's position comes after the data, before its START
+		{"MariaDB --master-data=1 (v3.1.43), position after the data", "-- MariaDB dump 10.19-11.4.13-MariaDB\nSTOP ALL SLAVES;\nCHANGE MASTER TO MASTER_USE_GTID=slave_pos;\n-- CHANGE MASTER TO MASTER_LOG_FILE='binlog.000002', MASTER_LOG_POS=1058291;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\nSET GLOBAL gtid_slave_pos='97-90125166-10,0-90125166-5436';\nSTART ALL SLAVES;\n", false},
+		{"MariaDB --master-data=2, position after the data a comment", "-- MariaDB dump 10.19-11.4.13-MariaDB\nSTOP ALL SLAVES;\n-- CHANGE MASTER TO MASTER_USE_GTID=slave_pos;\n-- Dumping data for table `t`\nINSERT INTO `t` VALUES (1);\n-- SET GLOBAL gtid_slave_pos='97-90125166-10,0-90125166-5436';\nSTART ALL SLAVES;\n", true},
 	} {
 		got, err := dumpStartsReplicationUnpositioned(write(strings.ReplaceAll(c.name, " ", "_")+".sql", c.content))
 		if err != nil || got != c.want {
