@@ -150,7 +150,8 @@ At the first start with it, the catalogue is built from today's records (their
 
 1. Snapshot content always the backup directory (ad-hoc and the Archive button): DONE; the
    Archive button is refused while a backup job writes the directory (`ErrBackupJobRunning`).
-2. Role at backup time in the backup record.
+2. Role at backup time in the backup record: DONE (`role`: master / slave, "" unknown),
+   shown in the backups table.
 3. The catalogue files, written at backup end, snapshot push and delete; rebuild and
    reconcile states.
 4. The code reads the catalogue (restore, reseed, retention, archive list, metering).

@@ -31,6 +31,12 @@ const (
 	BackupLineAdhoc   = "adhoc"
 )
 
+// The source server's role when a backup started (BackupMetadata.Role).
+const (
+	BackupRoleMaster = "master"
+	BackupRoleSlave  = "slave"
+)
+
 type BackupMetadata struct {
 	Id                int64          `json:"id"`
 	StartTime         time.Time      `json:"startTime"`
@@ -40,6 +46,7 @@ type BackupMetadata struct {
 	BackupToolVersion string         `json:"backupToolVersion"`
 	BackupStrategy    BackupStrategy `json:"backupStrategy"`
 	Source            string         `json:"source"`               // server URL
+	Role              string         `json:"role,omitempty"`       // the source's role when the backup started (BackupRole*), never recomputed; "" unknown
 	Dest              string         `json:"dest"`                 // backup destination path
 	Size              int64          `json:"size"`                 // in bytes
 	StreamSize        int64          `json:"streamSize,omitempty"` // bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator

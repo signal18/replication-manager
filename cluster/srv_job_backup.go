@@ -559,6 +559,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		BackupStrategy:    backupmgr.BackupStrategyFull,
 		BackupTool:        physType,
 		Source:            server.URL,
+		Role:              server.backupRole(),
 		Dest:              dest,
 		Compressed:        cluster.Conf.CompressBackups,
 		Previous:          prevId,
@@ -5139,6 +5140,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		BackupTool:        logicalType,
 		BackupStrategy:    backupmgr.BackupStrategyFull,
 		Source:            server.URL,
+		Role:              server.backupRole(),
 		Previous:          prevId,
 		BackupLine:        backupLine,
 		RetentionDays:     opts.RetentionDays,
@@ -5607,6 +5609,18 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 // BackupRestic pushes backupPath to the archive. meta is the backup being archived, captured
 // now: the snapshot is recorded in it, and with backup-archive-remove-original its original is
 // removed once the snapshot holds it. nil (binary log copies) records nothing.
+// backupRole is the server's role as a backup starts (BackupMetadata.Role): master, slave,
+// "" when it is neither (a standalone or failed server).
+func (server *ServerMonitor) backupRole() string {
+	switch {
+	case server.IsMaster():
+		return backupmgr.BackupRoleMaster
+	case server.IsSlaveOrSync():
+		return backupmgr.BackupRoleSlave
+	}
+	return ""
+}
+
 // recoverBackupPanic, deferred first in a backup step: a panic there fails that step, its
 // error set (err nil for a step that returns none), never the monitor (F2); the step's own
 // defers (slots, flags) have run by then.
