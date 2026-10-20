@@ -240,6 +240,21 @@ function backupArchivesTooltip(row, attached) {
   return names.map((n) => `${n}: snapshot ${refs[n]}${attached && n !== attached ? ' (detached: attach it to restore from it)' : ''}`).join('\n')
 }
 
+// what the restore selection reads of a backup (#2091): where it is, proven, picked now
+function backupRestoreLine(row) {
+  if (!row.location) return ''
+  return [row.location, row.proven && 'proven', row.restoreCandidate && 'picked now'].filter(Boolean).join(' · ')
+}
+
+function backupRestoreTooltip(row) {
+  const where = row.location === 'remote' ? 'remote: the attached archive holds a snapshot of it' : 'local: in its server\'s backup directory'
+  const proof = row.proven ? 'proven: a test restore loaded its file, still unchanged' : 'not proven by a test restore of its current file'
+  const pick = row.restoreCandidate
+    ? 'picked now: it is its server\'s last backup of its kind, a restore or reseed chooses among those'
+    : 'not picked now: a restore or reseed chooses among each server\'s last logical and physical backup'
+  return `${where}\n${proof}\n${pick}`
+}
+
 // the log copies of the backup's server directory (backup-binlogs): number, lowest, highest
 function BackupLogsLine({ copies }) {
   if (!copies) return null
@@ -691,6 +706,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           <VStack className={styles.cellStack} spacing={0.5}>
             <BackupCellLine label='Source:' value={row.source} textType='Source' />
             <BackupCellLine label='Role:' value={row.role} tooltip={row.role ? `The source server was ${row.role} when the backup started` : ''} textType='Role' />
+            <BackupCellLine label='Restore:' value={backupRestoreLine(row)} tooltip={backupRestoreTooltip(row)} textType='Restore' />
+            <BackupCellLine label='Caps:' value={(row.capabilities || []).join(', ')} tooltip='What the backup gives a restore, as the restore selection reads it' textType='Capabilities' />
             <BackupCellLine label='Dest:' value={row.dest} shown={backupDestName(row.dest)} textType='Destination' />
             <BackupCellLine label='Archive:' value={backupArchives(row, selectedCluster?.config?.backupArchiveName)}
               tooltip={backupArchivesTooltip(row, selectedCluster?.config?.backupArchiveName)} textType='Archive' />
