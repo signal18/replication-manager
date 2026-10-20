@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -40,6 +41,45 @@ func (regtest *RegTest) TestCreateStaging(cl *cluster.Cluster, conf string, test
 // channel "child".
 func (regtest *RegTest) TestCreateChild(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	return testCreateChildCluster(cl, "child", config.GrantClusterReplication, map[string]int{"Master": 1, "Slave": 1})
+}
+
+// TestCreateStagingSplitdump and TestCreateChildSplitdump (#2124): the same seeded from a
+// splitdump parent backup (backup-mysqldump-splitdump, preprod belair), the restore path that
+// left the child master without gtid_slave_pos (error 1236) and then positioned it after the
+// load (error 1948); the plain tests seed from a single-file dump (the default).
+func (regtest *RegTest) TestCreateStagingSplitdump(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	return withSplitdumpParentBackup(cl, "staging", func() bool {
+		return testCreateChildCluster(cl, "staging", config.GrantClusterStaging, map[string]int{"Master": 1, "Slave": 1, "StandAlone": 1})
+	})
+}
+
+func (regtest *RegTest) TestCreateChildSplitdump(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
+	return withSplitdumpParentBackup(cl, "child", func() bool {
+		return testCreateChildCluster(cl, "child", config.GrantClusterReplication, map[string]int{"Master": 1, "Slave": 1})
+	})
+}
+
+// withSplitdumpParentBackup runs create with cl backed up as a splitdump: a fresh logical
+// backup taken in that layout, the seed checked to be that directory; cl's backup settings are
+// put back after.
+func withSplitdumpParentBackup(cl *cluster.Cluster, kind string, create func() bool) bool {
+	logicalType, split := cl.Conf.BackupLogicalType, cl.Conf.BackupMysqldumpSplitDump
+	defer func() { cl.Conf.BackupLogicalType, cl.Conf.BackupMysqldumpSplitDump = logicalType, split }()
+	cl.Conf.BackupLogicalType, cl.Conf.BackupMysqldumpSplitDump = config.ConstBackupLogicalTypeMysqldump, true
+	if cl.GetMaster() == nil {
+		tlsLogf(cl, "Skipping Create %s splitdump: no master", kind)
+		return true
+	}
+	if err := cl.GetMaster().JobBackupLogical(context.Background()); err != nil {
+		tlsLogf(cl, "FAIL Create %s splitdump: splitdump backup of %s: %s", kind, cl.Name, err)
+		return false
+	}
+	seed, _, err := cl.ParentLogicalBackup()
+	if err != nil || filepath.Base(seed) != "splitdump" {
+		tlsLogf(cl, "FAIL Create %s splitdump: the seed is %q (%v), not the splitdump directory", kind, seed, err)
+		return false
+	}
+	return create()
 }
 
 func testCreateChildCluster(cl *cluster.Cluster, kind string, grant string, wantStates map[string]int) bool {
