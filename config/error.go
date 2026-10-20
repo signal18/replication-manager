@@ -360,6 +360,7 @@ var ClusterError = map[string]string{
 	"WARN0248":  "Backup %d of %s lacks objects its source has: %s -- check backup-mysqldump-options and the event scheduler",
 	"WARN0249":  "Backup of %s changed since registered, not used until the change is registered: %s -- register the change (Register), or restore the original from its archive (the state clears once the file matches), or unregister it",
 	"WARN0250":  "Backup discovery on %s: %d artifact(s) not listed beyond backup-discovery-candidate-max (%d), the oldest dropped: register or move them, or raise the limit",
+	"WARN0251":  "API tokens are enabled (api-user-tokens) but no user holds token-create on this cluster, so nobody can issue one: add token (or token-create) to the users who should, in api-credentials-acl-allow, and check no api-credentials-acl-discard (main or cluster) removes it",
 	"WARN0252":  "Replication of %s: channel(s) %s stopped by the reseed and not running: %s -- the reseed starts them again when the restore succeeds; otherwise start replication or rejoin the server",
 	"WARN0253":  "Registered backup %d of %s failed its %s verification: %s -- not reseeded from nor archived: verify it again, register a fixed file, or unregister it",
 	"WARN0247":  "Logical dump client %s of %s can not back up its %s server: %s",
