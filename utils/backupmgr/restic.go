@@ -2018,20 +2018,42 @@ func isMountReady(mountPath string) bool {
 		return true
 	}
 	// Fallback: check mountinfo entries for the mount path
+	return mountListed(mountPath)
+}
+
+// mountListed: the mount table lists mountPath. A mount whose restic process ended without
+// unmounting is still listed while every request on it answers ENOTCONN (a stat fails, so
+// isMountReady's first checks miss it).
+func mountListed(mountPath string) bool {
 	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
 		return false
 	}
+	clean := filepath.Clean(mountPath)
 	for _, line := range strings.Split(string(data), "\n") {
 		if line == "" {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) > 4 && fields[4] == mountPath {
+		if len(fields) > 4 && (fields[4] == mountPath || fields[4] == clean) {
 			return true
 		}
 	}
 	return false
+}
+
+// detachLeftMount detaches the mount restic left on mountPath when its process ended without
+// unmounting: listed, unanswered (ENOTCONN), it broke whatever read the folder until the next
+// mount recovered it.
+func (repo *ResticManager) detachLeftMount(mountPath string) {
+	if strings.TrimSpace(mountPath) == "" || !mountListed(mountPath) {
+		return
+	}
+	if err := lazyUnmountResticPath(mountPath); err != nil {
+		repo.Printf(logrus.WarnLevel, "Restic mount left on %s not detached: %v", mountPath, err)
+		return
+	}
+	repo.Printf(logrus.InfoLevel, "Restic mount left on %s by its ended process detached", mountPath)
 }
 
 func (repo *ResticManager) mountStatePath() string {
@@ -2583,9 +2605,12 @@ func (repo *ResticManager) UnmountRepo() error {
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
+		repo.detachLeftMount(mountPath)
 		return fmt.Errorf("restic mount shutdown timeout")
 	}
 
+	// the process ended: a mount it did not take down is detached, never left unanswered
+	repo.detachLeftMount(mountPath)
 	repo.Printf(logrus.InfoLevel, "Restic mount stopped at %s", mountPath)
 	repo.clearMountState()
 	repo.mountRefMutex.Lock()
