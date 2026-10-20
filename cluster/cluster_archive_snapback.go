@@ -64,7 +64,7 @@ func (s *SnapbackState) locked() bool {
 
 var (
 	// ErrSnapbackLocked: the server's backup directory is not at its latest snapshot.
-	ErrSnapbackLocked = errors.New("the backup directory is not at its latest snapshot (snapback): snap back to its latest snapshot or release it first")
+	ErrSnapbackLocked = errors.New("locked by a snapback")
 	// ErrSnapbackRefused: a snapback can not run now.
 	ErrSnapbackRefused = errors.New("snapback refused")
 )
@@ -162,14 +162,19 @@ func (cluster *Cluster) setSnapback(serverURL string, s *SnapbackState) {
 
 // snapbackLock refuses what writes or snapshots the server's backup directory while it is not
 // at its latest snapshot.
+// The message says why and what to do, the snapshots by name.
 func (cluster *Cluster) snapbackLock(serverURL string) error {
-	if s := cluster.snapback(serverURL); s.locked() {
-		if s.Status == SnapbackRunning {
-			return fmt.Errorf("%w: a snapback of %s to snapshot %s is running", ErrSnapbackLocked, serverURL, shortID(s.Snapshot))
-		}
-		return fmt.Errorf("%w: %s is at snapshot %s, its latest is %s", ErrSnapbackLocked, serverURL, shortID(s.Snapshot), shortID(s.Head))
+	s := cluster.snapback(serverURL)
+	if !s.locked() {
+		return nil
 	}
-	return nil
+	switch s.Status {
+	case SnapbackRunning:
+		return fmt.Errorf("%w: its backup directory is being put back to snapshot %s of archive %s; wait until the snapback ends", ErrSnapbackLocked, shortID(s.Snapshot), s.Archive)
+	case SnapbackFailed:
+		return fmt.Errorf("%w: putting its backup directory back to snapshot %s of archive %s failed (%s); snap back to %s, its latest snapshot, or release the snapback", ErrSnapbackLocked, shortID(s.Snapshot), s.Archive, s.Error, shortID(s.Head))
+	}
+	return fmt.Errorf("%w: its backup directory was put back to snapshot %s of archive %s, its latest snapshot is %s; snap back to %s, or release the snapback to keep it as it is", ErrSnapbackLocked, shortID(s.Snapshot), s.Archive, shortID(s.Head), shortID(s.Head))
 }
 
 // snapbackSnapshot is a snapshot of the attached archive, as a snapback needs it.
