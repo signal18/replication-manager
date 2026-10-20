@@ -13,12 +13,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
 	repmanmcp "github.com/signal18/replication-manager/mcp"
 )
@@ -69,7 +69,7 @@ type ChildPlan struct {
 	DBCount           int      `json:"dbCount"`
 	DBUPerNode        int      `json:"dbuPerNode"`
 	Proxy             string   `json:"proxy"`              // "" = none
-	Domain            string   `json:"domain"`             // GTID domain: the parent's + 1
+	Domain            string   `json:"domain"`             // GTID domain: the one of its name
 	SourceName        string   `json:"sourceName"`         // channel from the parent's master: the parent's replication-source-name
 	OwnSourceName     string   `json:"ownSourceName"`      // the new cluster's replication-source-name (its master to its replicas)
 	BackupLogicalType string   `json:"backupLogicalType"`  // the parent's
@@ -169,14 +169,15 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 		plan.Notes = append(plan.Notes, fmt.Sprintf("%d DBU per server: a ColumnStore server runs a UM and a PM, 1 DBU each", plan.DBUPerNode))
 	}
 	plan.Proxy = childProxyType(parent)
-	// Another GTID domain than the parent's: the child master replicates from the
-	// parent and takes its own writes (staging doc, prov-db-domain). The parent's is
-	// the one its configurator renders.
-	parentDomain, err := strconv.ParseUint(parent.Configurator.GetConfigReplicationDomain(parent.Name), 10, 32)
-	if err != nil {
-		return plan, fmt.Errorf("parent %s GTID domain: %w", parent.Name, err)
+	// Its own GTID domain: the child master replicates from the parent and takes its own
+	// writes (staging doc, prov-db-domain). The domain of its name, the rule of every
+	// cluster, never one derived from the parent's: two children of a parent kept apart, a
+	// child moved under another or meshed later keeps its domain. The parent's is the one
+	// its configurator renders (an explicit prov-db-domain included).
+	plan.Domain = configurator.ReplicationDomainOfName(plan.Name)
+	if parentDomain := parent.Configurator.GetConfigReplicationDomain(parent.Name); plan.Domain == parentDomain {
+		return plan, fmt.Errorf("the GTID domain of %s (%s) is the one of its parent %s: choose another name", plan.Name, plan.Domain, parent.Name)
 	}
-	plan.Domain = strconv.FormatUint(parentDomain+1, 10)
 	// Two channels, two names (staging doc): the child master replicates from the parent's
 	// master through the parent's replication-source-name, the same on both sides; the
 	// child's own replicas through the child's, which must differ (the same name made the

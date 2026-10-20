@@ -75,10 +75,18 @@ func (configurator *Configurator) GetConfigRelaySpaceLimit() string {
 func (configurator *Configurator) GetConfigReplicationDomain(ClusterName string) string {
 	// Multi source need differnt domain id
 	if configurator.ClusterConfig.MasterConn != "" && configurator.ClusterConfig.ProvDomain == "0" {
-		crcTable := crc32.MakeTable(0xD5828281)
-		return strconv.FormatUint(uint64(crc32.Checksum([]byte(ClusterName), crcTable)), 10)
+		return ReplicationDomainOfName(ClusterName)
 	}
 	return configurator.ClusterConfig.ProvDomain
+}
+
+// ReplicationDomainOfName is the GTID domain id of a cluster from its name (a cluster name is
+// unique): the one rule, for a cluster without an explicit prov-db-domain and for the clusters
+// create-child and create-staging build, so that each cluster's writes keep their own domain
+// whatever the clusters it is later linked to.
+func ReplicationDomainOfName(clusterName string) string {
+	crcTable := crc32.MakeTable(0xD5828281)
+	return strconv.FormatUint(uint64(crc32.Checksum([]byte(clusterName), crcTable)), 10)
 }
 
 // getUsableMemoryMB returns the total prov-db-memory in MB. Every share in

@@ -12,10 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -97,9 +97,10 @@ func createCheckedChild(cl *cluster.Cluster, kind string, grant string, wantStat
 		tlsLogf(cl, "FAIL Create "+kind+": plan: %s", err)
 		return run, false, false
 	}
-	parentDomain, _ := strconv.Atoi(cl.Configurator.GetConfigReplicationDomain(cl.Name))
-	if plan.Domain != strconv.Itoa(parentDomain+1) || plan.SourceName != cl.Conf.MasterConn || plan.OwnSourceName != kind {
-		tlsLogf(cl, "FAIL Create "+kind+": plan domain %q (parent %d) source %q own %q", plan.Domain, parentDomain, plan.SourceName, plan.OwnSourceName)
+	// the domain of the child's name, never the parent's
+	parentDomain := cl.Configurator.GetConfigReplicationDomain(cl.Name)
+	if plan.Domain != configurator.ReplicationDomainOfName(name) || plan.Domain == parentDomain || plan.SourceName != cl.Conf.MasterConn || plan.OwnSourceName != kind {
+		tlsLogf(cl, "FAIL Create "+kind+": plan domain %q (parent %s) source %q own %q", plan.Domain, parentDomain, plan.SourceName, plan.OwnSourceName)
 		return run, false, false
 	}
 
