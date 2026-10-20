@@ -86,30 +86,27 @@ function AttachedArchive({ clusterName, user, onAttached }) {
   ], [])
   return (
     <>
+      {/* one row: the pick, what the archive is and holds, and its snapshots' count */}
       <Box className={styles.repoRow}>
         <Box className={styles.repoRowLabel}>Attached archive:</Box>
-        <Box className={styles.repoRowValue}>
-          <Dropdown options={attachOptionsOf(list.archives)} selectedValue={list.attached || ATTACH_NONE} isDisabled={!canSet}
-            confirmTitle='Change the attached archive?' confirmBody={attachConfirmBody(list.attached)} onChange={change} />
-        </Box>
+        <Dropdown options={attachOptionsOf(list.archives)} selectedValue={list.attached || ATTACH_NONE} isDisabled={!canSet}
+          confirmTitle='Change the attached archive?' confirmBody={attachConfirmBody(list.attached)} onChange={change} />
+        {archive ? (
+          <>
+            <Box className={styles.repoRowLabel}>{kindLabel(archive.plugin, manifest)}</Box>
+            <Box className={styles.repoRowValue}>
+              {archive.location || summary(archive)} · {sizeText(archive)}{archive.backups != null ? ` · ${archive.backups} backup${archive.backups === 1 ? '' : 's'}` : ''}
+              {pluginArchive && !snapshots.loading && !snapshots.error ? ` · ${snapshots.rows.length} snapshot${snapshots.rows.length === 1 ? '' : 's'}` : ''}
+            </Box>
+            {pluginArchive && <RMIconButton icon={HiRefresh} tooltip='Read the snapshots again' isDisabled={snapshots.loading} onClick={fetchSnapshots} />}
+          </>
+        ) : (
+          <Text fontSize='sm' fontWeight='normal'>none: the backups stay in the servers&apos; backup folders</Text>
+        )}
+        {error && <Text color='red.500' fontSize='sm'>{error}</Text>}
       </Box>
-      {archive ? (
-        <Box className={styles.repoRow}>
-          <Box className={styles.repoRowLabel}>{kindLabel(archive.plugin, manifest)}:</Box>
-          <Box className={styles.repoRowValue}>
-            {archive.location || summary(archive)} · {sizeText(archive)}{archive.backups != null ? ` · ${archive.backups} backup${archive.backups === 1 ? '' : 's'}` : ''}
-          </Box>
-        </Box>
-      ) : (
-        <Text fontSize='sm'>No archive attached: the backups stay in the servers&apos; backup folders.</Text>
-      )}
-      {error && <Text color='red.500' fontSize='sm'>{error}</Text>}
       {pluginArchive && (
         <>
-          <Box className={styles.repoRow}>
-            <Box className={styles.sectionTitle}>Snapshots of {pluginArchive}{snapshots.loading ? '' : ` (${snapshots.rows.length})`}</Box>
-            <RMIconButton icon={HiRefresh} tooltip='Read the snapshots again' isDisabled={snapshots.loading} onClick={fetchSnapshots} />
-          </Box>
           {snapshots.error
             ? <Text color='red.500' fontSize='sm'>{snapshots.error}</Text>
             : <DataTable key='archiveSnapshots' data={snapshots.rows} columns={snapshotColumns} className={styles.table} />}

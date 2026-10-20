@@ -1131,11 +1131,13 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
             <AttachedArchive clusterName={selectedCluster?.name} user={user} onAttached={setAttachedArchive} />
             {resticShown && (
               <>
-                <Box className={styles.sectionTitle}>Restic repository</Box>
-                <Box className={styles.repoRow}>
-                  <Box className={styles.repoRowLabel}>Repository:</Box>
-                  <Box className={styles.repoRowValue}>{resticRepoPath || '-'}</Box>
-                </Box>
+                {/* an attached restic archive's location is in the row above */}
+                {!attachedArchive && (
+                  <Box className={styles.repoRow}>
+                    <Box className={styles.repoRowLabel}>Restic repository:</Box>
+                    <Box className={styles.repoRowValue}>{resticRepoPath || '-'}</Box>
+                  </Box>
+                )}
                 <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
                 <DataTable key="snapshot" data={snapshotData} columns={snapshotColumns} className={styles.table} />
                 <Box className={styles.sectionTitle}>Current Restic Task</Box>
