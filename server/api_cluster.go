@@ -2505,7 +2505,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 
 // handlerMuxClusterBackups handles the retrieval of backups for a given cluster.
 // @Summary Retrieve backups for a specific cluster
-// @Description This endpoint retrieves the backups for the specified cluster, by id: each backup's record, with what the restore selection reads of it: capabilities (compress, encrypt, parallel, can-partial-restorable, gtid), location (local, or remote when the attached archive holds it), proven (a test restore of its local file, still unchanged) and restoreCandidate (a restore or reseed picks among it now: its server's last logical or physical backup).
+// @Description This endpoint retrieves the backups for the specified cluster, by id: each backup's record, with what the restore selection reads of it: capabilities (compress, encrypt, parallel, can-partial-restorable, gtid), location (local: replication-manager's own disk; remote: the bucket through the backups folder mount; archive: only in a snapshot of the attached archive), archived (the attached archive holds a snapshot of it), proven (a test restore of its file, still unchanged) and restoreCandidate (a restore or reseed picks among it now: its server's last logical or physical backup).
 // @Description Required grant: cluster-show-backups
 // @Tags ClusterBackups
 // @Produce json

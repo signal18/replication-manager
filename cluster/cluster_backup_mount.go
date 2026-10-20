@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -68,6 +69,9 @@ type backupMount struct {
 	mount     *s3fuse.Mount // the mount, served in this process
 	lastLate  time.Time     // the last request answered past its deadline
 	state     BackupMountState
+	// state.Mounted, published for readers that never wait for mu, held across a mount's
+	// network calls: the restore catalogue on the monitor tick
+	mounted atomic.Bool
 }
 
 // backupMountPoint is the cluster's backups folder.
@@ -887,12 +891,22 @@ func (cluster *Cluster) UnmountBackupFolder() {
 // publishBackupMountLocked copies the state where the cluster's JSON shows it; bm.mu held.
 func (cluster *Cluster) publishBackupMountLocked() {
 	st := cluster.backupMount.state
+	cluster.backupMount.mounted.Store(st.Mounted)
 	st.Enabled = cluster.Conf.BackupStreaming
 	st.Provider = cluster.Conf.BackupStreamingProvider
 	if st.MountPoint == "" {
 		st.MountPoint = cluster.backupMountPoint()
 	}
 	cluster.BackupMount = st
+}
+
+// mountedBackupsFolder is the backups folder when the bucket is mounted on it, else "". It
+// takes no lock.
+func (cluster *Cluster) mountedBackupsFolder() string {
+	if !cluster.backupMount.mounted.Load() {
+		return ""
+	}
+	return cluster.backupMountPoint()
 }
 
 // BackupMountStatus is the backups folder mount's state.

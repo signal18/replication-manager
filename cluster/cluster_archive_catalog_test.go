@@ -47,10 +47,11 @@ func TestCatalogueGlueLegacySnapshot(t *testing.T) {
 	if got := cl.attachedSnapshot(m); got != "" {
 		t.Fatalf("attached snapshot in archive-s3-1: %q", got)
 	}
-	if e := backupMetaToCatalog("s1", &backupmgr.BackupMetadata{ResticEnabled: true, ArchiveRefs: m.ArchiveRefs, Dest: "/d"}, "archive-s3-1"); e.Location != RepoLocal || e.Path != "/d" {
+	if e := backupMetaToCatalog("s1", &backupmgr.BackupMetadata{ResticEnabled: true, ArchiveRefs: m.ArchiveRefs, Dest: "/d"}, "archive-s3-1", ""); e.Location != RepoLocal || e.Path != "/d" || e.Snapshot != "" {
 		t.Fatalf("held by a detached archive only: %+v", e)
 	}
-	if e := backupMetaToCatalog("s1", &backupmgr.BackupMetadata{ResticEnabled: true, ArchiveRefs: m.ArchiveRefs, Dest: "/d"}, "archive-local-1"); e.Location != RepoRemote || e.Path != "aaa" {
+	// archived, its file still on disk: read where it is, the snapshot kept beside it
+	if e := backupMetaToCatalog("s1", &backupmgr.BackupMetadata{ResticEnabled: true, ArchiveRefs: m.ArchiveRefs, Dest: "/d"}, "archive-local-1", ""); e.Location != RepoLocal || e.Path != "/d" || e.Snapshot != "aaa" {
 		t.Fatalf("held by the attached archive: %+v", e)
 	}
 }

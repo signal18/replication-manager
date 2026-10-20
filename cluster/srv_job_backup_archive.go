@@ -215,9 +215,10 @@ func (cluster *Cluster) checkArchiveRemoveOriginalStates() {
 // tool, when set, must match the backup's tool. It returns whether that backup lives in the
 // archive: the caller then keeps its backup cookie even when the fetch failed. The restored
 // original stays until the next backup of the method replaces it and removes it after its
-// own archive push, as it was before the removal.
+// own archive push, as it was before the removal. Only a restic archive is fetched from
+// (archiveFetchable): a plugin archive's snapshot is no restic snapshot.
 func (cluster *Cluster) restoreArchivedOriginal(src *ServerMonitor, backtype backupmgr.BackupMethod, tool string) bool {
-	if src == nil || cluster.ResticManager == nil {
+	if src == nil || !cluster.archiveFetchable() {
 		return false
 	}
 	src.backupMetaMutex.Lock()
@@ -311,3 +312,22 @@ func escapeResticPattern(path string) string {
 // archiveRestoreWorkDirPattern excludes a fetch work directory from the scheduled push,
 // which snapshots the whole backup directory.
 const archiveRestoreWorkDirPattern = ".archive-restore-*"
+
+// fetchPickedBackup fetches pick, a backup the restore selection chose that is only in the
+// attached archive, back into its server's backup directory, at the path the reseed reads
+// (pick.Path). An error says why it cannot be used (#2091).
+func (cluster *Cluster) fetchPickedBackup(pick *BackupCatalogEntry, method backupmgr.BackupMethod, tool string) error {
+	archive := cluster.Conf.AttachedArchive()
+	if !cluster.archiveFetchable() {
+		return fmt.Errorf("backup %d of %s is only in archive %s (snapshot %s): fetching a backup back from this archive is not supported yet", pick.ID, pick.Server, archive, pick.Snapshot)
+	}
+	src := cluster.GetServerFromURL(pick.Server)
+	if src == nil {
+		return fmt.Errorf("backup %d of %s is only in archive %s: its server is no longer monitored", pick.ID, pick.Server, archive)
+	}
+	cluster.restoreArchivedOriginal(src, method, tool)
+	if !fileExists(pick.Path) {
+		return fmt.Errorf("backup %d of %s could not be fetched back from archive %s (snapshot %s) to %s", pick.ID, pick.Server, archive, pick.Snapshot, pick.Path)
+	}
+	return nil
+}

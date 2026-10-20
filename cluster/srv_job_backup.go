@@ -3150,7 +3150,8 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// a master-only lookup that aborted with "No backup file found on master"
 		// whenever the elected master had never been backed up. In a rejoin any
 		// consistent backup works — replication catches up the delta — so the source
-		// node does not matter. Local-only for now (remote/restic fetch is not wired).
+		// node does not matter. A local or remote (mounted bucket) backup is read where it
+		// is, an archive-only one fetched back first.
 		sel := cluster.getAutorejoinBackupSelector("logical")
 		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
 		pick := ResolveRestore(cluster.buildBackupCatalog(), sel,
@@ -3170,15 +3171,26 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 			server.SetInReseedBackup("")
 			return err
 		}
-		if pick != nil && pick.isLocal() {
+		// a backup only in the archive is fetched back into its server's backup directory
+		// first; one that cannot be is refused, never replaced by another file (#2091)
+		if pick != nil && pick.inArchiveOnly() {
+			if err := cluster.fetchPickedBackup(pick, backupmgr.BackupMethodLogical, backtype); err != nil {
+				err = fmt.Errorf("Cancelling reseed. %w", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "flashback %s on %s refused: %s", backtype, server.URL, err)
+				server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+				server.SetInReseedBackup("")
+				return err
+			}
+		}
+		if pick != nil {
 			backupfile = pick.Path
 			if s := cluster.GetServerFromURL(pick.Server); s != nil {
 				source = s
 			}
 			useMaster = source == master
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "flashback %s: selector picked %s backup %s", backtype, source.URL, backupfile)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "flashback %s: selector picked %s backup %s (%s)", backtype, source.URL, backupfile, pick.Location)
 		} else {
-			// Fallback (no catalogued local backup — metadata not populated): legacy
+			// Fallback (no catalogued backup — metadata not populated): legacy
 			// on-disk lookup on master then backup server.
 			masterArchived := cluster.restoreArchivedOriginal(master, backupmgr.BackupMethodLogical, backtype)
 			backupfile, _ = findExistingBackupPath(master, destCandidates)

@@ -26,11 +26,12 @@ const (
 	OriginMaster = "master"
 	OriginMine   = "mine"
 
-	// repo
-	RepoAny    = "any"
-	RepoLocal  = "local"
-	RepoRemote = "remote"
-	RepoLive   = "live"
+	// repo: where the backup's file is (#2091)
+	RepoAny     = "any"
+	RepoLocal   = "local"   // replication-manager's own disk
+	RepoRemote  = "remote"  // the bucket, through the backups folder mount
+	RepoArchive = "archive" // only in a snapshot of the attached archive, fetched back first
+	RepoLive    = "live"
 
 	// time
 	TimeAny             = "any"
@@ -57,7 +58,7 @@ type RestoreSelector struct {
 
 	// string
 	Origin    string // any | master | mine
-	Repo      string // any | local | remote | live
+	Repo      string // any | local | remote | archive | live
 	Time      string // any | notafterlastmasterbinlog | nobeforemasterbinlog | pitr
 	StartGtid string // GTID boundary — PITR target AND backup filtering (not pitr-only)
 
@@ -71,7 +72,7 @@ type RestoreSelector struct {
 type BackupCatalogEntry struct {
 	ID        int64    // the backup's id (BackupMetadata.Id)
 	Server    string   // node it was taken from            -> origin
-	Location  string   // local | remote (repo)             -> repo
+	Location  string   // local | remote | archive          -> repo
 	Kind      string   // logical | physical                -> type
 	Tool      string   // mysqldump | mydumper | mariadbbackup | ...  -> tool
 	Caps      []string // parallel, compress, encrypt, gtid, can-partial-restorable
@@ -80,10 +81,15 @@ type BackupCatalogEntry struct {
 	Gtid      string   // captured position (master-relative) -> time gates
 	BinFile   string
 	BinPos    string
-	Path      string // local path or repo/snapshot id
+	Path      string // the backup's file (on disk or through the mount; for an archive one, where it is fetched back to)
+	Snapshot  string // the attached archive's snapshot of it, "" when it holds none
 }
 
 func (e BackupCatalogEntry) isLocal() bool { return e.Location == "" || e.Location == RepoLocal }
+
+// inArchiveOnly: the backup's file was removed after archiving, a restore fetches it back
+// from the snapshot first.
+func (e BackupCatalogEntry) inArchiveOnly() bool { return e.Location == RepoArchive }
 
 // ResolveContext carries the live facts the resolver needs beyond the catalog:
 // the master's binlog window (for the time gates) and which URLs count as
