@@ -163,6 +163,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDiscover)),
 	)).Methods(http.MethodPost)
 
+	router.Handle("/api/clusters/{clusterName}/backups/binlog-copies", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBinlogCopies)),
+	)).Methods(http.MethodGet)
 	router.Handle("/api/clusters/{clusterName}/backups/candidates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupCandidates)),
@@ -2838,6 +2842,35 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDiscover(w http.Respons
 	w.WriteHeader(http.StatusAccepted)
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{"message": "Backup discovery started"}); err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API encoding error %s", err)
+	}
+}
+
+// handlerMuxClusterBinlogCopies returns what each server's backup directory holds of its logs.
+// @Summary Log copies in the backup directories
+// @Description Returns, per server, the binary log copies its backup directory holds (binary-logs.meta.json, backup-binlogs): their number, the lowest and highest binlog, the time of their first events, and their size.
+// @Description Required grant: cluster-show-backups
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} cluster.BinlogCopies "Log copies per server"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/backups/binlog-copies [get]
+func (repman *ReplicationManager) handlerMuxClusterBinlogCopies(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(mycluster.GetBinlogCopies()); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 	}
 }
 
