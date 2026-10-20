@@ -1041,7 +1041,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupStreamingAwsAccessSecret, "backup-streaming-aws-access-secret", "secret", "Backup AWS key secret")
 	flags.StringVar(&conf.BackupStreamingEndpoint, "backup-streaming-endpoint", "https://minio.crm.ovh-fr-2.signal18.cloud18.io/", "Backup AWS endpoint")
 	flags.StringVar(&conf.BackupStreamingRegion, "backup-streaming-region", "eu-west-1", "Backup AWS region (the Cloud18 storage's region; it signs the requests and names its SSO role)")
-	flags.StringVar(&conf.BackupStreamingBucket, "backup-streaming-bucket", "repman", "Backup AWS bucket")
+	flags.StringVar(&conf.BackupStreamingBucket, "backup-streaming-bucket", "repman", "Bucket of the backups folder mount, and of the S3 archives whose bucket is not set: the cluster's folder in it holds backups/ and archive/<name>/ side by side, under the instance's URI on Cloud18 and the SSO user's folder on the Cloud18 SSO")
 	flags.StringVar(&conf.BackupStreamingProvider, "backup-streaming-provider", "", "S3 provider of the cluster (its S3 providers) the backups folder mount uses; empty with backup-streaming on: one is added from the backup-streaming-* values and set here")
 
 	//flags.StringVar(&conf.BackupResticStoragePolicy, "backup-restic-storage-policy", "--prune --keep-last 10 --keep-hourly 24 --keep-daily 7 --keep-weekly 52 --keep-monthly 120 --keep-yearly 102", "Restic keep backup policy")

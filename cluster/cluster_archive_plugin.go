@@ -193,9 +193,9 @@ func (cluster *Cluster) archivePluginStore(a config.ArchiveConfig, m config.Arch
 	}
 	endpoint, region, accessKey, secretKey := cluster.resolveProviderEffectiveValues(provider)
 	st.Endpoint, st.Region = endpoint, region
-	token := ""
+	token, ssoUser := "", ""
 	if provider.Cloud18SSO {
-		creds, _, err := cluster.newCloud18SSOCredentials(endpoint, region, provider.RoleArn)
+		creds, src, err := cluster.newCloud18SSOCredentials(endpoint, region, provider.RoleArn)
 		if err != nil {
 			return st, nil, err
 		}
@@ -203,8 +203,9 @@ func (cluster *Cluster) archivePluginStore(a config.ArchiveConfig, m config.Arch
 		if err != nil {
 			return st, nil, err
 		}
-		accessKey, secretKey, token = v.AccessKeyID, v.SecretAccessKey, v.SessionToken
+		accessKey, secretKey, token, ssoUser = v.AccessKeyID, v.SecretAccessKey, v.SessionToken, src.User()
 	}
+	st.Settings[config.ConstArchiveSettingS3Bucket], st.Settings[config.ConstArchiveSettingS3Prefix] = cluster.archiveBucketFolder(a, ssoUser)
 	if target {
 		env = append(env, wire.SecretEnv("target-s3-access-key")+"="+accessKey, wire.SecretEnv("target-s3-secret-key")+"="+secretKey, wire.SecretEnv("target-s3-session-token")+"="+token)
 	} else {

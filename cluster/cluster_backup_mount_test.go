@@ -52,7 +52,7 @@ func TestBackupMountProvider(t *testing.T) {
 	if err != nil || tg == nil || tg.sig == "" || tg.sso || tg.endpoint != "https://s3.example" || cl.backupMountPoint() != filepath.Join(cl.Conf.WorkingDir, "backups", "c1") {
 		t.Fatalf("target %+v %v", tg, err)
 	}
-	if spec, _ := tg.spec(""); spec != "repman:c1" {
+	if spec, _ := tg.spec(""); spec != "repman:c1/backups" {
 		t.Fatalf("spec %q", spec)
 	}
 
@@ -60,7 +60,7 @@ func TestBackupMountProvider(t *testing.T) {
 	cl.Conf.Cloud18, cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = true, "signal18", "ovh", "fr"
 	if tg, _ := cl.backupMountTarget(); tg == nil {
 		t.Fatal("no target")
-	} else if spec, _ := tg.spec(""); spec != "repman:signal18/ovh-fr/c1" {
+	} else if spec, _ := tg.spec(""); spec != "repman:signal18/ovh-fr/c1/backups" {
 		t.Fatalf("cloud18 bucket spec %q", spec)
 	}
 	cl.Conf.Cloud18 = false
@@ -88,7 +88,7 @@ func TestBackupMountProvider(t *testing.T) {
 		t.Fatalf("sso target %+v err %v", target, err)
 	}
 	// the SSO user's folder comes first: what the storage's policy opens to that identity
-	if spec, prefix := target.spec("2"); spec != "repman:2/signal18/ovh-fr/c1" || prefix != "2/signal18/ovh-fr/c1" {
+	if spec, prefix := target.spec("2"); spec != "repman:2/signal18/ovh-fr/c1/backups" || prefix != "2/signal18/ovh-fr/c1/backups" {
 		t.Fatalf("sso spec %q prefix %q", spec, prefix)
 	}
 	cl.Conf.Cloud18 = false
@@ -313,4 +313,30 @@ func TestBucketFingerprint(t *testing.T) {
 	if cl.recordWithBucketFingerprint(rec, 7, etags) != nil {
 		t.Fatal("a file that did not go up: the record goes up as it is")
 	}
+}
+
+// TestArchiveBucketFolder: an S3 archive with no bucket nor folder set goes to the mount's
+// bucket, archive/<name> next to the backups folder, under the URI on Cloud18 and the SSO
+// user's folder on the SSO; set ones are kept, a folder put under the SSO user's once.
+func TestArchiveBucketFolder(t *testing.T) {
+	cl := &Cluster{Name: "c1", Conf: &config.Config{BackupStreamingBucket: "repman"}}
+	a := config.ArchiveConfig{Name: "archive-plakar-s3-1", Settings: map[string]interface{}{}}
+	check := func(sso, wantBucket, wantPrefix string) {
+		t.Helper()
+		if b, p := cl.archiveBucketFolder(a, sso); b != wantBucket || p != wantPrefix {
+			t.Fatalf("sso %q: %s %s, want %s %s", sso, b, p, wantBucket, wantPrefix)
+		}
+	}
+	check("", "repman", "c1/archive/archive-plakar-s3-1")
+	cl.Conf.Cloud18, cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = true, "signal18", "ovh", "fr"
+	check("", "repman", "signal18/ovh-fr/c1/archive/archive-plakar-s3-1")
+	check("2", "repman", "2/signal18/ovh-fr/c1/archive/archive-plakar-s3-1")
+	if !strings.HasPrefix(cl.archiveBucketPrefix(a.Name), strings.TrimSuffix(cl.backupMountPrefix(), "backups")) || strings.HasPrefix(cl.archiveBucketPrefix(a.Name), cl.backupMountPrefix()+"/") {
+		t.Fatalf("archive %s not next to the backups folder %s", cl.archiveBucketPrefix(a.Name), cl.backupMountPrefix())
+	}
+	a.Settings[config.ConstArchiveSettingS3Bucket], a.Settings[config.ConstArchiveSettingS3Prefix] = "other", "/mine/"
+	check("", "other", "mine")
+	check("2", "other", "2/mine")
+	a.Settings[config.ConstArchiveSettingS3Prefix] = "2/mine"
+	check("2", "other", "2/mine")
 }

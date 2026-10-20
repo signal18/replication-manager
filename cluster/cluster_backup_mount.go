@@ -28,8 +28,8 @@ import (
 )
 
 // The backups folder mount (#2091): with backup-streaming, the cluster's backups folder
-// <working-dir>/backups/<cluster> is a mount of backup-streaming-bucket, its folder <cluster>,
-// under the instance's URI on Cloud18 (backupMountPrefix). The endpoint,
+// <working-dir>/backups/<cluster> is a mount of backup-streaming-bucket, its folder
+// <cluster>/backups, under the instance's URI on Cloud18 (backupMountPrefix). The endpoint,
 // region and keys are those of an S3 provider of the cluster (backup-streaming-provider);
 // with none set, one is added from the backup-streaming-* values and set. The mount is served in
 // this process by utils/s3fuse (GeeseFS), every FUSE request answered within its deadline, so a
@@ -75,15 +75,34 @@ func (cluster *Cluster) backupMountPoint() string {
 	return filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, cluster.Name)
 }
 
-// backupMountPrefix is the folder of the bucket mounted: the cluster name, under the
+// bucketClusterFolder is the cluster's folder in a bucket: the cluster name, under the
 // instance's URI on Cloud18 (<cloud18-domain>/<cloud18-sub-domain>-<cloud18-sub-domain-zone>,
-// as its secrets and billing name it), so instances sharing a bucket never mix.
-func (cluster *Cluster) backupMountPrefix() string {
+// as its secrets and billing name it), so instances sharing a bucket never mix. On the Cloud18
+// SSO it is itself under the SSO user's folder (mountTarget.spec, archiveBucketFolder).
+func (cluster *Cluster) bucketClusterFolder() string {
 	c := cluster.Conf
 	if c.Cloud18 && c.Cloud18Domain != "" && c.Cloud18SubDomain != "" {
 		return c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone + "/" + cluster.Name
 	}
 	return cluster.Name
+}
+
+// The cluster's folder holds its backups folder and its archives side by side, so the mounted
+// backups folder never shows an archive's files.
+const (
+	bucketBackupsFolder = "backups"
+	bucketArchiveFolder = "archive"
+)
+
+// backupMountPrefix is the folder of the bucket mounted: backups in the cluster's folder.
+func (cluster *Cluster) backupMountPrefix() string {
+	return cluster.bucketClusterFolder() + "/" + bucketBackupsFolder
+}
+
+// archiveBucketPrefix is the default folder of the cluster's archive name in a bucket:
+// archive/<name> in the cluster's folder, next to its backups folder.
+func (cluster *Cluster) archiveBucketPrefix(name string) string {
+	return cluster.bucketClusterFolder() + "/" + bucketArchiveFolder + "/" + name
 }
 
 // ConstCloud18Provider is the S3 provider a replication-manager registered to Cloud18 gets:

@@ -212,6 +212,13 @@ func archiveManifests() map[string]ArchivePluginManifest {
 // with the s3 capability: the S3 provider (the cluster's S3 providers) of its bucket.
 const ConstArchiveSettingS3Provider = "s3-provider"
 
+// ConstArchiveSettingS3Bucket and ConstArchiveSettingS3Prefix are the bucket and the folder in
+// it of a plugin with the s3 capability; replication-manager fills them when unset.
+const (
+	ConstArchiveSettingS3Bucket = "bucket"
+	ConstArchiveSettingS3Prefix = "prefix"
+)
+
 // ConstArchiveCapS3 is the capability of an external plugin whose archives are in a bucket.
 const ConstArchiveCapS3 = "s3"
 

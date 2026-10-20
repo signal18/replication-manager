@@ -127,24 +127,46 @@ func (cluster *Cluster) ArchiveList() ArchiveListResult {
 // ArchiveLocation is the repository archive a runs.
 func (cluster *Cluster) ArchiveLocation(a config.ArchiveConfig) string {
 	if m, ok := externalArchive(a); ok {
-		return externalArchiveLocation(a, m)
+		return cluster.externalArchiveLocation(a, m)
 	}
 	return cluster.resticRepoPathFor(cluster.Conf.ConfigForArchive(a))
 }
 
+// archiveSetting is a setting of the archive, "" when unset.
+func archiveSetting(a config.ArchiveConfig, k string) string {
+	if v, ok := a.Settings[k]; ok && v != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return ""
+}
+
 // externalArchiveLocation is where an external plugin's archive is: its plugin and its
 // location settings (a folder, or provider, bucket and folder in the bucket).
-func externalArchiveLocation(a config.ArchiveConfig, m config.ArchivePluginManifest) string {
-	get := func(k string) string {
-		if v, ok := a.Settings[k]; ok && v != nil {
-			return fmt.Sprintf("%v", v)
-		}
-		return ""
-	}
+func (cluster *Cluster) externalArchiveLocation(a config.ArchiveConfig, m config.ArchivePluginManifest) string {
 	if m.Can(config.ConstArchiveCapS3) {
-		return strings.TrimRight(fmt.Sprintf("%s:%s/%s/%s", a.Plugin, get(config.ConstArchiveSettingS3Provider), get("bucket"), get("prefix")), "/")
+		bucket, prefix := cluster.archiveBucketFolder(a, "")
+		return strings.TrimRight(fmt.Sprintf("%s:%s/%s/%s", a.Plugin, archiveSetting(a, config.ConstArchiveSettingS3Provider), bucket, prefix), "/")
 	}
-	return a.Plugin + ":" + get("location")
+	return a.Plugin + ":" + archiveSetting(a, "location")
+}
+
+// archiveBucketFolder is the bucket and the folder of an archive in a bucket: its own bucket
+// and prefix settings, else backup-streaming-bucket and archive/<name> in the cluster's folder
+// (archiveBucketPrefix), so no two archives, clusters or instances share one. On the Cloud18
+// SSO the folder is under the SSO user's (ssoUser), the only one its policy opens.
+func (cluster *Cluster) archiveBucketFolder(a config.ArchiveConfig, ssoUser string) (string, string) {
+	bucket := strings.Trim(archiveSetting(a, config.ConstArchiveSettingS3Bucket), "/")
+	if bucket == "" {
+		bucket = cluster.Conf.BackupStreamingBucket
+	}
+	prefix := strings.Trim(archiveSetting(a, config.ConstArchiveSettingS3Prefix), "/")
+	if prefix == "" {
+		prefix = cluster.archiveBucketPrefix(a.Name)
+	}
+	if ssoUser != "" && prefix != ssoUser && !strings.HasPrefix(prefix, ssoUser+"/") {
+		prefix = ssoUser + "/" + prefix
+	}
+	return bucket, prefix
 }
 
 // archiveSharingLocation is another archive of the list running the same repository as a
