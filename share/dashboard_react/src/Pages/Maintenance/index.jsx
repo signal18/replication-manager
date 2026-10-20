@@ -663,6 +663,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         (row) => (
           <VStack className={styles.cellStack} spacing={0.5}>
             <BackupCellLine label='Source:' value={row.source} textType='Source' />
+            <BackupCellLine label='Role:' value={row.role} tooltip={row.role ? `The source server was ${row.role} when the backup started` : ''} textType='Role' />
             <BackupCellLine label='Dest:' value={row.dest} shown={backupDestName(row.dest)} textType='Destination' />
             <BackupCellLine label='Archive:' value={backupArchives(row, selectedCluster?.config?.backupArchiveName)}
               tooltip={backupArchivesTooltip(row, selectedCluster?.config?.backupArchiveName)} textType='Archive' />
