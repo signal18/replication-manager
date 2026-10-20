@@ -156,7 +156,12 @@ A point-in-time restore (PITR) is the exception: it leaves the server
 standalone at the restored point. It removes the channel replication-manager
 manages (`RESET SLAVE ALL`), so that nothing starts replication past that
 point, and the cluster shows CINF0020 naming the server, the channel and the
-restore, until a rejoin or a reseed makes it a replica again.
+restore, until a rejoin or a reseed makes it a replica again. The PITR request
+returns once the restore has started; the restore and the binary log replay run in
+the background. If either fails, or the restore is cancelled, the cluster shows
+ERR00119 instead, naming the server, the restore and the cause: the server is
+standalone and its data is not at the requested point. It stays until a new PITR,
+a rejoin or a reseed.
 
 A backup made before this release writes an active `CHANGE MASTER` and
 `STOP`/`START SLAVE`. It is still restored on a replica with one channel, which

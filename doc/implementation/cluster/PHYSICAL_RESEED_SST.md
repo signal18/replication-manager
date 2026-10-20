@@ -83,7 +83,8 @@ path.
 6. **PITR branch.** If the target is in point-in-time recovery, `resetLinkForPITR`:
    stop + `RESET SLAVE ALL` on the managed channel (ignoring error 1617), leaving the
    server standalone at the restored point, with CINF0020 naming the removed link
-   (#2115, see `JOB_RESEED_LOGICAL_ASYNC.md`, law T27).
+   (#2115, see `JOB_RESEED_LOGICAL_ASYNC.md`, law T27). A restore that then fails or is
+   cancelled (the job row ends above state 4) opens ERR00119 instead (#2117).
 7. **Queue the task.** `JobInsertTask(task, server.SSTPort, Conf.MonitorAddress)`
    writes a row into the target DB's job/task table — the **dbjob agent polls it**,
    and is told which **SST port** to open a receiver on and which monitor address to

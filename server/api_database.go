@@ -1546,13 +1546,13 @@ func (repman *ReplicationManager) handlerMuxServerReseed(w http.ResponseWriter, 
 
 // handlerMuxServerPITR handles the HTTP request to perform a point-in-time recovery (PITR) on a specific server within a cluster.
 // @Summary Perform a point-in-time recovery on a server
-// @Description Initiates a point-in-time recovery on a specified server within a cluster.
+// @Description Starts a point-in-time recovery on a specified server within a cluster and returns once the restore is started: the restore, then the binary log replay when asked, run in the background.
 // @Tags DatabaseBackup
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
-// @Success 200 {object} ApiResponse "PITR initiated successfully"
+// @Success 200 {object} ApiResponse "PITR started"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Decode error" or "PITR error"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/pitr [post]
@@ -1585,8 +1585,8 @@ func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r 
 				http.Error(w, fmt.Sprintf("PITR error :%s", err.Error()), http.StatusInternalServerError)
 				return
 			} else {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR on %s finished successfully", node.URL)
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "PITR on %s finished successfully", node.URL)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR on %s started", node.URL)
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "PITR on %s started", node.URL)
 			}
 
 			marshal, err := json.MarshalIndent(formPit, "", "\t")

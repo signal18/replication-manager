@@ -165,12 +165,15 @@ func (server *ServerMonitor) GetLatestMeta(method string) (int64, *backupmgr.Bac
 	return latest, meta
 }
 
+// ReseedPointInTime starts a point-in-time restore of the server and returns once the restore
+// is started (#2117): a restore runs for hours on a large database, and one the jobs agent
+// never takes never ends, so the API request does not wait for it. finishPointInTime waits for
+// it in the background and replays the binary logs when asked. The PITR flag
+// (PointInTimeMeta) is set until finishPointInTime ends: the post-restore step of a physical
+// restore and the reseed read it.
 func (server *ServerMonitor) ReseedPointInTime(meta backupmgr.PointInTimeMeta) error {
 	var err error
 	cluster := server.ClusterGroup
-
-	server.SetPointInTimeMeta(meta)                              //Set for PITR
-	defer server.SetPointInTimeMeta(backupmgr.PointInTimeMeta{}) //Reset after done
 
 	backup := cluster.BackupMetaMap.Get(meta.Backup)
 	if backup == nil {
@@ -192,39 +195,71 @@ func (server *ServerMonitor) ReseedPointInTime(meta backupmgr.PointInTimeMeta) e
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Requesting PITR on node %s with %s without using binary logs", server.URL, backup.BackupTool)
 	}
 
+	server.SetPointInTimeMeta(meta) //Set for PITR
 	switch backup.BackupTool {
 	case config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeRiver, config.ConstBackupLogicalTypeDumpling:
 		err = server.JobReseedLogicalBackup(context.Background(), backup.BackupTool)
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		err = server.JobReseedPhysicalBackup(backup.BackupTool)
 	default:
-		return fmt.Errorf("Wrong backup type for reseed: got %s", backup.BackupTool)
+		err = fmt.Errorf("Wrong backup type for reseed: got %s", backup.BackupTool)
 	}
 	if err != nil {
+		server.SetPointInTimeMeta(backupmgr.PointInTimeMeta{})
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s. err: %s", server.URL, err.Error())
 		return err
 	}
 
-	// Wait for 15 seconds until job result updated.
-	time.Sleep(time.Second * 15)
+	go server.finishPointInTime(meta, backup)
+	return nil
+}
 
-	task := server.JobResults.Get("reseed" + backup.BackupTool)
+// finishPointInTime waits for the restore of a PITR to end, then replays the binary logs up to
+// the restore time when asked, and clears the PITR flag. The restore has ended once the
+// server's reseeding state is cleared, which happens after its post-restore step; a cancel
+// clears it too.
+func (server *ServerMonitor) finishPointInTime(meta backupmgr.PointInTimeMeta, backup *backupmgr.BackupMetadata) {
+	cluster := server.ClusterGroup
+	defer server.SetPointInTimeMeta(backupmgr.PointInTimeMeta{}) //Reset after done
 
-	//Wait until job result changed since we're using pointer
-	for task.State < 3 {
+	task := "reseed" + backup.BackupTool
+	for server.HasReseedingState(task) {
+		time.Sleep(time.Second)
+	}
+	// the result of the run, synced from the jobs table after the reseeding state is cleared.
+	// In sql mode the result of a job just queued still holds the previous run's until the jobs
+	// table is read again: read it before trusting the result, or a cancel right after the
+	// request would read the previous run's success (#2117)
+	var t *config.Task
+	for i := 0; i < 30; i++ {
+		if cluster.Conf.SchedulerJobsMode != "api" && server.Conn != nil {
+			if err := server.JobsRefreshEntries(); err != nil {
+				time.Sleep(time.Second)
+				continue
+			}
+		}
+		if t = server.JobResults.Get(task); t != nil && t.State >= 3 {
+			break
+		}
 		time.Sleep(time.Second)
 	}
 
-	//If failed
-	if task.State > 4 {
-		err = fmt.Errorf("Unable to complete reseed from backup using %s", backup.BackupTool)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s: %s", server.URL, err)
-		return err
+	//If failed: the request has returned, ERR00119 says so (#2117)
+	if t == nil || t.State < 3 || t.State > 4 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s: Unable to complete reseed from backup using %s", server.URL, backup.BackupTool)
+		cause := "the restore with " + backup.BackupTool + " did not complete"
+		if t != nil {
+			if result := pointInTimeJobResult(t.Result); result != "" {
+				cause += ": " + result
+			}
+		}
+		server.failPointInTime(backup.Id, cause)
+		return
 	}
 
 	if !meta.UseBinlog {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "PITR done on node %s without using binary logs", server.URL)
-		return nil
+		return
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Continue for injecting binary logs on %s until %s", server.URL, time.Unix(meta.RestoreTime, 0).Format(time.RFC3339))
@@ -232,20 +267,19 @@ func (server *ServerMonitor) ReseedPointInTime(meta backupmgr.PointInTimeMeta) e
 	source := cluster.GetServerFromURL(backup.Source)
 	if source == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while trying to execute PITR on %s. Unable to get backup source: %s", server.URL, backup.Source)
-		return fmt.Errorf("Source not found")
+		server.failPointInTime(backup.Id, "the binary log replay found no backup source "+backup.Source)
+		return
 	}
 
 	start := backupmgr.ReadBinaryLogsBoundary{Filename: backup.BinLogFileName, Position: int64(backup.BinLogFilePos)}
 	end := backupmgr.ReadBinaryLogsBoundary{UseTimestamp: true, Timestamp: time.Unix(meta.RestoreTime, 0)}
-	err = source.ReadAndExecBinaryLogsWithinRange(start, end, server)
-	if err != nil {
+	if err := source.ReadAndExecBinaryLogsWithinRange(start, end, server); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while applying binlogs on %s. err: %s", server.URL, err.Error())
-		return err
+		server.failPointInTime(backup.Id, "the binary log replay up to "+time.Unix(meta.RestoreTime, 0).UTC().Format("2006-01-02 15:04:05")+" UTC failed: "+err.Error())
+		return
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binary logs injected on %s until %s", server.URL, time.Unix(meta.RestoreTime, 0).Format(time.RFC3339))
-
-	return nil
 }
 
 func (server *ServerMonitor) InjectViaBinlogs(meta backupmgr.PointInTimeMeta) error {
@@ -330,4 +364,14 @@ func (server *ServerMonitor) writeBackupMetaFileLocked(meta *backupmgr.BackupMet
 		meta.MetaFile = metaPath
 	}
 	return os.WriteFile(metaPath, bjson, 0644)
+}
+
+// pointInTimeJobResult is the restore job's result for ERR00119, as ERR00118 shows a backup's:
+// trimmed, its head and tail when long.
+func pointInTimeJobResult(result string) string {
+	result = strings.TrimSpace(result)
+	if len(result) > 400 {
+		result = result[:200] + " ... " + result[len(result)-200:]
+	}
+	return result
 }

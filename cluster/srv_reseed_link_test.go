@@ -217,3 +217,43 @@ func TestChannelList(t *testing.T) {
 		t.Fatalf("channelList: %s", got)
 	}
 }
+
+func err00119(c *Cluster) *state.State {
+	for _, st := range c.StateMachine.GetOpenStates() {
+		if st.ErrKey == "ERR00119" {
+			return &st
+		}
+	}
+	return nil
+}
+
+// A PITR that failed after its request returned (#2117): ERR00119 names the server, the
+// restore and the cause instead of CINF0020, and ends as CINF0020 does, once the channel is
+// back on a server that answers.
+func TestPITRFailedState(t *testing.T) {
+	c, sv := reseedLinkFixture()
+	sv.failPointInTime(42, "the restore with mariabackup did not complete: cancelled by user")
+	sv.reseedLinks.at = time.Now().Add(-time.Hour)
+
+	sv.checkReseedStoppedLinks()
+	st := err00119(c)
+	if st == nil || st.ErrType != "ERROR" || st.ServerUrl != sv.URL {
+		t.Fatalf("ERR00119 after a failed PITR: %+v", st)
+	}
+	for _, want := range []string{sv.URL, "point-in-time restore from backup 42", "cancelled by user"} {
+		if !strings.Contains(st.ErrDesc, want) {
+			t.Errorf("ERR00119 %q does not name %q", st.ErrDesc, want)
+		}
+	}
+	if cinf0020(c) != nil {
+		t.Fatal("a failed PITR is not reported as a restored one: no CINF0020")
+	}
+
+	c.StateMachine.ClearState()
+	sv.Conn = &sqlx.DB{}
+	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes")}
+	sv.checkReseedStoppedLinks()
+	if err00119(c) != nil || len(sv.reseedStoppedLinkList()) != 0 {
+		t.Fatal("the channel back on a server that answers ends ERR00119")
+	}
+}

@@ -135,6 +135,7 @@ var ClusterError = map[string]string{
 	"ERR00115":  "Cluster %s: %s runs MariaDB %s on a Galera topology whose configuration replication-manager renders: MariaDB 10.3 and older are no longer supported there (the SST authenticates the unix_socket account mysql@localhost, built in from 10.4) -- upgrade to 10.4 or later",
 	"ERR00116":  "Server %s: the system tables lag the server's release (a logical backup or the error log says so): run the server action upgrade-system-tables (mariadb-upgrade, mysql_upgrade before MySQL 8.0.16)",
 	"ERR00118":  "Server %s: the last logical backup (%s, ended %s UTC) failed: %s -- no new logical backup of this server until the cause is fixed and one ends OK",
+	"ERR00119":  "Server %s: the %s failed: %s -- the server stays standalone and its data is not at the requested point; reseed or rejoin it to make it a replica again",
 	"ERR00117":  "Backup verification failed on %s: %s backup %d (%s level): %s -- a restore from it would fail; take a new backup",
 	"ERR00114":  "Cluster %s: the Galera SST account mysql@localhost (unix_socket) cannot be created on %s: %s -- an SST from a donor without it fails authentication (the root password is never written in the database configuration)",
 	"WARN0022":  "Rejoining standalone server %s to master %s",

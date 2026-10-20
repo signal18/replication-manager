@@ -95,6 +95,9 @@ var tests = []string{
 	// testPITRStandalone is not in this list either: it turns the cluster's scheduler on for
 	// its run, restores the first replica to a point in time and reseeds it. Run it by name:
 	// /api/clusters/<cluster>/tests/actions/run/testPITRStandalone
+	// testPITRFailure is not in this list either, for the same reason: it cancels a PITR of
+	// the first replica, then restores and reseeds it. Run it by name:
+	// /api/clusters/<cluster>/tests/actions/run/testPITRFailure
 	// testBackupRegisterArchive is not in this list either: it registers copies of a backup,
 	// archives them to restic, reseeds the first replica and needs backup-restic and
 	// backup-verification-host. Run it by name:

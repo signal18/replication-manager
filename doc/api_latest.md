@@ -11093,7 +11093,7 @@ Status: Internal Server Error
 POST /api/clusters/{clusterName}/servers/{serverName}/actions/pitr
 ```
 
-Initiates a point-in-time recovery on a specified server within a cluster.
+Starts a point-in-time recovery on a specified server within a cluster and returns once the restore is started: the restore, then the binary log replay when asked, run in the background.
 
 #### Produces
   * application/json
@@ -11109,14 +11109,14 @@ Initiates a point-in-time recovery on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#post-api-clusters-cluster-name-servers-server-name-actions-pitr-200) | OK | PITR initiated successfully |  | [schema](#post-api-clusters-cluster-name-servers-server-name-actions-pitr-200-schema) |
+| [200](#post-api-clusters-cluster-name-servers-server-name-actions-pitr-200) | OK | PITR started |  | [schema](#post-api-clusters-cluster-name-servers-server-name-actions-pitr-200-schema) |
 | [403](#post-api-clusters-cluster-name-servers-server-name-actions-pitr-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-servers-server-name-actions-pitr-403-schema) |
 | [500](#post-api-clusters-cluster-name-servers-server-name-actions-pitr-500) | Internal Server Error | Cluster Not Found" or "Server Not Found" or "Decode error" or "PITR error |  | [schema](#post-api-clusters-cluster-name-servers-server-name-actions-pitr-500-schema) |
 
 #### Responses
 
 
-##### <span id="post-api-clusters-cluster-name-servers-server-name-actions-pitr-200"></span> 200 - PITR initiated successfully
+##### <span id="post-api-clusters-cluster-name-servers-server-name-actions-pitr-200"></span> 200 - PITR started
 Status: OK
 
 ###### <span id="post-api-clusters-cluster-name-servers-server-name-actions-pitr-200-schema"></span> Schema

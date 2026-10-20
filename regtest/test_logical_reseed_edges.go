@@ -663,7 +663,8 @@ func (e *edgeRun) breakReplication(name string) bool {
 // wantGTID is the replication mode the replica must end in.
 func (e *edgeRun) reseedAndCheck(name string, wantGTID bool) {
 	e.reseedWithAndCheck(name, wantGTID, config.ConstBackupLogicalTypeMysqldump, func() error {
-		return e.r.JobReseedLogicalBackup(context.Background(), config.ConstBackupLogicalTypeMysqldump)
+		// "default", as the API reseed does: backup-logical-type, mysqldump here (newEdgeRun)
+		return e.r.JobReseedLogicalBackup(context.Background(), "default")
 	})
 }
 

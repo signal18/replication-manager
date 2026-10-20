@@ -155,6 +155,29 @@ A reseed restores data; it does not own the replica's links. Since #2093:
   The logical PITR (`JobReseedLogicalBackupPrepare`, `JobReseedLogicalBackupFromPathPrepare`)
   and the physical PITR (`JobReseedPhysicalBackup`, `JobReseedPhysicalBackupWithPayload`)
   go through it.
+- **PITR runs in the background (#2117).** `ReseedPointInTime` (the `actions/pitr` API)
+  validates, sets `PointInTimeMeta` and starts the reseed, then returns: it used to wait
+  inside the request for the whole restore (15 s, then a poll of the task result with no
+  limit), hours on a large database, forever when the jobs agent never takes the restore.
+  `finishPointInTime` waits in the background until the server's reseeding state is cleared
+  (after the post-restore step, or by a cancel), reads the run's result (failed above state
+  4), replays the binary logs up to the restore time when asked (`UseBinlog`), and clears
+  `PointInTimeMeta` at its end: the flag lives as long as the PITR, not as long as the
+  request, so the post-restore step of a physical restore (`RecoverPhysicalRestore`) always
+  reads it.
+- **A failed PITR is a state (#2117).** Once the request has returned, nothing else tells
+  the operator: when the restore fails or is cancelled (job result missing or above state 4),
+  or the binary log replay fails or has no backup source, `finishPointInTime` calls
+  `failPointInTime`, which writes the PITR record (`reseedLinks`) with the cause (`failed`:
+  the job's result, trimmed to its head and tail as ERR00118 does, or the replay error).
+  In sql mode it reads the jobs table again (`JobsRefreshEntries`) before trusting the
+  result: the in-memory result of a job just queued still holds the previous run's until
+  then, so a cancel right after the request read the previous run's success.
+  `checkReseedStoppedLinks` then opens **ERR00119** (ERROR, server level, topology) naming
+  the server, the restore and the cause, instead of CINF0020: the server is standalone and
+  its data is not at the requested point. It ends as CINF0020 does (the channel back on a
+  server that answers), or when a new PITR replaces the record: `resetLinkForPITR` records
+  a PITR also when an earlier PITR removed the channel.
 - `dbhelper.ResetSlaveStatement` names the channel with or without `ALL`: MySQL's
   `RESET REPLICA` without `FOR CHANNEL` resets every channel.
 - **Without the accounts, the dump's account-import role bracket is left out.**

@@ -11657,7 +11657,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/pitr": {
             "post": {
-                "description": "Initiates a point-in-time recovery on a specified server within a cluster.",
+                "description": "Starts a point-in-time recovery on a specified server within a cluster and returns once the restore is started: the restore, then the binary log replay when asked, run in the background.",
                 "produces": [
                     "application/json"
                 ],
@@ -11691,7 +11691,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "PITR initiated successfully",
+                        "description": "PITR started",
                         "schema": {
                             "$ref": "#/definitions/server.ApiResponse"
                         }
