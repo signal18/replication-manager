@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -68,5 +69,53 @@ func TestDiscardUserGrants(t *testing.T) {
 	}
 	if !u.Grants[config.GrantClusterSwitchover] {
 		t.Fatal("grants outside the discard stay")
+	}
+}
+
+// The edges of a discard list (#2084 review): empty or blank, an unknown name, a nil grants
+// map; and a prefix that removes held grants says so in the security log, once per entry.
+func TestDiscardUserGrantsEdges(t *testing.T) {
+	c := newTestClusterForUsers(t)
+	// the security log is a fixed-size ring: count the discard lines in it
+	discards := func() int {
+		n := 0
+		for _, m := range c.LogSecurity.Buffer {
+			if strings.Contains(m.Text, "discard ") {
+				n++
+			}
+		}
+		return n
+	}
+
+	u := APIUser{User: "admin", Grants: map[string]bool{}}
+	c.SetUserGrants(&u, "cluster db")
+	c.DiscardUserGrants(&u, "")
+	c.DiscardUserGrants(&u, "   ")
+	c.DiscardUserGrants(&u, "no-such-grant")
+	if !u.Grants[config.GrantDBStart] || !u.Grants[config.GrantClusterSwitchover] {
+		t.Fatal("an empty, blank or unknown discard removes nothing")
+	}
+	if discards() != 0 {
+		t.Fatal("a discard that removes nothing logs nothing")
+	}
+
+	nilMap := APIUser{User: "x"}
+	c.DiscardUserGrants(&nilMap, "db")
+	if nilMap.Grants == nil {
+		t.Fatal("a nil grants map is created, not dereferenced")
+	}
+
+	c.DiscardUserGrants(&u, "db")
+	if u.Grants[config.GrantDBStart] {
+		t.Fatal("db removes every db-* grant")
+	}
+	found := false
+	for _, m := range c.LogSecurity.Buffer {
+		if strings.Contains(m.Text, `discard "db" removes the grants [`) && strings.Contains(m.Text, config.GrantDBStart) {
+			found = true
+		}
+	}
+	if !found || discards() != 1 {
+		t.Fatalf("the prefix removal is in the security log, once (%d discard lines)", discards())
 	}
 }

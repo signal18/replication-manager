@@ -438,10 +438,20 @@ func (cluster *Cluster) DiscardUserGrants(u *APIUser, discard string) {
 			u.Grants[acl] = false
 			continue
 		}
+		// A prefix removed nothing before 3.1.45 (#2083): an old entry such as "admin:db"
+		// now takes every db-* grant, said once per load in the security log.
+		var removed []string
 		for key, value := range cluster.Grants {
 			if strings.HasPrefix(key, acl) {
+				if u.Grants[value] {
+					removed = append(removed, value)
+				}
 				u.Grants[value] = false
 			}
+		}
+		if len(removed) > 0 {
+			sort.Strings(removed)
+			cluster.logSecurity(u.User, fmt.Sprintf("user %q: discard %q removes the grants [%s]", u.User, acl, strings.Join(removed, ", ")))
 		}
 	}
 }
@@ -458,8 +468,12 @@ func (cluster *Cluster) logUserGrantAssignment(u APIUser) {
 	}
 	sort.Strings(granted)
 
-	msg := fmt.Sprintf("user %q granted: [%s]", u.User, strings.Join(granted, ", "))
+	cluster.logSecurity(u.User, fmt.Sprintf("user %q granted: [%s]", u.User, strings.Join(granted, ", ")))
+}
 
+// logSecurity writes msg about user to the security log: the dashboard's buffer and
+// security.log on disk (SecurityLogrus).
+func (cluster *Cluster) logSecurity(user, msg string) {
 	cluster.LogSecurity.Add(s18log.HttpMessage{
 		Group:     cluster.Name,
 		Level:     config.LvlInfo,
@@ -469,7 +483,7 @@ func (cluster *Cluster) logUserGrantAssignment(u APIUser) {
 	})
 
 	if cluster.SecurityLogrus != nil {
-		cluster.SecurityLogrus.WithField("user", u.User).Info(msg)
+		cluster.SecurityLogrus.WithField("user", user).Info(msg)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[security] %s", msg)
 	}

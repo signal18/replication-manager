@@ -75,6 +75,9 @@ transient error can never rewrite an empty store over the real one.
   `cluster-checksum-repair`), any other name is a prefix like in the allow lists, so
   `admin:token` removes `token-create` and `token-manage`. Before #2083 a discard took
   literal names only and the compact names `SaveAcls` writes (`token`, `db`) matched nothing.
+  An old compact entry that did nothing now removes grants at the upgrade: each prefix
+  removal of held grants is written to the security log (`logSecurity`), and the user doc
+  warns operators to check their discard lists.
 - A token cannot issue tokens (POST `/api/tokens` requires an interactive login), and a
   token-authenticated `GET /api/tokens` returns the records without the token strings: a
   narrowed token must never read back a wider sibling of the same owner.
