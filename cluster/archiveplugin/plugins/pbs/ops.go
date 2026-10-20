@@ -5,9 +5,9 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
@@ -18,15 +18,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alphadose/haxmap"
+	"github.com/signal18/replication-manager/cluster/archiveplugin/plugins/pbs/internal/pbscommon"
 	"github.com/signal18/replication-manager/cluster/archiveplugin/wire"
 )
 
-// A backup is one pxar archive of the pushed folder, in a host-type snapshot of the group
-// host/<backup-id>; the backup id is the request's host. PBS has no tags: replication-
-// manager's tags, host and path ride on the first line of the snapshot's notes, the one
-// "snapshot list" returns as its comment.
+// A backup is one pxar archive of the pushed folder (and its catalog), in a host-type
+// snapshot of the group host/<backup-id>; the backup id is the request's host. PBS has no
+// tags: replication-manager's tags, host and path ride on the first line of the snapshot's
+// notes, the one the snapshot list returns as its comment.
 const (
-	archiveName   = "backup.pxar"
+	archiveName   = "backup.pxar.didx"
+	catalogName   = "catalog.pcat1.didx"
 	backupType    = "host"
 	notesPrefix   = "repman"
 	defaultBackup = "repman"
@@ -38,89 +41,84 @@ func handle(req wire.Request) (wire.Response, error) {
 	if !isPBS(req.Store.Plugin) {
 		return resp, fmt.Errorf("unknown archive plugin %q (this binary serves %s)", req.Store.Plugin, pluginPBS)
 	}
-	c, err := newClient(req.Store)
+	if req.Op == wire.OpSync {
+		return resp, errors.New("sync is not supported by archive-pbs: copy between datastores with a sync job of the PBS")
+	}
+	a, err := newArchive(req.Store)
 	if err != nil {
 		return resp, err
 	}
 	switch req.Op {
 	case wire.OpProbe:
-		return opProbe(c, req)
+		return opProbe(a, req)
 	case wire.OpPush:
-		return opPush(c, req)
+		return opPush(a, req)
 	case wire.OpList:
-		snaps, err := c.snapshots()
+		snaps, err := a.snapshots()
 		resp.Snapshots = snaps
 		return resp, err
 	case wire.OpRestore:
-		return opRestore(c, req)
+		return opRestore(a, req)
 	case wire.OpForget:
-		return opForget(c, req)
+		return opForget(a, req)
 	case wire.OpPurge:
-		return opPurge(c, req)
+		return opPurge(a, req)
 	case wire.OpSize:
-		snaps, err := c.snapshots()
+		snaps, err := a.snapshots()
 		for _, s := range snaps {
 			resp.Size += s.Size
 		}
 		return resp, err
 	case wire.OpRemove:
-		return opRemove(c)
-	case wire.OpSync:
-		return resp, errors.New("sync is not supported by archive-pbs: copy between datastores with a sync job of the PBS")
+		return opRemove(a)
 	}
 	return resp, fmt.Errorf("unknown op %q", req.Op)
 }
 
-// location is where the archive is, without secret.
-func (c *client) location() string {
-	if c.namespace == "" {
-		return "pbs://" + c.repo
-	}
-	return "pbs://" + c.repo + "/" + c.namespace
-}
-
 // opProbe opens the archive: the snapshot list of its namespace answers when the server,
-// the credentials and the namespace are right. With create, a missing namespace is created
-// level by level (the datastore itself is the PBS admin's).
-func opProbe(c *client, req wire.Request) (wire.Response, error) {
-	resp := wire.Response{Location: c.location()}
-	if _, err := c.snapshots(); err == nil {
+// the token and the namespace are right. With create, a missing namespace is created level
+// by level (the datastore itself is the PBS admin's).
+func opProbe(a *archive, req wire.Request) (wire.Response, error) {
+	resp := wire.Response{Location: a.location()}
+	_, err := a.snapshots()
+	if err == nil {
 		return resp, nil
-	} else if !req.Create || c.namespace == "" {
+	}
+	if !req.Create || a.namespace == "" {
 		return resp, err
 	}
-	existing, err := c.namespaces()
-	if err != nil {
-		return resp, err
+	existing, lerr := a.namespaces()
+	if lerr != nil {
+		return resp, fmt.Errorf("%w (namespaces: %s)", err, lerr)
 	}
-	parts := strings.Split(c.namespace, "/")
+	parts := strings.Split(a.namespace, "/")
 	for i := range parts {
 		ns := strings.Join(parts[:i+1], "/")
 		if existing[ns] {
 			continue
 		}
-		if _, err := c.run(false, "namespace", "create", ns); err != nil {
+		q := url.Values{"name": {parts[i]}}
+		if i > 0 {
+			q.Set("parent", strings.Join(parts[:i], "/"))
+		}
+		if err := a.api(http.MethodPost, "/namespace", q, nil); err != nil {
 			return resp, fmt.Errorf("create namespace %s: %w", ns, err)
 		}
 		resp.Created = true
 	}
-	if _, err := c.snapshots(); err != nil {
+	if _, err := a.snapshots(); err != nil {
 		return resp, err
 	}
 	return resp, nil
 }
 
 // namespaces lists the namespaces of the datastore.
-func (c *client) namespaces() (map[string]bool, error) {
-	out, err := c.run(false, "namespace", "list", "--max-depth", "7", "--output-format", "json")
-	if err != nil {
-		return nil, err
-	}
+func (a *archive) namespaces() (map[string]bool, error) {
 	var items []struct {
 		NS string `json:"ns"`
 	}
-	if err := json.Unmarshal(out, &items); err != nil {
-		return nil, fmt.Errorf("namespace list: %w", err)
+	if err := a.api(http.MethodGet, "/namespace", url.Values{"max-depth": {"7"}}, &items); err != nil {
+		return nil, err
 	}
 	ns := map[string]bool{}
 	for _, it := range items {
@@ -129,10 +127,10 @@ func (c *client) namespaces() (map[string]bool, error) {
 	return ns, nil
 }
 
-// backupIDRe is what PBS accepts as a backup id.
+// backupIDRe is what PBS refuses in a backup id.
 var backupIDRe = regexp.MustCompile(`[^A-Za-z0-9_.\-]`)
 
-// backupID is the backup id of a host: its characters PBS refuses as "_", "repman" when none.
+// backupID is the backup id of a host: the characters PBS refuses as "_", "repman" when none.
 func backupID(host string) string {
 	id := backupIDRe.ReplaceAllString(strings.TrimSpace(host), "_")
 	id = strings.TrimLeft(id, ".-")
@@ -145,6 +143,16 @@ func backupID(host string) string {
 // snapshotID is the PBS name of a snapshot: type/id/time (UTC, seconds).
 func snapshotID(typ, id string, t time.Time) string {
 	return typ + "/" + id + "/" + t.UTC().Format("2006-01-02T15:04:05Z")
+}
+
+// parseSnapshotID splits a snapshot name into its type, id and time.
+func parseSnapshotID(name string) (typ, id string, t time.Time, err error) {
+	parts := strings.Split(name, "/")
+	if len(parts) != 3 {
+		return "", "", t, fmt.Errorf("snapshot %q is not type/id/time", name)
+	}
+	t, err = time.Parse("2006-01-02T15:04:05Z", parts[2])
+	return parts[0], parts[1], t, err
 }
 
 // encodeNotes is the notes line carrying the snapshot's host, path and tags.
@@ -184,9 +192,7 @@ func decodeNotes(line string) (host, dir string, tags []string) {
 	return host, dir, tags
 }
 
-// pbsSnapshot is one item of "snapshot list --output-format json" (the datastore API's
-// snapshot list item). The client's documentation does not list these fields: verified on
-// the lab PBS, unknown ones are ignored.
+// pbsSnapshot is one item of the datastore's snapshot list; unknown fields are ignored.
 type pbsSnapshot struct {
 	Type    string `json:"backup-type"`
 	ID      string `json:"backup-id"`
@@ -195,12 +201,8 @@ type pbsSnapshot struct {
 	Size    int64  `json:"size"`
 }
 
-// parseSnapshots turns the client's snapshot list into wire snapshots, newest first.
-func parseSnapshots(out []byte) ([]wire.Snapshot, error) {
-	var items []pbsSnapshot
-	if err := json.Unmarshal(out, &items); err != nil {
-		return nil, fmt.Errorf("snapshot list: %w", err)
-	}
+// toWire turns the datastore's snapshot list into wire snapshots, newest first.
+func toWire(items []pbsSnapshot) []wire.Snapshot {
 	snaps := make([]wire.Snapshot, 0, len(items))
 	for _, it := range items {
 		t := time.Unix(it.Time, 0).UTC()
@@ -213,16 +215,16 @@ func parseSnapshots(out []byte) ([]wire.Snapshot, error) {
 		snaps = append(snaps, s)
 	}
 	sort.SliceStable(snaps, func(i, j int) bool { return snaps[i].Time.After(snaps[j].Time) })
-	return snaps, nil
+	return snaps
 }
 
 // snapshots lists the archive's snapshots, newest first.
-func (c *client) snapshots() ([]wire.Snapshot, error) {
-	out, err := c.run(false, append([]string{"snapshot", "list", "--output-format", "json"}, c.nsArgs()...)...)
-	if err != nil {
+func (a *archive) snapshots() ([]wire.Snapshot, error) {
+	var items []pbsSnapshot
+	if err := a.api(http.MethodGet, "/snapshots", a.nsValues(nil), &items); err != nil {
 		return nil, err
 	}
-	return parseSnapshots(out)
+	return toWire(items), nil
 }
 
 // findSnapshot resolves a snapshot by its full name or a unique prefix of it.
@@ -249,42 +251,91 @@ func findSnapshot(snaps []wire.Snapshot, ref string) (wire.Snapshot, error) {
 	return wire.Snapshot{}, fmt.Errorf("snapshot %s is ambiguous: %d snapshots start with it", ref, len(found))
 }
 
-// opPush archives the folder Path as a new snapshot of the host's group, then writes its
+// snapshotValues is the snapshot's backup-type, backup-id, backup-time and namespace.
+func (a *archive) snapshotValues(name string) (url.Values, error) {
+	typ, id, t, err := parseSnapshotID(name)
+	if err != nil {
+		return nil, err
+	}
+	return a.nsValues(url.Values{"backup-type": {typ}, "backup-id": {id}, "backup-time": {strconv.FormatInt(t.Unix(), 10)}}), nil
+}
+
+// opPush archives the folder Path as a new snapshot of the host's group (the pxar archive
+// and its catalog, chunks the previous snapshot holds not uploaded again), then writes its
 // notes; a notes failure is reported with the snapshot, which exists without its tags.
-func opPush(c *client, req wire.Request) (wire.Response, error) {
-	var resp wire.Response
+func opPush(a *archive, req wire.Request) (resp wire.Response, err error) {
 	if req.Path == "" || !filepath.IsAbs(req.Path) {
 		return resp, fmt.Errorf("push: path %q is not an absolute folder", req.Path)
 	}
 	dir := filepath.Clean(req.Path)
-	if fi, err := os.Stat(dir); err != nil {
-		return resp, fmt.Errorf("push: %w", err)
+	if fi, serr := os.Stat(dir); serr != nil {
+		return resp, fmt.Errorf("push: %w", serr)
 	} else if !fi.IsDir() {
 		return resp, fmt.Errorf("push: %s is not a folder", dir)
 	}
 	id := backupID(req.Host)
-	when := time.Now().UTC().Truncate(time.Second)
-	args := []string{"backup", archiveName + ":" + dir, "--backup-type", backupType, "--backup-id", id,
-		"--backup-time", strconv.FormatInt(when.Unix(), 10)}
-	if c.change != "" {
-		args = append(args, "--change-detection-mode", c.change)
+	client := a.session(id, 0)
+	client.Connect(false, backupType) // sets the snapshot's backup time
+	defer client.Close()
+	when := time.Unix(client.Manifest.BackupTime, 0).UTC()
+
+	known := haxmap.New[string, bool]()
+	prev, err := client.DownloadPreviousToBytes(archiveName)
+	if err != nil {
+		return resp, fmt.Errorf("push: open the backup session: %w", err)
 	}
-	if _, err := c.run(true, append(args, c.nsArgs()...)...); err != nil {
+	for _, d := range pbscommon.ParsePreviousDIDXChunkDigests(prev) {
+		known.Set(d, true)
+	}
+
+	pxar := &pbscommon.PXARArchive{ArchiveName: archiveName}
+	wrPxar, err := client.CreateDynamicIndex(archiveName)
+	if err != nil {
 		return resp, fmt.Errorf("push: %w", err)
 	}
+	wrCat, err := client.CreateDynamicIndex(catalogName)
+	if err != nil {
+		return resp, fmt.Errorf("push: %w", err)
+	}
+	pxarStream := newChunkStream(client, wrPxar, known)
+	catStream := newChunkStream(client, wrCat, known)
+	pxar.WriteCB = pxarStream.write
+	pxar.CatalogWriteCB = catStream.write
+	if _, err := pxar.WriteDir(dir, "", true); err != nil {
+		return resp, fmt.Errorf("push: archive %s: %w", dir, err)
+	}
+	if err := pxarStream.close(); err != nil {
+		return resp, fmt.Errorf("push: %w", err)
+	}
+	if err := catStream.close(); err != nil {
+		return resp, fmt.Errorf("push: %w", err)
+	}
+	if err := client.UploadManifest(); err != nil {
+		return resp, fmt.Errorf("push: manifest: %w", err)
+	}
+	if err := client.Finish(); err != nil {
+		return resp, fmt.Errorf("push: %w", err)
+	}
+	logf("pushed %s: %d chunks uploaded, %d reused", dir, pxarStream.added+catStream.added, pxarStream.reused+catStream.reused)
+
 	snap := &wire.Snapshot{ID: snapshotID(backupType, id, when), Time: when, Host: req.Host,
 		Tags: append([]string(nil), req.Tags...), Paths: []string{dir}}
 	resp.Snapshot = snap
-	notes := encodeNotes(req.Host, dir, req.Tags)
-	if _, err := c.run(false, append([]string{"snapshot", "notes", "update", snap.ID, notes}, c.nsArgs()...)...); err != nil {
+	if len(pxar.ReadErrors) > 0 {
+		return resp, fmt.Errorf("push: snapshot %s written without %d file(s) that could not be read: %s",
+			snap.ID, len(pxar.ReadErrors), strings.Join(pxar.ReadErrors[:min(3, len(pxar.ReadErrors))], "; "))
+	}
+	q, _ := a.snapshotValues(snap.ID)
+	q.Set("notes", encodeNotes(req.Host, dir, req.Tags))
+	if err := a.api(http.MethodPut, "/notes", q, nil); err != nil {
 		return resp, fmt.Errorf("push: snapshot %s written, its tags not: %w", snap.ID, err)
 	}
 	return resp, nil
 }
 
-// restorePatterns turns Include into the client's --pattern: a path relative to the pushed
-// folder (absolute paths under it are made relative), and its content for a folder.
-func restorePatterns(include, pushed string) []string {
+// restoreIncludes turns Include into the archive path to extract: relative to the pushed
+// folder (absolute paths under it are made relative); none for everything.
+func restoreIncludes(include, pushed string) []string {
 	inc := strings.TrimSpace(include)
 	if inc == "" || inc == "." || inc == "/" {
 		return nil
@@ -300,21 +351,27 @@ func restorePatterns(include, pushed string) []string {
 	if inc == "." {
 		return nil
 	}
-	return []string{inc, inc + "/**"}
+	return []string{inc}
 }
 
 // opRestore restores Snapshot into Target: the pushed folder's content under Target, or
-// only its path Include, kept at its place under Target.
-func opRestore(c *client, req wire.Request) (wire.Response, error) {
+// only its path Include, kept at its place. The archive is read through the PBS reader
+// session chunk by chunk (a bounded cache, never the whole archive in memory) and the files
+// are streamed to disk.
+func opRestore(a *archive, req wire.Request) (wire.Response, error) {
 	var resp wire.Response
 	if req.Target == "" || !filepath.IsAbs(req.Target) {
 		return resp, fmt.Errorf("restore: target %q is not an absolute folder", req.Target)
 	}
-	snaps, err := c.snapshots()
+	snaps, err := a.snapshots()
 	if err != nil {
 		return resp, err
 	}
 	snap, err := findSnapshot(snaps, req.Snapshot)
+	if err != nil {
+		return resp, err
+	}
+	_, id, when, err := parseSnapshotID(snap.ID)
 	if err != nil {
 		return resp, err
 	}
@@ -325,21 +382,26 @@ func opRestore(c *client, req wire.Request) (wire.Response, error) {
 	if err := os.MkdirAll(req.Target, 0o750); err != nil {
 		return resp, fmt.Errorf("restore: %w", err)
 	}
-	args := []string{"restore", snap.ID, archiveName, req.Target, "--allow-existing-dirs"}
-	for _, p := range restorePatterns(req.Include, pushed) {
-		args = append(args, "--pattern", p)
-	}
-	if _, err := c.run(true, append(args, c.nsArgs()...)...); err != nil {
+	client := a.session(id, when.Unix())
+	client.Connect(true, backupType)
+	defer client.Close()
+	ra, size, err := client.NewDIDXReaderAt(archiveName, a.chunkCache, nil)
+	if err != nil {
 		return resp, fmt.Errorf("restore %s: %w", snap.ID, err)
 	}
+	files, err := pbscommon.NewPXARReaderAt(ra, size).ExtractFiltered(req.Target, restoreIncludes(req.Include, pushed), true)
+	if err != nil {
+		return resp, fmt.Errorf("restore %s: %w", snap.ID, err)
+	}
+	resp.Files = int64(len(files))
 	resp.Snapshot = &snap
 	return resp, nil
 }
 
 // opForget deletes one snapshot.
-func opForget(c *client, req wire.Request) (wire.Response, error) {
+func opForget(a *archive, req wire.Request) (wire.Response, error) {
 	var resp wire.Response
-	snaps, err := c.snapshots()
+	snaps, err := a.snapshots()
 	if err != nil {
 		return resp, err
 	}
@@ -347,19 +409,24 @@ func opForget(c *client, req wire.Request) (wire.Response, error) {
 	if err != nil {
 		return resp, err
 	}
-	if _, err := c.run(false, append([]string{"snapshot", "forget", snap.ID}, c.nsArgs()...)...); err != nil {
+	q, err := a.snapshotValues(snap.ID)
+	if err != nil {
+		return resp, err
+	}
+	if err := a.api(http.MethodDelete, "/snapshots", q, nil); err != nil {
 		return resp, fmt.Errorf("forget %s: %w", snap.ID, err)
 	}
 	resp.Removed = []string{snap.ID}
 	return resp, nil
 }
 
-// pruneArgs is the cluster's policy as PBS prune options. PBS prunes by counts only: a
-// keep-within window has no PBS equivalent and is refused, never ignored (keeping less
+// pruneValues is the cluster's policy as PBS prune parameters. PBS prunes by counts only:
+// a keep-within window has no PBS equivalent and is refused, never ignored (keeping less
 // than the policy says would delete backups the cluster wants kept).
-func pruneArgs(p *wire.Policy) ([]string, error) {
+func pruneValues(p *wire.Policy) (url.Values, error) {
+	q := url.Values{}
 	if p == nil {
-		return nil, nil
+		return q, nil
 	}
 	for name, w := range map[string]string{
 		"keep-within": p.KeepWithin, "keep-within-hourly": p.KeepWithinHourly, "keep-within-daily": p.KeepWithinDaily,
@@ -369,20 +436,19 @@ func pruneArgs(p *wire.Policy) ([]string, error) {
 			return nil, fmt.Errorf("purge: %s has no Proxmox Backup Server equivalent (PBS prunes by counts: last, hourly, daily, weekly, monthly, yearly)", name)
 		}
 	}
-	var args []string
 	for _, kv := range []struct {
-		flag string
+		name string
 		n    int
-	}{{"--keep-last", p.KeepLast}, {"--keep-hourly", p.KeepHourly}, {"--keep-daily", p.KeepDaily},
-		{"--keep-weekly", p.KeepWeekly}, {"--keep-monthly", p.KeepMonthly}, {"--keep-yearly", p.KeepYearly}} {
+	}{{"keep-last", p.KeepLast}, {"keep-hourly", p.KeepHourly}, {"keep-daily", p.KeepDaily},
+		{"keep-weekly", p.KeepWeekly}, {"keep-monthly", p.KeepMonthly}, {"keep-yearly", p.KeepYearly}} {
 		if kv.n > 0 {
-			args = append(args, kv.flag, strconv.Itoa(kv.n))
+			q.Set(kv.name, strconv.Itoa(kv.n))
 		}
 	}
-	return args, nil
+	return q, nil
 }
 
-// pruneItem is one item of "prune --output-format json": a snapshot and whether it stays.
+// pruneItem is one item of a prune answer: a snapshot and whether it stays.
 type pruneItem struct {
 	Type string `json:"backup-type"`
 	ID   string `json:"backup-id"`
@@ -393,16 +459,16 @@ type pruneItem struct {
 // opPurge applies the cluster's policy with PBS prune, group by group (one group per
 // backed-up host); DryRun only lists. The space comes back with the datastore's garbage
 // collection, a job of the PBS.
-func opPurge(c *client, req wire.Request) (wire.Response, error) {
+func opPurge(a *archive, req wire.Request) (wire.Response, error) {
 	var resp wire.Response
-	keep, err := pruneArgs(req.Policy)
+	keep, err := pruneValues(req.Policy)
 	if err != nil {
 		return resp, err
 	}
 	if len(keep) == 0 {
 		return resp, nil // no count in the policy: nothing to remove
 	}
-	snaps, err := c.snapshots()
+	snaps, err := a.snapshots()
 	if err != nil {
 		return resp, err
 	}
@@ -418,16 +484,16 @@ func opPurge(c *client, req wire.Request) (wire.Response, error) {
 	}
 	sort.Strings(names)
 	for _, g := range names {
-		args := append([]string{"prune", g, "--output-format", "json"}, keep...)
-		if req.DryRun {
-			args = append(args, "--dry-run")
+		typ, id, _ := strings.Cut(g, "/")
+		q := a.nsValues(url.Values{"backup-type": {typ}, "backup-id": {id}})
+		for k, v := range keep {
+			q[k] = v
 		}
-		out, err := c.run(false, append(args, c.nsArgs()...)...)
-		if err != nil {
-			return resp, fmt.Errorf("purge %s: %w", g, err)
+		if req.DryRun {
+			q.Set("dry-run", "true")
 		}
 		var items []pruneItem
-		if err := json.Unmarshal(out, &items); err != nil {
+		if err := a.api(http.MethodPost, "/prune", q, &items); err != nil {
 			return resp, fmt.Errorf("purge %s: %w", g, err)
 		}
 		for _, it := range items {
@@ -441,13 +507,14 @@ func opPurge(c *client, req wire.Request) (wire.Response, error) {
 
 // opRemove deletes the archive: its namespace and every group in it. Refused without a
 // namespace: the datastore's root is never deleted by a cluster's archive.
-func opRemove(c *client) (wire.Response, error) {
-	resp := wire.Response{Location: c.location()}
-	if c.namespace == "" {
+func opRemove(a *archive) (wire.Response, error) {
+	resp := wire.Response{Location: a.location()}
+	if a.namespace == "" {
 		return resp, errors.New("remove: the archive has no namespace, the datastore's root is never removed")
 	}
-	if _, err := c.run(false, "namespace", "delete", c.namespace, "--delete-groups"); err != nil {
-		return resp, fmt.Errorf("remove %s: %w", c.location(), err)
+	q := url.Values{"ns": {a.namespace}, "delete-groups": {"true"}}
+	if err := a.api(http.MethodDelete, "/namespace", q, nil); err != nil {
+		return resp, fmt.Errorf("remove %s: %w", a.location(), err)
 	}
 	return resp, nil
 }

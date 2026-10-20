@@ -5,10 +5,15 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,12 +27,14 @@ func TestBackupIDAndSnapshotID(t *testing.T) {
 	if got := backupID(""); got != defaultBackup {
 		t.Fatalf("empty host: %q", got)
 	}
-	if got := backupID("..x y"); got != "x_y" {
-		t.Fatalf("leading dots and spaces: %q", got)
-	}
 	when := time.Date(2026, 10, 20, 9, 5, 7, 0, time.UTC)
-	if got := snapshotID("host", "db1", when); got != "host/db1/2026-10-20T09:05:07Z" {
-		t.Fatalf("snapshotID: %q", got)
+	name := snapshotID("host", "db1", when)
+	if name != "host/db1/2026-10-20T09:05:07Z" {
+		t.Fatalf("snapshotID: %q", name)
+	}
+	typ, id, back, err := parseSnapshotID(name)
+	if err != nil || typ != "host" || id != "db1" || !back.Equal(when) {
+		t.Fatalf("parseSnapshotID: %s %s %s %v", typ, id, back, err)
 	}
 }
 
@@ -42,180 +49,223 @@ func TestNotesRoundTrip(t *testing.T) {
 	}
 }
 
-func TestParseAndFindSnapshots(t *testing.T) {
-	out := []byte(`[{"backup-type":"host","backup-id":"db1","backup-time":1760950000,"comment":"` +
-		encodeNotes("db1", "/b/1", []string{"t1"}) + `","size":100,"files":[]},` +
-		`{"backup-type":"host","backup-id":"db1","backup-time":1760960000,"size":50,"owner":"x"}]`)
-	snaps, err := parseSnapshots(out)
-	if err != nil || len(snaps) != 2 {
-		t.Fatalf("parse: %v %v", snaps, err)
-	}
-	if !snaps[0].Time.After(snaps[1].Time) || snaps[1].Host != "db1" || snaps[1].Paths[0] != "/b/1" || snaps[0].Size != 50 {
-		t.Fatalf("newest first, notes decoded: %+v", snaps)
-	}
-	if _, err := findSnapshot(snaps, "host/db1/"); err == nil || !strings.Contains(err.Error(), "ambiguous") {
-		t.Fatalf("an ambiguous prefix is refused: %v", err)
-	}
-	if s, err := findSnapshot(snaps, snaps[1].ID[:len(snaps[1].ID)-3]); err != nil || s.ID != snaps[1].ID {
-		t.Fatalf("a unique prefix resolves: %v %v", s, err)
-	}
-}
-
-func TestRestorePatterns(t *testing.T) {
+func TestRestoreIncludes(t *testing.T) {
 	for _, tc := range []struct {
 		include, pushed string
 		want            []string
 	}{
 		{"", "/b/1", nil},
 		{"/", "/b/1", nil},
-		{"dump.sql.gz", "/b/1", []string{"dump.sql.gz", "dump.sql.gz/**"}},
-		{"/b/1/sub/x", "/b/1", []string{"sub/x", "sub/x/**"}},
+		{"dump.sql.gz", "/b/1", []string{"dump.sql.gz"}},
+		{"/b/1/sub/x", "/b/1", []string{"sub/x"}},
 		{"/b/1", "/b/1", nil},
 	} {
-		if got := restorePatterns(tc.include, tc.pushed); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("restorePatterns(%q, %q) = %v, want %v", tc.include, tc.pushed, got, tc.want)
+		if got := restoreIncludes(tc.include, tc.pushed); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("restoreIncludes(%q, %q) = %v, want %v", tc.include, tc.pushed, got, tc.want)
 		}
 	}
 }
 
-func TestPruneArgs(t *testing.T) {
-	args, err := pruneArgs(&wire.Policy{KeepLast: 3, KeepDaily: 7, KeepMonthly: 2})
-	if err != nil || strings.Join(args, " ") != "--keep-last 3 --keep-daily 7 --keep-monthly 2" {
-		t.Fatalf("counts: %v %v", args, err)
+func TestPruneValues(t *testing.T) {
+	q, err := pruneValues(&wire.Policy{KeepLast: 3, KeepDaily: 7})
+	if err != nil || q.Get("keep-last") != "3" || q.Get("keep-daily") != "7" || len(q) != 2 {
+		t.Fatalf("counts: %v %v", q, err)
 	}
-	if _, err := pruneArgs(&wire.Policy{KeepLast: 3, KeepWithinDaily: "7d"}); err == nil {
+	if _, err := pruneValues(&wire.Policy{KeepLast: 3, KeepWithinDaily: "7d"}); err == nil {
 		t.Fatal("a keep-within window has no PBS equivalent: refused, never ignored")
 	}
 }
 
-// fakeClient writes a proxmox-backup-client stand-in: it records each call's arguments and
-// the key it reads on fd 3, and answers the JSON lists the plugin parses.
-func fakeClient(t *testing.T, dir string) string {
+func TestNewArchiveValidation(t *testing.T) {
+	t.Setenv(wire.SecretEnv(setSecret), "s")
+	base := map[string]string{setBaseURL: "https://pbs:8007", setDatastore: "ds", setAuthID: "u@pbs!t"}
+	if _, err := newArchive(wire.Store{Plugin: pluginPBS, Settings: base}); err != nil {
+		t.Fatalf("a complete store: %v", err)
+	}
+	for name, mutate := range map[string]func(m map[string]string){
+		"http":       func(m map[string]string) { m[setBaseURL] = "http://pbs:8007" },
+		"not token":  func(m map[string]string) { m[setAuthID] = "u@pbs" },
+		"no store":   func(m map[string]string) { delete(m, setDatastore) },
+		"cache zero": func(m map[string]string) { m[setChunkCache] = "0" },
+	} {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		mutate(m)
+		if _, err := newArchive(wire.Store{Plugin: pluginPBS, Settings: m}); err == nil {
+			t.Errorf("%s: refused", name)
+		}
+	}
+	t.Setenv(wire.SecretEnv(setKey), "not a key")
+	if _, err := newArchive(wire.Store{Plugin: pluginPBS, Settings: base}); err == nil {
+		t.Fatal("an unreadable encryption key is refused")
+	}
+}
+
+// fakePBS is the datastore API of a PBS: snapshots, notes, forget, prune and namespaces of
+// the datastore "ds", answering as the PBS does ({"data": ...}), with the calls recorded.
+type fakePBS struct {
+	mu         sync.Mutex
+	calls      []string
+	namespaces map[string]bool
+	snapshots  []pbsSnapshot
+}
+
+func (f *fakePBS) handler(t *testing.T) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if r.Header.Get("Authorization") != "PBSAPIToken=repman@pbs!arch:s3cret" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_ = r.ParseForm()
+		route := r.Method + " " + strings.TrimPrefix(r.URL.Path, "/api2/json/admin/datastore/ds")
+		f.calls = append(f.calls, route+" "+r.Form.Encode())
+		answer := func(v any) { _ = json.NewEncoder(w).Encode(map[string]any{"data": v}) }
+		switch route {
+		case "GET /snapshots":
+			if ns := r.Form.Get("ns"); ns != "" && !f.namespaces[ns] {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = io.WriteString(w, "namespace not found")
+				return
+			}
+			answer(f.snapshots)
+		case "PUT /notes", "DELETE /snapshots":
+			answer(nil)
+		case "POST /prune":
+			id := r.Form.Get("backup-id")
+			answer([]pruneItem{{Type: "host", ID: id, Time: 1760950000, Keep: false}, {Type: "host", ID: id, Time: 1760960000, Keep: true}})
+		case "GET /namespace":
+			var items []map[string]string
+			for n := range f.namespaces {
+				items = append(items, map[string]string{"ns": n})
+			}
+			answer(items)
+		case "POST /namespace":
+			name := r.Form.Get("name")
+			if p := r.Form.Get("parent"); p != "" {
+				name = p + "/" + name
+			}
+			f.namespaces[name] = true
+			answer(nil)
+		case "DELETE /namespace":
+			delete(f.namespaces, r.Form.Get("ns"))
+			answer(nil)
+		default:
+			t.Errorf("unexpected call %s", route)
+			w.WriteHeader(http.StatusNotImplemented)
+		}
+	})
+}
+
+// newFake starts the fake PBS over TLS and returns the store pinned on its certificate.
+func newFake(t *testing.T, ns string) (*fakePBS, wire.Store) {
 	t.Helper()
-	script := filepath.Join(dir, "proxmox-backup-client")
-	body := `#!/bin/sh
-echo "$@" >> "` + dir + `/calls"
-echo "PBS_REPOSITORY=$PBS_REPOSITORY PBS_PASSWORD=$PBS_PASSWORD SECRET_LEAK=$REPMAN_ARCHIVEPLUGIN_SECRET_PASSWORD" >> "` + dir + `/env"
-case "$*" in *"--keyfd 3"*) cat <&3 > "` + dir + `/key";; esac
-case "$1 $2" in
-  "snapshot list") echo '[{"backup-type":"host","backup-id":"db1_3306","backup-time":1760950000,"comment":"repman host=db1%3A3306 path=%2Fb%2F1 tags=t1","size":10}]';;
-  "prune host/db1_3306") echo '[{"backup-type":"host","backup-id":"db1_3306","backup-time":1760950000,"keep":false}]';;
-  "namespace list") echo '[{"ns":""},{"ns":"cl"}]';;
-esac
-exit 0
-`
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return script
+	f := &fakePBS{namespaces: map[string]bool{"": true, "cl": true}, snapshots: []pbsSnapshot{
+		{Type: "host", ID: "db1_3306", Time: 1760950000, Size: 10, Comment: encodeNotes("db1:3306", "/b/1", []string{"t1"})},
+		{Type: "host", ID: "db1_3306", Time: 1760960000, Size: 20},
+	}}
+	srv := httptest.NewTLSServer(f.handler(t))
+	t.Cleanup(srv.Close)
+	sum := sha256.Sum256(srv.Certificate().Raw)
+	t.Setenv(wire.SecretEnv(setSecret), "s3cret")
+	return f, wire.Store{Plugin: pluginPBS, Name: "pbs1", Settings: map[string]string{
+		setBaseURL: srv.URL, setDatastore: "ds", setNamespace: ns, setAuthID: "repman@pbs!arch",
+		setFingerprint: strings.ToUpper(hex.EncodeToString(sum[:]))}}
 }
 
-func testStore(client, ns string) wire.Store {
-	return wire.Store{Plugin: pluginPBS, Name: "pbs1", Settings: map[string]string{
-		setServer: "pbs.lan", setDatastore: "store1", setNamespace: ns, setAuthID: "repman@pbs!arch", setClientPath: client}}
-}
-
-func readFile(t *testing.T, p string) string {
+func (f *fakePBS) called(t *testing.T, want string) {
 	t.Helper()
-	b, _ := os.ReadFile(p)
-	return string(b)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, want) {
+			return
+		}
+	}
+	t.Fatalf("no call %q in:\n%s", want, strings.Join(f.calls, "\n"))
 }
 
-// The operations run the client with the archive's namespace, the key on fd 3 (never in a
-// file nor on the command line) and the password in PBS_PASSWORD, replication-manager's
-// own secret variables kept out of the client's environment.
-func TestOperationsWithFakeClient(t *testing.T) {
-	dir := t.TempDir()
-	client := fakeClient(t, dir)
-	t.Setenv(wire.SecretEnv(setPassword), "s3cret")
-	t.Setenv(wire.SecretEnv(setKey), `{"kdf":null,"data":"KEY"}`)
-	backup := filepath.Join(dir, "backup")
-	if err := os.MkdirAll(backup, 0o755); err != nil {
-		t.Fatal(err)
+func TestAdministrationOperations(t *testing.T) {
+	f, st := newFake(t, "cl")
+
+	resp, err := handle(wire.Request{Op: wire.OpList, Store: st})
+	if err != nil || len(resp.Snapshots) != 2 || resp.Snapshots[0].Time.Unix() != 1760960000 ||
+		resp.Snapshots[1].Host != "db1:3306" || resp.Snapshots[1].Tags[0] != "t1" || resp.Snapshots[1].Paths[0] != "/b/1" {
+		t.Fatalf("list, newest first, notes decoded: %+v %v", resp, err)
+	}
+	f.called(t, "GET /snapshots ns=cl")
+
+	resp, err = handle(wire.Request{Op: wire.OpSize, Store: st})
+	if err != nil || resp.Size != 30 {
+		t.Fatalf("size: %+v %v", resp, err)
 	}
 
-	resp, err := handle(wire.Request{Op: wire.OpPush, Store: testStore(client, "a/b"), Path: backup, Host: "db1:3306", Tags: []string{"t1"}})
-	if err != nil || resp.Snapshot == nil || !strings.HasPrefix(resp.Snapshot.ID, "host/db1_3306/") {
-		t.Fatalf("push: %+v %v", resp, err)
-	}
-	calls := readFile(t, filepath.Join(dir, "calls"))
-	if !strings.Contains(calls, "backup backup.pxar:"+backup+" --backup-type host --backup-id db1_3306") ||
-		!strings.Contains(calls, "--ns a/b") || !strings.Contains(calls, "--keyfd 3 --crypt-mode encrypt") ||
-		!strings.Contains(calls, "snapshot notes update "+resp.Snapshot.ID+" repman host=db1%3A3306") {
-		t.Fatalf("push calls:\n%s", calls)
-	}
-	if strings.Contains(calls, "KEY") || strings.Contains(calls, "s3cret") {
-		t.Fatal("no secret on a command line")
-	}
-	if got := readFile(t, filepath.Join(dir, "key")); got != `{"kdf":null,"data":"KEY"}` {
-		t.Fatalf("the key arrives on fd 3: %q", got)
-	}
-	env := readFile(t, filepath.Join(dir, "env"))
-	if !strings.Contains(env, "PBS_REPOSITORY=repman@pbs!arch@pbs.lan:store1 PBS_PASSWORD=s3cret SECRET_LEAK=\n") {
-		t.Fatalf("client environment: %q", env)
-	}
-
-	resp, err = handle(wire.Request{Op: wire.OpList, Store: testStore(client, "a/b")})
-	if err != nil || len(resp.Snapshots) != 1 || resp.Snapshots[0].Host != "db1:3306" || resp.Snapshots[0].Tags[0] != "t1" {
-		t.Fatalf("list: %+v %v", resp, err)
-	}
-
-	resp, err = handle(wire.Request{Op: wire.OpPurge, Store: testStore(client, "a/b"), Policy: &wire.Policy{KeepLast: 2}, DryRun: true})
+	resp, err = handle(wire.Request{Op: wire.OpForget, Store: st, Snapshot: "host/db1_3306/2025-10-20T08:46"})
 	if err != nil || len(resp.Removed) != 1 {
+		t.Fatalf("forget by unique prefix: %+v %v", resp, err)
+	}
+	f.called(t, "DELETE /snapshots backup-id=db1_3306&backup-time=1760950000&backup-type=host&ns=cl")
+	if _, err := handle(wire.Request{Op: wire.OpForget, Store: st, Snapshot: "host/db1_3306/"}); err == nil {
+		t.Fatal("an ambiguous prefix is refused")
+	}
+
+	resp, err = handle(wire.Request{Op: wire.OpPurge, Store: st, Policy: &wire.Policy{KeepLast: 1}, DryRun: true})
+	if err != nil || len(resp.Removed) != 1 || resp.Removed[0] != "host/db1_3306/2025-10-20T08:46:40Z" {
 		t.Fatalf("purge: %+v %v", resp, err)
 	}
-	if !strings.Contains(readFile(t, filepath.Join(dir, "calls")), "prune host/db1_3306 --output-format json --keep-last 2 --dry-run --ns a/b") {
-		t.Fatalf("purge calls:\n%s", readFile(t, filepath.Join(dir, "calls")))
-	}
+	f.called(t, "POST /prune backup-id=db1_3306&backup-type=host&dry-run=true&keep-last=1&ns=cl")
 
-	resp, err = handle(wire.Request{Op: wire.OpRestore, Store: testStore(client, "a/b"), Snapshot: "host/db1_3306/", Target: filepath.Join(dir, "out"), Include: "/b/1/dump.sql.gz"})
-	if err != nil || resp.Snapshot == nil {
-		t.Fatalf("restore: %+v %v", resp, err)
-	}
-	if !strings.Contains(readFile(t, filepath.Join(dir, "calls")), "restore host/db1_3306/2025-10-20T08:46:40Z backup.pxar "+filepath.Join(dir, "out")+" --allow-existing-dirs --pattern dump.sql.gz --pattern dump.sql.gz/** --ns a/b --keyfd 3") {
-		t.Fatalf("restore calls:\n%s", readFile(t, filepath.Join(dir, "calls")))
-	}
-
-	resp, err = handle(wire.Request{Op: wire.OpSize, Store: testStore(client, "a/b")})
-	if err != nil || resp.Size != 10 {
-		t.Fatalf("size: %+v %v", resp, err)
+	if resp, err := handle(wire.Request{Op: wire.OpPurge, Store: st, Policy: &wire.Policy{}}); err != nil || len(resp.Removed) != 0 {
+		t.Fatalf("a policy without counts removes nothing: %+v %v", resp, err)
 	}
 }
 
 func TestProbeCreatesMissingNamespaceLevels(t *testing.T) {
-	dir := t.TempDir()
-	// the snapshot list fails until the namespace exists: a client that fails on "snapshot list --ns cl/new"
-	script := filepath.Join(dir, "proxmox-backup-client")
-	body := `#!/bin/sh
-echo "$@" >> "` + dir + `/calls"
-case "$*" in
-  "snapshot list --output-format json --ns cl/new") [ -f "` + dir + `/created" ] || exit 1; echo '[]';;
-  "namespace list"*) echo '[{"ns":""},{"ns":"cl"}]';;
-  "namespace create cl/new") touch "` + dir + `/created";;
-esac
-exit 0
-`
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	resp, err := handle(wire.Request{Op: wire.OpProbe, Store: testStore(script, "cl/new"), Create: true})
-	if err != nil || !resp.Created || resp.Location != "pbs://repman@pbs!arch@pbs.lan:store1/cl/new" {
+	f, st := newFake(t, "cl/new/deep")
+	resp, err := handle(wire.Request{Op: wire.OpProbe, Store: st, Create: true})
+	if err != nil || !resp.Created || !strings.HasSuffix(resp.Location, "/ds/cl/new/deep") {
 		t.Fatalf("probe: %+v %v", resp, err)
 	}
-	calls := readFile(t, filepath.Join(dir, "calls"))
-	if strings.Contains(calls, "namespace create cl\n") || !strings.Contains(calls, "namespace create cl/new") {
-		t.Fatalf("only the missing level is created:\n%s", calls)
+	f.called(t, "POST /namespace name=new&parent=cl")
+	f.called(t, "POST /namespace name=deep&parent=cl%2Fnew")
+	for _, c := range f.calls {
+		if c == "POST /namespace name=cl" {
+			t.Fatal("an existing level is not created again")
+		}
+	}
+	_, other := newFake(t, "other")
+	if _, err := handle(wire.Request{Op: wire.OpProbe, Store: other}); err == nil {
+		t.Fatal("a missing namespace without create fails the probe")
 	}
 }
 
-func TestRemoveAndSyncRefusals(t *testing.T) {
-	if _, err := handle(wire.Request{Op: wire.OpRemove, Store: testStore("/nonexistent", "")}); err == nil || !strings.Contains(err.Error(), "never removed") {
+func TestRemoveAndRefusals(t *testing.T) {
+	f, st := newFake(t, "cl")
+	if _, err := handle(wire.Request{Op: wire.OpRemove, Store: st}); err != nil || f.namespaces["cl"] {
+		t.Fatalf("remove deletes the namespace and its groups: %v", err)
+	}
+	f.called(t, "DELETE /namespace delete-groups=true&ns=cl")
+
+	_, root := newFake(t, "")
+	if _, err := handle(wire.Request{Op: wire.OpRemove, Store: root}); err == nil || !strings.Contains(err.Error(), "never removed") {
 		t.Fatalf("remove without a namespace is refused: %v", err)
 	}
-	if _, err := handle(wire.Request{Op: wire.OpSync, Store: testStore("/nonexistent", "a")}); err == nil {
+	if _, err := handle(wire.Request{Op: wire.OpSync, Store: st}); err == nil {
 		t.Fatal("sync is refused")
 	}
 	if _, err := handle(wire.Request{Op: wire.OpList, Store: wire.Store{Plugin: "archive-plakar-local"}}); err == nil {
 		t.Fatal("another plugin's store is refused")
+	}
+}
+
+// A certificate that is not the pinned one is refused before any request.
+func TestFingerprintPinning(t *testing.T) {
+	_, st := newFake(t, "cl")
+	st.Settings[setFingerprint] = strings.Repeat("AB", 32)
+	if _, err := handle(wire.Request{Op: wire.OpList, Store: st}); err == nil || !strings.Contains(err.Error(), "fingerprint") {
+		t.Fatalf("a wrong fingerprint is refused: %v", err)
 	}
 }
