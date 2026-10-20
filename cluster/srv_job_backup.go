@@ -7158,10 +7158,9 @@ func dumpHasActiveChangeMaster(path string) (bool, error) {
 // replication at the end of its own load from the position it sets: an older backup written
 // with --apply-slave-statements (--apply-replica-statements) stops replication in its header
 // (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES) and starts it in its footer. The position must be
-// active too (dumpReplicationStatements): with
-// --master-data=2 / --dump-slave=2 it is a comment and the START resumes from the server's old
-// position. Only the header is read. A splitdump directory has none: the splitter leaves the
-// START out of its files.
+// active too, before the START (dumpReplicationStatements): with --master-data=2 /
+// --dump-slave=2 it is a comment and the START resumes from the server's old position. A
+// splitdump directory has none: the splitter leaves the START out of its files.
 func dumpStartsReplication(path string) (bool, error) {
 	stops, positioned, err := dumpReplicationStatements(path)
 	return stops && positioned, err
@@ -7182,29 +7181,71 @@ func errDumpStartsUnpositioned(path string) error {
 	return fmt.Errorf("backup %s starts replication from the old position (--apply-slave-statements, position as a comment): take a new backup", path)
 }
 
-// dumpReplicationStatements reads the header of the mysqldump file at path, in one pass: whether
-// it stops replication (STOP SLAVE, STOP REPLICA, STOP ALL SLAVES, written with the START of its
-// footer) and whether it sets an active position, not as a comment: SET GLOBAL gtid_slave_pos,
-// or a CHANGE MASTER / CHANGE REPLICATION SOURCE naming a binary log file. MariaDB's CHANGE
-// MASTER TO MASTER_USE_GTID=slave_pos alone sets the mode, not the position.
+// dumpReplicationStatements reads the mysqldump file at path: whether it stops replication in
+// its header (dumpStopLine, written with the START of its footer) and whether it sets an active
+// position (dumpPositionLine). The header decides in one pass, and every backup written without
+// the apply statements has no STOP there. A MariaDB dump whose header stops replication without
+// a position is read on to its START (#2118): the MariaDB client with --gtid writes the SET
+// GLOBAL gtid_slave_pos of --master-data=1 / --dump-slave=1 after the table data, just before
+// the START, as v3.1.43's backups have it (MariaDB 11.4.13 client, read in the lab); with
+// --master-data=2 / --dump-slave=2 that line is a comment too, and the dump stays unpositioned.
+// A MySQL or Percona dump is decided by its header alone, as before.
 func dumpReplicationStatements(path string) (stops, positioned bool, err error) {
+	mariadb := false
 	_, err = dumpHeaderHas(path, func(l string) bool {
-		if l == "STOP SLAVE;" || l == "STOP REPLICA;" || l == "STOP ALL SLAVES;" {
+		if strings.HasPrefix(l, "-- MariaDB dump") {
+			mariadb = true
+		}
+		if dumpStopLine(l) {
 			stops = true
 		}
-		if strings.HasPrefix(l, "SET GLOBAL gtid_slave_pos") ||
-			((strings.HasPrefix(l, "CHANGE MASTER ") || strings.HasPrefix(l, "CHANGE REPLICATION SOURCE TO")) &&
-				(strings.Contains(l, "MASTER_LOG_FILE") || strings.Contains(l, "SOURCE_LOG_FILE"))) {
+		if dumpPositionLine(l) {
 			positioned = true
 		}
 		return stops && positioned
 	})
+	if err != nil || !stops || positioned || !mariadb {
+		return stops, positioned, err
+	}
+	_, err = dumpLinesHave(path, false, func(l string) bool {
+		if strings.HasPrefix(l, "SET GLOBAL gtid_slave_pos") {
+			positioned = true
+		}
+		return dumpStartLine(l)
+	})
 	return stops, positioned, err
+}
+
+// dumpStopLine is a dump's STOP of replication (--apply-slave-statements,
+// --apply-replica-statements), on a line of its own.
+func dumpStopLine(l string) bool {
+	return l == "STOP SLAVE;" || l == "STOP REPLICA;" || l == "STOP ALL SLAVES;"
+}
+
+// dumpStartLine is a dump's START of replication, the footer of its STOP, on a line of its own.
+func dumpStartLine(l string) bool {
+	return l == "START SLAVE;" || l == "START REPLICA;" || l == "START ALL SLAVES;"
+}
+
+// dumpPositionLine is an active replication position, not a comment: SET GLOBAL
+// gtid_slave_pos, or a CHANGE MASTER / CHANGE REPLICATION SOURCE naming a binary log file.
+// MariaDB's CHANGE MASTER TO MASTER_USE_GTID=slave_pos alone sets the mode, not the position.
+func dumpPositionLine(l string) bool {
+	return strings.HasPrefix(l, "SET GLOBAL gtid_slave_pos") ||
+		((strings.HasPrefix(l, "CHANGE MASTER ") || strings.HasPrefix(l, "CHANGE REPLICATION SOURCE TO")) &&
+			(strings.Contains(l, "MASTER_LOG_FILE") || strings.Contains(l, "SOURCE_LOG_FILE")))
 }
 
 // dumpHeaderHas reports whether a line of the header of the mysqldump file at path (gzip or
 // plain SQL), before its first table data, matches. A splitdump directory has no header.
 func dumpHeaderHas(path string, match func(line string) bool) (bool, error) {
+	return dumpLinesHave(path, true, match)
+}
+
+// dumpLinesHave reports whether a line of the mysqldump file at path (gzip or plain SQL)
+// matches, reading its header only (up to its first table data) or the whole file. A splitdump
+// directory has neither.
+func dumpLinesHave(path string, headerOnly bool, match func(line string) bool) (bool, error) {
 	if !strings.HasSuffix(path, ".sql.gz") && !strings.HasSuffix(path, ".sql") {
 		return false, nil
 	}
@@ -7229,7 +7270,7 @@ func dumpHeaderHas(path string, match func(line string) bool) (bool, error) {
 		if match(l) {
 			return true, nil
 		}
-		if strings.HasPrefix(l, "-- Dumping data for table") || strings.HasPrefix(l, "INSERT INTO") {
+		if headerOnly && (strings.HasPrefix(l, "-- Dumping data for table") || strings.HasPrefix(l, "INSERT INTO")) {
 			return false, nil
 		}
 	}

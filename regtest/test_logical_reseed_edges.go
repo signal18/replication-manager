@@ -468,17 +468,12 @@ func (e *edgeRun) checkDumpFile(name, dest string) {
 	e.check(name, len(problems) == 0, strings.Join(problems, "; "))
 }
 
-// writeOlderDump replaces the backup at dest with a dump made with the options backups had
-// before the position was written as a comment: an active CHANGE MASTER, STOP/START SLAVE
-// (--apply-slave-statements) and, on MySQL/Percona, mysql.slave_worker_info. Those are the
-// options replication-manager still uses for the direct rejoin stream.
+// writeOlderDump replaces the backup at dest with a dump of the primary made as v3.1.43 made
+// its logical backups (v3143BackupDumpOptions): an active position, STOP/START SLAVE
+// (--apply-slave-statements) and, on MariaDB with GTID, the gtid_slave_pos set after the table
+// data (#2118). v3.1.43 wrote the client's output to the file unchanged.
 func (e *edgeRun) writeOlderDump(name, dest string) bool {
-	var args []string
-	for _, a := range e.cl.GetMysqlDumpOptions(e.m, e.m.JobGetDumpGtidParameter()) {
-		if a != "--ignore-table=mysql.slave_worker_info" && a != "--verbose" {
-			args = append(args, a)
-		}
-	}
+	args := v3143BackupDumpOptions(e.cl, e.m)
 	f, err := os.Create(dest)
 	if err != nil {
 		return e.check(name, false, err.Error())
@@ -500,6 +495,53 @@ func (e *edgeRun) writeOlderDump(name, dest string) bool {
 	}
 	active, err := countActiveChange(dest)
 	return e.check(name, err == nil && active > 0, fmt.Sprintf("active CHANGE MASTER lines %d, err %v", active, err))
+}
+
+// v3143BackupDumpOptions are the options v3.1.43 dumped a server's logical backup with: its
+// cluster.GetMysqlDumpOptions and getDumpParameter at tag v3.1.43, ported as they were, so R5
+// restores a backup as that release wrote it. The connection options (credentials, TLS) are
+// this release's: they do not change the dump's content.
+func v3143BackupDumpOptions(cl *clusterpkg.Cluster, s *clusterpkg.ServerMonitor) []string {
+	param := cl.Conf.BackupMysqldumpOptions
+	if m := cl.GetMaster(); m != nil && !m.IsMariaDB() {
+		param = strings.ReplaceAll(param, "--system=all", "")
+		if m.HasMySQLGTID() {
+			param = strings.ReplaceAll(param, "--master-data=1", "")
+		}
+	}
+	dumpslave := "--dump-slave=1"
+	if s.IsMaster() {
+		dumpslave = "--master-data=1"
+	}
+	events := "--events=false"
+	if s.HasEventScheduler() {
+		events = "--events=true"
+	}
+	args := strings.Split(strings.ReplaceAll(param+" "+dumpslave+" "+s.JobGetDumpGtidParameter()+" "+events, "  ", " "), " ")
+	if s.IsMariaDB() && s.DBVersion.GreaterEqual("10.1") {
+		args = append(args, "--skip-log-queries")
+	}
+	dumpver := cl.VersionsMap.Get("client-dump")
+	if s.DBVersion.IsMySQLOrPercona() && s.DBVersion.GreaterEqual("8.0.30") && dumpver != nil && dumpver.IsMySQLOrPercona() && dumpver.GreaterEqual("8.0.30") {
+		args = append(args, "--mysqld-long-query-time=10")
+	}
+	args = append(args, cl.GetDumpCredentials(s)...)
+	args = append(args, "--apply-slave-statements", "--ignore-table=replication_manager_schema.jobs")
+	ignoresUser := false
+	for _, a := range args {
+		ignoresUser = ignoresUser || a == "--ignore-table=mysql.user"
+	}
+	if cl.Conf.BackupSplitMysqlUser && !ignoresUser {
+		args = append(args, "--ignore-table=mysql.user")
+	}
+	args = append(args, s.GetSSLClientParam("client-dump")...)
+	var out []string
+	for _, a := range args {
+		if a != "" {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // writeOlderSplitdump replaces the splitdump backup in dir with the dump writeOlderDump makes,
