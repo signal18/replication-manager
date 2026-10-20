@@ -213,8 +213,9 @@ var clusterACLRules = []ACLRule{
 	{"/archive-actions/rename/", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/attach/", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/detach", nil, []string{config.GrantClusterSettings}},
-	{"/archive-actions/remove/", nil, []string{config.GrantDBBackup}}, // deletes the content
+	{"/archive-actions/remove/", nil, []string{config.GrantDBBackup}},         // deletes the content
 	{"/archive-actions/size/", nil, []string{config.GrantClusterShowBackups}}, // reads only
+	{"/archive-snapshots/", nil, []string{config.GrantClusterShowBackups}},    // reads only, as /restic/snapshots
 
 	// Routes and Certificates
 	{"/queryrules", nil, []string{config.GrantClusterShowRoutes}},
