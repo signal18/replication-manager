@@ -460,3 +460,20 @@ func onlyCtimeChanged(t *testing.T, path string, rec *backupmgr.ArtifactFingerpr
 		t.Fatalf("precondition: only the ctime changes, got %+v recorded %+v", fp, rec)
 	}
 }
+
+// a split dump or mydumper restores in parallel and in part; a single mysqldump file does not
+func TestBackupCapabilitiesParallel(t *testing.T) {
+	for _, tc := range []struct {
+		m    backupmgr.BackupMetadata
+		want bool
+	}{
+		{backupmgr.BackupMetadata{BackupTool: "mydumper"}, true},
+		{backupmgr.BackupMetadata{BackupTool: "mysqldump", SplitDump: true}, true},
+		{backupmgr.BackupMetadata{BackupTool: "mysqldump"}, false},
+	} {
+		caps := tc.m.Capabilities()
+		if hasCap(caps, "parallel") != tc.want || hasCap(caps, "can-partial-restorable") != tc.want {
+			t.Fatalf("%s split %v: %v", tc.m.BackupTool, tc.m.SplitDump, caps)
+		}
+	}
+}

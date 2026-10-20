@@ -80,6 +80,62 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 	return cat
 }
 
+// backupCatalogLocation: remote when the attached archive holds a snapshot of the backup, else
+// local.
+func backupCatalogLocation(m *backupmgr.BackupMetadata, attached string) string {
+	if m.ResticEnabled && strings.TrimSpace(m.ArchiveSnapshot(attached)) != "" {
+		return RepoRemote
+	}
+	return RepoLocal
+}
+
+// BackupView is a backup as the API shows it: its record, and what the restore selection
+// reads of it (buildBackupCatalog): its capabilities, where it is, proven by a test restore of
+// its local file still unchanged, and whether a restore or reseed picks among it now (each
+// server's last logical and physical backup, completed and usable).
+type BackupView struct {
+	*backupmgr.BackupMetadata
+	Capabilities     []string `json:"capabilities"`
+	Location         string   `json:"location"`
+	Proven           bool     `json:"proven"`
+	RestoreCandidate bool     `json:"restoreCandidate"`
+}
+
+// GetBackupsView is the catalogue for the API, each backup with what the restore selection
+// reads of it.
+func (cluster *Cluster) GetBackupsView() map[int64]BackupView {
+	attached := cluster.Conf.AttachedArchive()
+	var proofs map[backupProofKey]backupmgr.ArtifactFingerprint
+	if p := cluster.backupProofs.Load(); p != nil {
+		proofs = *p
+	}
+	last := map[int64]bool{}
+	for _, sv := range cluster.Servers {
+		if sv == nil {
+			continue
+		}
+		for _, m := range []*backupmgr.BackupMetadata{sv.LastBackupMeta.Logical, sv.LastBackupMeta.Physical} {
+			if m != nil && m.Completed && cluster.backupUseRefusal(m) == nil {
+				last[m.Id] = true
+			}
+		}
+	}
+	out := map[int64]BackupView{}
+	for id, m := range cluster.GetBackups() {
+		if m == nil {
+			continue
+		}
+		loc := backupCatalogLocation(m, attached)
+		_, proven := proofs[backupProofKey{m.Source, m.Id, m.Dest}]
+		caps := m.Capabilities()
+		if caps == nil {
+			caps = []string{}
+		}
+		out[id] = BackupView{BackupMetadata: m, Capabilities: caps, Location: loc, Proven: loc == RepoLocal && proven, RestoreCandidate: last[id]}
+	}
+	return out
+}
+
 // backupProofKey names a backup in the proof snapshot: its server, id and file (an id is a
 // unix time, two servers' backups can share it).
 type backupProofKey struct {
@@ -153,24 +209,8 @@ func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata, attached
 	}
 
 	snapshotID := strings.TrimSpace(m.ArchiveSnapshot(attached))
-	loc := RepoLocal
-	if m.ResticEnabled && snapshotID != "" {
-		loc = RepoRemote
-	}
-
-	var caps []string
-	if m.Compressed {
-		caps = append(caps, "compress")
-	}
-	if m.Encrypted {
-		caps = append(caps, "encrypt")
-	}
-	if m.SplitDump || m.BackupTool == "mydumper" {
-		caps = append(caps, "can-partial-restorable")
-	}
-	if m.BinLogGtid != "" {
-		caps = append(caps, "gtid")
-	}
+	loc := backupCatalogLocation(m, attached)
+	caps := m.Capabilities()
 
 	ts := m.EndTime.Unix()
 	if ts <= 0 {

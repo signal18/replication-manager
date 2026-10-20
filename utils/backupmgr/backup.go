@@ -442,6 +442,26 @@ func (bs *BackupSnapshot) GetMountSubdir() string {
 	return bsTime.Format(time.RFC3339)
 }
 
+// Capabilities is what the backup gives a restore, as the restore selection reads it:
+// compress, encrypt, parallel and can-partial-restorable (a split dump or mydumper: restored in
+// parallel, or one schema or table of it), gtid (its position has a GTID).
+func (bm *BackupMetadata) Capabilities() []string {
+	var caps []string
+	if bm.Compressed {
+		caps = append(caps, "compress")
+	}
+	if bm.Encrypted {
+		caps = append(caps, "encrypt")
+	}
+	if bm.SplitDump || bm.BackupTool == "mydumper" {
+		caps = append(caps, "parallel", "can-partial-restorable")
+	}
+	if bm.BinLogGtid != "" {
+		caps = append(caps, "gtid")
+	}
+	return caps
+}
+
 // ArchiveSnapshot is the backup's snapshot in archive ("" none). A backup recorded before the
 // archive list and not glued yet reads its snapshot as the one of any archive.
 func (bm *BackupMetadata) ArchiveSnapshot(archive string) string {

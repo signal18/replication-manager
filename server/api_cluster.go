@@ -2505,13 +2505,13 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 
 // handlerMuxClusterBackups handles the retrieval of backups for a given cluster.
 // @Summary Retrieve backups for a specific cluster
-// @Description This endpoint retrieves the backups for the specified cluster.
+// @Description This endpoint retrieves the backups for the specified cluster, by id: each backup's record, with what the restore selection reads of it: capabilities (compress, encrypt, parallel, can-partial-restorable, gtid), location (local, or remote when the attached archive holds it), proven (a test restore of its local file, still unchanged) and restoreCandidate (a restore or reseed picks among it now: its server's last logical or physical backup).
 // @Description Required grant: cluster-show-backups
 // @Tags ClusterBackups
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} map[int64]backupmgr.BackupMetadata "List of backups"
+// @Success 200 {object} map[int64]cluster.BackupView "Backups by id"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/backups [get]
@@ -2526,7 +2526,9 @@ func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetBackups())
+		// each backup with what the restore selection reads of it (capabilities, location,
+		// proven, restore candidate), the record's fields unchanged
+		err := e.Encode(mycluster.GetBackupsView())
 		if err != nil {
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
