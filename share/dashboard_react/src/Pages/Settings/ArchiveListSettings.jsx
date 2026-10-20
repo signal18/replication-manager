@@ -102,6 +102,19 @@ const SETTING_HELP = {
 
 // kindLabel names an archive's plugin first (restic is one plugin family among others to
 // come), then what it stores into: restic-local (Local folder)
+// the attached archive's pick, shared by the Archive settings and the Maintenance tab: None
+// detaches, the one left keeps its content
+export const ATTACH_NONE = '__none__'
+export function attachOptionsOf(archives) {
+  return [{ name: 'None', value: ATTACH_NONE }, ...archives.map((a) => ({ name: a.name, value: a.name }))]
+}
+export function attachConfirmBody(attached) {
+  return attached ? `The backups go to the archive chosen. ${attached} is detached: it keeps its content, still invoiced. Attach` : 'The backups go to'
+}
+export function attachArchiveRequest(clusterName, value) {
+  return value === ATTACH_NONE || value === 'None' ? clusterService.detachArchive(clusterName) : clusterService.attachArchive(clusterName, value)
+}
+
 export function kindLabel(plugin, manifest) {
   const name = (plugin || '').replace(/^archive-/, '')
   const what = KIND_LABELS[plugin] || manifest?.description
@@ -115,7 +128,7 @@ export function settingLabel(name, plugin) {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-function summary(archive) {
+export function summary(archive) {
   const s = archive.settings || {}
   if (s['aws-bucket']) return `${s['aws-endpoint'] || ''} ${s['aws-bucket']}${s['aws-prefix'] ? '/' + s['aws-prefix'] : ''}`.trim()
   if (s['repository']) return s['repository']
@@ -123,7 +136,7 @@ function summary(archive) {
   return 'default repository'
 }
 
-function sizeText(archive) {
+export function sizeText(archive) {
   if (!archive?.size) return 'not read'
   return formatBytes(archive.size.bytes)
 }
@@ -535,7 +548,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     }] : [])
   ]
 
-  const attachOptions = [{ name: 'None', value: '__none__' }, ...list.archives.map((a) => ({ name: a.name, value: a.name }))]
+  const attachOptions = attachOptionsOf(list.archives)
   const rows = [
     {
       key: 'Attached archive',
@@ -543,10 +556,10 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
       value: (
         <Stack spacing='1' width='100%'>
           <Flex gap='2' align='center'>
-            <Dropdown options={attachOptions} selectedValue={list.attached || '__none__'} isDisabled={!canSet}
+            <Dropdown options={attachOptions} selectedValue={list.attached || ATTACH_NONE} isDisabled={!canSet}
               confirmTitle='Change the attached archive?'
-              confirmBody={list.attached ? `The backups go to the archive chosen. ${list.attached} is detached: it keeps its content, still invoiced. Attach` : 'The backups go to'}
-              onChange={(v) => call(() => (v === '__none__' || v === 'None' ? clusterService.detachArchive(clusterName) : clusterService.attachArchive(clusterName, v)))} />
+              confirmBody={attachConfirmBody(list.attached)}
+              onChange={(v) => call(() => attachArchiveRequest(clusterName, v))} />
             <RMButton size='sm' isDisabled={!canSet || list.plugins.length === 0} onClick={() => setAdding(true)}>Add</RMButton>
           </Flex>
           {!list.attached && <Text fontSize='sm'>No archive attached: the backups stay in the servers' backup folders.</Text>}

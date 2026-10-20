@@ -9,6 +9,7 @@ import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
+import AttachedArchive from './AttachedArchive'
 import { archiveBackup, deleteBackup, discoverBackups, registerBackup, registerBackupChange, unregisterBackup, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import CopyToClipboard from '../../components/CopyToClipboard'
@@ -476,6 +477,9 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   const resticQueue = useSelector((state) => state.cluster.restic.queue)
   const currentResticTask = useSelector((state) => state.cluster.restic.currentTask)
   const resticRepoPath = useSelector((state) => state.cluster.restic.repoPath)
+  // the attached archive (#2091): the restic repository, snapshots and queue are a restic archive's
+  const [attachedArchive, setAttachedArchive] = useState(null)
+  const resticShown = !attachedArchive || attachedArchive.plugin?.startsWith('archive-restic-')
 
   const openConfirmModal = (title, payload) => {
     setConfirmState({ isOpen: true, title, payload })
@@ -1107,7 +1111,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         }
       />
       <AccordionComponent
-        heading={'Backup Snapshots'}
+        heading={'Archive'}
         isOpen={isBackupSnapshotOpen}
         onToggle={onBackupSnapshotToggle}
         className={styles.accordion}
@@ -1116,20 +1120,26 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         headerActions={settingsButton(onOpenArchiveSettings || onOpenBackupSettings, 'Open Archive Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
-            <Box className={styles.repoRow}>
-              <Box className={styles.repoRowLabel}>Repository:</Box>
-              <Box className={styles.repoRowValue}>{resticRepoPath || '-'}</Box>
-            </Box>
-            <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
-            <DataTable key="snapshot" data={snapshotData} columns={snapshotColumns} className={styles.table} />
-            <Box className={styles.sectionTitle}>Current Restic Task</Box>
-            {currentResticTask ? (
-              <TableType3 dataArray={currentTaskHeader} className={`${styles.statsTable} ${styles.currentTaskTable}`} />
-            ) : (
-              <Box className={styles.emptyState}>No active task</Box>
+            <AttachedArchive clusterName={selectedCluster?.name} user={user} onAttached={setAttachedArchive} />
+            {resticShown && (
+              <>
+                <Box className={styles.sectionTitle}>Restic repository</Box>
+                <Box className={styles.repoRow}>
+                  <Box className={styles.repoRowLabel}>Repository:</Box>
+                  <Box className={styles.repoRowValue}>{resticRepoPath || '-'}</Box>
+                </Box>
+                <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
+                <DataTable key="snapshot" data={snapshotData} columns={snapshotColumns} className={styles.table} />
+                <Box className={styles.sectionTitle}>Current Restic Task</Box>
+                {currentResticTask ? (
+                  <TableType3 dataArray={currentTaskHeader} className={`${styles.statsTable} ${styles.currentTaskTable}`} />
+                ) : (
+                  <Box className={styles.emptyState}>No active task</Box>
+                )}
+                <TableType3 dataArray={queueDataHeader} className={styles.statsTable} />
+                <DataTable key="queue" data={queueData} columns={queueColumns} className={styles.table} />
+              </>
             )}
-            <TableType3 dataArray={queueDataHeader} className={styles.statsTable} />
-            <DataTable key="queue" data={queueData} columns={queueColumns} className={styles.table} />
           </VStack>
         }
       />
