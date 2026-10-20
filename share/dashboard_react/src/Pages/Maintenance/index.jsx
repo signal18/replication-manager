@@ -387,9 +387,10 @@ const reseedRefusal = (backup, change, requireProven) => {
 }
 
 // archiveRefusal is why a registered backup can not be archived now, '' when it can (#2108);
-// the API decides, this greys the button out.
-const archiveRefusal = (backup, change, resticOn) => {
-  if (!resticOn) return 'Archive: turn backup-restic on first'
+// the API decides, this greys the button out. archiveOn: an archive is attached (#2091), or
+// backup-restic is on.
+const archiveRefusal = (backup, change, archiveOn) => {
+  if (!archiveOn) return 'No archive: attach one in the Archive settings'
   if (backup.resticSnapshotID || backup.originalRemoved) return 'Already archived'
   if (backup.notABackup) return `Not a backup: ${backup.discoveryNote}`
   if (change) return 'Changed since registered: register the change first'
@@ -480,6 +481,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   // the attached archive (#2091): the restic repository, snapshots and queue are a restic archive's
   const [attachedArchive, setAttachedArchive] = useState(null)
   const resticShown = !attachedArchive || attachedArchive.plugin?.startsWith('archive-restic-')
+  // where an archive of a backup goes: the attached archive by name, else restic
+  const archiveTarget = selectedCluster?.config?.backupArchiveName || 'restic'
 
   const openConfirmModal = (title, payload) => {
     setConfirmState({ isOpen: true, title, payload })
@@ -748,7 +751,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           const change = changesById[backup.id]
           const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.notABackup && !backup.originalRemoved && backup.verification?.status !== 'running'
           const notReseedable = reseedRefusal(backup, change, selectedCluster?.config?.backupVerificationRegisteredProven)
-          const notArchivable = backup.discovered ? archiveRefusal(backup, change, selectedCluster?.config?.backupRestic) : ''
+          const notArchivable = backup.discovered ? archiveRefusal(backup, change, !!selectedCluster?.config?.backupArchiveName || selectedCluster?.config?.backupRestic) : ''
           return (
             <HStack spacing={1}>
               <RMIconButton
@@ -780,7 +783,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
               {backup.discovered && (
                 <RMIconButton
                   icon={HiCloudUpload}
-                  tooltip={notArchivable ? `Archive: ${notArchivable}` : 'Archive this backup to restic'}
+                  tooltip={notArchivable ? `Archive: ${notArchivable}` : `Archive this backup to ${archiveTarget}`}
                   onClick={() => setArchivePick({ backup, removeOriginal: false, verifyRestore: false })}
                   isDisabled={!user?.grants['db-backup'] || !!notArchivable}
                 />
@@ -1228,17 +1231,17 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         }}
         closeModal={closeRegisterPick} />}
       {archivePick.backup && <ConfirmModal
-        title={`Archive backup ${archivePick.backup.id} to restic?`}
+        title={`Archive backup ${archivePick.backup.id} to ${archiveTarget}?`}
         isOpen={!!archivePick.backup}
         body={
           <VStack align='stretch' spacing={3}>
             <Text>
-              Its file ({archivePick.backup.dest}) is pushed in the restic task queue, after the pushes already queued; its
+              Its file ({archivePick.backup.dest}) is pushed to {archiveTarget}, after the pushes already queued; its
               snapshot is recorded in the backup.
             </Text>
             <Checkbox isChecked={archivePick.removeOriginal}
               onChange={(e) => setArchivePick((p) => ({ ...p, removeOriginal: e.target.checked }))}>
-              Delete the backup file from the backup folder once restic holds it
+              Delete the backup file from the backup folder once {archiveTarget} holds it
             </Checkbox>
             {selectedCluster?.config?.backupVerificationHost && archivePick.backup.backupTool === 'mysqldump' && (
               <Checkbox isChecked={archivePick.verifyRestore} isDisabled={!user?.grants['db-restore']}

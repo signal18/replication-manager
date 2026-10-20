@@ -57,6 +57,7 @@ export const clusterService = {
   editArchive,
   renameArchive,
   attachArchive,
+  getArchiveSnapshots,
   detachArchive,
   removeArchive,
   sizeArchive,
@@ -1146,6 +1147,11 @@ function editArchive(clusterName, archiveName, spec, baseURL) {
 
 function renameArchive(clusterName, archiveName, newName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/rename/${encodeURIComponent(archiveName)}/${encodeURIComponent(newName)}`)
+}
+
+// the snapshots of an archive plugin's archive, newest first (#2091)
+function getArchiveSnapshots(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/archive-snapshots/${encodeURIComponent(archiveName)}`)
 }
 
 function attachArchive(clusterName, archiveName, baseURL) {
