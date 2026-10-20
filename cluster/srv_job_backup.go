@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -413,10 +414,11 @@ func (server *ServerMonitor) MarkBackupPhysicalDone(task string) {
 	server.backupMetaMutex.Unlock()
 }
 
-func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) error {
+func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) (err error) {
 	if server == nil {
 		return nil
 	}
+	defer server.ClusterGroup.recoverBackupPanic("Physical backup of "+server.URL, &err)
 
 	if server.IsDown() {
 		return nil
@@ -482,7 +484,6 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	now := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s started at %s for: %s", physType, now.Format(time.RFC3339), server.URL)
 	var port string
-	var err error
 	var backupext string = server.physicalBackupExtension(physType)
 	var dest string = server.GetMyBackupDirectory() + physType
 	if isAdhoc {
@@ -5005,11 +5006,11 @@ func (server *ServerMonitor) JobBackupLogical(ctx context.Context) error {
 	return server.JobBackupLogicalWithOptions(ctx, BackupRunOptions{})
 }
 
-func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, opts BackupRunOptions) error {
-	var err error
+func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, opts BackupRunOptions) (err error) {
 	if server == nil {
 		return errors.New("No server defined")
 	}
+	defer server.ClusterGroup.recoverBackupPanic("Logical backup of "+server.URL, &err)
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -5607,8 +5608,27 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 // BackupRestic pushes backupPath to the archive. meta is the backup being archived, captured
 // now: the snapshot is recorded in it, and with backup-archive-remove-original its original is
 // removed once the snapshot holds it. nil (binary log copies) records nothing.
+// recoverBackupPanic, deferred first in a backup step: a panic there fails that step, its
+// error set (err nil for a step that returns none), never the monitor (F2); the step's own
+// defers (slots, flags) have run by then.
+func (cluster *Cluster) recoverBackupPanic(what string, err *error) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	stack := debug.Stack()
+	if len(stack) > 4096 {
+		stack = stack[:4096]
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s: internal error, stopped: %v\n%s", what, r, stack)
+	if err != nil {
+		*err = fmt.Errorf("%s: internal error: %v", what, r)
+	}
+}
+
 func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, tags ...string) {
 	cluster := server.ClusterGroup
+	defer cluster.recoverBackupPanic("Archive of the backup of "+server.URL, nil)
 	server.backupResticWith(backupMethod, meta, backupPath, resticPushOptions{removeOriginal: func() bool { return cluster.Conf.BackupArchiveRemoveOriginal }}, tags...)
 }
 

@@ -76,3 +76,22 @@ func TestArchivePluginExternal(t *testing.T) {
 		t.Fatalf("no archive, no restic manager: %q", got)
 	}
 }
+
+// TestRecoverBackupPanic: a panic in a backup step fails the step with an error, never the
+// process (the archive push once stopped replication-manager on a nil restic manager)
+func TestRecoverBackupPanic(t *testing.T) {
+	cl := newEventLogTestCluster(t, 1)
+	step := func() (err error) {
+		defer cl.recoverBackupPanic("Logical backup of db1", &err)
+		var m map[string]int
+		m["x"] = 1 // panics: nil map
+		return nil
+	}
+	if err := step(); err == nil || !strings.Contains(err.Error(), "Logical backup of db1: internal error") {
+		t.Fatalf("a panicking step returns its error: %v", err)
+	}
+	func() {
+		defer cl.recoverBackupPanic("Archive of the backup of db1", nil)
+		panic("push")
+	}()
+}
