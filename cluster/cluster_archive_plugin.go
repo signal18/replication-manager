@@ -271,9 +271,11 @@ func (cluster *Cluster) runArchivePlugin(a config.ArchiveConfig, req wire.Reques
 	if tail != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Archive %s %s: %s", a.Name, req.Op, tail)
 	}
+	// read before the answer: decoding drains out
+	answered := out.Len() > 0
 	resp, err := wire.ReadResponse(&out)
 	if err != nil {
-		if runErr != nil && out.Len() == 0 {
+		if runErr != nil && !answered {
 			// the plugin answered nothing: its last words are the only reason there is
 			if tail != "" {
 				return resp, fmt.Errorf("archive %s %s: %w: %s", a.Name, req.Op, runErr, tail)
