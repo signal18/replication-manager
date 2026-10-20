@@ -130,3 +130,91 @@ func TestSetActiveStatusRealTransitionStartsAndStopsScheduler(t *testing.T) {
 			before, afterStop, delta, goroutineSlack)
 	}
 }
+
+// newSchedulerOffTestCluster builds a cluster as started with monitoring-scheduler off:
+// initScheduler never ran, so it has no scheduler (#2120).
+func newSchedulerOffTestCluster(status string) *Cluster {
+	return &Cluster{
+		Name:     "cluster1",
+		Conf:     &config.Config{SchedulerSLARotateCron: "0 0 0 1 * *"},
+		Schedule: make(map[string]cron.Entry),
+		Status:   status,
+	}
+}
+
+// TestSetMonitoringSchedulerOnCreatesScheduler is the regression test for #2120: setting
+// monitoring-scheduler to true through the API on a cluster started with it off called
+// Start() on a nil scheduler and panicked. It now creates the scheduler with its jobs and
+// starts it when the monitor is active.
+func TestSetMonitoringSchedulerOnCreatesScheduler(t *testing.T) {
+	cluster := newSchedulerOffTestCluster(ConstMonitorActif)
+	before := runtime.NumGoroutine()
+
+	cluster.SetMonitoringScheduler(true)
+	if cluster.scheduler == nil {
+		t.Fatal("expected a scheduler once monitoring-scheduler is set to true")
+	}
+	t.Cleanup(func() { cluster.scheduler.Stop() })
+	if !cluster.Conf.MonitorScheduler {
+		t.Fatal("expected monitoring-scheduler to be true")
+	}
+	if cluster.GetSchedule("slarotate") == nil {
+		t.Fatal("expected the scheduler's jobs to be registered")
+	}
+	if after := waitForGoroutineAtLeast(t, before+1, time.Second); after < before+1 {
+		t.Fatalf("expected the scheduler to start on an active monitor: before=%d after=%d", before, after)
+	}
+}
+
+// TestSetMonitoringSchedulerOnStandbyDoesNotStart: on a standby monitor the scheduler is
+// created, not started; SetActiveStatus starts it on activation.
+func TestSetMonitoringSchedulerOnStandbyDoesNotStart(t *testing.T) {
+	cluster := newSchedulerOffTestCluster(ConstMonitorStandby)
+	before := runtime.NumGoroutine()
+
+	cluster.SetMonitoringScheduler(true)
+	if cluster.scheduler == nil {
+		t.Fatal("expected a scheduler once monitoring-scheduler is set to true")
+	}
+	t.Cleanup(func() { cluster.scheduler.Stop() })
+	time.Sleep(20 * time.Millisecond)
+	if after := runtime.NumGoroutine(); after > before+goroutineSlack {
+		t.Fatalf("expected no scheduler goroutine on a standby monitor: before=%d after=%d", before, after)
+	}
+
+	cluster.SetActiveStatus(ConstMonitorActif)
+	if after := waitForGoroutineAtLeast(t, before+1, time.Second); after < before+1 {
+		t.Fatalf("expected the scheduler to start on activation: before=%d after=%d", before, after)
+	}
+}
+
+// TestSetMonitoringSchedulerOnKeepsExistingJobs: an existing scheduler is started again as
+// it is, not created anew. Created anew, its jobs are registered on a new cron whose IDs
+// start again at 1, while Schedule still holds the old IDs: removing an old ID can delete
+// another job's new entry (here backupphysical, enabled after start).
+func TestSetMonitoringSchedulerOnKeepsExistingJobs(t *testing.T) {
+	cluster := newSchedulerOffTestCluster(ConstMonitorStandby)
+	cluster.Conf.MonitorScheduler = true
+	cluster.Conf.SchedulerBackupLogical, cluster.Conf.BackupLogicalCron = true, "0 0 1 * * *"
+	cluster.initScheduler()
+	cluster.Conf.SchedulerBackupPhysical, cluster.Conf.BackupPhysicalCron = true, "0 0 2 * * *"
+	cluster.SetSchedulerBackupPhysical()
+	t.Cleanup(func() { cluster.scheduler.Stop() })
+
+	cluster.SetMonitoringScheduler(false)
+	cluster.SetMonitoringScheduler(true)
+
+	ids := map[cron.EntryID]bool{}
+	for _, e := range cluster.scheduler.Entries() {
+		ids[e.ID] = true
+	}
+	for _, title := range []string{"backuplogical", "backupphysical", "slarotate"} {
+		entry := cluster.GetSchedule(title)
+		if entry == nil || !ids[entry.ID] {
+			t.Fatalf("job %s lost by setting monitoring-scheduler off then on", title)
+		}
+	}
+	if len(ids) != 3 {
+		t.Fatalf("expected 3 scheduled jobs, got %d", len(ids))
+	}
+}

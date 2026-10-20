@@ -174,6 +174,18 @@ A reseed restores data; it does not own the replica's links. Since #2093:
     position, positioned afterwards what it applied meanwhile is applied twice. A reseed and a
     child seed refuse such a dump before anything is stopped or loaded
     (`dumpStartsReplicationUnpositioned`); a new backup has no such statement.
+    The header decides, except for a MariaDB dump whose header stops replication without a
+    position (#2118): the MariaDB client with `--gtid` writes the `SET GLOBAL gtid_slave_pos`
+    of `--master-data=1` / `--dump-slave=1` after the table data, just before the `START`
+    (MariaDB 11.4.13 client, read in the lab, as v3.1.43's backups have it: its header has
+    `STOP ALL SLAVES` and the mode-only `CHANGE MASTER TO MASTER_USE_GTID=slave_pos`). Such a
+    dump (`-- MariaDB dump` in its header) is read on to its `START`; an active
+    `SET GLOBAL gtid_slave_pos` before it positions the dump, which is then restored and left
+    as it started (`dumpStartsReplication`). With `--master-data=2` / `--dump-slave=2` that line
+    is a comment, and the dump is still refused: lab, refusal disabled, writes on the primary
+    during the reseed: the replica stopped on a duplicate key, the row written during the
+    reseed applied twice. The extra read happens for those older dumps only. A MySQL or
+    Percona dump is decided by its header alone (no such layout read).
   - MySQL/Percona with GTID: the channel keeps its auto-position. The dump's
     `SET @@GLOBAL.GTID_PURGED` sets the position; its file/position `CHANGE MASTER` is refused
     (error 1776): skipped with `--force` in `backup-mysqlclient-options` (the default); the

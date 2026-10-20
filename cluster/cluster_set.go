@@ -1465,7 +1465,11 @@ func (cluster *Cluster) SetMonitoringScheduler(isactive bool) {
 	if cluster.Conf.MonitorScheduler != isactive {
 		cluster.Conf.MonitorScheduler = isactive
 		if cluster.Conf.MonitorScheduler {
-			if cluster.Status == ConstMonitorActif {
+			if cluster.scheduler == nil {
+				// A cluster started with the scheduler off has none yet (#2120): initScheduler
+				// creates it with its jobs, and starts it when the monitor is active.
+				cluster.initScheduler()
+			} else if cluster.Status == ConstMonitorActif {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting scheduler")
 				cluster.scheduler.Start()
 			} else {
