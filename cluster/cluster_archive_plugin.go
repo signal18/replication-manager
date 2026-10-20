@@ -407,6 +407,32 @@ func (cluster *Cluster) ArchiveSnapshots(name string) ([]wire.Snapshot, error) {
 	return nil, fmt.Errorf("unknown archive %s", name)
 }
 
+// ForgetArchiveSnapshot deletes the snapshot id of the archive name, an archive plugin's (a
+// restic archive's: /restic/purge/{snapshotID}). As a restic purge, the backups that
+// recorded the snapshot keep their record.
+func (cluster *Cluster) ForgetArchiveSnapshot(name, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("archive %s: no snapshot given", name)
+	}
+	list, _ := cluster.Conf.ArchiveList()
+	for _, a := range list {
+		if a.Name != name {
+			continue
+		}
+		if _, ok := externalArchive(a); !ok {
+			return fmt.Errorf("archive %s is a restic archive: purge its snapshot with restic", name)
+		}
+		if _, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpForget, Snapshot: id}); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Archive %s: snapshot %s not deleted: %s", a.Name, shortID(id), err)
+			return err
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s: snapshot %s deleted", a.Name, shortID(id))
+		return nil
+	}
+	return fmt.Errorf("unknown archive %s", name)
+}
+
 // purgeExternalArchive asks a's plugin to apply the cluster's retention policy.
 func (cluster *Cluster) purgeExternalArchive(a config.ArchiveConfig, dryRun bool) error {
 	policy := cluster.Conf.ArchivePurgePolicy()

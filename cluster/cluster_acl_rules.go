@@ -214,6 +214,7 @@ var clusterACLRules = []ACLRule{
 	{"/archive-actions/attach/", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/detach", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/remove/", nil, []string{config.GrantDBBackup}},         // deletes the content
+	{"/archive-actions/forget/", nil, []string{config.GrantDBBackup}},         // deletes a snapshot, as /restic/purge
 	{"/archive-actions/size/", nil, []string{config.GrantClusterShowBackups}}, // reads only
 	{"/archive-snapshots/", nil, []string{config.GrantClusterShowBackups}},    // reads only, as /restic/snapshots
 
