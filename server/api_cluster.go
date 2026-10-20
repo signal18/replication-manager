@@ -3026,7 +3026,7 @@ func writeBackupArchiveError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, cluster.ErrBackupNotFound):
 		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.Is(err, cluster.ErrBackupArchiving), errors.Is(err, cluster.ErrBackupArchived), errors.Is(err, cluster.ErrBackupVerificationRunning), errors.Is(err, cluster.ErrBackupDiscoveryRunning), errors.Is(err, cluster.ErrBackupChangedSinceRegistered):
+	case errors.Is(err, cluster.ErrBackupArchiving), errors.Is(err, cluster.ErrBackupArchived), errors.Is(err, cluster.ErrBackupVerificationRunning), errors.Is(err, cluster.ErrBackupDiscoveryRunning), errors.Is(err, cluster.ErrBackupChangedSinceRegistered), errors.Is(err, cluster.ErrBackupJobRunning):
 		http.Error(w, err.Error(), http.StatusConflict)
 	case errors.Is(err, cluster.ErrBackupNotDiscovered), errors.Is(err, cluster.ErrBackupArchiveUnavailable), errors.Is(err, cluster.ErrBackupVerificationFailed), errors.Is(err, cluster.ErrBackupNotVerifiable), errors.Is(err, cluster.ErrBackupNotABackup), errors.Is(err, cluster.ErrBackupDuplicateScheduled):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)

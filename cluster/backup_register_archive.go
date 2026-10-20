@@ -36,6 +36,8 @@ var (
 	ErrBackupArchiveUnavailable = errors.New("no archive: attach an archive (Archive settings)")
 	// ErrBackupArchiving: an archive of the backup already runs (its test restore or its push).
 	ErrBackupArchiving = errors.New("the backup is already being archived")
+	// ErrBackupJobRunning: a backup job writes the backup directory the snapshot would take.
+	ErrBackupJobRunning = errors.New("a backup is being written: archive it once the backup ends")
 )
 
 // backupVerificationOf returns a copy of the last verification of meta, read under its
@@ -112,6 +114,10 @@ func (cluster *Cluster) archiveRefusal(meta *backupmgr.BackupMetadata, testFirst
 	}
 	if cluster.backupArchived(meta) {
 		return fmt.Errorf("%w: backup %d", ErrBackupArchived, meta.Id)
+	}
+	// the snapshot takes the whole backup directory: never one a backup is writing
+	if cluster.IsInBackupJob() {
+		return ErrBackupJobRunning
 	}
 	if err := cluster.backupUseRefusal(meta); err != nil {
 		return err
@@ -190,13 +196,15 @@ func (cluster *Cluster) ArchiveBackup(id int64, removeOriginal, testFirst bool) 
 	return nil
 }
 
-// pushRegisteredBackup queues the push of meta's file in the restic task queue. A
-// registered file has its own name, no backup rewrites it: the push does not hold the
-// in-archive flag a backup waits for, the queue orders it after the pushes before it.
+// pushRegisteredBackup queues the snapshot of the server's backup directory, the registered
+// backup in it (#2091: a snapshot is the backup directory in time), in the restic task queue
+// or to the archive plugin. The push does not hold the in-archive flag a backup waits for, the
+// queue orders it after the pushes before it; no backup job runs (archiveRefusal).
 func (cluster *Cluster) pushRegisteredBackup(server *ServerMonitor, meta *backupmgr.BackupMetadata, removeOriginal bool) {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive of backup %d on %s: push of %s queued (remove original: %t)", meta.Id, server.URL, meta.Dest, removeOriginal)
+	dir := server.GetMyBackupDirectory()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive of backup %d on %s: snapshot of %s queued, holding %s (remove original: %t)", meta.Id, server.URL, dir, meta.Dest, removeOriginal)
 	tags := server.BuildResticTags("logical", meta.BackupTool, meta.BackupLine, meta)
-	server.backupResticWith(backupmgr.BackupMethodLogical, meta, meta.Dest, resticPushOptions{
+	server.backupResticWith(backupmgr.BackupMethodLogical, meta, dir, resticPushOptions{
 		removeOriginal: func() bool { return removeOriginal },
 		asked:          true,
 		noFlag:         true,

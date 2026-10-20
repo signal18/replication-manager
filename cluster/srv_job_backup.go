@@ -5455,10 +5455,9 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	// NOTE: InResticLogicalBackup flag already set at function start for atomic transition
 	// No need to set it again here - it's already protecting the async operation
 	if resticEnabled && err == nil {
+		// a snapshot is the server's backup directory in time, whatever the backup (#2091):
+		// the backup's own path is taken out of it to restore
 		resticPath := server.GetMyBackupDirectory()
-		if isAdhoc && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Dest != "" {
-			resticPath = server.LastBackupMeta.Logical.Dest
-		}
 		resticScheduled = true
 		server.BackupRestic(backupmgr.BackupMethodLogical, server.LastBackupMeta.Logical, resticPath, server.BuildResticTags(backtype, logicalType, backupLine, server.LastBackupMeta.Logical)...)
 	}
@@ -8186,10 +8185,8 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		}
 		if resticEnabled {
 			cluster.SetInResticPhysicalBackupState(true)
+			// a snapshot is the server's backup directory in time, whatever the backup (#2091)
 			resticPath := server.GetMyBackupDirectory()
-			if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.IsAdhoc() && server.LastBackupMeta.Physical.Dest != "" {
-				resticPath = server.LastBackupMeta.Physical.Dest
-			}
 			server.BackupRestic(backupmgr.BackupMethodPhysical, server.LastBackupMeta.Physical, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
 		}
 

@@ -149,6 +149,16 @@ func TestArchiveBackupRefusals(t *testing.T) {
 	}
 	c.backupArchiving.Delete(m.Id)
 
+	// the snapshot takes the whole backup directory (#2091): never while a backup writes it
+	c.InLogicalBackup = true
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupJobRunning) {
+		t.Fatalf("a backup is being written: %v", err)
+	}
+	c.InLogicalBackup = false
+	if _, held := c.backupArchiving.Load(m.Id); held {
+		t.Fatal("a refused archive kept its reservation")
+	}
+
 	server.backupMetaMutex.Lock()
 	m.ResticSnapshotID = "0123456789abcdef"
 	server.backupMetaMutex.Unlock()
