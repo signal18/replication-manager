@@ -352,7 +352,7 @@ func TestRegisterBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !m.Completed || !m.Discovered || m.NotABackup || m.BackupStrategy != backupmgr.BackupStrategyFull || m.BinLogFileName != "mariadb-bin.000007" || m.BinLogFilePos != 4521 || m.BinLogGtid != "0-1-1234" || !m.IsAdhoc() {
+	if !m.Completed || !m.Discovered || m.NotABackup || m.BackupStrategy != backupmgr.BackupStrategyFull || m.BinLogFileName != "mariadb-bin.000007" || m.BinLogFilePos != 4521 || m.BinLogGtid != "0-1-1234" {
 		t.Fatalf("registered %+v", m)
 	}
 	if m.TimeSource != backupmgr.BackupTimeSourceDumpFooter || m.EndTime.Format("2006-01-02 15:04:05") != "2026-10-01 10:20:30" {
@@ -710,9 +710,9 @@ func TestAdoptPreviousReleaseEntries(t *testing.T) {
 	writeDiscoveryGzip(t, copyPath, discoveryDump+discoveryDumpFooter)
 	writeDiscoveryGzip(t, grantsPath, "GRANT SELECT ON *.* TO `app`@`%`;\n")
 	for id, dest := range map[int64]string{1001: copyPath, 1002: grantsPath} {
-		old := &backupmgr.BackupMetadata{Id: id, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump", Source: server.URL, Dest: dest, BackupLine: backupmgr.BackupLineAdhoc, Completed: true, Discovered: true, BinLogFileName: "mariadb-bin.000007", BinLogFilePos: 4}
+		old := &backupmgr.BackupMetadata{Id: id, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mysqldump", Source: server.URL, Dest: dest, Completed: true, Discovered: true, BinLogFileName: "mariadb-bin.000007", BinLogFilePos: 4}
 		data, _ := json.Marshal(old)
-		os.WriteFile(server.buildBackupMetaFileName("mysqldump", id, backupmgr.BackupLineAdhoc), data, 0644)
+		os.WriteFile(server.buildBackupMetaFileName("mysqldump", id, true), data, 0644)
 	}
 	if cands, err := server.DiscoverBackups(); err != nil || len(cands) != 0 {
 		t.Fatalf("previous entries listed as candidates: %d %v", len(cands), err)
@@ -759,9 +759,9 @@ func TestScheduledBackupRecordRemoved(t *testing.T) {
 		} else {
 			writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
 		}
-		legacy := &backupmgr.BackupMetadata{Id: int64(2001 + i), BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineAdhoc, Source: server.URL, Dest: path, Completed: true, Discovered: true, SplitDump: name == "splitdump"}
+		legacy := &backupmgr.BackupMetadata{Id: int64(2001 + i), BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: server.URL, Dest: path, Completed: true, Discovered: true, SplitDump: name == "splitdump"}
 		data, _ := json.Marshal(legacy)
-		os.WriteFile(server.buildBackupMetaFileName("mysqldump", legacy.Id, backupmgr.BackupLineAdhoc), data, 0644)
+		os.WriteFile(server.buildBackupMetaFileName("mysqldump", legacy.Id, true), data, 0644)
 		c.BackupMetaMap.Set(legacy.Id, legacy)
 	}
 	legacy := c.BackupMetaMap.Get(2001)
@@ -802,7 +802,7 @@ func TestRegisterReplacedScheduledBackup(t *testing.T) {
 	server.Datadir = t.TempDir() // where the backup cookies are
 	path := filepath.Join(dir, "mysqldump.sql.gz")
 	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
-	old := &backupmgr.BackupMetadata{Id: 4001, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineDefault, Source: server.URL, Dest: path, Completed: true, BinLogFileName: "mariadb-bin.000001", BinLogFilePos: 4}
+	old := &backupmgr.BackupMetadata{Id: 4001, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: server.URL, Dest: path, Completed: true, BinLogFileName: "mariadb-bin.000001", BinLogFilePos: 4}
 	data, _ := json.Marshal(old)
 	metaPath := filepath.Join(dir, "mysqldump.meta.json")
 	os.WriteFile(metaPath, data, 0644)
@@ -824,7 +824,7 @@ func TestRegisterReplacedScheduledBackup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Discovered || m.IsAdhoc() || m.BinLogFilePos != 9999 || m.BackupStrategy != backupmgr.BackupStrategyFull || m.TimeSource != backupmgr.BackupTimeSourceDumpFooter || m.Registration == nil {
+	if m.Discovered || m.BinLogFilePos != 9999 || m.BackupStrategy != backupmgr.BackupStrategyFull || m.TimeSource != backupmgr.BackupTimeSourceDumpFooter || m.Registration == nil {
 		t.Fatalf("registered replacement %+v", m)
 	}
 	if c.BackupMetaMap.Get(old.Id) != nil || server.LastBackupMeta.Logical != m || !server.HasBackupLogicalCookie() {
@@ -851,9 +851,9 @@ func TestScheduledBackupRecordRemovedByDiscovery(t *testing.T) {
 	c, server, dir := newDiscoveryTest(t)
 	path := filepath.Join(dir, "mysqldump.sql.gz.enc")
 	os.WriteFile(path, []byte("x"), 0644)
-	legacy := &backupmgr.BackupMetadata{Id: 3001, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineAdhoc, Source: server.URL, Dest: path, Completed: true, Discovered: true}
+	legacy := &backupmgr.BackupMetadata{Id: 3001, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: server.URL, Dest: path, Completed: true, Discovered: true}
 	data, _ := json.Marshal(legacy)
-	metaPath := server.buildBackupMetaFileName("mysqldump", legacy.Id, backupmgr.BackupLineAdhoc)
+	metaPath := server.buildBackupMetaFileName("mysqldump", legacy.Id, true)
 	os.WriteFile(metaPath, data, 0644)
 	if cands, err := server.DiscoverBackups(); err != nil || len(cands) != 1 || !cands[0].Scheduled {
 		t.Fatalf("discovery: %+v %v", cands, err)
@@ -1216,7 +1216,7 @@ func TestOwnBackupLockedUntilRegistered(t *testing.T) {
 	server.Datadir = t.TempDir()
 	path := filepath.Join(dir, "mysqldump.sql.gz")
 	writeDiscoveryGzip(t, path, discoveryDump+discoveryDumpFooter)
-	own := &backupmgr.BackupMetadata{Id: 5001, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineDefault, Source: server.URL, Dest: path, Completed: true, BinLogFileName: "mariadb-bin.000007", BinLogFilePos: 4521}
+	own := &backupmgr.BackupMetadata{Id: 5001, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: server.URL, Dest: path, Completed: true, BinLogFileName: "mariadb-bin.000007", BinLogFilePos: 4521}
 	server.recordBackupRegistration(own)
 	if own.Registration == nil {
 		t.Fatal("no fingerprint recorded for a completed logical backup")
@@ -1257,7 +1257,7 @@ func TestOwnBackupLockedUntilRegistered(t *testing.T) {
 	}
 	waitDiscoveryIdle(t, c, server)
 	m := server.LastBackupMeta.Logical
-	if m == own || m.BinLogFilePos != 7777 || m.Discovered || m.IsAdhoc() || c.BackupMetaMap.Get(own.Id) != nil {
+	if m == own || m.BinLogFilePos != 7777 || m.Discovered || c.BackupMetaMap.Get(own.Id) != nil {
 		t.Fatalf("registered replacement %+v", m)
 	}
 	if err := c.backupFileLocked(path); err != nil {
@@ -1271,14 +1271,14 @@ func TestOwnBackupLockedUntilRegistered(t *testing.T) {
 	// a backup taken before fingerprints: adopted as its file is now
 	split := filepath.Join(dir, "splitdump")
 	writeDiscoverySplitdump(t, split, true)
-	old := &backupmgr.BackupMetadata{Id: 5002, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMydumper, BackupLine: backupmgr.BackupLineDefault, Source: server.URL, Dest: split, Completed: true}
+	old := &backupmgr.BackupMetadata{Id: 5002, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMydumper, Source: server.URL, Dest: split, Completed: true}
 	c.BackupMetaMap.Set(old.Id, old)
 	c.checkRegisteredBackups()
 	if old.Registration == nil || !old.Registration.Adopted || c.backupChange(old.Id) != nil {
 		t.Fatalf("an older backup not adopted: %+v", old.Registration)
 	}
 	// a record a newer one replaced (the same file rewritten) is not a change
-	stale := &backupmgr.BackupMetadata{Id: 4000, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineDefault, Source: server.URL, Dest: path, Completed: true, Registration: &backupmgr.BackupRegistration{Artifact: own.Registration.Artifact}}
+	stale := &backupmgr.BackupMetadata{Id: 4000, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: server.URL, Dest: path, Completed: true, Registration: &backupmgr.BackupRegistration{Artifact: own.Registration.Artifact}}
 	c.BackupMetaMap.Set(stale.Id, stale)
 	c.checkRegisteredBackups()
 	if c.backupChange(stale.Id) != nil {

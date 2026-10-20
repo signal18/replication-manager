@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -470,10 +469,9 @@ func TestBuildSnapshotMetadataIndexFromCache(t *testing.T) {
 		BackupMetaMap: backupmgr.NewBackupMetaMap(),
 	}
 	manager := cluster.getSnapshotMetadataManager()
-	key := fmt.Sprintf("%d|%s", backupmgr.BackupMethodLogical, backupmgr.BackupLineDefault)
+	key := snapshotMetadataKey(backupmgr.BackupMethodLogical, "mysqldump")
 	summary := &SnapshotMetadataSummary{
 		BackupMethod:     "logical",
-		BackupLine:       backupmgr.BackupLineDefault,
 		StartTime:        time.Now(),
 		BackupSessionID:  "session-1",
 		ResticSnapshotID: "snap-1",
@@ -513,10 +511,9 @@ func newTestClusterWithSessionMap(sessionMap map[string]string) *Cluster {
 		if snapshotID == "" || sessionID == "" {
 			continue
 		}
-		key := fmt.Sprintf("%d|%s", backupmgr.BackupMethodLogical, backupmgr.BackupLineDefault)
+		key := snapshotMetadataKey(backupmgr.BackupMethodLogical, "mysqldump")
 		summary := &SnapshotMetadataSummary{
 			BackupMethod:     "logical",
-			BackupLine:       backupmgr.BackupLineDefault,
 			StartTime:        time.Now(),
 			BackupSessionID:  sessionID,
 			ResticSnapshotID: snapshotID,
@@ -816,7 +813,6 @@ func TestSummarizeSnapshotMetadataFromBackupMetaMap(t *testing.T) {
 		StartTime:        start,
 		EndTime:          time.Now(),
 		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
-		BackupLine:       backupmgr.BackupLineDefault,
 		BackupMethod:     backupmgr.BackupMethodLogical,
 		Dest:             filepath.Join("/backups", "snap-1", "mysqldump.sql.gz"),
 		ResticSnapshotID: "snap-1",

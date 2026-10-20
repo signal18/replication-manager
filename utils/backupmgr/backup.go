@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,11 +23,6 @@ const (
 	BackupStrategyFull         = 1
 	BackupStrategyIncremental  = 2
 	BackupStrategyDifferential = 3
-)
-
-const (
-	BackupLineDefault = "default"
-	BackupLineAdhoc   = "adhoc"
 )
 
 // The source server's role when a backup started (BackupMetadata.Role).
@@ -71,21 +65,18 @@ type BackupMetadata struct {
 	// SourceJobFailed is an in-memory-only signal set when the DB-side job
 	// that produces a physical stream reported an error. An encrypted run
 	// then never publishes, or withdraws, its artifact.
-	SourceJobFailed   bool   `json:"-"`
-	Checksum          string `json:"checksum"`
-	RetentionDays     int    `json:"retentionDays"`
-	RetentionDuration string `json:"retentionDuration,omitempty"`
-	BackupLine        string `json:"backupLine,omitempty"`
-	MetaFile          string `json:"metaFile,omitempty"`
-	BinLogFileName    string `json:"binLogFileName"`
-	BinLogFilePos     uint64 `json:"binLogFilePos"`
-	BinLogGtid        string `json:"binLogUuid"`
-	Completed         bool   `json:"completed"`
-	SplitUser         bool   `json:"splitUser"`
-	SplitDump         bool   `json:"splitDump"`
-	ExecRemote        bool   `json:"execRemote,omitempty"` // the backup tool ran on the DB node (dbjobs), not next to replication-manager
-	Previous          int64  `json:"previous"`
-	ResticEnabled     bool   `json:"resticEnabled,omitempty"`
+	SourceJobFailed bool   `json:"-"`
+	Checksum        string `json:"checksum"`
+	MetaFile        string `json:"metaFile,omitempty"`
+	BinLogFileName  string `json:"binLogFileName"`
+	BinLogFilePos   uint64 `json:"binLogFilePos"`
+	BinLogGtid      string `json:"binLogUuid"`
+	Completed       bool   `json:"completed"`
+	SplitUser       bool   `json:"splitUser"`
+	SplitDump       bool   `json:"splitDump"`
+	ExecRemote      bool   `json:"execRemote,omitempty"` // the backup tool ran on the DB node (dbjobs), not next to replication-manager
+	Previous        int64  `json:"previous"`
+	ResticEnabled   bool   `json:"resticEnabled,omitempty"`
 	// ResticSnapshotID is the snapshot of a backup recorded before the archive list: at load
 	// it is glued to the cluster's archive in ArchiveRefs, then empty. Read a snapshot with
 	// ArchiveSnapshot.
@@ -252,66 +243,6 @@ func (bm *BackupMetadata) GetSizeAndFileCount() error {
 	bm.Size = size
 	bm.FileCount = fileCount
 	return err
-}
-
-func (bm *BackupMetadata) IsAdhoc() bool {
-	if bm == nil {
-		return false
-	}
-	if bm.BackupLine == BackupLineAdhoc {
-		return true
-	}
-	if strings.TrimSpace(bm.RetentionDuration) != "" {
-		return true
-	}
-	return bm.RetentionDays > 0
-}
-
-func (bm *BackupMetadata) RetentionWindow() (time.Duration, bool) {
-	if bm == nil {
-		return 0, false
-	}
-	if d, ok := ParseRetentionDuration(bm.RetentionDuration); ok {
-		return d, true
-	}
-	if bm.RetentionDays > 0 {
-		return time.Duration(bm.RetentionDays) * 24 * time.Hour, true
-	}
-	return 0, false
-}
-
-func ParseRetentionDuration(value string) (time.Duration, bool) {
-	trimmed := strings.TrimSpace(strings.ToLower(value))
-	if trimmed == "" {
-		return 0, false
-	}
-	if d, err := time.ParseDuration(trimmed); err == nil && d > 0 {
-		return d, true
-	}
-	type suffixSpec struct {
-		suffix string
-		mult   time.Duration
-	}
-	suffixes := []suffixSpec{
-		{"y", 365 * 24 * time.Hour},
-		{"mo", 30 * 24 * time.Hour},
-		{"w", 7 * 24 * time.Hour},
-		{"d", 24 * time.Hour},
-	}
-	for _, spec := range suffixes {
-		if strings.HasSuffix(trimmed, spec.suffix) {
-			num := strings.TrimSpace(strings.TrimSuffix(trimmed, spec.suffix))
-			if num == "" {
-				return 0, false
-			}
-			valueInt, err := strconv.ParseInt(num, 10, 64)
-			if err != nil || valueInt <= 0 {
-				return 0, false
-			}
-			return time.Duration(valueInt) * spec.mult, true
-		}
-	}
-	return 0, false
 }
 
 func DetectCompressionFromDest(dest string) (bool, error) {
@@ -661,7 +592,9 @@ func (b *BackupMetaMap) GetPreviousBackup(backupTool string, source string) *Bac
 	var result *BackupMetadata
 	b.Map.Range(func(key, value interface{}) bool {
 		if backup, ok := value.(*BackupMetadata); ok {
-			if backup.IsAdhoc() {
+			// a registered backup keeps its own file, one replaced lives only in a snapshot
+			// (#2091): neither is the backup a new one replaces
+			if backup.Discovered || backup.OriginalRemoved {
 				return true
 			}
 			if backup.BackupTool == backupTool && backup.Source == source {

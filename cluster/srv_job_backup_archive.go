@@ -48,9 +48,9 @@ func (server *ServerMonitor) removeArchivedOriginalAsked(backtype backupmgr.Back
 	encrypted := meta.Encrypted || isEncryptedBackupArtifact(dest)
 	server.backupMetaMutex.Unlock()
 
-	// A scheduled backup reuses its name on the next run: once a newer backup of the
-	// method exists, Dest is no longer this backup's artifact.
-	if meta != current && !meta.IsAdhoc() {
+	// A backup of a type reuses its name on the next run: once a newer backup of the
+	// type exists, Dest is no longer this backup's artifact.
+	if meta != current && !meta.Discovered {
 		return
 	}
 	if removed || dest == "" || !fileExists(dest) {
@@ -78,7 +78,7 @@ func (server *ServerMonitor) removeArchivedOriginalAsked(backtype backupmgr.Back
 
 	server.backupMetaMutex.Lock()
 	meta.OriginalRemoved = true
-	if meta == server.lastBackupMetaForMethod(backtype) || meta.IsAdhoc() {
+	if meta == server.lastBackupMetaForMethod(backtype) || meta.Discovered {
 		if werr := server.writeBackupMetaFileLocked(meta); werr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata of archived backup in %s: %s", server.URL, werr)
 		}

@@ -56,11 +56,11 @@ func (server *ServerMonitor) glueLegacyArchiveRef(meta *backupmgr.BackupMetadata
 	return true
 }
 
-// persistCatalogueEntry rewrites a backup's record after its refs changed. An older scheduled
-// backup shares its record file with the last one of its method: it changes in memory only.
+// persistCatalogueEntry rewrites a backup's record after its refs changed. An older backup of a
+// type shares its record file with the last one of its type: it changes in memory only.
 // The caller holds the server's backupMetaMutex.
 func (server *ServerMonitor) persistCatalogueEntryLocked(meta *backupmgr.BackupMetadata) {
-	if !meta.IsAdhoc() && meta != server.LastBackupMeta.Logical && meta != server.LastBackupMeta.Physical {
+	if !meta.Discovered && meta != server.LastBackupMeta.Logical && meta != server.LastBackupMeta.Physical {
 		return
 	}
 	if err := server.writeBackupMetaFileLocked(meta); err != nil {

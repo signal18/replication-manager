@@ -24662,9 +24662,6 @@ const docTemplate = `{
         "backupmgr.BackupMetadata": {
             "type": "object",
             "properties": {
-                "backupLine": {
-                    "type": "string"
-                },
                 "backupMethod": {
                     "type": "integer"
                 },
@@ -24767,12 +24764,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "resticSnapshotID": {
-                    "type": "string"
-                },
-                "retentionDays": {
-                    "type": "integer"
-                },
-                "retentionDuration": {
                     "type": "string"
                 },
                 "size": {
@@ -26727,9 +26718,6 @@ const docTemplate = `{
         "cluster.SnapshotMetadataSummary": {
             "type": "object",
             "properties": {
-                "backupLine": {
-                    "type": "string"
-                },
                 "backupMethod": {
                     "type": "string"
                 },

@@ -307,7 +307,7 @@ func (cluster *Cluster) claimBackupVerificationRead(meta *backupmgr.BackupMetada
 	for {
 		cluster.backupVerificationMu.Lock()
 		if !cluster.InLogicalBackup && !cluster.IsInResticBackupForMethod(backupmgr.BackupMethodLogical) {
-			cluster.backupVerificationReads.Store(meta.Id, backupVerificationRead{source: meta.Source, reused: !meta.IsAdhoc()})
+			cluster.backupVerificationReads.Store(meta.Id, backupVerificationRead{source: meta.Source, reused: !meta.Discovered})
 			cluster.backupVerificationMu.Unlock()
 			return nil
 		}

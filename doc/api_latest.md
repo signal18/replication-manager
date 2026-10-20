@@ -13866,7 +13866,6 @@ Status: Internal Server Error
 | endTime | string| `string` |  | |  |  |
 | id | integer| `int64` |  | |  |  |
 | previous | integer| `int64` |  | |  |  |
-| retentionDays | integer| `int64` |  | |  |  |
 | size | integer| `int64` |  | |  |  |
 | source | string| `string` |  | |  |  |
 | startTime | string| `string` |  | |  |  |

@@ -37,7 +37,7 @@ tools, an incomplete backup, or a backup only in its archive
   asked right after a backup would be refused.
 - Once it holds its slot, an on-demand run claims the backup it reads
   (`claimBackupVerificationRead`: `Cluster.backupVerificationReads`, id ->
-  source and whether the file is reused, i.e. not ad hoc), under
+  source and whether the file is reused, i.e. not registered), under
   `backupVerificationMu`, only while no logical backup runs (`InLogicalBackup`,
   the restic push of a logical backup included); it then checks the backup is
   still verifiable (its original archived meanwhile). A logical backup sets its
@@ -62,8 +62,7 @@ tools, an incomplete backup, or a backup only in its archive
   floor and `backupVerificationPoll` are package variables the tests shorten:
   they restore them before their goroutines end and do not run in parallel. `TestBackupVerificationClaimAndBackupStartExclusive`
   starts both at once, 20 times: one goes on, the other waits until it ends.
-  `PurgeExpiredAdhocBackups` (no caller today) skips a backup in
-  `backupVerifying`. `InLogicalBackup` is a plain flag, written by the backup
+  `InLogicalBackup` is a plain flag, written by the backup
   job without this mutex: the mutex orders the claim against the backup's
   start, which sets it under the mutex.
 - `backupVerificationMu` makes a reservation and `DeleteBackupByID` exclusive:
@@ -300,7 +299,7 @@ reseed's pieces (no reseed entry point takes a given backup):
 - Interrupted runs: `verifyBackup` reads the restore level's host and
   credential once and records the host in the running `BackupVerification`
   (its meta file). `closeInterruptedVerification`, when the meta file is read
-  (`AppendLastMetadata` at the server's start, `LoadAdhocBackupMetadata`),
+  (`AppendLastMetadata` at the server's start, `LoadRegisteredBackupMetadata`),
   records a verification still `running` that no run of this process holds
   (`backupVerifying`) as failed, "interrupted", naming the host and what a
   replica is left with (maintenance, replication stopped, event scheduler off

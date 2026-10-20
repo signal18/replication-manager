@@ -185,7 +185,7 @@ func TestForgetFolderBackups(t *testing.T) {
 	s := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", ClusterGroup: cl}
 	dir := s.GetMyBackupDirectory()
 	meta := func(id int64, src string, completed bool, rec string) *backupmgr.BackupMetadata {
-		m := &backupmgr.BackupMetadata{Id: id, Source: src, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mydumper", BackupLine: backupmgr.BackupLineAdhoc, Completed: completed, MetaFile: rec}
+		m := &backupmgr.BackupMetadata{Id: id, Source: src, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: "mydumper", Completed: completed, MetaFile: rec}
 		cl.BackupMetaMap.Set(id, m)
 		return m
 	}

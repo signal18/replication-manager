@@ -408,7 +408,7 @@ func (cluster *Cluster) runSnapback(server *ServerMonitor, a config.ArchiveConfi
 func (cluster *Cluster) snapshotBackupDirectory(server *ServerMonitor, dir string) (string, error) {
 	ended := make(chan error, 1)
 	id := ""
-	tags := server.BuildResticTags("snapback", "", backupmgr.BackupLineDefault, nil)
+	tags := server.BuildResticTags("snapback", "", nil)
 	server.backupResticWith(backupmgr.BackupMethodLogical, nil, dir, resticPushOptions{
 		removeOriginal: func() bool { return false },
 		noFlag:         true,

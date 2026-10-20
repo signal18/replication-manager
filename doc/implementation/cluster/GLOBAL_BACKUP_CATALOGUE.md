@@ -19,17 +19,13 @@ metering.
 
 - The catalogue is the backups' own records: one `<backup>.meta.json` next to each backup, in
   its backup directory, read into `BackupMetaMap` (`FetchLastBackupMetadata`,
-  `LoadAdhocBackupMetadata`, `cluster/srv_bck.go`, `cluster/backup_helpers.go`).
+  `LoadRegisteredBackupMetadata`, `cluster/srv_bck.go`, `cluster/backup_helpers.go`).
 - An archive is known through a backup only: `archiveRefs` maps an archive name to the
   snapshot taken when the backup was pushed (`SetArchiveSnapshot`, `cluster/srv_bck.go:286`).
   repman keeps no list of an archive's snapshots: the snapshot tables ask the archive each time
   (`restic snapshots`, plugin `list`), the attached one only.
-- What a snapshot holds depends on the backup: after a default backup, the whole backup
-  directory; after an ad-hoc one, or the Archive button of a registered backup, that backup's
-  folder or file only (`cluster/srv_job_backup.go` ~5458, ~8189,
-  `cluster/backup_register_archive.go`). Whether a backup is default or ad-hoc is computed when
-  it starts, from who is master or backup server then (`resolveBackupLine`,
-  `cluster/backup_helpers.go:61`): the snapshot's content follows a moving role.
+- A snapshot is the server's whole backup directory (step 1), which holds one backup of each
+  type (see "One backup of each type").
 - The archive sizes are the only archive data kept outside: `<cluster working dir>/archive-sizes.json`.
 
 ## What goes wrong with it
@@ -90,7 +86,7 @@ no backup describes) as a count.
 ### Snapshot content: always the backup directory
 
 To match the words above, every snapshot is the server's whole backup directory, whatever
-triggered it (default or ad-hoc backup, the Archive button). The restore is unchanged: it
+triggered it (a backup, the Archive button). The restore is unchanged: it
 takes the backup's own path out of the snapshot (`fetchArchivedOriginal`, `--include <path>`,
 `cluster/srv_job_backup_archive.go`). Storage barely grows: restic and plakar store each piece
 of data once.
@@ -170,12 +166,32 @@ At the first start with it, the catalogue is built from today's records (their
    refresh; a listing only for a rebuild.
 2. A plugin's `list` answers snapshots only: does the wire need a `contents` op, or does repman
    read the backup records inside the snapshot through `restore` of those files only?
-3. The default / ad-hoc split itself (folder name and retention follow a moving role): left as
-   it is here, to look at separately.
+3. Settled: see "One backup of each type" below.
+
+## One backup of each type (#2091)
+
+A backup directory holds one backup of each type: its tool, compressed or not (`.gz`),
+encrypted or not (`.enc`), for example `mydumper`, `mysqldump.sql.gz`, `mariabackup.xbtream`,
+`mariabackup.xbtream.gz`. Every new backup of a type overwrites the one there; the history is
+the snapshots of the directory.
+
+- There is no backup line any more (#2091). Until then a backup taken on a server neither
+  master nor backup server was written as a `<tool>.<id>` copy kept beside the others, and a
+  per-backup retention existed that no API, CLI or GUI ever set (PR #1334). Both are removed:
+  every backup is written under its type's name, whichever server it is taken on.
+- The record of the backup replaced (`retireReplacedBackup`): held by a snapshot of an archive,
+  it stays in the catalogue, only in the archive (`OriginalRemoved`); held by none, it leaves
+  the catalogue. `GetPreviousBackup` never returns one replaced.
+- A `<tool>.<id>` backup and record written before are read as a registered backup
+  (`LoadRegisteredBackupMetadata` sets `Discovered`): kept as they are, unregistered or deleted
+  by hand. The restic tag `line` and the keep-tag default `line:adhoc adhoc` are gone: every
+  snapshot follows the retention.
+- Open: a replaced backup's record lives in memory until the catalogue files (step 3), so a
+  restart forgets it.
 
 ## Steps
 
-1. Snapshot content always the backup directory (ad-hoc and the Archive button): DONE; the
+1. Snapshot content always the backup directory (every backup and the Archive button): DONE; the
    Archive button is refused while a backup job writes the directory (`ErrBackupJobRunning`).
 2. Role at backup time in the backup record: DONE (`role`: master / slave, "" unknown),
    shown in the backups table.

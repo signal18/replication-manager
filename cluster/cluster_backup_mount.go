@@ -511,7 +511,7 @@ func (cluster *Cluster) resyncBackupCatalogue() {
 // forgetFolderBackups drops from memory the backups of the server whose record is in its
 // backups folder, for the folder now in use to load its own: the records of the previous
 // folder stay where they are (the bucket, or the local folder kept aside) and come back with
-// it, and a loaded record never replaces one in memory (LoadAdhocBackupMetadata), so a record
+// it, and a loaded record never replaces one in memory (LoadRegisteredBackupMetadata), so a record
 // the move rewrote for the bucket would not be read. Kept: a backup being verified, and one
 // that did not complete while a backup runs (the running one writes its record at its end); a
 // failed one goes, as a restart forgets it.
@@ -558,7 +558,7 @@ func (server *ServerMonitor) lastBackupsFromCatalogue() {
 		if m := *last.meta; m == nil || m.Id == 0 || cluster.BackupMetaMap.Get(m.Id) != nil {
 			continue
 		}
-		if _, newest := server.GetLatestMetaForLine(last.method, ""); newest != nil {
+		if _, newest := server.GetLatestBackupMeta(last.method, true); newest != nil {
 			*last.meta = newest
 		} else {
 			*last.meta = new(backupmgr.BackupMetadata)

@@ -1933,9 +1933,7 @@ func TestFinishReseedJobState_ClearsResticReseedCookie(t *testing.T) {
 // off the job-state "done" callback (server/api_database.go) instead.
 func TestMarkBackupPhysicalDone_SetsCookieForRegularBackup(t *testing.T) {
 	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
-	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
-		BackupLine: backupmgr.BackupLineDefault,
-	}
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{}
 
 	server.MarkBackupPhysicalDone("mariabackup")
 
@@ -1956,9 +1954,7 @@ func TestMarkBackupPhysicalDone_SetsCookieForRegularBackup(t *testing.T) {
 // flows), even though it's still marked Completed.
 func TestMarkBackupPhysicalDone_SkipsCookieForAdhocBackup(t *testing.T) {
 	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
-	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
-		BackupLine: backupmgr.BackupLineAdhoc,
-	}
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{}
 
 	server.MarkBackupPhysicalDone("mariabackup")
 
@@ -1976,9 +1972,7 @@ func TestMarkBackupPhysicalDone_SkipsCookieForAdhocBackup(t *testing.T) {
 // unrelated task.
 func TestMarkBackupPhysicalDone_NoopForOtherTasks(t *testing.T) {
 	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
-	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
-		BackupLine: backupmgr.BackupLineDefault,
-	}
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{}
 
 	for _, task := range []string{"reseedmariabackup", "reseedxtrabackup", "flashbackmariabackup", "errorlog", ""} {
 		server.MarkBackupPhysicalDone(task)

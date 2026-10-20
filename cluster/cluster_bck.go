@@ -1793,7 +1793,6 @@ var resticTagTemplateKeySet = map[string]struct{}{
 	"version":     {},
 	"backup-type": {},
 	"backup-tool": {},
-	"line":        {},
 	"method":      {},
 }
 
@@ -2227,12 +2226,8 @@ func renderResticKeepTagTemplate(template string, values map[string]string, clus
 	return rendered, true
 }
 
-func (server *ServerMonitor) BuildResticTags(backupType, backupTool, backupLine string, meta *backupmgr.BackupMetadata) []string {
+func (server *ServerMonitor) BuildResticTags(backupType, backupTool string, meta *backupmgr.BackupMetadata) []string {
 	cluster := server.ClusterGroup
-	lineValue := normalizeBackupLine(backupLine)
-	if lineValue == "" {
-		lineValue = backupmgr.BackupLineDefault
-	}
 	tagValues := map[string]string{
 		"tenant":      cluster.Conf.Cloud18GitUser,
 		"cluster":     cluster.Name,
@@ -2240,7 +2235,6 @@ func (server *ServerMonitor) BuildResticTags(backupType, backupTool, backupLine 
 		"version":     server.DBVersion.ToString(),
 		"backup-type": backupType,
 		"backup-tool": backupTool,
-		"line":        lineValue,
 		"method":      strings.TrimSpace(backupType),
 	}
 
@@ -2248,6 +2242,10 @@ func (server *ServerMonitor) BuildResticTags(backupType, backupTool, backupLine 
 	tagSet := make(map[string]struct{})
 	tags := make([]string, 0, len(templates)+3)
 	for _, template := range templates {
+		// a "line" saved from an older default renders nothing: backups have no line (#2091)
+		if normalizeResticTagCategory(strings.Trim(template, "{}:")) == "line" {
+			continue
+		}
 		rendered, ok := renderResticTagTemplate(template, tagValues, cluster)
 		if !ok || strings.TrimSpace(rendered) == "" {
 			continue

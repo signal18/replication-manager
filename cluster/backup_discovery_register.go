@@ -386,7 +386,7 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 	scheduled := prev == nil && server.isScheduledBackupArtifact(path)
 	if prev != nil {
 		server.backupMetaMutex.Lock() // as the fields carried over below
-		scheduled = !prev.Discovered && !prev.IsAdhoc()
+		scheduled = !prev.Discovered
 		server.backupMetaMutex.Unlock()
 	}
 	var id int64
@@ -399,10 +399,10 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 			id++
 		}
 	default:
-		// the id of an ad-hoc backup, a unix time: the artifact's mtime, bumped while taken
+		// the id of a registered backup, a unix time: the artifact's mtime, bumped while taken
 		// (the map or a meta file); once its meta file is written, a backup keeps its id
 		id = before.ModTime.Unix()
-		for cluster.BackupMetaMap.Get(id) != nil || fileExists(server.buildBackupMetaFileName(tool, id, backupmgr.BackupLineAdhoc)) {
+		for cluster.BackupMetaMap.Get(id) != nil || fileExists(server.buildBackupMetaFileName(tool, id, true)) {
 			id++
 		}
 	}
@@ -418,7 +418,6 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 		Dest:           path,
 		SplitDump:      split,
 		Encrypted:      isEncryptedBackupArtifact(path),
-		BackupLine:     backupmgr.BackupLineAdhoc,
 		Completed:      true,
 		Discovered:     true,
 	}
@@ -455,20 +454,20 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 		meta.Verification, meta.VerificationRuns, meta.VerificationRunSequence = prev.Verification, prev.VerificationRuns, prev.VerificationRunSequence
 		meta.ResticEnabled, meta.ResticSnapshotID, meta.ArchiveRefs, meta.ResticFilePath = prev.ResticEnabled, prev.ResticSnapshotID, prev.ArchiveRefs, prev.ResticFilePath
 		meta.BackupSessionID = prev.BackupSessionID
-		// a backup replication-manager took keeps being one; an ad hoc one keeps its line
-		meta.Discovered, meta.BackupLine, meta.RetentionDays, meta.RetentionDuration = prev.Discovered, prev.BackupLine, prev.RetentionDays, prev.RetentionDuration
+		// a backup replication-manager took keeps being one
+		meta.Discovered = prev.Discovered
 		server.backupMetaMutex.Unlock()
 	}
 	what := "registered"
 	if scheduled {
-		meta.Discovered, meta.BackupLine = false, backupmgr.BackupLineDefault
-		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime, meta.BackupLine)
+		meta.Discovered = false
+		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime)
 		if err := server.writeScheduledBackupMeta(meta); err != nil {
 			return nil, err
 		}
 		what = "registered, as the scheduled backup,"
 	} else {
-		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime, meta.BackupLine)
+		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime)
 		if err := server.writeDiscoveredBackupMeta(meta, prev); err != nil {
 			return nil, err
 		}
@@ -514,7 +513,7 @@ func (server *ServerMonitor) writeDiscoveredBackupMeta(meta, prev *backupmgr.Bac
 // backup sets them.
 func (server *ServerMonitor) writeScheduledBackupMeta(meta *backupmgr.BackupMetadata) error {
 	cluster := server.ClusterGroup
-	metaPath := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, backupmgr.BackupLineDefault)
+	metaPath := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, false)
 	if metaPath == "" {
 		return fmt.Errorf("no metadata file for tool %q", meta.BackupTool)
 	}
@@ -534,7 +533,7 @@ func (server *ServerMonitor) writeScheduledBackupMeta(meta *backupmgr.BackupMeta
 	}
 	var replaced []int64
 	cluster.BackupMetaMap.Callback(func(id int64, other *backupmgr.BackupMetadata) bool {
-		if other != nil && id != meta.Id && !other.Discovered && !other.IsAdhoc() && other.Source == server.URL && other.BackupTool == meta.BackupTool && other.BackupMethod == backupmgr.BackupMethodLogical {
+		if other != nil && id != meta.Id && !other.Discovered && other.Source == server.URL && other.BackupTool == meta.BackupTool && other.BackupMethod == backupmgr.BackupMethodLogical {
 			replaced = append(replaced, id)
 		}
 		return true
@@ -631,7 +630,7 @@ func (cluster *Cluster) checkRegisteredBackups() {
 }
 
 // checkRegisteredBackups is Cluster.checkRegisteredBackups for the server's logical backups:
-// the discovered ones and replication-manager's own, scheduled or ad hoc.
+// the discovered ones and replication-manager's own.
 func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 	cluster := server.ClusterGroup
 	var metas []*backupmgr.BackupMetadata

@@ -18,8 +18,6 @@ definitions:
     type: object
   backupmgr.BackupMetadata:
     properties:
-      backupLine:
-        type: string
       backupMethod:
         type: integer
       backupSessionID:
@@ -104,10 +102,6 @@ definitions:
       resticFilePath:
         type: string
       resticSnapshotID:
-        type: string
-      retentionDays:
-        type: integer
-      retentionDuration:
         type: string
       size:
         description: in bytes
@@ -1452,8 +1446,6 @@ definitions:
     type: object
   cluster.SnapshotMetadataSummary:
     properties:
-      backupLine:
-        type: string
       backupMethod:
         type: string
       backupSessionID:

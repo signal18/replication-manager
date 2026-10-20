@@ -615,7 +615,7 @@ func TestBackupVerificationWaitsAreBounded(t *testing.T) {
 func TestCloseInterruptedVerificationKeepsALaterResult(t *testing.T) {
 	c, server := newStagingTestServer(t)
 	c.Servers = append(c.Servers, server)
-	meta := &backupmgr.BackupMetadata{Id: 21, BackupTool: "mysqldump", BackupLine: backupmgr.BackupLineAdhoc, Source: server.URL,
+	meta := &backupmgr.BackupMetadata{Id: 21, BackupTool: "mysqldump", Source: server.URL,
 		Dest: filepath.Join(server.GetMyBackupDirectory(), "mysqldump.21.sql.gz")}
 	if err := os.MkdirAll(server.GetMyBackupDirectory(), 0755); err != nil {
 		t.Fatal(err)

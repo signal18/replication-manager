@@ -206,7 +206,7 @@ func (cluster *Cluster) ArchiveBackup(id int64, removeOriginal, testFirst bool) 
 func (cluster *Cluster) pushRegisteredBackup(server *ServerMonitor, meta *backupmgr.BackupMetadata, removeOriginal bool) {
 	dir := server.GetMyBackupDirectory()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive of backup %d on %s: snapshot of %s queued, holding %s (remove original: %t)", meta.Id, server.URL, dir, meta.Dest, removeOriginal)
-	tags := server.BuildResticTags("logical", meta.BackupTool, meta.BackupLine, meta)
+	tags := server.BuildResticTags("logical", meta.BackupTool, meta)
 	server.backupResticWith(backupmgr.BackupMethodLogical, meta, dir, resticPushOptions{
 		removeOriginal: func() bool { return removeOriginal },
 		asked:          true,

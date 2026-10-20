@@ -24651,9 +24651,6 @@
         "backupmgr.BackupMetadata": {
             "type": "object",
             "properties": {
-                "backupLine": {
-                    "type": "string"
-                },
                 "backupMethod": {
                     "type": "integer"
                 },
@@ -24756,12 +24753,6 @@
                     "type": "string"
                 },
                 "resticSnapshotID": {
-                    "type": "string"
-                },
-                "retentionDays": {
-                    "type": "integer"
-                },
-                "retentionDuration": {
                     "type": "string"
                 },
                 "size": {
@@ -26716,9 +26707,6 @@
         "cluster.SnapshotMetadataSummary": {
             "type": "object",
             "properties": {
-                "backupLine": {
-                    "type": "string"
-                },
                 "backupMethod": {
                     "type": "string"
                 },

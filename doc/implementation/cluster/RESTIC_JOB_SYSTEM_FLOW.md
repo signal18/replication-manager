@@ -25,9 +25,9 @@ backward-compatibility expectations for maintainers.
 3. `JobInsertTaskWithPayload()` routes to `jobInsertTask()` with optional payload.
 
 ### Backup Jobs
-- `JobBackupLogicalWithOptions()` and `JobBackupPhysicalWithOptions()` normalize
-  backup line selection and set `BackupMeta` fields including `RetentionDuration`,
-  `RetentionDays`, and `ResticEnabled`.
+- `JobBackupLogicalWithOptions()` and `JobBackupPhysicalWithOptions()` write the
+  backup under its type's name in the server's backup directory, replacing the one
+  there (#2091), and set `BackupMeta` fields including `ResticEnabled`.
 - If restic is enabled, the restic flag is set immediately to avoid an "idle gap"
   between backup completion and restic queueing.
 
@@ -38,12 +38,12 @@ backward-compatibility expectations for maintainers.
 ### Restic Tagging Configuration
 - `backup-restic-tags`: comma-separated tag templates. Each template can include
   placeholders and is rendered per backup. Templates with missing values are
-  skipped. Compact form is supported (e.g., `cluster,backup-type,line`).
+  skipped. Compact form is supported (e.g., `cluster,backup-type`).
 - `backup-restic-host`: optional override for restic `--host` during backup.
   Leave empty to use restic's default hostname (no alias).
 
 Supported placeholders for templates:
-- `{tenant}`, `{cluster}`, `{engine}`, `{version}`, `{backup-type}`, `{backup-tool}`, `{line}`
+- `{tenant}`, `{cluster}`, `{engine}`, `{version}`, `{backup-type}`, `{backup-tool}`
 
 Behavior notes:
 - Unknown placeholders log a warning and skip that tag.
@@ -55,10 +55,8 @@ Behavior notes:
 - Template entries wrapped in single or double quotes are treated as literal tags
   (quotes are stripped). Commas inside quoted entries are allowed.
 - Default configured tag set:
-  `tenant,cluster,engine,version,backup-type,backup-tool,line`
-- The `line` tag is emitted as the plain value (`default` or `adhoc`) unless the
-  template uses `line:` (shorthand) or `line:{line}` (explicit key:value).
-- Older snapshots without a `line` tag are treated like `line:default` by purge policies (they are not protected by `line:adhoc` keep-tag).
+  `tenant,cluster,engine,version,backup-type,backup-tool`
+- A `line` entry saved from an older default renders nothing (#2091).
 
 ### Restic Purge Grouping
 - `backup-restic-purge-group-by` maps to restic `forget --group-by`. Default is `host,paths` for stable grouping.
@@ -73,8 +71,8 @@ Examples:
 
 ### Restic Purge Keep Tags
 - `backup-restic-purge-keep-tag` sets `forget --keep-tag` values.
-- Use this to protect ad-hoc snapshots from global purge policies (default: `line:adhoc adhoc`,
-  covering both key:value and legacy plain tags).
+- Use this to protect snapshots carrying a tag from global purge policies (default: empty,
+  every snapshot follows the retention).
 - Keep-tag templates only support `{cluster}` and `{tenant}` placeholders; other placeholders
   are rejected. Quote a tag to keep it literal.
 - Separate keep-tag filters with spaces (commas are also accepted for legacy configs).
@@ -85,7 +83,7 @@ Examples:
 ### Reseed Jobs
 - Physical reseeds can be driven by restic payloads (restore or mount) with optional
   override paths.
-- Logical reseeds support both ad-hoc reseed by metadata ID and restic-based restore
+- Logical reseeds support both reseed by metadata ID and restic-based restore
   or mount (mysqldump and mydumper).
 
 ## Function Review Notes
@@ -102,8 +100,7 @@ Examples:
 - Reuses previous ID for same task to keep single-row semantics.
 
 ### JobBackupPhysicalWithOptions()
-- Honors `BackupLine` and retention policy (`RetentionDuration` or `RetentionDays`).
-- Skips `.old` rotation for ad-hoc backups (no false overwrite).
+- Replaces the backup of its type (`.old` rotation with `backup-keep-until-valid`).
 
 ### JobBackupLogicalWithOptions()
 - Sets restic logical flag early to avoid a lock gap.
