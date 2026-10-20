@@ -433,6 +433,23 @@ func reseedGTIDSlavePos(pos string, current *gtid.List) string {
 	return slavePos.Sprint()
 }
 
+// setSeedGTIDSlavePos positions a MariaDB server seeded from a backup at pos and returns the
+// gtid_slave_pos it set: the backup's domains from the backup, every other domain from the
+// server's live gtid_current_pos, as the parent seed always merged them (CurrentGtid.Merge).
+// gtid_current_pos, not gtid_slave_pos: it holds the server's own binlog domain, which a child
+// cluster's master has (its provisioning and its restore are written there) and without which
+// gtid_strict_mode refuses the set (error 1948, MDEV-24234); the source accepts a position
+// with domains it does not have, as a multi-source replica's (#2124).
+func (server *ServerMonitor) setSeedGTIDSlavePos(pos string) (string, string, error) {
+	current, logs, err := dbhelper.GetVariableByName(server.Conn, "GTID_CURRENT_POS", server.DBVersion)
+	if err != nil {
+		return "", logs, err
+	}
+	value := reseedGTIDSlavePos(pos, gtid.NewList(current))
+	logs, err = dbhelper.SetGTIDSlavePos(server.Conn, value)
+	return value, logs, err
+}
+
 func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor, masterGTIDList string) (string, error) {
 	var err error
 	var logs, masterCurrentGTID string
@@ -576,16 +593,15 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 				if dumpStarted {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set by the restored dump %s, which started replication", target.URL, backupfile)
 				} else if pos, _, _ := logicalReseedPosition(target.logicalRestorePosition.Load(), meta); pos != "" {
-					// the other domains are the monitor's last read of gtid_slave_pos, before the
-					// restore: the restore replaced only the data of the backup's domains
-					masterGTIDList = reseedGTIDSlavePos(pos, target.SlaveGtid)
-					// only the managed channel was stopped before the load (JobReseedMysqldump):
-					// another channel running on the target refuses the set (error 1198)
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set to %s (backup %s)", target.URL, masterGTIDList, pos)
-					// err, not a local: a seed whose position is not set fails, its channel would
-					// resume from the old position
-					if logs, err = dbhelper.SetGTIDSlavePos(target.Conn, masterGTIDList); err != nil {
+					// the restore replaced only the data of the backup's domains: the others are
+					// the server's (setSeedGTIDSlavePos). Only the managed channel was stopped
+					// before the load (JobReseedMysqldump): another channel running on the target
+					// refuses the set (error 1198). err, not a local: a seed whose position is not
+					// set fails, its channel would resume from the old position
+					if masterGTIDList, logs, err = target.setSeedGTIDSlavePos(pos); err != nil {
 						cluster.LogSQL(logs, err, target.URL, "Reseed", config.LvlErr, "Failed to set gtid_slave_pos on %s: %s", target.URL, err)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set to %s (backup %s)", target.URL, masterGTIDList, pos)
 					}
 				}
 			}

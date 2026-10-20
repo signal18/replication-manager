@@ -11,21 +11,22 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
-// A splitdump restore positions a MariaDB server at the backup's GTID whatever the monitored
-// channel (a child cluster's master has none, HaveMariaDBGTID false), the other domains it
-// replicates kept (#2124); MySQL keeps GTID_PURGED after the load.
-func TestSplitdumpGTIDSlavePos(t *testing.T) {
+// A seed positions a MariaDB server at the backup's GTID whatever the monitored channel (a
+// child cluster's master has none, HaveMariaDBGTID false), every other domain from its
+// gtid_current_pos, its own binlog domain included (error 1948 without it, #2124); MySQL keeps
+// GTID_PURGED after the load.
+func TestSeedGTIDSlavePos(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
 	for _, monitoredGTID := range []bool{false, true} {
 		server, mock := newMyLoaderPositionServer(t, mariadb, monitoredGTID)
 		mock.ExpectQuery("SELECT Variable_Value AS Value FROM .*global_variables WHERE Variable_Name = ?").
-			WithArgs("GTID_SLAVE_POS").
-			WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("4-1-10,7-3-99"))
+			WithArgs("GTID_CURRENT_POS").
+			WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("4-1-10,5-57322325-389"))
 		mock.ExpectExec("SET GLOBAL gtid_slave_pos = ?").
-			WithArgs("4-53070043-3245370,7-3-99").
+			WithArgs("4-53070043-3245370,5-57322325-389").
 			WillReturnResult(sqlmock.NewResult(0, 0))
-		if _, err := server.splitdumpGTIDSlavePos("4-53070043-3245370"); err != nil {
-			t.Fatalf("monitored channel GTID %v: %s", monitoredGTID, err)
+		if value, _, err := server.setSeedGTIDSlavePos("4-53070043-3245370"); err != nil || value != "4-53070043-3245370,5-57322325-389" {
+			t.Fatalf("monitored channel GTID %v: %q %v", monitoredGTID, value, err)
 		}
 		if err := mock.ExpectationsWereMet(); err != nil {
 			t.Fatalf("monitored channel GTID %v: %s", monitoredGTID, err)

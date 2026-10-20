@@ -37,7 +37,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
-	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/splitdump"
@@ -2838,25 +2837,9 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 	return server.restoreSplitdumpWithMysql(ctx, backupPath, restoreUser)
 }
 
-// splitdumpGTIDSlavePos positions a MariaDB server at the GTID of the splitdump about to be
-// loaded, before the load (#2124): the backup's domains from the backup, the others the
-// server replicates kept (reseedGTIDSlavePos, as the single-file child seed does, #2099).
-// Whatever the monitored channel: HaveMariaDBGTID reads the cluster's replication-source-name
-// channel only, which a child cluster's master does not have (its channel to the parent is
-// another one). Before the load: a master restore (a child cluster's master) writes the data
-// to its binlog in its own domain, after which MariaDB refuses a gtid_slave_pos without that
-// domain (error 1948), as the v3.1.43 dumps set it at their head.
-func (server *ServerMonitor) splitdumpGTIDSlavePos(gtidSet string) (string, error) {
-	current, logs, err := dbhelper.GetVariableByName(server.Conn, "GTID_SLAVE_POS", server.DBVersion)
-	if err != nil {
-		return logs, err
-	}
-	return dbhelper.SetGTIDSlavePos(server.Conn, reseedGTIDSlavePos(gtidSet, gtid.NewList(current)))
-}
-
 // splitdumpGTIDPurged is the statement that gives a MySQL/Percona server with GTID the GTID of
 // the splitdump it was loaded from, after the load; "" for any other server (a MariaDB server
-// is positioned before the load, splitdumpGTIDSlavePos).
+// is positioned by setSeedGTIDSlavePos).
 func (server *ServerMonitor) splitdumpGTIDPurged(gtidSet string) string {
 	if server.IsMariaDB() || !server.HasMySQLGTID() || !server.DBVersion.IsMySQLOrPerconaGreater57() {
 		return ""
@@ -2932,14 +2915,6 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 			return err
 		}
 	}
-	if meta != nil && meta.GTID != "" && server.IsMariaDB() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-			"Applying splitdump GTID %s for MariaDB on %s before the load", meta.GTID, server.URL)
-		if logs, err := server.splitdumpGTIDSlavePos(meta.GTID); err != nil {
-			cluster.LogSQL(logs, err, server.URL, "Reseed", config.LvlWarn, "Failed to apply splitdump GTID %s for MariaDB on %s: %s", meta.GTID, server.URL, err)
-		}
-	}
-
 	// Open one dedicated pinned connection per parallel worker. We deliberately
 	// avoid the shared server.Conn pool: statement ordering, session state
 	// (USE / FK / UNIQUE) and transaction affinity all require a single connection
@@ -3057,7 +3032,16 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		return restoreErr
 	}
 
-	if meta != nil && meta.GTID != "" && !server.IsMariaDB() {
+	if meta != nil && meta.GTID != "" && server.IsMariaDB() {
+		// whatever the monitored channel (HaveMariaDBGTID reads replication-source-name's
+		// only, which a child cluster's master has not), its own domains kept (#2124)
+		if value, logs, err := server.setSeedGTIDSlavePos(meta.GTID); err != nil {
+			cluster.LogSQL(logs, err, server.URL, "Reseed", config.LvlWarn, "Failed to apply splitdump GTID %s for MariaDB on %s: %s", meta.GTID, server.URL, err)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Applied splitdump GTID %s for MariaDB on %s: gtid_slave_pos %s", meta.GTID, server.URL, value)
+		}
+	} else if meta != nil && meta.GTID != "" {
 		if query := server.splitdumpGTIDPurged(meta.GTID); query == "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
 				"Splitdump GTID %s not applied on %s: no GTID replication on this server", meta.GTID, server.URL)
