@@ -351,15 +351,10 @@ func (cluster *Cluster) RefreshBackupMount() {
 	if err != nil || t == nil {
 		return
 	}
-	// a mount left by a previous run (replication-manager killed): the kernel keeps its mount
-	// point, unanswered; detached, never mistaken for local backups
-	if isMountPoint(mountPoint) {
-		lazyUnmount(mountPoint)
-		if isMountPoint(mountPoint) {
-			bm.state.Error = mountPoint + " is still mounted by a previous run and could not be detached"
-			return
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: a mount left on %s by a previous run detached", mountPoint)
+	// a mount left by a previous run: detached, never mistaken for local backups
+	if err := cluster.detachDeadBackupMount(); err != nil {
+		bm.state.Error = err.Error()
+		return
 	}
 	os.MkdirAll(mountPoint, os.ModePerm)
 	// local backups: uploaded into the bucket first, their records with them, so the catalogue
@@ -379,6 +374,33 @@ func (cluster *Cluster) RefreshBackupMount() {
 	removeEmptyDirs(mountPoint)
 	bm.starting = true
 	go cluster.startBackupMount(t, keys)
+}
+
+// detachDeadBackupMount detaches a mount left on the backups folder by a previous run
+// (replication-manager killed, the mount it served in its process gone): the kernel keeps the
+// mount point, every request on it answered "transport endpoint is not connected", so a
+// backup into it fails. A mount this process serves is never touched (a config reload).
+func (cluster *Cluster) detachDeadBackupMount() error {
+	point := cluster.backupMountPoint()
+	if !isMountPoint(point) || s3fuse.Serves(point) {
+		return nil
+	}
+	lazyUnmount(point)
+	if isMountPoint(point) {
+		return fmt.Errorf("%s is still mounted by a previous run and could not be detached", point)
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: a mount left on %s by a previous run detached", point)
+	return nil
+}
+
+// startBackupFolder, at the cluster's start: the backups folder is a folder again at once,
+// and its mount is made now, not at the first mount check a minute or two later; a backup
+// in between fails on a mount left by the previous run.
+func (cluster *Cluster) startBackupFolder() {
+	if err := cluster.detachDeadBackupMount(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s", err)
+	}
+	go cluster.RefreshBackupMount()
 }
 
 // removeEmptyDirs removes the empty folders under dir, deepest first, never dir itself nor a

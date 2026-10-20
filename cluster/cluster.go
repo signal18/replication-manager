@@ -1026,6 +1026,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.RefreshToolVersions()
 	cluster.initResticLocalDir()
 	cluster.StartResticManager()
+	cluster.startBackupFolder() // a mount left by a previous run detached, the mount made now (#2091)
 	// Config persistence is unlocked only now: the save queue is async and a
 	// save executing mid-init captures a half-loaded config (missing external
 	// users, restic paths, ACLs), emitting transient config change events
