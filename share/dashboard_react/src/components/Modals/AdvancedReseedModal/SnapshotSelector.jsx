@@ -67,18 +67,15 @@ function SnapshotSelector({ snapshots, selectedSnapshot, setSelectedSnapshot, op
             formatLocalDateTime(snapshot.time)
           const hasFormattedTime = Boolean(formattedTime)
           const primaryPath = snapshot.paths?.[0] || ''
-          const { clusterName, serverHost, serverPort, isAdhoc, backupTool } = extractServerInfoFromPath(
-            primaryPath,
-            snapshot.tags || []
-          )
+          const { clusterName, serverHost, serverPort, backupTool } = extractServerInfoFromPath(primaryPath)
           const tagMeta = parseSnapshotTags(snapshot.tags || [])
           let displayText = `${snapshot.short_id}`
           if (hasFormattedTime) {
             displayText += ` - ${formattedTime}`
           }
           displayText += ` - ${clusterName} - ${serverHost}:${serverPort}`
-          if (isAdhoc && backupTool) {
-            displayText += ` (adhoc:${backupTool})`
+          if (backupTool) {
+            displayText += ` (${backupTool})`
           }
           if (preferredMeta?.backupMethod && preferredMeta?.backupMethod !== tagMeta.backupType) {
             displayText += ` (${preferredMeta.backupMethod})`

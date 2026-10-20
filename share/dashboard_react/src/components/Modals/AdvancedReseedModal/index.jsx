@@ -207,7 +207,7 @@ function AdvancedReseedModal({ isOpen, closeModal, onConfirm, operationType, clu
     const selectedSnapshotTags = parseSnapshotTags(selectedSnapshotObj.tags || [])
     const selectedSnapshotStatusBadge = selectedSnapshotTags ? renderStatusBadge(selectedSnapshotTags.status) : null
     const selectedSnapshotPrimaryPath = selectedSnapshotObj.paths?.[0] || ''
-    const selectedSnapshotPathInfo = extractServerInfoFromPath(selectedSnapshotPrimaryPath, selectedSnapshotObj.tags || [])
+    const selectedSnapshotPathInfo = extractServerInfoFromPath(selectedSnapshotPrimaryPath)
     const preferredMetadata = getPreferredMetadata(selectedSnapshotObj, operationType)
     const logicalMetadata = getSnapshotMetadataByMethod(selectedSnapshotObj, 'logical')
     const physicalMetadata = getSnapshotMetadataByMethod(selectedSnapshotObj, 'physical')

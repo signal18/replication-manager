@@ -75,7 +75,7 @@ Leave blank to use restic defaults.`
   const ResticKeepTagTooltip = `
 Keep-tag overrides selection by always retaining snapshots that match the tag.  
 Retention runs normally; any snapshot with a keep-tag survives forget.  
-Provide space-separated tags, e.g. "line:adhoc env:prod".  
+Provide space-separated tags, e.g. "env:prod".  
 Commas inside a tag mean AND in restic (use quotes if needed).  
 You can use {cluster} or {tenant} placeholders (example: "cluster:{cluster}").  
 Wrap a literal tag in quotes to prevent placeholder processing.  
