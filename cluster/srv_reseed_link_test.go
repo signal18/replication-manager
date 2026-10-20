@@ -2,7 +2,9 @@ package cluster
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 
@@ -144,4 +146,74 @@ func TestReseedStoppedLinksGraceAndConcurrency(t *testing.T) {
 		sv.checkReseedStoppedLinks()
 	}
 	<-done
+}
+
+// cinf0020 is the CINF0020 this tick opened, if any (IsInState reads the previous tick).
+func cinf0020(c *Cluster) *state.State {
+	for _, st := range c.StateMachine.GetOpenStates() {
+		if st.ErrKey == "CINF0020" {
+			return &st
+		}
+	}
+	return nil
+}
+
+// A PITR leaves its server standalone (#2115): CINF0020 names the server, the restore and the
+// removed channel while it stays so, and ends once a rejoin or a reseed brings the channel
+// back on a server that answers. A status within two ticks of the removal, or from a server
+// that does not answer, does not end it.
+func TestPITRRemovedLinkState(t *testing.T) {
+	c, sv := reseedLinkFixture()
+	removed := func(at time.Time) {
+		sv.reseedLinks = reseedStoppedLinks{channels: []string{"belair"}, reason: "point-in-time restore from backup 42", at: at, removed: true}
+	}
+	old := time.Now().Add(-time.Hour)
+
+	removed(old)
+	sv.checkReseedStoppedLinks()
+	st := cinf0020(c)
+	if st == nil || st.ErrType != config.LvlInfo || st.ServerUrl != sv.URL {
+		t.Fatalf("CINF0020 while the server stays standalone: %+v", st)
+	}
+	if warn0252Open(c) {
+		t.Fatal("a removed link is not a stopped one: no WARN0252")
+	}
+	for _, want := range []string{sv.URL, "point-in-time restore from backup 42", "'belair'"} {
+		if !strings.Contains(st.ErrDesc, want) {
+			t.Errorf("CINF0020 %q does not name %q", st.ErrDesc, want)
+		}
+	}
+
+	c.StateMachine.ClearState()
+	sv.Replications = []dbhelper.SlaveStatus{channel("belair", "db2.belair", "Yes", "Yes")}
+	sv.checkReseedStoppedLinks()
+	if cinf0020(c) == nil {
+		t.Fatal("a server that does not answer keeps CINF0020")
+	}
+
+	c.StateMachine.ClearState()
+	sv.Conn = &sqlx.DB{}
+	c.Conf.MonitoringTicker = 2
+	removed(time.Now())
+	sv.checkReseedStoppedLinks()
+	if cinf0020(c) == nil {
+		t.Fatal("a status read before the removal does not end a fresh record")
+	}
+
+	c.StateMachine.ClearState()
+	removed(old)
+	sv.checkReseedStoppedLinks()
+	if cinf0020(c) != nil || len(sv.reseedStoppedLinkList()) != 0 {
+		t.Fatal("the channel back on a server that answers ends CINF0020")
+	}
+	sv.checkReseedStoppedLinks()
+	if cinf0020(c) != nil {
+		t.Fatal("CINF0020 stays closed once ended")
+	}
+}
+
+func TestChannelList(t *testing.T) {
+	if got := channelList([]string{"", "crm"}); got != "'default', 'crm'" {
+		t.Fatalf("channelList: %s", got)
+	}
 }

@@ -651,8 +651,8 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 
 	// If reset failed, better to stop PITR
 	if server.PointInTimeMeta.IsInPITR {
-		server.StopSlave()
-		_, err := server.ResetSlave()
+		// the PITR server stays standalone: its link is removed, CINF0020 says so (#2115)
+		err := server.resetLinkForPITR()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
 				if server.HasReseedingState(task) {
@@ -767,8 +767,8 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 
 	// If reset failed, better to stop PITR
 	if server.PointInTimeMeta.IsInPITR {
-		server.StopSlave()
-		_, err := server.ResetSlave()
+		// the PITR server stays standalone: its link is removed, CINF0020 says so (#2115)
+		err := server.resetLinkForPITR()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
 				if server.HasReseedingState(task) {
@@ -1331,8 +1331,8 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 
 	// If reset failed, better to stop PITR
 	if isPITR {
-		server.StopSlave()
-		_, err := server.ResetSlave()
+		// the PITR server stays standalone: its link is removed, CINF0020 says so (#2115)
+		err := server.resetLinkForPITR()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
 				resetReseed()
@@ -1567,8 +1567,8 @@ func (server *ServerMonitor) JobReseedLogicalBackupFromPathPrepare(ctx context.C
 
 	// If reset failed, better to stop PITR
 	if isPITR {
-		server.StopSlave()
-		_, err := server.ResetSlave()
+		// the PITR server stays standalone: its link is removed, CINF0020 says so (#2115)
+		err := server.resetLinkForPITR()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
 				resetReseed()
@@ -7076,7 +7076,7 @@ func (server *ServerMonitor) pointLogicalReseedReplica(meta *backupmgr.BackupMet
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop all slaves on server: %s %s", server.URL, err)
 	}
 	// the managed channel the dump's START SLAVE started: StopAllSlaves stops the channels of
-	// the monitor's last status, which has none since the RESET SLAVE ALL of the reseed
+	// the monitor's last status, which may not list it yet (a channel pointed just before the load)
 	if pointedBeforeRestore {
 		if logs, err := server.StopSlave(); err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)

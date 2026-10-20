@@ -321,6 +321,7 @@ var ClusterError = map[string]string{
 	"CINF0017":  "Replication plugin %s of %s %s: captured to GTID %s, applied to checkpoint %d at GTID %s, %d MB waiting, lag %d s, %d inserts, %d updates, %d deletes, %d rows skipped%s",
 	"CINF0018":  "ColumnStore rebalance on %s: %d/%d tables done, now copying %s over every dbroot (its writes wait for the copy)",
 	"CINF0016":  "Backup verification running on %s: %s backup %d (%s level)",
+	"CINF0020":  "Server %s standalone after a %s: replication channel(s) %s removed, so it does not replicate past the restored point -- rejoin or reseed it to make it a replica again",
 	"CINF0012":  "Local tools of this replication-manager for the cluster: %s",
 	"CINF0010":  "Server %s: memory configured %.2f DBU over its plan %.2f with no buffer-pool pressure, memory scale DOWN possible (in-plan, prov-db-scale-down-config-in-plan-speed %s time)",
 	"CINF0009":  "Server %s: consumption of axes %s well under the plan, plan cap-down possible (prov-db-scale-down-plan-speed %s time)",

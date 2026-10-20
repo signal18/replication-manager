@@ -80,8 +80,10 @@ path.
 5. **Concurrency guard.** `TrySetInReseedBackup("reseed"+backtype)` — sets
    `IsReseeding`; a second reseed while one is in flight is blocked with
    *"Server is in reseeding state by …"*.
-6. **PITR branch.** If the target is in point-in-time recovery, stop + `RESET SLAVE`
-   first (ignoring error 1617).
+6. **PITR branch.** If the target is in point-in-time recovery, `resetLinkForPITR`:
+   stop + `RESET SLAVE ALL` on the managed channel (ignoring error 1617), leaving the
+   server standalone at the restored point, with CINF0020 naming the removed link
+   (#2115, see `JOB_RESEED_LOGICAL_ASYNC.md`, law T27).
 7. **Queue the task.** `JobInsertTask(task, server.SSTPort, Conf.MonitorAddress)`
    writes a row into the target DB's job/task table — the **dbjob agent polls it**,
    and is told which **SST port** to open a receiver on and which monitor address to

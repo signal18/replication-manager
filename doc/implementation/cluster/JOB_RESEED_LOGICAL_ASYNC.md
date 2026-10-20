@@ -137,6 +137,24 @@ A reseed restores data; it does not own the replica's links. Since #2093:
   the operator) leaves the list too: the state never stays open forever (F3/F4).
   The record is guarded by a mutex (the reseed records, the refresh drops), and within two
   monitoring ticks of a recording a running status, possibly read before the STOP, is ignored.
+- **PITR: the one removal (#2115).** A point-in-time restore (`ReseedPointInTime`,
+  `PointInTimeMeta.IsInPITR`) leaves its server standalone at the restored point:
+  replication-manager replays the binary logs itself up to the chosen time, and the
+  restore never points the server. Its link is removed (`resetLinkForPITR`: `STOP SLAVE`,
+  `RESET SLAVE ALL` on `replication-source-name`), so no start can carry the server past
+  that point: the operator asked for the PITR, the explicit user action T27 allows. When
+  the server had that channel, it is recorded in the same record as the stopped links
+  (`reseedLinks`, flagged `removed`; no PITR step records a stopped link);
+  `checkReseedStoppedLinks`, every server refresh, keeps **CINF0020** (INFO, server level,
+  topology: a mode the operator chose, not a risk) open naming the server, the restore and
+  the channel, and drops the record once the channel is back in the status of a server
+  that answers (a rejoin), ignoring a status within two ticks of the removal. A reseed of
+  the server records its own links at request time, which replaces the PITR record: the
+  reseed is what makes the server a replica again, WARN0252 then follows its links. The
+  record is in memory: a restart of replication-manager ends the state.
+  The logical PITR (`JobReseedLogicalBackupPrepare`, `JobReseedLogicalBackupFromPathPrepare`)
+  and the physical PITR (`JobReseedPhysicalBackup`, `JobReseedPhysicalBackupWithPayload`)
+  go through it.
 - `dbhelper.ResetSlaveStatement` names the channel with or without `ALL`: MySQL's
   `RESET REPLICA` without `FOR CHANNEL` resets every channel.
 - **Without the accounts, the dump's account-import role bracket is left out.**

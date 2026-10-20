@@ -334,6 +334,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testBackupRegisterArchive" {
 			res = regtest.TestBackupRegisterArchive(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testPITRStandalone" {
+			res = regtest.TestPITRStandalone(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testLogicalReseedEdgeCases" {
 			res = regtest.TestLogicalReseedEdgeCases(cl, test.ConfigFile, &test)
 		}

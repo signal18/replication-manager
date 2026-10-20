@@ -131,11 +131,14 @@ and MariaDB applies to `default_master_connection`.
 A reseed follows the replica setup procedures of MySQL and MariaDB:
 
 1. stop every replication channel of the replica and, when it has only one,
-   reset it as a new replica (`RESET SLAVE ALL`), when the reseed is requested
-   and again before the load;
+   clear its positions and relay logs (`RESET SLAVE '<channel>'`, without
+   `ALL`: the link to its source stays), when the reseed is requested and again
+   before the load;
 2. load the dump;
 3. point the channel replication-manager manages (`replication-source-name`)
-   at the primary, from the position of the restored dump: MySQL and Percona
+   at the primary, when it points there or does not exist yet (a link to
+   another source is left stopped, with a warning: moving it is the rejoin's
+   job), from the position of the restored dump: MySQL and Percona
    with GTID by auto-position; MariaDB with GTID by setting `gtid_slave_pos`,
    then `MASTER_USE_GTID=slave_pos`; without GTID by the binary log file and
    position;
@@ -149,18 +152,20 @@ are not kept.
 Multi-source replication is not supported by the reseed: the replica's other
 channels stay stopped, with a warning naming them, for the operator.
 
-A backup made before this release writes an active `CHANGE MASTER` and
-`STOP`/`START SLAVE`. It is still restored on a replica with one channel:
+A point-in-time restore (PITR) is the exception: it leaves the server
+standalone at the restored point. It removes the channel replication-manager
+manages (`RESET SLAVE ALL`), so that nothing starts replication past that
+point, and the cluster shows CINF0020 naming the server, the channel and the
+restore, until a rejoin or a reseed makes it a replica again.
 
-- MariaDB: they apply to the emptied channel, which has no primary, and its
-  `START ALL SLAVES` starts nothing (it starts only connections with a primary);
-  replication starts once the position of the backup is set;
-- MySQL and Percona: their `START SLAVE` fails on a channel without a primary
-  (ERROR 1200). replication-manager reads the dump's header first and, when it
-  finds an active `CHANGE MASTER`, points the channel at the primary before the
-  load (no position, not started): the dump's `CHANGE MASTER` sets the position
-  and its `START SLAVE` starts replication there, which replication-manager
-  keeps.
+A backup made before this release writes an active `CHANGE MASTER` and
+`STOP`/`START SLAVE`. It is still restored on a replica with one channel, which
+keeps its primary (the reseed clears positions only): the dump's `CHANGE MASTER`
+sets the position and its `START SLAVE` starts replication there, which
+replication-manager keeps. On MySQL and Percona, replication-manager reads the
+dump's header first and, when it finds an active `CHANGE MASTER`, points the
+channel at the primary before the load (no position, not started), so that the
+dump's `START SLAVE` does not fail on a replica without a primary (ERROR 1200).
 
 On a MySQL or Percona replica with several channels, the dump's `CHANGE MASTER`
 names no channel and fails: the restore stops there unless
