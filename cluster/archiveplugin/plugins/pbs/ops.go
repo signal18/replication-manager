@@ -87,6 +87,9 @@ func opProbe(a *archive, req wire.Request) (wire.Response, error) {
 	if !req.Create || a.namespace == "" {
 		return resp, err
 	}
+	if a.noModify {
+		return resp, fmt.Errorf("%w (no-modify: the namespace %s is created on the PBS by its admin, scripts/pbs-cluster-token.sh)", err, a.namespace)
+	}
 	existing, lerr := a.namespaces()
 	if lerr != nil {
 		return resp, fmt.Errorf("%w (namespaces: %s)", err, lerr)
@@ -401,6 +404,9 @@ func opRestore(a *archive, req wire.Request) (wire.Response, error) {
 // opForget deletes one snapshot.
 func opForget(a *archive, req wire.Request) (wire.Response, error) {
 	var resp wire.Response
+	if a.noPurge {
+		return resp, errors.New("forget: the archive is no-purge, its token may not delete snapshots: the PBS prunes them (scripts/pbs-cluster-allow-purge.sh to allow it)")
+	}
 	snaps, err := a.snapshots()
 	if err != nil {
 		return resp, err
@@ -461,6 +467,11 @@ type pruneItem struct {
 // collection, a job of the PBS.
 func opPurge(a *archive, req wire.Request) (wire.Response, error) {
 	var resp wire.Response
+	if a.noPurge {
+		// not an error: repman purges after every backup, the retention is the PBS's prune job
+		logf("purge skipped: the archive is no-purge, the PBS's prune job keeps the retention")
+		return resp, nil
+	}
 	keep, err := pruneValues(req.Policy)
 	if err != nil {
 		return resp, err
@@ -511,6 +522,9 @@ func opRemove(a *archive) (wire.Response, error) {
 	resp := wire.Response{Location: a.location()}
 	if a.namespace == "" {
 		return resp, errors.New("remove: the archive has no namespace, the datastore's root is never removed")
+	}
+	if a.noModify {
+		return resp, errors.New("remove: the archive is no-modify, its namespace is removed on the PBS by its admin")
 	}
 	q := url.Values{"ns": {a.namespace}, "delete-groups": {"true"}}
 	if err := a.api(http.MethodDelete, "/namespace", q, nil); err != nil {

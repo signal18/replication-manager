@@ -269,3 +269,35 @@ func TestFingerprintPinning(t *testing.T) {
 		t.Fatalf("a wrong fingerprint is refused: %v", err)
 	}
 }
+
+// A no-purge, no-modify archive (a backup-only token) never sends what the PBS would
+// refuse: purge is a no-op (the PBS's prune job keeps the retention), forget, namespace
+// creation and remove are refused with the reason, and no such call reaches the PBS.
+func TestNoPurgeNoModify(t *testing.T) {
+	f, st := newFake(t, "cl/missing")
+	st.Settings[setNoPurge] = "true"
+	st.Settings[setNoModify] = "true"
+
+	if resp, err := handle(wire.Request{Op: wire.OpPurge, Store: st, Policy: &wire.Policy{KeepLast: 1}}); err != nil || len(resp.Removed) != 0 {
+		t.Fatalf("no-purge: purge is a no-op, not an error: %+v %v", resp, err)
+	}
+	if _, err := handle(wire.Request{Op: wire.OpForget, Store: st, Snapshot: "host/db1_3306/2025-10-20T08:46:40Z"}); err == nil || !strings.Contains(err.Error(), "no-purge") {
+		t.Fatalf("no-purge: forget refused with the reason: %v", err)
+	}
+	if _, err := handle(wire.Request{Op: wire.OpProbe, Store: st, Create: true}); err == nil || !strings.Contains(err.Error(), "no-modify") {
+		t.Fatalf("no-modify: a missing namespace is not created: %v", err)
+	}
+	if _, err := handle(wire.Request{Op: wire.OpRemove, Store: st}); err == nil || !strings.Contains(err.Error(), "no-modify") {
+		t.Fatalf("no-modify: remove refused: %v", err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, c := range f.calls {
+		if !strings.HasPrefix(c, "GET ") {
+			t.Fatalf("only reads reach the PBS, got %q", c)
+		}
+	}
+	if _, err := newArchive(wire.Store{Plugin: pluginPBS, Settings: map[string]string{setBaseURL: "https://p", setDatastore: "d", setAuthID: "u@pbs!t", setNoPurge: "maybe"}}); err == nil {
+		t.Fatal("a no-purge that is not a bool is refused")
+	}
+}

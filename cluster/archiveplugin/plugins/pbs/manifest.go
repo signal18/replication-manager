@@ -22,6 +22,8 @@ const (
 	setAuthID      = "auth-id"                 // the API token: user@realm!token
 	setFingerprint = "fingerprint"             // the server certificate's SHA-256 fingerprint
 	setChunkCache  = "chunk-cache"             // restore: chunks kept in memory (default 16, about 64 MB)
+	setNoPurge     = "no-purge"                // the token may not prune: purge is the PBS's job, forget refused
+	setNoModify    = "no-modify"               // the token may not modify the datastore: no namespace created, no remove
 	setSecret      = "secret"                  // the API token's secret (secret)
 	setKey         = "encryption-key"          // the client encryption key, its JSON (secret); none: not encrypted
 	setKeyPassword = "encryption-key-password" // the key's passphrase when it has one (secret)
@@ -45,6 +47,8 @@ func manifests() []wire.Manifest {
 			{Name: setSecret, Type: "secret"},
 			{Name: setKey, Type: "secret"},
 			{Name: setKeyPassword, Type: "secret"},
+			{Name: setNoPurge, Type: "bool"},
+			{Name: setNoModify, Type: "bool"},
 			{Name: setChunkCache, Type: "int", Group: "advanced"},
 		},
 		Capabilities: append([]string(nil), capabilities...),

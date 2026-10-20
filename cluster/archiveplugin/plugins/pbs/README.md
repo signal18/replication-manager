@@ -35,6 +35,8 @@ with a `go.mod`).
 | `secret`      | secret |          | the API token's secret |
 | `encryption-key` | secret |       | a `proxmox-backup-client key create` key file (JSON, or its paper key text); none: not encrypted |
 | `encryption-key-password` | secret | | the key's passphrase, when it has one |
+| `no-purge`    | bool   |          | the token may not prune: `purge` is a no-op (the PBS's prune job keeps the retention), `forget` is refused |
+| `no-modify`   | bool   |          | the token may not modify the datastore: no namespace created by a probe, `remove` refused |
 | `chunk-cache` | int    | advanced | restore: chunks kept in memory (default 16, about 64 MB) |
 
 Secrets come in `REPMAN_ARCHIVEPLUGIN_SECRET_SECRET`, `..._ENCRYPTION_KEY` and
@@ -68,6 +70,20 @@ the cluster's `backup-keep-*`. A `backup-keep-within*` window has no PBS equival
 purge is refused, never run with less than the policy. The space comes back with the
 datastore's garbage collection, a job of the PBS.
 
+## Tokens per cluster: scripts/
+
+Run by whoever holds an admin API token of the PBS (`PBS_ADMIN_AUTHID`, `PBS_ADMIN_SECRET`
+in the environment, sent to curl on its stdin, never on a command line):
+
+- `pbs-cluster-token.sh <base-url> <datastore> <cluster> [user]`: the namespace `<cluster>`,
+  the user (default `repman@pbs`) granted `DatastorePowerUser` on it, the token
+  `<user>!<cluster>` granted `DatastoreBackup` on it only; prints the archive's settings,
+  `no-purge` and `no-modify` on, and the token's secret, once.
+- `pbs-cluster-allow-purge.sh <base-url> <datastore> <cluster> [user]`: raises that token to
+  `DatastorePowerUser` on its namespace (prune of its own backups); when the admin token may
+  not change ACLs, prints the request for the PBS operator with the exact command. Then
+  `no-purge = false` on the archive.
+
 ## API token privileges
 
 | operations | privilege on `/datastore/<store>[/<namespace>]` |
@@ -84,4 +100,4 @@ Against a hosted PBS with a backup-only token: probe, push (6 MB folder, 1.7 s),
 push reusing the data chunk, list with the notes decoded, a full restore identical to the
 source (`diff -r`), a one-file restore, size. Forget, purge and namespace creation were
 refused by the PBS for lack of `Datastore.Prune`/`Modify`, as the table says: to test with
-a token holding them. Not tested yet: an encrypted push and restore.
+a token holding them. Not tested yet: an encrypted push and restore, the scripts against a PBS with an admin token.

@@ -39,6 +39,8 @@ type archive struct {
 	secret      string
 	fingerprint string
 	chunkCache  int
+	noPurge     bool // the token has no Datastore.Prune: purge and forget are the PBS's job
+	noModify    bool // the token has no Datastore.Modify: namespaces are the PBS admin's
 	crypt       *pbscommon.CryptConfig
 	http        *http.Client
 }
@@ -67,6 +69,13 @@ func newArchive(st wire.Store) (*archive, error) {
 	if a.secret == "" {
 		return nil, errors.New("the archive's API token secret is not set")
 	}
+	var err error
+	if a.noPurge, err = boolSetting(s(setNoPurge)); err != nil {
+		return nil, fmt.Errorf("%s: %w", setNoPurge, err)
+	}
+	if a.noModify, err = boolSetting(s(setNoModify)); err != nil {
+		return nil, fmt.Errorf("%s: %w", setNoModify, err)
+	}
 	if c := s(setChunkCache); c != "" {
 		n, err := strconv.Atoi(c)
 		if err != nil || n < 1 || n > 1024 {
@@ -87,6 +96,14 @@ func newArchive(st wire.Store) (*archive, error) {
 	}
 	a.http = &http.Client{Timeout: 5 * time.Minute, Transport: &http.Transport{TLSClientConfig: a.tlsConfig()}}
 	return a, nil
+}
+
+// boolSetting reads a bool setting, false when empty.
+func boolSetting(v string) (bool, error) {
+	if v == "" {
+		return false, nil
+	}
+	return strconv.ParseBool(v)
 }
 
 // tlsConfig pins the server certificate on its fingerprint when one is set, as pbscommon
