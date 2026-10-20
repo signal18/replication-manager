@@ -37,6 +37,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/splitdump"
@@ -2837,21 +2838,30 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 	return server.restoreSplitdumpWithMysql(ctx, backupPath, restoreUser)
 }
 
-// splitdumpGTIDStatement is the statement that positions server at the GTID of the splitdump
-// it was loaded from, and its flavor; "" when the server has no GTID replication. On MariaDB it
-// is gtid_slave_pos whatever the monitored channel (#2124): HaveMariaDBGTID reads the cluster's
-// replication-source-name channel only, which a child cluster's master does not have (its
-// channel to the parent is another one), and the seed's channel then asked the parent for the
-// backup's domains from their beginning (error 1236).
-func (server *ServerMonitor) splitdumpGTIDStatement(gtidSet string) (query, flavor string) {
-	value := strings.ReplaceAll(gtidSet, "'", "''")
-	switch {
-	case server.IsMariaDB():
-		return "SET GLOBAL gtid_slave_pos='" + value + "'", "MariaDB"
-	case server.HasMySQLGTID() && server.DBVersion.IsMySQLOrPerconaGreater57():
-		return "SET @@GLOBAL.GTID_PURGED='" + value + "'", "MySQL"
+// splitdumpGTIDSlavePos positions a MariaDB server at the GTID of the splitdump about to be
+// loaded, before the load (#2124): the backup's domains from the backup, the others the
+// server replicates kept (reseedGTIDSlavePos, as the single-file child seed does, #2099).
+// Whatever the monitored channel: HaveMariaDBGTID reads the cluster's replication-source-name
+// channel only, which a child cluster's master does not have (its channel to the parent is
+// another one). Before the load: a master restore (a child cluster's master) writes the data
+// to its binlog in its own domain, after which MariaDB refuses a gtid_slave_pos without that
+// domain (error 1948), as the v3.1.43 dumps set it at their head.
+func (server *ServerMonitor) splitdumpGTIDSlavePos(gtidSet string) (string, error) {
+	current, logs, err := dbhelper.GetVariableByName(server.Conn, "GTID_SLAVE_POS", server.DBVersion)
+	if err != nil {
+		return logs, err
 	}
-	return "", ""
+	return dbhelper.SetGTIDSlavePos(server.Conn, reseedGTIDSlavePos(gtidSet, gtid.NewList(current)))
+}
+
+// splitdumpGTIDPurged is the statement that gives a MySQL/Percona server with GTID the GTID of
+// the splitdump it was loaded from, after the load; "" for any other server (a MariaDB server
+// is positioned before the load, splitdumpGTIDSlavePos).
+func (server *ServerMonitor) splitdumpGTIDPurged(gtidSet string) string {
+	if server.IsMariaDB() || !server.HasMySQLGTID() || !server.DBVersion.IsMySQLOrPerconaGreater57() {
+		return ""
+	}
+	return "SET @@GLOBAL.GTID_PURGED='" + strings.ReplaceAll(gtidSet, "'", "''") + "'"
 }
 
 func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
@@ -2920,6 +2930,13 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr,
 				"Splitdump restore failed to reset binlog on %s: %v (%s)", server.URL, err, logs)
 			return err
+		}
+	}
+	if meta != nil && meta.GTID != "" && server.IsMariaDB() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Applying splitdump GTID %s for MariaDB on %s before the load", meta.GTID, server.URL)
+		if logs, err := server.splitdumpGTIDSlavePos(meta.GTID); err != nil {
+			cluster.LogSQL(logs, err, server.URL, "Reseed", config.LvlWarn, "Failed to apply splitdump GTID %s for MariaDB on %s: %s", meta.GTID, server.URL, err)
 		}
 	}
 
@@ -3040,16 +3057,16 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		return restoreErr
 	}
 
-	if meta != nil && meta.GTID != "" {
-		if query, flavor := server.splitdumpGTIDStatement(meta.GTID); query == "" {
+	if meta != nil && meta.GTID != "" && !server.IsMariaDB() {
+		if query := server.splitdumpGTIDPurged(meta.GTID); query == "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
 				"Splitdump GTID %s not applied on %s: no GTID replication on this server", meta.GTID, server.URL)
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Applying splitdump GTID %s for %s on %s", meta.GTID, flavor, server.URL)
+				"Applying splitdump GTID %s for MySQL on %s", meta.GTID, server.URL)
 			if err := server.ExecQueryNoBinLog(query, time.Second); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-					"Failed to apply splitdump GTID for %s on %s: %v", flavor, server.URL, err)
+					"Failed to apply splitdump GTID for MySQL on %s: %v", server.URL, err)
 			}
 		}
 	}
