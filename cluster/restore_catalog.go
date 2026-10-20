@@ -55,7 +55,6 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 	cat := make([]BackupCatalogEntry, 0, len(cluster.Servers)*2)
 	attached := cluster.Conf.AttachedArchive()
 	mounted := cluster.mountedBackupsFolder()
-	fetchable := cluster.archiveFetchable()
 	// the backups refreshBackupProofs last found proven (#2023): the catalog takes no lock
 	// and reads no file, it runs on the monitor tick (HasCatalogBackupForRejoin) and in a
 	// rejoin; none checked yet, none proven
@@ -75,7 +74,7 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 			e := backupMetaToCatalog(sv.URL, m, attached, mounted)
 			// a backup only in an archive is a candidate when a restore can fetch it back now
 			// (#2091): the attached archive holds it and is one replication-manager fetches from
-			if e.inArchiveOnly() && (e.Snapshot == "" || !fetchable) {
+			if e.inArchiveOnly() && (e.Snapshot == "" || !cluster.archiveFetchable()) {
 				continue
 			}
 			// a test restore proves the file it loaded, not a snapshot of it
