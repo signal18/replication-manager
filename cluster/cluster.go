@@ -615,6 +615,9 @@ type Cluster struct {
 	// backupVerificationReads holds the backups an on-demand verification reads: backup id
 	// -> backupVerificationRead. A backup reusing the file and the archive removal wait.
 	backupVerificationReads sync.Map `json:"-"`
+	// backupArchiving holds the registered backups ArchiveBackup archives (#2108): backup id,
+	// from the request to the end of the push, its test restore first included.
+	backupArchiving sync.Map `json:"-"`
 }
 
 // PluginRegistry returns the per-cluster plugin registry, which contains both

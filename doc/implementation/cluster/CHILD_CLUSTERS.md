@@ -58,6 +58,13 @@ parent as `replication-multisource-head-clusters`, `topology-staging` for a stag
 user (the rendered ProxySQL declares admin and external, admin only connects locally); DBU
 per node through `ChangePlanUnits` after the servers.
 
+On the parent's image, the child also gets the parent's dump, restore and binlog client paths
+(`backup-mysqldump-path`, `backup-mysqlclient-path`, `backup-mysqlbinlog-path`, cluster
+settings since #2103, only the ones that differ) and its `prov-db-docker-xtrabackup-img`
+before provisioning (on a MySQL/Percona image the jobs container gets socat from it). A key
+set in the main `config.toml` is immutable and not saved per cluster: the child's copied
+value is lost at the next restart. Keep these keys out of the main file.
+
 Background: `WaitOrchestratorNodes` (a new cluster loads its node list on its own tick:
 provisioning before it failed with "Agent not found"), `Bootstrap` (a regular master-slave
 under the child's own channel name), a master, then the seed: `SeedFromParent` (staging:

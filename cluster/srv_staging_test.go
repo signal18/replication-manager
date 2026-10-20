@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/gtid"
 )
 
 // TestIsActiveStagingServer_TopologyStagingDisabled ensures that when
@@ -130,5 +131,45 @@ func TestIsActiveStagingServer_FollowsConfigOverStalePointer(t *testing.T) {
 	}
 	if cluster.IsActiveStagingServer(oldStaging) {
 		t.Fatal("expected the old staging server to stop being recognized once config points elsewhere, regardless of the stale live pointer")
+	}
+}
+
+// TestMariadbDumpWritesAccounts: only --system=all or a list holding users writes the accounts
+// as statements; --system=timezones dumps the account tables as data (seen in the lab).
+func TestMariadbDumpWritesAccounts(t *testing.T) {
+	for _, c := range []struct {
+		opts string
+		want bool
+	}{
+		{"--hex-blob --single-transaction --all-databases --system=all", true},
+		{"--all-databases --system=users", true},
+		{"--all-databases --system=timezones,users", true},
+		{"--all-databases --system=timezones", false},
+		{"--all-databases --system=plugins,udfs", false},
+		{"--all-databases", false},
+		{"", false},
+	} {
+		if got := mariadbDumpWritesAccounts(c.opts); got != c.want {
+			t.Errorf("%q: got %v, want %v", c.opts, got, c.want)
+		}
+	}
+}
+
+// TestReseedGTIDSlavePos: the backup's GTID for its domains, the current one for the others.
+func TestReseedGTIDSlavePos(t *testing.T) {
+	for _, c := range []struct {
+		name, pos, current, want string
+	}{
+		{"backup domains replace the current ones", "97-90125166-6,0-90125166-3836", "0-90125166-2144,97-90125166-5", "97-90125166-6,0-90125166-3836"},
+		{"another domain is kept", "0-90125166-3836", "0-90125166-2144,5-200-10", "0-90125166-3836,5-200-10"},
+		{"no current position", "0-90125166-3836", "", "0-90125166-3836"},
+	} {
+		var current *gtid.List
+		if c.current != "" {
+			current = gtid.NewList(c.current)
+		}
+		if got := reseedGTIDSlavePos(c.pos, current); got != c.want {
+			t.Errorf("%s: got %s, want %s", c.name, got, c.want)
+		}
 	}
 }

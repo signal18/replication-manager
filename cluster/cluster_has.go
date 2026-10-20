@@ -820,6 +820,13 @@ func (cluster *Cluster) IsInBackup() bool {
 	return cluster.InPhysicalBackup || cluster.InLogicalBackup || cluster.InBinlogBackup || cluster.IsInResticBackup()
 }
 
+// IsInBackupJob tells whether a backup job runs (logical, physical, binary log copy), which
+// writes, renames or encrypts artifacts; not the archive pushes after it, queued in the
+// restic task queue, which read them (#2108).
+func (cluster *Cluster) IsInBackupJob() bool {
+	return cluster.InPhysicalBackup || cluster.InLogicalBackup || cluster.InBinlogBackup
+}
+
 func (cluster *Cluster) IsInResticBackup() bool {
 	return cluster.InResticLogicalBackup || cluster.InResticPhysicalBackup || cluster.InResticBackup
 }

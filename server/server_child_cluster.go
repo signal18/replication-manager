@@ -190,6 +190,39 @@ func (repman *ReplicationManager) PlanChildCluster(parent *cluster.Cluster, req 
 	return plan, nil
 }
 
+// childDumpClients lists the settings that give a child the parent's dump and restore clients
+// (a MySQL parent sets its MySQL ones) when it runs the parent's image: the default is the
+// MariaDB client, which can not dump MySQL 8.4. Only the paths that differ from the child's,
+// as setting name and value. A child on another image keeps the default, the dump client check
+// names a mismatch.
+func childDumpClients(child, parent *config.Config, image string) [][2]string {
+	if image != parent.ProvDbImg {
+		return nil
+	}
+	var set [][2]string
+	for _, p := range []struct{ key, child, parent string }{
+		{"backup-mysqldump-path", child.BackupMysqldumpPath, parent.BackupMysqldumpPath},
+		{"backup-mysqlclient-path", child.BackupMysqlclientPath, parent.BackupMysqlclientPath},
+		{"backup-mysqlbinlog-path", child.BackupMysqlbinlogPath, parent.BackupMysqlbinlogPath},
+	} {
+		if p.child != p.parent {
+			set = append(set, [2]string{p.key, p.parent})
+		}
+	}
+	return set
+}
+
+// childXtrabackupImage is the XtraBackup image a child gets from its parent: the parent's, when
+// the child runs the parent's database image (an explicit image matches one server version);
+// empty otherwise, the child keeps its default. On a MySQL/Percona image the jobs container gets
+// its tools from it, socat among them, through which dbjobs reaches replication-manager.
+func childXtrabackupImage(parent *config.Config, image string) string {
+	if image != parent.ProvDbImg {
+		return ""
+	}
+	return parent.ProvDbDockerXtrabackupImg
+}
+
 // CreateChildCluster creates the planned cluster for a creator already authorised
 // (clusterAddAuthorize), configures it and adds its servers, then provisions and seeds
 // it in the background. Every step is recorded on the new cluster (CINF0014 while it
@@ -248,6 +281,19 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 	// refreshes, use the parent's (dev3: the default mysqldump failed, the parent runs mydumper)
 	if err := repman.SetClusterSetting(cl, "backup-logical-type", plan.BackupLogicalType); err != nil {
 		return cl, fail(err)
+	}
+	// the parent's clients, saved as the child's settings; the setting reads the client versions
+	// again, they decide the options (--ssl-mode of a MySQL 8 client, not --ssl)
+	for _, s := range childDumpClients(cl.Conf, parent.Conf, plan.DBImage) {
+		if err := repman.SetClusterSetting(cl, s[0], s[1]); err != nil {
+			return cl, fail(err)
+		}
+	}
+	// before the servers are provisioned: their jobs containers get their tools from it
+	if img := childXtrabackupImage(parent.Conf, plan.DBImage); img != "" {
+		if err := repman.SetClusterSetting(cl, "prov-db-docker-xtrabackup-img", img); err != nil {
+			return cl, fail(err)
+		}
 	}
 	// The parent's monitoring and replication accounts, same name same password (staging
 	// doc): provisioned identical, nothing to restore from the parent's backup.

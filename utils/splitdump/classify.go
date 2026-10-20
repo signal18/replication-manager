@@ -43,6 +43,9 @@ func scanLineKeepTerminator(data []byte, atEOF bool) (advance int, token []byte,
 type ClassifyOptions struct {
 	ApplicationWriter io.Writer
 	SystemWriter      io.Writer
+	// Skip, when set, leaves out of the application stream each line outside table data it
+	// reports; the system stream is written as classified.
+	Skip func(line string) bool
 }
 
 // ClassifyResult reports whether any mysql.system-all content was found, and
@@ -50,6 +53,8 @@ type ClassifyOptions struct {
 type ClassifyResult struct {
 	HasSystemContent bool
 	Metadata         Metadata
+	// Skipped counts the lines Skip left out.
+	Skipped int
 }
 
 // ClassifyStream splits a single mariadb-dump/mysqldump stream into
@@ -133,8 +138,13 @@ func classifyStream(r io.Reader, opts ClassifyOptions, maxLineSize int) (Classif
 		}
 
 		dest := opts.ApplicationWriter
-		if inSystemSection && !isDumpSessionWrapper(line) {
+		toSystem := inSystemSection && !isDumpSessionWrapper(line)
+		if toSystem {
 			dest = opts.SystemWriter
+		}
+		if !toSystem && !inTableData && opts.Skip != nil && opts.Skip(line) {
+			result.Skipped++
+			continue
 		}
 		if _, writeErr := io.WriteString(dest, line); writeErr != nil {
 			return ClassifyResult{}, fmt.Errorf("splitdump: classify stream write: %w", writeErr)
@@ -178,6 +188,28 @@ func isDumpSessionWrapper(line string) bool {
 		return true
 	}
 	return strings.Contains(t, "mariadb_dump_import_role") || strings.Contains(t, "@current_role") || t == "SET ROLE NONE;"
+}
+
+// importRoleBracket are the statements of the account-import role bracket mariadb-dump (11.x)
+// puts around the accounts it dumps, one per line, as it writes them. SET ROLE NONE is the one
+// not naming the role: the skip is for dumps this client wrote (outside table data, application
+// side only), never for SQL files written by hand.
+var importRoleBracket = map[string]bool{
+	"SELECT COALESCE(CURRENT_ROLE(),'NONE') into @current_role;":          true,
+	"CREATE ROLE IF NOT EXISTS mariadb_dump_import_role;":                 true,
+	"GRANT mariadb_dump_import_role TO CURRENT_USER();":                   true,
+	"SET ROLE mariadb_dump_import_role;":                                  true,
+	"SET ROLE NONE;":                                                      true,
+	"DROP ROLE mariadb_dump_import_role;":                                 true,
+	"/*M!100203 EXECUTE IMMEDIATE CONCAT('SET ROLE ', @current_role) */;": true,
+}
+
+// IsImportRoleBracket reports a line that is one of the statements of the account-import role
+// bracket (importRoleBracket), whole: a view, routine or row that mentions the role is not one.
+// A restore without the accounts leaves the bracket out: on a master its binary log would carry
+// GRANT ... TO CURRENT_USER() to the replicas, where the applier is no account.
+func IsImportRoleBracket(line string) bool {
+	return importRoleBracket[strings.TrimSpace(line)]
 }
 
 // captureStreamMetadata mirrors the GTID/binlog-position capture in
