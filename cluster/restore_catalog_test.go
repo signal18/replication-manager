@@ -206,18 +206,19 @@ func TestBuildBackupCatalogProofKey(t *testing.T) {
 	proven := provenTestBackup(t, 100)
 	same := provenTestBackup(t, 100)
 	same.Verification = nil // same id, never test-restored
-	remote := provenTestBackup(t, 101)
-	remote.ResticEnabled, remote.ResticSnapshotID = true, "a1b2c3d4"
+	// archived, its file still there: read where it is, its test restore proves it (#2091)
+	archived := provenTestBackup(t, 101)
+	archived.ResticEnabled, archived.ResticSnapshotID = true, "a1b2c3d4"
 	a, b, r := &ServerMonitor{URL: "db1:3306"}, &ServerMonitor{URL: "db2:3306"}, &ServerMonitor{URL: "db3:3306"}
-	a.LastBackupMeta.Logical, b.LastBackupMeta.Logical, r.LastBackupMeta.Logical = proven, same, remote
+	a.LastBackupMeta.Logical, b.LastBackupMeta.Logical, r.LastBackupMeta.Logical = proven, same, archived
 	c := &Cluster{Servers: []*ServerMonitor{a, b, r}}
 	c.refreshBackupProofs()
 	got := map[string]bool{}
 	for _, e := range c.buildBackupCatalog() {
 		got[e.Server] = e.Proven
 	}
-	if !got["db1:3306"] || got["db2:3306"] || got["db3:3306"] {
-		t.Fatalf("proven by server %v, want db1 only", got)
+	if !got["db1:3306"] || got["db2:3306"] || !got["db3:3306"] {
+		t.Fatalf("proven by server %v, want db1 and db3", got)
 	}
 }
 
