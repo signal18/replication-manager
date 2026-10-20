@@ -1,6 +1,6 @@
 module github.com/signal18/replication-manager/cluster/replplugin/plugins/columnstore
 
-go 1.25.8
+go 1.25.9
 
 require (
 	github.com/BurntSushi/toml v1.6.0
