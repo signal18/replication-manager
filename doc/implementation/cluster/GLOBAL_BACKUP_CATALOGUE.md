@@ -59,8 +59,10 @@ A catalogue per cluster in repman's own working directory, outside every backup 
 - `backups.json`: one entry per backup;
 - `archives/<archive name>.json`: one entry per snapshot of that archive.
 
-Written whole to a temporary file then renamed (no half-written catalogue), from one writer
-per cluster.
+Written whole to a temporary file then renamed (no half-written catalogue). SETTLED
+(Stéphane, 2026-10-20): the **active** replication-manager writes it, always; the catalogue is
+never synchronised to another one (a standby or DR repman builds its own when it becomes
+active, by the rebuild below).
 
 ### What
 
@@ -120,9 +122,10 @@ archive's list is kept as last read, with the time it was read.
 - **Dashboard**: every archive, attached or not, with its size, its snapshot count and how many
   backups it holds; each snapshot row names the backups inside; each backup shows its
   snapshots, archive and short id, in the cell, not only in a tooltip.
-- **Pricing and metering**: the size of every archive, per archive, for the external unit
-  (BAU), detached archives included (a detached archive is still invoiced, as the archive
-  settings say).
+- **Pricing and metering**: SETTLED (Stéphane, 2026-10-20): the external unit's cost is
+  computed on the size of each archive, every archive counted, detached ones included (a
+  detached archive is still invoiced, as the archive settings say); never per backup or per
+  snapshot.
 - **The backups folder switch** (local / bucket) no longer reloads the catalogue: only the
   observation changes.
 
@@ -134,14 +137,13 @@ At the first start with it, the catalogue is built from today's records (their
 
 ## Open questions
 
-1. Is a cluster's working directory synchronised to another replication-manager (git sync,
-   DR peer)? If so, which one writes the catalogue.
-2. Reading which backups a snapshot holds needs a listing of the snapshot's top folder: one
-   call per snapshot for plakar and restic. Done once per snapshot (kept), never at each
-   refresh.
-3. A plugin's `list` answers snapshots only: does the wire need a `contents` op, or does repman
+1. Reading which backups a snapshot holds needs a listing of the snapshot's top folder: one
+   call to the archive per snapshot (time and requests, not money). Proposed: done once per
+   snapshot when it is taken (repman knows the backup directory then), kept, never at each
+   refresh; a listing only for a rebuild.
+2. A plugin's `list` answers snapshots only: does the wire need a `contents` op, or does repman
    read the backup records inside the snapshot through `restore` of those files only?
-4. The default / ad-hoc split itself (folder name and retention follow a moving role): left as
+3. The default / ad-hoc split itself (folder name and retention follow a moving role): left as
    it is here, to look at separately.
 
 ## Steps
