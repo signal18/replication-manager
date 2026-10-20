@@ -156,6 +156,22 @@ func TestArchiveBackupRefusals(t *testing.T) {
 		t.Fatalf("already archived: %v", err)
 	}
 
+	// the archive list (#2091): the snapshot recorded by archive name; archived in the attached
+	// archive, not in a detached one only
+	server.backupMetaMutex.Lock()
+	m.ResticSnapshotID = ""
+	m.SetArchiveSnapshot("archive-a", "0123456789abcdef")
+	server.backupMetaMutex.Unlock()
+	c.Conf.BackupArchiveName = "archive-a"
+	if !c.backupArchived(m) {
+		t.Fatal("a snapshot in the attached archive is archived")
+	}
+	c.Conf.BackupArchiveName = "archive-b"
+	if c.backupArchived(m) {
+		t.Fatal("a snapshot in a detached archive only: it can be archived into the attached one")
+	}
+	c.Conf.BackupArchiveName = ""
+
 	m.Discovered = false
 	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupNotDiscovered) {
 		t.Fatalf("own backup: %v", err)

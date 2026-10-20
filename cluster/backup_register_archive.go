@@ -79,13 +79,16 @@ func (cluster *Cluster) registeredReseedRefusal(meta *backupmgr.BackupMetadata) 
 	return nil
 }
 
-// backupArchived tells whether meta has its archive snapshot.
+// backupArchived tells whether meta has its snapshot in the attached archive (#2091: the
+// snapshots are recorded by archive name, ResticSnapshotID only before the archive list), or
+// is kept only in an archive. A backup held by a detached archive only can be archived into
+// the attached one.
 func (cluster *Cluster) backupArchived(meta *backupmgr.BackupMetadata) bool {
 	if server := cluster.GetServerFromURL(meta.Source); server != nil {
 		server.backupMetaMutex.Lock()
 		defer server.backupMetaMutex.Unlock()
 	}
-	return meta.ResticSnapshotID != "" || meta.OriginalRemoved
+	return meta.ArchiveSnapshot(cluster.Conf.AttachedArchive()) != "" || meta.OriginalRemoved
 }
 
 // archiveAvailable: a push has an archive to go to: an attached archive plugin's, or restic

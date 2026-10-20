@@ -388,10 +388,15 @@ const reseedRefusal = (backup, change, requireProven) => {
 
 // archiveRefusal is why a registered backup can not be archived now, '' when it can (#2108);
 // the API decides, this greys the button out. archiveOn: an archive is attached (#2091), or
-// backup-restic is on.
-const archiveRefusal = (backup, change, archiveOn) => {
+// backup-restic is on. Already archived: its snapshot is in the attached archive (recorded by
+// archive name; resticSnapshotID before the archive list), as the API checks.
+const archivedIn = (backup, attached) => {
+  const refs = backup.archiveRefs || {}
+  return Object.keys(refs).length === 0 ? !!backup.resticSnapshotID : !!refs[attached]
+}
+const archiveRefusal = (backup, change, archiveOn, attached) => {
   if (!archiveOn) return 'No archive: attach one in the Archive settings'
-  if (backup.resticSnapshotID || backup.originalRemoved) return 'Already archived'
+  if (archivedIn(backup, attached) || backup.originalRemoved) return 'Already archived'
   if (backup.notABackup) return `Not a backup: ${backup.discoveryNote}`
   if (change) return 'Changed since registered: register the change first'
   if (backup.verification?.status === 'running') return 'Being verified'
@@ -751,7 +756,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           const change = changesById[backup.id]
           const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.notABackup && !backup.originalRemoved && backup.verification?.status !== 'running'
           const notReseedable = reseedRefusal(backup, change, selectedCluster?.config?.backupVerificationRegisteredProven)
-          const notArchivable = backup.discovered ? archiveRefusal(backup, change, !!selectedCluster?.config?.backupArchiveName || selectedCluster?.config?.backupRestic) : ''
+          const notArchivable = backup.discovered ? archiveRefusal(backup, change, !!selectedCluster?.config?.backupArchiveName || selectedCluster?.config?.backupRestic, selectedCluster?.config?.backupArchiveName) : ''
           return (
             <HStack spacing={1}>
               <RMIconButton
