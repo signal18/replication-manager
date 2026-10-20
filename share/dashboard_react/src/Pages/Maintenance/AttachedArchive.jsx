@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createColumnHelper } from '@tanstack/react-table'
-import { HiRefresh } from 'react-icons/hi'
+import { HiRefresh, HiTrash } from 'react-icons/hi'
 import PropTypes from 'prop-types'
 import { Box, Text } from '@chakra-ui/react'
 import Dropdown from '../../components/Dropdown'
 import { DataTable } from '../../components/DataTable'
 import RMIconButton from '../../components/RMIconButton'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { formatBytes } from '../../utility/common'
 import { clusterService } from '../../services/clusterService'
 import { ATTACH_NONE, attachArchiveRequest, attachConfirmBody, attachOptionsOf, kindLabel, sizeText, summary } from '../Settings/ArchiveListSettings'
@@ -22,7 +23,9 @@ function AttachedArchive({ clusterName, user, onAttached }) {
   const [list, setList] = useState({ attached: '', archives: [], plugins: [] })
   const [error, setError] = useState('')
   const [snapshots, setSnapshots] = useState({ archive: '', rows: [], error: '', loading: false })
+  const [forgetId, setForgetId] = useState('') // the snapshot asked for deletion
   const canSet = user?.grants?.['cluster-settings'] !== false
+  const canDelete = user?.grants?.['db-backup'] !== false
 
   const fetchList = useCallback(async () => {
     if (!clusterName) return
@@ -82,8 +85,33 @@ function AttachedArchive({ clusterName, user, onAttached }) {
     columnHelper.accessor((row) => row.paths?.join(','), { header: 'Path', id: 'paths' }),
     columnHelper.accessor((row) => row.host, { header: 'Hostname', id: 'host' }),
     columnHelper.accessor((row) => row.tags?.join(','), { header: 'Tags', id: 'tags' }),
-    columnHelper.accessor((row) => (row.size ? formatBytes(row.size) : ''), { header: 'Size', id: 'size' })
-  ], [])
+    columnHelper.accessor((row) => (row.size ? formatBytes(row.size) : ''), { header: 'Size', id: 'size' }),
+    columnHelper.display({
+      id: 'actions',
+      header: 'Actions',
+      cell: (info) => (
+        <RMIconButton icon={HiTrash} tooltip='Delete snapshot' isDisabled={!canDelete}
+          onClick={() => setForgetId(info.row.original.id)} />
+      )
+    })
+  ], [canDelete])
+
+  const forget = async () => {
+    const id = forgetId
+    setForgetId('')
+    try {
+      const { data, status } = await clusterService.forgetArchiveSnapshot(clusterName, pluginArchive, id)
+      if (status < 200 || status >= 300) {
+        setSnapshots((s) => ({ ...s, error: typeof data === 'string' ? data.trim() : `status ${status}` }))
+        return
+      }
+    } catch (e) {
+      setSnapshots((s) => ({ ...s, error: e?.message || 'Delete failed' }))
+      return
+    }
+    fetchSnapshots()
+    fetchList()
+  }
   return (
     <>
       {/* one row: the pick, what the archive is and holds, and its snapshots' count */}
@@ -112,6 +140,9 @@ function AttachedArchive({ clusterName, user, onAttached }) {
             : <DataTable key='archiveSnapshots' data={snapshots.rows} columns={snapshotColumns} className={styles.table} />}
         </>
       )}
+      {forgetId && <ConfirmModal title={`Delete snapshot ${forgetId.slice(0, 8)} of ${pluginArchive}?`} isOpen={!!forgetId}
+        body='The snapshot is deleted from the archive at once: the backup it holds can no longer be restored from this archive. This cannot be undone.'
+        onConfirmClick={forget} closeModal={() => setForgetId('')} />}
     </>
   )
 }

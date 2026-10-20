@@ -58,6 +58,7 @@ export const clusterService = {
   renameArchive,
   attachArchive,
   getArchiveSnapshots,
+  forgetArchiveSnapshot,
   detachArchive,
   removeArchive,
   sizeArchive,
@@ -1152,6 +1153,11 @@ function renameArchive(clusterName, archiveName, newName, baseURL) {
 // the snapshots of an archive plugin's archive, newest first (#2091)
 function getArchiveSnapshots(clusterName, archiveName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/archive-snapshots/${encodeURIComponent(archiveName)}`)
+}
+
+// deletes one snapshot of an archive plugin's archive (#2091)
+function forgetArchiveSnapshot(clusterName, archiveName, snapshotId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/forget/${encodeURIComponent(archiveName)}/${encodeURIComponent(snapshotId)}`)
 }
 
 function attachArchive(clusterName, archiveName, baseURL) {
