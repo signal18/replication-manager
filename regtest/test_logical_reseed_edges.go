@@ -500,7 +500,8 @@ func (e *edgeRun) writeOlderDump(name, dest string) bool {
 // v3143BackupDumpOptions are the options v3.1.43 dumped a server's logical backup with: its
 // cluster.GetMysqlDumpOptions and getDumpParameter at tag v3.1.43, ported as they were, so R5
 // restores a backup as that release wrote it. The connection options (credentials, TLS) are
-// this release's: they do not change the dump's content.
+// this release's: they do not change the dump's content. Kept as long as a reseed has to
+// restore backups written by v3.1.43 and earlier: R5 checks that they still restore.
 func v3143BackupDumpOptions(cl *clusterpkg.Cluster, s *clusterpkg.ServerMonitor) []string {
 	param := cl.Conf.BackupMysqldumpOptions
 	if m := cl.GetMaster(); m != nil && !m.IsMariaDB() {
