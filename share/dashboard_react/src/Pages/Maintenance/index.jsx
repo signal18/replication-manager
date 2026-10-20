@@ -10,6 +10,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
 import AttachedArchive from './AttachedArchive'
+import { clusterService } from '../../services/clusterService'
 import { archiveBackup, deleteBackup, discoverBackups, registerBackup, registerBackupChange, unregisterBackup, reseedFromBackup, verifyBackup, purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import CopyToClipboard from '../../components/CopyToClipboard'
@@ -238,6 +239,22 @@ function backupArchivesTooltip(row, attached) {
   if (names.length === 0) return row.resticSnapshotID ? `snapshot ${row.resticSnapshotID}` : ''
   return names.map((n) => `${n}: snapshot ${refs[n]}${attached && n !== attached ? ' (detached: attach it to restore from it)' : ''}`).join('\n')
 }
+
+// the log copies of the backup's server directory (backup-binlogs): number, lowest, highest
+function BackupLogsLine({ copies }) {
+  if (!copies) return null
+  const at = (s) => (s ? new Date(s * 1000).toLocaleString() : '')
+  const text = copies.count ? `Logs: ${copies.count} · min ${copies.min} · max ${copies.max}` : 'Logs: none'
+  const tip = copies.count
+    ? `${copies.count} binary log copies in the server's backup directory, ${formatBytes(copies.totalBytes || 0)}\nlowest ${copies.min}, first event ${at(copies.minStart)}\nhighest ${copies.max}, first event ${at(copies.maxStart)}`
+    : 'No binary log copy in the server\'s backup directory (backup-binlogs)'
+  return (
+    <Tooltip label={<Box whiteSpace='pre'>{tip}</Box>} hasArrow placement='bottom-start' maxW='none'>
+      <Box className={styles.cellValue}>{text}</Box>
+    </Tooltip>
+  )
+}
+BackupLogsLine.propTypes = { copies: PropTypes.object }
 
 function BackupCellLine({ label, value, shown, more = 0, tooltip, textType }) {
   if (!value) return null
@@ -486,6 +503,15 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   // the attached archive (#2091): the restic repository, snapshots and queue are a restic archive's
   const [attachedArchive, setAttachedArchive] = useState(null)
   const [snapbackAsk, setSnapbackAsk] = useState(null) // a restic snapshot asked for a snapback: { id, path }
+  // server URL -> the log copies of its backup directory (#2091): number, lowest, highest
+  const [binlogCopies, setBinlogCopies] = useState({})
+  const backupCount = sizeOf(list || {})
+  useEffect(() => {
+    if (!selectedCluster?.name) return
+    clusterService.getBinlogCopies(selectedCluster.name).then(({ data, status }) => {
+      if (status >= 200 && status < 300 && Array.isArray(data)) setBinlogCopies(Object.fromEntries(data.map((c) => [c.server, c])))
+    }).catch(() => {})
+  }, [selectedCluster?.name, backupCount])
   const resticShown = !attachedArchive || attachedArchive.plugin?.startsWith('archive-restic-')
   // where an archive of a backup goes: the attached archive by name, else restic
   const archiveTarget = selectedCluster?.config?.backupArchiveName || 'restic'
@@ -687,11 +713,12 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           <VStack className={styles.cellStack} spacing={0.5}>
             <Box className={styles.cellValue}>{`File: ${row.binLogFileName} / Pos: ${row.binLogFilePos}`}</Box>
             <BackupGtid gtid={row.binLogUuid} />
+            <BackupLogsLine copies={binlogCopies[row.source]} />
           </VStack>
         ),
         {
           cell: (info) => info.getValue(),
-          header: 'BinLog Info',
+          header: 'BCK Position',
           id: 'binLogInfo'
         }
       ),

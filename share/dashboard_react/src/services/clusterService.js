@@ -18,6 +18,7 @@ export const clusterService = {
   getBackupStats,
   deleteBackup,
   discoverBackups,
+  getBinlogCopies,
   getBackupCandidates,
   registerBackup,
   registerBackupChange,
@@ -329,6 +330,11 @@ function discoverBackups(clusterName, baseURL) {
 // what the backup discovery found: the candidates per server and the registered backups changed since
 function getBackupCandidates(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups/candidates`)
+}
+
+// per server, the log copies its backup directory holds: number, lowest, highest (#2091)
+function getBinlogCopies(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/backups/binlog-copies`)
 }
 
 function registerBackup(clusterName, server, path, takenAt, baseURL) {

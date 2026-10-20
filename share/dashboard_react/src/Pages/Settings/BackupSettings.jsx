@@ -721,7 +721,7 @@ function BackupSettings({ selectedCluster, user }) {
       key: 'Backup Binlogs',
       help: h(hBackupBinlogs, 'Backup Binlogs'),
       value: (
-        <RMSwitch isChecked={selectedCluster?.config?.autorejoinBackupBinlog}
+        <RMSwitch isChecked={selectedCluster?.config?.backupBinlogs}
           isDisabled={user?.grants['cluster-settings'] == false}
           confirmTitle={'Confirm switch settings for backup-binlogs?'}
           onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-binlogs' }))} />
