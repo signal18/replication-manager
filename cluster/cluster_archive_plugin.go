@@ -408,8 +408,8 @@ func (cluster *Cluster) ArchiveSnapshots(name string) ([]wire.Snapshot, error) {
 }
 
 // ForgetArchiveSnapshot deletes the snapshot id of the archive name, an archive plugin's (a
-// restic archive's: /restic/purge/{snapshotID}). As a restic purge, the backups that
-// recorded the snapshot keep their record.
+// restic archive's: /restic/purge/{snapshotID}); the backups recording it lose it
+// (dropSnapshotFromCatalogue).
 func (cluster *Cluster) ForgetArchiveSnapshot(name, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
@@ -428,6 +428,8 @@ func (cluster *Cluster) ForgetArchiveSnapshot(name, id string) error {
 			return err
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s: snapshot %s deleted", a.Name, shortID(id))
+		// the backups recording it have no copy there any more
+		cluster.dropSnapshotFromCatalogue(a.Name, id)
 		return nil
 	}
 	return fmt.Errorf("unknown archive %s", name)

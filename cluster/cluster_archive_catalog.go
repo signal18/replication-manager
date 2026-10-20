@@ -122,8 +122,24 @@ func (cluster *Cluster) renameArchiveInCatalogue(name, newName string) {
 // original is on disk stays a local backup (one fetched back from that archive is local
 // again); one whose only copy was there leaves the catalogue, its record deleted.
 func (cluster *Cluster) dropArchiveFromCatalogue(name string) {
+	cluster.dropArchiveRefs(name, "", "archive "+name+" removed from")
+}
+
+// dropSnapshotFromCatalogue takes a deleted snapshot of archive name out of the catalogue,
+// as dropArchiveFromCatalogue the whole archive: the backups recording it have no copy there
+// any more.
+func (cluster *Cluster) dropSnapshotFromCatalogue(name, snapshotID string) {
+	cluster.dropArchiveRefs(name, snapshotID, "snapshot "+shortID(snapshotID)+" of archive "+name+" removed from")
+}
+
+// dropArchiveRefs drops archive name from the backups recording it, only those recording
+// snapshotID when given; what tells the log line.
+func (cluster *Cluster) dropArchiveRefs(name, snapshotID, what string) {
 	var orphans []*backupmgr.BackupMetadata
 	changed := cluster.updateCatalogue(func(meta *backupmgr.BackupMetadata) bool {
+		if snapshotID != "" && meta.ArchiveSnapshot(name) != snapshotID {
+			return false
+		}
 		if !meta.DropArchiveRef(name) {
 			return false
 		}
@@ -151,7 +167,7 @@ func (cluster *Cluster) dropArchiveFromCatalogue(name string) {
 		gone++
 	}
 	if len(changed) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup catalogue: archive %s removed from %d backup(s), %d left the catalogue (their only copy was there)", name, len(changed), gone)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup catalogue: %s %d backup(s), %d left the catalogue (their only copy was there)", what, len(changed), gone)
 	}
 }
 

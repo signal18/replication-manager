@@ -97,6 +97,31 @@ func TestCatalogueDropArchive(t *testing.T) {
 	}
 }
 
+// #2091: a deleted snapshot leaves only the backups recording it; one whose only copy it was
+// leaves the catalogue
+func TestCatalogueDropSnapshot(t *testing.T) {
+	cl := newCatalogueTestCluster(t)
+	cl.BackupMetaMap.Set(1, &backupmgr.BackupMetadata{Id: 1, Dest: "/local/a", ArchiveRefs: map[string]string{"archive-plakar-s3-1": "s1"}})
+	cl.BackupMetaMap.Set(2, &backupmgr.BackupMetadata{Id: 2, Dest: "/local/b", ArchiveRefs: map[string]string{"archive-plakar-s3-1": "s2"}})
+	cl.BackupMetaMap.Set(3, &backupmgr.BackupMetadata{Id: 3, OriginalRemoved: true, Dest: "/gone/c", ArchiveRefs: map[string]string{"archive-plakar-s3-1": "s3"}})
+	cl.BackupMetaMap.Set(4, &backupmgr.BackupMetadata{Id: 4, Dest: "/local/d", ArchiveRefs: map[string]string{"archive-local-1": "s1"}})
+	cl.dropSnapshotFromCatalogue("archive-plakar-s3-1", "s1")
+	cl.dropSnapshotFromCatalogue("archive-plakar-s3-1", "s3")
+
+	if m := cl.BackupMetaMap.Get(1); m == nil || len(m.ArchiveRefs) != 0 {
+		t.Errorf("backup 1 recorded the deleted snapshot: %+v", m)
+	}
+	if m := cl.BackupMetaMap.Get(2); m == nil || m.ArchiveRefs["archive-plakar-s3-1"] != "s2" {
+		t.Errorf("backup 2 records another snapshot: %+v", m)
+	}
+	if cl.BackupMetaMap.Get(3) != nil {
+		t.Errorf("backup 3 had its only copy in the deleted snapshot: still listed")
+	}
+	if m := cl.BackupMetaMap.Get(4); m == nil || m.ArchiveRefs["archive-local-1"] != "s1" {
+		t.Errorf("backup 4 is in another archive: %+v", m)
+	}
+}
+
 // #2091: the list counts each archive's backups and shows a detached archive's size as kept
 func TestArchiveListSizesAndBackups(t *testing.T) {
 	cl := newCatalogueTestCluster(t)

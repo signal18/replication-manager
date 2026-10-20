@@ -205,7 +205,7 @@ func (repman *ReplicationManager) handlerMuxArchiveSnapshots(w http.ResponseWrit
 
 // handlerMuxArchiveForget deletes one snapshot of an archive plugin's archive.
 // @Summary Delete an archive's snapshot
-// @Description Deletes one snapshot of an archive plugin's archive (plakar ...), at once. The backups that recorded it keep their record, as a restic purge does. A restic archive's snapshot is purged by /restic/purge/{snapshotID}.
+// @Description Deletes one snapshot of an archive plugin's archive (plakar ...), at once; the backups that recorded it lose it, and one whose only copy it was leaves the catalogue. A restic archive's snapshot is purged by /restic/purge/{snapshotID}.
 // @Tags ClusterArchive
 // @Produce plain
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
