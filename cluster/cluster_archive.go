@@ -151,12 +151,14 @@ func (cluster *Cluster) externalArchiveLocation(a config.ArchiveConfig, m config
 }
 
 // archiveBucketFolder is the bucket and the folder of an archive in a bucket: its own bucket
-// and prefix settings, else backup-streaming-bucket and archive/<name> in the cluster's folder
-// (archiveBucketPrefix), so no two archives, clusters or instances share one. On the Cloud18
-// SSO the folder is under the SSO user's (ssoUser), the only one its policy opens.
+// and prefix settings, else archive/<name> in the cluster's folder (archiveBucketPrefix), so no
+// two archives, clusters or instances share one. The bucket defaults to backup-streaming-bucket
+// only on the storage it is a bucket of (the mount's provider, or the Cloud18 one): a custom
+// provider, with its own keys, names its own bucket. On the Cloud18 SSO the folder is under the
+// SSO user's (ssoUser), the only one its policy opens.
 func (cluster *Cluster) archiveBucketFolder(a config.ArchiveConfig, ssoUser string) (string, string) {
 	bucket := strings.Trim(archiveSetting(a, config.ConstArchiveSettingS3Bucket), "/")
-	if bucket == "" {
+	if provider := archiveSetting(a, config.ConstArchiveSettingS3Provider); bucket == "" && (provider == ConstCloud18Provider || provider == cluster.Conf.BackupStreamingProvider) {
 		bucket = cluster.Conf.BackupStreamingBucket
 	}
 	prefix := strings.Trim(archiveSetting(a, config.ConstArchiveSettingS3Prefix), "/")

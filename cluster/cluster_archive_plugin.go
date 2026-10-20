@@ -267,12 +267,17 @@ func (cluster *Cluster) runArchivePlugin(a config.ArchiveConfig, req wire.Reques
 	cmd.Env = append(archivePluginBaseEnv(), env...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = &in, &out, &stderr
 	runErr := cmd.Run()
-	if tail := strings.TrimSpace(lastLines(stderr.String(), 5)); tail != "" {
+	tail := strings.TrimSpace(lastLines(stderr.String(), 5))
+	if tail != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Archive %s %s: %s", a.Name, req.Op, tail)
 	}
 	resp, err := wire.ReadResponse(&out)
 	if err != nil {
 		if runErr != nil && out.Len() == 0 {
+			// the plugin answered nothing: its last words are the only reason there is
+			if tail != "" {
+				return resp, fmt.Errorf("archive %s %s: %w: %s", a.Name, req.Op, runErr, tail)
+			}
 			return resp, fmt.Errorf("archive %s %s: %w", a.Name, req.Op, runErr)
 		}
 		return resp, fmt.Errorf("archive %s %s: %w", a.Name, req.Op, err)

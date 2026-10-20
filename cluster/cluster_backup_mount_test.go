@@ -320,7 +320,12 @@ func TestBucketFingerprint(t *testing.T) {
 // user's folder on the SSO; set ones are kept, a folder put under the SSO user's once.
 func TestArchiveBucketFolder(t *testing.T) {
 	cl := &Cluster{Name: "c1", Conf: &config.Config{BackupStreamingBucket: "repman"}}
-	a := config.ArchiveConfig{Name: "archive-plakar-s3-1", Settings: map[string]interface{}{}}
+	// a custom provider with its own keys names its own bucket: none from the mount's storage
+	a := config.ArchiveConfig{Name: "archive-plakar-s3-1", Settings: map[string]interface{}{config.ConstArchiveSettingS3Provider: "aws"}}
+	if b, p := cl.archiveBucketFolder(a, ""); b != "" || p != "c1/archive/archive-plakar-s3-1" {
+		t.Fatalf("custom provider: %q %q", b, p)
+	}
+	a.Settings[config.ConstArchiveSettingS3Provider] = ConstCloud18Provider
 	check := func(sso, wantBucket, wantPrefix string) {
 		t.Helper()
 		if b, p := cl.archiveBucketFolder(a, sso); b != wantBucket || p != wantPrefix {
