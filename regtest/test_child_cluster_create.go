@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"strconv"
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -30,7 +30,7 @@ const (
 // route and checks what the staging doc asks: on the staging cluster one Master, one
 // Slave and one StandAlone (the detached staging server); the staging master
 // replicating from this cluster's master through the channel "staging", IO and SQL
-// running; the GTID domain this cluster's + 1; the proxy monitored. The staging cluster
+// running; the GTID domain of its own name; the proxy monitored. The staging cluster
 // is deleted at the end, whatever the outcome.
 func (regtest *RegTest) TestCreateStaging(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	return testCreateChildCluster(cl, "staging", config.GrantClusterStaging, map[string]int{"Master": 1, "Slave": 1, "StandAlone": 1})
@@ -137,9 +137,10 @@ func createCheckedChild(cl *cluster.Cluster, kind string, grant string, wantStat
 		tlsLogf(cl, "FAIL Create "+kind+": plan: %s", err)
 		return run, false, false
 	}
-	parentDomain, _ := strconv.Atoi(cl.Configurator.GetConfigReplicationDomain(cl.Name))
-	if plan.Domain != strconv.Itoa(parentDomain+1) || plan.SourceName != cl.Conf.MasterConn || plan.OwnSourceName != kind {
-		tlsLogf(cl, "FAIL Create "+kind+": plan domain %q (parent %d) source %q own %q", plan.Domain, parentDomain, plan.SourceName, plan.OwnSourceName)
+	// the domain of the child's name, never the parent's
+	parentDomain := cl.Configurator.GetConfigReplicationDomain(cl.Name)
+	if plan.Domain != configurator.ReplicationDomainOfName(name) || plan.Domain == parentDomain || plan.SourceName != cl.Conf.MasterConn || plan.OwnSourceName != kind {
+		tlsLogf(cl, "FAIL Create "+kind+": plan domain %q (parent %s) source %q own %q", plan.Domain, parentDomain, plan.SourceName, plan.OwnSourceName)
 		return run, false, false
 	}
 
