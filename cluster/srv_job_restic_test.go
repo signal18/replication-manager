@@ -269,9 +269,9 @@ func TestResticCheckConfigManualNoSideEffects(t *testing.T) {
 
 	cl := &Cluster{
 		Conf: &config.Config{
-			BackupRestic:           true,
-			BackupResticBinaryPath: resticPath,
-			BackupResticPassword:   "testpassword",
+			BackupRestic:                true,
+			BackupResticBinaryPath:      resticPath,
+			BackupResticPassword:        "testpassword",
 			BackupResticLocalRepository: repoDir,
 		},
 		BackupMetaMap: backupmgr.NewBackupMetaMap(),

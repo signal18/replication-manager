@@ -548,17 +548,17 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
-		Id:                now.Unix(),
-		StartTime:         now,
-		BackupMethod:      backupmgr.BackupMethodPhysical,
-		BackupStrategy:    backupmgr.BackupStrategyFull,
-		BackupTool:        physType,
-		Source:            server.URL,
-		Role:              server.backupRole(),
-		Dest:              dest,
-		Compressed:        cluster.Conf.CompressBackups,
-		Previous:          prevId,
-		ResticEnabled:     resticEnabled,
+		Id:             now.Unix(),
+		StartTime:      now,
+		BackupMethod:   backupmgr.BackupMethodPhysical,
+		BackupStrategy: backupmgr.BackupStrategyFull,
+		BackupTool:     physType,
+		Source:         server.URL,
+		Role:           server.backupRole(),
+		Dest:           dest,
+		Compressed:     cluster.Conf.CompressBackups,
+		Previous:       prevId,
+		ResticEnabled:  resticEnabled,
 	}
 	server.ensureBackupSessionID(server.LastBackupMeta.Physical, backupmgr.BackupMethodPhysical, now)
 
@@ -5137,15 +5137,15 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
-		Id:                start.Unix(),
-		StartTime:         start,
-		BackupMethod:      backupmgr.BackupMethodLogical,
-		BackupTool:        logicalType,
-		BackupStrategy:    backupmgr.BackupStrategyFull,
-		Source:            server.URL,
-		Role:              server.backupRole(),
-		Previous:          prevId,
-		ResticEnabled:     resticEnabled,
+		Id:             start.Unix(),
+		StartTime:      start,
+		BackupMethod:   backupmgr.BackupMethodLogical,
+		BackupTool:     logicalType,
+		BackupStrategy: backupmgr.BackupStrategyFull,
+		Source:         server.URL,
+		Role:           server.backupRole(),
+		Previous:       prevId,
+		ResticEnabled:  resticEnabled,
 	}
 	server.ensureBackupSessionID(server.LastBackupMeta.Logical, backupmgr.BackupMethodLogical, start)
 	server.LastBackupMeta.Logical.ExecRemote = execRemote
