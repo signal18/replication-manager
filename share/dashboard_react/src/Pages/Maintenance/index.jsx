@@ -240,14 +240,26 @@ function backupArchivesTooltip(row, attached) {
   return names.map((n) => `${n}: snapshot ${refs[n]}${attached && n !== attached ? ' (detached: attach it to restore from it)' : ''}`).join('\n')
 }
 
-// what the restore selection reads of a backup (#2091): where it is, proven, picked now
+// what the restore selection reads of a backup (#2091): where its file is, archived, proven,
+// picked now
 function backupRestoreLine(row) {
   if (!row.location) return ''
-  return [row.location, row.proven && 'proven', row.restoreCandidate && 'picked now'].filter(Boolean).join(' · ')
+  return [row.location, row.archived && 'archived', row.proven && 'proven', row.restoreCandidate && 'picked now']
+    .filter(Boolean)
+    .join(' · ')
+}
+
+const backupLocationText = {
+  local: 'local: on replication-manager\'s own disk',
+  remote: 'remote: in the bucket, read through the backups folder mount',
+  archive: 'archive: only in a snapshot of the attached archive, fetched back before a restore'
 }
 
 function backupRestoreTooltip(row) {
-  const where = row.location === 'remote' ? 'remote: the attached archive holds a snapshot of it' : 'local: in its server\'s backup directory'
+  const where = [
+    backupLocationText[row.location] || row.location,
+    row.archived ? 'archived: the attached archive holds a snapshot of it' : 'not archived in the attached archive'
+  ].join('\n')
   const proof = row.proven ? 'proven: a test restore loaded its file, still unchanged' : 'not proven by a test restore of its current file'
   const pick = row.restoreCandidate
     ? 'picked now: it is its server\'s last backup of its kind, a restore or reseed chooses among those'
