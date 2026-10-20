@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { createColumnHelper } from '@tanstack/react-table'
-import { HiRefresh, HiTrash } from 'react-icons/hi'
+import { HiRefresh, HiRewind, HiTrash } from 'react-icons/hi'
 import PropTypes from 'prop-types'
 import { Box, Text } from '@chakra-ui/react'
+import RMButton from '../../components/RMButton'
 import Dropdown from '../../components/Dropdown'
 import { DataTable } from '../../components/DataTable'
 import RMIconButton from '../../components/RMIconButton'
@@ -19,20 +20,22 @@ import styles from './styles.module.scss'
 const columnHelper = createColumnHelper()
 const isRestic = (a) => a?.plugin?.startsWith('archive-restic-')
 
-function AttachedArchive({ clusterName, user, onAttached }) {
-  const [list, setList] = useState({ attached: '', archives: [], plugins: [] })
+function AttachedArchive({ clusterName, user, onAttached, snapbackAsk, onSnapbackAskDone }) {
+  const [list, setList] = useState({ attached: '', archives: [], plugins: [], snapbacks: [] })
   const [error, setError] = useState('')
   const [snapshots, setSnapshots] = useState({ archive: '', rows: [], error: '', loading: false })
   const [forgetId, setForgetId] = useState('') // the snapshot asked for deletion
+  const [snapbackSnap, setSnapbackSnap] = useState(null) // the snapshot asked for a snapback: { id, path }
   const canSet = user?.grants?.['cluster-settings'] !== false
   const canDelete = user?.grants?.['db-backup'] !== false
+  const canRestore = user?.grants?.['db-restore'] !== false
 
   const fetchList = useCallback(async () => {
     if (!clusterName) return
     try {
       const { data, status } = await clusterService.getArchiveList(clusterName)
       if (status >= 200 && status < 300 && data) {
-        const next = { attached: data.attached || '', archives: data.archives || [], plugins: data.plugins || [] }
+        const next = { attached: data.attached || '', archives: data.archives || [], plugins: data.plugins || [], snapbacks: data.snapbacks || [] }
         setList(next)
         onAttached?.(next.archives.find((a) => a.name === next.attached) || null)
       } else {
@@ -44,6 +47,19 @@ function AttachedArchive({ clusterName, user, onAttached }) {
   }, [clusterName, onAttached])
 
   useEffect(() => { fetchList() }, [fetchList])
+
+  // a snapback runs in the background: follow it until it ends
+  const snapbackRunning = list.snapbacks.some((s) => s.status === 'running')
+  useEffect(() => {
+    if (!snapbackRunning) return undefined
+    const t = setInterval(fetchList, 3000)
+    return () => clearInterval(t)
+  }, [snapbackRunning, fetchList])
+
+  // a snapback asked from the restic snapshots below
+  useEffect(() => {
+    if (snapbackAsk?.id) setSnapbackSnap(snapbackAsk)
+  }, [snapbackAsk])
 
   const change = async (value) => {
     setError('')
@@ -90,11 +106,45 @@ function AttachedArchive({ clusterName, user, onAttached }) {
       id: 'actions',
       header: 'Actions',
       cell: (info) => (
-        <RMIconButton icon={HiTrash} tooltip='Delete snapshot' isDisabled={!canDelete}
-          onClick={() => setForgetId(info.row.original.id)} />
+        <>
+          <RMIconButton icon={HiRewind} tooltip='Snapback: put the backup directory back as it is in this snapshot' isDisabled={!canRestore}
+            onClick={() => setSnapbackSnap({ id: info.row.original.id, path: info.row.original.paths?.[0] || '' })} />
+          <RMIconButton icon={HiTrash} tooltip='Delete snapshot' isDisabled={!canDelete}
+            onClick={() => setForgetId(info.row.original.id)} />
+        </>
       )
     })
-  ], [canDelete])
+  ], [canDelete, canRestore])
+
+  const closeSnapback = () => {
+    setSnapbackSnap(null)
+    onSnapbackAskDone?.()
+  }
+  const snapback = async () => {
+    const id = snapbackSnap?.id
+    closeSnapback()
+    try {
+      const { data, status } = await clusterService.snapbackArchive(clusterName, id)
+      if (status < 200 || status >= 300) setError(typeof data === 'string' ? data.trim() : `status ${status}`)
+    } catch (e) {
+      setError(e?.message || 'Snapback failed')
+    }
+    fetchList()
+  }
+  const release = async (server) => {
+    try {
+      const { data, status } = await clusterService.releaseSnapback(clusterName, server)
+      if (status < 200 || status >= 300) setError(typeof data === 'string' ? data.trim() : `status ${status}`)
+    } catch (e) {
+      setError(e?.message || 'Release failed')
+    }
+    fetchList()
+  }
+  const snapbackLine = (s) => {
+    if (s.status === 'running') return `being put back to snapshot ${s.snapshot.slice(0, 8)}: its backups wait`
+    if (s.status === 'failed') return `snapback to ${s.snapshot.slice(0, 8)} failed: ${s.error}`
+    return `at snapshot ${s.snapshot.slice(0, 8)}, its latest is ${s.head.slice(0, 8)}: its backups are locked until a snapback to ${s.head.slice(0, 8)} or a release`
+  }
 
   const forget = async () => {
     const id = forgetId
@@ -133,6 +183,16 @@ function AttachedArchive({ clusterName, user, onAttached }) {
         )}
         {error && <Text color='red.500' fontSize='sm'>{error}</Text>}
       </Box>
+      {list.snapbacks.map((s) => (
+        <Box key={s.server} className={styles.repoRow}>
+          <Box className={styles.repoRowLabel}>Snapback:</Box>
+          <Box className={styles.repoRowValue} color={s.status === 'failed' ? 'red.500' : undefined}>{s.server} {snapbackLine(s)}</Box>
+          {s.status !== 'running' && (
+            <RMButton size='xs' variant='outline' isDisabled={!canRestore} onClick={() => release(s.server)}
+              title='Keep the backup directory as it is now: its next backup is its latest snapshot'>Release</RMButton>
+          )}
+        </Box>
+      ))}
       {pluginArchive && (
         <>
           {snapshots.error
@@ -140,6 +200,9 @@ function AttachedArchive({ clusterName, user, onAttached }) {
             : <DataTable key='archiveSnapshots' data={snapshots.rows} columns={snapshotColumns} className={styles.table} />}
         </>
       )}
+      {snapbackSnap && <ConfirmModal title={`Snapback to snapshot ${snapbackSnap.id.slice(0, 8)}?`} isOpen={!!snapbackSnap}
+        body={`The backup directory ${snapbackSnap.path || ''} is put back as it is in this snapshot of ${list.attached}: first the directory as it is now is snapshotted (its latest snapshot), then emptied, then this snapshot is restored into it. Until a snapback to its latest snapshot or a release, the server's backups are locked.`}
+        onConfirmClick={snapback} closeModal={closeSnapback} />}
       {forgetId && <ConfirmModal title={`Delete snapshot ${forgetId.slice(0, 8)} of ${pluginArchive}?`} isOpen={!!forgetId}
         body='The snapshot is deleted from the archive at once: the backup it holds can no longer be restored from this archive. This cannot be undone.'
         onConfirmClick={forget} closeModal={() => setForgetId('')} />}
@@ -150,7 +213,9 @@ function AttachedArchive({ clusterName, user, onAttached }) {
 AttachedArchive.propTypes = {
   clusterName: PropTypes.string,
   user: PropTypes.object,
-  onAttached: PropTypes.func
+  onAttached: PropTypes.func,
+  snapbackAsk: PropTypes.object,
+  onSnapbackAskDone: PropTypes.func
 }
 
 export default AttachedArchive

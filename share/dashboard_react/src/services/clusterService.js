@@ -59,6 +59,8 @@ export const clusterService = {
   attachArchive,
   getArchiveSnapshots,
   forgetArchiveSnapshot,
+  snapbackArchive,
+  releaseSnapback,
   detachArchive,
   removeArchive,
   sizeArchive,
@@ -1158,6 +1160,16 @@ function getArchiveSnapshots(clusterName, archiveName, baseURL) {
 // deletes one snapshot of an archive plugin's archive (#2091)
 function forgetArchiveSnapshot(clusterName, archiveName, snapshotId, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/forget/${encodeURIComponent(archiveName)}/${encodeURIComponent(snapshotId)}`)
+}
+
+// puts a server's backup directory back as it was in a snapshot of the attached archive (#2091)
+function snapbackArchive(clusterName, snapshotId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/snapback/${encodeURIComponent(snapshotId)}`)
+}
+
+// keeps a backup directory as a snapback left it, its backups unlocked (#2091)
+function releaseSnapback(clusterName, serverName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/snapback-release/${encodeURIComponent(serverName)}`)
 }
 
 function attachArchive(clusterName, archiveName, baseURL) {

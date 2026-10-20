@@ -14,7 +14,7 @@ import { archiveBackup, deleteBackup, discoverBackups, registerBackup, registerB
 import RMIconButton from '../../components/RMIconButton'
 import CopyToClipboard from '../../components/CopyToClipboard'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh, HiDocumentAdd, HiDocumentRemove, HiExclamation, HiBan, HiCloudUpload } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiRewind, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh, HiDocumentAdd, HiDocumentRemove, HiExclamation, HiBan, HiCloudUpload } from 'react-icons/hi'
 import Dropdown from '../../components/Dropdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
@@ -485,6 +485,7 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
   const resticRepoPath = useSelector((state) => state.cluster.restic.repoPath)
   // the attached archive (#2091): the restic repository, snapshots and queue are a restic archive's
   const [attachedArchive, setAttachedArchive] = useState(null)
+  const [snapbackAsk, setSnapbackAsk] = useState(null) // a restic snapshot asked for a snapback: { id, path }
   const resticShown = !attachedArchive || attachedArchive.plugin?.startsWith('archive-restic-')
   // where an archive of a backup goes: the attached archive by name, else restic
   const archiveTarget = selectedCluster?.config?.backupArchiveName || 'restic'
@@ -897,12 +898,17 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
       id: 'actions',
       header: 'Actions',
       cell: (info) => (
+        <>
+        <RMIconButton icon={HiRewind} tooltip='Snapback: put the backup directory back as it is in this snapshot'
+          isDisabled={user?.grants?.['db-restore'] === false}
+          onClick={() => setSnapbackAsk({ id: info.row.original.id, path: info.row.original.paths?.[0] || '' })} />
         <RMIconButton
           icon={HiTrash}
           tooltip='Purge snapshot'
           onClick={() => openConfirmModal('Do you want to purge this snapshot?', { action: 'snapshotPurge', data: { snapshotId: info.row.original.id } })}
           isDisabled={!user?.grants['cluster-process']}
         />
+        </>
       )
     })
   ])
@@ -1129,7 +1135,8 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
         headerActions={settingsButton(onOpenArchiveSettings || onOpenBackupSettings, 'Open Archive Settings')}
         body={
           <VStack className={styles.snapshotContainer}>
-            <AttachedArchive clusterName={selectedCluster?.name} user={user} onAttached={setAttachedArchive} />
+            <AttachedArchive clusterName={selectedCluster?.name} user={user} onAttached={setAttachedArchive}
+              snapbackAsk={snapbackAsk} onSnapbackAskDone={() => setSnapbackAsk(null)} />
             {resticShown && (
               <>
                 {/* an attached restic archive's location is in the row above */}
