@@ -31,9 +31,9 @@ var (
 	ErrBackupVerificationFailed = errors.New("its last verification failed")
 	// ErrBackupArchived: the backup already has its archive snapshot.
 	ErrBackupArchived = errors.New("already archived")
-	// ErrBackupArchiveUnavailable: no archive to push to (backup-restic off, or its manager
-	// not started).
-	ErrBackupArchiveUnavailable = errors.New("no archive: backup-restic is off or restic is not started")
+	// ErrBackupArchiveUnavailable: no archive to push to: no archive plugin attached, and
+	// backup-restic off or its manager not started.
+	ErrBackupArchiveUnavailable = errors.New("no archive: attach an archive (Archive settings)")
 	// ErrBackupArchiving: an archive of the backup already runs (its test restore or its push).
 	ErrBackupArchiving = errors.New("the backup is already being archived")
 )
@@ -88,6 +88,15 @@ func (cluster *Cluster) backupArchived(meta *backupmgr.BackupMetadata) bool {
 	return meta.ResticSnapshotID != "" || meta.OriginalRemoved
 }
 
+// archiveAvailable: a push has an archive to go to: an attached archive plugin's, or restic
+// on and started (backupResticWith).
+func (cluster *Cluster) archiveAvailable() bool {
+	if _, ok := cluster.attachedExternalArchive(); ok {
+		return true
+	}
+	return cluster.Conf.BackupRestic && cluster.ResticManager != nil
+}
+
 // archiveRefusal tells why meta, a registered backup, can not be pushed to the archive now;
 // nil when it can. testFirst: a test restore runs before the push, a failed verification
 // does not refuse it.
@@ -95,7 +104,7 @@ func (cluster *Cluster) archiveRefusal(meta *backupmgr.BackupMetadata, testFirst
 	if !meta.Discovered {
 		return fmt.Errorf("%w: %d", ErrBackupNotDiscovered, meta.Id)
 	}
-	if !cluster.Conf.BackupRestic || cluster.ResticManager == nil {
+	if !cluster.archiveAvailable() {
 		return ErrBackupArchiveUnavailable
 	}
 	if cluster.backupArchived(meta) {
@@ -119,7 +128,8 @@ func (cluster *Cluster) archiveRefusal(meta *backupmgr.BackupMetadata, testFirst
 	return nil
 }
 
-// ArchiveBackup queues the push of a registered backup's file in the restic task queue, its
+// ArchiveBackup queues the push of a registered backup's file to the attached archive (the
+// restic task queue, or the archive plugin), its
 // snapshot recorded in the backup. removeOriginal: the original is removed once the snapshot
 // holds it (removeArchivedOriginal, its checks), whatever backup-archive-remove-original.
 // testFirst: a test restore of the backup runs first, on backup-verification-host, and the

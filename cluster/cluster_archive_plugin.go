@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -334,9 +335,17 @@ func (cluster *Cluster) archivePluginPolicy() *wire.Policy {
 // pushExternalArchive archives backupPath into the attached external archive, records the
 // snapshot in the backup's catalogue entry, applies Remove original and, after each backup,
 // the retention policy; then clears the in-archive flag the caller set.
-func (server *ServerMonitor) pushExternalArchive(a config.ArchiveConfig, backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, tags []string) {
+func (server *ServerMonitor) pushExternalArchive(a config.ArchiveConfig, backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, opt resticPushOptions, tags []string) {
 	cluster := server.ClusterGroup
+	done := func(err error) {
+		if opt.done != nil {
+			opt.done(err)
+		}
+	}
 	defer func() {
+		if opt.noFlag {
+			return
+		}
 		switch backupMethod {
 		case backupmgr.BackupMethodLogical:
 			cluster.SetInResticLogicalBackupState(false)
@@ -353,19 +362,49 @@ func (server *ServerMonitor) pushExternalArchive(a config.ArchiveConfig, backupM
 			err = fmt.Errorf("no snapshot returned")
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Archive %s: backup of %s not archived: %s", a.Name, server.URL, err)
+		done(err)
 		return
 	}
 	id := resp.Snapshot.ID
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s: backup of %s archived, snapshot %s", a.Name, server.URL, shortID(id))
 	if meta != nil {
 		server.UpdateBackupMetadataWithRestic(backupMethod, meta, id)
-		if cluster.Conf.BackupArchiveRemoveOriginal {
-			server.removeArchivedOriginal(backupMethod, meta, id)
+		// the removal as the push says: backup-archive-remove-original, or asked with the
+		// archive of this backup (ArchiveBackup)
+		if opt.removeOriginal != nil && opt.removeOriginal() {
+			server.removeArchivedOriginalAsked(backupMethod, meta, id, opt.asked)
 		}
 	}
 	if cluster.Conf.ArchivePurgeAfterBackup() {
 		cluster.purgeExternalArchive(a, false)
 	}
+	done(nil)
+}
+
+// ArchiveSnapshots lists the snapshots of the archive name, an archive plugin's (a restic
+// archive's are listed by restic, /restic/snapshots), newest first. It asks the plugin, at
+// most archivePluginOpTimeout: an archive in a bucket answers with one listing.
+func (cluster *Cluster) ArchiveSnapshots(name string) ([]wire.Snapshot, error) {
+	list, _ := cluster.Conf.ArchiveList()
+	for _, a := range list {
+		if a.Name != name {
+			continue
+		}
+		if _, ok := externalArchive(a); !ok {
+			return nil, fmt.Errorf("archive %s is a restic archive: restic lists its snapshots", name)
+		}
+		resp, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpList})
+		if err != nil {
+			return nil, err
+		}
+		snaps := resp.Snapshots
+		if snaps == nil {
+			snaps = []wire.Snapshot{}
+		}
+		sort.SliceStable(snaps, func(i, j int) bool { return snaps[i].Time.After(snaps[j].Time) })
+		return snaps, nil
+	}
+	return nil, fmt.Errorf("unknown archive %s", name)
 }
 
 // purgeExternalArchive asks a's plugin to apply the cluster's retention policy.

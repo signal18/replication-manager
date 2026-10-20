@@ -247,6 +247,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveList)),
 	))
+	router.Handle("/api/clusters/{clusterName}/archive-snapshots/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveSnapshots)),
+	))
 	router.Handle("/api/clusters/{clusterName}/archive-actions/add", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveAdd)),
@@ -11224,7 +11228,7 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 			AccessKey:      req.AccessKey,
 			SecretKey:      req.SecretKey,
 			Cloud18SSO:     req.Cloud18SSO,
-		RoleArn:        req.RoleArn,
+			RoleArn:        req.RoleArn,
 		}
 		if err := p.Validate(); err != nil {
 			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: fmt.Sprintf("Validation error: %v", err)}

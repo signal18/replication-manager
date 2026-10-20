@@ -71,9 +71,17 @@ func TestArchivePluginExternal(t *testing.T) {
 	if got := cl.attachedArchiveRepoPath(); got != "archive-fake-local:/data/f1" {
 		t.Fatalf("attached plugin archive repository %q", got)
 	}
+	// a registered backup can be archived to it, backup-restic off
+	cl.Conf.BackupRestic = false
+	if !cl.archiveAvailable() {
+		t.Fatal("an attached archive plugin is an archive to push to")
+	}
 	cl.Conf.BackupArchiveName = ""
 	if got := cl.attachedArchiveRepoPath(); got != "" {
 		t.Fatalf("no archive, no restic manager: %q", got)
+	}
+	if cl.archiveAvailable() {
+		t.Fatal("no archive attached, restic off: nothing to push to")
 	}
 }
 

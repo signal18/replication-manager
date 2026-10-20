@@ -5670,7 +5670,7 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 
 	// the attached archive is an external plugin's: it archives the backup itself (#2091)
 	if a, ok := cluster.attachedExternalArchive(); ok {
-		server.pushExternalArchive(a, backupMethod, meta, backupPath, tags)
+		server.pushExternalArchive(a, backupMethod, meta, backupPath, opt, tags)
 		return
 	}
 

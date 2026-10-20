@@ -180,6 +180,29 @@ func (repman *ReplicationManager) handlerMuxArchiveRemove(w http.ResponseWriter,
 	})
 }
 
+// handlerMuxArchiveSnapshots lists an archive plugin's snapshots.
+// @Summary List an archive's snapshots
+// @Description The snapshots of an archive plugin's archive (plakar ...), newest first: id, time, host, tags, paths, size. The plugin is asked at each call. A restic archive's snapshots are listed by /restic/snapshots.
+// @Tags ClusterArchive
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param archiveName path string true "Archive Name"
+// @Success 200 {array} wire.Snapshot
+// @Failure 400 {string} string "Unknown archive, a restic archive, or its snapshots cannot be listed"
+// @Failure 403 {string} string "No valid ACL"
+// @Router /api/clusters/{clusterName}/archive-snapshots/{archiveName} [get]
+func (repman *ReplicationManager) handlerMuxArchiveSnapshots(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		snaps, err := mycluster.ArchiveSnapshots(vars["archiveName"])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeArchiveJSON(w, snaps)
+	})
+}
+
 // handlerMuxArchiveSize reads an archive's size.
 // @Summary Read an archive's size
 // @Description Reads the bytes the archive's content takes, in the background: the list shows the archive as sizing, then its size, or the error. A detached archive keeps the size it had when it was detached; this reads it again.
