@@ -1,6 +1,6 @@
 module github.com/signal18/replication-manager/cluster/archiveplugin/plugins/plakar
 
-go 1.25.8
+go 1.25.9
 
 require (
 	github.com/PlakarKorp/integrations/fs v1.1.9
