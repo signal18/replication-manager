@@ -18,7 +18,8 @@
 // v1.1.8 storage/storage.go (ISC, see LICENSE.plakar-integrations). Changes for
 // replication-manager: it runs in-process (registered with kloset's storage registry, no
 // gRPC plugin wrapper), its credentials take a session token for short-lived STS keys,
-// a missing bucket or CONFIG is fs.ErrNotExist (probe creates the archive on it), Size
+// a missing bucket or CONFIG is fs.ErrNotExist (probe creates the archive on it), an identity
+// refused the bucket-level requests works in its folder (the Cloud18 SSO), Size
 // sums the objects (the original answers -1), and the Glacier, SSE-C and virtual-host
 // options are left out (replication-manager does not offer them).
 
@@ -134,8 +135,24 @@ func (s *s3Store) realpath(path string) string {
 	return strings.TrimPrefix(s.prefixDir+path, "/")
 }
 
+// deniedOnBucket: a scoped identity (the Cloud18 SSO opens its own folder of the bucket only)
+// is refused the bucket-level requests; that tells nothing of the bucket, the reads and writes
+// in the folder answer.
+func deniedOnBucket(err error) bool {
+	return err != nil && minio.ToErrorResponse(err).Code == "AccessDenied"
+}
+
+// bucketExists is BucketExists, the bucket taken as there when the identity may not check it.
+func (s *s3Store) bucketExists(ctx context.Context) (bool, error) {
+	ok, err := s.minioClient.BucketExists(ctx, s.bucket)
+	if deniedOnBucket(err) {
+		return true, nil
+	}
+	return ok, err
+}
+
 func (s *s3Store) Create(ctx context.Context, config []byte) error {
-	exists, err := s.minioClient.BucketExists(ctx, s.bucket)
+	exists, err := s.bucketExists(ctx)
 	if err != nil {
 		return fmt.Errorf("check if bucket exists: %w", err)
 	}
@@ -178,7 +195,8 @@ func (s *s3Store) Create(ctx context.Context, config []byte) error {
 func (s *s3Store) checkObjectLockHistory(ctx context.Context) error {
 	enabled, _, _, _, err := s.minioClient.GetObjectLockConfig(ctx, s.bucket)
 	if err != nil {
-		if minio.ToErrorResponse(err).Code == "ObjectLockConfigurationNotFoundError" {
+		// a scoped identity can not read the bucket's lock: the storage's owner manages it
+		if minio.ToErrorResponse(err).Code == "ObjectLockConfigurationNotFoundError" || deniedOnBucket(err) {
 			return nil
 		}
 		return fmt.Errorf("get object lock config: %w", err)
@@ -206,7 +224,7 @@ func (s *s3Store) checkObjectLockHistory(ctx context.Context) error {
 
 // Open reads CONFIG; a missing bucket or CONFIG is fs.ErrNotExist.
 func (s *s3Store) Open(ctx context.Context) ([]byte, error) {
-	exists, err := s.minioClient.BucketExists(ctx, s.bucket)
+	exists, err := s.bucketExists(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error checking if bucket exists: %w", err)
 	}
@@ -236,7 +254,7 @@ func (s *s3Store) Open(ctx context.Context) ([]byte, error) {
 }
 
 func (s *s3Store) Ping(ctx context.Context) error {
-	ok, err := s.minioClient.BucketExists(ctx, s.bucket)
+	ok, err := s.bucketExists(ctx)
 	if err != nil {
 		return err
 	}
