@@ -15,7 +15,7 @@ import { archiveBackup, deleteBackup, discoverBackups, registerBackup, registerB
 import RMIconButton from '../../components/RMIconButton'
 import CopyToClipboard from '../../components/CopyToClipboard'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiCog, HiPause, HiPlay, HiTrash, HiRewind, HiArchive, HiOutlineArchive, HiLockClosed, HiOutlineLockOpen, HiCheckCircle, HiClock, HiQuestionMarkCircle, HiShieldCheck, HiShieldExclamation, HiOutlineShieldCheck, HiDatabase, HiExclamationCircle, HiFolderAdd, HiSearch, HiRefresh, HiDocumentAdd, HiDocumentRemove, HiExclamation, HiBan, HiCloudUpload } from 'react-icons/hi'
+import { HiCog, HiPause, HiPlay, HiTrash, HiRewind, HiQuestionMarkCircle, HiSearch, HiDocumentAdd } from 'react-icons/hi'
 import Dropdown from '../../components/Dropdown'
 import CommonModal from '../../components/Modals/CommonModal'
 import modalStyles from '../../components/Modals/styles.module.scss'
@@ -26,6 +26,8 @@ import PropTypes from 'prop-types'
 import { changePlanUnits } from '../../redux/settingsSlice'
 import { Text } from '@chakra-ui/react'
 import TextForm from '../../components/TextForm'
+import TagPill from '../../components/TagPill'
+import MenuOptions from '../../components/MenuOptions'
 import { getUnitRatios } from '../../utility/unitRatios'
 
 const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
@@ -226,13 +228,8 @@ BKUSlider.propTypes = {
 // BackupCellLine shows one labelled value of a backup on a single line, cut at the column
 // width: shown is what fits (the value by default), more the number of entries left out,
 // the tooltip gives the value whole and the copy button copies it as is.
-// the archives holding a backup, by name (#2091): one detached is restored from once attached
-function backupArchives(row, attached) {
-  const names = Object.keys(row.archiveRefs || {}).sort()
-  if (names.length === 0) return row.resticSnapshotID ? 'archived' : ''
-  return names.map((n) => (attached && n !== attached ? `${n} (detached)` : n)).join(', ')
-}
-
+// the archives holding a backup, by name, with their snapshots (#2091): one detached is
+// restored from once attached
 function backupArchivesTooltip(row, attached) {
   const refs = row.archiveRefs || {}
   const names = Object.keys(refs).sort()
@@ -240,32 +237,104 @@ function backupArchivesTooltip(row, attached) {
   return names.map((n) => `${n}: snapshot ${refs[n]}${attached && n !== attached ? ' (detached: attach it to restore from it)' : ''}`).join('\n')
 }
 
-// what the restore selection reads of a backup (#2091): where its file is, archived, proven,
-// picked now
-function backupRestoreLine(row) {
-  if (!row.location) return ''
-  return [row.location, row.archived && 'archived', row.proven && 'proven', row.restoreCandidate && 'picked now']
-    .filter(Boolean)
-    .join(' · ')
-}
-
 const backupLocationText = {
-  local: 'local: on replication-manager\'s own disk',
-  remote: 'remote: in the bucket, read through the backups folder mount',
-  archive: 'archive: only in a snapshot of the attached archive, fetched back before a restore'
+  local: 'On replication-manager\'s own disk',
+  remote: 'In the bucket, read through the backups folder mount',
+  archive: 'Only in a snapshot of the attached archive, fetched back before a restore'
 }
 
-function backupRestoreTooltip(row) {
-  const where = [
-    backupLocationText[row.location] || row.location,
-    row.archived ? 'archived: the attached archive holds a snapshot of it' : 'not archived in the attached archive'
-  ].join('\n')
-  const proof = row.proven ? 'proven: a test restore loaded its file, still unchanged' : 'not proven by a test restore of its current file'
-  const pick = row.restoreCandidate
-    ? 'picked now: it is its server\'s last backup of its kind, a restore or reseed chooses among those'
-    : 'not picked now: a restore or reseed chooses among each server\'s last logical and physical backup'
-  return `${where}\n${proof}\n${pick}`
+// backupDuration is how long the backup took, from its start to its end
+function backupDuration(row) {
+  const start = Date.parse(row.startTime)
+  const end = Date.parse(row.endTime)
+  if (!start || !end || row.endTime.startsWith('0001') || end < start) return ''
+  let secs = Math.round((end - start) / 1000)
+  const h = Math.floor(secs / 3600)
+  const m = Math.floor((secs % 3600) / 60)
+  secs %= 60
+  return [h && `${h}h`, (h || m) && `${m}m`, `${secs}s`].filter(Boolean).join(' ')
 }
+
+const lower = (s) => (s || '').toLowerCase()
+
+// backupTags are a backup's attributes and states as readable tags (#2091): what it is, what
+// it gives a restore, where its file is, and its states; a tooltip only details a tag
+function backupTags(row, change, attached) {
+  const v = row.verification
+  const caps = (row.capabilities || []).filter((c) => c !== 'compress' && c !== 'encrypt')
+  const verify = () => {
+    if (!v) return null
+    const tip = verificationLabel(v) + (verificationBeforeChange(row, change) ? ' · taken before the file changed' : '')
+    switch (v.status) {
+      case 'running':
+        return { text: 'verifying', colorScheme: 'yellow', tooltip: tip }
+      case 'skipped':
+        return { text: 'verify skipped', colorScheme: 'gray', tooltip: tip }
+      case 'passed':
+        if (v.warnings?.length) return { text: 'verified with warnings', colorScheme: 'orange', tooltip: tip }
+        return { text: v.level === 'restore' ? 'test restored' : 'verified', colorScheme: 'green', tooltip: tip }
+      default:
+        return { text: 'verify failed', colorScheme: 'red', tooltip: tip }
+    }
+  }
+  return [
+    { text: row.backupTool, colorScheme: 'blue' },
+    { text: lower(getBackupMethod(row.backupMethod)), colorScheme: 'blue' },
+    { text: lower(getBackupStrategy(row.backupStrategy)), colorScheme: 'blue' },
+    row.role && { text: row.role, colorScheme: 'purple', tooltip: `The source server was ${row.role} when the backup started` },
+    row.compressed && { text: 'compressed', colorScheme: 'gray' },
+    row.encrypted && { text: 'encrypted', colorScheme: 'gray', tooltip: row.encryptionAlgo },
+    ...caps.map((c) => ({ text: c, colorScheme: 'gray' })),
+    row.location && { text: row.location, colorScheme: 'cyan', tooltip: backupLocationText[row.location] },
+    (row.archived || Object.keys(row.archiveRefs || {}).length > 0) && {
+      text: 'archived',
+      colorScheme: 'cyan',
+      tooltip: backupArchivesTooltip(row, attached)
+    },
+    row.completed
+      ? { text: 'completed', colorScheme: 'green' }
+      : row.discoveryNote
+        ? { text: 'not completed', colorScheme: 'red', tooltip: row.discoveryNote }
+        : { text: 'pending', colorScheme: 'yellow' },
+    verify(),
+    row.proven && { text: 'proven', colorScheme: 'green', tooltip: 'A test restore loaded its file, unchanged since' },
+    row.restoreCandidate && {
+      text: 'picked now',
+      colorScheme: 'green',
+      tooltip: 'Its server\'s last backup of its kind: a restore or reseed chooses among those'
+    },
+    row.discovered && {
+      text: 'registered',
+      colorScheme: 'gray',
+      tooltip: `Registered from a backup folder${row.registration?.adopted ? ' (by a previous release)' : ''}: never used by an automatic restore`
+    },
+    row.notABackup && { text: 'not a backup', colorScheme: 'red', tooltip: `${row.discoveryNote}. Never used: unregister it` },
+    change && {
+      text: 'changed',
+      colorScheme: 'red',
+      tooltip: `${change.describe} (WARN0249). Not used until the change is registered${change.registerError ? `. Last register refused: ${change.registerError}` : ''}`
+    }
+  ].filter((t) => t && t.text)
+}
+
+function BackupTags({ tags }) {
+  return (
+    <Flex wrap='wrap' gap={1}>
+      {tags.map((t) =>
+        t.tooltip ? (
+          <Tooltip key={t.text} label={<Box whiteSpace='pre'>{t.tooltip}</Box>} hasArrow maxW='none'>
+            <Box as='span' display='inline-block'>
+              <TagPill text={t.text} colorScheme={t.colorScheme} />
+            </Box>
+          </Tooltip>
+        ) : (
+          <TagPill key={t.text} text={t.text} colorScheme={t.colorScheme} />
+        )
+      )}
+    </Flex>
+  )
+}
+BackupTags.propTypes = { tags: PropTypes.array }
 
 // the log copies of the backup's server directory (backup-binlogs): number, lowest, highest
 function BackupLogsLine({ copies }) {
@@ -358,20 +427,6 @@ const verificationLabel = (v) => {
         : `Verified (${v.level})${when}${notes}`
     default:
       return `Verification (${v.level}) failed${when}: ${v.error}`
-  }
-}
-
-const verificationClass = (v) => {
-  switch (v?.status) {
-    case 'passed':
-      if (v.warnings?.length) return styles.verifyWarning
-      return v.level === 'restore' ? styles.verifyRestored : styles.verifyPassed
-    case 'failed':
-      return styles.verifyFailed
-    case 'running':
-      return styles.verifyRunning
-    default:
-      return styles.verifyNone
   }
 }
 
@@ -679,64 +734,53 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
 
   const columns = useMemo(
     () => [
-      columnHelper.accessor((row) => row.id, {
-        cell: (info) => info.getValue(),
-        header: 'ID',
-        id: 'id'
-      }),
       columnHelper.accessor(
         (row) => (
           <>
-            {formatDate(row.startTime)} <br />
-            {formatDate(row.endTime)}
+            {formatDate(row.startTime)}
             {row.timeSource && <Box fontSize='xs' opacity={0.7}>{timeSourceLabel(row.timeSource)}</Box>}
           </>
         ),
         {
           cell: (info) => info.getValue(),
-          header: 'Start - End Time',
-          id: 'startendTime',
-          minWidth: 160
+          header: 'Started',
+          id: 'startTime',
+          minWidth: 150
         }
       ),
+      columnHelper.accessor((row) => backupDuration(row), {
+        cell: (info) => info.getValue(),
+        header: 'Duration',
+        id: 'duration'
+      }),
       columnHelper.accessor(
         (row) => (
           <VStack className={styles.cellStack} spacing={0.5}>
-            <Box className={styles.cellValue}>{getBackupMethod(row.backupMethod)}</Box>
-            <Box className={styles.cellValue}>{row.backupTool}</Box>
-            <Box className={styles.cellValue}>{getBackupStrategy(row.backupStrategy)}</Box>
+            <Box className={styles.cellValue}>{row.source}</Box>
+            <BackupCellLine label='File:' value={row.dest} shown={backupDestName(row.dest)} textType='Destination' />
           </VStack>
         ),
         {
           cell: (info) => info.getValue(),
-          header: 'Backup Method',
-          id: 'backupMethod'
-        }
-      ),
-      columnHelper.accessor(
-        (row) => (
-          <VStack className={styles.cellStack} spacing={0.5}>
-            <BackupCellLine label='Source:' value={row.source} textType='Source' />
-            <BackupCellLine label='Role:' value={row.role} tooltip={row.role ? `The source server was ${row.role} when the backup started` : ''} textType='Role' />
-            <BackupCellLine label='Restore:' value={backupRestoreLine(row)} tooltip={backupRestoreTooltip(row)} textType='Restore' />
-            <BackupCellLine label='Caps:' value={(row.capabilities || []).join(', ')} tooltip='What the backup gives a restore, as the restore selection reads it' textType='Capabilities' />
-            <BackupCellLine label='Dest:' value={row.dest} shown={backupDestName(row.dest)} textType='Destination' />
-            <BackupCellLine label='Archive:' value={backupArchives(row, selectedCluster?.config?.backupArchiveName)}
-              tooltip={backupArchivesTooltip(row, selectedCluster?.config?.backupArchiveName)} textType='Archive' />
-          </VStack>
-        ),
-        {
-          cell: (info) => info.getValue(),
-          header: 'Source - Dest',
-          id: 'srcDest'
+          header: 'Server',
+          id: 'source'
         }
       ),
       columnHelper.accessor((row) => formatBytes(row.size), {
         cell: (info) => info.getValue(),
-        header: 'Backup Size',
+        header: 'Size',
         id: 'backupSize',
         minWidth: 100
       }),
+      columnHelper.accessor(
+        (row) => <BackupTags tags={backupTags(row, changesById[row.id], selectedCluster?.config?.backupArchiveName)} />,
+        {
+          cell: (info) => info.getValue(),
+          header: 'Tags',
+          id: 'tags',
+          minWidth: 260
+        }
+      ),
       columnHelper.accessor(
         (row) => (
           <VStack className={styles.cellStack} spacing={0.5}>
@@ -751,61 +795,6 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           id: 'binLogInfo'
         }
       ),
-      columnHelper.accessor(
-        (row) => (
-          <HStack className={styles.iconRow} spacing={2}>
-            <Tooltip label={row.completed ? 'Completed' : row.discoveryNote ? `Not completed: ${row.discoveryNote}` : 'Pending'} hasArrow>
-              <Box className={`${styles.statusIcon} ${row.completed ? styles.statusIconActive : styles.statusIconPending}`}>
-                {row.completed ? <HiCheckCircle /> : row.discoveryNote ? <HiExclamationCircle /> : <HiClock />}
-              </Box>
-            </Tooltip>
-            {row.discovered && (
-              <Tooltip label={`Registered from a backup folder${row.registration?.adopted ? ' (by a previous release)' : ''}: never used by an automatic restore${row.completed && row.discoveryNote ? ` (${row.discoveryNote})` : ''}`} hasArrow>
-                <Box className={`${styles.statusIcon} ${styles.statusIconActive}`}>
-                  <HiFolderAdd />
-                </Box>
-              </Tooltip>
-            )}
-            {row.notABackup && (
-              <Tooltip label={`Not a backup: ${row.discoveryNote}. Never used: unregister it`} hasArrow>
-                <Box className={`${styles.statusIcon} ${styles.verifyFailed}`}>
-                  <HiBan />
-                </Box>
-              </Tooltip>
-            )}
-            {changesById[row.id] && (
-              <Tooltip label={`${changesById[row.id].describe} (WARN0249). Not used until the change is registered: register it, or restore the original from its archive, or unregister it${changesById[row.id].registerError ? `. Last register refused: ${changesById[row.id].registerError}` : ''}`} hasArrow>
-                <Box className={`${styles.statusIcon} ${styles.verifyFailed}`}>
-                  <HiExclamation />
-                </Box>
-              </Tooltip>
-            )}
-            <Tooltip label={row.compressed ? 'Compressed' : 'Not compressed'} hasArrow>
-              <Box className={`${styles.statusIcon} ${row.compressed ? styles.statusIconActive : styles.statusIconInactive}`}>
-                {row.compressed ? <HiArchive /> : <HiOutlineArchive />}
-              </Box>
-            </Tooltip>
-            <Tooltip
-              label={row.encrypted ? `Encrypted${row.encryptionAlgo ? ` · ${row.encryptionAlgo}` : ''}` : 'Not encrypted'}
-              hasArrow
-            >
-              <Box className={`${styles.statusIcon} ${row.encrypted ? styles.statusIconActive : styles.statusIconInactive}`}>
-                {row.encrypted ? <HiLockClosed /> : <HiOutlineLockOpen />}
-              </Box>
-            </Tooltip>
-            <Tooltip label={verificationLabel(row.verification) + (verificationBeforeChange(row, changesById[row.id]) ? ' · taken before the file changed' : '')} hasArrow>
-              <Box className={`${styles.statusIcon} ${styles.verifyIcon} ${verificationClass(row.verification)}`}>
-                {row.verification?.status === 'failed' || row.verification?.warnings?.length ? <HiShieldExclamation /> : row.verification?.status === 'passed' ? <HiShieldCheck /> : <HiOutlineShieldCheck />}
-              </Box>
-            </Tooltip>
-          </HStack>
-        ),
-        {
-          cell: (info) => info.getValue(),
-          header: 'Status',
-          id: 'status'
-        }
-      ),
       columnHelper.display({
         id: 'actions',
         header: 'Actions',
@@ -815,60 +804,65 @@ function Maintenance({ selectedCluster, user, section, onOpenBackupSettings, onO
           const verifiable = backup.backupTool === 'mysqldump' && backup.completed && !backup.notABackup && !backup.originalRemoved && backup.verification?.status !== 'running'
           const notReseedable = reseedRefusal(backup, change, selectedCluster?.config?.backupVerificationRegisteredProven)
           const notArchivable = backup.discovered ? archiveRefusal(backup, change, !!selectedCluster?.config?.backupArchiveName || selectedCluster?.config?.backupRestic, selectedCluster?.config?.backupArchiveName) : ''
+          const noBackupGrant = !user?.grants['db-backup'] && 'You do not have the db-backup grant'
+          const notVerifiable = !verifiable && 'Only a completed mysqldump backup whose file is here can be verified'
           return (
-            <HStack spacing={1}>
-              <RMIconButton
-                icon={HiShieldCheck}
-                tooltip='Verify integrity'
-                onClick={() => openConfirmModal('Verify the integrity of this backup?', { action: 'backupVerify', data: { backupId: backup.id, level: 'integrity' } })}
-                isDisabled={!user?.grants['db-backup'] || !verifiable}
-              />
-              <RMIconButton
-                icon={HiDatabase}
-                tooltip={selectedCluster?.config?.backupVerificationHost ? `Test restore on ${selectedCluster.config.backupVerificationHost}` : 'Test restore: set backup-verification-host first'}
-                onClick={() => openConfirmModal(`Load this backup into ${selectedCluster?.config?.backupVerificationHost} and compare it?`, { action: 'backupVerify', data: { backupId: backup.id, level: 'restore' } })}
-                isDisabled={!user?.grants['db-backup'] || !verifiable || !selectedCluster?.config?.backupVerificationHost}
-              />
-              <RMIconButton
-                icon={HiRefresh}
-                tooltip={notReseedable ? `Reseed: ${notReseedable}` : 'Reseed a server from this backup'}
-                onClick={() => setReseedPick({ backup, serverId: '' })}
-                isDisabled={!user?.grants['db-restore'] || !!notReseedable}
-              />
-              {change && (
-                <RMIconButton
-                  icon={HiDocumentAdd}
-                  tooltip='Register the change: the file as it is now is read and checked, then used'
-                  onClick={() => setRegisterPick({ candidate: null, backup, takenAt: '' })}
-                  isDisabled={!user?.grants['db-backup']}
-                />
-              )}
-              {backup.discovered && (
-                <RMIconButton
-                  icon={HiCloudUpload}
-                  tooltip={notArchivable ? `Archive: ${notArchivable}` : `Archive this backup to ${archiveTarget}`}
-                  onClick={() => setArchivePick({ backup, removeOriginal: false, verifyRestore: false })}
-                  isDisabled={!user?.grants['db-backup'] || !!notArchivable}
-                />
-              )}
-              {backup.discovered ? (
-                <RMIconButton
-                  icon={HiDocumentRemove}
-                  colorScheme='red'
-                  tooltip='Unregister: the registration is removed, the file is left as it is'
-                  onClick={() => openConfirmModal(`Unregister backup ${backup.id}? Its file is left as it is and listed in "Found in backup folders" again.`, { action: 'backupUnregister', data: { backupId: backup.id } })}
-                  isDisabled={!user?.grants['db-backup']}
-                />
-              ) : (
-                <RMIconButton
-                  icon={HiTrash}
-                  colorScheme='red'
-                  tooltip='Delete backup'
-                  onClick={() => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: backup.id } })}
-                  isDisabled={!user?.grants['db-backup']}
-                />
-              )}
-            </HStack>
+            <MenuOptions
+              placement='left-end'
+              options={[
+                {
+                  name: 'Verify integrity',
+                  onClick: () => openConfirmModal('Verify the integrity of this backup?', { action: 'backupVerify', data: { backupId: backup.id, level: 'integrity' } }),
+                  isDisabled: !!(noBackupGrant || notVerifiable),
+                  disabledReason: noBackupGrant || notVerifiable
+                },
+                {
+                  name: selectedCluster?.config?.backupVerificationHost ? `Test restore on ${selectedCluster.config.backupVerificationHost}` : 'Test restore',
+                  onClick: () => openConfirmModal(`Load this backup into ${selectedCluster?.config?.backupVerificationHost} and compare it?`, { action: 'backupVerify', data: { backupId: backup.id, level: 'restore' } }),
+                  isDisabled: !!(noBackupGrant || notVerifiable || !selectedCluster?.config?.backupVerificationHost),
+                  disabledReason: noBackupGrant || notVerifiable || 'Set backup-verification-host first'
+                },
+                {
+                  name: 'Reseed a server from this backup',
+                  onClick: () => setReseedPick({ backup, serverId: '' }),
+                  isDisabled: !user?.grants['db-restore'] || !!notReseedable,
+                  disabledReason: !user?.grants['db-restore'] ? 'You do not have the db-restore grant' : notReseedable
+                },
+                ...(change
+                  ? [
+                      {
+                        name: 'Register the change',
+                        onClick: () => setRegisterPick({ candidate: null, backup, takenAt: '' }),
+                        isDisabled: !!noBackupGrant,
+                        disabledReason: noBackupGrant
+                      }
+                    ]
+                  : []),
+                ...(backup.discovered
+                  ? [
+                      {
+                        name: `Archive to ${archiveTarget}`,
+                        onClick: () => setArchivePick({ backup, removeOriginal: false, verifyRestore: false }),
+                        isDisabled: !!(noBackupGrant || notArchivable),
+                        disabledReason: noBackupGrant || notArchivable
+                      },
+                      {
+                        name: 'Unregister',
+                        onClick: () => openConfirmModal(`Unregister backup ${backup.id}? Its file is left as it is and listed in "Found in backup folders" again.`, { action: 'backupUnregister', data: { backupId: backup.id } }),
+                        isDisabled: !!noBackupGrant,
+                        disabledReason: noBackupGrant
+                      }
+                    ]
+                  : [
+                      {
+                        name: 'Delete backup',
+                        onClick: () => openConfirmModal('Do you want to delete this backup?', { action: 'backupDelete', data: { backupId: backup.id } }),
+                        isDisabled: !!noBackupGrant,
+                        disabledReason: noBackupGrant
+                      }
+                    ])
+              ]}
+            />
           )
         }
       })
