@@ -148,6 +148,19 @@ func (cluster *Cluster) attachedExternalArchive() (config.ArchiveConfig, bool) {
 	return config.ArchiveConfig{}, false
 }
 
+// attachedArchiveRepoPath is the repository of the attached archive, the one a backup's
+// snapshot was just stored in: an archive plugin's location, or the restic manager's
+// repository. With an archive plugin attached no restic manager may run (backup-restic off).
+func (cluster *Cluster) attachedArchiveRepoPath() string {
+	if a, ok := cluster.attachedExternalArchive(); ok {
+		return cluster.ArchiveLocation(a)
+	}
+	if cluster.ResticManager == nil {
+		return ""
+	}
+	return cluster.ResticManager.GetRepoPath()
+}
+
 // archivePluginStore is the store an operation on a runs on, and the environment carrying its
 // secrets (decrypted only into that environment) and, with the s3 capability, its provider's
 // keys, short-lived ones for the Cloud18 SSO. envPrefix "" for the archive, "TARGET_" for a

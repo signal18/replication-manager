@@ -63,4 +63,16 @@ func TestArchivePluginExternal(t *testing.T) {
 	if loc := cl.ArchiveLocation(a); loc != "archive-fake-local:/data/f1" {
 		t.Fatalf("location %s", loc)
 	}
+
+	// attached, a backup's snapshot is recorded in its location: no restic manager runs then
+	// (the push panicked on the nil manager)
+	cl.ResticManager = nil
+	cl.Conf.Archives, cl.Conf.BackupArchiveName = []config.ArchiveConfig{a}, a.Name
+	if got := cl.attachedArchiveRepoPath(); got != "archive-fake-local:/data/f1" {
+		t.Fatalf("attached plugin archive repository %q", got)
+	}
+	cl.Conf.BackupArchiveName = ""
+	if got := cl.attachedArchiveRepoPath(); got != "" {
+		t.Fatalf("no archive, no restic manager: %q", got)
+	}
 }

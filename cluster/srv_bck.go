@@ -284,7 +284,7 @@ func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.B
 
 	// glued to the attached archive by its name (#2091)
 	lastmeta.SetArchiveSnapshot(cluster.Conf.AttachedArchive(), snapshotID)
-	lastmeta.ResticFilePath = cluster.ResticManager.GetRepoPath()
+	lastmeta.ResticFilePath = cluster.attachedArchiveRepoPath()
 
 	snapshotLabel := snapshotID
 	if len(snapshotLabel) > 8 {
