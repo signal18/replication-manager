@@ -980,6 +980,7 @@ func (cluster *Cluster) InitFromConf() {
 			"Failed to pre-initialize preserved variables: %v (will retry on demand)", err)
 	}
 
+	cluster.detachDeadBackupMountAtStart() // the servers read their backups: never through a mount left by a previous run (#2091)
 	err = cluster.newServerList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set server list %s", err)
@@ -1026,7 +1027,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.RefreshToolVersions()
 	cluster.initResticLocalDir()
 	cluster.StartResticManager()
-	cluster.startBackupFolder() // a mount left by a previous run detached, the mount made now (#2091)
+	cluster.startBackupFolder() // the backups folder mount made now, not at the first mount check (#2091)
 	// Config persistence is unlocked only now: the save queue is async and a
 	// save executing mid-init captures a half-loaded config (missing external
 	// users, restic paths, ACLs), emitting transient config change events

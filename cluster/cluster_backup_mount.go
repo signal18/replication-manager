@@ -393,13 +393,18 @@ func (cluster *Cluster) detachDeadBackupMount() error {
 	return nil
 }
 
-// startBackupFolder, at the cluster's start: the backups folder is a folder again at once,
-// and its mount is made now, not at the first mount check a minute or two later; a backup
-// in between fails on a mount left by the previous run.
-func (cluster *Cluster) startBackupFolder() {
+// detachDeadBackupMountAtStart, at the cluster's start before its servers read their backups:
+// the backups folder is a folder again at once, never read through a mount left by the
+// previous run; its mount is made by startBackupFolder.
+func (cluster *Cluster) detachDeadBackupMountAtStart() {
 	if err := cluster.detachDeadBackupMount(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s", err)
 	}
+}
+
+// startBackupFolder, at the cluster's start: its mount is made now, not at the first mount
+// check a minute or two later; a backup in between would fail or land on the local disk.
+func (cluster *Cluster) startBackupFolder() {
 	go cluster.RefreshBackupMount()
 }
 
