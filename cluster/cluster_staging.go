@@ -655,6 +655,38 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	return masterCurrentGTID, nil
 }
 
+// waitStagingReplicaInSync waits for the replica at url to be in sync (Slave) before the
+// staging refresh detaches it: it replays the restore through the master's binlog for as long
+// as that takes, no timer (a restore can take days; 2 minutes stopped the creation of a staging
+// cluster seeded from an 858 MB backup, preprod belair). Its progress is the creation's step;
+// it stops only when the replica's replication breaks (any state but Slave or SlaveLate). Read
+// by URL each time: a configuration reload rebuilds the ServerMonitor.
+func (cluster *Cluster) waitStagingReplicaInSync(url string) error {
+	logged := false
+	for {
+		slave := cluster.GetServerFromURL(url)
+		if slave == nil {
+			return fmt.Errorf("replica %s is no longer in %s", url, cluster.Name)
+		}
+		switch slave.State {
+		case stateSlave:
+			return nil
+		case stateSlaveLate:
+			step := fmt.Sprintf("replica %s catching up before it is detached", url)
+			if sc := cluster.GetStagingCreation(); sc != nil && !sc.Done && sc.Error == "" && sc.Step != step {
+				cluster.SetStagingCreation(StagingCreation{Kind: sc.Kind, Parent: sc.Parent, Step: step})
+			}
+			if !logged {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Staging seed of %s: waiting for replica %s to catch up before it is detached", cluster.Name, url)
+				logged = true
+			}
+		default:
+			return fmt.Errorf("replica %s is %s, its replication broken: it cannot be detached as the staging server", url, slave.State)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
 // ParentLogicalBackup returns the logical backup a child cluster (staging) is seeded
 // from: the file or directory of this cluster's backup-logical-type on its backup
 // server. An error names what is missing (#1989): no backup server, no logical backup
@@ -718,25 +750,17 @@ func (cluster *Cluster) seedFromParent(parent *Cluster, staging bool) error {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done", parent.Name)
 
-	replicas := cluster.GetSlaves()
+	// A child detaches nothing: its replicas catch up through its master's binlog, their
+	// normal state. A staging cluster detaches its first replica as the staging server,
+	// which must hold all the data first.
 	if staging {
-		// the first replica only: the one the refresh detaches
 		slave := cluster.GetSlaveByIndex(0)
 		if slave == nil {
 			return fmt.Errorf("no replica on %s to detach as the staging server", cluster.Name)
 		}
-		replicas = []*ServerMonitor{slave}
-	}
-	for _, slave := range replicas {
-		starttime := time.Now()
-		for slave.State == stateSlaveLate && time.Since(starttime) < 2*time.Minute {
-			time.Sleep(1 * time.Second)
+		if err := cluster.waitStagingReplicaInSync(slave.URL); err != nil {
+			return err
 		}
-		if slave.State != stateSlave {
-			return fmt.Errorf("replica %s is %s after 2 minutes, not in sync", slave.URL, slave.State)
-		}
-	}
-	if staging {
 		if err := cluster.RefreshStaging(parent, masterGTIDList); err != nil {
 			return fmt.Errorf("refresh staging: %w", err)
 		}
