@@ -34,9 +34,22 @@ import (
 
 // logicalRestoreGate is the pause of a logical restore's statement stream on a binlog rotation.
 type logicalRestoreGate struct {
-	mu     sync.Mutex
-	open   chan struct{} // closed while the stream may flow
-	reason string        // why it is paused, "" while it flows
+	mu      sync.Mutex
+	open    chan struct{} // closed while the stream may flow
+	reason  string        // why it is paused, "" while it flows
+	handled string        // the last binlog it paused on: a rotation is handled once
+}
+
+// firstHandling records binlog as handled, false when it already was: the binlog checks run
+// detached, two can see the same rotation, and the second paused the restore again.
+func (g *logicalRestoreGate) firstHandling(binlog string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if binlog == "" || binlog == g.handled {
+		return false
+	}
+	g.handled = binlog
+	return true
 }
 
 func newLogicalRestoreGate() *logicalRestoreGate {
@@ -184,6 +197,10 @@ func (server *ServerMonitor) holdBinlogTotalSizeForRestore() (putBack func()) {
 func (server *ServerMonitor) pauseLogicalRestoreOnBinlogRotation() {
 	gate := server.logicalRestoreGate.Load()
 	if gate == nil || !server.logicalRestoreGatePurging.CompareAndSwap(false, true) {
+		return
+	}
+	if !gate.firstHandling(server.BinaryLogFile) {
+		server.logicalRestoreGatePurging.Store(false)
 		return
 	}
 	gate.pause(fmt.Sprintf("binlog rotated to %s, waiting for the replicas to apply it", server.BinaryLogFile))

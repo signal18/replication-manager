@@ -174,6 +174,22 @@ func TestConfigMaxBinlogTotalSizeFollowsPlan(t *testing.T) {
 	}
 }
 
+// A rotation is handled once: a second binlog check seeing the same rotation after the resume
+// does not pause the restore again (preprod belair-staging-test: "resuming", then paused again on
+// the same binlog at every rotation).
+func TestLogicalRestoreGateHandlesARotationOnce(t *testing.T) {
+	g := newLogicalRestoreGate()
+	if !g.firstHandling("binlog.000003") {
+		t.Fatal("a new rotation is not handled")
+	}
+	if g.firstHandling("binlog.000003") {
+		t.Fatal("the same rotation handled twice")
+	}
+	if !g.firstHandling("binlog.000004") {
+		t.Fatal("the next rotation is not handled")
+	}
+}
+
 // The real load path: the data of a splitdump goes in batched transactions
 // (streamSplitdumpStatements -> execSplitdumpBatch); a paused gate holds the next transaction,
 // none runs until it resumes (preprod: the pause sat in the single-statement path only, the
