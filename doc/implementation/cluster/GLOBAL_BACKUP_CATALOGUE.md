@@ -186,8 +186,9 @@ the snapshots of the directory.
   (`LoadRegisteredBackupMetadata` sets `Discovered`): kept as they are, unregistered or deleted
   by hand. The restic tag `line` and the keep-tag default `line:adhoc adhoc` are gone: every
   snapshot follows the retention.
-- Open: a replaced backup's record lives in memory until the catalogue files (step 3), so a
-  restart forgets it.
+- A replaced backup is marked `replaced`: its `Dest` and record file are the newer backup's,
+  so deleting it, or its last snapshot leaving, never removes them nor gives it the newer
+  backup's file as its own. The global catalogue keeps it across restarts (step 3).
 
 ## Steps
 
@@ -195,7 +196,14 @@ the snapshots of the directory.
    Archive button is refused while a backup job writes the directory (`ErrBackupJobRunning`).
 2. Role at backup time in the backup record: DONE (`role`: master / slave, "" unknown),
    shown in the backups table.
-3. The catalogue files, written at backup end, snapshot push and delete; rebuild and
-   reconcile states.
+3. The catalogue files: DONE for `backups.json` and `archives/<archive>.json`
+   (`cluster/backup_catalogue.go`). The active replication-manager writes them each tick, each
+   file only when its content changed, so every change point (backup end, snapshot push,
+   snapshot delete, replaced backup) is covered without a hook in each. At the cluster's start,
+   before the servers read their records, the backups only in an archive are read from
+   `backups.json`; the ones in the directories come from their records (observed). A backups
+   folder switch keeps the replaced backups. A snapshot entry today holds what the backups
+   record (`archiveRefs`: one snapshot per archive per backup). TODO: the rebuild from the
+   archives (a standby becoming active, a catalogue lost) and the reconcile states.
 4. The code reads the catalogue (restore, reseed, retention, archive list, metering).
 5. Dashboard: every archive's size and snapshots, the snapshot ↔ backup link both ways.
