@@ -2641,3 +2641,23 @@ func TestRejoinCatalog_WARN0191_PreservedAcrossIntermediateTicks(t *testing.T) {
 		t.Fatal("WARN0191 dropped after an intermediate tick despite pstates30 preservation")
 	}
 }
+
+// #2091: the cluster's tagged purge policies reach the restic purge, the default with them
+func TestResticPurgeRepoPassesTaggedPolicies(t *testing.T) {
+	conf := &config.Config{BackupRestic: true, BackupKeepLast: 3, BackupKeepTagPolicies: "trigger:binlogs keep-within=1d"}
+	cluster := &Cluster{Name: "cluster1", Conf: conf, ResticManager: backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)}
+	if err := cluster.ResticPurgeRepoWithOptions(true, true); err != nil {
+		t.Fatalf("unexpected purge error: %v", err)
+	}
+	opt := cluster.ResticManager.PurgeNowOption
+	if len(opt.Rules) != 1 || opt.Rules[0].Tag != "trigger:binlogs" || opt.Rules[0].Policy.KeepWithin != "1d" || opt.KeepLast != 3 {
+		t.Fatalf("rules %+v keep-last %d", opt.Rules, opt.KeepLast)
+	}
+
+	// a bad rule never purges
+	conf.BackupKeepTagPolicies = "trigger:binlogs"
+	cluster.ResticManager = backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	if err := cluster.ResticPurgeRepoWithOptions(true, true); err == nil || cluster.ResticManager.NeedPurgeNow {
+		t.Fatalf("a rule keeping nothing purged: %v", err)
+	}
+}

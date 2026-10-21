@@ -204,8 +204,24 @@ func archiveManifests() map[string]ArchivePluginManifest {
 				Capabilities: archiveResticCaps,
 			},
 		}
+		for name, m := range archivePluginManifests {
+			archivePluginManifests[name] = withPurgePolicies(m)
+		}
 	})
 	return archivePluginManifests
+}
+
+// withPurgePolicies gives a plugin that purges the purge-policies setting: the archive's own
+// purge policies, replacing the cluster's (#2091). replication-manager applies them, the plugin
+// never reads it.
+func withPurgePolicies(m ArchivePluginManifest) ArchivePluginManifest {
+	if !m.Can(ConstArchiveCapPurge) {
+		return m
+	}
+	if _, ok := m.Setting(ArchivePurgeSettingPolicies); !ok {
+		m.Settings = append(append([]ArchivePluginSetting(nil), m.Settings...), ArchivePluginSetting{Name: ArchivePurgeSettingPolicies, Type: ConstArchiveSettingTypeString, Group: ConstArchiveSettingGroupPurge})
+	}
+	return m
 }
 
 // ConstArchiveSettingS3Provider is the setting replication-manager adds to an external plugin
@@ -238,6 +254,7 @@ func RegisterArchivePlugin(m ArchivePluginManifest, binary string) error {
 			m.Settings = append([]ArchivePluginSetting{{Name: ConstArchiveSettingS3Provider, Type: ConstArchiveSettingTypeString}}, m.Settings...)
 		}
 	}
+	m = withPurgePolicies(m)
 	archiveManifests()
 	archivePluginsMu.Lock()
 	defer archivePluginsMu.Unlock()
@@ -302,6 +319,10 @@ func (m ArchivePluginManifest) Can(capability string) bool {
 
 // Validate checks value against the setting's type (an enum's allowed values included).
 func (st ArchivePluginSetting) Validate(value string) error {
+	if st.Name == ArchivePurgeSettingPolicies {
+		_, err := ParseArchivePurgeRules(value, true)
+		return err
+	}
 	switch st.Type {
 	case ConstArchiveSettingTypeBool:
 		if _, err := strconv.ParseBool(value); err != nil {
@@ -984,6 +1005,14 @@ func (conf *Config) SetArchiveSetting(archive, setting, value string, unset bool
 			conf.Archives = append(conf.Archives[:idx], conf.Archives[idx+1:]...)
 		} else {
 			a.Plugin = value
+		}
+	case ArchivePurgeSettingPolicies:
+		if unset || strings.TrimSpace(value) == "" {
+			delete(a.Settings, setting)
+		} else if _, err := ParseArchivePurgeRules(value, true); err != nil {
+			return err
+		} else {
+			a.Settings[setting] = value
 		}
 	case "password", "aws-access-secret":
 		// the peer's ciphertext: peers share the encryption key, the chain reads it at its

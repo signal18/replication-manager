@@ -1265,12 +1265,15 @@ func (cluster *Cluster) ResticPurgeRepoWithOptions(now bool, dryRun bool) error 
 	if !cluster.Conf.BackupRestic {
 		return nil
 	}
-	policy := cluster.Conf.ArchivePurgePolicy()
-	if err := policy.Validate(); err != nil {
+	rules, policy, err := cluster.attachedArchivePurgePolicies()
+	if err == nil && len(rules) == 0 {
+		err = policy.Validate()
+	}
+	if err != nil {
 		cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
 		return err
 	}
-	if policy.IsEmpty() {
+	if len(rules) == 0 && policy.IsEmpty() {
 		err := fmt.Errorf("restic purge skipped: no keep-last/keep-within policy configured")
 		cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
 		return err
@@ -1282,12 +1285,26 @@ func (cluster *Cluster) ResticPurgeRepoWithOptions(now bool, dryRun bool) error 
 			}
 		}
 	}
-	return cluster.resticPurgeWithPolicy(policy, now, dryRun)
+	return cluster.resticPurgeWithPolicy(policy, rules, now, dryRun)
+}
+
+// attachedArchivePurgePolicies is what the attached archive applies (#2091): its own purge
+// policies when it has some, else the cluster's (backup-keep-tag-policies, backup-keep-*).
+func (cluster *Cluster) attachedArchivePurgePolicies() ([]config.ArchivePurgeRule, config.ArchivePurgePolicy, error) {
+	name := cluster.Conf.AttachedArchive()
+	list, _ := cluster.Conf.ArchiveList()
+	for i := range list {
+		if list[i].Name == name {
+			return cluster.Conf.ArchivePurgePolicies(&list[i])
+		}
+	}
+	return cluster.Conf.ArchivePurgePolicies(nil)
 }
 
 // resticPurgeWithPolicy is the restic plugins' purge: the policy, applied with the attached
 // archive's purge-* settings.
-func (cluster *Cluster) resticPurgeWithPolicy(policy config.ArchivePurgePolicy, now bool, dryRun bool) error {
+// rules: tagged purge policies, policy being the default one (#2091).
+func (cluster *Cluster) resticPurgeWithPolicy(policy config.ArchivePurgePolicy, rules []config.ArchivePurgeRule, now bool, dryRun bool) error {
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
 	}
@@ -1334,6 +1351,7 @@ func (cluster *Cluster) resticPurgeWithPolicy(policy config.ArchivePurgePolicy, 
 		KeepWithinMonthly: policy.KeepWithinMonthly,
 		KeepWithinYearly:  policy.KeepWithinYearly,
 		GroupBy:           groupBy,
+		Rules:             rules,
 		KeepTag:           keepTags,
 		Host:              purgeHosts,
 		Tag:               purgeTags,

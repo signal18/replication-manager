@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -212,6 +213,10 @@ type ResticPurgeOption struct {
 	Prune             bool              `json:"prune"`             // When true, runs prune after forget to reclaim space (defaults to true via NewResticPurgeOption)
 	PruneOption       ResticPruneOption `json:"prune_option"`
 	DryRun            bool              `json:"dry_run,omitempty"`
+	// Rules: tagged purge policies (#2091), the Keep* fields being the default one: the kept
+	// set is computed by replication-manager (config.KeptByPolicies) and the others forgotten
+	// by id, each policy counting its own snapshots
+	Rules []config.ArchivePurgeRule `json:"rules,omitempty"`
 }
 
 type ResticPruneOption struct {
@@ -4896,6 +4901,103 @@ func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
 	return nil
 }
 
+// purgeWithRules applies tagged purge policies (#2091): the snapshots the purge filters
+// select (host, tag, path) are read, the policies decide which stay, the others are forgotten
+// by id; keep-tag, grouping and prune apply as with one policy.
+func (repo *ResticManager) purgeWithRules(opt ResticPurgeOption) error {
+	args := []string{"snapshots", "--json"}
+	for _, f := range []struct {
+		flag   string
+		values []string
+	}{{"--host", opt.Host}, {"--tag", opt.Tag}, {"--path", opt.Path}} {
+		for _, v := range f.values {
+			if strings.TrimSpace(v) != "" {
+				args = append(args, f.flag, strings.TrimSpace(v))
+			}
+		}
+	}
+	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
+	if err != nil {
+		return fmt.Errorf("failed to list snapshots for the purge: %v, stderr: %s", err, stderr)
+	}
+	var list []BackupSnapshot
+	if err := json.Unmarshal(stdout, &list); err != nil {
+		return fmt.Errorf("failed to read snapshots for the purge: %w", err)
+	}
+	snaps := make([]config.PurgeSnapshot, 0, len(list))
+	for _, b := range list {
+		t, err := time.Parse(time.RFC3339Nano, b.Time)
+		if err != nil {
+			continue // never forgotten: its time is unknown
+		}
+		snaps = append(snaps, config.PurgeSnapshot{ID: b.Id, Time: t, Tags: b.Tags, Group: resticPurgeGroup(opt.GroupBy, b)})
+	}
+	def := config.ArchivePurgePolicy{KeepLast: opt.KeepLast, KeepHourly: opt.KeepHourly, KeepDaily: opt.KeepDaily, KeepWeekly: opt.KeepWeekly,
+		KeepMonthly: opt.KeepMonthly, KeepYearly: opt.KeepYearly, KeepWithin: opt.KeepWithin, KeepWithinHourly: opt.KeepWithinHourly,
+		KeepWithinDaily: opt.KeepWithinDaily, KeepWithinWeekly: opt.KeepWithinWeekly, KeepWithinMonthly: opt.KeepWithinMonthly, KeepWithinYearly: opt.KeepWithinYearly}
+	kept := config.KeptByPolicies(snaps, opt.Rules, def, opt.KeepTag)
+	var forget []string
+	for _, s := range snaps {
+		if !kept[s.ID] {
+			forget = append(forget, s.ID)
+		}
+	}
+	repo.Printf(logrus.InfoLevel, "Purging snapshots with policies %s and the default: keeping %d, %s %d of %d", config.FormatArchivePurgeRules(opt.Rules), len(snaps)-len(forget), map[bool]string{true: "would forget", false: "forgetting"}[opt.DryRun], len(forget), len(snaps))
+	if len(forget) == 0 {
+		return nil
+	}
+	if opt.DryRun {
+		repo.Printf(logrus.InfoLevel, "Purge dry run: would forget %s", strings.Join(forget, " "))
+		return nil
+	}
+	const batch = 100
+	for i := 0; i < len(forget); i += batch {
+		end := i + batch
+		if end > len(forget) {
+			end = len(forget)
+		}
+		args := []string{"forget"}
+		// prune once, with the last batch
+		if opt.Prune && end == len(forget) {
+			args = append(args, "--prune")
+			args = append(args, GetPruneOptions(opt.Prune, opt.PruneOption)...)
+		}
+		args = append(args, forget[i:end]...)
+		if _, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false); err != nil {
+			return fmt.Errorf("failed to purge repo: %v, stderr: %s", err, stderr)
+		}
+	}
+	return nil
+}
+
+// resticPurgeGroup is the group of a snapshot as restic forget --group-by counts it: host and
+// paths by default, none for "none".
+func resticPurgeGroup(groupBy string, b BackupSnapshot) string {
+	groupBy = strings.TrimSpace(groupBy)
+	if groupBy == "" || strings.EqualFold(groupBy, "default") {
+		groupBy = "host,paths"
+	}
+	if strings.EqualFold(groupBy, "none") {
+		return ""
+	}
+	var key []string
+	for _, g := range strings.Split(groupBy, ",") {
+		switch strings.TrimSpace(strings.ToLower(g)) {
+		case "host":
+			key = append(key, "host="+b.Hostname)
+		case "paths":
+			paths := append([]string(nil), b.Paths...)
+			sort.Strings(paths)
+			key = append(key, "paths="+strings.Join(paths, ","))
+		case "tags":
+			tags := append([]string(nil), b.Tags...)
+			sort.Strings(tags)
+			key = append(key, "tags="+strings.Join(tags, ","))
+		}
+	}
+	return strings.Join(key, ";")
+}
+
 func buildForgetArgs(opt ResticPurgeOption) []string {
 	args := []string{"forget"}
 
@@ -4991,7 +5093,11 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 	}
 
 	// Prepare the arguments for the "forget" command
-	if opt.SnapshotID != "" {
+	if len(opt.Rules) > 0 && opt.SnapshotID == "" {
+		if err := repo.purgeWithRules(opt); err != nil {
+			return err
+		}
+	} else if opt.SnapshotID != "" {
 		err := repo.purgeSingleSnapshot(opt)
 		if err != nil {
 			return err

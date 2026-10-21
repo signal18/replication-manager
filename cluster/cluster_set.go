@@ -1192,6 +1192,17 @@ func (cluster *Cluster) SetBackupKeepWithinYearly(keep string) error {
 	return nil
 }
 
+// SetBackupKeepTagPolicies sets the cluster's tagged purge policies (#2091), checked, written
+// back in their canonical form.
+func (cluster *Cluster) SetBackupKeepTagPolicies(value string) error {
+	rules, err := config.ParseArchivePurgeRules(value, false)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepTagPolicies = config.FormatArchivePurgeRules(rules)
+	return nil
+}
+
 func (cluster *Cluster) SetBackupLogicalType(backup string) {
 	if cluster.Conf.BackupLogicalType != backup {
 		cluster.Conf.BackupLogicalType = backup

@@ -322,8 +322,7 @@ func (cluster *Cluster) archivePluginProbe(a config.ArchiveConfig) (string, erro
 }
 
 // archivePluginPolicy is the cluster's retention policy for a plugin.
-func (cluster *Cluster) archivePluginPolicy() *wire.Policy {
-	p := cluster.Conf.ArchivePurgePolicy()
+func archivePluginPolicy(p config.ArchivePurgePolicy) *wire.Policy {
 	return &wire.Policy{
 		KeepLast: p.KeepLast, KeepHourly: p.KeepHourly, KeepDaily: p.KeepDaily, KeepWeekly: p.KeepWeekly,
 		KeepMonthly: p.KeepMonthly, KeepYearly: p.KeepYearly, KeepWithin: p.KeepWithin,
@@ -441,21 +440,76 @@ func (cluster *Cluster) ForgetArchiveSnapshot(name, id string) error {
 	return fmt.Errorf("unknown archive %s", name)
 }
 
-// purgeExternalArchive asks a's plugin to apply the cluster's retention policy.
+// purgeExternalArchive asks a's plugin to apply its retention policy: a's own purge policies,
+// else the cluster's. With tagged policies (#2091) replication-manager decides what stays, each
+// policy counting its own snapshots, and asks the plugin to forget the others one by one.
 func (cluster *Cluster) purgeExternalArchive(a config.ArchiveConfig, dryRun bool) error {
-	policy := cluster.Conf.ArchivePurgePolicy()
+	rules, policy, err := cluster.Conf.ArchivePurgePolicies(&a)
+	if err != nil {
+		return err
+	}
+	if len(rules) > 0 {
+		return cluster.purgeExternalArchiveByRules(a, rules, policy, dryRun)
+	}
 	if err := policy.Validate(); err != nil {
 		return err
 	}
 	if policy.IsEmpty() {
 		return fmt.Errorf("archive purge skipped: no keep-last/keep-within policy configured")
 	}
-	resp, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpPurge, Policy: cluster.archivePluginPolicy(), DryRun: dryRun})
+	resp, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpPurge, Policy: archivePluginPolicy(policy), DryRun: dryRun})
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Archive %s: purge failed: %s", a.Name, err)
 		return err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s: purge removed %d snapshot(s)", a.Name, len(resp.Removed))
+	return nil
+}
+
+// purgeExternalArchiveByRules applies tagged purge policies to a plugin's archive: its
+// snapshots listed, counted by host and paths, the ones no policy keeps forgotten. A plugin
+// set not to purge (no-purge) is left alone.
+func (cluster *Cluster) purgeExternalArchiveByRules(a config.ArchiveConfig, rules []config.ArchivePurgeRule, policy config.ArchivePurgePolicy, dryRun bool) error {
+	if noPurge, _ := a.Settings["no-purge"].(bool); noPurge {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s: purge skipped, no-purge is set", a.Name)
+		return nil
+	}
+	resp, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpList})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Archive %s: purge failed, snapshots not listed: %s", a.Name, err)
+		return err
+	}
+	snaps := make([]config.PurgeSnapshot, 0, len(resp.Snapshots))
+	for _, s := range resp.Snapshots {
+		paths := append([]string(nil), s.Paths...)
+		sort.Strings(paths)
+		snaps = append(snaps, config.PurgeSnapshot{ID: s.ID, Time: s.Time, Tags: s.Tags, Group: s.Host + "\x00" + strings.Join(paths, ",")})
+	}
+	kept := config.KeptByPolicies(snaps, rules, policy, nil)
+	var forget []string
+	for _, s := range snaps {
+		if !kept[s.ID] {
+			forget = append(forget, s.ID)
+		}
+	}
+	verb := map[bool]string{true: "would delete", false: "deleting"}[dryRun]
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s: purge with policies %s and the default: keeping %d, %s %d of %d", a.Name, config.FormatArchivePurgeRules(rules), len(snaps)-len(forget), verb, len(forget), len(snaps))
+	if dryRun {
+		return nil
+	}
+	removed := 0
+	for _, id := range forget {
+		if _, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpForget, Snapshot: id}); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Archive %s: snapshot %s not deleted by the purge: %s", a.Name, shortID(id), err)
+			continue
+		}
+		cluster.dropSnapshotFromCatalogue(a.Name, id)
+		removed++
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s: purge removed %d snapshot(s)", a.Name, removed)
+	if removed < len(forget) {
+		return fmt.Errorf("archive %s: %d of %d snapshot(s) not deleted", a.Name, len(forget)-removed, len(forget))
+	}
 	return nil
 }
 
