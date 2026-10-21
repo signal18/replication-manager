@@ -301,6 +301,7 @@ type ServerMonitor struct {
 	// the snapshots in progress, the binlog copies in progress (beginSnapshot, beginBinlogCopy)
 	snapshotsRunning         atomic.Int32
 	binlogCopyRunning        atomic.Int32
+	binlogCopies             binlogCopyQueue                    // the binlogs to copy into the backup directory, one worker (#2091)
 	rejoinInProgress         atomic.Bool                        // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
 	reseedFromRejoin         atomic.Bool                        // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
 	rejoinReseedStart        atomic.Int64                       // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation

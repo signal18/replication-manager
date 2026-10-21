@@ -5873,12 +5873,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
-		if cluster.IsInBackup() {
-			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-			time.Sleep(1 * time.Second)
-
-			return server.JobBackupBinlog(binlogfile, isPurge)
-		}
+		// the server's copy worker started it once no backup or snapshot runs (#2091)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		// never while the backup directory is snapshotted (#2091)
 		server.beginBinlogCopy()
@@ -5977,12 +5972,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		return errors.New("Copy binlog not enable")
 	}
 
-	if cluster.IsInBackup() {
-		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-		time.Sleep(1 * time.Second)
-
-		return server.JobBackupBinlogPurge(binlogfile)
-	}
+	// run by the server's copy worker once no backup or snapshot runs (runBinlogCopies, #2091)
 
 	// the catch-up copies and the removal of the copies beyond keep: never while the backup
 	// directory is snapshotted, counted once for all of them (#2091)
@@ -6813,12 +6803,7 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
-		if cluster.IsInBackup() {
-			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-			time.Sleep(1 * time.Second)
-
-			return server.JobBackupBinlogSSH(binlogfile, isPurge)
-		}
+		// the server's copy worker started it once no backup or snapshot runs (#2091)
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		// never while the backup directory is snapshotted (#2091)

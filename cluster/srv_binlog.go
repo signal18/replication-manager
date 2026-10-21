@@ -355,12 +355,10 @@ func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 			cluster.BinlogRotationScript(server)
 		}
 
-		//Don't do anything while failover
-		if cluster.Conf.BackupBinlogs && !cluster.IsInFailover() {
-			//Set second parameter to false, not part of backupbinlogpurge
-			server.InitiateJobBackupBinlog(server.BinaryLogFilePrevious, false)
-			//Initiate purging backup binlog
-			go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
+		// the binlog closed is queued: the server's worker copies it, then runs the catch-up,
+		// once no backup, snapshot or failover runs; the check never waits (#2091)
+		if cluster.Conf.BackupBinlogs {
+			server.queueBinlogCopy(server.BinaryLogFilePrevious)
 		}
 
 		server.RefreshBinaryLogs()
@@ -622,6 +620,11 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 
 func (server *ServerMonitor) PurgeBinlogTo(filename string) {
 	cluster := server.ClusterGroup
+	// a binlog still to copy into the backup directory is kept (#2091)
+	if pending := server.oldestPendingBinlogCopy(); pending != "" && filename > pending {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purge of the binlogs of %s held at %s, still to copy into the backup directory (asked up to %s)", server.URL, pending, filename)
+		filename = pending
+	}
 	//Check if file exists
 	if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
 		_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)
