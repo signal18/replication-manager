@@ -106,3 +106,91 @@ func TestBinlogKeepWindowKeepsTheRotatedBinlog(t *testing.T) {
 		}
 	}
 }
+
+// #2091: with the archive on, the keep removal removes a binlog copy only once a snapshot of the
+// backup directory holds it; it keeps the others, with WARN0258, until one does
+func TestKeepRemovalWaitsForASnapshot(t *testing.T) {
+	c, server := newTestRuntimeOnlyClusterServer(t, "binlog-held", "db1", "3306")
+	c.Conf.BackupBinlogs = true
+	c.Conf.BackupBinlogsKeep = 2
+	c.Conf.BackupRestic = true
+	server.State = stateMaster
+	server.BinaryLogFile = "binlog.000011"
+	c.master = server
+	dir := server.GetMyBackupDirectory()
+	for _, b := range []string{"binlog.000007", "binlog.000008", "binlog.000009", "binlog.000010"} {
+		if err := os.WriteFile(filepath.Join(dir, b), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := server.newestBinlogCopy(); got != "binlog.000010" {
+		t.Fatalf("newest copy %q", got)
+	}
+
+	// no snapshot known (a restart): every copy beyond the window is kept
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range []string{"binlog.000007", "binlog.000008"} {
+		if !fileExists(filepath.Join(dir, b)) {
+			t.Fatalf("%s removed while in no snapshot", b)
+		}
+	}
+	server.binlogCopies.mu.Lock()
+	held, oldest, need := server.binlogCopies.held, server.binlogCopies.heldOldest, server.binlogCopies.needSnapshot
+	server.binlogCopies.mu.Unlock()
+	if held != 2 || oldest != "binlog.000007" || !need {
+		t.Fatalf("held %d oldest %q need a snapshot %t", held, oldest, need)
+	}
+	c.checkBinlogCopyStates()
+	if !hasOpenState(c, "WARN0258") {
+		t.Fatal("WARN0258 not raised for the kept copies")
+	}
+
+	// a snapshot held the copies up to 000007: that one goes, 000008 stays
+	server.recordBinlogsInSnapshot("binlog.000007")
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(filepath.Join(dir, "binlog.000007")) || !fileExists(filepath.Join(dir, "binlog.000008")) {
+		t.Fatal("only the copy a snapshot holds is removed")
+	}
+
+	// a snapshot holds them all: the window alone is left, the hold ends
+	server.recordBinlogsInSnapshot("binlog.000010")
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	for b, kept := range map[string]bool{"binlog.000008": false, "binlog.000009": true, "binlog.000010": true} {
+		if fileExists(filepath.Join(dir, b)) != kept {
+			t.Errorf("%s kept %v, want %v", b, !kept, kept)
+		}
+	}
+	server.binlogCopies.mu.Lock()
+	held, need = server.binlogCopies.held, server.binlogCopies.needSnapshot
+	server.binlogCopies.mu.Unlock()
+	if held != 0 || need {
+		t.Fatalf("the hold did not end: held %d need %t", held, need)
+	}
+}
+
+// #2091: with no archive, the keep removal does not wait for a snapshot
+func TestKeepRemovalWithoutArchive(t *testing.T) {
+	c, server := newTestRuntimeOnlyClusterServer(t, "binlog-noarchive", "db1", "3306")
+	c.Conf.BackupBinlogs = true
+	c.Conf.BackupBinlogsKeep = 1
+	server.State = stateMaster
+	c.master = server
+	dir := server.GetMyBackupDirectory()
+	for _, b := range []string{"binlog.000001", "binlog.000002"} {
+		if err := os.WriteFile(filepath.Join(dir, b), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.JobBackupBinlogPurge("binlog.000002"); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(filepath.Join(dir, "binlog.000001")) {
+		t.Fatal("kept with no archive to wait for")
+	}
+}

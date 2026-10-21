@@ -89,3 +89,26 @@ func TestSnapbackMoveContent(t *testing.T) {
 		t.Fatalf("emptied: %v %v", entries, err)
 	}
 }
+
+// #2091: a locked snapback holds the purges back: the retention purge waits, the deletion of
+// the snapshot it is at or of its latest one is refused, another snapshot's is not
+func TestSnapbackPurgeHold(t *testing.T) {
+	cl := newCatalogueTestCluster(t)
+	const srv = "db1:3306"
+	if err := cl.snapbackPurgeHold(""); err != nil {
+		t.Fatalf("no snapback, no hold: %v", err)
+	}
+	cl.setSnapback(srv, &SnapbackState{Server: srv, Archive: "archive-local-1", Snapshot: "aaaaaaaa11", Head: "bbbbbbbb22", Status: SnapbackDone})
+	for _, id := range []string{"", "aaaaaaaa11", "bbbbbbbb", "bbbbbbbb22"} {
+		if err := cl.snapbackPurgeHold(id); !errors.Is(err, ErrSnapbackLocked) {
+			t.Errorf("purge %q while locked: %v", id, err)
+		}
+	}
+	if err := cl.snapbackPurgeHold("cccccccc33"); err != nil {
+		t.Errorf("another snapshot: %v", err)
+	}
+	cl.setSnapback(srv, &SnapbackState{Server: srv, Snapshot: "bbbbbbbb22", Head: "bbbbbbbb22", Status: SnapbackDone})
+	if err := cl.snapbackPurgeHold(""); err != nil {
+		t.Fatalf("back at its latest snapshot: %v", err)
+	}
+}

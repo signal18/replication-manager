@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"runtime/debug"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -5617,7 +5618,7 @@ func (cluster *Cluster) recoverBackupPanic(what string, err *error) {
 func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, tags ...string) {
 	cluster := server.ClusterGroup
 	defer cluster.recoverBackupPanic("Archive of the backup of "+server.URL, nil)
-	server.backupResticWith(backupMethod, meta, backupPath, resticPushOptions{removeOriginal: func() bool { return cluster.Conf.BackupArchiveRemoveOriginal }}, tags...)
+	server.backupResticWith(backupMethod, meta, backupPath, resticPushOptions{removeOriginal: func() bool { return cluster.Conf.BackupArchiveRemoveOriginal }, trigger: snapshotTriggerBackup}, tags...)
 }
 
 // resticPushOptions is how backupResticWith ends a push.
@@ -5641,7 +5642,17 @@ type resticPushOptions struct {
 	noPurge bool
 	// snapback: the push of a snapback, let through the snapback lock (snapbackLock)
 	snapback bool
+	// trigger: what takes the snapshot, its trigger: tag (snapshotTrigger*)
+	trigger string
 }
+
+// What takes a snapshot, its fixed trigger: tag (#2091).
+const (
+	snapshotTriggerBackup   = "backup"   // a backup's snapshot of its backup directory
+	snapshotTriggerManual   = "manual"   // the archive of one backup, asked
+	snapshotTriggerSnapback = "snapback" // the backup directory before a snapback
+	snapshotTriggerBinlogs  = "binlogs"  // binlog copies beyond backup-binlogs-keep in no snapshot
+)
 
 // backupResticWith is BackupRestic ending the push as opt says.
 func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, opt resticPushOptions, tags ...string) {
@@ -5655,12 +5666,24 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 			panic(r)
 		}
 	}()
+	// a snapshot of the whole backup directory holds its binlog copies: the keep removal may
+	// then remove them (JobBackupBinlogPurge)
+	newestBinlog := ""
+	if strings.TrimSpace(backupPath) == "" || filepath.Clean(backupPath) == filepath.Clean(server.GetMyBackupDirectory()) {
+		newestBinlog = server.newestBinlogCopy()
+	}
 	pushDone := opt.done
 	opt.done = func(err error) {
 		release()
+		if err == nil {
+			server.recordBinlogsInSnapshot(newestBinlog)
+		}
 		if pushDone != nil {
 			pushDone(err)
 		}
+	}
+	if opt.trigger != "" {
+		tags = append(tags, "trigger:"+opt.trigger)
 	}
 	done := func(err error) {
 		if opt.done != nil {
@@ -6009,6 +6032,10 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to read backup directory of %s,%s", server.URL, err.Error())
 	}
 
+	// with the archive on, a copy beyond the window is removed only once a snapshot holds it:
+	// the others are kept for the snapshot the copy worker takes (snapshotHeldBinlogCopies)
+	archiveOn := server.shouldRunRestic(BackupRunOptions{})
+	var held []string
 	for _, file := range files {
 		if isBackupIntegritySidecar(file.Name()) {
 			continue
@@ -6022,6 +6049,10 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		logicalName := logicalArtifactName(file.Name())
 		_, ok := keeping[logicalName]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
+			if archiveOn && !server.binlogCopyInSnapshot(logicalName) {
+				held = append(held, logicalName)
+				continue
+			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file from backup dir %s", file.Name())
 			path := server.GetMyBackupDirectory() + "/" + file.Name()
 			var removeErr error
@@ -6035,6 +6066,9 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 			}
 		}
 	}
+
+	sort.Slice(held, func(i, j int) bool { return binlogNumber(held[i]) < binlogNumber(held[j]) })
+	server.holdBinlogCopies(held)
 
 	server.WriteBackupBinlogMetadata()
 	return nil

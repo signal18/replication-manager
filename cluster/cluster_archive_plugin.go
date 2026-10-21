@@ -418,6 +418,9 @@ func (cluster *Cluster) ForgetArchiveSnapshot(name, id string) error {
 	if id == "" {
 		return fmt.Errorf("archive %s: no snapshot given", name)
 	}
+	if err := cluster.snapbackPurgeHold(id); err != nil {
+		return err
+	}
 	list, _ := cluster.Conf.ArchiveList()
 	for _, a := range list {
 		if a.Name != name {

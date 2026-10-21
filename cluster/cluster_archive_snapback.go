@@ -177,6 +177,27 @@ func (cluster *Cluster) snapbackLock(serverURL string) error {
 	return fmt.Errorf("%w: its backup directory was put back to snapshot %s of archive %s, its latest snapshot is %s; snap back to %s, or release the snapback to keep it as it is", ErrSnapbackLocked, shortID(s.Snapshot), s.Archive, shortID(s.Head), shortID(s.Head))
 }
 
+// snapbackPurgeHold refuses a purge that could take a snapshot a locked snapback needs: the
+// one its directory is at and its latest one. id "" is the retention purge, which waits for
+// every snapback to end; else the deletion of snapshot id (or its short form).
+func (cluster *Cluster) snapbackPurgeHold(id string) error {
+	match := func(full string) bool {
+		return full != "" && (full == id || (len(id) >= 8 && strings.HasPrefix(full, id)))
+	}
+	for _, s := range cluster.Snapbacks() {
+		if !s.locked() {
+			continue
+		}
+		if id == "" {
+			return fmt.Errorf("%w: the snapback of %s needs snapshots %s and %s of archive %s; the retention purge waits until a snapback to %s or a release", ErrSnapbackLocked, s.Server, shortID(s.Snapshot), shortID(s.Head), s.Archive, shortID(s.Head))
+		}
+		if match(s.Snapshot) || match(s.Head) {
+			return fmt.Errorf("%w: the snapback of %s needs snapshot %s of archive %s; snap back to %s or release the snapback first", ErrSnapbackLocked, s.Server, shortID(id), s.Archive, shortID(s.Head))
+		}
+	}
+	return nil
+}
+
 // snapbackSnapshot is a snapshot of the attached archive, as a snapback needs it.
 type snapbackSnapshot struct {
 	id   string
@@ -414,6 +435,7 @@ func (cluster *Cluster) snapshotBackupDirectory(server *ServerMonitor, dir strin
 		noFlag:         true,
 		noPurge:        true,
 		snapback:       true,
+		trigger:        snapshotTriggerSnapback,
 		snapshot:       func(s string) { id = s },
 		done:           func(err error) { ended <- err },
 	}, tags...)

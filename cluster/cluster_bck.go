@@ -1219,6 +1219,9 @@ func (cluster *Cluster) ResticPurgeSnapshotWithOptions(snapshotID string, now bo
 	if !cluster.Conf.BackupRestic {
 		return fmt.Errorf("Restic backup is not enabled")
 	}
+	if err := cluster.snapbackPurgeHold(strings.TrimSpace(snapshotID)); err != nil {
+		return err
+	}
 
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
@@ -1256,6 +1259,10 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 // ResticPurgeRepoWithOptions asks the attached archive to apply the cluster's retention
 // policy (#2091): the policy is the user's (backup-keep-*), the plugin applies it its own way.
 func (cluster *Cluster) ResticPurgeRepoWithOptions(now bool, dryRun bool) error {
+	if err := cluster.snapbackPurgeHold(""); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive purge skipped: %s", err)
+		return err
+	}
 	if a, ok := cluster.attachedExternalArchive(); ok {
 		return cluster.purgeExternalArchive(a, dryRun)
 	}

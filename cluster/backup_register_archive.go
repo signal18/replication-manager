@@ -211,6 +211,7 @@ func (cluster *Cluster) pushRegisteredBackup(server *ServerMonitor, meta *backup
 		removeOriginal: func() bool { return removeOriginal },
 		asked:          true,
 		noFlag:         true,
+		trigger:        snapshotTriggerManual,
 		done:           func(error) { cluster.backupArchiving.Delete(meta.Id) },
 	}, tags...)
 }
