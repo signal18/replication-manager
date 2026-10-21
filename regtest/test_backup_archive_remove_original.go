@@ -20,13 +20,16 @@ import (
 
 const archiveOriginalSchema = "regtest_archorig"
 
-// TestBackupArchiveRemoveOriginal (#1987): with backup-archive-remove-original, a logical
-// (mysqldump) and a physical backup of the master are removed from the backup directory once
-// their restic snapshot holds them, and a replica that missed rows is reseeded from each:
-// the reseed fetches the original back from the archive.
+// TestBackupArchiveRemoveOriginal (#1987, #2091): with backup-archive-remove-original, the
+// logical (mysqldump, then mydumper) and the physical backups of the master are removed from the
+// backup directory once the attached archive's snapshot holds them, and a replica that missed
+// rows is reseeded from each: the reseed fetches the original back from the archive. The
+// attached archive is used as it is, restic or an archive plugin's (plakar, pbs); with none, a
+// restic archive is set up. Each backup and reseed runs under sysbench; at the end the replicas
+// hold the master's sysbench table and replicate.
 //
 // Needs a jobs container next to each database, a physical backup tool matching the servers
-// and restic; it reseeds a replica. Run it by name:
+// and sysbench; it reseeds a replica. Run it by name:
 // /api/clusters/<cluster>/tests/actions/run/testBackupArchiveRemoveOriginal
 func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, conf string, test *clusterpkg.Test) bool {
 	fail := func(format string, args ...interface{}) bool {
@@ -47,8 +50,9 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 	}
 	slave := slaves[0]
 
-	// Reuse the cluster's archive when it runs; otherwise set one up.
-	if !cl.Conf.BackupRestic || cl.ResticManager == nil {
+	// Reuse the cluster's attached archive, restic or a plugin's; with none, set up restic.
+	attached := cl.Conf.AttachedArchive()
+	if attached == "" && (!cl.Conf.BackupRestic || cl.ResticManager == nil) {
 		if err := cl.SetBackupRestic(true); err != nil {
 			return fail("enable restic: %s", err)
 		}
@@ -61,7 +65,9 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 		if err := cl.ResticInitRepo(false); err != nil && !strings.Contains(err.Error(), "already exists") {
 			return fail("ResticInitRepo: %s", err)
 		}
+		attached = cl.Conf.AttachedArchive()
 	}
+	step("archive %s", attached)
 	original := cl.Conf.BackupArchiveRemoveOriginal
 	cl.Conf.BackupArchiveRemoveOriginal = true
 	defer func() { cl.Conf.BackupArchiveRemoveOriginal = original }()
@@ -134,7 +140,10 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 		var dest string
 		ok := physReseedWait(15*time.Minute, func() bool {
 			m := meta()
-			if m == nil || !m.Completed || !m.EndTime.After(started) || m.ResticSnapshotID == "" || !m.OriginalRemoved {
+			if m == nil || !m.Completed || !m.EndTime.After(started) || !m.OriginalRemoved {
+				return false
+			}
+			if m.ArchiveSnapshot(attached) == "" && m.ResticSnapshotID == "" {
 				return false
 			}
 			dest = m.Dest
@@ -168,27 +177,66 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 		return true
 	}
 
-	step("logical: mysqldump backup of the master, archived, original removed")
+	// load runs sysbench for the phase (its sysbench-time at least 300s, to cover the backup
+	// and the reseed), its end waited by the returned function.
+	originalSysbenchTime := cl.Conf.SysbenchTime
+	defer func() { cl.Conf.SysbenchTime = originalSysbenchTime }()
+	if cl.Conf.SysbenchTime < 300 {
+		cl.Conf.SysbenchTime = 300
+	}
+	load := func(kind string) func() {
+		step("%s: sysbench on the master for %ds", kind, cl.Conf.SysbenchTime)
+		done := make(chan error, 1)
+		go func() { done <- cl.RunSysbench() }()
+		return func() {
+			select {
+			case err := <-done:
+				if err != nil {
+					step("%s: sysbench ended: %s", kind, err)
+				}
+			case <-time.After(time.Duration(cl.Conf.SysbenchTime)*time.Second + 10*time.Minute):
+				step("%s: sysbench still running", kind)
+			}
+		}
+	}
+	// consistent: once sysbench ended, the replicas hold the master's sysbench table and
+	// replicate.
+	consistent := func(kind string) bool {
+		if !physReseedWait(5*time.Minute, func() bool { return cl.CheckSlavesRunning() && cl.CheckTableConsistency("test.sbtest") }) {
+			return fail("after the %s reseed under sysbench: replicas running %v, test.sbtest consistent %v", kind, cl.CheckSlavesRunning(), cl.CheckTableConsistency("test.sbtest"))
+		}
+		return true
+	}
+
 	originalLogical := cl.Conf.BackupLogicalType
-	cl.SetBackupLogicalType(config.ConstBackupLogicalTypeMysqldump)
 	defer cl.SetBackupLogicalType(originalLogical)
-	if !diverge(101, 110) {
-		return false
-	}
-	started := time.Now()
-	if err := master.JobBackupLogical(context.Background()); err != nil {
-		return fail("JobBackupLogical: %s", err)
-	}
-	dest, ok := archived("logical", started, func() *backupmgr.BackupMetadata { return master.LastBackupMeta.Logical })
-	if !ok {
-		return false
-	}
-	step("logical reseed of %s from the archived backup", slave.URL)
-	if err := slave.JobReseedLogicalBackup(context.Background(), config.ConstBackupLogicalTypeMysqldump); err != nil {
-		return fail("JobReseedLogicalBackup: %s", err)
-	}
-	if !reseeded("logical", dest, 200) {
-		return false
+	for i, tool := range []string{config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper} {
+		base := 100 + i*100
+		step("logical: %s backup of the master, archived, original removed", tool)
+		cl.SetBackupLogicalType(tool)
+		ended := load(tool)
+		if !diverge(base+1, base+10) {
+			return false
+		}
+		started := time.Now()
+		if err := master.JobBackupLogical(context.Background()); err != nil {
+			return fail("JobBackupLogical %s: %s", tool, err)
+		}
+		dest, ok := archived(tool, started, func() *backupmgr.BackupMetadata { return master.LastBackupMeta.Logical })
+		if !ok {
+			return false
+		}
+		step("logical reseed of %s from the archived %s backup", slave.URL, tool)
+		if err := slave.JobReseedLogicalBackup(context.Background(), tool); err != nil {
+			return fail("JobReseedLogicalBackup %s: %s", tool, err)
+		}
+		if !reseeded(tool, dest, base+50) {
+			return false
+		}
+		ended()
+		if !consistent(tool) {
+			return false
+		}
 	}
 
 	tool := config.ConstBackupPhysicalTypeXtrabackup
@@ -199,14 +247,15 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 	originalPhysical := cl.Conf.BackupPhysicalType
 	cl.SetBackupPhysicalType(tool)
 	defer cl.SetBackupPhysicalType(originalPhysical)
+	ended := load("physical")
 	if !diverge(301, 310) {
 		return false
 	}
-	started = time.Now()
+	started := time.Now()
 	if err := master.JobBackupPhysical(); err != nil {
 		return fail("JobBackupPhysical: %s", err)
 	}
-	dest, ok = archived("physical", started, func() *backupmgr.BackupMetadata { return master.LastBackupMeta.Physical })
+	dest, ok := archived("physical", started, func() *backupmgr.BackupMetadata { return master.LastBackupMeta.Physical })
 	if !ok {
 		return false
 	}
@@ -217,7 +266,11 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 	if !reseeded("physical", dest, 400) {
 		return false
 	}
+	ended()
+	if !consistent("physical") {
+		return false
+	}
 
-	step("passed: both backups were removed after their archive push and restored from the archive")
+	step("passed: the mysqldump, mydumper and %s backups were removed after their push to archive %s and restored from it, under sysbench", tool, attached)
 	return true
 }
