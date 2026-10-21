@@ -9650,7 +9650,13 @@ func (repman *ReplicationManager) handlerMuxResticFetch(w http.ResponseWriter, r
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/purge/{snapshotID} [post]
 func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r *http.Request) {
-	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+	// the policy purge applies to the attached archive, a plugin's included (#2091): only one
+	// snapshot's deletion needs restic
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		if vars["snapshotID"] != "policy" && !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", http.StatusInternalServerError)
+			return
+		}
 		dryRun := false
 		if value := strings.TrimSpace(r.URL.Query().Get("dry_run")); value != "" {
 			parsed, err := strconv.ParseBool(value)
