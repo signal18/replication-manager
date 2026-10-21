@@ -2318,6 +2318,8 @@ func (server *ServerMonitor) accountAlreadyMatchesHash(ctx context.Context, conn
 // not set it, since nothing was sent to conn.
 func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx.Conn, stmt string, path string, progressed *atomic.Bool) error {
 	cluster := server.ClusterGroup
+	// a restore with the binlog on pauses here on each rotation until the replicas applied it
+	server.restoreGateWait()
 	if name, ok := isInstallPluginStatement(stmt); ok {
 		skip, err := server.resolveInstallPluginSkip(ctx, conn, name)
 		if err != nil {
@@ -2914,6 +2916,11 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 				"Splitdump restore failed to reset binlog on %s: %v (%s)", server.URL, err, logs)
 			return err
 		}
+	}
+	// a master restore writes the backup to its binlog for its replicas: one binlog kept (#2124)
+	if sqlLogBin == 1 {
+		stopGate := server.startRestoreBinlogGate()
+		defer stopGate()
 	}
 	// Open one dedicated pinned connection per parallel worker. We deliberately
 	// avoid the shared server.Conn pool: statement ordering, session state
@@ -3586,6 +3593,16 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	if err != nil {
 		return err
 	}
+	// a master restore writes the backup to its binlog for its replicas: one binlog kept, the
+	// stream paused on each rotation until they applied it (#2124)
+	var dumpStream io.Reader = fz
+	if sqlLogBin == 1 {
+		stopGate := server.startRestoreBinlogGate()
+		defer stopGate()
+		if g := server.restoreGate.Load(); g != nil {
+			dumpStream = &gatedReader{r: fz, gate: g}
+		}
+	}
 
 	// mysql.system-all content (INSTALL PLUGIN/CREATE USER/etc.) embedded in the
 	// dump is classified out here and replayed separately through
@@ -3664,7 +3681,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		if !restoreUser {
 			skip = splitdump.IsImportRoleBracket
 		}
-		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, fz, artifactWriter, skip)
+		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, dumpStream, artifactWriter, skip)
 		pumpResultCh <- reseedPumpResult{result: result, err: pumpErr, fromClassify: fromClassify}
 	}()
 

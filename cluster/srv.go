@@ -312,6 +312,7 @@ type ServerMonitor struct {
 	logicalReseedDispatching        atomic.Bool                          // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
 	reseedLinksMu                   sync.Mutex                           // guards reseedLinks: the reseed records, the refresh drops (#2093)
 	reseedLinks                     reseedStoppedLinks                   // the channels a reseed stopped and has not started again, WARN0252 while one does not run
+	restoreGate                     atomic.Pointer[restoreBinlogGate]    // the pause of a restore writing to the binlog, WARN0254 while paused (#2124)
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex
@@ -1673,6 +1674,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	server.ReplicationHealth = server.CheckReplication()
 	server.checkReseedStoppedLinks() // WARN0252: links a reseed stopped and that do not run (#2093)
+	server.checkRestoreBinlogPause() // WARN0254: a restore with the binlog on paused for its replicas (#2124)
 
 	if server.IsSlave {
 		if cluster.Conf.DelayStatCapture {
