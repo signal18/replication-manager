@@ -241,6 +241,13 @@ func (cluster *Cluster) SetDBMaxConnections(value string) {
 	cluster.SetDBRestartCookie()
 }
 
+// SetDBBinlogTotalSizePct sets prov-db-binlog-total-size-pct; the dynamic config applies the new
+// max_binlog_total_size live (MariaDB 11.4+), no restart.
+func (cluster *Cluster) SetDBBinlogTotalSizePct(value string) {
+	cluster.Configurator.SetDBBinlogTotalSizePct(value)
+	cluster.Conf.ProvBinlogTotalSizePct = cluster.Configurator.ClusterConfig.ProvBinlogTotalSizePct
+}
+
 func (cluster *Cluster) SetDBExpireLogDays(value string) {
 	cluster.Configurator.SetDBExpireLogDays(value)
 	cluster.Conf.ProvExpireLogDays = cluster.Configurator.GetConfigDBExpireLogDays()

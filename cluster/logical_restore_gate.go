@@ -7,24 +7,30 @@ package cluster
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-// A restore with the binary log on keeps one binlog (#2124). A restore on a master (a child or
-// staging cluster's master, at its creation or by staging-reseed-from-parent) writes the whole
-// backup to its binlog for its replicas: the binlog of a former seed still there, the disk
-// filled and MariaDB crashed (preprod belair-staging-test, 15 GB of binlog on a 20 GB disk).
-// The binlog retention policy gives way while it runs. The binlog monitoring sees each rotation
-// (CheckBinaryLogs); the restore then pauses before its next statement until every replica
-// applied the rotated binlog (its SQL thread is on the current one, Relay_Master_Log_File) and
-// has no delay (Seconds_Behind_Master 0), the rotated binlogs are purged (PurgeBinlogTo, after
-// binlog archiving: IsBackingUpBinaryLog), the replicas' own too, and it goes on. No timer, WARN0254 names the
-// replica holding it. A stopped replica (IO or SQL thread) or a delayed one (hosts-delayed,
-// MASTER_DELAY) does not take part: the restore never waits for it.
+// A restore with the binary log on keeps its binlogs bounded (#2124). A restore on a master (a child
+// or staging cluster's master, at its creation or by staging-reseed-from-parent) writes the whole
+// backup to its binlog for its replicas, and each replica writes it again to its own
+// (log_slave_updates): the disks filled and MariaDB died (preprod belair-staging-test, 17 GB of
+// binlog on db1 and 14 GB on db3 of a 20 GB plan). While it runs, on MariaDB 11.4+, the master and
+// every replica keep max_binlog_total_size at 2G and MariaDB purges by itself (a replica, with no
+// replica of its own, gets slave_connections_needed_for_purge 0, or it never purges); at the end
+// the plan's value (prov-db-binlog-total-size-pct, dynamic config) or the one found comes back.
+// The binlog monitoring sees each rotation (CheckBinaryLogs); the restore then pauses before its
+// next statement until every replica applied the rotated binlog (its SQL thread is on the current
+// one, Relay_Master_Log_File) and has no delay (Seconds_Behind_Master 0): MariaDB never purges a
+// binlog a replica still reads. No timer, WARN0254 names the replica holding it. A stopped replica
+// (IO or SQL thread) or a delayed one (hosts-delayed, MASTER_DELAY) does not take part. Before
+// 11.4 there is no max_binlog_total_size: the gate purges the rotated binlogs itself.
 
 // logicalRestoreGate is the pause of a logical restore's statement stream on a binlog rotation.
 type logicalRestoreGate struct {
@@ -95,7 +101,7 @@ func (server *ServerMonitor) waitLogicalRestoreGate() {
 }
 
 // startLogicalRestoreGate starts the rotation pause of a logical restore writing to server's binlog (sql_log_bin=1)
-// on MariaDB; stop ends it and lets the stream flow.
+// on MariaDB and holds the binlogs of server and its replicas at 2G; stop ends both and lets the stream flow.
 func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 	cluster := server.ClusterGroup
 	if !server.IsMariaDB() || server.BinaryLogFile == "" {
@@ -103,17 +109,78 @@ func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 	}
 	gate := newLogicalRestoreGate()
 	server.logicalRestoreGate.Store(gate)
+	held := server.holdBinlogTotalSizeForRestore()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-		"Restore on %s with the binary log on: one binlog kept, the restore pauses on each rotation until the replicas apply it", server.URL)
+		"Restore on %s with the binary log on: binlogs kept to 2G, the restore pauses on each rotation until the replicas apply it", server.URL)
 	return func() {
 		server.logicalRestoreGate.Store(nil)
 		gate.resume()
+		held()
+	}
+}
+
+// holdBinlogTotalSizeForRestore sets max_binlog_total_size to 2G on server and its replicas
+// (MariaDB 11.4+), slave_connections_needed_for_purge to 0 on the replicas; the returned func puts
+// back the plan's max_binlog_total_size under the dynamic config, the value found otherwise, and
+// the slave_connections_needed_for_purge found.
+func (server *ServerMonitor) holdBinlogTotalSizeForRestore() (putBack func()) {
+	cluster := server.ClusterGroup
+	type found struct {
+		sv          *ServerMonitor
+		totalSize   int
+		connections int
+	}
+	var held []found
+	for _, sv := range append([]*ServerMonitor{server}, cluster.GetSlaves()...) {
+		if sv == nil || sv.Conn == nil || !sv.IsMariaDB() || !sv.DBVersion.GreaterEqual("11.4") {
+			continue
+		}
+		f := found{sv: sv, connections: -1}
+		if v, ok := sv.Variables.CheckAndGet("MAX_BINLOG_TOTAL_SIZE"); ok {
+			f.totalSize, _ = strconv.Atoi(v)
+		}
+		if _, err := dbhelper.SetMaxBinlogTotalSize(sv.Conn, int(configurator.MinBinlogTotalSize)); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Restore on %s: could not keep the binlogs of %s to 2G: %s", server.URL, sv.URL, err)
+			continue
+		}
+		sv.restoreHoldsBinlogTotalSize.Store(true)
+		if sv != server {
+			// a replica has no replica of its own: with the default 1 MariaDB never purges it
+			if v, ok := sv.Variables.CheckAndGet("SLAVE_CONNECTIONS_NEEDED_FOR_PURGE"); ok {
+				if n, err := strconv.Atoi(v); err == nil && n > 0 {
+					if _, err := dbhelper.SetSlaveConnectionsNeededForPurge(sv.Conn, 0); err == nil {
+						f.connections = n
+					}
+				}
+			}
+		}
+		held = append(held, f)
+	}
+	return func() {
+		for _, f := range held {
+			size := f.totalSize
+			if cluster.Conf.ProvDBApplyDynamicConfig {
+				size, _ = strconv.Atoi(cluster.Configurator.GetConfigMaxBinlogTotalSize())
+			}
+			if _, err := dbhelper.SetMaxBinlogTotalSize(f.sv.Conn, size); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Restore on %s ended: could not put back max_binlog_total_size %d on %s: %s", server.URL, size, f.sv.URL, err)
+			}
+			if f.connections > 0 {
+				if _, err := dbhelper.SetSlaveConnectionsNeededForPurge(f.sv.Conn, f.connections); err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+						"Restore on %s ended: could not put back slave_connections_needed_for_purge %d on %s: %s", server.URL, f.connections, f.sv.URL, err)
+				}
+			}
+			f.sv.restoreHoldsBinlogTotalSize.Store(false)
+		}
 	}
 }
 
 // pauseLogicalRestoreOnBinlogRotation is the binlog monitoring's call on a rotation of server's binlog: while
 // a restore with the binary log on runs, it pauses it until the replicas apply the rotated binlog,
-// purges it, and resumes. One handling at a time; a later rotation is caught up by it.
+// then resumes. One handling at a time; a later rotation is caught up by it.
 func (server *ServerMonitor) pauseLogicalRestoreOnBinlogRotation() {
 	gate := server.logicalRestoreGate.Load()
 	if gate == nil || !server.logicalRestoreGatePurging.CompareAndSwap(false, true) {
@@ -127,8 +194,9 @@ func (server *ServerMonitor) pauseLogicalRestoreOnBinlogRotation() {
 }
 
 // purgeBinlogsAppliedByReplicasThenResume waits, with no timer, for every replica taking part to apply
-// server's rotated binlog with no delay, and for binlog archiving to end, then purges the binlogs
-// before the current one, the replicas' own, and resumes the restore; nothing once the restore ended.
+// server's rotated binlog with no delay, and for binlog archiving to end, then resumes the restore,
+// purging first the binlogs before the current one where MariaDB does not (before 11.4); nothing
+// once the restore ended.
 func (server *ServerMonitor) purgeBinlogsAppliedByReplicasThenResume(gate *logicalRestoreGate) {
 	cluster := server.ClusterGroup
 	for server.logicalRestoreGate.Load() == gate {
@@ -139,14 +207,14 @@ func (server *ServerMonitor) purgeBinlogsAppliedByReplicasThenResume(gate *logic
 		}
 		if holding == "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Restore on %s: the replicas applied up to %s, purging the binlogs before it", server.URL, current)
-			server.PurgeBinlogTo(current)
-			server.RefreshBinaryLogs()
-			for _, sl := range cluster.GetSlaves() {
-				// a replica writes what it applies to its own binlog (log_slave_updates)
-				if sl != nil && sl.BinaryLogFile != "" && !sl.IsBackingUpBinaryLog {
-					sl.PurgeBinlogTo(sl.BinaryLogFile)
-					sl.RefreshBinaryLogs()
+				"Restore on %s: the replicas applied up to %s, resuming", server.URL, current)
+			// MariaDB 11.4+ purges by itself within max_binlog_total_size; before, purge here,
+			// a replica too: it writes what it applies to its own binlog (log_slave_updates)
+			for _, sv := range append([]*ServerMonitor{server}, cluster.GetSlaves()...) {
+				if sv != nil && sv.BinaryLogFile != "" && !sv.restoreHoldsBinlogTotalSize.Load() && !sv.IsBackingUpBinaryLog {
+					sv.WaitForRefresh() // PurgeBinlogTo purges only a binlog it lists
+					sv.PurgeBinlogTo(sv.BinaryLogFile)
+					sv.RefreshBinaryLogs()
 				}
 			}
 			gate.resume()

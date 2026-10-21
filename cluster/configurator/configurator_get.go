@@ -68,6 +68,22 @@ func (configurator *Configurator) GetConfigExpireLogDays() string {
 	return strconv.Itoa(configurator.ClusterConfig.ProvExpireLogDays)
 }
 
+// MinBinlogTotalSize is the floor of max_binlog_total_size, and its value while a restore with the
+// binary log on runs (#2124): two binlogs of the default 1G max_binlog_size.
+const MinBinlogTotalSize int64 = 2 * 1024 * 1024 * 1024
+
+// GetConfigMaxBinlogTotalSize is max_binlog_total_size in bytes: prov-db-binlog-total-size-pct of
+// prov-db-disk-size, never under MinBinlogTotalSize. The binary logs are bounded by the plan, not
+// only by expire_logs_days.
+func (configurator *Configurator) GetConfigMaxBinlogTotalSize() string {
+	diskGB, err := config.ParseUnitMeasurementToInt("G,bytes,required", configurator.ClusterConfig.ProvDisk, true)
+	size := int64(diskGB) * 1024 * 1024 * 1024 * int64(configurator.ClusterConfig.ProvBinlogTotalSizePct) / 100
+	if err != nil || size < MinBinlogTotalSize {
+		size = MinBinlogTotalSize
+	}
+	return strconv.FormatInt(size, 10)
+}
+
 func (configurator *Configurator) GetConfigRelaySpaceLimit() string {
 	return strconv.Itoa(10 * 1024 * 1024)
 }

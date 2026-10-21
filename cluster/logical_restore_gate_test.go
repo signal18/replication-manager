@@ -9,11 +9,13 @@ import (
 	"context"
 	"database/sql"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -68,12 +70,12 @@ func gateReplica(c *Cluster, name, applying string, delay int64, running string,
 		SlaveStatus: &ss, Replications: []dbhelper.SlaveStatus{ss}}
 }
 
-// On a rotation of the master's binlog the restore pauses; the rotated binlog is purged and the
-// restore resumes only once every replica taking part applied it (its SQL thread on the current
-// binlog) and has no delay: one binlog kept. A stopped replica or one with MASTER_DELAY never holds it.
-func TestLogicalRestoreGateWaitsReplicasThenPurges(t *testing.T) {
-	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
-	master, mock := newMyLoaderPositionServer(t, mariadb, true)
+// On a rotation of the master's binlog the restore pauses and resumes only once every replica
+// taking part applied it (its SQL thread on the current binlog) and has no delay. A stopped replica
+// or one with MASTER_DELAY never holds it. On MariaDB 11.4+ the binlogs are held at 2G for the
+// restore and MariaDB purges them: the gate purges nothing; before 11.4 it purges the rotated ones.
+func testLogicalRestoreGateWaitsReplicas(t *testing.T, v *version.Version, held bool) {
+	master, mock := newMyLoaderPositionServer(t, v, true)
 	c := master.ClusterGroup
 	master.BinaryLogFile = "binlog.000002"
 	master.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap()
@@ -86,14 +88,23 @@ func TestLogicalRestoreGateWaitsReplicasThenPurges(t *testing.T) {
 	c.slaves = serverList{upToDate, applying, stopped, delayed}
 	c.Servers = []*ServerMonitor{master, upToDate, applying, stopped, delayed}
 
+	mock.MatchExpectationsInOrder(false)
+	if held {
+		mock.ExpectExec("SET GLOBAL max_binlog_total_size").WithArgs(2147483648).WillReturnResult(sqlmock.NewResult(0, 0))
+	}
 	stop := master.startLogicalRestoreGate()
-	defer stop()
 	g := master.logicalRestoreGate.Load()
 	if g == nil {
 		t.Fatal("no rotation pause on a MariaDB master with a binlog")
 	}
-	mock.MatchExpectationsInOrder(false)
-	mock.ExpectExec("PURGE BINARY LOGS TO").WithArgs("binlog.000002").WillReturnResult(sqlmock.NewResult(0, 0))
+	if master.restoreHoldsBinlogTotalSize.Load() != held {
+		t.Fatalf("binlogs held at 2G: %v, want %v", master.restoreHoldsBinlogTotalSize.Load(), held)
+	}
+	if !held {
+		mock.ExpectQuery("SHOW BINARY LOGS").WillReturnRows(sqlmock.NewRows([]string{"Log_name", "File_size"}).
+			AddRow("binlog.000001", 100).AddRow("binlog.000002", 100))
+		mock.ExpectExec("PURGE BINARY LOGS TO").WithArgs("binlog.000002").WillReturnResult(sqlmock.NewResult(0, 0))
+	}
 
 	master.pauseLogicalRestoreOnBinlogRotation()
 	waitReason := func(want string) {
@@ -104,9 +115,6 @@ func TestLogicalRestoreGateWaitsReplicasThenPurges(t *testing.T) {
 				t.Fatalf("paused reason %q, want %q", g.pausedReason(), want)
 			}
 			time.Sleep(50 * time.Millisecond)
-		}
-		if err := mock.ExpectationsWereMet(); err == nil {
-			t.Fatal("purged while a replica holds the restore")
 		}
 	}
 	waitReason("replica db3:3306 to apply it (applying binlog.000001)")
@@ -124,8 +132,45 @@ func TestLogicalRestoreGateWaitsReplicasThenPurges(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+
+	if held {
+		// the end puts back the value found (0, no limit: the dynamic config is off)
+		mock.ExpectExec("SET GLOBAL max_binlog_total_size").WithArgs(0).WillReturnResult(sqlmock.NewResult(0, 0))
+	}
+	stop()
 	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("the rotated binlog was not purged: %s", err)
+		t.Fatalf("binlog handling: %s", err)
+	}
+	if master.restoreHoldsBinlogTotalSize.Load() {
+		t.Fatal("the binlogs are still held at 2G after the restore")
+	}
+}
+
+func TestLogicalRestoreGateWaitsReplicasMariaDB114HoldsBinlogs(t *testing.T) {
+	testLogicalRestoreGateWaitsReplicas(t, &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}, true)
+}
+
+func TestLogicalRestoreGateWaitsReplicasMariaDB1011Purges(t *testing.T) {
+	testLogicalRestoreGateWaitsReplicas(t, &version.Version{Flavor: "MariaDB", Major: 10, Minor: 11, Release: 9}, false)
+}
+
+// The plan bounds the binlogs: prov-db-binlog-total-size-pct of prov-db-disk-size, never under 2G.
+func TestConfigMaxBinlogTotalSizeFollowsPlan(t *testing.T) {
+	for _, tc := range []struct {
+		disk string
+		pct  int
+		want int64
+	}{
+		{"20G", 25, 5 << 30},
+		{"100G", 25, 25 << 30},
+		{"4G", 25, configurator.MinBinlogTotalSize},
+	} {
+		cf := &configurator.Configurator{}
+		cf.ClusterConfig.ProvDisk = tc.disk
+		cf.ClusterConfig.ProvBinlogTotalSizePct = tc.pct
+		if got := cf.GetConfigMaxBinlogTotalSize(); got != strconv.FormatInt(tc.want, 10) {
+			t.Fatalf("%s at %d%%: %s, want %d", tc.disk, tc.pct, got, tc.want)
+		}
 	}
 }
 
