@@ -532,10 +532,15 @@ func (configurator *Configurator) GetConfigInnoDBWriteIoThreads() string {
 // (e.g. > 32 DBU of IOPS via Little's-law sizing, or a > 64-core config).
 const innoDBMaxIoThreads = 64
 
-// clampInnoDBIoThreads clamps an innodb io-thread count to the valid [1, 64] range.
+// innoDBMinIoThreads is the floor of innodb_read_io_threads and innodb_write_io_threads: they are
+// asynchronous IO threads, not cores; on a small plan the formulas gave 1 or 2 and a restore or a
+// flush burst ran far slower than with 4 (#2124).
+const innoDBMinIoThreads = 4
+
+// clampInnoDBIoThreads clamps an innodb io-thread count to [innoDBMinIoThreads, 64].
 func clampInnoDBIoThreads(n int) int {
-	if n < 1 {
-		return 1
+	if n < innoDBMinIoThreads {
+		return innoDBMinIoThreads
 	}
 	if n > innoDBMaxIoThreads {
 		return innoDBMaxIoThreads
