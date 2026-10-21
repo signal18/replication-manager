@@ -2173,11 +2173,15 @@ func planAndExecSplitdump(reader io.Reader, batchSize int, exec splitdumpExecuto
 // forEachSplitdumpStatement / classifySplitdumpStatement / planAndExecSplitdump
 // helpers; this wrapper just binds the executor to conn.
 func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, path string, progressed *atomic.Bool) error {
+	// every statement passes here, batched (the data) or single: a logical restore with the
+	// binlog on pauses here, between two transactions, on each rotation (logicalRestoreGate)
 	return planAndExecSplitdump(reader, splitdumpBatchStatements, splitdumpExecutor{
 		batch: func(stmts []string) error {
+			server.waitLogicalRestoreGate()
 			return server.execSplitdumpBatch(ctx, conn, stmts, path, progressed)
 		},
 		single: func(stmt string) error {
+			server.waitLogicalRestoreGate()
 			return server.execSplitdumpSingle(ctx, conn, stmt, path, progressed)
 		},
 	})
@@ -2318,8 +2322,6 @@ func (server *ServerMonitor) accountAlreadyMatchesHash(ctx context.Context, conn
 // not set it, since nothing was sent to conn.
 func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx.Conn, stmt string, path string, progressed *atomic.Bool) error {
 	cluster := server.ClusterGroup
-	// a restore with the binlog on pauses here on each rotation until the replicas applied it
-	server.waitLogicalRestoreGate()
 	if name, ok := isInstallPluginStatement(stmt); ok {
 		skip, err := server.resolveInstallPluginSkip(ctx, conn, name)
 		if err != nil {

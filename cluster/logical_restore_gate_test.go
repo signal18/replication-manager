@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"io"
 	"strings"
@@ -96,5 +97,44 @@ func TestLogicalRestoreGateWaitsReplicaThenPurges(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("the rotated binlog was not purged: %s", err)
+	}
+}
+
+// The real load path: the data of a splitdump goes in batched transactions
+// (streamSplitdumpStatements -> execSplitdumpBatch); a paused gate holds the next transaction,
+// none runs until it resumes (preprod: the pause sat in the single-statement path only, the
+// batches went on, the binlog kept rotating).
+func TestLogicalRestoreGateHoldsSplitdumpBatches(t *testing.T) {
+	server, mock, conn, closeFn := newSystemReseedTestServer(t)
+	defer closeFn()
+	g := newLogicalRestoreGate()
+	server.logicalRestoreGate.Store(g)
+	g.pause("binlog rotated to binlog.000012")
+
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO `t` VALUES").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO `t` VALUES").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- server.streamSplitdumpStatements(context.Background(), conn,
+			strings.NewReader("INSERT INTO `t` VALUES (1);\nINSERT INTO `t` VALUES (2);\n"), "db.t-data.sql", nil)
+	}()
+	time.Sleep(300 * time.Millisecond)
+	if err := mock.ExpectationsWereMet(); err == nil || !strings.Contains(err.Error(), "Begin") {
+		t.Fatalf("a transaction ran while the restore was paused: %v", err)
+	}
+	g.resume()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("restore after resume: %s", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the restore did not go on after the resume")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("the batch did not run after the resume: %s", err)
 	}
 }
