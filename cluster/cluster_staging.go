@@ -251,7 +251,8 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 		// belair-staging-test: db2 loaded belair's backup, then replayed db1's restore,
 		// 2895224983-11130737-390..777). After a reseed from the parent, a fresh backup of the
 		// master is taken first: it holds the reloaded data and the master's position in every
-		// domain. The reseed runs to its end (prepare, then process): a load can take days, the
+		// domain. The reseed is prepared and the monitor runs it (the tick's logical reseed
+		// dispatch); the refresh waits for its end with no timer, a load can take days. The
 		// wait below is only for the replication to start.
 		ctx := context.Background()
 		if cluster != source {
@@ -266,9 +267,10 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			}
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s from %s's backup", STG.URL, cluster.Name)
-		plan, err := STG.JobReseedLogicalBackupPrepare(ctx, "default")
-		if err == nil && plan != nil {
-			err = STG.JobReseedLogicalBackupProcess(ctx, plan)
+		started := time.Now().UnixNano()
+		err = STG.JobReseedLogicalBackup(ctx, "default")
+		if err == nil {
+			err = cluster.waitReseedEnd(STG.URL, started)
 		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
@@ -671,6 +673,25 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed logical backup %s from parent cluster completed on %s", backtype, target.URL)
 
 	return masterCurrentGTID, nil
+}
+
+// waitReseedEnd waits, with no timer, for the logical reseed of the server at url, prepared at
+// started (unix-nanos), to end: the monitor runs it, running it here too made two restores
+// write the same tables of db3.belair-staging-test at once. Its error when it failed.
+func (cluster *Cluster) waitReseedEnd(url string, started int64) error {
+	for {
+		sv := cluster.GetServerFromURL(url)
+		if sv == nil {
+			return fmt.Errorf("server %s is no longer in %s", url, cluster.Name)
+		}
+		if !sv.HasAnyReseedingState() {
+			if failed := sv.ReseedFailedSince(started); failed != "" {
+				return fmt.Errorf("reseed of %s failed: %s", url, failed)
+			}
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 // waitStagingReplicaInSync waits for the replica at url to reach its master's position, read

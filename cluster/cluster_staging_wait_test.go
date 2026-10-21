@@ -164,3 +164,31 @@ func TestParentBackupBehind(t *testing.T) {
 		}
 	}
 }
+
+// The refresh waits for the reseed the monitor runs, with no timer, and returns its failure.
+func TestWaitReseedEnd(t *testing.T) {
+	c, server := newStagingTestServer(t)
+	c.Servers = []*ServerMonitor{server}
+	started := time.Now().UnixNano()
+	if err := c.waitReseedEnd(server.URL, started); err != nil {
+		t.Fatalf("no reseed running: %s", err)
+	}
+	server.SetInReseedBackup("reseedmysqldump")
+	done := make(chan error, 1)
+	go func() { done <- c.waitReseedEnd(server.URL, started) }()
+	select {
+	case err := <-done:
+		t.Fatalf("returned while the reseed runs: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	server.MarkReseedFailed(errors.New("restore failed"))
+	server.SetInReseedBackup("")
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "restore failed") {
+			t.Fatalf("a failed reseed: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the wait did not end with the reseed")
+	}
+}
