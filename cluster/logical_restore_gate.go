@@ -25,20 +25,20 @@ import (
 // and it goes on. No timer: a replica that does not replicate keeps it paused, WARN0254 saying
 // so; a binlog is never purged before every replica read it.
 
-// restoreBinlogGate is the pause of a restore's statement stream.
-type restoreBinlogGate struct {
+// logicalRestoreGate is the pause of a logical restore's statement stream on a binlog rotation.
+type logicalRestoreGate struct {
 	mu     sync.Mutex
 	open   chan struct{} // closed while the stream may flow
 	reason string        // why it is paused, "" while it flows
 }
 
-func newRestoreBinlogGate() *restoreBinlogGate {
-	g := &restoreBinlogGate{open: make(chan struct{})}
+func newLogicalRestoreGate() *logicalRestoreGate {
+	g := &logicalRestoreGate{open: make(chan struct{})}
 	close(g.open)
 	return g
 }
 
-func (g *restoreBinlogGate) pause(reason string) {
+func (g *logicalRestoreGate) pause(reason string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	select {
@@ -49,7 +49,7 @@ func (g *restoreBinlogGate) pause(reason string) {
 	g.reason = reason
 }
 
-func (g *restoreBinlogGate) resume() {
+func (g *logicalRestoreGate) resume() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	select {
@@ -60,77 +60,77 @@ func (g *restoreBinlogGate) resume() {
 	g.reason = ""
 }
 
-// wait blocks while the gate is paused.
-func (g *restoreBinlogGate) wait() {
+// wait blocks while the logical restore is paused.
+func (g *logicalRestoreGate) wait() {
 	g.mu.Lock()
 	ch := g.open
 	g.mu.Unlock()
 	<-ch
 }
 
-func (g *restoreBinlogGate) pausedReason() string {
+func (g *logicalRestoreGate) pausedReason() string {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return g.reason
 }
 
-// gatedReader pauses a restore stream at the gate before each read.
-type gatedReader struct {
+// logicalRestoreGateReader holds a logical restore's stream before each read while it is paused on a binlog rotation.
+type logicalRestoreGateReader struct {
 	r    io.Reader
-	gate *restoreBinlogGate
+	gate *logicalRestoreGate
 }
 
-func (g *gatedReader) Read(p []byte) (int, error) {
+func (g *logicalRestoreGateReader) Read(p []byte) (int, error) {
 	g.gate.wait()
 	return g.r.Read(p)
 }
 
-// restoreGateWait blocks the restore's next statement while its gate is paused; nothing when no
-// gate runs (a restore with the binary log off).
-func (server *ServerMonitor) restoreGateWait() {
-	if g := server.restoreGate.Load(); g != nil {
+// waitLogicalRestoreGate blocks the logical restore's next statement while it is paused on a binlog
+// rotation; nothing when none runs (a restore with the binary log off).
+func (server *ServerMonitor) waitLogicalRestoreGate() {
+	if g := server.logicalRestoreGate.Load(); g != nil {
 		g.wait()
 	}
 }
 
-// startRestoreBinlogGate starts the gate of a restore writing to server's binlog (sql_log_bin=1)
+// startLogicalRestoreGate starts the rotation pause of a logical restore writing to server's binlog (sql_log_bin=1)
 // on MariaDB; stop ends it and lets the stream flow.
-func (server *ServerMonitor) startRestoreBinlogGate() (stop func()) {
+func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 	cluster := server.ClusterGroup
 	if !server.IsMariaDB() || server.BinaryLogFile == "" {
 		return func() {}
 	}
-	gate := newRestoreBinlogGate()
-	server.restoreGate.Store(gate)
+	gate := newLogicalRestoreGate()
+	server.logicalRestoreGate.Store(gate)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"Restore on %s with the binary log on: one binlog kept, the restore pauses on each rotation until the replicas read it", server.URL)
 	return func() {
-		server.restoreGate.Store(nil)
+		server.logicalRestoreGate.Store(nil)
 		gate.resume()
 	}
 }
 
-// onRestoreBinlogRotation is the binlog monitoring's call on a rotation of server's binlog: while
+// pauseLogicalRestoreOnBinlogRotation is the binlog monitoring's call on a rotation of server's binlog: while
 // a restore with the binary log on runs, it pauses it until the replicas read the rotated binlog,
 // purges it, and resumes. One handling at a time; a later rotation is caught up by it.
-func (server *ServerMonitor) onRestoreBinlogRotation() {
-	gate := server.restoreGate.Load()
-	if gate == nil || !server.restoreRotating.CompareAndSwap(false, true) {
+func (server *ServerMonitor) pauseLogicalRestoreOnBinlogRotation() {
+	gate := server.logicalRestoreGate.Load()
+	if gate == nil || !server.logicalRestoreGatePurging.CompareAndSwap(false, true) {
 		return
 	}
 	gate.pause(fmt.Sprintf("binlog rotated to %s, waiting for the replicas to read it", server.BinaryLogFile))
 	go func() {
-		defer server.restoreRotating.Store(false)
-		server.purgeRestoreRotatedBinlogs(gate)
+		defer server.logicalRestoreGatePurging.Store(false)
+		server.purgeBinlogsReadByReplicasThenResume(gate)
 	}()
 }
 
-// purgeRestoreRotatedBinlogs waits, with no timer, for every replica to read server's current
+// purgeBinlogsReadByReplicasThenResume waits, with no timer, for every replica to read server's current
 // binlog and for binlog archiving to end, then purges the binlogs before it, the replicas' own,
 // and resumes the restore; nothing once the restore ended.
-func (server *ServerMonitor) purgeRestoreRotatedBinlogs(gate *restoreBinlogGate) {
+func (server *ServerMonitor) purgeBinlogsReadByReplicasThenResume(gate *logicalRestoreGate) {
 	cluster := server.ClusterGroup
-	for server.restoreGate.Load() == gate {
+	for server.logicalRestoreGate.Load() == gate {
 		cluster.refreshSlavesOldestMasterFile()
 		current := server.BinaryLogFile
 		oldest := fmt.Sprintf("%s.%06d", cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix)
@@ -154,9 +154,9 @@ func (server *ServerMonitor) purgeRestoreRotatedBinlogs(gate *restoreBinlogGate)
 	}
 }
 
-// checkRestoreBinlogPause raises WARN0254 tick after tick while server's restore is paused.
-func (server *ServerMonitor) checkRestoreBinlogPause() {
-	g := server.restoreGate.Load()
+// checkLogicalRestoreGate raises WARN0254 tick after tick while server's restore is paused.
+func (server *ServerMonitor) checkLogicalRestoreGate() {
+	g := server.logicalRestoreGate.Load()
 	if g == nil {
 		return
 	}

@@ -17,13 +17,13 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
-// The gate holds a restore stream while paused and lets it flow once resumed.
-func TestRestoreBinlogGatePausesStream(t *testing.T) {
-	g := newRestoreBinlogGate()
-	r := &gatedReader{r: bytes.NewReader([]byte("INSERT 1;INSERT 2;")), gate: g}
+// The rotation pause holds a restore stream while paused and lets it flow once resumed.
+func TestLogicalRestoreGateHoldsStream(t *testing.T) {
+	g := newLogicalRestoreGate()
+	r := &logicalRestoreGateReader{r: bytes.NewReader([]byte("INSERT 1;INSERT 2;")), gate: g}
 	buf := make([]byte, 9)
 	if n, err := r.Read(buf); n != 9 || err != nil {
-		t.Fatalf("an open gate reads: %d %v", n, err)
+		t.Fatalf("a flowing logical restore reads: %d %v", n, err)
 	}
 	g.pause("binlog rotated")
 	if g.pausedReason() != "binlog rotated" {
@@ -36,7 +36,7 @@ func TestRestoreBinlogGatePausesStream(t *testing.T) {
 	}()
 	select {
 	case s := <-got:
-		t.Fatalf("a paused gate let %q through", s)
+		t.Fatalf("a paused logical restore let %q through", s)
 	case <-time.After(200 * time.Millisecond):
 	}
 	g.resume()
@@ -46,16 +46,16 @@ func TestRestoreBinlogGatePausesStream(t *testing.T) {
 			t.Fatalf("resumed stream %q", s)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("a resumed gate still holds the stream")
+		t.Fatal("a resumed logical restore still holds the stream")
 	}
 	if g.pausedReason() != "" {
-		t.Fatalf("a resumed gate has a reason: %q", g.pausedReason())
+		t.Fatalf("a resumed logical restore has a reason: %q", g.pausedReason())
 	}
 }
 
 // On a rotation of the master's binlog the restore pauses; the rotated binlog is purged only
 // once every replica read up to the current one, then the restore resumes: one binlog kept.
-func TestRestoreBinlogRotationWaitsReplicaThenPurges(t *testing.T) {
+func TestLogicalRestoreGateWaitsReplicaThenPurges(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
 	master, mock := newMyLoaderPositionServer(t, mariadb, true)
 	c := master.ClusterGroup
@@ -68,16 +68,16 @@ func TestRestoreBinlogRotationWaitsReplicaThenPurges(t *testing.T) {
 	c.slaves = serverList{replica}
 	c.Servers = []*ServerMonitor{master, replica}
 
-	stop := master.startRestoreBinlogGate()
+	stop := master.startLogicalRestoreGate()
 	defer stop()
-	g := master.restoreGate.Load()
+	g := master.logicalRestoreGate.Load()
 	if g == nil {
-		t.Fatal("no gate on a MariaDB master with a binlog")
+		t.Fatal("no rotation pause on a MariaDB master with a binlog")
 	}
 	mock.MatchExpectationsInOrder(false)
 	mock.ExpectExec("PURGE BINARY LOGS TO").WithArgs("binlog.000002").WillReturnResult(sqlmock.NewResult(0, 0))
 
-	master.onRestoreBinlogRotation()
+	master.pauseLogicalRestoreOnBinlogRotation()
 	time.Sleep(1500 * time.Millisecond)
 	if !strings.Contains(g.pausedReason(), "waiting for the replicas") {
 		t.Fatalf("a replica behind keeps the restore paused: %q", g.pausedReason())

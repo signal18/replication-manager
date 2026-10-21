@@ -2319,7 +2319,7 @@ func (server *ServerMonitor) accountAlreadyMatchesHash(ctx context.Context, conn
 func (server *ServerMonitor) execSplitdumpSingle(ctx context.Context, conn *sqlx.Conn, stmt string, path string, progressed *atomic.Bool) error {
 	cluster := server.ClusterGroup
 	// a restore with the binlog on pauses here on each rotation until the replicas applied it
-	server.restoreGateWait()
+	server.waitLogicalRestoreGate()
 	if name, ok := isInstallPluginStatement(stmt); ok {
 		skip, err := server.resolveInstallPluginSkip(ctx, conn, name)
 		if err != nil {
@@ -2919,8 +2919,8 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 	}
 	// a master restore writes the backup to its binlog for its replicas: one binlog kept (#2124)
 	if sqlLogBin == 1 {
-		stopGate := server.startRestoreBinlogGate()
-		defer stopGate()
+		stopLogicalRestoreGate := server.startLogicalRestoreGate()
+		defer stopLogicalRestoreGate()
 	}
 	// Open one dedicated pinned connection per parallel worker. We deliberately
 	// avoid the shared server.Conn pool: statement ordering, session state
@@ -3597,10 +3597,10 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	// stream paused on each rotation until they applied it (#2124)
 	var dumpStream io.Reader = fz
 	if sqlLogBin == 1 {
-		stopGate := server.startRestoreBinlogGate()
-		defer stopGate()
-		if g := server.restoreGate.Load(); g != nil {
-			dumpStream = &gatedReader{r: fz, gate: g}
+		stopLogicalRestoreGate := server.startLogicalRestoreGate()
+		defer stopLogicalRestoreGate()
+		if g := server.logicalRestoreGate.Load(); g != nil {
+			dumpStream = &logicalRestoreGateReader{r: fz, gate: g}
 		}
 	}
 
