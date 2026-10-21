@@ -6,6 +6,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 
@@ -315,5 +316,28 @@ func (repman *ReplicationManager) handlerMuxArchiveRebuildCatalogue(w http.Respo
 		}
 		w.WriteHeader(http.StatusAccepted)
 		w.Write([]byte("Backup catalogue rebuild started"))
+	})
+}
+
+// handlerMuxArchiveDropMissingSnapshots takes the snapshots gone from an archive out of the catalogue.
+// @Summary Drop the snapshots gone from an archive from the backup catalogue
+// @Description Takes out of the backup catalogue the snapshots the last rebuild from the archive found recorded but no longer in it (WARN0260), each one confirmed gone by a new listing of the archive: the backups recording it lose it, a backup whose only copy it was leaves the catalogue. A snapshot listed again is kept.
+// @Tags ClusterArchive
+// @Produce plain
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param archiveName path string true "Archive Name"
+// @Success 200 {string} string "Snapshots dropped"
+// @Failure 400 {string} string "Unknown or unreadable archive, no snapshot missing, or a rebuild runs"
+// @Failure 403 {string} string "No valid ACL"
+// @Router /api/clusters/{clusterName}/archive-actions/drop-missing-snapshots/{archiveName} [post]
+func (repman *ReplicationManager) handlerMuxArchiveDropMissingSnapshots(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		n, err := mycluster.DropMissingCatalogueSnapshots(vars["archiveName"])
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Write([]byte(fmt.Sprintf("%d snapshot(s) dropped from the backup catalogue", n)))
 	})
 }

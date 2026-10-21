@@ -9553,6 +9553,49 @@ paths:
       summary: Attach or detach an archive
       tags:
       - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/drop-missing-snapshots/{archiveName}:
+    post:
+      description: 'Takes out of the backup catalogue the snapshots the last rebuild
+        from the archive found recorded but no longer in it (WARN0260), each one confirmed
+        gone by a new listing of the archive: the backups recording it lose it, a
+        backup whose only copy it was leaves the catalogue. A snapshot listed again
+        is kept.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Archive Name
+        in: path
+        name: archiveName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Snapshots dropped
+          schema:
+            type: string
+        "400":
+          description: Unknown or unreadable archive, no snapshot missing, or a rebuild
+            runs
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Drop the snapshots gone from an archive from the backup catalogue
+      tags:
+      - ClusterArchive
   /api/clusters/{clusterName}/archive-actions/edit/{archiveName}:
     post:
       consumes:

@@ -66,6 +66,7 @@ export const clusterService = {
   removeArchive,
   sizeArchive,
   rebuildBackupCatalogue,
+  dropMissingCatalogueSnapshots,
   resticCreateBucket,
 
   // Security / workload remediation APIs
@@ -1193,6 +1194,11 @@ function removeArchive(clusterName, archiveName, baseURL) {
 
 function sizeArchive(clusterName, archiveName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/size/${encodeURIComponent(archiveName)}`)
+}
+
+// takes out of the backup catalogue the snapshots gone from an archive (WARN0260, #2091)
+function dropMissingCatalogueSnapshots(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/drop-missing-snapshots/${encodeURIComponent(archiveName)}`)
 }
 
 // rebuilds the backup catalogue from an archive's snapshots, all readable archives with none (#2091)

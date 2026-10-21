@@ -484,6 +484,61 @@ func (cluster *Cluster) checkCatalogueStates() {
 	}
 }
 
+// DropMissingCatalogueSnapshots takes out of the catalogue the snapshots of archive name its
+// last rebuild found recorded but no longer in the archive (WARN0260), once the archive's
+// listing, read again, confirms each is gone: the backups recording one lose it, a backup whose
+// only copy it was leaves the catalogue. It answers how many were dropped.
+func (cluster *Cluster) DropMissingCatalogueSnapshots(name string) (int, error) {
+	cluster.catalogueMu.Lock()
+	res := cluster.catalogueRun.results[name]
+	running := cluster.catalogueRun.running
+	var missing []string
+	if res != nil {
+		missing = append(missing, res.Missing...)
+	}
+	cluster.catalogueMu.Unlock()
+	if running != "" {
+		return 0, fmt.Errorf("a rebuild of the backup catalogue from %s runs", running)
+	}
+	if len(missing) == 0 {
+		return 0, fmt.Errorf("the last rebuild from archive %s found no recorded snapshot missing", name)
+	}
+	ca, err := cluster.catalogueArchiveFor(name)
+	if err != nil {
+		return 0, err
+	}
+	return cluster.dropMissingWith(ca, missing)
+}
+
+// dropMissingWith drops the snapshots of missing the archive ca, listed again, no longer has.
+func (cluster *Cluster) dropMissingWith(ca *catalogueArchive, missing []string) (int, error) {
+	name := ca.name
+	snaps, err := ca.snapshot()
+	if err != nil {
+		return 0, fmt.Errorf("archive %s not listed: %w", name, err)
+	}
+	listed := make(map[string]bool, len(snaps))
+	for _, s := range snaps {
+		listed[s.id] = true
+	}
+	var dropped, still []string
+	for _, id := range missing {
+		if listed[id] || listedByPrefix(listed, id) {
+			still = append(still, id) // back in the archive: kept
+			continue
+		}
+		cluster.dropSnapshotFromCatalogue(name, id)
+		dropped = append(dropped, id)
+	}
+	cluster.catalogueMu.Lock()
+	if r := cluster.catalogueRun.results[name]; r != nil {
+		r.Missing = nil
+	}
+	cluster.catalogueMu.Unlock()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup catalogue: %d snapshot(s) of archive %s no longer in it dropped, as asked; %d listed again kept", len(dropped), name, len(still))
+	return len(dropped), nil
+}
+
 // CatalogueRebuilding is the archives a rebuild of the catalogue runs on, "" none.
 func (cluster *Cluster) CatalogueRebuilding() string {
 	cluster.catalogueMu.Lock()

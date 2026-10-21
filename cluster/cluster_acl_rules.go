@@ -218,9 +218,10 @@ var clusterACLRules = []ACLRule{
 	{"/archive-actions/forget/", nil, []string{config.GrantDBBackup}},    // deletes a snapshot, as /restic/purge
 	{"/archive-actions/snapback/", nil, []string{config.GrantDBRestore}}, // puts a backup directory back from a snapshot
 	{"/archive-actions/snapback-release/", nil, []string{config.GrantDBRestore}},
-	{"/archive-actions/size/", nil, []string{config.GrantClusterShowBackups}},   // reads only
-	{"/archive-actions/rebuild-catalogue", nil, []string{config.GrantDBBackup}}, // reads the archives into the backup catalogue
-	{"/archive-snapshots/", nil, []string{config.GrantClusterShowBackups}},      // reads only, as /restic/snapshots
+	{"/archive-actions/size/", nil, []string{config.GrantClusterShowBackups}}, // reads only
+	{"/archive-actions/rebuild-catalogue", nil, []string{config.GrantDBBackup}},
+	{"/archive-actions/drop-missing-snapshots/", nil, []string{config.GrantDBBackup}}, // reads the archives into the backup catalogue
+	{"/archive-snapshots/", nil, []string{config.GrantClusterShowBackups}},            // reads only, as /restic/snapshots
 
 	// Routes and Certificates
 	{"/queryrules", nil, []string{config.GrantClusterShowRoutes}},

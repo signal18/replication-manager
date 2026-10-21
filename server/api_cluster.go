@@ -303,6 +303,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveRebuildCatalogue)),
 	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/drop-missing-snapshots/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveDropMissingSnapshots)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/restic/init", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),

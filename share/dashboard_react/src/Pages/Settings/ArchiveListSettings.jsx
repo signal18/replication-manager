@@ -416,6 +416,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
 
   const readSize = (a) => call(() => clusterService.sizeArchive(clusterName, a.name))
   const rebuildCatalogue = (a) => call(() => clusterService.rebuildBackupCatalogue(clusterName, a.name))
+  const [dropMissing, setDropMissing] = useState(null) // the archive whose missing snapshots are to drop
   const askRemove = (a) => {
     setRemoveName(a.name)
     if (can(list, a, 'size')) readSize(a)
@@ -491,6 +492,10 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
           <Flex gap='2' align='center' wrap='wrap'>
             <Text fontSize='sm' color={last?.error || (last?.missing || []).length || last?.unreadable ? 'orange.400' : undefined}>{rebuilding ? 'rebuilding...' : rebuildText(last)}</Text>
             <RMButton size='xs' variant='outline' isDisabled={!canRemove || busy || !!list.catalogueRebuilding} onClick={() => rebuildCatalogue(a)}>Rebuild</RMButton>
+            {(last?.missing || []).length > 0 && !rebuilding && (
+              <RMButton size='xs' colorScheme='orange' variant='outline' isDisabled={!canRemove || busy || !!list.catalogueRebuilding}
+                onClick={() => setDropMissing({ archive: a.name, missing: last.missing })}>Drop missing ({last.missing.length})</RMButton>
+            )}
           </Flex>
         )
       })
@@ -679,6 +684,16 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
           onSave={async (value) => {
             const err = await call(() => clusterService.renameArchive(clusterName, rename.name, value))
             if (!err) setRename(null)
+          }} />
+      )}
+      {dropMissing && (
+        <ConfirmModal isOpen={!!dropMissing} closeModal={() => setDropMissing(null)} title={`Drop the snapshots gone from ${dropMissing.archive}?`}
+          body={`The catalogue records ${dropMissing.missing.length} snapshot(s) the archive no longer has (${dropMissing.missing.map((id) => id.slice(0, 8)).join(', ')}). The archive is listed again first: each one still gone is taken out of the catalogue, the backups recording it lose it, and a backup whose only copy it was leaves the backup list. Nothing is deleted in the archive.`}
+          confirmButtonText='Drop them'
+          onConfirmClick={async () => {
+            const name = dropMissing.archive
+            setDropMissing(null)
+            await call(() => clusterService.dropMissingCatalogueSnapshots(clusterName, name))
           }} />
       )}
       {removeTarget && (

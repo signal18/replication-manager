@@ -6148,6 +6148,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/archive-actions/drop-missing-snapshots/{archiveName}": {
+            "post": {
+                "description": "Takes out of the backup catalogue the snapshots the last rebuild from the archive found recorded but no longer in it (WARN0260), each one confirmed gone by a new listing of the archive: the backups recording it lose it, a backup whose only copy it was leaves the catalogue. A snapshot listed again is kept.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Drop the snapshots gone from an archive from the backup catalogue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Snapshots dropped",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown or unreadable archive, no snapshot missing, or a rebuild runs",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/archive-actions/edit/{archiveName}": {
             "post": {
                 "description": "Changes an archive's settings and secrets (an empty secret keeps the secret, unset clears names), then probes its repository again. An archive that can't be opened keeps its former settings.",

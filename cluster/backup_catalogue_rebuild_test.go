@@ -114,3 +114,33 @@ func TestRebuildBackupCatalogueUnreadable(t *testing.T) {
 		t.Fatal("record names")
 	}
 }
+
+// #2091: dropping the missing snapshots, asked: the archive is listed again, a snapshot still
+// gone leaves the backups recording it, one listed again is kept; WARN0260 then resolves
+func TestDropMissingCatalogueSnapshots(t *testing.T) {
+	c, server := newTestRuntimeOnlyClusterServer(t, "catalogue-drop", "db1", "3306")
+	c.WorkingDir = t.TempDir()
+	c.BackupMetaMap = backupmgr.NewBackupMetaMap()
+	local := &backupmgr.BackupMetadata{Id: 10, Source: server.URL, BackupTool: "mydumper", Completed: true}
+	local.SetArchiveSnapshot("plakar", "gone")
+	back := &backupmgr.BackupMetadata{Id: 11, Source: server.URL, BackupTool: "mysqldump", Completed: true}
+	back.SetArchiveSnapshot("plakar", "back")
+	c.BackupMetaMap.Set(local.Id, local)
+	c.BackupMetaMap.Set(back.Id, back)
+	c.catalogueRun.results = map[string]*CatalogueRebuild{"plakar": {Archive: "plakar", Missing: []string{"back", "gone"}}}
+
+	ca, _ := fakeCatalogueArchive("plakar", true, nil, []string{"back", "other"})
+	n, err := c.dropMissingWith(ca, []string{"back", "gone"})
+	if err != nil || n != 1 {
+		t.Fatalf("dropped %d (%v), want 1", n, err)
+	}
+	if local.ArchiveSnapshot("plakar") != "" || c.BackupMetaMap.Get(10) == nil {
+		t.Fatal("the local backup keeps the gone snapshot, or left the catalogue")
+	}
+	if back.ArchiveSnapshot("plakar") != "back" {
+		t.Fatal("a snapshot listed again was dropped")
+	}
+	if len(c.catalogueRun.results["plakar"].Missing) != 0 {
+		t.Fatal("the missing snapshots stay reported")
+	}
+}

@@ -371,7 +371,7 @@ var ClusterError = map[string]string{
 	"WARN0256":  "Snapback of the backup directory of %s to snapshot %s failed: %s",
 	"WARN0257":  "Binlog copy of %s waits for %s since %s: %d binlog(s) to copy, the oldest %s, kept on the server until copied",
 	"WARN0258":  "Binlog copies of %s: %d kept in the backup directory beyond backup-binlogs-keep (%d) for the binlog-only snapshot, the oldest %s, since %s",
-	"WARN0260":  "Backup catalogue differs from its archive(s): %s -- a backup only in such a snapshot is unknown to replication-manager; read again with a rebuild of the catalogue",
+	"WARN0260":  "Backup catalogue differs from its archive(s): %s -- a snapshot not read: the backups only in it are unknown; a recorded snapshot gone: its backups point to a copy that no longer exists (Drop missing on the archive's Backup catalogue row takes them out)",
 	"WARN0259":  "Binlog continuity of %s lost in the archive: binlogs %s to %s in no snapshot (%s), since %s -- a point-in-time restore from a backup before them stops there; the next backup in the archive restores it",
 	"WARN0247":  "Logical dump client %s of %s can not back up its %s server: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
