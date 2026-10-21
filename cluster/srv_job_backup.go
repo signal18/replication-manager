@@ -5646,6 +5646,22 @@ type resticPushOptions struct {
 // backupResticWith is BackupRestic ending the push as opt says.
 func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, opt resticPushOptions, tags ...string) {
 	cluster := server.ClusterGroup
+	// no binlog copy lands in the directory while it is snapshotted: counted in until the push
+	// ends, every end of it goes through opt.done (#2091)
+	release := server.beginSnapshot()
+	defer func() {
+		if r := recover(); r != nil {
+			release() // a push that panics never holds the binlog copies back
+			panic(r)
+		}
+	}()
+	pushDone := opt.done
+	opt.done = func(err error) {
+		release()
+		if pushDone != nil {
+			pushDone(err)
+		}
+	}
 	done := func(err error) {
 		if opt.done != nil {
 			opt.done(err)
@@ -5753,9 +5769,8 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 		Tags:    tags,
 		Host:    resticHost,
 	}
-	if cluster.Conf.BackupEncryption {
-		backupOpt.Exclude = []string{"*.partial"}
-	}
+	// staging: the encryption's plaintext, and the binlog copies until complete (#2091)
+	backupOpt.Exclude = []string{"*.partial"}
 	// A fetch from the archive in progress (backup-archive-remove-original) is not a backup.
 	backupOpt.Exclude = append(backupOpt.Exclude, archiveRestoreWorkDirPattern)
 	// A push of one artifact holds Dest alone: add the integrity sidecar of an encrypted artifact,
@@ -5865,6 +5880,9 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 			return server.JobBackupBinlog(binlogfile, isPurge)
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
+		// never while the backup directory is snapshotted (#2091)
+		server.beginBinlogCopy()
+		defer server.endBinlogCopy()
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -5966,6 +5984,10 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		return server.JobBackupBinlogPurge(binlogfile)
 	}
 
+	// the catch-up copies and the removal of the copies beyond keep: never while the backup
+	// directory is snapshotted, counted once for all of them (#2091)
+	server.beginBinlogCopy()
+	defer server.endBinlogCopy()
 	cluster.SetInBinlogBackupState(true)
 	defer cluster.SetInBinlogBackupState(false)
 
@@ -6799,6 +6821,9 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
+		// never while the backup directory is snapshotted (#2091)
+		server.beginBinlogCopy()
+		defer server.endBinlogCopy()
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}

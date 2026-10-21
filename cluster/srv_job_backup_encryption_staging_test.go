@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
@@ -30,9 +31,9 @@ func newEncryptionTestCluster(t *testing.T, pass string) *Cluster {
 		Name:       "enc",
 		WorkingDir: filepath.Join(t.TempDir(), "enc"),
 		Conf: &config.Config{
-			WorkingDir:              t.TempDir(),
+			WorkingDir:       t.TempDir(),
 			BackupEncryption: true,
-			Secrets:                 config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:" + pass}}),
+			Secrets:          config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "root:" + pass}}),
 		},
 		StateMachine: &state.StateMachine{},
 	}
@@ -309,10 +310,69 @@ func TestFinalizeBinlogCopyFromStaging(t *testing.T) {
 		t.Fatalf("failed binlog copy left in staging")
 	}
 
-	// Encryption off: copies go straight to the backup directory.
+	// Encryption off: staged too, moved into the backup directory once complete (#2091); a
+	// failed copy never reaches it
 	c.Conf.BackupEncryption = false
-	if got := server.binlogCopyDir(); filepath.Clean(got) != filepath.Clean(server.GetMyBackupDirectory()) {
-		t.Fatalf("encryption off must copy into the backup directory, got %q", got)
+	copyDir = server.binlogCopyDir()
+	if filepath.Base(filepath.Clean(copyDir)) != binlogStagingDirName {
+		t.Fatalf("encryption off must stage the copy too, got %q", copyDir)
+	}
+	os.WriteFile(filepath.Join(copyDir, "mysql-bin.000009"), []byte("binlog"), 0600)
+	if fileExists(filepath.Join(server.GetMyBackupDirectory(), "mysql-bin.000009")) {
+		t.Fatal("a copy in progress is in the backup directory")
+	}
+	published, err = server.finalizeBinlogCopy(copyDir, "mysql-bin.000009")
+	if want := filepath.Join(server.GetMyBackupDirectory(), "mysql-bin.000009"); err != nil || published != want || !fileExists(want) || fileExists(filepath.Join(copyDir, "mysql-bin.000009")) {
+		t.Fatalf("plain copy published %q, %v", published, err)
+	}
+	os.WriteFile(filepath.Join(copyDir, "mysql-bin.000010"), []byte("half"), 0600)
+	server.discardBinlogCopy(copyDir, "mysql-bin.000010")
+	if fileExists(filepath.Join(copyDir, "mysql-bin.000010")) || fileExists(filepath.Join(server.GetMyBackupDirectory(), "mysql-bin.000010")) {
+		t.Fatal("a failed plain copy is left")
+	}
+}
+
+// #2091: a snapshot waits for the binlog copy in progress; a binlog copy waits for the
+// snapshot in progress; the release of a snapshot counts once
+func TestSnapshotAndBinlogCopyExclusive(t *testing.T) {
+	_, server := newStagingTestServer(t)
+	saved := backupDirExclusionPoll
+	backupDirExclusionPoll = time.Millisecond
+	defer func() { backupDirExclusionPoll = saved }()
+
+	server.beginBinlogCopy()
+	snapshotStarted := make(chan func())
+	go func() { snapshotStarted <- server.beginSnapshot() }()
+	select {
+	case <-snapshotStarted:
+		t.Fatal("a snapshot started during a binlog copy")
+	case <-time.After(50 * time.Millisecond):
+	}
+	server.endBinlogCopy()
+	var release func()
+	select {
+	case release = <-snapshotStarted:
+	case <-time.After(time.Second):
+		t.Fatal("the snapshot did not start once the copy ended")
+	}
+
+	copyStarted := make(chan struct{})
+	go func() { server.beginBinlogCopy(); close(copyStarted) }()
+	select {
+	case <-copyStarted:
+		t.Fatal("a binlog copy started during a snapshot")
+	case <-time.After(50 * time.Millisecond):
+	}
+	release()
+	release()
+	select {
+	case <-copyStarted:
+	case <-time.After(time.Second):
+		t.Fatal("the binlog copy did not start once the snapshot ended")
+	}
+	server.endBinlogCopy()
+	if server.snapshotsRunning.Load() != 0 || server.binlogCopyRunning.Load() != 0 {
+		t.Fatalf("counts left: snapshots %d, copies %d", server.snapshotsRunning.Load(), server.binlogCopyRunning.Load())
 	}
 }
 

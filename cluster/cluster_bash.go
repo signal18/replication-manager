@@ -377,6 +377,9 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlog)
+		// never while the backup directory is snapshotted (#2091)
+		server.beginBinlogCopy()
+		defer server.endBinlogCopy()
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
