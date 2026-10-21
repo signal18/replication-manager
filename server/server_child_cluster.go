@@ -295,6 +295,11 @@ func (repman *ReplicationManager) CreateChildCluster(parent *cluster.Cluster, pl
 			return cl, fail(err)
 		}
 	}
+	// the DB resource from the plan's DBU before the servers are provisioned (1 DBU = 1 core /
+	// 4GB / 20GB / 1000 IOPS): the configurator sizes InnoDB from it (#2124)
+	if plan.DBUPerNode > 0 {
+		cl.AlignDBResourceToPlan(plan.DBUPerNode)
+	}
 	// The parent's monitoring and replication accounts, same name same password (staging
 	// doc): provisioned identical, nothing to restore from the parent's backup.
 	for _, key := range []string{"db-servers-credential", "replication-credential"} {
