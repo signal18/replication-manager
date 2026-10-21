@@ -5986,9 +5986,11 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	}
 	binlogfilestart, _ := strconv.Atoi(strings.Split(binlogfile, ".")[1])
 	prefix := strings.Split(binlogfile, ".")[0]
-	binlogfilestop := binlogfilestart - cluster.Conf.BackupBinlogsKeep
+	// the keep window: the last backup-binlogs-keep binlogs, ending with the one just rotated
+	// (#2091: it ended before it, so each copy was removed right after it was made)
+	binlogfilestop := binlogfilestart - cluster.Conf.BackupBinlogsKeep + 1
 	keeping := make(map[string]int)
-	for binlogfilestop < binlogfilestart {
+	for binlogfilestop <= binlogfilestart {
 		if binlogfilestop > 0 {
 			filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
 			if !cluster.backupArtifactExists(server.GetMyBackupDirectory() + "/" + filename) {

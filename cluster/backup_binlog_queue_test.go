@@ -5,6 +5,8 @@
 package cluster
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -78,5 +80,29 @@ func TestBinlogCopyWorkerWaitsForSnapshot(t *testing.T) {
 	}
 	if p := server.pendingBinlogCopies(); len(p) != 0 {
 		t.Fatalf("copies left %v", p)
+	}
+}
+
+// #2091: the keep removal keeps the last backup-binlogs-keep binlog copies, the one just
+// rotated included: it ended before it, removing each copy right after it was made
+func TestBinlogKeepWindowKeepsTheRotatedBinlog(t *testing.T) {
+	c, server := newTestRuntimeOnlyClusterServer(t, "binlog-keep", "db1", "3306")
+	c.Conf.BackupBinlogs = true
+	c.Conf.BackupBinlogsKeep = 2
+	server.State = stateMaster
+	c.master = server
+	dir := server.GetMyBackupDirectory()
+	for _, b := range []string{"binlog.000008", "binlog.000009", "binlog.000010"} {
+		if err := os.WriteFile(filepath.Join(dir, b), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	for b, kept := range map[string]bool{"binlog.000008": false, "binlog.000009": true, "binlog.000010": true} {
+		if fileExists(filepath.Join(dir, b)) != kept {
+			t.Errorf("%s kept %v, want %v", b, !kept, kept)
+		}
 	}
 }
