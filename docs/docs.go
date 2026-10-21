@@ -6282,6 +6282,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/archive-actions/rebuild-catalogue/{archiveName}": {
+            "post": {
+                "description": "Reads, in the background, the backup records in each snapshot of the archive (every archive replication-manager can read when no archive is named) that no backup of the catalogue records: a backup the catalogue lacks joins it, only in the archive; a backup it has gets the snapshot when it records none of that archive. A snapshot the catalogue records that the archive no longer lists, or a snapshot whose content its plugin cannot list (no contents operation), raises WARN0260; CINF0021 while it runs. It also runs at the first start with no catalogue and when a standby becomes active. One at a time.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Rebuild the backup catalogue from the archives",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name (all when none)",
+                        "name": "archiveName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Backup catalogue rebuild started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown or unreadable archive, or a rebuild runs",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/archive-actions/remove/{archiveName}": {
             "post": {
                 "description": "Deletes the archive's content, then takes it out of the list, so nothing is left there to invoice. No check on the backups it holds: a backup whose only copy was there is lost. The attached archive is detached first. Runs in the background: the list shows the archive as removing, then it is gone, or the error stays on it. Refused on a whole bucket (an S3 archive with no prefix).",
@@ -26517,6 +26572,16 @@ const docTemplate = `{
                 "attached": {
                     "type": "string"
                 },
+                "catalogueRebuilding": {
+                    "description": "the backup catalogue's rebuild from the archives: the archives one runs on (\"\" none), and\nthe last one of each archive",
+                    "type": "string"
+                },
+                "catalogueRebuilds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.CatalogueRebuild"
+                    }
+                },
                 "enterprisePlan": {
                     "description": "the plan grants the enterprise plugins (a partner or support plan)",
                     "type": "boolean"
@@ -26818,6 +26883,10 @@ const docTemplate = `{
                         }
                     ]
                 },
+                "replaced": {
+                    "description": "Replaced: a newer backup of its type took its place in the backup directory (#2091), so\nDest and its record file are the newer one's, never its own: kept by a snapshot, it is\nonly in the archive (OriginalRemoved), in the global catalogue.",
+                    "type": "boolean"
+                },
                 "resticEnabled": {
                     "type": "boolean"
                 },
@@ -26939,6 +27008,46 @@ const docTemplate = `{
                 },
                 "totalBytes": {
                     "description": "their size on the server",
+                    "type": "integer"
+                }
+            }
+        },
+        "cluster.CatalogueRebuild": {
+            "type": "object",
+            "properties": {
+                "archive": {
+                    "type": "string"
+                },
+                "at": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "linked": {
+                    "description": "backups of the catalogue given a snapshot of the archive",
+                    "type": "integer"
+                },
+                "missing": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "read": {
+                    "description": "read for the backups they hold",
+                    "type": "integer"
+                },
+                "restored": {
+                    "description": "backups that joined the catalogue, only in the archive",
+                    "type": "integer"
+                },
+                "snapshots": {
+                    "description": "listed by the archive",
+                    "type": "integer"
+                },
+                "unreadable": {
+                    "description": "not read: the archive answers no contents",
                     "type": "integer"
                 }
             }

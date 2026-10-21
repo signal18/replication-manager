@@ -82,12 +82,16 @@ type ArchiveListResult struct {
 	Plugins        []config.ArchivePluginManifest `json:"plugins"`
 	// the servers' backup directories put back from a snapshot (snapback)
 	Snapbacks []SnapbackState `json:"snapbacks"`
+	// the backup catalogue's rebuild from the archives: the archives one runs on ("" none), and
+	// the last one of each archive
+	CatalogueRebuilding string             `json:"catalogueRebuilding,omitempty"`
+	CatalogueRebuilds   []CatalogueRebuild `json:"catalogueRebuilds"`
 }
 
 // ArchiveList lists the cluster's archives.
 func (cluster *Cluster) ArchiveList() ArchiveListResult {
 	list, attached := cluster.Conf.ArchiveList()
-	out := ArchiveListResult{Attached: attached, EnterprisePlan: cluster.Conf.EnterprisePluginsPlan(), Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins(), Snapbacks: cluster.Snapbacks()}
+	out := ArchiveListResult{Attached: attached, EnterprisePlan: cluster.Conf.EnterprisePluginsPlan(), Archives: make([]ArchiveListEntry, 0, len(list)), Plugins: config.ArchivePlugins(), Snapbacks: cluster.Snapbacks(), CatalogueRebuilding: cluster.CatalogueRebuilding(), CatalogueRebuilds: cluster.CatalogueRebuilds()}
 	backups := map[string]int{}
 	if cluster.BackupMetaMap != nil {
 		legacy := cluster.Conf.LegacyArchiveName()

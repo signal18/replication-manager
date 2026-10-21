@@ -64,6 +64,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkSnapbackStates()                 // CINF0020 snapback running, WARN0255 a backup directory not at its latest snapshot (backups locked), WARN0256 a snapback failed (#2091)
 	cluster.checkRegisteredVerificationStates()   // WARN0253 while a registered backup's last verification failed (#2108)
 	cluster.saveBackupCatalogue()                 // the global backup catalogue files, written when changed on the active replication-manager (#2091)
+	cluster.checkCatalogueStates()                // the catalogue's automatic rebuild when due, CINF0021 while one runs, WARN0260 when it differs from an archive (#2091)
 	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
 	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
 	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
@@ -1464,6 +1465,10 @@ func (cluster *Cluster) SetUnDiscovered() {
 func (cluster *Cluster) SetActiveStatus(status string) {
 	if cluster.Status == status {
 		return
+	}
+	if cluster.Status == ConstMonitorStandby && status == ConstMonitorActif {
+		// a standby never writes the catalogue: the backups only in an archive are read again
+		cluster.requestCatalogueRebuild("standby became active")
 	}
 	cluster.Status = status
 	if cluster.Conf.MonitorScheduler {

@@ -65,6 +65,7 @@ export const clusterService = {
   detachArchive,
   removeArchive,
   sizeArchive,
+  rebuildBackupCatalogue,
   resticCreateBucket,
 
   // Security / workload remediation APIs
@@ -1192,6 +1193,12 @@ function removeArchive(clusterName, archiveName, baseURL) {
 
 function sizeArchive(clusterName, archiveName, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/size/${encodeURIComponent(archiveName)}`)
+}
+
+// rebuilds the backup catalogue from an archive's snapshots, all readable archives with none (#2091)
+function rebuildBackupCatalogue(clusterName, archiveName, baseURL) {
+  const path = archiveName ? `/${encodeURIComponent(archiveName)}` : ''
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/rebuild-catalogue${path}`)
 }
 
 function resticCreateBucket(clusterName, baseURL) {

@@ -225,6 +225,7 @@ type Cluster struct {
 	binlogGaps     map[string]*BinlogGap      // server URL -> its lost binlog continuity in the archive (#2091), nil until read
 	catalogueMu    sync.Mutex                 // guards catalogueSaved
 	catalogueSaved map[string][]byte          // global backup catalogue file -> its content last written (#2091)
+	catalogueRun   catalogueRebuildState      // the catalogue's rebuild from the archives (#2091), guarded by catalogueMu
 	BackupMount    BackupMountState           `json:"backupMount" groups:"web"` // its state, for the Backup settings
 	Agents         []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq   map[string]int64           `json:"-"`

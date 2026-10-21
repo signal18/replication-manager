@@ -64,7 +64,10 @@ func (cluster *Cluster) loadBackupCatalogue() {
 		if !os.IsNotExist(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Backup catalogue %s not read: %s", backupCatalogueBackupsFile, err)
 		}
-		return // the first start: written from the records once they are read
+		// the first start: written from the records once they are read, the backups only in an
+		// archive read from its snapshots
+		cluster.requestCatalogueRebuild("no catalogue at start")
+		return
 	}
 	var metas []*backupmgr.BackupMetadata
 	if err := json.Unmarshal(data, &metas); err != nil {

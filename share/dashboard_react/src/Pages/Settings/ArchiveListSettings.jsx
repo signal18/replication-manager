@@ -152,6 +152,24 @@ function sizeTitle(archive) {
 const can = (list, archive, capability) =>
   (list.plugins.find((p) => p.name === archive.plugin)?.capabilities || []).includes(capability)
 
+// the backup catalogue can be rebuilt from an archive whose snapshots replication-manager can
+// read: a plugin's that lists a snapshot's content, the attached restic archive
+const canRebuild = (list, archive) =>
+  can(list, archive, 'contents') || (archive.attached && (archive.plugin || '').startsWith('archive-restic'))
+
+// rebuildText tells the last rebuild of the catalogue from the archive
+function rebuildText(r) {
+  if (!r) return 'never rebuilt from it'
+  const at = new Date(r.at).toLocaleString()
+  if (r.error) return `rebuild of ${at} failed: ${r.error}`
+  const parts = [`${r.read} of ${r.snapshots} snapshot(s) read`]
+  if (r.restored) parts.push(`${r.restored} backup(s) only in the archive added`)
+  if (r.linked) parts.push(`${r.linked} backup(s) given a snapshot`)
+  if (r.unreadable) parts.push(`${r.unreadable} not readable`)
+  if ((r.missing || []).length) parts.push(`${r.missing.length} recorded snapshot(s) not in the archive`)
+  return `rebuilt ${at}: ${parts.join(', ')}`
+}
+
 // splitSettings lays a plugin's settings out by their group: the main ones (location,
 // credentials), how it purges, the advanced ones
 function splitSettings(manifest) {
@@ -333,7 +351,7 @@ function SecretRow({ isSet, isDisabled, onSave }) {
 export function useArchiveSettings({ clusterName, user, help, config }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
-  const [list, setList] = useState({ attached: '', archives: [], plugins: [], enterprisePlan: false })
+  const [list, setList] = useState({ attached: '', archives: [], plugins: [], enterprisePlan: false, catalogueRebuilding: '', catalogueRebuilds: [] })
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
   const [rename, setRename] = useState(null)
@@ -351,7 +369,10 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     try {
       const { data, status } = await clusterService.getArchiveList(clusterName)
       if (status >= 200 && status < 300 && data) {
-        setList({ attached: data.attached || '', archives: data.archives || [], plugins: data.plugins || [], enterprisePlan: !!data.enterprisePlan })
+        setList({
+          attached: data.attached || '', archives: data.archives || [], plugins: data.plugins || [], enterprisePlan: !!data.enterprisePlan,
+          catalogueRebuilding: data.catalogueRebuilding || '', catalogueRebuilds: data.catalogueRebuilds || []
+        })
       } else {
         setError(typeof data === 'string' ? data : `Failed to list the archives (status ${status})`)
       }
@@ -362,8 +383,8 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
 
   useEffect(() => { fetchList() }, [fetchList])
 
-  // a remove or a size read runs in the background: follow it until it ends
-  const running = list.archives.some((a) => a.status === 'removing' || a.status === 'sizing')
+  // a remove, a size read or a catalogue rebuild runs in the background: follow it until it ends
+  const running = list.archives.some((a) => a.status === 'removing' || a.status === 'sizing') || !!list.catalogueRebuilding
   useEffect(() => {
     if (!running) return undefined
     const t = setInterval(fetchList, 3000)
@@ -394,6 +415,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
       : { settings: { [key]: String(value) }, unset: [] }))
 
   const readSize = (a) => call(() => clusterService.sizeArchive(clusterName, a.name))
+  const rebuildCatalogue = (a) => call(() => clusterService.rebuildBackupCatalogue(clusterName, a.name))
   const askRemove = (a) => {
     setRemoveName(a.name)
     if (can(list, a, 'size')) readSize(a)
@@ -459,6 +481,20 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
         )
       }
     ]
+    if (canRebuild(list, a)) {
+      const last = list.catalogueRebuilds.find((r) => r.archive === a.name)
+      const rebuilding = list.catalogueRebuilding.split(', ').includes(a.name)
+      rows.push({
+        key: 'Backup catalogue',
+        help: help('**Backup catalogue**\n\nThe backups replication-manager knows, and the snapshots holding them. **Rebuild** reads the backup records in each snapshot of this archive the catalogue does not know: a backup only in the archive (a newer backup of its type replaced it) joins the list again. It also runs at the first start with no catalogue and when a standby becomes active. A snapshot the catalogue records that the archive no longer lists raises a warning, never fixed silently.', 'Backup catalogue'),
+        value: (
+          <Flex gap='2' align='center' wrap='wrap'>
+            <Text fontSize='sm' color={last?.error || (last?.missing || []).length || last?.unreadable ? 'orange.400' : undefined}>{rebuilding ? 'rebuilding...' : rebuildText(last)}</Text>
+            <RMButton size='xs' variant='outline' isDisabled={!canRemove || busy || !!list.catalogueRebuilding} onClick={() => rebuildCatalogue(a)}>Rebuild</RMButton>
+          </Flex>
+        )
+      })
+    }
     if (isOpen) {
       rows.push(...main.map((st) => settingRow(a, st)))
       if (purge.length > 0 && can(list, a, 'purge')) {

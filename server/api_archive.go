@@ -294,3 +294,26 @@ func (repman *ReplicationManager) handlerMuxArchiveSize(w http.ResponseWriter, r
 		w.Write([]byte("Archive size read started"))
 	})
 }
+
+// handlerMuxArchiveRebuildCatalogue rebuilds the backup catalogue from an archive, or from all.
+// @Summary Rebuild the backup catalogue from the archives
+// @Description Reads, in the background, the backup records in each snapshot of the archive (every archive replication-manager can read when no archive is named) that no backup of the catalogue records: a backup the catalogue lacks joins it, only in the archive; a backup it has gets the snapshot when it records none of that archive. A snapshot the catalogue records that the archive no longer lists, or a snapshot whose content its plugin cannot list (no contents operation), raises WARN0260; CINF0021 while it runs. It also runs at the first start with no catalogue and when a standby becomes active. One at a time.
+// @Tags ClusterArchive
+// @Produce plain
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param archiveName path string false "Archive Name (all when none)"
+// @Success 202 {string} string "Backup catalogue rebuild started"
+// @Failure 400 {string} string "Unknown or unreadable archive, or a rebuild runs"
+// @Failure 403 {string} string "No valid ACL"
+// @Router /api/clusters/{clusterName}/archive-actions/rebuild-catalogue/{archiveName} [post]
+func (repman *ReplicationManager) handlerMuxArchiveRebuildCatalogue(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		if err := mycluster.RebuildBackupCatalogue(vars["archiveName"]); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		w.Write([]byte("Backup catalogue rebuild started"))
+	})
+}
