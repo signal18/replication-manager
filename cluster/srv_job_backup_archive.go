@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/signal18/replication-manager/cluster/archiveplugin/wire"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -133,8 +134,12 @@ func isStrictlyWithinBase(baseDir, target string) bool {
 }
 
 // snapshotMissingPath lists paths in the snapshot with one restic ls and returns the first
-// that it does not hold, "" when it holds them all.
+// that it does not hold, "" when it holds them all. With an archive plugin's archive attached,
+// the plugin lists them (snapshotMissingPathPlugin).
 func (cluster *Cluster) snapshotMissingPath(snapshotID string, paths []string) (string, error) {
+	if a, external := cluster.attachedExternalArchive(); external {
+		return cluster.snapshotMissingPathPlugin(a, snapshotID, paths)
+	}
 	if cluster.ResticManager == nil {
 		return "", fmt.Errorf("restic manager not initialized")
 	}
@@ -156,6 +161,90 @@ func (cluster *Cluster) snapshotMissingPath(snapshotID string, paths []string) (
 		}
 	}
 	return "", nil
+}
+
+// snapshotMissingPathPlugin checks with the plugin's contents operation that the snapshot, of
+// the backup directory, holds each path as it is on disk (#2091): a file of the same size, a
+// folder with every file it holds here. The first one it does not hold is answered. A plugin
+// without contents cannot tell: an error, the original is kept.
+func (cluster *Cluster) snapshotMissingPathPlugin(a config.ArchiveConfig, snapshotID string, paths []string) (string, error) {
+	m, _ := externalArchive(a)
+	if !m.Can(wire.CapContents) {
+		return "", fmt.Errorf("archive %s: its plugin lists no snapshot content", a.Name)
+	}
+	list := func(folder string) (map[string]wire.Entry, error) {
+		resp, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpContents, Snapshot: snapshotID, Include: folder})
+		if err != nil {
+			return nil, err
+		}
+		entries := make(map[string]wire.Entry, len(resp.Entries))
+		for _, e := range resp.Entries {
+			entries[e.Name] = e
+		}
+		return entries, nil
+	}
+	for _, p := range paths {
+		p = filepath.Clean(p)
+		server := cluster.serverOfBackupPath(p)
+		if server == nil {
+			return p, nil
+		}
+		rel, err := filepath.Rel(filepath.Clean(server.GetMyBackupDirectoryPath()), p)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			return p, nil
+		}
+		rel = filepath.ToSlash(rel)
+		parent, name := path.Split(rel)
+		entries, err := list(strings.TrimSuffix(parent, "/"))
+		if err != nil {
+			return "", err
+		}
+		e, ok := entries[name]
+		if !ok {
+			return p, nil
+		}
+		fi, err := os.Stat(p)
+		if err != nil {
+			return "", err
+		}
+		if !fi.IsDir() {
+			if e.Dir || e.Size != fi.Size() {
+				return p, nil
+			}
+			continue
+		}
+		if !e.Dir {
+			return p, nil
+		}
+		held, err := list(rel)
+		if err != nil {
+			return "", err
+		}
+		local, err := os.ReadDir(p)
+		if err != nil {
+			return "", err
+		}
+		for _, f := range local {
+			h, ok := held[f.Name()]
+			if !ok {
+				return filepath.Join(p, f.Name()), nil
+			}
+			if info, err := f.Info(); err == nil && !f.IsDir() && h.Size != info.Size() {
+				return filepath.Join(p, f.Name()), nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// serverOfBackupPath is the server whose backup directory holds path, nil none.
+func (cluster *Cluster) serverOfBackupPath(p string) *ServerMonitor {
+	for _, s := range cluster.Servers {
+		if s != nil && isStrictlyWithinBase(s.GetMyBackupDirectoryPath(), p) {
+			return s
+		}
+	}
+	return nil
 }
 
 // archiveRemoveOriginalRefusal is why the original at Dest was kept after its archive push.
