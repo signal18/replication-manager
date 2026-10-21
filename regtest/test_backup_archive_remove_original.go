@@ -205,8 +205,10 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 	// consistent: once sysbench ended, the replicas hold the master's sysbench table and
 	// replicate.
 	consistent := func(kind string) bool {
-		if !physReseedWait(5*time.Minute, func() bool { return cl.CheckSlavesRunning() && cl.CheckTableConsistency("test.sbtest") }) {
-			return fail("after the %s reseed under sysbench: replicas running %v, test.sbtest consistent %v", kind, cl.CheckSlavesRunning(), cl.CheckTableConsistency("test.sbtest"))
+		if !physReseedWait(5*time.Minute, func() bool {
+			return cl.CheckSlavesRunning() && cl.CheckTableConsistency("replication_manager_schema.sbtest1")
+		}) {
+			return fail("after the %s reseed under sysbench: replicas running %v, replication_manager_schema.sbtest1 consistent %v", kind, cl.CheckSlavesRunning(), cl.CheckTableConsistency("replication_manager_schema.sbtest1"))
 		}
 		return true
 	}
@@ -272,6 +274,24 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 	ended()
 	if !consistent("physical") {
 		return false
+	}
+	// The physical reseed restores replication_manager_schema but its jobs table: the
+	// traffic marker table the master holds is on the replica (created once on the
+	// master, then only updated), and the replica keeps its own job queue.
+	hasTable := func(s *clusterpkg.ServerMonitor, table string) (bool, error) {
+		var n int
+		err := s.Conn.QueryRowx("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='replication_manager_schema' AND table_name=?", table).Scan(&n)
+		return n > 0, err
+	}
+	if onMaster, err := hasTable(master, "pseudo_gtid_hist"); err != nil {
+		return fail("read the traffic marker table on the master: %s", err)
+	} else if onMaster {
+		if onSlave, err := hasTable(slave, "pseudo_gtid_hist"); err != nil || !onSlave {
+			return fail("the physical reseed did not restore the traffic marker table replication_manager_schema.pseudo_gtid_hist on %s (%v)", slave.URL, err)
+		}
+	}
+	if jobs, err := hasTable(slave, "jobs"); err != nil || !jobs {
+		return fail("the physical reseed took the jobs table of %s away (%v)", slave.URL, err)
 	}
 
 	step("passed: the mysqldump, mydumper and %s backups were removed after their push to archive %s and restored from it, under sysbench", tool, attached)
