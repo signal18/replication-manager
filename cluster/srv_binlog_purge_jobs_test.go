@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -48,5 +49,23 @@ func TestBinlogPurgeJobs(t *testing.T) {
 	s.BinaryLogFilesCount = 2
 	if _, _, replicaJob := s.binlogPurgeJobs(false); replicaJob {
 		t.Errorf("a replica with two binlogs left must not be purged")
+	}
+}
+
+// The replica purge goes to the master's oldest binlog start, read from the binlog metadata.
+func TestOldestBinlogStart(t *testing.T) {
+	s := &ServerMonitor{BinaryLogFiles: dbhelper.NewBinaryLogMetaMap()}
+	if s.oldestBinlogStart() != 0 {
+		t.Fatalf("no binlog: 0")
+	}
+	s.BinaryLogFiles.Set("binlog.000033", &dbhelper.BinaryLogMetadata{Filename: "binlog.000033", Start: 1792600000})
+	s.BinaryLogFiles.Set("binlog.000034", &dbhelper.BinaryLogMetadata{Filename: "binlog.000034", Start: 1792612151})
+	s.BinaryLogFileOldest = "binlog.000033"
+	if got := s.oldestBinlogStart(); got != 1792600000 {
+		t.Fatalf("oldest start: got %d", got)
+	}
+	s.BinaryLogFileOldest = "binlog.000032"
+	if s.oldestBinlogStart() != 0 {
+		t.Fatalf("an oldest binlog not in the metadata yet: 0")
 	}
 }

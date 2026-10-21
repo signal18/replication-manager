@@ -319,12 +319,28 @@ func (server *ServerMonitor) RefreshBinlogMetadata(oldmetamap map[string]dbhelpe
 
 		return true
 	})
+	if start := server.oldestBinlogStart(); start > 0 {
+		server.BinaryLogOldestTimestamp = start
+	}
 
 	if modified || forceWriteMeta {
 		server.WriteNodeBinlogMetadata()
 	}
 
 	return err
+}
+
+// oldestBinlogStart is the start of the server's oldest binlog, read from its metadata, 0 when
+// not read yet. The replica purge goes to the master's: since the per-file metadata (Aug
+// 2024) BinaryLogOldestTimestamp was never set, and no replica was ever purged.
+func (server *ServerMonitor) oldestBinlogStart() int64 {
+	if server.BinaryLogFiles == nil || server.BinaryLogFileOldest == "" {
+		return 0
+	}
+	if meta := server.BinaryLogFiles.Get(server.BinaryLogFileOldest); meta != nil {
+		return meta.Start
+	}
+	return 0
 }
 
 // This process is detached so it will not blocking if waiting
