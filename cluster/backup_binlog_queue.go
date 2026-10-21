@@ -102,7 +102,11 @@ func (server *ServerMonitor) oldestPendingBinlogCopy() string {
 func (server *ServerMonitor) runBinlogCopies() {
 	cluster := server.ClusterGroup
 	q := &server.binlogCopies
+	idle := false
 	defer func() {
+		if idle {
+			return // ended under the lock it found the queue empty with
+		}
 		q.mu.Lock()
 		q.running, q.waiting = false, ""
 		q.mu.Unlock()
@@ -110,9 +114,15 @@ func (server *ServerMonitor) runBinlogCopies() {
 	defer cluster.recoverBackupPanic("Binlog copies of "+server.URL, nil)
 	for {
 		q.mu.Lock()
-		idle := len(q.pending) == 0 && q.catchUp == ""
+		// idle and ended at once: a copy queued or a catch-up requeued (the binlog-only
+		// snapshot ended) after it starts a new worker, never waits for the next rotation
+		if idle = len(q.pending) == 0 && q.catchUp == ""; idle {
+			q.running, q.waiting = false, ""
+			q.mu.Unlock()
+			return
+		}
 		q.mu.Unlock()
-		if idle || !server.waitBinlogCopySlot() {
+		if !server.waitBinlogCopySlot() {
 			return
 		}
 		q.mu.Lock()
@@ -135,6 +145,8 @@ func (server *ServerMonitor) runBinlogCopies() {
 		if err := server.JobBackupBinlogPurge(catchUp); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Binlog catch-up of %s: %s", server.URL, err)
 		}
+		// the copies the keep removal held: the binlog-only snapshot, which runs it again once ended
+		server.snapshotHeldBinlogCopies(catchUp)
 	}
 }
 

@@ -174,6 +174,48 @@ func TestKeepRemovalWaitsForASnapshot(t *testing.T) {
 	}
 }
 
+// #2091: the copy worker takes the binlog-only snapshot for the copies its keep removal held,
+// then runs the keep removal again: here the snapshot fails (no restic manager), so the copies
+// beyond the window are removed and the lost continuity tracked, the hold ends
+func TestBinlogCopyWorkerSnapshotsHeldCopies(t *testing.T) {
+	c, server := newTestRuntimeOnlyClusterServer(t, "binlog-worker-held", "db1", "3306")
+	c.WorkingDir = t.TempDir()
+	c.Conf.BackupBinlogs = true
+	c.Conf.BackupBinlogsKeep = 2
+	c.Conf.BackupRestic = true
+	server.State = stateMaster
+	server.BinaryLogFile = "binlog.000011"
+	c.master = server
+	dir := server.GetMyBackupDirectory()
+	for _, b := range []string{"binlog.000008", "binlog.000009", "binlog.000010"} {
+		if err := os.WriteFile(filepath.Join(dir, b), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	server.requeueBinlogCatchUp("binlog.000010")
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		q := &server.binlogCopies
+		q.mu.Lock()
+		running, snapshotting, held := q.running, q.snapshotting, q.held
+		q.mu.Unlock()
+		if !running && !snapshotting && held == 0 && !fileExists(filepath.Join(dir, "binlog.000008")) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no binlog-only snapshot taken for the held copies: running %t snapshotting %t held %d", running, snapshotting, held)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !fileExists(filepath.Join(dir, "binlog.000009")) || !fileExists(filepath.Join(dir, "binlog.000010")) {
+		t.Fatal("the keep window was removed")
+	}
+	if g := c.BinlogGaps(); len(g) != 1 || g[0].From != "binlog.000008" || g[0].To != "binlog.000008" {
+		t.Fatalf("gaps %+v", g)
+	}
+}
+
 // #2091: with no archive, the keep removal does not wait for a snapshot
 func TestKeepRemovalWithoutArchive(t *testing.T) {
 	c, server := newTestRuntimeOnlyClusterServer(t, "binlog-noarchive", "db1", "3306")
