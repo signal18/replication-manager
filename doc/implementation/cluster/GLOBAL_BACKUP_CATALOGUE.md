@@ -203,7 +203,19 @@ the snapshots of the directory.
    before the servers read their records, the backups only in an archive are read from
    `backups.json`; the ones in the directories come from their records (observed). A backups
    folder switch keeps the replaced backups. A snapshot entry today holds what the backups
-   record (`archiveRefs`: one snapshot per archive per backup). TODO: the rebuild from the
-   archives (a standby becoming active, a catalogue lost) and the reconcile states.
+   record (`archiveRefs`: one snapshot per archive per backup).
+   Rebuild from the archives: DONE (`cluster/backup_catalogue_rebuild.go`). For each snapshot of
+   an archive no backup of the catalogue records, the backup records at its root are read (an
+   archive plugin with the `contents` capability: wire op `contents` then `restore` of each
+   record; the attached restic archive: `restic ls` and `dump`): a backup the catalogue lacks
+   joins it only in the archive (`replaced`), with the newest snapshot holding it; a backup it
+   has gets the snapshot when it records none of that archive. It runs from the API and the
+   archive's Backup catalogue row (`archive-actions/rebuild-catalogue[/{archive}]`, db-backup
+   grant), at the first start with no catalogue and when a standby becomes active (a minute
+   later, the servers' records read first), one at a time, CINF0021 while it runs. Reconcile: a
+   recorded snapshot the archive no longer lists, or snapshots a plugin cannot list, raise
+   WARN0260, never fixed silently. The purges keep the catalogue right: a plugin's own purge
+   (`purge` op, its `removed`) and a restic purge task (the snapshots its fetch no longer lists)
+   drop their snapshots as a forget does. Not readable yet: a restic archive not attached.
 4. The code reads the catalogue (restore, reseed, retention, archive list, metering).
 5. Dashboard: every archive's size and snapshots, the snapshot ↔ backup link both ways.
