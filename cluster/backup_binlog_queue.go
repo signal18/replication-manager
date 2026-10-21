@@ -30,15 +30,17 @@ type binlogCopyQueue struct {
 	waiting string    // what the worker waits for, "" while it does not wait
 	since   time.Time // since when it waits
 
-	// the binlog copies and the archive: a copy beyond the keep window is removed only once a
-	// snapshot of the backup directory holds it, never lost (#2091)
-	inSnapshot   string    // the newest binlog copy the last snapshot held, "" unknown
-	held         int       // the copies beyond the keep window kept for a snapshot
-	heldOldest   string    // the oldest of them
-	heldSince    time.Time // since when copies are held
-	needSnapshot bool      // the keep removal held copies: a snapshot is to take
-	snapshotting bool      // the snapshot for the binlog copies is queued or running
-	snapshotErr  string    // why the last one failed, "" it did not
+	// the binlog copies and the archive (#2091): a copy beyond the keep window no snapshot holds
+	// is kept while a binlog-only snapshot is queued or running, then removed once it holds it.
+	// When that snapshot is not taken (binlogSnapshotRefusal) or fails, the copy is removed
+	// anyway: the purge policy and the space always win, the loss is tracked (BinlogGap).
+	inSnapshot     string    // the newest binlog copy the last snapshot held, "" unknown
+	held           int       // the copies beyond the keep window kept for the snapshot
+	heldOldest     string    // the oldest of them
+	heldSince      time.Time // since when copies are held
+	needSnapshot   bool      // the keep removal held copies: a snapshot is to take
+	snapshotting   bool      // the binlog-only snapshot is queued or running
+	snapshotFailed string    // why the last one failed, until the keep removal took it in
 }
 
 // binlogCopyQueueMax bounds the binlogs a server holds to copy: the keep window, beyond which a
@@ -55,6 +57,7 @@ func (cluster *Cluster) binlogCopyQueueMax() int {
 func (server *ServerMonitor) queueBinlogCopy(binlog string) {
 	cluster := server.ClusterGroup
 	q := &server.binlogCopies
+	var lost []string
 	q.mu.Lock()
 	if binlog != "" && !slices.Contains(q.pending, binlog) {
 		q.pending = append(q.pending, binlog)
@@ -62,6 +65,7 @@ func (server *ServerMonitor) queueBinlogCopy(binlog string) {
 			dropped := q.pending[:len(q.pending)-max]
 			q.pending = append([]string(nil), q.pending[len(q.pending)-max:]...)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Binlog copy of %s: %v dropped from the copies to make, beyond backup-binlogs-keep (%d)", server.URL, dropped, max)
+			lost = append(lost, dropped...)
 		}
 	}
 	if binlog != "" {
@@ -70,6 +74,9 @@ func (server *ServerMonitor) queueBinlogCopy(binlog string) {
 	start := !q.running
 	q.running = true
 	q.mu.Unlock()
+	for _, b := range lost {
+		cluster.noteBinlogGap(server, b, fmt.Sprintf("not copied: beyond backup-binlogs-keep (%d) while the copies waited", cluster.binlogCopyQueueMax()))
+	}
 	if start {
 		go server.runBinlogCopies()
 	}
@@ -217,14 +224,14 @@ func (server *ServerMonitor) binlogCopyInSnapshot(binlog string) bool {
 	return q.inSnapshot != "" && binlogPrefix(binlog) == binlogPrefix(q.inSnapshot) && binlogNumber(binlog) <= binlogNumber(q.inSnapshot)
 }
 
-// holdBinlogCopies records the copies beyond the keep window the removal kept for a snapshot,
-// the oldest first; none ends the hold.
+// holdBinlogCopies records the copies beyond the keep window kept for the binlog-only
+// snapshot, the oldest first; none ends the hold.
 func (server *ServerMonitor) holdBinlogCopies(held []string) {
 	q := &server.binlogCopies
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if len(held) == 0 {
-		q.held, q.heldOldest, q.heldSince, q.needSnapshot, q.snapshotErr = 0, "", time.Time{}, false, ""
+		q.held, q.heldOldest, q.heldSince, q.needSnapshot = 0, "", time.Time{}, false
 		return
 	}
 	if q.held == 0 {
@@ -233,10 +240,38 @@ func (server *ServerMonitor) holdBinlogCopies(held []string) {
 	q.held, q.heldOldest, q.needSnapshot = len(held), held[0], true
 }
 
+// binlogSnapshotRefusal is why a binlog copy beyond the keep window no snapshot holds is not
+// kept for a binlog-only snapshot, "" it is: the copy is then removed, and the loss tracked.
+// Better lose binlogs than backups (F12): the binlog-only snapshot never costs space nor a
+// backup, the purge policy always applies.
+func (server *ServerMonitor) binlogSnapshotRefusal() string {
+	cluster := server.ClusterGroup
+	q := &server.binlogCopies
+	q.mu.Lock()
+	failed, snapshotting := q.snapshotFailed, q.snapshotting
+	q.snapshotFailed = "" // taken in once: the next copy beyond the window tries again
+	q.mu.Unlock()
+	if snapshotting {
+		return ""
+	}
+	if failed != "" {
+		return "the binlog-only snapshot failed: " + failed
+	}
+	if cluster.Conf.BackupArchiveRemoveOriginal {
+		return "backup-archive-remove-original: a binlog-only snapshot would hold no backup"
+	}
+	if warn := cluster.Conf.BackupDiskTresholdWarn; warn > 0 && cluster.DiskStatManager != nil {
+		if stat, err := cluster.GetDiskStat(server.GetMyBackupDirectory()); err == nil && stat.UsedPercent >= float64(warn) {
+			return fmt.Sprintf("the disk of the backup directory is %.0f%% used, over backup-disk-treshold-warn (%d%%)", stat.UsedPercent, warn)
+		}
+	}
+	return ""
+}
+
 // snapshotHeldBinlogCopies, after the keep removal: when it kept copies no snapshot holds, a
-// snapshot of the backup directory (trigger binlogs), one at a time; once it holds them, the
-// keep removal runs again and removes them. With the archive on, a snapshot is so taken every
-// backup-binlogs-keep binlogs at most: no binlog copy is removed before a snapshot holds it.
+// binlog-only snapshot of the backup directory (trigger binlogs), one at a time; once it holds
+// them, the keep removal runs again and removes them. A snapshot is so taken every
+// backup-binlogs-keep binlogs at most while nothing refuses it (binlogSnapshotRefusal).
 func (server *ServerMonitor) snapshotHeldBinlogCopies(catchUp string) {
 	cluster := server.ClusterGroup
 	q := &server.binlogCopies
@@ -248,20 +283,18 @@ func (server *ServerMonitor) snapshotHeldBinlogCopies(catchUp string) {
 	q.snapshotting, q.needSnapshot = true, false
 	held, oldest := q.held, q.heldOldest
 	q.mu.Unlock()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog copies of %s: snapshot of the backup directory queued, %d copies beyond backup-binlogs-keep (%d) in no snapshot, the oldest %s", server.URL, held, cluster.Conf.BackupBinlogsKeep, oldest)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog copies of %s: binlog-only snapshot of the backup directory queued, %d copies beyond backup-binlogs-keep (%d) in no snapshot, the oldest %s", server.URL, held, cluster.Conf.BackupBinlogsKeep, oldest)
 	ended := func(err error) {
 		q.mu.Lock()
 		q.snapshotting = false
 		if err != nil {
-			q.snapshotErr = err.Error()
-		} else {
-			q.snapshotErr = ""
+			q.snapshotFailed = err.Error()
 		}
 		q.mu.Unlock()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Binlog copies of %s: snapshot failed, the copies stay in the backup directory: %s", server.URL, err)
-			return
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Binlog copies of %s: binlog-only snapshot failed, the copies beyond backup-binlogs-keep are removed: %s", server.URL, err)
 		}
+		// the keep removal again: the copies the snapshot holds go, or all of them when it failed
 		server.requeueBinlogCatchUp(catchUp)
 	}
 	// its own goroutine: an archive plugin pushes before it returns, the copies go on meanwhile
@@ -269,10 +302,10 @@ func (server *ServerMonitor) snapshotHeldBinlogCopies(catchUp string) {
 		var err error
 		defer func() {
 			if err != nil {
-				ended(err) // a push that panics never holds the next snapshot back
+				ended(err) // a push that panics never holds the copies
 			}
 		}()
-		defer cluster.recoverBackupPanic("Snapshot of the binlog copies of "+server.URL, &err)
+		defer cluster.recoverBackupPanic("Binlog-only snapshot of "+server.URL, &err)
 		server.backupResticWith(backupmgr.BackupMethodLogical, nil, server.GetMyBackupDirectory(), resticPushOptions{
 			removeOriginal: func() bool { return false },
 			noFlag:         true,
@@ -320,7 +353,8 @@ func (cluster *Cluster) checkBinlogCopyStates() {
 }
 
 // checkHeldBinlogCopyStates, every tick: WARN0258 for each server whose backup directory keeps
-// binlog copies beyond backup-binlogs-keep, in no snapshot yet.
+// binlog copies beyond backup-binlogs-keep for the binlog-only snapshot, WARN0259 for each
+// server whose binlog continuity in the archive is lost.
 func (cluster *Cluster) checkHeldBinlogCopyStates() {
 	for _, server := range cluster.Servers {
 		if server == nil {
@@ -328,17 +362,13 @@ func (cluster *Cluster) checkHeldBinlogCopyStates() {
 		}
 		q := &server.binlogCopies
 		q.mu.Lock()
-		held, oldest, since, snapshotting, snapshotErr := q.held, q.heldOldest, q.heldSince, q.snapshotting, q.snapshotErr
+		held, oldest, since := q.held, q.heldOldest, q.heldSince
 		q.mu.Unlock()
-		if held == 0 {
-			continue
+		if held > 0 {
+			cluster.SetState("WARN0258", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0258"], server.URL, held, cluster.Conf.BackupBinlogsKeep, oldest, since.Format(time.RFC3339)), ErrFrom: "JOB", ServerUrl: server.URL})
 		}
-		status := "a snapshot is queued"
-		if !snapshotting && snapshotErr != "" {
-			status = "the last snapshot failed: " + snapshotErr
-		} else if !snapshotting {
-			status = "a snapshot is taken at the next binlog rotation"
-		}
-		cluster.SetState("WARN0258", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0258"], server.URL, held, cluster.Conf.BackupBinlogsKeep, oldest, since.Format(time.RFC3339), status), ErrFrom: "JOB", ServerUrl: server.URL})
+	}
+	for _, g := range cluster.BinlogGaps() {
+		cluster.SetState("WARN0259", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0259"], g.Server, g.From, g.To, g.Reason, g.Since.Format(time.RFC3339)), ErrFrom: "JOB", ServerUrl: g.Server})
 	}
 }

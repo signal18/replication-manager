@@ -5677,6 +5677,10 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 		release()
 		if err == nil {
 			server.recordBinlogsInSnapshot(newestBinlog)
+			// a backup in the archive: the binlog chain from it on is whole again
+			if opt.trigger == snapshotTriggerBackup {
+				cluster.clearBinlogGap(server.URL)
+			}
 		}
 		if pushDone != nil {
 			pushDone(err)
@@ -6032,10 +6036,15 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to read backup directory of %s,%s", server.URL, err.Error())
 	}
 
-	// with the archive on, a copy beyond the window is removed only once a snapshot holds it:
-	// the others are kept for the snapshot the copy worker takes (snapshotHeldBinlogCopies)
+	// with the archive on, a copy beyond the window no snapshot holds is kept for the
+	// binlog-only snapshot the copy worker takes (snapshotHeldBinlogCopies); when that snapshot
+	// is refused or failed, it is removed and the loss tracked (F12, #2091)
 	archiveOn := server.shouldRunRestic(BackupRunOptions{})
-	var held []string
+	refusal := ""
+	if archiveOn {
+		refusal = server.binlogSnapshotRefusal()
+	}
+	var held, lost []string
 	for _, file := range files {
 		if isBackupIntegritySidecar(file.Name()) {
 			continue
@@ -6050,8 +6059,11 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		_, ok := keeping[logicalName]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
 			if archiveOn && !server.binlogCopyInSnapshot(logicalName) {
-				held = append(held, logicalName)
-				continue
+				if refusal == "" {
+					held = append(held, logicalName)
+					continue
+				}
+				lost = append(lost, logicalName)
 			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file from backup dir %s", file.Name())
 			path := server.GetMyBackupDirectory() + "/" + file.Name()
@@ -6069,6 +6081,9 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 
 	sort.Slice(held, func(i, j int) bool { return binlogNumber(held[i]) < binlogNumber(held[j]) })
 	server.holdBinlogCopies(held)
+	for _, b := range lost {
+		cluster.noteBinlogGap(server, b, "removed from the backup directory in no snapshot: "+refusal)
+	}
 
 	server.WriteBackupBinlogMetadata()
 	return nil

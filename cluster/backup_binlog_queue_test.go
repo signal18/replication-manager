@@ -194,3 +194,70 @@ func TestKeepRemovalWithoutArchive(t *testing.T) {
 		t.Fatal("kept with no archive to wait for")
 	}
 }
+
+// #2091 F12: when the binlog-only snapshot is refused (here backup-archive-remove-original) or
+// failed, the keep removal removes the copies anyway, and the lost continuity is a state kept
+// across restarts until a backup of the server is in the archive
+func TestKeepRemovalLosesBinlogsNotBackups(t *testing.T) {
+	c, server := newTestRuntimeOnlyClusterServer(t, "binlog-gap", "db1", "3306")
+	c.WorkingDir = t.TempDir()
+	c.Conf.BackupBinlogs = true
+	c.Conf.BackupBinlogsKeep = 2
+	c.Conf.BackupRestic = true
+	c.Conf.BackupArchiveRemoveOriginal = true
+	server.State = stateMaster
+	server.BinaryLogFile = "binlog.000011"
+	c.master = server
+	dir := server.GetMyBackupDirectory()
+	for _, b := range []string{"binlog.000007", "binlog.000008", "binlog.000009", "binlog.000010"} {
+		if err := os.WriteFile(filepath.Join(dir, b), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	for b, kept := range map[string]bool{"binlog.000007": false, "binlog.000008": false, "binlog.000009": true, "binlog.000010": true} {
+		if fileExists(filepath.Join(dir, b)) != kept {
+			t.Errorf("%s kept %v, want %v", b, !kept, kept)
+		}
+	}
+	gaps := c.BinlogGaps()
+	if len(gaps) != 1 || gaps[0].From != "binlog.000007" || gaps[0].To != "binlog.000008" || gaps[0].Server != server.URL {
+		t.Fatalf("gaps %+v", gaps)
+	}
+	c.checkBinlogCopyStates()
+	if !hasOpenState(c, "WARN0259") {
+		t.Fatal("WARN0259 not raised for the lost continuity")
+	}
+
+	// a failed binlog-only snapshot: the copies it was taken for are removed, the gap grows
+	c.Conf.BackupArchiveRemoveOriginal = false
+	server.binlogCopies.snapshotFailed = "boom"
+	if err := os.WriteFile(filepath.Join(dir, "binlog.000011"), []byte("x"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.JobBackupBinlogPurge("binlog.000011"); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(filepath.Join(dir, "binlog.000009")) {
+		t.Fatal("kept after a failed binlog-only snapshot")
+	}
+	if g := c.BinlogGaps(); len(g) != 1 || g[0].To != "binlog.000009" {
+		t.Fatalf("the gap does not grow: %+v", g)
+	}
+	// the failure is taken in once: the next copy beyond the window is kept for a snapshot again
+	if r := server.binlogSnapshotRefusal(); r != "" {
+		t.Fatalf("refused again: %s", r)
+	}
+
+	// read again by a new process
+	c.binlogGaps = nil
+	if g := c.BinlogGaps(); len(g) != 1 || g[0].From != "binlog.000007" {
+		t.Fatalf("the gap is not kept across a restart: %+v", g)
+	}
+	c.clearBinlogGap(server.URL)
+	if len(c.BinlogGaps()) != 0 {
+		t.Fatal("a backup in the archive does not end the gap")
+	}
+}
