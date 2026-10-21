@@ -20,6 +20,7 @@ import (
 func TestBackupCatalogueKeepsReplacedBackupAcrossRestart(t *testing.T) {
 	c, server := newTestRuntimeOnlyClusterServer(t, "catalogue", "db1", "3306")
 	c.WorkingDir = t.TempDir()
+	c.BackupMetaMap = backupmgr.NewBackupMetaMap()
 	c.Status = ConstMonitorActif
 	c.Conf.Archives = []config.ArchiveConfig{{Name: "plakar-s3"}, {Name: "empty"}}
 	dest := filepath.Join(server.GetMyBackupDirectory(), "mysqldump.sql.gz")
@@ -71,6 +72,7 @@ func TestBackupCatalogueKeepsReplacedBackupAcrossRestart(t *testing.T) {
 func TestBackupCatalogueNotWrittenByStandby(t *testing.T) {
 	c, server := newTestRuntimeOnlyClusterServer(t, "catalogue-standby", "db1", "3306")
 	c.WorkingDir = t.TempDir()
+	c.BackupMetaMap = backupmgr.NewBackupMetaMap()
 	c.Status = ConstMonitorStandby
 	c.BackupMetaMap.Set(1, &backupmgr.BackupMetadata{Id: 1, Source: server.URL, BackupTool: "mysqldump"})
 	c.saveBackupCatalogue()
@@ -84,6 +86,7 @@ func TestBackupCatalogueNotWrittenByStandby(t *testing.T) {
 func TestReplacedBackupNeverTouchesTheNewerOne(t *testing.T) {
 	c, server := newTestRuntimeOnlyClusterServer(t, "catalogue-replaced", "db1", "3306")
 	c.WorkingDir = t.TempDir()
+	c.BackupMetaMap = backupmgr.NewBackupMetaMap()
 	dest := filepath.Join(server.GetMyBackupDirectory(), "mysqldump.sql.gz")
 	record := server.buildBackupMetaFileName("mysqldump", 0, false)
 	for _, f := range []string{dest, record} {
