@@ -32,6 +32,7 @@ import parentStyles from '../../components/Modals/styles.module.scss'
 import { clusterService } from '../../services/clusterService'
 import { useTheme } from '../../ThemeProvider'
 import { formatBytes } from '../../utility/common'
+import PurgePoliciesEditor from './PurgePoliciesEditor'
 
 // The cluster's archives in the Archive settings (#2091), as settings rows: a first row picks
 // the attached archive (None detaches; the one left is detached and stays with its content,
@@ -85,7 +86,8 @@ const SETTING_LABELS = {
   'purge-prune-max-repack-size': 'Prune: max repack size',
   'purge-prune-repack-cacheable-only': 'Prune: repack cacheable only',
   'purge-prune-repack-small': 'Prune: repack small',
-  'purge-prune-repack-uncompressed': 'Prune: repack uncompressed'
+  'purge-prune-repack-uncompressed': 'Prune: repack uncompressed',
+  'purge-policies': 'Purge policies'
 }
 
 const SETTING_HELP = {
@@ -97,7 +99,8 @@ const SETTING_HELP = {
   'purge-oldest-on-disk-space': 'When the disk is nearly full, the oldest snapshots are deleted first.',
   'purge-group-by': 'How snapshots are grouped before the keep rules apply: host, paths, tags, or a mix (host,tags).',
   'purge-keep-tag': 'Snapshots with this tag are never purged.',
-  'purge-prune': 'After the purge, delete the data no snapshot uses any more, so the space is really freed.'
+  'purge-prune': 'After the purge, delete the data no snapshot uses any more, so the space is really freed.',
+  'purge-policies': 'This archive\'s own purge policies, replacing the cluster\'s retention policy and tagged policies. Each rule is a tag and its keep values: the snapshots carrying the tag are kept by them, counted apart. A * rule replaces the default (the cluster\'s keep values). Empty: the cluster\'s policies apply.'
 }
 
 // kindLabel names an archive's plugin first (restic is one plugin family among others to
@@ -400,6 +403,14 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     const value = (a.settings || {})[st.name]
     const disabled = !canSet || a.status === 'removing'
     const title = `${a.name}: ${settingLabel(st.name, a.plugin)}`
+    if (st.name === 'purge-policies') {
+      return (
+        <Stack spacing='1' width='100%'>
+          {!shown(value) && <Text fontSize='sm' opacity='0.7'>The cluster's retention policy and tagged policies apply.</Text>}
+          <PurgePoliciesEditor value={shown(value)} allowDefault isDisabled={disabled} onSave={(v) => saveSetting(a, st.name, v)} />
+        </Stack>
+      )
+    }
     if (st.type === 'secret') {
       return <SecretRow isSet={(a.secretsSet || []).includes(st.name)} isDisabled={disabled} onSave={(v) => saveSetting(a, st.name, v)} />
     }
@@ -453,7 +464,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
       if (purge.length > 0 && can(list, a, 'purge')) {
         rows.push({
           key: 'Purge options',
-          help: help('**Purge options**\n\nHow this archive applies the cluster\'s retention policy: which snapshots are compared, which are always kept, and whether the space is freed. The policy itself (what to keep) is the cluster\'s, above.', 'Purge options'),
+          help: help('**Purge options**\n\nHow this archive applies the retention policy: which snapshots are compared, which are always kept, and whether the space is freed. What to keep is the cluster\'s policy, above, unless this archive sets its own purge policies.', 'Purge options'),
           value: <RMButton size='xs' variant='outline' onClick={() => setPurgeShown((p) => ({ ...p, [a.name]: !p[a.name] }))}>{purgeShown[a.name] ? 'Hide' : `Show (${purge.length})`}</RMButton>
         })
         if (purgeShown[a.name]) rows.push(...purge.map((st) => settingRow(a, st)))
@@ -516,6 +527,12 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
         confirmTitle={`Confirm update '${setting}' to `} onSave={(v) => setClusterSetting(setting, v)} />
     })),
     {
+      key: 'Tagged policies',
+      help: help('**Tagged policies**\n\nThe snapshots carrying a tag kept by their own keep values, counted apart from the keep values above (the default policy), so they never push a backup out of keep last. The tags replication-manager sets: `trigger:backup` (a backup), `trigger:manual` (the Archive action), `trigger:snapback`, `trigger:binlogs` (a binlog-only snapshot). The binlog-only snapshots taken since the last backup are always kept: a binlog only extends a backup. An archive with its own purge policies applies those instead.\n\nConfig: `backup-keep-tag-policies`', 'Tagged policies'),
+      value: <PurgePoliciesEditor value={config?.backupKeepTagPolicies || ''} isDisabled={!canSet}
+        onSave={(v) => setClusterSetting('backup-keep-tag-policies', v)} />
+    },
+    {
       key: 'Remove original once archived',
       help: help('**Remove original once archived**\n\nOnce the attached archive holds a backup and it is checked, the backup is deleted from the server\'s backup folder. A restore fetches it back from the archive first.\n\nConfig: `backup-archive-remove-original`', 'Remove original once archived'),
       value: <RMSwitch isChecked={!!config?.backupArchiveRemoveOriginal} isDisabled={!canSet}
@@ -569,7 +586,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     },
     {
       key: 'Retention policy',
-      help: help('**Retention policy**\n\nWhat the cluster keeps: the backups any rule keeps stay, the others are purged. The policy is the cluster\'s, whatever archive is attached; the attached archive is asked to apply it, its own way (its Purge options).', 'Retention policy'),
+      help: help('**Retention policy**\n\nWhat the cluster keeps: the snapshots any rule keeps stay, the others are purged. The keep values are the default policy, the tagged policies take the snapshots carrying their tag. They apply to every archive, unless an archive sets its own purge policies; the attached archive is asked to apply them, its own way (its Purge options).', 'Retention policy'),
       value: policyRows
     },
     // the attached archive first, then the others
