@@ -12,6 +12,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -42,6 +43,77 @@ func (server *ServerMonitor) WaitSyncToMaster(master *ServerMonitor) {
 	// if cluster.Conf.LogLevel > 2 {
 	server.LogReplPostion()
 	// }
+}
+
+// ReplicationTarget is a master's position fixed once: its gtid_binlog_pos on MariaDB, its binary log
+// file and position otherwise.
+type ReplicationTarget struct {
+	GTID string
+	File string
+	Pos  string
+}
+
+func (t ReplicationTarget) String() string {
+	if t.GTID != "" {
+		return t.GTID
+	}
+	return t.File + ":" + t.Pos
+}
+
+// ReadReplicationTarget reads server's position live, not from the last monitoring tick: a tick old,
+// it can miss the last transactions just written (the end of a restore).
+func (server *ServerMonitor) ReadReplicationTarget() (ReplicationTarget, error) {
+	if server.DBVersion.IsMariaDB() {
+		g, _, err := dbhelper.GetVariableByName(server.Conn, "GTID_BINLOG_POS", server.DBVersion)
+		return ReplicationTarget{GTID: g}, err
+	}
+	ms, _, err := dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
+	return ReplicationTarget{File: ms.File, Pos: strconv.FormatUint(uint64(ms.Position), 10)}, err
+}
+
+// replicaNoProgressTurns is how many WaitSyncToTarget turns of 30 s in a row a replica may show
+// no progress before a wait gives up on it: one transaction of a restore (~290 MB) kept
+// db3.belair-staging-test's position still for about 40 s while it applied it.
+const replicaNoProgressTurns = 3
+
+// AppliedPosition is where the replica's SQL thread is, from its last replication status: the
+// master binlog file and position it executed up to, and its gtid_slave_pos on MariaDB. Equal
+// between two turns: no progress.
+func (server *ServerMonitor) AppliedPosition() string {
+	if server.SlaveStatus == nil {
+		return ""
+	}
+	pos := server.SlaveStatus.RelayMasterLogFile.String + ":" + server.SlaveStatus.ExecMasterLogPos.String
+	if server.SlaveGtid != nil {
+		pos += " " + server.SlaveGtid.Sprint()
+	}
+	return pos
+}
+
+// WaitSyncToTarget is a copy of WaitSyncToMaster, kept apart on purpose:
+//   - WaitSyncToMaster reads the master's position again at each call: looped on, its target
+//     moves, and a master that keeps writing (a child or staging master replicating its parent,
+//     repman's own heartbeat) is never reached; here the target is fixed once by the caller;
+//   - WaitSyncToMaster returns nothing and a timeout looks like a success (MasterWaitGTID and
+//     MasterPosWait ignore the -1); here the result says whether the target was reached;
+//   - WaitSyncToMaster serves switchover and the rolling operations (SwitchSlavesToMaster,
+//     RollingReprov, RollingRestart, RollingUpgrade): 30 s and the next step checks the
+//     topology. They stay untouched.
+//
+// Same SQL per flavor: MASTER_GTID_WAIT on MariaDB, MASTER_POS_WAIT / SOURCE_POS_WAIT on the
+// cluster's channel otherwise. Used where a replica must hold all of a master's writes before
+// the next step, with no timer around it: the end of a restore with the binary log on
+// (logical_restore_gate.go) and the staging refresh before it detaches a replica (#2124).
+func (server *ServerMonitor) WaitSyncToTarget(target ReplicationTarget, timeout int) (bool, error) {
+	cluster := server.ClusterGroup
+	if server.DBVersion.IsMariaDB() {
+		reached, logs, err := dbhelper.MasterWaitGTIDReached(server.Conn, target.GTID, timeout)
+		cluster.LogSQL(logs, err, server.URL, "WaitSyncToTarget", config.LvlErr, "Failed MasterWaitGTID, %s", err)
+		return reached, err
+	}
+	reached, logs, err := dbhelper.MasterPosWaitReached(server.Conn, server.DBVersion, target.File, target.Pos, timeout, cluster.Conf.MasterConn)
+	cluster.LogSQL(logs, err, server.URL, "WaitSyncToTarget", config.LvlErr, "Failed MasterPosWait, %s", err)
+	return reached, err
 }
 
 func (server *ServerMonitor) WaitDatabaseStart() error {

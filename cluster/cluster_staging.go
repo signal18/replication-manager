@@ -104,6 +104,9 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Refresh staging initiated")
 
+		if err := cluster.waitStagingReplicaInSync(STG.URL); err != nil {
+			return err
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Stopping slave %s replication", STG.Name)
 		STG.StopSlave()
 
@@ -176,6 +179,9 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Switching staging from STANDALONE %s to SLAVE %s", STG.URL, SL.URL)
+		if err := cluster.waitStagingReplicaInSync(SL.URL); err != nil {
+			return err
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Stopping slave %s replication", SL.URL)
 
 		SL.StopSlave()
@@ -655,29 +661,53 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	return masterCurrentGTID, nil
 }
 
-// waitStagingReplicaInSync waits for the replica at url to be in sync (Slave) before the
-// staging refresh detaches it: it replays the restore through the master's binlog for as long
-// as that takes, no timer (a restore can take days; 2 minutes stopped the creation of a staging
-// cluster seeded from an 858 MB backup, preprod belair). Its progress is the creation's step;
-// it stops only when the replica's replication breaks (any state but Slave or SlaveLate). Read
-// by URL each time: a configuration reload rebuilds the ServerMonitor.
+// waitStagingReplicaInSync waits for the replica at url to reach its master's position, read
+// once when the wait starts, before the staging refresh detaches it (WaitSyncToTarget, the copy
+// of WaitSyncToMaster with a fixed target and a result). The state Slave was not enough:
+// db3.belair-staging-test, Slave at 2 s, was detached 660 MB short. It replays the restore
+// through the master's binlog for as long as that takes, no timer (a restore can take days;
+// 2 minutes stopped the creation of a staging cluster seeded from an 858 MB backup, preprod
+// belair). Its progress is the creation's step; it stops when the replica's replication breaks
+// (any state but Slave or SlaveLate), on an SQL error of the wait, or when its applied position
+// (AppliedPosition) did not move for replicaNoProgressTurns turns: it is not catching up, the
+// wait would never end. Read by URL each time: a configuration reload
+// rebuilds the ServerMonitor.
 func (cluster *Cluster) waitStagingReplicaInSync(url string) error {
+	master := cluster.GetMaster()
+	if master == nil {
+		return fmt.Errorf("no master on %s: replica %s cannot be checked before it is detached", cluster.Name, url)
+	}
+	target, err := master.ReadReplicationTarget()
+	if err != nil {
+		return fmt.Errorf("position of %s before replica %s is detached: %w", master.URL, url, err)
+	}
 	logged := false
+	lastApplied, still := "", 0
 	for {
 		slave := cluster.GetServerFromURL(url)
 		if slave == nil {
 			return fmt.Errorf("replica %s is no longer in %s", url, cluster.Name)
 		}
 		switch slave.State {
-		case stateSlave:
-			return nil
-		case stateSlaveLate:
+		case stateSlave, stateSlaveLate:
+			reached, err := slave.WaitSyncToTarget(target, 30)
+			if err != nil {
+				return fmt.Errorf("replica %s cannot be checked before it is detached: %w", url, err)
+			}
+			if reached {
+				return nil
+			}
+			if applied := slave.AppliedPosition(); applied != lastApplied {
+				lastApplied, still = applied, 0
+			} else if still++; still >= replicaNoProgressTurns {
+				return fmt.Errorf("replica %s makes no progress (still at %s for %d turns of 30 s): it cannot be detached as the staging server", url, applied, still)
+			}
 			step := fmt.Sprintf("replica %s catching up before it is detached", url)
 			if sc := cluster.GetStagingCreation(); sc != nil && !sc.Done && sc.Error == "" && sc.Step != step {
 				cluster.SetStagingCreation(StagingCreation{Kind: sc.Kind, Parent: sc.Parent, Step: step})
 			}
 			if !logged {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Staging seed of %s: waiting for replica %s to catch up before it is detached", cluster.Name, url)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Staging seed of %s: waiting for replica %s to reach %s before it is detached", cluster.Name, url, target)
 				logged = true
 			}
 		default:

@@ -132,11 +132,60 @@ func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"Restore on %s with the binary log on: binlogs kept to 2G, the restore pauses on each rotation until the replicas apply it", server.URL)
 	return func() {
+		// the last transactions land after the last rotation: the restore is done only once
+		// every replica taking part applied them (preprod belair-staging-test: db3 detached
+		// 660 MB short, no rotation came after the last commits)
+		server.waitReplicasAppliedAll(gate)
 		server.logicalRestoreGate.Store(nil)
 		gate.resume()
 		held()
 		semiSync()
 	}
+}
+
+// waitReplicasAppliedAll waits, with no timer, for every replica of server taking part to reach
+// server's position read once when the restore wrote its last transaction (WaitSyncToTarget,
+// 30 s turns); WARN0254 names the replica it waits for. Not server's current position: a child or
+// staging master keeps writing its parent's transactions, a moving target is never reached. An
+// SQL error of the wait, or no progress of the replica's applied position for
+// replicaNoProgressTurns turns, ends it for that replica, logged.
+func (server *ServerMonitor) waitReplicasAppliedAll(gate *logicalRestoreGate) {
+	cluster := server.ClusterGroup
+	target, err := server.ReadReplicationTarget()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Restore on %s written: could not read its position to wait for the replicas: %s", server.URL, err)
+		return
+	}
+	for _, sl := range cluster.GetSlaves() {
+		lastApplied, still := "", 0
+		for sl != nil && sl != server && sl.Conn != nil && replicaTakesPart(sl) {
+			reached, err := sl.WaitSyncToTarget(target, 30)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Restore on %s written: stopped waiting for replica %s to reach %s: %s", server.URL, sl.URL, target, err)
+				break
+			}
+			if reached {
+				break
+			}
+			if applied := sl.AppliedPosition(); applied != lastApplied {
+				lastApplied, still = applied, 0
+			} else if still++; still >= replicaNoProgressTurns {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Restore on %s written: stopped waiting for replica %s, no progress (still at %s for %d turns of 30 s)", server.URL, sl.URL, applied, still)
+				break
+			}
+			gate.pause(fmt.Sprintf("restore written, waiting for replica %s to reach %s", sl.URL, target))
+			sl = cluster.GetServerFromURL(sl.URL) // a reload rebuilds the ServerMonitor
+		}
+	}
+}
+
+// replicaTakesPart is false for a stopped replica (IO or SQL thread) or a delayed one
+// (hosts-delayed, MASTER_DELAY): a restore never waits for it.
+func replicaTakesPart(sl *ServerMonitor) bool {
+	return sl.SlaveStatus != nil && !sl.IsReplicationBroken() && !sl.IsInDelayedHost() && sl.SlaveStatus.SQLDelay.Int64 <= 0
 }
 
 // pauseSemiSyncForRestore switches semi-sync off on the master while the restore runs: every
@@ -281,8 +330,7 @@ func (server *ServerMonitor) purgeBinlogsAppliedByReplicasThenResume(gate *logic
 // current) and has no delay (Seconds_Behind_Master 0). A stopped replica (IO or SQL thread) or a delayed one does not take part.
 func (server *ServerMonitor) logicalRestoreGateHolder(current string) string {
 	for _, sl := range server.ClusterGroup.GetSlaves() {
-		if sl == nil || sl == server || sl.SlaveStatus == nil || sl.IsReplicationBroken() ||
-			sl.IsInDelayedHost() || sl.SlaveStatus.SQLDelay.Int64 > 0 {
+		if sl == nil || sl == server || !replicaTakesPart(sl) {
 			continue
 		}
 		if applying := sl.SlaveStatus.RelayMasterLogFile.String; applying != current {

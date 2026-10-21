@@ -1364,6 +1364,38 @@ func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
 	return query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
 }
 
+// MasterWaitGTIDReached is MasterWaitGTID reading MASTER_GTID_WAIT's result: true once the
+// replica applied gtid, false at the timeout (-1). MasterWaitGTID ignores it, a timeout looks
+// like a success: kept as is for its callers (WaitSyncToMaster).
+func MasterWaitGTIDReached(db *sqlx.DB, gtid string, timeout int) (bool, string, error) {
+	query := "SELECT MASTER_GTID_WAIT(?, ?)"
+	var res sql.NullInt64
+	err := db.QueryRowx(query, gtid, timeout).Scan(&res)
+	return err == nil && res.Valid && res.Int64 >= 0, query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
+}
+
+// MasterPosWaitReached is MasterPosWait reading MASTER_POS_WAIT / SOURCE_POS_WAIT's result: true
+// once the replica applied up to log:pos, false at the timeout (-1); NULL (replication not
+// running on that channel) is an error. MasterPosWait ignores it: kept as is for its callers.
+func MasterPosWaitReached(db *sqlx.DB, myver *version.Version, log string, pos string, timeout int, channel string) (bool, string, error) {
+	funcname := "MASTER_POS_WAIT"
+	if myver.IsMySQLOrPercona() && myver.GreaterEqual("8.0.26") {
+		funcname = "SOURCE_POS_WAIT"
+	}
+	query := "SELECT " + funcname + "(?, ?, ?)"
+	args := []interface{}{log, pos, timeout}
+	if channel != "" {
+		query = "SELECT " + funcname + "(?, ?, ?, ?)"
+		args = append(args, channel)
+	}
+	var res sql.NullInt64
+	err := db.QueryRowx(query, args...).Scan(&res)
+	if err == nil && !res.Valid {
+		err = errors.New(funcname + " returned NULL: replication not running")
+	}
+	return err == nil && res.Int64 >= 0, query + "(" + log + "-" + pos + "-" + strconv.Itoa(timeout) + ")", err
+}
+
 func MasterPosWait(db *sqlx.DB, myver *version.Version, log string, pos string, timeout int, channel string) (string, error) {
 	// SOURCE_POS_WAIT  before MySQL 8.0.26
 	funcname := "MASTER_POS_WAIT"
