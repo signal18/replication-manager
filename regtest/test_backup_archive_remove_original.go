@@ -177,12 +177,15 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 		return true
 	}
 
-	// load runs sysbench for the phase (its sysbench-time at least 300s, to cover the backup
-	// and the reseed), its end waited by the returned function.
-	originalSysbenchTime := cl.Conf.SysbenchTime
-	defer func() { cl.Conf.SysbenchTime = originalSysbenchTime }()
-	if cl.Conf.SysbenchTime < 300 {
-		cl.Conf.SysbenchTime = 300
+	// load runs sysbench for the phase, its end waited by the returned function: 120s and at
+	// most 16 threads, enough to cover the backup and the reseed and small enough for the
+	// binlogs and relay logs of three phases to fit a small cluster's data disks (128
+	// threads for 300s filled dev3's 2G volumes).
+	originalSysbenchTime, originalSysbenchThreads := cl.Conf.SysbenchTime, cl.Conf.SysbenchThreads
+	defer func() { cl.Conf.SysbenchTime, cl.Conf.SysbenchThreads = originalSysbenchTime, originalSysbenchThreads }()
+	cl.Conf.SysbenchTime = 120
+	if cl.Conf.SysbenchThreads > 16 {
+		cl.Conf.SysbenchThreads = 16
 	}
 	load := func(kind string) func() {
 		step("%s: sysbench on the master for %ds", kind, cl.Conf.SysbenchTime)

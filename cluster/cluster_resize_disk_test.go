@@ -25,9 +25,10 @@ func (f *fakeDiskResizer) ResizeDisk(s *ServerMonitor, gb int) (bool, error) {
 	return true, nil
 }
 
-// #1854: a moved declared disk asks every up server's volume to follow; a refusal is a
-// tracked per-server state, cleared by the next move that goes through.
-func TestApplyDiskResize_GrowsUpServersAndTracksRefusal(t *testing.T) {
+// #1854: a moved declared disk asks every server's volume to follow, a failed one too (a
+// full data disk is what crashed it); a refusal is a tracked per-server state, cleared by
+// the next move that goes through.
+func TestApplyDiskResize_GrowsServersAndTracksRefusal(t *testing.T) {
 	c := &Cluster{Name: "t", Conf: &config.Config{}}
 	rz := &fakeDiskResizer{asked: map[string]int{}, refuse: map[string]error{"db2:3306": errors.New("no refquota on the volume")}}
 	c.resizerOverride = rz
@@ -40,8 +41,8 @@ func TestApplyDiskResize_GrowsUpServersAndTracksRefusal(t *testing.T) {
 	if rz.asked["db1:3306"] != 60 || rz.asked["db2:3306"] != 60 {
 		t.Fatalf("both up servers must be asked to grow to 60: %v", rz.asked)
 	}
-	if _, ok := rz.asked["db3:3306"]; ok {
-		t.Fatalf("a failed server must not be asked")
+	if rz.asked["db3:3306"] != 60 {
+		t.Fatalf("a failed server must be asked too, its disk may be what failed it: %v", rz.asked)
 	}
 	if db1.DiskResizeRefused != nil {
 		t.Fatalf("db1 grew: no refusal expected")
@@ -69,8 +70,8 @@ func TestApplyDiskResize_GrowsUpServersAndTracksRefusal(t *testing.T) {
 	// not a refusal.
 	rz.asked = map[string]int{}
 	c.applyDiskResize(70, 40)
-	if rz.asked["db1:3306"] != 40 || rz.asked["db2:3306"] != 40 {
-		t.Fatalf("a shrink must reach the orchestrator on every up server: %v", rz.asked)
+	if rz.asked["db1:3306"] != 40 || rz.asked["db2:3306"] != 40 || rz.asked["db3:3306"] != 40 {
+		t.Fatalf("a shrink must reach the orchestrator on every server: %v", rz.asked)
 	}
 	if db1.DiskResizeRefused != nil || db2.DiskResizeRefused != nil {
 		t.Fatalf("a shrink the daemon ignores is a state, not a refusal")
