@@ -717,6 +717,73 @@ func (cluster *Cluster) waitStagingReplicaInSync(url string) error {
 	}
 }
 
+// freshenParentBackup makes sure a reseed never takes the parent's domain back (#2124). A child
+// or staging master that already replicated its parent holds in its binlog later GTIDs of the
+// parent's domain than an older parent backup: reloaded, the channel resumes before them and
+// gtid_strict_mode refuses to binlog them (1950, preprod belair-staging-test: backup at
+// 4-53070043-3245370, db1 at 4-53070043-3441701); RESET MASTER would break its replicas. So the
+// parent channel is stopped first (the child's position freezes), the child's gtid_binlog_pos is
+// compared per domain with the backup's position, and when the backup is behind, a fresh logical
+// backup of the parent is taken: its position is past the frozen one, the domain only moves
+// forward. A new child (creation) has none of the parent's domain: nothing to do. MariaDB only
+// (domain-based GTID); the parent channel is started again when it stops on an error.
+func (cluster *Cluster) freshenParentBackup(parent *Cluster, cmaster *ServerMonitor) error {
+	if parent == nil || !cmaster.IsMariaDB() || cmaster.Conn == nil {
+		return nil
+	}
+	_, bcksrv, err := parent.ParentLogicalBackup()
+	if err != nil || bcksrv == nil || bcksrv.LastBackupMeta.Logical == nil {
+		return nil // ReseedFromParentCluster refuses with its own reason
+	}
+	channel := parent.Conf.MasterConn
+	if logs, err := cmaster.StopSlaveChannel(channel); err != nil {
+		cluster.LogSQL(logs, err, cmaster.URL, "Reseed", config.LvlErr, "Failed stop slave %s on %s: %s", channel, cmaster.URL, err)
+	}
+	restart := func() {
+		if logs, err := cmaster.StartSlaveChannel(channel); err != nil {
+			cluster.LogSQL(logs, err, cmaster.URL, "Reseed", config.LvlErr, "Failed start slave %s on %s: %s", channel, cmaster.URL, err)
+		}
+	}
+	held, _, err := dbhelper.GetVariableByName(cmaster.Conn, "GTID_BINLOG_POS", cmaster.DBVersion)
+	if err != nil {
+		restart()
+		return fmt.Errorf("gtid_binlog_pos of %s: %w", cmaster.URL, err)
+	}
+	backupPos := bcksrv.LastBackupMeta.Logical.BinLogGtid
+	behind := parentBackupBehind(backupPos, held)
+	if behind == "" {
+		return nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Reseed of %s from %s: the parent backup is behind (%s), taking a fresh logical backup of %s on %s", cmaster.URL, parent.Name, behind, parent.Name, bcksrv.URL)
+	if err := bcksrv.JobBackupLogical(context.Background()); err != nil {
+		restart()
+		return fmt.Errorf("fresh logical backup of %s on %s: %w", parent.Name, bcksrv.URL, err)
+	}
+	if meta := bcksrv.LastBackupMeta.Logical; meta == nil || parentBackupBehind(meta.BinLogGtid, held) != "" {
+		restart()
+		return fmt.Errorf("the fresh backup of %s is still behind %s's position %s in the parent's domain", parent.Name, cmaster.URL, held)
+	}
+	return nil
+}
+
+// parentBackupBehind names the first domain where held (a child's gtid_binlog_pos) is past the
+// parent backup's position, "" when the backup is at or past it in every domain it has.
+func parentBackupBehind(backupPos, held string) string {
+	if backupPos == "" {
+		return ""
+	}
+	have := gtid.NewList(held)
+	for _, b := range *gtid.NewList(backupPos) {
+		for _, h := range *have {
+			if h.DomainID == b.DomainID && h.SeqNo > b.SeqNo {
+				return fmt.Sprintf("domain %d: backup at %d, server at %d", b.DomainID, b.SeqNo, h.SeqNo)
+			}
+		}
+	}
+	return ""
+}
+
 // ParentLogicalBackup returns the logical backup a child cluster (staging) is seeded
 // from: the file or directory of this cluster's backup-logical-type on its backup
 // server. An error names what is missing (#1989): no backup server, no logical backup
@@ -773,6 +840,9 @@ func (cluster *Cluster) seedFromParent(parent *Cluster, staging bool) error {
 	cmaster := cluster.GetMaster()
 	if cmaster == nil {
 		return fmt.Errorf("no master on %s", cluster.Name)
+	}
+	if err := cluster.freshenParentBackup(parent, cmaster); err != nil {
+		return fmt.Errorf("reseed of %s from %s: %w", cmaster.URL, parent.Name, err)
 	}
 	masterGTIDList, err := cluster.ReseedFromParentCluster(parent, cmaster, "") // the master combines its GTID list with the parent's
 	if err != nil {

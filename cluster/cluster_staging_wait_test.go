@@ -146,3 +146,21 @@ func TestWaitStagingReplicaInSyncStopsOnSQLError(t *testing.T) {
 		t.Fatalf("an SQL error stops the wait: %v", err)
 	}
 }
+
+// A reseed never takes the parent's domain back: the backup is behind when the server already
+// holds a later GTID of a domain the backup has; other domains (the child's own) do not count.
+func TestParentBackupBehind(t *testing.T) {
+	for _, tc := range []struct {
+		backup, held, want string
+	}{
+		{"4-53070043-3245370", "4-53070043-3441701,2895224983-11130737-777", "domain 4: backup at 3245370, server at 3441701"},
+		{"4-53070043-3442500", "4-53070043-3441701,2895224983-11130737-777", ""},
+		{"4-53070043-3441701", "4-53070043-3441701", ""},
+		{"4-53070043-3245370", "2895224983-11130737-389", ""}, // a new child: none of the parent's domain
+		{"", "4-53070043-3441701", ""},
+	} {
+		if got := parentBackupBehind(tc.backup, tc.held); got != tc.want {
+			t.Fatalf("backup %q held %q: %q, want %q", tc.backup, tc.held, got, tc.want)
+		}
+	}
+}
