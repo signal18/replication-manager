@@ -6,13 +6,14 @@ package cluster
 
 import (
 	"bytes"
-	"context"
+	"database/sql"
 	"io"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -52,36 +53,48 @@ func TestRestoreBinlogGatePausesStream(t *testing.T) {
 	}
 }
 
-// On a rotation of the master's binlog the restore pauses, the rotated binlogs are purged
-// once the replicas applied them (none here), then it resumes: one binlog kept.
-func TestRestoreBinlogGateRotationPurges(t *testing.T) {
+// On a rotation of the master's binlog the restore pauses; the rotated binlog is purged only
+// once every replica read up to the current one, then the restore resumes: one binlog kept.
+func TestRestoreBinlogRotationWaitsReplicaThenPurges(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
-	server, mock := newMyLoaderPositionServer(t, mariadb, true)
-	server.ClusterGroup.Servers = []*ServerMonitor{server}
-	cols := []string{"File", "Position", "Binlog_Do_DB", "Binlog_Ignore_DB"}
-	mock.MatchExpectationsInOrder(true)
-	mock.ExpectQuery("SHOW MASTER STATUS").WillReturnRows(sqlmock.NewRows(cols).AddRow("binlog.000002", 4, "", ""))
-	mock.ExpectQuery("SELECT Variable_Value AS Value FROM .*global_variables WHERE Variable_Name = ?").
-		WithArgs("GTID_BINLOG_POS").WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("5-1-389"))
+	master, mock := newMyLoaderPositionServer(t, mariadb, true)
+	c := master.ClusterGroup
+	master.BinaryLogFile = "binlog.000002"
+	master.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap()
+	master.BinaryLogFiles.Set("binlog.000001", &dbhelper.BinaryLogMetadata{Filename: "binlog.000001"})
+	master.BinaryLogFiles.Set("binlog.000002", &dbhelper.BinaryLogMetadata{Filename: "binlog.000002"})
+	replica := &ServerMonitor{Host: "db2", Port: "3306", URL: "db2:3306", ClusterGroup: c, State: stateSlave,
+		SlaveStatus: &dbhelper.SlaveStatus{MasterLogFile: sql.NullString{String: "binlog.000001", Valid: true}}}
+	c.slaves = serverList{replica}
+	c.Servers = []*ServerMonitor{master, replica}
+
+	stop := master.startRestoreBinlogGate()
+	defer stop()
+	g := master.restoreGate.Load()
+	if g == nil {
+		t.Fatal("no gate on a MariaDB master with a binlog")
+	}
+	mock.MatchExpectationsInOrder(false)
 	mock.ExpectExec("PURGE BINARY LOGS TO").WithArgs("binlog.000002").WillReturnResult(sqlmock.NewResult(0, 0))
-	for i := 0; i < 20; i++ {
-		mock.ExpectQuery("SHOW MASTER STATUS").WillReturnRows(sqlmock.NewRows(cols).AddRow("binlog.000002", 8, "", ""))
+
+	master.onRestoreBinlogRotation()
+	time.Sleep(1500 * time.Millisecond)
+	if !strings.Contains(g.pausedReason(), "waiting for the replicas") {
+		t.Fatalf("a replica behind keeps the restore paused: %q", g.pausedReason())
+	}
+	if err := mock.ExpectationsWereMet(); err == nil {
+		t.Fatal("purged before the replica read the rotated binlog")
 	}
 
-	g := newRestoreBinlogGate()
-	server.restoreGate.Store(g)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { defer close(done); server.runRestoreBinlogGate(ctx, g, "binlog.000001") }()
-	// one status read a second: the rotation is seen within ~1 s, the purge right after
-	time.Sleep(2500 * time.Millisecond)
-	cancel()
-	<-done
-	// in order: only later status reads may remain, never the position read or the purge
-	if err := mock.ExpectationsWereMet(); err != nil && (strings.Contains(err.Error(), "PURGE") || strings.Contains(err.Error(), "global_variables")) {
-		t.Fatalf("the rotation did not lead to the purge: %s", err)
+	replica.SlaveStatus = &dbhelper.SlaveStatus{MasterLogFile: sql.NullString{String: "binlog.000002", Valid: true}}
+	deadline := time.Now().Add(5 * time.Second)
+	for g.pausedReason() != "" {
+		if time.Now().After(deadline) {
+			t.Fatalf("still paused once the replica read the current binlog: %q", g.pausedReason())
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	if g.pausedReason() != "" {
-		t.Fatalf("the restore stays paused after the purge: %q", g.pausedReason())
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("the rotated binlog was not purged: %s", err)
 	}
 }

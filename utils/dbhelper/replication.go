@@ -1351,15 +1351,6 @@ func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
 	return query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
 }
 
-// MasterWaitGTIDApplied waits up to timeout seconds for the server to have applied gtid
-// (MariaDB MASTER_GTID_WAIT): true once applied, false on timeout.
-func MasterWaitGTIDApplied(db *sqlx.DB, gtid string, timeout int) (bool, string, error) {
-	query := "SELECT MASTER_GTID_WAIT(?, ?)"
-	var res sql.NullInt64
-	err := db.QueryRowx(query, gtid, timeout).Scan(&res)
-	return err == nil && res.Valid && res.Int64 == 0, query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
-}
-
 func MasterPosWait(db *sqlx.DB, myver *version.Version, log string, pos string, timeout int, channel string) (string, error) {
 	// SOURCE_POS_WAIT  before MySQL 8.0.26
 	funcname := "MASTER_POS_WAIT"

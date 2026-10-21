@@ -313,6 +313,7 @@ type ServerMonitor struct {
 	reseedLinksMu                   sync.Mutex                           // guards reseedLinks: the reseed records, the refresh drops (#2093)
 	reseedLinks                     reseedStoppedLinks                   // the channels a reseed stopped and has not started again, WARN0252 while one does not run
 	restoreGate                     atomic.Pointer[restoreBinlogGate]    // the pause of a restore writing to the binlog, WARN0254 while paused (#2124)
+	restoreRotating                 atomic.Bool                          // a binlog rotation of that restore is being handled
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex

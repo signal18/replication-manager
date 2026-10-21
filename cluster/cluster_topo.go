@@ -815,7 +815,14 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlDbg, "Purge binlog not enabled")
 		return
 	}
+	cluster.refreshSlavesOldestMasterFile()
+}
 
+// refreshSlavesOldestMasterFile records the oldest master binlog file the replicas read
+// (SlavesOldestMasterFile) and how many replicate (SlavesConnected), from their last slave
+// status: what the binlog purge may remove, also read by a restore with the binary log on
+// (restore_binlog_gate.go), whatever force-binlog-purge.
+func (cluster *Cluster) refreshSlavesOldestMasterFile() {
 	connected := 0
 	binInt := 0
 	oldest := ""

@@ -5,14 +5,12 @@
 package cluster
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -20,11 +18,12 @@ import (
 // staging cluster's master, at its creation or by staging-reseed-from-parent) writes the whole
 // backup to its binlog for its replicas: the binlog of a former seed still there, the disk
 // filled and MariaDB crashed (preprod belair-staging-test, 15 GB of binlog on a 20 GB disk).
-// The binlog retention policy gives way while it runs: on each rotation of the master's
-// binlog the restore pauses before its next statement, waits for every replica to have
-// applied the master's position, purges the rotated binlogs (the replicas' own too), then goes
-// on. No timer: a replica that does not replicate keeps it paused, WARN0254 saying so; the
-// binlogs are never purged before a replica applied them.
+// The binlog retention policy gives way while it runs. The binlog monitoring sees each rotation
+// (CheckBinaryLogs); the restore then pauses before its next statement until every replica read
+// the rotated binlog (SlavesOldestMasterFile, the purge's own measure), the rotated binlogs are
+// purged (PurgeBinlogTo, after binlog archiving: IsBackingUpBinaryLog), the replicas' own too,
+// and it goes on. No timer: a replica that does not replicate keeps it paused, WARN0254 saying
+// so; a binlog is never purged before every replica read it.
 
 // restoreBinlogGate is the pause of a restore's statement stream.
 type restoreBinlogGate struct {
@@ -95,121 +94,64 @@ func (server *ServerMonitor) restoreGateWait() {
 }
 
 // startRestoreBinlogGate starts the gate of a restore writing to server's binlog (sql_log_bin=1)
-// on MariaDB; stop ends it and lets the stream flow. Without a binlog nothing is started.
+// on MariaDB; stop ends it and lets the stream flow.
 func (server *ServerMonitor) startRestoreBinlogGate() (stop func()) {
 	cluster := server.ClusterGroup
-	if !server.IsMariaDB() {
-		return func() {}
-	}
-	ms, _, err := dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
-	if err != nil || ms.File == "" {
+	if !server.IsMariaDB() || server.BinaryLogFile == "" {
 		return func() {}
 	}
 	gate := newRestoreBinlogGate()
 	server.restoreGate.Store(gate)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		server.runRestoreBinlogGate(ctx, gate, ms.File)
-	}()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-		"Restore on %s with the binary log on: one binlog kept, the restore pauses on each rotation until the replicas applied it", server.URL)
+		"Restore on %s with the binary log on: one binlog kept, the restore pauses on each rotation until the replicas read it", server.URL)
 	return func() {
-		cancel()
-		<-done
-		gate.resume()
 		server.restoreGate.Store(nil)
+		gate.resume()
 	}
 }
 
-// runRestoreBinlogGate watches server's binlog file once a second; on a rotation it pauses the
-// restore, waits for the replicas, purges the rotated binlogs and resumes.
-func (server *ServerMonitor) runRestoreBinlogGate(ctx context.Context, gate *restoreBinlogGate, current string) {
+// onRestoreBinlogRotation is the binlog monitoring's call on a rotation of server's binlog: while
+// a restore with the binary log on runs, it pauses it until the replicas read the rotated binlog,
+// purges it, and resumes. One handling at a time; a later rotation is caught up by it.
+func (server *ServerMonitor) onRestoreBinlogRotation() {
+	gate := server.restoreGate.Load()
+	if gate == nil || !server.restoreRotating.CompareAndSwap(false, true) {
+		return
+	}
+	gate.pause(fmt.Sprintf("binlog rotated to %s, waiting for the replicas to read it", server.BinaryLogFile))
+	go func() {
+		defer server.restoreRotating.Store(false)
+		server.purgeRestoreRotatedBinlogs(gate)
+	}()
+}
+
+// purgeRestoreRotatedBinlogs waits, with no timer, for every replica to read server's current
+// binlog and for binlog archiving to end, then purges the binlogs before it, the replicas' own,
+// and resumes the restore; nothing once the restore ended.
+func (server *ServerMonitor) purgeRestoreRotatedBinlogs(gate *restoreBinlogGate) {
 	cluster := server.ClusterGroup
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(time.Second):
-		}
-		ms, _, err := dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
-		if err != nil || ms.File == "" || ms.File == current {
-			continue
-		}
-		gate.pause(fmt.Sprintf("binlog rotated to %s, waiting for the replicas to apply it", ms.File))
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-			"Restore on %s paused: binlog rotated to %s, waiting for the replicas", server.URL, ms.File)
-		if !server.waitRestoreReplicasApplied(ctx, gate) {
-			return
-		}
-		if logs, err := dbhelper.PurgeBinlogTo(server.Conn, ms.File); err != nil {
-			cluster.LogSQL(logs, err, server.URL, "Restore", config.LvlWarn, "Restore on %s: purge of the binlogs before %s: %s", server.URL, ms.File, err)
-		}
-		for _, url := range server.restoreReplicaURLs() {
-			// a replica writes what it applies to its own binlog (log_slave_updates): one kept too
-			if replica := cluster.GetServerFromURL(url); replica != nil && replica.Conn != nil {
-				if rms, _, err := dbhelper.GetMasterStatus(replica.Conn, replica.DBVersion); err == nil && rms.File != "" {
-					if logs, err := dbhelper.PurgeBinlogTo(replica.Conn, rms.File); err != nil {
-						cluster.LogSQL(logs, err, replica.URL, "Restore", config.LvlWarn, "Restore on %s: purge of the binlogs of replica %s before %s: %s", server.URL, replica.URL, rms.File, err)
-					}
+	for server.restoreGate.Load() == gate {
+		cluster.refreshSlavesOldestMasterFile()
+		current := server.BinaryLogFile
+		oldest := fmt.Sprintf("%s.%06d", cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix)
+		if oldest == current && !server.IsBackingUpBinaryLog {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+				"Restore on %s: the replicas read up to %s, purging the binlogs before it", server.URL, current)
+			server.PurgeBinlogTo(current)
+			server.RefreshBinaryLogs()
+			for _, sl := range cluster.GetSlaves() {
+				// a replica writes what it applies to its own binlog (log_slave_updates)
+				if sl != nil && sl.BinaryLogFile != "" && !sl.IsBackingUpBinaryLog {
+					sl.PurgeBinlogTo(sl.BinaryLogFile)
+					sl.RefreshBinaryLogs()
 				}
 			}
+			gate.resume()
+			return
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-			"Restore on %s resumed: the replicas applied the binlogs before %s, purged", server.URL, ms.File)
-		current = ms.File
-		gate.resume()
+		gate.pause(fmt.Sprintf("binlog rotated to %s, waiting for the replicas to read it (oldest read %s)", current, oldest))
+		time.Sleep(time.Second)
 	}
-}
-
-// waitRestoreReplicasApplied waits, with no timer, for every replica of server to have applied
-// server's binlog position; false when the restore ended meanwhile.
-func (server *ServerMonitor) waitRestoreReplicasApplied(ctx context.Context, gate *restoreBinlogGate) bool {
-	cluster := server.ClusterGroup
-	pos, _, err := dbhelper.GetVariableByName(server.Conn, "GTID_BINLOG_POS", server.DBVersion)
-	if err != nil || pos == "" {
-		return true
-	}
-	for _, url := range server.restoreReplicaURLs() {
-		for {
-			select {
-			case <-ctx.Done():
-				return false
-			default:
-			}
-			// read by URL each time: a configuration reload rebuilds the ServerMonitor
-			replica := cluster.GetServerFromURL(url)
-			if replica == nil || replica.Conn == nil {
-				break // no longer a replica of this cluster: nothing to wait for
-			}
-			applied, _, err := dbhelper.MasterWaitGTIDApplied(replica.Conn, pos, 5)
-			if err == nil && applied {
-				break
-			}
-			if err != nil {
-				time.Sleep(time.Second) // the wait returned at once: not a busy loop
-			}
-			gate.pause(fmt.Sprintf("waiting for replica %s to apply %s before the rotated binlog is purged", url, pos))
-		}
-	}
-	return true
-}
-
-// restoreReplicaURLs are the replicas of server in its cluster: the servers whose replication
-// source is server (a detached staging server replicates from nothing).
-func (server *ServerMonitor) restoreReplicaURLs() []string {
-	var urls []string
-	for _, s := range server.ClusterGroup.GetSlaves() {
-		if s == nil || s.URL == server.URL {
-			continue
-		}
-		host := s.GetReplicationMasterHost()
-		if (host == server.Host || host == server.IP) && s.GetReplicationMasterPort() == server.Port {
-			urls = append(urls, s.URL)
-		}
-	}
-	return urls
 }
 
 // checkRestoreBinlogPause raises WARN0254 tick after tick while server's restore is paused.

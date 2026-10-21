@@ -364,6 +364,9 @@ func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 		}
 
 		server.RefreshBinaryLogs()
+		// a restore with the binary log on keeps one binlog: it pauses until its replicas read
+		// the rotated one, purged then (#2124)
+		server.onRestoreBinlogRotation()
 	} else {
 		nodebinlogcount, err := dbhelper.CountBinaryLogs(server.Conn, server.DBVersion)
 		if err != nil {
