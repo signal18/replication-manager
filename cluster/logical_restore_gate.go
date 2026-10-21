@@ -19,11 +19,12 @@ import (
 // backup to its binlog for its replicas: the binlog of a former seed still there, the disk
 // filled and MariaDB crashed (preprod belair-staging-test, 15 GB of binlog on a 20 GB disk).
 // The binlog retention policy gives way while it runs. The binlog monitoring sees each rotation
-// (CheckBinaryLogs); the restore then pauses before its next statement until every replica read
-// the rotated binlog (SlavesOldestMasterFile, the purge's own measure), the rotated binlogs are
-// purged (PurgeBinlogTo, after binlog archiving: IsBackingUpBinaryLog), the replicas' own too,
-// and it goes on. No timer: a replica that does not replicate keeps it paused, WARN0254 saying
-// so; a binlog is never purged before every replica read it.
+// (CheckBinaryLogs); the restore then pauses before its next statement until every replica
+// applied the rotated binlog (its SQL thread is on the current one, Relay_Master_Log_File) and
+// has no delay (Seconds_Behind_Master 0), the rotated binlogs are purged (PurgeBinlogTo, after
+// binlog archiving: IsBackingUpBinaryLog), the replicas' own too, and it goes on. No timer, WARN0254 names the
+// replica holding it. A stopped replica (IO or SQL thread) or a delayed one (hosts-delayed,
+// MASTER_DELAY) does not take part: the restore never waits for it.
 
 // logicalRestoreGate is the pause of a logical restore's statement stream on a binlog rotation.
 type logicalRestoreGate struct {
@@ -103,7 +104,7 @@ func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 	gate := newLogicalRestoreGate()
 	server.logicalRestoreGate.Store(gate)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-		"Restore on %s with the binary log on: one binlog kept, the restore pauses on each rotation until the replicas read it", server.URL)
+		"Restore on %s with the binary log on: one binlog kept, the restore pauses on each rotation until the replicas apply it", server.URL)
 	return func() {
 		server.logicalRestoreGate.Store(nil)
 		gate.resume()
@@ -111,32 +112,34 @@ func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 }
 
 // pauseLogicalRestoreOnBinlogRotation is the binlog monitoring's call on a rotation of server's binlog: while
-// a restore with the binary log on runs, it pauses it until the replicas read the rotated binlog,
+// a restore with the binary log on runs, it pauses it until the replicas apply the rotated binlog,
 // purges it, and resumes. One handling at a time; a later rotation is caught up by it.
 func (server *ServerMonitor) pauseLogicalRestoreOnBinlogRotation() {
 	gate := server.logicalRestoreGate.Load()
 	if gate == nil || !server.logicalRestoreGatePurging.CompareAndSwap(false, true) {
 		return
 	}
-	gate.pause(fmt.Sprintf("binlog rotated to %s, waiting for the replicas to read it", server.BinaryLogFile))
+	gate.pause(fmt.Sprintf("binlog rotated to %s, waiting for the replicas to apply it", server.BinaryLogFile))
 	go func() {
 		defer server.logicalRestoreGatePurging.Store(false)
-		server.purgeBinlogsReadByReplicasThenResume(gate)
+		server.purgeBinlogsAppliedByReplicasThenResume(gate)
 	}()
 }
 
-// purgeBinlogsReadByReplicasThenResume waits, with no timer, for every replica to read server's current
-// binlog and for binlog archiving to end, then purges the binlogs before it, the replicas' own,
-// and resumes the restore; nothing once the restore ended.
-func (server *ServerMonitor) purgeBinlogsReadByReplicasThenResume(gate *logicalRestoreGate) {
+// purgeBinlogsAppliedByReplicasThenResume waits, with no timer, for every replica taking part to apply
+// server's rotated binlog with no delay, and for binlog archiving to end, then purges the binlogs
+// before the current one, the replicas' own, and resumes the restore; nothing once the restore ended.
+func (server *ServerMonitor) purgeBinlogsAppliedByReplicasThenResume(gate *logicalRestoreGate) {
 	cluster := server.ClusterGroup
 	for server.logicalRestoreGate.Load() == gate {
-		cluster.refreshSlavesOldestMasterFile()
 		current := server.BinaryLogFile
-		oldest := fmt.Sprintf("%s.%06d", cluster.SlavesOldestMasterFile.Prefix, cluster.SlavesOldestMasterFile.Suffix)
-		if oldest == current && !server.IsBackingUpBinaryLog {
+		holding := server.logicalRestoreGateHolder(current)
+		if holding == "" && server.IsBackingUpBinaryLog {
+			holding = "binlog archiving running"
+		}
+		if holding == "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Restore on %s: the replicas read up to %s, purging the binlogs before it", server.URL, current)
+				"Restore on %s: the replicas applied up to %s, purging the binlogs before it", server.URL, current)
 			server.PurgeBinlogTo(current)
 			server.RefreshBinaryLogs()
 			for _, sl := range cluster.GetSlaves() {
@@ -149,9 +152,28 @@ func (server *ServerMonitor) purgeBinlogsReadByReplicasThenResume(gate *logicalR
 			gate.resume()
 			return
 		}
-		gate.pause(fmt.Sprintf("binlog rotated to %s, waiting for the replicas to read it (oldest read %s)", current, oldest))
+		gate.pause(fmt.Sprintf("binlog rotated to %s, %s", current, holding))
 		time.Sleep(time.Second)
 	}
+}
+
+// logicalRestoreGateHolder is why a replica keeps server's restore paused on the binlog current,
+// "" when none does: every replica taking part applied the binlogs before it (its SQL thread is on
+// current) and has no delay (Seconds_Behind_Master 0). A stopped replica (IO or SQL thread) or a delayed one does not take part.
+func (server *ServerMonitor) logicalRestoreGateHolder(current string) string {
+	for _, sl := range server.ClusterGroup.GetSlaves() {
+		if sl == nil || sl == server || sl.SlaveStatus == nil || sl.IsReplicationBroken() ||
+			sl.IsInDelayedHost() || sl.SlaveStatus.SQLDelay.Int64 > 0 {
+			continue
+		}
+		if applying := sl.SlaveStatus.RelayMasterLogFile.String; applying != current {
+			return fmt.Sprintf("waiting for replica %s to apply it (applying %s)", sl.URL, applying)
+		}
+		if delay := sl.SlaveStatus.SecondsBehindMaster; !delay.Valid || delay.Int64 > 0 {
+			return fmt.Sprintf("waiting for replica %s to have no delay (Seconds_Behind_Master %d)", sl.URL, delay.Int64)
+		}
+	}
+	return ""
 }
 
 // checkLogicalRestoreGate raises WARN0254 tick after tick while server's restore is paused.

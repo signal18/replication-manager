@@ -54,9 +54,24 @@ func TestLogicalRestoreGateHoldsStream(t *testing.T) {
 	}
 }
 
-// On a rotation of the master's binlog the restore pauses; the rotated binlog is purged only
-// once every replica read up to the current one, then the restore resumes: one binlog kept.
-func TestLogicalRestoreGateWaitsReplicaThenPurges(t *testing.T) {
+// gateReplica is a replica of the restore's master, its replication channel as the monitoring last read it.
+func gateReplica(c *Cluster, name, applying string, delay int64, running string, sqlDelay int64) *ServerMonitor {
+	ss := dbhelper.SlaveStatus{
+		MasterLogFile:       sql.NullString{String: applying, Valid: true},
+		RelayMasterLogFile:  sql.NullString{String: applying, Valid: true},
+		SecondsBehindMaster: sql.NullInt64{Int64: delay, Valid: true},
+		SlaveIORunning:      sql.NullString{String: running, Valid: true},
+		SlaveSQLRunning:     sql.NullString{String: running, Valid: true},
+		SQLDelay:            sql.NullInt64{Int64: sqlDelay, Valid: true},
+	}
+	return &ServerMonitor{Host: name, Port: "3306", URL: name + ":3306", ClusterGroup: c, State: stateSlave,
+		SlaveStatus: &ss, Replications: []dbhelper.SlaveStatus{ss}}
+}
+
+// On a rotation of the master's binlog the restore pauses; the rotated binlog is purged and the
+// restore resumes only once every replica taking part applied it (its SQL thread on the current
+// binlog) and has no delay: one binlog kept. A stopped replica or one with MASTER_DELAY never holds it.
+func TestLogicalRestoreGateWaitsReplicasThenPurges(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
 	master, mock := newMyLoaderPositionServer(t, mariadb, true)
 	c := master.ClusterGroup
@@ -64,10 +79,12 @@ func TestLogicalRestoreGateWaitsReplicaThenPurges(t *testing.T) {
 	master.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap()
 	master.BinaryLogFiles.Set("binlog.000001", &dbhelper.BinaryLogMetadata{Filename: "binlog.000001"})
 	master.BinaryLogFiles.Set("binlog.000002", &dbhelper.BinaryLogMetadata{Filename: "binlog.000002"})
-	replica := &ServerMonitor{Host: "db2", Port: "3306", URL: "db2:3306", ClusterGroup: c, State: stateSlave,
-		SlaveStatus: &dbhelper.SlaveStatus{MasterLogFile: sql.NullString{String: "binlog.000001", Valid: true}}}
-	c.slaves = serverList{replica}
-	c.Servers = []*ServerMonitor{master, replica}
+	upToDate := gateReplica(c, "db2", "binlog.000002", 0, "Yes", 0)
+	applying := gateReplica(c, "db3", "binlog.000001", 40, "Yes", 0)
+	stopped := gateReplica(c, "db4", "binlog.000001", 0, "No", 0)
+	delayed := gateReplica(c, "db5", "binlog.000001", 3600, "Yes", 3600)
+	c.slaves = serverList{upToDate, applying, stopped, delayed}
+	c.Servers = []*ServerMonitor{master, upToDate, applying, stopped, delayed}
 
 	stop := master.startLogicalRestoreGate()
 	defer stop()
@@ -79,19 +96,31 @@ func TestLogicalRestoreGateWaitsReplicaThenPurges(t *testing.T) {
 	mock.ExpectExec("PURGE BINARY LOGS TO").WithArgs("binlog.000002").WillReturnResult(sqlmock.NewResult(0, 0))
 
 	master.pauseLogicalRestoreOnBinlogRotation()
-	time.Sleep(1500 * time.Millisecond)
-	if !strings.Contains(g.pausedReason(), "waiting for the replicas") {
-		t.Fatalf("a replica behind keeps the restore paused: %q", g.pausedReason())
+	waitReason := func(want string) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for !strings.Contains(g.pausedReason(), want) {
+			if time.Now().After(deadline) {
+				t.Fatalf("paused reason %q, want %q", g.pausedReason(), want)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if err := mock.ExpectationsWereMet(); err == nil {
+			t.Fatal("purged while a replica holds the restore")
+		}
 	}
-	if err := mock.ExpectationsWereMet(); err == nil {
-		t.Fatal("purged before the replica read the rotated binlog")
-	}
+	waitReason("replica db3:3306 to apply it (applying binlog.000001)")
 
-	replica.SlaveStatus = &dbhelper.SlaveStatus{MasterLogFile: sql.NullString{String: "binlog.000002", Valid: true}}
+	// read and applied, still a delay
+	applying.SlaveStatus.RelayMasterLogFile.String = "binlog.000002"
+	waitReason("replica db3:3306 to have no delay (Seconds_Behind_Master 40)")
+
+	// no delay left: db4 stopped and db5 delayed do not take part
+	applying.SlaveStatus.SecondsBehindMaster.Int64 = 0
 	deadline := time.Now().Add(5 * time.Second)
 	for g.pausedReason() != "" {
 		if time.Now().After(deadline) {
-			t.Fatalf("still paused once the replica read the current binlog: %q", g.pausedReason())
+			t.Fatalf("still paused once every replica taking part applied the binlog: %q", g.pausedReason())
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

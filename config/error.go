@@ -363,7 +363,7 @@ var ClusterError = map[string]string{
 	"WARN0251":  "API tokens are enabled (api-user-tokens) but no user holds token-create on this cluster, so nobody can issue one: add token (or token-create) to the users who should, in api-credentials-acl-allow, and check no api-credentials-acl-discard (main or cluster) removes it",
 	"WARN0252":  "Replication of %s: channel(s) %s stopped by the reseed and not running: %s -- the reseed starts them again when the restore succeeds; otherwise start replication or rejoin the server",
 	"WARN0253":  "Registered backup %d of %s failed its %s verification: %s -- not reseeded from nor archived: verify it again, register a fixed file, or unregister it",
-	"WARN0254":  "Restore on %s paused: %s -- a restore with the binary log on keeps one binlog: on each rotation it waits for the replicas to apply it, purges the rotated binlog, then goes on (no timer: a replica that does not replicate keeps it paused)",
+	"WARN0254":  "Restore on %s paused: %s -- a restore with the binary log on keeps one binlog: on each rotation it waits for every replica to apply it with no delay (Seconds_Behind_Master 0), purges the rotated binlog, then goes on (no timer; a stopped or delayed replica does not take part)",
 	"WARN0247":  "Logical dump client %s of %s can not back up its %s server: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
