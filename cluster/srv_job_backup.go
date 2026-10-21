@@ -5937,16 +5937,14 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		return encErr
 	}
 
-	//Skip copying to resting when purge due to batching
+	// a purge batch writes the binlog list once at its end
 	if !isPurge {
 		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
 			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
 		}
+		// no snapshot here: a snapshot is taken after a backup only, the binlogs copied since
+		// the previous backup in it (#2091)
 		server.WriteBackupBinlogMetadata()
-		// Backup to restic when no error (defer to prevent unfinished physical copy)
-		backtype := "binlog"
-		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
-		defer server.BackupRestic(backupmgr.BackupMethodLogical, nil, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", nil)...)
 	}
 
 	return nil
@@ -6853,18 +6851,15 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 		return encErr
 	}
 
-	//Skip copying to resting when purge due to batching
+	// a purge batch writes the binlog list once at its end
 	if !isPurge {
 
 		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
 			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
 		}
+		// no snapshot here: a snapshot is taken after a backup only, the binlogs copied since
+		// the previous backup in it (#2091)
 		server.WriteBackupBinlogMetadata()
-
-		// Backup to restic when no error (defer to prevent unfinished physical copy)
-		backtype := "binlog"
-		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
-		defer server.BackupRestic(backupmgr.BackupMethodLogical, nil, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", nil)...)
 	}
 	return nil
 }

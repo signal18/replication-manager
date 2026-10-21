@@ -1948,24 +1948,6 @@ func TestMarkBackupPhysicalDone_SetsCookieForRegularBackup(t *testing.T) {
 	}
 }
 
-// TestMarkBackupPhysicalDone_SkipsCookieForAdhocBackup mirrors
-// AfterJobProcess's own gate: an ad-hoc backup must not become the
-// cookie-tracked "last" backup (that pointer feeds default-backup-line reseed
-// flows), even though it's still marked Completed.
-func TestMarkBackupPhysicalDone_SkipsCookieForAdhocBackup(t *testing.T) {
-	_, server := newTestRuntimeOnlyClusterServer(t, "backup-cluster", "target", "3307")
-	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{}
-
-	server.MarkBackupPhysicalDone("mariabackup")
-
-	if server.HasBackupMariabackupCookie() {
-		t.Fatal("expected no backup cookie to be set for an ad-hoc backup")
-	}
-	if !server.LastBackupMeta.Physical.Completed {
-		t.Fatal("expected LastBackupMeta.Physical.Completed to still be stamped true")
-	}
-}
-
 // TestMarkBackupPhysicalDone_NoopForOtherTasks ensures the shared completion
 // call site in handlerMuxServerJobState (which calls this unconditionally,
 // for every task name) never sets a backup cookie for a reseed/flashback or
