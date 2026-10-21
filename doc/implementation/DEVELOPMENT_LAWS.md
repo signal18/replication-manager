@@ -74,6 +74,13 @@ is transparent and replayable. No opaque, un-logged, or un-reproducible mutation
 Exception: secrets are redacted (F10), so the reproduction shows the exact action
 but the user supplies the secret.
 
+**F12. Better lose binlogs than backups.** A backup restores on its own; a binlog only
+extends one. Keeping binlogs never blocks or costs a backup, and the purge policy
+(retention, space) always applies. When a binlog cannot be kept safely, it is the
+binlog that goes, never the backup or the policy: the binlog copy goes on, a
+binlog-only snapshot is not taken, a binlog copy is removed. The lost binlog
+continuity is a tracked state (F7) until a new backup makes the chain whole again.
+
 ---
 
 ## Technical laws — how we build repman
