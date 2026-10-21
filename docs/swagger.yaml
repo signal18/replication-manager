@@ -3,6 +3,13 @@ definitions:
     properties:
       changeTime:
         type: string
+      etags:
+        description: |-
+          ETags, for a backup in the bucket of the backups folder mount: a digest of its files'
+          S3 ETags in walk order, which an object rewritten changes. The mount gives inodes and
+          times that do not hold across mounts, so a bucket fingerprint holds the files, the size
+          and this digest, and has no inode nor ctime (#2091).
+        type: string
       files:
         type: integer
       inode:
@@ -15,133 +22,6 @@ definitions:
         type: string
       size:
         type: integer
-    type: object
-  backupmgr.BackupMetadata:
-    properties:
-      backupMethod:
-        type: integer
-      backupSessionID:
-        type: string
-      backupStrategy:
-        type: integer
-      backupTool:
-        type: string
-      backupToolVersion:
-        type: string
-      binLogFileName:
-        type: string
-      binLogFilePos:
-        type: integer
-      binLogUuid:
-        type: string
-      checksum:
-        type: string
-      completed:
-        type: boolean
-      compressed:
-        type: boolean
-      dest:
-        description: backup destination path
-        type: string
-      discovered:
-        description: |-
-          Discovered: the backup was found in the server's backup folder without metadata
-          (copied there by hand or by another tool) and registered by the operator (#2073).
-          It is never picked by an automatic restore; DiscoveryNote says what its read found
-          (a check it could not run).
-        type: boolean
-      discoveryNote:
-        type: string
-      encrypted:
-        type: boolean
-      encryptionAlgo:
-        type: string
-      encryptionKey:
-        type: string
-      encryptionKeyVersion:
-        description: |-
-          EncryptionKeyVersion is the secret_store.json version of
-          db-servers-credential whose password encrypted the artifact (0 when
-          unknown). A version number only, never the password: restore uses it
-          to pick the right historic root password after a password change.
-        type: integer
-      endTime:
-        type: string
-      execRemote:
-        description: the backup tool ran on the DB node (dbjobs), not next to replication-manager
-        type: boolean
-      fileCount:
-        type: integer
-      id:
-        type: integer
-      integrityAlgo:
-        type: string
-      metaFile:
-        type: string
-      notABackup:
-        description: |-
-          NotABackup: a discovered entry that is not a backup (an accounts file, no table), kept
-          listed from a release that registered every dump it found: flagged, never used.
-        type: boolean
-      originalRemoved:
-        description: |-
-          OriginalRemoved: the artifact at Dest was removed once its archive snapshot
-          (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
-          a restore fetches it back from the archive.
-        type: boolean
-      previous:
-        type: integer
-      registration:
-        allOf:
-        - $ref: '#/definitions/backupmgr.BackupRegistration'
-        description: |-
-          Registration is the file of a discovered backup as registered: a change since is not
-          used until it is registered.
-      resticEnabled:
-        type: boolean
-      resticFilePath:
-        type: string
-      resticSnapshotID:
-        type: string
-      size:
-        description: in bytes
-        type: integer
-      source:
-        description: server URL
-        type: string
-      splitDump:
-        type: boolean
-      splitUser:
-        type: boolean
-      startTime:
-        type: string
-      streamSize:
-        description: bytes received from the backup stream, before compression/encryption
-          (physical); the next run's progress denominator
-        type: integer
-      timeSource:
-        description: |-
-          TimeSource tells where StartTime and EndTime come from (BackupTimeSource*): the
-          backup's own record, its file's time, or the operator.
-        type: string
-      verification:
-        allOf:
-        - $ref: '#/definitions/backupmgr.BackupVerification'
-        description: Verification is the result of the last verification of this backup
-          (#2023).
-      verificationRunSequence:
-        description: VerificationRunSequence is the sequence number of the last run
-          accepted.
-        type: integer
-      verificationRuns:
-        description: |-
-          VerificationRuns is the history of the on-demand verification runs of this backup, by
-          run (#2023): each accepted run is recorded running before the API answers, then ends
-          passed, failed or skipped in its own record. The oldest finished runs are dropped
-          beyond backup-verification-run-history. Verification stays the backup's result.
-        items:
-          $ref: '#/definitions/backupmgr.BackupVerificationRun'
-        type: array
     type: object
   backupmgr.BackupRegistration:
     properties:
@@ -382,6 +262,11 @@ definitions:
     type: object
   backupmgr.ResticCopySourceOption:
     properties:
+      archive:
+        description: |-
+          Archive names an archive of the cluster's list as the source (#2091): its settings
+          and secrets are resolved by repman, like a saved source
+        type: string
       aws:
         $ref: '#/definitions/backupmgr.ResticCopySourceAWSOption'
       key_hint:
@@ -575,6 +460,14 @@ definitions:
         type: boolean
       prune_option:
         $ref: '#/definitions/backupmgr.ResticPruneOption'
+      rules:
+        description: |-
+          Rules: tagged purge policies (#2091), the Keep* fields being the default one: the kept
+          set is computed by replication-manager (config.KeptByPolicies) and the others forgotten
+          by id, each policy counting its own snapshots
+        items:
+          $ref: '#/definitions/config.ArchivePurgeRule'
+        type: array
       snapshot_id:
         type: string
       tag:
@@ -870,6 +763,66 @@ definitions:
       weight:
         type: string
     type: object
+  cluster.ArchiveListEntry:
+    properties:
+      attached:
+        type: boolean
+      backups:
+        description: Backups is the number of backups of the catalogue glued to the
+          archive
+        type: integer
+      location:
+        description: Location is the repository the archive runs, as resolved from
+          its settings
+        type: string
+      name:
+        type: string
+      plugin:
+        type: string
+      settings:
+        additionalProperties: true
+        type: object
+      size:
+        allOf:
+        - $ref: '#/definitions/cluster.ArchiveSize'
+        description: |-
+          Size is the content's size: the attached archive's from its last fetch, another's as
+          last read (when it was detached, or by a size read); nil when never read
+      status:
+        description: a running remove or size read, or the error of the last one
+        type: string
+    type: object
+  cluster.ArchiveListResult:
+    properties:
+      archives:
+        items:
+          $ref: '#/definitions/cluster.ArchiveListEntry'
+        type: array
+      attached:
+        type: string
+      enterprisePlan:
+        description: the plan grants the enterprise plugins (a partner or support
+          plan)
+        type: boolean
+      plugins:
+        items:
+          $ref: '#/definitions/config.ArchivePluginManifest'
+        type: array
+      snapbacks:
+        description: the servers' backup directories put back from a snapshot (snapback)
+        items:
+          $ref: '#/definitions/cluster.SnapbackState'
+        type: array
+    type: object
+  cluster.ArchiveSize:
+    properties:
+      at:
+        type: string
+      bytes:
+        type: integer
+      files:
+        type: integer
+    type: object
   cluster.BackupCandidate:
     properties:
       encrypted:
@@ -975,21 +928,203 @@ definitions:
       sequence:
         type: integer
     type: object
+  cluster.BackupView:
+    properties:
+      archiveRefs:
+        additionalProperties:
+          type: string
+        description: |-
+          ArchiveRefs glues the backup to the archives by name (#2091): an archive's name maps
+          to the backup's snapshot there. A renamed archive is renamed here; a removed one leaves.
+          Never changed in place (read while marshalled): set through SetArchiveSnapshot.
+        type: object
+      archived:
+        type: boolean
+      backupMethod:
+        type: integer
+      backupSessionID:
+        type: string
+      backupStrategy:
+        type: integer
+      backupTool:
+        type: string
+      backupToolVersion:
+        type: string
+      binLogFileName:
+        type: string
+      binLogFilePos:
+        type: integer
+      binLogUuid:
+        type: string
+      capabilities:
+        items:
+          type: string
+        type: array
+      checksum:
+        type: string
+      completed:
+        type: boolean
+      compressed:
+        type: boolean
+      dest:
+        description: backup destination path
+        type: string
+      discovered:
+        description: |-
+          Discovered: the backup was found in the server's backup folder without metadata
+          (copied there by hand or by another tool) and registered by the operator (#2073).
+          It is never picked by an automatic restore; DiscoveryNote says what its read found
+          (a check it could not run).
+        type: boolean
+      discoveryNote:
+        type: string
+      encrypted:
+        type: boolean
+      encryptionAlgo:
+        type: string
+      encryptionKey:
+        type: string
+      encryptionKeyVersion:
+        description: |-
+          EncryptionKeyVersion is the secret_store.json version of
+          db-servers-credential whose password encrypted the artifact (0 when
+          unknown). A version number only, never the password: restore uses it
+          to pick the right historic root password after a password change.
+        type: integer
+      endTime:
+        type: string
+      execRemote:
+        description: the backup tool ran on the DB node (dbjobs), not next to replication-manager
+        type: boolean
+      fileCount:
+        type: integer
+      id:
+        type: integer
+      integrityAlgo:
+        type: string
+      location:
+        type: string
+      metaFile:
+        type: string
+      notABackup:
+        description: |-
+          NotABackup: a discovered entry that is not a backup (an accounts file, no table), kept
+          listed from a release that registered every dump it found: flagged, never used.
+        type: boolean
+      originalRemoved:
+        description: |-
+          OriginalRemoved: the artifact at Dest was removed once its archive snapshot
+          (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
+          a restore fetches it back from the archive.
+        type: boolean
+      previous:
+        type: integer
+      proven:
+        type: boolean
+      registration:
+        allOf:
+        - $ref: '#/definitions/backupmgr.BackupRegistration'
+        description: |-
+          Registration is the file of a discovered backup as registered: a change since is not
+          used until it is registered.
+      resticEnabled:
+        type: boolean
+      resticFilePath:
+        type: string
+      resticSnapshotID:
+        description: |-
+          ResticSnapshotID is the snapshot of a backup recorded before the archive list: at load
+          it is glued to the cluster's archive in ArchiveRefs, then empty. Read a snapshot with
+          ArchiveSnapshot.
+        type: string
+      restoreCandidate:
+        type: boolean
+      role:
+        description: the source's role when the backup started (BackupRole*), never
+          recomputed; "" unknown
+        type: string
+      size:
+        description: in bytes
+        type: integer
+      source:
+        description: server URL
+        type: string
+      splitDump:
+        type: boolean
+      splitUser:
+        type: boolean
+      startTime:
+        type: string
+      streamSize:
+        description: bytes received from the backup stream, before compression/encryption
+          (physical); the next run's progress denominator
+        type: integer
+      timeSource:
+        description: |-
+          TimeSource tells where StartTime and EndTime come from (BackupTimeSource*): the
+          backup's own record, its file's time, or the operator.
+        type: string
+      verification:
+        allOf:
+        - $ref: '#/definitions/backupmgr.BackupVerification'
+        description: Verification is the result of the last verification of this backup
+          (#2023).
+      verificationRunSequence:
+        description: VerificationRunSequence is the sequence number of the last run
+          accepted.
+        type: integer
+      verificationRuns:
+        description: |-
+          VerificationRuns is the history of the on-demand verification runs of this backup, by
+          run (#2023): each accepted run is recorded running before the API answers, then ends
+          passed, failed or skipped in its own record. The oldest finished runs are dropped
+          beyond backup-verification-run-history. Verification stays the backup's result.
+        items:
+          $ref: '#/definitions/backupmgr.BackupVerificationRun'
+        type: array
+    type: object
   cluster.BillingPrices:
     properties:
       apu:
+        format: float64
         type: number
       bau:
+        format: float64
         type: number
       bku:
+        format: float64
         type: number
       dbu:
+        format: float64
         type: number
       gwu:
+        format: float64
         type: number
       overPct:
         type: integer
       underPct:
+        type: integer
+    type: object
+  cluster.BinlogCopies:
+    properties:
+      count:
+        type: integer
+      max:
+        description: the highest
+        type: string
+      maxStart:
+        description: the time of the highest one's first event
+        type: integer
+      min:
+        description: the lowest binlog copied
+        type: string
+      minStart:
+        description: the time of the lowest one's first event (unix)
+        type: integer
+      server:
+        type: string
+      totalBytes:
+        description: their size on the server
         type: integer
     type: object
   cluster.ClusterForm:
@@ -1006,6 +1141,7 @@ definitions:
       accrued:
         additionalProperties:
           items:
+            format: float64
             type: number
           type: array
         description: |-
@@ -1444,6 +1580,28 @@ definitions:
           type: string
         type: array
     type: object
+  cluster.SnapbackState:
+    properties:
+      archive:
+        description: the attached archive the snapshots are in
+        type: string
+      at:
+        type: string
+      error:
+        type: string
+      head:
+        description: 'its latest snapshot: the directory before the first snapback'
+        type: string
+      server:
+        description: the server URL
+        type: string
+      snapshot:
+        description: the snapshot the directory is at
+        type: string
+      status:
+        description: SnapbackRunning, SnapbackDone, SnapbackFailed
+        type: string
+    type: object
   cluster.SnapshotMetadataSummary:
     properties:
       backupMethod:
@@ -1716,6 +1874,103 @@ definitions:
         type: string
       provAppTemplate:
         type: string
+    type: object
+  config.ArchiveConfig:
+    properties:
+      name:
+        type: string
+      plugin:
+        type: string
+      settings:
+        additionalProperties: true
+        type: object
+    type: object
+  config.ArchivePluginManifest:
+    properties:
+      capabilities:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      external:
+        description: |-
+          External: the plugin is a program (archiveplugin-<binary>, cluster/archiveplugin/wire)
+          that keeps its archives with its own engine; restic plugins are run by replication-manager
+        type: boolean
+      name:
+        type: string
+      settings:
+        items:
+          $ref: '#/definitions/config.ArchivePluginSetting'
+        type: array
+      tier:
+        description: ConstArchiveTierEnterprise, "" for every plan
+        type: string
+    type: object
+  config.ArchivePluginSetting:
+    properties:
+      group:
+        description: ConstArchiveSettingGroup*, "" for the main settings
+        type: string
+      name:
+        type: string
+      type:
+        description: ConstArchiveSettingType*
+        type: string
+      values:
+        description: the allowed values of an enum
+        items:
+          type: string
+        type: array
+    type: object
+  config.ArchivePurgePolicy:
+    properties:
+      keepDaily:
+        type: integer
+      keepHourly:
+        type: integer
+      keepLast:
+        type: integer
+      keepMonthly:
+        type: integer
+      keepWeekly:
+        type: integer
+      keepWithin:
+        type: string
+      keepWithinDaily:
+        type: string
+      keepWithinHourly:
+        type: string
+      keepWithinMonthly:
+        type: string
+      keepWithinWeekly:
+        type: string
+      keepWithinYearly:
+        type: string
+      keepYearly:
+        type: integer
+    type: object
+  config.ArchivePurgeRule:
+    properties:
+      policy:
+        $ref: '#/definitions/config.ArchivePurgePolicy'
+      tag:
+        type: string
+    type: object
+  config.ArchiveSpec:
+    properties:
+      name:
+        type: string
+      plugin:
+        type: string
+      settings:
+        additionalProperties: true
+        type: object
+      unset:
+        items:
+          type: string
+        type: array
     type: object
   config.Deployment:
     properties:
@@ -2086,6 +2341,10 @@ definitions:
         type: boolean
       arbitratorUriCheckUrl:
         type: string
+      archives:
+        items:
+          $ref: '#/definitions/config.ArchiveConfig'
+        type: array
       autorejoin:
         type: boolean
       autorejoinBackupBinlog:
@@ -2119,6 +2378,10 @@ definitions:
       backup:
         type: boolean
       backupArchiveMode:
+        type: string
+      backupArchiveName:
+        type: string
+      backupArchivePurgeTrigger:
         type: string
       backupArchiveRemoveOriginal:
         type: boolean
@@ -2156,6 +2419,8 @@ definitions:
         type: integer
       backupKeepMonthly:
         type: integer
+      backupKeepTagPolicies:
+        type: string
       backupKeepUntilValid:
         type: boolean
       backupKeepWeekly:
@@ -2370,6 +2635,8 @@ definitions:
         type: boolean
       backupStreamingEndpoint:
         type: string
+      backupStreamingProvider:
+        type: string
       backupStreamingRegion:
         type: string
       backupVerification:
@@ -2564,6 +2831,8 @@ definitions:
       cloud18SlaResponseTime:
         type: number
       cloud18SponsorUserCredential:
+        type: string
+      cloud18SsoClientId:
         type: string
       cloud18SubDomain:
         type: string
@@ -3889,6 +4158,8 @@ definitions:
         type: string
       schedulerAlertDisableTime:
         type: integer
+      schedulerArchivePurgeCron:
+        type: string
       schedulerDatabaseLogsTableKeep:
         type: integer
       schedulerDbServersAnalyze:
@@ -4153,6 +4424,7 @@ definitions:
       channelID:
         type: string
       createAt:
+        format: int64
         type: integer
       extension:
         type: string
@@ -4176,6 +4448,7 @@ definitions:
       channelID:
         type: string
       createAt:
+        format: int64
         type: integer
       fileIds:
         items:
@@ -5365,6 +5638,25 @@ definitions:
       truncated:
         description: true when file count exceeded the limit
         type: boolean
+    type: object
+  wire.Snapshot:
+    properties:
+      host:
+        type: string
+      id:
+        type: string
+      paths:
+        items:
+          type: string
+        type: array
+      size:
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      time:
+        type: string
     type: object
 info:
   contact: {}
@@ -9096,10 +9388,521 @@ paths:
       summary: Ingest an app/proxy APU compute-sensor push
       tags:
       - ClusterResources
+  /api/clusters/{clusterName}/archive-actions/add:
+    post:
+      consumes:
+      - application/json
+      description: 'Adds an archive from its plugin and connection infos (settings
+        and secrets by the names of the plugin''s config). The repository is probed
+        first: an existing one is opened (a wrong password is refused), a missing
+        one is initialised; an archive that can''t be opened is not added. Without
+        a name, repman names it archive-<type>-<n>.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: name (optional), plugin, settings
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/config.ArchiveSpec'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'name and repository: opened or initialised'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid archive, or repository refused
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Add an archive
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/attach/{archiveName}:
+    post:
+      description: Attaches the archive (the backups go to it, the archive attached
+        before is detached and stays in the list with its content), or with detach
+        leaves the cluster with no archive.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Archive Name
+        in: path
+        name: archiveName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Archive attached
+          schema:
+            type: string
+        "400":
+          description: Unknown archive
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Attach or detach an archive
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/detach:
+    post:
+      description: Attaches the archive (the backups go to it, the archive attached
+        before is detached and stays in the list with its content), or with detach
+        leaves the cluster with no archive.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Archive attached
+          schema:
+            type: string
+        "400":
+          description: Unknown archive
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Attach or detach an archive
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/edit/{archiveName}:
+    post:
+      consumes:
+      - application/json
+      description: Changes an archive's settings and secrets (an empty secret keeps
+        the secret, unset clears names), then probes its repository again. An archive
+        that can't be opened keeps its former settings.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Archive Name
+        in: path
+        name: archiveName
+        required: true
+        type: string
+      - description: settings, unset
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/config.ArchiveSpec'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 'name and repository: opened or initialised'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid archive, or repository refused
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Edit an archive
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/forget/{archiveName}/{snapshotID}:
+    post:
+      description: Deletes one snapshot of an archive plugin's archive (plakar ...),
+        at once; the backups that recorded it lose it, and one whose only copy it
+        was leaves the catalogue. A restic archive's snapshot is purged by /restic/purge/{snapshotID}.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Archive Name
+        in: path
+        name: archiveName
+        required: true
+        type: string
+      - description: Snapshot ID
+        in: path
+        name: snapshotID
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Snapshot deleted
+          schema:
+            type: string
+        "400":
+          description: Unknown archive, a restic archive, or the snapshot cannot be
+            deleted
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Delete an archive's snapshot
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/remove/{archiveName}:
+    post:
+      description: 'Deletes the archive''s content, then takes it out of the list,
+        so nothing is left there to invoice. No check on the backups it holds: a backup
+        whose only copy was there is lost. The attached archive is detached first.
+        Runs in the background: the list shows the archive as removing, then it is
+        gone, or the error stays on it. Refused on a whole bucket (an S3 archive with
+        no prefix).'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Archive Name
+        in: path
+        name: archiveName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "202":
+          description: Archive removal started
+          schema:
+            type: string
+        "400":
+          description: Unknown archive, or content cannot be deleted
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Remove an archive
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/rename/{archiveName}/{newName}:
+    post:
+      description: Renames an archive (lowercase letters, digits, - and _). The attached
+        archive stays attached under its new name.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Archive Name
+        in: path
+        name: archiveName
+        required: true
+        type: string
+      - description: New Archive Name
+        in: path
+        name: newName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Archive renamed
+          schema:
+            type: string
+        "400":
+          description: Invalid or taken name
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Rename an archive
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/size/{archiveName}:
+    post:
+      description: 'Reads the bytes the archive''s content takes, in the background:
+        the list shows the archive as sizing, then its size, or the error. A detached
+        archive keeps the size it had when it was detached; this reads it again.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Archive Name
+        in: path
+        name: archiveName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "202":
+          description: Archive size read started
+          schema:
+            type: string
+        "400":
+          description: Unknown archive, or its size cannot be read
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Read an archive's size
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/snapback-release/{serverName}:
+    post:
+      description: 'Keeps the server''s backup directory as the snapback left it and
+        unlocks its backups (WARN0255 resolved): its next backup''s snapshot is its
+        new latest one. A running snapback is not released.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: Snapback released
+          schema:
+            type: string
+        "400":
+          description: No snapback, or one running
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Release a snapback
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-actions/snapback/{snapshotID}:
+    post:
+      description: 'Puts the backup directory a snapshot of the attached archive holds
+        back as it was in it, in the background: the directory as it is now is snapshotted
+        first (its latest snapshot), then emptied, then the snapshot is restored into
+        it, and the server''s backups are read again. Never twice its size on disk.
+        Until a snapback to its latest snapshot or a release, the server''s backups
+        and archive pushes are locked (WARN0255). Refused while a backup is written,
+        the backups folder moves, a snapback of the server runs, or without room for
+        the snapshot.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Snapshot ID (or its first 8 characters)
+        in: path
+        name: snapshotID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 'Refused: no archive attached, unknown snapshot, not a server''s
+            backup directory, a backup running, no room'
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: Snapback a backup directory
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-list:
+    get:
+      description: The cluster's archives, the attached one, and each archive plugin's
+        typed config (settings, secrets, capabilities). Secrets are never returned,
+        only the names of those set.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/cluster.ArchiveListResult'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: List the archives
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-snapshots/{archiveName}:
+    get:
+      description: 'The snapshots of an archive plugin''s archive (plakar ...), newest
+        first: id, time, host, tags, paths, size. The plugin is asked at each call.
+        A restic archive''s snapshots are listed by /restic/snapshots.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Archive Name
+        in: path
+        name: archiveName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/wire.Snapshot'
+            type: array
+        "400":
+          description: Unknown archive, a restic archive, or its snapshots cannot
+            be listed
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+      summary: List an archive's snapshots
+      tags:
+      - ClusterArchive
   /api/clusters/{clusterName}/backups:
     get:
       description: |-
-        This endpoint retrieves the backups for the specified cluster.
+        This endpoint retrieves the backups for the specified cluster, by id: each backup's record, with what the restore selection reads of it: capabilities (compress, encrypt, parallel, can-partial-restorable, gtid), location (local: replication-manager's own disk; remote: the bucket through the backups folder mount; archive: only in a snapshot of the attached archive), archived (the attached archive holds a snapshot of it), proven (a test restore of its file, still unchanged) and restoreCandidate (a restore or reseed picks among it now: its server's last logical or physical backup).
         Required grant: cluster-show-backups
       parameters:
       - default: Bearer <Add access token here>
@@ -9117,13 +9920,11 @@ paths:
       - application/json
       responses:
         "200":
-          description: List of backups
+          description: Backups by id
           schema:
-            items:
-              additionalProperties:
-                $ref: '#/definitions/backupmgr.BackupMetadata'
-              type: object
-            type: array
+            additionalProperties:
+              $ref: '#/definitions/cluster.BackupView'
+            type: object
         "403":
           description: No valid ACL
           schema:
@@ -9478,6 +10279,43 @@ paths:
           schema:
             type: string
       summary: Verify a backup by ID and level
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/binlog-copies:
+    get:
+      description: |-
+        Returns, per server, the binary log copies its backup directory holds (binary-logs.meta.json, backup-binlogs): their number, the lowest and highest binlog, the time of their first events, and their size.
+        Required grant: cluster-show-backups
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Log copies per server
+          schema:
+            items:
+              $ref: '#/definitions/cluster.BinlogCopies'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Log copies in the backup directories
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/backups/candidates:
