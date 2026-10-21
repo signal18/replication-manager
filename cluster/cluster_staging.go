@@ -245,22 +245,34 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			return err
 		}
 
-		if cluster == source {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s", STG.URL)
-			err = STG.JobReseedLogicalBackup(context.Background(), "default")
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
+		// The standalone is reloaded from the staging master's own backup, never the parent's
+		// (#2124): the parent's backup holds the master's position before its reload, the
+		// standalone then asked the master for the whole restore again (preprod
+		// belair-staging-test: db2 loaded belair's backup, then replayed db1's restore,
+		// 2895224983-11130737-390..777). After a reseed from the parent, a fresh backup of the
+		// master is taken first: it holds the reloaded data and the master's position in every
+		// domain. The reseed runs to its end (prepare, then process): a load can take days, the
+		// wait below is only for the replication to start.
+		ctx := context.Background()
+		if cluster != source {
+			cmaster := cluster.GetMaster()
+			if cmaster == nil {
+				return fmt.Errorf("no master on %s to back up before reloading %s", cluster.Name, STG.URL)
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Logical backup of %s, reloaded from %s, before reloading %s", cmaster.URL, source.Name, STG.URL)
+			if err = cmaster.JobBackupLogical(ctx); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Logical backup of %s for refresh staging failed: %s", cmaster.URL, err)
 				return err
 			}
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s from parent cluster %s backup", STG.URL, source.Name)
-			_, err = cluster.ReseedFromParentCluster(source, STG, masterGTIDList) // Sync GTID with cluster master
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
-				return err
-			}
-
-			STG.ChangeMasterTo(cluster.GetMaster(), "SLAVE_POS")
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s from %s's backup", STG.URL, cluster.Name)
+		plan, err := STG.JobReseedLogicalBackupPrepare(ctx, "default")
+		if err == nil && plan != nil {
+			err = STG.JobReseedLogicalBackupProcess(ctx, plan)
+		}
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
+			return err
 		}
 
 		waitstart = time.Now()
@@ -864,6 +876,11 @@ func (cluster *Cluster) seedFromParent(parent *Cluster, staging bool) error {
 		if err := cluster.RefreshStaging(parent, masterGTIDList); err != nil {
 			return fmt.Errorf("refresh staging: %w", err)
 		}
+	}
+	if staging {
+		// the staging refresh took the master's backup to reload the standalone
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Seed of %s from parent cluster %s done", cluster.Name, parent.Name)
+		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Seed of %s from parent cluster %s done, starting a logical backup", cluster.Name, parent.Name)
 	go cmaster.JobBackupLogical(context.Background())
