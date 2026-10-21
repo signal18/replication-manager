@@ -223,6 +223,8 @@ type Cluster struct {
 	snapbacks      map[string]*SnapbackState  // server URL -> its backup directory's snapback (#2091), nil until read
 	binlogGapMu    sync.Mutex                 // guards binlogGaps
 	binlogGaps     map[string]*BinlogGap      // server URL -> its lost binlog continuity in the archive (#2091), nil until read
+	catalogueMu    sync.Mutex                 // guards catalogueSaved
+	catalogueSaved map[string][]byte          // global backup catalogue file -> its content last written (#2091)
 	BackupMount    BackupMountState           `json:"backupMount" groups:"web"` // its state, for the Backup settings
 	Agents         []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq   map[string]int64           `json:"-"`
@@ -763,6 +765,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.InterventionHistory = make([]InterventionEntry, 0)
 	cluster.LoadInterventionHistory()
 	cluster.LoadSysbenchLog()
+	cluster.loadBackupCatalogue() // the backups only in an archive, before the servers read their records (#2091)
 	cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	cluster.pluginRegistry = logplugin.NewRegistry()
 	if cluster.Conf.Arbitration {

@@ -144,7 +144,8 @@ func (cluster *Cluster) dropArchiveRefs(name, snapshotID, what string) {
 			return false
 		}
 		if meta.OriginalRemoved && len(meta.ArchiveRefs) == 0 {
-			if _, err := os.Stat(meta.Dest); meta.Dest != "" && err == nil {
+			// a replaced backup's Dest is the newer one's: never its own original back
+			if _, err := os.Stat(meta.Dest); !meta.Replaced && meta.Dest != "" && err == nil {
 				meta.OriginalRemoved = false
 			} else {
 				orphans = append(orphans, meta)

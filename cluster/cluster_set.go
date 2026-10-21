@@ -63,6 +63,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkBinlogCopyStates()               // WARN0257 while the binlog copies of a server wait for a backup, snapshot or failover (#2091)
 	cluster.checkSnapbackStates()                 // CINF0020 snapback running, WARN0255 a backup directory not at its latest snapshot (backups locked), WARN0256 a snapback failed (#2091)
 	cluster.checkRegisteredVerificationStates()   // WARN0253 while a registered backup's last verification failed (#2108)
+	cluster.saveBackupCatalogue()                 // the global backup catalogue files, written when changed on the active replication-manager (#2091)
 	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
 	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
 	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)

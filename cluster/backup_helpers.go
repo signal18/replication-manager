@@ -59,7 +59,7 @@ func (server *ServerMonitor) retireReplacedBackupLocked(id int64) {
 		return
 	}
 	if len(m.ArchiveRefs) > 0 || strings.TrimSpace(m.ResticSnapshotID) != "" {
-		m.OriginalRemoved = true
+		m.OriginalRemoved, m.Replaced = true, true
 		return
 	}
 	cluster.BackupMetaMap.Delete(id)
@@ -574,6 +574,11 @@ func (cluster *Cluster) DeleteBackupByID(backupID int64) (*backupmgr.BackupMetad
 		return nil, fmt.Errorf("%w: %d", ErrBackupVerificationRunning, backupID)
 	}
 
+	if meta.Replaced {
+		// its file and record are the newer backup's of its type: it leaves the catalogue only
+		cluster.BackupMetaMap.Delete(meta.Id)
+		return meta, nil
+	}
 	if meta.Dest != "" {
 		backupDir := server.GetMyBackupDirectory()
 		if !isPathWithinBase(backupDir, meta.Dest) {

@@ -523,7 +523,8 @@ func (server *ServerMonitor) forgetFolderBackups() {
 	dir := filepath.Clean(server.GetMyBackupDirectoryPath()) + string(os.PathSeparator)
 	running := cluster.IsInBackup()
 	cluster.BackupMetaMap.Callback(func(id int64, m *backupmgr.BackupMetadata) bool {
-		if m == nil || m.Source != server.URL || (!m.Completed && running) {
+		// a replaced backup is in no folder, only in the archive: the global catalogue keeps it
+		if m == nil || m.Source != server.URL || (!m.Completed && running) || m.Replaced {
 			return true
 		}
 		if _, verifying := cluster.backupVerifying.Load(id); verifying {

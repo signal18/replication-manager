@@ -106,6 +106,10 @@ type BackupMetadata struct {
 	// (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
 	// a restore fetches it back from the archive.
 	OriginalRemoved bool `json:"originalRemoved,omitempty"`
+	// Replaced: a newer backup of its type took its place in the backup directory (#2091), so
+	// Dest and its record file are the newer one's, never its own: kept by a snapshot, it is
+	// only in the archive (OriginalRemoved), in the global catalogue.
+	Replaced bool `json:"replaced,omitempty"`
 	// Verification is the result of the last verification of this backup (#2023).
 	Verification *BackupVerification `json:"verification,omitempty"`
 	// VerificationRuns is the history of the on-demand verification runs of this backup, by
