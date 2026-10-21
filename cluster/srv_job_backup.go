@@ -1724,7 +1724,7 @@ func (server *ServerMonitor) reseedMysqldumpWithSplitdump(ctx context.Context, b
 			"Splitdump detected at %s; restoring with mysql client", backupPath)
 		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
 	}
-	return server.JobReseedMysqldump(backupPath, restoreUser)
+	return server.JobReseedMysqldump(ctx, backupPath, restoreUser)
 }
 
 func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, backupPath string, restoreUser bool, meta *backupmgr.BackupMetadata) error {
@@ -3546,7 +3546,12 @@ func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser boo
 	return nil
 }
 
-func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser bool) error {
+// JobReseedMysqldump loads a single-file dump; ctx cancelled (job-cancel/<task>) kills its mysql
+// client.
+func (server *ServerMonitor) JobReseedMysqldump(ctx context.Context, backupfile string, restoreUser bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	cluster := server.ClusterGroup
 	var err error
 	defer server.SetInReseedBackup("")
@@ -3587,7 +3592,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
 	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+	clientCmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
@@ -7605,7 +7610,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 	}
 
-	ctx := context.Background()
+	// cancellable through job-cancel/<task>: a started logical restore ran on a background
+	// context, job-cancel found nothing to cancel ("task already started") and the restore
+	// went to its end
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server.registerJobCancel(task, cancel)
+	defer server.clearJobCancel(task)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backupType, server.URL)
 	if splitUserOverride {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,

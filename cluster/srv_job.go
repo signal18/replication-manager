@@ -1241,10 +1241,6 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 		return true
 	})
 
-	if !(canCancel || force) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started: %v", server.URL)
-	}
-
 	cancelRequested := false
 	for _, task := range tasks {
 		if server.requestJobCancel(task) {
@@ -1253,6 +1249,9 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	}
 	if cancelRequested {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel requested for running tasks on %s", server.URL)
+	} else if !(canCancel || force) {
+		// a running task registered for cancel (a backup, a logical reseed) is cancelled above
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started: %v", server.URL)
 	}
 
 	if !cluster.Conf.MonitorScheduler {
@@ -1322,7 +1321,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 			}
 			cleanupRequested = true
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Task cancelled successfully on %s", server.URL)
-		} else {
+		} else if !cancelRequested {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel task on %s. No rows found or task already started", server.URL)
 		}
 	}

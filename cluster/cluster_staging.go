@@ -580,7 +580,12 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 					return "", fmt.Errorf("ColumnStore child preparation: %w", err)
 				}
 			}
-			err = target.reseedMysqldumpWithMetadata(context.Background(), backupfile, false, meta)
+			// cancellable through job-cancel/<task>, as a replica's logical reseed
+			restoreCtx, cancelRestore := context.WithCancel(context.Background())
+			target.registerJobCancel(task, cancelRestore)
+			err = target.reseedMysqldumpWithMetadata(restoreCtx, backupfile, false, meta)
+			target.clearJobCancel(task)
+			cancelRestore()
 			if feed {
 				if ferr := cluster.finishColumnstoreChild(target, channel, backupfile, err == nil); ferr != nil && err == nil {
 					err = fmt.Errorf("ColumnStore child: %w", ferr)
@@ -598,7 +603,12 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 				target.JobsUpdateStateRuntimeOnly(task, "Reseed mysqldump with no split user is not supported", 5, 1)
 				return "", fmt.Errorf("Reseed mysqldump with no split user is not supported")
 			}
-			err = target.JobReseedMysqldump(backupfile, false)
+			// cancellable through job-cancel/<task>, as a replica's logical reseed
+			restoreCtx, cancelRestore := context.WithCancel(context.Background())
+			target.registerJobCancel(task, cancelRestore)
+			err = target.JobReseedMysqldump(restoreCtx, backupfile, false)
+			target.clearJobCancel(task)
+			cancelRestore()
 			// MariaDB: the dump writes the parent's position as a comment only, so the target keeps
 			// its old gtid_slave_pos and its channel would resume from it. It takes the backup's GTID
 			// for the domains the backup has, and keeps the other domains it replicates.
