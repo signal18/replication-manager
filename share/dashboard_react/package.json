@@ -69,7 +69,7 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.19",
     "prettier": "^3.5.1",
-    "vite": "^8.0.16",
+    "vite": "^8.3.4",
     "vite-plugin-compression": "^0.5.1"
   }
 }
