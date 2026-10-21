@@ -51,6 +51,9 @@ const (
 	OpSize    = "size"    // the bytes the archive takes: Response.Size
 	OpRemove  = "remove"  // delete the archive and all its content
 	OpSync    = "sync"    // copy snapshots into another archive (Request.Target)
+	// contents: the entries of a folder of a snapshot (Request.Include, "" its root, the pushed
+	// folder): Response.Entries. Only for a plugin with CapContents.
+	OpContents = "contents"
 )
 
 // Setting is one setting of a plugin's manifest, as replication-manager's archive manifest
@@ -103,6 +106,17 @@ func ReadManifests(r io.Reader) (ManifestList, error) {
 // keys in the environment.
 const CapS3 = "s3"
 
+// CapContents is the capability of a plugin answering OpContents: replication-manager reads
+// which backups a snapshot holds (the backup records in it) to rebuild its catalogue.
+const CapContents = "contents"
+
+// Entry is one entry of a snapshot's folder (OpContents): its name in the folder.
+type Entry struct {
+	Name string `json:"name"`
+	Dir  bool   `json:"dir,omitempty"`
+	Size int64  `json:"size,omitempty"`
+}
+
 // Store is the archive an operation runs on: its plugin, its settings (secrets excluded,
 // they are in the environment) and, for an S3 archive, its provider's endpoint and region.
 type Store struct {
@@ -140,7 +154,8 @@ type Request struct {
 	Path string   `json:"path,omitempty"`
 	Tags []string `json:"tags,omitempty"`
 	Host string   `json:"host,omitempty"`
-	// restore, forget: the snapshot; restore: the path in it ("" for all) and the folder
+	// restore, forget, contents: the snapshot; restore: the path in it ("" for all) and the
+	// folder; contents: the folder in it ("" its root)
 	Snapshot string `json:"snapshot,omitempty"`
 	Include  string `json:"include,omitempty"`
 	Target   string `json:"target,omitempty"`
@@ -174,6 +189,7 @@ type Response struct {
 	Removed     []string   `json:"removed,omitempty"` // purge, forget
 	Size        int64      `json:"size,omitempty"`
 	Files       int64      `json:"files,omitempty"`
+	Entries     []Entry    `json:"entries,omitempty"` // contents
 }
 
 // ReadRequest reads the request a plugin gets on its stdin and checks its wire version.

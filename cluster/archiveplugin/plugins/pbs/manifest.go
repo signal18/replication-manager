@@ -30,7 +30,7 @@ const (
 )
 
 // No sync: copying between PBS datastores is a sync job of the PBS itself.
-var capabilities = []string{"edit", "remove", "probe", "size", "purge"}
+var capabilities = []string{"edit", "remove", "probe", "size", "purge", wire.CapContents}
 
 func manifests() []wire.Manifest {
 	return []wire.Manifest{{

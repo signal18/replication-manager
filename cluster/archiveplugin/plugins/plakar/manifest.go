@@ -40,7 +40,7 @@ const (
 	secTargetS3SessionTok = "target-s3-session-token"
 )
 
-var capabilities = []string{"edit", "remove", "probe", "size", "purge"}
+var capabilities = []string{"edit", "remove", "probe", "size", "purge", wire.CapContents}
 
 func manifests() []wire.Manifest {
 	common := []wire.Setting{

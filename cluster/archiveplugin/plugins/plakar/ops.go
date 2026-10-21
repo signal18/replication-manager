@@ -37,7 +37,7 @@ func handle(req wire.Request) (wire.Response, error) {
 		return resp, fmt.Errorf("unknown archive plugin %q (this binary serves %s and %s)", req.Store.Plugin, pluginLocal, pluginS3)
 	}
 	switch req.Op {
-	case wire.OpProbe, wire.OpPush, wire.OpList, wire.OpRestore, wire.OpForget, wire.OpPurge, wire.OpSize, wire.OpSync:
+	case wire.OpProbe, wire.OpPush, wire.OpList, wire.OpRestore, wire.OpForget, wire.OpPurge, wire.OpSize, wire.OpSync, wire.OpContents:
 	case wire.OpRemove:
 		return opRemove(req)
 	default:
@@ -67,6 +67,8 @@ func handle(req wire.Request) (wire.Response, error) {
 		return opList(a)
 	case wire.OpRestore:
 		return opRestore(a, req)
+	case wire.OpContents:
+		return opContents(a, req)
 	case wire.OpForget:
 		return opForget(a, req)
 	case wire.OpPurge:
@@ -343,6 +345,52 @@ func opRestore(a *archive, req wire.Request) (wire.Response, error) {
 	logf("restore: snapshot %x:%s into %s", id[:4], pathname, dest)
 	if err := snap.Export(exp, pathname, &snapshot.ExportOptions{}); err != nil {
 		return resp, fmt.Errorf("restore: %w", err)
+	}
+	s := snapshotOf(snap.Header)
+	resp.Snapshot = &s
+	return resp, nil
+}
+
+// opContents lists the entries of the folder Request.Include of Request.Snapshot (relative to
+// the backed up folder or absolute; "" the backed up folder itself), as plakar ls does.
+func opContents(a *archive, req wire.Request) (wire.Response, error) {
+	var resp wire.Response
+	id, err := findSnapshot(a.repo, req.Snapshot)
+	if err != nil {
+		return resp, err
+	}
+	snap, err := snapshot.Load(a.repo, id)
+	if err != nil {
+		return resp, err
+	}
+	defer snap.Close()
+	if len(snap.Header.Sources) == 0 {
+		return resp, fmt.Errorf("contents: snapshot %x has no source", id[:4])
+	}
+	root := path.Clean(snap.Header.GetSource(0).Importer.Directory)
+	pathname := root
+	if inc := strings.TrimSpace(req.Include); inc != "" && inc != "." && inc != "/" {
+		if strings.HasPrefix(inc, "/") {
+			pathname = path.Clean(inc)
+		} else {
+			pathname = path.Clean(path.Join(root, inc))
+		}
+	}
+	fsys, err := snap.Filesystem()
+	if err != nil {
+		return resp, err
+	}
+	dents, err := fsys.ReadDir(pathname)
+	if err != nil {
+		return resp, fmt.Errorf("contents: %s not a folder of snapshot %x: %w", pathname, id[:4], err)
+	}
+	resp.Entries = make([]wire.Entry, 0, len(dents))
+	for _, d := range dents {
+		e := wire.Entry{Name: d.Name(), Dir: d.IsDir()}
+		if info, err := d.Info(); err == nil && !d.IsDir() {
+			e.Size = info.Size()
+		}
+		resp.Entries = append(resp.Entries, e)
 	}
 	s := snapshotOf(snap.Header)
 	resp.Snapshot = &s

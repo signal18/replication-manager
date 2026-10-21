@@ -7,6 +7,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -59,6 +60,8 @@ func handle(req wire.Request) (wire.Response, error) {
 		return resp, err
 	case wire.OpRestore:
 		return opRestore(a, req)
+	case wire.OpContents:
+		return opContents(a, req)
 	case wire.OpForget:
 		return opForget(a, req)
 	case wire.OpPurge:
@@ -399,6 +402,72 @@ func opRestore(a *archive, req wire.Request) (wire.Response, error) {
 	resp.Files = int64(len(files))
 	resp.Snapshot = &snap
 	return resp, nil
+}
+
+// catalogMaxBytes bounds the catalog read for contents: a catalog lists names, sizes and times
+// only, a few dozen bytes an entry.
+const catalogMaxBytes = 256 << 20
+
+// opContents lists the entries of the folder Include (relative to the pushed folder, "" the
+// pushed folder itself) of Snapshot, from the snapshot's catalog: the archive is not read.
+func opContents(a *archive, req wire.Request) (wire.Response, error) {
+	var resp wire.Response
+	snaps, err := a.snapshots()
+	if err != nil {
+		return resp, err
+	}
+	snap, err := findSnapshot(snaps, req.Snapshot)
+	if err != nil {
+		return resp, err
+	}
+	_, id, when, err := parseSnapshotID(snap.ID)
+	if err != nil {
+		return resp, err
+	}
+	pushed := ""
+	if len(snap.Paths) > 0 {
+		pushed = snap.Paths[0]
+	}
+	client := a.session(id, when.Unix())
+	client.Connect(true, backupType)
+	defer client.Close()
+	ra, size, err := client.NewDIDXReaderAt(catalogName, a.chunkCache, nil)
+	if err != nil {
+		return resp, fmt.Errorf("contents %s: %w", snap.ID, err)
+	}
+	if size > catalogMaxBytes {
+		return resp, fmt.Errorf("contents %s: catalog of %d bytes, over %d", snap.ID, size, catalogMaxBytes)
+	}
+	data := make([]byte, size)
+	if _, err := ra.ReadAt(data, 0); err != nil && !errors.Is(err, io.EOF) {
+		return resp, fmt.Errorf("contents %s: %w", snap.ID, err)
+	}
+	entries, err := pbscommon.ParseCatalog(data)
+	if err != nil {
+		return resp, fmt.Errorf("contents %s: %w", snap.ID, err)
+	}
+	folder := ""
+	if inc := restoreIncludes(req.Include, pushed); len(inc) > 0 {
+		folder = inc[0]
+	}
+	resp.Entries = folderEntries(entries, folder)
+	resp.Snapshot = &snap
+	return resp, nil
+}
+
+// folderEntries are the catalog entries directly in folder ("" the root).
+func folderEntries(entries []pbscommon.CatalogEntry, folder string) []wire.Entry {
+	folder = strings.Trim(folder, "/")
+	out := make([]wire.Entry, 0)
+	for _, e := range entries {
+		p := strings.Trim(e.Path, "/")
+		dir, name := path.Split(p)
+		if strings.TrimSuffix(dir, "/") != folder || name == "" {
+			continue
+		}
+		out = append(out, wire.Entry{Name: name, Dir: e.IsDir, Size: int64(e.Size)})
+	}
+	return out
 }
 
 // opForget deletes one snapshot.

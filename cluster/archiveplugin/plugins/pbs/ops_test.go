@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/signal18/replication-manager/cluster/archiveplugin/plugins/pbs/internal/pbscommon"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -299,5 +300,22 @@ func TestNoPurgeNoModify(t *testing.T) {
 	}
 	if _, err := newArchive(wire.Store{Plugin: pluginPBS, Settings: map[string]string{setBaseURL: "https://p", setDatastore: "d", setAuthID: "u@pbs!t", setNoPurge: "maybe"}}); err == nil {
 		t.Fatal("a no-purge that is not a bool is refused")
+	}
+}
+
+// #2091: contents answers the entries directly in the folder asked, from the catalog
+func TestFolderEntries(t *testing.T) {
+	entries := []pbscommon.CatalogEntry{
+		{Path: "mysqldump.meta.json", Size: 10},
+		{Path: "mydumper", IsDir: true},
+		{Path: "mydumper/metadata", Size: 5},
+		{Path: "/binlog.000001", Size: 7},
+	}
+	got := folderEntries(entries, "")
+	if len(got) != 3 || got[0].Name != "mysqldump.meta.json" || got[0].Size != 10 || !got[1].Dir || got[2].Name != "binlog.000001" {
+		t.Fatalf("root %+v", got)
+	}
+	if got := folderEntries(entries, "/mydumper/"); len(got) != 1 || got[0].Name != "metadata" {
+		t.Fatalf("mydumper %+v", got)
 	}
 }
