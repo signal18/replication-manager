@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"github.com/signal18/replication-manager/cluster/archiveplugin/wire"
 	"os"
 	"path/filepath"
 	"strings"
@@ -215,8 +216,8 @@ func (cluster *Cluster) checkArchiveRemoveOriginalStates() {
 // tool, when set, must match the backup's tool. It returns whether that backup lives in the
 // archive: the caller then keeps its backup cookie even when the fetch failed. The restored
 // original stays until the next backup of the method replaces it and removes it after its
-// own archive push, as it was before the removal. Only a restic archive is fetched from
-// (archiveFetchable): a plugin archive's snapshot is no restic snapshot.
+// own archive push, as it was before the removal. It is fetched from the attached archive,
+// restic or an archive plugin's (archiveFetchable, fetchArchivedOriginal).
 func (cluster *Cluster) restoreArchivedOriginal(src *ServerMonitor, backtype backupmgr.BackupMethod, tool string) bool {
 	if src == nil || !cluster.archiveFetchable() {
 		return false
@@ -279,6 +280,26 @@ func (server *ServerMonitor) fetchArchivedOriginal(dest, snapshotID string, size
 		return err
 	}
 	defer os.RemoveAll(work)
+	// an archive plugin restores one path of the snapshot, the backup directory, at its place
+	// under the work directory (#2091)
+	if a, external := cluster.attachedExternalArchive(); external {
+		for _, p := range paths {
+			rel, err := filepath.Rel(base, p)
+			if err != nil {
+				return err
+			}
+			if _, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpRestore, Snapshot: snapshotID, Include: filepath.ToSlash(rel), Target: work}); err != nil {
+				return err
+			}
+		}
+		for i := len(paths) - 1; i >= 0; i-- {
+			rel, _ := filepath.Rel(base, paths[i])
+			if err := os.Rename(filepath.Join(work, rel), paths[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	// restic reads --include as a pattern: escape the glob characters a path may hold.
 	include := make([]string, len(paths))
 	for i, path := range paths {

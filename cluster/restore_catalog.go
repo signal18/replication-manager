@@ -102,11 +102,10 @@ func backupCatalogLocation(m *backupmgr.BackupMetadata, mounted string) string {
 }
 
 // archiveFetchable: a backup only in the attached archive can be fetched back from it now
-// (restoreArchivedOriginal). Only a restic archive is fetched from yet: a plugin archive's
-// (plakar, pbs) fetch is not wired.
+// (restoreArchivedOriginal): restic, or an archive plugin's restore of one path (#2091).
 func (cluster *Cluster) archiveFetchable() bool {
 	if _, external := cluster.attachedExternalArchive(); external {
-		return false
+		return true
 	}
 	return cluster.Conf.BackupRestic && cluster.ResticManager != nil
 }
