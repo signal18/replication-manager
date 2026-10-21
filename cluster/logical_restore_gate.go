@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -182,6 +183,18 @@ func (server *ServerMonitor) waitReplicasAppliedAll(gate *logicalRestoreGate) {
 	}
 }
 
+// semiSyncMasterEnabled reads the source side setting of semi-sync live: rpl_semi_sync_master_enabled
+// on MariaDB and MySQL / Percona before 8.0.26, rpl_semi_sync_source_enabled from 8.0.26; false when
+// it does not exist (plugin not loaded).
+func (server *ServerMonitor) semiSyncMasterEnabled() bool {
+	name := "RPL_SEMI_SYNC_MASTER_ENABLED"
+	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.26") {
+		name = "RPL_SEMI_SYNC_SOURCE_ENABLED"
+	}
+	v, _, err := dbhelper.GetVariableByName(server.Conn, name, server.DBVersion)
+	return err == nil && (strings.EqualFold(v, "ON") || v == "1")
+}
+
 // replicaTakesPart is false for a stopped replica (IO or SQL thread) or a delayed one
 // (hosts-delayed, MASTER_DELAY): a restore never waits for it.
 func replicaTakesPart(sl *ServerMonitor) bool {
@@ -191,10 +204,12 @@ func replicaTakesPart(sl *ServerMonitor) bool {
 // pauseSemiSyncForRestore switches semi-sync off on the master while the restore runs: every
 // commit waited for a replica's ack (preprod belair-staging-test: 189189 commits, 3.3 ms each),
 // and the gate already holds the restore until the replicas applied each binlog. The returned
-// func switches it back on, only when it was on.
+// func switches it back on, only when it was on. Decided on the setting read live, not on the
+// status of the last tick: on a new master the status was still OFF when the restore started,
+// semi-sync came on when its replica connected and 99233 commits waited (belair-staging-test).
 func (server *ServerMonitor) pauseSemiSyncForRestore() (putBack func()) {
 	cluster := server.ClusterGroup
-	if server.Conn == nil || !server.IsSemiSyncMaster() {
+	if server.Conn == nil || !server.semiSyncMasterEnabled() {
 		return func() {}
 	}
 	if _, err := dbhelper.SetSemiSyncMasterEnabled(server.Conn, server.DBVersion, false); err != nil {

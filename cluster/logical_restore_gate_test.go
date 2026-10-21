@@ -228,3 +228,27 @@ func TestLogicalRestoreGateHoldsSplitdumpBatches(t *testing.T) {
 		t.Fatalf("the batch did not run after the resume: %s", err)
 	}
 }
+
+// Semi-sync is paused for the restore when its setting is on, read live (a new master's status
+// was still OFF when the restore started), and put back on at the end; not when the setting
+// does not exist (plugin not loaded).
+func TestPauseSemiSyncForRestoreOnSetting(t *testing.T) {
+	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
+	master, mock := newMyLoaderPositionServer(t, mariadb, true)
+	mock.ExpectQuery("global_variables").WithArgs("RPL_SEMI_SYNC_MASTER_ENABLED").
+		WillReturnRows(sqlmock.NewRows([]string{"Value"}).AddRow("ON"))
+	mock.ExpectExec("SET GLOBAL rpl_semi_sync_master_enabled").WithArgs(false).WillReturnResult(sqlmock.NewResult(0, 0))
+	putBack := master.pauseSemiSyncForRestore()
+	mock.ExpectExec("SET GLOBAL rpl_semi_sync_master_enabled").WithArgs(true).WillReturnResult(sqlmock.NewResult(0, 0))
+	putBack()
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("semi-sync on: %s", err)
+	}
+
+	mock.ExpectQuery("global_variables").WithArgs("RPL_SEMI_SYNC_MASTER_ENABLED").
+		WillReturnRows(sqlmock.NewRows([]string{"Value"}))
+	master.pauseSemiSyncForRestore()()
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("no semi-sync setting: %s", err)
+	}
+}
