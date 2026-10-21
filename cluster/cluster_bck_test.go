@@ -2645,7 +2645,8 @@ func TestRejoinCatalog_WARN0191_PreservedAcrossIntermediateTicks(t *testing.T) {
 // #2091: the cluster's tagged purge policies reach the restic purge, the default with them
 func TestResticPurgeRepoPassesTaggedPolicies(t *testing.T) {
 	conf := &config.Config{BackupRestic: true, BackupKeepLast: 3, BackupKeepTagPolicies: "trigger:binlogs keep-within=1d"}
-	cluster := &Cluster{Name: "cluster1", Conf: conf, ResticManager: backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)}
+	cluster := &Cluster{Name: "cluster1", Conf: conf, ResticManager: backupmgr.NewResticRepo("", nil, config.ConstLogModRestic), StateMachine: &state.StateMachine{}}
+	cluster.StateMachine.Init()
 	if err := cluster.ResticPurgeRepoWithOptions(true, true); err != nil {
 		t.Fatalf("unexpected purge error: %v", err)
 	}
