@@ -462,6 +462,12 @@ func (cluster *Cluster) purgeExternalArchive(a config.ArchiveConfig, dryRun bool
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Archive %s: purge failed: %s", a.Name, err)
 		return err
 	}
+	if !dryRun {
+		// the backups recording a snapshot the purge deleted lose it, as a forget (#2091)
+		for _, id := range resp.Removed {
+			cluster.dropSnapshotFromCatalogue(a.Name, id)
+		}
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive %s: purge removed %d snapshot(s)", a.Name, len(resp.Removed))
 	return nil
 }

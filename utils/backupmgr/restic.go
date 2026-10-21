@@ -451,7 +451,8 @@ type ResticManager struct {
 	AllowUnsafeMount     bool                // If true, allow using mount created by other process
 	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
 	OnPurgeComplete      func(ResticPurgeOption)
-	OnBootFetchSuccess   func() // called once when the startup fetch task succeeds
+	OnBootFetchSuccess   func()             // called once when the startup fetch task succeeds
+	OnSnapshotsPurged    func(ids []string) // the snapshots a purge task deleted (its fetch lists them no more), for the backup catalogue (#2091)
 	currentTask          *ResticTaskState
 	currentTaskMutex     *sync.Mutex
 	// Error backoff state to prevent log flooding
@@ -1046,12 +1047,15 @@ func (repo *ResticManager) worker() {
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case PurgeTask:
 			var err error
+			before := repo.snapshotIDs()
 			if task.PurgeOpt != nil {
 				err = repo.PurgeRepo(*task.PurgeOpt)
 			} else {
 				err = errors.New("PurgeTask requires PurgeOpt to be set")
 			}
-			_ = repo.FetchRepo()
+			if ferr := repo.FetchRepo(); ferr == nil {
+				repo.notifyPurged(before)
+			}
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case BackupTask:
 			var err error
@@ -4621,6 +4625,37 @@ func (repo *ResticManager) fetchRepoSnapshots() error {
 	repo.UpdateSnapshotList(backups)
 
 	return nil // Success
+}
+
+// snapshotIDs are the ids of the snapshots last fetched.
+func (repo *ResticManager) snapshotIDs() map[string]bool {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	ids := make(map[string]bool, len(repo.Backups))
+	for _, s := range repo.Backups {
+		ids[s.Id] = true
+	}
+	return ids
+}
+
+// notifyPurged hands OnSnapshotsPurged the snapshots of before the last fetch no longer lists:
+// the worker runs one task at a time, so the purge task deleted them. A fetch skipped (another
+// one running) leaves the list as it was: nothing is reported, never a snapshot still there.
+func (repo *ResticManager) notifyPurged(before map[string]bool) {
+	after := repo.snapshotIDs()
+	var gone []string
+	for id := range before {
+		if !after[id] {
+			gone = append(gone, id)
+		}
+	}
+	repo.Mutex.Lock()
+	cb := repo.OnSnapshotsPurged
+	repo.Mutex.Unlock()
+	if len(gone) > 0 && cb != nil {
+		sort.Strings(gone)
+		cb(gone)
+	}
 }
 
 // FetchRepo performs the fetch for snapshots and stats.

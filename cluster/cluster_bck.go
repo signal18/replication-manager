@@ -1095,6 +1095,11 @@ func (cluster *Cluster) StartResticManager() error {
 		}
 	}
 
+	// the snapshots a restic purge deleted leave the backups recording them, as a forget (#2091)
+	cluster.ResticManager.Mutex.Lock()
+	cluster.ResticManager.OnSnapshotsPurged = cluster.dropResticSnapshotsFromCatalogue
+	cluster.ResticManager.Mutex.Unlock()
+
 	cluster.ResticManager.AddUnlockTask() // Queue unlock first to avoid fetch-before-unlock race on startup.
 	go cluster.ResticFetchRepo()
 	return nil

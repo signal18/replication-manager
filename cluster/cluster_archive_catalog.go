@@ -132,6 +132,21 @@ func (cluster *Cluster) dropSnapshotFromCatalogue(name, snapshotID string) {
 	cluster.dropArchiveRefs(name, snapshotID, "snapshot "+shortID(snapshotID)+" of archive "+name+" removed from")
 }
 
+// dropResticSnapshotsFromCatalogue takes the snapshots a purge of the attached restic archive
+// deleted out of the catalogue.
+func (cluster *Cluster) dropResticSnapshotsFromCatalogue(ids []string) {
+	name := cluster.Conf.AttachedArchive()
+	if name == "" {
+		name = cluster.Conf.LegacyArchiveName()
+	}
+	if _, external := cluster.attachedExternalArchive(); name == "" || external {
+		return
+	}
+	for _, id := range ids {
+		cluster.dropSnapshotFromCatalogue(name, id)
+	}
+}
+
 // dropArchiveRefs drops archive name from the backups recording it, only those recording
 // snapshotID when given; what tells the log line.
 func (cluster *Cluster) dropArchiveRefs(name, snapshotID, what string) {
