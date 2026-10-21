@@ -412,20 +412,23 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 				// picks the node, an instance start on one node would fight its placement
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
 					"OpenSVC V3 orchestrated start for %s (failover placement)", server.URL)
-				// retried while the orchestrator still runs the stop that preceded (409)
-				deadline := time.Now().Add(3 * time.Minute)
-				for {
-					err := svc.StartServiceV3(cluster.Name, server.ServiceName)
-					if err == nil || openSVCAlreadyStarted(err) {
-						return nil
-					}
-					if !(strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "in progress")) || time.Now().After(deadline) {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
-							"OpenSVC V3 start failed for %s: %s", server.URL, err)
-						return err
-					}
-					time.Sleep(5 * time.Second)
+				err := startOrRecoverWarn(
+					func() error { return svc.StartServiceV3(cluster.Name, server.ServiceName) },
+					func(refusal error) error {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
+							"Start of %s refused (%s): abort then restart", server.URL, strings.TrimSpace(refusal.Error()))
+						if abortErr := svc.AbortServiceV3(cluster.Name, server.ServiceName); abortErr != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn,
+								"Abort of %s before restart failed: %s (proceeding)", server.URL, abortErr)
+						}
+						return cluster.openSVCRestartWhenIdleV3(svc, server.ServiceName)
+					},
+					3*time.Minute, 5*time.Second)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr,
+						"OpenSVC V3 start failed for %s: %s", server.URL, err)
 				}
+				return err
 			}
 			agent := server.placementNode()
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
@@ -1608,6 +1611,40 @@ const galeraBootstrapCommand = "--wsrep_new_cluster"
 // openSVCAlreadyStarted reports the orchestrator's 409 "already started": the start asked
 // for is the state the service is already in, a success. Any other 409 (an action still
 // in progress) is not (#1981).
+// startOrRecoverWarn starts a database service by orchestration: "already started" is a
+// success; a 409, an orchestration in progress or a 408 "is stopping" (the stop that
+// preceded still running: a restart of a database already failed does not wait for it, the
+// failed state is there before the stop ends) is retried every pause until the deadline; a warn-state object (the database exited, e.g. on
+// a full data disk) is recovered once by abort then restart, the recovery OpenSVC advises,
+// since a start alone is refused as long as the warn stands (dev3, 2026-10-21: the start of
+// the three crashed databases was refused for 3 minutes each).
+func startOrRecoverWarn(start func() error, recoverWarn func(refusal error) error, deadline, pause time.Duration) error {
+	until := time.Now().Add(deadline)
+	for {
+		err := start()
+		if err == nil || openSVCAlreadyStarted(err) {
+			return nil
+		}
+		if isWarnObjectRefusal(err) {
+			if rerr := recoverWarn(err); rerr != nil {
+				return fmt.Errorf("start refused (%w), restart after abort failed: %w", err, rerr)
+			}
+			return nil
+		}
+		if !(strings.Contains(err.Error(), "409") || strings.Contains(err.Error(), "in progress") || isStopStillRunning(err)) || time.Now().After(until) {
+			return err
+		}
+		time.Sleep(pause)
+	}
+}
+
+// isStopStillRunning: the orchestrator's answer to a start sent while the instance stops
+// (408 "<svc> is stopping on <node>: the instance monitor reads the request when the action
+// ends, and may refuse it").
+func isStopStillRunning(err error) bool {
+	return err != nil && strings.Contains(err.Error(), " is stopping on ")
+}
+
 func openSVCAlreadyStarted(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "409") && strings.Contains(err.Error(), "already started")
 }

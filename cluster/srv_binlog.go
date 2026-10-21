@@ -401,20 +401,33 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 		return
 	}
 
-	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
+	sizeLimit, masterJob, replicaJob := server.binlogPurgeJobs(isMaster)
+	if sizeLimit {
 		err := server.SetMaxBinlogTotalSize()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, err.Error())
 		}
-	} else if server.BinaryLogFilesCount > 2 {
-		if isMaster {
-			go server.JobBinlogPurgeMaster()
-		}
-
-		if !isMaster && cluster.Conf.ForceBinlogPurgeReplicas && server.HaveBinlogSlaveUpdates && !cluster.StateMachine.CurState.Search("WARN0107") && !server.IsIgnored() {
-			go server.JobBinlogPurgeSlave()
-		}
 	}
+	if masterJob {
+		go server.JobBinlogPurgeMaster()
+	}
+	if replicaJob {
+		go server.JobBinlogPurgeSlave()
+	}
+}
+
+// binlogPurgeJobs says how ForcePurgeBinlogs purges this server's binlogs: MariaDB 11.4 and
+// up by max_binlog_total_size, older ones by the master job. A replica is purged by the
+// replica job in both cases, to the master's oldest binlog: MariaDB purges by
+// max_binlog_total_size only while slave_connections_needed_for_purge replicas (1 by
+// default) are connected to the server, and nothing replicates from a replica, so its
+// binlogs grew until the data disk was full and the database crashed (dev3, 2026-10-21).
+func (server *ServerMonitor) binlogPurgeJobs(isMaster bool) (sizeLimit, masterJob, replicaJob bool) {
+	cluster := server.ClusterGroup
+	sizeLimit = server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4")
+	masterJob = !sizeLimit && isMaster && server.BinaryLogFilesCount > 2
+	replicaJob = !isMaster && server.BinaryLogFilesCount > 2 && cluster.Conf.ForceBinlogPurgeReplicas && server.HaveBinlogSlaveUpdates && !cluster.StateMachine.CurState.Search("WARN0107") && !server.IsIgnored()
+	return sizeLimit, masterJob, replicaJob
 }
 
 func (server *ServerMonitor) SetIsPurgingBinlog(value bool) {
