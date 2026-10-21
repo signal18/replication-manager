@@ -1104,6 +1104,19 @@ func SetSemiSyncSlave(db *sqlx.DB, myver *version.Version) (string, error) {
 	return query, err
 }
 
+// SetSemiSyncMasterEnabled switches only the source side of semi-sync on or off, the replica side
+// untouched (a child or staging master is itself a semi-sync replica of its parent). MariaDB and
+// MySQL / Percona before 8.0.26: rpl_semi_sync_master_enabled; MySQL / Percona 8.0.26+ (8.4, 9.x):
+// rpl_semi_sync_source_enabled.
+func SetSemiSyncMasterEnabled(db *sqlx.DB, myver *version.Version, on bool) (string, error) {
+	query := "SET GLOBAL rpl_semi_sync_master_enabled=?"
+	if myver.IsMySQLOrPercona() && myver.GreaterEqual("8.0.26") {
+		query = "SET GLOBAL rpl_semi_sync_source_enabled=?"
+	}
+	_, err := db.Exec(query, on)
+	return query, err
+}
+
 func SetSemiSyncMaster(db *sqlx.DB, myver *version.Version) (string, error) {
 
 	query := "SET GLOBAL rpl-semi-sync-master-enabled=1"

@@ -117,8 +117,14 @@ func (server *ServerMonitor) waitLogicalRestoreGate() {
 // on MariaDB and holds the binlogs of server and its replicas at 2G; stop ends both and lets the stream flow.
 func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 	cluster := server.ClusterGroup
-	if !server.IsMariaDB() || server.BinaryLogFile == "" {
+	if server.BinaryLogFile == "" {
 		return func() {}
+	}
+	// every flavor: semi-sync paused (MariaDB, MySQL, Percona); the gate and the binlog hold
+	// are MariaDB's
+	semiSync := server.pauseSemiSyncForRestore()
+	if !server.IsMariaDB() {
+		return semiSync
 	}
 	gate := newLogicalRestoreGate()
 	server.logicalRestoreGate.Store(gate)
@@ -129,6 +135,34 @@ func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 		server.logicalRestoreGate.Store(nil)
 		gate.resume()
 		held()
+		semiSync()
+	}
+}
+
+// pauseSemiSyncForRestore switches semi-sync off on the master while the restore runs: every
+// commit waited for a replica's ack (preprod belair-staging-test: 189189 commits, 3.3 ms each),
+// and the gate already holds the restore until the replicas applied each binlog. The returned
+// func switches it back on, only when it was on.
+func (server *ServerMonitor) pauseSemiSyncForRestore() (putBack func()) {
+	cluster := server.ClusterGroup
+	if server.Conn == nil || !server.IsSemiSyncMaster() {
+		return func() {}
+	}
+	if _, err := dbhelper.SetSemiSyncMasterEnabled(server.Conn, server.DBVersion, false); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+			"Restore on %s: could not pause semi-sync: %s", server.URL, err)
+		return func() {}
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+		"Restore on %s: semi-sync paused while the restore runs", server.URL)
+	return func() {
+		if _, err := dbhelper.SetSemiSyncMasterEnabled(server.Conn, server.DBVersion, true); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Restore on %s ended: could not put back semi-sync: %s", server.URL, err)
+			return
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+			"Restore on %s ended: semi-sync back on", server.URL)
 	}
 }
 
