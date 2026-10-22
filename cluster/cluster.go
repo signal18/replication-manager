@@ -1535,48 +1535,18 @@ func (cluster *Cluster) StateProcessing() {
 			if s.ErrKey == "WARN0073" || s.ErrKey == "WARN0175" {
 				cluster.releaseBackupSlot()
 			}
+			// WARN0074/WARN0076 resolved: the jobs script picked the physical reseed/flashback up.
+			// Its backup is streamed from when it was queued (dispatchPhysicalJob); this edge is
+			// a second chance only, a no-op once dispatched: a task picked up before any tick saw
+			// it waiting never opens the state, so the edge alone left it without a stream.
 			if s.ErrKey == "WARN0074" && servertoreseed != nil {
-				task := "reseed" + cluster.Conf.BackupPhysicalType
-
-				err := servertoreseed.ProcessReseedPhysical(task)
-				if err != nil {
-					// errServerNotReseeding means the reseed flag was already clear when
-					// ProcessReseedPhysical was entered -- most commonly because a
-					// terminal-job reconciliation already ran AfterJobProcess for this
-					// task on a job that finished successfully. Marking a finished job
-					// Halted here would relabel a success as a failure in the runtime
-					// cache, so skip the state write for that case only; any other
-					// error is a genuine failure and still gets halted.
-					if !errors.Is(err, errServerNotReseeding) {
-						servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
-					}
-					if servertoreseed.HasReseedingState(task) {
-						servertoreseed.SetInReseedBackup("")
-					}
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
-					servertoreseed.MarkReseedFailed(err)
-				}
-				// NOTE: a rejoin-armed reseed is NOT reconciled here — ProcessReseedPhysical
-				// only arms a detached WaitAndSendSST/SSTRunSender goroutine and returns nil,
-				// so err is not the real outcome. Reconciliation happens at true completion
-				// (IsReseeding clear) via reconcileDeferredRejoinReseeds.
+				cluster.dispatchPhysicalJob(servertoreseed, "reseed"+cluster.Conf.BackupPhysicalType, false)
 			}
 
 			// WARN0075 (logical reseed) is handled below, off the GetOpenStates()
 			// loop rather than this resolved-edge -- see the comment there for why.
 			if s.ErrKey == "WARN0076" && servertoreseed != nil {
-				task := "flashback" + cluster.Conf.BackupPhysicalType
-				err := servertoreseed.ProcessFlashbackPhysical(task)
-				if err != nil {
-					// See the matching errServerNotReseeding check under WARN0074 above.
-					if !errors.Is(err, errServerNotReseeding) {
-						servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
-					}
-					if servertoreseed.HasReseedingState(task) {
-						servertoreseed.SetInReseedBackup("")
-					}
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
-				}
+				cluster.dispatchPhysicalJob(servertoreseed, "flashback"+cluster.Conf.BackupPhysicalType, true)
 			}
 
 			if s.ErrKey == "WARN0111" {
@@ -1649,10 +1619,11 @@ func (cluster *Cluster) StateProcessing() {
 			// dependency on that agreement entirely: launchLogicalReseed is
 			// idempotent (HasReseedingState + an atomic dispatch flag), so
 			// calling it repeatedly while WARN0075 stays open is a safe no-op
-			// once the real attempt is in flight or done. Does not apply to
-			// WARN0074/WARN0076 (physical reseed/flashback): those dispatch via
-			// the dbjobs SSH cookie flow, which is already flagged unavailable
-			// with scheduler off (WARN0170).
+			// once the real attempt is in flight or done. WARN0074/WARN0076
+			// (physical reseed/flashback) are dispatched when their task is
+			// queued, once per reseed (dispatchPhysicalJob), their resolved
+			// edge being a second chance only: with the jobs script in a
+			// container (OpenSVC, K8s) they run with the scheduler off too.
 			if s.ErrKey == "WARN0075" {
 				if server := cluster.GetServerFromURL(s.ServerUrl); server != nil {
 					cluster.launchLogicalReseed(server)
@@ -1716,6 +1687,50 @@ func (cluster *Cluster) StateProcessing() {
 	}
 
 	cluster.CheckSendMail()
+}
+
+// dispatchPhysicalJob streams the backup of a physical reseed or flashback, once per reseed, off
+// the monitor loop: WaitAndSendSST waits until the jobs script listens (its task waiting, state
+// 2), so it starts as soon as the task is queued. Called at the queuing and again on the
+// WARN0074/WARN0076 resolved edge; the second call is a no-op. A second stream would wait for a
+// receiver already served and fail the job after sst-wait-max-loop.
+func (cluster *Cluster) dispatchPhysicalJob(server *ServerMonitor, task string, flashback bool) {
+	if !server.HasReseedingState(task) {
+		return
+	}
+	if !server.physicalJobDispatched.CompareAndSwap(false, true) {
+		return
+	}
+	cluster.trackTickGoroutine(func() {
+		process, what := server.ProcessReseedPhysical, "reseed"
+		if flashback {
+			process, what = server.ProcessFlashbackPhysical, "flashback"
+		}
+		err := process(task)
+		if err == nil {
+			// NOTE: a rejoin-armed reseed is NOT reconciled here — ProcessReseedPhysical only
+			// arms a detached WaitAndSendSST/SSTRunSender goroutine and returns nil, so err is
+			// not the real outcome. Reconciliation happens at true completion (IsReseeding
+			// clear) via reconcileDeferredRejoinReseeds.
+			return
+		}
+		// errServerNotReseeding means the reseed flag was already clear when the job was
+		// entered -- most commonly because a terminal-job reconciliation already ran
+		// AfterJobProcess for this task on a job that finished successfully. Marking a
+		// finished job Halted would relabel a success as a failure in the runtime cache, so
+		// skip the state write for that case only; any other error is a genuine failure and
+		// still gets halted.
+		if !errors.Is(err, errServerNotReseeding) {
+			server.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
+		}
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing %s for %s: %s", what, server.URL, err)
+		if !flashback {
+			server.MarkReseedFailed(err)
+		}
+	})
 }
 
 // launchLogicalReseed starts the async logical reseed for a server that has

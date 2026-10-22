@@ -33,6 +33,9 @@ func (cluster *Cluster) loadBinlogGapsLocked() {
 		return
 	}
 	cluster.binlogGaps = map[string]*BinlogGap{}
+	if cluster.WorkingDir == "" {
+		return // no working directory: kept in memory, never a file relative to the process
+	}
 	data, err := os.ReadFile(filepath.Join(cluster.WorkingDir, binlogGapsFile))
 	if err != nil {
 		return
@@ -50,6 +53,9 @@ func (cluster *Cluster) loadBinlogGapsLocked() {
 }
 
 func (cluster *Cluster) saveBinlogGapsLocked() {
+	if cluster.WorkingDir == "" {
+		return
+	}
 	list := make([]*BinlogGap, 0, len(cluster.binlogGaps))
 	for _, g := range cluster.binlogGaps {
 		list = append(list, g)
@@ -124,6 +130,9 @@ const binlogInSnapshotFile = "binlog-in-snapshot.json"
 
 func (cluster *Cluster) readBinlogInSnapshotLocked() map[string]string {
 	saved := map[string]string{}
+	if cluster.WorkingDir == "" {
+		return saved // no working directory: the queue's memory only, never a file relative to the process
+	}
 	data, err := os.ReadFile(filepath.Join(cluster.WorkingDir, binlogInSnapshotFile))
 	if err != nil {
 		return saved
@@ -143,6 +152,9 @@ func (cluster *Cluster) loadBinlogInSnapshot(serverURL string) string {
 }
 
 func (cluster *Cluster) saveBinlogInSnapshot(serverURL, newest string) {
+	if cluster.WorkingDir == "" {
+		return
+	}
 	cluster.binlogGapMu.Lock()
 	defer cluster.binlogGapMu.Unlock()
 	saved := cluster.readBinlogInSnapshotLocked()

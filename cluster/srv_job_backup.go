@@ -704,6 +704,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", backtype, server.URL)
+	cluster.dispatchPhysicalJob(server, task, false)
 
 	return nil
 }
@@ -831,6 +832,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s from path %s request for server: %s", backtype, backupfile, server.URL)
+	cluster.dispatchPhysicalJob(server, task, false)
 
 	return nil
 }
@@ -925,6 +927,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+	cluster.dispatchPhysicalJob(server, task, true)
 
 	return nil
 }

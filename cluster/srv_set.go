@@ -655,6 +655,7 @@ func (server *ServerMonitor) SetInReseedBackup(value string) {
 	// Clear on both arm and release: a stale phase from a prior reseed must
 	// never leak into a newly-armed one, and must not linger once idle.
 	server.reseedPhase.Store("")
+	server.physicalJobDispatched.Store(false)
 	if value == "" {
 		// Physical SST reseed (WaitAndSendSST/WaitAndSendSSTStream) has no
 		// synchronous scope to `defer stopReseedProgress()` from like the
@@ -690,6 +691,7 @@ func (server *ServerMonitor) TrySetInReseedBackup(task string) (bool, string) {
 	}
 
 	server.IsReseeding = task
+	server.physicalJobDispatched.Store(false) // a new reseed: its backup is not streamed yet
 	return true, ""
 }
 

@@ -315,6 +315,7 @@ type ServerMonitor struct {
 	reseedRateWindow         atomic.Value                       // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
 	reseedPhase              atomic.Value                       // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
 	logicalReseedDispatching atomic.Bool                        // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
+	physicalJobDispatched    atomic.Bool                        // the physical reseed/flashback armed by SetInReseedBackup was dispatched (dispatchPhysicalJob): its backup is streamed once
 	reseedLinksMu            sync.Mutex                         // guards reseedLinks: the reseed records, the refresh drops (#2093)
 	reseedLinks              reseedStoppedLinks                 // the channels a reseed stopped and has not started again, WARN0252 while one does not run
 	// Lock ordering (to prevent deadlocks):

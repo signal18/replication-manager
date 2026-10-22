@@ -155,7 +155,9 @@ func (server *ServerMonitor) GetJobCount(conn *sqlx.Conn, task string, state int
 	cluster := server.ClusterGroup
 
 	// Query to count rows
-	query := "SELECT COUNT(*) FROM replication_manager_schema.jobs WHERE task=? AND state=?"
+	// the live task only (done=0): a finished or failed one of the same name keeps its last state,
+	// and a leftover state=2 row would read as a receiver ready while none listens
+	query := "SELECT COUNT(*) FROM replication_manager_schema.jobs WHERE task=? AND state=? AND done=0"
 
 	// Create the initial context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout)*time.Second)
