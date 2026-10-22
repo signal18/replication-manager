@@ -35,13 +35,14 @@ type binlogCopyQueue struct {
 	// is kept while a binlog-only snapshot is queued or running, then removed once it holds it.
 	// When that snapshot is not taken (binlogSnapshotRefusal) or fails, the copy is removed
 	// anyway: the purge policy and the space always win, the loss is tracked (BinlogGap).
-	inSnapshot     string    // the newest binlog copy the last snapshot held, "" unknown
-	held           int       // the copies beyond the keep window kept for the snapshot
-	heldOldest     string    // the oldest of them
-	heldSince      time.Time // since when copies are held
-	needSnapshot   bool      // the keep removal held copies: a snapshot is to take
-	snapshotting   bool      // the binlog-only snapshot is queued or running
-	snapshotFailed string    // why the last one failed, until the keep removal took it in
+	inSnapshot       string    // the newest binlog copy the last snapshot held, "" unknown
+	inSnapshotLoaded bool      // inSnapshot was read from binlogInSnapshotFile
+	held             int       // the copies beyond the keep window kept for the snapshot
+	heldOldest       string    // the oldest of them
+	heldSince        time.Time // since when copies are held
+	needSnapshot     bool      // the keep removal held copies: a snapshot is to take
+	snapshotting     bool      // the binlog-only snapshot is queued or running
+	snapshotFailed   string    // why the last one failed, until the keep removal took it in
 }
 
 // binlogCopyQueueMax bounds the binlogs a server holds to copy: the keep window, beyond which a
@@ -242,26 +243,53 @@ func binlogPrefix(name string) string {
 }
 
 // recordBinlogsInSnapshot: a snapshot of the backup directory holds its binlog copies up to
-// newest.
+// newest. Kept across restarts (binlogInSnapshotFile).
 func (server *ServerMonitor) recordBinlogsInSnapshot(newest string) {
 	if newest == "" {
 		return
 	}
+	server.loadBinlogsInSnapshot()
 	q := &server.binlogCopies
 	q.mu.Lock()
-	if binlogNumber(newest) > binlogNumber(q.inSnapshot) || binlogPrefix(newest) != binlogPrefix(q.inSnapshot) {
+	changed := binlogNumber(newest) > binlogNumber(q.inSnapshot) || binlogPrefix(newest) != binlogPrefix(q.inSnapshot)
+	if changed {
 		q.inSnapshot = newest
+	}
+	q.mu.Unlock()
+	if changed {
+		server.ClusterGroup.saveBinlogInSnapshot(server.URL, newest)
+	}
+}
+
+// loadBinlogsInSnapshot reads, once, the newest binlog copy a snapshot held before a restart.
+func (server *ServerMonitor) loadBinlogsInSnapshot() {
+	q := &server.binlogCopies
+	q.mu.Lock()
+	loaded := q.inSnapshotLoaded
+	q.inSnapshotLoaded = true
+	q.mu.Unlock()
+	if loaded {
+		return
+	}
+	saved := server.ClusterGroup.loadBinlogInSnapshot(server.URL)
+	q.mu.Lock()
+	if q.inSnapshot == "" {
+		q.inSnapshot = saved
 	}
 	q.mu.Unlock()
 }
 
-// binlogCopyInSnapshot: a snapshot holds the copy of binlog; an unknown snapshot (a restart)
-// holds none.
-func (server *ServerMonitor) binlogCopyInSnapshot(binlog string) bool {
+// binlogCopyInSnapshot: whether a snapshot holds the copy of binlog, and whether that is known:
+// it is not when no snapshot of the backup directory was recorded yet, before or after a restart.
+func (server *ServerMonitor) binlogCopyInSnapshot(binlog string) (in, known bool) {
+	server.loadBinlogsInSnapshot()
 	q := &server.binlogCopies
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return q.inSnapshot != "" && binlogPrefix(binlog) == binlogPrefix(q.inSnapshot) && binlogNumber(binlog) <= binlogNumber(q.inSnapshot)
+	if q.inSnapshot == "" {
+		return false, false
+	}
+	return binlogPrefix(binlog) == binlogPrefix(q.inSnapshot) && binlogNumber(binlog) <= binlogNumber(q.inSnapshot), true
 }
 
 // holdBinlogCopies records the copies beyond the keep window kept for the binlog-only
@@ -300,6 +328,13 @@ func (server *ServerMonitor) binlogSnapshotRefusal() string {
 	if cluster.Conf.BackupArchiveRemoveOriginal {
 		return "backup-archive-remove-original: a binlog-only snapshot would hold no backup"
 	}
+	return server.backupDiskOverWarn()
+}
+
+// backupDiskOverWarn is why the disk of the server's backup directory has no room to keep binlog
+// copies beyond the keep window, "" it has.
+func (server *ServerMonitor) backupDiskOverWarn() string {
+	cluster := server.ClusterGroup
 	if warn := cluster.Conf.BackupDiskTresholdWarn; warn > 0 && cluster.DiskStatManager != nil {
 		if stat, err := cluster.GetDiskStat(server.GetMyBackupDirectory()); err == nil && stat.UsedPercent >= float64(warn) {
 			return fmt.Sprintf("the disk of the backup directory is %.0f%% used, over backup-disk-treshold-warn (%d%%)", stat.UsedPercent, warn)

@@ -221,7 +221,7 @@ type Cluster struct {
 	backupMount    backupMount                // the backups folder mount (#2091)
 	snapbackMu     sync.Mutex                 // guards snapbacks
 	snapbacks      map[string]*SnapbackState  // server URL -> its backup directory's snapback (#2091), nil until read
-	binlogGapMu    sync.Mutex                 // guards binlogGaps
+	binlogGapMu    sync.Mutex                 // guards binlogGaps and binlogInSnapshotFile
 	binlogGaps     map[string]*BinlogGap      // server URL -> its lost binlog continuity in the archive (#2091), nil until read
 	catalogueMu    sync.Mutex                 // guards catalogueSaved
 	catalogueSaved map[string][]byte          // global backup catalogue file -> its content last written (#2091)

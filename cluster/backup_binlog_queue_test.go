@@ -196,6 +196,7 @@ func TestBinlogCopyWorkerSnapshotsHeldCopies(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	server.recordBinlogsInSnapshot("binlog.000007") // a backup's snapshot held the copies up to 000007
 	server.requeueBinlogCatchUp("binlog.000010")
 
 	deadline := time.Now().Add(5 * time.Second)
@@ -260,6 +261,7 @@ func TestKeepRemovalLosesBinlogsNotBackups(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	server.recordBinlogsInSnapshot("binlog.000006") // a backup's snapshot held the copies up to 000006
 	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
 		t.Fatal(err)
 	}
@@ -356,5 +358,54 @@ func TestBinlogPurgedOnServer(t *testing.T) {
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Error(err)
+	}
+}
+
+// #2091: the newest binlog copy a snapshot held is kept across restarts; before any is recorded a
+// copy beyond the keep window is kept, never counted as lost, even with the binlog-only snapshot
+// refused (backup-archive-remove-original)
+func TestKeepRemovalSnapshotKnownAcrossRestart(t *testing.T) {
+	c, server := newTestRuntimeOnlyClusterServer(t, "binlog-restart", "db1", "3306")
+	c.WorkingDir = t.TempDir()
+	c.Conf.BackupBinlogs = true
+	c.Conf.BackupBinlogsKeep = 2
+	c.Conf.BackupRestic = true
+	c.Conf.BackupArchiveRemoveOriginal = true
+	server.State = stateMaster
+	server.BinaryLogFile = "binlog.000011"
+	c.master = server
+	dir := server.GetMyBackupDirectory()
+	for _, b := range []string{"binlog.000007", "binlog.000008", "binlog.000009", "binlog.000010"} {
+		if err := os.WriteFile(filepath.Join(dir, b), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// no snapshot recorded: every copy kept, no gap
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	for _, b := range []string{"binlog.000007", "binlog.000008"} {
+		if !fileExists(filepath.Join(dir, b)) {
+			t.Fatalf("%s removed while no snapshot is recorded", b)
+		}
+	}
+	if g := c.BinlogGaps(); len(g) != 0 {
+		t.Fatalf("a copy maybe in the archive counted as lost: %+v", g)
+	}
+
+	// a backup's snapshot held them up to 000008, then a restart: the copies it holds go, no gap
+	server.recordBinlogsInSnapshot("binlog.000008")
+	server.binlogCopies = binlogCopyQueue{}
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	for b, kept := range map[string]bool{"binlog.000007": false, "binlog.000008": false, "binlog.000009": true, "binlog.000010": true} {
+		if fileExists(filepath.Join(dir, b)) != kept {
+			t.Errorf("%s kept %v, want %v", b, !kept, kept)
+		}
+	}
+	if g := c.BinlogGaps(); len(g) != 0 {
+		t.Fatalf("copies in a snapshot counted as lost after a restart: %+v", g)
 	}
 }

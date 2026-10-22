@@ -6045,7 +6045,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	if archiveOn {
 		refusal = server.binlogSnapshotRefusal()
 	}
-	var held, lost []string
+	var held, lost, unknown []string
 	for _, file := range files {
 		if isBackupIntegritySidecar(file.Name()) {
 			continue
@@ -6059,9 +6059,15 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		logicalName := logicalArtifactName(file.Name())
 		_, ok := keeping[logicalName]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
-			if archiveOn && !server.binlogCopyInSnapshot(logicalName) {
+			if in, known := server.binlogCopyInSnapshot(logicalName); archiveOn && !in {
 				if refusal == "" {
 					held = append(held, logicalName)
+					continue
+				}
+				if !known && server.backupDiskOverWarn() == "" {
+					// no snapshot recorded yet: the copy may well be in the archive, it is kept
+					// until a backup's snapshot tells, not counted as lost; the space still wins
+					unknown = append(unknown, logicalName)
 					continue
 				}
 				lost = append(lost, logicalName)
@@ -6084,6 +6090,9 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	server.holdBinlogCopies(held)
 	for _, b := range lost {
 		cluster.noteBinlogGap(server, b, "removed from the backup directory in no snapshot: "+refusal)
+	}
+	if len(unknown) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog copies of %s kept beyond backup-binlogs-keep until a backup's snapshot records them: %v", server.URL, unknown)
 	}
 
 	server.WriteBackupBinlogMetadata()

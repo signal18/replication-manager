@@ -116,3 +116,46 @@ func (cluster *Cluster) BinlogGaps() []BinlogGap {
 	sort.Slice(out, func(i, j int) bool { return out[i].Server < out[j].Server })
 	return out
 }
+
+// binlogInSnapshotFile keeps, by server, the newest binlog copy a snapshot of its backup
+// directory held: without it a restart would take every copy beyond the keep window for one
+// no snapshot holds.
+const binlogInSnapshotFile = "binlog-in-snapshot.json"
+
+func (cluster *Cluster) readBinlogInSnapshotLocked() map[string]string {
+	saved := map[string]string{}
+	data, err := os.ReadFile(filepath.Join(cluster.WorkingDir, binlogInSnapshotFile))
+	if err != nil {
+		return saved
+	}
+	if err := json.Unmarshal(data, &saved); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Binlog snapshots %s not read: %s", binlogInSnapshotFile, err)
+		return map[string]string{}
+	}
+	return saved
+}
+
+// loadBinlogInSnapshot is the newest binlog copy of server a snapshot held, "" unknown.
+func (cluster *Cluster) loadBinlogInSnapshot(serverURL string) string {
+	cluster.binlogGapMu.Lock()
+	defer cluster.binlogGapMu.Unlock()
+	return cluster.readBinlogInSnapshotLocked()[serverURL]
+}
+
+func (cluster *Cluster) saveBinlogInSnapshot(serverURL, newest string) {
+	cluster.binlogGapMu.Lock()
+	defer cluster.binlogGapMu.Unlock()
+	saved := cluster.readBinlogInSnapshotLocked()
+	saved[serverURL] = newest
+	data, err := json.MarshalIndent(saved, "", "\t")
+	if err != nil {
+		return
+	}
+	path := filepath.Join(cluster.WorkingDir, binlogInSnapshotFile)
+	if err := os.WriteFile(path+".tmp", data, 0600); err == nil {
+		err = os.Rename(path+".tmp", path)
+	}
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Binlog snapshots %s not written: %s", binlogInSnapshotFile, err)
+	}
+}
