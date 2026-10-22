@@ -78,9 +78,18 @@ func computeBinlogBudget(in binlogBudgetInput) binlogBudget {
 	return b
 }
 
-// binlogTotalSizeTarget is the max_binlog_total_size repman keeps on a MariaDB 11.4+ server: the
-// plan's under the dynamic config (prov-db-binlog-total-size-pct of prov-db-disk-size), set live
-// whether force-binlog-purge is on or not; else the binlog budget.
+// BinlogLimit is what the dashboard shows of the primary's binlog size limit.
+type BinlogLimit struct {
+	Bytes   int64  `json:"bytes"`
+	Source  string `json:"source"`  // how it is set
+	Owner   string `json:"owner"`   // "plan" (dynamic config), "set" (force-binlog-purge-total-size), "automatic"
+	AtFloor bool   `json:"atFloor"` // the automatic budget held at two binlog files
+}
+
+// binlogTotalSizeTarget is the binlog size limit: the plan's under the dynamic config
+// (prov-db-binlog-total-size-pct of prov-db-disk-size), else the binlog budget. On MariaDB 11.4+
+// it is max_binlog_total_size, set live whether force-binlog-purge is on or not under the dynamic
+// config; before 11.4 the master purge job's bound.
 func (server *ServerMonitor) binlogTotalSizeTarget() (int64, string) {
 	cluster := server.ClusterGroup
 	if cluster.Conf.ProvDBApplyDynamicConfig {
@@ -223,14 +232,22 @@ func (cluster *Cluster) checkBinlogBudgetStates() {
 	master := cluster.GetMaster()
 	dynamic := cluster.Conf.ProvDBApplyDynamicConfig
 	if master == nil || master.IsDown() || (!cluster.Conf.ForceBinlogPurge && !dynamic) {
+		cluster.BinlogLimit = nil
 		return
 	}
-	limit, _ := master.binlogTotalSizeTarget()
+	limit, source := master.binlogTotalSizeTarget()
+	view := &BinlogLimit{Bytes: limit, Source: source, Owner: "plan"}
 	if !dynamic {
-		if b := master.BinlogBudget(); b.AtFloor {
+		b := master.BinlogBudget()
+		view.Owner, view.AtFloor = "automatic", b.AtFloor
+		if cluster.Conf.ForceBinlogPurgeTotalSize > 0 {
+			view.Owner = "set"
+		}
+		if b.AtFloor {
 			cluster.SetState("WARN0264", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0264"], master.URL, humanBytes(b.Bytes), b.Source), ErrFrom: "PURGE", ServerUrl: master.URL})
 		}
 	}
+	cluster.BinlogLimit = view
 	if !master.IsMariaDB() || !master.DBVersion.GreaterEqual("11.4") {
 		return
 	}

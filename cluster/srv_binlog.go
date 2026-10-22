@@ -617,8 +617,8 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	/**
 	* The binlogs beyond the binlog budget (force-binlog-purge-total-size, else the disk's) are purged
 	 **/
-	if budget := server.BinlogBudget(); budget.Bytes > 0 {
-		var totalSize, maxSize uint = 0, uint(budget.Bytes)
+	if limit, _ := server.binlogTotalSizeTarget(); limit > 0 {
+		var totalSize, maxSize uint = 0, uint(limit)
 		var until = ""
 
 		// DESC for setting the boundary

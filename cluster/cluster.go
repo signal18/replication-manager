@@ -318,6 +318,9 @@ type Cluster struct {
 	// StateRemediations is the remediation plan for actionable operational states (WARN0255,
 	// WARN0256 a snapback), shown next to them in the health alerts.
 	StateRemediations RemediationPlan `json:"stateRemediations" groups:"web"`
+	// BinlogLimit is the binlog size limit in force on the primary (#2142): the plan's under the
+	// dynamic config, else the binlog budget; shown under force-binlog-purge-total-size.
+	BinlogLimit *BinlogLimit `json:"binlogLimit,omitempty" groups:"web"`
 	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates []state.State `json:"workloadStates" groups:"web"`

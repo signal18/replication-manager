@@ -39,3 +39,11 @@ Live check (dev3 2026-10-22, dynamic config off, plan 9G): a rotation set db2 to
   needing a binlog older than the oldest the budget keeps (`oldestBinlogInBudget`: the newest
   binlogs adding up to the budget) gets WARN0265: space wins, it needs a reseed unless it
   reconnects first.
+
+## In the dashboard (T6)
+`checkBinlogBudgetStates` publishes `Cluster.BinlogLimit` (`binlogLimit` in the cluster JSON:
+bytes, source, owner plan / set / automatic, atFloor) for the primary, nil when neither
+`force-binlog-purge` nor the dynamic config is on. Backup settings show it under the
+`force-binlog-purge-total-size` slider: "0 = automatic", the limit in force and how it is set,
+or that the plan sets it. Both purge paths use the same limit (`binlogTotalSizeTarget`): before
+11.4 the master job used the budget, the plan's size under the dynamic config ignored.

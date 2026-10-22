@@ -231,7 +231,15 @@ function BackupSettings({ selectedCluster, user }) {
   const hBackupBinlogs = `**Backup Binlogs**\n\nEnables automatic backup of binary log files alongside the main backup.\nRequired for point-in-time recovery.\n\nConfig: \`backup-binlogs\``
   const hBackupBinlogsKeep = `**Backup Binlogs Keep Files**\n\nNumber of binary log backup files to retain. Older files are automatically deleted.\n\nConfig: \`backup-binlogs-keep\``
   const hEnforcePurge = `**Enforce Binlog Purge**\n\nWhen enabled, replication-manager automatically purges binary logs from all servers once they have been replicated and backed up.\n\nConfig: \`force-binlog-purge\``
-  const hMaxBinlogSize = `**Max Binlog Total Size**\n\nWith Force binlog purge, the binlog budget in GB: the primary's binlogs beyond it are purged. 0 (default) follows the disk: (plan disk - data) / 2 on a provisioned cluster, else the binlogs plus half the free space of the data disk, else 30; never below two binlog files.\n\nConfig: \`force-binlog-purge-total-size\``
+  // the limit in force on the primary (#2142): 0 is automatic, the plan sets it under the dynamic config
+  const binlogLimitText = (limit, setting) => {
+    const auto = !setting ? '0 = automatic. ' : ''
+    if (!limit) return auto + 'In force once Force binlog purge or the dynamic config is on.'
+    const size = formatBytes(limit.bytes)
+    if (limit.owner === 'plan') return `The plan sets it under the dynamic config: ${size} (${limit.source}); this setting is not used.`
+    return `${auto}In force: ${size} (${limit.source})${limit.atFloor ? ', at its floor: WARN0264' : ''}.`
+  }
+  const hMaxBinlogSize = `**Max Binlog Total Size**\n\nWith Force binlog purge, the binlog budget in GB: the primary's binlogs beyond it are purged. 0 (default) is automatic, it follows the disk: (plan disk - data) / 2 on a provisioned cluster, else the binlogs plus half the free space of the data disk, else 30; never below two binlog files. Under the dynamic config the plan sets it instead (prov-db-binlog-total-size-pct of the plan's disk). The limit in force is shown under the slider.\n\nConfig: \`force-binlog-purge-total-size\``
   const hMinReplicas = `**Minimum Replicas Needed for Purging**\n\nMinimum number of replicas that must have received a binary log event before it is eligible for purging on the master.\n\nConfig: \`force-binlog-purge-min-replica\``
   const hPurgeOnRestore = `**Enforce Binlog Purge on Restore**\n\nWhen enabled, binary logs are purged on the restored node immediately after a reseed completes.\n\nConfig: \`force-binlog-purge-on-restore\``
   const hPurgeOnReplicas = `**Enforce Binlog Purge on Replicas**\n\nWhen enabled, binary log purge is enforced on all replica servers in addition to the master.\n\nConfig: \`force-binlog-purge-replicas\``
@@ -750,9 +758,14 @@ function BackupSettings({ selectedCluster, user }) {
       key: 'Max Binlog Total Size (GB)',
       help: h(hMaxBinlogSize, 'Max Binlog Total Size'),
       value: (
-        <RMSlider value={selectedCluster?.config?.forceBinlogPurgeTotalSize} max={256} showMarkAtInterval={64}
-          confirmTitle='Confirm change force-binlog-purge-total-size to: '
-          onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'force-binlog-purge-total-size', value: val }))} />
+        <Stack spacing={1}>
+          <RMSlider value={selectedCluster?.config?.forceBinlogPurgeTotalSize} max={256} showMarkAtInterval={64}
+            confirmTitle='Confirm change force-binlog-purge-total-size to: '
+            onChange={(val) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'force-binlog-purge-total-size', value: val }))} />
+          <Text fontSize='sm'>
+            {binlogLimitText(selectedCluster?.binlogLimit, selectedCluster?.config?.forceBinlogPurgeTotalSize)}
+          </Text>
+        </Stack>
       )
     },
     {
