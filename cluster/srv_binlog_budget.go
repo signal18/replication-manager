@@ -69,6 +69,8 @@ func computeBinlogBudget(in binlogBudgetInput) binlogBudget {
 	if size <= 0 {
 		size = defaultMaxBinlogSize
 	}
+	// whole binlog files: the budget does not move with every write, nor max_binlog_total_size
+	b.Bytes -= b.Bytes % size
 	if floor := 2 * size; b.Bytes < floor {
 		b.Bytes, b.AtFloor = floor, true
 		b.Source += fmt.Sprintf(", raised to two binlogs (%s)", humanBytes(floor))

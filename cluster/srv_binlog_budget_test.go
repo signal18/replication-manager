@@ -28,6 +28,7 @@ func TestComputeBinlogBudget(t *testing.T) {
 		{"measured disk: binlogs + free / 2", binlogBudgetInput{dataBytes: -1, freeBytes: 10 * G, binlogBytes: 3 * G, maxBinlogSize: G}, 8 * G, false},
 		{"nothing known", binlogBudgetInput{dataBytes: -1, freeBytes: -1, maxBinlogSize: G}, 30 * G, false},
 		{"data fills the plan: floor", binlogBudgetInput{planBytes: 10 * G, dataBytes: 9 * G, freeBytes: -1, maxBinlogSize: G}, 2 * G, true},
+		{"rounded down to whole binlogs", binlogBudgetInput{dataBytes: -1, freeBytes: 5*G + 3, binlogBytes: G + 7, maxBinlogSize: G}, 3 * G, false},
 		{"floor from max_binlog_size", binlogBudgetInput{dataBytes: -1, freeBytes: 0, maxBinlogSize: 256 << 20}, 512 << 20, true},
 	}
 	for _, c := range cases {

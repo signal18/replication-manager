@@ -512,7 +512,6 @@ func (server *ServerMonitor) GetTimestampUsingRegex(str string) (int64, error) {
 }
 
 func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
-	cluster := server.ClusterGroup
 	// the binlog budget: force-binlog-purge-total-size, else the disk's (srv_binlog_budget.go)
 	totalsize := int(server.BinlogBudget().Bytes)
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
