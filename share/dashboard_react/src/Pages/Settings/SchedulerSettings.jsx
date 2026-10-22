@@ -48,7 +48,7 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
   const hSchemaMonitor = cronHelp('Monitor Schema Changes', 'Schedules schema change detection scans instead of scanning every monitoring cycle.', 'monitoring-schema-scheduler / monitoring-schema-scheduler-cron')
   const hChecksumTables = cronHelp('Monitor Checksum Tables', 'Schedules periodic table checksum verification to detect silent data divergence.', 'monitoring-checksum-scheduler / monitoring-checksum-scheduler-cron')
 
-  const hJobsMode = `**Job Dispatch Mode**\n\nControls how remote maintenance tasks are dispatched to database hosts:\n\n- **sql** (default): Tasks are inserted into the \`replication_manager_schema.jobs\` table. The dbjobs script polls this table.\n- **api**: Tasks are signaled via cookies. The dbjobs script checks cookies via the repman REST API. No jobs table needed.\n\nConfig: \`scheduler-jobs-mode\``
+  const hJobsMode = `**Job Dispatch Mode**\n\nControls how remote maintenance tasks are dispatched to database hosts:\n\n- **api** (default): Tasks are signaled via cookies. The dbjobs script checks cookies and reports its jobs via the repman REST API. Nothing is written in the database for the jobs.\n- **sql**: Tasks are inserted into the \`replication_manager_schema.jobs\` table. The dbjobs script polls this table.\n\nConfig: \`scheduler-jobs-mode\``
   const hExecRemote = `**Force Remote Execution**\n\nComma-separated list of tasks to force remote execution via the dbjobs script instead of running locally in replication-manager.\n\nApplies to tasks that support both modes: \`mysqldump\`, \`mydumper\`, \`optimize\`, \`stop\`, \`start\`, \`restart\`.\n\nExample: \`mysqldump,optimize\` — optimize will use \`mysqlcheck\` on the DB host.\n\n**mysqldump**: the logical backup runs the dump client of the DB host (no version mismatch with replication-manager's client) and streams back to replication-manager, which compresses it or splits it (splitdump) as for a local dump, in both job dispatch modes. The DB credentials stay on the DB host. dbjobs must run the script of this release. Timeouts: Backup settings, Remote Dump Pickup / Report Timeout.\n\nConfig: \`scheduler-jobs-exec-remote\``
 
   const sc = (sw, swKey, cronKey, cronSetting, title, hasSwitch = true) => (
@@ -61,10 +61,10 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
     { key: 'Job Dispatch Mode', help: h(hJobsMode, 'Job Dispatch Mode'), value: (
       <Dropdown
         options={[
-          { value: 'sql', label: 'SQL (poll jobs table)' },
-          { value: 'api', label: 'API (cookie-based)' }
+          { value: 'api', label: 'API (cookie-based)' },
+          { value: 'sql', label: 'SQL (poll jobs table)' }
         ]}
-        selectedValue={selectedCluster?.config?.schedulerJobsMode || 'sql'}
+        selectedValue={selectedCluster?.config?.schedulerJobsMode || 'api'}
         confirmTitle="Confirm job dispatch mode: "
         onChange={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'scheduler-jobs-mode', value: value }))}
       />
