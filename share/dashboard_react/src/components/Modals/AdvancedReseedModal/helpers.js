@@ -68,14 +68,13 @@ const parseSnapshotTags = (tags = []) => {
   return meta
 }
 
-const extractServerInfoFromPath = (path, tags = []) => {
+const extractServerInfoFromPath = (path) => {
   try {
     if (!path) {
       return {
         clusterName: 'N/A',
         serverHost: 'N/A',
         serverPort: 'N/A',
-        isAdhoc: false,
         backupTool: null,
         epoch: null
       }
@@ -87,41 +86,34 @@ const extractServerInfoFromPath = (path, tags = []) => {
         clusterName: 'N/A',
         serverHost: 'N/A',
         serverPort: 'N/A',
-        isAdhoc: false,
         backupTool: null,
         epoch: null
       }
     }
 
-    const isAdhocTagged = tags.some((tag) => tag === 'adhoc' || tag.includes('line:adhoc'))
+    // a snapshot of one backup folder (taken by older releases): <server>/<tool>.<epoch>
     const lastSegment = segments[segments.length - 1]
 
     const mysqldumpPattern = /^mysqldump\.(\d+)\.sql\.gz$/
     const dumplingPattern = /^dumpling\.(\d+)$/
     const mydumperPattern = /^mydumper\.(\d+)$/
 
-    let isAdhoc = false
     let backupTool = null
     let epoch = null
     let serverSegmentIndex = segments.length - 1
 
     if (mysqldumpPattern.test(lastSegment)) {
-      isAdhoc = true
       backupTool = 'mysqldump'
       epoch = lastSegment.match(mysqldumpPattern)[1]
       serverSegmentIndex = segments.length - 2
     } else if (dumplingPattern.test(lastSegment)) {
-      isAdhoc = true
       backupTool = 'dumpling'
       epoch = lastSegment.match(dumplingPattern)[1]
       serverSegmentIndex = segments.length - 2
     } else if (mydumperPattern.test(lastSegment)) {
-      isAdhoc = true
       backupTool = 'mydumper'
       epoch = lastSegment.match(mydumperPattern)[1]
       serverSegmentIndex = segments.length - 2
-    } else if (isAdhocTagged) {
-      isAdhoc = true
     }
 
     const serverSegment = segments[serverSegmentIndex]
@@ -136,7 +128,6 @@ const extractServerInfoFromPath = (path, tags = []) => {
         clusterName,
         serverHost,
         serverPort,
-        isAdhoc,
         backupTool,
         epoch
       }
@@ -146,7 +137,6 @@ const extractServerInfoFromPath = (path, tags = []) => {
       clusterName,
       serverHost: serverSegment,
       serverPort: 'N/A',
-      isAdhoc,
       backupTool,
       epoch
     }
@@ -155,7 +145,6 @@ const extractServerInfoFromPath = (path, tags = []) => {
       clusterName: 'N/A',
       serverHost: 'N/A',
       serverPort: 'N/A',
-      isAdhoc: false,
       backupTool: null,
       epoch: null
     }

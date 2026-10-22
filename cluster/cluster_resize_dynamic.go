@@ -1541,8 +1541,10 @@ type DiskQuotaAbove struct {
 
 // applyDiskResize is the glue between the declared disk (prov-db-disk-size, just moved
 // from fromGB to toGB by the follow rule, the setter or a plan change) and the volumes:
-// every up server's data volume is asked to grow to the new size through the resizer.
-// A refusal is a tracked state, never a retry loop: the next move asks again.
+// every server's data volume is asked to grow to the new size through the resizer, a
+// down one too: a full data disk crashes the database, and that is when the grow is
+// needed; the volume resize does not need the database running. A refusal is a tracked
+// state, never a retry loop: the next move asks again.
 func (cluster *Cluster) applyDiskResize(fromGB, toGB int) {
 	if toGB == fromGB {
 		return
@@ -1550,7 +1552,7 @@ func (cluster *Cluster) applyDiskResize(fromGB, toGB int) {
 	grow := toGB > fromGB
 	rz := cluster.resourceResizer()
 	for _, s := range cluster.Servers {
-		if s == nil || s.IsDown() {
+		if s == nil {
 			continue
 		}
 		applied, err := rz.ResizeDisk(s, toGB)

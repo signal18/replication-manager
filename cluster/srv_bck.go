@@ -64,11 +64,11 @@ func (server *ServerMonitor) FetchLastBackupMetadata() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No physical backup metadata, but cookie found on %s", server.URL)
 		}
 	}
-	// the backups of the folder no metadata describes, and the ad-hoc ones (backup_discovery.go);
-	// with backup-discovery off, the ad-hoc and registered ones only
+	// the backups of the folder no metadata describes, and the registered ones
+	// (backup_discovery.go); with backup-discovery off, the registered ones only
 	if !cluster.Conf.BackupDiscovery {
-		if _, err := server.LoadAdhocBackupMetadata(); err != nil && !os.IsNotExist(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup metadata on %s: ad-hoc metadata not all read: %s", server.URL, err)
+		if _, err := server.LoadRegisteredBackupMetadata(); err != nil && !os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup metadata on %s: registered backup metadata not all read: %s", server.URL, err)
 		}
 	} else if _, err := server.DiscoverBackups(); err != nil {
 		level := config.LvlWarn
@@ -83,6 +83,8 @@ func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 	cluster := server.ClusterGroup
 	if meta, err := server.ReadLastMetadata(method); err == nil {
 		server.closeInterruptedVerification(meta)
+		// a snapshot recorded before the archive list joins the cluster's archive (#2091)
+		server.glueLegacyArchiveRef(meta)
 		cluster.BackupMetaMap.Set(meta.Id, meta)
 		if *latest < meta.Id {
 			*latest = meta.Id
@@ -123,7 +125,7 @@ func (server *ServerMonitor) ReadLastMetadata(method string) (*backupmgr.BackupM
 		methodType = backupmgr.BackupMethodLogical
 	}
 	meta.BackupMethod = methodType
-	server.ensureBackupSessionID(meta, methodType, meta.StartTime, meta.BackupLine)
+	server.ensureBackupSessionID(meta, methodType, meta.StartTime)
 
 	return meta, nil
 }
@@ -280,8 +282,9 @@ func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.B
 		return
 	}
 
-	lastmeta.ResticSnapshotID = snapshotID
-	lastmeta.ResticFilePath = cluster.ResticManager.GetRepoPath()
+	// glued to the attached archive by its name (#2091)
+	lastmeta.SetArchiveSnapshot(cluster.Conf.AttachedArchive(), snapshotID)
+	lastmeta.ResticFilePath = cluster.attachedArchiveRepoPath()
 
 	snapshotLabel := snapshotID
 	if len(snapshotLabel) > 8 {
@@ -292,7 +295,7 @@ func (server *ServerMonitor) UpdateBackupMetadataWithRestic(backtype backupmgr.B
 	// A scheduled backup shares its meta file with the next scheduled run: only the
 	// current one writes it. The in-memory meta above is still updated on purpose: it is
 	// the BackupMetaMap entry of that older backup, which keeps its snapshot.
-	if lastmeta != current && !lastmeta.IsAdhoc() {
+	if lastmeta != current && !lastmeta.Discovered {
 		return
 	}
 	if err := server.writeBackupMetaFileLocked(lastmeta); err != nil {

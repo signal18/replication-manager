@@ -31,11 +31,13 @@ var (
 	ErrBackupVerificationFailed = errors.New("its last verification failed")
 	// ErrBackupArchived: the backup already has its archive snapshot.
 	ErrBackupArchived = errors.New("already archived")
-	// ErrBackupArchiveUnavailable: no archive to push to (backup-restic off, or its manager
-	// not started).
-	ErrBackupArchiveUnavailable = errors.New("no archive: backup-restic is off or restic is not started")
+	// ErrBackupArchiveUnavailable: no archive to push to: no archive plugin attached, and
+	// backup-restic off or its manager not started.
+	ErrBackupArchiveUnavailable = errors.New("no archive: attach an archive (Archive settings)")
 	// ErrBackupArchiving: an archive of the backup already runs (its test restore or its push).
 	ErrBackupArchiving = errors.New("the backup is already being archived")
+	// ErrBackupJobRunning: a backup job writes the backup directory the snapshot would take.
+	ErrBackupJobRunning = errors.New("a backup is being written: archive it once the backup ends")
 )
 
 // backupVerificationOf returns a copy of the last verification of meta, read under its
@@ -79,13 +81,25 @@ func (cluster *Cluster) registeredReseedRefusal(meta *backupmgr.BackupMetadata) 
 	return nil
 }
 
-// backupArchived tells whether meta has its archive snapshot.
+// backupArchived tells whether meta has its snapshot in the attached archive (#2091: the
+// snapshots are recorded by archive name, ResticSnapshotID only before the archive list), or
+// is kept only in an archive. A backup held by a detached archive only can be archived into
+// the attached one.
 func (cluster *Cluster) backupArchived(meta *backupmgr.BackupMetadata) bool {
 	if server := cluster.GetServerFromURL(meta.Source); server != nil {
 		server.backupMetaMutex.Lock()
 		defer server.backupMetaMutex.Unlock()
 	}
-	return meta.ResticSnapshotID != "" || meta.OriginalRemoved
+	return meta.ArchiveSnapshot(cluster.Conf.AttachedArchive()) != "" || meta.OriginalRemoved
+}
+
+// archiveAvailable: a push has an archive to go to: an attached archive plugin's, or restic
+// on and started (backupResticWith).
+func (cluster *Cluster) archiveAvailable() bool {
+	if _, ok := cluster.attachedExternalArchive(); ok {
+		return true
+	}
+	return cluster.Conf.BackupRestic && cluster.ResticManager != nil
 }
 
 // archiveRefusal tells why meta, a registered backup, can not be pushed to the archive now;
@@ -95,11 +109,18 @@ func (cluster *Cluster) archiveRefusal(meta *backupmgr.BackupMetadata, testFirst
 	if !meta.Discovered {
 		return fmt.Errorf("%w: %d", ErrBackupNotDiscovered, meta.Id)
 	}
-	if !cluster.Conf.BackupRestic || cluster.ResticManager == nil {
+	if !cluster.archiveAvailable() {
 		return ErrBackupArchiveUnavailable
 	}
 	if cluster.backupArchived(meta) {
 		return fmt.Errorf("%w: backup %d", ErrBackupArchived, meta.Id)
+	}
+	// the snapshot takes the whole backup directory: never one a backup is writing
+	if cluster.IsInBackupJob() {
+		return ErrBackupJobRunning
+	}
+	if err := cluster.snapbackLock(meta.Source); err != nil {
+		return err
 	}
 	if err := cluster.backupUseRefusal(meta); err != nil {
 		return err
@@ -119,7 +140,8 @@ func (cluster *Cluster) archiveRefusal(meta *backupmgr.BackupMetadata, testFirst
 	return nil
 }
 
-// ArchiveBackup queues the push of a registered backup's file in the restic task queue, its
+// ArchiveBackup queues the push of a registered backup's file to the attached archive (the
+// restic task queue, or the archive plugin), its
 // snapshot recorded in the backup. removeOriginal: the original is removed once the snapshot
 // holds it (removeArchivedOriginal, its checks), whatever backup-archive-remove-original.
 // testFirst: a test restore of the backup runs first, on backup-verification-host, and the
@@ -177,16 +199,19 @@ func (cluster *Cluster) ArchiveBackup(id int64, removeOriginal, testFirst bool) 
 	return nil
 }
 
-// pushRegisteredBackup queues the push of meta's file in the restic task queue. A
-// registered file has its own name, no backup rewrites it: the push does not hold the
-// in-archive flag a backup waits for, the queue orders it after the pushes before it.
+// pushRegisteredBackup queues the snapshot of the server's backup directory, the registered
+// backup in it (#2091: a snapshot is the backup directory in time), in the restic task queue
+// or to the archive plugin. The push does not hold the in-archive flag a backup waits for, the
+// queue orders it after the pushes before it; no backup job runs (archiveRefusal).
 func (cluster *Cluster) pushRegisteredBackup(server *ServerMonitor, meta *backupmgr.BackupMetadata, removeOriginal bool) {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive of backup %d on %s: push of %s queued (remove original: %t)", meta.Id, server.URL, meta.Dest, removeOriginal)
-	tags := server.BuildResticTags("logical", meta.BackupTool, meta.BackupLine, meta)
-	server.backupResticWith(backupmgr.BackupMethodLogical, meta, meta.Dest, resticPushOptions{
+	dir := server.GetMyBackupDirectory()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Archive of backup %d on %s: snapshot of %s queued, holding %s (remove original: %t)", meta.Id, server.URL, dir, meta.Dest, removeOriginal)
+	tags := server.BuildResticTags("logical", meta.BackupTool, meta)
+	server.backupResticWith(backupmgr.BackupMethodLogical, meta, dir, resticPushOptions{
 		removeOriginal: func() bool { return removeOriginal },
 		asked:          true,
 		noFlag:         true,
+		trigger:        snapshotTriggerManual,
 		done:           func(error) { cluster.backupArchiving.Delete(meta.Id) },
 	}, tags...)
 }

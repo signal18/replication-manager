@@ -171,7 +171,7 @@ func (server *ServerMonitor) recordBackupRegistration(meta *backupmgr.BackupMeta
 		return
 	}
 	fp, err := restoreArtifactFingerprintBounded(meta.Dest, backupProofWalkMax)
-	if err != nil || fp.ChangeTime.IsZero() {
+	if err != nil || !fp.Identifies() {
 		return
 	}
 	meta.Registration = &backupmgr.BackupRegistration{Artifact: *fp, RegisteredAt: time.Now()}
@@ -378,15 +378,15 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 	if err != nil {
 		return nil, err
 	}
-	if before.ChangeTime.IsZero() {
-		return nil, errors.New("its file identity (inode, change time) can not be read here: its changes can not be tracked")
+	if !before.Identifies() {
+		return nil, errors.New("its file identity (inode, change time, or S3 ETags in the bucket) can not be read here: its changes can not be tracked")
 	}
 	// a scheduled backup file replaced by hand becomes the scheduled backup: its record
 	// (<tool>.meta.json) is replaced, it is used as any scheduled backup
 	scheduled := prev == nil && server.isScheduledBackupArtifact(path)
 	if prev != nil {
 		server.backupMetaMutex.Lock() // as the fields carried over below
-		scheduled = !prev.Discovered && !prev.IsAdhoc()
+		scheduled = !prev.Discovered
 		server.backupMetaMutex.Unlock()
 	}
 	var id int64
@@ -399,10 +399,10 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 			id++
 		}
 	default:
-		// the id of an ad-hoc backup, a unix time: the artifact's mtime, bumped while taken
+		// the id of a registered backup, a unix time: the artifact's mtime, bumped while taken
 		// (the map or a meta file); once its meta file is written, a backup keeps its id
 		id = before.ModTime.Unix()
-		for cluster.BackupMetaMap.Get(id) != nil || fileExists(server.buildBackupMetaFileName(tool, id, backupmgr.BackupLineAdhoc)) {
+		for cluster.BackupMetaMap.Get(id) != nil || fileExists(server.buildBackupMetaFileName(tool, id, true)) {
 			id++
 		}
 	}
@@ -418,7 +418,6 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 		Dest:           path,
 		SplitDump:      split,
 		Encrypted:      isEncryptedBackupArtifact(path),
-		BackupLine:     backupmgr.BackupLineAdhoc,
 		Completed:      true,
 		Discovered:     true,
 	}
@@ -453,22 +452,22 @@ func (server *ServerMonitor) registerDiscoveredBackup(path, tool string, split b
 		// (a verification writes them under backupMetaMutex)
 		server.backupMetaMutex.Lock()
 		meta.Verification, meta.VerificationRuns, meta.VerificationRunSequence = prev.Verification, prev.VerificationRuns, prev.VerificationRunSequence
-		meta.ResticEnabled, meta.ResticSnapshotID, meta.ResticFilePath = prev.ResticEnabled, prev.ResticSnapshotID, prev.ResticFilePath
+		meta.ResticEnabled, meta.ResticSnapshotID, meta.ArchiveRefs, meta.ResticFilePath = prev.ResticEnabled, prev.ResticSnapshotID, prev.ArchiveRefs, prev.ResticFilePath
 		meta.BackupSessionID = prev.BackupSessionID
-		// a backup replication-manager took keeps being one; an ad hoc one keeps its line
-		meta.Discovered, meta.BackupLine, meta.RetentionDays, meta.RetentionDuration = prev.Discovered, prev.BackupLine, prev.RetentionDays, prev.RetentionDuration
+		// a backup replication-manager took keeps being one
+		meta.Discovered = prev.Discovered
 		server.backupMetaMutex.Unlock()
 	}
 	what := "registered"
 	if scheduled {
-		meta.Discovered, meta.BackupLine = false, backupmgr.BackupLineDefault
-		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime, meta.BackupLine)
+		meta.Discovered = false
+		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime)
 		if err := server.writeScheduledBackupMeta(meta); err != nil {
 			return nil, err
 		}
 		what = "registered, as the scheduled backup,"
 	} else {
-		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime, meta.BackupLine)
+		server.ensureBackupSessionID(meta, meta.BackupMethod, meta.StartTime)
 		if err := server.writeDiscoveredBackupMeta(meta, prev); err != nil {
 			return nil, err
 		}
@@ -514,7 +513,7 @@ func (server *ServerMonitor) writeDiscoveredBackupMeta(meta, prev *backupmgr.Bac
 // backup sets them.
 func (server *ServerMonitor) writeScheduledBackupMeta(meta *backupmgr.BackupMetadata) error {
 	cluster := server.ClusterGroup
-	metaPath := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, backupmgr.BackupLineDefault)
+	metaPath := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, false)
 	if metaPath == "" {
 		return fmt.Errorf("no metadata file for tool %q", meta.BackupTool)
 	}
@@ -534,7 +533,7 @@ func (server *ServerMonitor) writeScheduledBackupMeta(meta *backupmgr.BackupMeta
 	}
 	var replaced []int64
 	cluster.BackupMetaMap.Callback(func(id int64, other *backupmgr.BackupMetadata) bool {
-		if other != nil && id != meta.Id && !other.Discovered && !other.IsAdhoc() && other.Source == server.URL && other.BackupTool == meta.BackupTool && other.BackupMethod == backupmgr.BackupMethodLogical {
+		if other != nil && id != meta.Id && !other.Discovered && other.Source == server.URL && other.BackupTool == meta.BackupTool && other.BackupMethod == backupmgr.BackupMethodLogical {
 			replaced = append(replaced, id)
 		}
 		return true
@@ -552,7 +551,7 @@ func (server *ServerMonitor) writeScheduledBackupMeta(meta *backupmgr.BackupMeta
 
 // artifactFingerprintsEqual compares two fingerprints of the same read.
 func artifactFingerprintsEqual(a, b *backupmgr.ArtifactFingerprint) bool {
-	return a != nil && b != nil && a.Files == b.Files && a.Size == b.Size && a.ModTime.Equal(b.ModTime) && a.Inode == b.Inode && a.ChangeTime.Equal(b.ChangeTime)
+	return a != nil && b != nil && a.Files == b.Files && a.Size == b.Size && a.ModTime.Equal(b.ModTime) && a.Inode == b.Inode && a.ChangeTime.Equal(b.ChangeTime) && a.ETags == b.ETags
 }
 
 // UnregisterBackup unregisters a discovered backup: its metadata file (replication-manager's
@@ -631,7 +630,7 @@ func (cluster *Cluster) checkRegisteredBackups() {
 }
 
 // checkRegisteredBackups is Cluster.checkRegisteredBackups for the server's logical backups:
-// the discovered ones and replication-manager's own, scheduled or ad hoc.
+// the discovered ones and replication-manager's own.
 func (server *ServerMonitor) checkRegisteredBackups(budget *int) {
 	cluster := server.ClusterGroup
 	var metas []*backupmgr.BackupMetadata
@@ -698,7 +697,7 @@ func (server *ServerMonitor) adoptOwnBackup(meta *backupmgr.BackupMetadata) {
 		return
 	}
 	fp, err := restoreArtifactFingerprintBounded(meta.Dest, backupProofWalkMax)
-	if err != nil || fp.ChangeTime.IsZero() {
+	if err != nil || !fp.Identifies() {
 		return
 	}
 	server.backupMetaMutex.Lock()
@@ -841,11 +840,18 @@ func describeBackupChange(id int64, c *BackupRegistrationChange) string {
 	if was.Files != now.Files {
 		parts = append(parts, fmt.Sprintf("files %d -> %d", was.Files, now.Files))
 	}
-	if !was.ModTime.Equal(now.ModTime) {
+	// in the bucket the times are the mount's: the ETags tell
+	if !was.ModTime.Equal(now.ModTime) && was.ETags == "" && now.ETags == "" {
 		parts = append(parts, fmt.Sprintf("modified %s", now.ModTime.Local().Format("2006-01-02 15:04")))
 	}
 	if len(parts) == 0 {
-		if was.ChangeTime.IsZero() {
+		if was.ETags != "" && now.ETags == "" {
+			parts = append(parts, "registered in the bucket, not read from it now (the backups folder mount is off, or the file not uploaded yet)")
+		} else if was.ETags == "" && now.ETags != "" {
+			parts = append(parts, "registered on a disk, now in the bucket: its S3 objects can not prove it is the same file")
+		} else if was.ETags != "" {
+			parts = append(parts, "its S3 objects were rewritten (other ETags)")
+		} else if !was.Identifies() {
 			parts = append(parts, "its registration does not identify the file (no inode, change time)")
 		} else {
 			parts = append(parts, fmt.Sprintf("replaced or rewritten, same size and modification time (changed %s)", now.ChangeTime.Local().Format("2006-01-02 15:04")))

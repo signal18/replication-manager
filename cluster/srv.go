@@ -296,25 +296,31 @@ type ServerMonitor struct {
 	// why the last original could not be removed after its archive push (WARN0238), guarded by backupMetaMutex
 	archiveRemoveOriginalRefusalLogical  archiveRemoveOriginalRefusal
 	archiveRemoveOriginalRefusalPhysical archiveRemoveOriginalRefusal
-	archiveRestoreMutex                  sync.Mutex   // one fetch of an archived original at a time
-	rejoinInProgress                atomic.Bool                          // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
-	reseedFromRejoin                atomic.Bool                          // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
-	rejoinReseedStart               atomic.Int64                         // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
-	reseedFailedAt                  atomic.Int64                         // unix-nanos of the last reseed job that reported a failure (#1866): a reseed armed before it is reconciled as FAILED whatever the replica looks like
-	reseedLastError                 atomic.Value                         // string: the error of that failure
-	logicalRestorePosition          atomic.Pointer[splitdump.Metadata]   // the replication position of the last mysqldump restored (its stream, or the splitdump metadata), read by the reseed to point the replica after the load (pointLogicalReseedReplica)
-	reseedInfo                      atomic.Value                         // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
-	reseedBytes                     atomic.Int64                         // raw bytes streamed so far (compressed input; no decompression accounting yet)
-	reseedTotal                     atomic.Int64                         // total compressed backup file size (0 = unknown)
-	reseedStart                     atomic.Int64                         // unix-nanos the current restore started (for MB/s)
-	reseedRateWindow                atomic.Value                         // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
-	reseedPhase                     atomic.Value                         // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
-	logicalReseedDispatching        atomic.Bool                          // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
-	reseedLinksMu                   sync.Mutex                           // guards reseedLinks: the reseed records, the refresh drops (#2093)
-	reseedLinks                     reseedStoppedLinks                   // the channels a reseed stopped and has not started again, WARN0252 while one does not run
-	logicalRestoreGate                     atomic.Pointer[logicalRestoreGate]    // the pause of a restore writing to the binlog, WARN0254 while paused (#2124)
-	logicalRestoreGatePurging                 atomic.Bool                          // a binlog rotation of that restore is being handled
-	restoreHoldsBinlogTotalSize               atomic.Bool                          // a restore with the binary log on holds max_binlog_total_size at 2G on this server (#2124)
+	archiveRestoreMutex                  sync.Mutex // one fetch of an archived original at a time
+	// a snapshot of the backup directory and a binlog copy into it never run together (#2091):
+	// the snapshots in progress, the binlog copies in progress (beginSnapshot, beginBinlogCopy)
+	snapshotsRunning            atomic.Int32
+	binlogCopyRunning           atomic.Int32
+	binlogCopies                binlogCopyQueue                    // the binlogs to copy into the backup directory, one worker (#2091)
+	rejoinInProgress            atomic.Bool                        // guards RejoinMaster re-entrancy so it runs async (a reseed can take hours/days; it must never block the monitor loop)
+	reseedFromRejoin            atomic.Bool                        // set when a rejoin armed an ASYNC reseed; reconcileDeferredRejoinReseeds records finishRejoin from observed health once the reseed completes (IsReseeding clears), and RejoinMaster holds the one-shot while it is set
+	rejoinReseedStart           atomic.Int64                       // unix-nanos when the rejoin armed its reseed; drives the generic "rejoin reseed in progress, started T" state (WARN0189) for methods without byte instrumentation
+	reseedFailedAt              atomic.Int64                       // unix-nanos of the last reseed job that reported a failure (#1866): a reseed armed before it is reconciled as FAILED whatever the replica looks like
+	reseedLastError             atomic.Value                       // string: the error of that failure
+	logicalRestorePosition      atomic.Pointer[splitdump.Metadata] // the replication position of the last mysqldump restored (its stream, or the splitdump metadata), read by the reseed to point the replica after the load (pointLogicalReseedReplica)
+	reseedInfo                  atomic.Value                       // *ReseedProgress: the in-flight restore's backup (nil when idle) — for the progress state
+	reseedBytes                 atomic.Int64                       // raw bytes streamed so far (compressed input; no decompression accounting yet)
+	reseedTotal                 atomic.Int64                       // total compressed backup file size (0 = unknown)
+	reseedStart                 atomic.Int64                       // unix-nanos the current restore started (for MB/s)
+	reseedRateWindow            atomic.Value                       // []reseedRateSample: last few per-tick (bytes,time) samples, for a windowed "recent" rate distinct from the lifetime average (reseedBytes/reseedStart) — see restore_progress.go
+	reseedPhase                 atomic.Value                       // string: one of the ReseedPhase* constants (restore_progress.go), physical reseed/flashback only; empty for paths that don't set it
+	logicalReseedDispatching    atomic.Bool                        // claimed for the duration of an in-flight launchLogicalReseed call, so repeated StateProcessing ticks over the same open WARN0075 can't enter ProcessReseedLogical concurrently
+	physicalJobDispatched       atomic.Bool                        // the physical reseed/flashback armed by SetInReseedBackup was dispatched (dispatchPhysicalJob): its backup is streamed once
+	reseedLinksMu               sync.Mutex                         // guards reseedLinks: the reseed records, the refresh drops (#2093)
+	reseedLinks                 reseedStoppedLinks                 // the channels a reseed stopped and has not started again, WARN0252 while one does not run
+	logicalRestoreGate          atomic.Pointer[logicalRestoreGate] // the pause of a restore writing to the binlog, WARN0254 while paused (#2124)
+	logicalRestoreGatePurging   atomic.Bool                        // a binlog rotation of that restore is being handled
+	restoreHoldsBinlogTotalSize atomic.Bool                        // a restore with the binary log on holds max_binlog_total_size at 2G on this server (#2124)
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)
 	// 2. ServerMonitor.stateMutex

@@ -4,40 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
-
-func TestParseRetentionDuration(t *testing.T) {
-	tests := []struct {
-		name       string
-		value      string
-		expected   time.Duration
-		expectedOK bool
-	}{
-		{"Empty string", "", 0, false},
-		{"Whitespace", "  ", 0, false},
-		{"Go duration", "2h", 2 * time.Hour, true},
-		{"Days", "7d", 7 * 24 * time.Hour, true},
-		{"Weeks", "2w", 14 * 24 * time.Hour, true},
-		{"Months", "1mo", 30 * 24 * time.Hour, true},
-		{"Years", "1y", 365 * 24 * time.Hour, true},
-		{"Invalid suffix", "3q", 0, false},
-		{"Invalid number", "xd", 0, false},
-		{"Zero duration", "0d", 0, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := ParseRetentionDuration(tt.value)
-			if ok != tt.expectedOK {
-				t.Fatalf("ParseRetentionDuration(%q) ok = %v, want %v", tt.value, ok, tt.expectedOK)
-			}
-			if ok && got != tt.expected {
-				t.Fatalf("ParseRetentionDuration(%q) = %v, want %v", tt.value, got, tt.expected)
-			}
-		})
-	}
-}
 
 func TestDetectCompressionFromDest(t *testing.T) {
 	baseDir := t.TempDir()

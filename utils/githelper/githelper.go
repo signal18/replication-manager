@@ -14,12 +14,22 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
 )
+
+// tokenFieldRe matches the token fields of a GitLab answer: a debug log shows that they
+// came, never their values
+var tokenFieldRe = regexp.MustCompile(`"(token|access_token|refresh_token|id_token)"\s*:\s*"[^"]*"`)
+
+// redactTokens is a GitLab answer with its tokens masked, for the debug log.
+func redactTokens(body []byte) string {
+	return tokenFieldRe.ReplaceAllString(string(body), `"$1":"***"`)
+}
 
 var Logrus = logrus.New()
 
@@ -149,7 +159,7 @@ func GetGitLabTokenOAuth(acces_token string, token_name string, log_git bool) (s
 	body, _ := io.ReadAll(resp.Body)
 
 	if log_git {
-		Logrus.Println("Gitlab API Response: ", string(body))
+		Logrus.Println("Gitlab API Response: ", redactTokens(body))
 	}
 
 	var tokenInfos []TokenInfo
@@ -300,7 +310,7 @@ func RefreshAccessToken(refresh_tok string, client_id string, secret_id string, 
 	}
 
 	if log_git {
-		Logrus.Println("Gitlab API Response: ", string(body))
+		Logrus.Println("Gitlab API Response: ", redactTokens(body))
 	}
 
 	var accessToken AccessToken
@@ -378,7 +388,7 @@ func GetGitLabTokenBasicAuth(user string, password string, log_git bool) (string
 	}
 
 	if log_git {
-		Logrus.Println("Git Auth Response:", string(body))
+		Logrus.Println("Git Auth Response:", redactTokens(body))
 	}
 
 	return accessToken.AccessToken, nil

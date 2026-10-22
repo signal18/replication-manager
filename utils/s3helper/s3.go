@@ -18,12 +18,22 @@ import (
 
 // NewClient creates an AWS S3 client with MinIO compatibility.
 func NewClient(accessKey, secretKey, sessionToken, region, endpoint string) (*s3.Client, error) {
+	return newClient(accessKey, secretKey, sessionToken, region, endpoint, 30*time.Second)
+}
+
+// NewUploadClient is NewClient for UploadFile: each request may carry a whole part, so its
+// HTTP timeout is UploadPartTimeout instead of 30 seconds.
+func NewUploadClient(accessKey, secretKey, sessionToken, region, endpoint string) (*s3.Client, error) {
+	return newClient(accessKey, secretKey, sessionToken, region, endpoint, UploadPartTimeout)
+}
+
+func newClient(accessKey, secretKey, sessionToken, region, endpoint string, timeout time.Duration) (*s3.Client, error) {
 	if accessKey == "" || secretKey == "" {
 		return nil, fmt.Errorf("AWS credentials not found (set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)")
 	}
 
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: timeout,
 	}
 
 	awsRegion := strings.TrimSpace(region)

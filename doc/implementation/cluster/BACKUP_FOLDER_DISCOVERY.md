@@ -27,7 +27,7 @@ to proper backups, and a registered backup's file is tracked for changes.
 `ServerMonitor.DiscoverBackups` / `discoverBackups(retry)`, called at the end of
 `FetchLastBackupMetadata` (the goroutine `NewServerMonitor` starts, `srv.go`;
 never the monitor ticker) unless `backup-discovery` is off (then only
-`LoadAdhocBackupMetadata`), and by `Cluster.StartBackupDiscovery` (API: a
+`LoadRegisteredBackupMetadata`), and by `Cluster.StartBackupDiscovery` (API: a
 goroutine over the servers, `retry` true; 202; refused with
 `ErrBackupDiscoveryInBackup` while `IsInBackupJob`). It writes nothing to disk but
 for unregistering a discovered backup whose artifact is gone (its own meta file).
@@ -40,8 +40,10 @@ until its next run. So a meta file is never written by two of them at once, and
 the change check never records a change against a fingerprint a Register is
 replacing.
 
-1. `LoadAdhocBackupMetadata` first, even while a backup runs (a live entry is
-   kept): a server monitor created then lists its ad-hoc and registered backups.
+1. `LoadRegisteredBackupMetadata` first, even while a backup runs (a live entry is
+   kept): a server monitor created then lists its registered backups. A
+   `<tool>.<id>.meta.json` an older release wrote for a backup it took under its id
+   is read as registered (`Discovered`): its file stays, no new backup replaces it.
    `readBackupMetadataFile` loads a discovered entry with no strategy (3.1.44) as
    `BackupStrategyFull`.
 2. Refused while `IsInBackupJob` (#2108: a backup job, not an archive push, which
@@ -113,7 +115,7 @@ goroutine: an artifact is read to its end, never in a request.
    `backupProofWalkMax`; refused beyond it, and without inode and ctime: its
    changes could not be tracked, `artifactUnchanged` fails closed).
 2. A new id: the artifact's mtime, bumped while taken; a change keeps `prev`'s.
-3. The metadata: logical, ad hoc (`<tool>.<id>.meta.json`), no retention,
+3. The metadata: logical, named by its id (`<tool>.<id>.meta.json`),
    `Discovered`, `BackupStrategyFull`, `TimeSource` file-time until the read
    says otherwise.
 4. `inspectDiscoveredBackup` reads it to its end as a restore would (below). Not
@@ -202,6 +204,14 @@ whose backup was deleted since is dropped there. WARN0250 per server whose last
 discovery dropped candidates. Both `ErrFrom: "BACKUP"`, `ServerUrl` set, like
 the other backup states (WARN0238, WARN0248, ERR00117); they go to the main
 `StateMachine`, as those do: there is no backup state machine.
+
+The ctime moves on any change to the inode, not only the content: a chown (even to
+the same owner), a chmod, an ACL or an attribute restore makes the backup read as
+"replaced or rewritten, same size and modification time" until it is registered
+again. replication-manager's own start (`LimitPrivileges`, `misc.ChownR` of the
+working directory) chowned every file and so marked every registered backup at
+each restart (WARN0249, then WARN0190 with no backup left for a rejoin); since
+#2114 `ChownR` leaves a file already owned by the target user alone.
 
 Restoring the original from its archive puts back a new file (another inode):
 it does not match the registration, the operator registers it (a change). A
@@ -509,9 +519,7 @@ unchanged: the backend records 1).
 Meta files are written 0644 like every backup meta file (`WriteBackupMetadata`,
 `srv_bck.go`): one permission for the folder's meta files.
 
-Retention: a discovered backup is ad hoc without a retention window
-(`RetentionDays` 0, no `RetentionDuration`): `retentionDeadline` never expires
-it, so the ad-hoc purge leaves it; the `backup-keep-until-valid` rotation
+Retention: nothing expires a registered backup; the `backup-keep-until-valid` rotation
 (`.old`, `.err`) handles the scheduled artifacts only; the restic purges handle
 snapshots. It is bounded by the artifacts in the folder (unregistered when its
 artifact is gone, `unregisterGoneDiscoveredBackups`) and unregistered by the

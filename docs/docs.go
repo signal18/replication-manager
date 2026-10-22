@@ -5979,9 +5979,821 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/archive-actions/add": {
+            "post": {
+                "description": "Adds an archive from its plugin and connection infos (settings and secrets by the names of the plugin's config). The repository is probed first: an existing one is opened (a wrong password is refused), a missing one is initialised; an archive that can't be opened is not added. Without a name, repman names it archive-\u003ctype\u003e-\u003cn\u003e.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Add an archive",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "name (optional), plugin, settings",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.ArchiveSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name and repository: opened or initialised",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid archive, or repository refused",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/attach/{archiveName}": {
+            "post": {
+                "description": "Attaches the archive (the backups go to it, the archive attached before is detached and stays in the list with its content), or with detach leaves the cluster with no archive.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Attach or detach an archive",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archive attached",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown archive",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/detach": {
+            "post": {
+                "description": "Attaches the archive (the backups go to it, the archive attached before is detached and stays in the list with its content), or with detach leaves the cluster with no archive.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Attach or detach an archive",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archive attached",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown archive",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/drop-missing-snapshots/{archiveName}": {
+            "post": {
+                "description": "Takes out of the backup catalogue the snapshots the last rebuild from the archive found recorded but no longer in it (WARN0260), each one confirmed gone by a new listing of the archive: the backups recording it lose it, a backup whose only copy it was leaves the catalogue. A snapshot listed again is kept.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Drop the snapshots gone from an archive from the backup catalogue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Snapshots dropped",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown or unreadable archive, no snapshot missing, or a rebuild runs",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/edit/{archiveName}": {
+            "post": {
+                "description": "Changes an archive's settings and secrets (an empty secret keeps the secret, unset clears names), then probes its repository again. An archive that can't be opened keeps its former settings.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Edit an archive",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "settings, unset",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.ArchiveSpec"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "name and repository: opened or initialised",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid archive, or repository refused",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/forget/{archiveName}/{snapshotID}": {
+            "post": {
+                "description": "Deletes one snapshot of an archive plugin's archive (plakar ...), at once; the backups that recorded it lose it, and one whose only copy it was leaves the catalogue. A restic archive's snapshot is purged by /restic/purge/{snapshotID}.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Delete an archive's snapshot",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Snapshot ID",
+                        "name": "snapshotID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Snapshot deleted",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown archive, a restic archive, or the snapshot cannot be deleted",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/rebuild-catalogue/{archiveName}": {
+            "post": {
+                "description": "Reads, in the background, the backup records in each snapshot of the archive (every archive replication-manager can read when no archive is named) that no backup of the catalogue records: a backup the catalogue lacks joins it, only in the archive; a backup it has gets the snapshot when it records none of that archive. A snapshot the catalogue records that the archive no longer lists, or a snapshot whose content its plugin cannot list (no contents operation), raises WARN0260; CINF0021 while it runs. It also runs at the first start with no catalogue and when a standby becomes active. One at a time.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Rebuild the backup catalogue from the archives",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name (all when none)",
+                        "name": "archiveName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Backup catalogue rebuild started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown or unreadable archive, or a rebuild runs",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/remove/{archiveName}": {
+            "post": {
+                "description": "Deletes the archive's content, then takes it out of the list, so nothing is left there to invoice. No check on the backups it holds: a backup whose only copy was there is lost. The attached archive is detached first. Runs in the background: the list shows the archive as removing, then it is gone, or the error stays on it. Refused on a whole bucket (an S3 archive with no prefix).",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Remove an archive",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Archive removal started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown archive, or content cannot be deleted",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/rename/{archiveName}/{newName}": {
+            "post": {
+                "description": "Renames an archive (lowercase letters, digits, - and _). The attached archive stays attached under its new name.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Rename an archive",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "New Archive Name",
+                        "name": "newName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archive renamed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid or taken name",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/size/{archiveName}": {
+            "post": {
+                "description": "Reads the bytes the archive's content takes, in the background: the list shows the archive as sizing, then its size, or the error. A detached archive keeps the size it had when it was detached; this reads it again.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Read an archive's size",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Archive size read started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown archive, or its size cannot be read",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/snapback-release/{serverName}": {
+            "post": {
+                "description": "Keeps the server's backup directory as the snapback left it and unlocks its backups (WARN0255 resolved): its next backup's snapshot is its new latest one. A running snapback is not released.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Release a snapback",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Snapback released",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No snapback, or one running",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-actions/snapback/{snapshotID}": {
+            "post": {
+                "description": "Puts the backup directory a snapshot of the attached archive holds back as it was in it, in the background: the directory as it is now is snapshotted first (its latest snapshot), then emptied, then the snapshot is restored into it, and the server's backups are read again. Never twice its size on disk. Until a snapback to its latest snapshot or a release, the server's backups and archive pushes are locked (WARN0255). Refused while a backup is written, the backups folder moves, a snapback of the server runs, or without room for the snapshot.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "Snapback a backup directory",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Snapshot ID (or its first 8 characters)",
+                        "name": "snapshotID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Refused: no archive attached, unknown snapshot, not a server's backup directory, a backup running, no room",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-list": {
+            "get": {
+                "description": "The cluster's archives, the attached one, and each archive plugin's typed config (settings, secrets, capabilities). Secrets are never returned, only the names of those set.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "List the archives",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ArchiveListResult"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-snapshots/{archiveName}": {
+            "get": {
+                "description": "The snapshots of an archive plugin's archive (plakar ...), newest first: id, time, host, tags, paths, size. The plugin is asked at each call. A restic archive's snapshots are listed by /restic/snapshots.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "List an archive's snapshots",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Archive Name",
+                        "name": "archiveName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/wire.Snapshot"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown archive, a restic archive, or its snapshots cannot be listed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/backups": {
             "get": {
-                "description": "This endpoint retrieves the backups for the specified cluster.\nRequired grant: cluster-show-backups",
+                "description": "This endpoint retrieves the backups for the specified cluster, by id: each backup's record, with what the restore selection reads of it: capabilities (compress, encrypt, parallel, can-partial-restorable, gtid), location (local: replication-manager's own disk; remote: the bucket through the backups folder mount; archive: only in a snapshot of the attached archive), archived (the attached archive holds a snapshot of it), proven (a test restore of its file, still unchanged) and restoreCandidate (a restore or reseed picks among it now: its server's last logical or physical backup).\nRequired grant: cluster-show-backups",
                 "produces": [
                     "application/json"
                 ],
@@ -6008,14 +6820,63 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "List of backups",
+                        "description": "Backups by id",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/cluster.BackupView"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/backups/binlog-copies": {
+            "get": {
+                "description": "Returns, per server, the binary log copies its backup directory holds (binary-logs.meta.json, backup-binlogs): their number, the lowest and highest binlog, the time of their first events, and their size.\nRequired grant: cluster-show-backups",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Log copies in the backup directories",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Log copies per server",
                         "schema": {
                             "type": "array",
                             "items": {
-                                "type": "object",
-                                "additionalProperties": {
-                                    "$ref": "#/definitions/backupmgr.BackupMetadata"
-                                }
+                                "$ref": "#/definitions/cluster.BinlogCopies"
                             }
                         }
                     },
@@ -24644,6 +25505,10 @@ const docTemplate = `{
                 "changeTime": {
                     "type": "string"
                 },
+                "etags": {
+                    "description": "ETags, for a backup in the bucket of the backups folder mount: a digest of its files'\nS3 ETags in walk order, which an object rewritten changes. The mount gives inodes and\ntimes that do not hold across mounts, so a bucket fingerprint holds the files, the size\nand this digest, and has no inode nor ctime (#2091).",
+                    "type": "string"
+                },
                 "files": {
                     "type": "integer"
                 },
@@ -24656,168 +25521,6 @@ const docTemplate = `{
                 },
                 "size": {
                     "type": "integer"
-                }
-            }
-        },
-        "backupmgr.BackupMetadata": {
-            "type": "object",
-            "properties": {
-                "backupLine": {
-                    "type": "string"
-                },
-                "backupMethod": {
-                    "type": "integer"
-                },
-                "backupSessionID": {
-                    "type": "string"
-                },
-                "backupStrategy": {
-                    "type": "integer"
-                },
-                "backupTool": {
-                    "type": "string"
-                },
-                "backupToolVersion": {
-                    "type": "string"
-                },
-                "binLogFileName": {
-                    "type": "string"
-                },
-                "binLogFilePos": {
-                    "type": "integer"
-                },
-                "binLogUuid": {
-                    "type": "string"
-                },
-                "checksum": {
-                    "type": "string"
-                },
-                "completed": {
-                    "type": "boolean"
-                },
-                "compressed": {
-                    "type": "boolean"
-                },
-                "dest": {
-                    "description": "backup destination path",
-                    "type": "string"
-                },
-                "discovered": {
-                    "description": "Discovered: the backup was found in the server's backup folder without metadata\n(copied there by hand or by another tool) and registered by the operator (#2073).\nIt is never picked by an automatic restore; DiscoveryNote says what its read found\n(a check it could not run).",
-                    "type": "boolean"
-                },
-                "discoveryNote": {
-                    "type": "string"
-                },
-                "encrypted": {
-                    "type": "boolean"
-                },
-                "encryptionAlgo": {
-                    "type": "string"
-                },
-                "encryptionKey": {
-                    "type": "string"
-                },
-                "encryptionKeyVersion": {
-                    "description": "EncryptionKeyVersion is the secret_store.json version of\ndb-servers-credential whose password encrypted the artifact (0 when\nunknown). A version number only, never the password: restore uses it\nto pick the right historic root password after a password change.",
-                    "type": "integer"
-                },
-                "endTime": {
-                    "type": "string"
-                },
-                "execRemote": {
-                    "description": "the backup tool ran on the DB node (dbjobs), not next to replication-manager",
-                    "type": "boolean"
-                },
-                "fileCount": {
-                    "type": "integer"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "integrityAlgo": {
-                    "type": "string"
-                },
-                "metaFile": {
-                    "type": "string"
-                },
-                "notABackup": {
-                    "description": "NotABackup: a discovered entry that is not a backup (an accounts file, no table), kept\nlisted from a release that registered every dump it found: flagged, never used.",
-                    "type": "boolean"
-                },
-                "originalRemoved": {
-                    "description": "OriginalRemoved: the artifact at Dest was removed once its archive snapshot\n(ResticSnapshotID) was verified to hold it (backup-archive-remove-original);\na restore fetches it back from the archive.",
-                    "type": "boolean"
-                },
-                "previous": {
-                    "type": "integer"
-                },
-                "registration": {
-                    "description": "Registration is the file of a discovered backup as registered: a change since is not\nused until it is registered.",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/backupmgr.BackupRegistration"
-                        }
-                    ]
-                },
-                "resticEnabled": {
-                    "type": "boolean"
-                },
-                "resticFilePath": {
-                    "type": "string"
-                },
-                "resticSnapshotID": {
-                    "type": "string"
-                },
-                "retentionDays": {
-                    "type": "integer"
-                },
-                "retentionDuration": {
-                    "type": "string"
-                },
-                "size": {
-                    "description": "in bytes",
-                    "type": "integer"
-                },
-                "source": {
-                    "description": "server URL",
-                    "type": "string"
-                },
-                "splitDump": {
-                    "type": "boolean"
-                },
-                "splitUser": {
-                    "type": "boolean"
-                },
-                "startTime": {
-                    "type": "string"
-                },
-                "streamSize": {
-                    "description": "bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator",
-                    "type": "integer"
-                },
-                "timeSource": {
-                    "description": "TimeSource tells where StartTime and EndTime come from (BackupTimeSource*): the\nbackup's own record, its file's time, or the operator.",
-                    "type": "string"
-                },
-                "verification": {
-                    "description": "Verification is the result of the last verification of this backup (#2023).",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/backupmgr.BackupVerification"
-                        }
-                    ]
-                },
-                "verificationRunSequence": {
-                    "description": "VerificationRunSequence is the sequence number of the last run accepted.",
-                    "type": "integer"
-                },
-                "verificationRuns": {
-                    "description": "VerificationRuns is the history of the on-demand verification runs of this backup, by\nrun (#2023): each accepted run is recorded running before the API answers, then ends\npassed, failed or skipped in its own record. The oldest finished runs are dropped\nbeyond backup-verification-run-history. Verification stays the backup's result.",
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/backupmgr.BackupVerificationRun"
-                    }
                 }
             }
         },
@@ -25150,6 +25853,10 @@ const docTemplate = `{
         "backupmgr.ResticCopySourceOption": {
             "type": "object",
             "properties": {
+                "archive": {
+                    "description": "Archive names an archive of the cluster's list as the source (#2091): its settings\nand secrets are resolved by repman, like a saved source",
+                    "type": "string"
+                },
                 "aws": {
                     "$ref": "#/definitions/backupmgr.ResticCopySourceAWSOption"
                 },
@@ -25430,6 +26137,13 @@ const docTemplate = `{
                 },
                 "prune_option": {
                     "$ref": "#/definitions/backupmgr.ResticPruneOption"
+                },
+                "rules": {
+                    "description": "Rules: tagged purge policies (#2091), the Keep* fields being the default one: the kept\nset is computed by replication-manager (config.KeptByPolicies) and the others forgotten\nby id, each policy counting its own snapshots",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ArchivePurgeRule"
+                    }
                 },
                 "snapshot_id": {
                     "type": "string"
@@ -25864,6 +26578,99 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.ArchiveListEntry": {
+            "type": "object",
+            "properties": {
+                "attached": {
+                    "type": "boolean"
+                },
+                "backups": {
+                    "description": "Backups is the number of backups of the catalogue glued to the archive",
+                    "type": "integer"
+                },
+                "location": {
+                    "description": "Location is the repository the archive runs, as resolved from its settings",
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "size": {
+                    "description": "Size is the content's size: the attached archive's from its last fetch, another's as\nlast read (when it was detached, or by a size read); nil when never read",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/cluster.ArchiveSize"
+                        }
+                    ]
+                },
+                "status": {
+                    "description": "a running remove or size read, or the error of the last one",
+                    "type": "string"
+                }
+            }
+        },
+        "cluster.ArchiveListResult": {
+            "type": "object",
+            "properties": {
+                "archives": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.ArchiveListEntry"
+                    }
+                },
+                "attached": {
+                    "type": "string"
+                },
+                "catalogueRebuilding": {
+                    "description": "the backup catalogue's rebuild from the archives: the archives one runs on (\"\" none), and\nthe last one of each archive",
+                    "type": "string"
+                },
+                "catalogueRebuilds": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.CatalogueRebuild"
+                    }
+                },
+                "enterprisePlan": {
+                    "description": "the plan grants the enterprise plugins (a partner or support plan)",
+                    "type": "boolean"
+                },
+                "plugins": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ArchivePluginManifest"
+                    }
+                },
+                "snapbacks": {
+                    "description": "the servers' backup directories put back from a snapshot (snapback)",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.SnapbackState"
+                    }
+                }
+            }
+        },
+        "cluster.ArchiveSize": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "bytes": {
+                    "type": "integer"
+                },
+                "files": {
+                    "type": "integer"
+                }
+            }
+        },
         "cluster.BackupCandidate": {
             "type": "object",
             "properties": {
@@ -26012,28 +26819,291 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.BackupView": {
+            "type": "object",
+            "properties": {
+                "archiveRefs": {
+                    "description": "ArchiveRefs glues the backup to the archives by name (#2091): an archive's name maps\nto the backup's snapshot there. A renamed archive is renamed here; a removed one leaves.\nNever changed in place (read while marshalled): set through SetArchiveSnapshot.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "archived": {
+                    "type": "boolean"
+                },
+                "backupMethod": {
+                    "type": "integer"
+                },
+                "backupSessionID": {
+                    "type": "string"
+                },
+                "backupStrategy": {
+                    "type": "integer"
+                },
+                "backupTool": {
+                    "type": "string"
+                },
+                "backupToolVersion": {
+                    "type": "string"
+                },
+                "binLogFileName": {
+                    "type": "string"
+                },
+                "binLogFilePos": {
+                    "type": "integer"
+                },
+                "binLogUuid": {
+                    "type": "string"
+                },
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "checksum": {
+                    "type": "string"
+                },
+                "completed": {
+                    "type": "boolean"
+                },
+                "compressed": {
+                    "type": "boolean"
+                },
+                "dest": {
+                    "description": "backup destination path",
+                    "type": "string"
+                },
+                "discovered": {
+                    "description": "Discovered: the backup was found in the server's backup folder without metadata\n(copied there by hand or by another tool) and registered by the operator (#2073).\nIt is never picked by an automatic restore; DiscoveryNote says what its read found\n(a check it could not run).",
+                    "type": "boolean"
+                },
+                "discoveryNote": {
+                    "type": "string"
+                },
+                "encrypted": {
+                    "type": "boolean"
+                },
+                "encryptionAlgo": {
+                    "type": "string"
+                },
+                "encryptionKey": {
+                    "type": "string"
+                },
+                "encryptionKeyVersion": {
+                    "description": "EncryptionKeyVersion is the secret_store.json version of\ndb-servers-credential whose password encrypted the artifact (0 when\nunknown). A version number only, never the password: restore uses it\nto pick the right historic root password after a password change.",
+                    "type": "integer"
+                },
+                "endTime": {
+                    "type": "string"
+                },
+                "execRemote": {
+                    "description": "the backup tool ran on the DB node (dbjobs), not next to replication-manager",
+                    "type": "boolean"
+                },
+                "fileCount": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "integrityAlgo": {
+                    "type": "string"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "metaFile": {
+                    "type": "string"
+                },
+                "notABackup": {
+                    "description": "NotABackup: a discovered entry that is not a backup (an accounts file, no table), kept\nlisted from a release that registered every dump it found: flagged, never used.",
+                    "type": "boolean"
+                },
+                "originalRemoved": {
+                    "description": "OriginalRemoved: the artifact at Dest was removed once its archive snapshot\n(ResticSnapshotID) was verified to hold it (backup-archive-remove-original);\na restore fetches it back from the archive.",
+                    "type": "boolean"
+                },
+                "previous": {
+                    "type": "integer"
+                },
+                "proven": {
+                    "type": "boolean"
+                },
+                "registration": {
+                    "description": "Registration is the file of a discovered backup as registered: a change since is not\nused until it is registered.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/backupmgr.BackupRegistration"
+                        }
+                    ]
+                },
+                "replaced": {
+                    "description": "Replaced: a newer backup of its type took its place in the backup directory (#2091), so\nDest and its record file are the newer one's, never its own: kept by a snapshot, it is\nonly in the archive (OriginalRemoved), in the global catalogue.",
+                    "type": "boolean"
+                },
+                "resticEnabled": {
+                    "type": "boolean"
+                },
+                "resticFilePath": {
+                    "type": "string"
+                },
+                "resticSnapshotID": {
+                    "description": "ResticSnapshotID is the snapshot of a backup recorded before the archive list: at load\nit is glued to the cluster's archive in ArchiveRefs, then empty. Read a snapshot with\nArchiveSnapshot.",
+                    "type": "string"
+                },
+                "restoreCandidate": {
+                    "type": "boolean"
+                },
+                "role": {
+                    "description": "the source's role when the backup started (BackupRole*), never recomputed; \"\" unknown",
+                    "type": "string"
+                },
+                "size": {
+                    "description": "in bytes",
+                    "type": "integer"
+                },
+                "source": {
+                    "description": "server URL",
+                    "type": "string"
+                },
+                "splitDump": {
+                    "type": "boolean"
+                },
+                "splitUser": {
+                    "type": "boolean"
+                },
+                "startTime": {
+                    "type": "string"
+                },
+                "streamSize": {
+                    "description": "bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator",
+                    "type": "integer"
+                },
+                "timeSource": {
+                    "description": "TimeSource tells where StartTime and EndTime come from (BackupTimeSource*): the\nbackup's own record, its file's time, or the operator.",
+                    "type": "string"
+                },
+                "verification": {
+                    "description": "Verification is the result of the last verification of this backup (#2023).",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/backupmgr.BackupVerification"
+                        }
+                    ]
+                },
+                "verificationRunSequence": {
+                    "description": "VerificationRunSequence is the sequence number of the last run accepted.",
+                    "type": "integer"
+                },
+                "verificationRuns": {
+                    "description": "VerificationRuns is the history of the on-demand verification runs of this backup, by\nrun (#2023): each accepted run is recorded running before the API answers, then ends\npassed, failed or skipped in its own record. The oldest finished runs are dropped\nbeyond backup-verification-run-history. Verification stays the backup's result.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/backupmgr.BackupVerificationRun"
+                    }
+                }
+            }
+        },
         "cluster.BillingPrices": {
             "type": "object",
             "properties": {
                 "apu": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "bau": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "bku": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "dbu": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "gwu": {
-                    "type": "number"
+                    "type": "number",
+                    "format": "float64"
                 },
                 "overPct": {
                     "type": "integer"
                 },
                 "underPct": {
+                    "type": "integer"
+                }
+            }
+        },
+        "cluster.BinlogCopies": {
+            "type": "object",
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "max": {
+                    "description": "the highest",
+                    "type": "string"
+                },
+                "maxStart": {
+                    "description": "the time of the highest one's first event",
+                    "type": "integer"
+                },
+                "min": {
+                    "description": "the lowest binlog copied",
+                    "type": "string"
+                },
+                "minStart": {
+                    "description": "the time of the lowest one's first event (unix)",
+                    "type": "integer"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "totalBytes": {
+                    "description": "their size on the server",
+                    "type": "integer"
+                }
+            }
+        },
+        "cluster.CatalogueRebuild": {
+            "type": "object",
+            "properties": {
+                "archive": {
+                    "type": "string"
+                },
+                "at": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "linked": {
+                    "description": "backups of the catalogue given a snapshot of the archive",
+                    "type": "integer"
+                },
+                "missing": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "read": {
+                    "description": "read for the backups they hold",
+                    "type": "integer"
+                },
+                "restored": {
+                    "description": "backups that joined the catalogue, only in the archive",
+                    "type": "integer"
+                },
+                "snapshots": {
+                    "description": "listed by the archive",
+                    "type": "integer"
+                },
+                "unreadable": {
+                    "description": "not read: the archive answers no contents",
                     "type": "integer"
                 }
             }
@@ -26061,7 +27131,8 @@ const docTemplate = `{
                     "additionalProperties": {
                         "type": "array",
                         "items": {
-                            "type": "number"
+                            "type": "number",
+                            "format": "float64"
                         }
                     }
                 },
@@ -26724,12 +27795,40 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.SnapbackState": {
+            "type": "object",
+            "properties": {
+                "archive": {
+                    "description": "the attached archive the snapshots are in",
+                    "type": "string"
+                },
+                "at": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "head": {
+                    "description": "its latest snapshot: the directory before the first snapback",
+                    "type": "string"
+                },
+                "server": {
+                    "description": "the server URL",
+                    "type": "string"
+                },
+                "snapshot": {
+                    "description": "the snapshot the directory is at",
+                    "type": "string"
+                },
+                "status": {
+                    "description": "SnapbackRunning, SnapbackDone, SnapbackFailed",
+                    "type": "string"
+                }
+            }
+        },
         "cluster.SnapshotMetadataSummary": {
             "type": "object",
             "properties": {
-                "backupLine": {
-                    "type": "string"
-                },
                 "backupMethod": {
                     "type": "string"
                 },
@@ -27087,6 +28186,148 @@ const docTemplate = `{
                 },
                 "provAppTemplate": {
                     "type": "string"
+                }
+            }
+        },
+        "config.ArchiveConfig": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                }
+            }
+        },
+        "config.ArchivePluginManifest": {
+            "type": "object",
+            "properties": {
+                "capabilities": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "external": {
+                    "description": "External: the plugin is a program (archiveplugin-\u003cbinary\u003e, cluster/archiveplugin/wire)\nthat keeps its archives with its own engine; restic plugins are run by replication-manager",
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ArchivePluginSetting"
+                    }
+                },
+                "tier": {
+                    "description": "ConstArchiveTierEnterprise, \"\" for every plan",
+                    "type": "string"
+                }
+            }
+        },
+        "config.ArchivePluginSetting": {
+            "type": "object",
+            "properties": {
+                "group": {
+                    "description": "ConstArchiveSettingGroup*, \"\" for the main settings",
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "ConstArchiveSettingType*",
+                    "type": "string"
+                },
+                "values": {
+                    "description": "the allowed values of an enum",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "config.ArchivePurgePolicy": {
+            "type": "object",
+            "properties": {
+                "keepDaily": {
+                    "type": "integer"
+                },
+                "keepHourly": {
+                    "type": "integer"
+                },
+                "keepLast": {
+                    "type": "integer"
+                },
+                "keepMonthly": {
+                    "type": "integer"
+                },
+                "keepWeekly": {
+                    "type": "integer"
+                },
+                "keepWithin": {
+                    "type": "string"
+                },
+                "keepWithinDaily": {
+                    "type": "string"
+                },
+                "keepWithinHourly": {
+                    "type": "string"
+                },
+                "keepWithinMonthly": {
+                    "type": "string"
+                },
+                "keepWithinWeekly": {
+                    "type": "string"
+                },
+                "keepWithinYearly": {
+                    "type": "string"
+                },
+                "keepYearly": {
+                    "type": "integer"
+                }
+            }
+        },
+        "config.ArchivePurgeRule": {
+            "type": "object",
+            "properties": {
+                "policy": {
+                    "$ref": "#/definitions/config.ArchivePurgePolicy"
+                },
+                "tag": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.ArchiveSpec": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "unset": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },
@@ -27636,6 +28877,12 @@ const docTemplate = `{
                 "arbitratorUriCheckUrl": {
                     "type": "string"
                 },
+                "archives": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.ArchiveConfig"
+                    }
+                },
                 "autorejoin": {
                     "type": "boolean"
                 },
@@ -27685,6 +28932,12 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "backupArchiveMode": {
+                    "type": "string"
+                },
+                "backupArchiveName": {
+                    "type": "string"
+                },
+                "backupArchivePurgeTrigger": {
                     "type": "string"
                 },
                 "backupArchiveRemoveOriginal": {
@@ -27740,6 +28993,9 @@ const docTemplate = `{
                 },
                 "backupKeepMonthly": {
                     "type": "integer"
+                },
+                "backupKeepTagPolicies": {
+                    "type": "string"
                 },
                 "backupKeepUntilValid": {
                     "type": "boolean"
@@ -28056,6 +29312,9 @@ const docTemplate = `{
                 "backupStreamingEndpoint": {
                     "type": "string"
                 },
+                "backupStreamingProvider": {
+                    "type": "string"
+                },
                 "backupStreamingRegion": {
                     "type": "string"
                 },
@@ -28333,6 +29592,9 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "cloud18SponsorUserCredential": {
+                    "type": "string"
+                },
+                "cloud18SsoClientId": {
                     "type": "string"
                 },
                 "cloud18SubDomain": {
@@ -30281,6 +31543,9 @@ const docTemplate = `{
                 "schedulerAlertDisableTime": {
                     "type": "integer"
                 },
+                "schedulerArchivePurgeCron": {
+                    "type": "string"
+                },
                 "schedulerDatabaseLogsTableKeep": {
                     "type": "integer"
                 },
@@ -30678,7 +31943,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "extension": {
                     "type": "string"
@@ -30713,7 +31979,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "fileIds": {
                     "type": "array",
@@ -32432,6 +33699,35 @@ const docTemplate = `{
                 "truncated": {
                     "description": "true when file count exceeded the limit",
                     "type": "boolean"
+                }
+            }
+        },
+        "wire.Snapshot": {
+            "type": "object",
+            "properties": {
+                "host": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "time": {
+                    "type": "string"
                 }
             }
         }

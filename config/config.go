@@ -894,6 +894,9 @@ type Config struct {
 	BackupKeepWithinWeekly                    string            `mapstructure:"backup-keep-within-weekly" toml:"backup-keep-within-weekly" json:"backupKeepWithinWeekly"`
 	BackupKeepWithinMonthly                   string            `mapstructure:"backup-keep-within-monthly" toml:"backup-keep-within-monthly" json:"backupKeepWithinMonthly"`
 	BackupKeepWithinYearly                    string            `mapstructure:"backup-keep-within-yearly" toml:"backup-keep-within-yearly" json:"backupKeepWithinYearly"`
+	BackupKeepTagPolicies                     string            `mapstructure:"backup-keep-tag-policies" toml:"backup-keep-tag-policies" json:"backupKeepTagPolicies"`
+	BackupArchivePurgeTrigger                 string            `mapstructure:"backup-archive-purge-trigger" toml:"backup-archive-purge-trigger" json:"backupArchivePurgeTrigger"`
+	BackupArchivePurgeCron                    string            `mapstructure:"scheduler-archive-purge-cron" toml:"scheduler-archive-purge-cron" json:"schedulerArchivePurgeCron"`
 	BackupResticTags                          string            `mapstructure:"backup-restic-tags" toml:"backup-restic-tags" json:"backupResticTags"`
 	BackupResticHost                          string            `mapstructure:"backup-restic-host" toml:"backup-restic-host" json:"backupResticHost"`
 	BackupResticPurgeGroupBy                  string            `mapstructure:"backup-restic-purge-group-by" toml:"backup-restic-purge-group-by" json:"backupResticPurgeGroupBy"`
@@ -909,6 +912,8 @@ type Config struct {
 	BackupResticPurgePruneRepackSmall         bool              `mapstructure:"backup-restic-purge-prune-repack-small" toml:"backup-restic-purge-prune-repack-small" json:"backupResticPurgePruneRepackSmall"`
 	BackupResticPurgePruneRepackUncompressed  bool              `mapstructure:"backup-restic-purge-prune-repack-uncompressed" toml:"backup-restic-purge-prune-repack-uncompressed" json:"backupResticPurgePruneRepackUncompressed"`
 	BackupArchiveMode                         string            `mapstructure:"backup-archive-mode" toml:"backup-archive-mode" json:"backupArchiveMode"`
+	BackupArchiveName                         string            `mapstructure:"backup-archive-name" toml:"backup-archive-name" json:"backupArchiveName"`
+	Archives                                  []ArchiveConfig   `mapstructure:"archive" toml:"archive" json:"archives"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
 	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
 	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
@@ -975,6 +980,7 @@ type Config struct {
 	BackupStreamingEndpoint          string  `mapstructure:"backup-streaming-endpoint" toml:"backup-streaming-endpoint" json:"backupStreamingEndpoint"`
 	BackupStreamingRegion            string  `mapstructure:"backup-streaming-region" toml:"backup-streaming-region" json:"backupStreamingRegion"`
 	BackupStreamingBucket            string  `mapstructure:"backup-streaming-bucket" toml:"backup-streaming-bucket" json:"backupStreamingBucket"`
+	BackupStreamingProvider          string  `mapstructure:"backup-streaming-provider" toml:"backup-streaming-provider" json:"backupStreamingProvider"`
 	BackupMysqldumpPath              string  `mapstructure:"backup-mysqldump-path" toml:"backup-mysqldump-path" json:"backupMysqldumpPath"`
 	BackupMysqldumpOptions           string  `mapstructure:"backup-mysqldump-options" toml:"backup-mysqldump-options" json:"backupMysqldumpOptions"`
 	BackupMyDumperPath               string  `mapstructure:"backup-mydumper-path" toml:"backup-mydumper-path" json:"backupMydumperPath"`
@@ -1025,6 +1031,8 @@ type Config struct {
 	Cloud18SubDomainZone             string  `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" groups:"apps"`
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
+	Cloud18SSOClientID               string  `scope:"server" mapstructure:"cloud18-sso-client-id" toml:"cloud18-sso-client-id" json:"cloud18SsoClientId"`
+	Cloud18SSOClientSecret           string  `scope:"server" mapstructure:"cloud18-sso-client-secret" toml:"cloud18-sso-client-secret" json:"-"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
@@ -1933,6 +1941,7 @@ var SecretKeys = []string{
 	"cloud18-dba-user-credentials",
 	"cloud18-sponsor-user-credentials",
 	"cloud18-domain-secret",
+	"cloud18-sso-client-secret",
 	"proxysql-user",
 	"vault-token",
 	"api-oauth-client-secret",
@@ -3852,12 +3861,24 @@ func (conf *Config) MonitorAPIURL() string {
 	return "https://" + conf.MonitorAddress + ":" + conf.APIPort
 }
 
-func (conf *Config) IsEligibleForArbitration() bool {
+// ConstCloud18StorageSSOClientID is the GitLab application the Cloud18 storages trust (#2091),
+// cloud18-sso-client-id's default: a client id is public, the same for every instance, and the
+// application is not confidential, so nothing has to be delivered.
+const ConstCloud18StorageSSOClientID = "8af77a6d3cde0dc816de9f2072829a1d6f5e7f0f2e3d059df21b45b6b13a3821"
+
+// IsEnterprisePlan: registered to Cloud18 on a partner or support plan, which grants the
+// enterprise features (arbitration, the enterprise plugins). The plan is self-declared; the
+// CRM checks it afterwards.
+func (conf *Config) IsEnterprisePlan() bool {
 	if conf.Cloud18GitUser == "" {
 		return false
 	}
 	plan := strings.ToLower(strings.TrimSpace(conf.Cloud18SubscriptionPlan))
 	return plan == "support" || plan == "partner" || plan == "support-services"
+}
+
+func (conf *Config) IsEligibleForArbitration() bool {
+	return conf.IsEnterprisePlan()
 }
 
 func (conf *Config) SetRestoreConfigOnStart(val bool) {
@@ -3937,7 +3958,8 @@ func (conf *Config) CreateGitlabProjects() {
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
-			log.Error(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+			// the user, never the password
+			log.Errorf("GitLab login of %s failed: %s", conf.Cloud18GitUser, err)
 		}
 		return
 	}

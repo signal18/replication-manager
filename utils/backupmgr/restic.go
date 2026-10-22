@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -212,6 +213,10 @@ type ResticPurgeOption struct {
 	Prune             bool              `json:"prune"`             // When true, runs prune after forget to reclaim space (defaults to true via NewResticPurgeOption)
 	PruneOption       ResticPruneOption `json:"prune_option"`
 	DryRun            bool              `json:"dry_run,omitempty"`
+	// Rules: tagged purge policies (#2091), the Keep* fields being the default one: the kept
+	// set is computed by replication-manager (config.KeptByPolicies) and the others forgotten
+	// by id, each policy counting its own snapshots
+	Rules []config.ArchivePurgeRule `json:"rules,omitempty"`
 }
 
 type ResticPruneOption struct {
@@ -446,7 +451,8 @@ type ResticManager struct {
 	AllowUnsafeMount     bool                // If true, allow using mount created by other process
 	MountRecoveryEnabled bool                // If true, recover/cleanup stale mounts on startup
 	OnPurgeComplete      func(ResticPurgeOption)
-	OnBootFetchSuccess   func() // called once when the startup fetch task succeeds
+	OnBootFetchSuccess   func()             // called once when the startup fetch task succeeds
+	OnSnapshotsPurged    func(ids []string) // the snapshots a purge task deleted (its fetch lists them no more), for the backup catalogue (#2091)
 	currentTask          *ResticTaskState
 	currentTaskMutex     *sync.Mutex
 	// Error backoff state to prevent log flooding
@@ -1041,12 +1047,15 @@ func (repo *ResticManager) worker() {
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case PurgeTask:
 			var err error
+			before := repo.snapshotIDs()
 			if task.PurgeOpt != nil {
 				err = repo.PurgeRepo(*task.PurgeOpt)
 			} else {
 				err = errors.New("PurgeTask requires PurgeOpt to be set")
 			}
-			_ = repo.FetchRepo()
+			if ferr := repo.FetchRepo(); ferr == nil {
+				repo.notifyPurged(before)
+			}
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case BackupTask:
 			var err error
@@ -2018,20 +2027,42 @@ func isMountReady(mountPath string) bool {
 		return true
 	}
 	// Fallback: check mountinfo entries for the mount path
+	return mountListed(mountPath)
+}
+
+// mountListed: the mount table lists mountPath. A mount whose restic process ended without
+// unmounting is still listed while every request on it answers ENOTCONN (a stat fails, so
+// isMountReady's first checks miss it).
+func mountListed(mountPath string) bool {
 	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
 		return false
 	}
+	clean := filepath.Clean(mountPath)
 	for _, line := range strings.Split(string(data), "\n") {
 		if line == "" {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) > 4 && fields[4] == mountPath {
+		if len(fields) > 4 && (fields[4] == mountPath || fields[4] == clean) {
 			return true
 		}
 	}
 	return false
+}
+
+// detachLeftMount detaches the mount restic left on mountPath when its process ended without
+// unmounting: listed, unanswered (ENOTCONN), it broke whatever read the folder until the next
+// mount recovered it.
+func (repo *ResticManager) detachLeftMount(mountPath string) {
+	if strings.TrimSpace(mountPath) == "" || !mountListed(mountPath) {
+		return
+	}
+	if err := lazyUnmountResticPath(mountPath); err != nil {
+		repo.Printf(logrus.WarnLevel, "Restic mount left on %s not detached: %v", mountPath, err)
+		return
+	}
+	repo.Printf(logrus.InfoLevel, "Restic mount left on %s by its ended process detached", mountPath)
 }
 
 func (repo *ResticManager) mountStatePath() string {
@@ -2583,9 +2614,12 @@ func (repo *ResticManager) UnmountRepo() error {
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
+		repo.detachLeftMount(mountPath)
 		return fmt.Errorf("restic mount shutdown timeout")
 	}
 
+	// the process ended: a mount it did not take down is detached, never left unanswered
+	repo.detachLeftMount(mountPath)
 	repo.Printf(logrus.InfoLevel, "Restic mount stopped at %s", mountPath)
 	repo.clearMountState()
 	repo.mountRefMutex.Lock()
@@ -4529,10 +4563,28 @@ func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	return nil
 }
 
+// ResticStatsArgs is the stats command repman reads a repository's size with.
+func ResticStatsArgs() []string { return []string{"stats", "--mode", "raw-data", "--json"} }
+
+// ParseResticStats reads the output of ResticStatsArgs. restic stats --json writes a
+// progress line to stdout before the JSON object (e.g. "[0:00] 100% ..."): everything before
+// the first '{' is skipped.
+func ParseResticStats(stdout []byte) (BackupStat, error) {
+	var backupstat BackupStat
+	jsonStart := bytes.IndexByte(stdout, '{')
+	if jsonStart < 0 {
+		return backupstat, fmt.Errorf("no JSON object in stats output: %q", stdout)
+	}
+	if err := json.Unmarshal(stdout[jsonStart:], &backupstat); err != nil {
+		return backupstat, fmt.Errorf("failed to unmarshal backup stat: %w", err)
+	}
+	return backupstat, nil
+}
+
 // fetchRepoStat performs the statistic fetch
 func (repo *ResticManager) fetchRepoStat() error {
 	// Prepare the arguments for the "forget" command
-	args := []string{"stats", "--mode", "raw-data", "--json"}
+	args := ResticStatsArgs()
 
 	// Execute the Restic "stats" command using RunCommand
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true) // Capture output
@@ -4541,16 +4593,9 @@ func (repo *ResticManager) fetchRepoStat() error {
 		return fmt.Errorf("failed to fetch repo: %v, stderr: %s", err, stderr)
 	}
 
-	// restic stats --json writes a progress line to stdout before the JSON object
-	// (e.g. "[0:00] 100% ..."). Skip everything before the first '{'.
-	jsonStart := bytes.IndexByte(stdout, '{')
-	if jsonStart < 0 {
-		return fmt.Errorf("no JSON object in stats output: %q", stdout)
-	}
-	var backupstat BackupStat
-	err = json.Unmarshal(stdout[jsonStart:], &backupstat)
+	backupstat, err := ParseResticStats(stdout)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal backup stat: %w", err)
+		return err
 	}
 
 	// Update the Backups field with the fetched backups
@@ -4580,6 +4625,37 @@ func (repo *ResticManager) fetchRepoSnapshots() error {
 	repo.UpdateSnapshotList(backups)
 
 	return nil // Success
+}
+
+// snapshotIDs are the ids of the snapshots last fetched.
+func (repo *ResticManager) snapshotIDs() map[string]bool {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	ids := make(map[string]bool, len(repo.Backups))
+	for _, s := range repo.Backups {
+		ids[s.Id] = true
+	}
+	return ids
+}
+
+// notifyPurged hands OnSnapshotsPurged the snapshots of before the last fetch no longer lists:
+// the worker runs one task at a time, so the purge task deleted them. A fetch skipped (another
+// one running) leaves the list as it was: nothing is reported, never a snapshot still there.
+func (repo *ResticManager) notifyPurged(before map[string]bool) {
+	after := repo.snapshotIDs()
+	var gone []string
+	for id := range before {
+		if !after[id] {
+			gone = append(gone, id)
+		}
+	}
+	repo.Mutex.Lock()
+	cb := repo.OnSnapshotsPurged
+	repo.Mutex.Unlock()
+	if len(gone) > 0 && cb != nil {
+		sort.Strings(gone)
+		cb(gone)
+	}
 }
 
 // FetchRepo performs the fetch for snapshots and stats.
@@ -4860,6 +4936,103 @@ func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
 	return nil
 }
 
+// purgeWithRules applies tagged purge policies (#2091): the snapshots the purge filters
+// select (host, tag, path) are read, the policies decide which stay, the others are forgotten
+// by id; keep-tag, grouping and prune apply as with one policy.
+func (repo *ResticManager) purgeWithRules(opt ResticPurgeOption) error {
+	args := []string{"snapshots", "--json"}
+	for _, f := range []struct {
+		flag   string
+		values []string
+	}{{"--host", opt.Host}, {"--tag", opt.Tag}, {"--path", opt.Path}} {
+		for _, v := range f.values {
+			if strings.TrimSpace(v) != "" {
+				args = append(args, f.flag, strings.TrimSpace(v))
+			}
+		}
+	}
+	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
+	if err != nil {
+		return fmt.Errorf("failed to list snapshots for the purge: %v, stderr: %s", err, stderr)
+	}
+	var list []BackupSnapshot
+	if err := json.Unmarshal(stdout, &list); err != nil {
+		return fmt.Errorf("failed to read snapshots for the purge: %w", err)
+	}
+	snaps := make([]config.PurgeSnapshot, 0, len(list))
+	for _, b := range list {
+		t, err := time.Parse(time.RFC3339Nano, b.Time)
+		if err != nil {
+			continue // never forgotten: its time is unknown
+		}
+		snaps = append(snaps, config.PurgeSnapshot{ID: b.Id, Time: t, Tags: b.Tags, Group: resticPurgeGroup(opt.GroupBy, b)})
+	}
+	def := config.ArchivePurgePolicy{KeepLast: opt.KeepLast, KeepHourly: opt.KeepHourly, KeepDaily: opt.KeepDaily, KeepWeekly: opt.KeepWeekly,
+		KeepMonthly: opt.KeepMonthly, KeepYearly: opt.KeepYearly, KeepWithin: opt.KeepWithin, KeepWithinHourly: opt.KeepWithinHourly,
+		KeepWithinDaily: opt.KeepWithinDaily, KeepWithinWeekly: opt.KeepWithinWeekly, KeepWithinMonthly: opt.KeepWithinMonthly, KeepWithinYearly: opt.KeepWithinYearly}
+	kept := config.KeptByPolicies(snaps, opt.Rules, def, opt.KeepTag)
+	var forget []string
+	for _, s := range snaps {
+		if !kept[s.ID] {
+			forget = append(forget, s.ID)
+		}
+	}
+	repo.Printf(logrus.InfoLevel, "Purging snapshots with policies %s and the default: keeping %d, %s %d of %d", config.FormatArchivePurgeRules(opt.Rules), len(snaps)-len(forget), map[bool]string{true: "would forget", false: "forgetting"}[opt.DryRun], len(forget), len(snaps))
+	if len(forget) == 0 {
+		return nil
+	}
+	if opt.DryRun {
+		repo.Printf(logrus.InfoLevel, "Purge dry run: would forget %s", strings.Join(forget, " "))
+		return nil
+	}
+	const batch = 100
+	for i := 0; i < len(forget); i += batch {
+		end := i + batch
+		if end > len(forget) {
+			end = len(forget)
+		}
+		args := []string{"forget"}
+		// prune once, with the last batch
+		if opt.Prune && end == len(forget) {
+			args = append(args, "--prune")
+			args = append(args, GetPruneOptions(opt.Prune, opt.PruneOption)...)
+		}
+		args = append(args, forget[i:end]...)
+		if _, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false); err != nil {
+			return fmt.Errorf("failed to purge repo: %v, stderr: %s", err, stderr)
+		}
+	}
+	return nil
+}
+
+// resticPurgeGroup is the group of a snapshot as restic forget --group-by counts it: host and
+// paths by default, none for "none".
+func resticPurgeGroup(groupBy string, b BackupSnapshot) string {
+	groupBy = strings.TrimSpace(groupBy)
+	if groupBy == "" || strings.EqualFold(groupBy, "default") {
+		groupBy = "host,paths"
+	}
+	if strings.EqualFold(groupBy, "none") {
+		return ""
+	}
+	var key []string
+	for _, g := range strings.Split(groupBy, ",") {
+		switch strings.TrimSpace(strings.ToLower(g)) {
+		case "host":
+			key = append(key, "host="+b.Hostname)
+		case "paths":
+			paths := append([]string(nil), b.Paths...)
+			sort.Strings(paths)
+			key = append(key, "paths="+strings.Join(paths, ","))
+		case "tags":
+			tags := append([]string(nil), b.Tags...)
+			sort.Strings(tags)
+			key = append(key, "tags="+strings.Join(tags, ","))
+		}
+	}
+	return strings.Join(key, ";")
+}
+
 func buildForgetArgs(opt ResticPurgeOption) []string {
 	args := []string{"forget"}
 
@@ -4955,7 +5128,11 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 	}
 
 	// Prepare the arguments for the "forget" command
-	if opt.SnapshotID != "" {
+	if len(opt.Rules) > 0 && opt.SnapshotID == "" {
+		if err := repo.purgeWithRules(opt); err != nil {
+			return err
+		}
+	} else if opt.SnapshotID != "" {
 		err := repo.purgeSingleSnapshot(opt)
 		if err != nil {
 			return err

@@ -23,7 +23,6 @@ Supported keys/placeholders:
 - {version}: engine version.
 - {backup-type}: logical/physical/binlog or other backup type label.
 - {backup-tool}: tool used to run the backup.
-- {line}: "default" or "adhoc".
 - {method}: same value as backup-type.
 
 Template forms:

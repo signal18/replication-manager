@@ -574,8 +574,13 @@ func (cluster *Cluster) CheckSlavesRunning() bool {
 func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
 
+	// A table that cannot be checksummed is not consistent: a missing table answers
+	// CHECKSUM TABLE with NULL on every server, and two failures compared equal, so a
+	// check on a table nobody writes passed (test.sbtest, while sysbench writes
+	// replication_manager_schema.sbtest1).
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to take master checksum table ")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to take master checksum table %s: %s", table, err)
+		return false
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum master table %s =  %s %s", table, checksum, cluster.master.URL)
 	}
@@ -602,7 +607,8 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to take slave checksum table ")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to take slave checksum table %s on %s: %s", table, s.URL, err)
+			return false
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum slave table %s = %s on %s ", table, checksumslave, s.URL)
 		}

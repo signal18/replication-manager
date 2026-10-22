@@ -97,11 +97,6 @@ function SnapshotDetailsPanel({
               <Text fontSize='sm' fontFamily='monospace'>
                 {backupTool}
               </Text>
-              {pathInfo?.isAdhoc && (
-                <Badge colorScheme='purple' fontSize='xs'>
-                  adhoc
-                </Badge>
-              )}
             </HStack>
           </HStack>
         )}

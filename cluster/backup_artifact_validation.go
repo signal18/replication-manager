@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	stdgzip "compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/s3fuse"
 	"github.com/signal18/replication-manager/utils/splitdump"
 )
 
@@ -284,8 +287,46 @@ var errArtifactSymlink = errors.New("a symbolic link: not read")
 var errArtifactWalkBudget = errors.New("more entries than the fingerprint check reads")
 
 // restoreArtifactFingerprintBounded is restoreArtifactFingerprint reading at most maxEntries
-// entries of a folder (0: all of them).
+// entries of a folder (0: all of them). On the backups folder mount it is a bucket
+// fingerprint, its files' S3 ETags in place of the mount's inodes and times.
 func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.ArtifactFingerprint, error) {
+	if !s3fuse.Serves(path) {
+		return artifactFingerprint(path, maxEntries, nil)
+	}
+	// the ETags of what is uploaded, not of a previous upload of a file still buffered
+	target := path
+	if enc := encryptedSplitDumpPath(path); enc != "" {
+		target = enc
+	}
+	if err := artifactSyncBucket(target); err != nil {
+		return nil, fmt.Errorf("%s: %w (%v)", filepath.Base(target), errArtifactNotInBucket, err)
+	}
+	// the bucket's listing, not GeeseFS's attribute: after an upload in parts it is the
+	// file's MD5, the listing the bucket's ETag
+	etags, err := s3fuse.ETags(target, maxEntries)
+	if errors.Is(err, s3fuse.ErrTooManyObjects) {
+		return nil, errArtifactWalkBudget
+	}
+	if err != nil {
+		return nil, err
+	}
+	return artifactFingerprint(path, maxEntries, func(file string) (string, error) {
+		if etag := etags[filepath.Clean(file)]; etag != "" {
+			return etag, nil
+		}
+		return "", os.ErrNotExist
+	})
+}
+
+// errArtifactNotInBucket: a file of the backups folder mount has no S3 ETag yet, written and
+// not uploaded: it is fingerprinted once in the bucket (adopted by the change check).
+var errArtifactNotInBucket = errors.New("not in the bucket yet")
+
+// artifactFingerprint fingerprints the artifact at path; etagOf, when set, gives each file's
+// S3 ETag (by its path) and makes it a bucket fingerprint: the files, the size, the newest
+// modification time and the digest of the ETags, no inode nor ctime. The move into the bucket
+// gives it the ETags it uploaded, the mount the ones it reads (the same walk, the same digest).
+func artifactFingerprint(path string, maxEntries int, etagOf func(string) (string, error)) (*backupmgr.ArtifactFingerprint, error) {
 	if enc := encryptedSplitDumpPath(path); enc != "" {
 		path = enc
 	}
@@ -297,18 +338,37 @@ func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.
 	if fi.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("%s is %w", filepath.Base(path), errArtifactSymlink)
 	}
-	ino, ctime := artifactStatIdentity(fi)
+	etags := sha256.New()
+	addETag := func(file, rel string) error {
+		etag, err := etagOf(file)
+		if err != nil || etag == "" {
+			return fmt.Errorf("%s: %w (%v)", rel, errArtifactNotInBucket, err)
+		}
+		fmt.Fprintf(etags, "%s\x00%s\n", rel, etag)
+		return nil
+	}
 	if !fi.IsDir() {
+		if etagOf != nil {
+			if err := addETag(path, filepath.Base(path)); err != nil {
+				return nil, err
+			}
+			return &backupmgr.ArtifactFingerprint{Files: 1, Size: fi.Size(), ModTime: fi.ModTime(), ETags: hex.EncodeToString(etags.Sum(nil))}, nil
+		}
+		ino, ctime := artifactStatIdentity(fi)
 		return &backupmgr.ArtifactFingerprint{Files: 1, Size: fi.Size(), ModTime: fi.ModTime(), Inode: ino, ChangeTime: ctime}, nil
 	}
 	// the folder's own inode and ctime start the fingerprint: a file added, removed or renamed
 	// in the folder changes its ctime; one rewritten in place changes its own ctime, and one
 	// in a subfolder the file count, the size or the newest ctime of the files. A file of a
 	// subfolder rewritten in place, its size and modification time put back, changes neither
-	// folder's ctime but its own, which is the newest ctime the walk reads.
-	fp := &backupmgr.ArtifactFingerprint{Inode: ino, ChangeTime: ctime}
+	// folder's ctime but its own, which is the newest ctime the walk reads. In the bucket, a
+	// file added, removed, renamed or rewritten changes the ETags' digest.
+	fp := &backupmgr.ArtifactFingerprint{}
+	if etagOf == nil {
+		fp.Inode, fp.ChangeTime = artifactStatIdentity(fi)
+	}
 	entries := 0
-	err = filepath.WalkDir(path, func(_ string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(path, func(file string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -327,11 +387,18 @@ func restoreArtifactFingerprintBounded(path string, maxEntries int) (*backupmgr.
 		if info.ModTime().After(fp.ModTime) {
 			fp.ModTime = info.ModTime()
 		}
+		if etagOf != nil {
+			rel, _ := filepath.Rel(path, file)
+			return addETag(file, filepath.ToSlash(rel))
+		}
 		if _, c := artifactStatIdentity(info); c.After(fp.ChangeTime) {
 			fp.ChangeTime = c
 		}
 		return nil
 	})
+	if etagOf != nil {
+		fp.ETags = hex.EncodeToString(etags.Sum(nil))
+	}
 	return fp, err
 }
 
@@ -382,10 +449,7 @@ func artifactUnchangedBounded(path string, rec *backupmgr.ArtifactFingerprint, m
 		return false
 	}
 	fp, err := restoreArtifactFingerprintBounded(path, maxEntries)
-	// time.Equal: the recorded time may come back from the meta file, without its location.
-	// Without its inode and ctime (recorded before them, or not Linux) a fingerprint does not
-	// identify the file: it matches nothing.
-	return err == nil && !rec.ChangeTime.IsZero() && !fp.ChangeTime.IsZero() &&
-		fp.Files == rec.Files && fp.Size == rec.Size && fp.ModTime.Equal(rec.ModTime) &&
-		fp.Inode == rec.Inode && fp.ChangeTime.Equal(rec.ChangeTime)
+	// Without its inode and ctime (recorded before them, or not Linux) or its ETags a
+	// fingerprint does not identify the file: it matches nothing.
+	return err == nil && fp.Same(*rec)
 }

@@ -196,6 +196,7 @@ var clusterACLRules = []ACLRule{
 	// Backups — ordered longest-match-first so specific rules win
 	{"/backups/stats", nil, []string{config.GrantClusterShowBackups}},                         // read-only stats
 	{"/backups/candidates", nil, []string{config.GrantClusterShowBackups}},                    // read-only: the backup discovery's candidates
+	{"/backups/binlog-copies", nil, []string{config.GrantClusterShowBackups}},                 // read-only: the log copies of the backup directories
 	{"/backups/", nil, []string{config.GrantDBBackup}},                                        // write sub-paths: delete, reconcile, verify, register, unregister, archive
 	{"/backups", nil, []string{config.GrantClusterShowBackups}},                               // list (bare path, no slash)
 	{"/restic/purge", nil, []string{config.GrantDBBackup}},                                    // delete a snapshot
@@ -204,6 +205,23 @@ var clusterACLRules = []ACLRule{
 	{"/restic/check-config", nil, []string{config.GrantClusterProcess, config.GrantDBBackup}}, // preview also required by wipe workflow
 	{"/restic/snapshots", nil, []string{config.GrantClusterShowBackups}},
 	{"/restic/stats", nil, []string{config.GrantClusterShowBackups}},
+
+	// Archive list (#2091): one pattern per action and none covering another, so a weaker
+	// grant never reaches a stronger action through the less specific fallback
+	{"/archive-list", nil, []string{config.GrantClusterShowBackups}},
+	{"/archive-actions/add", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/edit/", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/rename/", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/attach/", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/detach", nil, []string{config.GrantClusterSettings}},
+	{"/archive-actions/remove/", nil, []string{config.GrantDBBackup}},    // deletes the content
+	{"/archive-actions/forget/", nil, []string{config.GrantDBBackup}},    // deletes a snapshot, as /restic/purge
+	{"/archive-actions/snapback/", nil, []string{config.GrantDBRestore}}, // puts a backup directory back from a snapshot
+	{"/archive-actions/snapback-release/", nil, []string{config.GrantDBRestore}},
+	{"/archive-actions/size/", nil, []string{config.GrantClusterShowBackups}}, // reads only
+	{"/archive-actions/rebuild-catalogue", nil, []string{config.GrantDBBackup}},
+	{"/archive-actions/drop-missing-snapshots/", nil, []string{config.GrantDBBackup}}, // reads the archives into the backup catalogue
+	{"/archive-snapshots/", nil, []string{config.GrantClusterShowBackups}},            // reads only, as /restic/snapshots
 
 	// Routes and Certificates
 	{"/queryrules", nil, []string{config.GrantClusterShowRoutes}},

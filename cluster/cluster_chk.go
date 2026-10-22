@@ -1248,18 +1248,7 @@ func (cluster *Cluster) CheckInjectConfig() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot read config file %s : %s", filePath, err)
 				return
 			}
-			//extract all the data of inject.toml file
-			lines := strings.Split(string(data), "\n")
-			for _, line := range lines {
-				parts := strings.Split(line, "=")
-				if len(parts) == 2 {
-					key := strings.TrimSpace(parts[0])
-					value := strings.TrimSpace(parts[1])
-					cluster.Conf.SetDynamicFlag(key, strings.ReplaceAll(value, `"`, ""))
-					//set data of the inject.toml
-					cluster.SetInjectVariables()
-				}
-			}
+			cluster.applyInjectConfig(data)
 			//then we can erase data from inject.toml file
 			file, _ := os.OpenFile(filePath, os.O_WRONLY|os.O_TRUNC, 0644)
 			err = file.Truncate(0)

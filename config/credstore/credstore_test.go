@@ -305,3 +305,118 @@ func TestChainAndOutsideWritersShareDynamicMap(t *testing.T) {
 		t.Fatalf("last value %q", v)
 	}
 }
+
+func archiveChainConf() *config.Config {
+	conf := testConf()
+	conf.DefaultFlagMap["backup-restic-password"] = "secret"
+	conf.DefaultFlagMap["backup-restic-aws-access-secret"] = "secret"
+	conf.BackupArchiveName = "archive-local-1"
+	conf.Archives = []config.ArchiveConfig{
+		{Name: "archive-local-1", Plugin: config.ConstArchivePluginResticLocal, Settings: map[string]interface{}{}},
+		{Name: "archive-s3-1", Plugin: config.ConstArchivePluginResticS3, Settings: map[string]interface{}{}},
+	}
+	conf.MigrateArchives()
+	return conf
+}
+
+// #2088: the restic password is the connected archive's: set on archive-local-1, set on archive-s3-1,
+// each archive gets its own back when connected, and the entry holds it encrypted
+func TestChainArchiveSecretsFollowTheConnection(t *testing.T) {
+	conf := archiveChainConf()
+	saves := 0
+	c := NewConfigChain(conf, func() { saves++ })
+	c.Refresh()
+	if err := c.Set("backup-restic-password", "pass-one"); err != nil {
+		t.Fatal(err)
+	}
+	if src := c.Source("backup-restic-password"); src != SourceArchive || saves != 1 {
+		t.Fatalf("source %s saves %d", src, saves)
+	}
+	if raw := fmt.Sprintf("%v", conf.Archives[0].Settings["password"]); !strings.Contains(raw, "hash_") {
+		t.Fatalf("stored in clear: %q", raw)
+	}
+	// a local archive declares no S3 secret: the flat store takes it
+	if src, err := c.Source("backup-restic-aws-access-secret"), c.CanSet("backup-restic-aws-access-secret"); src == SourceArchive || err != nil {
+		t.Fatalf("aws secret on a local archive: source %s err %v", src, err)
+	}
+
+	if err := conf.SwitchArchive("archive-s3-1"); err != nil {
+		t.Fatal(err)
+	}
+	c.Refresh()
+	if v := conf.GetDecryptedValue("backup-restic-password"); v != "secret" {
+		t.Fatalf("archive-s3-1 reads archive-local-1's password: %q", v)
+	}
+	if err := c.SetAll(Change{"backup-restic-password", "pass-two"}, Change{"backup-restic-aws-access-secret", "s3-two"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := conf.SwitchArchive("archive-local-1"); err != nil {
+		t.Fatal(err)
+	}
+	c.Refresh()
+	if v := conf.GetDecryptedValue("backup-restic-password"); v != "pass-one" {
+		t.Fatalf("archive-local-1 password %q", v)
+	}
+	if err := conf.SwitchArchive("archive-s3-1"); err != nil {
+		t.Fatal(err)
+	}
+	c.Refresh()
+	if p, s := conf.GetDecryptedValue("backup-restic-password"), conf.GetDecryptedValue("backup-restic-aws-access-secret"); p != "pass-two" || s != "s3-two" {
+		t.Fatalf("archive-s3-1 password %q secret %q", p, s)
+	}
+}
+
+// #2088: no archive connected, the flat config takes the secret as before; a pinned secret
+// stays the file's even with an archive connected
+func TestChainArchiveSecretsFallBack(t *testing.T) {
+	conf := archiveChainConf()
+	if err := conf.SwitchArchive(""); err != nil {
+		t.Fatal(err)
+	}
+	c := NewConfigChain(conf, nil)
+	if err := c.Set("backup-restic-password", "flat"); err != nil {
+		t.Fatal(err)
+	}
+	if src := c.Source("backup-restic-password"); src != SourceDynamic {
+		t.Fatalf("source %s", src)
+	}
+	if err := conf.SwitchArchive("archive-local-1"); err != nil {
+		t.Fatal(err)
+	}
+	conf.ImmuableFlagMap["backup-restic-password"] = "pinned"
+	c.Refresh()
+	if err := c.CanSet("backup-restic-password"); err == nil {
+		t.Fatal("a pinned archive secret accepted a change")
+	}
+	if src := c.Source("backup-restic-password"); src != SourceDynamic && src != SourcePinned {
+		t.Fatalf("pinned key read from %s", src)
+	}
+}
+
+// #2088: setters and the save on an archive secret at once (-race): one lock order,
+// chain then archive list
+func TestChainArchiveSecretsConcurrent(t *testing.T) {
+	conf := archiveChainConf()
+	c := NewConfigChain(conf, nil)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				c.Set("backup-restic-password", fmt.Sprintf("p%d-%d", i, j))
+				conf.SyncArchiveFromConfig()
+				conf.ArchivesToml("saved-c1")
+				c.Refresh()
+			}
+		}(i)
+	}
+	done := make(chan struct{})
+	go func() { wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("deadlock")
+	}
+}

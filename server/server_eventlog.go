@@ -201,6 +201,23 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 		}
 	}
 
+	// the archive list diffs per entry: "archive.<name>.<setting>" (#2077)
+	if rest, ok := strings.CutPrefix(ev.Key, "archive."); ok {
+		if i := strings.LastIndex(rest, "."); i > 0 {
+			if err := cl.Conf.SetArchiveSetting(rest[:i], rest[i+1:], ev.Value, ev.Action == "unset"); err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Event log: cannot apply %s on %s: %s", ev.Key, ev.Cluster, err)
+				cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+				return false
+			}
+			if _, secret := config.ArchiveSecretName("backup-restic-" + rest[i+1:]); secret {
+				// an archive secret: the chain's cache reads it now (#2088)
+				cl.CredentialChain().Refresh()
+			}
+			cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+			return true
+		}
+	}
+
 	value := ev.Value
 	if ev.Action == "unset" {
 		def, ok := cl.Conf.DefaultFlagMap[ev.Key]

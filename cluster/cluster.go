@@ -218,6 +218,15 @@ type Cluster struct {
 	// Use the accessor methods (Add/Remove/Update/GetS3ProvidersSnapshot) and
 	// CRUD transaction lock helpers instead of direct field mutation.
 	s3Providers    s3ProviderState
+	backupMount    backupMount                // the backups folder mount (#2091)
+	snapbackMu     sync.Mutex                 // guards snapbacks
+	snapbacks      map[string]*SnapbackState  // server URL -> its backup directory's snapback (#2091), nil until read
+	binlogGapMu    sync.Mutex                 // guards binlogGaps and binlogInSnapshotFile
+	binlogGaps     map[string]*BinlogGap      // server URL -> its lost binlog continuity in the archive (#2091), nil until read
+	catalogueMu    sync.Mutex                 // guards catalogueSaved
+	catalogueSaved map[string][]byte          // global backup catalogue file -> its content last written (#2091)
+	catalogueRun   catalogueRebuildState      // the catalogue's rebuild from the archives (#2091), guarded by catalogueMu
+	BackupMount    BackupMountState           `json:"backupMount" groups:"web"` // its state, for the Backup settings
 	Agents         []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq   map[string]int64           `json:"-"`
 	hostList       []string                   `json:"-"`
@@ -306,6 +315,9 @@ type Cluster struct {
 	WorkloadRemediations RemediationPlan `json:"workloadRemediations" groups:"web"`
 	// ConfigRemediations is the remediation plan for actionable config states (WARN0234).
 	ConfigRemediations RemediationPlan `json:"configRemediations" groups:"web"`
+	// StateRemediations is the remediation plan for actionable operational states (WARN0255,
+	// WARN0256 a snapback), shown next to them in the health alerts.
+	StateRemediations RemediationPlan `json:"stateRemediations" groups:"web"`
 	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates []state.State `json:"workloadStates" groups:"web"`
@@ -537,6 +549,13 @@ type Cluster struct {
 	credChainMu             sync.Mutex       `json:"-"`
 	secretVersionStoreMu    sync.Mutex       `json:"-"`
 	secretVersionStoreDirty bool             `json:"-"`
+
+	// archiveOps: archive name -> a running remove, or its error (#2091)
+	archiveOps   map[string]string `json:"-"`
+	archiveOpsMu sync.Mutex        `json:"-"`
+	// archiveSizes: archive name -> its size as last read, kept in archive-sizes.json;
+	// guarded by archiveOpsMu, nil until read
+	archiveSizes map[string]ArchiveSize `json:"-"`
 	// reloadMu serializes Run()'s per-tick synchronous work (topology
 	// discovery, the wg-joined Phase 1/2/3 monitoring work) against
 	// ReloadConfig() rebuilding Conf/state machines/Servers out from under
@@ -700,7 +719,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	go cluster.ConsumeMessageChan()
 
 	*cluster.Conf = confs.ConfInit
-	cluster.Conf.NormalizeBackupArchiveMode()
+	// the archive list, migrated from backup-archive-mode / backup-restic-* (#2077)
+	cluster.Conf.MigrateArchives()
 	// the cluster's own scheduler-jobs-exec-remote, not the map parsed for the defaults
 	cluster.Conf.ParseJobsExecOverrides()
 
@@ -752,6 +772,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.InterventionHistory = make([]InterventionEntry, 0)
 	cluster.LoadInterventionHistory()
 	cluster.LoadSysbenchLog()
+	cluster.loadBackupCatalogue() // the backups only in an archive, before the servers read their records (#2091)
 	cluster.pluginSpikeCache = make(map[string]*logplugin.SpikeCache)
 	cluster.pluginRegistry = logplugin.NewRegistry()
 	if cluster.Conf.Arbitration {
@@ -842,6 +863,8 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 			"LoadS3Providers: %v", err)
 	}
+	cluster.ensureCloud18Provider() // registered to Cloud18: the Cloud18 storage, SSO (#2091)
+	cluster.LoadArchivePlugins()    // the external archive plugins' manifests, once per process (#2091)
 
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
@@ -971,6 +994,7 @@ func (cluster *Cluster) InitFromConf() {
 			"Failed to pre-initialize preserved variables: %v (will retry on demand)", err)
 	}
 
+	cluster.detachDeadBackupMountAtStart() // the servers read their backups: never through a mount left by a previous run (#2091)
 	err = cluster.newServerList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set server list %s", err)
@@ -1017,6 +1041,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.RefreshToolVersions()
 	cluster.initResticLocalDir()
 	cluster.StartResticManager()
+	cluster.startBackupFolder() // the backups folder mount made now, not at the first mount check (#2091)
 	// Config persistence is unlocked only now: the save queue is async and a
 	// save executing mid-init captures a half-loaded config (missing external
 	// users, restic paths, ACLs), emitting transient config change events
@@ -1081,6 +1106,7 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerAlertDisable()
 		cluster.SetSchedulerMonitorSchema()
 		cluster.SetSchedulerMonitorChecksum()
+		cluster.SetSchedulerArchivePurge()
 		if cluster.Status == ConstMonitorActif {
 			cluster.scheduler.Start()
 		} else {
@@ -1330,6 +1356,9 @@ func (cluster *Cluster) tickBody() {
 				if heartbeats%30 == 0 {
 					goRun(cluster.MonitorQueryRules)
 				}
+				if heartbeats%60 == 0 {
+					goRun(cluster.RefreshBackupMount) // the backups folder mount (#2091), never blocks
+				}
 				if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 					// Background and non-reentrant (Stéphane 2026-10-05): the tick never waits
 					// for the marker, and a marker still stuck from an earlier tick is not
@@ -1337,7 +1366,6 @@ func (cluster *Cluster) tickBody() {
 					cluster.startInjectProxiesTraffic()
 				}
 				if heartbeats%3600 == 0 {
-					goRun(func() { cluster.ResticPurgeRepo(false) })
 					goRun(cluster.PurgeExpiredDirectReseedSystemArtifacts)
 					goRun(cluster.RefreshToolVersions)
 					goRun(cluster.CheckBackupToolVersions)
@@ -1510,48 +1538,18 @@ func (cluster *Cluster) StateProcessing() {
 			if s.ErrKey == "WARN0073" || s.ErrKey == "WARN0175" {
 				cluster.releaseBackupSlot()
 			}
+			// WARN0074/WARN0076 resolved: the jobs script picked the physical reseed/flashback up.
+			// Its backup is streamed from when it was queued (dispatchPhysicalJob); this edge is
+			// a second chance only, a no-op once dispatched: a task picked up before any tick saw
+			// it waiting never opens the state, so the edge alone left it without a stream.
 			if s.ErrKey == "WARN0074" && servertoreseed != nil {
-				task := "reseed" + cluster.Conf.BackupPhysicalType
-
-				err := servertoreseed.ProcessReseedPhysical(task)
-				if err != nil {
-					// errServerNotReseeding means the reseed flag was already clear when
-					// ProcessReseedPhysical was entered -- most commonly because a
-					// terminal-job reconciliation already ran AfterJobProcess for this
-					// task on a job that finished successfully. Marking a finished job
-					// Halted here would relabel a success as a failure in the runtime
-					// cache, so skip the state write for that case only; any other
-					// error is a genuine failure and still gets halted.
-					if !errors.Is(err, errServerNotReseeding) {
-						servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
-					}
-					if servertoreseed.HasReseedingState(task) {
-						servertoreseed.SetInReseedBackup("")
-					}
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
-					servertoreseed.MarkReseedFailed(err)
-				}
-				// NOTE: a rejoin-armed reseed is NOT reconciled here — ProcessReseedPhysical
-				// only arms a detached WaitAndSendSST/SSTRunSender goroutine and returns nil,
-				// so err is not the real outcome. Reconciliation happens at true completion
-				// (IsReseeding clear) via reconcileDeferredRejoinReseeds.
+				cluster.dispatchPhysicalJob(servertoreseed, "reseed"+cluster.Conf.BackupPhysicalType, false)
 			}
 
 			// WARN0075 (logical reseed) is handled below, off the GetOpenStates()
 			// loop rather than this resolved-edge -- see the comment there for why.
 			if s.ErrKey == "WARN0076" && servertoreseed != nil {
-				task := "flashback" + cluster.Conf.BackupPhysicalType
-				err := servertoreseed.ProcessFlashbackPhysical(task)
-				if err != nil {
-					// See the matching errServerNotReseeding check under WARN0074 above.
-					if !errors.Is(err, errServerNotReseeding) {
-						servertoreseed.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
-					}
-					if servertoreseed.HasReseedingState(task) {
-						servertoreseed.SetInReseedBackup("")
-					}
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
-				}
+				cluster.dispatchPhysicalJob(servertoreseed, "flashback"+cluster.Conf.BackupPhysicalType, true)
 			}
 
 			if s.ErrKey == "WARN0111" {
@@ -1624,10 +1622,11 @@ func (cluster *Cluster) StateProcessing() {
 			// dependency on that agreement entirely: launchLogicalReseed is
 			// idempotent (HasReseedingState + an atomic dispatch flag), so
 			// calling it repeatedly while WARN0075 stays open is a safe no-op
-			// once the real attempt is in flight or done. Does not apply to
-			// WARN0074/WARN0076 (physical reseed/flashback): those dispatch via
-			// the dbjobs SSH cookie flow, which is already flagged unavailable
-			// with scheduler off (WARN0170).
+			// once the real attempt is in flight or done. WARN0074/WARN0076
+			// (physical reseed/flashback) are dispatched when their task is
+			// queued, once per reseed (dispatchPhysicalJob), their resolved
+			// edge being a second chance only: with the jobs script in a
+			// container (OpenSVC, K8s) they run with the scheduler off too.
 			if s.ErrKey == "WARN0075" {
 				if server := cluster.GetServerFromURL(s.ServerUrl); server != nil {
 					cluster.launchLogicalReseed(server)
@@ -1691,6 +1690,50 @@ func (cluster *Cluster) StateProcessing() {
 	}
 
 	cluster.CheckSendMail()
+}
+
+// dispatchPhysicalJob streams the backup of a physical reseed or flashback, once per reseed, off
+// the monitor loop: WaitAndSendSST waits until the jobs script listens (its task waiting, state
+// 2), so it starts as soon as the task is queued. Called at the queuing and again on the
+// WARN0074/WARN0076 resolved edge; the second call is a no-op. A second stream would wait for a
+// receiver already served and fail the job after sst-wait-max-loop.
+func (cluster *Cluster) dispatchPhysicalJob(server *ServerMonitor, task string, flashback bool) {
+	if !server.HasReseedingState(task) {
+		return
+	}
+	if !server.physicalJobDispatched.CompareAndSwap(false, true) {
+		return
+	}
+	cluster.trackTickGoroutine(func() {
+		process, what := server.ProcessReseedPhysical, "reseed"
+		if flashback {
+			process, what = server.ProcessFlashbackPhysical, "flashback"
+		}
+		err := process(task)
+		if err == nil {
+			// NOTE: a rejoin-armed reseed is NOT reconciled here — ProcessReseedPhysical only
+			// arms a detached WaitAndSendSST/SSTRunSender goroutine and returns nil, so err is
+			// not the real outcome. Reconciliation happens at true completion (IsReseeding
+			// clear) via reconcileDeferredRejoinReseeds.
+			return
+		}
+		// errServerNotReseeding means the reseed flag was already clear when the job was
+		// entered -- most commonly because a terminal-job reconciliation already ran
+		// AfterJobProcess for this task on a job that finished successfully. Marking a
+		// finished job Halted would relabel a success as a failure in the runtime cache, so
+		// skip the state write for that case only; any other error is a genuine failure and
+		// still gets halted.
+		if !errors.Is(err, errServerNotReseeding) {
+			server.JobsUpdateState(task, err.Error(), JobStateHalted, 1)
+		}
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing %s for %s: %s", what, server.URL, err)
+		if !flashback {
+			server.MarkReseedFailed(err)
+		}
+	})
 }
 
 // launchLogicalReseed starts the async logical reseed for a server that has
@@ -1781,6 +1824,7 @@ func (cluster *Cluster) Stop() {
 		phase("templateMD5Worker", func() {
 			cluster.CloseRefreshTemplateMD5Worker()
 		})
+		phase("backupFolderUnmount", cluster.UnmountBackupFolder)
 		if cluster.ResticManager != nil {
 			phase("resticUnmount", func() {
 				// Shutdown uses ForceUnmountRepo (lazy detach, no 5-min wait for
@@ -2119,6 +2163,9 @@ func (cluster *Cluster) SaveCallBack() error {
 		// Check and inject config
 		cluster.CheckInjectConfig()
 
+		// a setter changed a BackupRestic* field: archive 1 carries it into the save (#2077)
+		cluster.Conf.SyncArchiveFromConfig()
+
 		// Save the main configuration file
 		changed, err := cluster.SaveConfigFile()
 		if err != nil {
@@ -2223,7 +2270,9 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		_, ok := cluster.Conf.GetImmuableFlag(key)
 		_, dynamic := cluster.Conf.GetDynamicFlag(key)
 		_, secret := cluster.Conf.Secrets.Lookup(key)
-		if ok {
+		if ok || config.IsArchiveLegacyKey(key) || cluster.Conf.ArchiveHoldsSecret(key) {
+			// a legacy archive key is carried by the archive list (#2077), a secret the
+			// connected archive holds by its entry (#2088)
 			s.Delete(key)
 		} else if secret && dynamic {
 			// a secret the dynamic config store holds (#2075): written whatever its raw
@@ -2247,6 +2296,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	}
 
 	s.WriteTo(&buf)
+
+	// the archive list, unless a config file pins it (#2077)
+	if _, pinned := cluster.Conf.GetImmuableFlag("archive"); !pinned {
+		archives, err := cluster.Conf.ArchivesToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the archive list: %s", err)
+			return false, err
+		}
+		buf.WriteString(archives)
+	}
 
 	has_changed, err = cluster.saveConfigArtifact(filePath, buf.Bytes(), "saved-"+cluster.Name, true)
 	if err == nil && has_changed {
@@ -2576,8 +2635,11 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 
 	cluster.Lock()
 	*cluster.Conf = conf
+	cluster.Conf.MigrateArchives()
 	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
+	// the backups already read glued to the archive list as the config is (#2091)
+	go cluster.glueCatalogue()
 
 	cluster.StateMachine.SetFailoverState()
 	cluster.ResetStates()

@@ -59,7 +59,9 @@ const EMPTY_FORM = {
   endpoint: '',
   region: '',
   accessKey: '',
-  secretKey: ''
+  secretKey: '',
+  cloud18Sso: false,
+  roleArn: ''
 }
 
 function S3ProvidersSettings({ selectedCluster }) {
@@ -141,7 +143,9 @@ function S3ProvidersSettings({ selectedCluster }) {
       endpoint: provider.endpoint || '',
       region: provider.region || '',
       accessKey: '',
-      secretKey: ''
+      secretKey: '',
+      cloud18Sso: !!provider.cloud18Sso,
+      roleArn: provider.roleArn || ''
     })
     setFormErrors({})
     setSubmitError('')
@@ -554,8 +558,13 @@ function S3ProvidersSettings({ selectedCluster }) {
             providerSource: 'custom',
             endpoint: formData.endpoint.trim(),
             region: formData.region.trim(),
-            ...(formData.accessKey.trim() ? { accesskey: formData.accessKey.trim() } : {}),
-            ...(formData.secretKey ? { secretkey: formData.secretKey } : {})
+            // reached with the Cloud18 SSO: no keys, the storage's role instead (#2091)
+            ...(formData.cloud18Sso
+              ? { cloud18Sso: true, ...(formData.roleArn.trim() ? { roleArn: formData.roleArn.trim() } : {}) }
+              : {
+                  ...(formData.accessKey.trim() ? { accesskey: formData.accessKey.trim() } : {}),
+                  ...(formData.secretKey ? { secretkey: formData.secretKey } : {})
+                })
           }
 
     setIsSubmitting(true)
@@ -703,6 +712,26 @@ function S3ProvidersSettings({ selectedCluster }) {
             />
           </FormControl>
           <FormControl>
+            <Checkbox isChecked={formData.cloud18Sso} onChange={(e) => handleFieldChange('cloud18Sso', e.target.checked)}>
+              Connect with the Cloud18 SSO
+            </Checkbox>
+            <Text fontSize='xs' opacity={0.7} mt={1}>
+              No keys: a replication-manager registered to Cloud18 gets short-lived ones from the storage with its Cloud18 identity, opening its own folder only.
+              {!selectedCluster?.config?.cloud18 && ' This replication-manager is not registered to Cloud18: it cannot use such a provider.'}
+            </Text>
+          </FormControl>
+          {formData.cloud18Sso && (
+          <FormControl>
+            <FormLabel>Storage role (ARN, optional)</FormLabel>
+            <Input
+              value={formData.roleArn}
+              onChange={(e) => handleFieldChange('roleArn', e.target.value)}
+              placeholder='empty: computed from the storage client (MinIO)'
+            />
+          </FormControl>
+          )}
+          {!formData.cloud18Sso && (<>
+          <FormControl>
             <FormLabel>Access Key</FormLabel>
             <Input
               value={formData.accessKey}
@@ -727,6 +756,7 @@ function S3ProvidersSettings({ selectedCluster }) {
               required={false}
             />
           </FormControl>
+          </>)}
         </>
       )}
 
@@ -805,7 +835,7 @@ function S3ProvidersSettings({ selectedCluster }) {
                       ? p.providerApp || '—'
                       : p.endpoint || '—'}
                   </Td>
-                  <Td>{p.region || '—'}</Td>
+                  <Td>{p.region || '—'}{p.cloud18Sso && <Badge ml={2} colorScheme='purple'>Cloud18 SSO</Badge>}</Td>
                   <Td>
                     <HStack spacing={2}>
                       <RMButton size='xs' variant='outline' onClick={() => openReferencesModal(p.name)}>

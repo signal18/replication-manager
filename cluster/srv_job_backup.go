@@ -22,7 +22,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -295,7 +297,7 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 
 	switch task.task {
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
-		if server.LastBackupMeta.Physical != nil && !server.LastBackupMeta.Physical.IsAdhoc() {
+		if server.LastBackupMeta.Physical != nil {
 			server.SetBackupPhysicalCookie(task.task)
 		}
 		if server.LastBackupMeta.Physical != nil {
@@ -399,10 +401,9 @@ func (server *ServerMonitor) MarkBackupPhysicalDone(task string) {
 	// guards it there rather than the plain field access this used to be.
 	server.backupMetaMutex.Lock()
 	physical := server.LastBackupMeta.Physical
-	isAdhoc := physical != nil && physical.IsAdhoc()
 	server.backupMetaMutex.Unlock()
 
-	if physical != nil && !isAdhoc {
+	if physical != nil {
 		server.SetBackupPhysicalCookie(task)
 	}
 
@@ -413,10 +414,11 @@ func (server *ServerMonitor) MarkBackupPhysicalDone(task string) {
 	server.backupMetaMutex.Unlock()
 }
 
-func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) error {
+func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions) (err error) {
 	if server == nil {
 		return nil
 	}
+	defer server.ClusterGroup.recoverBackupPanic("Physical backup of "+server.URL, &err)
 
 	if server.IsDown() {
 		return nil
@@ -426,12 +428,17 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	if err := cluster.preflightBackupEncryptionKey(); err != nil {
 		return err
 	}
+	if err := cluster.backupFolderMoving(); err != nil {
+		return err
+	}
+	if err := cluster.snapbackLock(server.URL); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Physical backup of %s refused: %s", server.URL, err)
+		return err
+	}
 	if !cluster.waitForBackupSlot() {
 		return errors.New("backup canceled: cluster shutting down")
 	}
 
-	backupLine := server.resolveBackupLine(opts)
-	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
 	// the tool of this backup: the cluster's, or pg_basebackup in the jobs sidecar for a
 	// PostgreSQL server (srv_job_postgres.go) -- one path for every tool
@@ -474,21 +481,17 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		physType = config.ConstBackupPhysicalTypeMariaBackup
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive physical backup %s (%s line) request for server: %s", physType, backupLine, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive physical backup %s request for server: %s", physType, server.URL)
 
 	now := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Physical backup %s started at %s for: %s", physType, now.Format(time.RFC3339), server.URL)
 	var port string
-	var err error
 	var backupext string = server.physicalBackupExtension(physType)
 	var dest string = server.GetMyBackupDirectory() + physType
-	if isAdhoc {
-		dest = fmt.Sprintf("%s.%d", dest, now.Unix())
-	}
 	if cluster.Conf.CompressBackups {
 		backupext = backupext + ".gz"
 		dest = dest + backupext
-		if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
+		if cluster.Conf.BackupKeepUntilValid {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 			oldSrc := cluster.previousBackupArtifactPath(dest)
 			if isEncryptedBackupArtifact(oldSrc) {
@@ -500,7 +503,7 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 		port, err = server.openPhysicalBackupReceiver(true, cluster.prepareBackupStaging(dest), physType)
 	} else {
 		dest = dest + backupext
-		if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
+		if cluster.Conf.BackupKeepUntilValid {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 			oldSrc := cluster.previousBackupArtifactPath(dest)
 			if isEncryptedBackupArtifact(oldSrc) {
@@ -528,11 +531,8 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 
 	// Reset last backup meta
 	var prevId int64
-	if !isAdhoc {
-		prev := cluster.BackupMetaMap.GetPreviousBackup(physType, server.URL)
-		if prev != nil {
-			prevId = prev.Id
-		}
+	if prev := cluster.BackupMetaMap.GetPreviousBackup(physType, server.URL); prev != nil {
+		prevId = prev.Id
 	}
 
 	// Check for previous backup size
@@ -544,26 +544,24 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	}
 
 	// Remove from backup list, since the file will be replaced
-	if !cluster.Conf.BackupKeepUntilValid && !isAdhoc {
-		cluster.BackupMetaMap.Delete(prevId)
+	if !cluster.Conf.BackupKeepUntilValid {
+		server.retireReplacedBackup(prevId)
 	}
 
 	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
-		Id:                now.Unix(),
-		StartTime:         now,
-		BackupMethod:      backupmgr.BackupMethodPhysical,
-		BackupStrategy:    backupmgr.BackupStrategyFull,
-		BackupTool:        physType,
-		Source:            server.URL,
-		Dest:              dest,
-		Compressed:        cluster.Conf.CompressBackups,
-		Previous:          prevId,
-		BackupLine:        backupLine,
-		RetentionDays:     opts.RetentionDays,
-		RetentionDuration: strings.TrimSpace(opts.RetentionDuration),
-		ResticEnabled:     resticEnabled,
+		Id:             now.Unix(),
+		StartTime:      now,
+		BackupMethod:   backupmgr.BackupMethodPhysical,
+		BackupStrategy: backupmgr.BackupStrategyFull,
+		BackupTool:     physType,
+		Source:         server.URL,
+		Role:           server.backupRole(),
+		Dest:           dest,
+		Compressed:     cluster.Conf.CompressBackups,
+		Previous:       prevId,
+		ResticEnabled:  resticEnabled,
 	}
-	server.ensureBackupSessionID(server.LastBackupMeta.Physical, backupmgr.BackupMethodPhysical, now, backupLine)
+	server.ensureBackupSessionID(server.LastBackupMeta.Physical, backupmgr.BackupMethodPhysical, now)
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
 
@@ -706,6 +704,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s request for server: %s", backtype, server.URL)
+	cluster.dispatchPhysicalJob(server, task, false)
 
 	return nil
 }
@@ -833,6 +832,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackupWithPayload(backtype, backup
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed physical backup %s from path %s request for server: %s", backtype, backupfile, server.URL)
+	cluster.dispatchPhysicalJob(server, task, false)
 
 	return nil
 }
@@ -927,6 +927,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback physical backup %s request for server: %s", cluster.Conf.BackupPhysicalType, server.URL)
+	cluster.dispatchPhysicalJob(server, task, true)
 
 	return nil
 }
@@ -999,7 +1000,7 @@ type logicalReseedUserRestoreAssessment struct {
 // callers) so they can never diverge on it. meta with an empty Dest is
 // trusted unconditionally (legacy/incomplete metadata that never recorded a
 // destination path) -- otherwise meta.Dest must resolve to the same file as
-// backupPath, or meta describes some other backup (e.g. a custom/ad-hoc
+// backupPath, or meta describes some other backup (e.g. a custom
 // backup path reseed picking up stale metadata left over from an unrelated
 // prior backup) and must not be trusted for this one; nil is returned in
 // that case.
@@ -1023,7 +1024,7 @@ func matchLogicalReseedBackupMeta(meta *backupmgr.BackupMetadata, backupPath str
 // resolveLogicalReseedSplitUser's trust check at all, "no split-user
 // metadata" was a single message -- and, before restoreUser was decoupled
 // from it, a single splitUser value -- conflating a valid backup that
-// genuinely recorded backup-split-mysql-user=false with a custom/ad-hoc
+// genuinely recorded backup-split-mysql-user=false with a custom
 // backup path that has no trustworthy metadata at all (which could still
 // inherit an unrelated prior backup's SplitUser=true).
 type logicalReseedSplitUserProvenance int
@@ -1033,7 +1034,7 @@ const (
 	// attributed to backup metadata known (via matchLogicalReseedBackupMeta)
 	// to describe this exact backupPath -- e.g. no metadata at all, or
 	// metadata left over from an unrelated prior backup. The common real
-	// case is a custom/ad-hoc backup path. resolveLogicalReseedSplitUser
+	// case is a custom backup path. resolveLogicalReseedSplitUser
 	// defaults splitUser to false in this case -- unknown/custom is never
 	// treated as "reuse whatever the last backup's contract was."
 	logicalReseedSplitUserProvenanceUntrusted logicalReseedSplitUserProvenance = iota
@@ -1053,7 +1054,7 @@ const (
 // override always wins; otherwise only backup metadata
 // matchLogicalReseedBackupMeta confirms describes this exact backupfile may
 // set splitUser; any other metadata (absent, or left over from an unrelated
-// backup -- the concrete case this closes: a custom/ad-hoc backup path
+// backup -- the concrete case this closes: a custom backup path
 // colliding with stale metadata from a different prior backup) is treated as
 // unknown, not as "reuse whatever the last backup's contract was", and
 // splitUser defaults to false. Note splitUser no longer gates actual restore
@@ -1142,7 +1143,7 @@ func assessLogicalReseedUserRestoreAvailability(backupfile string, restoreUserCo
 		case logicalReseedSplitUserProvenanceMetadata:
 			a.Message = "User restore is enabled in configuration; this backup's own metadata records no split-user sidecar (backup-split-mysql-user was off when it was taken), and none was found. Reseed will continue; user restore will only occur if inline system content exists in the dump."
 		default:
-			a.Message = "User restore is enabled in configuration, but no backup metadata could be matched to this backup path (e.g. a custom/ad-hoc path, or metadata belonging to a different backup), and no mysql.users.sql.gz sidecar was found. Reseed will continue; user restore will only occur if inline system content exists in the dump."
+			a.Message = "User restore is enabled in configuration, but no backup metadata could be matched to this backup path (e.g. a custom path, or metadata belonging to a different backup), and no mysql.users.sql.gz sidecar was found. Reseed will continue; user restore will only occur if inline system content exists in the dump."
 		}
 	}
 	return a
@@ -1644,7 +1645,7 @@ func resolveLogicalBackupPathFromMeta(server *ServerMonitor, backtype string) (s
 	}
 	server.backupMetaMutex.Lock()
 	meta := server.LastBackupMeta.Logical
-	if meta == nil || !meta.Completed || meta.IsAdhoc() {
+	if meta == nil || !meta.Completed || meta.Discovered {
 		server.backupMetaMutex.Unlock()
 		return "", false
 	}
@@ -3166,7 +3167,8 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		// a master-only lookup that aborted with "No backup file found on master"
 		// whenever the elected master had never been backed up. In a rejoin any
 		// consistent backup works — replication catches up the delta — so the source
-		// node does not matter. Local-only for now (remote/restic fetch is not wired).
+		// node does not matter. A local or remote (mounted bucket) backup is read where it
+		// is, an archive-only one fetched back first.
 		sel := cluster.getAutorejoinBackupSelector("logical")
 		sel.Tool = []string{backtype} // restore dispatch is backtype-based → force the tool for consistency
 		pick := ResolveRestore(cluster.buildBackupCatalog(), sel,
@@ -3186,15 +3188,26 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 			server.SetInReseedBackup("")
 			return err
 		}
-		if pick != nil && pick.isLocal() {
+		// a backup only in the archive is fetched back into its server's backup directory
+		// first; one that cannot be is refused, never replaced by another file (#2091)
+		if pick != nil && pick.inArchiveOnly() {
+			if err := cluster.fetchPickedBackup(pick, backupmgr.BackupMethodLogical, backtype); err != nil {
+				err = fmt.Errorf("Cancelling reseed. %w", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "flashback %s on %s refused: %s", backtype, server.URL, err)
+				server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
+				server.SetInReseedBackup("")
+				return err
+			}
+		}
+		if pick != nil {
 			backupfile = pick.Path
 			if s := cluster.GetServerFromURL(pick.Server); s != nil {
 				source = s
 			}
 			useMaster = source == master
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "flashback %s: selector picked %s backup %s", backtype, source.URL, backupfile)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "flashback %s: selector picked %s backup %s (%s)", backtype, source.URL, backupfile, pick.Location)
 		} else {
-			// Fallback (no catalogued local backup — metadata not populated): legacy
+			// Fallback (no catalogued backup — metadata not populated): legacy
 			// on-disk lookup on master then backup server.
 			masterArchived := cluster.restoreArchivedOriginal(master, backupmgr.BackupMethodLogical, backtype)
 			backupfile, _ = findExistingBackupPath(master, destCandidates)
@@ -5103,11 +5116,11 @@ func (server *ServerMonitor) JobBackupLogical(ctx context.Context) error {
 	return server.JobBackupLogicalWithOptions(ctx, BackupRunOptions{})
 }
 
-func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, opts BackupRunOptions) error {
-	var err error
+func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, opts BackupRunOptions) (err error) {
 	if server == nil {
 		return errors.New("No server defined")
 	}
+	defer server.ClusterGroup.recoverBackupPanic("Logical backup of "+server.URL, &err)
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -5119,9 +5132,14 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	if err := cluster.preflightBackupEncryptionKey(); err != nil {
 		return err
 	}
+	if err := cluster.backupFolderMoving(); err != nil {
+		return err
+	}
+	if err := cluster.snapbackLock(server.URL); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Logical backup of %s refused: %s", server.URL, err)
+		return err
+	}
 
-	backupLine := server.resolveBackupLine(opts)
-	isAdhoc := backupLine == backupmgr.BackupLineAdhoc
 	resticEnabled := server.shouldRunRestic(opts)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Request logical backup %s for: %s", logicalType, server.URL)
 	if server.IsDown() {
@@ -5206,11 +5224,8 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	start := time.Now()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Logical backup %s started at %s for: %s", logicalType, start.Format(time.RFC3339), server.URL)
 	var prevId int64
-	if !isAdhoc {
-		prev := cluster.BackupMetaMap.GetPreviousBackup(logicalType, server.URL)
-		if prev != nil {
-			prevId = prev.Id
-		}
+	if prev := cluster.BackupMetaMap.GetPreviousBackup(logicalType, server.URL); prev != nil {
+		prevId = prev.Id
 	}
 
 	// Check for previous backup size
@@ -5222,32 +5237,28 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	}
 
 	// Remove from backup list, since the file will be replaced
-	if !cluster.Conf.BackupKeepUntilValid && !isAdhoc {
-		cluster.BackupMetaMap.Delete(prevId)
+	if !cluster.Conf.BackupKeepUntilValid {
+		server.retireReplacedBackup(prevId)
 	}
 
 	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
-		Id:                start.Unix(),
-		StartTime:         start,
-		BackupMethod:      backupmgr.BackupMethodLogical,
-		BackupTool:        logicalType,
-		BackupStrategy:    backupmgr.BackupStrategyFull,
-		Source:            server.URL,
-		Previous:          prevId,
-		BackupLine:        backupLine,
-		RetentionDays:     opts.RetentionDays,
-		RetentionDuration: strings.TrimSpace(opts.RetentionDuration),
-		ResticEnabled:     resticEnabled,
+		Id:             start.Unix(),
+		StartTime:      start,
+		BackupMethod:   backupmgr.BackupMethodLogical,
+		BackupTool:     logicalType,
+		BackupStrategy: backupmgr.BackupStrategyFull,
+		Source:         server.URL,
+		Role:           server.backupRole(),
+		Previous:       prevId,
+		ResticEnabled:  resticEnabled,
 	}
-	server.ensureBackupSessionID(server.LastBackupMeta.Logical, backupmgr.BackupMethodLogical, start, backupLine)
+	server.ensureBackupSessionID(server.LastBackupMeta.Logical, backupmgr.BackupMethodLogical, start)
 	server.LastBackupMeta.Logical.ExecRemote = execRemote
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Logical.Id, server.LastBackupMeta.Logical)
 
 	// Removing previous valid backup state and start
-	if !isAdhoc {
-		server.DelBackupLogicalCookie()
-	}
+	server.DelBackupLogicalCookie()
 
 	// The dump of the accounts (--system=all of a MariaDB mysqldump, or the users sidecar)
 	// stops on the first account skip_name_resolve hides from the server: refuse before
@@ -5271,10 +5282,6 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	if cluster.Conf.BackupSaveScript != "" {
 		task := "script"
 		filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
-		if isAdhoc {
-			filename = fmt.Sprintf("%smysqldump.%d.sql.gz", server.GetMyBackupDirectory(), start.Unix())
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Ad-hoc backup with backup-save-script using unique destination %s", filename)
-		}
 
 		// Override backup tool and destination. With encryption on the
 		// script writes to a ".partial" staging name (see
@@ -5291,9 +5298,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		if err == nil {
 			server.JobsUpdateStateRuntimeOnly(task, "Backup completed", 3, 1)
 			server.LastBackupMeta.Logical.Completed = true
-			if !isAdhoc {
-				server.SetBackupLogicalCookie(task)
-			}
+			server.SetBackupLogicalCookie(task)
 		} else {
 			server.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 		}
@@ -5328,7 +5333,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 				// a local run: no dbjobs may take the remote dump cookie JobInsertTask set
 				server.delTaskCookie(task)
 			}
-			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(isAdhoc, cluster.Conf.BackupMysqldumpSplitDump, start)
+			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(cluster.Conf.BackupMysqldumpSplitDump)
 			oldV, _ := cluster.GetToolsVersion("client-dump")
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
@@ -5340,7 +5345,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			server.LastBackupMeta.Logical.Dest = cluster.prepareBackupStaging(dest)
 			server.LastBackupMeta.Logical.Compressed = compressed
 			server.LastBackupMeta.Logical.SplitDump = cluster.Conf.BackupMysqldumpSplitDump
-			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
+			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				if cluster.Conf.BackupMysqldumpSplitDump {
 					oldSrc := cluster.previousBackupArtifactPath(outputdir)
@@ -5359,7 +5364,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 				}
 			}
 
-			allowRotate := cluster.Conf.BackupKeepUntilValid && !isAdhoc
+			allowRotate := cluster.Conf.BackupKeepUntilValid
 			if cluster.Conf.BackupMysqldumpSplitDump {
 				err = server.JobBackupMysqldump(ctx, task, stagedDir, allowRotate)
 			} else {
@@ -5388,23 +5393,18 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
-					if !isAdhoc {
-						server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
-					}
+					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
 				}
 			}
 		case config.ConstBackupLogicalTypeDumpling:
 			outputdir := server.GetMyBackupDirectory() + "dumpling"
-			if isAdhoc {
-				outputdir = fmt.Sprintf("%sdumpling.%d", server.GetMyBackupDirectory(), start.Unix())
-			}
 			oldV, _ := cluster.GetToolsVersion("dumpling")
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
 			}
 			stagedDir := cluster.prepareBackupStaging(outputdir)
 			server.LastBackupMeta.Logical.Dest = stagedDir
-			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
+			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				oldSrc := cluster.previousBackupArtifactPath(outputdir)
 				if isEncryptedBackupArtifact(oldSrc) {
@@ -5428,16 +5428,11 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
-					if !isAdhoc {
-						server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
-					}
+					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
 			}
 		case config.ConstBackupLogicalTypeMydumper:
 			outputdir := server.GetMyBackupDirectory() + "mydumper"
-			if isAdhoc {
-				outputdir = fmt.Sprintf("%smydumper.%d", server.GetMyBackupDirectory(), start.Unix())
-			}
 			oldV, _ := cluster.GetToolsVersion("mydumper")
 			if oldV != nil {
 				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
@@ -5445,7 +5440,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 			stagedDir := cluster.prepareBackupStaging(outputdir)
 			server.LastBackupMeta.Logical.Dest = stagedDir
 			server.LastBackupMeta.Logical.Compressed = true
-			if cluster.Conf.BackupKeepUntilValid && !isAdhoc {
+			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
 				oldSrc := cluster.previousBackupArtifactPath(outputdir)
 				if isEncryptedBackupArtifact(oldSrc) {
@@ -5469,17 +5464,12 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 					server.LastBackupMeta.Logical.EndTime = time.Now()
 					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
-					if !isAdhoc {
-						server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMydumper)
-					}
+					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMydumper)
 				}
 			}
 		case string(config.ConstTaskPgDump):
 			// PostgreSQL: the jobs sidecar streams pg_dumpall to a receiver; this waits for it
 			dest := server.PostgresBackupDest(task)
-			if isAdhoc {
-				dest = fmt.Sprintf("%spg_dumpall.%d.sql.gz", server.GetMyBackupDirectory(), start.Unix())
-			}
 			server.LastBackupMeta.Logical.Dest = cluster.prepareBackupStaging(dest)
 			server.LastBackupMeta.Logical.Compressed = true
 			err = server.runPostgresStreamTask(ctx, task, server.LastBackupMeta.Logical.Dest)
@@ -5496,9 +5486,7 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 				server.LastBackupMeta.Logical.GetSizeAndFileCount()
 				server.LastBackupMeta.Logical.StreamSize = progress.View().BytesDone // the next run's progress denominator
 				server.LastBackupMeta.Logical.Completed = true
-				if !isAdhoc {
-					server.SetBackupLogicalCookie(task)
-				}
+				server.SetBackupLogicalCookie(task)
 			}
 		case config.ConstBackupLogicalTypeRiver:
 			//No change on river
@@ -5534,7 +5522,8 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		server.verifyBackupAfterBackup(backupMeta)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", logicalType, server.URL)
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", logicalType, server.URL)
+		// the error carries the tool's last stderr lines: why the backup failed, not only its exit status
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s: %s", logicalType, server.URL, err)
 	}
 	elapsed := time.Since(start).Round(time.Second)
 	backupLogLevel := config.LvlInfo
@@ -5549,12 +5538,11 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 	// NOTE: InResticLogicalBackup flag already set at function start for atomic transition
 	// No need to set it again here - it's already protecting the async operation
 	if resticEnabled && err == nil {
+		// a snapshot is the server's backup directory in time, whatever the backup (#2091):
+		// the backup's own path is taken out of it to restore
 		resticPath := server.GetMyBackupDirectory()
-		if isAdhoc && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.Dest != "" {
-			resticPath = server.LastBackupMeta.Logical.Dest
-		}
 		resticScheduled = true
-		server.BackupRestic(backupmgr.BackupMethodLogical, server.LastBackupMeta.Logical, resticPath, server.BuildResticTags(backtype, logicalType, backupLine, server.LastBackupMeta.Logical)...)
+		server.BackupRestic(backupmgr.BackupMethodLogical, server.LastBackupMeta.Logical, resticPath, server.BuildResticTags(backtype, logicalType, server.LastBackupMeta.Logical)...)
 	}
 
 	return nil
@@ -5702,9 +5690,40 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 // BackupRestic pushes backupPath to the archive. meta is the backup being archived, captured
 // now: the snapshot is recorded in it, and with backup-archive-remove-original its original is
 // removed once the snapshot holds it. nil (binary log copies) records nothing.
+// backupRole is the server's role as a backup starts (BackupMetadata.Role): master, slave,
+// "" when it is neither (a standalone or failed server).
+func (server *ServerMonitor) backupRole() string {
+	switch {
+	case server.IsMaster():
+		return backupmgr.BackupRoleMaster
+	case server.IsSlaveOrSync():
+		return backupmgr.BackupRoleSlave
+	}
+	return ""
+}
+
+// recoverBackupPanic, deferred first in a backup step: a panic there fails that step, its
+// error set (err nil for a step that returns none), never the monitor (F2); the step's own
+// defers (slots, flags) have run by then.
+func (cluster *Cluster) recoverBackupPanic(what string, err *error) {
+	r := recover()
+	if r == nil {
+		return
+	}
+	stack := debug.Stack()
+	if len(stack) > 4096 {
+		stack = stack[:4096]
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s: internal error, stopped: %v\n%s", what, r, stack)
+	if err != nil {
+		*err = fmt.Errorf("%s: internal error: %v", what, r)
+	}
+}
+
 func (server *ServerMonitor) BackupRestic(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, tags ...string) {
 	cluster := server.ClusterGroup
-	server.backupResticWith(backupMethod, meta, backupPath, resticPushOptions{removeOriginal: func() bool { return cluster.Conf.BackupArchiveRemoveOriginal }}, tags...)
+	defer cluster.recoverBackupPanic("Archive of the backup of "+server.URL, nil)
+	server.backupResticWith(backupMethod, meta, backupPath, resticPushOptions{removeOriginal: func() bool { return cluster.Conf.BackupArchiveRemoveOriginal }, trigger: snapshotTriggerBackup}, tags...)
 }
 
 // resticPushOptions is how backupResticWith ends a push.
@@ -5721,11 +5740,60 @@ type resticPushOptions struct {
 	// done, when not nil, is called once the push ended: nil with its snapshot recorded
 	// (and the original removed or kept), else why it did not push
 	done func(err error)
+	// snapshot, when not nil, gets the snapshot the push made, before done
+	snapshot func(id string)
+	// noPurge: the archive is not asked to apply the retention policy after this push (the
+	// snapshot taken before a snapback: a purge could take the snapshot it restores)
+	noPurge bool
+	// snapback: the push of a snapback, let through the snapback lock (snapbackLock)
+	snapback bool
+	// trigger: what takes the snapshot, its trigger: tag (snapshotTrigger*)
+	trigger string
 }
+
+// What takes a snapshot, its fixed trigger: tag (#2091).
+const (
+	snapshotTriggerBackup   = "backup"   // a backup's snapshot of its backup directory
+	snapshotTriggerManual   = "manual"   // the archive of one backup, asked
+	snapshotTriggerSnapback = "snapback" // the backup directory before a snapback
+	snapshotTriggerBinlogs  = "binlogs"  // binlog copies beyond backup-binlogs-keep in no snapshot
+)
 
 // backupResticWith is BackupRestic ending the push as opt says.
 func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMethod, meta *backupmgr.BackupMetadata, backupPath string, opt resticPushOptions, tags ...string) {
 	cluster := server.ClusterGroup
+	// no binlog copy lands in the directory while it is snapshotted: counted in until the push
+	// ends, every end of it goes through opt.done (#2091)
+	release := server.beginSnapshot()
+	defer func() {
+		if r := recover(); r != nil {
+			release() // a push that panics never holds the binlog copies back
+			panic(r)
+		}
+	}()
+	// a snapshot of the whole backup directory holds its binlog copies: the keep removal may
+	// then remove them (JobBackupBinlogPurge)
+	newestBinlog := ""
+	if strings.TrimSpace(backupPath) == "" || filepath.Clean(backupPath) == filepath.Clean(server.GetMyBackupDirectory()) {
+		newestBinlog = server.newestBinlogCopy()
+	}
+	pushDone := opt.done
+	opt.done = func(err error) {
+		release()
+		if err == nil {
+			server.recordBinlogsInSnapshot(newestBinlog)
+			// a backup in the archive: the binlog chain from it on is whole again
+			if opt.trigger == snapshotTriggerBackup {
+				cluster.clearBinlogGap(server.URL)
+			}
+		}
+		if pushDone != nil {
+			pushDone(err)
+		}
+	}
+	if opt.trigger != "" {
+		tags = append(tags, "trigger:"+opt.trigger)
+	}
 	done := func(err error) {
 		if opt.done != nil {
 			opt.done(err)
@@ -5741,6 +5809,22 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 		case backupmgr.BackupMethodPhysical:
 			cluster.SetInResticPhysicalBackupState(value)
 		}
+	}
+
+	// a directory not at its latest snapshot is never snapshotted (snapbackLock, #2091)
+	if !opt.snapback {
+		if err := cluster.snapbackLock(server.URL); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Archive of %s not pushed: %s", server.URL, err)
+			setFlag(false)
+			done(err)
+			return
+		}
+	}
+
+	// the attached archive is an external plugin's: it archives the backup itself (#2091)
+	if a, ok := cluster.attachedExternalArchive(); ok {
+		server.pushExternalArchive(a, backupMethod, meta, backupPath, opt, tags)
+		return
 	}
 
 	// Defensive checks - clear flag and return early if prerequisites not met
@@ -5817,12 +5901,11 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 		Tags:    tags,
 		Host:    resticHost,
 	}
-	if cluster.Conf.BackupEncryption {
-		backupOpt.Exclude = []string{"*.partial"}
-	}
+	// staging: the encryption's plaintext, and the binlog copies until complete (#2091)
+	backupOpt.Exclude = []string{"*.partial"}
 	// A fetch from the archive in progress (backup-archive-remove-original) is not a backup.
 	backupOpt.Exclude = append(backupOpt.Exclude, archiveRestoreWorkDirPattern)
-	// An ad-hoc push holds Dest alone: add the integrity sidecar of an encrypted artifact,
+	// A push of one artifact holds Dest alone: add the integrity sidecar of an encrypted artifact,
 	// without which it cannot be restored.
 	if meta != nil && meta.Dest != "" && filepath.Clean(backupPath) == filepath.Clean(meta.Dest) && isEncryptedBackupArtifact(meta.Dest) {
 		if sidecar := backupmgr.IntegritySidecarPath(meta.Dest); fileExists(sidecar) {
@@ -5849,6 +5932,13 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 				if opt.removeOriginal() {
 					server.removeArchivedOriginalAsked(backupMethod, meta, result.SnapshotID, opt.asked)
 				}
+			}
+			if opt.snapshot != nil {
+				opt.snapshot(result.SnapshotID)
+			}
+			// the archive received a backup: it is asked to apply the retention policy (#2091)
+			if cluster.Conf.ArchivePurgeAfterBackup() && !opt.noPurge {
+				cluster.ResticPurgeRepo(false)
 			}
 			done(nil)
 			return
@@ -5915,13 +6005,11 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
-		if cluster.IsInBackup() {
-			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-			time.Sleep(1 * time.Second)
-
-			return server.JobBackupBinlog(binlogfile, isPurge)
-		}
+		// the server's copy worker started it once no backup or snapshot runs (#2091)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
+		// never while the backup directory is snapshotted (#2091)
+		server.beginBinlogCopy()
+		defer server.endBinlogCopy()
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -5994,16 +6082,14 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		return encErr
 	}
 
-	//Skip copying to resting when purge due to batching
+	// a purge batch writes the binlog list once at its end
 	if !isPurge {
 		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
 			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
 		}
+		// no snapshot here: a snapshot is taken after a backup only, the binlogs copied since
+		// the previous backup in it (#2091)
 		server.WriteBackupBinlogMetadata()
-		// Backup to restic when no error (defer to prevent unfinished physical copy)
-		backtype := "binlog"
-		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
-		defer server.BackupRestic(backupmgr.BackupMethodLogical, nil, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
 	}
 
 	return nil
@@ -6018,13 +6104,12 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		return errors.New("Copy binlog not enable")
 	}
 
-	if cluster.IsInBackup() {
-		cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-		time.Sleep(1 * time.Second)
+	// run by the server's copy worker once no backup or snapshot runs (runBinlogCopies, #2091)
 
-		return server.JobBackupBinlogPurge(binlogfile)
-	}
-
+	// the catch-up copies and the removal of the copies beyond keep: never while the backup
+	// directory is snapshotted, counted once for all of them (#2091)
+	server.beginBinlogCopy()
+	defer server.endBinlogCopy()
 	cluster.SetInBinlogBackupState(true)
 	defer cluster.SetInBinlogBackupState(false)
 
@@ -6033,9 +6118,11 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 	}
 	binlogfilestart, _ := strconv.Atoi(strings.Split(binlogfile, ".")[1])
 	prefix := strings.Split(binlogfile, ".")[0]
-	binlogfilestop := binlogfilestart - cluster.Conf.BackupBinlogsKeep
+	// the keep window: the last backup-binlogs-keep binlogs, ending with the one just rotated
+	// (#2091: it ended before it, so each copy was removed right after it was made)
+	binlogfilestop := binlogfilestart - cluster.Conf.BackupBinlogsKeep + 1
 	keeping := make(map[string]int)
-	for binlogfilestop < binlogfilestart {
+	for binlogfilestop <= binlogfilestart {
 		if binlogfilestop > 0 {
 			filename := prefix + "." + fmt.Sprintf("%06d", binlogfilestop)
 			if !cluster.backupArtifactExists(server.GetMyBackupDirectory() + "/" + filename) {
@@ -6054,6 +6141,15 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to read backup directory of %s,%s", server.URL, err.Error())
 	}
 
+	// with the archive on, a copy beyond the window no snapshot holds is kept for the
+	// binlog-only snapshot the copy worker takes (snapshotHeldBinlogCopies); when that snapshot
+	// is refused or failed, it is removed and the loss tracked (F12, #2091)
+	archiveOn := server.shouldRunRestic(BackupRunOptions{})
+	refusal := ""
+	if archiveOn {
+		refusal = server.binlogSnapshotRefusal()
+	}
+	var held, lost, unknown []string
 	for _, file := range files {
 		if isBackupIntegritySidecar(file.Name()) {
 			continue
@@ -6067,6 +6163,19 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		logicalName := logicalArtifactName(file.Name())
 		_, ok := keeping[logicalName]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
+			if in, known := server.binlogCopyInSnapshot(logicalName); archiveOn && !in {
+				if refusal == "" {
+					held = append(held, logicalName)
+					continue
+				}
+				if !known && server.backupDiskOverWarn() == "" {
+					// no snapshot recorded yet: the copy may well be in the archive, it is kept
+					// until a backup's snapshot tells, not counted as lost; the space still wins
+					unknown = append(unknown, logicalName)
+					continue
+				}
+				lost = append(lost, logicalName)
+			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file from backup dir %s", file.Name())
 			path := server.GetMyBackupDirectory() + "/" + file.Name()
 			var removeErr error
@@ -6079,6 +6188,15 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 				server.BinaryLogMetaToRemove = append(server.BinaryLogMetaToRemove, logicalName)
 			}
 		}
+	}
+
+	sort.Slice(held, func(i, j int) bool { return binlogNumber(held[i]) < binlogNumber(held[j]) })
+	server.holdBinlogCopies(held)
+	for _, b := range lost {
+		cluster.noteBinlogGap(server, b, "removed from the backup directory in no snapshot: "+refusal)
+	}
+	if len(unknown) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog copies of %s kept beyond backup-binlogs-keep until a backup's snapshot records them: %v", server.URL, unknown)
 	}
 
 	server.WriteBackupBinlogMetadata()
@@ -6850,14 +6968,12 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
-		if cluster.IsInBackup() {
-			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-			time.Sleep(1 * time.Second)
-
-			return server.JobBackupBinlogSSH(binlogfile, isPurge)
-		}
+		// the server's copy worker started it once no backup or snapshot runs (#2091)
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
+		// never while the backup directory is snapshotted (#2091)
+		server.beginBinlogCopy()
+		defer server.endBinlogCopy()
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -6910,18 +7026,15 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 		return encErr
 	}
 
-	//Skip copying to resting when purge due to batching
+	// a purge batch writes the binlog list once at its end
 	if !isPurge {
 
 		if idx := slices.Index(server.BinaryLogMetaToWrite, binlogfile); idx == -1 {
 			server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlogfile)
 		}
+		// no snapshot here: a snapshot is taken after a backup only, the binlogs copied since
+		// the previous backup in it (#2091)
 		server.WriteBackupBinlogMetadata()
-
-		// Backup to restic when no error (defer to prevent unfinished physical copy)
-		backtype := "binlog"
-		// Use BackupMethodLogical for binlogs (metadata won't be updated, just snapshot created)
-		defer server.BackupRestic(backupmgr.BackupMethodLogical, nil, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
 	}
 	return nil
 }
@@ -8040,7 +8153,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No metadata available to write for %s", server.URL)
 		return
 	}
-	server.ensureBackupSessionID(lastmeta, backtype, lastmeta.StartTime, lastmeta.BackupLine)
+	server.ensureBackupSessionID(lastmeta, backtype, lastmeta.StartTime)
 
 	if _, err := os.Stat(lastmeta.Dest); err == nil {
 		lastmeta.GetSizeAndFileCount()
@@ -8135,10 +8248,10 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 	}
 
 	//Don't change river
-	if cluster.Conf.BackupKeepUntilValid && lastmeta.BackupTool != config.ConstBackupLogicalTypeRiver && !lastmeta.IsAdhoc() {
+	if cluster.Conf.BackupKeepUntilValid && lastmeta.BackupTool != config.ConstBackupLogicalTypeRiver && !lastmeta.Discovered {
 		if lastmeta.Completed {
-			// Delete previous meta with same type
-			cluster.BackupMetaMap.Delete(lastmeta.Previous)
+			// the previous backup of the type: kept by a snapshot, or gone (#2091)
+			server.retireReplacedBackupLocked(lastmeta.Previous)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup valid, removing old backup.")
 			oldSibling := cluster.resolveOldSiblingPath(lastmeta.Dest)
 			if isEncryptedBackupArtifact(oldSibling) {
@@ -8175,9 +8288,9 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 			cluster.BackupMetaMap.Delete(lastmeta.Id)
 			switch backtype {
 			case backupmgr.BackupMethodLogical:
-				_, server.LastBackupMeta.Logical = server.GetLatestMetaForLine("logical", backupmgr.BackupLineDefault)
+				_, server.LastBackupMeta.Logical = server.GetLatestBackupMeta("logical", false)
 			case backupmgr.BackupMethodPhysical:
-				_, server.LastBackupMeta.Physical = server.GetLatestMetaForLine("physical", backupmgr.BackupLineDefault)
+				_, server.LastBackupMeta.Physical = server.GetLatestBackupMeta("physical", false)
 			}
 		}
 	}
@@ -8252,7 +8365,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			// the stream ended: the job is over whatever the sidecar's own report says or
 			// when (WriteBackupMetadata waits on this state), and the server has a physical backup
 			server.JobsUpdateStateRuntimeOnly(task, "received", JobStateSuccess, 1)
-			if m := server.LastBackupMeta.Physical; m != nil && !m.IsAdhoc() && !isEmptyBackupStaging(m.Dest) {
+			if m := server.LastBackupMeta.Physical; m != nil && !m.Discovered && !isEmptyBackupStaging(m.Dest) {
 				server.SetBackupPhysicalCookie(task)
 			}
 		}
@@ -8292,17 +8405,11 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		// Transition from traditional backup lock to Restic lock atomically
 		// Set Restic flag BEFORE clearing physical backup flag
 		resticEnabled := server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.ResticEnabled && server.LastBackupMeta.Physical.Completed
-		backupLine := backupmgr.BackupLineDefault
-		if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.BackupLine != "" {
-			backupLine = server.LastBackupMeta.Physical.BackupLine
-		}
 		if resticEnabled {
 			cluster.SetInResticPhysicalBackupState(true)
+			// a snapshot is the server's backup directory in time, whatever the backup (#2091)
 			resticPath := server.GetMyBackupDirectory()
-			if server.LastBackupMeta.Physical != nil && server.LastBackupMeta.Physical.IsAdhoc() && server.LastBackupMeta.Physical.Dest != "" {
-				resticPath = server.LastBackupMeta.Physical.Dest
-			}
-			server.BackupRestic(backupmgr.BackupMethodPhysical, server.LastBackupMeta.Physical, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, backupLine, server.LastBackupMeta.Physical)...)
+			server.BackupRestic(backupmgr.BackupMethodPhysical, server.LastBackupMeta.Physical, resticPath, server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType, server.LastBackupMeta.Physical)...)
 		}
 
 		cluster.SetInPhysicalBackupState(false)

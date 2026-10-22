@@ -467,7 +467,8 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		acces_tok, err := githelper.GetGitLabTokenBasicAuth(gituser, gitpassword, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 		if err != nil {
 			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
-				repman.Logrus.Errorf("%s\n", err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password"))
+				// the user, never the password
+				repman.Logrus.Errorf("GitLab login of %s failed: %s", conf.Cloud18GitUser, err)
 			}
 			conf.Cloud18 = false
 			return err

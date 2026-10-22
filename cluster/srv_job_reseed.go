@@ -559,8 +559,7 @@ func (cluster *Cluster) RetryDirectReseedSystemCatalog(dest *ServerMonitor, arti
 }
 
 // Retention sweep for published direct-reseed system-catalogue artifacts.
-// Follows the same deadline/path-safety/RemoveAll shape PurgeExpiredAdhocBackups
-// (backup_helpers.go) establishes. Wired into the cluster monitoring loop's
+// Wired into the cluster monitoring loop's
 // hourly tick (cluster.go, heartbeats%3600==0, alongside ResticPurgeRepo).
 
 type directReseedArtifactRetentionEntry struct {

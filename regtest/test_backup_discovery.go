@@ -204,7 +204,7 @@ func (e *edgeRun) checkScheduledRecord() {
 	}
 	dest := filepath.Join(e.m.GetMyBackupDirectory(), "mysqldump.sql.gz")
 	id := time.Now().Add(-48 * time.Hour).Unix()
-	data, _ := json.Marshal(&backupmgr.BackupMetadata{Id: id, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, BackupLine: backupmgr.BackupLineAdhoc, Source: e.m.URL, Dest: dest, Completed: true, Discovered: true})
+	data, _ := json.Marshal(&backupmgr.BackupMetadata{Id: id, BackupMethod: backupmgr.BackupMethodLogical, BackupTool: config.ConstBackupLogicalTypeMysqldump, Source: e.m.URL, Dest: dest, Completed: true, Discovered: true})
 	metaPath := filepath.Join(e.m.GetMyBackupDirectory(), fmt.Sprintf("mysqldump.%d.meta.json", id))
 	if err := os.WriteFile(metaPath, data, 0644); err != nil {
 		e.check(name, false, err.Error())

@@ -59,7 +59,13 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkArchiveRemoveOriginalStates()    // WARN0238 while an archived original could not be removed (#1987)
 	cluster.checkBackupVerificationStates()       // CINF0016 while a backup is verified, ERR00117 when a last logical backup failed it (#2023)
 	cluster.checkBackupDiscoveryStates()          // WARN0249 while a registered backup changed, WARN0250 while candidates are dropped (#2073)
+	cluster.checkBackupMountStates()              // CINF0019 while the local backups move into the bucket (gates the backups), WARN0261 while a mount turned on is not mounted (#2091)
+	cluster.checkBinlogCopyStates()               // WARN0257 while the binlog copies of a server wait for a backup, snapshot or failover (#2091)
+	cluster.checkArchiveEncryptionStates()        // WARN0263 an archive encrypted client-side kept without a key (#2091)
+	cluster.checkSnapbackStates()                 // CINF0020 snapback running, WARN0255 a backup directory not at its latest snapshot (backups locked), WARN0256 a snapback failed (#2091)
 	cluster.checkRegisteredVerificationStates()   // WARN0253 while a registered backup's last verification failed (#2108)
+	cluster.saveBackupCatalogue()                 // the global backup catalogue files, written when changed on the active replication-manager (#2091)
+	cluster.checkCatalogueStates()                // the catalogue's automatic rebuild when due, CINF0021 while one runs, WARN0260 when it differs from an archive (#2091)
 	cluster.CheckResourceCapPlan()                // compose cluster cap-up/down from the per-server plan states
 	cluster.RefreshDBUPlan()                      // DBU plan: project per-node prov-db-dbu into the ResourceManager (DB track)
 	cluster.RefreshComputePlanAPU()               // APU plan: project app-deployment + proxy resources into the ResourceManager (Compute track)
@@ -1196,6 +1202,17 @@ func (cluster *Cluster) SetBackupKeepWithinYearly(keep string) error {
 	return nil
 }
 
+// SetBackupKeepTagPolicies sets the cluster's tagged purge policies (#2091), checked, written
+// back in their canonical form.
+func (cluster *Cluster) SetBackupKeepTagPolicies(value string) error {
+	rules, err := config.ParseArchivePurgeRules(value, false)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepTagPolicies = config.FormatArchivePurgeRules(rules)
+	return nil
+}
+
 func (cluster *Cluster) SetBackupLogicalType(backup string) {
 	if cluster.Conf.BackupLogicalType != backup {
 		cluster.Conf.BackupLogicalType = backup
@@ -1456,6 +1473,10 @@ func (cluster *Cluster) SetUnDiscovered() {
 func (cluster *Cluster) SetActiveStatus(status string) {
 	if cluster.Status == status {
 		return
+	}
+	if cluster.Status == ConstMonitorStandby && status == ConstMonitorActif {
+		// a standby never writes the catalogue: the backups only in an archive are read again
+		cluster.requestCatalogueRebuild("standby became active")
 	}
 	cluster.Status = status
 	if cluster.Conf.MonitorScheduler {
@@ -1874,6 +1895,47 @@ func (cluster *Cluster) SetMonitoringAddress(value string) error {
 	return nil
 }
 
+// SetArchivePurgeTrigger sets when the attached archive is asked to apply the retention
+// policy: after-backup or schedule (#2091).
+func (cluster *Cluster) SetArchivePurgeTrigger(value string) error {
+	if err := config.ValidateArchivePurgeTrigger(value); err != nil {
+		return err
+	}
+	cluster.Conf.BackupArchivePurgeTrigger = value
+	cluster.SetSchedulerArchivePurge()
+	return nil
+}
+
+func (cluster *Cluster) SetSchedulerArchivePurgeCron(value string) error {
+	cluster.Conf.BackupArchivePurgeCron = value
+	cluster.SetSchedulerArchivePurge()
+	return nil
+}
+
+// SetBackupStreamingProvider sets the S3 provider of the backups folder mount; the mount
+// follows at once (#2091).
+func (cluster *Cluster) SetBackupStreamingProvider(value string) error {
+	if value != "" {
+		found := false
+		for _, p := range cluster.GetS3ProvidersSnapshot() {
+			found = found || p.Name == value
+		}
+		if !found {
+			return fmt.Errorf("no S3 provider %q", value)
+		}
+	}
+	cluster.Conf.BackupStreamingProvider = value
+	go cluster.RefreshBackupMount()
+	return nil
+}
+
+// SetBackupStreamingBucket sets the bucket of the backups folder mount.
+func (cluster *Cluster) SetBackupStreamingBucket(value string) error {
+	cluster.Conf.BackupStreamingBucket = value
+	go cluster.RefreshBackupMount()
+	return nil
+}
+
 func (cluster *Cluster) SetSchedulerDbServersLogicalBackupCron(value string) error {
 	cluster.Conf.BackupLogicalCron = value
 	cluster.SetSchedulerBackupLogical()
@@ -2279,6 +2341,15 @@ func (cluster *Cluster) SetInjectVariables() {
 			var secret config.Secret
 			secret.Value = fmt.Sprintf("%v", val)
 			cluster.Conf.Secrets.Set("api-oauth-client-secret", secret)
+		case "cloud18-sso-client-id":
+			// the GitLab application the Cloud18 storages trust, pushed by the BO like
+			// api-oauth-client-id (#2091)
+			cluster.Conf.Cloud18SSOClientID = fmt.Sprintf("%v", val)
+		case "cloud18-sso-client-secret":
+			cluster.Conf.Cloud18SSOClientSecret = fmt.Sprintf("%v", val)
+			var secret config.Secret
+			secret.Value = fmt.Sprintf("%v", val)
+			cluster.Conf.Secrets.Set("cloud18-sso-client-secret", secret)
 		case "api-credentials-external":
 			cluster.Conf.APIUsersExternal = fmt.Sprintf("%v", val)
 		case "api-credentials-acl-allow":

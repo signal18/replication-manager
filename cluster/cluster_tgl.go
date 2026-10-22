@@ -174,9 +174,44 @@ func (cluster *Cluster) SwitchBackupResticAws() {
 // restic-aws, restic-sftp), deriving backup-restic / backup-restic-aws, and
 // applies the same side effects as toggling those legacy switches.
 func (cluster *Cluster) SetBackupArchiveMode(mode string) error {
-	if err := cluster.Conf.ApplyBackupArchiveMode(mode); err != nil {
+	// over the archive list (#2077): connects, disconnects or changes the plugin of the
+	// connected archive
+	if err := cluster.Conf.ApplyArchiveMode(mode); err != nil {
 		return err
 	}
+	return cluster.reloadArchive()
+}
+
+// SetBackupArchiveName connects the cluster to another archive of its list ("" for none,
+// #2077): the backups go to it and its snapshots are listed.
+func (cluster *Cluster) SetBackupArchiveName(name string) error {
+	if name != "" {
+		for _, a := range cluster.Conf.Archives {
+			if a.Name == name {
+				if err := cluster.Conf.ArchivePluginAllowed(a.Plugin); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	// the archive left keeps its size as last read: nothing writes to it while detached
+	detached := cluster.Conf.AttachedArchive()
+	size := cluster.attachedArchiveSize()
+	if err := cluster.Conf.SwitchArchive(name); err != nil {
+		return err
+	}
+	if detached != "" && detached != name && size != nil {
+		cluster.setArchiveSize(detached, size)
+	}
+	err := cluster.reloadArchive()
+	// the snapshots of a cluster that had no archive list are glued to the first one
+	go cluster.glueCatalogue()
+	return err
+}
+
+func (cluster *Cluster) reloadArchive() error {
+	// the restic password and S3 secret are the connected archive's (#2088)
+	cluster.CredentialChain().Refresh()
 	cluster.CheckResticInstallation()
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
@@ -818,6 +853,13 @@ func (cluster *Cluster) SwitchForceWriteConfig() {
 
 func (cluster *Cluster) SwitchBackupKeepUntilValid() {
 	cluster.Conf.BackupKeepUntilValid = !cluster.Conf.BackupKeepUntilValid
+}
+
+// SwitchBackupStreaming turns the cluster's backups folder mount on or off; the mount
+// follows at once (#2091)
+func (cluster *Cluster) SwitchBackupStreaming() {
+	cluster.Conf.BackupStreaming = !cluster.Conf.BackupStreaming
+	go cluster.RefreshBackupMount()
 }
 
 func (cluster *Cluster) SwitchBackupArchiveRemoveOriginal() {

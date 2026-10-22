@@ -8,7 +8,9 @@ package cluster
 
 import (
 	"fmt"
+	"github.com/signal18/replication-manager/cluster/archiveplugin/wire"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -48,9 +50,9 @@ func (server *ServerMonitor) removeArchivedOriginalAsked(backtype backupmgr.Back
 	encrypted := meta.Encrypted || isEncryptedBackupArtifact(dest)
 	server.backupMetaMutex.Unlock()
 
-	// A scheduled backup reuses its name on the next run: once a newer backup of the
-	// method exists, Dest is no longer this backup's artifact.
-	if meta != current && !meta.IsAdhoc() {
+	// A backup of a type reuses its name on the next run: once a newer backup of the
+	// type exists, Dest is no longer this backup's artifact.
+	if meta != current && !meta.Discovered {
 		return
 	}
 	if removed || dest == "" || !fileExists(dest) {
@@ -78,7 +80,7 @@ func (server *ServerMonitor) removeArchivedOriginalAsked(backtype backupmgr.Back
 
 	server.backupMetaMutex.Lock()
 	meta.OriginalRemoved = true
-	if meta == server.lastBackupMetaForMethod(backtype) || meta.IsAdhoc() {
+	if meta == server.lastBackupMetaForMethod(backtype) || meta.Discovered {
 		if werr := server.writeBackupMetaFileLocked(meta); werr != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to write metadata of archived backup in %s: %s", server.URL, werr)
 		}
@@ -132,8 +134,12 @@ func isStrictlyWithinBase(baseDir, target string) bool {
 }
 
 // snapshotMissingPath lists paths in the snapshot with one restic ls and returns the first
-// that it does not hold, "" when it holds them all.
+// that it does not hold, "" when it holds them all. With an archive plugin's archive attached,
+// the plugin lists them (snapshotMissingPathPlugin).
 func (cluster *Cluster) snapshotMissingPath(snapshotID string, paths []string) (string, error) {
+	if a, external := cluster.attachedExternalArchive(); external {
+		return cluster.snapshotMissingPathPlugin(a, snapshotID, paths)
+	}
 	if cluster.ResticManager == nil {
 		return "", fmt.Errorf("restic manager not initialized")
 	}
@@ -155,6 +161,90 @@ func (cluster *Cluster) snapshotMissingPath(snapshotID string, paths []string) (
 		}
 	}
 	return "", nil
+}
+
+// snapshotMissingPathPlugin checks with the plugin's contents operation that the snapshot, of
+// the backup directory, holds each path as it is on disk (#2091): a file of the same size, a
+// folder with every file it holds here. The first one it does not hold is answered. A plugin
+// without contents cannot tell: an error, the original is kept.
+func (cluster *Cluster) snapshotMissingPathPlugin(a config.ArchiveConfig, snapshotID string, paths []string) (string, error) {
+	m, _ := externalArchive(a)
+	if !m.Can(wire.CapContents) {
+		return "", fmt.Errorf("archive %s: its plugin lists no snapshot content", a.Name)
+	}
+	list := func(folder string) (map[string]wire.Entry, error) {
+		resp, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpContents, Snapshot: snapshotID, Include: folder})
+		if err != nil {
+			return nil, err
+		}
+		entries := make(map[string]wire.Entry, len(resp.Entries))
+		for _, e := range resp.Entries {
+			entries[e.Name] = e
+		}
+		return entries, nil
+	}
+	for _, p := range paths {
+		p = filepath.Clean(p)
+		server := cluster.serverOfBackupPath(p)
+		if server == nil {
+			return p, nil
+		}
+		rel, err := filepath.Rel(filepath.Clean(server.GetMyBackupDirectoryPath()), p)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			return p, nil
+		}
+		rel = filepath.ToSlash(rel)
+		parent, name := path.Split(rel)
+		entries, err := list(strings.TrimSuffix(parent, "/"))
+		if err != nil {
+			return "", err
+		}
+		e, ok := entries[name]
+		if !ok {
+			return p, nil
+		}
+		fi, err := os.Stat(p)
+		if err != nil {
+			return "", err
+		}
+		if !fi.IsDir() {
+			if e.Dir || e.Size != fi.Size() {
+				return p, nil
+			}
+			continue
+		}
+		if !e.Dir {
+			return p, nil
+		}
+		held, err := list(rel)
+		if err != nil {
+			return "", err
+		}
+		local, err := os.ReadDir(p)
+		if err != nil {
+			return "", err
+		}
+		for _, f := range local {
+			h, ok := held[f.Name()]
+			if !ok {
+				return filepath.Join(p, f.Name()), nil
+			}
+			if info, err := f.Info(); err == nil && !f.IsDir() && h.Size != info.Size() {
+				return filepath.Join(p, f.Name()), nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// serverOfBackupPath is the server whose backup directory holds path, nil none.
+func (cluster *Cluster) serverOfBackupPath(p string) *ServerMonitor {
+	for _, s := range cluster.Servers {
+		if s != nil && isStrictlyWithinBase(s.GetMyBackupDirectoryPath(), p) {
+			return s
+		}
+	}
+	return nil
 }
 
 // archiveRemoveOriginalRefusal is why the original at Dest was kept after its archive push.
@@ -215,9 +305,10 @@ func (cluster *Cluster) checkArchiveRemoveOriginalStates() {
 // tool, when set, must match the backup's tool. It returns whether that backup lives in the
 // archive: the caller then keeps its backup cookie even when the fetch failed. The restored
 // original stays until the next backup of the method replaces it and removes it after its
-// own archive push, as it was before the removal.
+// own archive push, as it was before the removal. It is fetched from the attached archive,
+// restic or an archive plugin's (archiveFetchable, fetchArchivedOriginal).
 func (cluster *Cluster) restoreArchivedOriginal(src *ServerMonitor, backtype backupmgr.BackupMethod, tool string) bool {
-	if src == nil || cluster.ResticManager == nil {
+	if src == nil || !cluster.archiveFetchable() {
 		return false
 	}
 	src.backupMetaMutex.Lock()
@@ -226,7 +317,7 @@ func (cluster *Cluster) restoreArchivedOriginal(src *ServerMonitor, backtype bac
 	var size int64
 	var encrypted bool
 	if meta != nil && meta.OriginalRemoved {
-		dest, snapshotID, metaTool, size = meta.Dest, meta.ResticSnapshotID, meta.BackupTool, meta.Size
+		dest, snapshotID, metaTool, size = meta.Dest, cluster.attachedSnapshot(meta), meta.BackupTool, meta.Size
 		encrypted = meta.Encrypted || isEncryptedBackupArtifact(dest)
 	}
 	src.backupMetaMutex.Unlock()
@@ -278,6 +369,26 @@ func (server *ServerMonitor) fetchArchivedOriginal(dest, snapshotID string, size
 		return err
 	}
 	defer os.RemoveAll(work)
+	// an archive plugin restores one path of the snapshot, the backup directory, at its place
+	// under the work directory (#2091)
+	if a, external := cluster.attachedExternalArchive(); external {
+		for _, p := range paths {
+			rel, err := filepath.Rel(base, p)
+			if err != nil {
+				return err
+			}
+			if _, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpRestore, Snapshot: snapshotID, Include: filepath.ToSlash(rel), Target: work}); err != nil {
+				return err
+			}
+		}
+		for i := len(paths) - 1; i >= 0; i-- {
+			rel, _ := filepath.Rel(base, paths[i])
+			if err := os.Rename(filepath.Join(work, rel), paths[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	// restic reads --include as a pattern: escape the glob characters a path may hold.
 	include := make([]string, len(paths))
 	for i, path := range paths {
@@ -311,3 +422,22 @@ func escapeResticPattern(path string) string {
 // archiveRestoreWorkDirPattern excludes a fetch work directory from the scheduled push,
 // which snapshots the whole backup directory.
 const archiveRestoreWorkDirPattern = ".archive-restore-*"
+
+// fetchPickedBackup fetches pick, a backup the restore selection chose that is only in the
+// attached archive, back into its server's backup directory, at the path the reseed reads
+// (pick.Path). An error says why it cannot be used (#2091).
+func (cluster *Cluster) fetchPickedBackup(pick *BackupCatalogEntry, method backupmgr.BackupMethod, tool string) error {
+	archive := cluster.Conf.AttachedArchive()
+	if !cluster.archiveFetchable() {
+		return fmt.Errorf("backup %d of %s is only in archive %s (snapshot %s): fetching a backup back from this archive is not supported yet", pick.ID, pick.Server, archive, pick.Snapshot)
+	}
+	src := cluster.GetServerFromURL(pick.Server)
+	if src == nil {
+		return fmt.Errorf("backup %d of %s is only in archive %s: its server is no longer monitored", pick.ID, pick.Server, archive)
+	}
+	cluster.restoreArchivedOriginal(src, method, tool)
+	if !fileExists(pick.Path) {
+		return fmt.Errorf("backup %d of %s could not be fetched back from archive %s (snapshot %s) to %s", pick.ID, pick.Server, archive, pick.Snapshot, pick.Path)
+	}
+	return nil
+}

@@ -79,8 +79,9 @@ func cloneSnapshotMetadataMap(src map[string]*SnapshotMetadataSummary) map[strin
 	return dst
 }
 
-func snapshotMetadataKey(method backupmgr.BackupMethod, line string) string {
-	return fmt.Sprintf("%d|%s", method, strings.ToLower(strings.TrimSpace(line)))
+// snapshotMetadataKey: a snapshot holds one backup of each type (#2091), one summary each
+func snapshotMetadataKey(method backupmgr.BackupMethod, tool string) string {
+	return fmt.Sprintf("%d|%s", method, strings.ToLower(strings.TrimSpace(tool)))
 }
 
 func (cluster *Cluster) snapshotMetadataCacheForID(snapshotID string) (*snapshotMetadataCache, string, bool) {
@@ -582,7 +583,6 @@ type SnapshotMetadataSummary struct {
 	Dest             string    `json:"dest,omitempty"`
 	BackupMethod     string    `json:"backupMethod"`
 	BackupTool       string    `json:"backupTool"`
-	BackupLine       string    `json:"backupLine"`
 	StartTime        time.Time `json:"startTime"`
 	EndTime          time.Time `json:"endTime"`
 	Compressed       bool      `json:"compressed,omitempty"`
@@ -619,7 +619,9 @@ func backupMethodToString(method backupmgr.BackupMethod) string {
 	}
 }
 
-func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupmgr.BackupMethod, basepath string) *SnapshotMetadataSummary {
+// snapshotID is the snapshot the summary is for: the summary carries it when the backup is
+// held there.
+func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupmgr.BackupMethod, basepath, snapshotID string) *SnapshotMetadataSummary {
 	if meta == nil {
 		return nil
 	}
@@ -631,14 +633,21 @@ func buildSnapshotMetadataSummary(meta *backupmgr.BackupMetadata, method backupm
 		Dest:             strings.TrimSpace(meta.Dest),
 		BackupMethod:     backupMethodToString(method),
 		BackupTool:       meta.BackupTool,
-		BackupLine:       meta.BackupLine,
 		StartTime:        meta.StartTime,
 		EndTime:          meta.EndTime,
 		Compressed:       compressed,
 		BackupSessionID:  meta.BackupSessionID,
-		ResticSnapshotID: meta.ResticSnapshotID,
+		ResticSnapshotID: heldSnapshot(meta, snapshotID),
 		ResticBasePath:   strings.TrimSpace(basepath),
 	}
+}
+
+// heldSnapshot is snapshotID when the backup is held there, "" otherwise.
+func heldSnapshot(meta *backupmgr.BackupMetadata, snapshotID string) string {
+	if meta.HoldsSnapshot(snapshotID) {
+		return snapshotID
+	}
+	return ""
 }
 
 func isCompressedDest(dest string) bool {
@@ -691,7 +700,7 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 	if cluster == nil || snapshot == nil || len(snapshot.Paths) == 0 {
 		return nil
 	}
-	// Deduplicate summaries by backup method + line. Prefer metadata rows referencing this snapshot ID, otherwise use the closest fallback.
+	// Deduplicate summaries by backup method + tool. Prefer metadata rows referencing this snapshot ID, otherwise use the closest fallback.
 	summaryMap := make(map[string]*metadataSelection)
 	snapshotTime, _ := time.Parse(time.RFC3339Nano, snapshot.Time)
 	cluster.BackupMetaMap.Range(func(_, value any) bool {
@@ -703,15 +712,15 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 		if dest == "" {
 			return true
 		}
-		resticID := strings.TrimSpace(meta.ResticSnapshotID)
+		held := meta.HoldsSnapshot(snapshot.Id)
 		for _, base := range snapshot.Paths {
 			if base == "" {
 				continue
 			}
 			if strings.HasPrefix(dest, base) {
 				method := inferBackupMethod(meta)
-				key := snapshotMetadataKey(method, meta.BackupLine)
-				summary := buildSnapshotMetadataSummary(meta, method, base)
+				key := snapshotMetadataKey(method, meta.BackupTool)
+				summary := buildSnapshotMetadataSummary(meta, method, base, snapshot.Id)
 				if summary == nil {
 					break
 				}
@@ -720,7 +729,7 @@ func (cluster *Cluster) SummarizeSnapshotMetadata(snapshot *backupmgr.BackupSnap
 					selection = &metadataSelection{}
 					summaryMap[key] = selection
 				}
-				if resticID != "" && resticID == snapshot.Id {
+				if held {
 					if selection.exact == nil || summary.StartTime.After(selection.exact.StartTime) {
 						selection.exact = summary
 					}
@@ -1025,18 +1034,12 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 	var dumpAttempted int
 	var dumpSucceeded int
 	var dumpSkipped int
-	allowedTools := snapshotAllowedTools(snapshot)
 	for _, base := range snapshot.Paths {
 		base = strings.TrimSpace(base)
 		if base == "" {
 			continue
 		}
 		for _, candidate := range snapshotMetadataCandidates {
-			if len(allowedTools) > 0 {
-				if _, ok := allowedTools[strings.ToLower(candidate.Tool)]; !ok {
-					continue
-				}
-			}
 			filePath := filepath.Join(base, candidate.File)
 			if lsCache != nil {
 				if _, ok := lsCache[filePath]; !ok {
@@ -1055,14 +1058,12 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 				lastErr = err
 				continue
 			}
-			if strings.TrimSpace(meta.ResticSnapshotID) == "" {
-				meta.ResticSnapshotID = snapshot.Id
+			// the record found in the snapshot is this snapshot's backup
+			if !meta.HoldsSnapshot(snapshot.Id) {
+				meta.ArchiveRefs, meta.ResticSnapshotID = nil, snapshot.Id
 			}
 			if strings.TrimSpace(meta.BackupTool) == "" {
 				meta.BackupTool = candidate.Tool
-			}
-			if strings.TrimSpace(meta.BackupLine) == "" {
-				meta.BackupLine = backupmgr.BackupLineDefault
 			}
 			if destPath, ok := resolveSnapshotDestPath(base, meta.Dest); ok {
 				exists, ok := destExistsCache[destPath]
@@ -1080,11 +1081,11 @@ func (cluster *Cluster) extractMetadataFromResticSnapshot(snapshot *backupmgr.Ba
 					continue
 				}
 			}
-			summary := buildSnapshotMetadataSummary(&meta, candidate.Method, base)
+			summary := buildSnapshotMetadataSummary(&meta, candidate.Method, base, snapshot.Id)
 			if summary == nil {
 				continue
 			}
-			key := snapshotMetadataKey(candidate.Method, meta.BackupLine)
+			key := snapshotMetadataKey(candidate.Method, meta.BackupTool)
 			if existing, ok := results[key]; ok {
 				if summary.StartTime.After(existing.StartTime) {
 					results[key] = summary
@@ -1141,21 +1142,6 @@ func (cluster *Cluster) snapshotPathExists(snapshotID, path string) (bool, error
 	return len(entries) > 0, nil
 }
 
-func snapshotAllowedTools(snapshot *backupmgr.BackupSnapshot) map[string]bool {
-	if snapshot == nil || len(snapshot.Tags) == 0 {
-		return nil
-	}
-	line := strings.ToLower(strings.TrimSpace(getSnapshotTagValue(snapshot.Tags, "line")))
-	if line != strings.ToLower(backupmgr.BackupLineAdhoc) {
-		return nil
-	}
-	tool := strings.ToLower(strings.TrimSpace(getSnapshotTagValue(snapshot.Tags, "backup-tool")))
-	if tool == "" {
-		return nil
-	}
-	return map[string]bool{tool: true}
-}
-
 func getSnapshotTagValue(tags []string, key string) string {
 	key = strings.TrimSpace(key)
 	if key == "" {
@@ -1176,31 +1162,11 @@ func getSnapshotTagFallbackValue(tags []string, key string) string {
 		return ""
 	}
 	switch strings.ToLower(strings.TrimSpace(key)) {
-	case "line":
-		return getSnapshotTagLegacyLine(tags)
 	case "backup-tool":
 		return getSnapshotTagLegacyTool(tags)
 	default:
 		return ""
 	}
-}
-
-func getSnapshotTagLegacyLine(tags []string) string {
-	var line string
-	for _, tag := range tags {
-		normalized := normalizeBackupLine(tag)
-		if normalized == "" {
-			continue
-		}
-		if line == "" {
-			line = normalized
-			continue
-		}
-		if line != normalized {
-			return ""
-		}
-	}
-	return line
 }
 
 func getSnapshotTagLegacyTool(tags []string) string {

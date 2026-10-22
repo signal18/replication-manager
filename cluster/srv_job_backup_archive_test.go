@@ -54,7 +54,7 @@ func newArchiveRemoveOriginalTest(t *testing.T, setup ...func(*Cluster, *ServerM
 	if err := os.WriteFile(dest, []byte("dump"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	meta := &backupmgr.BackupMetadata{Id: 1, BackupTool: "mysqldump", BackupMethod: backupmgr.BackupMethodLogical, BackupLine: backupmgr.BackupLineDefault, Dest: dest, Completed: true}
+	meta := &backupmgr.BackupMetadata{Id: 1, BackupTool: "mysqldump", BackupMethod: backupmgr.BackupMethodLogical, Dest: dest, Completed: true}
 	server.LastBackupMeta.Logical = meta
 
 	snapshot := func(paths ...string) string {
@@ -171,7 +171,7 @@ func TestRemoveArchivedOriginalKeepsIncompleteOrSupersededBackup(t *testing.T) {
 	// A newer scheduled backup reuses the name: the old meta must not remove it.
 	server.setArchiveRemoveOriginalRefusal(backupmgr.BackupMethodLogical, "", "", false)
 	meta.Completed = true
-	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Id: 2, BackupTool: "mysqldump", BackupLine: backupmgr.BackupLineDefault, Dest: meta.Dest}
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{Id: 2, BackupTool: "mysqldump", Dest: meta.Dest}
 	server.removeArchivedOriginal(backupmgr.BackupMethodLogical, meta, snapID)
 	if !fileExists(meta.Dest) {
 		t.Fatalf("superseded scheduled meta removed the newer backup's artifact")

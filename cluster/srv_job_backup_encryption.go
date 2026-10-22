@@ -601,30 +601,28 @@ func (server *ServerMonitor) finalizeBinlogFileEncryption(plainPath string) (str
 	return encryptedPath, nil
 }
 
-// binlogStagingDirName holds plaintext binlog copies while encryption is on.
-// mysqlbinlog --result-file and the copy script only take a target
-// directory, so staging is a directory rather than a per-file suffix. The
-// leading dot keeps it out of binlog-prefix retention scans.
+// binlogStagingDirName holds every binlog copy until it is complete (#2091): a backup directory,
+// and so its snapshots, only ever holds complete binlogs. mysqlbinlog --result-file and the copy
+// script only take a target directory, so staging is a directory rather than a per-file suffix.
+// The leading dot keeps it out of binlog-prefix retention scans.
 const binlogStagingDirName = ".binlog" + partialSuffixForCleanup
 
-// binlogCopyDir returns the directory a binlog copy must write into (with a
-// trailing slash): the staging directory when encryption is on, the backup
-// directory otherwise.
+// binlogCopyDir returns the staging directory a binlog copy writes into (with a trailing
+// slash); finalizeBinlogCopy moves the copy into the backup directory once complete.
 func (server *ServerMonitor) binlogCopyDir() string {
 	dir := server.GetMyBackupDirectory()
-	if !server.ClusterGroup.Conf.BackupEncryption {
-		return dir
-	}
 	staging := filepath.Join(dir, binlogStagingDirName) + "/"
 	if err := os.MkdirAll(staging, 0700); err != nil {
-		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup encryption: cannot create binlog staging %s: %s", staging, err)
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Binlog copy: cannot create staging %s, copying into the backup directory: %s", staging, err)
+		return dir
 	}
 	return staging
 }
 
-// finalizeBinlogCopy publishes a copied binlog from copyDir: encrypted to
-// "<backup dir>/<binlog>.enc" from staging, or unchanged when copyDir is the
-// backup directory itself. On error the staged plaintext is deleted.
+// finalizeBinlogCopy publishes a complete binlog copy from the staging copyDir into the backup
+// directory: encrypted to "<backup dir>/<binlog>.enc", or moved under its name without
+// encryption; encrypted in place when copyDir is the backup directory itself (no staging could
+// be made). On error the staged copy is deleted.
 func (server *ServerMonitor) finalizeBinlogCopy(copyDir, binlog string) (string, error) {
 	cluster := server.ClusterGroup
 	backupDir := server.GetMyBackupDirectory()
@@ -633,7 +631,7 @@ func (server *ServerMonitor) finalizeBinlogCopy(copyDir, binlog string) (string,
 		return server.finalizeBinlogFileEncryption(src)
 	}
 	if !cluster.Conf.BackupEncryption {
-		// Encryption switched off mid-copy: publish as plaintext.
+		// complete: moved into the backup directory under its name
 		dest := filepath.Join(backupDir, binlog)
 		if err := os.Rename(src, dest); err != nil {
 			server.discardBinlogCopy(copyDir, binlog)

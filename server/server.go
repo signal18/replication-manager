@@ -23,6 +23,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"runtime/pprof"
 	"slices"
@@ -72,6 +73,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
+	"github.com/signal18/replication-manager/utils/s3fuse"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/tty"
 	"github.com/spf13/pflag"
@@ -948,7 +950,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.SchedulerRollingReprovCron, "scheduler-rolling-reprov-cron", "0 30 10 * * 5", "Rolling reprov cron expression represents a set of times, using 6 space-separated fields.")
 	flags.BoolVar(&conf.SchedulerJobsSSH, "scheduler-jobs-ssh", false, "Schedule remote execution of dbjobs via ssh ")
 	flags.StringVar(&conf.SchedulerJobsSSHCron, "scheduler-jobs-ssh-cron", "0 * * * * *", "Remote execution of dbjobs via ssh ")
-	flags.StringVar(&conf.SchedulerJobsMode, "scheduler-jobs-mode", "sql", "Job dispatch mode: sql (poll jobs table) or api (dbjobs checks cookies via API)")
+	flags.StringVar(&conf.SchedulerJobsMode, "scheduler-jobs-mode", "api", "Job dispatch mode: api (dbjobs checks its tasks and reports through the API, nothing written in the database) or sql (dbjobs polls the replication_manager_schema.jobs table)")
 	flags.StringVar(&conf.SchedulerJobsExecRemote, "scheduler-jobs-exec-remote", "", "Comma-separated list of tasks to force remote execution via dbjobs (e.g. mysqldump,optimize). Tasks not listed use their default mode.")
 	flags.BoolVar(&conf.SchedulerAlertDisable, "scheduler-alert-disable", false, "Schedule to disable alerting")
 	flags.StringVar(&conf.SchedulerAlertDisableCron, "scheduler-alert-disable-cron", "0 0 0 * * 0-4", "Disabling alert cron expression represents a set of times, using 6 space-separated fields.")
@@ -966,6 +968,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.BackupLogicalRemoteArmTimeout, "backup-logical-remote-arm-timeout", 10, "Seconds dbjobs' receive-task request for a logical backup run on the DB node waits for the backup to be ready for its stream. 0 uses the default")
 	flags.StringVar(&conf.BackupPhysicalType, "backup-physical-type", "xtrabackup", "type of physical backup: xtrabackup|mariabackup")
 	flags.StringVar(&conf.BackupArchiveMode, "backup-archive-mode", "", "Restic archive backend: none, restic-local, restic-aws, restic-sftp (empty derives from legacy backup-restic flags)")
+	flags.StringVar(&conf.BackupArchiveName, "backup-archive-name", "", "Archive of the cluster's archive list the backups go to (archive-1 to archive-x), empty for none")
 	flags.BoolVar(&conf.BackupArchiveRemoveOriginal, "backup-archive-remove-original", false, "Remove the original logical/physical backup from the backup directory once its archive snapshot is verified to hold it; restores fetch it back from the archive")
 	flags.BoolVar(&conf.BackupDiscovery, "backup-discovery", true, "List the logical backups placed in the servers' backup folders without metadata as candidates, at the server monitor's start; the Discover button runs a discovery whatever this setting, and the registered ones are checked for changes whatever it")
 	flags.IntVar(&conf.BackupDiscoveryCandidateMax, "backup-discovery-candidate-max", config.ConstBackupDiscoveryCandidateMax, "Artifacts a backup discovery lists per server (the oldest dropped beyond, WARN0250); 0 or less: the default")
@@ -977,10 +980,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.BackupVerificationRunHistory, "backup-verification-run-history", config.ConstBackupVerificationRunHistory, "On-demand verification runs kept per backup in its run history (the oldest finished dropped first); 0 or less: the default")
 	flags.BoolVar(&conf.BackupVerificationRegisteredProven, "backup-verification-registered-proven", true, "A registered backup (registered from a backup folder) is reseeded from only once proven: its last verification is a passed test restore of its current file. Off: refused only when its last verification of its current file failed")
 	flags.BoolVar(&conf.BackupRestic, "backup-restic", false, "Use restic to archive and restore backups")
-	flags.StringVar(&conf.BackupResticTags, "backup-restic-tags", "tenant,cluster,engine,version,backup-type,backup-tool,line", "Comma-separated restic tags or templates (e.g. cluster,backup-type,line,env:prod). Quote a tag to keep it literal.")
+	flags.StringVar(&conf.BackupResticTags, "backup-restic-tags", "tenant,cluster,engine,version,backup-type,backup-tool", "Comma-separated restic tags or templates (e.g. cluster,backup-type,env:prod). Quote a tag to keep it literal.")
 	flags.StringVar(&conf.BackupResticHost, "backup-restic-host", "", "Restic backup --host override. Empty uses restic default hostname (no alias).")
 	flags.StringVar(&conf.BackupResticPurgeGroupBy, "backup-restic-purge-group-by", "host,paths", "Restic forget --group-by value (e.g. host,paths). Use 'default' for restic defaults, 'none' for no grouping.")
-	flags.StringVar(&conf.BackupResticPurgeKeepTag, "backup-restic-purge-keep-tag", "line:adhoc adhoc", "Space-separated restic tags to keep during purge (e.g. line:adhoc adhoc env:prod). Quotes allow spaces; commas are preserved.")
+	flags.StringVar(&conf.BackupResticPurgeKeepTag, "backup-restic-purge-keep-tag", "", "Space-separated restic tags to keep during purge (e.g. env:prod). Quotes allow spaces; commas are preserved.")
 	flags.StringVar(&conf.BackupResticPurgeHost, "backup-restic-purge-host", "", "Restic forget --host filter (comma/space separated).")
 	flags.StringVar(&conf.BackupResticPurgeTag, "backup-restic-purge-tag", "", "Restic forget --tag filter (space-separated; commas preserved inside tags).")
 	flags.StringVar(&conf.BackupResticPurgePath, "backup-restic-purge-path", "", "Restic forget --path filter (comma/space separated absolute paths).")
@@ -1001,7 +1004,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupResticRepoAppendCluster, "backup-restic-repo-append-cluster", true, "Append cluster name to restic repository path")
 	flags.StringVar(&conf.BackupResticAdditionalEnv, "backup-restic-additional-env", "", "Optional restic env vars (comma/space separated KEY or KEY=VALUE). AWS_* entries apply only for S3 repos. In double quotes, only \\\\ and \\\" are escapes.")
 	flags.StringVar(&conf.BackupResticLocalRepository, "backup-restic-local-repository", "", "Restic local repository path. Empty by default to use repo per cluster in datadir/backups/archive/<clustername>")
-	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
+	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://minio.crm.ovh-fr-2.signal18.cloud18.io/backups", "Restic backend repository")
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
 	flags.BoolVar(&conf.BackupResticAws, "backup-restic-aws", false, "Restic will archive to s3 or to datadir/backups/archive")
 	flags.IntVar(&conf.BackupWriteStallTimeout, "backup-write-stall-timeout", 300, "Seconds with no bytes written to the backup output before a logical backup is aborted (dead/hung backup volume). 0 disables. This is a stall timeout, not a cap on total backup time.")
@@ -1037,9 +1040,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.BackupStreamingDebug, "backup-streaming-debug", false, "Debug mode for streaming to cloud ")
 	flags.StringVar(&conf.BackupStreamingAwsAccessKeyId, "backup-streaming-aws-access-key-id", "admin", "Backup AWS key id")
 	flags.StringVar(&conf.BackupStreamingAwsAccessSecret, "backup-streaming-aws-access-secret", "secret", "Backup AWS key secret")
-	flags.StringVar(&conf.BackupStreamingEndpoint, "backup-streaming-endpoint", "https://s3.signal18.io/", "Backup AWS endpoint")
-	flags.StringVar(&conf.BackupStreamingRegion, "backup-streaming-region", "fr-1", "Backup AWS region")
-	flags.StringVar(&conf.BackupStreamingBucket, "backup-streaming-bucket", "repman", "Backup AWS bucket")
+	flags.StringVar(&conf.BackupStreamingEndpoint, "backup-streaming-endpoint", "https://minio.crm.ovh-fr-2.signal18.cloud18.io/", "Backup AWS endpoint")
+	flags.StringVar(&conf.BackupStreamingRegion, "backup-streaming-region", "eu-west-1", "Backup AWS region (the Cloud18 storage's region; it signs the requests and names its SSO role)")
+	flags.StringVar(&conf.BackupStreamingBucket, "backup-streaming-bucket", "repman", "Bucket of the backups folder mount, and of the S3 archives whose bucket is not set: the cluster's folder in it holds backups/ and archive/<name>/ side by side, under the instance's URI on Cloud18 and the SSO user's folder on the Cloud18 SSO")
+	flags.StringVar(&conf.BackupStreamingProvider, "backup-streaming-provider", "", "S3 provider of the cluster (its S3 providers) the backups folder mount uses; empty with backup-streaming on: one is added from the backup-streaming-* values and set here")
 
 	//flags.StringVar(&conf.BackupResticStoragePolicy, "backup-restic-storage-policy", "--prune --keep-last 10 --keep-hourly 24 --keep-daily 7 --keep-weekly 52 --keep-monthly 120 --keep-yearly 102", "Restic keep backup policy")
 	flags.IntVar(&conf.BackupKeepLast, "backup-keep-last", 10, "Keep this number of last recent backup. Zero value will be omitted from the policy")
@@ -1055,6 +1059,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupKeepWithinWeekly, "backup-keep-within-weekly", "", "Only for compatible version. Keep this duration of weekly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
 	flags.StringVar(&conf.BackupKeepWithinMonthly, "backup-keep-within-monthly", "", "Only for compatible version. Keep this duration of monthly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
 	flags.StringVar(&conf.BackupKeepWithinYearly, "backup-keep-within-yearly", "", "Only for compatible version. Keep this duration of yearly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
+	flags.StringVar(&conf.BackupKeepTagPolicies, "backup-keep-tag-policies", "trigger:binlogs keep-within=1d", "Tagged purge policies: the snapshots carrying a tag kept by their own keep values, counted apart from backup-keep-* (the default policy), rules separated by ';', e.g. 'trigger:binlogs keep-within=1d; trigger:snapback keep-last=1'. An archive's purge-policies replaces them")
+	flags.StringVar(&conf.BackupArchivePurgeTrigger, "backup-archive-purge-trigger", config.ConstArchivePurgeAfterBackup, "When the attached archive is asked to apply the retention policy (backup-keep-*): after-backup (each backup it receives) or schedule (scheduler-archive-purge-cron, needs monitoring-scheduler)")
+	flags.StringVar(&conf.BackupArchivePurgeCron, "scheduler-archive-purge-cron", "0 0 * * * *", "Archive purge cron expression, 6 space-separated fields, with backup-archive-purge-trigger schedule")
 
 	flags.StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
@@ -1248,6 +1255,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Cloud18Shared, "cloud18-shared", false, "Enable cluster sharing for Cloud 18 DBAAS")
 	flags.StringVar(&conf.Cloud18GitUser, "cloud18-gitlab-user", "", "Cloud 18 GitLab user")
 	flags.StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
+	flags.StringVar(&conf.Cloud18SSOClientID, "cloud18-sso-client-id", config.ConstCloud18StorageSSOClientID, "GitLab application the Cloud18 storages trust (OpenID Connect): an S3 provider with cloud18Sso exchanges this replication-manager's GitLab identity for short-lived keys")
+	flags.StringVar(&conf.Cloud18SSOClientSecret, "cloud18-sso-client-secret", "", "Secret of cloud18-sso-client-id, only for a confidential application (the Cloud18 storages' is not)")
 	flags.StringVar(&conf.Cloud18PlatformDescription, "cloud18-platform-description", "", "Marketing banner display on the cloud18 portal describing the infrastucture")
 	flags.StringVar(&conf.Cloud18InfraDataCenters, "cloud18-infra-data-centers", "", "Infrastucture datacenters name")
 	flags.Float64Var(&conf.Cloud18InfraPublicBandwidth, "cloud18-infra-public-bandwidth", 0, "Infrastucture public bandwidth")
@@ -2096,7 +2105,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 				v := cf3.Get(f)
 				if v != nil {
 					imm_v, ok := ImmuableMap[f]
-					if ok && imm_v != v {
+					if ok && !reflect.DeepEqual(imm_v, v) { // DeepEqual: a list value (the archive tables, #2077) panics with !=
 						DynamicMap[f] = v
 					}
 					if !ok {
@@ -2274,7 +2283,7 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 					v := cf3.Get(f)
 					if v != nil {
 						imm_v, ok := clustImmuableMap[f]
-						if ok && imm_v != v {
+						if ok && !reflect.DeepEqual(imm_v, v) { // DeepEqual: a list value (the archive tables, #2077) panics with !=
 							clustDynamicMap[f] = v
 						}
 						if !ok {
@@ -2886,6 +2895,15 @@ func (repman *ReplicationManager) Run() error {
 
 	}
 
+	// A FUSE mount left stuck by a replication-manager killed or crashed while it served it
+	// keeps that process alive with the ports bound below (#2091): aborted before any bind.
+	if aborted, err := s3fuse.AbortStuckMounts(repman.Conf.WorkingDir, 3*time.Second); err != nil {
+		repman.Logrus.Errorf("%s", err)
+	} else if len(aborted) > 0 {
+		repman.Logrus.Warnf("Aborted the FUSE mount(s) a previous run left stuck: %s", strings.Join(aborted, ", "))
+		time.Sleep(time.Second) // the stuck process ends and releases its ports
+	}
+
 	// Initialize go-carbon
 	if repman.Conf.GraphiteEmbedded {
 		graphite.User = ExpectedUser
@@ -2935,8 +2953,6 @@ func (repman *ReplicationManager) Run() error {
 		go graphite.RunCarbonApi(repman.Conf)
 		repman.Logrus.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
-
-	go repman.MountS3()
 
 	//repman.InitRestic()
 	repman.Logrus.Infof("repman.Conf.WorkingDir : %s", repman.Conf.WorkingDir)
@@ -3116,10 +3132,6 @@ func (repman *ReplicationManager) Run() error {
 		repman.exit.Store(true)
 
 		shutStart := time.Now()
-		repman.Logrus.Info("Shutdown: unmounting S3")
-		s3t := time.Now()
-		repman.UnMountS3()
-		repman.Logrus.Infof("Shutdown: S3 unmount took %s", time.Since(s3t))
 
 		repman.Logrus.Info("Shutdown: stopping ticker goroutines")
 		close(quit_GitPull)

@@ -19,7 +19,7 @@ import NumberInput from '../../components/NumberInput'
 import RMButton from '../../components/RMButton'
 import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { getBackupVerificationServer, markBackupVerificationServer, setAsIgnored } from '../../redux/clusterSlice'
+import { getBackupVerificationServer, markBackupVerificationServer, setAsIgnored, selectClusterS3Providers } from '../../redux/clusterSlice'
 
 const sizeGenerator = () => {
   const result = []
@@ -55,6 +55,14 @@ function BackupSettings({ selectedCluster, user }) {
   const [isCommonModalOpen, setIsCommonModalOpen] = useState(false)
 
   const { globalClusters: { monitor } } = useSelector((state) => state)
+  const s3Providers = useSelector(selectClusterS3Providers)
+  const mountProvider = s3Providers.find((p) => p.name === selectedCluster?.config?.backupStreamingProvider)
+  const backupMount = selectedCluster?.backupMount
+  // the bucket's folder: the cluster name, under the instance's URI on Cloud18
+  const c18 = selectedCluster?.config
+  const mountPrefix = c18?.cloud18 && c18?.cloud18Domain && c18?.cloud18SubDomain
+    ? `${c18.cloud18Domain}/${c18.cloud18SubDomain}-${c18.cloud18SubDomainZone || ''}/${selectedCluster?.name}`
+    : selectedCluster?.name
 
   const openCommonModal = () => setIsCommonModalOpen(true)
   const closeCommonModal = () => setIsCommonModalOpen(false)
@@ -233,6 +241,12 @@ function BackupSettings({ selectedCluster, user }) {
   const hEstimateSize = `**Estimate Backup Size**\n\nEstimates the expected backup size before starting, using the last backup size or information_schema data.\nUsed to verify sufficient free space is available.\n\nConfig: \`backup-estimate-size\``
   const hGrowthPercentage = `**Last Backup Growth Percentage**\n\nExpected growth percentage applied to the last backup size when estimating the next backup size.\nSet to 0 to use the last backup size without adjustment.\n\nConfig: \`backup-growth-percentage\``
   const hEstimatePercentage = `**Backup Estimation Percentage from information_schema**\n\nPercentage of the information_schema size used as the backup size estimate when no previous backup exists.\n\nConfig: \`backup-estimate-size-percentage\``
+
+  const hBackupMount = `**Backups Folder Mount**\n\nThe backups folder can be an S3 bucket mounted in its place: the backups are then written to the bucket.\n\nConfig: \`backup-streaming\``
+  const hMountProvider = `**Backups Mount S3 Provider**\n\nThe S3 provider (the S3 Providers settings) whose endpoint, region and keys the mount uses. With the mount on and none set, one named backup-mount is added from the backup-streaming endpoint, region and keys, and set here.\n\nConfig: \`backup-streaming-provider\``
+  const hMountBucket = `**Backups Mount S3 Bucket**\n\nThe bucket mounted as the backups folder: the cluster's backups are in its folder named as the cluster.\n\nConfig: \`backup-streaming-bucket\``
+  const hMountPoint = `**Backups Mount Folder**\n\nThe cluster's backups folder, mounted from the bucket's folder named as the cluster (on Cloud18: under the instance's URI, <domain>/<sub-domain>-<zone>/<cluster>). A folder holding local files is never mounted over: move them first.`
+  const hMountDebug = `**Backups Mount Debug**\n\nLogs the mount's S3 calls.\n\nConfig: \`backup-streaming-debug\``
 
   const dataObject = [
     {
@@ -707,7 +721,7 @@ function BackupSettings({ selectedCluster, user }) {
       key: 'Backup Binlogs',
       help: h(hBackupBinlogs, 'Backup Binlogs'),
       value: (
-        <RMSwitch isChecked={selectedCluster?.config?.autorejoinBackupBinlog}
+        <RMSwitch isChecked={selectedCluster?.config?.backupBinlogs}
           isDisabled={user?.grants['cluster-settings'] == false}
           confirmTitle={'Confirm switch settings for backup-binlogs?'}
           onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-binlogs' }))} />
@@ -783,6 +797,54 @@ function BackupSettings({ selectedCluster, user }) {
             { key: 'Estimation from information_schema (%)', help: h(hEstimatePercentage, 'Backup Estimation Percentage from information_schema'), value: (<NumberInput min={1} value={selectedCluster?.config?.backupEstimateSizePercentage} showEditButton={true} showConfirmModal={true} confirmTitle={`Confirm change 'backup-estimate-size-percentage' to: `} onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-estimate-size-percentage', value }))} />) },
           ] : [])
         ] : [])
+      ]
+    },
+    // where the backups folder and the archive mounts live (#2091): moved from the Archive
+    // section, a property of the backups, not of an archive
+    {
+      key: 'Backups Folder Mount',
+      help: h(hBackupMount, 'Backups Folder Mount'),
+      value: [
+        {
+          key: 'Mount S3 Bucket',
+          help: h(hBackupMount, 'Backups Folder Mount'),
+          value: (<RMSwitch isChecked={!!selectedCluster?.config?.backupStreaming}
+            confirmTitle={selectedCluster?.config?.backupStreaming ? 'Unmount the backups folder?' : 'Mount the backups folder on the S3 provider below?'}
+            onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming' }))} />)
+        },
+        {
+          key: 'S3 Provider',
+          help: h(hMountProvider, 'Backups Mount S3 Provider'),
+          value: (
+            <Stack spacing='1'>
+              <Dropdown options={[{ name: 'none', value: '__none__' }, ...s3Providers.map((p) => ({ name: p.name, value: p.name }))]}
+                selectedValue={selectedCluster?.config?.backupStreamingProvider || '__none__'}
+                confirmTitle='Change the S3 provider of the backups folder mount?'
+                onChange={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-provider', value: value === '__none__' ? '' : value }))} />
+              {mountProvider && <Text fontSize='sm' opacity='0.7'>{mountProvider.providerSource === 'app' ? `app ${mountProvider.providerApp}` : mountProvider.endpoint}{mountProvider.region ? ` (${mountProvider.region})` : ''}</Text>}
+            </Stack>
+          )
+        },
+        {
+          key: 'S3 Bucket',
+          help: h(hMountBucket, 'Backups Mount S3 Bucket'),
+          value: (<TextForm value={selectedCluster?.config?.backupStreamingBucket} confirmTitle={`Confirm backup-streaming-bucket to `} className={styles.textbox}
+            onSave={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-streaming-bucket', value }))} />)
+        },
+        {
+          key: 'Mounted Folder',
+          help: h(hMountPoint, 'Backups Mount Folder'),
+          value: (<Text fontSize='sm'>{(backupMount?.mountPoint || `<working-dir>/backups/${selectedCluster?.name}`)} = {selectedCluster?.config?.backupStreamingBucket || '?'}/{mountPrefix}</Text>)
+        },
+        {
+          key: 'Mount Status',
+          value: (<Text fontSize='sm' color={backupMount?.error ? 'red.400' : undefined}>{!selectedCluster?.config?.backupStreaming ? 'local folder, not mounted' : backupMount?.mounted ? 'mounted' : backupMount?.error ? `not mounted: ${backupMount.error}` : 'not mounted yet'}</Text>)
+        },
+        {
+          key: 'Mount Debug',
+          help: h(hMountDebug, 'Backups Mount Debug'),
+          value: (<Text fontSize='sm'>{selectedCluster?.config?.backupStreamingDebug ? 'on' : 'off'}</Text>)
+        }
       ]
     },
   ]

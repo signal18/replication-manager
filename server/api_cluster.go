@@ -163,6 +163,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupDiscover)),
 	)).Methods(http.MethodPost)
 
+	router.Handle("/api/clusters/{clusterName}/backups/binlog-copies", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBinlogCopies)),
+	)).Methods(http.MethodGet)
 	router.Handle("/api/clusters/{clusterName}/backups/candidates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupCandidates)),
@@ -240,6 +244,68 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/restic/check-config", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticCheckConfig)),
+	))
+
+	// archive list (#2091)
+	router.Handle("/api/clusters/{clusterName}/archive-list", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveList)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-snapshots/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveSnapshots)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/forget/{archiveName}/{snapshotID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveForget)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/snapback/{snapshotID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveSnapback)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/snapback-release/{serverName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveSnapbackRelease)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/add", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveAdd)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/edit/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveEdit)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/rename/{archiveName}/{newName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveRename)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/attach/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveAttach)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/detach", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveAttach)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/remove/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveRemove)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/size/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveSize)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/rebuild-catalogue", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveRebuildCatalogue)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/rebuild-catalogue/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveRebuildCatalogue)),
+	))
+	router.Handle("/api/clusters/{clusterName}/archive-actions/drop-missing-snapshots/{archiveName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveDropMissingSnapshots)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/restic/init", negroni.New(
@@ -2451,13 +2517,13 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 
 // handlerMuxClusterBackups handles the retrieval of backups for a given cluster.
 // @Summary Retrieve backups for a specific cluster
-// @Description This endpoint retrieves the backups for the specified cluster.
+// @Description This endpoint retrieves the backups for the specified cluster, by id: each backup's record, with what the restore selection reads of it: capabilities (compress, encrypt, parallel, can-partial-restorable, gtid), location (local: replication-manager's own disk; remote: the bucket through the backups folder mount; archive: only in a snapshot of the attached archive), archived (the attached archive holds a snapshot of it), proven (a test restore of its file, still unchanged) and restoreCandidate (a restore or reseed picks among it now: its server's last logical or physical backup).
 // @Description Required grant: cluster-show-backups
 // @Tags ClusterBackups
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} map[int64]backupmgr.BackupMetadata "List of backups"
+// @Success 200 {object} map[int64]cluster.BackupView "Backups by id"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/backups [get]
@@ -2472,7 +2538,9 @@ func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetBackups())
+		// each backup with what the restore selection reads of it (capabilities, location,
+		// proven, restore candidate), the record's fields unchanged
+		err := e.Encode(mycluster.GetBackupsView())
 		if err != nil {
 			http.Error(w, "Encoding error", http.StatusInternalServerError)
 			return
@@ -2791,6 +2859,35 @@ func (repman *ReplicationManager) handlerMuxClusterBackupDiscover(w http.Respons
 	}
 }
 
+// handlerMuxClusterBinlogCopies returns what each server's backup directory holds of its logs.
+// @Summary Log copies in the backup directories
+// @Description Returns, per server, the binary log copies its backup directory holds (binary-logs.meta.json, backup-binlogs): their number, the lowest and highest binlog, the time of their first events, and their size.
+// @Description Required grant: cluster-show-backups
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} cluster.BinlogCopies "Log copies per server"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/backups/binlog-copies [get]
+func (repman *ReplicationManager) handlerMuxClusterBinlogCopies(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(mycluster.GetBinlogCopies()); err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+	}
+}
+
 // handlerMuxClusterBackupCandidates returns what the backup discovery found.
 // @Summary Backup discovery candidates and changes
 // @Description Returns, per server, the artifacts of its backup folder no metadata describes, as its last discovery checked them (status backup, not-backup, incomplete, unchecked, unreadable or settling, with the reason, and the outcome of their last Register), and the registered discovered backups whose file changed since registered (WARN0249), with what changed.
@@ -2984,7 +3081,7 @@ func writeBackupArchiveError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, cluster.ErrBackupNotFound):
 		http.Error(w, err.Error(), http.StatusNotFound)
-	case errors.Is(err, cluster.ErrBackupArchiving), errors.Is(err, cluster.ErrBackupArchived), errors.Is(err, cluster.ErrBackupVerificationRunning), errors.Is(err, cluster.ErrBackupDiscoveryRunning), errors.Is(err, cluster.ErrBackupChangedSinceRegistered):
+	case errors.Is(err, cluster.ErrBackupArchiving), errors.Is(err, cluster.ErrBackupArchived), errors.Is(err, cluster.ErrBackupVerificationRunning), errors.Is(err, cluster.ErrBackupDiscoveryRunning), errors.Is(err, cluster.ErrBackupChangedSinceRegistered), errors.Is(err, cluster.ErrBackupJobRunning):
 		http.Error(w, err.Error(), http.StatusConflict)
 	case errors.Is(err, cluster.ErrBackupNotDiscovered), errors.Is(err, cluster.ErrBackupArchiveUnavailable), errors.Is(err, cluster.ErrBackupVerificationFailed), errors.Is(err, cluster.ErrBackupNotVerifiable), errors.Is(err, cluster.ErrBackupNotABackup), errors.Is(err, cluster.ErrBackupDuplicateScheduled):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
@@ -3730,6 +3827,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupKeepUntilValid()
 	case "backup-archive-remove-original":
 		mycluster.SwitchBackupArchiveRemoveOriginal()
+	case "backup-streaming":
+		mycluster.SwitchBackupStreaming()
 	case "backup-discovery":
 		mycluster.SwitchBackupDiscovery()
 	case "backup-verification":
@@ -4281,6 +4380,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-keep-tag-policies":
+		err = mycluster.SetBackupKeepTagPolicies(value)
+		if err != nil {
+			return err
+		}
 	case "backup-disk-treshold-warn":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupDiskTresholdWarn = val
@@ -4677,6 +4781,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitoringAddress(value)
 	case "scheduler-db-servers-logical-backup-cron":
 		mycluster.SetSchedulerDbServersLogicalBackupCron(value)
+	case "backup-streaming-provider":
+		if err := mycluster.SetBackupStreamingProvider(value); err != nil {
+			return err
+		}
+	case "backup-streaming-bucket":
+		mycluster.SetBackupStreamingBucket(value)
+	case "scheduler-archive-purge-cron":
+		mycluster.SetSchedulerArchivePurgeCron(value)
+	case "backup-archive-purge-trigger":
+		if err := mycluster.SetArchivePurgeTrigger(value); err != nil {
+			return err
+		}
 	case "scheduler-db-servers-logs-cron":
 		mycluster.SetSchedulerDbServersLogsCron(value)
 	case "scheduler-db-servers-logs-table-rotate-cron":
@@ -4977,6 +5093,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.LogFileLevel = val
 	case "backup-archive-mode":
 		if err := mycluster.SetBackupArchiveMode(value); err != nil {
+			return err
+		}
+	case "backup-archive-name":
+		if err := mycluster.SetBackupArchiveName(value); err != nil {
 			return err
 		}
 	case "backup-restic-local-repository":
@@ -5965,6 +6085,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupKeepUntilValid = applyIsActive(mycluster.Conf.BackupKeepUntilValid, isactive)
 	case "backup-archive-remove-original":
 		mycluster.Conf.BackupArchiveRemoveOriginal = applyIsActive(mycluster.Conf.BackupArchiveRemoveOriginal, isactive)
+	case "backup-streaming":
+		mycluster.Conf.BackupStreaming = applyIsActive(mycluster.Conf.BackupStreaming, isactive)
+		go mycluster.RefreshBackupMount()
 	case "backup-discovery":
 		mycluster.Conf.BackupDiscovery = applyIsActive(mycluster.Conf.BackupDiscovery, isactive)
 	case "backup-verification":
@@ -9541,7 +9664,13 @@ func (repman *ReplicationManager) handlerMuxResticFetch(w http.ResponseWriter, r
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/purge/{snapshotID} [post]
 func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r *http.Request) {
-	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+	// the policy purge applies to the attached archive, a plugin's included (#2091): only one
+	// snapshot's deletion needs restic
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+		if vars["snapshotID"] != "policy" && !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", http.StatusInternalServerError)
+			return
+		}
 		dryRun := false
 		if value := strings.TrimSpace(r.URL.Query().Get("dry_run")); value != "" {
 			parsed, err := strconv.ParseBool(value)
@@ -10964,6 +11093,8 @@ type s3ProviderRequest struct {
 	Region         string                  `json:"region,omitempty"`
 	AccessKey      string                  `json:"accesskey,omitempty"`
 	SecretKey      string                  `json:"secretkey,omitempty"`
+	Cloud18SSO     bool                    `json:"cloud18Sso,omitempty"`
+	RoleArn        string                  `json:"roleArn,omitempty"`
 }
 
 const s3ProviderRequestBodyMaxBytes int64 = 1 << 20 // 1 MiB
@@ -11168,6 +11299,8 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 			Region:         req.Region,
 			AccessKey:      req.AccessKey,
 			SecretKey:      req.SecretKey,
+			Cloud18SSO:     req.Cloud18SSO,
+			RoleArn:        req.RoleArn,
 		}
 		if err := p.Validate(); err != nil {
 			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: fmt.Sprintf("Validation error: %v", err)}
@@ -11211,6 +11344,8 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 		Region:         req.Region,
 		AccessKey:      req.AccessKey,
 		SecretKey:      req.SecretKey,
+		Cloud18SSO:     req.Cloud18SSO,
+		RoleArn:        req.RoleArn,
 	}
 
 	// Capture old state and merge blank credentials before validation.
@@ -11222,7 +11357,8 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 			break
 		}
 	}
-	if oldProvider != nil && p.ProviderSource == oldProvider.ProviderSource {
+	// a provider reached with the Cloud18 SSO keeps no keys (#2091)
+	if oldProvider != nil && p.ProviderSource == oldProvider.ProviderSource && !p.Cloud18SSO {
 		if p.AccessKey == "" {
 			p.AccessKey = oldProvider.AccessKey
 		}

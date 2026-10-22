@@ -159,7 +159,7 @@ Encrypted artifacts and their sidecars move and are removed together during:
 
 - `.old` and `.err` rollback/retention handling;
 - backup deletion by ID;
-- ad-hoc and binlog retention;
+- binlog retention;
 - failed physical-backup withdrawal; and
 - startup cleanup of orphaned sidecars.
 

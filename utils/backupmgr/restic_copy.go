@@ -54,6 +54,9 @@ type ResticCopySourceOption struct {
 	KeyHint         string                     `json:"key_hint,omitempty"`
 	AWS             *ResticCopySourceAWSOption `json:"aws,omitempty"`
 	UseSavedConfig  bool                       `json:"use_saved_config,omitempty"`
+	// Archive names an archive of the cluster's list as the source (#2091): its settings
+	// and secrets are resolved by repman, like a saved source
+	Archive string `json:"archive,omitempty"`
 }
 
 // ResticCopyOption holds all parameters for a repository copy task.

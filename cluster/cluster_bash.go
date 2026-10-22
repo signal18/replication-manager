@@ -370,13 +370,12 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 
 	//Skip setting in backup state due to batch purging
 	if !isPurge {
-		if cluster.IsInBackup() {
-			cluster.SetState("WARN0110", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0110"], "Binary Log", cluster.Conf.BinlogCopyMode, server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
-			time.Sleep(1 * time.Second)
-			return cluster.BinlogCopyScript(server, binlog, isPurge)
-		}
+		// the server's copy worker started it once no backup or snapshot runs (#2091)
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlog)
+		// never while the backup directory is snapshotted (#2091)
+		server.beginBinlogCopy()
+		defer server.endBinlogCopy()
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
 	}
@@ -397,16 +396,14 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 				cluster.SetState("WARN0219", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0219"], server.URL, "binlog", encErr.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
 				return encErr
 			}
-			// Skip backup to restic if in purge binlog
+			// a purge batch writes the binlog list once at its end
 			if !isPurge {
 
 				if idx := slices.Index(server.BinaryLogMetaToWrite, binlog); idx == -1 {
 					server.BinaryLogMetaToWrite = append(server.BinaryLogMetaToWrite, binlog)
 				}
+				// no snapshot here: a snapshot is taken after a backup only (#2091)
 				server.WriteBackupBinlogMetadata()
-				// Backup to restic when no error (defer to prevent unfinished physical copy)
-				backtype := "binlog"
-				defer server.BackupRestic(backupmgr.BackupMethodLogical, nil, server.GetMyBackupDirectory(), server.BuildResticTags(backtype, "", backupmgr.BackupLineDefault, nil)...)
 			}
 		}
 

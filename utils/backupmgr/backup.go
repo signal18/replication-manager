@@ -4,7 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -25,9 +25,10 @@ const (
 	BackupStrategyDifferential = 3
 )
 
+// The source server's role when a backup started (BackupMetadata.Role).
 const (
-	BackupLineDefault = "default"
-	BackupLineAdhoc   = "adhoc"
+	BackupRoleMaster = "master"
+	BackupRoleSlave  = "slave"
 )
 
 type BackupMetadata struct {
@@ -39,6 +40,7 @@ type BackupMetadata struct {
 	BackupToolVersion string         `json:"backupToolVersion"`
 	BackupStrategy    BackupStrategy `json:"backupStrategy"`
 	Source            string         `json:"source"`               // server URL
+	Role              string         `json:"role,omitempty"`       // the source's role when the backup started (BackupRole*), never recomputed; "" unknown
 	Dest              string         `json:"dest"`                 // backup destination path
 	Size              int64          `json:"size"`                 // in bytes
 	StreamSize        int64          `json:"streamSize,omitempty"` // bytes received from the backup stream, before compression/encryption (physical); the next run's progress denominator
@@ -63,24 +65,28 @@ type BackupMetadata struct {
 	// SourceJobFailed is an in-memory-only signal set when the DB-side job
 	// that produces a physical stream reported an error. An encrypted run
 	// then never publishes, or withdraws, its artifact.
-	SourceJobFailed   bool   `json:"-"`
-	Checksum          string `json:"checksum"`
-	RetentionDays     int    `json:"retentionDays"`
-	RetentionDuration string `json:"retentionDuration,omitempty"`
-	BackupLine        string `json:"backupLine,omitempty"`
-	MetaFile          string `json:"metaFile,omitempty"`
-	BinLogFileName    string `json:"binLogFileName"`
-	BinLogFilePos     uint64 `json:"binLogFilePos"`
-	BinLogGtid        string `json:"binLogUuid"`
-	Completed         bool   `json:"completed"`
-	SplitUser         bool   `json:"splitUser"`
-	SplitDump         bool   `json:"splitDump"`
-	ExecRemote        bool   `json:"execRemote,omitempty"` // the backup tool ran on the DB node (dbjobs), not next to replication-manager
-	Previous          int64  `json:"previous"`
-	ResticEnabled     bool   `json:"resticEnabled,omitempty"`
-	ResticSnapshotID  string `json:"resticSnapshotID"`
-	ResticFilePath    string `json:"resticFilePath"`
-	BackupSessionID   string `json:"backupSessionID,omitempty"`
+	SourceJobFailed bool   `json:"-"`
+	Checksum        string `json:"checksum"`
+	MetaFile        string `json:"metaFile,omitempty"`
+	BinLogFileName  string `json:"binLogFileName"`
+	BinLogFilePos   uint64 `json:"binLogFilePos"`
+	BinLogGtid      string `json:"binLogUuid"`
+	Completed       bool   `json:"completed"`
+	SplitUser       bool   `json:"splitUser"`
+	SplitDump       bool   `json:"splitDump"`
+	ExecRemote      bool   `json:"execRemote,omitempty"` // the backup tool ran on the DB node (dbjobs), not next to replication-manager
+	Previous        int64  `json:"previous"`
+	ResticEnabled   bool   `json:"resticEnabled,omitempty"`
+	// ResticSnapshotID is the snapshot of a backup recorded before the archive list: at load
+	// it is glued to the cluster's archive in ArchiveRefs, then empty. Read a snapshot with
+	// ArchiveSnapshot.
+	ResticSnapshotID string `json:"resticSnapshotID"`
+	ResticFilePath   string `json:"resticFilePath"`
+	// ArchiveRefs glues the backup to the archives by name (#2091): an archive's name maps
+	// to the backup's snapshot there. A renamed archive is renamed here; a removed one leaves.
+	// Never changed in place (read while marshalled): set through SetArchiveSnapshot.
+	ArchiveRefs     map[string]string `json:"archiveRefs,omitempty"`
+	BackupSessionID string            `json:"backupSessionID,omitempty"`
 	// Discovered: the backup was found in the server's backup folder without metadata
 	// (copied there by hand or by another tool) and registered by the operator (#2073).
 	// It is never picked by an automatic restore; DiscoveryNote says what its read found
@@ -100,6 +106,10 @@ type BackupMetadata struct {
 	// (ResticSnapshotID) was verified to hold it (backup-archive-remove-original);
 	// a restore fetches it back from the archive.
 	OriginalRemoved bool `json:"originalRemoved,omitempty"`
+	// Replaced: a newer backup of its type took its place in the backup directory (#2091), so
+	// Dest and its record file are the newer one's, never its own: kept by a snapshot, it is
+	// only in the archive (OriginalRemoved), in the global catalogue.
+	Replaced bool `json:"replaced,omitempty"`
 	// Verification is the result of the last verification of this backup (#2023).
 	Verification *BackupVerification `json:"verification,omitempty"`
 	// VerificationRuns is the history of the on-demand verification runs of this backup, by
@@ -173,6 +183,28 @@ type ArtifactFingerprint struct {
 	// not match. Absent from fingerprints recorded before, which then match nothing.
 	Inode      uint64    `json:"inode,omitempty"`
 	ChangeTime time.Time `json:"changeTime,omitzero"`
+	// ETags, for a backup in the bucket of the backups folder mount: a digest of its files'
+	// S3 ETags in walk order, which an object rewritten changes. The mount gives inodes and
+	// times that do not hold across mounts, so a bucket fingerprint holds the files, the size
+	// and this digest, and has no inode nor ctime (#2091).
+	ETags string `json:"etags,omitempty"`
+}
+
+// Identifies tells whether the fingerprint identifies the file, not only its size and time:
+// by its inode and ctime on a disk, by its S3 ETags in the bucket.
+func (fp ArtifactFingerprint) Identifies() bool {
+	return fp.ETags != "" || !fp.ChangeTime.IsZero()
+}
+
+// Same tells whether two fingerprints are of the same file, unchanged: in the bucket by the
+// files, the size and the ETags; on a disk by the files, the size, the modification time,
+// the inode and the ctime. A fingerprint that does not identify its file matches nothing.
+func (fp ArtifactFingerprint) Same(o ArtifactFingerprint) bool {
+	if fp.ETags != "" || o.ETags != "" {
+		return fp.ETags == o.ETags && fp.Files == o.Files && fp.Size == o.Size
+	}
+	return fp.Identifies() && o.Identifies() && fp.Files == o.Files && fp.Size == o.Size &&
+		fp.ModTime.Equal(o.ModTime) && fp.Inode == o.Inode && fp.ChangeTime.Equal(o.ChangeTime)
 }
 
 // BackupRegistration is a discovered backup's file as registered: its fingerprint (the one
@@ -215,66 +247,6 @@ func (bm *BackupMetadata) GetSizeAndFileCount() error {
 	bm.Size = size
 	bm.FileCount = fileCount
 	return err
-}
-
-func (bm *BackupMetadata) IsAdhoc() bool {
-	if bm == nil {
-		return false
-	}
-	if bm.BackupLine == BackupLineAdhoc {
-		return true
-	}
-	if strings.TrimSpace(bm.RetentionDuration) != "" {
-		return true
-	}
-	return bm.RetentionDays > 0
-}
-
-func (bm *BackupMetadata) RetentionWindow() (time.Duration, bool) {
-	if bm == nil {
-		return 0, false
-	}
-	if d, ok := ParseRetentionDuration(bm.RetentionDuration); ok {
-		return d, true
-	}
-	if bm.RetentionDays > 0 {
-		return time.Duration(bm.RetentionDays) * 24 * time.Hour, true
-	}
-	return 0, false
-}
-
-func ParseRetentionDuration(value string) (time.Duration, bool) {
-	trimmed := strings.TrimSpace(strings.ToLower(value))
-	if trimmed == "" {
-		return 0, false
-	}
-	if d, err := time.ParseDuration(trimmed); err == nil && d > 0 {
-		return d, true
-	}
-	type suffixSpec struct {
-		suffix string
-		mult   time.Duration
-	}
-	suffixes := []suffixSpec{
-		{"y", 365 * 24 * time.Hour},
-		{"mo", 30 * 24 * time.Hour},
-		{"w", 7 * 24 * time.Hour},
-		{"d", 24 * time.Hour},
-	}
-	for _, spec := range suffixes {
-		if strings.HasSuffix(trimmed, spec.suffix) {
-			num := strings.TrimSpace(strings.TrimSuffix(trimmed, spec.suffix))
-			if num == "" {
-				return 0, false
-			}
-			valueInt, err := strconv.ParseInt(num, 10, 64)
-			if err != nil || valueInt <= 0 {
-				return 0, false
-			}
-			return time.Duration(valueInt) * spec.mult, true
-		}
-	}
-	return 0, false
 }
 
 func DetectCompressionFromDest(dest string) (bool, error) {
@@ -405,6 +377,125 @@ func (bs *BackupSnapshot) GetMountSubdir() string {
 	return bsTime.Format(time.RFC3339)
 }
 
+// Capabilities is what the backup gives a restore, as the restore selection reads it:
+// compress, encrypt, parallel and can-partial-restorable (a split dump or mydumper: restored in
+// parallel, or one schema or table of it), gtid (its position has a GTID).
+func (bm *BackupMetadata) Capabilities() []string {
+	var caps []string
+	if bm.Compressed {
+		caps = append(caps, "compress")
+	}
+	if bm.Encrypted {
+		caps = append(caps, "encrypt")
+	}
+	if bm.SplitDump || bm.BackupTool == "mydumper" {
+		caps = append(caps, "parallel", "can-partial-restorable")
+	}
+	if bm.BinLogGtid != "" {
+		caps = append(caps, "gtid")
+	}
+	return caps
+}
+
+// ArchiveSnapshot is the backup's snapshot in archive ("" none). A backup recorded before the
+// archive list and not glued yet reads its snapshot as the one of any archive.
+func (bm *BackupMetadata) ArchiveSnapshot(archive string) string {
+	refs := bm.ArchiveRefs
+	if len(refs) == 0 {
+		return bm.ResticSnapshotID
+	}
+	return refs[archive]
+}
+
+// HoldsSnapshot: id is one of the backup's snapshots, in any archive (an id is unique).
+func (bm *BackupMetadata) HoldsSnapshot(id string) bool {
+	if id == "" {
+		return false
+	}
+	refs := bm.ArchiveRefs
+	if len(refs) == 0 {
+		return strings.TrimSpace(bm.ResticSnapshotID) == id
+	}
+	for _, ref := range refs {
+		if ref == id {
+			return true
+		}
+	}
+	return false
+}
+
+// ArchiveNames are the archives holding the backup, sorted.
+func (bm *BackupMetadata) ArchiveNames() []string {
+	refs := bm.ArchiveRefs
+	names := make([]string, 0, len(refs))
+	for name := range refs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// setArchiveRefs replaces the refs by a new map: the old one may be read concurrently.
+func (bm *BackupMetadata) setArchiveRefs(change func(refs map[string]string)) {
+	refs := make(map[string]string, len(bm.ArchiveRefs)+1)
+	for k, v := range bm.ArchiveRefs {
+		refs[k] = v
+	}
+	change(refs)
+	if len(refs) == 0 {
+		refs = nil
+	}
+	bm.ArchiveRefs = refs
+}
+
+// SetArchiveSnapshot records the backup's snapshot in archive. With no archive name (no
+// archive list) it is recorded as before the list.
+func (bm *BackupMetadata) SetArchiveSnapshot(archive, id string) {
+	if archive == "" {
+		bm.ResticSnapshotID = id
+		return
+	}
+	bm.GlueLegacySnapshot(archive)
+	bm.setArchiveRefs(func(refs map[string]string) { refs[archive] = id })
+}
+
+// GlueLegacySnapshot glues a snapshot recorded before the archive list to archive, the
+// archive the cluster's legacy settings became; it reports a change.
+func (bm *BackupMetadata) GlueLegacySnapshot(archive string) bool {
+	id := strings.TrimSpace(bm.ResticSnapshotID)
+	if archive == "" || id == "" {
+		return false
+	}
+	bm.ResticSnapshotID = ""
+	if _, ok := bm.ArchiveRefs[archive]; ok {
+		return true
+	}
+	bm.setArchiveRefs(func(refs map[string]string) { refs[archive] = id })
+	return true
+}
+
+// RenameArchiveRef follows an archive's rename; it reports a change.
+func (bm *BackupMetadata) RenameArchiveRef(name, newName string) bool {
+	id, ok := bm.ArchiveRefs[name]
+	if !ok || name == newName {
+		return false
+	}
+	bm.setArchiveRefs(func(refs map[string]string) {
+		delete(refs, name)
+		refs[newName] = id
+	})
+	return true
+}
+
+// DropArchiveRef takes a removed archive out of the backup's refs; it reports a change.
+func (bm *BackupMetadata) DropArchiveRef(name string) bool {
+	if _, ok := bm.ArchiveRefs[name]; !ok {
+		return false
+	}
+	bm.setArchiveRefs(func(refs map[string]string) { delete(refs, name) })
+	return true
+}
+
 type BackupMetaMap struct {
 	*sync.Map
 }
@@ -505,7 +596,9 @@ func (b *BackupMetaMap) GetPreviousBackup(backupTool string, source string) *Bac
 	var result *BackupMetadata
 	b.Map.Range(func(key, value interface{}) bool {
 		if backup, ok := value.(*BackupMetadata); ok {
-			if backup.IsAdhoc() {
+			// a registered backup keeps its own file, one replaced lives only in a snapshot
+			// (#2091): neither is the backup a new one replaces
+			if backup.Discovered || backup.OriginalRemoved {
 				return true
 			}
 			if backup.BackupTool == backupTool && backup.Source == source {

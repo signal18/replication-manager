@@ -53,6 +53,8 @@ func (cluster *Cluster) getAutorejoinBackupSelector(method string) RestoreSelect
 // per node" set is already enough to stop looking only on the master.
 func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 	cat := make([]BackupCatalogEntry, 0, len(cluster.Servers)*2)
+	attached := cluster.Conf.AttachedArchive()
+	mounted := cluster.mountedBackupsFolder()
 	// the backups refreshBackupProofs last found proven (#2023): the catalog takes no lock
 	// and reads no file, it runs on the monitor tick (HasCatalogBackupForRejoin) and in a
 	// rejoin; none checked yet, none proven
@@ -69,14 +71,89 @@ func (cluster *Cluster) buildBackupCatalog() []BackupCatalogEntry {
 			if m == nil || !m.Completed || cluster.backupUseRefusal(m) != nil {
 				continue
 			}
-			e := backupMetaToCatalog(sv.URL, m)
-			// a test restore proves the local file it loaded, not a restic snapshot of it
+			e := backupMetaToCatalog(sv.URL, m, attached, mounted)
+			// a backup only in an archive is a candidate when a restore can fetch it back now
+			// (#2091): the attached archive holds it and is one replication-manager fetches from
+			if e.inArchiveOnly() && (e.Snapshot == "" || !cluster.archiveFetchable()) {
+				continue
+			}
+			// a test restore proves the file it loaded, not a snapshot of it
 			_, proven := proofs[backupProofKey{sv.URL, m.Id, m.Dest}]
-			e.Proven = e.Location == RepoLocal && proven
+			e.Proven = !e.inArchiveOnly() && proven
 			cat = append(cat, e)
 		}
 	}
 	return cat
+}
+
+// backupCatalogLocation is where the backup's file is (#2091): archive when it was removed
+// after archiving (only a snapshot holds it), remote when it is in the backups folder with the
+// bucket mounted on it (mounted, "" when not mounted), else local, on replication-manager's
+// own disk. It reads no file.
+func backupCatalogLocation(m *backupmgr.BackupMetadata, mounted string) string {
+	switch {
+	case m.OriginalRemoved:
+		return RepoArchive
+	case mounted != "" && isStrictlyWithinBase(mounted, m.Dest):
+		return RepoRemote
+	default:
+		return RepoLocal
+	}
+}
+
+// archiveFetchable: a backup only in the attached archive can be fetched back from it now
+// (restoreArchivedOriginal): restic, or an archive plugin's restore of one path (#2091).
+func (cluster *Cluster) archiveFetchable() bool {
+	if _, external := cluster.attachedExternalArchive(); external {
+		return true
+	}
+	return cluster.Conf.BackupRestic && cluster.ResticManager != nil
+}
+
+// BackupView is a backup as the API shows it: its record, and what the restore selection
+// reads of it (buildBackupCatalog): its capabilities, where its file is (local, remote or
+// archive), whether the attached archive holds a snapshot of it, proven by a test restore of
+// its file still unchanged, and whether a restore or reseed picks among it now (each server's
+// last logical and physical backup, completed, usable, and fetchable when only archived).
+type BackupView struct {
+	*backupmgr.BackupMetadata
+	Capabilities     []string `json:"capabilities"`
+	Location         string   `json:"location"`
+	Archived         bool     `json:"archived"`
+	Proven           bool     `json:"proven"`
+	RestoreCandidate bool     `json:"restoreCandidate"`
+}
+
+// GetBackupsView is the catalogue for the API, each backup with what the restore selection
+// reads of it.
+func (cluster *Cluster) GetBackupsView() map[int64]BackupView {
+	attached := cluster.Conf.AttachedArchive()
+	mounted := cluster.mountedBackupsFolder()
+	var proofs map[backupProofKey]backupmgr.ArtifactFingerprint
+	if p := cluster.backupProofs.Load(); p != nil {
+		proofs = *p
+	}
+	// the restore selection's candidates, as it builds them
+	last := map[backupProofKey]bool{}
+	for _, e := range cluster.buildBackupCatalog() {
+		last[backupProofKey{e.Server, e.ID, ""}] = true
+	}
+	out := map[int64]BackupView{}
+	for id, m := range cluster.GetBackups() {
+		if m == nil {
+			continue
+		}
+		loc := backupCatalogLocation(m, mounted)
+		_, proven := proofs[backupProofKey{m.Source, m.Id, m.Dest}]
+		caps := m.Capabilities()
+		if caps == nil {
+			caps = []string{}
+		}
+		out[id] = BackupView{BackupMetadata: m, Capabilities: caps, Location: loc,
+			Archived: strings.TrimSpace(m.ArchiveSnapshot(attached)) != "",
+			Proven:   loc != RepoArchive && proven, RestoreCandidate: last[backupProofKey{m.Source, m.Id, ""}]}
+	}
+	return out
 }
 
 // backupProofKey names a backup in the proof snapshot: its server, id and file (an id is a
@@ -142,39 +219,22 @@ func (cluster *Cluster) provenStillUnchanged(e *BackupCatalogEntry) bool {
 
 // backupMetaToCatalog maps one BackupMetadata (Ahmad's) to a catalog entry so
 // every selector dimension can be evaluated against it.
-func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCatalogEntry {
+//
+// attached is the attached archive's name: Snapshot is its snapshot of the backup; a backup
+// held by a detached archive only is restored from it once attached. mounted is the backups
+// folder when the bucket is mounted on it (backupCatalogLocation).
+func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata, attached, mounted string) BackupCatalogEntry {
 	kind := "logical"
 	if m.BackupMethod == backupmgr.BackupMethodPhysical {
 		kind = "physical"
 	}
 
-	loc := RepoLocal
-	if m.ResticEnabled && m.ResticSnapshotID != "" {
-		loc = RepoRemote
-	}
-
-	var caps []string
-	if m.Compressed {
-		caps = append(caps, "compress")
-	}
-	if m.Encrypted {
-		caps = append(caps, "encrypt")
-	}
-	if m.SplitDump || m.BackupTool == "mydumper" {
-		caps = append(caps, "can-partial-restorable")
-	}
-	if m.BinLogGtid != "" {
-		caps = append(caps, "gtid")
-	}
+	loc := backupCatalogLocation(m, mounted)
+	caps := m.Capabilities()
 
 	ts := m.EndTime.Unix()
 	if ts <= 0 {
 		ts = m.StartTime.Unix()
-	}
-
-	path := m.Dest
-	if loc == RepoRemote && m.ResticSnapshotID != "" {
-		path = m.ResticSnapshotID
 	}
 
 	return BackupCatalogEntry{
@@ -188,7 +248,8 @@ func backupMetaToCatalog(serverURL string, m *backupmgr.BackupMetadata) BackupCa
 		Gtid:      m.BinLogGtid,
 		BinFile:   m.BinLogFileName,
 		BinPos:    strconv.FormatUint(m.BinLogFilePos, 10),
-		Path:      path,
+		Path:      m.Dest,
+		Snapshot:  strings.TrimSpace(m.ArchiveSnapshot(attached)),
 	}
 }
 

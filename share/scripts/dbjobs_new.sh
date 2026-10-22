@@ -1993,6 +1993,14 @@ pr_skip() {
 # checks: tables come back one by one, so a child table is created, discarded
 # or imported while the parent it references may not be back yet.
 readonly PR_SQL_INIT="set sql_log_bin=0;set foreign_key_checks=0;"
+# replication_manager_schema is restored like any database but its jobs table:
+# that table is this server's own job queue (written with sql_log_bin=0, never
+# replicated) and the running restore reports into it. The other tables are
+# replicated data a replica must hold: the traffic marker pseudo_gtid_hist is
+# created once on the master and then only updated, so a reseed without it
+# stops the replica at the next marker; sysbench and the bench write there too.
+readonly PR_REPMAN_SCHEMA="replication_manager_schema"
+readonly PR_REPMAN_KEEP_TABLE="jobs"
 
 # pr_list_databases prints the databases of the prepared backup to restore,
 # as listed by the backup's own server (pr_export_definitions), never from
@@ -2210,14 +2218,16 @@ pr_export_definitions() {
         rc=1
     else
         # sys is created by the server itself and tied to its version.
-        if ! ro_sql -N -B -e "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('mysql','performance_schema','information_schema','sys','replication_manager_schema') ORDER BY schema_name" >"$PR_DEFS/.databases" 2>>"$PR_LOG"; then
+        if ! ro_sql -N -B -e "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('mysql','performance_schema','information_schema','sys') ORDER BY schema_name" >"$PR_DEFS/.databases" 2>>"$PR_LOG"; then
             pr_log "ERROR: cannot list the databases of the backup."
             rm -f "$PR_DEFS/.databases"
             rc=1
         fi
         for db in $(pr_list_databases); do
             mkdir -p "$PR_DEFS/$db"
-            if ! ro_sql -N -B -e "SELECT table_name, table_type, IFNULL(engine,'') FROM information_schema.tables WHERE table_schema='$db' ORDER BY table_name" >"$PR_DEFS/$db/.list" 2>>"$PR_LOG"; then
+            local keep=""
+            [[ "$db" == "$PR_REPMAN_SCHEMA" ]] && keep=" AND table_name<>'$PR_REPMAN_KEEP_TABLE'"
+            if ! ro_sql -N -B -e "SELECT table_name, table_type, IFNULL(engine,'') FROM information_schema.tables WHERE table_schema='$db'$keep ORDER BY table_name" >"$PR_DEFS/$db/.list" 2>>"$PR_LOG"; then
                 pr_log "ERROR: cannot list the tables of $db in the backup."
                 rc=1
                 continue
@@ -2370,6 +2380,10 @@ pr_restore_routines() {
 # moved to a quarantine directory and the drop retried.
 pr_recreate_database() {
     local db="$1"
+    if [[ "$db" == "$PR_REPMAN_SCHEMA" ]]; then
+        pr_empty_repman_schema
+        return
+    fi
     pr_try "Drop database $db" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP DATABASE IF EXISTS \`$db\`"
     # Files the server does not know (orphans of an earlier failed restore)
     # outlive the drop: MariaDB then fails the DROP (errno 39), MySQL 8 drops
@@ -2397,6 +2411,27 @@ pr_recreate_database() {
         fi
     fi
     pr_cmd "Create database $db" $BINARY_CLIENT -e "${PR_SQL_INIT}CREATE DATABASE \`$db\`"
+}
+
+# pr_empty_repman_schema does for replication_manager_schema what the drop of
+# a database does for the others, without dropping the schema: every table,
+# view, routine and event of it goes but the jobs table (PR_REPMAN_KEEP_TABLE),
+# which stays as it is on this server. The schema is created when missing.
+pr_empty_repman_schema() {
+    local db="$PR_REPMAN_SCHEMA" t type rtype rname
+    pr_cmd "Create database $db when missing" $BINARY_CLIENT -e "${PR_SQL_INIT}CREATE DATABASE IF NOT EXISTS \`$db\`"
+    while IFS=$'\t' read -r t type; do
+        [[ -z "$t" || "$t" == "$PR_REPMAN_KEEP_TABLE" ]] && continue
+        if [[ "$type" == "VIEW" ]]; then
+            pr_try "Drop view $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP VIEW IF EXISTS \`$db\`.\`$t\`"
+        else
+            pr_try "Drop $db.$t" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP TABLE IF EXISTS \`$db\`.\`$t\`"
+        fi
+    done < <($BINARY_CLIENT -N -B -e "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema='$db'" 2>>"$PR_LOG")
+    while IFS=$'\t' read -r rtype rname; do
+        [[ -z "$rname" ]] && continue
+        pr_try "Drop $rtype $db.$rname" $BINARY_CLIENT -e "${PR_SQL_INIT}DROP $rtype IF EXISTS \`$db\`.\`$rname\`"
+    done < <($BINARY_CLIENT -N -B -e "SELECT routine_type, routine_name FROM information_schema.routines WHERE routine_schema='$db' UNION ALL SELECT 'EVENT', event_name FROM information_schema.events WHERE event_schema='$db'" 2>>"$PR_LOG")
 }
 
 # pr_import_partitions fills the partitions of the (empty, just recreated)

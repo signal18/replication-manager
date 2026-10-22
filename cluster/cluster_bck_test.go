@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -470,10 +469,9 @@ func TestBuildSnapshotMetadataIndexFromCache(t *testing.T) {
 		BackupMetaMap: backupmgr.NewBackupMetaMap(),
 	}
 	manager := cluster.getSnapshotMetadataManager()
-	key := fmt.Sprintf("%d|%s", backupmgr.BackupMethodLogical, backupmgr.BackupLineDefault)
+	key := snapshotMetadataKey(backupmgr.BackupMethodLogical, "mysqldump")
 	summary := &SnapshotMetadataSummary{
 		BackupMethod:     "logical",
-		BackupLine:       backupmgr.BackupLineDefault,
 		StartTime:        time.Now(),
 		BackupSessionID:  "session-1",
 		ResticSnapshotID: "snap-1",
@@ -513,10 +511,9 @@ func newTestClusterWithSessionMap(sessionMap map[string]string) *Cluster {
 		if snapshotID == "" || sessionID == "" {
 			continue
 		}
-		key := fmt.Sprintf("%d|%s", backupmgr.BackupMethodLogical, backupmgr.BackupLineDefault)
+		key := snapshotMetadataKey(backupmgr.BackupMethodLogical, "mysqldump")
 		summary := &SnapshotMetadataSummary{
 			BackupMethod:     "logical",
-			BackupLine:       backupmgr.BackupLineDefault,
 			StartTime:        time.Now(),
 			BackupSessionID:  sessionID,
 			ResticSnapshotID: snapshotID,
@@ -816,7 +813,6 @@ func TestSummarizeSnapshotMetadataFromBackupMetaMap(t *testing.T) {
 		StartTime:        start,
 		EndTime:          time.Now(),
 		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
-		BackupLine:       backupmgr.BackupLineDefault,
 		BackupMethod:     backupmgr.BackupMethodLogical,
 		Dest:             filepath.Join("/backups", "snap-1", "mysqldump.sql.gz"),
 		ResticSnapshotID: "snap-1",
@@ -2643,5 +2639,26 @@ func TestRejoinCatalog_WARN0191_PreservedAcrossIntermediateTicks(t *testing.T) {
 	sm.ClearState()
 	if !sm.IsInState("WARN0191") {
 		t.Fatal("WARN0191 dropped after an intermediate tick despite pstates30 preservation")
+	}
+}
+
+// #2091: the cluster's tagged purge policies reach the restic purge, the default with them
+func TestResticPurgeRepoPassesTaggedPolicies(t *testing.T) {
+	conf := &config.Config{BackupRestic: true, BackupKeepLast: 3, BackupKeepTagPolicies: "trigger:binlogs keep-within=1d"}
+	cluster := &Cluster{Name: "cluster1", Conf: conf, ResticManager: backupmgr.NewResticRepo("", nil, config.ConstLogModRestic), StateMachine: &state.StateMachine{}}
+	cluster.StateMachine.Init()
+	if err := cluster.ResticPurgeRepoWithOptions(true, true); err != nil {
+		t.Fatalf("unexpected purge error: %v", err)
+	}
+	opt := cluster.ResticManager.PurgeNowOption
+	if len(opt.Rules) != 1 || opt.Rules[0].Tag != "trigger:binlogs" || opt.Rules[0].Policy.KeepWithin != "1d" || opt.KeepLast != 3 {
+		t.Fatalf("rules %+v keep-last %d", opt.Rules, opt.KeepLast)
+	}
+
+	// a bad rule never purges
+	conf.BackupKeepTagPolicies = "trigger:binlogs"
+	cluster.ResticManager = backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
+	if err := cluster.ResticPurgeRepoWithOptions(true, true); err == nil || cluster.ResticManager.NeedPurgeNow {
+		t.Fatalf("a rule keeping nothing purged: %v", err)
 	}
 }

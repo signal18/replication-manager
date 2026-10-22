@@ -33,6 +33,10 @@ type CredentialStore interface {
 	Generates() bool                                   // makes its own passwords (Vault database engine)
 }
 
+// ErrNotHeld is a store's CanSet for a key it does not handle at all (ArchiveStore and a
+// key no archive takes): never the reason of a refusal, the next store's is.
+var ErrNotHeld = errors.New("not held by this store")
+
 // ErrChangeRefused is what a refusal is (errors.Is); RefusedError carries its reason.
 var ErrChangeRefused = errors.New("credential change refused")
 
@@ -62,7 +66,80 @@ const (
 	SourceDynamic = "dynamic-config" // <cluster>.toml, written by SaveCallBack (monitoring-save-config on)
 	SourceRuntime = "runtime-config" // in memory only (monitoring-save-config off: the config files are the source)
 	SourceDefault = "default"        // the flag's default: no store holds the key
+	SourceArchive = "archive"        // the connected archive's entry (#2088)
 )
+
+// ArchiveStore answers an archive's flat secrets (backup-restic-password,
+// backup-restic-aws-access-secret) from the entry of the archive the cluster is connected to,
+// when its plugin declares that secret (#2088). The entry holds it encrypted and the save
+// writes it with the archive list (T25). No archive connected, or no value in it: the next
+// stores answer. A key a config file pins is left to the file, as DynamicConfig does.
+type ArchiveStore struct {
+	conf *config.Config
+	save func()
+}
+
+func (s *ArchiveStore) Name() string    { return SourceArchive }
+func (s *ArchiveStore) Versioned() bool { return false }
+func (s *ArchiveStore) Generates() bool { return false }
+
+func (s *ArchiveStore) Get(key string) (string, bool, error) {
+	name, ok := config.ArchiveSecretName(key)
+	if !ok {
+		return "", false, nil
+	}
+	if _, pinned := s.conf.GetImmuableFlag(key); pinned {
+		return "", false, nil
+	}
+	v, ok := s.conf.ConnectedArchiveSecret(name)
+	return v, ok, nil
+}
+
+func (s *ArchiveStore) CanSet(key string) error {
+	name, ok := config.ArchiveSecretName(key)
+	if !ok {
+		return fmt.Errorf("%s is not an archive secret: %w", key, ErrNotHeld)
+	}
+	if _, pinned := s.conf.GetImmuableFlag(key); pinned {
+		return fmt.Errorf("%s is set in a config file (immutable): a new value would be lost at the next restart", key)
+	}
+	if err := s.conf.CanSetConnectedArchiveSecret(name); err != nil {
+		// no archive connected, or its plugin has no such secret: the flat config takes it
+		return fmt.Errorf("%s: %w", err, ErrNotHeld)
+	}
+	return nil
+}
+
+func (s *ArchiveStore) Set(key, value string) error {
+	if err := s.CanSet(key); err != nil {
+		return err
+	}
+	name, _ := config.ArchiveSecretName(key)
+	return s.conf.SetConnectedArchiveSecret(name, s.conf.EncryptSecretValue(value), true)
+}
+
+func (s *ArchiveStore) saveEvent() {
+	if s.save != nil {
+		s.save()
+	}
+}
+
+func (s *ArchiveStore) snapshot(key string) (interface{}, bool) {
+	v, ok, _ := s.Get(key)
+	return v, ok
+}
+
+func (s *ArchiveStore) restore(key string, raw interface{}, present bool) {
+	name, ok := config.ArchiveSecretName(key)
+	if !ok {
+		return
+	}
+	v := ""
+	if raw != nil {
+		v = fmt.Sprintf("%v", raw)
+	}
+	s.conf.SetConnectedArchiveSecret(name, v, present)
+}
 
 // PinnedConfig is the config files repman never writes (config.toml, cluster.d):
 // ImmuableFlagMap. It holds a starting value, or a Vault path; a change is refused.
@@ -180,10 +257,11 @@ type Chain struct {
 	stores []CredentialStore
 }
 
-// NewConfigChain returns the chain of the internal secret_kv-config plugin: DynamicConfig,
-// then PinnedConfig, then the flag defaults. save is the config save event.
+// NewConfigChain returns the chain of the internal secret_kv-config plugin: the connected
+// archive's secrets (ArchiveStore, #2088), DynamicConfig, then PinnedConfig, then the flag
+// defaults. save is the config save event.
 func NewConfigChain(conf *config.Config, save func()) *Chain {
-	return NewChain(conf, &DynamicConfig{conf: conf, save: save}, &PinnedConfig{conf: conf})
+	return NewChain(conf, &ArchiveStore{conf: conf, save: save}, &DynamicConfig{conf: conf, save: save}, &PinnedConfig{conf: conf})
 }
 
 // NewChain returns a chain of stores, read and written in their order.
@@ -233,7 +311,7 @@ func (c *Chain) writer(key string) (CredentialStore, error) {
 		if err == nil {
 			return s, nil
 		}
-		if first == nil {
+		if first == nil && !errors.Is(err, ErrNotHeld) {
 			first = err
 		}
 	}

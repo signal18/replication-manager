@@ -1992,7 +1992,7 @@ func TestBuildMountArgs(t *testing.T) {
 func TestMountRepoWithOptions(t *testing.T) {
 	repo, _, _, _ := newResticRepo(t, true)
 
-	mountDir := filepath.Join(getTestingDirs(t))
+	mountDir := t.TempDir() // a folder of its own, never inside the shared repo (getTestingDirs returns three paths)
 	mountDir = filepath.Join(mountDir, "mount-options-test")
 	if err := os.RemoveAll(mountDir); err != nil {
 		t.Fatalf("remove mount dir: %v", err)
@@ -2082,7 +2082,7 @@ func TestMountRepoWithFilters(t *testing.T) {
 	}
 
 	// Test mount with host filter
-	mountDir := filepath.Join(getTestingDirs(t))
+	mountDir := t.TempDir() // a folder of its own, never inside the shared repo (getTestingDirs returns three paths)
 	mountDir = filepath.Join(mountDir, "mount-filter-test")
 	if err := os.RemoveAll(mountDir); err != nil {
 		t.Fatalf("remove mount dir: %v", err)
@@ -2124,7 +2124,7 @@ func TestMountRepoWithFilters(t *testing.T) {
 func TestMountRepoBackwardCompatibility(t *testing.T) {
 	repo, _, _, _ := newResticRepo(t, true)
 
-	mountDir := filepath.Join(getTestingDirs(t))
+	mountDir := t.TempDir() // a folder of its own, never inside the shared repo (getTestingDirs returns three paths)
 	mountDir = filepath.Join(mountDir, "mount-compat-test")
 	if err := os.RemoveAll(mountDir); err != nil {
 		t.Fatalf("remove mount dir: %v", err)

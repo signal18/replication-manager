@@ -18,6 +18,7 @@ export const clusterService = {
   getBackupStats,
   deleteBackup,
   discoverBackups,
+  getBinlogCopies,
   getBackupCandidates,
   registerBackup,
   registerBackupChange,
@@ -52,6 +53,20 @@ export const clusterService = {
   resticCheckConfig,
   resticCopyRepo,
   resticWipeRepo,
+  getArchiveList,
+  addArchive,
+  editArchive,
+  renameArchive,
+  attachArchive,
+  getArchiveSnapshots,
+  forgetArchiveSnapshot,
+  snapbackArchive,
+  releaseSnapback,
+  detachArchive,
+  removeArchive,
+  sizeArchive,
+  rebuildBackupCatalogue,
+  dropMissingCatalogueSnapshots,
   resticCreateBucket,
 
   // Security / workload remediation APIs
@@ -317,6 +332,11 @@ function discoverBackups(clusterName, baseURL) {
 // what the backup discovery found: the candidates per server and the registered backups changed since
 function getBackupCandidates(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups/candidates`)
+}
+
+// per server, the log copies its backup directory holds: number, lowest, highest (#2091)
+function getBinlogCopies(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/backups/binlog-copies`)
 }
 
 function registerBackup(clusterName, server, path, takenAt, baseURL) {
@@ -1121,6 +1141,70 @@ function resticCopyRepo(clusterName, payload, baseURL) {
 
 function resticWipeRepo(clusterName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/wipe`, payload)
+}
+
+// archive list (#2091): secrets go in through add and edit and never come back
+function getArchiveList(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/archive-list`)
+}
+
+function addArchive(clusterName, spec, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/add`, spec)
+}
+
+function editArchive(clusterName, archiveName, spec, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/edit/${encodeURIComponent(archiveName)}`, spec)
+}
+
+function renameArchive(clusterName, archiveName, newName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/rename/${encodeURIComponent(archiveName)}/${encodeURIComponent(newName)}`)
+}
+
+// the snapshots of an archive plugin's archive, newest first (#2091)
+function getArchiveSnapshots(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/archive-snapshots/${encodeURIComponent(archiveName)}`)
+}
+
+// deletes one snapshot of an archive plugin's archive (#2091)
+function forgetArchiveSnapshot(clusterName, archiveName, snapshotId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/forget/${encodeURIComponent(archiveName)}/${encodeURIComponent(snapshotId)}`)
+}
+
+// puts a server's backup directory back as it was in a snapshot of the attached archive (#2091)
+function snapbackArchive(clusterName, snapshotId, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/snapback/${encodeURIComponent(snapshotId)}`)
+}
+
+// keeps a backup directory as a snapback left it, its backups unlocked (#2091)
+function releaseSnapback(clusterName, serverName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/snapback-release/${encodeURIComponent(serverName)}`)
+}
+
+function attachArchive(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/attach/${encodeURIComponent(archiveName)}`)
+}
+
+function detachArchive(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/detach`)
+}
+
+function removeArchive(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/remove/${encodeURIComponent(archiveName)}`)
+}
+
+function sizeArchive(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/size/${encodeURIComponent(archiveName)}`)
+}
+
+// takes out of the backup catalogue the snapshots gone from an archive (WARN0260, #2091)
+function dropMissingCatalogueSnapshots(clusterName, archiveName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/drop-missing-snapshots/${encodeURIComponent(archiveName)}`)
+}
+
+// rebuilds the backup catalogue from an archive's snapshots, all readable archives with none (#2091)
+function rebuildBackupCatalogue(clusterName, archiveName, baseURL) {
+  const path = archiveName ? `/${encodeURIComponent(archiveName)}` : ''
+  return getApi(baseURL).post(`clusters/${clusterName}/archive-actions/rebuild-catalogue${path}`)
 }
 
 function resticCreateBucket(clusterName, baseURL) {

@@ -633,16 +633,48 @@ func filterResticEnv(cluster *Cluster, baseEnv []string, repoPath, password, cac
 }
 
 func (cluster *Cluster) ResticGetEnv() []string {
-	cacheDir := cluster.Conf.WorkingDir + "/" + cluster.Name + "/.cache/restic"
-	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	return cluster.resticEnvFor(cluster.Conf)
+}
+
+// resticRepoPathFor is the repository conf runs: an S3 URL, an sftp path, or the local path
+// after the repository policy (a path inside the default archive folder is the default
+// one, the cluster's name appended). It logs nothing and creates nothing.
+func (cluster *Cluster) resticRepoPathFor(conf *config.Config) string {
+	if conf.BackupResticAws {
+		res, err := resolveResticS3(conf, cluster.Name, nil)
+		if err != nil {
+			return ""
+		}
+		return res.RepoPath
+	}
+	localRepoPath, appendCluster := resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, nil)
+	if localRepoPath == "" {
+		return filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+	}
+	if appendCluster && shouldAppendClusterNameLocal(localRepoPath, cluster.Name) {
+		return filepath.Join(localRepoPath, cluster.Name)
+	}
+	return localRepoPath
+}
+
+// resticEnvFor is the restic environment of conf: the cluster's config, or a copy running
+// another archive of its list (config.ConfigForArchive, #2091).
+func (cluster *Cluster) resticEnvFor(conf *config.Config) []string {
+	cacheDir := conf.WorkingDir + "/" + cluster.Name + "/.cache/restic"
+	password := conf.GetDecryptedValue("backup-restic-password")
 	repoPath := ""
 	accessKeyID := ""
 	accessSecret := ""
 	region := ""
-	if cluster.Conf.BackupResticAws {
-		res, err := resolveResticS3(cluster.Conf, cluster.Name, cluster)
+	if conf.BackupResticAws {
+		// the S3 mode the startup probe resolved is the attached archive's only
+		probed := cluster
+		if conf != cluster.Conf {
+			probed = nil
+		}
+		res, err := resolveResticS3(conf, cluster.Name, probed)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			cluster.LogModulePrintf(conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 				"Restic S3 resolution failed: %s", err)
 		} else {
 			repoPath = res.RepoPath
@@ -651,23 +683,23 @@ func (cluster *Cluster) ResticGetEnv() []string {
 			region = res.Region
 		}
 	} else {
-		localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
-		accessKeyID = cluster.Conf.BackupResticAwsAccessKeyId
-		accessSecret = cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
-		region = cluster.Conf.BackupResticAwsRegion
+		localRepoPath, appendCluster := resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
+		accessKeyID = conf.BackupResticAwsAccessKeyId
+		accessSecret = conf.GetDecryptedValue("backup-restic-aws-access-secret")
+		region = conf.BackupResticAwsRegion
 		if localRepoPath != "" {
 			repoPath = localRepoPath
 			if appendCluster && shouldAppendClusterNameLocal(repoPath, cluster.Name) {
 				repoPath = filepath.Join(repoPath, cluster.Name)
 			}
 		} else {
-			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+			repoPath = filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
 		}
 		if !config.IsSftpResticRepository(repoPath) {
 			if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 				err := os.MkdirAll(repoPath, os.ModePerm)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
+					cluster.LogModulePrintf(conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", repoPath, err)
 				}
 			}
 		}
@@ -682,7 +714,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 		accessKeyID,
 		accessSecret,
 		region,
-		cluster.Conf.BackupResticAdditionalEnv,
+		conf.BackupResticAdditionalEnv,
 	)
 }
 
@@ -790,14 +822,42 @@ func (cluster *Cluster) CheckResticErrors() {
 // returned option may be upgraded to restic-sftp when the resolved path matches
 // SFTP syntax. keyHint is passed through unchanged.
 func (cluster *Cluster) resticResolveSavedCopySource(requestedMode, keyHint string) (backupmgr.ResticCopySourceOption, error) {
-	password := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	return cluster.resticResolveCopySourceFrom(cluster.Conf, requestedMode, keyHint)
+}
+
+// resticResolveArchiveCopySource resolves an archive of the list as a copy source (#2091),
+// from a config copy running it. The attached archive is the destination, never a source.
+func (cluster *Cluster) resticResolveArchiveCopySource(name, keyHint string) (backupmgr.ResticCopySourceOption, error) {
+	list, attached := cluster.Conf.ArchiveList()
+	if name == attached {
+		return backupmgr.ResticCopySourceOption{}, fmt.Errorf("archive %s is the attached archive: the copy goes into it", name)
+	}
+	for _, a := range list {
+		if a.Name != name {
+			continue
+		}
+		mode, ok := config.ArchiveModeForPlugin(a.Plugin)
+		if !ok {
+			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("archive %s: plugin %s cannot be a copy source", name, a.Plugin)
+		}
+		if mode == config.ConstBackupArchiveModeResticSftp {
+			mode = config.ConstBackupArchiveModeResticLocal // the path tells sftp
+		}
+		return cluster.resticResolveCopySourceFrom(cluster.Conf.ConfigForArchive(a), mode, keyHint)
+	}
+	return backupmgr.ResticCopySourceOption{}, fmt.Errorf("unknown archive %s", name)
+}
+
+// resticResolveCopySourceFrom resolves the repository conf runs as a copy source.
+func (cluster *Cluster) resticResolveCopySourceFrom(conf *config.Config, requestedMode, keyHint string) (backupmgr.ResticCopySourceOption, error) {
+	password := conf.GetDecryptedValue("backup-restic-password")
 	if password == "" {
 		return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved source config is incomplete: backup-restic-password is empty")
 	}
 
 	switch requestedMode {
 	case config.ConstBackupArchiveModeResticLocal:
-		localRepoPath, appendCluster := resolveResticRepoPolicy(cluster.Conf, cluster.Conf.BackupResticLocalRepository, cluster)
+		localRepoPath, appendCluster := resolveResticRepoPolicy(conf, conf.BackupResticLocalRepository, cluster)
 		var repoPath string
 		if localRepoPath != "" {
 			repoPath = localRepoPath
@@ -805,7 +865,7 @@ func (cluster *Cluster) resticResolveSavedCopySource(requestedMode, keyHint stri
 				repoPath = filepath.Join(repoPath, cluster.Name)
 			}
 		} else {
-			repoPath = filepath.Join(cluster.Conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
+			repoPath = filepath.Join(conf.WorkingDir, config.ConstStreamingSubDir, "archive", cluster.Name)
 		}
 		if repoPath == "" {
 			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved Local/SFTP source config is incomplete: effective repository path could not be resolved")
@@ -829,9 +889,13 @@ func (cluster *Cluster) resticResolveSavedCopySource(requestedMode, keyHint stri
 		// have since switched the destination away from AWS while the saved-source
 		// preset still points at an S3 repository.  We temporarily override the aws
 		// flag to force S3 resolution.
-		confCopy := *cluster.Conf
+		confCopy := *conf
 		confCopy.BackupResticAws = true
-		res, err := resolveResticS3(&confCopy, cluster.Name, cluster)
+		probeCache := cluster
+		if conf != cluster.Conf {
+			probeCache = nil // the S3 probe cache is the attached archive's
+		}
+		res, err := resolveResticS3(&confCopy, cluster.Name, probeCache)
 		if err != nil {
 			return backupmgr.ResticCopySourceOption{}, fmt.Errorf("saved S3 source config is incomplete: %w", err)
 		}
@@ -873,7 +937,17 @@ func (cluster *Cluster) ResticCopyRepoWithOptions(opt backupmgr.ResticCopyOption
 	// requested backend type into a concrete source option before validation/queueing.
 	// Hybrid payloads that mix use_saved_config with inline manual fields are rejected
 	// to avoid ambiguous resolution (Guardrail S1/S3).
-	if opt.Source.UseSavedConfig {
+	if opt.Source.Archive != "" {
+		src := opt.Source
+		if src.UseSavedConfig || src.Repository != "" || src.Password != "" || src.AWS != nil {
+			return fmt.Errorf("archive-source payload is invalid: name the archive only")
+		}
+		resolved, err := cluster.resticResolveArchiveCopySource(src.Archive, src.KeyHint)
+		if err != nil {
+			return err
+		}
+		opt.Source = resolved
+	} else if opt.Source.UseSavedConfig {
 		src := opt.Source
 		hasInline := src.Repository != "" || src.Password != "" || src.AWS != nil
 		if hasInline {
@@ -1021,6 +1095,11 @@ func (cluster *Cluster) StartResticManager() error {
 		}
 	}
 
+	// the snapshots a restic purge deleted leave the backups recording them, as a forget (#2091)
+	cluster.ResticManager.Mutex.Lock()
+	cluster.ResticManager.OnSnapshotsPurged = cluster.dropResticSnapshotsFromCatalogue
+	cluster.ResticManager.Mutex.Unlock()
+
 	cluster.ResticManager.AddUnlockTask() // Queue unlock first to avoid fetch-before-unlock race on startup.
 	go cluster.ResticFetchRepo()
 	return nil
@@ -1145,6 +1224,9 @@ func (cluster *Cluster) ResticPurgeSnapshotWithOptions(snapshotID string, now bo
 	if !cluster.Conf.BackupRestic {
 		return fmt.Errorf("Restic backup is not enabled")
 	}
+	if err := cluster.snapbackPurgeHold(strings.TrimSpace(snapshotID)); err != nil {
+		return err
+	}
 
 	if cluster.ResticManager == nil {
 		cluster.StartResticManager()
@@ -1179,94 +1261,117 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 	return cluster.ResticPurgeRepoWithOptions(now, false)
 }
 
+// ResticPurgeRepoWithOptions asks the attached archive to apply the cluster's retention
+// policy (#2091): the policy is the user's (backup-keep-*), the plugin applies it its own way.
 func (cluster *Cluster) ResticPurgeRepoWithOptions(now bool, dryRun bool) error {
-	if cluster.Conf.BackupRestic {
-		err := cluster.Conf.CheckKeepWithin() // Check if backup-keep-within is valid
-		if err != nil {
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
-			return err
-		}
-
-		if cluster.ResticManager == nil {
-			cluster.StartResticManager()
-		}
-
-		hasKeepN := cluster.Conf.BackupKeepLast > 0 ||
-			cluster.Conf.BackupKeepHourly > 0 ||
-			cluster.Conf.BackupKeepDaily > 0 ||
-			cluster.Conf.BackupKeepWeekly > 0 ||
-			cluster.Conf.BackupKeepMonthly > 0 ||
-			cluster.Conf.BackupKeepYearly > 0
-		hasKeepWithin := strings.TrimSpace(cluster.Conf.BackupKeepWithin) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinHourly) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinDaily) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinWeekly) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinMonthly) != "" ||
-			strings.TrimSpace(cluster.Conf.BackupKeepWithinYearly) != ""
-		if !hasKeepN && !hasKeepWithin {
-			err := fmt.Errorf("restic purge skipped: no keep-last/keep-within policy configured")
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
-			return err
-		}
-
-		groupBy := strings.TrimSpace(cluster.Conf.BackupResticPurgeGroupBy)
-		if groupBy == "" || strings.EqualFold(groupBy, "default") {
-			groupBy = ""
-		} else if strings.EqualFold(groupBy, "none") {
-			groupBy = "none"
-		}
-
-		keepTemplates := parseResticKeepTagTemplates(cluster.Conf.BackupResticPurgeKeepTag, cluster)
-		keepValues := map[string]string{
-			"tenant":  cluster.Conf.Cloud18GitUser,
-			"cluster": cluster.Name,
-		}
-		keepTags := make([]string, 0, len(keepTemplates))
-		for _, template := range keepTemplates {
-			rendered, ok := renderResticKeepTagTemplate(template, keepValues, cluster)
-			if !ok {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to render restic keep-tag template %q", template)
-				continue
-			}
-			if strings.TrimSpace(rendered) == "" {
-				continue
-			}
-			keepTags = append(keepTags, rendered)
-		}
-
-		purgeHosts := splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgeHost)
-		purgeTags := parseResticTagFilterValues(cluster.Conf.BackupResticPurgeTag, cluster, "purge")
-		purgePaths := filterResticAbsolutePaths(splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgePath), cluster)
-		cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
-			KeepLast:          cluster.Conf.BackupKeepLast,
-			KeepHourly:        cluster.Conf.BackupKeepHourly,
-			KeepDaily:         cluster.Conf.BackupKeepDaily,
-			KeepWeekly:        cluster.Conf.BackupKeepWeekly,
-			KeepMonthly:       cluster.Conf.BackupKeepMonthly,
-			KeepYearly:        cluster.Conf.BackupKeepYearly,
-			KeepWithin:        cluster.Conf.BackupKeepWithin,
-			KeepWithinHourly:  cluster.Conf.BackupKeepWithinHourly,
-			KeepWithinDaily:   cluster.Conf.BackupKeepWithinDaily,
-			KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
-			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
-			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
-			GroupBy:           groupBy,
-			KeepTag:           keepTags,
-			Host:              purgeHosts,
-			Tag:               purgeTags,
-			Path:              purgePaths,
-			Compact:           cluster.Conf.BackupResticPurgePruneCompact,
-			Prune:             cluster.Conf.BackupResticPurgePrune,
-			PruneOption: backupmgr.ResticPruneOption{
-				MaxUnused:           cluster.Conf.BackupResticPurgePruneMaxUnused,
-				MaxRepackSize:       cluster.Conf.BackupResticPurgePruneMaxRepackSize,
-				RepackCacheableOnly: cluster.Conf.BackupResticPurgePruneRepackCacheableOnly,
-				RepackSmall:         cluster.Conf.BackupResticPurgePruneRepackSmall,
-				RepackUncompressed:  cluster.Conf.BackupResticPurgePruneRepackUncompressed,
-			},
-			DryRun: dryRun,
-		}, now)
+	if a, ok := cluster.attachedExternalArchive(); ok {
+		return cluster.purgeExternalArchive(a, dryRun)
 	}
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+	rules, policy, err := cluster.attachedArchivePurgePolicies()
+	if err == nil && len(rules) == 0 {
+		err = policy.Validate()
+	}
+	if err != nil {
+		cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+	if len(rules) == 0 && policy.IsEmpty() {
+		err := fmt.Errorf("restic purge skipped: no keep-last/keep-within policy configured")
+		cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+	if name := cluster.Conf.AttachedArchive(); name != "" {
+		for _, a := range cluster.Conf.Archives {
+			if m, ok := config.ArchivePlugin(a.Plugin); a.Name == name && ok && !m.Can(config.ConstArchiveCapPurge) {
+				return fmt.Errorf("archive %s (%s) cannot purge", name, a.Plugin)
+			}
+		}
+	}
+	return cluster.resticPurgeWithPolicy(policy, rules, now, dryRun)
+}
+
+// attachedArchivePurgePolicies is what the attached archive applies (#2091): its own purge
+// policies when it has some, else the cluster's (backup-keep-tag-policies, backup-keep-*).
+func (cluster *Cluster) attachedArchivePurgePolicies() ([]config.ArchivePurgeRule, config.ArchivePurgePolicy, error) {
+	name := cluster.Conf.AttachedArchive()
+	list, _ := cluster.Conf.ArchiveList()
+	for i := range list {
+		if list[i].Name == name {
+			return cluster.Conf.ArchivePurgePolicies(&list[i])
+		}
+	}
+	return cluster.Conf.ArchivePurgePolicies(nil)
+}
+
+// resticPurgeWithPolicy is the restic plugins' purge: the policy, applied with the attached
+// archive's purge-* settings.
+// rules: tagged purge policies, policy being the default one (#2091).
+func (cluster *Cluster) resticPurgeWithPolicy(policy config.ArchivePurgePolicy, rules []config.ArchivePurgeRule, now bool, dryRun bool) error {
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	groupBy := strings.TrimSpace(cluster.Conf.BackupResticPurgeGroupBy)
+	if groupBy == "" || strings.EqualFold(groupBy, "default") {
+		groupBy = ""
+	} else if strings.EqualFold(groupBy, "none") {
+		groupBy = "none"
+	}
+
+	keepTemplates := parseResticKeepTagTemplates(cluster.Conf.BackupResticPurgeKeepTag, cluster)
+	keepValues := map[string]string{
+		"tenant":  cluster.Conf.Cloud18GitUser,
+		"cluster": cluster.Name,
+	}
+	keepTags := make([]string, 0, len(keepTemplates))
+	for _, template := range keepTemplates {
+		rendered, ok := renderResticKeepTagTemplate(template, keepValues, cluster)
+		if !ok {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to render restic keep-tag template %q", template)
+			continue
+		}
+		if strings.TrimSpace(rendered) == "" {
+			continue
+		}
+		keepTags = append(keepTags, rendered)
+	}
+
+	purgeHosts := splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgeHost)
+	purgeTags := parseResticTagFilterValues(cluster.Conf.BackupResticPurgeTag, cluster, "purge")
+	purgePaths := filterResticAbsolutePaths(splitResticPurgeFilterValues(cluster.Conf.BackupResticPurgePath), cluster)
+	cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
+		KeepLast:          policy.KeepLast,
+		KeepHourly:        policy.KeepHourly,
+		KeepDaily:         policy.KeepDaily,
+		KeepWeekly:        policy.KeepWeekly,
+		KeepMonthly:       policy.KeepMonthly,
+		KeepYearly:        policy.KeepYearly,
+		KeepWithin:        policy.KeepWithin,
+		KeepWithinHourly:  policy.KeepWithinHourly,
+		KeepWithinDaily:   policy.KeepWithinDaily,
+		KeepWithinWeekly:  policy.KeepWithinWeekly,
+		KeepWithinMonthly: policy.KeepWithinMonthly,
+		KeepWithinYearly:  policy.KeepWithinYearly,
+		GroupBy:           groupBy,
+		Rules:             rules,
+		KeepTag:           keepTags,
+		Host:              purgeHosts,
+		Tag:               purgeTags,
+		Path:              purgePaths,
+		Compact:           cluster.Conf.BackupResticPurgePruneCompact,
+		Prune:             cluster.Conf.BackupResticPurgePrune,
+		PruneOption: backupmgr.ResticPruneOption{
+			MaxUnused:           cluster.Conf.BackupResticPurgePruneMaxUnused,
+			MaxRepackSize:       cluster.Conf.BackupResticPurgePruneMaxRepackSize,
+			RepackCacheableOnly: cluster.Conf.BackupResticPurgePruneRepackCacheableOnly,
+			RepackSmall:         cluster.Conf.BackupResticPurgePruneRepackSmall,
+			RepackUncompressed:  cluster.Conf.BackupResticPurgePruneRepackUncompressed,
+		},
+		DryRun: dryRun,
+	}, now)
 	return nil
 }
 
@@ -1595,7 +1700,7 @@ func getSnapshotSizeBytes(cluster *Cluster, snapshotID string) (uint64, bool) {
 		if !ok || meta == nil {
 			return true
 		}
-		if strings.TrimSpace(meta.ResticSnapshotID) != snapshotID {
+		if !meta.HoldsSnapshot(snapshotID) {
 			return true
 		}
 		if selected == nil {
@@ -1714,7 +1819,6 @@ var resticTagTemplateKeySet = map[string]struct{}{
 	"version":     {},
 	"backup-type": {},
 	"backup-tool": {},
-	"line":        {},
 	"method":      {},
 }
 
@@ -2148,12 +2252,8 @@ func renderResticKeepTagTemplate(template string, values map[string]string, clus
 	return rendered, true
 }
 
-func (server *ServerMonitor) BuildResticTags(backupType, backupTool, backupLine string, meta *backupmgr.BackupMetadata) []string {
+func (server *ServerMonitor) BuildResticTags(backupType, backupTool string, meta *backupmgr.BackupMetadata) []string {
 	cluster := server.ClusterGroup
-	lineValue := normalizeBackupLine(backupLine)
-	if lineValue == "" {
-		lineValue = backupmgr.BackupLineDefault
-	}
 	tagValues := map[string]string{
 		"tenant":      cluster.Conf.Cloud18GitUser,
 		"cluster":     cluster.Name,
@@ -2161,7 +2261,6 @@ func (server *ServerMonitor) BuildResticTags(backupType, backupTool, backupLine 
 		"version":     server.DBVersion.ToString(),
 		"backup-type": backupType,
 		"backup-tool": backupTool,
-		"line":        lineValue,
 		"method":      strings.TrimSpace(backupType),
 	}
 
@@ -2169,6 +2268,10 @@ func (server *ServerMonitor) BuildResticTags(backupType, backupTool, backupLine 
 	tagSet := make(map[string]struct{})
 	tags := make([]string, 0, len(templates)+3)
 	for _, template := range templates {
+		// a "line" saved from an older default renders nothing: backups have no line (#2091)
+		if normalizeResticTagCategory(strings.Trim(template, "{}:")) == "line" {
+			continue
+		}
 		rendered, ok := renderResticTagTemplate(template, tagValues, cluster)
 		if !ok || strings.TrimSpace(rendered) == "" {
 			continue

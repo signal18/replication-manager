@@ -24,7 +24,6 @@ func TestPrepareResticReseedPathsUsesMetadataDest(t *testing.T) {
 		Dest:             "/backups/cluster1/mysqldump.sql.gz",
 		BackupMethod:     "logical",
 		BackupTool:       config.ConstBackupLogicalTypeMysqldump,
-		BackupLine:       backupmgr.BackupLineDefault,
 		StartTime:        time.Now(),
 		ResticSnapshotID: "snap-1",
 		ResticBasePath:   "/backups/cluster1",
@@ -57,7 +56,6 @@ func TestPrepareResticReseedPathsUsesMetadataDir(t *testing.T) {
 		Dest:             "/backups/cluster1/custom_dir",
 		BackupMethod:     "logical",
 		BackupTool:       config.ConstBackupLogicalTypeMydumper,
-		BackupLine:       backupmgr.BackupLineDefault,
 		StartTime:        time.Now(),
 		ResticSnapshotID: "snap-2",
 		ResticBasePath:   "/backups/cluster1",
@@ -92,7 +90,6 @@ func TestUpdateResticReseedJobErrorUsesMetadataTool(t *testing.T) {
 	summary := &SnapshotMetadataSummary{
 		BackupMethod:     "physical",
 		BackupTool:       config.ConstBackupPhysicalTypeXtrabackup,
-		BackupLine:       backupmgr.BackupLineDefault,
 		ResticSnapshotID: "snap-1",
 	}
 	manager.cache.Update("snap-1", func(entry *snapshotMetadataCacheEntry) {
@@ -272,9 +269,9 @@ func TestResticCheckConfigManualNoSideEffects(t *testing.T) {
 
 	cl := &Cluster{
 		Conf: &config.Config{
-			BackupRestic:           true,
-			BackupResticBinaryPath: resticPath,
-			BackupResticPassword:   "testpassword",
+			BackupRestic:                true,
+			BackupResticBinaryPath:      resticPath,
+			BackupResticPassword:        "testpassword",
 			BackupResticLocalRepository: repoDir,
 		},
 		BackupMetaMap: backupmgr.NewBackupMetaMap(),

@@ -7,7 +7,6 @@
 package cluster
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -25,42 +24,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func TestNormalizeBackupLine(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{"Default lowercase", "default", backupmgr.BackupLineDefault},
-		{"Default uppercase", "DEFAULT", backupmgr.BackupLineDefault},
-		{"Default with spaces", "  default  ", backupmgr.BackupLineDefault},
-		{"Default with hyphens", "de-fault", backupmgr.BackupLineDefault},
-		{"Adhoc lowercase", "adhoc", backupmgr.BackupLineAdhoc},
-		{"Adhoc uppercase", "ADHOC", backupmgr.BackupLineAdhoc},
-		{"Adhoc with spaces", "  adhoc  ", backupmgr.BackupLineAdhoc},
-		{"Adhoc with hyphens", "ad-hoc", backupmgr.BackupLineAdhoc},
-		{"Invalid input", "invalid", ""},
-		{"Empty string", "", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeBackupLine(tt.input)
-			if result != tt.expected {
-				t.Errorf("normalizeBackupLine(%q) = %q, want %q", tt.input, result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestParseAdhocMetaFileID(t *testing.T) {
+func TestParseRegisteredMetaFileID(t *testing.T) {
 	tests := []struct {
 		name       string
 		filename   string
 		expectedID int64
 		expectedOK bool
 	}{
-		{"Valid adhoc file", "mysqldump.1234567890.meta.json", 1234567890, true},
+		{"Valid registered record", "mysqldump.1234567890.meta.json", 1234567890, true},
 		{"Valid with tool name", "mariabackup.9876543210.meta.json", 9876543210, true},
 		{"Invalid - no ID", "mysqldump.meta.json", 0, false},
 		{"Invalid - not numeric", "mysqldump.abc.meta.json", 0, false},
@@ -72,9 +43,9 @@ func TestParseAdhocMetaFileID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, ok := parseAdhocMetaFileID(tt.filename)
+			id, ok := parseRegisteredMetaFileID(tt.filename)
 			if id != tt.expectedID || ok != tt.expectedOK {
-				t.Errorf("parseAdhocMetaFileID(%q) = (%d, %v), want (%d, %v)",
+				t.Errorf("parseRegisteredMetaFileID(%q) = (%d, %v), want (%d, %v)",
 					tt.filename, id, ok, tt.expectedID, tt.expectedOK)
 			}
 		})
@@ -107,100 +78,8 @@ func TestParseBackupToolFromMetaFilename(t *testing.T) {
 	}
 }
 
-func TestRetentionDeadline(t *testing.T) {
-	now := time.Now()
-	tests := []struct {
-		name      string
-		meta      *backupmgr.BackupMetadata
-		expectOK  bool
-		checkDiff time.Duration // Expected time difference from now
-	}{
-		{
-			name: "Valid with EndTime",
-			meta: &backupmgr.BackupMetadata{
-				EndTime:       now.Add(-48 * time.Hour),
-				RetentionDays: 7,
-			},
-			expectOK:  true,
-			checkDiff: (7*24 - 48) * time.Hour,
-		},
-		{
-			name: "Valid with StartTime only",
-			meta: &backupmgr.BackupMetadata{
-				StartTime:     now.Add(-24 * time.Hour),
-				RetentionDays: 3,
-			},
-			expectOK:  true,
-			checkDiff: (3*24 - 24) * time.Hour,
-		},
-		{
-			name: "Valid with ID as timestamp",
-			meta: &backupmgr.BackupMetadata{
-				Id:            now.Add(-12 * time.Hour).Unix(),
-				RetentionDays: 1,
-			},
-			expectOK:  true,
-			checkDiff: 12 * time.Hour,
-		},
-		{
-			name: "Invalid - ID not a timestamp",
-			meta: &backupmgr.BackupMetadata{
-				Id:            12345,
-				RetentionDays: 1,
-			},
-			expectOK: false,
-		},
-		{
-			name: "Invalid - zero retention",
-			meta: &backupmgr.BackupMetadata{
-				EndTime:       now,
-				RetentionDays: 0,
-			},
-			expectOK: false,
-		},
-		{
-			name: "Invalid - negative retention",
-			meta: &backupmgr.BackupMetadata{
-				EndTime:       now,
-				RetentionDays: -1,
-			},
-			expectOK: false,
-		},
-		{
-			name: "Invalid - no timestamp",
-			meta: &backupmgr.BackupMetadata{
-				RetentionDays: 7,
-			},
-			expectOK: false,
-		},
-		{
-			name:     "Invalid - nil metadata",
-			meta:     nil,
-			expectOK: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			deadline, ok := retentionDeadline(tt.meta)
-			if ok != tt.expectOK {
-				t.Errorf("retentionDeadline() ok = %v, want %v", ok, tt.expectOK)
-			}
-			if tt.expectOK {
-				if deadline.IsZero() {
-					t.Error("Expected non-zero deadline")
-				}
-				// Check that deadline is approximately correct (within 1 second tolerance)
-				expectedDeadline := now.Add(tt.checkDiff)
-				diff := deadline.Sub(expectedDeadline)
-				if diff < -time.Second || diff > time.Second {
-					t.Errorf("Deadline difference too large: %v (expected within 1s)", diff)
-				}
-			}
-		})
-	}
-}
-
+// the record of the backup of its type is <tool>.meta.json; a registered one's, named by its
+// id, <tool>.<id>.meta.json
 func TestBuildBackupMetaFileName(t *testing.T) {
 	cluster := &Cluster{
 		Name:   "test-cluster",
@@ -213,75 +92,32 @@ func TestBuildBackupMetaFileName(t *testing.T) {
 		ClusterGroup: cluster,
 	}
 	backupDir := server.GetMyBackupDirectory()
-
-	tests := []struct {
+	for _, tt := range []struct {
 		name       string
 		backupTool string
 		backupID   int64
-		line       string
+		byID       bool
 		expectFile string
 	}{
-		{
-			name:       "Default line",
-			backupTool: "mysqldump",
-			backupID:   0,
-			line:       "default",
-			expectFile: "mysqldump.meta.json",
-		},
-		{
-			name:       "Adhoc line with ID",
-			backupTool: "mariabackup",
-			backupID:   1234567890,
-			line:       "adhoc",
-			expectFile: "mariabackup.1234567890.meta.json",
-		},
-		{
-			name:       "Adhoc normalized",
-			backupTool: "xtrabackup",
-			backupID:   9999,
-			line:       "ad-hoc",
-			expectFile: "xtrabackup.9999.meta.json",
-		},
-		{
-			name:       "Adhoc without ID uses default",
-			backupTool: "mydumper",
-			backupID:   0,
-			line:       "adhoc",
-			expectFile: "mydumper.meta.json",
-		},
-		{
-			name:       "Empty tool",
-			backupTool: "",
-			backupID:   123,
-			line:       "default",
-			expectFile: "",
-		},
-		{
-			name:       "Invalid tool path",
-			backupTool: "../mysqldump",
-			backupID:   123,
-			line:       "default",
-			expectFile: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := server.buildBackupMetaFileName(tt.backupTool, tt.backupID, tt.line)
-			if tt.expectFile == "" {
-				if result != "" {
-					t.Errorf("Expected empty result, got %q", result)
-				}
-			} else {
-				expectedPath := filepath.Join(backupDir, tt.expectFile)
-				if result != expectedPath {
-					t.Errorf("buildBackupMetaFileName() = %q, expected %q", result, expectedPath)
-				}
-			}
-		})
+		{"backup of its type", "mysqldump", 0, false, "mysqldump.meta.json"},
+		{"registered", "mariabackup", 1234567890, true, "mariabackup.1234567890.meta.json"},
+		{"registered without id", "mydumper", 0, true, "mydumper.meta.json"},
+		{"empty tool", "", 123, false, ""},
+		{"invalid tool path", "../mysqldump", 123, false, ""},
+	} {
+		result := server.buildBackupMetaFileName(tt.backupTool, tt.backupID, tt.byID)
+		want := ""
+		if tt.expectFile != "" {
+			want = filepath.Join(backupDir, tt.expectFile)
+		}
+		if result != want {
+			t.Errorf("%s: buildBackupMetaFileName() = %q, want %q", tt.name, result, want)
+		}
 	}
 }
 
+// the backup of its type is always recorded as <tool>.meta.json; a registered one keeps the
+// record file it has
 func TestBackupMetaFilePathRespectsDefaultNaming(t *testing.T) {
 	cluster := &Cluster{
 		Name:   "test-cluster",
@@ -295,26 +131,13 @@ func TestBackupMetaFilePathRespectsDefaultNaming(t *testing.T) {
 	}
 	backupDir := server.GetMyBackupDirectory()
 
-	defaultMeta := &backupmgr.BackupMetadata{
-		BackupTool: "mysqldump",
-		BackupLine: backupmgr.BackupLineDefault,
-		MetaFile:   "custom.meta.json",
+	ofItsType := &backupmgr.BackupMetadata{BackupTool: "mysqldump", MetaFile: "custom.meta.json"}
+	if got, want := server.backupMetaFilePath(ofItsType), filepath.Join(backupDir, "mysqldump.meta.json"); got != want {
+		t.Fatalf("metadata path of the backup of its type = %q, want %q", got, want)
 	}
-	defaultPath := server.backupMetaFilePath(defaultMeta)
-	defaultExpected := filepath.Join(backupDir, "mysqldump.meta.json")
-	if defaultPath != defaultExpected {
-		t.Fatalf("default metadata path = %q, want %q", defaultPath, defaultExpected)
-	}
-
-	adhocMeta := &backupmgr.BackupMetadata{
-		BackupTool: "mysqldump",
-		BackupLine: backupmgr.BackupLineAdhoc,
-		MetaFile:   "custom.meta.json",
-	}
-	adhocPath := server.backupMetaFilePath(adhocMeta)
-	adhocExpected := filepath.Join(backupDir, "custom.meta.json")
-	if adhocPath != adhocExpected {
-		t.Fatalf("adhoc metadata path = %q, want %q", adhocPath, adhocExpected)
+	registered := &backupmgr.BackupMetadata{BackupTool: "mysqldump", MetaFile: "custom.meta.json", Discovered: true}
+	if got, want := server.backupMetaFilePath(registered), filepath.Join(backupDir, "custom.meta.json"); got != want {
+		t.Fatalf("metadata path of a registered backup = %q, want %q", got, want)
 	}
 }
 
@@ -369,76 +192,30 @@ func newBackupLineCluster(t *testing.T) (*Cluster, *ServerMonitor, *ServerMonito
 	return cluster, master, backup, other
 }
 
-func TestResolveBackupLine(t *testing.T) {
-	tests := []struct {
-		name     string
-		server   *ServerMonitor
-		opts     BackupRunOptions
-		expected string
-	}{
-		{
-			name:     "Default with retention forces adhoc",
-			server:   nil,
-			opts:     BackupRunOptions{Line: "default", RetentionDays: 7},
-			expected: backupmgr.BackupLineAdhoc,
-		},
-		{
-			name:     "Explicit adhoc",
-			server:   nil,
-			opts:     BackupRunOptions{Line: "adhoc"},
-			expected: backupmgr.BackupLineAdhoc,
-		},
-		{
-			name:     "Default on master stays default",
-			server:   nil,
-			opts:     BackupRunOptions{Line: "default"},
-			expected: backupmgr.BackupLineDefault,
-		},
-		{
-			name:     "Default on backup server stays default",
-			server:   nil,
-			opts:     BackupRunOptions{Line: "default"},
-			expected: backupmgr.BackupLineDefault,
-		},
-		{
-			name:     "Default on other server forces adhoc",
-			server:   nil,
-			opts:     BackupRunOptions{Line: "default"},
-			expected: backupmgr.BackupLineAdhoc,
-		},
-		{
-			name:     "Empty line on other server forces adhoc",
-			server:   nil,
-			opts:     BackupRunOptions{},
-			expected: backupmgr.BackupLineAdhoc,
-		},
+// #2091: the backup a new one of its type replaces stays in the catalogue, only in the archive,
+// when a snapshot holds it; held by none, it leaves the catalogue; it is never the backup the
+// next one replaces
+func TestRetireReplacedBackup(t *testing.T) {
+	cluster, master, _, _ := newBackupLineCluster(t)
+	cluster.BackupMetaMap = backupmgr.NewBackupMetaMap()
+	archived := &backupmgr.BackupMetadata{Id: 1, BackupTool: "mydumper", Source: master.URL, ArchiveRefs: map[string]string{"a1": "aaa"}}
+	alone := &backupmgr.BackupMetadata{Id: 2, BackupTool: "mysqldump", Source: master.URL}
+	cluster.BackupMetaMap.Set(1, archived)
+	cluster.BackupMetaMap.Set(2, alone)
+	master.retireReplacedBackup(1)
+	master.retireReplacedBackup(2)
+	if m := cluster.BackupMetaMap.Get(1); m == nil || !m.OriginalRemoved {
+		t.Fatalf("archived backup: %+v", m)
 	}
-
-	_, master, backup, other := newBackupLineCluster(t)
-
-	for i := range tests {
-		switch tests[i].name {
-		case "Default on master stays default":
-			tests[i].server = master
-		case "Default on backup server stays default":
-			tests[i].server = backup
-		case "Default on other server forces adhoc", "Empty line on other server forces adhoc":
-			tests[i].server = other
-		default:
-			tests[i].server = master
-		}
+	if cluster.BackupMetaMap.Get(2) != nil {
+		t.Fatal("a backup no snapshot holds leaves the catalogue")
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.server.resolveBackupLine(tt.opts)
-			if result != tt.expected {
-				t.Errorf("resolveBackupLine() = %q, want %q", result, tt.expected)
-			}
-		})
+	if p := cluster.BackupMetaMap.GetPreviousBackup("mydumper", master.URL); p != nil {
+		t.Fatalf("a replaced backup is not replaced again: %+v", p)
 	}
 }
 
+// a mysqldump backup has one name in the backup directory: mysqldump.sql.gz, or splitdump
 func TestResolveMysqldumpDest(t *testing.T) {
 	cluster := &Cluster{
 		Name:   "test-cluster",
@@ -450,128 +227,20 @@ func TestResolveMysqldumpDest(t *testing.T) {
 		Port:         "3306",
 		ClusterGroup: cluster,
 	}
-	start := time.Unix(1700000000, 0)
 	dir := server.GetMyBackupDirectory()
-
-	defaultFile := dir + "mysqldump.sql.gz"
-	adhocFile := fmt.Sprintf("%smysqldump.%d.sql.gz", dir, start.Unix())
-	splitDefault := filepath.Join(dir, "splitdump")
-	splitAdhoc := filepath.Join(dir, fmt.Sprintf("splitdump.%d", start.Unix()))
-
-	tests := []struct {
-		name           string
-		isAdhoc        bool
-		splitDump      bool
-		wantFilename   string
-		wantOutputDir  string
-		wantDest       string
-		wantCompressed bool
+	file, split := dir+"mysqldump.sql.gz", filepath.Join(dir, "splitdump")
+	for _, tt := range []struct {
+		splitDump                         bool
+		wantFilename, wantOutputDir, dest string
+		compressed                        bool
 	}{
-		{
-			name:           "Default no split",
-			isAdhoc:        false,
-			splitDump:      false,
-			wantFilename:   defaultFile,
-			wantOutputDir:  "",
-			wantDest:       defaultFile,
-			wantCompressed: true,
-		},
-		{
-			name:           "Default splitdump",
-			isAdhoc:        false,
-			splitDump:      true,
-			wantFilename:   defaultFile,
-			wantOutputDir:  splitDefault,
-			wantDest:       splitDefault,
-			wantCompressed: false,
-		},
-		{
-			name:           "Adhoc no split",
-			isAdhoc:        true,
-			splitDump:      false,
-			wantFilename:   adhocFile,
-			wantOutputDir:  "",
-			wantDest:       adhocFile,
-			wantCompressed: true,
-		},
-		{
-			name:           "Adhoc splitdump",
-			isAdhoc:        true,
-			splitDump:      true,
-			wantFilename:   adhocFile,
-			wantOutputDir:  splitAdhoc,
-			wantDest:       splitAdhoc,
-			wantCompressed: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(tt.isAdhoc, tt.splitDump, start)
-			if filename != tt.wantFilename {
-				t.Fatalf("filename = %q, want %q", filename, tt.wantFilename)
-			}
-			if outputdir != tt.wantOutputDir {
-				t.Fatalf("outputdir = %q, want %q", outputdir, tt.wantOutputDir)
-			}
-			if dest != tt.wantDest {
-				t.Fatalf("dest = %q, want %q", dest, tt.wantDest)
-			}
-			if compressed != tt.wantCompressed {
-				t.Fatalf("compressed = %v, want %v", compressed, tt.wantCompressed)
-			}
-		})
-	}
-}
-
-func TestResolveMysqldumpDestNoSplitdump(t *testing.T) {
-	cluster := &Cluster{
-		Name:   "test-cluster",
-		Conf:   &config.Config{WorkingDir: t.TempDir()},
-		Logrus: logrus.New(),
-	}
-	server := &ServerMonitor{
-		Host:         "127.0.0.1",
-		Port:         "3306",
-		ClusterGroup: cluster,
-	}
-	start := time.Unix(1700000000, 0)
-	backupDir := server.GetMyBackupDirectory()
-
-	checks := []struct {
-		name       string
-		isAdhoc    bool
-		wantSuffix string
-	}{
-		{
-			name:       "Default",
-			isAdhoc:    false,
-			wantSuffix: "mysqldump.sql.gz",
-		},
-		{
-			name:       "Adhoc",
-			isAdhoc:    true,
-			wantSuffix: fmt.Sprintf("mysqldump.%d.sql.gz", start.Unix()),
-		},
-	}
-
-	for _, tt := range checks {
-		t.Run(tt.name, func(t *testing.T) {
-			filename, outputdir, dest, compressed := server.resolveMysqldumpDest(tt.isAdhoc, false, start)
-			wantFile := backupDir + tt.wantSuffix
-			if filename != wantFile {
-				t.Fatalf("filename = %q, want %q", filename, wantFile)
-			}
-			if outputdir != "" {
-				t.Fatalf("outputdir = %q, want empty", outputdir)
-			}
-			if dest != wantFile {
-				t.Fatalf("dest = %q, want %q", dest, wantFile)
-			}
-			if !compressed {
-				t.Fatalf("compressed = %v, want true", compressed)
-			}
-		})
+		{false, file, "", file, true},
+		{true, file, split, split, false},
+	} {
+		filename, outputdir, dest, compressed := server.resolveMysqldumpDest(tt.splitDump)
+		if filename != tt.wantFilename || outputdir != tt.wantOutputDir || dest != tt.dest || compressed != tt.compressed {
+			t.Fatalf("split %v: (%q, %q, %q, %v), want (%q, %q, %q, %v)", tt.splitDump, filename, outputdir, dest, compressed, tt.wantFilename, tt.wantOutputDir, tt.dest, tt.compressed)
+		}
 	}
 }
 
@@ -677,9 +346,7 @@ func TestReadBackupMetadataFile(t *testing.T) {
 	if !meta.Completed {
 		t.Error("meta.Completed = false, want true")
 	}
-	if meta.RetentionDays != 7 {
-		t.Errorf("meta.RetentionDays = %d, want 7", meta.RetentionDays)
-	}
+	// a record written before keeps reading: its retention is no field any more
 }
 
 func TestReadBackupMetadataFile_Invalid(t *testing.T) {
@@ -717,7 +384,7 @@ func TestReadBackupMetadataFile_NotExists(t *testing.T) {
 	}
 }
 
-func TestLoadAdhocBackupMetadataReturnsError(t *testing.T) {
+func TestLoadRegisteredBackupMetadataReturnsError(t *testing.T) {
 	cluster := &Cluster{
 		Name:          "test-cluster",
 		Conf:          &config.Config{WorkingDir: t.TempDir()},
@@ -737,7 +404,7 @@ func TestLoadAdhocBackupMetadataReturnsError(t *testing.T) {
 	validPath := filepath.Join(backupDir, "mysqldump.123.meta.json")
 	invalidPath := filepath.Join(backupDir, "mysqldump.456.meta.json")
 
-	validData := `{"backupTool":"mysqldump","backupMethod":1,"completed":true,"retentionDays":1}`
+	validData := `{"backupTool":"mysqldump","backupMethod":1,"completed":true}`
 	if err := os.WriteFile(validPath, []byte(validData), 0644); err != nil {
 		t.Fatalf("failed to write valid metadata: %v", err)
 	}
@@ -745,7 +412,7 @@ func TestLoadAdhocBackupMetadataReturnsError(t *testing.T) {
 		t.Fatalf("failed to write invalid metadata: %v", err)
 	}
 
-	metas, err := server.LoadAdhocBackupMetadata()
+	metas, err := server.LoadRegisteredBackupMetadata()
 	if err == nil {
 		t.Fatalf("expected error when reading invalid metadata")
 	}
@@ -766,96 +433,6 @@ func TestIsPathWithinBase(t *testing.T) {
 	}
 	if isPathWithinBase(base, "/tmp") {
 		t.Errorf("expected /tmp to be outside %s", base)
-	}
-}
-
-func TestPurgeExpiredAdhocBackupsConcurrent(t *testing.T) {
-	cluster := &Cluster{
-		Name:          "test-cluster",
-		Conf:          &config.Config{WorkingDir: t.TempDir()},
-		StateMachine:  &state.StateMachine{},
-		Logrus:        logrus.New(),
-		BackupMetaMap: backupmgr.NewBackupMetaMap(),
-	}
-	cluster.StateMachine.Init()
-
-	servers := serverList{
-		{Host: "127.0.0.1", Port: "3306", URL: "127.0.0.1:3306", ClusterGroup: cluster},
-		{Host: "127.0.0.2", Port: "3307", URL: "127.0.0.2:3307", ClusterGroup: cluster},
-	}
-	cluster.Servers = servers
-
-	baseTime := time.Now().Add(-48 * time.Hour)
-	type metaPaths struct {
-		id       int64
-		metaFile string
-		destDir  string
-	}
-	paths := make([]metaPaths, 0, len(servers))
-
-	for i, server := range servers {
-		backupDir := server.GetMyBackupDirectory()
-		destDir := filepath.Join(backupDir, "adhoc", server.Host)
-		if err := os.MkdirAll(destDir, 0755); err != nil {
-			t.Fatalf("failed to create dest dir: %v", err)
-		}
-
-		id := baseTime.Unix() + int64(i+1)
-		meta := &backupmgr.BackupMetadata{
-			Id:            id,
-			BackupTool:    "mysqldump",
-			RetentionDays: 1,
-			Completed:     true,
-			EndTime:       baseTime,
-			Dest:          destDir,
-			BackupLine:    backupmgr.BackupLineAdhoc,
-			Source:        server.URL,
-		}
-		metaFile := server.buildBackupMetaFileName(meta.BackupTool, meta.Id, backupmgr.BackupLineAdhoc)
-		if metaFile == "" {
-			t.Fatalf("failed to build metadata file path")
-		}
-		payload, err := json.Marshal(meta)
-		if err != nil {
-			t.Fatalf("failed to marshal metadata: %v", err)
-		}
-		if err := os.WriteFile(metaFile, payload, 0644); err != nil {
-			t.Fatalf("failed to write metadata file: %v", err)
-		}
-
-		cluster.BackupMetaMap.Set(meta.Id, meta)
-		paths = append(paths, metaPaths{id: meta.Id, metaFile: metaFile, destDir: destDir})
-	}
-
-	var wg sync.WaitGroup
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			cluster.PurgeExpiredAdhocBackups()
-		}()
-	}
-
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			cluster.BackupMetaMap.Range(func(_, _ any) bool { return true })
-		}()
-	}
-
-	wg.Wait()
-
-	for _, entry := range paths {
-		if got := cluster.BackupMetaMap.Get(entry.id); got != nil {
-			t.Errorf("expected metadata %d to be removed", entry.id)
-		}
-		if _, err := os.Stat(entry.metaFile); err == nil {
-			t.Errorf("expected metadata file %s to be removed", entry.metaFile)
-		}
-		if _, err := os.Stat(entry.destDir); err == nil {
-			t.Errorf("expected dest dir %s to be removed", entry.destDir)
-		}
 	}
 }
 
@@ -919,7 +496,6 @@ func TestDeleteBackupByIDSuccess(t *testing.T) {
 	meta := &backupmgr.BackupMetadata{
 		Id:         time.Now().Unix(),
 		BackupTool: config.ConstBackupLogicalTypeMysqldump,
-		BackupLine: backupmgr.BackupLineDefault,
 		Source:     server.URL,
 		Dest:       dest,
 	}
@@ -953,7 +529,6 @@ func TestDeleteBackupByIDRefusesDiscoveredBackup(t *testing.T) {
 	meta := &backupmgr.BackupMetadata{
 		Id:         time.Now().UnixNano(),
 		BackupTool: config.ConstBackupLogicalTypeMysqldump,
-		BackupLine: backupmgr.BackupLineAdhoc,
 		Source:     server.URL,
 		Dest:       dest,
 		Discovered: true,
@@ -985,7 +560,6 @@ func TestDeleteBackupByIDRemovesEncryptedIntegritySidecar(t *testing.T) {
 	meta := &backupmgr.BackupMetadata{
 		Id:         time.Now().UnixNano(),
 		BackupTool: config.ConstBackupLogicalTypeMysqldump,
-		BackupLine: backupmgr.BackupLineDefault,
 		Source:     server.URL,
 		Dest:       dest,
 		Encrypted:  true,
@@ -1002,42 +576,6 @@ func TestDeleteBackupByIDRemovesEncryptedIntegritySidecar(t *testing.T) {
 	}
 }
 
-func TestPurgeExpiredAdhocBackupRemovesEncryptedIntegritySidecar(t *testing.T) {
-	cluster, server := newTestClusterServer(t)
-	dest := filepath.Join(server.GetMyBackupDirectory(), "adhoc.sql.gz.enc")
-	if err := os.WriteFile(dest, []byte("ciphertext"), 0600); err != nil {
-		t.Fatalf("create encrypted backup: %v", err)
-	}
-	sidecar := backupmgr.IntegritySidecarPath(dest)
-	if err := os.WriteFile(sidecar, []byte("hmac-sha256-v1:"+strings.Repeat("0", 64)+"\n"), 0600); err != nil {
-		t.Fatalf("create integrity sidecar: %v", err)
-	}
-	meta := &backupmgr.BackupMetadata{
-		Id:            time.Now().UnixNano(),
-		BackupTool:    config.ConstBackupLogicalTypeMysqldump,
-		BackupLine:    backupmgr.BackupLineAdhoc,
-		RetentionDays: 1,
-		Completed:     true,
-		EndTime:       time.Now().Add(-48 * time.Hour),
-		Source:        server.URL,
-		Dest:          dest,
-		Encrypted:     true,
-	}
-	metaPath := server.backupMetaFilePath(meta)
-	payload, err := json.Marshal(meta)
-	if err != nil {
-		t.Fatalf("marshal metadata: %v", err)
-	}
-	if err := os.WriteFile(metaPath, payload, 0600); err != nil {
-		t.Fatalf("create metadata: %v", err)
-	}
-	cluster.BackupMetaMap.Set(meta.Id, meta)
-	cluster.PurgeExpiredAdhocBackups()
-	if fileExists(dest) || fileExists(sidecar) || fileExists(metaPath) {
-		t.Fatalf("expired encrypted backup, sidecar, and metadata must delete together")
-	}
-}
-
 func TestDeleteBackupByIDInProgress(t *testing.T) {
 	cluster, server := newTestClusterServer(t)
 	cluster.InLogicalBackup = true
@@ -1050,7 +588,6 @@ func TestDeleteBackupByIDInProgress(t *testing.T) {
 	meta := &backupmgr.BackupMetadata{
 		Id:         123,
 		BackupTool: config.ConstBackupLogicalTypeMysqldump,
-		BackupLine: backupmgr.BackupLineDefault,
 		Source:     server.URL,
 		Dest:       dest,
 	}
@@ -1157,7 +694,6 @@ func TestMarkBackupPhysicalDoneRaceWithResticUpdate(t *testing.T) {
 	server.Datadir = t.TempDir()
 	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
 		BackupTool: config.ConstBackupPhysicalTypeMariaBackup,
-		BackupLine: backupmgr.BackupLineDefault,
 	}
 	cluster.ResticManager = backupmgr.NewResticRepo("", nil, config.ConstLogModRestic)
 

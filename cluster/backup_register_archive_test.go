@@ -149,12 +149,38 @@ func TestArchiveBackupRefusals(t *testing.T) {
 	}
 	c.backupArchiving.Delete(m.Id)
 
+	// the snapshot takes the whole backup directory (#2091): never while a backup writes it
+	c.InLogicalBackup = true
+	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupJobRunning) {
+		t.Fatalf("a backup is being written: %v", err)
+	}
+	c.InLogicalBackup = false
+	if _, held := c.backupArchiving.Load(m.Id); held {
+		t.Fatal("a refused archive kept its reservation")
+	}
+
 	server.backupMetaMutex.Lock()
 	m.ResticSnapshotID = "0123456789abcdef"
 	server.backupMetaMutex.Unlock()
 	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupArchived) {
 		t.Fatalf("already archived: %v", err)
 	}
+
+	// the archive list (#2091): the snapshot recorded by archive name; archived in the attached
+	// archive, not in a detached one only
+	server.backupMetaMutex.Lock()
+	m.ResticSnapshotID = ""
+	m.SetArchiveSnapshot("archive-a", "0123456789abcdef")
+	server.backupMetaMutex.Unlock()
+	c.Conf.BackupArchiveName = "archive-a"
+	if !c.backupArchived(m) {
+		t.Fatal("a snapshot in the attached archive is archived")
+	}
+	c.Conf.BackupArchiveName = "archive-b"
+	if c.backupArchived(m) {
+		t.Fatal("a snapshot in a detached archive only: it can be archived into the attached one")
+	}
+	c.Conf.BackupArchiveName = ""
 
 	m.Discovered = false
 	if err := c.ArchiveBackup(m.Id, false, false); !errors.Is(err, ErrBackupNotDiscovered) {

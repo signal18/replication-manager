@@ -158,7 +158,7 @@ func (cluster *Cluster) backupDiscoveryCandidateMax() int {
 }
 
 // DiscoverBackups lists the logical backups of the server's backup folder that no metadata
-// describes as candidates, with their cheap checks, and loads the ad-hoc metadata files of
+// describes as candidates, with their cheap checks, and loads the registered metadata files of
 // the folder. It registers nothing. A discovered backup whose artifact has gone is
 // unregistered. One discovery runs at a time per server.
 func (server *ServerMonitor) DiscoverBackups() ([]BackupCandidate, error) {
@@ -173,11 +173,10 @@ func (server *ServerMonitor) discoverBackups(retry bool) ([]BackupCandidate, err
 		return nil, nil
 	}
 	dir := server.GetMyBackupDirectory()
-	// ad-hoc backups (and the backups registered before) have one metadata file each: read
-	// even while a backup runs (a live entry is kept), so a server monitor created then (a
-	// config reload) lists them at once
-	if _, err := server.LoadAdhocBackupMetadata(); err != nil && !os.IsNotExist(err) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: ad-hoc metadata not all read: %s", server.URL, err)
+	// registered backups have one metadata file each: read even while a backup runs (a live
+	// entry is kept), so a server monitor created then (a config reload) lists them at once
+	if _, err := server.LoadRegisteredBackupMetadata(); err != nil && !os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Backup discovery on %s: registered backup metadata not all read: %s", server.URL, err)
 	}
 	// a backup running writes its artifact: not checked half written (an archive push only
 	// reads the artifacts with metadata, which a discovery passes over)

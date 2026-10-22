@@ -319,12 +319,28 @@ func (server *ServerMonitor) RefreshBinlogMetadata(oldmetamap map[string]dbhelpe
 
 		return true
 	})
+	if start := server.oldestBinlogStart(); start > 0 {
+		server.BinaryLogOldestTimestamp = start
+	}
 
 	if modified || forceWriteMeta {
 		server.WriteNodeBinlogMetadata()
 	}
 
 	return err
+}
+
+// oldestBinlogStart is the start of the server's oldest binlog, read from its metadata, 0 when
+// not read yet. The replica purge goes to the master's: since the per-file metadata (Aug
+// 2024) BinaryLogOldestTimestamp was never set, and no replica was ever purged.
+func (server *ServerMonitor) oldestBinlogStart() int64 {
+	if server.BinaryLogFiles == nil || server.BinaryLogFileOldest == "" {
+		return 0
+	}
+	if meta := server.BinaryLogFiles.Get(server.BinaryLogFileOldest); meta != nil {
+		return meta.Start
+	}
+	return 0
 }
 
 // This process is detached so it will not blocking if waiting
@@ -355,12 +371,10 @@ func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 			cluster.BinlogRotationScript(server)
 		}
 
-		//Don't do anything while failover
-		if cluster.Conf.BackupBinlogs && !cluster.IsInFailover() {
-			//Set second parameter to false, not part of backupbinlogpurge
-			server.InitiateJobBackupBinlog(server.BinaryLogFilePrevious, false)
-			//Initiate purging backup binlog
-			go server.JobBackupBinlogPurge(server.BinaryLogFilePrevious)
+		// the binlog closed is queued: the server's worker copies it, then runs the catch-up,
+		// once no backup, snapshot or failover runs; the check never waits (#2091)
+		if cluster.Conf.BackupBinlogs {
+			server.queueBinlogCopy(server.BinaryLogFilePrevious)
 		}
 
 		server.RefreshBinaryLogs()
@@ -406,25 +420,36 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 		return
 	}
 
-	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
-		// max_binlog_total_size has one owner: the plan under the dynamic config
-		// (prov-db-binlog-total-size-pct), a restore with the binary log on while it runs (#2124)
-		if cluster.Conf.ProvDBApplyDynamicConfig || server.restoreHoldsBinlogTotalSize.Load() {
-			return
-		}
+	sizeLimit, masterJob, replicaJob := server.binlogPurgeJobs(isMaster)
+	// max_binlog_total_size has one owner: the plan under the dynamic config
+	// (prov-db-binlog-total-size-pct), a restore with the binary log on while it runs (#2124);
+	// the replica job runs either way: MariaDB never purges a replica by that size
+	if sizeLimit && !cluster.Conf.ProvDBApplyDynamicConfig && !server.restoreHoldsBinlogTotalSize.Load() {
 		err := server.SetMaxBinlogTotalSize()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, err.Error())
 		}
-	} else if server.BinaryLogFilesCount > 2 {
-		if isMaster {
-			go server.JobBinlogPurgeMaster()
-		}
-
-		if !isMaster && cluster.Conf.ForceBinlogPurgeReplicas && server.HaveBinlogSlaveUpdates && !cluster.StateMachine.CurState.Search("WARN0107") && !server.IsIgnored() {
-			go server.JobBinlogPurgeSlave()
-		}
 	}
+	if masterJob {
+		go server.JobBinlogPurgeMaster()
+	}
+	if replicaJob {
+		go server.JobBinlogPurgeSlave()
+	}
+}
+
+// binlogPurgeJobs says how ForcePurgeBinlogs purges this server's binlogs: MariaDB 11.4 and
+// up by max_binlog_total_size, older ones by the master job. A replica is purged by the
+// replica job in both cases, to the master's oldest binlog: MariaDB purges by
+// max_binlog_total_size only while slave_connections_needed_for_purge replicas (1 by
+// default) are connected to the server, and nothing replicates from a replica, so its
+// binlogs grew until the data disk was full and the database crashed (dev3, 2026-10-21).
+func (server *ServerMonitor) binlogPurgeJobs(isMaster bool) (sizeLimit, masterJob, replicaJob bool) {
+	cluster := server.ClusterGroup
+	sizeLimit = server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4")
+	masterJob = !sizeLimit && isMaster && server.BinaryLogFilesCount > 2
+	replicaJob = !isMaster && server.BinaryLogFilesCount > 2 && cluster.Conf.ForceBinlogPurgeReplicas && server.HaveBinlogSlaveUpdates && !cluster.StateMachine.CurState.Search("WARN0107") && !server.IsIgnored()
+	return sizeLimit, masterJob, replicaJob
 }
 
 func (server *ServerMonitor) SetIsPurgingBinlog(value bool) {
@@ -630,6 +655,11 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 
 func (server *ServerMonitor) PurgeBinlogTo(filename string) {
 	cluster := server.ClusterGroup
+	// a binlog still to copy into the backup directory is kept (#2091)
+	if pending := server.oldestPendingBinlogCopy(); pending != "" && filename > pending {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlInfo, "Purge of the binlogs of %s held at %s, still to copy into the backup directory (asked up to %s)", server.URL, pending, filename)
+		filename = pending
+	}
 	//Check if file exists
 	if _, ok := server.BinaryLogFiles.CheckAndGet(filename); ok {
 		_, err := dbhelper.PurgeBinlogTo(server.Conn, filename)

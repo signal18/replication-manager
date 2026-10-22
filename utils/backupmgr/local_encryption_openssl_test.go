@@ -3,6 +3,8 @@ package backupmgr
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/hmac"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"os"
@@ -184,9 +186,35 @@ func TestDecryptTruncatedArtifact(t *testing.T) {
 	os.WriteFile(src, bytes.Repeat([]byte("a"), 100000), 0600)
 	EncryptFile(src, src+".enc", testPassword)
 	b, _ := os.ReadFile(src + ".enc")
-	os.WriteFile(src+".cut", b[:len(b)-7], 0600)
-	if _, err := OpenDecryptedFile(src+".cut", testPassword); !errors.Is(err, ErrBackupDecrypt) {
-		t.Fatalf("truncated file must be refused, got %v", err)
+	cut := src + ".cut"
+	os.WriteFile(cut, b[:len(b)-7], 0600)
+	// the sidecar of the whole file: the integrity check refuses the truncated one
+	sidecar, _ := os.ReadFile(IntegritySidecarPath(src + ".enc"))
+	os.WriteFile(IntegritySidecarPath(cut), sidecar, 0600)
+	if _, err := OpenDecryptedFile(cut, testPassword); !errors.Is(err, ErrBackupIntegrity) {
+		t.Fatalf("truncated file under the whole file's sidecar must be refused, got %v", err)
+	}
+	// a sidecar matching the truncated bytes: the integrity check passes, the decryption
+	// must still refuse it (at the open, or while reading)
+	head := b[:opensslHeadLen]
+	_, _, hmacKey, err := deriveFromOpenSSLHeaderHMAC(head, testPassword)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac := hmac.New(sha256.New, hmacKey)
+	mac.Write([]byte(integrityDomainPrefix))
+	mac.Write(b[:len(b)-7])
+	if err := writeIntegritySidecar(IntegritySidecarPath(cut), mac.Sum(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if rc, err := OpenDecryptedFile(cut, testPassword); err == nil {
+		_, err = io.ReadAll(rc)
+		rc.Close()
+		if !errors.Is(err, ErrBackupDecrypt) {
+			t.Fatalf("truncated file must be refused by the decryption, got %v", err)
+		}
+	} else if !errors.Is(err, ErrBackupDecrypt) {
+		t.Fatalf("truncated file must be refused by the decryption, got %v", err)
 	}
 	stream, err := DecryptStream(bytes.NewReader(b[:len(b)-7]), testPassword)
 	if err != nil {

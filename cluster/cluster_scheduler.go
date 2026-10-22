@@ -157,6 +157,8 @@ func scheduleDescription(title string) string {
 		return "Alert Disable"
 	case "monitor-schemas":
 		return "Monitor Schemas"
+	case "archivepurge":
+		return "Archive Purge"
 	default:
 		return title
 	}
@@ -235,4 +237,10 @@ func (cluster *Cluster) SetSchedulerMonitorSchema() {
 
 func (cluster *Cluster) SetSchedulerMonitorChecksum() {
 	cluster.SetScheduler(cluster.Conf.MonitorChecksumScheduler, "monitorchecksum", cluster.Conf.MonitorChecksumSchedulerCron, cluster.GetMonitorChecksumFunction())
+}
+
+// SetSchedulerArchivePurge: with backup-archive-purge-trigger schedule, the attached archive
+// is asked to apply the retention policy at scheduler-archive-purge-cron (#2091).
+func (cluster *Cluster) SetSchedulerArchivePurge() {
+	cluster.SetScheduler(cluster.Conf.ArchivePurgeOnSchedule(), "archivepurge", cluster.Conf.BackupArchivePurgeCron, func() { cluster.ResticPurgeRepo(false) })
 }

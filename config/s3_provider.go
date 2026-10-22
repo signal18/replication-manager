@@ -45,6 +45,13 @@ type S3Provider struct {
 	// File persistence bypasses MarshalJSON via a private disk struct.
 	AccessKey string `json:"-" groups:"apps"`
 	SecretKey string `json:"-" groups:"apps"`
+	// Cloud18SSO: the provider is reached with the Cloud18 SSO (#2091): it holds no keys, a
+	// registered replication-manager gets short-lived ones from its STS with its Cloud18
+	// identity. A replication-manager not registered cannot use it.
+	Cloud18SSO bool `json:"cloud18Sso,omitempty" groups:"web"`
+	// RoleArn: the storage's role the SSO identity assumes; empty, it is computed as MinIO
+	// names it (arn:minio:iam:<region>::role/<base64url(sha1(client id))>): set only to override
+	RoleArn string `json:"roleArn,omitempty" groups:"web"`
 }
 
 // s3ProviderWeb is the JSON representation used for all API/web serialization.
@@ -55,6 +62,8 @@ type s3ProviderWeb struct {
 	ProviderApp    string           `json:"providerApp,omitempty"`
 	Endpoint       string           `json:"endpoint,omitempty"`
 	Region         string           `json:"region,omitempty"`
+	Cloud18SSO     bool             `json:"cloud18Sso,omitempty"`
+	RoleArn        string           `json:"roleArn,omitempty"`
 }
 
 // MarshalJSON emits only non-sensitive fields.
@@ -68,6 +77,8 @@ func (p S3Provider) MarshalJSON() ([]byte, error) {
 		ProviderApp:    p.ProviderApp,
 		Endpoint:       p.Endpoint,
 		Region:         p.Region,
+		Cloud18SSO:     p.Cloud18SSO,
+		RoleArn:        p.RoleArn,
 	})
 }
 
@@ -95,7 +106,9 @@ func ValidateS3ProviderName(name string) error {
 //   - name must pass ValidateS3ProviderName
 //   - providerSource must be exactly "app" or "custom"
 //   - app mode:    providerApp required (non-empty after trim); endpoint/region/accesskey/secretkey must be empty
-//   - custom mode: endpoint required (non-empty after trim); providerApp must be empty
+//   - custom mode: endpoint required (non-empty after trim); providerApp must be empty;
+//     with cloud18Sso, accesskey/secretkey must be empty
+//   - app mode never takes cloud18Sso
 func (p *S3Provider) Validate() error {
 	if err := ValidateS3ProviderName(p.Name); err != nil {
 		return err
@@ -108,12 +121,21 @@ func (p *S3Provider) Validate() error {
 		if p.Endpoint != "" || p.Region != "" || p.AccessKey != "" || p.SecretKey != "" {
 			return fmt.Errorf("endpoint, region, accesskey, and secretkey must be empty when providerSource is %q", S3ProviderSourceApp)
 		}
+		if p.Cloud18SSO {
+			return fmt.Errorf("cloud18Sso is for a custom provider, not providerSource %q", S3ProviderSourceApp)
+		}
 	case S3ProviderSourceCustom:
 		if strings.TrimSpace(p.Endpoint) == "" {
 			return fmt.Errorf("endpoint is required when providerSource is %q", S3ProviderSourceCustom)
 		}
 		if p.ProviderApp != "" {
 			return fmt.Errorf("providerApp must be empty when providerSource is %q", S3ProviderSourceCustom)
+		}
+		if p.RoleArn != "" && !p.Cloud18SSO {
+			return fmt.Errorf("roleArn is for a provider reached with the Cloud18 SSO (cloud18Sso)")
+		}
+		if p.Cloud18SSO && (p.AccessKey != "" || p.SecretKey != "") {
+			return fmt.Errorf("accesskey and secretkey must be empty with cloud18Sso: the keys come from the Cloud18 SSO")
 		}
 	default:
 		return fmt.Errorf("providerSource must be %q or %q, got %q",

@@ -89,9 +89,11 @@ The list is bounded per server by `backup-discovery-candidate-max` (default
 100): beyond it the oldest artifacts are not listed and WARN0250 is raised
 until a discovery lists them all.
 
-The ad-hoc backups (one metadata file each) and the registered ones are read
-back by the same scan, so they stay listed after a restart, also with
-`backup-discovery` off.
+The registered backups (one metadata file each) are read back by the same scan,
+so they stay listed after a restart, also with `backup-discovery` off. A
+`<tool>.<id>` backup left by an older release, which named some backups by their
+id, is read as a registered backup: kept as it is, unregistered or deleted by
+hand.
 
 ## Register
 
@@ -177,7 +179,7 @@ What to do:
   or `replication-manager-cli backup register <backupID>`. The file as it is now
   is read and checked as a new backup: refused, with the reason, if the edit
   broke it; otherwise its new fingerprint, position and size are recorded and
-  WARN0249 clears. A discovered or ad hoc backup keeps its id; a scheduled
+  WARN0249 clears. A registered backup keeps its id; a scheduled
   backup's file registered this way becomes the scheduled backup under a new id,
   its record (`<tool>.meta.json`) replaced, used by the automatic reseeds again.
 - **The change is not intended** (a truncated copy, a file replaced under the

@@ -37,7 +37,7 @@ func TestBackupMetaToCatalogEncryptCapability(t *testing.T) {
 
 	t.Run("plaintext backup has no encrypt capability", func(t *testing.T) {
 		m := base()
-		entry := backupMetaToCatalog("10.0.0.1:3306", m)
+		entry := backupMetaToCatalog("10.0.0.1:3306", m, "", "")
 		if hasCap(entry.Caps, "encrypt") {
 			t.Fatalf("plaintext metadata should not carry the encrypt capability, got %v", entry.Caps)
 		}
@@ -51,7 +51,7 @@ func TestBackupMetaToCatalogEncryptCapability(t *testing.T) {
 		m.Dest = m.Dest + ".enc"
 		m.Encrypted = true
 		m.EncryptionAlgo = backupmgr.EncryptionFormatOpenSSL
-		entry := backupMetaToCatalog("10.0.0.1:3306", m)
+		entry := backupMetaToCatalog("10.0.0.1:3306", m, "", "")
 		if !hasCap(entry.Caps, "encrypt") {
 			t.Fatalf("encrypted+completed metadata should carry the encrypt capability, got %v", entry.Caps)
 		}
@@ -64,7 +64,7 @@ func TestBackupMetaToCatalogEncryptCapability(t *testing.T) {
 		// Simulates a pre-existing backup record written before this feature
 		// existed: Encrypted/EncryptionAlgo are simply absent (zero values).
 		m := base()
-		entry := backupMetaToCatalog("10.0.0.1:3306", m)
+		entry := backupMetaToCatalog("10.0.0.1:3306", m, "", "")
 		if hasCap(entry.Caps, "encrypt") {
 			t.Fatalf("legacy unset-encryption metadata must not be reported as encrypted, got %v", entry.Caps)
 		}
@@ -206,18 +206,19 @@ func TestBuildBackupCatalogProofKey(t *testing.T) {
 	proven := provenTestBackup(t, 100)
 	same := provenTestBackup(t, 100)
 	same.Verification = nil // same id, never test-restored
-	remote := provenTestBackup(t, 101)
-	remote.ResticEnabled, remote.ResticSnapshotID = true, "a1b2c3d4"
+	// archived, its file still there: read where it is, its test restore proves it (#2091)
+	archived := provenTestBackup(t, 101)
+	archived.ResticEnabled, archived.ResticSnapshotID = true, "a1b2c3d4"
 	a, b, r := &ServerMonitor{URL: "db1:3306"}, &ServerMonitor{URL: "db2:3306"}, &ServerMonitor{URL: "db3:3306"}
-	a.LastBackupMeta.Logical, b.LastBackupMeta.Logical, r.LastBackupMeta.Logical = proven, same, remote
+	a.LastBackupMeta.Logical, b.LastBackupMeta.Logical, r.LastBackupMeta.Logical = proven, same, archived
 	c := &Cluster{Servers: []*ServerMonitor{a, b, r}}
 	c.refreshBackupProofs()
 	got := map[string]bool{}
 	for _, e := range c.buildBackupCatalog() {
 		got[e.Server] = e.Proven
 	}
-	if !got["db1:3306"] || got["db2:3306"] || got["db3:3306"] {
-		t.Fatalf("proven by server %v, want db1 only", got)
+	if !got["db1:3306"] || got["db2:3306"] || !got["db3:3306"] {
+		t.Fatalf("proven by server %v, want db1 and db3", got)
 	}
 }
 
@@ -458,5 +459,50 @@ func onlyCtimeChanged(t *testing.T, path string, rec *backupmgr.ArtifactFingerpr
 	}
 	if fp.Files != rec.Files || fp.Size != rec.Size || !fp.ModTime.Equal(rec.ModTime) || fp.Inode != rec.Inode {
 		t.Fatalf("precondition: only the ctime changes, got %+v recorded %+v", fp, rec)
+	}
+}
+
+// a split dump or mydumper restores in parallel and in part; a single mysqldump file does not
+func TestBackupCapabilitiesParallel(t *testing.T) {
+	for _, tc := range []struct {
+		m    backupmgr.BackupMetadata
+		want bool
+	}{
+		{backupmgr.BackupMetadata{BackupTool: "mydumper"}, true},
+		{backupmgr.BackupMetadata{BackupTool: "mysqldump", SplitDump: true}, true},
+		{backupmgr.BackupMetadata{BackupTool: "mysqldump"}, false},
+	} {
+		caps := tc.m.Capabilities()
+		if hasCap(caps, "parallel") != tc.want || hasCap(caps, "can-partial-restorable") != tc.want {
+			t.Fatalf("%s split %v: %v", tc.m.BackupTool, tc.m.SplitDump, caps)
+		}
+	}
+}
+
+// #2091: local is replication-manager's own disk; a backup in the backups folder with the bucket
+// mounted on it is remote; one whose file was removed after archiving is only in the archive
+func TestBackupCatalogLocation(t *testing.T) {
+	const folder = "/var/lib/replication-manager/backups/c1"
+	m := &backupmgr.BackupMetadata{Dest: folder + "/db1_3306/mydumper.1", ArchiveRefs: map[string]string{"a1": "aaa"}}
+	if got := backupCatalogLocation(m, ""); got != RepoLocal {
+		t.Fatalf("not mounted: %s", got)
+	}
+	if got := backupCatalogLocation(m, folder); got != RepoRemote {
+		t.Fatalf("in the mounted folder: %s", got)
+	}
+	if got := backupCatalogLocation(&backupmgr.BackupMetadata{Dest: "/elsewhere/mydumper.1"}, folder); got != RepoLocal {
+		t.Fatalf("outside the mounted folder: %s", got)
+	}
+	m.OriginalRemoved = true
+	if got := backupCatalogLocation(m, folder); got != RepoArchive {
+		t.Fatalf("file removed after archiving: %s", got)
+	}
+	e := backupMetaToCatalog("db1:3306", m, "a1", folder)
+	if !e.inArchiveOnly() || e.Path != m.Dest || e.Snapshot != "aaa" {
+		t.Fatalf("archive entry: %+v", e)
+	}
+	// the selector's local preference no longer takes a mounted backup for a local one
+	if (BackupCatalogEntry{Location: RepoRemote}).isLocal() {
+		t.Fatal("a mounted backup is not local")
 	}
 }

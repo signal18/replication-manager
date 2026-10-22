@@ -18,7 +18,7 @@ full-param CHANGE MASTER (`GetChangeMasterBaseOptForSlave`)*.
 | Dimension | Values | Picks… |
 |---|---|---|
 | `origin` | `any` · `master` · `mine` | whose backup |
-| `repo` | `any` · `local` · `remote` · `live` | where to get it (local disk / restic remote / live dump) |
+| `repo` | `any` · `local` · `remote` · `archive` · `live` | where its file is: `local` replication-manager's own disk, `remote` the bucket through the backups folder mount, `archive` only in a snapshot of the attached archive (fetched back first), `live` a live dump (#2091) |
 | `type` | `logical` · `physical` · `parallel` · `compress` · `encrypt` · `gtid` · `can-partial-restorable` | which kind/capability (**gate**; empty = none) |
 | `tool` | `mysqldump` · `mariadump` · `mariadbbackup` · `xtrabackup` · `innodbhotbackup` · `mydumper` | which backup/restore tool (**gate**; empty = none) |
 | `proven` | `true` · `false` | **boolean gate** — require a backup validated by an actual test-restore (proof of restore) |
@@ -47,7 +47,7 @@ A directly catch-up-able backup satisfies **both** `nobeforemasterbinlog` **and*
 |---|---|---|
 | `preservedbdisk` | extra DB-host disk **space** (no full staged copy on the DB node) | streaming restore, physical SST direct-apply |
 | `preserverepmandisk` | staging a copy on the repman host | in-memory pipe (e.g. `JobRejoinMysqldumpFromSource`), stream-through |
-| `preservenetwork` | cross-node transfer / bandwidth | `repo=local` backup, never live-dump / remote-fetch |
+| `preservenetwork` | cross-node transfer / bandwidth | `repo=local` backup, never live-dump / mounted bucket / archive fetch |
 | `preservemasterload` | the master's CPU/IO | a stored backup — never a live mysqldump **from** the master |
 | `preservemasterlock` | locking the master (`FTWRL` / long read locks) | tools/positions that don't lock the source |
 | `preservecpu` | CPU on the repman/DB host | avoid heavy compress-decompress, high mydumper parallelism |
@@ -73,7 +73,7 @@ type RestoreSelector struct {
 
     // string
     Origin    string // any | master | mine
-    Repo      string // any | local | remote | live
+    Repo      string // any | local | remote | archive | live
     Time      string // any | notafterlastmasterbinlog | nobeforemasterbinlog | pitr
     StartGtid string // GTID boundary — PITR target AND backup filtering (not pitr-only)
 
@@ -82,6 +82,22 @@ type RestoreSelector struct {
 }
 ```
 
+## Where a backup is (#2091)
+
+`backupCatalogLocation` reads only the backup's record and the mount state (no file, no lock:
+it runs on the monitor tick):
+
+| Location | When | A reseed |
+|---|---|---|
+| `local` | otherwise: replication-manager's own disk | reads the file |
+| `remote` | the file is under the backups folder and the bucket is mounted on it | reads the file through the mount |
+| `archive` | the file was removed after archiving (`OriginalRemoved`) | fetches it back first (`fetchPickedBackup`); only from a restic archive yet, a plakar or pbs one is refused with the reason |
+
+Archived (the attached archive holds a snapshot) is a separate flag: an archived backup whose
+file is still there is read where it is. An archive-only backup that cannot be fetched now is
+not a candidate, so the rejoin check (`HasCatalogBackupForRejoin`) never counts one a reseed
+would refuse. `repo:"remote"` meant "in the archive" before; it now means the mounted bucket.
+
 ## Method presets
 
 | Method | Selector |
@@ -89,7 +105,7 @@ type RestoreSelector struct {
 | rejoin logical ("any backup") | `{Origin:"any", Repo:"any", Type:["logical"], Time:"notafterlastmasterbinlog", Safety:["any"], Order:["last","local"]}` |
 | reseed from master | `{Origin:"master", Repo:"live", Safety:["any"]}` |
 | reseed from master, spare the master | `{Origin:"master", Repo:"live", Safety:["preservenetwork"]}` → forced to a stored backup instead |
-| restic remote fetch | `{Repo:"remote"}` |
+| archive fetch | `{Repo:"archive"}` |
 | physical rejoin | `{Type:["physical"], Order:["last","local"]}` |
 
 ## Re-attach (shared, final step of every restore)
@@ -106,7 +122,7 @@ type RestoreSelector struct {
 | `JobFlashbackLogicalBackup` inline lookup | srv_job_backup.go:1388 | logical rejoin preset |
 | `JobReseedLogicalBackupPrepare` inline lookup | srv_job_backup.go:600 | per-server reseed preset |
 | `RejoinDirectDump` source pick | srv_rejoin.go:468 | `Repo:"live"` preset |
-| `handlerMuxServerReseedRestic` | server/api_database.go | `Repo:"remote"` preset |
+| `handlerMuxServerReseedRestic` | server/api_database.go | `Repo:"archive"` preset |
 | shared restore core (kept) | `reseedMysqldumpWithMetadata` srv_job_backup.go:1013 | unchanged — the executor |
 
 ## Unified backup catalog (the selector's source of truth)
@@ -121,7 +137,7 @@ can all be evaluated against it:
 ```go
 type BackupCatalogEntry struct {
     Server    string   // which node it was taken from  -> origin
-    Location  string   // local | repo(restic/remote)   -> repo
+    Location  string   // local | remote | archive     -> repo
     Kind      string   // logical | physical            -> type
     Tool      string   // mysqldump | mydumper | splitdump | mariabackup | ...
     Caps      []string // parallel, compress, encrypt, gtid, can-partial-restorable

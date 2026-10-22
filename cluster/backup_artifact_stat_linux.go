@@ -10,6 +10,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // artifactStatIdentity returns a file's inode and its status change time (ctime): touch and a
@@ -21,4 +23,32 @@ func artifactStatIdentity(fi os.FileInfo) (ino uint64, ctime time.Time) {
 		return uint64(st.Ino), time.Unix(int64(st.Ctim.Sec), int64(st.Ctim.Nsec))
 	}
 	return 0, time.Time{}
+}
+
+// artifactSyncBucket waits until the backup at path, a file or a folder of the backups folder
+// mount, is uploaded: GeeseFS keeps a file written in memory and uploads it in the background,
+// its s3.etag meanwhile the one of its previous upload. An fsync uploads what it holds, the
+// whole tree for a folder, and returns at once when nothing is pending.
+func artifactSyncBucket(path string) error {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	return unix.Fsync(fd)
+}
+
+// onSameDevice: a and b are on one file system (a rename between them moves no data).
+func onSameDevice(a, b string) bool {
+	ia, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	ib, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	sa, ok := ia.Sys().(*syscall.Stat_t)
+	sb, ok2 := ib.Sys().(*syscall.Stat_t)
+	return ok && ok2 && sa.Dev == sb.Dev
 }

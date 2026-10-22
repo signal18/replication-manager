@@ -25,7 +25,7 @@ when the push is queued (`nil` for binary log copies, which record nothing).
 `UpdateBackupMetadataWithRestic(backtype, meta, snapshotID)` records the
 snapshot in that meta; a scheduled backup writes its meta file only while it
 is still the current one, because the next scheduled run reuses the same file
-name (`<tool>.meta.json`). An ad-hoc meta has its own file and always writes.
+name (`<tool>.meta.json`). A registered backup's meta has its own file and always writes.
 
 `removeArchivedOriginal(backtype, meta, snapshotID)` then runs when the switch
 is on:
@@ -46,15 +46,15 @@ is on:
 4. Remove with `removeBackupArtifactWithSidecar` (encrypted, sidecar first) or
    `os.RemoveAll`.
 5. `meta.OriginalRemoved = true`, meta file rewritten under the same
-   current/ad-hoc rule.
+   current/registered rule.
 
 `snapshotMissingPath` runs one `restic ls <id> <Dest> [<sidecar>]` and checks each
 path against the entries (the path itself, or entries below it for a
 directory): the snapshot's own tree, not the push result alone, is the proof.
 
-### Ad-hoc encrypted pushes
+### Encrypted pushes of one artifact
 
-An ad-hoc push archives `meta.Dest` alone (a scheduled push archives the whole
+A push of one artifact archives `meta.Dest` alone (a scheduled push archives the whole
 server directory, sidecars included). For an encrypted artifact the push now
 adds its `.hmac` sidecar through the new `ResticBackupOption.ExtraPaths`
 (appended after `DirPath` on the `restic backup` command line), so the sidecar
@@ -132,7 +132,7 @@ API handlers), so a slow fetch from S3 never stalls a tick (F2).
 
 The fetched original keeps `OriginalRemoved = true` and stays on disk. These
 restore paths only read scheduled backups (fixed names, or
-`resolveLogicalBackupPathFromMeta`, which skips ad-hoc), so the next scheduled
+`resolveLogicalBackupPathFromMeta`, which skips registered ones), so the next scheduled
 backup of the method overwrites it, and that backup's own archive push removes
 it. At most one backup per method and server is on disk at any time, as with
 the switch off.

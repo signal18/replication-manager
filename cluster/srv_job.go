@@ -27,6 +27,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -1951,7 +1952,9 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 var logicalBackupTasks = []string{config.ConstBackupLogicalTypeMysqldump, config.ConstBackupLogicalTypeMydumper, config.ConstBackupLogicalTypeDumpling, "script"}
 
 // LastFailedLogicalBackup returns the server's last logical backup job when it ended in
-// error (states 5 and 6), nil when the last one ended OK or none ran.
+// error (states 5 and 6), nil when the last one ended OK or none ran. A logical backup
+// replication-manager took itself never goes through the jobs table: a completed one in the
+// catalogue, ended after the failed job, closes it too (#2113).
 func (server *ServerMonitor) LastFailedLogicalBackup() *config.Task {
 	if server.JobResults == nil {
 		return nil
@@ -1965,5 +1968,24 @@ func (server *ServerMonitor) LastFailedLogicalBackup() *config.Task {
 	if last == nil || last.State < 5 {
 		return nil
 	}
+	if end := server.lastCompletedLogicalBackupEnd(); !end.IsZero() && end.Unix() >= last.End {
+		return nil
+	}
 	return last
+}
+
+// lastCompletedLogicalBackupEnd is when the server's last completed logical backup in the
+// catalogue ended, zero for none.
+func (server *ServerMonitor) lastCompletedLogicalBackupEnd() time.Time {
+	var end time.Time
+	if server.ClusterGroup == nil || server.ClusterGroup.BackupMetaMap == nil {
+		return end
+	}
+	server.ClusterGroup.BackupMetaMap.Callback(func(_ int64, meta *backupmgr.BackupMetadata) bool {
+		if meta != nil && meta.Completed && meta.Source == server.URL && meta.BackupMethod == backupmgr.BackupMethodLogical && meta.EndTime.After(end) {
+			end = meta.EndTime
+		}
+		return true
+	})
+	return end
 }
