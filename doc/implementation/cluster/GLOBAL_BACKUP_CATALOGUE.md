@@ -139,6 +139,12 @@ head or a **release** (`.../snapback-release/{server}`: the directory kept as it
 backup's snapshot is the new latest). The state is kept in `<cluster working dir>/snapbacks.json`
 (a restart keeps the lock; a snapback running at a stop reads as failed, WARN0256, naming the
 head to snap back to). CINF0020 while one runs.
+WARN0255 reads "Archive <name> read-only for <server>" (Stéphane, 2026-10-22). Its remediation,
+and WARN0256's, is in `cluster.StateRemediations` (`GetStateRemediationPlan`,
+`cluster_state_remediation.go`, refreshed with the snapback states every tick): two
+`server_action` fixes, **Snapback to latest** (`archive-actions/snapback/{head}`) and **Release**
+(`archive-actions/snapback-release/{server}`), shown as buttons next to the state in the Health
+alerts (`AlertModal`, the selected cluster's own alerts only), each behind a confirmation.
 
 ## What it gives
 

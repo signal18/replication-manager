@@ -368,7 +368,7 @@ var ClusterError = map[string]string{
 	"WARN0252":  "Replication of %s: channel(s) %s stopped by the reseed and not running: %s -- the reseed starts them again when the restore succeeds; otherwise start replication or rejoin the server",
 	"WARN0253":  "Registered backup %d of %s failed its %s verification: %s -- not reseeded from nor archived: verify it again, register a fixed file, or unregister it",
 	"WARN0254":  "Backups folder mount of %s slow: %d request(s) answered I/O error past their %s deadline, the last %s (the S3 storage too slow or unreachable)",
-	"WARN0255":  "Backup directory of %s is at snapshot %s of archive %s, not its latest %s (snapback): its backups and archive pushes are locked until a snapback to its latest snapshot or a release",
+	"WARN0255":  "Archive %s read-only for %s: its backup directory is at snapshot %s, not its latest %s (snapback); no backup is written in it nor pushed to the archive until a snapback to its latest snapshot or a release",
 	"WARN0256":  "Snapback of the backup directory of %s to snapshot %s failed: %s",
 	"WARN0257":  "Binlog copy of %s waits for %s since %s: %d binlog(s) to copy, the oldest %s, kept on the server until copied",
 	"WARN0258":  "Binlog copies of %s: %d kept in the backup directory beyond backup-binlogs-keep (%d) for the binlog-only snapshot, the oldest %s, since %s",

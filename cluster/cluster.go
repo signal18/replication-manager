@@ -315,6 +315,9 @@ type Cluster struct {
 	WorkloadRemediations RemediationPlan `json:"workloadRemediations" groups:"web"`
 	// ConfigRemediations is the remediation plan for actionable config states (WARN0234).
 	ConfigRemediations RemediationPlan `json:"configRemediations" groups:"web"`
+	// StateRemediations is the remediation plan for actionable operational states (WARN0255,
+	// WARN0256 a snapback), shown next to them in the health alerts.
+	StateRemediations RemediationPlan `json:"stateRemediations" groups:"web"`
 	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates []state.State `json:"workloadStates" groups:"web"`

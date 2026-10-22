@@ -576,7 +576,8 @@ func (cluster *Cluster) checkSnapbackStates() {
 		case s.Status == SnapbackFailed:
 			cluster.SetState("WARN0256", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0256"], s.Server, shortID(s.Snapshot), s.Error), ErrFrom: "BACKUP", ServerUrl: s.Server})
 		case s.locked():
-			cluster.SetState("WARN0255", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0255"], s.Server, shortID(s.Snapshot), s.Archive, shortID(s.Head)), ErrFrom: "BACKUP", ServerUrl: s.Server})
+			cluster.SetState("WARN0255", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0255"], s.Archive, s.Server, shortID(s.Snapshot), shortID(s.Head)), ErrFrom: "BACKUP", ServerUrl: s.Server})
 		}
 	}
+	cluster.StateRemediations = cluster.GetStateRemediationPlan()
 }
