@@ -600,12 +600,21 @@ func (cluster *Cluster) unmountBackupFolder(m *s3fuse.Mount) {
 	case err := <-done:
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: unmount: %s", err)
-			lazyUnmount(cluster.backupMountPoint())
+			cluster.detachBackupFolder()
 		}
 	case <-time.After(backupMountStopTimeout):
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: unmount did not end within %s, detached", backupMountStopTimeout)
-		lazyUnmount(cluster.backupMountPoint())
+		cluster.detachBackupFolder()
 	}
+}
+
+// detachBackupFolder: the unmount was refused or did not end. The file system keeps serving
+// (s3fuse.Mount.Unmount), so what is still in the mount gets its answers; the mount is detached
+// (#2142).
+func (cluster *Cluster) detachBackupFolder() {
+	point := cluster.backupMountPoint()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: %s busy at its unmount, detached, still served until the process ends", point)
+	lazyUnmount(point)
 }
 
 // lazyUnmount detaches a mount left behind by a helper that died, when there is one.

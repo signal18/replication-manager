@@ -1223,7 +1223,7 @@ func (cluster *Cluster) raiseCPUToPlan() bool {
 	coresPerDBU, _ := cluster.dbuRatioInts()
 	planCores := int(math.Ceil(planDbu-1e-9)) * coresPerDBU
 	cur, _ := strconv.Atoi(strings.TrimSpace(cluster.Conf.ProvCores))
-	if planCores <= 0 || cur >= planCores {
+	if planCores <= 0 || cur >= planCores || cluster.resourceAxisPinned("cpu") {
 		return false
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo,
@@ -1372,6 +1372,9 @@ func (cluster *Cluster) dbuDiskGBPerUnit() int {
 // (a shrink is not a grow step to measure QPS against). Returns false without acting when
 // the config is already aligned to the load (or at the undercommit floor).
 func (cluster *Cluster) shrinkAxisInPlan(axis string) bool {
+	if cluster.resourceAxisPinned(axis) { // set in /etc: ERR00119 / WARN0266 (#2142)
+		return false
+	}
 	from, to, ok := cluster.dynamicShrinkTarget(axis)
 	if !ok {
 		return false
@@ -1408,6 +1411,9 @@ func (cluster *Cluster) shrinkAxisInPlan(axis string) bool {
 // container cgroup live (openSVCResizeCPU) on top of the SET GLOBAL re-tune; io has no
 // cgroup primitive and stays a DB-side tuning.
 func (cluster *Cluster) growAxisInPlan(axis string, qps float64) bool {
+	if cluster.resourceAxisPinned(axis) { // set in /etc: ERR00119 / WARN0266 (#2142)
+		return false
+	}
 	planPerNode := cluster.GetPlanDBUPerNode().Dbu
 	switch axis {
 	case "mem":
@@ -1472,6 +1478,21 @@ func diskFollowTargetGB(usedBytes int64) int {
 	return int(math.Ceil(float64(usedBytes) / (1024 * 1024 * 1024)))
 }
 
+// diskFollowNeedBytes is the disk a datadir calls for: its usage without its binlogs, plus the
+// plan's binlog share (prov-db-binlog-total-size-pct of the disk), so binlogs never grow the
+// plan and the disk keeps their room: the follow used the whole datadir, binlogs included, and
+// grew the plan and the volume to exactly that, full (#2142).
+func diskFollowNeedBytes(usedBytes, binlogBytes int64, binlogPct int) int64 {
+	data := usedBytes - binlogBytes
+	if binlogBytes < 0 || data < 0 {
+		data = usedBytes
+	}
+	if binlogPct <= 0 || binlogPct >= 90 {
+		return data
+	}
+	return int64(math.Ceil(float64(data) * 100 / float64(100-binlogPct)))
+}
+
 // followDiskUsage is the disk axis of the dynamic driver. There is no live disk resize:
 // prov-db-disk-size only sized the volume at provisioning and the datadir is not bounded
 // by it (dev3 2026-09-23: 2 GB declared, 19 GB used). So when the measured datadir of any
@@ -1481,11 +1502,11 @@ func diskFollowTargetGB(usedBytes int64) int {
 // dynamic settings, no reprovision cookie (nothing to recreate: the value is bookkeeping
 // until the volume resize action follows it). Returns true when a step landed.
 func (cluster *Cluster) followDiskUsage() bool {
-	if cluster.resources == nil {
+	if cluster.resources == nil || cluster.resourceAxisPinned("disk") {
 		return false
 	}
 	unitGB := cluster.resources.Ratios(ProfileDatabase).DiskGBPerUnit
-	var maxUsed int64
+	var maxUsed, maxNeed int64
 	for _, s := range cluster.Servers {
 		if s == nil || s.IsDown() || s.DBUConsumed == nil {
 			continue
@@ -1493,8 +1514,11 @@ func (cluster *Cluster) followDiskUsage() bool {
 		if s.DBUConsumed.DiskMaxBytes > maxUsed {
 			maxUsed = s.DBUConsumed.DiskMaxBytes
 		}
+		if need := diskFollowNeedBytes(s.DBUConsumed.DiskMaxBytes, s.binlogFilesBytes(), cluster.Conf.ProvBinlogTotalSizePct); need > maxNeed {
+			maxNeed = need
+		}
 	}
-	newGB := diskFollowTargetGB(maxUsed)
+	newGB := diskFollowTargetGB(maxNeed)
 	cur, _ := config.ParseUnitMeasurementToInt("G,bytes,required", cluster.Conf.ProvDisk, true)
 	if newGB <= int(cur) {
 		return false

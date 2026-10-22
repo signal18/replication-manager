@@ -98,16 +98,44 @@ func (cluster *Cluster) noteBinlogGap(server *ServerMonitor, binlog, reason stri
 	cluster.saveBinlogGapsLocked()
 }
 
-// clearBinlogGap: a backup of the server is in the archive, its binlog chain is whole from it.
-func (cluster *Cluster) clearBinlogGap(serverURL string) {
+// clearBinlogGap: a backup of the server is in the archive, its binlog chain is whole from it,
+// when the backup starts after the last binlog lost (backupBinlog, the binlog of its position,
+// numbered above the gap's end): a gap noted while the backup ran, or ending in the backup's own
+// binlog, stays (#2142). Without a known position the gap stays.
+func (cluster *Cluster) clearBinlogGap(serverURL, backupBinlog string) {
 	cluster.binlogGapMu.Lock()
 	defer cluster.binlogGapMu.Unlock()
 	cluster.loadBinlogGapsLocked()
 	if g := cluster.binlogGaps[serverURL]; g != nil {
+		current := ""
+		if s := cluster.GetServerFromURL(serverURL); s != nil {
+			current = s.BinaryLogFile
+		}
+		if !binlogGapClearedBy(g.To, backupBinlog, current) {
+			return
+		}
 		delete(cluster.binlogGaps, serverURL)
 		cluster.saveBinlogGapsLocked()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog continuity of %s in the archive whole again from its last backup (binlogs %s to %s lost before it)", serverURL, g.From, g.To)
 	}
+}
+
+// binlogGapClearedBy: a backup at backupBinlog makes the archive whole again after a gap ending at
+// gapTo: its binlog is past the gap in the same sequence, or the sequence changed since the gap
+// (log-bin renamed, numbering restarted by a RESET MASTER or a reseed) and the backup is of the
+// server's current sequence (#2142 review): before, such a gap never cleared. An older backup,
+// from before the gap or of the old sequence, never clears it.
+func binlogGapClearedBy(gapTo, backupBinlog, current string) bool {
+	if binlogOlderThan(gapTo, backupBinlog) {
+		return true
+	}
+	if backupBinlog == "" || current == "" || binlogPrefix(backupBinlog) != binlogPrefix(current) {
+		return false
+	}
+	if binlogPrefix(backupBinlog) != binlogPrefix(gapTo) {
+		return true // renamed sequence
+	}
+	return binlogSequenceRestarted(current, gapTo) && binlogNumber(backupBinlog) <= binlogNumber(current)
 }
 
 // BinlogGaps lists the lost binlog continuities, by server.

@@ -62,3 +62,31 @@ func TestAbortStuckOnlyWaitingTwice(t *testing.T) {
 		t.Fatal("a refused abort is not reported")
 	}
 }
+
+// The command name and state of a /proc stat line, a name with spaces and parentheses included;
+// a stuck predecessor reads as a zombie and is not a live replication-manager
+func TestStatCommState(t *testing.T) {
+	for _, c := range []struct{ stat, comm, state string }{
+		{"1102790 (replication-man) Z 1 1102790 0 0", "replication-man", "Z"},
+		{"42 (a (b) c) S 1 2", "a (b) c", "S"},
+	} {
+		comm, state, ok := statCommState(c.stat)
+		if !ok || comm != c.comm || state != c.state {
+			t.Errorf("%q: %q %q %v", c.stat, comm, state, ok)
+		}
+	}
+	if _, _, ok := statCommState("garbage"); ok {
+		t.Error("a line without (comm) read")
+	}
+	if pid := otherLiveProcess("no-such-process-name", 0); pid != 0 {
+		t.Errorf("found pid %d", pid)
+	}
+}
+
+// Nothing read from fusectl while mounts exist is reported, never a silent nil
+func TestAbortStuckUnreadable(t *testing.T) {
+	unreadable := func(string) (int, error) { return 0, errors.New("no such file") }
+	if _, err := abortStuck([]fuseMount{{point: "/x", conn: "9"}}, time.Millisecond, unreadable, func(string) error { return nil }); err == nil {
+		t.Fatal("an unreadable fusectl is not reported")
+	}
+}

@@ -8,11 +8,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -304,9 +307,17 @@ func TestKeepRemovalLosesBinlogsNotBackups(t *testing.T) {
 	if g := c.BinlogGaps(); len(g) != 1 || g[0].From != "binlog.000007" {
 		t.Fatalf("the gap is not kept across a restart: %+v", g)
 	}
-	c.clearBinlogGap(server.URL)
+	// a backup whose position is in or before the gap's last binlog leaves it: binlogs after its
+	// position were lost; one past it ends the gap (#2142)
+	for _, at := range []string{"", "binlog.000009", "binlog.000005"} {
+		c.clearBinlogGap(server.URL, at)
+		if len(c.BinlogGaps()) != 1 {
+			t.Fatalf("a backup at %q ended a gap to binlog.000009", at)
+		}
+	}
+	c.clearBinlogGap(server.URL, "binlog.000010")
 	if len(c.BinlogGaps()) != 0 {
-		t.Fatal("a backup in the archive does not end the gap")
+		t.Fatal("a backup in the archive past the gap does not end it")
 	}
 }
 
@@ -407,5 +418,121 @@ func TestKeepRemovalSnapshotKnownAcrossRestart(t *testing.T) {
 	}
 	if g := c.BinlogGaps(); len(g) != 0 {
 		t.Fatalf("copies in a snapshot counted as lost after a restart: %+v", g)
+	}
+}
+
+// newReviewTestMaster is a master with binlog copies 000007-000010 in its backup directory, the
+// archive on, a keep window of 2 and a working directory for the gap records (#2142)
+func newReviewTestMaster(t *testing.T, name string) (*Cluster, *ServerMonitor, string) {
+	t.Helper()
+	c, server := newTestRuntimeOnlyClusterServer(t, name, "db1", "3306")
+	c.WorkingDir = t.TempDir()
+	c.Conf.BackupBinlogs = true
+	c.Conf.BackupBinlogsKeep = 2
+	c.Conf.BackupRestic = true
+	server.State = stateMaster
+	server.BinaryLogFile = "binlog.000011"
+	c.master = server
+	dir := server.GetMyBackupDirectory()
+	for _, b := range []string{"binlog.000007", "binlog.000008", "binlog.000009", "binlog.000010"} {
+		if err := os.WriteFile(filepath.Join(dir, b), []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return c, server, dir
+}
+
+// #2142 (1): a copy the keep removal could not remove is still on disk: no loss recorded
+func TestKeepRemovalFailedRemovalIsNoLoss(t *testing.T) {
+	c, server, dir := newReviewTestMaster(t, "binlog-rmfail")
+	c.Conf.BackupArchiveRemoveOriginal = true // binlog-only snapshot refused: copies removed, losses recorded
+	server.recordBinlogsInSnapshot("binlog.000006")
+	// binlog.000007 cannot be removed: a non-empty directory in its place
+	os.Remove(filepath.Join(dir, "binlog.000007"))
+	if err := os.MkdirAll(filepath.Join(dir, "binlog.000007", "x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	g := c.BinlogGaps()
+	if len(g) != 1 || g[0].From != "binlog.000008" || g[0].To != "binlog.000008" {
+		t.Fatalf("gaps %+v, want only binlog.000008 (000007 still on disk)", g)
+	}
+}
+
+// #2142 (2): the disk is checked even while a binlog-only snapshot is queued or running
+func TestBinlogSnapshotRefusalDiskFirst(t *testing.T) {
+	c, server, _ := newReviewTestMaster(t, "binlog-diskfirst")
+	c.DiskStatManager = misc.NewDiskStatManager()
+	registerDiskStat(c, server.GetMyBackupDirectory(), 100, 90) // 90 % used
+	c.Conf.BackupDiskTresholdWarn = 80
+	server.binlogCopies.mu.Lock()
+	server.binlogCopies.snapshotting = true
+	server.binlogCopies.mu.Unlock()
+	if r := server.binlogSnapshotRefusal(); !strings.Contains(r, "backup-disk-treshold-warn") {
+		t.Fatalf("refusal %q: a running snapshot skipped the disk check", r)
+	}
+	c.Conf.BackupDiskTresholdWarn = 0
+	if r := server.binlogSnapshotRefusal(); r != "" {
+		t.Fatalf("refusal %q while a snapshot runs and the disk has room", r)
+	}
+}
+
+// #2142 (3): a binlog of the keep window with no copy, gone from the server, is a recorded loss
+func TestCatchUpRecordsPurgedBinlog(t *testing.T) {
+	c, server, dir := newReviewTestMaster(t, "binlog-catchup")
+	server.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap() // the server lists 000011 on, not 000010
+	os.Remove(filepath.Join(dir, "binlog.000010"))
+	server.BinaryLogFileOldest = "binlog.000011"
+	server.recordBinlogsInSnapshot("binlog.000009")
+	if err := server.JobBackupBinlogPurge("binlog.000010"); err != nil {
+		t.Fatal(err)
+	}
+	if g := c.BinlogGaps(); len(g) != 1 || g[0].From != "binlog.000010" {
+		t.Fatalf("gaps %+v, want binlog.000010 purged before its copy", g)
+	}
+}
+
+// #2142 (4): a copy that failed on the master stays queued for the next rotation, the worker
+// ends; on a server no longer master it is dropped
+func TestFailedCopyKeptQueued(t *testing.T) {
+	c, server, _ := newReviewTestMaster(t, "binlog-keptqueued")
+	q := &server.binlogCopies
+	q.mu.Lock()
+	q.pending, q.running = []string{"binlog.000012"}, true
+	q.mu.Unlock()
+	server.runBinlogCopies() // the copy fails: no binlog client in the test
+	q.mu.Lock()
+	pending, running := append([]string(nil), q.pending...), q.running
+	q.mu.Unlock()
+	if len(pending) != 1 || running {
+		t.Fatalf("pending %v running %v: want the copy kept and the worker ended", pending, running)
+	}
+	server.State = stateSlave
+	c.master = nil // a switchover made another server the master
+	q.mu.Lock()
+	q.running = true
+	q.mu.Unlock()
+	server.runBinlogCopies()
+	q.mu.Lock()
+	pending = append([]string(nil), q.pending...)
+	q.mu.Unlock()
+	if len(pending) != 0 {
+		t.Fatalf("pending %v on a replica: its copies are the new master's", pending)
+	}
+}
+
+// #2142 (5): binlog numbering restarted below the snapshot record: the record is dropped, the
+// copies read as unknown, never as held by a snapshot
+func TestBinlogSequenceRestart(t *testing.T) {
+	_, server, _ := newReviewTestMaster(t, "binlog-restart-seq")
+	server.recordBinlogsInSnapshot("binlog.000010")
+	server.BinaryLogFile = "binlog.000002" // RESET MASTER
+	if in, known := server.binlogCopyInSnapshot("binlog.000001"); in || known {
+		t.Fatalf("after a numbering restart: in %v known %v, want unknown", in, known)
+	}
+	if !binlogSequenceRestarted("binlog.000002", "binlog.000010") || binlogSequenceRestarted("binlog.000011", "binlog.000010") || binlogSequenceRestarted("mysql-bin.000002", "binlog.000010") {
+		t.Fatal("binlogSequenceRestarted")
 	}
 }

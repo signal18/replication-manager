@@ -138,11 +138,20 @@ func (server *ServerMonitor) runBinlogCopies() {
 		if binlog != "" {
 			if err := server.InitiateJobBackupBinlog(binlog, false); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Binlog copy of %s: %s not copied: %s", server.URL, binlog, err)
-				// gone from the server before its copy (its own size or time purge): no copy can
-				// be made any more, the archive misses it (F12); any other failure is no loss
-				if server.binlogPurgedOnServer(binlog) {
+				purged, _ := server.binlogOnServer(binlog)
+				switch {
+				case purged:
+					// gone from the server before its copy (its own size or time purge): no copy
+					// can be made any more, the archive misses it (F12)
 					cluster.noteBinlogGap(server, binlog, "not copied: purged on the server before its copy")
+				case server.IsMaster():
+					// still on the server, or the server not read (down, busy): kept to copy, the
+					// worker ends and the next rotation tries again; dropped, a purge meanwhile
+					// would be a loss nobody records (#2142)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog copy of %s: %s kept to copy at the next rotation", server.URL, binlog)
+					return
 				}
+				// not the master any more: its copies are the new master's
 			}
 			q.mu.Lock()
 			q.pending = slices.DeleteFunc(q.pending, func(b string) bool { return b == binlog })
@@ -216,14 +225,21 @@ func (server *ServerMonitor) newestBinlogCopy() string {
 // binlogPurgedOnServer tells whether binlog is no longer on the server: older than its oldest
 // binlog, read now (the list the monitor keeps can be a tick old).
 func (server *ServerMonitor) binlogPurgedOnServer(binlog string) bool {
+	purged, _ := server.binlogOnServer(binlog)
+	return purged
+}
+
+// binlogOnServer reads the server's binlog list now: whether binlog was purged there (older than
+// its oldest binlog), and whether that is known (false when the server cannot be read).
+func (server *ServerMonitor) binlogOnServer(binlog string) (purged, known bool) {
 	if server.Conn == nil {
-		return false
+		return false, false
 	}
 	_, oldest, _, _, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion, dbhelper.NewBinaryLogMetaMap())
 	if err != nil {
-		return false
+		return false, false
 	}
-	return binlogOlderThan(binlog, oldest)
+	return binlogOlderThan(binlog, oldest), true
 }
 
 // binlogOlderThan tells whether binlog comes before oldest in the same binlog sequence.
@@ -285,11 +301,29 @@ func (server *ServerMonitor) binlogCopyInSnapshot(binlog string) (in, known bool
 	server.loadBinlogsInSnapshot()
 	q := &server.binlogCopies
 	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.inSnapshot == "" {
+	// the server's binlog numbering restarted (RESET MASTER, a reseed from scratch): the record
+	// is of the former sequence, every new copy would read as held by a snapshot (#2142)
+	stale := q.inSnapshot != "" && binlogSequenceRestarted(server.BinaryLogFile, q.inSnapshot)
+	if stale {
+		q.inSnapshot = ""
+	}
+	inSnapshot := q.inSnapshot
+	q.mu.Unlock()
+	if stale {
+		server.ClusterGroup.saveBinlogInSnapshot(server.URL, "")
+		server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Binlog copies of %s: the binlog numbering restarted (current %s), the snapshot record of the former sequence is dropped", server.URL, server.BinaryLogFile)
+	}
+	if inSnapshot == "" {
 		return false, false
 	}
-	return binlogPrefix(binlog) == binlogPrefix(q.inSnapshot) && binlogNumber(binlog) <= binlogNumber(q.inSnapshot), true
+	return binlogPrefix(binlog) == binlogPrefix(inSnapshot) && binlogNumber(binlog) <= binlogNumber(inSnapshot), true
+}
+
+// binlogSequenceRestarted: the server's current binlog is numbered below a copy recorded in a
+// snapshot of the same sequence, so the numbering started again since.
+func binlogSequenceRestarted(current, recorded string) bool {
+	c, r := binlogNumber(current), binlogNumber(recorded)
+	return c >= 0 && r >= 0 && binlogPrefix(current) == binlogPrefix(recorded) && c < r
 }
 
 // holdBinlogCopies records the copies beyond the keep window kept for the binlog-only
@@ -319,6 +353,11 @@ func (server *ServerMonitor) binlogSnapshotRefusal() string {
 	failed, snapshotting := q.snapshotFailed, q.snapshotting
 	q.snapshotFailed = "" // taken in once: the next copy beyond the window tries again
 	q.mu.Unlock()
+	// the space first, even while a binlog-only snapshot is queued or running: a slow push
+	// must not let the held copies grow without a disk check (F4, #2142)
+	if full := server.backupDiskOverWarn(); full != "" {
+		return full
+	}
 	if snapshotting {
 		return ""
 	}
@@ -328,7 +367,7 @@ func (server *ServerMonitor) binlogSnapshotRefusal() string {
 	if cluster.Conf.BackupArchiveRemoveOriginal {
 		return "backup-archive-remove-original: a binlog-only snapshot would hold no backup"
 	}
-	return server.backupDiskOverWarn()
+	return ""
 }
 
 // backupDiskOverWarn is why the disk of the server's backup directory has no room to keep binlog

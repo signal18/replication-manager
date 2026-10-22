@@ -216,10 +216,16 @@ func (m *Mount) Join(ctx context.Context) error {
 	return err
 }
 
-// Unmount flushes what is buffered, unmounts and stops the file system.
+// Unmount flushes what is buffered, unmounts and stops the file system. A refused unmount
+// (busy) leaves the file system serving: a request still in the mount, one of our own threads
+// included, gets its answer, where a shut-down file system left it waiting forever, the process
+// never ending and keeping its ports (dev3 2026-10-22, after a SIGTERM) (#2142). The caller
+// detaches the mount; the file system ends with the process.
 func (m *Mount) Unmount() error {
 	mounted.Delete(m.point)
-	err := core.TryUnmount(m.point)
+	if err := core.TryUnmount(m.point); err != nil {
+		return err
+	}
 	m.fs.Shutdown()
-	return err
+	return nil
 }

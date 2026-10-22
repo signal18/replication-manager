@@ -318,6 +318,9 @@ type Cluster struct {
 	// StateRemediations is the remediation plan for actionable operational states (WARN0255,
 	// WARN0256 a snapback), shown next to them in the health alerts.
 	StateRemediations RemediationPlan `json:"stateRemediations" groups:"web"`
+	// BinlogLimit is the binlog size limit in force on the primary (#2142): the plan's under the
+	// dynamic config, else the binlog budget; shown under force-binlog-purge-total-size.
+	BinlogLimit *BinlogLimit `json:"binlogLimit,omitempty" groups:"web"`
 	// WorkloadStates is a snapshot of all open workload findings from the current monitoring
 	// tick. Updated by CheckLogPlugins after all servers have been evaluated.
 	WorkloadStates []state.State `json:"workloadStates" groups:"web"`
@@ -2268,6 +2271,11 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 
 	for _, key := range keys {
 		_, ok := cluster.Conf.GetImmuableFlag(key)
+		if ok && isDynamicResourceKey(key) {
+			// a resource set in /etc is saved too: the start keeps the /etc value while it is
+			// there, and takes this one, not the setting's default, once it is removed (#2142)
+			ok = false
+		}
 		_, dynamic := cluster.Conf.GetDynamicFlag(key)
 		_, secret := cluster.Conf.Secrets.Lookup(key)
 		if ok || config.IsArchiveLegacyKey(key) || cluster.Conf.ArchiveHoldsSecret(key) {

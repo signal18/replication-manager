@@ -776,6 +776,9 @@ collect_dbu() {
     # disk: sum df used over mounts UNDER the datadir only (statfs, no du); this
     # excludes host bind-mounts (e.g. zoneinfo) and the initdb volume.
     disk=$(df -B1 2>/dev/null | awk -v d="$DATADIR" 'NR>1 && $NF ~ ("^" d) {s+=$3} END{printf "%d", s+0}')
+    # free space of the datadir's file system: what the binlog budget splits (#2142)
+    local disk_free
+    disk_free=$(df -P -B1 "$DATADIR" 2>/dev/null | awk 'NR==2{printf "%d", $4+0}')
 
     local ckpt="$CHECKPOINT_DIR/dbu.checkpoint"
     local prev_epoch="" prev_cpu="" prev_io=""
@@ -807,7 +810,7 @@ collect_dbu() {
     # whether the service WAITED, what the CPU usage alone never shows. Engine-agnostic.
     local wait_json
     wait_json=$(read_cgroup_wait_counters "$cg")
-    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk,\"wait\":$wait_json,\"netRxBytes\":${net_rx:-0},\"netTxBytes\":${net_tx:-0}}"
+    local data="{\"windowStart\":\"$ws\",\"windowEnd\":\"$we\",\"memMaxBytes\":$mem,\"cpuMaxCores\":$cpu_cores,\"ioMaxIops\":$io_iops,\"diskMaxBytes\":$disk,\"diskFreeBytes\":${disk_free:-0},\"wait\":$wait_json,\"netRxBytes\":${net_rx:-0},\"netTxBytes\":${net_tx:-0}}"
     local endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/dbu"
     send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$endpoint" "$data" "application/json" "$TOKEN" >/dev/null 2>&1 || true
 }
