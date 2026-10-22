@@ -446,11 +446,11 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	// longer go on: WARN0073 is not open yet, so nothing else would release it.
 	for {
 		if cluster.exit.Load() {
-			cluster.ServerGlobals.ReleaseBackupSlot()
+			cluster.releaseBackupSlot()
 			return errors.New("backup canceled: cluster shutting down")
 		}
 		if server.IsDown() {
-			cluster.ServerGlobals.ReleaseBackupSlot()
+			cluster.releaseBackupSlot()
 			return fmt.Errorf("Can't backup when server down: %s", server.URL)
 		}
 		if !cluster.IsInBackup() {

@@ -339,6 +339,7 @@ type Cluster struct {
 	RepMgrHostname              string               `json:"-"`
 	exitMsg                     string               `json:"-"`
 	exit                        atomic.Bool          `json:"-"`
+	backupSlotsHeld             atomic.Int32         `json:"-"` // global backup slots taken by this cluster's backups
 	stopOnce                    sync.Once            `json:"-"`
 	backupEncryptionCleanupOnce sync.Once            `json:"-"`
 	canFlashBack                bool                 `json:"-"`
@@ -1507,7 +1508,7 @@ func (cluster *Cluster) StateProcessing() {
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 
 			if s.ErrKey == "WARN0073" || s.ErrKey == "WARN0175" {
-				cluster.ServerGlobals.ReleaseBackupSlot()
+				cluster.releaseBackupSlot()
 			}
 			if s.ErrKey == "WARN0074" && servertoreseed != nil {
 				task := "reseed" + cluster.Conf.BackupPhysicalType
@@ -1768,6 +1769,8 @@ func (cluster *Cluster) Stop() {
 		}
 
 		cluster.exit.Store(true)
+		// the monitor loop that gives them back when the backup states resolve ends here
+		cluster.releaseBackupSlots()
 
 		phase("replicationPlugins", cluster.StopReplicationPlugins)
 		phase("scheduler", func() {
