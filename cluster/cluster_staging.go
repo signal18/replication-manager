@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -470,20 +471,27 @@ func (server *ServerMonitor) setSeedGTIDSlavePos(pos string) (string, string, er
 	return value, logs, err
 }
 
+// parentReseedRefused is ReseedFromParentCluster refusing before it touches the target: no
+// backup, a dump it cannot position, no parent master, a reseed already running. The caller
+// that stopped the parent channel to compare positions (freshenParentBackup) starts it again.
+type parentReseedRefused struct{ error }
+
+func (e parentReseedRefused) Unwrap() error { return e.error }
+
 func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor, masterGTIDList string) (string, error) {
 	var err error
 	var logs, masterCurrentGTID string
 
 	if parent == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Parent cluster cannot be nil")
-		return "", fmt.Errorf("parent cluster cannot be nil")
+		return "", parentReseedRefused{fmt.Errorf("parent cluster cannot be nil")}
 	}
 
 	backtype := parent.Conf.BackupLogicalType
 
 	if target == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No target server found")
-		return "", fmt.Errorf("no target server found")
+		return "", parentReseedRefused{fmt.Errorf("no target server found")}
 	}
 
 	// The parent's logical backup is the only source (#1989): checked before anything
@@ -491,26 +499,26 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	backupfile, bcksrv, err := parent.ParentLogicalBackup()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed of %s from parent cluster %s refused: %s", cluster.Name, parent.Name, err)
-		return "", err
+		return "", parentReseedRefused{err}
 	}
 	// a dump that stops and starts replication with its position as a comment would start
 	// the channel from the old position: refused before the channel is stopped or repointed
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
 		if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); derr == nil && unpositioned {
-			return "", errDumpStartsUnpositioned(backupfile)
+			return "", parentReseedRefused{errDumpStartsUnpositioned(backupfile)}
 		}
 	}
 
 	pmaster := parent.GetMaster()
 	if pmaster == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master server found")
-		return "", fmt.Errorf("no master server found")
+		return "", parentReseedRefused{fmt.Errorf("no master server found")}
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh data from parent cluster initiated")
 
 	if target.HasAnyReseedingState() {
-		return "", fmt.Errorf("Server is in reseeding state by %s", target.IsReseeding)
+		return "", parentReseedRefused{fmt.Errorf("Server is in reseeding state by %s", target.IsReseeding)}
 	}
 
 	task := "reseed" + parent.Conf.BackupLogicalType
@@ -666,6 +674,11 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		target.MarkReseedFailed(err)
 		target.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed logical backup %s from parent cluster failed on %s", backtype, target.URL)
+		if target.IsMaster() {
+			// the load is incomplete: the parent's changes must not land on part of the data,
+			// the channel stays stopped and says so (WARN0252) until a reseed ends
+			target.markReseedStoppedLinks([]string{channel}, fmt.Sprintf("reseed from parent cluster %s failed, the data is incomplete: reseed again", parent.Name))
+		}
 		return "", err
 	}
 
@@ -769,19 +782,21 @@ func (cluster *Cluster) waitStagingReplicaInSync(url string) error {
 // compared per domain with the backup's position, and when the backup is behind, a fresh logical
 // backup of the parent is taken: its position is past the frozen one, the domain only moves
 // forward. A new child (creation) has none of the parent's domain: nothing to do. MariaDB only
-// (domain-based GTID); the parent channel is started again when it stops on an error.
-func (cluster *Cluster) freshenParentBackup(parent *Cluster, cmaster *ServerMonitor) error {
+// (domain-based GTID); the parent channel is started again when it stops on an error. stopped:
+// the parent channel was stopped and left so, for the reseed to start again.
+func (cluster *Cluster) freshenParentBackup(parent *Cluster, cmaster *ServerMonitor) (stopped bool, err error) {
 	if parent == nil || !cmaster.IsMariaDB() || cmaster.Conn == nil {
-		return nil
+		return false, nil
 	}
 	_, bcksrv, err := parent.ParentLogicalBackup()
 	if err != nil || bcksrv == nil || bcksrv.LastBackupMeta.Logical == nil {
-		return nil // ReseedFromParentCluster refuses with its own reason
+		return false, nil // ReseedFromParentCluster refuses with its own reason
 	}
 	channel := parent.Conf.MasterConn
 	if logs, err := cmaster.StopSlaveChannel(channel); err != nil {
 		cluster.LogSQL(logs, err, cmaster.URL, "Reseed", config.LvlErr, "Failed stop slave %s on %s: %s", channel, cmaster.URL, err)
 	}
+	stopped = true
 	restart := func() {
 		if logs, err := cmaster.StartSlaveChannel(channel); err != nil {
 			cluster.LogSQL(logs, err, cmaster.URL, "Reseed", config.LvlErr, "Failed start slave %s on %s: %s", channel, cmaster.URL, err)
@@ -790,24 +805,24 @@ func (cluster *Cluster) freshenParentBackup(parent *Cluster, cmaster *ServerMoni
 	held, _, err := dbhelper.GetVariableByName(cmaster.Conn, "GTID_BINLOG_POS", cmaster.DBVersion)
 	if err != nil {
 		restart()
-		return fmt.Errorf("gtid_binlog_pos of %s: %w", cmaster.URL, err)
+		return false, fmt.Errorf("gtid_binlog_pos of %s: %w", cmaster.URL, err)
 	}
 	backupPos := bcksrv.LastBackupMeta.Logical.BinLogGtid
 	behind := parentBackupBehind(backupPos, held)
 	if behind == "" {
-		return nil
+		return true, nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 		"Reseed of %s from %s: the parent backup is behind (%s), taking a fresh logical backup of %s on %s", cmaster.URL, parent.Name, behind, parent.Name, bcksrv.URL)
 	if err := bcksrv.JobBackupLogical(context.Background()); err != nil {
 		restart()
-		return fmt.Errorf("fresh logical backup of %s on %s: %w", parent.Name, bcksrv.URL, err)
+		return false, fmt.Errorf("fresh logical backup of %s on %s: %w", parent.Name, bcksrv.URL, err)
 	}
 	if meta := bcksrv.LastBackupMeta.Logical; meta == nil || parentBackupBehind(meta.BinLogGtid, held) != "" {
 		restart()
-		return fmt.Errorf("the fresh backup of %s is still behind %s's position %s in the parent's domain", parent.Name, cmaster.URL, held)
+		return false, fmt.Errorf("the fresh backup of %s is still behind %s's position %s in the parent's domain", parent.Name, cmaster.URL, held)
 	}
-	return nil
+	return true, nil
 }
 
 // parentBackupBehind names the first domain where held (a child's gtid_binlog_pos) is past the
@@ -884,10 +899,17 @@ func (cluster *Cluster) seedFromParent(parent *Cluster, staging bool) error {
 	if cmaster == nil {
 		return fmt.Errorf("no master on %s", cluster.Name)
 	}
-	if err := cluster.freshenParentBackup(parent, cmaster); err != nil {
+	parentStopped, err := cluster.freshenParentBackup(parent, cmaster)
+	if err != nil {
 		return fmt.Errorf("reseed of %s from %s: %w", cmaster.URL, parent.Name, err)
 	}
 	masterGTIDList, err := cluster.ReseedFromParentCluster(parent, cmaster, "") // the master combines its GTID list with the parent's
+	if refused := (parentReseedRefused{}); parentStopped && errors.As(err, &refused) {
+		// nothing was loaded: the parent channel freshenParentBackup stopped runs again
+		if logs, serr := cmaster.StartSlaveChannel(parent.Conf.MasterConn); serr != nil {
+			cluster.LogSQL(logs, serr, cmaster.URL, "Reseed", config.LvlErr, "Failed start slave %s on %s: %s", parent.Conf.MasterConn, cmaster.URL, serr)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("reseed of %s from %s: %w", cmaster.URL, parent.Name, err)
 	}
