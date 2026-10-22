@@ -476,14 +476,20 @@ func (SM *StateMachine) GetOpenInfos() []StateHttp {
 	return log
 }
 
+// CopyOldStateFromUnknowServer carries the states of a server that could not be
+// reached over to this tick, unchanged under their storage key. Going through
+// AddState(key, value) would write the storage key "WARN0175@<server>" into ErrKey,
+// and the state would resolve under that key: StateProcessing matches the bare
+// ErrKey, so the backup slot held while WARN0175 or WARN0073 is open was never
+// released, and a reseed waiting for WARN0074 to resolve never started.
 func (SM *StateMachine) CopyOldStateFromUnknowServer(Url string) {
-
+	SM.Lock()
 	for key, value := range *SM.OldState {
 		if value.ServerUrl == Url {
-			SM.AddState(key, value)
+			SM.CurState.Add(key, value)
 		}
 	}
-
+	SM.Unlock()
 }
 
 func (SM *StateMachine) PreserveState(key ...string) {

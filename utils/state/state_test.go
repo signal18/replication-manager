@@ -37,3 +37,28 @@ func TestAddState_ScopesKeyByServerUrl(t *testing.T) {
 		t.Fatal("expected app B's scoped state to be present")
 	}
 }
+
+// A server that misses a ping keeps its states for the tick: they must resolve
+// under their bare ErrKey, the key StateProcessing matches to release the backup
+// slot (WARN0175, WARN0073) or start a reseed (WARN0074).
+func TestCopyOldStateFromUnknowServer_KeepsErrKey(t *testing.T) {
+	sm := &StateMachine{}
+	sm.Init()
+	const srv = "db2:3306"
+
+	sm.AddState("WARN0175", State{ErrType: "WARNING", ServerUrl: srv})
+	sm.AddState("WARN0048", State{ErrType: "WARNING", ServerUrl: "db1:3306"})
+	sm.ClearState() // tick: the ping of db2 fails, its states are carried over
+	sm.CopyOldStateFromUnknowServer(srv)
+	sm.ClearState() // tick: db2 answers, its backup has ended
+
+	var resolved []State
+	for _, s := range sm.GetResolvedStates() {
+		if s.ServerUrl == srv {
+			resolved = append(resolved, s)
+		}
+	}
+	if len(resolved) != 1 || resolved[0].ErrKey != "WARN0175" {
+		t.Fatalf("resolved states of %s = %+v, want one with ErrKey WARN0175", srv, resolved)
+	}
+}
