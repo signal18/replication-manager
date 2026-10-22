@@ -68,7 +68,8 @@ func TestDispatchPhysicalJobOncePerReseed(t *testing.T) {
 // The receiver is ready when the live task waits for the stream: an old row of the same task
 // left in that state (done=1) must not read as a listener.
 func TestGetJobCountLiveTaskOnly(t *testing.T) {
-	_, server := newTestRuntimeOnlyClusterServer(t, "job-count", "db1", "3306")
+	c, server := newTestRuntimeOnlyClusterServer(t, "job-count", "db1", "3306")
+	c.Conf.ReadTimeout = 5 // the query's timeout, in seconds: 0 cancels it at once
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
