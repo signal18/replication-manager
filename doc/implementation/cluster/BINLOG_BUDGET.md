@@ -15,6 +15,9 @@ it follow the disk, first known wins:
 | nothing | 30 GB |
 
 - **Database size**: data + index length of the schema monitor's dictionary (`DictTables`).
+  Only what the schema monitor covers, and no undo, temporary or redo files: the plan branch
+  overestimates the room by that much, which the "/ 2" absorbs; with the schema monitor off the
+  dictionary is empty and the measured disk applies instead.
 - **Free space**: the jobs script's DBU report (`diskFreeBytes`, `df -P -B1 $DATADIR`, used when
   younger than 15 min: on premise only while SSH runs the script), else `information_schema.DISKS`
   (the longest disk path holding `DATADIR`, KB).
@@ -47,3 +50,18 @@ bytes, source, owner plan / set / automatic, atFloor) for the primary, nil when 
 `force-binlog-purge-total-size` slider: "0 = automatic", the limit in force and how it is set,
 or that the plan sets it. Both purge paths use the same limit (`binlogTotalSizeTarget`): before
 11.4 the master job used the budget, the plan's size under the dynamic config ignored.
+
+## Never under the copy queue
+MariaDB 11.4+ purges by size by itself; the binlog copy queue holds back only replication-manager's
+purge. Setting the plan's limit live (where a server had none) would have purged binlogs queued but
+not yet copied, lost from the archive. `binlogCopyHold` (the binlogs from the oldest pending copy to
+the current, plus one binlog) is a floor of what `SetMaxBinlogTotalSize` sets and of the limit the
+dashboard and WARN0265 use; bounded by the queue's own bound. The binlog being copied is read by
+`mariadb-binlog --read-from-remote-server`, a dump thread, which MariaDB never purges under.
+
+## Review of #2143 (Claude, 2026-10-22)
+1. `dataDiskFree` without DATADIR: -1 (no telling which disk). 2. Database size: noted above.
+3. `SetMaxBinlogTotalSize` sets only on a change, and the budget is whole binlogs. 4. The master job
+still returns without `force-binlog-purge`. 5. `binlogGapClearedBy`: a renamed or restarted
+sequence clears a gap with a backup of the server's current sequence. 6. A failed copy retried only
+at the next rotation: follow-up. 7. `SHOW BINARY LOGS` is bounded by the DSN's `readTimeout`.

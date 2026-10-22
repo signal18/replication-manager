@@ -91,3 +91,57 @@ func TestBinlogTotalSizeTarget(t *testing.T) {
 		t.Fatalf("not dynamic: %d, want the budget 7G", got)
 	}
 }
+
+// The size limit never drops under the binlogs queued for copy: MariaDB 11.4+ purges by size by
+// itself, the copy queue holds back only replication-manager's purge (#2142 review)
+func TestBinlogCopyHold(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "binlog-hold", "db2", "3306")
+	server.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap()
+	for _, f := range []string{"binlog.000010", "binlog.000011", "binlog.000012"} {
+		server.BinaryLogFiles.Set(f, &dbhelper.BinaryLogMetadata{Filename: f, Size: 100})
+	}
+	server.Variables = config.NewStringsMap()
+	server.Variables.Set("MAX_BINLOG_SIZE", "1000")
+	if got := server.binlogCopyHold(); got != 0 {
+		t.Fatalf("nothing queued: %d", got)
+	}
+	server.binlogCopies.pending = []string{"binlog.000011"}
+	if got := server.binlogCopyHold(); got != 200+1000 {
+		t.Fatalf("queued from 000011: %d, want 1200", got)
+	}
+	server.binlogCopies.pending = []string{"binlog.000009"} // no longer listed: unknown size
+	if got := server.binlogCopyHold(); got != 0 {
+		t.Fatalf("unlisted binlog: %d", got)
+	}
+}
+
+// No DATADIR: no telling which DISKS entry holds it
+func TestDataDiskFreeNoDatadir(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "binlog-nodatadir", "db2", "3306")
+	server.Variables = config.NewStringsMap()
+	server.Disks = []dbhelper.Disk{{Path: "/", Available: 1000}, {Path: "/backups", Available: 9}}
+	if free, _ := server.dataDiskFree(); free != -1 {
+		t.Fatalf("no datadir: %d, want -1", free)
+	}
+}
+
+// A gap clears on a backup past it, or of the server's new sequence (renamed or restarted), never
+// on an older backup (#2142 review)
+func TestBinlogGapClearedBy(t *testing.T) {
+	for _, c := range []struct {
+		gapTo, backup, current string
+		want                   bool
+	}{
+		{"binlog.000045", "binlog.000046", "binlog.000050", true},
+		{"binlog.000045", "binlog.000040", "binlog.000050", false},           // older backup
+		{"binlog.000045", "binlog.000002", "binlog.000003", true},            // numbering restarted
+		{"binlog.000045", "binlog.000040", "binlog.000003", false},           // backup from before the restart
+		{"binlog.000045", "mariadb-bin.000001", "mariadb-bin.000002", true},  // log-bin renamed
+		{"mariadb-bin.000005", "binlog.000099", "mariadb-bin.000007", false}, // old sequence's backup
+		{"binlog.000045", "", "binlog.000050", false},
+	} {
+		if got := binlogGapClearedBy(c.gapTo, c.backup, c.current); got != c.want {
+			t.Errorf("gap to %s, backup %s, current %s: %v, want %v", c.gapTo, c.backup, c.current, got, c.want)
+		}
+	}
+}

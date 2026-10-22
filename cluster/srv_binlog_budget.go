@@ -101,6 +101,33 @@ func (server *ServerMonitor) binlogTotalSizeTarget() (int64, string) {
 	return b.Bytes, b.Source
 }
 
+// binlogCopyHold is the size max_binlog_total_size must keep for the binlogs queued for copy:
+// from the oldest pending one to the current, plus one binlog of headroom; 0 when none is pending
+// or its size is unknown. MariaDB 11.4+ purges by size by itself, and the copy queue holds back
+// only replication-manager's purge: a limit set lower (the plan's, live under the dynamic config,
+// where a server had none) purged a binlog before its copy, lost from the archive (#2142). The
+// queue is bounded (binlog-copy-queue-max), the hold with it; the binlog being copied is read as a
+// replica reads, which MariaDB never purges.
+func (server *ServerMonitor) binlogCopyHold() int64 {
+	oldest := server.oldestPendingBinlogCopy()
+	if oldest == "" || server.BinaryLogFiles == nil {
+		return 0
+	}
+	var total int64
+	found := false
+	server.BinaryLogFiles.Callback(func(name string, m *dbhelper.BinaryLogMetadata) bool {
+		if m != nil && !binlogOlderThan(name, oldest) && binlogPrefix(name) == binlogPrefix(oldest) {
+			total += int64(m.Size)
+			found = found || name == oldest
+		}
+		return true
+	})
+	if !found {
+		return 0
+	}
+	return total + server.maxBinlogSize()
+}
+
 // SetDataDiskFree records the datadir's free space the jobs script reported.
 func (server *ServerMonitor) SetDataDiskFree(bytes int64, at time.Time) {
 	server.dataDiskFreeBytes.Store(bytes)
@@ -159,13 +186,16 @@ func (server *ServerMonitor) dataDiskFree() (int64, string) {
 		return server.dataDiskFreeBytes.Load(), "jobs script"
 	}
 	datadir := ""
-	if v, ok := server.Variables.CheckAndGet("DATADIR"); ok {
+	if v, ok := server.Variables.CheckAndGet("DATADIR"); ok && strings.TrimSpace(v) != "" {
 		datadir = filepath.Clean(v)
+	}
+	if datadir == "" {
+		return -1, "" // no datadir, no telling which disk holds it (#2142 review)
 	}
 	best, bestLen := int64(-1), -1
 	for _, d := range server.Disks {
 		p := filepath.Clean(d.Path)
-		if datadir != "" && datadir != p && !strings.HasPrefix(datadir, strings.TrimSuffix(p, "/")+"/") {
+		if datadir != p && !strings.HasPrefix(datadir, strings.TrimSuffix(p, "/")+"/") {
 			continue
 		}
 		if len(p) > bestLen {
@@ -236,6 +266,10 @@ func (cluster *Cluster) checkBinlogBudgetStates() {
 		return
 	}
 	limit, source := master.binlogTotalSizeTarget()
+	if hold := master.binlogCopyHold(); hold > limit {
+		limit = hold
+		source += fmt.Sprintf(", held at %s for the binlogs queued for copy", humanBytes(hold))
+	}
 	view := &BinlogLimit{Bytes: limit, Source: source, Owner: "plan"}
 	if !dynamic {
 		b := master.BinlogBudget()

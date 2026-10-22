@@ -521,8 +521,12 @@ func (server *ServerMonitor) GetTimestampUsingRegex(str string) (int64, error) {
 }
 
 func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
-	// the plan's under the dynamic config, else the binlog budget (srv_binlog_budget.go)
+	// the plan's under the dynamic config, else the binlog budget (srv_binlog_budget.go), never
+	// under the binlogs still queued for copy (binlogCopyHold)
 	target, _ := server.binlogTotalSizeTarget()
+	if hold := server.binlogCopyHold(); hold > target {
+		target = hold
+	}
 	totalsize := int(target)
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
 		v, ok := server.Variables.CheckAndGet("MAX_BINLOG_TOTAL_SIZE")
