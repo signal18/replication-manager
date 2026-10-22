@@ -165,11 +165,20 @@ func (cluster *Cluster) alignDBResourceToPlan(perNodeDBU int) {
 	}
 	memMB := int(math.Round(float64(perNodeDBU) * r.MemMBPerUnit))
 	diskGB := int(math.Round(float64(perNodeDBU) * r.DiskGBPerUnit))
-	cluster.SetDBCores(strconv.Itoa(cores))
-	cluster.SetDBMemorySize(strconv.Itoa(memMB))
-	cluster.SetDBDiskSize(strconv.Itoa(diskGB))
+	// an axis set in /etc is kept: each start would read it back (ERR00119 / WARN0266, #2142)
+	align := func(axis string, set func()) {
+		if cluster.resourceAxisPinned(axis) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+				"Plan DBU %d/node: keeping pinned %s, set in /etc", perNodeDBU, dynamicResourceAxisKeys[axis])
+			return
+		}
+		set()
+	}
+	align("cpu", func() { cluster.SetDBCores(strconv.Itoa(cores)) })
+	align("mem", func() { cluster.SetDBMemorySize(strconv.Itoa(memMB)) })
+	align("disk", func() { cluster.SetDBDiskSize(strconv.Itoa(diskGB)) })
 	if r.IopsPerUnit > 0 {
-		cluster.SetDBDiskIOPS(strconv.Itoa(int(math.Round(float64(perNodeDBU) * r.IopsPerUnit))))
+		align("io", func() { cluster.SetDBDiskIOPS(strconv.Itoa(int(math.Round(float64(perNodeDBU) * r.IopsPerUnit)))) })
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
 		"Plan DBU %d/node -> DB resource aligned to %dc/%dMB/%dGB per node", perNodeDBU, cores, memMB, diskGB)
