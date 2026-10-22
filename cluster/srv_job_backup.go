@@ -5418,7 +5418,8 @@ func (server *ServerMonitor) JobBackupLogicalWithOptions(ctx context.Context, op
 		server.verifyBackupAfterBackup(backupMeta)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", logicalType, server.URL)
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s", logicalType, server.URL)
+		// the error carries the tool's last stderr lines: why the backup failed, not only its exit status
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "[ERROR] Finish logical backup %s for: %s: %s", logicalType, server.URL, err)
 	}
 	elapsed := time.Since(start).Round(time.Second)
 	backupLogLevel := config.LvlInfo

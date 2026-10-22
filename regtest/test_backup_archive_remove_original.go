@@ -135,11 +135,17 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 		}
 		return true
 	}
-	// archived waits for the backup started after started to be archived and its original removed.
+	// archived waits for the backup started after started to be archived and its original removed;
+	// a backup that ended without completing fails at once (its error is in the log).
 	archived := func(kind string, started time.Time, meta func() *backupmgr.BackupMetadata) (string, bool) {
 		var dest string
+		var failedAt time.Time
 		ok := physReseedWait(15*time.Minute, func() bool {
 			m := meta()
+			if m != nil && !m.Completed && m.EndTime.After(started) {
+				failedAt = m.EndTime
+				return true
+			}
 			if m == nil || !m.Completed || !m.EndTime.After(started) || !m.OriginalRemoved {
 				return false
 			}
@@ -149,6 +155,9 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 			dest = m.Dest
 			return true
 		})
+		if !failedAt.IsZero() {
+			return "", fail("the %s backup ended at %s without completing: its error is in the log", kind, failedAt.Format(time.RFC3339))
+		}
 		if !ok {
 			return "", fail("the %s backup was not archived with its original removed within 15 minutes (WARN0238 open: %v)", kind, cl.StateMachine.IsInState("WARN0238"))
 		}
