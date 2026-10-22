@@ -73,6 +73,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
+	"github.com/signal18/replication-manager/utils/s3fuse"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/tty"
 	"github.com/spf13/pflag"
@@ -2892,6 +2893,15 @@ func (repman *ReplicationManager) Run() error {
 			repman.OpenSVC.User, repman.OpenSVC.Pass = misc.SplitPair(repman.Conf.ProvUser)
 		}
 
+	}
+
+	// A FUSE mount left stuck by a replication-manager killed or crashed while it served it
+	// keeps that process alive with the ports bound below (#2091): aborted before any bind.
+	if aborted, err := s3fuse.AbortStuckMounts(repman.Conf.WorkingDir, 3*time.Second); err != nil {
+		repman.Logrus.Errorf("%s", err)
+	} else if len(aborted) > 0 {
+		repman.Logrus.Warnf("Aborted the FUSE mount(s) a previous run left stuck: %s", strings.Join(aborted, ", "))
+		time.Sleep(time.Second) // the stuck process ends and releases its ports
 	}
 
 	// Initialize go-carbon
