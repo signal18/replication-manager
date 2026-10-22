@@ -77,14 +77,18 @@ func (repman *ReplicationManager) infraCapacityInputs(clusters []*cluster.Cluste
 // (the contracts already sold), free = usable − planned. DBU and APU are the
 // SAME metal projected through the two profiles. Known is false when no
 // capacity is observed or declared: the pool cannot gate anything then.
+// ForSale is the part of planned held by clusters for sale (cloud18-shared): an
+// offer on the marketplace, which a self-service client takes precedence over (#2144).
 type InfraUnitPool struct {
 	Known      bool    `json:"known"`
 	UsableDbu  float64 `json:"usableDbu"`
 	PlannedDbu float64 `json:"plannedDbu"`
 	FreeDbu    float64 `json:"freeDbu"`
+	ForSaleDbu float64 `json:"forSaleDbu"`
 	UsableApu  float64 `json:"usableApu"`
 	PlannedApu float64 `json:"plannedApu"`
 	FreeApu    float64 `json:"freeApu"`
+	ForSaleApu float64 `json:"forSaleApu"`
 }
 
 func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
@@ -108,8 +112,13 @@ func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
 		if !cl.IsProvision {
 			continue // an unprovisioned cluster reserves nothing on the infrastructure
 		}
-		pool.PlannedDbu += float64(cl.GetPlanDbu())
-		pool.PlannedApu += rm.AppPlanByCluster(cl.Name).Apu
+		dbu, apu := float64(cl.GetPlanDbu()), rm.AppPlanByCluster(cl.Name).Apu
+		pool.PlannedDbu += dbu
+		pool.PlannedApu += apu
+		if cl.Conf.Cloud18Shared {
+			pool.ForSaleDbu += dbu
+			pool.ForSaleApu += apu
+		}
 	}
 	pool.FreeDbu = pool.UsableDbu - pool.PlannedDbu
 	pool.FreeApu = pool.UsableApu - pool.PlannedApu

@@ -186,6 +186,15 @@ func TestSelfServicePoolGate(t *testing.T) {
 	if st.Enabled || st.PoolOK || st.Pool.FreeDbu != 1 || st.NeededDBU != 2 {
 		t.Errorf("status must expose the refusal and the pool: %+v", st)
 	}
+	// The same cluster for sale (cloud18-shared) does not block a self-service client (#2144).
+	cl.Conf.Cloud18Shared = true
+	if pool := repman.infraUnitPool(); pool.ForSaleDbu != 2 || pool.FreeDbu != 1 {
+		t.Errorf("pool must count the 2 DBU for sale apart and keep 1 free: %+v", pool)
+	}
+	if err := repman.selfServiceCheck("u@x.io"); err != nil {
+		t.Errorf("a cluster for sale must not block a self-service creation: %v", err)
+	}
+	cl.Conf.Cloud18Shared = false
 	// Quota halves the usable pool.
 	cl.Conf.ProvServicePlanDbu = 0
 	repman.resourceManager.SetQuotaPct(50)
