@@ -4811,6 +4811,45 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	return err
 }
 
+// mydumperTrxTablesArgs adapts the backup-mydumper-options of a mydumper >= 0.18.1 backup and
+// returns what it changed, for the log, and a warning when a configured option makes the backup
+// fail.
+//   - --less-locking and --trx-consistency-only are removed: mydumper 0.18.1 to 0.21 refuses them
+//     as deprecated, 1.0 no longer knows them.
+//   - MariaDB gets --trx-tables=0 when no trx-tables option is configured. In trx-tables mode
+//     (explicit, or the default since mydumper 0.20.1) mydumper refuses a table that is not
+//     transactional, and the system schema of every MariaDB has Aria tables. --trx-tables=0 is
+//     accepted from 0.18.1; --no-trx-tables only from 0.21.1.
+//   - MySQL / Percona get nothing: mydumper's default applies.
+//   - A trx-tables option configured is kept; the warning says when it fails the backup.
+func mydumperTrxTablesArgs(args []string, dumper *version.Version, mariadb bool) (updatedArgs []string, changes []string, warning string) {
+	var removed []string
+	trxOption := ""
+	for _, arg := range args {
+		if arg == "--less-locking" || arg == "--trx-consistency-only" {
+			removed = append(removed, arg)
+			continue
+		}
+		if arg == "--trx-tables" || strings.HasPrefix(arg, "--trx-tables=") || arg == "--no-trx-tables" { // Check for both --trx-tables and --no-trx-tables to avoid conflicts
+			trxOption = arg
+		}
+		updatedArgs = append(updatedArgs, arg)
+	}
+	if len(removed) > 0 {
+		changes = append(changes, strings.Join(removed, ", ")+" removed (refused by mydumper since 0.18.1)")
+	}
+	switch {
+	case trxOption == "" && mariadb:
+		updatedArgs = append(updatedArgs, "--trx-tables=0")
+		changes = append(changes, "--trx-tables=0 added (since mydumper 0.20.1, the Aria system tables of MariaDB are dumped only with --trx-tables=0)")
+	case trxOption == "--no-trx-tables" && !dumper.GreaterEqual("0.21.1"):
+		warning = "backup-mydumper-options sets --no-trx-tables, an option mydumper knows only since 0.21.1: the backup will fail; use --trx-tables=0"
+	case mariadb && dumper.GreaterEqual("0.20.1") && trxOption != "" && trxOption != "--no-trx-tables" && trxOption != "--trx-tables=0":
+		warning = "backup-mydumper-options sets " + trxOption + ": since mydumper 0.20.1 the Aria system tables of MariaDB are refused in trx-tables mode, the backup will fail; remove it or use --trx-tables=0"
+	}
+	return updatedArgs, changes, warning
+}
+
 func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	cluster := server.ClusterGroup
 	var err error
@@ -4859,27 +4898,15 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	// Handle deprecated flags for mydumper >= 0.18.1
 	if dumper.GreaterEqual("0.18.1") {
-		// Replace deprecated flags with --trx-tables
-		var updatedArgs []string
-		for _, arg := range myargs {
-			if arg == "--less-locking" || arg == "--trx-consistency-only" {
-				// Skip deprecated flags
-				continue
-			}
-			updatedArgs = append(updatedArgs, arg)
+		var changes []string
+		var warning string
+		myargs, changes, warning = mydumperTrxTablesArgs(myargs, dumper, server.IsMariaDB())
+		if len(changes) > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "mydumper %s on %s: backup-mydumper-options adapted: %s", dumper.ToString(), server.URL, strings.Join(changes, "; "))
 		}
-		// Add --trx-tables if not already present
-		hasTrxTablesArg := false
-		for _, arg := range updatedArgs {
-			if arg == "--trx-tables" || strings.HasPrefix(arg, "--trx-tables=") || arg == "--no-trx-tables" { // Check for both --trx-tables and --no-trx-tables to avoid conflicts
-				hasTrxTablesArg = true
-				break
-			}
+		if warning != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "mydumper %s on %s: %s", dumper.ToString(), server.URL, warning)
 		}
-		if !hasTrxTablesArg {
-			updatedArgs = append(updatedArgs, "--trx-tables")
-		}
-		myargs = updatedArgs
 	}
 
 	if dumper.GreaterEqual("0.15.3") && !slices.Contains(myargs, "--clear") {
