@@ -26,7 +26,7 @@ const fuseConnections = "/sys/fs/fuse/connections"
 // request fails, the process ends) and the mount detached. A mount with nothing waiting is left
 // alone: a live server, or one the cluster's start detaches. Returns the mount points aborted;
 // the error says what could not be done, an abort needing write access to fusectl (root on a
-// host, a privileged container).
+// host, or CAP_SYS_ADMIN in a container to mount it).
 func AbortStuckMounts(root string, interval time.Duration) ([]string, error) {
 	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
@@ -35,6 +35,13 @@ func AbortStuckMounts(root string, interval time.Duration) ([]string, error) {
 	mounts := fuseMountsUnder(string(data), root)
 	if len(mounts) == 0 {
 		return nil, nil
+	}
+	// a container shows /sys read-only without fusectl: mounted in our own mount namespace for
+	// the check (CAP_SYS_ADMIN, which the FUSE mount needs anyway), then unmounted
+	if entries, err := os.ReadDir(fuseConnections); err == nil && len(entries) == 0 {
+		if err := unix.Mount("fusectl", fuseConnections, "fusectl", 0, ""); err == nil {
+			defer unix.Unmount(fuseConnections, 0)
+		}
 	}
 	return abortStuck(mounts, interval, readWaiting, abortConnection)
 }

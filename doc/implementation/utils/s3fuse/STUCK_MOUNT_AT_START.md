@@ -20,7 +20,11 @@ mounts under the working directory, and reads each connection's `waiting` count 
   (the waiting request fails, the stuck process ends and releases its ports) and the mount
   detached (`MNT_DETACH`); then one second for the ports.
 
-The abort needs write access to fusectl: root on a host, or a privileged container. Without it
-the error says so in the log and the start goes on (and fails to bind, as before); a normal
-container or a rootless image still needs the abort from the host. Serving the mount from a
+The abort needs write access to fusectl: root on a host. A container shows `/sys` read-only
+without fusectl: when there is a FUSE mount to check and `/sys/fs/fuse/connections` is empty,
+fusectl is mounted in replication-manager's own mount namespace for the check, then unmounted
+(CAP_SYS_ADMIN, which the in-process FUSE mount needs anyway; checked on dev3's container: the
+connections are listed and `abort` is writable). Without that right (a rootless image) the error
+says so in the log and the start goes on (and fails to bind, as before): the abort is then
+needed from the host. Serving the mount from a
 second process of the replication-manager binary would cover every case (follow-up).
