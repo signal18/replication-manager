@@ -49,14 +49,16 @@ one creation (`server/server_child_cluster.go`) and differ in two things:
 ## Creation
 
 Synchronous: `createCluster` (shared with the add route), then the parent's orchestrator,
-orchestrator cluster, image (or `dbImage`), GTID domain (`prov-db-domain` = the parent's
-rendered domain + 1, a setting case added), own `replication-source-name`, the parent's
+orchestrator cluster, image (or `dbImage`), GTID domain (`prov-db-domain` = the CRC32 of the
+new cluster's name, `ReplicationDomainOfName`: the parent's + 1 gave two children of one
+parent the same domain, #2124), own `replication-source-name`, the parent's
 `backup-logical-type`, the parent's `db-servers-credential` and `replication-credential`
 (same name same password, staging doc: provisioned identical, nothing restored), the
 parent as `replication-multisource-head-clusters`, `topology-staging` for a staging cluster;
 `db1..dbN` and one proxy of the parent's type with the parent's proxy credential and login
-user (the rendered ProxySQL declares admin and external, admin only connects locally); DBU
-per node through `ChangePlanUnits` after the servers.
+user (the rendered ProxySQL declares admin and external, admin only connects locally); the DB
+resource sized from the per-node DBU before the servers are provisioned
+(`AlignDBResourceToPlan`, #2132), DBU per node through `ChangePlanUnits` after the servers.
 
 On the parent's image, the child also gets the parent's dump, restore and binlog client paths
 (`backup-mysqldump-path`, `backup-mysqlclient-path`, `backup-mysqlbinlog-path`, cluster
@@ -69,8 +71,9 @@ Background: `WaitOrchestratorNodes` (a new cluster loads its node list on its ow
 provisioning before it failed with "Agent not found"), `Bootstrap` (a regular master-slave
 under the child's own channel name), a master, then the seed: `SeedFromParent` (staging:
 reseed of the master from the parent's backup, the first replica in sync, `RefreshStaging`
-detaches it) or `SeedChildFromParent` (child: the reseed, every replica in sync); a logical
-backup of the new master is started.
+detaches it) or `SeedChildFromParent` (child: the reseed; its replicas catch up through the
+master's binlog); a logical backup of the new master is started. The restore on the master,
+the parent backup freshness, the waits and the refresh: `SEED_FROM_PARENT.md`.
 
 The seed loads the data only (`JobReseedMyLoaderFromParent`: `mysql` and `sys` never loaded,
 no account replayed; mysqldump with restore-user off skips the accounts): the new cluster
@@ -95,7 +98,9 @@ where it stopped. A half-built cluster is kept, never dropped behind the creator
 ## Regtests
 
 `testCreateStaging` and `testCreateChild` (`regtest/test_child_cluster_create.go`) create
-through the real route and check the plan (domain the parent's + 1, channel names), the
+through the real route and check the plan (domain of the child's name, channel names), the
 topology (staging: 1 Master, 1 Slave, 1 StandAlone; child: 1 Master, 1 Slave), the new
 master replicating from the parent's master through the parent's channel name with IO and
 SQL running, the proxy running; the cluster is deleted at the end and the delete timed.
+`testCreateStagingSplitdump` and `testCreateChildSplitdump` do the same from a splitdump parent
+backup (#2124).
