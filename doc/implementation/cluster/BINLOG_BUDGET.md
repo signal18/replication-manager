@@ -24,8 +24,13 @@ it follow the disk, first known wins:
   with its copy and replicas. WARN0264 while at the floor.
 
 Recomputed each time it is applied, so it shrinks as the data grows and comes back after a resize.
-Under the dynamic config the plan owns `max_binlog_total_size` (`prov-db-binlog-total-size-pct`);
-`SetMaxBinlogTotalSize` is skipped as before, and WARN0265 is not raised.
+Under the dynamic config the plan owns `max_binlog_total_size` (`prov-db-binlog-total-size-pct` of
+`prov-db-disk-size`, `binlogTotalSizeTarget`), and repman now sets it live on every MariaDB 11.4+
+server, `force-binlog-purge` on or not: before, it was only written in the rendered config, and a
+running server kept no limit (dev3 2026-10-22: 0 on the primary, 30G on a replica, a 9G plan).
+
+Live check (dev3 2026-10-22, dynamic config off, plan 9G): a rotation set db2 to 4G
+((9G - data) / 2, whole binlogs) and MariaDB purged the three oldest binlogs.
 
 ## Lagging replicas
 - Before 11.4 the purge job stops at the replicas' oldest master binlog (WARN0107): nothing lost.

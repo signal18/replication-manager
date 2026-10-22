@@ -74,3 +74,20 @@ func TestDataDiskFree(t *testing.T) {
 		t.Fatalf("a stale report is used: %d", free)
 	}
 }
+
+// Under the dynamic config max_binlog_total_size is the plan's (prov-db-binlog-total-size-pct of
+// prov-db-disk-size); otherwise the binlog budget (#2142)
+func TestBinlogTotalSizeTarget(t *testing.T) {
+	c, server := newTestRuntimeOnlyClusterServer(t, "binlog-target", "db2", "3306")
+	c.Conf.ForceBinlogPurgeTotalSize = 7
+	c.Configurator.ClusterConfig.ProvDisk = "20"
+	c.Configurator.ClusterConfig.ProvBinlogTotalSizePct = 25
+	c.Conf.ProvDBApplyDynamicConfig = true
+	if got, _ := server.binlogTotalSizeTarget(); got != 5<<30 {
+		t.Fatalf("dynamic: %d, want the plan's 5G", got)
+	}
+	c.Conf.ProvDBApplyDynamicConfig = false
+	if got, _ := server.binlogTotalSizeTarget(); got != 7<<30 {
+		t.Fatalf("not dynamic: %d, want the budget 7G", got)
+	}
+}

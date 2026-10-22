@@ -394,6 +394,15 @@ func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 
 	server.BinaryLogFilePrevious = server.BinaryLogFile
 
+	// under the dynamic config the plan's max_binlog_total_size is set live, force-binlog-purge
+	// or not: it was only written in the rendered config, and a running server kept no limit
+	// (dev3 2026-10-22: 0 on the primary, 30G on a replica, a 9G plan) (#2142)
+	if cluster.Conf.ProvDBApplyDynamicConfig && !cluster.Conf.ForceBinlogPurge && server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") && !server.restoreHoldsBinlogTotalSize.Load() {
+		if err := server.SetMaxBinlogTotalSize(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, err.Error())
+		}
+	}
+
 	if cluster.Conf.ForceBinlogPurge && !server.DBVersion.IsPostgreSQL() {
 		if cluster.IsInFailover() {
 			err = errors.New("Cancel job purge slave binlog during failover")
@@ -421,10 +430,10 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 	}
 
 	sizeLimit, masterJob, replicaJob := server.binlogPurgeJobs(isMaster)
-	// max_binlog_total_size has one owner: the plan under the dynamic config
-	// (prov-db-binlog-total-size-pct), a restore with the binary log on while it runs (#2124);
+	// max_binlog_total_size: the plan's under the dynamic config, else the binlog budget
+	// (binlogTotalSizeTarget); a restore with the binary log on holds it while it runs (#2124);
 	// the replica job runs either way: MariaDB never purges a replica by that size
-	if sizeLimit && !cluster.Conf.ProvDBApplyDynamicConfig && !server.restoreHoldsBinlogTotalSize.Load() {
+	if sizeLimit && !server.restoreHoldsBinlogTotalSize.Load() {
 		err := server.SetMaxBinlogTotalSize()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, err.Error())
@@ -512,8 +521,9 @@ func (server *ServerMonitor) GetTimestampUsingRegex(str string) (int64, error) {
 }
 
 func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
-	// the binlog budget: force-binlog-purge-total-size, else the disk's (srv_binlog_budget.go)
-	totalsize := int(server.BinlogBudget().Bytes)
+	// the plan's under the dynamic config, else the binlog budget (srv_binlog_budget.go)
+	target, _ := server.binlogTotalSizeTarget()
+	totalsize := int(target)
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
 		v, ok := server.Variables.CheckAndGet("MAX_BINLOG_TOTAL_SIZE")
 		if !ok {

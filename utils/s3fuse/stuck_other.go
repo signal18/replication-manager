@@ -10,3 +10,6 @@ import "time"
 
 // AbortStuckMounts: a FUSE connection left stuck by a previous run is aborted through Linux's fusectl
 func AbortStuckMounts(root string, interval time.Duration) ([]string, error) { return nil, nil }
+
+// AbortMount: aborting a FUSE connection goes through Linux's fusectl
+func AbortMount(point string) error { return nil }

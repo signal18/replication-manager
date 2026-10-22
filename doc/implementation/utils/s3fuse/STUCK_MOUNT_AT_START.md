@@ -28,3 +28,12 @@ connections are listed and `abort` is writable). Without that right (a rootless 
 says so in the log and the start goes on (and fails to bind, as before): the abort is then
 needed from the host. Serving the mount from a
 second process of the replication-manager binary would cover every case (follow-up).
+
+## At the stop (#2142)
+The start cannot see every stuck mount: when the stop's unmount is refused (busy), `Unmount` shuts
+the file system down and the lazy unmount takes the mount out of mountinfo, but a thread of ours
+still in the mount waits on its connection forever; the process never ends and keeps its ports
+(dev3 2026-10-22, after a SIGTERM: `fusermount: Device or resource busy`, then the next start
+failed on `:2003 bind: address already in use`, and `AbortStuckMounts` found no FUSE mount).
+`unmountBackupFolder` now aborts our own connection (`s3fuse.AbortMount`, found by the mount
+point in mountinfo, before the lazy unmount) whenever the unmount is refused or times out.

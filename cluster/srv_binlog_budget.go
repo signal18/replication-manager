@@ -78,6 +78,20 @@ func computeBinlogBudget(in binlogBudgetInput) binlogBudget {
 	return b
 }
 
+// binlogTotalSizeTarget is the max_binlog_total_size repman keeps on a MariaDB 11.4+ server: the
+// plan's under the dynamic config (prov-db-binlog-total-size-pct of prov-db-disk-size), set live
+// whether force-binlog-purge is on or not; else the binlog budget.
+func (server *ServerMonitor) binlogTotalSizeTarget() (int64, string) {
+	cluster := server.ClusterGroup
+	if cluster.Conf.ProvDBApplyDynamicConfig {
+		if n, err := strconv.ParseInt(cluster.Configurator.GetConfigMaxBinlogTotalSize(), 10, 64); err == nil && n > 0 {
+			return n, "the plan: prov-db-binlog-total-size-pct of prov-db-disk-size"
+		}
+	}
+	b := server.BinlogBudget()
+	return b.Bytes, b.Source
+}
+
 // SetDataDiskFree records the datadir's free space the jobs script reported.
 func (server *ServerMonitor) SetDataDiskFree(bytes int64, at time.Time) {
 	server.dataDiskFreeBytes.Store(bytes)
@@ -207,17 +221,20 @@ func (server *ServerMonitor) oldestBinlogInBudget(budget int64) string {
 // connected replica; before 11.4 the purge job stops at the replicas' oldest binlog.
 func (cluster *Cluster) checkBinlogBudgetStates() {
 	master := cluster.GetMaster()
-	if master == nil || !cluster.Conf.ForceBinlogPurge || master.IsDown() {
+	dynamic := cluster.Conf.ProvDBApplyDynamicConfig
+	if master == nil || master.IsDown() || (!cluster.Conf.ForceBinlogPurge && !dynamic) {
 		return
 	}
-	b := master.BinlogBudget()
-	if b.AtFloor {
-		cluster.SetState("WARN0264", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0264"], master.URL, humanBytes(b.Bytes), b.Source), ErrFrom: "PURGE", ServerUrl: master.URL})
+	limit, _ := master.binlogTotalSizeTarget()
+	if !dynamic {
+		if b := master.BinlogBudget(); b.AtFloor {
+			cluster.SetState("WARN0264", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0264"], master.URL, humanBytes(b.Bytes), b.Source), ErrFrom: "PURGE", ServerUrl: master.URL})
+		}
 	}
-	if !master.IsMariaDB() || !master.DBVersion.GreaterEqual("11.4") || cluster.Conf.ProvDBApplyDynamicConfig {
+	if !master.IsMariaDB() || !master.DBVersion.GreaterEqual("11.4") {
 		return
 	}
-	kept := master.oldestBinlogInBudget(b.Bytes)
+	kept := master.oldestBinlogInBudget(limit)
 	if kept == "" {
 		return
 	}
@@ -227,7 +244,7 @@ func (cluster *Cluster) checkBinlogBudgetStates() {
 			continue
 		}
 		if reads := sl.SlaveStatus.MasterLogFile.String; binlogOlderThan(reads, kept) {
-			cluster.SetState("WARN0265", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0265"], sl.URL, reads, master.URL, humanBytes(b.Bytes), kept), ErrFrom: "PURGE", ServerUrl: sl.URL})
+			cluster.SetState("WARN0265", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0265"], sl.URL, reads, master.URL, humanBytes(limit), kept), ErrFrom: "PURGE", ServerUrl: sl.URL})
 		}
 	}
 }
