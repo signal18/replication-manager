@@ -600,25 +600,20 @@ func (cluster *Cluster) unmountBackupFolder(m *s3fuse.Mount) {
 	case err := <-done:
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: unmount: %s", err)
-			cluster.abortAndDetachBackupFolder()
+			cluster.detachBackupFolder()
 		}
 	case <-time.After(backupMountStopTimeout):
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: unmount did not end within %s, detached", backupMountStopTimeout)
-		cluster.abortAndDetachBackupFolder()
+		cluster.detachBackupFolder()
 	}
 }
 
-// abortAndDetachBackupFolder: the unmount was refused or did not end. The file system is shut
-// down, so a request still in the mount would never be answered: our connection is aborted first
-// (s3fuse.AbortMount), then the mount detached; without the abort the process could not end and
-// kept its ports at the next start (#2142).
-func (cluster *Cluster) abortAndDetachBackupFolder() {
+// detachBackupFolder: the unmount was refused or did not end. The file system keeps serving
+// (s3fuse.Mount.Unmount), so what is still in the mount gets its answers; the mount is detached
+// (#2142).
+func (cluster *Cluster) detachBackupFolder() {
 	point := cluster.backupMountPoint()
-	if err := s3fuse.AbortMount(point); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: abort of %s: %s", point, err)
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: %s busy at its unmount, its FUSE connection aborted", point)
-	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Backups folder mount: %s busy at its unmount, detached, still served until the process ends", point)
 	lazyUnmount(point)
 }
 

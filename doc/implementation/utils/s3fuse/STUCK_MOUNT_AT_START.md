@@ -35,5 +35,10 @@ the file system down and the lazy unmount takes the mount out of mountinfo, but 
 still in the mount waits on its connection forever; the process never ends and keeps its ports
 (dev3 2026-10-22, after a SIGTERM: `fusermount: Device or resource busy`, then the next start
 failed on `:2003 bind: address already in use`, and `AbortStuckMounts` found no FUSE mount).
-`unmountBackupFolder` now aborts our own connection (`s3fuse.AbortMount`, found by the mount
-point in mountinfo, before the lazy unmount) whenever the unmount is refused or times out.
+First fix, an abort of our own connection through fusectl (`AbortMount`), failed live: the
+stop runs as the repman user (`--user=repman`), it can neither mount fusectl nor write `abort`
+(dev3 2026-10-22: "open /sys/fs/fuse/connections/204/abort: no such file or directory"). Now
+`Mount.Unmount` does not shut the file system down when the unmount is refused: it keeps
+serving, so a request still in the mount, ours included, gets its answer; `unmountBackupFolder`
+detaches the mount (`fusermount -uz`), and the file system ends with the process. A request
+in flight at the very exit can still be left unanswered: narrower, not closed.

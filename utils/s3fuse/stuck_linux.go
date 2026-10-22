@@ -52,31 +52,6 @@ func AbortStuckMounts(root string, interval time.Duration) ([]string, error) {
 	return abortStuck(mounts, interval, readWaiting, abortConnection)
 }
 
-// AbortMount aborts the FUSE connection of our own mount at point: what waits on it fails at once.
-// For a stop whose unmount is refused (busy): Unmount shuts the file system down anyway, and a
-// thread of this process inside the mount would wait forever on it, the process never ending and
-// keeping its ports (dev3 2026-10-22, after a SIGTERM) (#2142). Called before the lazy unmount,
-// which takes the mount out of mountinfo but leaves its connection, out of AbortStuckMounts' sight.
-func AbortMount(point string) error {
-	data, err := os.ReadFile("/proc/self/mountinfo")
-	if err != nil {
-		return err
-	}
-	point = filepath.Clean(point)
-	for _, m := range fuseMountsUnder(string(data), point) {
-		if m.point != point {
-			continue
-		}
-		if entries, err := os.ReadDir(fuseConnections); err == nil && len(entries) == 0 {
-			if err := unix.Mount("fusectl", fuseConnections, "fusectl", 0, ""); err == nil {
-				defer unix.Unmount(fuseConnections, 0)
-			}
-		}
-		return abortConnection(m.conn)
-	}
-	return nil
-}
-
 type fuseMount struct {
 	point string // the mount point
 	conn  string // its connection: the device minor
