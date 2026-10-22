@@ -202,8 +202,9 @@ func (server *ServerMonitor) oldestBinlogInBudget(budget int64) string {
 }
 
 // checkBinlogBudgetStates, every tick on the master with force-binlog-purge: WARN0264 while the
-// budget is at its floor, WARN0265 for each replica reading a binlog the budget does not keep
-// (MariaDB 11.4+ purges it by size whatever the replica; before, the purge job stops at it).
+// budget is at its floor, WARN0265 for each disconnected replica (IO thread not running) whose
+// next binlog the budget does not keep: MariaDB 11.4+ purges by size and holds a binlog only for a
+// connected replica; before 11.4 the purge job stops at the replicas' oldest binlog.
 func (cluster *Cluster) checkBinlogBudgetStates() {
 	master := cluster.GetMaster()
 	if master == nil || !cluster.Conf.ForceBinlogPurge || master.IsDown() {
@@ -221,7 +222,8 @@ func (cluster *Cluster) checkBinlogBudgetStates() {
 		return
 	}
 	for _, sl := range cluster.slaves {
-		if sl == nil || sl.SlaveStatus == nil {
+		// a connected replica is safe: MariaDB never purges a binlog its dump thread reads
+		if sl == nil || sl.SlaveStatus == nil || sl.SlaveStatus.SlaveIORunning.String == "Yes" {
 			continue
 		}
 		if reads := sl.SlaveStatus.MasterLogFile.String; binlogOlderThan(reads, kept) {

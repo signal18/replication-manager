@@ -29,6 +29,8 @@ Under the dynamic config the plan owns `max_binlog_total_size` (`prov-db-binlog-
 
 ## Lagging replicas
 - Before 11.4 the purge job stops at the replicas' oldest master binlog (WARN0107): nothing lost.
-- 11.4+: the server purges by size and only a connected replica holds a binlog. A replica reading
-  a binlog older than the oldest the budget keeps (`oldestBinlogInBudget`: the newest binlogs
-  adding up to the budget) gets WARN0265: space wins, it needs a reseed unless it catches up.
+- 11.4+: the server purges by size; a binlog a connected replica's dump thread reads is never
+  purged, so a connected replica, even lagging, is safe. A disconnected one (IO thread not running)
+  needing a binlog older than the oldest the budget keeps (`oldestBinlogInBudget`: the newest
+  binlogs adding up to the budget) gets WARN0265: space wins, it needs a reseed unless it
+  reconnects first.
