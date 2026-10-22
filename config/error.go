@@ -368,6 +368,7 @@ var ClusterError = map[string]string{
 	"WARN0252":  "Replication of %s: channel(s) %s stopped by the reseed and not running: %s -- the reseed starts them again when the restore succeeds; otherwise start replication or rejoin the server",
 	"WARN0253":  "Registered backup %d of %s failed its %s verification: %s -- not reseeded from nor archived: verify it again, register a fixed file, or unregister it",
 	"WARN0254":  "Restore on %s paused: %s -- a restore with the binary log on keeps one binlog: on each rotation it waits for every replica to apply it with no delay (Seconds_Behind_Master 0), purges the rotated binlog, then goes on (no timer; a stopped or delayed replica does not take part)",
+	"WARN0263":  "Archive %s keeps its snapshots unencrypted on %s: no client encryption-key -- set one to encrypt its next snapshots (those taken stay as they are), or no-encrypt to keep it so",
 	"WARN0262":  "Backups folder mount of %s slow: %d request(s) answered I/O error past their %s deadline, the last %s (the S3 storage too slow or unreachable)",
 	"WARN0255":  "Archive %s read-only for %s: its backup directory is at snapshot %s, not its latest %s (snapback); no backup is written in it nor pushed to the archive until a snapback to its latest snapshot or a release",
 	"WARN0256":  "Snapback of the backup directory of %s to snapshot %s failed: %s",

@@ -476,8 +476,11 @@ func ArchiveModeForPlugin(plugin string) (string, bool) {
 func (a ArchiveConfig) MarshalJSON() ([]byte, error) {
 	settings := make(map[string]interface{}, len(a.Settings))
 	secrets := []string{}
+	m, known := ArchivePlugin(a.Plugin)
 	for k, v := range a.Settings {
-		if _, secret := archiveSecretKeys[k]; secret {
+		// the restic secrets, and every secret a plugin's manifest declares (a PBS token secret,
+		// its client encryption key): never sent, not even encrypted
+		if _, secret := archiveSecretKeys[k]; secret || known && m.HasSecret(k) {
 			secrets = append(secrets, k)
 			continue
 		}
@@ -1162,6 +1165,62 @@ func (conf *Config) typedArchiveValue(st ArchivePluginSetting, v interface{}) (i
 		return conf.EncryptSecretValue(s), nil
 	}
 	return s, nil
+}
+
+// The settings of a plugin whose archives are encrypted client-side (archive-pbs): its key, a
+// secret, and the opt-out; a new archive gets a key from its plugin unless no-encrypt.
+const (
+	ConstArchiveSettingEncryptionKey = "encryption-key"
+	ConstArchiveSettingNoEncrypt     = "no-encrypt"
+)
+
+// UnencryptedArchives lists the archives whose plugin encrypts client-side, with no key and
+// no-encrypt off: their snapshots are written in clear on the archive's storage.
+func (conf *Config) UnencryptedArchives() []ArchiveConfig {
+	archiveMu.Lock()
+	defer archiveMu.Unlock()
+	var out []ArchiveConfig
+	for _, a := range conf.Archives {
+		m, ok := ArchivePlugin(a.Plugin)
+		if !ok || !m.HasSecret(ConstArchiveSettingEncryptionKey) {
+			continue
+		}
+		if key, _ := a.Settings[ConstArchiveSettingEncryptionKey].(string); strings.TrimSpace(key) != "" {
+			continue
+		}
+		if no, _ := strconv.ParseBool(fmt.Sprintf("%v", a.Settings[ConstArchiveSettingNoEncrypt])); no {
+			continue
+		}
+		out = append(out, cloneArchives([]ArchiveConfig{a})[0])
+	}
+	return out
+}
+
+// TakeArchivePluginSecrets stores in a the secrets its plugin created at its probe (a new
+// archive's client encryption key), encrypted as the secrets a user types: only those the
+// plugin's manifest declares as secrets, never over a secret the archive already holds.
+func (conf *Config) TakeArchivePluginSecrets(a *ArchiveConfig, secrets map[string]string) error {
+	if len(secrets) == 0 {
+		return nil
+	}
+	m, ok := ArchivePlugin(a.Plugin)
+	if !ok {
+		return fmt.Errorf("unknown archive plugin %q", a.Plugin)
+	}
+	if a.Settings == nil {
+		a.Settings = map[string]interface{}{}
+	}
+	for name, v := range secrets {
+		st, ok := m.Setting(name)
+		if !ok || st.Type != ConstArchiveSettingTypeSecret {
+			return fmt.Errorf("archive %s: plugin %s returned %s, not one of its secrets", a.Name, a.Plugin, name)
+		}
+		if cur, held := a.Settings[name]; held && fmt.Sprintf("%v", cur) != "" {
+			continue
+		}
+		a.Settings[name] = conf.EncryptSecretValue(v)
+	}
+	return nil
 }
 
 // BuildArchive returns the entry spec gives, checked against its plugin's config, without

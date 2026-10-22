@@ -17,6 +17,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/archiveplugin/wire"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/sirupsen/logrus"
 )
 
@@ -255,10 +256,16 @@ const (
 // wrong password or an unreachable backend is an error: an existing repository is never
 // initialised again.
 func (cluster *Cluster) ProbeArchive(a config.ArchiveConfig) (string, error) {
-	if _, ok := externalArchive(a); ok {
-		return cluster.archivePluginProbe(a)
+	return cluster.probeArchive(&a, false)
+}
+
+// probeArchive opens or creates the archive's repository; a new plugin archive takes in the
+// secrets its plugin created for it (a PBS client encryption key), encrypted.
+func (cluster *Cluster) probeArchive(a *config.ArchiveConfig, isNew bool) (string, error) {
+	if _, ok := externalArchive(*a); ok {
+		return cluster.archivePluginProbe(a, isNew)
 	}
-	view := cluster.Conf.ConfigForArchive(a)
+	view := cluster.Conf.ConfigForArchive(*a)
 	rm, err := cluster.archiveRestic(view)
 	if err != nil {
 		return "", err
@@ -298,7 +305,7 @@ func (cluster *Cluster) PutArchive(spec config.ArchiveSpec, create, upsert bool)
 	if spec.Name != "" && cluster.archiveOp(spec.Name) == ArchiveOpRemoving {
 		return "", "", fmt.Errorf("archive %s is being removed", spec.Name)
 	}
-	a, _, err := cluster.Conf.BuildArchive(spec, create, upsert)
+	a, isNew, err := cluster.Conf.BuildArchive(spec, create, upsert)
 	if err != nil {
 		return "", "", err
 	}
@@ -311,7 +318,7 @@ func (cluster *Cluster) PutArchive(spec config.ArchiveSpec, create, upsert bool)
 	if other, loc := cluster.archiveSharingLocation(a); other != "" {
 		return "", "", fmt.Errorf("archive %s would run the repository of archive %s (%s): choose another location", a.Name, other, loc)
 	}
-	probe, err := cluster.ProbeArchive(a)
+	probe, err := cluster.probeArchive(&a, isNew)
 	if err != nil {
 		return "", "", err
 	}
@@ -325,6 +332,16 @@ func (cluster *Cluster) PutArchive(spec config.ArchiveSpec, create, upsert bool)
 	cluster.Save()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Archive %s (%s) stored, repository %s", a.Name, a.Plugin, probe)
 	return a.Name, probe, nil
+}
+
+// checkArchiveEncryptionStates, every tick, from the config: WARN0263 for each archive whose
+// plugin encrypts client-side kept without a key (an archive added before keys were generated,
+// or whose key was unset), no-encrypt off.
+func (cluster *Cluster) checkArchiveEncryptionStates() {
+	for _, a := range cluster.Conf.UnencryptedArchives() {
+		// keyed by the archive (one state each), the code bare
+		cluster.SetState("WARN0263", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0263"], a.Name, cluster.ArchiveLocation(a)), ErrFrom: "BACKUP", ServerUrl: a.Name})
+	}
 }
 
 // RenameArchive renames an archive; the attached one stays attached under its new name.

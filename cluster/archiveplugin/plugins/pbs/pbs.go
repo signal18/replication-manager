@@ -41,6 +41,7 @@ type archive struct {
 	chunkCache  int
 	noPurge     bool // the token has no Datastore.Prune: purge and forget are the PBS's job
 	noModify    bool // the token has no Datastore.Modify: namespaces are the PBS admin's
+	noEncrypt   bool // a new archive gets no generated key: its snapshots are not encrypted
 	crypt       *pbscommon.CryptConfig
 	http        *http.Client
 }
@@ -75,6 +76,9 @@ func newArchive(st wire.Store) (*archive, error) {
 	}
 	if a.noModify, err = boolSetting(s(setNoModify)); err != nil {
 		return nil, fmt.Errorf("%s: %w", setNoModify, err)
+	}
+	if a.noEncrypt, err = boolSetting(s(setNoEncrypt)); err != nil {
+		return nil, fmt.Errorf("%s: %w", setNoEncrypt, err)
 	}
 	if c := s(setChunkCache); c != "" {
 		n, err := strconv.Atoi(c)

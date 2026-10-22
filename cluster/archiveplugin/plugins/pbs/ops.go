@@ -5,6 +5,8 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -82,6 +84,46 @@ func handle(req wire.Request) (wire.Response, error) {
 // the token and the namespace are right. With create, a missing namespace is created level
 // by level (the datastore itself is the PBS admin's).
 func opProbe(a *archive, req wire.Request) (wire.Response, error) {
+	resp, err := probeNamespace(a, req)
+	if err != nil || !generatesKey(a, req) {
+		return resp, err
+	}
+	// a new archive is encrypted by default: its client key generated here, stored by
+	// replication-manager as the archive's encryption-key secret (no-encrypt: none)
+	key, err := newKeyConfig(time.Now())
+	if err != nil {
+		return resp, err
+	}
+	resp.Secrets = map[string]string{setKey: key}
+	return resp, nil
+}
+
+// generatesKey: the probe of a new archive with no key of its own and no-encrypt off.
+func generatesKey(a *archive, req wire.Request) bool {
+	return req.New && a.crypt == nil && !a.noEncrypt
+}
+
+// newKeyConfig is a new client encryption key as a proxmox-backup-client key file (JSON, no
+// passphrase): proxmox-backup-client reads it, and so does a paper key printed from it.
+func newKeyConfig(now time.Time) (string, error) {
+	raw, err := pbscommon.GenerateEncryptionKey()
+	if err != nil {
+		return "", err
+	}
+	crypt, err := pbscommon.NewCryptConfig(raw)
+	if err != nil {
+		return "", err
+	}
+	ts := now.UTC().Format(time.RFC3339)
+	b, err := json.Marshal(pbscommon.KeyConfig{Created: ts, Modified: ts, Data: base64.StdEncoding.EncodeToString(raw), Fingerprint: crypt.Fingerprint()})
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// probeNamespace opens the archive's namespace, creating it when asked (see opProbe).
+func probeNamespace(a *archive, req wire.Request) (wire.Response, error) {
 	resp := wire.Response{Location: a.location()}
 	_, err := a.snapshots()
 	if err == nil {

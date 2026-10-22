@@ -319,3 +319,67 @@ func TestFolderEntries(t *testing.T) {
 		t.Fatalf("mydumper %+v", got)
 	}
 }
+
+// A new archive is encrypted by default: its generated key is a proxmox-backup-client key file
+// that opens without a passphrase and carries its own fingerprint; an existing archive, one with
+// its own key, or no-encrypt, gets none
+func TestNewArchiveKey(t *testing.T) {
+	key, err := newKeyConfig(time.Unix(1792670000, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kc, err := pbscommon.ParseKeyConfig([]byte(key))
+	if err != nil {
+		t.Fatalf("generated key does not parse: %v", err)
+	}
+	crypt, err := kc.CryptConfig(nil)
+	if err != nil || kc.Fingerprint == "" || kc.Fingerprint != crypt.Fingerprint() {
+		t.Fatalf("key %+v: %v", kc, err)
+	}
+	iv, ct, tag, err := crypt.Seal([]byte("backup"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plain, err := crypt.Open(iv, ct, tag); err != nil || string(plain) != "backup" {
+		t.Fatalf("round trip: %q %v", plain, err)
+	}
+	if other, _ := newKeyConfig(time.Now()); other == key {
+		t.Fatal("two archives got the same key")
+	}
+	cases := []struct {
+		a    *archive
+		req  wire.Request
+		want bool
+	}{
+		{&archive{}, wire.Request{Op: wire.OpProbe, New: true}, true},
+		{&archive{}, wire.Request{Op: wire.OpProbe}, false},
+		{&archive{noEncrypt: true}, wire.Request{Op: wire.OpProbe, New: true}, false},
+		{&archive{crypt: crypt}, wire.Request{Op: wire.OpProbe, New: true}, false},
+	}
+	for i, c := range cases {
+		if got := generatesKey(c.a, c.req); got != c.want {
+			t.Errorf("case %d: generatesKey %v, want %v", i, got, c.want)
+		}
+	}
+}
+
+// The probe of a new archive returns its generated key; the probe of an existing one, or of a
+// new one with no-encrypt, returns none
+func TestProbeNewArchiveReturnsKey(t *testing.T) {
+	_, st := newFake(t, "cl")
+	resp, err := handle(wire.Request{Op: wire.OpProbe, Store: st, Create: true, New: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := resp.Secrets[setKey]
+	if kc, err := pbscommon.ParseKeyConfig([]byte(key)); err != nil || kc.Data == "" {
+		t.Fatalf("new archive key %q: %v", key, err)
+	}
+	if resp, err := handle(wire.Request{Op: wire.OpProbe, Store: st, Create: true}); err != nil || len(resp.Secrets) != 0 {
+		t.Fatalf("an edit's probe returned secrets: %+v %v", resp.Secrets, err)
+	}
+	st.Settings[setNoEncrypt] = "true"
+	if resp, err := handle(wire.Request{Op: wire.OpProbe, Store: st, Create: true, New: true}); err != nil || len(resp.Secrets) != 0 {
+		t.Fatalf("no-encrypt: %+v %v", resp.Secrets, err)
+	}
+}

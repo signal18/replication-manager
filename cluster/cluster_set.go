@@ -61,6 +61,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.checkBackupDiscoveryStates()          // WARN0249 while a registered backup changed, WARN0250 while candidates are dropped (#2073)
 	cluster.checkBackupMountStates()              // CINF0019 while the local backups move into the bucket (gates the backups), WARN0261 while a mount turned on is not mounted (#2091)
 	cluster.checkBinlogCopyStates()               // WARN0257 while the binlog copies of a server wait for a backup, snapshot or failover (#2091)
+	cluster.checkArchiveEncryptionStates()        // WARN0263 an archive encrypted client-side kept without a key (#2091)
 	cluster.checkSnapbackStates()                 // CINF0020 snapback running, WARN0255 a backup directory not at its latest snapshot (backups locked), WARN0256 a snapback failed (#2091)
 	cluster.checkRegisteredVerificationStates()   // WARN0253 while a registered backup's last verification failed (#2108)
 	cluster.saveBackupCatalogue()                 // the global backup catalogue files, written when changed on the active replication-manager (#2091)

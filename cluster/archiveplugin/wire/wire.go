@@ -150,6 +150,9 @@ type Request struct {
 	Op          string `json:"op"`
 	Store       Store  `json:"store"`
 	Create      bool   `json:"create,omitempty"` // probe: create the archive when missing
+	// probe: the archive is being added, the plugin may create its secrets (Response.Secrets);
+	// never on an existing archive, whose snapshots were written without them
+	New bool `json:"new,omitempty"`
 	// push: the folder to archive and the snapshot's tags and host
 	Path string   `json:"path,omitempty"`
 	Tags []string `json:"tags,omitempty"`
@@ -190,6 +193,9 @@ type Response struct {
 	Size        int64      `json:"size,omitempty"`
 	Files       int64      `json:"files,omitempty"`
 	Entries     []Entry    `json:"entries,omitempty"` // contents
+	// probe of a new archive: the secrets the plugin created (by setting name, e.g. a client
+	// encryption key), stored in the archive by replication-manager, encrypted, as the others
+	Secrets map[string]string `json:"secrets,omitempty"`
 }
 
 // ReadRequest reads the request a plugin gets on its stdin and checks its wire version.

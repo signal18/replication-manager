@@ -27,6 +27,7 @@ const (
 	setSecret      = "secret"                  // the API token's secret (secret)
 	setKey         = "encryption-key"          // the client encryption key, its JSON (secret); none: not encrypted
 	setKeyPassword = "encryption-key-password" // the key's passphrase when it has one (secret)
+	setNoEncrypt   = "no-encrypt"              // a new archive gets no generated key: its snapshots are not encrypted
 )
 
 // No sync: copying between PBS datastores is a sync job of the PBS itself.
@@ -49,6 +50,7 @@ func manifests() []wire.Manifest {
 			{Name: setKeyPassword, Type: "secret"},
 			{Name: setNoPurge, Type: "bool"},
 			{Name: setNoModify, Type: "bool"},
+			{Name: setNoEncrypt, Type: "bool"},
 			{Name: setChunkCache, Type: "int", Group: "advanced"},
 		},
 		Capabilities: append([]string(nil), capabilities...),

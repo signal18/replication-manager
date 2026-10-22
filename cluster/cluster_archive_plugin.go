@@ -310,9 +310,12 @@ func lastLines(s string, n int) string {
 }
 
 // archivePluginProbe opens a's archive, or creates it when missing.
-func (cluster *Cluster) archivePluginProbe(a config.ArchiveConfig) (string, error) {
-	resp, err := cluster.runArchivePlugin(a, wire.Request{Op: wire.OpProbe, Create: true})
+func (cluster *Cluster) archivePluginProbe(a *config.ArchiveConfig, isNew bool) (string, error) {
+	resp, err := cluster.runArchivePlugin(*a, wire.Request{Op: wire.OpProbe, Create: true, New: isNew})
 	if err != nil {
+		return "", err
+	}
+	if err := cluster.Conf.TakeArchivePluginSecrets(a, resp.Secrets); err != nil {
 		return "", err
 	}
 	if resp.Created {
