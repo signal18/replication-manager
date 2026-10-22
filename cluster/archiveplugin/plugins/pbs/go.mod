@@ -5,7 +5,7 @@ go 1.25.9
 require (
 	github.com/alphadose/haxmap v1.4.1
 	github.com/dchest/siphash v1.2.3
-	github.com/klauspost/compress v1.18.0
+	github.com/klauspost/compress v1.18.7
 	github.com/signal18/replication-manager v0.0.0-00010101000000-000000000000
 	golang.org/x/crypto v0.55.0
 	golang.org/x/net v0.58.0
