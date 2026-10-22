@@ -73,6 +73,13 @@ func (configurator *Configurator) SetDBReplicationDomainParallelThreads(value st
 	configurator.ClusterConfig.ProvReplicationDomainParallelThreads = valueNum
 }
 
+// SetDBBinlogTotalSizePct keeps a value between 1 and 100, the current one otherwise.
+func (configurator *Configurator) SetDBBinlogTotalSizePct(value string) {
+	if v, err := strconv.Atoi(value); err == nil && v > 0 && v <= 100 {
+		configurator.ClusterConfig.ProvBinlogTotalSizePct = v
+	}
+}
+
 func (configurator *Configurator) SetDBExpireLogDays(value string) {
 	valueNum, err := strconv.Atoi(value)
 	if err != nil {

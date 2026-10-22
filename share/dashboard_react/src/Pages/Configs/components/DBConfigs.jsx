@@ -356,6 +356,32 @@ function DBConfigs({ selectedCluster, user }) {
           />
           <Gauge
             isDisabled={user?.grants['proxy-config-flag'] == false}
+            minValue={1}
+            maxValue={100}
+            value={selectedCluster?.config?.provDbBinlogTotalSizePct}
+            text={'Binlog % of disk'}
+            width={150}
+            height={105}
+            hideMinMax={false}
+            showStep={true}
+            step={1}
+            handleStepChange={(value) => {
+              setConfirmTitle(`Confirm binlog total size change to ${value}% of the disk`)
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(
+                () => () =>
+                  dispatch(
+                    setSetting({
+                      clusterName: selectedCluster?.name,
+                      setting: 'prov-db-binlog-total-size-pct',
+                      value: value
+                    })
+                  )
+              )
+            }}
+          />
+          <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={0}
             maxValue={128}
             value={selectedCluster?.config?.provDbReplicationParallelThreads}

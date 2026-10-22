@@ -1104,6 +1104,19 @@ func SetSemiSyncSlave(db *sqlx.DB, myver *version.Version) (string, error) {
 	return query, err
 }
 
+// SetSemiSyncMasterEnabled switches only the source side of semi-sync on or off, the replica side
+// untouched (a child or staging master is itself a semi-sync replica of its parent). MariaDB and
+// MySQL / Percona before 8.0.26: rpl_semi_sync_master_enabled; MySQL / Percona 8.0.26+ (8.4, 9.x):
+// rpl_semi_sync_source_enabled.
+func SetSemiSyncMasterEnabled(db *sqlx.DB, myver *version.Version, on bool) (string, error) {
+	query := "SET GLOBAL rpl_semi_sync_master_enabled=?"
+	if myver.IsMySQLOrPercona() && myver.GreaterEqual("8.0.26") {
+		query = "SET GLOBAL rpl_semi_sync_source_enabled=?"
+	}
+	_, err := db.Exec(query, on)
+	return query, err
+}
+
 func SetSemiSyncMaster(db *sqlx.DB, myver *version.Version) (string, error) {
 
 	query := "SET GLOBAL rpl-semi-sync-master-enabled=1"
@@ -1349,6 +1362,42 @@ func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
 	query := "SELECT MASTER_GTID_WAIT(?, ?)"
 	_, err := db.Exec(query, gtid, timeout)
 	return query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
+}
+
+// MasterWaitGTIDReached is MasterWaitGTID reading MASTER_GTID_WAIT's result: true once the
+// replica applied gtid, false at the timeout (-1); NULL (the wait aborted) is an error, as
+// MasterPosWaitReached's. MasterWaitGTID ignores it, a timeout looks like a success: kept as is
+// for its callers (WaitSyncToMaster).
+func MasterWaitGTIDReached(db *sqlx.DB, gtid string, timeout int) (bool, string, error) {
+	query := "SELECT MASTER_GTID_WAIT(?, ?)"
+	var res sql.NullInt64
+	err := db.QueryRowx(query, gtid, timeout).Scan(&res)
+	if err == nil && !res.Valid {
+		err = errors.New("MASTER_GTID_WAIT returned NULL: the wait was aborted")
+	}
+	return err == nil && res.Int64 >= 0, query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
+}
+
+// MasterPosWaitReached is MasterPosWait reading MASTER_POS_WAIT / SOURCE_POS_WAIT's result: true
+// once the replica applied up to log:pos, false at the timeout (-1); NULL (replication not
+// running on that channel) is an error. MasterPosWait ignores it: kept as is for its callers.
+func MasterPosWaitReached(db *sqlx.DB, myver *version.Version, log string, pos string, timeout int, channel string) (bool, string, error) {
+	funcname := "MASTER_POS_WAIT"
+	if myver.IsMySQLOrPercona() && myver.GreaterEqual("8.0.26") {
+		funcname = "SOURCE_POS_WAIT"
+	}
+	query := "SELECT " + funcname + "(?, ?, ?)"
+	args := []interface{}{log, pos, timeout}
+	if channel != "" {
+		query = "SELECT " + funcname + "(?, ?, ?, ?)"
+		args = append(args, channel)
+	}
+	var res sql.NullInt64
+	err := db.QueryRowx(query, args...).Scan(&res)
+	if err == nil && !res.Valid {
+		err = errors.New(funcname + " returned NULL: replication not running")
+	}
+	return err == nil && res.Int64 >= 0, query + "(" + log + "-" + pos + "-" + strconv.Itoa(timeout) + ")", err
 }
 
 func MasterPosWait(db *sqlx.DB, myver *version.Version, log string, pos string, timeout int, channel string) (string, error) {

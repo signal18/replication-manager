@@ -2,8 +2,11 @@ package cluster
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/signal18/replication-manager/config"
@@ -144,4 +147,24 @@ func TestReseedStoppedLinksGraceAndConcurrency(t *testing.T) {
 		sv.checkReseedStoppedLinks()
 	}
 	<-done
+}
+
+// A reseed of a server with no replication channel (a standalone, the staging server the refresh
+// reloads) gets 1617 from its STOP / RESET SLAVE: nothing to stop, not logged as a failure.
+func TestNoReplicationChannel(t *testing.T) {
+	no := &mysql.MySQLError{Number: 1617, Message: "There is no master connection 'staging'"}
+	for _, tc := range []struct {
+		err  error
+		want bool
+	}{
+		{no, true},
+		{fmt.Errorf("stop slave: %w", no), true},
+		{&mysql.MySQLError{Number: 1045}, false},
+		{errors.New("invalid connection"), false},
+		{nil, false},
+	} {
+		if got := noReplicationChannel(tc.err); got != tc.want {
+			t.Fatalf("%v: %v, want %v", tc.err, got, tc.want)
+		}
+	}
 }
