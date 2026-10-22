@@ -314,6 +314,8 @@ func (repman *ReplicationManager) runSelfServiceEnabledScript(identity string, s
 		"REPMAN_NEEDED_APU="+f(needApu),
 		"REPMAN_FREE_DBU="+f(pool.FreeDbu),
 		"REPMAN_FREE_APU="+f(pool.FreeApu),
+		"REPMAN_FOR_SALE_DBU="+f(pool.ForSaleDbu),
+		"REPMAN_FOR_SALE_APU="+f(pool.ForSaleApu),
 		"REPMAN_BORROW_DBU="+f(borrowDbu),
 		"REPMAN_BORROW_APU="+f(borrowApu),
 	)
@@ -361,7 +363,8 @@ func (repman *ReplicationManager) selfServiceUnitsNeeded() (dbu, apu float64) {
 }
 
 // selfServicePoolCheck asks the ResourceManager whether the infrastructure's
-// free pool (capacity × quota − Σ plans sold) can hold a new default cluster.
+// free pool (capacity × quota − Σ plans sold, the plans of the clusters for sale
+// excepted) can hold a new default cluster.
 // An unknown pool (no agent capacity observed, no resource-manager-infra-*
 // declared) cannot gate: the creation goes through and the status says so.
 // With cloud18-self-service-clusters-can-borrow, a pool that cannot guarantee the units
@@ -373,13 +376,15 @@ func (repman *ReplicationManager) selfServicePoolCheck() (borrowNote string, err
 		return "", nil
 	}
 	needDbu, needApu := repman.selfServiceUnitsNeeded()
+	// A self-service client takes precedence over a cluster for sale (cloud18-shared):
+	// the plans of the offers do not block the creation (#2144).
 	var short error
-	if needDbu > pool.FreeDbu {
-		short = fmt.Errorf("no free DBU on this infrastructure for a new cluster: %.0f DBU needed (2 × prov-db-dbu), %.1f free of %.1f usable (%.1f already planned)",
-			needDbu, pool.FreeDbu, pool.UsableDbu, pool.PlannedDbu)
-	} else if needApu > pool.FreeApu {
-		short = fmt.Errorf("no free APU on this infrastructure for a new cluster: %.0f APU needed (prov-service-plan-apu), %.1f free of %.1f usable (%.1f already planned)",
-			needApu, pool.FreeApu, pool.UsableApu, pool.PlannedApu)
+	if needDbu > pool.FreeDbu+pool.ForSaleDbu {
+		short = fmt.Errorf("no free DBU on this infrastructure for a new cluster: %.0f DBU needed (2 × prov-db-dbu), %.1f free + %.1f releasable from clusters for sale, of %.1f usable (%.1f already planned)",
+			needDbu, pool.FreeDbu, pool.ForSaleDbu, pool.UsableDbu, pool.PlannedDbu)
+	} else if needApu > pool.FreeApu+pool.ForSaleApu {
+		short = fmt.Errorf("no free APU on this infrastructure for a new cluster: %.0f APU needed (prov-service-plan-apu), %.1f free + %.1f releasable from clusters for sale, of %.1f usable (%.1f already planned)",
+			needApu, pool.FreeApu, pool.ForSaleApu, pool.UsableApu, pool.PlannedApu)
 	}
 	if short == nil {
 		return "", nil

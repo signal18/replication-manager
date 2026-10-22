@@ -7,6 +7,7 @@
 package server
 
 import (
+	"math"
 	"sort"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -72,19 +73,32 @@ func (repman *ReplicationManager) infraCapacityInputs(clusters []*cluster.Cluste
 	return in
 }
 
+// The floor a cluster for sale keeps in the plan pot (units, not ratios): it is
+// provisioned, so it never counts 0. Over-commit is measured on resources, not plans.
+const (
+	forSaleFloorDbuPerNode = 1.0
+	forSaleFloorApu        = 1.0
+)
+
 // InfraUnitPool is the infrastructure's unit pool as the ResourceManager sees it:
 // usable = capacity (binding axis) × quota, planned = Σ of every cluster's plan
 // (the contracts already sold), free = usable − planned. DBU and APU are the
 // SAME metal projected through the two profiles. Known is false when no
 // capacity is observed or declared: the pool cannot gate anything then.
+// ForSale is the part of planned held by clusters for sale (cloud18-shared) that a
+// self-service client may take (#2144): an offer keeps its floor, 1 DBU per database
+// node and 1 APU (its BKU plan stays counted whole by the ledger); only its plan above
+// the floor is released.
 type InfraUnitPool struct {
 	Known      bool    `json:"known"`
 	UsableDbu  float64 `json:"usableDbu"`
 	PlannedDbu float64 `json:"plannedDbu"`
 	FreeDbu    float64 `json:"freeDbu"`
+	ForSaleDbu float64 `json:"forSaleDbu"`
 	UsableApu  float64 `json:"usableApu"`
 	PlannedApu float64 `json:"plannedApu"`
 	FreeApu    float64 `json:"freeApu"`
+	ForSaleApu float64 `json:"forSaleApu"`
 }
 
 func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
@@ -108,8 +122,13 @@ func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
 		if !cl.IsProvision {
 			continue // an unprovisioned cluster reserves nothing on the infrastructure
 		}
-		pool.PlannedDbu += float64(cl.GetPlanDbu())
-		pool.PlannedApu += rm.AppPlanByCluster(cl.Name).Apu
+		dbu, apu := float64(cl.GetPlanDbu()), rm.AppPlanByCluster(cl.Name).Apu
+		pool.PlannedDbu += dbu
+		pool.PlannedApu += apu
+		if cl.Conf.Cloud18Shared {
+			pool.ForSaleDbu += math.Max(0, dbu-forSaleFloorDbuPerNode*float64(len(cl.Servers)))
+			pool.ForSaleApu += math.Max(0, apu-forSaleFloorApu)
+		}
 	}
 	pool.FreeDbu = pool.UsableDbu - pool.PlannedDbu
 	pool.FreeApu = pool.UsableApu - pool.PlannedApu

@@ -164,6 +164,13 @@ borrowing clusters, `CanBorrow` refuses any further loan; the automatic shrink-b
 follow-up (today the dynamic driver only shrinks on under-use). The archive class (BAU) has no capacity source yet, no
 BAU pot. `/api/global/resources` carries `ledger`; the Resource Manager page shows the table and the three unit pots;
 `infraUnitPool` (self-service gate) takes its free DBU/APU from the ledger's plan pot instead of per-unit double counts.
+**A cluster for sale does not block self-service (#2144, Stéphane 2026-10-22: a self-service client is preferred over
+an offer):** an offer is provisioned, so it never counts 0: it keeps a floor of 1 DBU per database node and 1 APU
+(its BKU plan stays counted whole by the ledger), and only its plan above the floor is releasable. `infraUnitPool`
+sums that part apart (`forSaleDbu`/`forSaleApu`), `selfServicePoolCheck` admits the creation against free + releasable.
+This is no over-commit: over-commit is measured on resources (what the services consume, the over-commit pot), never on
+plans; the plan pot only gates what is sold. `freeDbu` stays the ledger's plan pot; the enabled-script gets
+`REPMAN_FOR_SALE_DBU`/`APU`. Seen on BSO: −2.4 DBU free, every cluster but one shared, self-service refused.
 
 **Compute sensor for apps + proxies = the om3 daemon's pg metrics (`cluster_compute_sensor.go`, 2026-09-28,
 Stéphane's go; he noted I should have asked sidecar-vs-orchestrator first):** every 10 ticks the cluster GETs
