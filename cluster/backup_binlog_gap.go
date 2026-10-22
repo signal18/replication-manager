@@ -98,12 +98,18 @@ func (cluster *Cluster) noteBinlogGap(server *ServerMonitor, binlog, reason stri
 	cluster.saveBinlogGapsLocked()
 }
 
-// clearBinlogGap: a backup of the server is in the archive, its binlog chain is whole from it.
-func (cluster *Cluster) clearBinlogGap(serverURL string) {
+// clearBinlogGap: a backup of the server is in the archive, its binlog chain is whole from it,
+// when the backup starts after the last binlog lost (backupBinlog, the binlog of its position,
+// numbered above the gap's end): a gap noted while the backup ran, or ending in the backup's own
+// binlog, stays (#2142). Without a known position the gap stays.
+func (cluster *Cluster) clearBinlogGap(serverURL, backupBinlog string) {
 	cluster.binlogGapMu.Lock()
 	defer cluster.binlogGapMu.Unlock()
 	cluster.loadBinlogGapsLocked()
 	if g := cluster.binlogGaps[serverURL]; g != nil {
+		if !binlogOlderThan(g.To, backupBinlog) {
+			return
+		}
 		delete(cluster.binlogGaps, serverURL)
 		cluster.saveBinlogGapsLocked()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Binlog continuity of %s in the archive whole again from its last backup (binlogs %s to %s lost before it)", serverURL, g.From, g.To)

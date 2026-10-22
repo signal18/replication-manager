@@ -651,13 +651,15 @@ func (server *ServerMonitor) SetInRefreshBinlogMeta(value bool) {
 func (server *ServerMonitor) SetInReseedBackup(value string) {
 	server.reseedMutex.Lock()
 	defer server.reseedMutex.Unlock()
+	previous := server.IsReseeding
 	server.IsReseeding = value
 	// Clear on both arm and release: a stale phase from a prior reseed must
 	// never leak into a newly-armed one, and must not linger once idle.
 	server.reseedPhase.Store("")
-	if value == "" {
-		// released: the next reseed is dispatched again (TrySetInReseedBackup also resets it).
-		// Never on a re-arm of the same task: its backup would be streamed a second time.
+	if value == "" || value != previous {
+		// released, or another task armed: the next one is dispatched (TrySetInReseedBackup also
+		// resets it). Never on a re-arm of the same task: its backup would be streamed twice;
+		// kept on another task, that one would never be streamed (#2142)
 		server.physicalJobDispatched.Store(false)
 	}
 	if value == "" {

@@ -54,6 +54,12 @@ func TestDispatchPhysicalJobOncePerReseed(t *testing.T) {
 	if !server.physicalJobDispatched.Load() {
 		t.Fatal("a re-arm of the dispatched reseed reset its dispatch")
 	}
+	// another task armed over it (a flashback after a dispatched reseed): dispatched again
+	server.SetInReseedBackup("flashbackmariabackup")
+	if server.physicalJobDispatched.Load() {
+		t.Fatal("another task armed kept the previous dispatch: it would never be streamed")
+	}
+	server.physicalJobDispatched.Store(true)
 	server.SetInReseedBackup("")
 	if server.physicalJobDispatched.Load() {
 		t.Fatal("the end of a reseed does not reset its dispatch")

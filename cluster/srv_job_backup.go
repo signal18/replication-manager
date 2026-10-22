@@ -5783,8 +5783,8 @@ func (server *ServerMonitor) backupResticWith(backupMethod backupmgr.BackupMetho
 		if err == nil {
 			server.recordBinlogsInSnapshot(newestBinlog)
 			// a backup in the archive: the binlog chain from it on is whole again
-			if opt.trigger == snapshotTriggerBackup {
-				cluster.clearBinlogGap(server.URL)
+			if opt.trigger == snapshotTriggerBackup && meta != nil {
+				cluster.clearBinlogGap(server.URL, meta.BinLogFileName)
 			}
 		}
 		if pushDone != nil {
@@ -6130,6 +6130,9 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Backup master missing binlog of %s,%s", server.URL, filename)
 					//Set true to skip sending to resting multiple times
 					server.InitiateJobBackupBinlog(filename, true)
+				} else if binlogOlderThan(filename, server.BinaryLogFileOldest) {
+					// no copy and gone from the server: a loss, never a silent skip (#2142)
+					cluster.noteBinlogGap(server, filename, "not copied: purged on the server before its copy")
 				}
 			}
 			keeping[filename] = binlogfilestop
@@ -6163,6 +6166,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 		logicalName := logicalArtifactName(file.Name())
 		_, ok := keeping[logicalName]
 		if strings.HasPrefix(file.Name(), prefix) && !ok {
+			lose := false
 			if in, known := server.binlogCopyInSnapshot(logicalName); archiveOn && !in {
 				if refusal == "" {
 					held = append(held, logicalName)
@@ -6174,7 +6178,7 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 					unknown = append(unknown, logicalName)
 					continue
 				}
-				lost = append(lost, logicalName)
+				lose = true
 			}
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Purging binlog file from backup dir %s", file.Name())
 			path := server.GetMyBackupDirectory() + "/" + file.Name()
@@ -6186,6 +6190,9 @@ func (server *ServerMonitor) JobBackupBinlogPurge(binlogfile string) error {
 			}
 			if removeErr == nil {
 				server.BinaryLogMetaToRemove = append(server.BinaryLogMetaToRemove, logicalName)
+				if lose {
+					lost = append(lost, logicalName) // a copy still on disk is no loss (#2142)
+				}
 			}
 		}
 	}

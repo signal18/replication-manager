@@ -36,6 +36,12 @@ func AbortStuckMounts(root string, interval time.Duration) ([]string, error) {
 	if len(mounts) == 0 {
 		return nil, nil
 	}
+	// another live replication-manager may be serving them (a second start by mistake, a
+	// restart overlapping): never abort a live server's busy mount (#2142); a dead one's main
+	// thread reads as a zombie and does not count
+	if pid := otherLiveProcess("replication-man", os.Getpid()); pid != 0 {
+		return nil, fmt.Errorf("another replication-manager runs (pid %d): the FUSE mounts under %s are left as they are", pid, root)
+	}
 	// a container shows /sys read-only without fusectl: mounted in our own mount namespace for
 	// the check (CAP_SYS_ADMIN, which the FUSE mount needs anyway), then unmounted
 	if entries, err := os.ReadDir(fuseConnections); err == nil && len(entries) == 0 {
@@ -97,10 +103,17 @@ func unescapeMountinfo(s string) string {
 // abortStuck aborts and detaches the mounts whose connection kept requests waiting at both reads.
 func abortStuck(mounts []fuseMount, interval time.Duration, waiting func(conn string) (int, error), abort func(conn string) error) ([]string, error) {
 	first := map[string]int{}
+	var readErr error
 	for _, m := range mounts {
 		if n, err := waiting(m.conn); err == nil {
 			first[m.conn] = n
+		} else {
+			readErr = err
 		}
+	}
+	if len(first) == 0 && readErr != nil {
+		// nothing read: a stuck mount would go unnoticed, said so (#2142)
+		return nil, fmt.Errorf("FUSE mounts under the working directory not checked: %s unreadable (root, or CAP_SYS_ADMIN to mount fusectl): %s", fuseConnections, readErr)
 	}
 	stuck := false
 	for _, n := range first {
@@ -130,6 +143,43 @@ func abortStuck(mounts []fuseMount, interval time.Duration, waiting func(conn st
 		return aborted, fmt.Errorf("a FUSE mount left stuck by a previous run could not be aborted (write access to %s needed): %s", fuseConnections, strings.Join(errs, "; "))
 	}
 	return aborted, nil
+}
+
+// otherLiveProcess is the pid of a live process (not a zombie) of that command name other than
+// self, 0 when none: /proc/<pid>/stat, whose command name the kernel cuts to 15 characters.
+func otherLiveProcess(comm string, self int) int {
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return 0
+	}
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil || pid == self {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join("/proc", e.Name(), "stat"))
+		if err != nil {
+			continue
+		}
+		if name, state, ok := statCommState(string(b)); ok && name == comm && state != "Z" && state != "X" {
+			return pid
+		}
+	}
+	return 0
+}
+
+// statCommState reads the command name and the state of a /proc/<pid>/stat line: "pid (comm) S ...",
+// comm may hold spaces and parentheses, so it ends at the last ')'.
+func statCommState(stat string) (comm, state string, ok bool) {
+	lp, rp := strings.IndexByte(stat, '('), strings.LastIndexByte(stat, ')')
+	if lp < 0 || rp < lp {
+		return "", "", false
+	}
+	rest := strings.Fields(stat[rp+1:])
+	if len(rest) == 0 {
+		return "", "", false
+	}
+	return stat[lp+1 : rp], rest[0], true
 }
 
 func readWaiting(conn string) (int, error) {
