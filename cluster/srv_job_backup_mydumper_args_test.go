@@ -111,3 +111,29 @@ func TestMydumperTrxTablesArgsConfiguredOption(t *testing.T) {
 		}
 	}
 }
+
+// trx-tables values as mydumper reads them (atoi), each run against MariaDB on mydumper 0.20.1-1,
+// 0.20.1-2, 0.21.1, 0.21.3, 1.0.1, 1.0.3, 1.0.5 and 1.0.11 (the signed ones on 0.20.1-1 and 1.0.11):
+// refused for the bare flag and a non-zero atoi(), the backup runs for any other value, words included.
+func TestMydumperTrxTablesOn(t *testing.T) {
+	on := []string{"--trx-tables", "--trx-tables=1", "--trx-tables=2", "--trx-tables=01", "--trx-tables=1x", "--trx-tables=-1", "--trx-tables=+1"}
+	off := []string{"--trx-tables=0", "--trx-tables=", "--trx-tables=false", "--trx-tables=FALSE", "--trx-tables=no", "--trx-tables=off", "--trx-tables=true", "--trx-tables=TRUE", "--trx-tables=+0", "--trx-tables=+-1", "--no-trx-tables"}
+	for _, opt := range on {
+		if !mydumperTrxTablesOn(opt) {
+			t.Errorf("%s: off, mydumper turns trx-tables on", opt)
+		}
+		args := append(slices.Clone(mydumperDefaultArgs), opt)
+		if _, _, warning := mydumperTrxTablesArgs(args, mydumperVersion("1.0.11"), true); !strings.Contains(warning, "the backup will fail") {
+			t.Errorf("%s on MariaDB: no warning, the backup is refused", opt)
+		}
+	}
+	for _, opt := range off {
+		if mydumperTrxTablesOn(opt) {
+			t.Errorf("%s: on, mydumper turns trx-tables off", opt)
+		}
+		args := append(slices.Clone(mydumperDefaultArgs), opt)
+		if _, _, warning := mydumperTrxTablesArgs(args, mydumperVersion("1.0.11"), true); warning != "" {
+			t.Errorf("%s on MariaDB: warning %q, the backup runs", opt, warning)
+		}
+	}
+}

@@ -24,6 +24,18 @@ MariaDB are dumped only with --trx-tables=0)
 Before, the deprecated flags were replaced with `--trx-tables` on every engine, without a log line
 (#1351).
 
+The warning reads a configured value the way mydumper does (`mydumperTrxTablesOn`): mydumper sets
+`trx_tables=atoi(value)`, or 1 without a value (src/mydumper/mydumper_arguments.c, 0.20.1-1 and
+1.0.11-1). So trx-tables mode is on for `--trx-tables` alone or a value whose `atoi` is not 0, and
+off for any other value, words included:
+
+| `--trx-tables…` | MariaDB backup, mydumper 0.20.1-1, 0.20.1-2, 0.21.1, 0.21.3, 1.0.1, 1.0.3, 1.0.5, 1.0.11 |
+|---|---|
+| (no value), `=1`, `=2`, `=01`, `=1x`, `=-1`, `=+1` | refused (exit 133 on 0.20.1, exit 1 after) |
+| `=0`, `=`, `=false`, `=FALSE`, `=no`, `=off`, `=true`, `=TRUE`, `=+0`, `=+-1` | runs |
+
+(`=+1`, `=+0`, `=+-1` run on 0.20.1-1 and 1.0.11 only.)
+
 ## Why
 
 ### mydumper
@@ -73,6 +85,15 @@ requested through the API (`backup-logical-type` mydumper):
 
 ## Not covered
 
+- MySQL / Percona with mydumper 0.18.1 to 0.19.x: repman added `--trx-tables` there before; it now
+  adds nothing, and the default of those versions is trx-tables off. mydumper then looks for the
+  non-transactional tables and dumps them before it releases the global lock (its `--no-trx-tables`
+  help), so the lock can be held a little longer than before. MySQL 8.0 / 8.4 have none in the dump;
+  the lock time was not measured.
+- `--sync-thread-lock-mode=NO_LOCK` or `SAFE_NO_LOCK` configured: mydumper then forces trx-tables
+  on whatever the trx-tables option (src/mydumper/mydumper_start_dump.c, 0.20.1-1 and 1.0.11-1), so
+  a MariaDB backup is refused despite `--trx-tables=0`. Not run; the default `AUTO` is not affected
+  (the backups above ran with it).
 - MySQL / Percona before 8.0 (MyISAM system tables): not given `--trx-tables=0`.
 - A MySQL / Percona 8.0+ server with a non-transactional table of its own: mydumper refuses it in
   trx-tables mode (its default since 0.20.1); its error is in the backup log.

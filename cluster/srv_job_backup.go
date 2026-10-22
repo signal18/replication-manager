@@ -4811,6 +4811,13 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	return err
 }
 
+// mydumper versions: trx-tables mode refuses a non-transactional table since
+// mydumperTrxTablesRefusal, --no-trx-tables exists since mydumperNoTrxTablesOption.
+const (
+	mydumperTrxTablesRefusal  = "0.20.1"
+	mydumperNoTrxTablesOption = "0.21.1"
+)
+
 // mydumperTrxTablesArgs adapts the backup-mydumper-options of a mydumper >= 0.18.1 backup and
 // returns what it changed, for the log, and a warning when a configured option makes the backup
 // fail.
@@ -4841,13 +4848,32 @@ func mydumperTrxTablesArgs(args []string, dumper *version.Version, mariadb bool)
 	switch {
 	case trxOption == "" && mariadb:
 		updatedArgs = append(updatedArgs, "--trx-tables=0")
-		changes = append(changes, "--trx-tables=0 added (since mydumper 0.20.1, the Aria system tables of MariaDB are dumped only with --trx-tables=0)")
-	case trxOption == "--no-trx-tables" && !dumper.GreaterEqual("0.21.1"):
-		warning = "backup-mydumper-options sets --no-trx-tables, an option mydumper knows only since 0.21.1: the backup will fail; use --trx-tables=0"
-	case mariadb && dumper.GreaterEqual("0.20.1") && trxOption != "" && trxOption != "--no-trx-tables" && trxOption != "--trx-tables=0":
-		warning = "backup-mydumper-options sets " + trxOption + ": since mydumper 0.20.1 the Aria system tables of MariaDB are refused in trx-tables mode, the backup will fail; remove it or use --trx-tables=0"
+		changes = append(changes, "--trx-tables=0 added (since mydumper "+mydumperTrxTablesRefusal+", the Aria system tables of MariaDB are dumped only with --trx-tables=0)")
+	case trxOption == "--no-trx-tables" && !dumper.GreaterEqual(mydumperNoTrxTablesOption):
+		warning = "backup-mydumper-options sets --no-trx-tables, an option mydumper knows only since " + mydumperNoTrxTablesOption + ": the backup will fail; use --trx-tables=0"
+	case mariadb && dumper.GreaterEqual(mydumperTrxTablesRefusal) && mydumperTrxTablesOn(trxOption):
+		warning = "backup-mydumper-options sets " + trxOption + ": since mydumper " + mydumperTrxTablesRefusal + " the Aria system tables of MariaDB are refused in trx-tables mode, the backup will fail; remove it or use --trx-tables=0"
 	}
 	return updatedArgs, changes, warning
+}
+
+// mydumperTrxTablesOn reports whether a trx-tables option turns trx-tables mode on, read as mydumper
+// reads it (mydumper_arguments.c: trx_tables=atoi(value), 1 without a value): --trx-tables alone, or
+// a value whose atoi() is not 0, one optional sign then digits (1, 2, 01, 1x, -1). Any other value
+// is 0, words included: =false, =no, =off, =true and = turn it off.
+func mydumperTrxTablesOn(option string) bool {
+	if option == "--trx-tables" {
+		return true
+	}
+	value, ok := strings.CutPrefix(option, "--trx-tables=")
+	if !ok {
+		return false
+	}
+	if strings.HasPrefix(value, "-") || strings.HasPrefix(value, "+") {
+		value = value[1:]
+	}
+	digits := len(value) - len(strings.TrimLeft(value, "0123456789"))
+	return strings.Trim(value[:digits], "0") != ""
 }
 
 func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
