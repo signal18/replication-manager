@@ -14,6 +14,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -464,7 +465,8 @@ func TestKeepRemovalFailedRemovalIsNoLoss(t *testing.T) {
 func TestBinlogSnapshotRefusalDiskFirst(t *testing.T) {
 	c, server, _ := newReviewTestMaster(t, "binlog-diskfirst")
 	c.DiskStatManager = misc.NewDiskStatManager()
-	c.Conf.BackupDiskTresholdWarn = 1 // any real disk is over 1 %
+	registerDiskStat(c, server.GetMyBackupDirectory(), 100, 90) // 90 % used
+	c.Conf.BackupDiskTresholdWarn = 80
 	server.binlogCopies.mu.Lock()
 	server.binlogCopies.snapshotting = true
 	server.binlogCopies.mu.Unlock()
@@ -480,6 +482,7 @@ func TestBinlogSnapshotRefusalDiskFirst(t *testing.T) {
 // #2142 (3): a binlog of the keep window with no copy, gone from the server, is a recorded loss
 func TestCatchUpRecordsPurgedBinlog(t *testing.T) {
 	c, server, dir := newReviewTestMaster(t, "binlog-catchup")
+	server.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap() // the server lists 000011 on, not 000010
 	os.Remove(filepath.Join(dir, "binlog.000010"))
 	server.BinaryLogFileOldest = "binlog.000011"
 	server.recordBinlogsInSnapshot("binlog.000009")
