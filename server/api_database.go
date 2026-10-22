@@ -4991,6 +4991,9 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 		CpuMaxCores  float64   `json:"cpuMaxCores"`
 		IoMaxIops    float64   `json:"ioMaxIops"`
 		DiskMaxBytes int64     `json:"diskMaxBytes"`
+		// the datadir file system's free space, what the binlog budget splits (#2142); absent
+		// from an older jobs script
+		DiskFreeBytes *int64 `json:"diskFreeBytes,omitempty"`
 		// Internal network (cluster_net.go): cumulative octets of the database's own
 		// interfaces, optional -- an older dbjobs_new.sh omits them.
 		NetRxBytes *uint64 `json:"netRxBytes,omitempty"`
@@ -5013,6 +5016,9 @@ func (repman *ReplicationManager) handlerMuxServerDBUConsumed(w http.ResponseWri
 	// The handler stays dumb: forward the raw maxima; the cluster's ResourceManager
 	// owns the ratios, converts, and stores (survives reload). Returns the reading
 	// for the debug log below.
+	if req.DiskFreeBytes != nil && *req.DiskFreeBytes > 0 {
+		node.SetDataDiskFree(*req.DiskFreeBytes, req.WindowEnd)
+	}
 	reading := node.IngestDBUMaxes(req.WindowStart, req.WindowEnd, req.MemMaxBytes, req.CpuMaxCores, req.IoMaxIops, req.DiskMaxBytes)
 
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,

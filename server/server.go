@@ -788,7 +788,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.BoolVar(&conf.ForceBinlogPurge, "force-binlog-purge", false, "Automatically force binlog purge")
 		flags.BoolVar(&conf.ForceBinlogPurgeReplicas, "force-binlog-purge-replicas", false, "Automatically force binlog purge replicas based on oldest master binlog when master purged")
 		flags.BoolVar(&conf.ForceBinlogPurgeOnRestore, "force-binlog-purge-on-restore", false, "Automatically force binlog purge on restore")
-		flags.IntVar(&conf.ForceBinlogPurgeTotalSize, "force-binlog-purge-total-size", 30, "Automatically force binlog purge more than total size")
+		flags.IntVar(&conf.ForceBinlogPurgeTotalSize, "force-binlog-purge-total-size", 0, "With force-binlog-purge, the binlog budget in GB: the primary's binlogs beyond it are purged (max_binlog_total_size on MariaDB 11.4+); 0 follows the disk: (plan disk - data) / 2 on a provisioned cluster, the binlogs plus half the free space of the measured data disk, else 30; never below two binlog files")
 		flags.IntVar(&conf.ForceBinlogPurgeMinReplica, "force-binlog-purge-min-replica", 1, "Minimum of replica(s) needed for purging binary log")
 		flags.BoolVar(&conf.ForceDiskRelayLogSizeLimit, "force-disk-relaylog-size-limit", false, "Automatically limit the size of relay log on disk ")
 		flags.Uint64Var(&conf.ForceDiskRelayLogSizeLimitSize, "force-disk-relaylog-size-limit-size", 1000000000, "Automatically limit the size of relay log on disk to 1G")

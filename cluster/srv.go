@@ -320,6 +320,8 @@ type ServerMonitor struct {
 	reseedLinks                 reseedStoppedLinks                 // the channels a reseed stopped and has not started again, WARN0252 while one does not run
 	logicalRestoreGate          atomic.Pointer[logicalRestoreGate] // the pause of a restore writing to the binlog, WARN0254 while paused (#2124)
 	logicalRestoreGatePurging   atomic.Bool                        // a binlog rotation of that restore is being handled
+	dataDiskFreeBytes           atomic.Int64                       // the datadir file system's free space, as the jobs script last reported it (#2142)
+	dataDiskFreeAt              atomic.Int64                       // unix seconds of that report
 	restoreHoldsBinlogTotalSize atomic.Bool                        // a restore with the binary log on holds max_binlog_total_size at 2G on this server (#2124)
 	// Lock ordering (to prevent deadlocks):
 	// 1. Cluster.stateMutex (highest)

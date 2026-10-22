@@ -277,7 +277,7 @@ replication-credential = "root:mariadb"
 # force-binlog-purge-min-replica = 1
 # force-binlog-purge-on-restore = true
 # force-binlog-purge-replicas = true
-# force-binlog-purge-total-size = 30
+# force-binlog-purge-total-size = 0   # 0: the binlog budget follows the disk
 
 #############
 ## SCRIPTS ##

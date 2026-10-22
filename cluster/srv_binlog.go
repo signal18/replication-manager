@@ -513,7 +513,8 @@ func (server *ServerMonitor) GetTimestampUsingRegex(str string) (int64, error) {
 
 func (server *ServerMonitor) SetMaxBinlogTotalSize() error {
 	cluster := server.ClusterGroup
-	totalsize := cluster.Conf.ForceBinlogPurgeTotalSize * 1024 * 1024 * 1024
+	// the binlog budget: force-binlog-purge-total-size, else the disk's (srv_binlog_budget.go)
+	totalsize := int(server.BinlogBudget().Bytes)
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("11.4") { //Only MariaDB v.11.4 and up
 		v, ok := server.Variables.CheckAndGet("MAX_BINLOG_TOTAL_SIZE")
 		if !ok {
@@ -605,10 +606,10 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	}
 
 	/**
-	* This will run when force purge binlog total size is set (default 30)
+	* The binlogs beyond the binlog budget (force-binlog-purge-total-size, else the disk's) are purged
 	 **/
-	if cluster.Conf.ForceBinlogPurgeTotalSize > 0 {
-		var totalSize, maxSize uint = 0, uint(cluster.Conf.ForceBinlogPurgeTotalSize) * (1024 * 1024 * 1024)
+	if budget := server.BinlogBudget(); budget.Bytes > 0 {
+		var totalSize, maxSize uint = 0, uint(budget.Bytes)
 		var until = ""
 
 		// DESC for setting the boundary
