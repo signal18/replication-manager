@@ -69,6 +69,7 @@ func (cluster *Cluster) ForgetInstance(server *ServerMonitor) {
 	server.FailCount = 0
 	server.reseedMutex.Lock()
 	server.IsReseeding = ""
+	server.physicalJobDispatched.Store(false)
 	server.reseedMutex.Unlock()
 	server.reseedFromRejoin.Store(false)
 	server.PendingCgroupShrink = false

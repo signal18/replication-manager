@@ -62,7 +62,11 @@ on the master and its replicas (`holdBinlogTotalSizeForRestore`), replicas with
 MariaDB never purges it). At the end the plan's value comes back under the dynamic config,
 the value found otherwise; the servers are read again by URL (a reload rebuilds the
 `ServerMonitor`). `ForcePurgeBinlogs` leaves it alone meanwhile
-(`restoreHoldsBinlogTotalSize`). Before 11.4 there is no such variable: the gate purges.
+(`restoreHoldsBinlogTotalSize`), and under the dynamic config (the plan owns it). Merged with
+#2091: only the size is left alone, the replica purge job still runs (`binlogPurgeJobs`,
+`force-binlog-purge-replicas`), MariaDB never purging a replica by size. On 11.4+ a master is
+never purged by the job: under the dynamic config it is purged by the size the plan wrote only.
+Before 11.4 there is no such variable: the gate purges.
 
 **The gate.** `CheckBinaryLogs` calls `pauseLogicalRestoreOnBinlogRotation` on each rotation of
 the master's binlog: the stream stops between two statements (`waitLogicalRestoreGate`, the

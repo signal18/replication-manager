@@ -49,6 +49,11 @@ func TestDispatchPhysicalJobOncePerReseed(t *testing.T) {
 	if !server.HasReseedingState(task) {
 		t.Fatal("a second dispatch of the same reseed ran it again")
 	}
+	// a re-arm of the same task keeps it dispatched: its backup is never streamed twice
+	server.SetInReseedBackup(task)
+	if !server.physicalJobDispatched.Load() {
+		t.Fatal("a re-arm of the dispatched reseed reset its dispatch")
+	}
 	server.SetInReseedBackup("")
 	if server.physicalJobDispatched.Load() {
 		t.Fatal("the end of a reseed does not reset its dispatch")
