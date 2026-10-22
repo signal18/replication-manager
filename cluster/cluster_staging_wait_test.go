@@ -19,7 +19,7 @@ import (
 
 // The staging seed waits for the replica it detaches to reach its master's position read once
 // (WaitSyncToTarget), with no timer, its catching up the creation's step, and stops only on a
-// broken replication; a replica rebuilt by a reload is read again by URL. Slave is not enough:
+// broken replication. Slave is not enough:
 // db3.belair-staging-test, Slave at 2 s, was detached 660 MB short of its master's position.
 func TestWaitStagingReplicaInSync(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
@@ -66,33 +66,22 @@ func TestWaitStagingReplicaInSync(t *testing.T) {
 	}
 
 	// Slave, short of the position: MASTER_GTID_WAIT times out (-1), the step says catching up;
-	// then the replica rebuilt by a reload reaches it and the wait ends
+	// the next turn reaches it and the wait ends. Run in this goroutine: the cluster's server
+	// list is not swapped under the wait (a reload's rebuild is read by URL, GetServerFromURL)
 	c.SetStagingCreation(StagingCreation{Kind: "Staging", Parent: "prod", Step: "seed from prod"})
 	replica.State = stateSlave
 	replica.SlaveStatus = &dbhelper.SlaveStatus{SecondsBehindMaster: sql.NullInt64{Int64: 40, Valid: true}}
 	gtidBinlogPos()
 	gtidWait(mock, -1)
-	done := make(chan error, 1)
-	go func() { done <- c.waitStagingReplicaInSync(replica.URL) }()
-	deadline := time.Now().Add(5 * time.Second)
-	for !strings.Contains(c.GetStagingCreation().Step, "catching up") {
-		if time.Now().After(deadline) {
-			t.Fatalf("step %q", c.GetStagingCreation().Step)
-		}
-		time.Sleep(50 * time.Millisecond)
+	gtidWait(mock, 0)
+	if err := c.waitStagingReplicaInSync(replica.URL); err != nil {
+		t.Fatalf("caught up: %s", err)
 	}
-	rebuilt, rebuiltMock := newReplica()
-	rebuilt.SlaveStatus = &dbhelper.SlaveStatus{SecondsBehindMaster: sql.NullInt64{Int64: 40, Valid: true}}
-	rebuilt.State = stateSlave
-	gtidWait(rebuiltMock, 0)
-	c.Servers = []*ServerMonitor{master, rebuilt}
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("caught up: %s", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("the wait did not end once the replica reached its master's position")
+	if step := c.GetStagingCreation().Step; !strings.Contains(step, "catching up") {
+		t.Fatalf("step %q, want the replica catching up", step)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("waits: %s", err)
 	}
 }
 

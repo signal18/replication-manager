@@ -94,32 +94,67 @@ func gateReplica(c *Cluster, name, applying string, delay int64, running string,
 		SlaveSQLRunning:     sql.NullString{String: running, Valid: true},
 		SQLDelay:            sql.NullInt64{Int64: sqlDelay, Valid: true},
 	}
-	return &ServerMonitor{Host: name, Port: "3306", URL: name + ":3306", ClusterGroup: c, State: stateSlave,
+	// Name set as the monitoring does: empty, hosts-delayed "" would list it as delayed
+	return &ServerMonitor{Host: name, Port: "3306", URL: name + ":3306", Name: name, ClusterGroup: c, State: stateSlave,
 		SlaveStatus: &ss, Replications: []dbhelper.SlaveStatus{ss}}
 }
 
-// On a rotation of the master's binlog the restore pauses and resumes only once every replica
-// taking part applied it (its SQL thread on the current binlog) and has no delay. A stopped replica
-// or one with MASTER_DELAY never holds it. On MariaDB 11.4+ the binlogs are held at 2G for the
-// restore and MariaDB purges them: the gate purges nothing; before 11.4 it purges the rotated ones.
-func testLogicalRestoreGateWaitsReplicas(t *testing.T, v *version.Version, held bool) {
-	master, mock := newMyLoaderPositionServer(t, v, true)
+// A replica holds the gate until it applied the rotated binlog (its SQL thread on the current
+// binlog) and has no delay. A stopped replica or one with MASTER_DELAY never holds it.
+func TestLogicalRestoreGateHolder(t *testing.T) {
+	master, _ := newMyLoaderPositionServer(t, &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}, true)
 	c := master.ClusterGroup
-	master.BinaryLogFile = "binlog.000002"
-	master.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap()
-	master.BinaryLogFiles.Set("binlog.000001", &dbhelper.BinaryLogMetadata{Filename: "binlog.000001"})
-	master.BinaryLogFiles.Set("binlog.000002", &dbhelper.BinaryLogMetadata{Filename: "binlog.000002"})
 	upToDate := gateReplica(c, "db2", "binlog.000002", 0, "Yes", 0)
 	applying := gateReplica(c, "db3", "binlog.000001", 40, "Yes", 0)
 	stopped := gateReplica(c, "db4", "binlog.000001", 0, "No", 0)
 	delayed := gateReplica(c, "db5", "binlog.000001", 3600, "Yes", 3600)
 	c.slaves = serverList{upToDate, applying, stopped, delayed}
-	c.Servers = []*ServerMonitor{master, upToDate, applying, stopped, delayed}
-
-	mock.MatchExpectationsInOrder(false)
-	if held {
-		mock.ExpectExec("SET GLOBAL max_binlog_total_size").WithArgs(2147483648).WillReturnResult(sqlmock.NewResult(0, 0))
+	if got := master.logicalRestoreGateHolder("binlog.000002"); got != "waiting for replica db3:3306 to apply it (applying binlog.000001)" {
+		t.Fatalf("applying: %q", got)
 	}
+	applying.SlaveStatus.RelayMasterLogFile.String = "binlog.000002"
+	if got := master.logicalRestoreGateHolder("binlog.000002"); got != "waiting for replica db3:3306 to have no delay (Seconds_Behind_Master 40)" {
+		t.Fatalf("delay: %q", got)
+	}
+	applying.SlaveStatus.SecondsBehindMaster.Int64 = 0
+	if got := master.logicalRestoreGateHolder("binlog.000002"); got != "" {
+		t.Fatalf("db4 stopped and db5 delayed do not take part: %q", got)
+	}
+}
+
+// On a rotation of the master's binlog the restore pauses while a replica holds it, and resumes
+// once every replica taking part applied it. On MariaDB 11.4+ the binlogs are held at 2G for the
+// restore and MariaDB purges them: the gate purges nothing; before 11.4 it purges the rotated
+// ones. The replicas' status is set before the rotation: the gate's loop reads it, the test does
+// not write it under the loop.
+func testLogicalRestoreGateWaitsReplicas(t *testing.T, v *version.Version, held bool) {
+	setup := func(applyingFile string) (*ServerMonitor, sqlmock.Sqlmock) {
+		master, mock := newMyLoaderPositionServer(t, v, true)
+		c := master.ClusterGroup
+		master.BinaryLogFile = "binlog.000002"
+		master.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap()
+		master.BinaryLogFiles.Set("binlog.000001", &dbhelper.BinaryLogMetadata{Filename: "binlog.000001"})
+		master.BinaryLogFiles.Set("binlog.000002", &dbhelper.BinaryLogMetadata{Filename: "binlog.000002"})
+		upToDate := gateReplica(c, "db2", "binlog.000002", 0, "Yes", 0)
+		applying := gateReplica(c, "db3", applyingFile, 0, "Yes", 0)
+		stopped := gateReplica(c, "db4", "binlog.000001", 0, "No", 0)
+		c.slaves = serverList{upToDate, applying, stopped}
+		c.Servers = []*ServerMonitor{master, upToDate, applying, stopped}
+		mock.MatchExpectationsInOrder(false)
+		if held {
+			mock.ExpectExec("SET GLOBAL max_binlog_total_size").WithArgs(2147483648).WillReturnResult(sqlmock.NewResult(0, 0))
+		}
+		return master, mock
+	}
+	putBack := func(mock sqlmock.Sqlmock) {
+		if held {
+			// the end puts back the value found (0, no limit: the dynamic config is off)
+			mock.ExpectExec("SET GLOBAL max_binlog_total_size").WithArgs(0).WillReturnResult(sqlmock.NewResult(0, 0))
+		}
+	}
+
+	// db3 still applies the rotated binlog: paused, naming it, until the restore ends
+	master, mock := setup("binlog.000001")
 	stop := master.startLogicalRestoreGate(context.Background())
 	g := master.logicalRestoreGate.Load()
 	if g == nil {
@@ -128,49 +163,59 @@ func testLogicalRestoreGateWaitsReplicas(t *testing.T, v *version.Version, held 
 	if master.restoreHoldsBinlogTotalSize.Load() != held {
 		t.Fatalf("binlogs held at 2G: %v, want %v", master.restoreHoldsBinlogTotalSize.Load(), held)
 	}
-	if !held {
-		mock.ExpectQuery("SHOW BINARY LOGS").WillReturnRows(sqlmock.NewRows([]string{"Log_name", "File_size"}).
-			AddRow("binlog.000001", 100).AddRow("binlog.000002", 100))
-		mock.ExpectExec("PURGE BINARY LOGS TO").WithArgs("binlog.000002").WillReturnResult(sqlmock.NewResult(0, 0))
-	}
-
 	master.pauseLogicalRestoreOnBinlogRotation()
-	waitReason := func(want string) {
-		t.Helper()
-		deadline := time.Now().Add(5 * time.Second)
-		for !strings.Contains(g.pausedReason(), want) {
-			if time.Now().After(deadline) {
-				t.Fatalf("paused reason %q, want %q", g.pausedReason(), want)
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-	}
-	waitReason("replica db3:3306 to apply it (applying binlog.000001)")
-
-	// read and applied, still a delay
-	applying.SlaveStatus.RelayMasterLogFile.String = "binlog.000002"
-	waitReason("replica db3:3306 to have no delay (Seconds_Behind_Master 40)")
-
-	// no delay left: db4 stopped and db5 delayed do not take part
-	applying.SlaveStatus.SecondsBehindMaster.Int64 = 0
+	want := "replica db3:3306 to apply it (applying binlog.000001)"
 	deadline := time.Now().Add(5 * time.Second)
-	for g.pausedReason() != "" {
+	for !strings.Contains(g.pausedReason(), want) {
 		if time.Now().After(deadline) {
-			t.Fatalf("still paused once every replica taking part applied the binlog: %q", g.pausedReason())
+			t.Fatalf("paused reason %q, want %q", g.pausedReason(), want)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-
-	if held {
-		// the end puts back the value found (0, no limit: the dynamic config is off)
-		mock.ExpectExec("SET GLOBAL max_binlog_total_size").WithArgs(0).WillReturnResult(sqlmock.NewResult(0, 0))
-	}
+	putBack(mock)
 	stop()
+	// the loop ends once it sees the gate gone
+	deadline = time.Now().Add(5 * time.Second)
+	for master.logicalRestoreGatePurging.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("the rotation wait goes on after the restore ended")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if master.logicalRestoreGate.Load() != nil {
+		t.Fatal("the gate is still set after the restore ended")
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("binlog handling: %s", err)
 	}
 	if master.restoreHoldsBinlogTotalSize.Load() {
 		t.Fatal("the binlogs are still held at 2G after the restore")
+	}
+
+	// every replica taking part applied it: resumed, purged by the gate before 11.4 only
+	master, mock = setup("binlog.000002")
+	stop = master.startLogicalRestoreGate(context.Background())
+	g = master.logicalRestoreGate.Load()
+	if !held {
+		mock.ExpectQuery("SHOW BINARY LOGS").WillReturnRows(sqlmock.NewRows([]string{"Log_name", "File_size"}).
+			AddRow("binlog.000001", 100).AddRow("binlog.000002", 100))
+		mock.ExpectExec("PURGE BINARY LOGS TO").WithArgs("binlog.000002").WillReturnResult(sqlmock.NewResult(0, 0))
+	}
+	master.pauseLogicalRestoreOnBinlogRotation()
+	deadline = time.Now().Add(5 * time.Second)
+	for master.logicalRestoreGatePurging.Load() {
+		if time.Now().After(deadline) {
+			t.Fatalf("still paused once every replica taking part applied the binlog: %q", g.pausedReason())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if g.pausedReason() != "" {
+		t.Fatalf("resumed with a reason: %q", g.pausedReason())
+	}
+	putBack(mock)
+	stop()
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("binlog handling: %s", err)
 	}
 }
 
