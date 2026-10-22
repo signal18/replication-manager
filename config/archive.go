@@ -1162,7 +1162,9 @@ func (conf *Config) typedArchiveValue(st ArchivePluginSetting, v interface{}) (i
 		if strings.HasPrefix(s, "hash_") {
 			return s, nil
 		}
-		return conf.EncryptSecretValue(s), nil
+		// whole: an archive secret is one value, never a user:password list, and a key file
+		// (JSON) holds ':' and ','; the plugin gets it back by GetDecryptedPassword, whole
+		return conf.GetEncryptedString(s), nil
 	}
 	return s, nil
 }
@@ -1218,7 +1220,7 @@ func (conf *Config) TakeArchivePluginSecrets(a *ArchiveConfig, secrets map[strin
 		if cur, held := a.Settings[name]; held && fmt.Sprintf("%v", cur) != "" {
 			continue
 		}
-		a.Settings[name] = conf.EncryptSecretValue(v)
+		a.Settings[name] = conf.GetEncryptedString(v) // whole, as typedArchiveValue
 	}
 	return nil
 }

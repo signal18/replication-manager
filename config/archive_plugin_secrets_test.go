@@ -21,6 +21,11 @@ func registerEncryptingPlugin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		archivePluginsMu.Lock()
+		delete(archivePluginManifests, "archive-testenc")
+		archivePluginsMu.Unlock()
+	})
 }
 
 // A new archive takes in the secrets its plugin created, encrypted; never one its manifest does
@@ -34,8 +39,11 @@ func TestTakeArchivePluginSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	stored, _ := a.Settings[ConstArchiveSettingEncryptionKey].(string)
-	if stored == "" || strings.Contains(stored, `"data"`) {
-		t.Fatalf("key stored %q: want it encrypted", stored)
+	if !strings.HasPrefix(stored, "hash_") || strings.Contains(stored, `data`) {
+		t.Fatalf("key stored %q: want it encrypted whole", stored)
+	}
+	if back := conf.GetDecryptedPassword(ConstArchiveSettingEncryptionKey, stored); back != `{"data":"x"}` {
+		t.Fatalf("the plugin would get %q back", back)
 	}
 	if err := conf.TakeArchivePluginSecrets(&a, map[string]string{ConstArchiveSettingEncryptionKey: `{"data":"other"}`}); err != nil || a.Settings[ConstArchiveSettingEncryptionKey] != stored {
 		t.Fatalf("a held key was replaced: %v", err)
