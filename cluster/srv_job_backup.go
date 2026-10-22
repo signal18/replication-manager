@@ -2177,11 +2177,15 @@ func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn
 	// binlog on pauses here, between two transactions, on each rotation (logicalRestoreGate)
 	return planAndExecSplitdump(reader, splitdumpBatchStatements, splitdumpExecutor{
 		batch: func(stmts []string) error {
-			server.waitLogicalRestoreGate()
+			if err := server.waitLogicalRestoreGate(); err != nil {
+				return err
+			}
 			return server.execSplitdumpBatch(ctx, conn, stmts, path, progressed)
 		},
 		single: func(stmt string) error {
-			server.waitLogicalRestoreGate()
+			if err := server.waitLogicalRestoreGate(); err != nil {
+				return err
+			}
 			return server.execSplitdumpSingle(ctx, conn, stmt, path, progressed)
 		},
 	})
@@ -2921,7 +2925,7 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 	}
 	// a master restore writes the backup to its binlog for its replicas: one binlog kept (#2124)
 	if sqlLogBin == 1 {
-		stopLogicalRestoreGate := server.startLogicalRestoreGate()
+		stopLogicalRestoreGate := server.startLogicalRestoreGate(ctx)
 		defer stopLogicalRestoreGate()
 	}
 	// Open one dedicated pinned connection per parallel worker. We deliberately
@@ -3604,7 +3608,7 @@ func (server *ServerMonitor) JobReseedMysqldump(ctx context.Context, backupfile 
 	// stream paused on each rotation until they applied it (#2124)
 	var dumpStream io.Reader = fz
 	if sqlLogBin == 1 {
-		stopLogicalRestoreGate := server.startLogicalRestoreGate()
+		stopLogicalRestoreGate := server.startLogicalRestoreGate(ctx)
 		defer stopLogicalRestoreGate()
 		if g := server.logicalRestoreGate.Load(); g != nil {
 			dumpStream = &logicalRestoreGateReader{r: fz, gate: g}

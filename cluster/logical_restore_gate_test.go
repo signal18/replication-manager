@@ -20,9 +20,37 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
+// A cancel of the restore (job-cancel) releases a stream paused on a rotation with the
+// context's error: the worker no longer waits for the replicas.
+func TestLogicalRestoreGateCancelReleasesPausedStream(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	g := newLogicalRestoreGate(ctx)
+	r := &logicalRestoreGateReader{r: bytes.NewReader([]byte("INSERT 1;")), gate: g}
+	g.pause("binlog rotated")
+	got := make(chan error, 1)
+	go func() {
+		_, err := r.Read(make([]byte, 9))
+		got <- err
+	}()
+	select {
+	case err := <-got:
+		t.Fatalf("a paused stream read before the cancel: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case err := <-got:
+		if err != context.Canceled {
+			t.Fatalf("a cancelled stream reads %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("a cancel did not release the paused stream")
+	}
+}
+
 // The rotation pause holds a restore stream while paused and lets it flow once resumed.
 func TestLogicalRestoreGateHoldsStream(t *testing.T) {
-	g := newLogicalRestoreGate()
+	g := newLogicalRestoreGate(context.Background())
 	r := &logicalRestoreGateReader{r: bytes.NewReader([]byte("INSERT 1;INSERT 2;")), gate: g}
 	buf := make([]byte, 9)
 	if n, err := r.Read(buf); n != 9 || err != nil {
@@ -92,7 +120,7 @@ func testLogicalRestoreGateWaitsReplicas(t *testing.T, v *version.Version, held 
 	if held {
 		mock.ExpectExec("SET GLOBAL max_binlog_total_size").WithArgs(2147483648).WillReturnResult(sqlmock.NewResult(0, 0))
 	}
-	stop := master.startLogicalRestoreGate()
+	stop := master.startLogicalRestoreGate(context.Background())
 	g := master.logicalRestoreGate.Load()
 	if g == nil {
 		t.Fatal("no rotation pause on a MariaDB master with a binlog")
@@ -181,7 +209,7 @@ func TestConfigMaxBinlogTotalSizeFollowsPlan(t *testing.T) {
 func TestLogicalRestoreGateHoldsSplitdumpBatches(t *testing.T) {
 	server, mock, conn, closeFn := newSystemReseedTestServer(t)
 	defer closeFn()
-	g := newLogicalRestoreGate()
+	g := newLogicalRestoreGate(context.Background())
 	server.logicalRestoreGate.Store(g)
 	g.pause("binlog rotated to binlog.000012")
 

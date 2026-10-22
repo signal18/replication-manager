@@ -5,6 +5,7 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strconv"
@@ -36,12 +37,13 @@ import (
 // logicalRestoreGate is the pause of a logical restore's statement stream on a binlog rotation.
 type logicalRestoreGate struct {
 	mu     sync.Mutex
-	open   chan struct{} // closed while the stream may flow
-	reason string        // why it is paused, "" while it flows
+	open   chan struct{}   // closed while the stream may flow
+	reason string          // why it is paused, "" while it flows
+	ctx    context.Context // the restore's: a cancel (job-cancel) releases a paused stream
 }
 
-func newLogicalRestoreGate() *logicalRestoreGate {
-	g := &logicalRestoreGate{open: make(chan struct{})}
+func newLogicalRestoreGate(ctx context.Context) *logicalRestoreGate {
+	g := &logicalRestoreGate{open: make(chan struct{}), ctx: ctx}
 	close(g.open)
 	return g
 }
@@ -68,12 +70,18 @@ func (g *logicalRestoreGate) resume() {
 	g.reason = ""
 }
 
-// wait blocks while the logical restore is paused.
-func (g *logicalRestoreGate) wait() {
+// wait blocks while the logical restore is paused; the restore's context error when it is
+// cancelled meanwhile (job-cancel): a paused worker no longer waits for the replicas to stop.
+func (g *logicalRestoreGate) wait() error {
 	g.mu.Lock()
 	ch := g.open
 	g.mu.Unlock()
-	<-ch
+	select {
+	case <-ch:
+		return nil
+	case <-g.ctx.Done():
+		return g.ctx.Err()
+	}
 }
 
 func (g *logicalRestoreGate) pausedReason() string {
@@ -89,21 +97,27 @@ type logicalRestoreGateReader struct {
 }
 
 func (g *logicalRestoreGateReader) Read(p []byte) (int, error) {
-	g.gate.wait()
+	if err := g.gate.wait(); err != nil {
+		return 0, err
+	}
 	return g.r.Read(p)
 }
 
 // waitLogicalRestoreGate blocks the logical restore's next statement while it is paused on a binlog
-// rotation; nothing when none runs (a restore with the binary log off).
-func (server *ServerMonitor) waitLogicalRestoreGate() {
+// rotation; nothing when none runs (a restore with the binary log off). The restore's context
+// error when it is cancelled while paused.
+func (server *ServerMonitor) waitLogicalRestoreGate() error {
 	if g := server.logicalRestoreGate.Load(); g != nil {
-		g.wait()
+		return g.wait()
 	}
+	return nil
 }
 
 // startLogicalRestoreGate starts the rotation pause of a logical restore writing to server's binlog (sql_log_bin=1)
 // on MariaDB and holds the binlogs of server and its replicas at 2G; stop ends both and lets the stream flow.
-func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
+// ctx is the restore's: cancelled (job-cancel), a paused stream is released and stop puts the
+// settings back without waiting for the replicas.
+func (server *ServerMonitor) startLogicalRestoreGate(ctx context.Context) (stop func()) {
 	cluster := server.ClusterGroup
 	if server.BinaryLogFile == "" {
 		return func() {}
@@ -114,7 +128,7 @@ func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 	if !server.IsMariaDB() {
 		return semiSync
 	}
-	gate := newLogicalRestoreGate()
+	gate := newLogicalRestoreGate(ctx)
 	server.logicalRestoreGate.Store(gate)
 	held := server.holdBinlogTotalSizeForRestore()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
@@ -122,8 +136,11 @@ func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 	return func() {
 		// the last transactions land after the last rotation: the restore is done only once
 		// every replica taking part applied them (preprod belair-staging-test: db3 detached
-		// 660 MB short, no rotation came after the last commits)
-		server.waitReplicasAppliedAll(gate)
+		// 660 MB short, no rotation came after the last commits). A cancelled restore did not
+		// write it all: the settings come back at once
+		if ctx.Err() == nil {
+			server.waitReplicasAppliedAll(ctx, gate)
+		}
 		server.logicalRestoreGate.Store(nil)
 		gate.resume()
 		held()
@@ -136,8 +153,9 @@ func (server *ServerMonitor) startLogicalRestoreGate() (stop func()) {
 // 30 s turns); WARN0254 names the replica it waits for. Not server's current position: a child or
 // staging master keeps writing its parent's transactions, a moving target is never reached. An
 // SQL error of the wait, or no progress of the replica's applied position for
-// replicaNoProgressTurns turns, ends it for that replica, logged.
-func (server *ServerMonitor) waitReplicasAppliedAll(gate *logicalRestoreGate) {
+// replicaNoProgressTurns turns, ends it for that replica, logged. A cancel of the restore ends it
+// after the turn running.
+func (server *ServerMonitor) waitReplicasAppliedAll(ctx context.Context, gate *logicalRestoreGate) {
 	cluster := server.ClusterGroup
 	target, err := server.ReadReplicationTarget()
 	if err != nil {
@@ -148,6 +166,11 @@ func (server *ServerMonitor) waitReplicasAppliedAll(gate *logicalRestoreGate) {
 	for _, sl := range cluster.GetSlaves() {
 		lastApplied, still := "", 0
 		for sl != nil && sl != server && sl.Conn != nil && replicaTakesPart(sl) {
+			if ctx.Err() != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
+					"Restore on %s cancelled: no longer waiting for the replicas", server.URL)
+				return
+			}
 			reached, err := sl.WaitSyncToTarget(target, 30)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
@@ -164,6 +187,8 @@ func (server *ServerMonitor) waitReplicasAppliedAll(gate *logicalRestoreGate) {
 					"Restore on %s written: stopped waiting for replica %s, no progress (still at %s for %d turns of 30 s)", server.URL, sl.URL, applied, still)
 				break
 			}
+			// nothing left to hold, the restore is written: the pause only names the replica
+			// it waits for (WARN0254)
 			gate.pause(fmt.Sprintf("restore written, waiting for replica %s to reach %s", sl.URL, target))
 			sl = cluster.GetServerFromURL(sl.URL) // a reload rebuilds the ServerMonitor
 		}
