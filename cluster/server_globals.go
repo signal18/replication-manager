@@ -65,13 +65,13 @@ func (cluster *Cluster) waitForBackupSlot() bool {
 	for {
 		select {
 		case cluster.ServerGlobals.BackupSemaphore <- struct{}{}:
-			// a slot freed while the cluster stops: Stop gave back what it held and nothing
-			// would give this one back
+			// counted before the stop check: a Stop that drains the count after it gives this
+			// slot back, one that drained before it is seen here and this slot is given back
+			cluster.backupSlotsHeld.Add(1)
 			if cluster.exit.Load() {
-				cluster.ServerGlobals.ReleaseBackupSlot()
+				cluster.releaseBackupSlot()
 				return false
 			}
-			cluster.backupSlotsHeld.Add(1)
 			return true
 		case <-time.After(2 * time.Second):
 			if cluster.exit.Load() {
