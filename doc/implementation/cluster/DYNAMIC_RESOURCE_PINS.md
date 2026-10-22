@@ -20,7 +20,12 @@ binlogs included, and grew the volume to exactly that. Now per server
 (used - binlogs) / (1 - pct): the binlogs never grow the plan, and the disk keeps their share,
 which `max_binlog_total_size` (the plan's, under the dynamic config) bounds.
 
-## Open: leaving a pin
-Removing the key from `cluster.d` makes the next start take the flag's default (4G memory, 20G
-disk, 1 core, 300 iops), not the running value: the dynamic value sits in the unread
-overwrite.toml, and a settings reload rebuilds from the files too.
+## Leaving a pin
+Removing the key from `cluster.d` made the next start take the flag's default (4G memory, 20G
+disk, 1 core, 300 iops), not the running value: the dynamic value sat in the unread
+overwrite.toml (dev3, unpinned 2026-10-22 with the dynamic config off for the restart, then the
+values set back through the API). `SaveConfigFile` now writes the four resource keys in
+`[saved-<cluster>]` even when pinned (`isDynamicResourceKey`). The start already puts the
+immutable value over a saved key (server.go, `cf3.Set(f, clustImmuableMap[f])`): while the pin is
+there `/etc` wins, once removed the saved running value applies. Safe from the first save after
+the upgrade.

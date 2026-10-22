@@ -2268,6 +2268,11 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 
 	for _, key := range keys {
 		_, ok := cluster.Conf.GetImmuableFlag(key)
+		if ok && isDynamicResourceKey(key) {
+			// a resource set in /etc is saved too: the start keeps the /etc value while it is
+			// there, and takes this one, not the setting's default, once it is removed (#2142)
+			ok = false
+		}
 		_, dynamic := cluster.Conf.GetDynamicFlag(key)
 		_, secret := cluster.Conf.Secrets.Lookup(key)
 		if ok || config.IsArchiveLegacyKey(key) || cluster.Conf.ArchiveHoldsSecret(key) {

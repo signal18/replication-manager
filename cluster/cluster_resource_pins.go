@@ -19,13 +19,26 @@ import (
 // pinned 2G to 9G, and each start brought the plan back to 2G, the binlog budget and the plan's
 // max_binlog_total_size with it, against a 9G volume (2026-10-22, #2142). So the dynamic config
 // never moves a pinned axis (grow, shrink, follow, plan alignment), and ERR00119 (disk) /
-// WARN0266 (cores, memory, iops) say which key to remove from cluster.d.
+// WARN0266 (cores, memory, iops) say which key to remove from cluster.d. A pinned resource is
+// still written in the saved config (SaveConfigFile): the start ignores it while the pin is there
+// (the /etc value wins), and takes it once the pin is removed, never the setting's default
+// (unpinned, dev3 restarted on 4G of memory for 768M containers, 20G of disk, 300 IOPS).
 
 var dynamicResourceAxisKeys = map[string]string{
 	"cpu":  "prov-db-cpu-cores",
 	"mem":  "prov-db-memory",
 	"disk": "prov-db-disk-size",
 	"io":   "prov-db-disk-iops",
+}
+
+// isDynamicResourceKey: key is one of the four resource axes the dynamic config owns.
+func isDynamicResourceKey(key string) bool {
+	for _, k := range dynamicResourceAxisKeys {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
 
 // resourceAxisPinned: the axis's key is set in /etc.

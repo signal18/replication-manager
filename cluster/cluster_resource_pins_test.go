@@ -4,7 +4,14 @@
 
 package cluster
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/pelletier/go-toml"
+	"github.com/signal18/replication-manager/config/manager"
+)
 
 // #2142: under the dynamic config a resource set in /etc is never moved, and says so: ERR00119
 // for the disk, WARN0266 for the others
@@ -46,5 +53,37 @@ func TestDiskFollowNeedBytes(t *testing.T) {
 		if got := diskFollowNeedBytes(c.used, c.binlogs, c.pct); got < c.want-1 || got > c.want+1 {
 			t.Errorf("used %d binlogs %d pct %d: %d, want %d", c.used, c.binlogs, c.pct, got, c.want)
 		}
+	}
+}
+
+// A resource set in /etc is saved in [saved-<cluster>] anyway, so removing the pin restarts on
+// the running value, not the setting's default (#2142)
+func TestPinnedResourceSaved(t *testing.T) {
+	cl, _ := newTestClusterServer(t)
+	cl.ConfigManager = &manager.ConfigManager{}
+	cl.Conf.ConfRewrite = true
+	cl.Conf.DefaultFlagMap = map[string]interface{}{"prov-db-memory": "4G", "prov-db-disk-size": "20G", "force-slave-readonly": true}
+	cl.Conf.DynamicFlagMap = map[string]interface{}{}
+	cl.Conf.ImmuableFlagMap = map[string]interface{}{"prov-db-memory": "768", "prov-db-disk-size": "9", "force-slave-readonly": false}
+	cl.Conf.ProvMem, cl.Conf.ProvDisk, cl.Conf.ForceSlaveReadOnly = "768", "9", false
+	if err := os.MkdirAll(filepath.Join(cl.Conf.WorkingDir, cl.Name), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.SaveConfigFile(); err != nil {
+		t.Fatal(err)
+	}
+	tree, err := toml.LoadFile(filepath.Join(cl.Conf.WorkingDir, cl.Name, cl.Name+".toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved, ok := tree.Get("saved-" + cl.Name).(*toml.Tree)
+	if !ok {
+		t.Fatalf("no [saved-%s] section", cl.Name)
+	}
+	if saved.Get("prov-db-memory") != "768" || saved.Get("prov-db-disk-size") != "9" {
+		t.Fatalf("pinned resources not saved: memory %v, disk %v", saved.Get("prov-db-memory"), saved.Get("prov-db-disk-size"))
+	}
+	if saved.Has("force-slave-readonly") {
+		t.Fatal("another pinned key was saved")
 	}
 }
