@@ -230,7 +230,11 @@ func (server *ServerMonitor) pauseSemiSyncForRestore() (putBack func()) {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
 		"Restore on %s: semi-sync paused while the restore runs", server.URL)
 	return func() {
-		if _, err := dbhelper.SetSemiSyncMasterEnabled(server.Conn, server.DBVersion, true); err != nil {
+		sv := cluster.GetServerFromURL(server.URL) // a reload rebuilds the ServerMonitor
+		if sv == nil {
+			sv = server
+		}
+		if _, err := dbhelper.SetSemiSyncMasterEnabled(sv.Conn, sv.DBVersion, true); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
 				"Restore on %s ended: could not put back semi-sync: %s", server.URL, err)
 			return
@@ -247,6 +251,7 @@ func (server *ServerMonitor) pauseSemiSyncForRestore() (putBack func()) {
 func (server *ServerMonitor) holdBinlogTotalSizeForRestore() (putBack func()) {
 	cluster := server.ClusterGroup
 	type found struct {
+		url         string // read again at put-back: a reload rebuilds the ServerMonitor
 		sv          *ServerMonitor
 		totalSize   int
 		connections int
@@ -256,7 +261,7 @@ func (server *ServerMonitor) holdBinlogTotalSizeForRestore() (putBack func()) {
 		if sv == nil || sv.Conn == nil || !sv.IsMariaDB() || !sv.DBVersion.GreaterEqual("11.4") {
 			continue
 		}
-		f := found{sv: sv, connections: -1}
+		f := found{url: sv.URL, sv: sv, connections: -1}
 		if v, ok := sv.Variables.CheckAndGet("MAX_BINLOG_TOTAL_SIZE"); ok {
 			f.totalSize, _ = strconv.Atoi(v)
 		}
@@ -280,21 +285,28 @@ func (server *ServerMonitor) holdBinlogTotalSizeForRestore() (putBack func()) {
 	}
 	return func() {
 		for _, f := range held {
+			f.sv.restoreHoldsBinlogTotalSize.Store(false)
+			sv := cluster.GetServerFromURL(f.url)
+			if sv == nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+					"Restore on %s ended: %s is no longer in the cluster, its max_binlog_total_size stays at 2G", server.URL, f.url)
+				continue
+			}
+			sv.restoreHoldsBinlogTotalSize.Store(false)
 			size := f.totalSize
 			if cluster.Conf.ProvDBApplyDynamicConfig {
 				size, _ = strconv.Atoi(cluster.Configurator.GetConfigMaxBinlogTotalSize())
 			}
-			if _, err := dbhelper.SetMaxBinlogTotalSize(f.sv.Conn, size); err != nil {
+			if _, err := dbhelper.SetMaxBinlogTotalSize(sv.Conn, size); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-					"Restore on %s ended: could not put back max_binlog_total_size %d on %s: %s", server.URL, size, f.sv.URL, err)
+					"Restore on %s ended: could not put back max_binlog_total_size %d on %s: %s", server.URL, size, sv.URL, err)
 			}
 			if f.connections > 0 {
-				if _, err := dbhelper.SetSlaveConnectionsNeededForPurge(f.sv.Conn, f.connections); err != nil {
+				if _, err := dbhelper.SetSlaveConnectionsNeededForPurge(sv.Conn, f.connections); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-						"Restore on %s ended: could not put back slave_connections_needed_for_purge %d on %s: %s", server.URL, f.connections, f.sv.URL, err)
+						"Restore on %s ended: could not put back slave_connections_needed_for_purge %d on %s: %s", server.URL, f.connections, sv.URL, err)
 				}
 			}
-			f.sv.restoreHoldsBinlogTotalSize.Store(false)
 		}
 	}
 }

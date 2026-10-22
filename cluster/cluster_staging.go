@@ -108,6 +108,9 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 		if err := cluster.waitStagingReplicaInSync(STG.URL); err != nil {
 			return err
 		}
+		if STG, err = cluster.stagingServerByURL(STG.URL); err != nil {
+			return err
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Stopping slave %s replication", STG.Name)
 		STG.StopSlave()
 
@@ -181,6 +184,12 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Switching staging from STANDALONE %s to SLAVE %s", STG.URL, SL.URL)
 		if err := cluster.waitStagingReplicaInSync(SL.URL); err != nil {
+			return err
+		}
+		if SL, err = cluster.stagingServerByURL(SL.URL); err != nil {
+			return err
+		}
+		if STG, err = cluster.stagingServerByURL(STG.URL); err != nil {
 			return err
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Stopping slave %s replication", SL.URL)
@@ -275,6 +284,9 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 		}
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
+			return err
+		}
+		if STG, err = cluster.stagingServerByURL(STG.URL); err != nil {
 			return err
 		}
 
@@ -696,6 +708,16 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed logical backup %s from parent cluster completed on %s", backtype, target.URL)
 
 	return masterCurrentGTID, nil
+}
+
+// stagingServerByURL reads the server at url again after a long wait of the refresh: a
+// configuration reload rebuilds the ServerMonitor, the one held before the wait no longer
+// follows the server.
+func (cluster *Cluster) stagingServerByURL(url string) (*ServerMonitor, error) {
+	if sv := cluster.GetServerFromURL(url); sv != nil {
+		return sv, nil
+	}
+	return nil, fmt.Errorf("server %s is no longer in %s", url, cluster.Name)
 }
 
 // waitReseedEnd waits, with no timer, for the logical reseed of the server at url, prepared at
