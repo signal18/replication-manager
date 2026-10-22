@@ -348,6 +348,7 @@ type Cluster struct {
 	RepMgrHostname              string               `json:"-"`
 	exitMsg                     string               `json:"-"`
 	exit                        atomic.Bool          `json:"-"`
+	backupSlotsHeld             atomic.Int32         `json:"-"` // global backup slots taken by this cluster's backups
 	stopOnce                    sync.Once            `json:"-"`
 	backupEncryptionCleanupOnce sync.Once            `json:"-"`
 	canFlashBack                bool                 `json:"-"`
@@ -500,6 +501,8 @@ type Cluster struct {
 	// API-token principals registered by the server per request (issue #1835);
 	// see cluster_acl_token.go. Plain sync.Map for the same reason as above.
 	apiTokenPrincipals sync.Map `json:"-"`
+	// Whether a user holds token-create, set by LoadAPIUsers, read by the tick (WARN0251).
+	apiTokenIssuer atomic.Bool
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
@@ -1530,7 +1533,7 @@ func (cluster *Cluster) StateProcessing() {
 			servertoreseed := cluster.GetServerFromURL(s.ServerUrl)
 
 			if s.ErrKey == "WARN0073" || s.ErrKey == "WARN0175" {
-				cluster.ServerGlobals.ReleaseBackupSlot()
+				cluster.releaseBackupSlot()
 			}
 			if s.ErrKey == "WARN0074" && servertoreseed != nil {
 				task := "reseed" + cluster.Conf.BackupPhysicalType
@@ -1791,6 +1794,8 @@ func (cluster *Cluster) Stop() {
 		}
 
 		cluster.exit.Store(true)
+		// the monitor loop that gives them back when the backup states resolve ends here
+		cluster.releaseBackupSlots()
 
 		phase("replicationPlugins", cluster.StopReplicationPlugins)
 		phase("scheduler", func() {

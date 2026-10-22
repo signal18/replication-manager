@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Laws
 
 **Read `doc/implementation/DEVELOPMENT_LAWS.md` before making non-trivial changes.**
-It defines the functional laws (F1–F11: what repman must/must not do — e.g. never
+It defines the functional laws (F1–F12: what repman must/must not do — e.g. never
 compromise its own monitoring capability, never fill its own disks, never collect
 anything to infinity) and technical laws (T1–T28: how we build it — e.g. all SQL
 through `dbhelper`, no unbounded buffers, no feature without a GitHub issue/PR/docs).

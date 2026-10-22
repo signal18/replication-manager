@@ -758,6 +758,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 		cluster.SchemaStates = cluster.SchemaStateMachine.GetOpenStates()
 		cluster.assertToolsVersionsConfigState()
 		cluster.checkReprovDynamicResource()
+		cluster.checkAPITokenIssuers()
 		cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
 		cluster.ConfigRemediations = cluster.GetConfigRemediationPlan()
 		return
@@ -879,6 +880,7 @@ func (cluster *Cluster) CheckLogPlugins() {
 	}
 	cluster.assertToolsVersionsConfigState()
 	cluster.checkReprovDynamicResource()
+	cluster.checkAPITokenIssuers()
 	cluster.ConfigStates = cluster.ConfigStateMachine.GetOpenStates()
 	slices.SortStableFunc(cluster.ConfigStates, func(a, b state.State) int {
 		ak, bk := a.ErrKey+"\x00"+a.ServerUrl, b.ErrKey+"\x00"+b.ServerUrl

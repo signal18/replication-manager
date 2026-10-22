@@ -65,6 +65,13 @@ func (cluster *Cluster) waitForBackupSlot() bool {
 	for {
 		select {
 		case cluster.ServerGlobals.BackupSemaphore <- struct{}{}:
+			// counted before the stop check: a Stop that drains the count after it gives this
+			// slot back, one that drained before it is seen here and this slot is given back
+			cluster.backupSlotsHeld.Add(1)
+			if cluster.exit.Load() {
+				cluster.releaseBackupSlot()
+				return false
+			}
 			return true
 		case <-time.After(2 * time.Second):
 			if cluster.exit.Load() {
@@ -78,5 +85,31 @@ func (cluster *Cluster) waitForBackupSlot() bool {
 				ErrFrom: "BACKUP",
 			})
 		}
+	}
+}
+
+// releaseBackupSlot gives back one global backup slot this cluster holds, and none when it holds
+// none: the release driven by state resolution (WARN0073/WARN0175) is not guaranteed to be paired
+// with a held slot, and a slot released for nothing would be another cluster's.
+func (cluster *Cluster) releaseBackupSlot() {
+	for {
+		held := cluster.backupSlotsHeld.Load()
+		if held <= 0 {
+			return
+		}
+		if cluster.backupSlotsHeld.CompareAndSwap(held, held-1) {
+			cluster.ServerGlobals.ReleaseBackupSlot()
+			return
+		}
+	}
+}
+
+// releaseBackupSlots gives back every global backup slot this cluster still holds. A stopped
+// cluster (deleted, or replication-manager stopping) no longer runs the monitor loop whose state
+// resolution gives them back: held by a deleted cluster, they were taken from every other cluster
+// until a restart.
+func (cluster *Cluster) releaseBackupSlots() {
+	for cluster.backupSlotsHeld.Load() > 0 {
+		cluster.releaseBackupSlot()
 	}
 }

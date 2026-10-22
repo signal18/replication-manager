@@ -18,6 +18,7 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	"github.com/signal18/replication-manager/utils/state"
 	"google.golang.org/grpc/codes"
 )
 
@@ -338,10 +339,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		}
 
 		if discardACL, ok := listDiscardExt[newapiuser.User]; ok {
-			acls := strings.Split(discardACL.ACLs, " ")
-			for _, acl := range acls {
-				newapiuser.Grants[acl] = false
-			}
+			cluster.DiscardUserGrants(&newapiuser, discardACL.ACLs)
 		}
 
 		// Apply main config ACLs last using strict override — main config is always authoritative
@@ -352,10 +350,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		}
 
 		if discardACL, ok := listDiscard[newapiuser.User]; ok {
-			acls := strings.Split(discardACL.ACLs, " ")
-			for _, acl := range acls {
-				newapiuser.Grants[acl] = false
-			}
+			cluster.DiscardUserGrants(&newapiuser, discardACL.ACLs)
 		}
 
 		// No Roles
@@ -378,6 +373,15 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		meUsers[newapiuser.User] = newapiuser
 	}
 
+	// Computed on the fresh map, read by the tick (WARN0251) without touching APIUsers.
+	issuer := false
+	for name, u := range meUsers {
+		if name != "system" && u.Grants[config.GrantTokenCreate] {
+			issuer = true
+			break
+		}
+	}
+	cluster.apiTokenIssuer.Store(issuer)
 	cluster.APIUsers = meUsers
 	// Every (re)load reinstates the persisted `system` password, which can be stale
 	// (an older binary stored a random one before AddUser honoured an explicit password;
@@ -410,6 +414,48 @@ func (cluster *Cluster) reconcileSystemServiceGrants() {
 	}
 }
 
+// checkAPITokenIssuers runs with the config states: WARN0251 while api-user-tokens
+// is on and no user holds token-create on the cluster (#2083). It reads the flag
+// LoadAPIUsers computes, never the APIUsers map that HTTP handlers write.
+func (cluster *Cluster) checkAPITokenIssuers() {
+	if !cluster.Conf.APIUserTokens || cluster.apiTokenIssuer.Load() {
+		return
+	}
+	cluster.ConfigStateMachine.AddState("WARN0251", state.State{ErrType: "WARNING", ErrKey: "WARN0251", ErrFrom: "CONF",
+		ErrDesc: clusterError["WARN0251"]})
+}
+
+// DiscardUserGrants removes a discard list from a user's grants. A full grant name
+// removes that grant only (cluster-checksum keeps cluster-checksum-repair); any other
+// name is a prefix like in the allow lists, so token removes token-create and
+// token-manage, db every db-* grant (#2083).
+func (cluster *Cluster) DiscardUserGrants(u *APIUser, discard string) {
+	if u.Grants == nil {
+		u.Grants = map[string]bool{}
+	}
+	for _, acl := range strings.Fields(discard) {
+		if _, full := cluster.Grants[acl]; full {
+			u.Grants[acl] = false
+			continue
+		}
+		// A prefix removed nothing before 3.1.45 (#2083): an old entry such as "admin:db"
+		// now takes every db-* grant, said once per load in the security log.
+		var removed []string
+		for key, value := range cluster.Grants {
+			if strings.HasPrefix(key, acl) {
+				if u.Grants[value] {
+					removed = append(removed, value)
+				}
+				u.Grants[value] = false
+			}
+		}
+		if len(removed) > 0 {
+			sort.Strings(removed)
+			cluster.logSecurity(u.User, fmt.Sprintf("user %q: discard %q removes the grants [%s]", u.User, acl, strings.Join(removed, ", ")))
+		}
+	}
+}
+
 // logUserGrantAssignment writes the resolved grant set for a user to the
 // security log (both the HTTP buffer shown in the dashboard and SecurityLogrus
 // which writes to security.log on disk).
@@ -422,8 +468,12 @@ func (cluster *Cluster) logUserGrantAssignment(u APIUser) {
 	}
 	sort.Strings(granted)
 
-	msg := fmt.Sprintf("user %q granted: [%s]", u.User, strings.Join(granted, ", "))
+	cluster.logSecurity(u.User, fmt.Sprintf("user %q granted: [%s]", u.User, strings.Join(granted, ", ")))
+}
 
+// logSecurity writes msg about user to the security log: the dashboard's buffer and
+// security.log on disk (SecurityLogrus).
+func (cluster *Cluster) logSecurity(user, msg string) {
 	cluster.LogSecurity.Add(s18log.HttpMessage{
 		Group:     cluster.Name,
 		Level:     config.LvlInfo,
@@ -433,7 +483,7 @@ func (cluster *Cluster) logUserGrantAssignment(u APIUser) {
 	})
 
 	if cluster.SecurityLogrus != nil {
-		cluster.SecurityLogrus.WithField("user", u.User).Info(msg)
+		cluster.SecurityLogrus.WithField("user", user).Info(msg)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[security] %s", msg)
 	}

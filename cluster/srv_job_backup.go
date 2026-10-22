@@ -453,11 +453,11 @@ func (server *ServerMonitor) JobBackupPhysicalWithOptions(opts BackupRunOptions)
 	// longer go on: WARN0073 is not open yet, so nothing else would release it.
 	for {
 		if cluster.exit.Load() {
-			cluster.ServerGlobals.ReleaseBackupSlot()
+			cluster.releaseBackupSlot()
 			return errors.New("backup canceled: cluster shutting down")
 		}
 		if server.IsDown() {
-			cluster.ServerGlobals.ReleaseBackupSlot()
+			cluster.releaseBackupSlot()
 			return fmt.Errorf("Can't backup when server down: %s", server.URL)
 		}
 		if !cluster.IsInBackup() {
@@ -4821,6 +4821,79 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	return err
 }
 
+// mydumper versions: trx-tables mode refuses a non-transactional table since
+// mydumperTrxTablesRefusal, --no-trx-tables exists since mydumperNoTrxTablesOption.
+const (
+	mydumperTrxTablesRefusal  = "0.20.1"
+	mydumperNoTrxTablesOption = "0.21.1"
+)
+
+// mydumperTrxTablesArgs adapts the backup-mydumper-options of a mydumper >= 0.18.1 backup and
+// returns what it changed, for the log, and a warning when a configured option makes the backup
+// fail.
+//   - --less-locking and --trx-consistency-only are removed: mydumper 0.18.1 to 0.21 refuses them
+//     as deprecated, 1.0 no longer knows them.
+//   - From mydumper 0.20.1, MariaDB gets --trx-tables=0 when no trx-tables option is configured:
+//     trx-tables mode is then the default and refuses a table that is not transactional, and the
+//     system schema of every MariaDB has Aria tables. Before 0.20.1 nothing is added: trx-tables
+//     is off by default there, and --trx-tables=0 would turn it on (a switch that takes no value).
+//   - MySQL / Percona get nothing: mydumper's default applies.
+//   - A trx-tables option configured is kept; the warning says when it fails the backup. From
+//     0.20.1 the option takes its value as =value or as the next argument (--trx-tables 0).
+func mydumperTrxTablesArgs(args []string, dumper *version.Version, mariadb bool) (updatedArgs []string, changes []string, warning string) {
+	var removed []string
+	trxOption, trxValue := "", "" // as configured, and as mydumper reads it
+	for i, arg := range args {
+		if arg == "--less-locking" || arg == "--trx-consistency-only" {
+			removed = append(removed, arg)
+			continue
+		}
+		if arg == "--trx-tables" || strings.HasPrefix(arg, "--trx-tables=") || arg == "--no-trx-tables" { // Check for both --trx-tables and --no-trx-tables to avoid conflicts
+			trxOption, trxValue = arg, arg
+			if arg == "--trx-tables" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") && dumper.GreaterEqual(mydumperTrxTablesRefusal) {
+				trxOption, trxValue = arg+" "+args[i+1], arg+"="+args[i+1]
+			}
+		}
+		updatedArgs = append(updatedArgs, arg)
+	}
+	if len(removed) > 0 {
+		changes = append(changes, strings.Join(removed, ", ")+" removed (refused by mydumper since 0.18.1)")
+	}
+	switch {
+	case trxOption == "" && mariadb && dumper.GreaterEqual(mydumperTrxTablesRefusal):
+		updatedArgs = append(updatedArgs, "--trx-tables=0")
+		changes = append(changes, "--trx-tables=0 added (since mydumper "+mydumperTrxTablesRefusal+", the Aria system tables of MariaDB are dumped only with --trx-tables=0)")
+	case trxOption == "--no-trx-tables" && !dumper.GreaterEqual(mydumperNoTrxTablesOption):
+		fix := "use --trx-tables=0"
+		if !dumper.GreaterEqual(mydumperTrxTablesRefusal) {
+			fix = "remove it, trx-tables is off by default before mydumper " + mydumperTrxTablesRefusal
+		}
+		warning = "backup-mydumper-options sets --no-trx-tables, an option mydumper knows only since " + mydumperNoTrxTablesOption + ": the backup will fail; " + fix
+	case mariadb && dumper.GreaterEqual(mydumperTrxTablesRefusal) && mydumperTrxTablesOn(trxValue):
+		warning = "backup-mydumper-options sets " + trxOption + ": since mydumper " + mydumperTrxTablesRefusal + " the Aria system tables of MariaDB are refused in trx-tables mode, the backup will fail; remove it or use --trx-tables=0"
+	}
+	return updatedArgs, changes, warning
+}
+
+// mydumperTrxTablesOn reports whether a trx-tables option turns trx-tables mode on, read as mydumper
+// reads it (mydumper_arguments.c: trx_tables=atoi(value), 1 without a value): --trx-tables alone, or
+// a value whose atoi() is not 0, one optional sign then digits (1, 2, 01, 1x, -1). Any other value
+// is 0, words included: =false, =no, =off, =true and = turn it off.
+func mydumperTrxTablesOn(option string) bool {
+	if option == "--trx-tables" {
+		return true
+	}
+	value, ok := strings.CutPrefix(option, "--trx-tables=")
+	if !ok {
+		return false
+	}
+	if strings.HasPrefix(value, "-") || strings.HasPrefix(value, "+") {
+		value = value[1:]
+	}
+	digits := len(value) - len(strings.TrimLeft(value, "0123456789"))
+	return strings.Trim(value[:digits], "0") != ""
+}
+
 func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	cluster := server.ClusterGroup
 	var err error
@@ -4869,27 +4942,15 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	// Handle deprecated flags for mydumper >= 0.18.1
 	if dumper.GreaterEqual("0.18.1") {
-		// Replace deprecated flags with --trx-tables
-		var updatedArgs []string
-		for _, arg := range myargs {
-			if arg == "--less-locking" || arg == "--trx-consistency-only" {
-				// Skip deprecated flags
-				continue
-			}
-			updatedArgs = append(updatedArgs, arg)
+		var changes []string
+		var warning string
+		myargs, changes, warning = mydumperTrxTablesArgs(myargs, dumper, server.IsMariaDB())
+		if len(changes) > 0 {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "mydumper %s on %s: backup-mydumper-options adapted: %s", dumper.ToString(), server.URL, strings.Join(changes, "; "))
 		}
-		// Add --trx-tables if not already present
-		hasTrxTablesArg := false
-		for _, arg := range updatedArgs {
-			if arg == "--trx-tables" || strings.HasPrefix(arg, "--trx-tables=") || arg == "--no-trx-tables" { // Check for both --trx-tables and --no-trx-tables to avoid conflicts
-				hasTrxTablesArg = true
-				break
-			}
+		if warning != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "mydumper %s on %s: %s", dumper.ToString(), server.URL, warning)
 		}
-		if !hasTrxTablesArg {
-			updatedArgs = append(updatedArgs, "--trx-tables")
-		}
-		myargs = updatedArgs
 	}
 
 	if dumper.GreaterEqual("0.15.3") && !slices.Contains(myargs, "--clear") {
