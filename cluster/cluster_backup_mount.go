@@ -641,7 +641,7 @@ func isMountPoint(point string) bool {
 }
 
 // checkBackupMountStates, every tick, from memory only: CINF0019 while the local backups
-// move into the bucket, WARN0251 while a mount turned on is not mounted.
+// move into the bucket, WARN0261 while a mount turned on is not mounted.
 func (cluster *Cluster) checkBackupMountStates() {
 	bm := &cluster.backupMount
 	bm.mu.Lock()
@@ -654,7 +654,7 @@ func (cluster *Cluster) checkBackupMountStates() {
 	case moving:
 		cluster.SetState("CINF0019", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0019"], cluster.Name, st.Bucket, st.MovedFiles, st.TotalFiles, st.MovedBytes, st.TotalBytes), ErrFrom: "BACKUP"})
 	case cluster.Conf.BackupStreaming && !st.Mounted && st.Error != "":
-		cluster.SetState("WARN0251", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0251"], cluster.Name, st.Error), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0261", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0261"], cluster.Name, st.Error), ErrFrom: "BACKUP"})
 	}
 }
 
