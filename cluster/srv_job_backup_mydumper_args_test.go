@@ -26,9 +26,10 @@ func trxOptions(args []string) []string {
 	return opts
 }
 
-// With the default options, every mydumper >= 0.18.1 gets the deprecated flags removed. MariaDB
-// gets --trx-tables=0: in trx-tables mode (the default since 0.20.1) mydumper refuses its Aria
-// system tables. MySQL / Percona get no trx-tables option: mydumper's default applies.
+// With the default options, every mydumper >= 0.18.1 gets the deprecated flags removed. From 0.20.1
+// MariaDB gets --trx-tables=0: trx-tables mode is then the default and refuses its Aria system
+// tables. Before 0.20.1 nothing is added (run on 0.18.1, 0.19.1, 0.19.3: off by default, and
+// --trx-tables=0 turns it on). MySQL / Percona get no trx-tables option: mydumper's default applies.
 func TestMydumperTrxTablesArgsDefaultOptions(t *testing.T) {
 	for _, v := range []string{"0.18.1", "0.19.3", "0.20.1", "0.21.1", "1.0.11"} {
 		for _, mariadb := range []bool{true, false} {
@@ -45,14 +46,15 @@ func TestMydumperTrxTablesArgsDefaultOptions(t *testing.T) {
 			if len(changes) == 0 || !strings.Contains(changes[0], "--less-locking, --trx-consistency-only removed") {
 				t.Errorf("%s mariadb=%v: removal not reported: %v", v, mariadb, changes)
 			}
+			added := mariadb && v != "0.18.1" && v != "0.19.3"
 			want := []string(nil)
-			if mariadb {
+			if added {
 				want = []string{"--trx-tables=0"}
 			}
 			if opts := trxOptions(got); !slices.Equal(opts, want) {
 				t.Errorf("%s mariadb=%v: trx-tables options %v, want %v", v, mariadb, opts, want)
 			}
-			if mariadb != (len(changes) == 2 && strings.HasPrefix(changes[1], "--trx-tables=0 added")) {
+			if added != (len(changes) == 2 && strings.HasPrefix(changes[1], "--trx-tables=0 added")) || (!added && len(changes) != 1) {
 				t.Errorf("%s mariadb=%v: changes %v", v, mariadb, changes)
 			}
 		}
@@ -88,9 +90,9 @@ func TestMydumperTrxTablesArgsConfiguredOption(t *testing.T) {
 		{"--trx-tables=1", "1.0.11", true, "the backup will fail"},
 		{"--trx-tables=0", "1.0.11", true, ""},
 		{"--trx-tables=0", "0.18.1", true, ""},
-		// --no-trx-tables: unknown before 0.21.1, on every engine
-		{"--no-trx-tables", "0.20.1", true, "knows only since 0.21.1"},
-		{"--no-trx-tables", "0.19.3", false, "knows only since 0.21.1"},
+		// --no-trx-tables: unknown before 0.21.1, on every engine; the fix depends on the version
+		{"--no-trx-tables", "0.20.1", true, "use --trx-tables=0"},
+		{"--no-trx-tables", "0.19.3", false, "remove it, trx-tables is off by default before mydumper 0.20.1"},
 		{"--no-trx-tables", "0.21.1", true, ""},
 		{"--no-trx-tables", "1.0.11", false, ""},
 		// MySQL / Percona: their system tables are InnoDB, the option is theirs to choose
@@ -134,6 +136,36 @@ func TestMydumperTrxTablesOn(t *testing.T) {
 		args := append(slices.Clone(mydumperDefaultArgs), opt)
 		if _, _, warning := mydumperTrxTablesArgs(args, mydumperVersion("1.0.11"), true); warning != "" {
 			t.Errorf("%s on MariaDB: warning %q, the backup runs", opt, warning)
+		}
+	}
+}
+
+// From mydumper 0.20.1 the trx-tables value can also be the next argument: --trx-tables 0 is off,
+// --trx-tables 1 refused (run against MariaDB on 0.20.1-1, 0.21.1 and 1.0.11, with 0, 1 and false).
+// Before 0.20.1 the next argument is not the option's (0.19.3 took "0" as a database name).
+func TestMydumperTrxTablesArgsSeparateValue(t *testing.T) {
+	cases := []struct {
+		next     []string
+		dumper   string
+		warnPart string // empty: no warning
+	}{
+		{[]string{"0"}, "1.0.11", ""},
+		{[]string{"false"}, "1.0.11", ""},
+		{[]string{"0"}, "0.20.1", ""},
+		{[]string{"1"}, "1.0.11", "sets --trx-tables 1:"},
+		{[]string{"1"}, "0.20.1", "sets --trx-tables 1:"},
+		{[]string{"--compress"}, "1.0.11", "sets --trx-tables:"},
+		{nil, "1.0.11", "sets --trx-tables:"},
+		{[]string{"0"}, "0.19.3", ""},
+	}
+	for _, c := range cases {
+		args := append(append(slices.Clone(mydumperDefaultArgs), "--trx-tables"), c.next...)
+		got, changes, warning := mydumperTrxTablesArgs(args, mydumperVersion(c.dumper), true)
+		if !slices.Equal(got[len(got)-1-len(c.next):], append([]string{"--trx-tables"}, c.next...)) || len(changes) != 1 {
+			t.Errorf("--trx-tables %v %s: got %v, changes %v; want the configured arguments kept, nothing added", c.next, c.dumper, got, changes)
+		}
+		if (c.warnPart == "") != (warning == "") || !strings.Contains(warning, c.warnPart) {
+			t.Errorf("--trx-tables %v %s: warning %q, want one containing %q", c.next, c.dumper, warning, c.warnPart)
 		}
 	}
 }

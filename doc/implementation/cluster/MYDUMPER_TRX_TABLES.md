@@ -9,9 +9,10 @@ runs with `--trx-tables=0`. repman adapts the mydumper options to mydumper >= 0.
 | Options | repman | Log |
 |---|---|---|
 | `--less-locking`, `--trx-consistency-only` (the default `backup-mydumper-options`) | removed | INFO |
-| no trx-tables option, MariaDB | `--trx-tables=0` added | INFO, same line |
+| no trx-tables option, MariaDB, mydumper >= 0.20.1 | `--trx-tables=0` added | INFO, same line |
+| no trx-tables option, MariaDB, mydumper 0.18.1 to 0.19.x | nothing added: trx-tables is off by default there, and `--trx-tables=0` would turn it on | — |
 | no trx-tables option, MySQL / Percona | nothing added: mydumper's default applies | — |
-| a trx-tables option configured | kept | WARN when it fails the backup: `--trx-tables` / `--trx-tables=1` on MariaDB with mydumper >= 0.20.1, `--no-trx-tables` with mydumper < 0.21.1 |
+| a trx-tables option configured | kept | WARN when it fails the backup: trx-tables on (see below) on MariaDB with mydumper >= 0.20.1, `--no-trx-tables` with mydumper < 0.21.1 |
 
 The INFO line lists every change in one line, written only when something changed:
 
@@ -36,6 +37,17 @@ off for any other value, words included:
 
 (`=+1`, `=+0`, `=+-1` run on 0.20.1-1 and 1.0.11 only.)
 
+From 0.20.1 the value can also be the next argument (`G_OPTION_FLAG_OPTIONAL_ARG`):
+`--trx-tables 0` and `--trx-tables false` run, `--trx-tables 1` is refused (0.20.1-1, 0.21.1,
+1.0.11). The warning reads it the same way.
+
+Before 0.20.1 (0.18.1 to 0.19.x) `--trx-tables` is a switch that takes no value
+(`G_OPTION_ARG_NONE`, `gboolean trx_tables=FALSE`): `--trx-tables=0` turns it on, as the bare flag
+does, `--no-trx-tables` is an unknown option, and only leaving the option out keeps it off. Run on
+0.18.1, 0.19.1 and 0.19.3: mydumper's "Using --trx-tables options" warning (printed only when it
+is on) appears with `--trx-tables=0` and `--trx-tables`, not without the option; `--trx-tables 0`
+fails on 0.19.3 (the `0` is taken as a database name).
+
 ## Why
 
 ### mydumper
@@ -50,12 +62,13 @@ schema included, as in a repman backup):
 | mydumper | `--less-locking --trx-consistency-only` | `trx-tables` default | `--trx-tables` | no trx option | `--trx-tables=0` | `--no-trx-tables` |
 |---|---|---|---|---|---|---|
 | 0.17.1 (the images' version) | accepted | — (no option) | — | — | — | — |
-| 0.18.1, 0.19.1, 0.19.3 | refused: "--less-locking is deprecated and its behaviour is the default" | FALSE | exit 0 | exit 0 | exit 0 | unknown option (0.19.3) |
+| 0.18.1, 0.19.1, 0.19.3 | refused: "--less-locking is deprecated and its behaviour is the default" | FALSE | exit 0 | exit 0 | exit 0, but trx-tables on | unknown option |
 | 0.20.1-1, 0.20.1-2 | refused | 1 | aborts, exit 133: "Non transactional table found: `mysql`.`column_stats`" | aborts, exit 133 | exit 0 | unknown option |
 | 0.21.1, 0.21.3 | refused | 1 | exit 1: "Non transactional table found" | exit 1 | exit 0 | exit 0 |
 | 1.0.1, 1.0.3, 1.0.5, 1.0.11 | unknown option | 1 | exit 1 | exit 1 | exit 0 | exit 0 |
 
-- `--trx-tables=0` is accepted by every version from 0.18.1; `--no-trx-tables` only from 0.21.1.
+- `--trx-tables=0` turns trx-tables off from 0.20.1 (on before: see above); `--no-trx-tables`
+  exists only from 0.21.1.
 - The refusal is per table and per engine: on MariaDB 11.4 with mydumper 1.0.11, a table in
   MyISAM, Aria, MEMORY or CSV is refused with `--trx-tables` and dumped with `--trx-tables=0`;
   InnoDB is dumped with both.
@@ -85,11 +98,12 @@ requested through the API (`backup-logical-type` mydumper):
 
 ## Not covered
 
-- MySQL / Percona with mydumper 0.18.1 to 0.19.x: repman added `--trx-tables` there before; it now
-  adds nothing, and the default of those versions is trx-tables off. mydumper then looks for the
+- mydumper 0.18.1 to 0.19.x, every engine: repman added `--trx-tables` there before; it now adds
+  nothing, and the default of those versions is trx-tables off. mydumper then looks for the
   non-transactional tables and dumps them before it releases the global lock (its `--no-trx-tables`
-  help), so the lock can be held a little longer than before. MySQL 8.0 / 8.4 have none in the dump;
-  the lock time was not measured.
+  help), so the lock can be held a little longer than before: on MariaDB its Aria system tables are
+  now dumped under the lock instead of after it; MySQL 8.0 / 8.4 have none in the dump. The lock
+  time was not measured.
 - `--sync-thread-lock-mode=NO_LOCK` or `SAFE_NO_LOCK` configured: mydumper then forces trx-tables
   on whatever the trx-tables option (src/mydumper/mydumper_start_dump.c, 0.20.1-1 and 1.0.11-1), so
   a MariaDB backup is refused despite `--trx-tables=0`. Not run; the default `AUTO` is not affected
