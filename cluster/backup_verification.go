@@ -134,7 +134,7 @@ func (cluster *Cluster) verifyBackupByIDRunThen(backupID int64, level string, th
 			server.recordBackupVerificationSkipped(meta, level, runID, seq, "not run: replication-manager is stopping")
 			return
 		}
-		defer cluster.ServerGlobals.ReleaseBackupSlot()
+		defer cluster.releaseBackupSlot()
 		if err := cluster.claimBackupVerificationRead(meta); err != nil {
 			// not run: shown in the backup list as skipped, not a failure (no ERR00117);
 			// a result the backup already has is kept
