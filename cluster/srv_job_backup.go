@@ -1349,11 +1349,11 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 		// error (lab, MariaDB 10.11). RESET SLAVE without ALL: the positions and relay logs
 		// go, the link stays (law T27, #2093). With several channels it is skipped, as in
 		// ProcessReseedLogical.
-		if logs, err := server.StopSlave(); err != nil {
+		if logs, err := server.StopSlave(); err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 		server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, "reseed requested from "+backupfile)
-		if logs, err := server.ResetSlavePositions(); err != nil {
+		if logs, err := server.ResetSlavePositions(); err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed reset slave positions on server: %s %s", server.URL, err)
 		}
 	}
@@ -1725,7 +1725,7 @@ func (server *ServerMonitor) reseedMysqldumpWithSplitdump(ctx context.Context, b
 			"Splitdump detected at %s; restoring with mysql client", backupPath)
 		return server.JobReseedSplitdumpWithMysql(ctx, backupPath, restoreUser)
 	}
-	return server.JobReseedMysqldump(backupPath, restoreUser)
+	return server.JobReseedMysqldump(ctx, backupPath, restoreUser)
 }
 
 func (server *ServerMonitor) reseedMysqldumpWithMetadata(ctx context.Context, backupPath string, restoreUser bool, meta *backupmgr.BackupMetadata) error {
@@ -2174,11 +2174,19 @@ func planAndExecSplitdump(reader io.Reader, batchSize int, exec splitdumpExecuto
 // forEachSplitdumpStatement / classifySplitdumpStatement / planAndExecSplitdump
 // helpers; this wrapper just binds the executor to conn.
 func (server *ServerMonitor) streamSplitdumpStatements(ctx context.Context, conn *sqlx.Conn, reader io.Reader, path string, progressed *atomic.Bool) error {
+	// every statement passes here, batched (the data) or single: a logical restore with the
+	// binlog on pauses here, between two transactions, on each rotation (logicalRestoreGate)
 	return planAndExecSplitdump(reader, splitdumpBatchStatements, splitdumpExecutor{
 		batch: func(stmts []string) error {
+			if err := server.waitLogicalRestoreGate(); err != nil {
+				return err
+			}
 			return server.execSplitdumpBatch(ctx, conn, stmts, path, progressed)
 		},
 		single: func(stmt string) error {
+			if err := server.waitLogicalRestoreGate(); err != nil {
+				return err
+			}
 			return server.execSplitdumpSingle(ctx, conn, stmt, path, progressed)
 		},
 	})
@@ -2838,6 +2846,16 @@ func (server *ServerMonitor) JobReseedSplitdumpWithMysql(ctx context.Context, ba
 	return server.restoreSplitdumpWithMysql(ctx, backupPath, restoreUser)
 }
 
+// splitdumpGTIDPurged is the statement that gives a MySQL/Percona server with GTID the GTID of
+// the splitdump it was loaded from, after the load; "" for any other server (a MariaDB server
+// is positioned by setSeedGTIDSlavePos).
+func (server *ServerMonitor) splitdumpGTIDPurged(gtidSet string) string {
+	if server.IsMariaDB() || !server.HasMySQLGTID() || !server.DBVersion.IsMySQLOrPerconaGreater57() {
+		return ""
+	}
+	return "SET @@GLOBAL.GTID_PURGED='" + strings.ReplaceAll(gtidSet, "'", "''") + "'"
+}
+
 func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, backupPath string, restoreUser bool) error {
 	cluster := server.ClusterGroup
 	if cluster == nil {
@@ -2906,7 +2924,11 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 			return err
 		}
 	}
-
+	// a master restore writes the backup to its binlog for its replicas: one binlog kept (#2124)
+	if sqlLogBin == 1 {
+		stopLogicalRestoreGate := server.startLogicalRestoreGate(ctx)
+		defer stopLogicalRestoreGate()
+	}
 	// Open one dedicated pinned connection per parallel worker. We deliberately
 	// avoid the shared server.Conn pool: statement ordering, session state
 	// (USE / FK / UNIQUE) and transaction affinity all require a single connection
@@ -3024,20 +3046,23 @@ func (server *ServerMonitor) restoreSplitdumpWithMysql(ctx context.Context, back
 		return restoreErr
 	}
 
-	if meta != nil && meta.GTID != "" {
-		gtidValue := strings.ReplaceAll(meta.GTID, "'", "''")
-		switch {
-		case server.IsMariaDB() && server.HaveMariaDBGTID:
+	if meta != nil && meta.GTID != "" && server.IsMariaDB() {
+		// whatever the monitored channel (HaveMariaDBGTID reads replication-source-name's
+		// only, which a child cluster's master has not), its own domains kept (#2124)
+		if value, logs, err := server.setSeedGTIDSlavePos(meta.GTID); err != nil {
+			cluster.LogSQL(logs, err, server.URL, "Reseed", config.LvlWarn, "Failed to apply splitdump GTID %s for MariaDB on %s: %s", meta.GTID, server.URL, err)
+		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Applying splitdump GTID for MariaDB on %s", server.URL)
-			if err := server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+gtidValue+"'", time.Second); err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-					"Failed to apply splitdump GTID for MariaDB on %s: %v", server.URL, err)
-			}
-		case server.HasMySQLGTID() && server.DBVersion.IsMySQLOrPerconaGreater57():
+				"Applied splitdump GTID %s for MariaDB on %s: gtid_slave_pos %s", meta.GTID, server.URL, value)
+		}
+	} else if meta != nil && meta.GTID != "" {
+		if query := server.splitdumpGTIDPurged(meta.GTID); query == "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
+				"Splitdump GTID %s not applied on %s: no GTID replication on this server", meta.GTID, server.URL)
+		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
-				"Applying splitdump GTID for MySQL on %s", server.URL)
-			if err := server.ExecQueryNoBinLog("SET @@GLOBAL.GTID_PURGED='"+gtidValue+"'", time.Second); err != nil {
+				"Applying splitdump GTID %s for MySQL on %s", meta.GTID, server.URL)
+			if err := server.ExecQueryNoBinLog(query, time.Second); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
 					"Failed to apply splitdump GTID for MySQL on %s: %v", server.URL, err)
 			}
@@ -3538,7 +3563,12 @@ func (server *ServerMonitor) jobReseedMyLoader(backupdir string, restoreUser boo
 	return nil
 }
 
-func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser bool) error {
+// JobReseedMysqldump loads a single-file dump; ctx cancelled (job-cancel/<task>) kills its mysql
+// client.
+func (server *ServerMonitor) JobReseedMysqldump(ctx context.Context, backupfile string, restoreUser bool) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	cluster := server.ClusterGroup
 	var err error
 	defer server.SetInReseedBackup("")
@@ -3579,13 +3609,23 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
 	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
-	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+	clientCmd := exec.CommandContext(ctx, cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
 	cmdstring, sqlLogBin, err := server.buildLogicalRestorePreamble()
 	if err != nil {
 		return err
+	}
+	// a master restore writes the backup to its binlog for its replicas: one binlog kept, the
+	// stream paused on each rotation until they applied it (#2124)
+	var dumpStream io.Reader = fz
+	if sqlLogBin == 1 {
+		stopLogicalRestoreGate := server.startLogicalRestoreGate(ctx)
+		defer stopLogicalRestoreGate()
+		if g := server.logicalRestoreGate.Load(); g != nil {
+			dumpStream = &logicalRestoreGateReader{r: fz, gate: g}
+		}
 	}
 
 	// mysql.system-all content (INSTALL PLUGIN/CREATE USER/etc.) embedded in the
@@ -3665,7 +3705,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 		if !restoreUser {
 			skip = splitdump.IsImportRoleBracket
 		}
-		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, fz, artifactWriter, skip)
+		result, pumpErr, fromClassify := runReseedMysqldumpPump(clientStdin, cmdstring, dumpStream, artifactWriter, skip)
 		pumpResultCh <- reseedPumpResult{result: result, err: pumpErr, fromClassify: fromClassify}
 	}()
 
@@ -7705,7 +7745,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		// CHANGE MASTER and START SLAVE, which must not start replication from an old position
 		// before the position is set below. With several channels it is skipped.
 		if len(server.Replications) <= 1 {
-			if logs, err := server.ResetSlavePositions(); err != nil {
+			if logs, err := server.ResetSlavePositions(); err != nil && !noReplicationChannel(err) {
 				cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed reset slave positions on server: %s %s", server.URL, err)
 			}
 			// MySQL/Percona: an older backup's own START SLAVE fails on a replica without a
@@ -7728,7 +7768,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 	} else if !isPITR {
 		logs, err := server.StopSlave()
-		if err != nil {
+		if err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 		server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, "restore of "+backupfile)
@@ -7748,7 +7788,13 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 	}
 
-	ctx := context.Background()
+	// cancellable through job-cancel/<task>: a started logical restore ran on a background
+	// context, job-cancel found nothing to cancel ("task already started") and the restore
+	// went to its end
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	server.registerJobCancel(task, cancel)
+	defer server.clearJobCancel(task)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backupType, server.URL)
 	if splitUserOverride {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,

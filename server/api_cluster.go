@@ -4669,6 +4669,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDBMaxConnections(value)
 	case "prov-db-expire-log-days":
 		mycluster.SetDBExpireLogDays(value)
+	case "prov-db-binlog-total-size-pct":
+		mycluster.SetDBBinlogTotalSizePct(value)
 	case "prov-db-replication-parallel-threads":
 		mycluster.SetDBReplicationParallelThreads(value)
 	case "prov-db-replication-domain-parallel-threads":

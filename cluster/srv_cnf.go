@@ -94,6 +94,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_PFS_DIGEST_LENGTH%%":                    server.ClusterGroup.Configurator.GetConfigPFSDigestLength(),
 		"%%ENV:SVC_CONF_ENV_EXPIRE_LOG_DAYS%%":                      server.ClusterGroup.Configurator.GetConfigExpireLogDays(),
 		"%%ENV:SVC_CONF_ENV_RELAY_SPACE_LIMIT%%":                    server.ClusterGroup.Configurator.GetConfigRelaySpaceLimit(),
+		"%%ENV:SVC_CONF_ENV_MAX_BINLOG_TOTAL_SIZE%%":                server.ClusterGroup.Configurator.GetConfigMaxBinlogTotalSize(),
 		"%%ENV:SVC_CONF_ENV_GCOMM%%":                                server.ClusterGroup.GetGComm(),
 		"%%ENV:SVC_CONF_ENV_GROUP_REPLICATION_WHITELIST%%":          server.ClusterGroup.GetGroupReplicationWhiteList(),
 		"%%ENV:SVC_NAMESPACE%%":                                     server.ClusterGroup.Name,

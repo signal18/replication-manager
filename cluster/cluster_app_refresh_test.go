@@ -635,6 +635,9 @@ func TestAppRefresh_TracksInProgressDuringSlowCheck(t *testing.T) {
 		t.Fatalf("expected RefreshInProgress=true while Refresh() is still running")
 	}
 
+	// the check stays blocked long enough to be measured in milliseconds: released at once,
+	// it lasted under 1 ms and LastRefreshDurationMs was 0 in half the runs
+	time.Sleep(20 * time.Millisecond)
 	close(block)
 	select {
 	case <-done:

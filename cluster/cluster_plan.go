@@ -139,6 +139,17 @@ func (cluster *Cluster) applyPlanResourceFollow(unit PlanUnit, cur, target int) 
 	}
 }
 
+// AlignDBResourceToPlan sizes a new cluster's DB resource from its per-node DBU before its servers
+// are provisioned: ChangePlanUnits aligns only on a change, and a cluster created at the
+// default DBU kept the resource flags' own defaults (1 core / 4G / 300 IOPS for 2 DBU:
+// innodb_io_capacity_max 300 on belair-staging-test, #2124).
+func (cluster *Cluster) AlignDBResourceToPlan(perNodeDBU int) {
+	if cluster.resources == nil {
+		return
+	}
+	cluster.alignDBResourceToPlan(perNodeDBU)
+}
+
 // alignDBResourceToPlan sets the per-node DB resource (cores/mem/disk/iops) from the PER-NODE DBU
 // reservation (prov-db-dbu) via the ResourceManager ProfileDatabase ratios (the single ratio
 // source -- no hardcoded unit constants). All DB nodes are identical, so one per-node value sizes

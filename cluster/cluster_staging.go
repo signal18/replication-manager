@@ -3,6 +3,7 @@ package cluster
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -104,6 +105,12 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Refresh staging initiated")
 
+		if err := cluster.waitStagingReplicaInSync(STG.URL); err != nil {
+			return err
+		}
+		if STG, err = cluster.stagingServerByURL(STG.URL); err != nil {
+			return err
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Stopping slave %s replication", STG.Name)
 		STG.StopSlave()
 
@@ -176,6 +183,15 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Switching staging from STANDALONE %s to SLAVE %s", STG.URL, SL.URL)
+		if err := cluster.waitStagingReplicaInSync(SL.URL); err != nil {
+			return err
+		}
+		if SL, err = cluster.stagingServerByURL(SL.URL); err != nil {
+			return err
+		}
+		if STG, err = cluster.stagingServerByURL(STG.URL); err != nil {
+			return err
+		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Stopping slave %s replication", SL.URL)
 
 		SL.StopSlave()
@@ -239,22 +255,39 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 			return err
 		}
 
-		if cluster == source {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s", STG.URL)
-			err = STG.JobReseedLogicalBackup(context.Background(), "default")
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
+		// The standalone is reloaded from the staging master's own backup, never the parent's
+		// (#2124): the parent's backup holds the master's position before its reload, the
+		// standalone then asked the master for the whole restore again (preprod
+		// belair-staging-test: db2 loaded belair's backup, then replayed db1's restore,
+		// 2895224983-11130737-390..777). After a reseed from the parent, a fresh backup of the
+		// master is taken first: it holds the reloaded data and the master's position in every
+		// domain. The reseed is prepared and the monitor runs it (the tick's logical reseed
+		// dispatch); the refresh waits for its end with no timer, a load can take days. The
+		// wait below is only for the replication to start.
+		ctx := context.Background()
+		if cluster != source {
+			cmaster := cluster.GetMaster()
+			if cmaster == nil {
+				return fmt.Errorf("no master on %s to back up before reloading %s", cluster.Name, STG.URL)
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Logical backup of %s, reloaded from %s, before reloading %s", cmaster.URL, source.Name, STG.URL)
+			if err = cmaster.JobBackupLogical(ctx); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Logical backup of %s for refresh staging failed: %s", cmaster.URL, err)
 				return err
 			}
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s from parent cluster %s backup", STG.URL, source.Name)
-			_, err = cluster.ReseedFromParentCluster(source, STG, masterGTIDList) // Sync GTID with cluster master
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
-				return err
-			}
-
-			STG.ChangeMasterTo(cluster.GetMaster(), "SLAVE_POS")
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s from %s's backup", STG.URL, cluster.Name)
+		started := time.Now().UnixNano()
+		err = STG.JobReseedLogicalBackup(ctx, "default")
+		if err == nil {
+			err = cluster.waitReseedEnd(STG.URL, started)
+		}
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
+			return err
+		}
+		if STG, err = cluster.stagingServerByURL(STG.URL); err != nil {
+			return err
 		}
 
 		waitstart = time.Now()
@@ -433,20 +466,44 @@ func reseedGTIDSlavePos(pos string, current *gtid.List) string {
 	return slavePos.Sprint()
 }
 
+// setSeedGTIDSlavePos positions a MariaDB server seeded from a backup at pos and returns the
+// gtid_slave_pos it set: the backup's domains from the backup, every other domain from the
+// server's live gtid_current_pos, as the parent seed always merged them (CurrentGtid.Merge).
+// gtid_current_pos, not gtid_slave_pos: it holds the server's own binlog domain, which a child
+// cluster's master has (its provisioning and its restore are written there) and without which
+// gtid_strict_mode refuses the set (error 1948, MDEV-24234); the source accepts a position
+// with domains it does not have, as a multi-source replica's (#2124).
+func (server *ServerMonitor) setSeedGTIDSlavePos(pos string) (string, string, error) {
+	current, logs, err := dbhelper.GetVariableByName(server.Conn, "GTID_CURRENT_POS", server.DBVersion)
+	if err != nil {
+		return "", logs, err
+	}
+	value := reseedGTIDSlavePos(pos, gtid.NewList(current))
+	logs, err = dbhelper.SetGTIDSlavePos(server.Conn, value)
+	return value, logs, err
+}
+
+// parentReseedRefused is ReseedFromParentCluster refusing before it touches the target: no
+// backup, a dump it cannot position, no parent master, a reseed already running. The caller
+// that stopped the parent channel to compare positions (freshenParentBackup) starts it again.
+type parentReseedRefused struct{ error }
+
+func (e parentReseedRefused) Unwrap() error { return e.error }
+
 func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor, masterGTIDList string) (string, error) {
 	var err error
 	var logs, masterCurrentGTID string
 
 	if parent == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Parent cluster cannot be nil")
-		return "", fmt.Errorf("parent cluster cannot be nil")
+		return "", parentReseedRefused{fmt.Errorf("parent cluster cannot be nil")}
 	}
 
 	backtype := parent.Conf.BackupLogicalType
 
 	if target == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No target server found")
-		return "", fmt.Errorf("no target server found")
+		return "", parentReseedRefused{fmt.Errorf("no target server found")}
 	}
 
 	// The parent's logical backup is the only source (#1989): checked before anything
@@ -454,26 +511,26 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	backupfile, bcksrv, err := parent.ParentLogicalBackup()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Reseed of %s from parent cluster %s refused: %s", cluster.Name, parent.Name, err)
-		return "", err
+		return "", parentReseedRefused{err}
 	}
 	// a dump that stops and starts replication with its position as a comment would start
 	// the channel from the old position: refused before the channel is stopped or repointed
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
 		if unpositioned, derr := dumpStartsReplicationUnpositioned(backupfile); derr == nil && unpositioned {
-			return "", errDumpStartsUnpositioned(backupfile)
+			return "", parentReseedRefused{errDumpStartsUnpositioned(backupfile)}
 		}
 	}
 
 	pmaster := parent.GetMaster()
 	if pmaster == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master server found")
-		return "", fmt.Errorf("no master server found")
+		return "", parentReseedRefused{fmt.Errorf("no master server found")}
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh data from parent cluster initiated")
 
 	if target.HasAnyReseedingState() {
-		return "", fmt.Errorf("Server is in reseeding state by %s", target.IsReseeding)
+		return "", parentReseedRefused{fmt.Errorf("Server is in reseeding state by %s", target.IsReseeding)}
 	}
 
 	task := "reseed" + parent.Conf.BackupLogicalType
@@ -543,7 +600,12 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 					return "", fmt.Errorf("ColumnStore child preparation: %w", err)
 				}
 			}
-			err = target.reseedMysqldumpWithMetadata(context.Background(), backupfile, false, meta)
+			// cancellable through job-cancel/<task>, as a replica's logical reseed
+			restoreCtx, cancelRestore := context.WithCancel(context.Background())
+			target.registerJobCancel(task, cancelRestore)
+			err = target.reseedMysqldumpWithMetadata(restoreCtx, backupfile, false, meta)
+			target.clearJobCancel(task)
+			cancelRestore()
 			if feed {
 				if ferr := cluster.finishColumnstoreChild(target, channel, backupfile, err == nil); ferr != nil && err == nil {
 					err = fmt.Errorf("ColumnStore child: %w", ferr)
@@ -561,7 +623,12 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 				target.JobsUpdateStateRuntimeOnly(task, "Reseed mysqldump with no split user is not supported", 5, 1)
 				return "", fmt.Errorf("Reseed mysqldump with no split user is not supported")
 			}
-			err = target.JobReseedMysqldump(backupfile, false)
+			// cancellable through job-cancel/<task>, as a replica's logical reseed
+			restoreCtx, cancelRestore := context.WithCancel(context.Background())
+			target.registerJobCancel(task, cancelRestore)
+			err = target.JobReseedMysqldump(restoreCtx, backupfile, false)
+			target.clearJobCancel(task)
+			cancelRestore()
 			// MariaDB: the dump writes the parent's position as a comment only, so the target keeps
 			// its old gtid_slave_pos and its channel would resume from it. It takes the backup's GTID
 			// for the domains the backup has, and keeps the other domains it replicates.
@@ -576,16 +643,15 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 				if dumpStarted {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set by the restored dump %s, which started replication", target.URL, backupfile)
 				} else if pos, _, _ := logicalReseedPosition(target.logicalRestorePosition.Load(), meta); pos != "" {
-					// the other domains are the monitor's last read of gtid_slave_pos, before the
-					// restore: the restore replaced only the data of the backup's domains
-					masterGTIDList = reseedGTIDSlavePos(pos, target.SlaveGtid)
-					// only the managed channel was stopped before the load (JobReseedMysqldump):
-					// another channel running on the target refuses the set (error 1198)
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set to %s (backup %s)", target.URL, masterGTIDList, pos)
-					// err, not a local: a seed whose position is not set fails, its channel would
-					// resume from the old position
-					if logs, err = dbhelper.SetGTIDSlavePos(target.Conn, masterGTIDList); err != nil {
+					// the restore replaced only the data of the backup's domains: the others are
+					// the server's (setSeedGTIDSlavePos). Only the managed channel was stopped
+					// before the load (JobReseedMysqldump): another channel running on the target
+					// refuses the set (error 1198). err, not a local: a seed whose position is not
+					// set fails, its channel would resume from the old position
+					if masterGTIDList, logs, err = target.setSeedGTIDSlavePos(pos); err != nil {
 						cluster.LogSQL(logs, err, target.URL, "Reseed", config.LvlErr, "Failed to set gtid_slave_pos on %s: %s", target.URL, err)
+					} else {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed from parent cluster: gtid_slave_pos of %s set to %s (backup %s)", target.URL, masterGTIDList, pos)
 					}
 				}
 			}
@@ -620,6 +686,11 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		target.MarkReseedFailed(err)
 		target.JobsUpdateStateRuntimeOnly(task, err.Error(), 5, 1)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed logical backup %s from parent cluster failed on %s", backtype, target.URL)
+		if target.IsMaster() {
+			// the load is incomplete: the parent's changes must not land on part of the data,
+			// the channel stays stopped and says so (WARN0252) until a reseed ends
+			target.markReseedStoppedLinks([]string{channel}, fmt.Sprintf("reseed from parent cluster %s failed, the data is incomplete: reseed again", parent.Name))
+		}
 		return "", err
 	}
 
@@ -637,6 +708,158 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed logical backup %s from parent cluster completed on %s", backtype, target.URL)
 
 	return masterCurrentGTID, nil
+}
+
+// stagingServerByURL reads the server at url again after a long wait of the refresh: a
+// configuration reload rebuilds the ServerMonitor, the one held before the wait no longer
+// follows the server.
+func (cluster *Cluster) stagingServerByURL(url string) (*ServerMonitor, error) {
+	if sv := cluster.GetServerFromURL(url); sv != nil {
+		return sv, nil
+	}
+	return nil, fmt.Errorf("server %s is no longer in %s", url, cluster.Name)
+}
+
+// waitReseedEnd waits, with no timer, for the logical reseed of the server at url, prepared at
+// started (unix-nanos), to end: the monitor runs it, running it here too made two restores
+// write the same tables of db3.belair-staging-test at once. Its error when it failed.
+func (cluster *Cluster) waitReseedEnd(url string, started int64) error {
+	for {
+		sv := cluster.GetServerFromURL(url)
+		if sv == nil {
+			return fmt.Errorf("server %s is no longer in %s", url, cluster.Name)
+		}
+		if !sv.HasAnyReseedingState() {
+			if failed := sv.ReseedFailedSince(started); failed != "" {
+				return fmt.Errorf("reseed of %s failed: %s", url, failed)
+			}
+			return nil
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// waitStagingReplicaInSync waits for the replica at url to reach its master's position, read
+// once when the wait starts, before the staging refresh detaches it (WaitSyncToTarget, the copy
+// of WaitSyncToMaster with a fixed target and a result). The state Slave was not enough:
+// db3.belair-staging-test, Slave at 2 s, was detached 660 MB short. It replays the restore
+// through the master's binlog for as long as that takes, no timer (a restore can take days;
+// 2 minutes stopped the creation of a staging cluster seeded from an 858 MB backup, preprod
+// belair). Its progress is the creation's step; it stops when the replica's replication breaks
+// (any state but Slave or SlaveLate), on an SQL error of the wait, or when its applied position
+// (AppliedPosition) did not move for replicaNoProgressFor: it is not catching up, the
+// wait would never end. Read by URL each time: a configuration reload
+// rebuilds the ServerMonitor.
+func (cluster *Cluster) waitStagingReplicaInSync(url string) error {
+	master := cluster.GetMaster()
+	if master == nil {
+		return fmt.Errorf("no master on %s: replica %s cannot be checked before it is detached", cluster.Name, url)
+	}
+	target, err := master.ReadReplicationTarget()
+	if err != nil {
+		return fmt.Errorf("position of %s before replica %s is detached: %w", master.URL, url, err)
+	}
+	logged := false
+	var progress replicaProgress
+	for {
+		slave := cluster.GetServerFromURL(url)
+		if slave == nil {
+			return fmt.Errorf("replica %s is no longer in %s", url, cluster.Name)
+		}
+		switch slave.State {
+		case stateSlave, stateSlaveLate:
+			reached, err := slave.WaitSyncToTarget(target, 30)
+			if err != nil {
+				return fmt.Errorf("replica %s cannot be checked before it is detached: %w", url, err)
+			}
+			if reached {
+				return nil
+			}
+			if stalled, still := progress.stalled(slave.AppliedPosition()); stalled {
+				return fmt.Errorf("replica %s makes no progress (still at %s for %s): it cannot be detached as the staging server", url, progress.applied, still.Round(time.Second))
+			}
+			step := fmt.Sprintf("replica %s catching up before it is detached", url)
+			if sc := cluster.GetStagingCreation(); sc != nil && !sc.Done && sc.Error == "" && sc.Step != step {
+				cluster.SetStagingCreation(StagingCreation{Kind: sc.Kind, Parent: sc.Parent, Step: step})
+			}
+			if !logged {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Staging seed of %s: waiting for replica %s to reach %s before it is detached", cluster.Name, url, target)
+				logged = true
+			}
+		default:
+			return fmt.Errorf("replica %s is %s, its replication broken: it cannot be detached as the staging server", url, slave.State)
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+// freshenParentBackup makes sure a reseed never takes the parent's domain back (#2124). A child
+// or staging master that already replicated its parent holds in its binlog later GTIDs of the
+// parent's domain than an older parent backup: reloaded, the channel resumes before them and
+// gtid_strict_mode refuses to binlog them (1950, preprod belair-staging-test: backup at
+// 4-53070043-3245370, db1 at 4-53070043-3441701); RESET MASTER would break its replicas. So the
+// parent channel is stopped first (the child's position freezes), the child's gtid_binlog_pos is
+// compared per domain with the backup's position, and when the backup is behind, a fresh logical
+// backup of the parent is taken: its position is past the frozen one, the domain only moves
+// forward. A new child (creation) has none of the parent's domain: nothing to do. MariaDB only
+// (domain-based GTID); the parent channel is started again when it stops on an error. stopped:
+// the parent channel was stopped and left so, for the reseed to start again.
+func (cluster *Cluster) freshenParentBackup(parent *Cluster, cmaster *ServerMonitor) (stopped bool, err error) {
+	if parent == nil || !cmaster.IsMariaDB() || cmaster.Conn == nil {
+		return false, nil
+	}
+	_, bcksrv, err := parent.ParentLogicalBackup()
+	if err != nil || bcksrv == nil || bcksrv.LastBackupMeta.Logical == nil {
+		return false, nil // ReseedFromParentCluster refuses with its own reason
+	}
+	channel := parent.Conf.MasterConn
+	if logs, err := cmaster.StopSlaveChannel(channel); err != nil {
+		cluster.LogSQL(logs, err, cmaster.URL, "Reseed", config.LvlErr, "Failed stop slave %s on %s: %s", channel, cmaster.URL, err)
+	}
+	stopped = true
+	restart := func() {
+		if logs, err := cmaster.StartSlaveChannel(channel); err != nil {
+			cluster.LogSQL(logs, err, cmaster.URL, "Reseed", config.LvlErr, "Failed start slave %s on %s: %s", channel, cmaster.URL, err)
+		}
+	}
+	held, _, err := dbhelper.GetVariableByName(cmaster.Conn, "GTID_BINLOG_POS", cmaster.DBVersion)
+	if err != nil {
+		restart()
+		return false, fmt.Errorf("gtid_binlog_pos of %s: %w", cmaster.URL, err)
+	}
+	backupPos := bcksrv.LastBackupMeta.Logical.BinLogGtid
+	behind := parentBackupBehind(backupPos, held)
+	if behind == "" {
+		return true, nil
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Reseed of %s from %s: the parent backup is behind (%s), taking a fresh logical backup of %s on %s", cmaster.URL, parent.Name, behind, parent.Name, bcksrv.URL)
+	if err := bcksrv.JobBackupLogical(context.Background()); err != nil {
+		restart()
+		return false, fmt.Errorf("fresh logical backup of %s on %s: %w", parent.Name, bcksrv.URL, err)
+	}
+	if meta := bcksrv.LastBackupMeta.Logical; meta == nil || parentBackupBehind(meta.BinLogGtid, held) != "" {
+		restart()
+		return false, fmt.Errorf("the fresh backup of %s is still behind %s's position %s in the parent's domain", parent.Name, cmaster.URL, held)
+	}
+	return true, nil
+}
+
+// parentBackupBehind names the first domain where held (a child's gtid_binlog_pos) is past the
+// parent backup's position, "" when the backup is at or past it in every domain it has.
+func parentBackupBehind(backupPos, held string) string {
+	if backupPos == "" {
+		return ""
+	}
+	have := gtid.NewList(held)
+	for _, b := range *gtid.NewList(backupPos) {
+		for _, h := range *have {
+			if h.DomainID == b.DomainID && h.SeqNo > b.SeqNo {
+				return fmt.Sprintf("domain %d: backup at %d, server at %d", b.DomainID, b.SeqNo, h.SeqNo)
+			}
+		}
+	}
+	return ""
 }
 
 // ParentLogicalBackup returns the logical backup a child cluster (staging) is seeded
@@ -696,34 +919,41 @@ func (cluster *Cluster) seedFromParent(parent *Cluster, staging bool) error {
 	if cmaster == nil {
 		return fmt.Errorf("no master on %s", cluster.Name)
 	}
+	parentStopped, err := cluster.freshenParentBackup(parent, cmaster)
+	if err != nil {
+		return fmt.Errorf("reseed of %s from %s: %w", cmaster.URL, parent.Name, err)
+	}
 	masterGTIDList, err := cluster.ReseedFromParentCluster(parent, cmaster, "") // the master combines its GTID list with the parent's
+	if refused := (parentReseedRefused{}); parentStopped && errors.As(err, &refused) {
+		// nothing was loaded: the parent channel freshenParentBackup stopped runs again
+		if logs, serr := cmaster.StartSlaveChannel(parent.Conf.MasterConn); serr != nil {
+			cluster.LogSQL(logs, serr, cmaster.URL, "Reseed", config.LvlErr, "Failed start slave %s on %s: %s", parent.Conf.MasterConn, cmaster.URL, serr)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("reseed of %s from %s: %w", cmaster.URL, parent.Name, err)
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done", parent.Name)
 
-	replicas := cluster.GetSlaves()
+	// A child detaches nothing: its replicas catch up through its master's binlog, their
+	// normal state. A staging cluster detaches its first replica as the staging server,
+	// which must hold all the data first.
 	if staging {
-		// the first replica only: the one the refresh detaches
 		slave := cluster.GetSlaveByIndex(0)
 		if slave == nil {
 			return fmt.Errorf("no replica on %s to detach as the staging server", cluster.Name)
 		}
-		replicas = []*ServerMonitor{slave}
-	}
-	for _, slave := range replicas {
-		starttime := time.Now()
-		for slave.State == stateSlaveLate && time.Since(starttime) < 2*time.Minute {
-			time.Sleep(1 * time.Second)
+		if err := cluster.waitStagingReplicaInSync(slave.URL); err != nil {
+			return err
 		}
-		if slave.State != stateSlave {
-			return fmt.Errorf("replica %s is %s after 2 minutes, not in sync", slave.URL, slave.State)
-		}
-	}
-	if staging {
 		if err := cluster.RefreshStaging(parent, masterGTIDList); err != nil {
 			return fmt.Errorf("refresh staging: %w", err)
 		}
+	}
+	if staging {
+		// the staging refresh took the master's backup to reload the standalone
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Seed of %s from parent cluster %s done", cluster.Name, parent.Name)
+		return nil
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Seed of %s from parent cluster %s done, starting a logical backup", cluster.Name, parent.Name)
 	go cmaster.JobBackupLogical(context.Background())

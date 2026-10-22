@@ -297,7 +297,7 @@ const (
 	backupMountOpTimeout    = 2 * time.Minute  // each FUSE request (DeadlineFS)
 	backupMountProbeTimeout = backupMountOpTimeout + 30*time.Second
 	backupMountStopTimeout  = time.Minute
-	backupMountLateWindow   = 10 * time.Minute // WARN0254 stays open that long after a late request
+	backupMountLateWindow   = 10 * time.Minute // WARN0262 stays open that long after a late request
 )
 
 // RefreshBackupMount makes the backups folder mount what the settings say: mounted (local
@@ -648,7 +648,7 @@ func (cluster *Cluster) checkBackupMountStates() {
 	st, moving, lastLate := bm.state, bm.moving, bm.lastLate
 	bm.mu.Unlock()
 	if st.Mounted && !lastLate.IsZero() && time.Since(lastLate) < backupMountLateWindow {
-		cluster.SetState("WARN0254", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0254"], cluster.Name, st.LateOps, backupMountOpTimeout, st.LastLate), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0262", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0262"], cluster.Name, st.LateOps, backupMountOpTimeout, st.LastLate), ErrFrom: "BACKUP"})
 	}
 	switch {
 	case moving:

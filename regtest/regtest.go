@@ -156,6 +156,8 @@ var tests = []string{
 	"testRejoinRefusesNodeWithData",
 	"testCreateStaging",
 	"testCreateChild",
+	"testCreateStagingSplitdump",
+	"testCreateChildSplitdump",
 	"testAlterEngine",
 }
 

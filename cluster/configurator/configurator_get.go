@@ -68,6 +68,22 @@ func (configurator *Configurator) GetConfigExpireLogDays() string {
 	return strconv.Itoa(configurator.ClusterConfig.ProvExpireLogDays)
 }
 
+// MinBinlogTotalSize is the floor of max_binlog_total_size, and its value while a restore with the
+// binary log on runs (#2124): two binlogs of the default 1G max_binlog_size.
+const MinBinlogTotalSize int64 = 2 * 1024 * 1024 * 1024
+
+// GetConfigMaxBinlogTotalSize is max_binlog_total_size in bytes: prov-db-binlog-total-size-pct of
+// prov-db-disk-size, never under MinBinlogTotalSize. The binary logs are bounded by the plan, not
+// only by expire_logs_days.
+func (configurator *Configurator) GetConfigMaxBinlogTotalSize() string {
+	diskGB, err := config.ParseUnitMeasurementToInt("G,bytes,required", configurator.ClusterConfig.ProvDisk, true)
+	size := int64(diskGB) * 1024 * 1024 * 1024 * int64(configurator.ClusterConfig.ProvBinlogTotalSizePct) / 100
+	if err != nil || size < MinBinlogTotalSize {
+		size = MinBinlogTotalSize
+	}
+	return strconv.FormatInt(size, 10)
+}
+
 func (configurator *Configurator) GetConfigRelaySpaceLimit() string {
 	return strconv.Itoa(10 * 1024 * 1024)
 }
@@ -75,10 +91,18 @@ func (configurator *Configurator) GetConfigRelaySpaceLimit() string {
 func (configurator *Configurator) GetConfigReplicationDomain(ClusterName string) string {
 	// Multi source need differnt domain id
 	if configurator.ClusterConfig.MasterConn != "" && configurator.ClusterConfig.ProvDomain == "0" {
-		crcTable := crc32.MakeTable(0xD5828281)
-		return strconv.FormatUint(uint64(crc32.Checksum([]byte(ClusterName), crcTable)), 10)
+		return ReplicationDomainOfName(ClusterName)
 	}
 	return configurator.ClusterConfig.ProvDomain
+}
+
+// ReplicationDomainOfName is the GTID domain id of a cluster from its name (a cluster name is
+// unique): the one rule, for a cluster without an explicit prov-db-domain and for the clusters
+// create-child and create-staging build, so that each cluster's writes keep their own domain
+// whatever the clusters it is later linked to.
+func ReplicationDomainOfName(clusterName string) string {
+	crcTable := crc32.MakeTable(0xD5828281)
+	return strconv.FormatUint(uint64(crc32.Checksum([]byte(clusterName), crcTable)), 10)
 }
 
 // getUsableMemoryMB returns the total prov-db-memory in MB. Every share in
@@ -516,10 +540,15 @@ func (configurator *Configurator) GetConfigInnoDBWriteIoThreads() string {
 // (e.g. > 32 DBU of IOPS via Little's-law sizing, or a > 64-core config).
 const innoDBMaxIoThreads = 64
 
-// clampInnoDBIoThreads clamps an innodb io-thread count to the valid [1, 64] range.
+// innoDBMinIoThreads is the floor of innodb_read_io_threads and innodb_write_io_threads: they are
+// asynchronous IO threads, not cores; on a small plan the formulas gave 1 or 2 and a restore or a
+// flush burst ran far slower than with 4 (#2124).
+const innoDBMinIoThreads = 4
+
+// clampInnoDBIoThreads clamps an innodb io-thread count to [innoDBMinIoThreads, 64].
 func clampInnoDBIoThreads(n int) int {
-	if n < 1 {
-		return 1
+	if n < innoDBMinIoThreads {
+		return innoDBMinIoThreads
 	}
 	if n > innoDBMaxIoThreads {
 		return innoDBMaxIoThreads

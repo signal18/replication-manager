@@ -378,6 +378,9 @@ func (server *ServerMonitor) CheckBinaryLogs(force bool) error {
 		}
 
 		server.RefreshBinaryLogs()
+		// a restore with the binary log on keeps one binlog: it pauses until its replicas read
+		// the rotated one, purged then (#2124)
+		server.pauseLogicalRestoreOnBinlogRotation()
 	} else {
 		nodebinlogcount, err := dbhelper.CountBinaryLogs(server.Conn, server.DBVersion)
 		if err != nil {
@@ -418,7 +421,10 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 	}
 
 	sizeLimit, masterJob, replicaJob := server.binlogPurgeJobs(isMaster)
-	if sizeLimit {
+	// max_binlog_total_size has one owner: the plan under the dynamic config
+	// (prov-db-binlog-total-size-pct), a restore with the binary log on while it runs (#2124);
+	// the replica job runs either way: MariaDB never purges a replica by that size
+	if sizeLimit && !cluster.Conf.ProvDBApplyDynamicConfig && !server.restoreHoldsBinlogTotalSize.Load() {
 		err := server.SetMaxBinlogTotalSize()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModPurge, config.LvlWarn, err.Error())
