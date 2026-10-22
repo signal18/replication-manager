@@ -1348,11 +1348,11 @@ func (server *ServerMonitor) JobReseedLogicalBackupPrepare(ctx context.Context, 
 		// error (lab, MariaDB 10.11). RESET SLAVE without ALL: the positions and relay logs
 		// go, the link stays (law T27, #2093). With several channels it is skipped, as in
 		// ProcessReseedLogical.
-		if logs, err := server.StopSlave(); err != nil {
+		if logs, err := server.StopSlave(); err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 		server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, "reseed requested from "+backupfile)
-		if logs, err := server.ResetSlavePositions(); err != nil {
+		if logs, err := server.ResetSlavePositions(); err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed reset slave positions on server: %s %s", server.URL, err)
 		}
 	}
@@ -7571,7 +7571,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		// CHANGE MASTER and START SLAVE, which must not start replication from an old position
 		// before the position is set below. With several channels it is skipped.
 		if len(server.Replications) <= 1 {
-			if logs, err := server.ResetSlavePositions(); err != nil {
+			if logs, err := server.ResetSlavePositions(); err != nil && !noReplicationChannel(err) {
 				cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed reset slave positions on server: %s %s", server.URL, err)
 			}
 			// MySQL/Percona: an older backup's own START SLAVE fails on a replica without a
@@ -7594,7 +7594,7 @@ func (server *ServerMonitor) ProcessReseedLogical(task string) error {
 		}
 	} else if !isPITR {
 		logs, err := server.StopSlave()
-		if err != nil {
+		if err != nil && !noReplicationChannel(err) {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 		server.markReseedStoppedLinks([]string{cluster.Conf.MasterConn}, "restore of "+backupfile)

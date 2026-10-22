@@ -5,11 +5,13 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -33,6 +35,14 @@ func (server *ServerMonitor) markReseedStoppedLinks(channels []string, reason st
 	server.reseedLinksMu.Lock()
 	defer server.reseedLinksMu.Unlock()
 	server.reseedLinks = reseedStoppedLinks{channels: append([]string(nil), channels...), reason: reason, at: time.Now()}
+}
+
+// noReplicationChannel is error 1617 (no master connection by that name): the server has no
+// such channel, a standalone server or a staging server detached by the refresh; nothing to stop
+// or reset, not a failure of the reseed.
+func noReplicationChannel(err error) bool {
+	var e *mysql.MySQLError
+	return errors.As(err, &e) && e.Number == 1617
 }
 
 // reseedStoppedLinkList is the channels a reseed stopped and are not known to run again.
