@@ -10,6 +10,10 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // #2091: a rotation queues the binlog it closed, each once, bounded by the keep window
@@ -301,5 +305,56 @@ func TestKeepRemovalLosesBinlogsNotBackups(t *testing.T) {
 	c.clearBinlogGap(server.URL)
 	if len(c.BinlogGaps()) != 0 {
 		t.Fatal("a backup in the archive does not end the gap")
+	}
+}
+
+// A binlog older than the server's oldest one was purged there: its copy can never be made.
+func TestBinlogOlderThan(t *testing.T) {
+	for _, c := range []struct {
+		binlog, oldest string
+		want           bool
+	}{
+		{"binlog.000034", "binlog.000036", true},     // purged before its copy
+		{"binlog.000036", "binlog.000036", false},    // still the oldest on the server
+		{"binlog.000037", "binlog.000036", false},    // still on the server
+		{"binlog.000034", "", false},                 // the list was not read
+		{"binlog.000034", "mysql-bin.000036", false}, // another sequence
+		{"binlog", "binlog.000036", false},           // not a binlog name
+	} {
+		if got := binlogOlderThan(c.binlog, c.oldest); got != c.want {
+			t.Errorf("binlogOlderThan(%q, %q) = %v, want %v", c.binlog, c.oldest, got, c.want)
+		}
+	}
+}
+
+// The server's binlog list is read at the copy failure: a binlog older than its oldest one is
+// purged (a gap), one still listed is not; an unreadable list is no proof of a loss.
+func TestBinlogPurgedOnServer(t *testing.T) {
+	_, server := newTestRuntimeOnlyClusterServer(t, "binlog-purged", "db2", "3306")
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	server.Conn = sqlx.NewDb(db, "sqlmock")
+	server.DBVersion = &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8}
+	logs := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"Log_name", "File_size"}).AddRow("binlog.000036", 1024).AddRow("binlog.000037", 512)
+	}
+
+	mock.ExpectQuery("SHOW BINARY LOGS").WillReturnRows(logs())
+	if !server.binlogPurgedOnServer("binlog.000035") {
+		t.Error("binlog.000035, older than the oldest binlog.000036: want purged")
+	}
+	mock.ExpectQuery("SHOW BINARY LOGS").WillReturnRows(logs())
+	if server.binlogPurgedOnServer("binlog.000036") {
+		t.Error("binlog.000036, still on the server: want not purged")
+	}
+	mock.ExpectQuery("SHOW BINARY LOGS").WillReturnError(sqlmock.ErrCancelled)
+	if server.binlogPurgedOnServer("binlog.000035") {
+		t.Error("the binlog list was not read: want not purged")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Error(err)
 	}
 }

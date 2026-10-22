@@ -14,6 +14,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/backupmgr"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -136,6 +137,11 @@ func (server *ServerMonitor) runBinlogCopies() {
 		if binlog != "" {
 			if err := server.InitiateJobBackupBinlog(binlog, false); err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Binlog copy of %s: %s not copied: %s", server.URL, binlog, err)
+				// gone from the server before its copy (its own size or time purge): no copy can
+				// be made any more, the archive misses it (F12); any other failure is no loss
+				if server.binlogPurgedOnServer(binlog) {
+					cluster.noteBinlogGap(server, binlog, "not copied: purged on the server before its copy")
+				}
 			}
 			q.mu.Lock()
 			q.pending = slices.DeleteFunc(q.pending, func(b string) bool { return b == binlog })
@@ -206,6 +212,28 @@ func (server *ServerMonitor) newestBinlogCopy() string {
 }
 
 // binlogPrefix is the name of a binlog without its number (mysql-bin.000042: mysql-bin).
+// binlogPurgedOnServer tells whether binlog is no longer on the server: older than its oldest
+// binlog, read now (the list the monitor keeps can be a tick old).
+func (server *ServerMonitor) binlogPurgedOnServer(binlog string) bool {
+	if server.Conn == nil {
+		return false
+	}
+	_, oldest, _, _, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion, dbhelper.NewBinaryLogMetaMap())
+	if err != nil {
+		return false
+	}
+	return binlogOlderThan(binlog, oldest)
+}
+
+// binlogOlderThan tells whether binlog comes before oldest in the same binlog sequence.
+func binlogOlderThan(binlog, oldest string) bool {
+	if oldest == "" || binlogPrefix(binlog) != binlogPrefix(oldest) {
+		return false
+	}
+	n, o := binlogNumber(binlog), binlogNumber(oldest)
+	return n >= 0 && o >= 0 && n < o
+}
+
 func binlogPrefix(name string) string {
 	if i := strings.LastIndex(name, "."); i > 0 {
 		return name[:i]
