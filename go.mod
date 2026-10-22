@@ -63,7 +63,7 @@ require (
 	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible
 	github.com/juju/errors v0.0.0-20220203013757-bd733f3c86b9
 	github.com/kisielk/og-rek v0.0.0-20170425174049-dd41cde712de
-	github.com/klauspost/compress v1.18.0
+	github.com/klauspost/compress v1.18.7
 	github.com/lestrrat/go-file-rotatelogs v0.0.0-20171229092148-f984502973a0
 	github.com/lestrrat/go-strftime v0.0.0-20170113112000-04ef93e28531
 	github.com/lib/pq v1.12.0
