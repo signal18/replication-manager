@@ -497,7 +497,7 @@ func TestCatchUpRecordsPurgedBinlog(t *testing.T) {
 // #2142 (4): a copy that failed on the master stays queued for the next rotation, the worker
 // ends; on a server no longer master it is dropped
 func TestFailedCopyKeptQueued(t *testing.T) {
-	_, server, _ := newReviewTestMaster(t, "binlog-keptqueued")
+	c, server, _ := newReviewTestMaster(t, "binlog-keptqueued")
 	q := &server.binlogCopies
 	q.mu.Lock()
 	q.pending, q.running = []string{"binlog.000012"}, true
@@ -510,6 +510,7 @@ func TestFailedCopyKeptQueued(t *testing.T) {
 		t.Fatalf("pending %v running %v: want the copy kept and the worker ended", pending, running)
 	}
 	server.State = stateSlave
+	c.master = nil // a switchover made another server the master
 	q.mu.Lock()
 	q.running = true
 	q.mu.Unlock()
