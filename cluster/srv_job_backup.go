@@ -4502,7 +4502,10 @@ func (server *ServerMonitor) JobBackupMysqldump(ctx context.Context, task, filen
 	if !remote && server.MysqldumpLockDDL() {
 		bckConn, err = server.GetNewDBConn()
 		if err != nil {
+			// the server down or refusing: no dump can be taken, the backup fails here (it used to
+			// go on with a nil connection and panic, #2142)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+			return fmt.Errorf("cannot open the DDL lock connection on %s: %w", server.URL, err)
 		}
 		defer bckConn.Close()
 
@@ -4965,7 +4968,9 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") && dumper.Lower("0.12.3") && cluster.Conf.BackupLockDDL {
 		bckConn, err = server.GetNewDBConn()
 		if err != nil {
+			// no connection: the backup fails here, never on a nil connection (#2142)
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+			return fmt.Errorf("cannot open the DDL lock connection on %s: %w", server.URL, err)
 		}
 		defer bckConn.Close()
 
