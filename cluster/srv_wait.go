@@ -61,20 +61,48 @@ func (t ReplicationTarget) String() string {
 }
 
 // ReadReplicationTarget reads server's position live, not from the last monitoring tick: a tick old,
-// it can miss the last transactions just written (the end of a restore).
+// it can miss the last transactions just written (the end of a restore). An empty position (no
+// binary log, nothing written) is an error: MASTER_GTID_WAIT of an empty GTID answers at once that it is reached.
 func (server *ServerMonitor) ReadReplicationTarget() (ReplicationTarget, error) {
 	if server.DBVersion.IsMariaDB() {
 		g, _, err := dbhelper.GetVariableByName(server.Conn, "GTID_BINLOG_POS", server.DBVersion)
+		if err == nil && g == "" {
+			err = fmt.Errorf("%s has no gtid_binlog_pos", server.URL)
+		}
 		return ReplicationTarget{GTID: g}, err
 	}
 	ms, _, err := dbhelper.GetMasterStatus(server.Conn, server.DBVersion)
+	if err == nil && ms.File == "" {
+		err = fmt.Errorf("%s has no binary log position", server.URL)
+	}
 	return ReplicationTarget{File: ms.File, Pos: strconv.FormatUint(uint64(ms.Position), 10)}, err
 }
 
-// replicaNoProgressTurns is how many WaitSyncToTarget turns of 30 s in a row a replica may show
-// no progress before a wait gives up on it: one transaction of a restore (~290 MB) kept
-// db3.belair-staging-test's position still for about 40 s while it applied it.
-const replicaNoProgressTurns = 3
+// replicaNoProgressFor is how long a replica's applied position may stay still before a wait gives
+// up on it: one transaction of a restore (~290 MB) kept db3.belair-staging-test's position still
+// for about 40 s while it applied it. Measured in time, not in WaitSyncToTarget turns: a turn that
+// answers at once would count for nothing.
+const replicaNoProgressFor = 90 * time.Second
+
+// replicaProgressClock is the time a replicaProgress reads, replaced in tests.
+var replicaProgressClock = time.Now
+
+// replicaProgress follows a replica's applied position (AppliedPosition) between the turns of a wait.
+type replicaProgress struct {
+	applied string
+	since   time.Time
+}
+
+// stalled records applied: true once it has not moved for replicaNoProgressFor, with how long.
+func (p *replicaProgress) stalled(applied string) (bool, time.Duration) {
+	now := replicaProgressClock()
+	if p.since.IsZero() || applied != p.applied {
+		p.applied, p.since = applied, now
+		return false, 0
+	}
+	still := now.Sub(p.since)
+	return still >= replicaNoProgressFor, still
+}
 
 // AppliedPosition is where the replica's SQL thread is, from its last replication status: the
 // master binlog file and position it executed up to, and its gtid_slave_pos on MariaDB. Equal

@@ -725,7 +725,7 @@ func (cluster *Cluster) waitReseedEnd(url string, started int64) error {
 // 2 minutes stopped the creation of a staging cluster seeded from an 858 MB backup, preprod
 // belair). Its progress is the creation's step; it stops when the replica's replication breaks
 // (any state but Slave or SlaveLate), on an SQL error of the wait, or when its applied position
-// (AppliedPosition) did not move for replicaNoProgressTurns turns: it is not catching up, the
+// (AppliedPosition) did not move for replicaNoProgressFor: it is not catching up, the
 // wait would never end. Read by URL each time: a configuration reload
 // rebuilds the ServerMonitor.
 func (cluster *Cluster) waitStagingReplicaInSync(url string) error {
@@ -738,7 +738,7 @@ func (cluster *Cluster) waitStagingReplicaInSync(url string) error {
 		return fmt.Errorf("position of %s before replica %s is detached: %w", master.URL, url, err)
 	}
 	logged := false
-	lastApplied, still := "", 0
+	var progress replicaProgress
 	for {
 		slave := cluster.GetServerFromURL(url)
 		if slave == nil {
@@ -753,10 +753,8 @@ func (cluster *Cluster) waitStagingReplicaInSync(url string) error {
 			if reached {
 				return nil
 			}
-			if applied := slave.AppliedPosition(); applied != lastApplied {
-				lastApplied, still = applied, 0
-			} else if still++; still >= replicaNoProgressTurns {
-				return fmt.Errorf("replica %s makes no progress (still at %s for %d turns of 30 s): it cannot be detached as the staging server", url, applied, still)
+			if stalled, still := progress.stalled(slave.AppliedPosition()); stalled {
+				return fmt.Errorf("replica %s makes no progress (still at %s for %s): it cannot be detached as the staging server", url, progress.applied, still.Round(time.Second))
 			}
 			step := fmt.Sprintf("replica %s catching up before it is detached", url)
 			if sc := cluster.GetStagingCreation(); sc != nil && !sc.Done && sc.Error == "" && sc.Step != step {

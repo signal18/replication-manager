@@ -96,7 +96,7 @@ func TestWaitStagingReplicaInSync(t *testing.T) {
 	}
 }
 
-// A replica whose applied position does not move for replicaNoProgressTurns turns is not catching
+// A replica whose applied position does not move for replicaNoProgressFor is not catching
 // up: the wait stops instead of waiting forever, and the replica is not detached.
 func TestWaitStagingReplicaInSyncStopsWithoutProgress(t *testing.T) {
 	mariadb := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 6}
@@ -115,12 +115,16 @@ func TestWaitStagingReplicaInSyncStopsWithoutProgress(t *testing.T) {
 		SlaveStatus: &dbhelper.SlaveStatus{RelayMasterLogFile: sql.NullString{String: "binlog.000010", Valid: true},
 			ExecMasterLogPos: sql.NullString{String: "692538834", Valid: true}}}
 	c.Servers = []*ServerMonitor{master, replica}
-	for i := 0; i <= replicaNoProgressTurns; i++ {
+	// each turn lasts its 30 s: the fourth sees the position still for 90 s
+	clock := time.Now()
+	replicaProgressClock = func() time.Time { clock = clock.Add(30 * time.Second); return clock }
+	defer func() { replicaProgressClock = time.Now }()
+	for i := 0; i < 4; i++ {
 		mock.ExpectQuery("MASTER_GTID_WAIT").WithArgs("5-11130737-726", 30).
 			WillReturnRows(sqlmock.NewRows([]string{"r"}).AddRow(-1))
 	}
 	err = c.waitStagingReplicaInSync(replica.URL)
-	if err == nil || !strings.Contains(err.Error(), "makes no progress (still at binlog.000010:692538834") {
+	if err == nil || !strings.Contains(err.Error(), "makes no progress (still at binlog.000010:692538834 for 1m30s") {
 		t.Fatalf("a replica without progress: %v", err)
 	}
 }

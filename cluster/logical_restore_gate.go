@@ -153,7 +153,7 @@ func (server *ServerMonitor) startLogicalRestoreGate(ctx context.Context) (stop 
 // 30 s turns); WARN0254 names the replica it waits for. Not server's current position: a child or
 // staging master keeps writing its parent's transactions, a moving target is never reached. An
 // SQL error of the wait, or no progress of the replica's applied position for
-// replicaNoProgressTurns turns, ends it for that replica, logged. A cancel of the restore ends it
+// replicaNoProgressFor, ends it for that replica, logged. A cancel of the restore ends it
 // after the turn running.
 func (server *ServerMonitor) waitReplicasAppliedAll(ctx context.Context, gate *logicalRestoreGate) {
 	cluster := server.ClusterGroup
@@ -164,7 +164,7 @@ func (server *ServerMonitor) waitReplicasAppliedAll(ctx context.Context, gate *l
 		return
 	}
 	for _, sl := range cluster.GetSlaves() {
-		lastApplied, still := "", 0
+		var progress replicaProgress
 		for sl != nil && sl != server && sl.Conn != nil && replicaTakesPart(sl) {
 			if ctx.Err() != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo,
@@ -180,11 +180,9 @@ func (server *ServerMonitor) waitReplicasAppliedAll(ctx context.Context, gate *l
 			if reached {
 				break
 			}
-			if applied := sl.AppliedPosition(); applied != lastApplied {
-				lastApplied, still = applied, 0
-			} else if still++; still >= replicaNoProgressTurns {
+			if stalled, still := progress.stalled(sl.AppliedPosition()); stalled {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn,
-					"Restore on %s written: stopped waiting for replica %s, no progress (still at %s for %d turns of 30 s)", server.URL, sl.URL, applied, still)
+					"Restore on %s written: stopped waiting for replica %s, no progress (still at %s for %s)", server.URL, sl.URL, progress.applied, still.Round(time.Second))
 				break
 			}
 			// nothing left to hold, the restore is written: the pause only names the replica

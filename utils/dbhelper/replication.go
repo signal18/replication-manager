@@ -1365,13 +1365,17 @@ func MasterWaitGTID(db *sqlx.DB, gtid string, timeout int) (string, error) {
 }
 
 // MasterWaitGTIDReached is MasterWaitGTID reading MASTER_GTID_WAIT's result: true once the
-// replica applied gtid, false at the timeout (-1). MasterWaitGTID ignores it, a timeout looks
-// like a success: kept as is for its callers (WaitSyncToMaster).
+// replica applied gtid, false at the timeout (-1); NULL (the wait aborted) is an error, as
+// MasterPosWaitReached's. MasterWaitGTID ignores it, a timeout looks like a success: kept as is
+// for its callers (WaitSyncToMaster).
 func MasterWaitGTIDReached(db *sqlx.DB, gtid string, timeout int) (bool, string, error) {
 	query := "SELECT MASTER_GTID_WAIT(?, ?)"
 	var res sql.NullInt64
 	err := db.QueryRowx(query, gtid, timeout).Scan(&res)
-	return err == nil && res.Valid && res.Int64 >= 0, query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
+	if err == nil && !res.Valid {
+		err = errors.New("MASTER_GTID_WAIT returned NULL: the wait was aborted")
+	}
+	return err == nil && res.Int64 >= 0, query + "(" + gtid + "-" + strconv.Itoa(timeout) + ")", err
 }
 
 // MasterPosWaitReached is MasterPosWait reading MASTER_POS_WAIT / SOURCE_POS_WAIT's result: true
