@@ -60,8 +60,7 @@ type ServerMonitor struct {
 	Pass                        string                      `json:"-"`
 	URL                         string                      `json:"url" groups:"apps"`
 	DSN                         string                      `json:"-"`
-	serviceDSN                  string                      `json:"-"` // DSN on Port when the monitoring uses db-servers-monitor-extra-port, else empty (#2150)
-	extraPortFallback           monitorExtraPortFallback    `json:"-"`
+	extraPortFallback           monitorExtraPortFallback    `json:"-"` // DSN on Port when the monitoring uses db-servers-monitor-extra-port, and its fallback (#2150)
 	poolPort                    string                      `json:"-"`           // port the global pool Conn was opened on, written by Ping (#2150)
 	MonitorPort                 string                      `json:"monitorPort"` // port of repman's last monitoring connection: the extra port, or Port when unset or in fallback (#2150)
 	Host                        string                      `json:"host" groups:"apps"`

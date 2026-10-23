@@ -42,4 +42,12 @@ port of repman's own SQL connections.
 - `extra_max_connections` must be sized for repman's connections: the global pool, one
   connection per Ping, and the job connections. Otherwise 1040 sends repman to the
   service port, with WARN0267.
+- The OpenSVC moduleset tag that writes `with_net_threadpool.cnf` already enables
+  `extra_port = 3307` with `extra_max_connections = 10` on provisioned MariaDB. That's the
+  port to set there, but 10 may be too few for repman's connections (see above).
+- A node already suspect or failed whose extra port times out isn't tried on the service
+  port in the same tick, so its failure detection doesn't pay two timeouts. The next tick,
+  inside the window, goes to the service port.
+- `serviceDSN` and the fallback window share one mutex, because `SetDSN` runs from the API
+  while `Ping` connects.
 - Only `check-type = tcp` uses it. The `agent` check doesn't open a SQL connection.

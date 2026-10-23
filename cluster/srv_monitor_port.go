@@ -9,6 +9,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -25,12 +26,30 @@ import (
 // timeout to every tick, and delay the failure detection of a node that is down (#2150).
 const monitorExtraPortRetry = time.Minute
 
-// monitorExtraPortFallback records that the extra port failed: until when the service
-// port is used, and why, for WARN0267.
+// connectServicePort opens the fallback connection on the service port; a variable so the
+// tests replace the server that answers there.
+var connectServicePort = func(dsn string) (*sqlx.DB, error) { return sqlx.Connect("mysql", dsn) }
+
+// monitorExtraPortFallback holds the DSN of the service port, written by SetDSN, and the
+// record that the extra port failed: until when the service port is used, and why, for
+// WARN0267. Under its own mutex: SetDSN runs from the API while Ping connects (#2150).
 type monitorExtraPortFallback struct {
-	mu     sync.Mutex
-	until  time.Time
-	reason string
+	mu         sync.Mutex
+	serviceDSN string
+	until      time.Time
+	reason     string
+}
+
+func (f *monitorExtraPortFallback) setServiceDSN(dsn string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.serviceDSN = dsn
+}
+
+func (f *monitorExtraPortFallback) getServiceDSN() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.serviceDSN
 }
 
 func (f *monitorExtraPortFallback) active(now time.Time) (bool, string) {
@@ -69,6 +88,11 @@ func extraPortUnusable(err error) bool {
 	return true
 }
 
+func isTimeout(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
 // getNewDBConnPort is GetNewDBConn returning the port the connection was opened on, so
 // Ping moves the global pool when the monitoring port changes. With an extra port set it
 // connects there, and on the service port when the extra port fails or failed less than
@@ -85,7 +109,7 @@ func (server *ServerMonitor) getNewDBConnPort() (*sqlx.DB, string, error) {
 			return nil, "", errors.New("split-brain simulation: master link down")
 		}
 	}
-	serviceDSN := server.serviceDSN
+	serviceDSN := server.extraPortFallback.getServiceDSN()
 	if serviceDSN == "" {
 		conn, err := server.connectMonitorDSN()
 		return conn, server.monitorExtraPort(), err
@@ -98,8 +122,14 @@ func (server *ServerMonitor) getNewDBConnPort() (*sqlx.DB, string, error) {
 			return conn, extraPort, err
 		}
 		server.extraPortFallback.start(now, err.Error())
+		// A node already suspect or failed whose extra port timed out is most likely
+		// down: a second connect timeout on the service port would only delay this tick.
+		// The next tick, inside the window, goes to the service port directly.
+		if isTimeout(err) && server.IsDown() {
+			return nil, extraPort, err
+		}
 	}
-	conn, err := sqlx.Connect("mysql", serviceDSN)
+	conn, err := connectServicePort(serviceDSN)
 	if err != nil {
 		return nil, server.Port, err
 	}

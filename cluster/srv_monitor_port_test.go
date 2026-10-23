@@ -14,8 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func newMonitorPortTestServer(extraPort int, port string) *ServerMonitor {
@@ -44,8 +47,8 @@ func TestMonitorExtraPortUnsetKeepsServicePort(t *testing.T) {
 	if !strings.Contains(s.DSN, "tcp(127.0.0.1:3306)") {
 		t.Fatalf("DSN should use the service port, got %q", s.DSN)
 	}
-	if s.serviceDSN != "" {
-		t.Fatalf("no service DSN expected without an extra port, got %q", s.serviceDSN)
+	if dsn := s.extraPortFallback.getServiceDSN(); dsn != "" {
+		t.Fatalf("no service DSN expected without an extra port, got %q", dsn)
 	}
 	if got := s.monitorExtraPort(); got != "3306" {
 		t.Fatalf("monitorExtraPort = %q, want 3306", got)
@@ -59,8 +62,8 @@ func TestMonitorExtraPortMovesOnlyTheMonitoringDSN(t *testing.T) {
 	if !strings.Contains(s.DSN, "tcp(127.0.0.1:3308)") {
 		t.Fatalf("DSN should use the extra port, got %q", s.DSN)
 	}
-	if !strings.Contains(s.serviceDSN, "tcp(127.0.0.1:3306)") {
-		t.Fatalf("service DSN should use the service port, got %q", s.serviceDSN)
+	if dsn := s.extraPortFallback.getServiceDSN(); !strings.Contains(dsn, "tcp(127.0.0.1:3306)") {
+		t.Fatalf("service DSN should use the service port, got %q", dsn)
 	}
 	if s.Port != "3306" {
 		t.Fatalf("server.Port moved to %q, proxies and replication would follow it", s.Port)
@@ -70,8 +73,8 @@ func TestMonitorExtraPortMovesOnlyTheMonitoringDSN(t *testing.T) {
 // The extra port is the same as the service port: nothing to fall back to.
 func TestMonitorExtraPortEqualToServicePort(t *testing.T) {
 	s := newMonitorPortTestServer(3306, "3306")
-	if s.serviceDSN != "" {
-		t.Fatalf("no service DSN expected when both ports are equal, got %q", s.serviceDSN)
+	if dsn := s.extraPortFallback.getServiceDSN(); dsn != "" {
+		t.Fatalf("no service DSN expected when both ports are equal, got %q", dsn)
 	}
 }
 
@@ -88,12 +91,12 @@ func TestMonitorExtraPortIgnoredThroughTunnel(t *testing.T) {
 func TestSetMonitorExtraPortRebuildsDSN(t *testing.T) {
 	s := newMonitorPortTestServer(0, "3306")
 	s.ClusterGroup.SetMonitorExtraPort(3308)
-	if !strings.Contains(s.DSN, "tcp(127.0.0.1:3308)") || s.serviceDSN == "" {
-		t.Fatalf("DSN not rebuilt on the extra port: %q / %q", s.DSN, s.serviceDSN)
+	if !strings.Contains(s.DSN, "tcp(127.0.0.1:3308)") || s.extraPortFallback.getServiceDSN() == "" {
+		t.Fatalf("DSN not rebuilt on the extra port: %q / %q", s.DSN, s.extraPortFallback.getServiceDSN())
 	}
 	s.ClusterGroup.SetMonitorExtraPort(0)
-	if !strings.Contains(s.DSN, "tcp(127.0.0.1:3306)") || s.serviceDSN != "" {
-		t.Fatalf("DSN not rebuilt back on the service port: %q / %q", s.DSN, s.serviceDSN)
+	if !strings.Contains(s.DSN, "tcp(127.0.0.1:3306)") || s.extraPortFallback.getServiceDSN() != "" {
+		t.Fatalf("DSN not rebuilt back on the service port: %q / %q", s.DSN, s.extraPortFallback.getServiceDSN())
 	}
 }
 
@@ -147,5 +150,79 @@ func TestMoveGlobalPoolSamePortIsNoop(t *testing.T) {
 	}
 	if s.moveGlobalPool(s.Conn, "3308") {
 		t.Fatal("no pool to move yet")
+	}
+}
+
+// fakeServicePort makes the service port answer, through sqlmock, and returns the DSNs it
+// was asked for.
+func fakeServicePort(t *testing.T) *[]string {
+	asked := &[]string{}
+	previous := connectServicePort
+	connectServicePort = func(dsn string) (*sqlx.DB, error) {
+		*asked = append(*asked, dsn)
+		db, _, err := sqlmock.New()
+		if err != nil {
+			return nil, err
+		}
+		return sqlx.NewDb(db, "mysql"), nil
+	}
+	t.Cleanup(func() { connectServicePort = previous })
+	return asked
+}
+
+// The case the fallback exists for: the extra port refuses, the service port answers.
+// repman gets a connection on the service port, WARN0267 opens, and inside the window
+// the next connection goes to the service port without trying the extra port again.
+func TestRefusedExtraPortFallsBackToServicePort(t *testing.T) {
+	asked := fakeServicePort(t)
+	extra, _ := strconv.Atoi(closedPort(t))
+	s := newMonitorPortTestServer(extra, "3306")
+	s.ClusterGroup.StateMachine = new(state.StateMachine)
+	s.ClusterGroup.StateMachine.Init()
+
+	conn, port, err := s.getNewDBConnPort()
+	if err != nil {
+		t.Fatalf("expected the service port to answer, got %v", err)
+	}
+	defer conn.Close()
+	if port != "3306" {
+		t.Fatalf("port = %q, want the service port", port)
+	}
+	if len(*asked) != 1 || !strings.Contains((*asked)[0], "tcp(127.0.0.1:3306)") {
+		t.Fatalf("service port not used: %v", *asked)
+	}
+	if !s.ClusterGroup.StateMachine.IsInState(state.BuildStateKey("WARN0267", s.URL)) {
+		t.Fatal("WARN0267 not raised")
+	}
+
+	started := time.Now()
+	conn2, port2, err := s.getNewDBConnPort()
+	if err != nil || port2 != "3306" {
+		t.Fatalf("inside the window: port %q err %v", port2, err)
+	}
+	conn2.Close()
+	if len(*asked) != 2 {
+		t.Fatalf("second connection should go to the service port, asked %v", *asked)
+	}
+	if time.Since(started) > time.Second {
+		t.Fatal("the extra port was tried again inside the window")
+	}
+}
+
+// A connection opened on another port than the pool's becomes the pool.
+func TestMoveGlobalPoolSwapsOnPortChange(t *testing.T) {
+	s := newMonitorPortTestServer(3308, "3306")
+	s.ClusterGroup.Conf.Verbose = false
+	oldDB, _, _ := sqlmock.New()
+	newDB, _, _ := sqlmock.New()
+	defer newDB.Close()
+	s.Conn = sqlx.NewDb(oldDB, "mysql")
+	s.poolPort = "3308"
+	conn := sqlx.NewDb(newDB, "mysql")
+	if !s.moveGlobalPool(conn, "3306") {
+		t.Fatal("the pool should move to the service port connection")
+	}
+	if s.Conn != conn || s.poolPort != "3306" {
+		t.Fatalf("pool not swapped: poolPort %q", s.poolPort)
 	}
 }

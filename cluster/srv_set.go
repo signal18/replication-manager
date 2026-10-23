@@ -347,10 +347,11 @@ func (server *ServerMonitor) SetDSN() {
 		server.DSN = mydsn(server.monitorExtraPort())
 		// With db-servers-monitor-extra-port, the DSN of the service port is kept for the
 		// fallback when the extra port fails (getNewDBConnPort, #2150).
-		server.serviceDSN = ""
+		serviceDSN := ""
 		if port := server.monitorExtraPort(); port != server.Port {
-			server.serviceDSN = mydsn(server.Port)
+			serviceDSN = mydsn(server.Port)
 		}
+		server.extraPortFallback.setServiceDSN(serviceDSN)
 		if cluster.HaveDBTLSCert {
 			mysql.RegisterTLSConfig(ConstTLSCurrentConfigName, cluster.tlsconf)
 			if cluster.HaveDBTLSOldCert {
