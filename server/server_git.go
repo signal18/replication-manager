@@ -527,7 +527,13 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		}
 
 		tokenName := conf.GetInstancePATName()
-		personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+		// The saved token (git-acces-token, encrypted in the config) when GitLab still accepts it:
+		// a rotation at every start or settings change left a revoked token behind each time
+		// (100,000+ in GitLab). The daily rotation renews it.
+		personal_access_token := conf.GetDecryptedValue("git-acces-token")
+		if err := githelper.PATValid(personal_access_token); err != nil {
+			personal_access_token, _ = githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+		}
 		if personal_access_token == "" {
 			personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)
 			if err != nil && (conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr)) {
