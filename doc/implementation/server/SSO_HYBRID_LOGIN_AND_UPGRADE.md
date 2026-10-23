@@ -10,6 +10,10 @@ This document describes the agreed login and SSO async-upgrade behavior for non-
 
 Admin login uses **local auth only**. The login handler validates credentials against `cluster.APIUsers`. It does **not** wait for, initiate, or fall back to SSO.
 
+### The `system` Service Account
+
+`system` is the compute sensor's account: its password is the key derived from repman's secret key (`GetSystemAPIKey`), and it is never a GitLab user. It uses **local auth only**, like an admin: no async SSO upgrade on success and no SSO fallback on failure (401) (#2147).
+
 ### Non-Admin Users
 
 Non-admin login supports both local and SSO in a single request:
@@ -63,7 +67,7 @@ No `upgrade_id` is returned in the synchronous SSO fallback path.
 Login Request Received
         |
         v
-Is user admin?
+Is user admin or system?
    |yes|-----------------> Local auth only
    |no |                     Issue JWT, done
         |
