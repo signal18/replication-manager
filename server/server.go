@@ -3100,6 +3100,10 @@ func (repman *ReplicationManager) Run() error {
 					//to obtain a new PAT
 					tokenName := conf.GetInstancePATName()
 					new_tok, _ := githelper.GetGitLabTokenOAuth(repman.OAuthAccessToken.AccessToken, tokenName, repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+					if new_tok == "" {
+						// keep the current token rather than blank it
+						continue
+					}
 
 					//save the new PAT
 					newSecret := repman.Conf.Secrets.Get("git-acces-token")
@@ -3109,6 +3113,8 @@ func (repman *ReplicationManager) Run() error {
 					for _, cluster := range repman.Clusters {
 						cluster.Conf.Secrets.Set("git-acces-token", newSecret)
 					}
+					keepGitAccessToken(repman.Conf, new_tok)
+					repman.Save()
 				}
 			case <-quit_PAT:
 				ticker_PAT.Stop()

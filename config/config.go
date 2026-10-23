@@ -2021,6 +2021,13 @@ func (conf *Config) SetImmuableFlag(key string, value interface{}) {
 	conf.ImmuableFlagMap[key] = value
 }
 
+// DeleteImmuableFlag removes key from the immutable config map.
+func (conf *Config) DeleteImmuableFlag(key string) {
+	flagMapMu.Lock()
+	defer flagMapMu.Unlock()
+	delete(conf.ImmuableFlagMap, key)
+}
+
 // CopyImmuableFlags returns a copy of an immutable config map, to range over without the
 // lock.
 func CopyImmuableFlags(m map[string]interface{}) map[string]interface{} {
