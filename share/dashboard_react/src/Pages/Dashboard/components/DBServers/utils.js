@@ -65,3 +65,10 @@ export const getFailCount = (rowData) => {
 export const getVersion = (rowData) => {
   return `${rowData.dbVersion.flavor} ${rowData.dbVersion.major} ${rowData.dbVersion.minor} ${rowData.dbVersion.release}`
 }
+
+// host:port of a server, with the port repman monitors it on when that is another
+// one: db-servers-monitor-extra-port, MariaDB extra_port (#2150)
+export const getServerDisplayName = (rowData) =>
+  rowData?.monitorPort && rowData.monitorPort !== rowData.port
+    ? `${rowData.host}:${rowData.port} (monitored on :${rowData.monitorPort})`
+    : `${rowData?.host}:${rowData?.port}`

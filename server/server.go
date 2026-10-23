@@ -591,6 +591,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.ExecTimeout, "db-servers-exec-timeout", 10, "Database execution timeout in seconds")
 	flags.IntVar(&conf.ReadTimeout, "db-servers-read-timeout", 3600, "Database read timeout in seconds")
 	flags.IntVar(&conf.DNSTimeout, "db-servers-dns-timeout", 5, "DNS resolution timeout in seconds when resolving database server hostnames")
+	flags.IntVar(&conf.DbServersMonitorExtraPort, "db-servers-monitor-extra-port", 0, "Port of repman's own monitoring connections, MariaDB extra_port; db-servers-hosts keeps the service port for proxies and replication. 0 = the db-servers-hosts port")
 	flags.StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	flags.StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")
 	flags.StringVar(&conf.IgnoreSrvRO, "db-servers-ignored-readonly", "", "Database list of hosts not changing read only status")

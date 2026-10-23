@@ -29678,6 +29678,9 @@ const docTemplate = `{
                 "dbServersMaintenanceHosts": {
                     "type": "string"
                 },
+                "dbServersMonitorExtraPort": {
+                    "type": "integer"
+                },
                 "dbServersPreferedMaster": {
                     "type": "string"
                 },
@@ -30849,6 +30852,10 @@ const docTemplate = `{
                 },
                 "provDbBinaryTarballName": {
                     "type": "string"
+                },
+                "provDbBinlogTotalSizePct": {
+                    "description": "max_binlog_total_size as a % of prov-db-disk-size (template env SVC_CONF_ENV_MAX_BINLOG_TOTAL_SIZE, 2G floor, #2124)",
+                    "type": "integer"
                 },
                 "provDbBku": {
                     "type": "integer"
@@ -32433,7 +32440,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "domain": {
-                    "description": "GTID domain: the parent's + 1",
+                    "description": "GTID domain: the one of its name",
                     "type": "string"
                 },
                 "kind": {
@@ -32715,6 +32722,12 @@ const docTemplate = `{
         "server.InfraUnitPool": {
             "type": "object",
             "properties": {
+                "forSaleApu": {
+                    "type": "number"
+                },
+                "forSaleDbu": {
+                    "type": "number"
+                },
                 "freeApu": {
                     "type": "number"
                 },

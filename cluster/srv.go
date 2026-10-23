@@ -60,6 +60,9 @@ type ServerMonitor struct {
 	Pass                        string                      `json:"-"`
 	URL                         string                      `json:"url" groups:"apps"`
 	DSN                         string                      `json:"-"`
+	extraPortFallback           monitorExtraPortFallback    `json:"-"`           // DSN on Port when the monitoring uses db-servers-monitor-extra-port, and its fallback (#2150)
+	poolPort                    string                      `json:"-"`           // port the global pool Conn was opened on, written by Ping (#2150)
+	MonitorPort                 string                      `json:"monitorPort"` // port of repman's last monitoring connection: the extra port, or Port when unset or in fallback (#2150)
 	Host                        string                      `json:"host" groups:"apps"`
 	HostCnf                     string                      `json:"-"` // used to store host from config file
 	Port                        string                      `json:"port" groups:"apps"`
@@ -799,10 +802,12 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		}
 	}
 	var conn *sqlx.DB
+	var connPort string
 	var err error
 	switch cluster.Conf.CheckType {
 	case "tcp":
-		conn, err = server.GetNewDBConn()
+		conn, connPort, err = server.getNewDBConnPort()
+		server.MonitorPort = connPort
 	case "agent":
 		var resp *http.Response
 		resp, err = http.Get("http://" + server.Host + ":10001/check/")
@@ -944,9 +949,13 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	// reaffect a global DB pool object if we never get it , ex dynamic seeding
 	if server.Conn == nil {
 		server.Conn = conn
+		server.poolPort = connPort
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Assigning a global connection on server %s", server.URL)
 		return
 	}
+	// The monitoring port changed: this connection becomes the global pool, not closed
+	// below (#2150).
+	movedPool := server.moveGlobalPool(conn, connPort)
 	// We will leave when in failover to avoid refreshing variables and status
 	if cluster.StateMachine.IsInFailover() {
 		// the ping pool is not kept here: closed, else one pool LEAKED per server per tick
@@ -972,11 +981,14 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}()
 		}
 		server.Conn = conn
+		server.poolPort = connPort
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server refresh failed but ping connect %s", err)
 		return
 	}
 
-	defer conn.Close()
+	if !movedPool {
+		defer conn.Close()
+	}
 
 	// Reset FailCount
 	if (server.State != stateFailed && server.State != stateErrorAuth && server.State != stateSuspect) && (server.FailCount > 0) /*&& (((cluster.StateMachine.GetHeartbeats() - server.FailSuspectHeartbeat) * cluster.Conf.MonitoringTicker) > cluster.Conf.FailResetTime)*/ {

@@ -1211,17 +1211,13 @@ func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
 }
 
 func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
-	// Split-brain simulator: a cut database link (whole cluster, or just the
-	// master when the master is colocated on the isolated side) drives the
-	// health checks to failed exactly like a real network loss.
-	if server.ClusterGroup != nil {
-		if server.ClusterGroup.IsDatabaseFailureSimulated() {
-			return nil, errors.New("split-brain simulation: database link down")
-		}
-		if server.ClusterGroup.SimulatedOnFreezeDBAccess(server.URL) {
-			return nil, errors.New("split-brain simulation: master link down")
-		}
-	}
+	conn, _, err := server.getNewDBConnPort()
+	return conn, err
+}
+
+// connectMonitorDSN opens a connection on server.DSN, the monitoring port: the TLS
+// retries below rebuild it with SetDSN.
+func (server *ServerMonitor) connectMonitorDSN() (*sqlx.DB, error) {
 	// get topology is call to late
 	if server.IsPostgreSQLHost() {
 		return sqlx.Connect("postgres", server.DSN)
