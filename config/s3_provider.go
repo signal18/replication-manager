@@ -9,7 +9,10 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/pelletier/go-toml"
 )
 
 // S3ProviderSource constrains the allowed provider mode values.
@@ -142,4 +145,83 @@ func (p *S3Provider) Validate() error {
 			S3ProviderSourceApp, S3ProviderSourceCustom, p.ProviderSource)
 	}
 	return nil
+}
+
+// S3ProviderBlocks are [[s3-provider]] blocks as read from a config file (#2155), keys
+// encrypted: Config.S3Providers, read once by the cluster's LoadS3Providers; the saved config
+// is rendered from the cluster's provider list.
+type S3ProviderBlocks []map[string]interface{}
+
+// S3ProviderFromSettings reads an [[s3-provider]] block, of inject.toml or of the cluster's
+// config (#2155): a custom provider by default, cloud18-sso and role-arn for one reached with
+// the Cloud18 SSO. Keys are returned as written (encrypted in the cluster's config).
+func S3ProviderFromSettings(m map[string]interface{}) S3Provider {
+	p := S3Provider{ProviderSource: S3ProviderSourceCustom}
+	for k, v := range m {
+		s := fmt.Sprintf("%v", v)
+		switch k {
+		case "name":
+			p.Name = s
+		case "provider-source":
+			p.ProviderSource = S3ProviderSource(s)
+		case "provider-app":
+			p.ProviderApp = s
+		case "endpoint":
+			p.Endpoint = s
+		case "region":
+			p.Region = s
+		case "access-key":
+			p.AccessKey = s
+		case "secret-key":
+			p.SecretKey = s
+		case "cloud18-sso":
+			p.Cloud18SSO = s == "true"
+		case "role-arn":
+			p.RoleArn = s
+		}
+	}
+	return p
+}
+
+// S3ProviderSettings is the reverse of S3ProviderFromSettings: the block's keys, empty ones
+// left out.
+func S3ProviderSettings(p S3Provider) map[string]interface{} {
+	m := map[string]interface{}{"name": p.Name, "provider-source": string(p.ProviderSource)}
+	for k, v := range map[string]string{"provider-app": p.ProviderApp, "endpoint": p.Endpoint, "region": p.Region,
+		"access-key": p.AccessKey, "secret-key": p.SecretKey, "role-arn": p.RoleArn} {
+		if v != "" {
+			m[k] = v
+		}
+	}
+	if p.Cloud18SSO {
+		m["cloud18-sso"] = true
+	}
+	return m
+}
+
+// S3ProvidersToml renders providers as [[<section>.s3-provider]] blocks for the saved cluster
+// config (#2155); the caller passes them with their keys already encrypted.
+func S3ProvidersToml(section string, providers []S3Provider) (string, error) {
+	var b strings.Builder
+	for _, p := range providers {
+		b.WriteString("\n[[" + section + ".s3-provider]]\n")
+		m := S3ProviderSettings(p)
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			t, err := toml.TreeFromMap(map[string]interface{}{k: m[k]})
+			if err != nil {
+				return "", err
+			}
+			line, err := t.ToTomlString()
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(line)
+		}
+	}
+	return b.String(), nil
 }

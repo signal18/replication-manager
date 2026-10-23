@@ -915,6 +915,7 @@ type Config struct {
 	BackupArchiveMode                         string            `mapstructure:"backup-archive-mode" toml:"backup-archive-mode" json:"backupArchiveMode"`
 	BackupArchiveName                         string            `mapstructure:"backup-archive-name" toml:"backup-archive-name" json:"backupArchiveName"`
 	Archives                                  []ArchiveConfig   `mapstructure:"archive" toml:"archive" json:"archives"`
+	S3Providers                               S3ProviderBlocks  `mapstructure:"s3-provider" toml:"-" json:"-"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
 	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
 	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
