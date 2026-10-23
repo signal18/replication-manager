@@ -1017,9 +1017,10 @@ func (cluster *Cluster) OpenSVCGetNetSection() map[string]string {
 		svcnet["type"] = "cni"
 		svcnet["netns"] = "container#01"
 		svcnet["network"] = cluster.Conf.ProvNetCNICluster
-		if cluster.GetTopologyTarget() == config.TopoMultiMasterWsrep {
-			svcnet["wait_dns"] = "15s"
-		}
+		// Every CNI service (database, proxy, app) waits for its cluster DNS records before its
+		// next resources start: an init container resolving a name right after the IP came up
+		// failed (an app's git clone, #2149). Galera alone had it before.
+		svcnet["wait_dns"] = "15s"
 		return svcnet
 	} else if cluster.Conf.ProvType == "docker" {
 		svcnet["type"] = "docker"
