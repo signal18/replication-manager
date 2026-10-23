@@ -532,7 +532,11 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		// (100,000+ in GitLab). The daily rotation renews it.
 		personal_access_token := conf.GetDecryptedValue("git-acces-token")
 		minted := false
-		if err := githelper.PATValid(personal_access_token); err != nil {
+		valid, err := githelper.PATValid(personal_access_token)
+		if valid && err != nil {
+			repman.Logrus.Warnf("GitLab token not checked, keeping the saved one: %v", err)
+		}
+		if !valid {
 			minted = true
 			personal_access_token, _ = githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 		}
