@@ -7,6 +7,8 @@ package cluster
 import (
 	"fmt"
 	"testing"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 // #2077: the save that migrates a cluster replaces its legacy archive keys with the list.
@@ -84,7 +86,7 @@ func TestInjectS3Provider(t *testing.T) {
 	cl := newEventLogTestCluster(t, 1)
 	cl.WorkingDir = t.TempDir()
 	block := map[string]interface{}{"name": "cloud18-ovh-fr-2", "endpoint": "https://minio.example", "region": "eu-west-1", "cloud18-sso": true, "role-arn": "arn:minio:iam:eu-west-1::role/x"}
-	p := injectS3Provider(block)
+	p := config.S3ProviderFromSettings(block)
 	if p.ProviderSource != "custom" || !p.Cloud18SSO || p.RoleArn != "arn:minio:iam:eu-west-1::role/x" {
 		t.Fatalf("provider %+v", p)
 	}
@@ -95,14 +97,14 @@ func TestInjectS3Provider(t *testing.T) {
 		t.Fatalf("an unchanged block must be a no-op: %v %v", changed, err)
 	}
 	block["region"] = "eu-west-3"
-	if changed, err := cl.putInjectedS3Provider(injectS3Provider(block)); !changed || err != nil {
+	if changed, err := cl.putInjectedS3Provider(config.S3ProviderFromSettings(block)); !changed || err != nil {
 		t.Fatalf("update: %v %v", changed, err)
 	}
 	if ps := cl.GetS3ProvidersSnapshot(); len(ps) != 1 || ps[0].Region != "eu-west-3" {
 		t.Fatalf("providers %+v", ps)
 	}
 	block["access-key"] = "id"
-	if _, err := cl.putInjectedS3Provider(injectS3Provider(block)); err == nil {
+	if _, err := cl.putInjectedS3Provider(config.S3ProviderFromSettings(block)); err == nil {
 		t.Fatal("an SSO provider with keys must be refused")
 	}
 }

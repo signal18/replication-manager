@@ -494,7 +494,7 @@ func (cluster *Cluster) applyInjectConfig(data []byte) {
 				continue
 			}
 			for _, b := range blocks {
-				p := injectS3Provider(b.ToMap())
+				p := config.S3ProviderFromSettings(b.ToMap())
 				changed, err := cluster.putInjectedS3Provider(p)
 				switch {
 				case err != nil:
@@ -530,37 +530,6 @@ func injectArchiveSpec(m map[string]interface{}) config.ArchiveSpec {
 		}
 	}
 	return spec
-}
-
-// injectS3Provider reads an [[s3-provider]] block of inject.toml (#2091): the storages the BO
-// offers, a custom provider by default, cloud18-sso and role-arn for one reached with the
-// Cloud18 SSO.
-func injectS3Provider(m map[string]interface{}) config.S3Provider {
-	p := config.S3Provider{ProviderSource: config.S3ProviderSourceCustom}
-	for k, v := range m {
-		s := fmt.Sprintf("%v", v)
-		switch k {
-		case "name":
-			p.Name = s
-		case "provider-source":
-			p.ProviderSource = config.S3ProviderSource(s)
-		case "provider-app":
-			p.ProviderApp = s
-		case "endpoint":
-			p.Endpoint = s
-		case "region":
-			p.Region = s
-		case "access-key":
-			p.AccessKey = s
-		case "secret-key":
-			p.SecretKey = s
-		case "cloud18-sso":
-			p.Cloud18SSO = s == "true"
-		case "role-arn":
-			p.RoleArn = s
-		}
-	}
-	return p
 }
 
 // putInjectedS3Provider adds p, or replaces the provider of that name, and saves the list;
