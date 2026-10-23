@@ -845,8 +845,10 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		repman.jsonResponse(AuthTokenWithUpgrade{Token: tokenString, UpgradeID: upgradeID}, w)
 	}
 
-	// ── Non-Cloud18: local auth only ──────────────────────────────────────────
-	if !repman.Conf.Cloud18 {
+	// ── Non-Cloud18, and the `system` service account: local auth only ─────────
+	// `system` (the compute sensor's derived API key) is a repman account, never an
+	// SSO identity: it stays out of the Cloud18 SSO login flow (#2147).
+	if !repman.Conf.Cloud18 || user.Username == "system" {
 		userInfo, ok := tryLocalAuth()
 		if !ok {
 			authFail()
