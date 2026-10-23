@@ -531,7 +531,9 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		// a rotation at every start or settings change left a revoked token behind each time
 		// (100,000+ in GitLab). The daily rotation renews it.
 		personal_access_token := conf.GetDecryptedValue("git-acces-token")
+		minted := false
 		if err := githelper.PATValid(personal_access_token); err != nil {
+			minted = true
 			personal_access_token, _ = githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 		}
 		if personal_access_token == "" {
@@ -553,11 +555,13 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 			conf.GitUrl = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + ".git"
 			conf.GitUrlPull = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + "-pull.git"
 			conf.GitUsername = conf.Cloud18GitUser
-			conf.GitAccesToken = personal_access_token
 			conf.SetImmuableFlag("git-url", conf.GitUrl)
 			conf.SetImmuableFlag("git-url-pull", conf.GitUrlPull)
 			conf.SetImmuableFlag("git-username", conf.GitUsername)
-			conf.SetImmuableFlag("git-acces-token", personal_access_token)
+			keepGitAccessToken(conf, personal_access_token)
+			if minted {
+				repman.Save()
+			}
 
 			if conf.ConfRestoreOnStart {
 				conf.ConfRestoreOnStart = false
@@ -1800,4 +1804,14 @@ func (repman *ReplicationManager) PushUnitsLogToGit(ctx context.Context, path, m
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "%s of %s pushed to git", rel, month)
 	return nil
+}
+
+// keepGitAccessToken makes the instance's GitLab token survive a restart (#2153). SaveDynamic
+// drops the immutable keys from default.toml and writes the dynamic secrets there encrypted, so
+// the token is held as a dynamic secret. An immutable mark left by an older version, which made
+// every start mint a new token, is removed here.
+func keepGitAccessToken(conf *config.Config, token string) {
+	conf.GitAccesToken = token
+	conf.DeleteImmuableFlag("git-acces-token")
+	conf.SetDynamicFlag("git-acces-token", conf.EncryptSecretValue(token))
 }
