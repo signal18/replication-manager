@@ -4636,6 +4636,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return fmt.Errorf("db-servers-dns-timeout must be between 1 and 300 seconds, got %q", value)
 		}
 		mycluster.Conf.DNSTimeout = val
+	case "db-servers-monitor-extra-port":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 || val > 65535 {
+			return fmt.Errorf("db-servers-monitor-extra-port must be a port between 1 and 65535, or 0 for the db-servers-hosts port, got %q", value)
+		}
+		mycluster.SetMonitorExtraPort(val)
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":

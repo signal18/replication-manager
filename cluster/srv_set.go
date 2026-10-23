@@ -308,7 +308,7 @@ func (server *ServerMonitor) SetDSN() {
 
 		return dsn
 	}
-	mydsn := func() string {
+	mydsn := func(port string) string {
 		params := fmt.Sprintf("?timeout=%ds&readTimeout=%ds", cluster.Conf.Timeout, cluster.Conf.ReadTimeout)
 		dsn := server.User + ":" + server.Pass + "@"
 		if cluster.Conf.TunnelHost != "" {
@@ -322,7 +322,7 @@ func (server *ServerMonitor) SetDSN() {
 			//if strings.Contains(server.Host, ":") {
 			//		dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
 			//	} else {
-			dsn += "tcp(" + server.Host + ":" + server.Port + ")/" + params
+			dsn += "tcp(" + server.Host + ":" + port + ")/" + params
 			//		}
 		} else {
 			dsn += "unix(" + cluster.Conf.Socket + ")/" + params
@@ -344,7 +344,13 @@ func (server *ServerMonitor) SetDSN() {
 	if server.IsPostgreSQLHost() {
 		server.DSN = pgdsn()
 	} else {
-		server.DSN = mydsn()
+		server.DSN = mydsn(server.monitorExtraPort())
+		// With db-servers-monitor-extra-port, the DSN of the service port is kept for the
+		// fallback when the extra port fails (getNewDBConnPort, #2150).
+		server.serviceDSN = ""
+		if port := server.monitorExtraPort(); port != server.Port {
+			server.serviceDSN = mydsn(server.Port)
+		}
 		if cluster.HaveDBTLSCert {
 			mysql.RegisterTLSConfig(ConstTLSCurrentConfigName, cluster.tlsconf)
 			if cluster.HaveDBTLSOldCert {

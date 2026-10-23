@@ -16,7 +16,8 @@ import {
   getSlaveGtidHeader,
   getUsingGtid,
   getUsingGtidHeader,
-  getVersion
+  getVersion,
+  getServerDisplayName
 } from '../utils'
 import TagPill from '../../../../../components/TagPill'
 import DBFlavourIcon from '../../../../../components/Icons/DBFlavourIcon'
@@ -133,7 +134,7 @@ function DBServerGrid({
                       isBlocking={gridColor.length > 0}
                       from='gridView'
                     />
-                    <ServerName as='h4' name={`${rowData.host}:${rowData.port}`} isBlocking={gridColor.length > 0} />
+                    <ServerName as='h4' name={getServerDisplayName(rowData)} isBlocking={gridColor.length > 0} />
                   </HStack>
                 </Link>
                 <Spacer />

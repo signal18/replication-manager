@@ -6,7 +6,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import ServerMenu from './ServerMenu'
 import DBServerGrid from '../DBServers/DBServerGrid'
 import CompareModal from '../../../../components/Modals/CompareModal'
-import { getCurrentGtid, getDelay, getFailCount, getSlaveGtid, getUsingGtid } from './utils'
+import { getCurrentGtid, getDelay, getFailCount, getServerDisplayName, getSlaveGtid, getUsingGtid } from './utils'
 import CheckOrCrossIcon from '../../../../components/Icons/CheckOrCrossIcon'
 import DBFlavourIcon from '../../../../components/Icons/DBFlavourIcon'
 import ServerName from '../../../../components/ServerName'
@@ -92,7 +92,7 @@ function DBServers({ selectedCluster, user }) {
       columnHelper.accessor(
         (row) => (
           <Link to={`/clusters/${selectedCluster?.name}/${row?.id}`}>
-            <ServerName name={`${row.host}:${row.port}`} />
+            <ServerName name={getServerDisplayName(row)} />
           </Link>
         ),
         {
