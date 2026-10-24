@@ -1032,8 +1032,9 @@ type Config struct {
 	Cloud18SubDomainZone             string  `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" groups:"apps"`
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
-	Cloud18SSOClientID               string  `scope:"server" mapstructure:"cloud18-sso-client-id" toml:"cloud18-sso-client-id" json:"cloud18SsoClientId"`
-	Cloud18SSOClientSecret           string  `scope:"server" mapstructure:"cloud18-sso-client-secret" toml:"cloud18-sso-client-secret" json:"-"`
+	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`
+	Cloud18IdentityClientID          string  `scope:"server" mapstructure:"cloud18-identity-client-id" toml:"cloud18-identity-client-id" json:"cloud18IdentityClientId"`
+	Cloud18IdentityClientSecret      string  `scope:"server" mapstructure:"cloud18-identity-client-secret" toml:"cloud18-identity-client-secret" json:"-"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
@@ -1942,7 +1943,7 @@ var SecretKeys = []string{
 	"cloud18-dba-user-credentials",
 	"cloud18-sponsor-user-credentials",
 	"cloud18-domain-secret",
-	"cloud18-sso-client-secret",
+	"cloud18-identity-client-secret",
 	"proxysql-user",
 	"vault-token",
 	"api-oauth-client-secret",
@@ -2232,6 +2233,10 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 			return nil, err
 		}
 
+		if conf.VaultAuth == "jwt" {
+			return conf.vaultJWTLogin(client)
+		}
+
 		roleID := conf.VaultRoleId
 		secretID := &auth.SecretID{FromString: conf.GetDecryptedPassword("vault-secret-id", conf.VaultSecretId)}
 		if roleID == "" || secretID == nil {
@@ -2260,6 +2265,29 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 		return client, err
 	}
 	return nil, errors.New("Not using Vault")
+}
+
+// vaultJWTLogin logs in to the vault's jwt auth method with the instance's Cloud18 identity
+// token (#2159): no secret of the vault is kept here. The role is vault-role-id when set, else
+// the instance's identity client id (one role per instance on the Cloud18 vault).
+func (conf *Config) vaultJWTLogin(client *vault.Client) (*vault.Client, error) {
+	token, _, err := conf.Cloud18IdentityToken()
+	if err != nil {
+		return nil, err
+	}
+	role := conf.VaultRoleId
+	if role == "" {
+		role = conf.Cloud18IdentityClientID
+	}
+	secret, err := client.Logical().Write("auth/jwt/login", map[string]interface{}{"role": role, "jwt": token})
+	if err != nil {
+		return nil, fmt.Errorf("vault jwt login: %w", err)
+	}
+	if secret == nil || secret.Auth == nil || secret.Auth.ClientToken == "" {
+		return nil, errors.New("vault jwt login: no token in the answer")
+	}
+	client.SetToken(secret.Auth.ClientToken)
+	return client, nil
 }
 
 // encryptedTokenRe matches one encrypted value as GetEncryptedString writes it, anywhere
@@ -3868,11 +3896,6 @@ func (conf *Config) SwitchCloud18() {
 func (conf *Config) MonitorAPIURL() string {
 	return "https://" + conf.MonitorAddress + ":" + conf.APIPort
 }
-
-// ConstCloud18StorageSSOClientID is the GitLab application the Cloud18 storages trust (#2091),
-// cloud18-sso-client-id's default: a client id is public, the same for every instance, and the
-// application is not confidential, so nothing has to be delivered.
-const ConstCloud18StorageSSOClientID = "8af77a6d3cde0dc816de9f2072829a1d6f5e7f0f2e3d059df21b45b6b13a3821"
 
 // IsEnterprisePlan: registered to Cloud18 on a partner or support plan, which grants the
 // enterprise features (arbitration, the enterprise plugins). The plan is self-declared; the
