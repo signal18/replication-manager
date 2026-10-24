@@ -46,6 +46,16 @@ type appSubstitutionView struct {
 	// (stored encrypted, a secret-type variable decrypts it); absent when the app asked
 	// for none, so the key stays unresolved and the add is refused
 	RandomPassword string `json:"randompassword,omitempty" groups:"apps"`
+	// {{app.api.url}}, {{app.api.token}} (#2158)
+	API *appAPISubstitutionView `json:"api,omitempty" groups:"apps"`
+}
+
+// appAPISubstitutionView holds {{app.api.*}}: the replication-manager API URL the app's sensor
+// is given, and the app's API token (stored encrypted, a secret-type variable decrypts it;
+// absent when the app has none, so the key stays unresolved and the add is refused).
+type appAPISubstitutionView struct {
+	URL   string `json:"url" groups:"apps"`
+	Token string `json:"token,omitempty" groups:"apps"`
 }
 
 // cloneAppConfigForSubstitution returns an independent copy of cnf, safe to
@@ -135,6 +145,7 @@ type AppAPIView struct {
 	Process               *os.Process          `json:"process" swaggerignore:"true"`
 	RouteStatus           []config.RouteStatus `json:"routeStatus"`
 	AppConfig             *appConfigAPIView    `json:"config"`
+	Routes                []config.Route       `json:"routes"` // the deployment's routes (#2158): an app reading its cluster needs no deployment grant
 	TemplateMD5Prov       string               `json:"templateMD5Prov"`
 	TemplateMD5           string               `json:"templateMD5"`
 	IsHashingTemplate     bool                 `json:"isHashingTemplate"`
@@ -186,7 +197,17 @@ func (app *App) GetAppAPIView() *AppAPIView {
 	if app.AppConfig != nil {
 		cfg := cloneAppConfigForSubstitution(app.AppConfig)
 		cfg.AppDbPass = "*****"
+		// generated secrets, encrypted but not for the wire (#2158)
+		if cfg.AppRandomPassword != "" {
+			cfg.AppRandomPassword = "*****"
+		}
+		if cfg.AppAPIToken != "" {
+			cfg.AppAPIToken = "*****"
+		}
 		view.AppConfig = &appConfigAPIView{AppConfig: cfg}
+		if cfg.Deployment != nil {
+			view.Routes = cfg.Deployment.Routes
+		}
 	}
 	return view
 }
@@ -216,7 +237,11 @@ func (app *App) buildAppSubstitutionView() *appSubstitutionView {
 	view.AppConfig = cloneAppConfigForSubstitution(app.AppConfig)
 	view.Db = appDbView(app.AppConfig)
 	view.RandomPassword = app.AppConfig.AppRandomPassword
+	view.API = &appAPISubstitutionView{Token: app.AppConfig.AppAPIToken}
 	app.Unlock()
+	if app.ClusterGroup != nil && app.ClusterGroup.Conf != nil {
+		view.API.URL = app.ClusterGroup.Conf.MonitorAPIURL()
+	}
 	return view
 }
 

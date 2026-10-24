@@ -384,6 +384,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
 	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
 	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
+	flags.IntVar(&conf.AppAPITokenExpireDays, "app-api-token-expire-days", 1825, "Lifetime in days of the API token minted for an app whose template references {{app.api.token}}, renewed at provision when under 90 days remain")
 
 	var usr string
 	if repman != nil && repman.OsUser != nil {
@@ -2644,7 +2645,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.DiskStatManager = misc.NewDiskStatManager()
 
 	// Initialize instance-wide shared resources for all clusters
-	repman.serverGlobals = &cluster.ServerGlobals{}
+	repman.serverGlobals = &cluster.ServerGlobals{
+		IssueAppAPIToken:  repman.issueAppAPIToken,
+		RevokeAppAPIToken: repman.revokeAppAPIToken,
+	}
 	if repman.Conf.BackupConcurrentSlots > 0 {
 		repman.serverGlobals.BackupSemaphore = make(chan struct{}, repman.Conf.BackupConcurrentSlots)
 	}

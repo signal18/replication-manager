@@ -955,6 +955,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		if !appAdded {
 			return
 		}
+		cluster.revokeAppAPIToken(appcnf) // a token minted for an add that failed
 		_ = cluster.removeConfApp(appcnf, srv, port)
 		_ = cluster.newAppList()
 		appAdded = false
@@ -987,6 +988,15 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		// generated here and stored encrypted, before the substitution runs.
 		if appRandomPasswordWanted(content) {
 			if err := cluster.ApplyAppRandomPassword(appcnf); err != nil {
+				rollbackAddedApp()
+				return err
+			}
+			app.AppClusterSubstitute = ""
+		}
+		// API token (#2158): a template referencing {{app.api.token}} gets one, minted here
+		// (read-only, scoped to the cluster) and stored encrypted, before the substitution runs.
+		if appAPITokenWanted(content) {
+			if err := cluster.ApplyAppAPIToken(appcnf); err != nil {
 				rollbackAddedApp()
 				return err
 			}
