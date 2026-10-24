@@ -2315,7 +2315,21 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		buf.WriteString(archives)
 	}
 
+	// the S3 provider list, unless the config does not keep it (#2155)
+	providersInConfig := cluster.s3ProvidersInConfig()
+	if providersInConfig {
+		providers, err := cluster.S3ProvidersToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the S3 provider list: %s", err)
+			return false, err
+		}
+		buf.WriteString(providers)
+	}
+
 	has_changed, err = cluster.saveConfigArtifact(filePath, buf.Bytes(), "saved-"+cluster.Name, true)
+	if err == nil && providersInConfig {
+		cluster.retireS3ProvidersFile()
+	}
 	if err == nil && has_changed {
 		// Stamp the last time the persisted cluster config actually hit disk.
 		// Exposed via the API and GUI so operators (and the config-persistence
