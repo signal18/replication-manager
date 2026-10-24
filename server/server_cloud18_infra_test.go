@@ -262,3 +262,44 @@ func TestCloud18SpecActivePassive(t *testing.T) {
 		}
 	}
 }
+
+func TestCloud18SpecMultiMaster(t *testing.T) {
+	// Galera: MariaDB only, 3 nodes by default, 3 to 9, wsrep tag instead of semisync
+	s, err := normalizeSpec(Cloud18ClusterSpec{ClusterName: "g", DBImage: "mariadb:lts", Topology: "Multi-Master-Wsrep"})
+	if err != nil || s.Topology != config.TopoMultiMasterWsrep || s.DBCount != 3 {
+		t.Fatalf("galera default: %v %v", s, err)
+	}
+	if s, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "g", DBImage: "mariadb:lts", Topology: config.TopoMultiMasterWsrep, DBCount: 9}); err != nil || len(plannedHosts(s)) != 9+1+1 {
+		t.Fatalf("galera 9 nodes: %v %v", plannedHosts(s), err)
+	}
+	for _, n := range []int{2, 10} {
+		if _, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "g", DBImage: "mariadb:lts", Topology: config.TopoMultiMasterWsrep, DBCount: n}); err == nil {
+			t.Fatalf("galera with %d nodes must be refused", n)
+		}
+	}
+	if _, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "g", DBImage: "mysql:8.4", Topology: config.TopoMultiMasterWsrep}); err == nil {
+		t.Fatal("Galera on MySQL must be refused")
+	}
+	if add, drop := multiMasterDBTags(config.TopoMultiMasterWsrep); len(add) != 1 || add[0] != "wsrep" || len(drop) != 1 || drop[0] != "semisync" {
+		t.Fatalf("galera tags: %v %v", add, drop)
+	}
+	// group replication: MySQL and Percona, not MariaDB
+	for _, img := range []string{"mysql:8.4", "percona/percona-server:8.4"} {
+		if s, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "gr", DBImage: img, Topology: config.TopoMultiMasterGrouprep, DBCount: 5}); err != nil || s.DBCount != 5 {
+			t.Fatalf("%s group replication: %v %v", img, s, err)
+		}
+	}
+	if _, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "gr", DBImage: "mariadb:lts", Topology: config.TopoMultiMasterGrouprep}); err == nil {
+		t.Fatal("group replication on MariaDB must be refused")
+	}
+	if add, _ := multiMasterDBTags(config.TopoMultiMasterGrouprep); len(add) != 1 || add[0] != "grouprep" {
+		t.Fatalf("group replication tags: %v", add)
+	}
+	// master/replica keeps its 5-node limit and needs no tag
+	if _, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "m", DBImage: "mariadb:lts", DBCount: 6}); err == nil {
+		t.Fatal("6 master/replica nodes must stay refused")
+	}
+	if add, drop := multiMasterDBTags(config.TopoMasterSlave); add != nil || drop != nil {
+		t.Fatalf("master-slave tags: %v %v", add, drop)
+	}
+}

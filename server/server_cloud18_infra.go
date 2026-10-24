@@ -157,10 +157,19 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 			return spec, fmt.Errorf("db_image %s: %s is %s (list-cloud18-cluster-options)", spec.DBImage, f.name, f.note)
 		}
 	}
+	spec.Topology = strings.ToLower(strings.TrimSpace(spec.Topology))
+	// multi-master needs a quorum: 3 nodes by default, up to 9 (3 per data center on 3 data centers)
+	multiMaster := spec.Topology == config.TopoMultiMasterWsrep || spec.Topology == config.TopoMultiMasterGrouprep
 	if spec.DBCount <= 0 {
 		spec.DBCount = 2
+		if multiMaster {
+			spec.DBCount = cloud18MinMultiMasterDBCount
+		}
 	}
-	if spec.DBCount > cloud18MaxDBCount {
+	switch {
+	case multiMaster && (spec.DBCount < cloud18MinMultiMasterDBCount || spec.DBCount > cloud18MaxMultiMasterDBCount):
+		return spec, fmt.Errorf("topology %s takes db_count %d to %d, got %d", spec.Topology, cloud18MinMultiMasterDBCount, cloud18MaxMultiMasterDBCount, spec.DBCount)
+	case !multiMaster && spec.DBCount > cloud18MaxDBCount:
 		return spec, fmt.Errorf("db_count above %d is not a self-service size", cloud18MaxDBCount)
 	}
 	if spec.DBU < 0 || spec.DBU > cloud18MaxDBU {
@@ -180,7 +189,6 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 	}
 	// PostgreSQL: members from the postgres app templates, WAL streaming by default,
 	// active-passive alone; ProxySQL speaks the MySQL protocol only.
-	spec.Topology = strings.ToLower(strings.TrimSpace(spec.Topology))
 	if isPostgresSpec(spec) {
 		if spec.Proxy == "proxysql" {
 			return spec, errors.New("proxy proxysql speaks the MySQL protocol: use haproxy or none for PostgreSQL")
@@ -195,14 +203,20 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 		}
 	} else {
 		// MariaDB, Percona, MySQL: one server is active-passive, on a failover volume
-		// (#2004); more is a master and replicas
+		// (#2004); more is a master and replicas; Galera is MariaDB's multi-master,
+		// group replication MySQL's and Percona's
+		flavor := releases.FlavorOfImage(spec.DBImage)
 		switch {
 		case spec.DBCount == 1 && (spec.Topology == "" || spec.Topology == config.TopoActivePassive):
 			spec.Topology = config.TopoActivePassive
 		case spec.Topology == config.TopoActivePassive:
 			return spec, fmt.Errorf("topology %s is one server: db_count 1, got %d", config.TopoActivePassive, spec.DBCount)
-		case spec.Topology != "" && spec.Topology != config.TopoMasterSlave:
-			return spec, fmt.Errorf("topology %q: %s builds %s (a master and replicas) or %s (db_count 1)", spec.Topology, releases.FlavorOfImage(spec.DBImage), config.TopoMasterSlave, config.TopoActivePassive)
+		case spec.Topology == config.TopoMultiMasterWsrep && flavor != "mariadb":
+			return spec, fmt.Errorf("topology %s (Galera) is built for MariaDB, not %s", config.TopoMultiMasterWsrep, flavor)
+		case spec.Topology == config.TopoMultiMasterGrouprep && flavor != "mysql" && flavor != "percona":
+			return spec, fmt.Errorf("topology %s (group replication) is built for MySQL and Percona, not %s", config.TopoMultiMasterGrouprep, flavor)
+		case spec.Topology != "" && spec.Topology != config.TopoMasterSlave && !multiMaster:
+			return spec, fmt.Errorf("topology %q: %s builds %s (a master and replicas), %s (db_count 1) or %s", spec.Topology, flavor, config.TopoMasterSlave, config.TopoActivePassive, multiMasterTopologyOf(flavor))
 		}
 	}
 	switch {
@@ -251,7 +265,31 @@ const (
 	cloud18MaxDBU        = 64
 	cloud18MaxAPU        = 256
 	cloud18MaxProxyCount = 3
+	// Galera and group replication: a quorum of 3, up to 3 nodes per data center on 3 data centers
+	cloud18MinMultiMasterDBCount = 3
+	cloud18MaxMultiMasterDBCount = 9
 )
+
+// multiMasterTopologyOf names the multi-master topology a flavor builds.
+func multiMasterTopologyOf(flavor string) string {
+	if flavor == "mariadb" {
+		return config.TopoMultiMasterWsrep + " (Galera)"
+	}
+	return config.TopoMultiMasterGrouprep + " (group replication)"
+}
+
+// multiMasterDBTags are the configuration tags a multi-master topology needs on its
+// database nodes: the infrastructure renders the Galera or group replication settings
+// from them. semisync is dropped: it is master/replica replication.
+func multiMasterDBTags(topology string) (add []string, drop []string) {
+	switch topology {
+	case config.TopoMultiMasterWsrep:
+		return []string{"wsrep"}, []string{"semisync"}
+	case config.TopoMultiMasterGrouprep:
+		return []string{"grouprep"}, []string{"semisync"}
+	}
+	return nil, nil
+}
 
 // appliedAPU is the APU a request really reserves: 1 per app, plus prov-proxy-apu per proxy
 // (the rest shared equally, rounded down, at least 1); without a proxy, the apps only.
@@ -428,12 +466,26 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 	}
 	// 1c. Topology target: PostgreSQL members follow the cluster topology (stream,
 	// logical, active-passive), set before they are added; an active-passive server is
-	// provisioned on a failover volume (#2004).
-	if isPostgresSpec(spec) || spec.Topology == config.TopoActivePassive {
+	// provisioned on a failover volume (#2004); Galera and group replication turn on their
+	// multi-master mode, and their nodes get the configuration tags of that replication.
+	if isPostgresSpec(spec) || spec.Topology == config.TopoActivePassive || spec.Topology == config.TopoMultiMasterWsrep || spec.Topology == config.TopoMultiMasterGrouprep {
 		if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/set/topology-target/"+spec.Topology, nil); err != nil {
 			return fail("topology "+spec.Topology, err)
 		}
 		steps = append(steps, "topology "+spec.Topology)
+	}
+	add, drop := multiMasterDBTags(spec.Topology)
+	for _, tag := range drop {
+		if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/drop-db-tag/"+tag, nil); err != nil {
+			return fail("drop db tag "+tag, err)
+		}
+		steps = append(steps, "db tag "+tag+" dropped")
+	}
+	for _, tag := range add {
+		if _, err := sess.mustOK(http.MethodGet, cpath+"/settings/actions/add-db-tag/"+tag, nil); err != nil {
+			return fail("add db tag "+tag, err)
+		}
+		steps = append(steps, "db tag "+tag)
 	}
 	// 2. Database image, best effort: the infrastructure may pin it (immutable
 	// setting), in which case the cluster runs the infrastructure's image.

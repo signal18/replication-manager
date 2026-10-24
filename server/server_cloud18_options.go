@@ -37,23 +37,24 @@ var cloud18Flavors = []struct {
 }
 
 // cloud18Topologies: per flavor, the topologies replication-manager runs, and whether a
-// self-service creation builds them: cloud18-create-cluster adds database nodes and lets
-// the default replication bootstrap run, which is master/replica only.
+// self-service creation builds them: cloud18-create-cluster sets the topology target (and,
+// for multi-master, the replication's configuration tags) before adding the database nodes,
+// and the provisioning bootstraps that replication.
 var cloud18Topologies = map[string][]map[string]any{
 	"mariadb": {
 		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
-		{"topology": config.TopoMultiMasterWsrep, "description": "Galera multi-master", "minNodes": 3, "creatable": false, "note": "needs a topology parameter and the Galera bootstrap in cloud18-create-cluster"},
+		{"topology": config.TopoMultiMasterWsrep, "description": "Galera multi-master (db_count 3 to 9, up to 3 per data center on 3 data centers)", "minNodes": 3, "maxNodes": 9, "creatable": true},
 	},
 	"mysql": {
 		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
-		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication", "minNodes": 3, "creatable": false, "note": "needs a topology parameter in cloud18-create-cluster"},
+		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication (db_count 3 to 9)", "minNodes": 3, "maxNodes": 9, "creatable": true},
 	},
 	"percona": {
 		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
-		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication", "minNodes": 3, "creatable": false, "note": "needs a topology parameter in cloud18-create-cluster"},
+		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication (db_count 3 to 9)", "minNodes": 3, "maxNodes": 9, "creatable": true},
 	},
 	"postgres": {
 		{"topology": config.TopoMasterSlavePgStream, "description": "WAL streaming replication, a primary and standbys (default)", "minNodes": 2, "creatable": true},

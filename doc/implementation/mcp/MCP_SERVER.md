@@ -153,6 +153,15 @@ deletes the cluster** (`DELETE /api/clusters/actions/delete/<name>`) so none is 
 nobody asked for, the answer says `leftover` when the delete fails; then per flavor:
 - MariaDB, MySQL, Percona: `prov-db-image`, `addserver dbN/3306`, proxies on 3306,
   phpMyAdmin by default.
+- Multi-master, 3 to 9 nodes (3 by default; up to 3 per data center on 3 data centers):
+  `multi-master-wsrep` (Galera, MariaDB only) and `multi-master-grprep` (group replication,
+  MySQL and Percona only). `topology-target` is set first (it turns on `MultiMasterWsrep` /
+  `MultiMasterGrouprep`), then the db tag `semisync` is dropped and `wsrep` / `grouprep` added:
+  the configurator only derives those tags from a running server, and the provisioning renders
+  the replication settings from them. The provisioning bootstraps the replication (Galera:
+  `--wsrep_new_cluster` on the bootstrap node; group replication: `BootstrapGroupReplication`
+  on the first node). Master/replica keeps its 5-node limit; the quote tool takes `topology`
+  too, so a 7-node Galera is priced the same way.
 - PostgreSQL, the way pg-stream / pg-logical were built: `topology-target` first
   (`master-slave-pg-stream` default, `master-slave-pg-logical`, `active-passive` for one node),
   db1 from `postgres/postgres` and the others from `postgres/postgres-standby` (stream) or
