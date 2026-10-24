@@ -11302,6 +11302,10 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 		http.Error(w, "No valid ACL", http.StatusForbidden)
 		return
 	}
+	if mycluster.S3ProvidersPinned() {
+		http.Error(w, "The S3 providers are set by a config file (s3-provider): change them there", http.StatusConflict)
+		return
+	}
 	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
 		var req s3ProviderRequest
 		legacyUnknownFieldAccepted, err := decodeS3ProviderRequestBody(w, r, &req)
@@ -11412,6 +11416,10 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderModify(w http.Respo
 		return
 	}
 	logLegacyS3ProviderMethodUsage(mycluster, "/api/clusters/{clusterName}/s3providers/{name}/modify", r.Method, http.MethodPut)
+	if mycluster.S3ProvidersPinned() {
+		http.Error(w, "The S3 providers are set by a config file (s3-provider): change them there", http.StatusConflict)
+		return
+	}
 	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
 		var req s3ProviderRequest
 		legacyUnknownFieldAccepted, err := decodeS3ProviderRequestBody(w, r, &req)
@@ -11464,6 +11472,10 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderDrop(w http.Respons
 		return
 	}
 	logLegacyS3ProviderMethodUsage(mycluster, "/api/clusters/{clusterName}/s3providers/{name}/drop", r.Method, http.MethodDelete)
+	if mycluster.S3ProvidersPinned() {
+		http.Error(w, "The S3 providers are set by a config file (s3-provider): change them there", http.StatusConflict)
+		return
+	}
 	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
 		name := vars["name"]
 		// Capture old state before removal so we can roll back if save fails.
