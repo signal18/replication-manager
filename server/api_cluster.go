@@ -5092,6 +5092,19 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return err
 		}
 		mycluster.Conf.Cloud18DomainSecret = string(val)
+	case "cloud18-identity-url":
+		mycluster.Conf.Cloud18IdentityURL = value
+	case "cloud18-identity-client-id":
+		mycluster.Conf.Cloud18IdentityClientID = value
+	case "cloud18-identity-client-secret":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.CredentialChain().Set("cloud18-identity-client-secret", string(val)); err != nil {
+			return err
+		}
+		mycluster.Conf.Cloud18IdentityClientSecret = string(val)
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
