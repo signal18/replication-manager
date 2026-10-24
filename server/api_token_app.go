@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+	"unicode/utf8"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -36,12 +37,17 @@ func (repman *ReplicationManager) issueAppAPIToken(clusterName, appName string) 
 		return "", "", time.Time{}, errors.New("API tokens are off (api-user-tokens): an app cannot get {{app.api.token}}")
 	}
 	days := repman.Conf.AppAPITokenExpireDays
+	if days < 0 {
+		return "", "", time.Time{}, fmt.Errorf("app-api-token-expire-days is %d: a lifetime in days, 0 for never", days)
+	}
 	if days == 0 {
 		days = -1 // the token form reads 0 as the user default (120 days): 0 here means never
 	}
 	label := fmt.Sprintf("app %s/%s", clusterName, appName)
-	if len(label) > 64 {
-		label = label[:64]
+	// the store takes 64 bytes at most: cut on a character boundary, never inside a UTF-8 sequence
+	for len(label) > 64 {
+		_, size := utf8.DecodeLastRuneInString(label)
+		label = label[:len(label)-size]
 	}
 	t, err := repman.createAPITokenAs(appAPITokenOwner, "Local", APITokenForm{
 		Label:      label,

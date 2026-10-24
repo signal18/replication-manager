@@ -22,17 +22,23 @@ Only a template whose content references `{{app.api.token}}` gets a token
 - **Scope**: the app's cluster only.
 - **Grants**: fixed in the code (`appAPITokenGrants` = `cluster-show-routes`), read-only. The
   token store embeds at least one grant; the topology reads need none beyond a valid token in scope.
-- **Lifetime**: `app-api-token-expire-days` (server setting, default 1825; 0 = never).
-- **Storage**: app settings `app-api-token` (encrypted), `app-api-token-id`, `app-api-token-expires`;
-  masked (`*****`) in `GET /topology/apps`, as is `app-random-password`.
+- **Lifetime**: `app-api-token-expire-days` (server setting, default 1825; 0 = never; negative refused).
+- **Storage**: app settings `app-api-token` (encrypted), `app-api-token-id`, `app-api-token-expires`.
+  Without an encryption key the token would be saved in clear: the add is refused.
+- **On the wire**: masked (`*****`, `MaskAppGeneratedSecrets`) in `GET /topology/apps` and
+  `GET /apps/{name}`, as is `app-random-password`.
 
 ## Life cycle
 
 | When | What (`cluster/app_api_token.go`) |
 |---|---|
 | add (`AddSeededApp`) | `ApplyAppAPIToken`: minted when the app has none, before the substitution; an add that fails afterwards revokes it (rollback) |
-| provision (`OpenSVCProvisionAppService`) | `RenewAppAPIToken`: when under 90 days remain, a new token, the variables holding the old value get the new one, the old one is revoked, app configs saved; a failure keeps the current token and the provision goes on |
+| provision (`OpenSVCProvisionAppService`) | `RenewAppAPIToken`: when under 90 days remain, a new token, the variables holding the old value get the new one, the app config is saved, **then** the old one is revoked. A failed save puts the old token back and revokes the new one: the app never holds a revoked token. A failure keeps the current token and the provision goes on (the variables are pushed after, so a running app gets the new token) |
+| daily (server) | `WarnAppAPITokenExpiry`: a WARN per app whose token is due, renewal being at provision only |
 | drop (`RemoveAppMonitor`) | `revokeAppAPIToken` |
+| peer import (`ImportAppConfig`) | the peer's token fields are cleared and the file saved again: the token belongs to the peer's store, this one can neither renew nor revoke it |
+
+The app config is read and written under `app.Lock()`; the token store call runs unlocked.
 
 The token store lives in the server: cluster code reaches it through
 `ServerGlobals.IssueAppAPIToken` / `RevokeAppAPIToken` (`server/api_token_app.go`), the
@@ -48,8 +54,12 @@ cycle-avoiding carrier already used for the backup semaphore.
 
 ## Tested (dev3, 2026-10-24)
 
-Unit: `cluster/app_api_token_test.go` (wanted key, renewal threshold, mint/keep/refuse, renewal of
-the variable and revoke of the old token, masking and routes in the API view, substitution).
+Unit: `cluster/app_api_token_test.go` (wanted key, renewal threshold, mint/keep, refusal without a
+store, without an encryption key or by the store, renewal of the variable and revoke of the old
+token, failed save keeps the old token and revokes the new one, masking and routes in the API view,
+substitution); `server/api_token_app_test.go` (in-scope read passes, other cluster 403, no token
+left to the login checks, revoke, negative lifetime refused, 0 = never, label cut to 64 bytes on a
+character boundary).
 
 End to end, an app added from the `status` template:
 - token listed under `admin`, scope `[dev3]`, grants `[cluster-show-routes]`, expiry +5 years;

@@ -35,20 +35,42 @@ func appAPITokenWanted(content []byte) bool {
 }
 
 // ApplyAppAPIToken mints the app's token when it has none. An existing token is kept:
-// re-adding or re-rendering an app never mints a second one.
-func (cluster *Cluster) ApplyAppAPIToken(appcnf *config.AppConfig) error {
-	if appcnf == nil || strings.TrimSpace(appcnf.AppAPIToken) != "" {
+// re-adding or re-rendering an app never mints a second one. Without an encryption key the
+// token would be saved in clear: refused.
+func (cluster *Cluster) ApplyAppAPIToken(app *App) error {
+	if app == nil || app.AppConfig == nil {
+		return nil
+	}
+	app.Lock()
+	has := strings.TrimSpace(app.AppConfig.AppAPIToken) != ""
+	app.Unlock()
+	if has {
 		return nil
 	}
 	if cluster.ServerGlobals == nil || cluster.ServerGlobals.IssueAppAPIToken == nil {
 		return errors.New("no API token store: the app cannot get {{app.api.token}}")
 	}
-	id, token, expires, err := cluster.ServerGlobals.IssueAppAPIToken(cluster.Name, appcnf.AppHost)
+	if !cluster.hasSecretKey() {
+		return errors.New("no encryption key: the app's API token would be saved in clear, {{app.api.token}} refused")
+	}
+	// minted unlocked: the token store has its own lock and writes its file
+	id, token, expires, err := cluster.ServerGlobals.IssueAppAPIToken(cluster.Name, app.AppConfig.AppHost)
 	if err != nil {
 		return err
 	}
-	setAppAPIToken(cluster.Conf, appcnf, id, token, expires)
+	app.Lock()
+	setAppAPIToken(cluster.Conf, app.AppConfig, id, token, expires)
+	app.Unlock()
 	return nil
+}
+
+// hasSecretKey tells whether secrets are stored encrypted (GetEncryptedString returns its
+// input unchanged without a key).
+func (cluster *Cluster) hasSecretKey() bool {
+	if cluster.Conf.SecretKey == nil {
+		cluster.Conf.LoadEncrytionKey()
+	}
+	return cluster.Conf.SecretKey != nil
 }
 
 func setAppAPIToken(conf *config.Config, appcnf *config.AppConfig, id, token string, expires time.Time) {
@@ -75,43 +97,74 @@ func appAPITokenNeedsRenewal(expires string, now time.Time) bool {
 
 // RenewAppAPIToken replaces the app's token when it expires within appAPITokenRenewBefore:
 // a new token is minted, the deployment variables holding the old one get the new one, the
-// old one is revoked and the app configs are saved. It returns whether it renewed.
+// app config is saved, and only then the old one is revoked: a failed save keeps the old token
+// valid (the saved config still holds it) and revokes the new one. It returns whether it renewed.
 func (cluster *Cluster) RenewAppAPIToken(app *App) (bool, error) {
 	if app == nil || app.AppConfig == nil {
 		return false, nil
 	}
 	appcnf := app.AppConfig
-	if strings.TrimSpace(appcnf.AppAPITokenID) == "" || !appAPITokenNeedsRenewal(appcnf.AppAPITokenExpires, time.Now()) {
+	app.Lock()
+	oldID, oldValue, oldExpires := appcnf.AppAPITokenID, appcnf.AppAPIToken, appcnf.AppAPITokenExpires
+	app.Unlock()
+	if strings.TrimSpace(oldID) == "" || !appAPITokenNeedsRenewal(oldExpires, time.Now()) {
 		return false, nil
 	}
-	if cluster.ServerGlobals == nil || cluster.ServerGlobals.IssueAppAPIToken == nil {
+	if cluster.ServerGlobals == nil || cluster.ServerGlobals.IssueAppAPIToken == nil || cluster.ServerGlobals.RevokeAppAPIToken == nil {
 		return false, errors.New("no API token store: the app's token cannot be renewed")
+	}
+	if !cluster.hasSecretKey() {
+		return false, errors.New("no encryption key: the app's API token is not renewed in clear")
 	}
 	id, token, expires, err := cluster.ServerGlobals.IssueAppAPIToken(cluster.Name, app.Name)
 	if err != nil {
 		return false, err
 	}
-	oldID, oldValue := appcnf.AppAPITokenID, appcnf.AppAPIToken
-	app.Lock()
-	setAppAPIToken(cluster.Conf, appcnf, id, token, expires)
-	if d := appcnf.Deployment; d != nil {
-		d.Mutex.Lock()
-		for i := range d.Variables {
-			if d.Variables[i].Value == oldValue {
-				d.Variables[i].Value = appcnf.AppAPIToken
+	swap := func(fromValue, toID, toValue, toExpires string) {
+		app.Lock()
+		appcnf.AppAPIToken, appcnf.AppAPITokenID, appcnf.AppAPITokenExpires = toValue, toID, toExpires
+		if d := appcnf.Deployment; d != nil {
+			d.Mutex.Lock()
+			for i := range d.Variables {
+				if d.Variables[i].Value == fromValue {
+					d.Variables[i].Value = toValue
+				}
 			}
+			d.Mutex.Unlock()
 		}
-		d.Mutex.Unlock()
+		app.Unlock()
 	}
-	app.Unlock()
+	newcnf := &config.AppConfig{}
+	setAppAPIToken(cluster.Conf, newcnf, id, token, expires)
+	swap(oldValue, id, newcnf.AppAPIToken, newcnf.AppAPITokenExpires)
+	if _, err := cluster.SaveApp(app, ""); err != nil {
+		swap(newcnf.AppAPIToken, oldID, oldValue, oldExpires)
+		if rerr := cluster.ServerGlobals.RevokeAppAPIToken(id); rerr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: the unsaved API token %s is not revoked: %s", app.Name, id, rerr)
+		}
+		return false, fmt.Errorf("app %s: saving the renewed API token: %w", app.Name, err)
+	}
 	if err := cluster.ServerGlobals.RevokeAppAPIToken(oldID); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: the replaced API token %s is not revoked: %s", app.Name, oldID, err)
 	}
-	if _, err := cluster.SaveAppConfigs(); err != nil {
-		return true, fmt.Errorf("app %s: saving the renewed API token: %w", app.Name, err)
-	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "App %s: API token renewed, valid until %s", app.Name, appcnf.AppAPITokenExpires)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "App %s: API token renewed, valid until %s", app.Name, newcnf.AppAPITokenExpires)
 	return true, nil
+}
+
+// WarnAppAPITokenExpiry logs a warning for each app whose token is due for renewal: renewal
+// happens at provision, an app never provisioned again would lose its token unnoticed.
+func (cluster *Cluster) WarnAppAPITokenExpiry() {
+	for _, app := range cluster.Apps {
+		if app == nil || app.AppConfig == nil {
+			continue
+		}
+		app.Lock()
+		id, expires := app.AppConfig.AppAPITokenID, app.AppConfig.AppAPITokenExpires
+		app.Unlock()
+		if strings.TrimSpace(id) != "" && appAPITokenNeedsRenewal(expires, time.Now()) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: its API token expires %s, a provision of the app renews it", app.Name, expires)
+		}
+	}
 }
 
 // revokeAppAPIToken revokes the token an app config holds, when it holds one: an app removed,

@@ -3,6 +3,8 @@ package cluster
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -75,7 +77,8 @@ func TestApplyAppAPIToken(t *testing.T) {
 	expires := time.Now().Add(1825 * 24 * time.Hour)
 	c := &Cluster{Name: "crm", Conf: testKeyConf(), ServerGlobals: store.globals(expires)}
 	cnf := &config.AppConfig{AppHost: "status"}
-	if err := c.ApplyAppAPIToken(cnf); err != nil {
+	app := &App{Name: "status", AppConfig: cnf, Mutex: &sync.Mutex{}}
+	if err := c.ApplyAppAPIToken(app); err != nil {
 		t.Fatal(err)
 	}
 	if cnf.AppAPITokenID != "id1" || cnf.AppAPITokenExpires == "" {
@@ -88,21 +91,33 @@ func TestApplyAppAPIToken(t *testing.T) {
 		t.Fatalf("decrypted token %q", got)
 	}
 	first := cnf.AppAPIToken
-	if err := c.ApplyAppAPIToken(cnf); err != nil || cnf.AppAPIToken != first || store.n != 1 {
+	if err := c.ApplyAppAPIToken(app); err != nil || cnf.AppAPIToken != first || store.n != 1 {
 		t.Fatal("an existing token is never replaced by an add")
 	}
 }
 
-// Without a token store (no server), or when the store refuses, the add gets the error.
+// Without a token store (no server), without an encryption key (the token would be saved in
+// clear), or when the store refuses, the add gets the error and nothing is minted.
 func TestApplyAppAPITokenRefused(t *testing.T) {
-	c := &Cluster{Name: "crm", Conf: &config.Config{}}
-	if err := c.ApplyAppAPIToken(&config.AppConfig{AppHost: "status"}); err == nil {
+	newApp := func() *App {
+		return &App{Name: "status", AppConfig: &config.AppConfig{AppHost: "status"}, Mutex: &sync.Mutex{}}
+	}
+	c := &Cluster{Name: "crm", Conf: testKeyConf()}
+	if err := c.ApplyAppAPIToken(newApp()); err == nil {
 		t.Fatal("no token store: refused")
 	}
-	store := &fakeTokenStore{refuse: errors.New("admin has no token-create grant")}
-	c.ServerGlobals = store.globals(time.Time{})
-	cnf := &config.AppConfig{AppHost: "status"}
-	if err := c.ApplyAppAPIToken(cnf); err == nil || cnf.AppAPIToken != "" {
+
+	store := &fakeTokenStore{}
+	c = &Cluster{Name: "crm", Conf: &config.Config{WorkingDir: t.TempDir()}, ServerGlobals: store.globals(time.Time{})}
+	app := newApp()
+	if err := c.ApplyAppAPIToken(app); err == nil || app.AppConfig.AppAPIToken != "" || store.n != 0 {
+		t.Fatalf("no encryption key: refused before minting (err %v, minted %d)", err, store.n)
+	}
+
+	store = &fakeTokenStore{refuse: errors.New("admin has no token-create grant")}
+	c = &Cluster{Name: "crm", Conf: testKeyConf(), ServerGlobals: store.globals(time.Time{})}
+	app = newApp()
+	if err := c.ApplyAppAPIToken(app); err == nil || app.AppConfig.AppAPIToken != "" {
 		t.Fatal("a refused token leaves the app without one")
 	}
 }
@@ -112,8 +127,11 @@ func TestApplyAppAPITokenRefused(t *testing.T) {
 func TestRenewAppAPIToken(t *testing.T) {
 	store := &fakeTokenStore{}
 	conf := testKeyConf()
-	conf.WorkingDir = t.TempDir()
-	c := &Cluster{Name: "crm", Conf: conf, ServerGlobals: store.globals(time.Now().Add(1825 * 24 * time.Hour))}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "apps"), 0750); err != nil {
+		t.Fatal(err)
+	}
+	c := &Cluster{Name: "crm", Conf: conf, WorkingDir: dir, ServerGlobals: store.globals(time.Now().Add(1825 * 24 * time.Hour))}
 	cnf := &config.AppConfig{AppHost: "status", Deployment: config.NewDeploymentConfig()}
 	setAppAPIToken(c.Conf, cnf, "old", "old-token", time.Now().Add(30*24*time.Hour))
 	cnf.Deployment.Variables = config.VariableMaps{
@@ -192,4 +210,48 @@ func TestAppAPISubstitution(t *testing.T) {
 	if c.Conf.GetDecryptedEmbedded("TOKEN", out) == out {
 		t.Fatal("the substituted token decrypts at push")
 	}
+}
+
+// A renewal whose save fails keeps the old token (the saved config still holds it) and revokes
+// the new one: the app is never left holding a revoked token.
+func TestRenewAppAPITokenSaveFails(t *testing.T) {
+	store := &fakeTokenStore{}
+	conf := testKeyConf()
+	// a regular file as the working directory: no apps/ under it can be created, even as root
+	notDir := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notDir, nil, 0640); err != nil {
+		t.Fatal(err)
+	}
+	c := &Cluster{Name: "crm", Conf: conf, WorkingDir: notDir, ServerGlobals: store.globals(time.Now().Add(1825 * 24 * time.Hour))}
+	cnf := &config.AppConfig{AppHost: "status", Deployment: config.NewDeploymentConfig()}
+	setAppAPIToken(c.Conf, cnf, "old", "old-token", time.Now().Add(30*24*time.Hour))
+	oldValue, oldExpires := cnf.AppAPIToken, cnf.AppAPITokenExpires
+	cnf.Deployment.Variables = config.VariableMaps{{Name: "REPMAN_API_TOKEN", Type: "secret", Value: oldValue}}
+	app := &App{Name: "status", AppConfig: cnf, Mutex: &sync.Mutex{}}
+
+	renewed, err := c.RenewAppAPIToken(app)
+	if err == nil || renewed {
+		t.Fatalf("an unsaved renewal is reported failed: renewed=%v err=%v", renewed, err)
+	}
+	if cnf.AppAPITokenID != "old" || cnf.AppAPIToken != oldValue || cnf.AppAPITokenExpires != oldExpires || cnf.Deployment.Variables[0].Value != oldValue {
+		t.Fatal("the old token is kept, in the config and in the variable")
+	}
+	if len(store.revoked) != 1 || store.revoked[0] != "id1" {
+		t.Fatalf("only the new, unsaved token is revoked: %v", store.revoked)
+	}
+}
+
+// Every wire copy of an app masks the generated secrets.
+func TestMaskAppGeneratedSecrets(t *testing.T) {
+	cfg := &config.AppConfig{AppRandomPassword: "hash_x", AppAPIToken: "hash_y", AppAPITokenID: "id1"}
+	MaskAppGeneratedSecrets(cfg)
+	if cfg.AppRandomPassword != "*****" || cfg.AppAPIToken != "*****" || cfg.AppAPITokenID != "id1" {
+		t.Fatalf("%+v", cfg)
+	}
+	empty := &config.AppConfig{}
+	MaskAppGeneratedSecrets(empty)
+	if empty.AppRandomPassword != "" || empty.AppAPIToken != "" {
+		t.Fatal("an unset secret stays unset")
+	}
+	MaskAppGeneratedSecrets(nil)
 }

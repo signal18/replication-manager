@@ -996,7 +996,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		// API token (#2158): a template referencing {{app.api.token}} gets one, minted here
 		// (read-only, scoped to the cluster) and stored encrypted, before the substitution runs.
 		if appAPITokenWanted(content) {
-			if err := cluster.ApplyAppAPIToken(appcnf); err != nil {
+			if err := cluster.ApplyAppAPIToken(app); err != nil {
 				rollbackAddedApp()
 				return err
 			}
