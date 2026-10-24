@@ -80,9 +80,9 @@ func TestBackupMountProvider(t *testing.T) {
 	if _, err := cl.backupMountTarget(); !errors.Is(err, ErrCloud18SSONotRegistered) {
 		t.Fatalf("not registered: %v", err)
 	}
-	cl.Conf.Cloud18, cl.Conf.Cloud18GitUser, cl.Conf.OAuthProvider, cl.Conf.Cloud18SSOClientID = true, "acme-fr-1", "https://gitlab.example", "client"
+	cl.Conf.Cloud18, cl.Conf.Cloud18GitUser, cl.Conf.Cloud18IdentityClientID = true, "acme-fr-1", "repman-acme"
 	cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = "signal18", "ovh", "fr"
-	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"cloud18-gitlab-password": {Value: "pw"}})
+	cl.Conf.Secrets = config.NewSecrets(map[string]config.Secret{"cloud18-identity-client-secret": {Value: "pw"}})
 	target, err := cl.backupMountTarget()
 	if err != nil || target == nil || !target.sso || target.roleArn != ssoProvider.RoleArn || target.accessKey != "" || strings.Contains(target.sig, "pw") {
 		t.Fatalf("sso target %+v err %v", target, err)
