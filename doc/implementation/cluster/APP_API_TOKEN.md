@@ -52,6 +52,15 @@ cycle-avoiding carrier already used for the backup semaphore.
   them); they now refuse (403) an **API token** whose scope excludes the cluster
   (`refuseAPITokenOutOfScope`). Logins are unchanged.
 
+## Who may open the app: `GET /users/route-viewers`
+
+`GET /api/clusters/{c}/users/route-viewers` lists, sorted and lower-cased, the emails of the
+cluster's users holding `cluster-show-routes` (`Cluster.RouteViewerEmails`; local accounts without
+an email are left out). The ACL rule asks `cluster-show-routes`, which the app token carries, and
+an out-of-scope API token is refused. The status template's SSO front (oauth2-proxy, Keycloak)
+lets in exactly these people: access to the page follows the grants given in replication-manager.
+Anyone holding `cluster-show-routes` on the cluster can read this list of emails.
+
 ## Tested (dev3, 2026-10-24)
 
 Unit: `cluster/app_api_token_test.go` (wanted key, renewal threshold, mint/keep, refusal without a
@@ -59,7 +68,8 @@ store, without an encryption key or by the store, renewal of the variable and re
 token, failed save keeps the old token and revokes the new one, masking and routes in the API view,
 substitution); `server/api_token_app_test.go` (in-scope read passes, other cluster 403, no token
 left to the login checks, revoke, negative lifetime refused, 0 = never, label cut to 64 bytes on a
-character boundary).
+character boundary; route viewers: the app token gets only the emails holding the grant, a token
+without it 403, another cluster 403).
 
 End to end, an app added from the `status` template:
 - token listed under `admin`, scope `[dev3]`, grants `[cluster-show-routes]`, expiry +5 years;

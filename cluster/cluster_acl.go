@@ -667,3 +667,19 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL app check failed for user %s : %s (no matching app rules)", strUser, URL)
 	return false
 }
+
+// RouteViewerEmails lists, sorted, the users of the cluster that hold the read-only route
+// grant (cluster-show-routes) and are known by an email: the people an app in front of the
+// cluster (the status template's SSO, #2158) lets in. Local accounts without an email
+// (admin, system) are not listed.
+func (cluster *Cluster) RouteViewerEmails() []string {
+	emails := make([]string, 0)
+	for name, u := range cluster.APIUsers {
+		if !u.Grants[config.GrantClusterShowRoutes] || !strings.Contains(name, "@") || IsTokenPrincipal(name) {
+			continue
+		}
+		emails = append(emails, strings.ToLower(name))
+	}
+	sort.Strings(emails)
+	return emails
+}

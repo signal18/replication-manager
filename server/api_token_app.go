@@ -7,12 +7,14 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 	"unicode/utf8"
 
+	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -84,4 +86,27 @@ func (repman *ReplicationManager) refuseAPITokenOutOfScope(w http.ResponseWriter
 	}
 	http.Error(w, "this API token is not scoped to cluster "+clusterName, http.StatusForbidden)
 	return true
+}
+
+// handlerMuxRouteViewers lists the emails of the cluster's users holding cluster-show-routes:
+// an app gating its page with the cluster's SSO (the status template) lets these people in, so
+// access follows the grants given in replication-manager. Read-only; the route rule asks
+// cluster-show-routes, which the app API token carries.
+func (repman *ReplicationManager) handlerMuxRouteViewers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	if repman.refuseAPITokenOutOfScope(w, r, vars["clusterName"]) {
+		return
+	}
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Cluster Not Found", http.StatusNotFound)
+		return
+	}
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(mycluster.RouteViewerEmails())
 }

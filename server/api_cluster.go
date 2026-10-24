@@ -912,6 +912,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxApps)),
 	))
+	router.Handle("/api/clusters/{clusterName}/users/route-viewers", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRouteViewers)),
+	)).Methods("GET")
 	router.Handle("/api/clusters/{clusterName}/topology/alerts", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAlerts)),
