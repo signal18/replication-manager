@@ -2222,7 +2222,7 @@ func (conf *Config) DecryptSecretsFromVault() {
 
 func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 	if conf.IsVaultUsed() {
-		log.Printf("Vault AppRole Authentification")
+		log.Printf("Vault authentication (%s)", conf.VaultAuth)
 		config := vault.DefaultConfig()
 
 		config.Address = conf.VaultServerAddr
