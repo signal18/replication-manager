@@ -384,6 +384,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
 	flags.BoolVar(&conf.APIUserTokens, "api-user-tokens", true, "Let users issue API tokens for themselves (bearer tokens narrowed to a subset of their grants and a cluster scope, stored encrypted in monitoring-datadir/api-tokens.json)")
 	flags.IntVar(&conf.APIUserTokensDefaultExpireDays, "api-user-tokens-default-expire-days", 120, "Default lifetime in days of a user-issued API token (0 = never expires)")
+	// 0 = never expires; issueAppAPIToken passes it to the token form as -1 (the form reads 0 as the user default)
+	flags.IntVar(&conf.AppAPITokenExpireDays, "app-api-token-expire-days", 1825, "Lifetime in days of the API token minted for an app whose template references {{app.api.token}}, renewed at provision when under 90 days remain, 0 = never")
 
 	var usr string
 	if repman != nil && repman.OsUser != nil {
@@ -2644,7 +2646,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.DiskStatManager = misc.NewDiskStatManager()
 
 	// Initialize instance-wide shared resources for all clusters
-	repman.serverGlobals = &cluster.ServerGlobals{}
+	repman.serverGlobals = &cluster.ServerGlobals{
+		IssueAppAPIToken:  repman.issueAppAPIToken,
+		RevokeAppAPIToken: repman.revokeAppAPIToken,
+	}
 	if repman.Conf.BackupConcurrentSlots > 0 {
 		repman.serverGlobals.BackupSemaphore = make(chan struct{}, repman.Conf.BackupConcurrentSlots)
 	}
@@ -3086,6 +3091,17 @@ func (repman *ReplicationManager) Run() error {
 	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
 	// GWU (#1872): poll the gateways' HAProxy stats for the egress of every cluster.
 	go repman.gatewayTrafficLoop()
+
+	// App API tokens (#2158) are renewed at provision: warn daily about those close to expiry.
+	go func() {
+		ticker := time.NewTicker(86400 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			for _, cluster := range repman.Clusters {
+				cluster.WarnAppAPITokenExpiry()
+			}
+		}
+	}()
 
 	ticker_PAT := time.NewTicker(86400 * time.Second)
 	quit_PAT := make(chan struct{})

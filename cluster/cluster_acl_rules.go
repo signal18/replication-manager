@@ -340,6 +340,8 @@ var clusterACLRules = []ACLRule{
 
 	// User Management
 	{"/users/send-credentials", nil, []string{config.GrantGrantShow}},
+	// the emails of the users holding cluster-show-routes (the status app's SSO, #2158)
+	{"/users/route-viewers", nil, []string{config.GrantClusterShowRoutes}},
 	// User-issued API tokens covering the cluster (issue #1835): listing needs token-manage.
 	{"/tokens", nil, []string{config.GrantTokenManage}},
 	{"/api/monitor/actions/adduser/", nil, []string{config.GrantGrantAdd}},

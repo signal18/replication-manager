@@ -627,6 +627,7 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
+			cluster.MaskAppGeneratedSecrets(app.AppConfig) // the copy only (#2158)
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			err = e.Encode(app)

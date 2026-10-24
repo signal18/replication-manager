@@ -912,6 +912,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxApps)),
 	))
+	router.Handle("/api/clusters/{clusterName}/users/route-viewers", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRouteViewers)),
+	)).Methods("GET")
 	router.Handle("/api/clusters/{clusterName}/topology/alerts", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAlerts)),
@@ -1104,6 +1108,9 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
+	if repman.refuseAPITokenOutOfScope(w, r, vars["clusterName"]) {
+		return
+	}
 	var err error
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
@@ -1589,6 +1596,9 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	//marshal unmarchal for ofuscation deep copy of struc
 	vars := mux.Vars(r)
+	if repman.refuseAPITokenOutOfScope(w, r, vars["clusterName"]) {
+		return
+	}
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		data, _ := json.Marshal(mycluster.GetProxies())
@@ -10400,6 +10410,9 @@ func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.Resp
 func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
+	if repman.refuseAPITokenOutOfScope(w, r, vars["clusterName"]) {
+		return
+	}
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		// GetAppsCopy() snapshots the slice under cluster.Lock() (cluster.Apps
