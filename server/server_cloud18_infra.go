@@ -158,8 +158,8 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 		}
 	}
 	spec.Topology = strings.ToLower(strings.TrimSpace(spec.Topology))
-	// multi-master needs a quorum: 3 nodes by default, up to 9; the partner places them on its
-	// data centers (3 nodes per data center where it has 3)
+	// multi-master needs a majority (quorum): 3 nodes by default, up to 9, so that a partner with
+	// 3 data centers can spread them and keep a majority when one data center is lost
 	multiMaster := spec.Topology == config.TopoMultiMasterWsrep || spec.Topology == config.TopoMultiMasterGrouprep
 	if spec.DBCount <= 0 {
 		spec.DBCount = 2
@@ -266,7 +266,8 @@ const (
 	cloud18MaxDBU        = 64
 	cloud18MaxAPU        = 256
 	cloud18MaxProxyCount = 3
-	// Galera and group replication: a quorum of 3, up to 9 nodes (3 per data center at a partner with 3)
+	// Galera and group replication: a majority needs at least 3 nodes; up to 9 to survive the loss
+	// of a data center at a partner with 3
 	cloud18MinMultiMasterDBCount = 3
 	cloud18MaxMultiMasterDBCount = 9
 )
