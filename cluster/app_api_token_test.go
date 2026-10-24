@@ -40,6 +40,12 @@ func TestAppAPITokenNeedsRenewal(t *testing.T) {
 	}
 }
 
+// testKeyConf is a config with an encryption key, as a running replication-manager has: the
+// generated secrets are then stored encrypted ("hash_…").
+func testKeyConf() *config.Config {
+	return &config.Config{SecretKey: []byte("0123456789abcdef0123456789abcdef")}
+}
+
 // fakeTokenStore stands for the server's token store behind ServerGlobals.
 type fakeTokenStore struct {
 	n       int
@@ -67,7 +73,7 @@ func (f *fakeTokenStore) globals(expires time.Time) *ServerGlobals {
 func TestApplyAppAPIToken(t *testing.T) {
 	store := &fakeTokenStore{}
 	expires := time.Now().Add(1825 * 24 * time.Hour)
-	c := &Cluster{Name: "crm", Conf: &config.Config{}, ServerGlobals: store.globals(expires)}
+	c := &Cluster{Name: "crm", Conf: testKeyConf(), ServerGlobals: store.globals(expires)}
 	cnf := &config.AppConfig{AppHost: "status"}
 	if err := c.ApplyAppAPIToken(cnf); err != nil {
 		t.Fatal(err)
@@ -105,7 +111,9 @@ func TestApplyAppAPITokenRefused(t *testing.T) {
 // Far from expiry: nothing changes.
 func TestRenewAppAPIToken(t *testing.T) {
 	store := &fakeTokenStore{}
-	c := &Cluster{Name: "crm", Conf: &config.Config{WorkingDir: t.TempDir()}, ServerGlobals: store.globals(time.Now().Add(1825 * 24 * time.Hour))}
+	conf := testKeyConf()
+	conf.WorkingDir = t.TempDir()
+	c := &Cluster{Name: "crm", Conf: conf, ServerGlobals: store.globals(time.Now().Add(1825 * 24 * time.Hour))}
 	cnf := &config.AppConfig{AppHost: "status", Deployment: config.NewDeploymentConfig()}
 	setAppAPIToken(c.Conf, cnf, "old", "old-token", time.Now().Add(30*24*time.Hour))
 	cnf.Deployment.Variables = config.VariableMaps{
@@ -163,7 +171,9 @@ func TestAppAPIViewMasksSecretsAndShowsRoutes(t *testing.T) {
 
 // {{app.api.url}} and {{app.api.token}} resolve from the substitution view.
 func TestAppAPISubstitution(t *testing.T) {
-	c := &Cluster{Name: "crm", Conf: &config.Config{MonitorAddress: "repman.example", APIPort: "10005"}}
+	conf := testKeyConf()
+	conf.MonitorAddress, conf.APIPort = "repman.example", "10005"
+	c := &Cluster{Name: "crm", Conf: conf}
 	cnf := &config.AppConfig{AppHost: "status"}
 	setAppAPIToken(c.Conf, cnf, "id1", "secret-token", time.Time{})
 	app := &App{Name: "status", AppConfig: cnf, Mutex: &sync.Mutex{}, ClusterGroup: c}
