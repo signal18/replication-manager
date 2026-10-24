@@ -44,17 +44,17 @@ var cloud18Topologies = map[string][]map[string]any{
 	"mariadb": {
 		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
-		{"topology": config.TopoMultiMasterWsrep, "description": "Galera multi-master (db_count 3 to 9; the partner places the nodes on its data centers)", "minNodes": 3, "maxNodes": 9, "creatable": true},
+		{"topology": config.TopoMultiMasterWsrep, "description": "Galera multi-master (db_count 3, 5 or 7, odd to keep a majority; spread over 3 data centers at a partner that has them)", "minNodes": 3, "maxNodes": 7, "creatable": true},
 	},
 	"mysql": {
 		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
-		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication (db_count 3 to 9)", "minNodes": 3, "maxNodes": 9, "creatable": true},
+		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication (db_count 3, 5 or 7, odd to keep a majority)", "minNodes": 3, "maxNodes": 7, "creatable": true},
 	},
 	"percona": {
 		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
-		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication (db_count 3 to 9)", "minNodes": 3, "maxNodes": 9, "creatable": true},
+		{"topology": config.TopoMultiMasterGrouprep, "description": "group replication (db_count 3, 5 or 7, odd to keep a majority)", "minNodes": 3, "maxNodes": 7, "creatable": true},
 	},
 	"postgres": {
 		{"topology": config.TopoMasterSlavePgStream, "description": "WAL streaming replication, a primary and standbys (default)", "minNodes": 2, "creatable": true},

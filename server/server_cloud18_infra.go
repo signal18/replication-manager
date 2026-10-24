@@ -158,8 +158,8 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 		}
 	}
 	spec.Topology = strings.ToLower(strings.TrimSpace(spec.Topology))
-	// multi-master needs a majority (quorum): 3 nodes by default, up to 9, so that a partner with
-	// 3 data centers can spread them and keep a majority when one data center is lost
+	// multi-master needs a majority (quorum): an odd count, 3 by default, 5 or 7, which a partner
+	// with 3 data centers spreads (1+1+1, 2+2+1, 3+2+2) so that losing one keeps a majority
 	multiMaster := spec.Topology == config.TopoMultiMasterWsrep || spec.Topology == config.TopoMultiMasterGrouprep
 	if spec.DBCount <= 0 {
 		spec.DBCount = 2
@@ -168,8 +168,8 @@ func normalizeSpec(spec Cloud18ClusterSpec) (Cloud18ClusterSpec, error) {
 		}
 	}
 	switch {
-	case multiMaster && (spec.DBCount < cloud18MinMultiMasterDBCount || spec.DBCount > cloud18MaxMultiMasterDBCount):
-		return spec, fmt.Errorf("topology %s takes db_count %d to %d, got %d", spec.Topology, cloud18MinMultiMasterDBCount, cloud18MaxMultiMasterDBCount, spec.DBCount)
+	case multiMaster && (spec.DBCount < cloud18MinMultiMasterDBCount || spec.DBCount > cloud18MaxMultiMasterDBCount || spec.DBCount%2 == 0):
+		return spec, fmt.Errorf("topology %s takes db_count 3, 5 or 7 (an odd count keeps a majority), got %d", spec.Topology, spec.DBCount)
 	case !multiMaster && spec.DBCount > cloud18MaxDBCount:
 		return spec, fmt.Errorf("db_count above %d is not a self-service size", cloud18MaxDBCount)
 	}
@@ -266,10 +266,9 @@ const (
 	cloud18MaxDBU        = 64
 	cloud18MaxAPU        = 256
 	cloud18MaxProxyCount = 3
-	// Galera and group replication: a majority needs at least 3 nodes; up to 9 to survive the loss
-	// of a data center at a partner with 3
+	// Galera and group replication: 3, 5 or 7 nodes, odd so that a majority always exists
 	cloud18MinMultiMasterDBCount = 3
-	cloud18MaxMultiMasterDBCount = 9
+	cloud18MaxMultiMasterDBCount = 7
 )
 
 // multiMasterTopologyOf names the multi-master topology a flavor builds.

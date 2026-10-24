@@ -269,10 +269,10 @@ func TestCloud18SpecMultiMaster(t *testing.T) {
 	if err != nil || s.Topology != config.TopoMultiMasterWsrep || s.DBCount != 3 {
 		t.Fatalf("galera default: %v %v", s, err)
 	}
-	if s, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "g", DBImage: "mariadb:lts", Topology: config.TopoMultiMasterWsrep, DBCount: 9}); err != nil || len(plannedHosts(s)) != 9+1+1 {
-		t.Fatalf("galera 9 nodes: %v %v", plannedHosts(s), err)
+	if s, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "g", DBImage: "mariadb:lts", Topology: config.TopoMultiMasterWsrep, DBCount: 7}); err != nil || len(plannedHosts(s)) != 7+1+1 {
+		t.Fatalf("galera 7 nodes: %v %v", plannedHosts(s), err)
 	}
-	for _, n := range []int{2, 10} {
+	for _, n := range []int{2, 4, 6, 9} {
 		if _, err = normalizeSpec(Cloud18ClusterSpec{ClusterName: "g", DBImage: "mariadb:lts", Topology: config.TopoMultiMasterWsrep, DBCount: n}); err == nil {
 			t.Fatalf("galera with %d nodes must be refused", n)
 		}
