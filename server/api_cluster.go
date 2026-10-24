@@ -4202,7 +4202,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential":
+	case "cloud18-identity-client-secret", "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -5092,6 +5092,19 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return err
 		}
 		mycluster.Conf.Cloud18DomainSecret = string(val)
+	case "cloud18-identity-url":
+		mycluster.Conf.Cloud18IdentityURL = value
+	case "cloud18-identity-client-id":
+		mycluster.Conf.Cloud18IdentityClientID = value
+	case "cloud18-identity-client-secret":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("unable to decode")
+		}
+		if err := mycluster.CredentialChain().Set("cloud18-identity-client-secret", string(val)); err != nil {
+			return err
+		}
+		mycluster.Conf.Cloud18IdentityClientSecret = string(val)
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
@@ -11190,10 +11203,12 @@ func validateS3ProviderAPIRequest(p config.S3Provider, mycluster *cluster.Cluste
 			return fmt.Errorf("providerApp %q is not a known sibling app S3 provider", p.ProviderApp)
 		}
 	case config.S3ProviderSourceCustom:
-		if p.AccessKey == "" {
+		// a Cloud18 SSO provider holds no keys (they come from the instance's identity at the
+		// storage's STS); p.Validate refuses keys on it
+		if !p.Cloud18SSO && p.AccessKey == "" {
 			return fmt.Errorf("accesskey is required for custom mode")
 		}
-		if p.SecretKey == "" {
+		if !p.Cloud18SSO && p.SecretKey == "" {
 			return fmt.Errorf("secretkey is required for custom mode")
 		}
 		u, err := url.ParseRequestURI(p.Endpoint)
