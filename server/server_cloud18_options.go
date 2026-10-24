@@ -44,7 +44,7 @@ var cloud18Topologies = map[string][]map[string]any{
 	"mariadb": {
 		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},
 		{"topology": config.TopoMasterSlave, "description": "a master and replicas (db_count 2 to 5)", "minNodes": 2, "creatable": true},
-		{"topology": config.TopoMultiMasterWsrep, "description": "Galera multi-master (db_count 3 to 9, up to 3 per data center on 3 data centers)", "minNodes": 3, "maxNodes": 9, "creatable": true},
+		{"topology": config.TopoMultiMasterWsrep, "description": "Galera multi-master (db_count 3 to 9; the partner places the nodes on its data centers)", "minNodes": 3, "maxNodes": 9, "creatable": true},
 	},
 	"mysql": {
 		{"topology": config.TopoActivePassive, "description": "one server on a failover volume (db_count 1)", "minNodes": 1, "creatable": true},

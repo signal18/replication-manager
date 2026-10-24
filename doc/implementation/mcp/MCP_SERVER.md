@@ -153,7 +153,8 @@ deletes the cluster** (`DELETE /api/clusters/actions/delete/<name>`) so none is 
 nobody asked for, the answer says `leftover` when the delete fails; then per flavor:
 - MariaDB, MySQL, Percona: `prov-db-image`, `addserver dbN/3306`, proxies on 3306,
   phpMyAdmin by default.
-- Multi-master, 3 to 9 nodes (3 by default; up to 3 per data center on 3 data centers):
+- Multi-master, 3 to 9 nodes (3 by default; the partner places them on its data centers, its own
+  count: 3 per data center at a partner with 3):
   `multi-master-wsrep` (Galera, MariaDB only) and `multi-master-grprep` (group replication,
   MySQL and Percona only). `topology-target` is set first (it turns on `MultiMasterWsrep` /
   `MultiMasterGrouprep`), then the db tag `semisync` is dropped and `wsrep` / `grouprep` added:
