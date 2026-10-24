@@ -24,7 +24,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/sirupsen/logrus"
 )
 
@@ -1744,22 +1743,15 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 }
 
 func (cm *ConfigManager) RotateGitAccessToken(conf *config.Config) error {
-	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+	// the Cloud18 CRM issues the instance's GitLab token for its identity token (#2159): no
+	// GitLab password; it revokes the previous token of the same name
+	grant, err := conf.Cloud18GitLabToken(conf.GetInstancePATName())
 	if err != nil {
-		cm.logger.Errorf("none", config.ConstLogModGit, "Error getting GitLab token: %v", err)
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error getting the Cloud18 GitLab token: %v", err)
 		conf.Cloud18 = false
 		return err
 	}
-
-	tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
-	personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-	if personal_access_token == "" {
-		personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)
-		if err != nil {
-			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating personal access token: %v", err)
-			return err
-		}
-	}
+	personal_access_token := grant.Token
 
 	var Secrets config.Secret
 	Secrets.Value = personal_access_token

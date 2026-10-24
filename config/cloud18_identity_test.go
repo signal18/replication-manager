@@ -104,3 +104,46 @@ func TestVaultJWTLogin(t *testing.T) {
 		t.Fatalf("token %q role %q jwt set %v", client.Token(), gotRole, gotJWT != "")
 	}
 }
+
+// #2159: the GitLab token of a new version comes from the Cloud18 CRM, for the identity token, with
+// the instance's token name; no GitLab password is sent anywhere
+func TestCloud18GitLabToken(t *testing.T) {
+	identity := testToken(`{"sub":"2","azp":"repman-acme"}`)
+	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"access_token":%q,"expires_in":300}`, identity)
+	}))
+	defer realm.Close()
+	var gotAuth, gotName string
+	crm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/instances/gitlab-token" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		gotAuth = r.Header.Get("Authorization")
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
+		gotName = body["token_name"]
+		fmt.Fprint(w, `{"token":"glpat-x","expires_at":"2026-10-31","user_id":2,"username":"svaroqui"}`)
+	}))
+	defer crm.Close()
+
+	conf := &Config{Cloud18IdentityURL: realm.URL + "/gitlab-token-test", Cloud18IdentityClientID: "repman-acme", Cloud18CrmApiUrl: crm.URL + "/"}
+	conf.Secrets = NewSecrets(map[string]Secret{"cloud18-identity-client-secret": {Value: "x"}})
+	g, err := conf.Cloud18GitLabToken("signal18-dev3-ovh2-1")
+	if err != nil || g.Token != "glpat-x" || g.UserID != 2 || g.Username != "svaroqui" {
+		t.Fatalf("grant %+v err %v", g, err)
+	}
+	if gotAuth != "Bearer "+identity || gotName != "signal18-dev3-ovh2-1" {
+		t.Fatalf("auth %q name %q", gotAuth, gotName)
+	}
+
+	refused := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"authorization_required"}`)
+	}))
+	defer refused.Close()
+	conf.Cloud18CrmApiUrl = refused.URL
+	if _, err := conf.Cloud18GitLabToken("n"); err == nil {
+		t.Fatal("a refused identity gets no token")
+	}
+}
