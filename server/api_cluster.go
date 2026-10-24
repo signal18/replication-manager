@@ -11190,10 +11190,12 @@ func validateS3ProviderAPIRequest(p config.S3Provider, mycluster *cluster.Cluste
 			return fmt.Errorf("providerApp %q is not a known sibling app S3 provider", p.ProviderApp)
 		}
 	case config.S3ProviderSourceCustom:
-		if p.AccessKey == "" {
+		// a Cloud18 SSO provider holds no keys (they come from the instance's identity at the
+		// storage's STS); p.Validate refuses keys on it
+		if !p.Cloud18SSO && p.AccessKey == "" {
 			return fmt.Errorf("accesskey is required for custom mode")
 		}
-		if p.SecretKey == "" {
+		if !p.Cloud18SSO && p.SecretKey == "" {
 			return fmt.Errorf("secretkey is required for custom mode")
 		}
 		u, err := url.ParseRequestURI(p.Endpoint)

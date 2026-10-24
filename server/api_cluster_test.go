@@ -2228,3 +2228,18 @@ func TestSetClusterSetting_DumpClientPaths(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateS3ProviderAPIRequest_Cloud18SSOWithoutKeys verifies that a Cloud18 SSO provider is
+// accepted without keys (#2159: they come from the instance's identity), and that a custom
+// provider without SSO still needs both.
+func TestValidateS3ProviderAPIRequest_Cloud18SSOWithoutKeys(t *testing.T) {
+	cl := newTestClusterForAPI(t)
+	p := config.S3Provider{Name: "cloud18-fr-2", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.signal18.io", Region: "fr", Cloud18SSO: true}
+	if err := validateS3ProviderAPIRequest(p, cl); err != nil {
+		t.Errorf("an SSO provider without keys: %v", err)
+	}
+	p.Cloud18SSO = false
+	if err := validateS3ProviderAPIRequest(p, cl); err == nil {
+		t.Error("a custom provider without SSO needs its keys")
+	}
+}
