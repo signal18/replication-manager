@@ -72,14 +72,14 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	// own file, or, on a live cluster, the saved configuration read before the first test
 	// (RestoreConf puts it back after each test).
 	startConfig := ""
-	if testExp != "SUITE" && repman.regtestReporting() {
+	if testExp != "SUITE" && repman.regtestReporting(cl) {
 		startConfig = repman.regtestStartConfig(cl)
 	}
 	for key, test := range allTests {
 		var res bool
 		testStart := time.Now()
 		testConfig := startConfig
-		if testExp == "SUITE" && repman.regtestReporting() {
+		if testExp == "SUITE" && repman.regtestReporting(cl) {
 			testConfig = regtestFileTOML(test.ConfigFile)
 		}
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s", test.Name)

@@ -23,7 +23,7 @@ import (
 	"github.com/signal18/replication-manager/utils/releases"
 )
 
-// Every registered instance running its regression tests (test mode) reports each run to
+// Every registered instance running its regression tests on a cluster in test mode reports each run to
 // the Cloud18 CRM (POST /api/instances/regtest-results), which consolidates the results of
 // all users and offers in self-service only the setups that passed (#2165). One report per
 // setup, with the cluster's saved configuration: a suite run moves from one test cluster
@@ -119,9 +119,10 @@ func regtestFileTOML(path string) string {
 	return string(data)
 }
 
-// regtestReporting says whether this run will be reported: test mode on a registered instance.
-func (repman *ReplicationManager) regtestReporting() bool {
-	return repman.Conf.Test && repman.registeredInstanceURI() != ""
+// regtestReporting says whether a run on this cluster is reported: the cluster in test mode
+// (the "test" setting, switchable at runtime) on a registered instance.
+func (repman *ReplicationManager) regtestReporting(cl *cluster.Cluster) bool {
+	return cl.Conf.Test && repman.registeredInstanceURI() != ""
 }
 
 // regtestStartConfig is the configuration a test on a live cluster starts from: the
@@ -148,7 +149,7 @@ func (repman *ReplicationManager) regtestStartConfig(cl *cluster.Cluster) string
 // reportRegtestResults sends the run to the CRM in the background, one report per setup,
 // in test mode. A failure is logged and never changes the run.
 func (repman *ReplicationManager) reportRegtestResults(cl *cluster.Cluster, tests []regtestReportedTest) {
-	if !repman.regtestReporting() || len(tests) == 0 {
+	if !repman.regtestReporting(cl) || len(tests) == 0 {
 		return
 	}
 	uri := repman.registeredInstanceURI()

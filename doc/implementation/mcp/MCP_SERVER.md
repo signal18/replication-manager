@@ -135,7 +135,7 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   (regression tests are functional, they gate on the topology) and the replication-manager
   version (the latest run wins). Upgrade runs (`from_db_version`, set by the rolling upgrade
   tests) test an upgrade path and never open the gate for the line they upgrade to.
-  The runs are sent by every registered instance in test mode (`test`), one report per setup
+  The runs are sent by every registered instance from its clusters in test mode (the `test` setting, switchable at runtime), one report per setup
   at the end of `RunAllTests` with the cluster's saved configuration (`<cluster>.toml` as kept
   on disk), retried after 10 s and 60 s on a network error or 5xx. The CRM consolidates the
   results of all users: it accepts the runs of any instance whose owner (GitLab or Keycloak
