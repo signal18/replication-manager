@@ -185,8 +185,8 @@ type ReplicationManager struct {
 	termlength                  int
 	exitMsg                     string
 	exit                        atomic.Bool
-	cloud18GitRotating          atomic.Bool // a rotation of the Cloud18 project tokens runs (#2159)
-	cloud18PasswordRefused      atomic.Bool // GitLab refused the password of an instance registered with it (#2159)
+	cloud18GitRotating          atomic.Bool  // a rotation of the Cloud18 project tokens runs (#2159)
+	cloud18PasswordRefused      atomic.Bool  // GitLab refused the password of an instance registered with it (#2159)
 	cloud18MigrateRefused       atomic.Value // sha256 of the stored GitLab password GitLab's sign-in refused (#2159)
 	cloud18MigrateNext          atomic.Int64 // unix time before which the migration is not tried again (#2159)
 	isStarted                   bool
