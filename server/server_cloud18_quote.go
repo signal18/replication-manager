@@ -19,8 +19,11 @@ import (
 // cloud18QuoteOf prices a cluster request on one infrastructure from its self-service
 // status (#1963): the units the request needs, whether they fit the free pool, whether a
 // creation is allowed there, and the MONTHLY PRICE AT FULL CAPACITY, the plan fully used
-// for the whole month, from the partner's own unit prices. A unit above the plan
-// (over-commit) is billed on top, at the over-commit rate shown apart.
+// for the whole month, from the partner's own unit prices, and two more monthly prices: the
+// minimal, the database at its scale-down floor (prov-db-undercommit-pct) with the unused plan
+// units at the under-commit price, and the overcommit, the database borrowing up to its cap
+// (prov-db-overcommit-pct) the whole month at the over-commit unit price. Proxies, apps and
+// backups stay at their plan in both. The formulas are the billing's (planUnitCost).
 //
 // Units: DBU = db_count x dbu per database node (prov-db-dbu is per node, every node can
 // become master); APU = the cluster's stateless services (proxy + apps); BKU = the
@@ -99,11 +102,46 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	q["currency"] = currency
 	q["breakdown"] = lines
 	q["monthlyAtFullCapacity"] = round2(total)
-	if pct := num(prices, "overcommitPricePct"); pct > 0 {
-		q["overcommit"] = map[string]any{"pricePct": pct,
-			"dbu": round2(num(prices, "dbu") * pct / 100), "apu": round2(num(prices, "apu") * pct / 100),
-			"note": "per unit-month above the plan, billed on top when the cluster grows over it"}
+	monthly := map[string]any{"plan": round2(total)}
+	dbuPrice, nodes := num(prices, "dbu"), float64(spec.DBCount)
+	// an older infrastructure serves no under-commit price or barriers: its minimal price is
+	// unknown, never guessed; the barriers then take replication-manager's defaults
+	pctOf := func(m map[string]any, k string, def float64) (float64, bool) {
+		v, ok := m[k].(float64)
+		if !ok {
+			return def, false
+		}
+		return v, true
 	}
+	if underPricePct, ok := pctOf(prices, "undercommitPricePct", 0); ok {
+		floorPct, _ := pctOf(prices, "undercommitFloorPct", 50)
+		floor := math.Max(1, math.Floor(perNode*(1-floorPct/100)))
+		if floor > perNode {
+			floor = perNode
+		}
+		unused := nodes * (perNode - floor)
+		monthly["minimal"] = round2(total - unused*dbuPrice*underPricePct/100)
+		q["undercommit"] = map[string]any{"pricePct": underPricePct, "floorPct": floorPct, "floorDbuPerNode": floor,
+			"dbuUnitPrice": round2(dbuPrice * (100 - underPricePct) / 100),
+			"note":         "per plan unit-month left unconsumed; the database never shrinks under floorDbuPerNode"}
+	} else {
+		monthly["minimal"] = "unknown: the infrastructure serves no under-commit price (older release)"
+	}
+	if overPricePct, ok := pctOf(prices, "overcommitPricePct", 0); ok {
+		capPct, _ := pctOf(prices, "overcommitCapPct", 50)
+		if spec.OvercommitPct != nil {
+			capPct = math.Max(0, float64(*spec.OvercommitPct))
+		}
+		borrowed := nodes * math.Floor(perNode*capPct/100)
+		overDbu := dbuPrice * (100 + overPricePct) / 100
+		monthly["overcommit"] = round2(total + borrowed*overDbu)
+		q["overcommit"] = map[string]any{"pricePct": overPricePct, "capPct": capPct, "borrowedDbu": borrowed,
+			"dbuUnitPrice": round2(overDbu), "apuUnitPrice": round2(num(prices, "apu") * (100 + overPricePct) / 100),
+			"note": "per unit-month above the plan, billed instead of the unit price, only for the time used, never beyond capPct"}
+	} else {
+		monthly["overcommit"] = "unknown: the infrastructure serves no over-commit price"
+	}
+	q["monthly"] = monthly
 	return q
 }
 

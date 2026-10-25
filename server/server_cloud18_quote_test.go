@@ -192,3 +192,40 @@ func TestApplyRequestedPlan(t *testing.T) {
 		t.Fatalf("a refused plan must fail: %v", err)
 	}
 }
+
+func TestQuoteThreeMonthlyPrices(t *testing.T) {
+	// 2 nodes x 4 DBU at 10, 5 APU at 6: plan 80 + 30 = 110
+	ss := ssFixture(true, "", 50, 50, 10, 6)
+	prices := ss["prices"].(map[string]any)
+	prices["overcommitPricePct"], prices["undercommitPricePct"] = 150.0, 80.0
+	prices["overcommitCapPct"], prices["undercommitFloorPct"] = 50.0, 50.0
+	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 4, APU: 5})
+	q := cloud18QuoteOf(spec, ss)
+	m := q["monthly"].(map[string]any)
+	// minimal: floor 2 DBU/node, 2 x 2 unused DBU at 20 % of 10 -> 110 - 4 x 8 = 78
+	// overcommit: 2 x 2 borrowed DBU at 10 x 2.5 -> 110 + 100 = 210
+	if m["plan"] != 110.0 || m["minimal"] != 78.0 || m["overcommit"] != 210.0 {
+		t.Fatalf("monthly = %v", m)
+	}
+	if o := q["overcommit"].(map[string]any); o["dbuUnitPrice"] != 25.0 || o["apuUnitPrice"] != 15.0 || o["borrowedDbu"] != 4.0 {
+		t.Fatalf("the over-commit unit price is the billing's, unit price x (100 + pct) / 100: %v", o)
+	}
+	// the visitor's cap: 100 % borrows 4 DBU per node, 0 borrows nothing
+	for cap, want := range map[int]float64{100: 310, 0: 110} {
+		c := cap
+		spec.OvercommitPct = &c
+		if got := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any)["overcommit"]; got != want {
+			t.Fatalf("cap %d: overcommit = %v, want %v", cap, got, want)
+		}
+	}
+	// 1 DBU per node never shrinks: minimal = plan
+	spec, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 1, APU: 5})
+	if m := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any); m["minimal"] != m["plan"] {
+		t.Fatalf("1 DBU per node: %v", m)
+	}
+	// an older infrastructure without the under-commit price: minimal unknown, never guessed
+	delete(prices, "undercommitPricePct")
+	if _, isPrice := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any)["minimal"].(float64); isPrice {
+		t.Fatalf("minimal must be unknown without an under-commit price")
+	}
+}

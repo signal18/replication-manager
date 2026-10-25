@@ -192,7 +192,7 @@ func (s *MCPServer) registerCloud18Tools() {
 
 	s.addTool(
 		mcp.NewTool("get-cloud18-cluster-quote",
-			mcp.WithDescription("Quote a database cluster on every infrastructure of the Cloud18 marketplace, as yourself, before creating it. The answer is a list of CHOICES, one per partner infrastructure, each with the partner, its zone and its infrastructure description (platform, CPU, data centers, geo localizations, bandwidth, certifications, SLA, dbops/sysops offered), then the units the request needs (DBU = db_count x dbu per database node, APU for the proxies and apps, the default BKU), whether they fit the free pool, whether you may create it there (or why not), and the MONTHLY PRICE AT FULL CAPACITY (the plan fully used the whole month) from that infrastructure's own unit prices, with its breakdown and the over-commit rate billed on top above the plan. A partner that does not answer for your identity stays a described choice, with the reason and no price. Infrastructures where the creation is possible come first, cheapest first. Then create on the chosen one with cloud18-create-cluster and the same parameters."),
+			mcp.WithDescription("Quote a database cluster on every infrastructure of the Cloud18 marketplace, as yourself, before creating it. The answer is a list of CHOICES, one per partner infrastructure, each with the partner, its zone and its infrastructure description (platform, CPU, data centers, geo localizations, bandwidth, certifications, SLA, dbops/sysops offered), then the units the request needs (DBU = db_count x dbu per database node, APU for the proxies and apps, the default BKU), whether they fit the free pool, whether you may create it there (or why not), and three MONTHLY PRICES from that infrastructure's own unit prices: minimal (the database at its scale-down floor, the unused plan units at the under-commit price), plan (the plan fully used the whole month, with its breakdown) and overcommit (the database borrowing up to the over-commit cap the whole month, the borrowed units at the over-commit unit price), with the over-commit and under-commit unit prices. A partner that does not answer for your identity stays a described choice, with the reason and no price. Infrastructures where the creation is possible come first, cheapest first. Then create on the chosen one with cloud18-create-cluster and the same parameters."),
 			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts")),
 			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5; multi-master (Galera, group replication) 3, 5 or 7, default 3")),
 			mcp.WithNumber("dbu", mcp.Description("DBU per database node; default each infrastructure's (prov-db-dbu)")),
@@ -201,6 +201,7 @@ func (s *MCPServer) registerCloud18Tools() {
 			mcp.WithNumber("proxy_count", mcp.Description("Number of proxies, default 1, max 3")),
 			mcp.WithString("apps", mcp.Description("Comma-separated app template names, default phpmyadmin, none for no app")),
 			mcp.WithNumber("apu", mcp.Description("APU of the proxies and apps together; default each infrastructure's")),
+			mcp.WithNumber("overcommit_pct", mcp.Description("Over-commit cap: the % of its plan the database may borrow when the load needs it (prov-db-overcommit-pct), priced in the overcommit price; default each infrastructure's, 0 = no borrowing")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			out, err := s.repman.Cloud18ClusterQuote(principalFrom(ctx), cloud18SpecFrom(req))
@@ -325,6 +326,10 @@ func cloud18SpecFrom(req mcp.CallToolRequest) Cloud18ClusterSpec {
 	}
 	if apps := req.GetString("apps", ""); apps != "" {
 		spec.Apps = strings.Split(apps, ",")
+	}
+	if _, set := req.GetArguments()["overcommit_pct"]; set {
+		pct := req.GetInt("overcommit_pct", 0)
+		spec.OvercommitPct = &pct
 	}
 	return spec
 }
