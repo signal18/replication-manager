@@ -27,7 +27,9 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
 	hostname := server.graphiteHostname()
 	var metrics []graphite.Metric
-	if server.IsSlave && server.GetCluster().GetTopology() != config.TopoMultiMasterWsrep && server.GetCluster().GetTopology() != config.TopoMultiMasterGrouprep {
+	// SlaveStatus is nil once a reset (unprovision, rejoin) cleared the server's tracked
+	// state while this goroutine of an earlier refresh still runs: never dereference it (#2172)
+	if server.IsSlave && server.SlaveStatus != nil && server.GetCluster().GetTopology() != config.TopoMultiMasterWsrep && server.GetCluster().GetTopology() != config.TopoMultiMasterGrouprep {
 		m := graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", server.SlaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
 		metrics = append(metrics, m)
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%s", server.SlaveStatus.ExecMasterLogPos.String), time.Now().Unix()))
