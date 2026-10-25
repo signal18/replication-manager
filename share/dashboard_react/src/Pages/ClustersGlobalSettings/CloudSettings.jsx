@@ -818,6 +818,11 @@ Start create an account in https://gitlab.signal18.io
                   <Box bg='blue.50' borderRadius='md' p={3}>
                     <Text fontSize='xs' color='gray.500'>Registered account</Text>
                     <Text fontSize='sm' fontWeight='medium'>{subInfo.email}</Text>
+                    <Text fontSize='xs' color='gray.500' mt={2}>
+                      Requested plan: <b>{subInfo.plan || '—'}</b> · active: <b>{subInfo.planActive || '—'}</b> · {subInfo.state || 'pending'}
+                    </Text>
+                    {subInfo.message && <Text fontSize='xs' color='gray.600'>{subInfo.message}</Text>}
+                    {subInfo.state === 'pending' && <Text fontSize='xs' color='gray.500'>The request is in the instance's configuration: Cloud18 applies it, the active plan shows when it does.</Text>}
                   </Box>
                   <Text fontSize='sm' color='gray.600'>Select your new subscription plan:</Text>
                   <RadioGroup value={selectedPlan} onChange={setSelectedPlan}>

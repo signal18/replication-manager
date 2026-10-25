@@ -694,6 +694,7 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 }
 
 func (repman *ReplicationManager) PullCloud18Configs() {
+	defer repman.readCloud18PullState() // the back office's answer to the instance's requests (#2159)
 	gm := repman.ConfigManager.GetGitManager()
 	if gm == nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git manager not initialized")

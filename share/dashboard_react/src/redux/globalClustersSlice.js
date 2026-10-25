@@ -354,8 +354,8 @@ export const updateSubscription = createGuardedAsyncThunk(
   async ({ plan }, thunkAPI) => {
     try {
       const { data, status } = await globalClustersService.changeSubscription(plan)
-      if (status === 200 || status === 201) {
-        showSuccessBanner(`Subscription changed to ${plan}`, status, thunkAPI)
+      if (status === 200 || status === 201 || status === 202) {
+        showSuccessBanner(status === 202 ? `Plan ${plan} requested: Cloud18 applies it` : `Subscription changed to ${plan}`, status, thunkAPI)
         return { data, status }
       }
       throw new Error(typeof data === 'object' ? (data?.error || JSON.stringify(data)) : data)

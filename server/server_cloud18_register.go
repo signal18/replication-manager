@@ -208,7 +208,8 @@ func (repman *ReplicationManager) cloud18Declare(conf *config.Config, glToken, d
 	}
 	conf.SetCloud18GitTokens(mainTok.Token, pullTok.Token, end)
 	repman.shareGitSecrets(conf)
-	conf.Cloud18 = true
+	conf.Cloud18, conf.Cloud18Unregister = true, false
+	conf.SetDynamicFlag("cloud18-unregister", false)
 	if err := repman.InitGitConfig(conf); err != nil {
 		repman.setRegStatus(RegStateError, "registered, the config repository not reached: "+err.Error(), res)
 		return repman.regState()

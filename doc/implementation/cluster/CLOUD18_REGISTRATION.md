@@ -60,6 +60,23 @@ enough: no second sign-up on GitLab.
 The MCP tools do not register: that needs the person's Cloud18 password, which an assistant never
 handles; they answer where to register.
 
+## Subscription and unregistration, declarative (`server/server_cloud18_declarative.go`)
+
+No CRM call and no GitLab password after the registration either:
+- **instance → back office**, in the config repository's `default.toml`: `cloud18-subscription-plan`, the
+  **requested** plan (`POST /api/register/subscription` sets it, 202); `cloud18-unregister = true`, the
+  **request** to unregister (`POST /api/register/unregister`: saved, pushed, then `cloud18 = false` where the
+  value lives, so a restart keeps it off). A new registration sets `cloud18-unregister` back to false.
+- **back office → instance**, in the pull repository's `cloud18.toml` (read after each pull):
+  `cloud18-subscription-plan-active`, `cloud18-subscription-state` (`active`, `pending`, `refused`),
+  `cloud18-subscription-message`. `GET /api/register/subscription` shows both sides; no answer yet, or an
+  `active` state for another plan than the one requested, is `pending`; a refusal keeps the previous plan
+  active.
+- the back office (from its GitLab harvest): a new config project is a new registration (subscription,
+  billing customer, chat user, settlement credential delivered through the pull repository); a requested
+  plan different from the active one is applied or refused; `cloud18-unregister` ends the subscription and
+  removes the projects and their tokens.
+
 ## Tokens renew themselves (`config/cloud18_git.go`)
 
 `RotateCloud18GitTokens` (`/projects/:id/access_tokens/self/rotate` with the token itself): daily check
@@ -84,7 +101,8 @@ a reconnect).
   account, a captcha, a changed password), the instance keeps the password path untouched and the log
   says why; `GWARN022` asks to register again once GitLab refuses that password too. A password GitLab's
   sign-in refused is not tried again until it changes (GitLab locks an account after a few failures);
-  any other failure waits an hour. After the move the stored GitLab password stays (encrypted, unused):
+  any other failure waits an hour. That memory is not kept across a restart: one failed sign-in per start
+  remains possible. After the move the stored GitLab password stays (encrypted, unused):
   it lets the instance roll back to an older release.
 
 ## Setup (realm and GitLab)
