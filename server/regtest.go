@@ -9,6 +9,7 @@ package server
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -66,8 +67,10 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		allTests = regtest.GetTestsFromScenarios(cl, strings.Split(testExp, ","))
 	}
 
+	var reported []regtestReportedTest
 	for key, test := range allTests {
 		var res bool
+		testStart := time.Now()
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s", test.Name)
 
 		if testExp == "SUITE" {
@@ -405,6 +408,8 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		}
 
 		test.Result = regtest.GetTestResultLabel(res)
+		// the setup is read before the suite closes its test cluster
+		reported = append(reported, regtestReportedTest{Setup: regtestSetupOf(cl, test), Test: test.Name, Result: test.Result, Duration: time.Since(testStart)})
 		if testExp == "SUITE" {
 			cl.CloseTestCluster(test.ConfigFile, &test)
 		} else {
@@ -426,5 +431,6 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	}
 	cl.CleanAll = false
 	regtest.SaveTestsFromResult(cl, allTests)
+	repman.reportRegtestResults(cl, reported)
 	return vals
 }
