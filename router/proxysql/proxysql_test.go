@@ -35,7 +35,8 @@ func TestFlavorObjects(t *testing.T) {
 		t.Run(c.flavor, func(t *testing.T) {
 			psql, mock := newMock(t, c.flavor)
 			expectExec(mock, "REPLACE INTO "+c.servers+" (hostgroup_id,hostname, port,use_ssl,weight) VALUES('0','db1','5432','0','1')")
-			expectExec(mock, "UPDATE "+c.servers+" SET status='ONLINE', hostgroup_id='1' WHERE  hostname='db1' AND port='5432' AND hostgroup_id in ('1','0')")
+			expectExec(mock, "DELETE FROM "+c.servers+" WHERE hostgroup_id='0' AND hostname='db1' AND port='5432' AND EXISTS (SELECT 1 FROM "+c.servers+" WHERE hostgroup_id='1' AND hostname='db1' AND port='5432')")
+			expectExec(mock, "UPDATE "+c.servers+" SET status='ONLINE', hostgroup_id='1' WHERE hostname='db1' AND port='5432' AND hostgroup_id in ('1','0')")
 			expectExec(mock, "LOAD "+c.module+" SERVERS TO RUNTIME")
 			expectExec(mock, "SAVE "+c.module+" SERVERS TO DISK")
 			expectExec(mock, "SET "+c.monitorVar+" = 1")
@@ -133,5 +134,20 @@ func TestStatsConnectionPool(t *testing.T) {
 	hg, status, _, _, _, _, err := psql.GetStatsForHostWrite("db1", "5432")
 	if err != nil || hg != "0" || status != "ONLINE" {
 		t.Fatalf("hg=%q status=%q err=%v", hg, status, err)
+	}
+}
+
+// A server already in the target hostgroup (the writer set writer again after a
+// switchback) loses its row in the other hostgroup before the move, so the move never
+// makes two identical rows.
+func TestSetWriterWhenAlreadyWriter(t *testing.T) {
+	psql, mock := newMock(t, FlavorMySQL)
+	expectExec(mock, "DELETE FROM mysql_servers WHERE hostgroup_id='1' AND hostname='db1' AND port='3306' AND EXISTS (SELECT 1 FROM mysql_servers WHERE hostgroup_id='0' AND hostname='db1' AND port='3306')")
+	expectExec(mock, "UPDATE mysql_servers SET status='ONLINE', hostgroup_id='0' WHERE hostname='db1' AND port='3306' AND hostgroup_id in ('1','0')")
+	if err := psql.SetWriter("db1", "3306"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
