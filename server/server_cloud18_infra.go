@@ -375,6 +375,10 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 	if err != nil {
 		return nil, err
 	}
+	// only the setups whose latest regression test run passed are built (#2165)
+	if err := repman.cloud18RequireTestedSetup(spec); err != nil {
+		return nil, err
+	}
 	sess, _, err := repman.peerLoginAs(p, spec.Infrastructure)
 	if err != nil {
 		return nil, err

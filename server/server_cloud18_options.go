@@ -133,9 +133,10 @@ func (repman *ReplicationManager) Cloud18ClusterOptions(p *repmanmcp.Principal, 
 		out["db_image_source"] = source
 	}
 	if want("topology") {
+		setups, readable := repman.cloud18TestedSetupsList()
 		topo := map[string]any{}
 		for _, f := range flavors {
-			topo[f] = cloud18Topologies[f]
+			topo[f] = cloud18TopologiesTested(setups, readable, f, cloud18Topologies[f])
 		}
 		out["topology"] = topo
 	}

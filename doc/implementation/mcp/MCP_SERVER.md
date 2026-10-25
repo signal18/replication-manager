@@ -122,6 +122,14 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   the infrastructure's templates, DBU/APU range and free pool). The ranges are the constants
   `cloud18MaxDBCount`/`MaxDBU`/`MaxAPU`/`MaxProxyCount`, shared with the validation. An
   unreadable release table is said in `db_image_source`, never shown as a flavor without lines.
+  Each topology carries `testedLines` (#2165): per release line, the latest regression test
+  run reported to the Cloud18 CRM (`GET /api/instances/tested-setups`, read with the instance's
+  GitLab token, kept 10 minutes and on disk in `cloud18-tested-setups.json`). A topology is
+  creatable only when one of its lines passed; `cloud18-create-cluster` refuses a flavor,
+  topology and release line (`lts`/`latest` resolved through the release table) whose latest
+  run did not pass, or when no copy of the tested setups was ever read. The runs are sent by
+  test instances with `cloud18-regtest-report` (one report per setup at the end of
+  `RunAllTests`; the CRM accepts only the instances it lists as reporters).
 - `get-cloud18-cluster-quote`: one **choice per partner infrastructure** (from the for-sale
   list, `Cloud18Infrastructures`). Each choice carries the partner, its zone and its
   infrastructure description from peer.json (`cloud18InfraDefinitionOf`: platform, CPU, data

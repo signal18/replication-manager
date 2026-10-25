@@ -26,13 +26,19 @@ func TestClusterOptionsLocalDimensions(t *testing.T) {
 	if _, ok := out["db_image"].(map[string]any)["mysql"]; ok {
 		t.Fatal("the db_flavor filter must keep only mariadb")
 	}
+	// a topology is creatable once a release line passed its latest regression test run (#2165)
+	seedTestedSetups(t, []cloud18TestedSetup{
+		{Flavor: "mariadb", Topology: config.TopoActivePassive, DbVersion: "11.8", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.8", Status: "failing", TestedAt: "2026-10-25T10:00:00Z"},
+	})
 	out, _ = repman.Cloud18ClusterOptions(nil, "topology", "mariadb", "")
 	topo := out["topology"].(map[string]any)["mariadb"].([]map[string]any)
 	creatable := map[any]any{}
 	for _, tp := range topo {
 		creatable[tp["topology"]] = tp["creatable"]
 	}
-	if creatable[config.TopoActivePassive] != true || creatable[config.TopoMasterSlave] != true || creatable[config.TopoMultiMasterWsrep] != true {
+	if creatable[config.TopoActivePassive] != true || creatable[config.TopoMasterSlave] != true || creatable[config.TopoMultiMasterWsrep] != false {
 		t.Fatalf("mariadb topologies: %v", topo)
 	}
 	if _, err := repman.Cloud18ClusterOptions(nil, "color", "", ""); err == nil {
