@@ -1605,9 +1605,6 @@ func (repman *ReplicationManager) handlerSubscriptionPreflight(w http.ResponseWr
 	w.WriteHeader(http.StatusNoContent)
 }
 
-
-
-
 func crmGetBillingProfile(crmBase, gitlabToken string) (int, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/profile", nil)
 	if err != nil {
