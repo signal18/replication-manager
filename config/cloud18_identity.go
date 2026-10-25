@@ -66,10 +66,7 @@ const (
 	cloud18IdentityReconnectBefore = 14 * 24 * time.Hour
 	// a device login waits for the person at most this long, whatever the realm says
 	cloud18DeviceMaxWait = 15 * time.Minute
-	// a GitLab token the CRM just gave is handed to the next callers for this long instead of
-	// asking again: a second request would revoke the first token (same name)
-	cloud18GitLabGrantReuse = 5 * time.Minute
-	cloud18ErrorTextMax     = 200
+	cloud18ErrorTextMax  = 200
 )
 
 // cloud18DeviceMinInterval is the shortest wait between two polls of a device login (tests lower it).
@@ -845,89 +842,4 @@ func tokenClaim(token, claim string) string {
 	}
 	v, _ := claims[claim].(string)
 	return v
-}
-
-// Cloud18GitLabGrant is the GitLab token the Cloud18 CRM gives this instance for its identity
-// token: an impersonation token of the user the instance acts for (scopes api, write_repository).
-type Cloud18GitLabGrant struct {
-	Token     string `json:"token"`
-	ExpiresAt string `json:"expires_at"`
-	UserID    int    `json:"user_id"`
-	Username  string `json:"username"`
-}
-
-// Cloud18GitLabToken asks the Cloud18 CRM (cloud18-crm-api-url, POST /api/instances/gitlab-token)
-// for the GitLab token this instance pushes and pulls its configuration repositories with, in
-// exchange for its identity token (#2159): a new replication-manager keeps no GitLab password.
-// The CRM revokes the instance's previous token of the same name: call it when the saved token no
-// longer works and at the rotation, never at every start. The requests are serialized, and a
-// token got less than cloud18GitLabGrantReuse ago is returned again rather than asked for (and
-// the first one revoked) twice. ErrCloud18Refused marks a definitive refusal.
-func (conf *Config) Cloud18GitLabToken(tokenName string) (Cloud18GitLabGrant, error) {
-	cloud18GitLabGrants.Lock()
-	defer cloud18GitLabGrants.Unlock()
-	key := conf.Cloud18CrmApiUrl + "\x00" + tokenName
-	if g, ok := cloud18GitLabGrants.last[key]; ok && time.Since(g.at) < cloud18GitLabGrantReuse {
-		return g.grant, nil
-	}
-	g, err := conf.requestCloud18GitLabToken(tokenName)
-	if err != nil {
-		return g, err
-	}
-	cloud18GitLabGrants.last = map[string]cloud18GitLabGrantAt{key: {grant: g, at: time.Now()}}
-	return g, nil
-}
-
-type cloud18GitLabGrantAt struct {
-	grant Cloud18GitLabGrant
-	at    time.Time
-}
-
-// cloud18GitLabGrants: the last GitLab token the CRM gave, and the lock serializing the requests
-var cloud18GitLabGrants = struct {
-	sync.Mutex
-	last map[string]cloud18GitLabGrantAt
-}{}
-
-func (conf *Config) requestCloud18GitLabToken(tokenName string) (Cloud18GitLabGrant, error) {
-	crm := strings.TrimRight(conf.Cloud18CrmApiUrl, "/")
-	if crm == "" {
-		return Cloud18GitLabGrant{}, cloud18Refused("Cloud18 GitLab token: no CRM (cloud18-crm-api-url)")
-	}
-	if err := cloud18SafeURL("cloud18-crm-api-url", crm); err != nil {
-		return Cloud18GitLabGrant{}, fmt.Errorf("Cloud18 GitLab token: %w", err)
-	}
-	identity, _, err := conf.Cloud18IdentityToken()
-	if err != nil {
-		return Cloud18GitLabGrant{}, err
-	}
-	body, _ := json.Marshal(map[string]string{"token_name": tokenName})
-	req, err := http.NewRequest(http.MethodPost, crm+"/api/instances/gitlab-token", strings.NewReader(string(body)))
-	if err != nil {
-		return Cloud18GitLabGrant{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+identity)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := (&http.Client{Timeout: cloud18IdentityHTTPTimeout}).Do(req)
-	if err != nil {
-		return Cloud18GitLabGrant{}, fmt.Errorf("Cloud18 GitLab token: %w", err)
-	}
-	defer resp.Body.Close()
-	answer, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode != http.StatusOK {
-		var e struct {
-			Error string `json:"error"`
-		}
-		json.Unmarshal(answer, &e)
-		detail := ""
-		if t := cloud18ErrorText(e.Error); t != "" {
-			detail = ": " + t
-		}
-		return Cloud18GitLabGrant{}, fmt.Errorf("Cloud18 GitLab token: %w", cloud18Status("the CRM", resp.StatusCode, detail))
-	}
-	var g Cloud18GitLabGrant
-	if err := json.Unmarshal(answer, &g); err != nil || g.Token == "" || g.UserID <= 0 {
-		return Cloud18GitLabGrant{}, errors.New("Cloud18 GitLab token: the CRM gave no token")
-	}
-	return g, nil
 }
