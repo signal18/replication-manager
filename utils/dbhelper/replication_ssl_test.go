@@ -88,3 +88,30 @@ func TestChangeMasterSSLCa(t *testing.T) {
 		t.Fatalf("TLS off towards a primary without TLS: %s", cm)
 	}
 }
+
+// MySQL 8.4 refuses SOURCE_RETRY_COUNT on the group replication recovery channel (Error
+// 3139): the recovery channel never names it, an ordinary channel still does (#2164).
+func TestChangeMasterRetryCountNotOnGroupRecovery(t *testing.T) {
+	mysql84 := &version.Version{Flavor: "MySQL", Major: 8, Minor: 4, Release: 11}
+	run := func(opt ChangeMasterOpt) string {
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		mock.ExpectExec("CHANGE").WillReturnResult(sqlmock.NewResult(0, 0))
+		cm, err := ChangeMaster(sqlx.NewDb(db, "sqlmock"), opt, mysql84)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cm
+	}
+	group := run(ChangeMasterOpt{User: "repl", Password: "pw", Retry: "10", Heartbeat: "1", RetryCount: "100000", Mode: "GROUP_REPL", Channel: "group_replication_recovery"})
+	if strings.Contains(group, "RETRY_COUNT") || !strings.Contains(group, "FOR CHANNEL 'group_replication_recovery'") {
+		t.Fatalf("group recovery channel: %s", group)
+	}
+	replica := run(ChangeMasterOpt{Host: "db1", Port: "3306", User: "repl", Password: "pw", Retry: "10", Heartbeat: "1", RetryCount: "100000", Mode: "MASTER_AUTO_POSITION"})
+	if !strings.Contains(replica, "SOURCE_RETRY_COUNT=100000") {
+		t.Fatalf("an ordinary channel keeps its retry count on 8.4: %s", replica)
+	}
+}
