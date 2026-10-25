@@ -111,13 +111,17 @@ type SelfServiceStatus struct {
 
 // SelfServicePrices is the unit price list (cloud18-marketplace-*-price), per unit-month.
 type SelfServicePrices struct {
-	Currency           string  `json:"currency"`
-	PricingMode        string  `json:"pricingMode"`
-	DBU                float64 `json:"dbu"`
-	APU                float64 `json:"apu"`
-	BKU                float64 `json:"bku"`
-	BAU                float64 `json:"bau"`
-	OvercommitPricePct int     `json:"overcommitPricePct"` // price of a unit above the plan, in % of the unit price
+	Currency            string  `json:"currency"`
+	PricingMode         string  `json:"pricingMode"`
+	DBU                 float64 `json:"dbu"`
+	APU                 float64 `json:"apu"`
+	BKU                 float64 `json:"bku"`
+	BAU                 float64 `json:"bau"`
+	OvercommitPricePct  int     `json:"overcommitPricePct"`  // surcharge of a unit above the plan, in % of the unit price
+	UndercommitPricePct int     `json:"undercommitPricePct"` // reduction of a plan unit left unconsumed, in % of the unit price
+	// OvercommitCapPct: how far a cluster here may auto-grow over its plan by default
+	// (prov-db-overcommit-pct), in % of the plan
+	OvercommitCapPct int `json:"overcommitCapPct"`
 }
 
 // selfServiceSnapshot is the identity-independent part of the self-service status, computed
@@ -259,7 +263,8 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 		Prices: SelfServicePrices{Currency: "EUR", PricingMode: repman.Conf.Cloud18MarketplacePricingMode,
 			DBU: repman.Conf.Cloud18MarketplaceDBUPrice, APU: repman.Conf.Cloud18MarketplaceAPUPrice,
 			BKU: repman.Conf.Cloud18MarketplaceBKUPrice, BAU: repman.Conf.Cloud18MarketplaceBAUPrice,
-			OvercommitPricePct: repman.Conf.Cloud18MarketplaceOvercommitPricePct},
+			OvercommitPricePct: repman.Conf.Cloud18MarketplaceOvercommitPricePct, UndercommitPricePct: repman.Conf.Cloud18MarketplaceUndercommitPricePct,
+			OvercommitCapPct: repman.Conf.ProvDBOvercommitPct},
 	}
 	if !st.Pool.Known {
 		st.PoolNote = "infrastructure capacity unknown (no agent observed, no resource-manager-infra-* declared): the pool does not gate"

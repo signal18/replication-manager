@@ -104,6 +104,9 @@ type Cloud18ClusterSpec struct {
 	DBU            int      `json:"dbu"`        // DBU per database node; 0 = the infrastructure's default (prov-db-dbu)
 	APU            int      `json:"apu"`        // APU of the cluster (proxy + apps); 0 = the infrastructure's default
 	Topology       string   `json:"topology"`   // PostgreSQL: master-slave-pg-stream (default) or master-slave-pg-logical; one node = active-passive
+	// OvercommitPct: the quote's over-commit cap, in % of the plan the database may borrow
+	// (prov-db-overcommit-pct); nil = the infrastructure's default, 0 = no borrowing
+	OvercommitPct *int `json:"overcommitPct,omitempty"`
 }
 
 // Cloud18Infrastructure is one provider infrastructure of the marketplace: a

@@ -19,8 +19,11 @@ import (
 // cloud18QuoteOf prices a cluster request on one infrastructure from its self-service
 // status (#1963): the units the request needs, whether they fit the free pool, whether a
 // creation is allowed there, and the MONTHLY PRICE AT FULL CAPACITY, the plan fully used
-// for the whole month, from the partner's own unit prices. A unit above the plan
-// (over-commit) is billed on top, at the over-commit rate shown apart.
+// for the whole month, from the partner's own unit prices, and two more monthly prices: the
+// minimal, every database node, proxy, app and the backups back to 1 unit (never under), the
+// unused plan units at the under-commit price, and the overcommit, the database borrowing up to
+// its cap (prov-db-overcommit-pct) the whole month at the over-commit unit price, proxies, apps
+// and backups at their plan. The formulas are the billing's (planUnitCost).
 //
 // Units: DBU = db_count x dbu per database node (prov-db-dbu is per node, every node can
 // become master); APU = the cluster's stateless services (proxy + apps); BKU = the
@@ -99,11 +102,48 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	q["currency"] = currency
 	q["breakdown"] = lines
 	q["monthlyAtFullCapacity"] = round2(total)
-	if pct := num(prices, "overcommitPricePct"); pct > 0 {
-		q["overcommit"] = map[string]any{"pricePct": pct,
-			"dbu": round2(num(prices, "dbu") * pct / 100), "apu": round2(num(prices, "apu") * pct / 100),
-			"note": "per unit-month above the plan, billed on top when the cluster grows over it"}
+	monthly := map[string]any{"plan": round2(total)}
+	dbuPrice, apuPrice, bkuPrice, nodes := num(prices, "dbu"), num(prices, "apu"), num(prices, "bku"), float64(spec.DBCount)
+	// A field absent from the infrastructure's JSON is an older release that does not serve it:
+	// its price is unknown, never guessed. A served 0 is a real setting (no reduction, no
+	// surcharge) and prices as such, the way the billing does.
+	pctOf := func(k string) (float64, bool) {
+		v, ok := prices[k].(float64)
+		return v, ok
 	}
+	if underPricePct, ok := pctOf("undercommitPricePct"); ok {
+		underPricePct = math.Min(100, math.Max(0, underPricePct)) // the billing's clamp (planUnitCost)
+		// minimal usage: every node and service back to 1 unit, never under (the under-commit
+		// floor), the plan units left unconsumed at the reduced price
+		services := float64(spec.ProxyCount + len(spec.Apps))
+		unused := nodes*(perNode-math.Min(perNode, 1)) + (apu - math.Min(apu, services)) + (bku - math.Min(bku, 1))
+		saving := nodes*(perNode-math.Min(perNode, 1))*dbuPrice + (apu-math.Min(apu, services))*apuPrice + (bku-math.Min(bku, 1))*bkuPrice
+		monthly["minimal"] = round2(total - saving*underPricePct/100)
+		q["undercommit"] = map[string]any{"pricePct": underPricePct, "unusedUnits": unused,
+			"dbuUnitPrice": round2(dbuPrice * (100 - underPricePct) / 100), "apuUnitPrice": round2(apuPrice * (100 - underPricePct) / 100),
+			"note": "per plan unit-month left unconsumed; every database node, proxy, app and the backups keep at least 1 unit"}
+	} else {
+		monthly["minimal"] = "unknown: the infrastructure serves no under-commit price (older release)"
+	}
+	// an infrastructure older than #1963's over-commit price sends no overcommitPricePct
+	if overPricePct, ok := pctOf("overcommitPricePct"); ok {
+		capPct, served := pctOf("overcommitCapPct")
+		if !served {
+			capPct = 50 // replication-manager's default prov-db-overcommit-pct
+		}
+		if spec.OvercommitPct != nil {
+			capPct = float64(*spec.OvercommitPct)
+		}
+		borrowed := nodes * math.Floor(perNode*capPct/100)
+		overDbu := dbuPrice * (100 + overPricePct) / 100
+		monthly["overcommit"] = round2(total + borrowed*overDbu)
+		q["overcommit"] = map[string]any{"pricePct": overPricePct, "capPct": capPct, "borrowedDbu": borrowed,
+			"dbuUnitPrice": round2(overDbu), "apuUnitPrice": round2(apuPrice * (100 + overPricePct) / 100),
+			"note": "per unit-month above the plan, billed instead of the unit price, only for the time used, never beyond capPct"}
+	} else {
+		monthly["overcommit"] = "unknown: the infrastructure serves no over-commit price (older release)"
+	}
+	q["monthly"] = monthly
 	return q
 }
 

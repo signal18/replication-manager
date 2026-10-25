@@ -152,8 +152,19 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   infrastructure description from peer.json (`cloud18InfraDefinitionOf`: platform, CPU, data
   centers, geo, bandwidth, certifications, SLA, dbops/sysops), then the quote from that
   infrastructure's `GET /api/cloud18/self-service`: units (DBU = db_count x dbu, APU, BKU),
-  whether they fit the free pool, `canCreate` or the reason, and the monthly price at full
-  capacity from its own unit prices. The status read keeps a fixed list of fields
+  whether they fit the free pool, `canCreate` or the reason, and three monthly prices from its
+  own unit prices (#2166), with the billing's formulas (`planUnitCost`):
+  - `monthly.minimal`: every database node, proxy, app and the backups back to 1 unit, never
+    under; the unused plan units at the under-commit price, unit price x (100 - undercommitPricePct)/100
+    (clamped 0..100 like the billing);
+  - `monthly.plan` (= `monthlyAtFullCapacity`): the plan fully used the whole month;
+  - `monthly.overcommit`: the database borrowing floor(dbu x cap/100) DBU per node the whole
+    month at the over-commit unit price, unit price x (100 + overcommitPricePct)/100. The cap is
+    the `overcommit_pct` argument (0..100, 0 = no borrowing), else the infrastructure's
+    `overcommitCapPct` (its `prov-db-overcommit-pct`), else 50.
+  `overcommit` and `undercommit` give the unit prices. The self-service `prices` serve
+  `overcommitPricePct`, `undercommitPricePct` and `overcommitCapPct`; a field absent from an
+  older infrastructure makes that price `unknown: ...`, never a guess (a served 0 is a setting). The status read keeps a fixed list of fields
   (`selfServiceStatusOfTimeout`); `prices` and `poolBlocked` are on it. Each infrastructure is
   asked in parallel (`accessParallel`) with a 10 s deadline (`accessStatusTimeout`); one that
   refuses the identity or does not answer stays a described choice with its reason and no

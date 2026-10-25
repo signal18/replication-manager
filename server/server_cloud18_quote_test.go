@@ -192,3 +192,50 @@ func TestApplyRequestedPlan(t *testing.T) {
 		t.Fatalf("a refused plan must fail: %v", err)
 	}
 }
+
+func TestQuoteThreeMonthlyPrices(t *testing.T) {
+	// 2 nodes x 4 DBU at 10, 5 APU at 6, 1 BKU at 2: plan 80 + 30 + 2 = 112
+	ss := ssFixture(true, "", 50, 50, 10, 6)
+	prices := ss["prices"].(map[string]any)
+	prices["bku"], prices["overcommitPricePct"], prices["undercommitPricePct"], prices["overcommitCapPct"] = 2.0, 150.0, 80.0, 50.0
+	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 4, APU: 5, Proxy: "haproxy", ProxyCount: 1, Apps: []string{"phpmyadmin"}})
+	q := cloud18QuoteOf(spec, ss)
+	m := q["monthly"].(map[string]any)
+	// minimal: every node, proxy, app and the backups back to 1 unit: 2 x 3 DBU and 3 APU
+	// unused, at 20 % of their price -> 112 - (60 + 18) x 0.8 = 49.6
+	// overcommit: 2 x 2 borrowed DBU at 10 x 2.5 -> 112 + 100 = 212
+	if m["plan"] != 112.0 || m["minimal"] != 49.6 || m["overcommit"] != 212.0 {
+		t.Fatalf("monthly = %v", m)
+	}
+	if o := q["overcommit"].(map[string]any); o["dbuUnitPrice"] != 25.0 || o["apuUnitPrice"] != 15.0 || o["borrowedDbu"] != 4.0 {
+		t.Fatalf("the over-commit unit price is the billing's, unit price x (100 + pct) / 100: %v", o)
+	}
+	// the visitor's cap: 100 % borrows 4 DBU per node, 0 borrows nothing
+	for cap, want := range map[int]float64{100: 312, 0: 112} {
+		c := cap
+		spec.OvercommitPct = &c
+		if got := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any)["overcommit"]; got != want {
+			t.Fatalf("cap %d: overcommit = %v, want %v", cap, got, want)
+		}
+	}
+	// already 1 unit everywhere: nothing to shrink, minimal = plan
+	spec, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 1, APU: 2, Proxy: "haproxy", ProxyCount: 1, Apps: []string{"phpmyadmin"}})
+	if m := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any); m["minimal"] != m["plan"] {
+		t.Fatalf("1 unit everywhere: %v", m)
+	}
+	// a reduction above 100 % is clamped like the billing: the unused units cost 0, never less
+	prices["undercommitPricePct"] = 150.0
+	if m := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any); m["minimal"].(float64) < 0 {
+		t.Fatalf("clamp: %v", m)
+	}
+	// an older infrastructure serves neither percent: both prices unknown, never guessed
+	delete(prices, "undercommitPricePct")
+	delete(prices, "overcommitPricePct")
+	m = cloud18QuoteOf(spec, ss)["monthly"].(map[string]any)
+	if _, isPrice := m["minimal"].(float64); isPrice {
+		t.Fatalf("minimal must be unknown without an under-commit price: %v", m)
+	}
+	if _, isPrice := m["overcommit"].(float64); isPrice {
+		t.Fatalf("overcommit must be unknown without an over-commit price: %v", m)
+	}
+}
