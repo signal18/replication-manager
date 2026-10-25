@@ -375,10 +375,8 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 	if err != nil {
 		return nil, err
 	}
-	// only the setups whose latest regression test run passed are built (#2165)
-	if err := repman.cloud18RequireTestedSetup(spec); err != nil {
-		return nil, err
-	}
+	// a setup whose latest regression test run did not pass is built with a warning (#2165)
+	testedWarning := repman.cloud18TestedSetupWarning(spec)
 	sess, _, err := repman.peerLoginAs(p, spec.Infrastructure)
 	if err != nil {
 		return nil, err
@@ -416,6 +414,9 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 		"apps":           plannedAppURLs(spec, ss),
 		"selfService":    ss,
 		"unitPlan":       "the infrastructure's default DBU / APU / BKU (no service plan)",
+	}
+	if testedWarning != "" {
+		plan["testedSetupWarning"] = testedWarning
 	}
 	quote := cloud18QuoteOf(spec, ss)
 	plan["quote"] = quote

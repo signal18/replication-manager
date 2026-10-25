@@ -73,7 +73,7 @@ func TestPostRegtestReport(t *testing.T) {
 	report := &regtestReport{URI: "signal18.ovh.fr-2", Run: regtestReportRun{RunRef: "rt_x", RepmanVersion: "3.1.45"},
 		Results: []regtestReportResult{{Test: "testSwitchover", Result: "PASS"}}}
 
-	if err := repman.postRegtestReport("gl-token", report); err != nil {
+	if err := repman.postRegtestReport("gl-token", report, time.Now().Add(time.Minute)); err != nil {
 		t.Fatalf("post: %v", err)
 	}
 	if auth != "Bearer gl-token" || got.Run.RunRef != "rt_x" || len(got.Results) != 1 {
@@ -81,7 +81,7 @@ func TestPostRegtestReport(t *testing.T) {
 	}
 
 	report.URI = "other.uri.zone"
-	if err := repman.postRegtestReport("gl-token", report); err == nil {
+	if err := repman.postRegtestReport("gl-token", report, time.Now().Add(time.Minute)); err == nil {
 		t.Fatal("a 403 from the CRM must be an error")
 	}
 }

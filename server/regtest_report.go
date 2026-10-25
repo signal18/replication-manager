@@ -91,14 +91,12 @@ func regtestSetupOf(cl *cluster.Cluster, test cluster.Test) regtestSetup {
 // regtestClusterTOMLMax bounds the configuration sent with a run.
 const regtestClusterTOMLMax = 256 << 10
 
-// regtestFileTOML is a configuration file, bounded. Empty when it cannot be read.
+// regtestFileTOML is a configuration file. Empty when it cannot be read or is over
+// regtestClusterTOMLMax: a cut file would not parse, no configuration is better.
 func regtestFileTOML(path string) string {
 	data, err := os.ReadFile(path)
-	if err != nil {
+	if err != nil || len(data) > regtestClusterTOMLMax {
 		return ""
-	}
-	if len(data) > regtestClusterTOMLMax {
-		data = data[:regtestClusterTOMLMax]
 	}
 	return string(data)
 }
@@ -147,13 +145,14 @@ func (repman *ReplicationManager) reportRegtestResults(cl *cluster.Cluster, test
 	}
 
 	go func() {
+		deadline := time.Now().Add(regtestReportBatchMax)
 		token, err := repman.gitlabTokenFromConfig()
 		if err != nil {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "TEST : regtest results not reported: %s", err)
 			return
 		}
 		for _, report := range reports {
-			if err := repman.postRegtestReport(token, report); err != nil {
+			if err := repman.postRegtestReport(token, report, deadline); err != nil {
 				cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "TEST : regtest results for %s %s %s not reported: %s", report.Run.Topology, report.Run.Flavor, report.Run.DbVersion, err)
 				continue
 			}
@@ -199,10 +198,14 @@ func (repman *ReplicationManager) buildRegtestReports(uri string, tests []regtes
 // be reached or answers 5xx (the report is idempotent per run_ref); a 4xx is final.
 var regtestReportRetryDelays = []time.Duration{10 * time.Second, 60 * time.Second}
 
-func (repman *ReplicationManager) postRegtestReport(gitlabToken string, report *regtestReport) error {
+// regtestReportBatchMax bounds the time spent reporting one run's setups: past it a failed
+// report is not retried.
+const regtestReportBatchMax = 5 * time.Minute
+
+func (repman *ReplicationManager) postRegtestReport(gitlabToken string, report *regtestReport, deadline time.Time) error {
 	retry, err := repman.postRegtestReportOnce(gitlabToken, report)
 	for _, delay := range regtestReportRetryDelays {
-		if err == nil || !retry {
+		if err == nil || !retry || time.Now().Add(delay).After(deadline) {
 			break
 		}
 		time.Sleep(delay)
