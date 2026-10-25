@@ -161,9 +161,10 @@ function getAppTemplateStructureGuide(clusterName, baseURL) {
 	return getApi(baseURL).get(`clusters/${clusterName}/templates/apps/structure-guide`)
 }
 
-// Registration through Cloud18 (#2159): the URI (and plan) only, the admin approves a Cloud18 login
-function register(uri, plan) {
-  return getApi().post('register', { uri, plan })
+// Registration through Cloud18 (#2159): the URI, the admin's Cloud18 email and password (never stored),
+// or the details of a new Cloud18 account (signUp)
+function register(body) {
+  return getApi().post('register', body)
 }
 
 function confirmRegister(email, password, uri) {

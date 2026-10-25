@@ -271,9 +271,9 @@ export const reloadClustersPlanInfo = createGuardedAsyncThunk('globalClusters/re
 
 export const registerInstance = createGuardedAsyncThunk(
   'globalClusters/registerInstance',
-  async ({ uri, plan }, thunkAPI) => {
+  async ({ uri, plan, email, password, signUp }, thunkAPI) => {
     try {
-      const { data, status } = await globalClustersService.register(uri, plan)
+      const { data, status } = await globalClustersService.register({ uri, plan, email, password, signUp })
       if (status === 202) {
         showSuccessBanner('Cloud18 registration started', status, thunkAPI)
         return { data, status }

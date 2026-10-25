@@ -1,5 +1,5 @@
 import {
-  Box, Flex, FormControl, FormErrorMessage, FormLabel,
+  Box, Checkbox, Flex, FormControl, FormErrorMessage, FormLabel,
   HStack, Input, InputGroup, InputRightElement, Link, Radio, RadioGroup,
   Spinner, Text, VStack
 } from '@chakra-ui/react'
@@ -35,7 +35,7 @@ function CloudSettings({ config }) {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false)
   const [registerStep, setRegisterStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
-  const [registerForm, setRegisterForm] = useState({ email: '', password: '', domain: '', subdomain: '', zone: '' })
+  const [registerForm, setRegisterForm] = useState({ email: '', password: '', domain: '', subdomain: '', zone: '', newAccount: false, firstName: '', lastName: '', company: '', phone: '' })
   const [registerErrors, setRegisterErrors] = useState({})
   const [signupSeed, setSignupSeed] = useState(null) // { email } from successful signup
   const [isSignupModalOpen, setIsSignupModalOpen] = useState(false)
@@ -148,11 +148,12 @@ Start create an account in https://gitlab.signal18.io
   const openRegisterModal = () => {
     setRegisterStep(1)
     setRegisterForm({
-      email: signupSeed?.email || config?.cloud18GitUser || '',
+      email: config?.cloud18GitUser || '',
       password: '',
       domain: config?.cloud18Domain || '',
       subdomain: config?.cloud18SubDomain || '',
-      zone: config?.cloud18SubDomainZone || ''
+      zone: config?.cloud18SubDomainZone || '',
+      newAccount: false, firstName: '', lastName: '', company: '', phone: ''
     })
     setRegisterErrors({})
     setShowPassword(false)
@@ -205,7 +206,7 @@ Start create an account in https://gitlab.signal18.io
         stopPolling()
         setIsRegisterModalOpen(false)
         dispatch(getMonitoredData({}))
-      } else if (state === 'timeout' || state === 'error' || state === 'taken' || state === 'link') {
+      } else if (state === 'timeout' || state === 'error' || state === 'taken' || state === 'credentials' || state === 'verify') {
         stopPolling()
       }
     }, 2000)
@@ -215,6 +216,14 @@ Start create an account in https://gitlab.signal18.io
 
   const validateRegisterForm = (form) => {
     const errors = {}
+    if (!form.email.trim()) errors.email = 'Cloud18 email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errors.email = 'Enter a valid email address'
+    if (form.newAccount) {
+      if (!form.firstName.trim()) errors.firstName = 'Required'
+      if (!form.lastName.trim()) errors.lastName = 'Required'
+      if (!form.company.trim()) errors.company = 'Required'
+      if (!form.phone.trim()) errors.phone = 'Required'
+    } else if (!form.password) errors.password = 'Cloud18 password is required'
     if (!form.domain.trim()) errors.domain = 'Domain is required'
     else if (!/^[a-z0-9-]+$/.test(form.domain.trim())) errors.domain = 'Only lowercase letters, digits and hyphens'
     if (!form.subdomain.trim()) errors.subdomain = 'Subdomain is required'
@@ -230,7 +239,10 @@ Start create an account in https://gitlab.signal18.io
     if (Object.keys(errors).length > 0) { setRegisterErrors(errors); return }
     setIsSendingCode(true)
     const uri = `${registerForm.domain.trim()}.${registerForm.subdomain.trim()}.${registerForm.zone.trim()}`
-    const result = await dispatch(registerInstance({ uri }))
+    const signUp = registerForm.newAccount
+      ? { firstName: registerForm.firstName.trim(), lastName: registerForm.lastName.trim(), company: registerForm.company.trim(), phone: registerForm.phone.trim() }
+      : undefined
+    const result = await dispatch(registerInstance({ uri, email: registerForm.email.trim(), password: registerForm.password, signUp }))
     setIsSendingCode(false)
     if (result?.payload?.status === 202) {
       setRegisterStep(2)
@@ -240,10 +252,42 @@ Start create an account in https://gitlab.signal18.io
   const registerFormBody = registerStep === 1 ? (
     <VStack spacing={3} align='stretch' pb={2}>
       <Text fontSize='sm' color='gray.500'>
-        Registers this replication-manager to Cloud18 with your Cloud18 login: no password here. A code is shown next, approve it in any browser.
-        Your Cloud18 account needs a GitLab account linked to it; you are asked to link one when it has none.
+        Registers this replication-manager to Cloud18 with your Cloud18 account. No account yet: tick the box, Cloud18 creates it and
+        sends a confirmation email whose link lets you choose your password; then register again with it.
         A URI already registered by this instance or one of its peers is reconnected.
       </Text>
+      <FormControl isInvalid={!!registerErrors.email} isRequired>
+        <FormLabel fontSize='sm'>Cloud18 email</FormLabel>
+        <Input size='sm' type='email' placeholder='admin@mycompany.com' value={registerForm.email}
+          onChange={(e) => setRegisterForm(f => ({ ...f, email: e.target.value }))} />
+        <FormErrorMessage>{registerErrors.email}</FormErrorMessage>
+      </FormControl>
+      <Checkbox size='sm' isChecked={registerForm.newAccount} onChange={(e) => setRegisterForm(f => ({ ...f, newAccount: e.target.checked }))}>
+        I have no Cloud18 account yet: create it
+      </Checkbox>
+      {registerForm.newAccount ? (
+        <>
+          {[['firstName', 'First name'], ['lastName', 'Last name'], ['company', 'Company'], ['phone', 'Phone']].map(([k, label]) => (
+            <FormControl key={k} isInvalid={!!registerErrors[k]} isRequired>
+              <FormLabel fontSize='sm'>{label}</FormLabel>
+              <Input size='sm' type={k === 'phone' ? 'tel' : 'text'} value={registerForm[k]} onChange={(e) => setRegisterForm(f => ({ ...f, [k]: e.target.value }))} />
+              <FormErrorMessage>{registerErrors[k]}</FormErrorMessage>
+            </FormControl>
+          ))}
+        </>
+      ) : (
+        <FormControl isInvalid={!!registerErrors.password} isRequired>
+          <FormLabel fontSize='sm'>Cloud18 password</FormLabel>
+          <InputGroup size='sm'>
+            <Input type={showPassword ? 'text' : 'password'} value={registerForm.password}
+              onChange={(e) => setRegisterForm(f => ({ ...f, password: e.target.value }))} />
+            <InputRightElement>
+              <Box as={showPassword ? HiEyeOff : HiEye} cursor='pointer' onClick={() => setShowPassword(v => !v)} />
+            </InputRightElement>
+          </InputGroup>
+          <FormErrorMessage>{registerErrors.password}</FormErrorMessage>
+        </FormControl>
+      )}
       <FormControl isInvalid={!!registerErrors.domain} isRequired>
         <FormLabel fontSize='sm'>Domain <Text as='span' fontWeight='normal' color='gray.400'>(company namespace)</Text></FormLabel>
         <Input size='sm' placeholder='mycompany'
@@ -281,22 +325,15 @@ Start create an account in https://gitlab.signal18.io
     const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`
     const state = regStatus?.state
     const res = regStatus?.result
-    const isTerminal = state === 'timeout' || state === 'error' || state === 'taken'
+    const isTerminal = state === 'timeout' || state === 'error' || state === 'taken' || state === 'credentials'
     return (
       <VStack spacing={4} align='stretch' pb={2}>
-        {state === 'login' && res?.device && (
-          <Box bg='blue.50' borderRadius='md' p={3}>
-            <Text fontSize='sm'>Open <Link href={res.device.verificationUriComplete || res.device.verificationUri} isExternal color='blue.500' textDecoration='underline'>{res.device.verificationUri}</Link> in any browser, log in to Cloud18 and enter the code</Text>
-            <Text fontSize='xl' fontWeight='bold' fontFamily='mono' mt={2}>{res.device.userCode}</Text>
-          </Box>
-        )}
-        {state === 'link' && (
+        {state === 'verify' && (
           <Box bg='orange.50' borderRadius='md' p={3}>
             <Text fontSize='sm'>{regStatus.message}</Text>
-            {res?.linkUrl && <Link href={res.linkUrl} isExternal color='blue.500' textDecoration='underline' fontSize='sm'>Link a GitLab account to your Cloud18 account</Link>}
           </Box>
         )}
-        {!isTerminal && state !== 'link' && (
+        {!isTerminal && state !== 'verify' && (
           <HStack spacing={3} bg='gray.50' borderRadius='md' p={3}>
             <Spinner size='sm' color='blue.500' flexShrink={0} />
             <Text fontSize='xs' color='gray.500'>{regStatus?.message || 'Starting…'} &nbsp;·&nbsp; {timeStr} remaining</Text>
@@ -305,7 +342,7 @@ Start create an account in https://gitlab.signal18.io
         {isTerminal && (
           <Box bg='red.50' borderRadius='md' p={3}>
             <Text fontSize='sm' fontWeight='medium' color='red.700'>
-              {state === 'timeout' ? 'Timed out' : state === 'taken' ? 'URI not available' : 'Error'}
+              {state === 'timeout' ? 'Timed out' : state === 'taken' ? 'URI not available' : state === 'credentials' ? 'Cloud18 login refused' : 'Error'}
             </Text>
             <Text fontSize='xs' color='red.600'>{regStatus.message}</Text>
           </Box>
@@ -314,7 +351,7 @@ Start create an account in https://gitlab.signal18.io
           <RMButton variant='ghost' onClick={() => { stopPolling(); setRegisterStep(1) }}>Back</RMButton>
           <HStack>
             <RMButton variant='ghost' onClick={() => { stopPolling(); setIsRegisterModalOpen(false) }}>Close</RMButton>
-            {(isTerminal || state === 'link') && <RMButton isLoading={isSendingCode} onClick={handleRegister}>Register again</RMButton>}
+            {(isTerminal || state === 'verify') && <RMButton onClick={() => { stopPolling(); setRegisterForm(f => ({ ...f, newAccount: false, password: '' })); setRegisterStep(1) }}>Register again</RMButton>}
           </HStack>
         </HStack>
       </VStack>

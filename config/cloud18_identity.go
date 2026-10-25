@@ -44,9 +44,6 @@ const (
 	// ConstCloud18IdentityClientID is the realm's public client every replication-manager logs
 	// in with: device grant only, no secret, no redirect URI.
 	ConstCloud18IdentityClientID = "replication-manager"
-	// ConstCloud18GitLabProvider is the realm's GitLab identity provider kept for replication-manager:
-	// it stores the person's GitLab token (scope api), given to repman at registration (#2159).
-	ConstCloud18GitLabProvider = "gitlab-repman"
 	// ConstCloud18StorageAudience is the audience the Cloud18 S3 storages trust: their OpenID
 	// client id, so the role MinIO derives from it is the same for every instance.
 	ConstCloud18StorageAudience = "cloud18-storage"
@@ -758,59 +755,6 @@ func (conf *Config) Cloud18IdentityStatus() Cloud18IdentityStatus {
 		st.State, st.Device = "pending", &d
 	}
 	return st
-}
-
-// ErrCloud18GitLabNotLinked: the person's Cloud18 account has no GitLab account linked through
-// ConstCloud18GitLabProvider; registering a repman needs one.
-var ErrCloud18GitLabNotLinked = errors.New("your Cloud18 account has no GitLab account linked: link one (Cloud18 account, Linked accounts, GitLab), then register again")
-
-// Cloud18LinkAccountURL is the realm page where the person links a GitLab account.
-func (conf *Config) Cloud18LinkAccountURL() string {
-	return strings.TrimRight(conf.Cloud18IdentityURL, "/") + "/account/account-security/linked-accounts"
-}
-
-// Cloud18GitLabBrokerToken returns the GitLab token the realm keeps for the person who connected
-// this instance (identity broker, ConstCloud18GitLabProvider): only for the GitLab calls of a
-// registration, never stored. The realm refusing it means no GitLab account is linked.
-func (conf *Config) Cloud18GitLabBrokerToken() (string, error) {
-	issuer, err := conf.cloud18Issuer()
-	if err != nil {
-		return "", err
-	}
-	access, _, err := conf.Cloud18IdentityToken()
-	if err != nil {
-		return "", err
-	}
-	req, err := http.NewRequest(http.MethodGet, issuer+"/broker/"+ConstCloud18GitLabProvider+"/token", nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+access)
-	resp, err := (&http.Client{Timeout: cloud18IdentityHTTPTimeout}).Do(req)
-	if err != nil {
-		return "", fmt.Errorf("Cloud18 identity: %w", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	switch {
-	case resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusNotFound:
-		conf.cloud18Log(LvlWarn, "no GitLab account linked to the Cloud18 login (%s)", cloud18ErrorText(string(body)))
-		return "", fmt.Errorf("%w (%w)", ErrCloud18GitLabNotLinked, ErrCloud18Refused)
-	case resp.StatusCode != http.StatusOK:
-		return "", fmt.Errorf("Cloud18 identity: GitLab token: %w", cloud18Status("the realm", resp.StatusCode, ": "+cloud18ErrorText(string(body))))
-	}
-	var t struct {
-		AccessToken string `json:"access_token"`
-	}
-	if json.Unmarshal(body, &t) != nil || t.AccessToken == "" {
-		if v, err := url.ParseQuery(string(body)); err == nil {
-			t.AccessToken = v.Get("access_token")
-		}
-	}
-	if t.AccessToken == "" {
-		return "", errors.New("Cloud18 identity: the realm gave no GitLab token")
-	}
-	return t.AccessToken, nil
 }
 
 // TokenSubject reads the sub claim of a JWT, the permanent id a storage names the folder after

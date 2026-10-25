@@ -10,20 +10,25 @@
 package clients
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
-	cliRegisterURI  string
-	cliRegisterPlan string
+	cliRegisterURI   string
+	cliRegisterPlan  string
+	cliRegisterEmail string
 )
 
 var registerCmd = &cobra.Command{
@@ -31,18 +36,18 @@ var registerCmd = &cobra.Command{
 	Short: "Register this instance with Signal18 Cloud18",
 	Long: `Register this replication-manager instance with Signal18 Cloud18 (#2159).
 
-No password: the server shows a Cloud18 login code; open the page it prints in any
-browser, log in to Cloud18 and enter the code. Your Cloud18 account needs a GitLab
-account linked to it: when it has none, the command prints the page to link one,
-then run it again. The instance declares itself in GitLab (domain group, config and
-pull repositories, its own project tokens); a URI already registered by this
-instance or one of its peers is reconnected, one of another instance is refused.
+Your Cloud18 account: the command asks its password (never stored). No account yet:
+it offers to create it, Cloud18 sends a confirmation email whose link lets you choose
+your password, and the command goes on with it. The instance declares itself in GitLab
+(domain group, config and pull repositories, its own project tokens); a URI already
+registered by this instance or one of its peers is reconnected, one of another
+instance is refused.
 
 Example:
-  replication-manager-cli register --uri mycompany.ovh.fr-1`,
+  replication-manager-cli register --uri mycompany.ovh.fr-1 --email admin@mycompany.com`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if cliRegisterURI == "" {
-			fmt.Fprintln(os.Stderr, "Error: --uri is required (format: domain.subdomain.zone)")
+		if cliRegisterURI == "" || cliRegisterEmail == "" {
+			fmt.Fprintln(os.Stderr, "Error: --uri (domain.subdomain.zone) and --email (your Cloud18 account) are required")
 			cmd.Usage()
 			os.Exit(1)
 		}
@@ -56,15 +61,68 @@ Example:
 				os.Exit(1)
 			}
 		}
-		cliRegisterAndPoll()
+		in := bufio.NewReader(os.Stdin)
+		password := cliRegisterReadPassword("Cloud18 password for " + cliRegisterEmail + ": ")
+		for {
+			state, message := cliRegisterAndPoll(map[string]interface{}{"uri": cliRegisterURI, "plan": cliRegisterPlan, "email": cliRegisterEmail, "password": password})
+			switch state {
+			case "complete":
+				fmt.Println(message)
+				return
+			case "credentials":
+				fmt.Fprintln(os.Stderr, message)
+				if !cliRegisterAsk(in, "Create a Cloud18 account for "+cliRegisterEmail+"? [y/N] ") {
+					os.Exit(1)
+				}
+				signUp := map[string]string{}
+				for _, f := range [][2]string{{"firstName", "First name"}, {"lastName", "Last name"}, {"company", "Company"}, {"phone", "Phone"}} {
+					signUp[f[0]] = cliRegisterLine(in, f[1]+": ")
+				}
+				state, message = cliRegisterAndPoll(map[string]interface{}{"uri": cliRegisterURI, "plan": cliRegisterPlan, "email": cliRegisterEmail, "signUp": signUp})
+				if state != "verify" {
+					fmt.Fprintf(os.Stderr, "Registration %s: %s\n", state, message)
+					os.Exit(1)
+				}
+				fallthrough
+			case "verify":
+				fmt.Println(message)
+				cliRegisterLine(in, "Press Enter once the email is confirmed and your password chosen...")
+				password = cliRegisterReadPassword("Cloud18 password for " + cliRegisterEmail + ": ")
+			default:
+				fmt.Fprintf(os.Stderr, "Registration %s: %s\n", state, message)
+				os.Exit(1)
+			}
+		}
 	},
 }
 
-// cliRegisterAndPoll calls POST /api/register (202), then polls GET /api/register/status
-// until the registration ends, printing the Cloud18 login code and the steps.
-func cliRegisterAndPoll() {
-	payload, _ := json.Marshal(map[string]string{"uri": cliRegisterURI, "plan": cliRegisterPlan})
-	body, status, err := cliDoPost("https://"+cliHost+":"+cliPort+"/api/register", payload)
+func cliRegisterReadPassword(prompt string) string {
+	fmt.Fprint(os.Stderr, prompt)
+	b, err := terminal.ReadPassword(int(syscall.Stdin))
+	fmt.Fprintln(os.Stderr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading password: %s\n", err)
+		os.Exit(1)
+	}
+	return string(b)
+}
+
+func cliRegisterLine(in *bufio.Reader, prompt string) string {
+	fmt.Fprint(os.Stderr, prompt)
+	line, _ := in.ReadString('\n')
+	return strings.TrimSpace(line)
+}
+
+func cliRegisterAsk(in *bufio.Reader, prompt string) bool {
+	a := strings.ToLower(cliRegisterLine(in, prompt))
+	return a == "y" || a == "yes"
+}
+
+// cliRegisterAndPoll posts a registration (202), then polls GET /api/register/status until it
+// ends; it returns the final state and message.
+func cliRegisterAndPoll(payload map[string]interface{}) (string, string) {
+	b, _ := json.Marshal(payload)
+	body, status, err := cliDoPost("https://"+cliHost+":"+cliPort+"/api/register", b)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
@@ -73,17 +131,14 @@ func cliRegisterAndPoll() {
 		var errBody map[string]interface{}
 		if json.Unmarshal(body, &errBody) == nil {
 			if msg, ok := errBody["error"].(string); ok {
-				fmt.Fprintf(os.Stderr, "Registration failed: %s\n", msg)
-				os.Exit(1)
+				return "error", msg
 			}
 		}
-		fmt.Fprintf(os.Stderr, "Registration failed (HTTP %d): %s\n", status, string(body))
-		os.Exit(1)
+		return "error", fmt.Sprintf("HTTP %d: %s", status, string(body))
 	}
-
 	urlStatus := "https://" + cliHost + ":" + cliPort + "/api/register/status"
-	shownCode, lastMessage := "", ""
-	for deadline := time.Now().Add(17 * time.Minute); time.Now().Before(deadline); time.Sleep(3 * time.Second) {
+	last := ""
+	for deadline := time.Now().Add(5 * time.Minute); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
 		statusBody, httpCode, err := cliDoGet(urlStatus)
 		if err != nil || httpCode != http.StatusOK {
 			continue
@@ -91,41 +146,21 @@ func cliRegisterAndPoll() {
 		var st struct {
 			State   string `json:"state"`
 			Message string `json:"message"`
-			Result  struct {
-				Device *struct {
-					UserCode                string `json:"userCode"`
-					VerificationURI         string `json:"verificationUri"`
-					VerificationURIComplete string `json:"verificationUriComplete"`
-				} `json:"device"`
-				LinkURL string `json:"linkUrl"`
-			} `json:"result"`
 		}
 		if json.Unmarshal(statusBody, &st) != nil {
 			continue
 		}
-		if d := st.Result.Device; d != nil && d.UserCode != shownCode {
-			shownCode = d.UserCode
-			fmt.Printf("Open %s in any browser, log in to Cloud18 and enter the code %s\n", d.VerificationURI, d.UserCode)
+		switch st.State {
+		case "pending", "idle", "":
+			if st.Message != last {
+				last = st.Message
+				fmt.Printf("  %s\n", st.Message)
+			}
 			continue
 		}
-		switch st.State {
-		case "complete":
-			fmt.Println(st.Message)
-			return
-		case "link":
-			fmt.Fprintf(os.Stderr, "%s\nLink one at %s, then run this command again.\n", st.Message, st.Result.LinkURL)
-			os.Exit(1)
-		case "timeout", "error", "taken":
-			fmt.Fprintf(os.Stderr, "Registration %s: %s\n", st.State, st.Message)
-			os.Exit(1)
-		}
-		if st.Message != lastMessage {
-			lastMessage = st.Message
-			fmt.Printf("  %s\n", st.Message)
-		}
+		return st.State, st.Message
 	}
-	fmt.Fprintln(os.Stderr, "Client timeout waiting for the registration to complete.")
-	os.Exit(1)
+	return "timeout", "no answer from the server"
 }
 
 // cliDoPost sends an authenticated POST request and returns (body, statusCode, error).

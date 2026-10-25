@@ -343,6 +343,7 @@ func initPrintDefaultsFlags(cmd *cobra.Command) {
 func initRegisterFlags(cmd *cobra.Command) {
 	initServerApiFlags(cmd)
 	cmd.Flags().StringVar(&cliRegisterURI, "uri", "", "Registration URI in domain.subdomain.zone format")
+	cmd.Flags().StringVar(&cliRegisterEmail, "email", "", "Your Cloud18 account (its password is asked)")
 	cmd.Flags().StringVar(&cliRegisterPlan, "plan", "", "Subscription plan declared with the registration (default: the instance's)")
 	viper.BindPFlags(cmd.Flags())
 }
