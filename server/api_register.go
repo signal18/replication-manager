@@ -63,10 +63,12 @@ func (s *RegistrationStatus) snapshot() (state, message string, result json.RawM
 // ---------------------------------------------------------------------------
 
 type registerRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	URI      string `json:"uri"` // domain.subdomain.zone
+	URI  string `json:"uri"`  // domain.subdomain.zone
+	Plan string `json:"plan"` // optional subscription plan, declared in the config
 }
+
+// cloud18URIPartRe is one part of a Cloud18 URI: a GitLab group or project path piece.
+var cloud18URIPartRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
 type registerConfirmRequest struct {
 	Email    string `json:"email"`
@@ -525,8 +527,8 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 		return
 	}
 
-	if req.Email == "" || req.URI == "" || req.Password == "" {
-		http.Error(w, `{"error":"email, uri and password are required"}`, http.StatusBadRequest)
+	if req.URI == "" {
+		http.Error(w, `{"error":"uri is required"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -539,28 +541,24 @@ func (repman *ReplicationManager) handlerRegister(w http.ResponseWriter, r *http
 	domain := strings.TrimSpace(strings.ToLower(parts[0]))
 	subdomain := strings.TrimSpace(strings.ToLower(parts[1]))
 	zone := strings.TrimSpace(strings.ToLower(parts[2]))
-	email := strings.TrimSpace(strings.ToLower(req.Email))
+	if !cloud18URIPartRe.MatchString(domain) || !cloud18URIPartRe.MatchString(subdomain) || !cloud18URIPartRe.MatchString(zone) {
+		http.Error(w, `{"error":"each part of the uri is lowercase letters, digits and dashes"}`, http.StatusBadRequest)
+		return
+	}
 
 	// Reject if a registration is already in progress
-	if state, _, _ := repman.RegStatus.snapshot(); state == RegStatePending {
+	if state, _, _ := repman.RegStatus.snapshot(); state == RegStatePending || state == RegStateLogin {
 		http.Error(w, `{"error":"a registration is already in progress — poll /api/register/status"}`,
 			http.StatusConflict)
 		return
 	}
 
-	// Step 1 — create GitLab account
-	status, step1Body, err := repman.startCloud18Registration(email, domain, subdomain, zone, req.Password)
-	if err != nil {
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err), http.StatusBadGateway)
-		return
-	}
-	if status != http.StatusAccepted && status != http.StatusOK {
-		w.WriteHeader(status)
-		w.Write(step1Body)
-		return
-	}
+	// Registration through Cloud18 (#2159): the Cloud18 login of the admin replaces the GitLab
+	// password; repman declares the instance in GitLab itself, no CRM call.
+	repman.RegStatus.set(RegStatePending, "registration of "+req.URI+" started", nil)
+	go repman.cloud18Register(domain, subdomain, zone, strings.TrimSpace(req.Plan))
 	w.WriteHeader(http.StatusAccepted)
-	w.Write(step1Body)
+	json.NewEncoder(w).Encode(map[string]string{"state": RegStatePending, "uri": domain + "." + subdomain + "." + zone})
 }
 
 // handlerSignup — POST /api/signup (public, no JWT required)

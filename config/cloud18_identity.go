@@ -5,6 +5,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -21,6 +23,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/utils/crypto"
+	log "github.com/sirupsen/logrus"
 )
 
 // The Cloud18 identity (#2159): a replication-manager gets its identity by itself from the
@@ -41,6 +44,9 @@ const (
 	// ConstCloud18IdentityClientID is the realm's public client every replication-manager logs
 	// in with: device grant only, no secret, no redirect URI.
 	ConstCloud18IdentityClientID = "replication-manager"
+	// ConstCloud18GitLabProvider is the realm's GitLab identity provider kept for replication-manager:
+	// it stores the person's GitLab token (scope api), given to repman at registration (#2159).
+	ConstCloud18GitLabProvider = "gitlab-repman"
 	// ConstCloud18StorageAudience is the audience the Cloud18 S3 storages trust: their OpenID
 	// client id, so the role MinIO derives from it is the same for every instance.
 	ConstCloud18StorageAudience = "cloud18-storage"
@@ -108,6 +114,23 @@ func cloud18SafeURL(setting, raw string) error {
 	return cloud18Refused("%s must be https", setting)
 }
 
+// cloud18Log writes one step of the Cloud18 login in the log (module general): who, what, why,
+// never a token.
+func (conf *Config) cloud18Log(level string, format string, args ...interface{}) {
+	if !conf.IsEligibleForPrinting(ConstLogModGeneral, level) {
+		return
+	}
+	e := log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "general"})
+	switch level {
+	case LvlErr:
+		e.Errorf("Cloud18 identity: "+format, args...)
+	case LvlWarn:
+		e.Warnf("Cloud18 identity: "+format, args...)
+	default:
+		e.Infof("Cloud18 identity: "+format, args...)
+	}
+}
+
 func cloud18ErrorText(s string) string {
 	s = strings.TrimSpace(s)
 	if len(s) > cloud18ErrorTextMax {
@@ -147,7 +170,19 @@ type cloud18Login struct {
 type cloud18Device struct {
 	login      Cloud18DeviceLogin
 	deviceCode string
+	verifier   string // PKCE (S256): the public client requires it
 	interval   time.Duration
+}
+
+// pkcePair is a PKCE code verifier and its S256 challenge.
+func pkcePair() (string, string, error) {
+	b := make([]byte, 48)
+	if _, err := rand.Read(b); err != nil {
+		return "", "", err
+	}
+	verifier := base64.RawURLEncoding.EncodeToString(b)
+	sum := sha256.Sum256([]byte(verifier))
+	return verifier, base64.RawURLEncoding.EncodeToString(sum[:]), nil
 }
 
 // cloud18Session is the identity of one instance (one working directory), in memory: the login
@@ -380,6 +415,7 @@ func (conf *Config) Cloud18IdentityToken() (string, string, error) {
 		"refresh_token": {login.RefreshToken},
 	})
 	if err != nil {
+		conf.cloud18Log(LvlWarn, "the login of %s not refreshed, the realm is out of reach (tried again later): %s", login.User, err)
 		return "", "", err
 	}
 	if code != http.StatusOK {
@@ -391,6 +427,9 @@ func (conf *Config) Cloud18IdentityToken() (string, string, error) {
 				s.ended = detail
 			}
 			cloud18Sessions.Unlock()
+			conf.cloud18Log(LvlErr, "the realm ended the login of %s (%s): action required, connect this replication-manager again", login.User, detail)
+		} else {
+			conf.cloud18Log(LvlWarn, "the login of %s not refreshed, tried again later: %s", login.User, err)
 		}
 		return "", "", fmt.Errorf("Cloud18 identity: %w", err)
 	}
@@ -437,6 +476,7 @@ func (conf *Config) Cloud18IdentityKeepAlive() {
 	cloud18Sessions.Lock()
 	s := conf.cloud18SessionLocked()
 	due := s.login.RefreshToken != "" && s.ended == "" && time.Since(s.refreshedAt) > cloud18IdentityKeepAlive
+	user := s.login.User
 	cloud18Sessions.Unlock()
 	if !due || !s.keepAlive.CompareAndSwap(false, true) {
 		return
@@ -444,7 +484,9 @@ func (conf *Config) Cloud18IdentityKeepAlive() {
 	go func() {
 		defer s.keepAlive.Store(false)
 		cacheCloud18IdentityToken(key, cloud18IdentityToken{}) // a cached token would answer without the realm
-		conf.Cloud18IdentityToken()
+		if _, sub, err := conf.Cloud18IdentityToken(); err == nil {
+			conf.cloud18Log(LvlInfo, "login of %s (sub %s) refreshed", user, sub)
+		}
 	}()
 }
 
@@ -468,9 +510,15 @@ func (conf *Config) StartCloud18DeviceLogin() (Cloud18DeviceLogin, error) {
 	if conf.cloud18EncryptionKey() == nil {
 		return Cloud18DeviceLogin{}, cloud18Refused("Cloud18 identity: this replication-manager has no encryption key to keep the login")
 	}
+	verifier, challenge, err := pkcePair()
+	if err != nil {
+		return Cloud18DeviceLogin{}, err
+	}
 	code, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/auth/device", url.Values{
-		"client_id": {ConstCloud18IdentityClientID},
-		"scope":     {cloud18IdentityScope},
+		"client_id":             {ConstCloud18IdentityClientID},
+		"scope":                 {cloud18IdentityScope},
+		"code_challenge":        {challenge},
+		"code_challenge_method": {"S256"},
 	})
 	if err != nil {
 		return Cloud18DeviceLogin{}, err
@@ -506,12 +554,14 @@ func (conf *Config) StartCloud18DeviceLogin() (Cloud18DeviceLogin, error) {
 	d := &cloud18Device{
 		login:      Cloud18DeviceLogin{UserCode: a.UserCode, VerificationURI: a.VerificationURI, VerificationURIComplete: a.VerificationURIComplete, ExpiresAt: time.Now().Add(wait)},
 		deviceCode: a.DeviceCode,
+		verifier:   verifier,
 		interval:   interval,
 	}
 	cloud18Sessions.Lock()
 	s := conf.cloud18SessionLocked()
 	s.device, s.deviceError = d, ""
 	cloud18Sessions.Unlock()
+	conf.cloud18Log(LvlInfo, "device login started: open %s and enter the code %s before %s", d.login.VerificationURI, d.login.UserCode, d.login.ExpiresAt.Format("15:04:05"))
 	go conf.pollCloud18Device(issuer, s, d)
 	return d.login, nil
 }
@@ -521,12 +571,17 @@ func (conf *Config) StartCloud18DeviceLogin() (Cloud18DeviceLogin, error) {
 // disconnect replaced this one.
 func (conf *Config) pollCloud18Device(issuer string, s *cloud18Session, d *cloud18Device) {
 	interval := d.interval
+	unreachable := false
 	stop := func(e string) {
 		cloud18Sessions.Lock()
-		if s.device == d {
+		current := s.device == d
+		if current {
 			s.device, s.deviceError = nil, e
 		}
 		cloud18Sessions.Unlock()
+		if current {
+			conf.cloud18Log(LvlWarn, "device login not completed: %s", e)
+		}
 	}
 	for {
 		time.Sleep(interval)
@@ -541,11 +596,16 @@ func (conf *Config) pollCloud18Device(issuer string, s *cloud18Session, d *cloud
 			return
 		}
 		code, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/token", url.Values{
-			"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
-			"device_code": {d.deviceCode},
-			"client_id":   {ConstCloud18IdentityClientID},
+			"grant_type":    {"urn:ietf:params:oauth:grant-type:device_code"},
+			"device_code":   {d.deviceCode},
+			"client_id":     {ConstCloud18IdentityClientID},
+			"code_verifier": {d.verifier},
 		})
 		if err != nil || code >= 500 || code == http.StatusTooManyRequests {
+			if !unreachable {
+				unreachable = true
+				conf.cloud18Log(LvlWarn, "the realm is out of reach while the device login waits (asked again until the code expires): %v %d", err, code)
+			}
 			continue // the realm out of reach: asked again until the code expires
 		}
 		if code != http.StatusOK {
@@ -603,6 +663,7 @@ func (conf *Config) keepCloud18DeviceLogin(issuer string, s *cloud18Session, d *
 	}
 	s.login, s.ended, s.refreshedAt, s.device, s.deviceError = l, "", now, nil, ""
 	cacheCloud18IdentityToken(conf.cloud18IdentityPath(), cloud18IdentityToken{token: a.AccessToken, sub: sub, expires: now.Add(lifetime)})
+	conf.cloud18Log(LvlInfo, "connected as %s (sub %s), login kept in %s", l.User, sub, conf.cloud18IdentityPath())
 	return nil
 }
 
@@ -621,11 +682,16 @@ func (conf *Config) DisconnectCloud18Identity() error {
 	}
 	if token != "" {
 		if issuer, err := conf.cloud18Issuer(); err == nil {
-			postCloud18Realm(issuer+"/protocol/openid-connect/revoke", url.Values{
+			code, _, err := postCloud18Realm(issuer+"/protocol/openid-connect/revoke", url.Values{
 				"client_id":       {ConstCloud18IdentityClientID},
 				"token":           {token},
 				"token_type_hint": {"refresh_token"},
 			})
+			if err != nil || code != http.StatusOK {
+				conf.cloud18Log(LvlWarn, "login forgotten here, the realm did not confirm its end (%v %d): end it in the realm", err, code)
+			} else {
+				conf.cloud18Log(LvlInfo, "login forgotten and ended in the realm")
+			}
 		}
 	}
 	return nil
@@ -695,6 +761,59 @@ func (conf *Config) Cloud18IdentityStatus() Cloud18IdentityStatus {
 		st.State, st.Device = "pending", &d
 	}
 	return st
+}
+
+// ErrCloud18GitLabNotLinked: the person's Cloud18 account has no GitLab account linked through
+// ConstCloud18GitLabProvider; registering a repman needs one.
+var ErrCloud18GitLabNotLinked = errors.New("your Cloud18 account has no GitLab account linked: link one (Cloud18 account, Linked accounts, GitLab), then register again")
+
+// Cloud18LinkAccountURL is the realm page where the person links a GitLab account.
+func (conf *Config) Cloud18LinkAccountURL() string {
+	return strings.TrimRight(conf.Cloud18IdentityURL, "/") + "/account/account-security/linked-accounts"
+}
+
+// Cloud18GitLabBrokerToken returns the GitLab token the realm keeps for the person who connected
+// this instance (identity broker, ConstCloud18GitLabProvider): only for the GitLab calls of a
+// registration, never stored. The realm refusing it means no GitLab account is linked.
+func (conf *Config) Cloud18GitLabBrokerToken() (string, error) {
+	issuer, err := conf.cloud18Issuer()
+	if err != nil {
+		return "", err
+	}
+	access, _, err := conf.Cloud18IdentityToken()
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequest(http.MethodGet, issuer+"/broker/"+ConstCloud18GitLabProvider+"/token", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+access)
+	resp, err := (&http.Client{Timeout: cloud18IdentityHTTPTimeout}).Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Cloud18 identity: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	switch {
+	case resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusNotFound:
+		conf.cloud18Log(LvlWarn, "no GitLab account linked to the Cloud18 login (%s)", cloud18ErrorText(string(body)))
+		return "", fmt.Errorf("%w (%w)", ErrCloud18GitLabNotLinked, ErrCloud18Refused)
+	case resp.StatusCode != http.StatusOK:
+		return "", fmt.Errorf("Cloud18 identity: GitLab token: %w", cloud18Status("the realm", resp.StatusCode, ": "+cloud18ErrorText(string(body))))
+	}
+	var t struct {
+		AccessToken string `json:"access_token"`
+	}
+	if json.Unmarshal(body, &t) != nil || t.AccessToken == "" {
+		if v, err := url.ParseQuery(string(body)); err == nil {
+			t.AccessToken = v.Get("access_token")
+		}
+	}
+	if t.AccessToken == "" {
+		return "", errors.New("Cloud18 identity: the realm gave no GitLab token")
+	}
+	return t.AccessToken, nil
 }
 
 // TokenSubject reads the sub claim of a JWT, the permanent id a storage names the folder after

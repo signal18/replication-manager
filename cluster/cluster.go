@@ -2519,6 +2519,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetSponsorUser()+":"+cluster.GetSponsorPass())
 	case "git-acces-token":
 		return cluster.Conf.GetStableEncryptedValue("git-acces-token", cluster.Conf.GetDecryptedValue("git-acces-token"))
+	case "git-pull-access-token":
+		return cluster.Conf.GetStableEncryptedValue("git-pull-access-token", cluster.Conf.GetDecryptedValue("git-pull-access-token"))
 	case "vault-token":
 		return cluster.Conf.GetStableEncryptedValue("vault-token", cluster.Conf.GetDecryptedValue("vault-token"))
 	default:

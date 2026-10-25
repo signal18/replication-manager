@@ -176,6 +176,7 @@ type ReplicationManager struct {
 	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
+	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, pending, connected, reconnect; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	OAuthAccessToken            *oauth2.Token               `json:"-"`
@@ -184,7 +185,8 @@ type ReplicationManager struct {
 	termlength                  int
 	exitMsg                     string
 	exit                        atomic.Bool
-	cloud18GitRetrying          atomic.Bool // a retryInitGitConfig loop runs (#2159)
+	cloud18GitRotating          atomic.Bool // a rotation of the Cloud18 project tokens runs (#2159)
+	cloud18PasswordRefused      atomic.Bool // GitLab refused the password of an instance registered with it (#2159)
 	isStarted                   bool
 	// Confs holds every cluster's full config, used only INTERNALLY (config build,
 	// reload, delete). It is never read from the wire — the dashboard and CLI don't
@@ -757,6 +759,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
+	flags.StringVar(&conf.GitPullAccesToken, "git-pull-access-token", "", "Access token of git-url-pull when it differs from git-acces-token (a Cloud18 registration keeps one project token per repository)")
+	flags.IntVar(&conf.Cloud18GitProjectID, "cloud18-git-project-id", 0, "GitLab project id of the instance's Cloud18 config repository, set by a registration through Cloud18 (its project token renews itself)")
+	flags.IntVar(&conf.Cloud18GitPullProjectID, "cloud18-git-pull-project-id", 0, "GitLab project id of the instance's Cloud18 pull repository, set by a registration through Cloud18")
+	flags.StringVar(&conf.Cloud18GitTokenExpires, "cloud18-git-token-expires", "", "End date (YYYY-MM-DD) of the Cloud18 project tokens, renewed before it")
 	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 3600, "Git push periodic interval in seconds. Real config changes push on-change (dirty-gated, ~60s) independent of this timer; this interval is the safety-net full push AND the cadence on which the throttled agents.json runtime feed is staged for the BO. Lower it for fresher agent capacity, not for config latency.")
 	flags.BoolVar(&conf.GitConfigSyncStandby, "git-config-sync-standby", true, "Pull config from git when cluster is standby with arbitration")
 	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
@@ -3093,6 +3099,8 @@ func (repman *ReplicationManager) Run() error {
 		for {
 			select {
 			case <-ticker_PAT.C:
+				// an instance registered through Cloud18 renews its project tokens itself (#2159)
+				repman.rotateCloud18GitTokens(false)
 				//to do it only when auth to gitlab
 				if repman.Conf.GitUrl != "" && repman.OAuthAccessToken != nil && repman.Conf.Cloud18 {
 					//to obtain new app access token
@@ -4704,6 +4712,8 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetStableEncryptedValue("cloud18-gitlab-password", repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
 	case "git-acces-token":
 		return repman.Conf.GetStableEncryptedValue("git-acces-token", repman.Conf.GetDecryptedValue("git-acces-token"))
+	case "git-pull-access-token":
+		return repman.Conf.GetStableEncryptedValue("git-pull-access-token", repman.Conf.GetDecryptedValue("git-pull-access-token"))
 	case "vault-token":
 		return repman.Conf.GetStableEncryptedValue("vault-token", repman.Conf.GetDecryptedValue("vault-token"))
 	default:

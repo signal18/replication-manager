@@ -5,6 +5,7 @@
 package config
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -83,7 +84,7 @@ func TestCloud18DeviceLogin(t *testing.T) {
 	defer func(d time.Duration) { cloud18DeviceMinInterval = d }(cloud18DeviceMinInterval)
 	cloud18DeviceMinInterval = 10 * time.Millisecond
 	var polls, refreshes atomic.Int32
-	var realmURL string
+	var realmURL, challenge string
 	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		if r.Form.Get("client_id") != ConstCloud18IdentityClientID || r.Form.Get("client_secret") != "" || r.Form.Get("redirect_uri") != "" {
@@ -94,9 +95,16 @@ func TestCloud18DeviceLogin(t *testing.T) {
 			if !strings.Contains(r.Form.Get("scope"), "offline_access") {
 				t.Errorf("scope %q", r.Form.Get("scope"))
 			}
+			if challenge = r.Form.Get("code_challenge"); challenge == "" || r.Form.Get("code_challenge_method") != "S256" {
+				t.Errorf("PKCE S256 is required by the public client: %v", r.Form)
+			}
 			fmt.Fprintf(w, `{"device_code":"dev-1","user_code":"WDJB-MJHT","verification_uri":%q,"verification_uri_complete":%q,"expires_in":600,"interval":0}`,
 				realmURL+"/realms/cloud18/device", realmURL+"/realms/cloud18/device?user_code=WDJB-MJHT")
 		case r.Form.Get("grant_type") == "urn:ietf:params:oauth:grant-type:device_code" && r.Form.Get("device_code") == "dev-1":
+			sum := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
+			if base64.RawURLEncoding.EncodeToString(sum[:]) != challenge {
+				t.Error("the code verifier does not match the challenge")
+			}
 			if polls.Add(1) < 3 {
 				w.WriteHeader(http.StatusBadRequest)
 				fmt.Fprint(w, `{"error":"authorization_pending"}`)

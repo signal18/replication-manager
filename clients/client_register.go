@@ -16,68 +16,37 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
-	cliRegisterEmail string
-	cliRegisterURI   string
+	cliRegisterURI  string
+	cliRegisterPlan string
 )
 
 var registerCmd = &cobra.Command{
 	Use:   "register",
 	Short: "Register this instance with Signal18 Cloud18",
-	Long: `Register this replication-manager instance with Signal18 Cloud18.
+	Long: `Register this replication-manager instance with Signal18 Cloud18 (#2159).
 
-The server creates a GitLab account, sends a confirmation email, and then
-waits (up to 5 minutes) for the user to click the confirmation link.
-This command returns immediately after the 202 response and polls the server
-every 10 seconds until registration completes, times out, or errors.
+No password: the server shows a Cloud18 login code; open the page it prints in any
+browser, log in to Cloud18 and enter the code. Your Cloud18 account needs a GitLab
+account linked to it: when it has none, the command prints the page to link one,
+then run it again. The instance declares itself in GitLab (domain group, config and
+pull repositories, its own project tokens); a URI already registered by this
+instance or one of its peers is reconnected, one of another instance is refused.
 
-Use --confirm for a manual single-shot confirmation check instead of polling.
-
-Examples:
-  # Start registration and wait for email confirmation (interactive)
-  replication-manager-cli register \
-    --email admin@mycompany.com \
-    --uri   mycompany.ovh.fr-1
-
-  # Manual confirm after clicking the link (advanced)
-  replication-manager-cli register \
-    --email   admin@mycompany.com \
-    --uri     mycompany.ovh.fr-1 \
-    --confirm`,
+Example:
+  replication-manager-cli register --uri mycompany.ovh.fr-1`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if cliRegisterEmail == "" {
-			fmt.Fprintln(os.Stderr, "Error: --email is required")
-			cmd.Usage()
-			os.Exit(1)
-		}
 		if cliRegisterURI == "" {
 			fmt.Fprintln(os.Stderr, "Error: --uri is required (format: domain.subdomain.zone)")
 			cmd.Usage()
 			os.Exit(1)
 		}
-
-		// Prompt for GitLab password (hidden input)
-		fmt.Fprintf(os.Stderr, "GitLab password for %s: ", cliRegisterEmail)
-		passwordBytes, err := terminal.ReadPassword(int(syscall.Stdin))
-		fmt.Fprintln(os.Stderr)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading password: %s\n", err)
-			os.Exit(1)
-		}
-		password := string(passwordBytes)
-		if len(password) < 8 {
-			fmt.Fprintln(os.Stderr, "Error: password must be at least 8 characters")
-			os.Exit(1)
-		}
-
-		// Obtain admin JWT
+		var err error
 		cliToken, err = cliLogin()
 		if err != nil {
 			cliPassword = cliGetpasswd()
@@ -87,33 +56,19 @@ Examples:
 				os.Exit(1)
 			}
 		}
-
-		confirm, _ := cmd.Flags().GetBool("confirm")
-		if confirm {
-			cliRegisterConfirm(password)
-		} else {
-			cliRegisterAndPoll(password)
-		}
+		cliRegisterAndPoll()
 	},
 }
 
-// cliRegisterAndPoll calls POST /api/register (returns 202), then polls
-// GET /api/register/status every 10 seconds until a terminal state is reached.
-func cliRegisterAndPoll(password string) {
-	urlPost := "https://" + cliHost + ":" + cliPort + "/api/register"
-
-	payload, _ := json.Marshal(map[string]string{
-		"email":    cliRegisterEmail,
-		"password": password,
-		"uri":      cliRegisterURI,
-	})
-
-	body, status, err := cliDoPost(urlPost, payload)
+// cliRegisterAndPoll calls POST /api/register (202), then polls GET /api/register/status
+// until the registration ends, printing the Cloud18 login code and the steps.
+func cliRegisterAndPoll() {
+	payload, _ := json.Marshal(map[string]string{"uri": cliRegisterURI, "plan": cliRegisterPlan})
+	body, status, err := cliDoPost("https://"+cliHost+":"+cliPort+"/api/register", payload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
 		os.Exit(1)
 	}
-
 	if status != http.StatusAccepted {
 		var errBody map[string]interface{}
 		if json.Unmarshal(body, &errBody) == nil {
@@ -126,98 +81,50 @@ func cliRegisterAndPoll(password string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("GitLab account requested for %s.\n", cliRegisterEmail)
-	fmt.Println("A confirmation email will be sent by GitLab. Please click the link to confirm.")
-	fmt.Println("Waiting for confirmation (up to 5 minutes) …")
-
-	// Poll /api/register/status until terminal state
 	urlStatus := "https://" + cliHost + ":" + cliPort + "/api/register/status"
-	pollDeadline := time.Now().Add(6 * time.Minute)
-	for time.Now().Before(pollDeadline) {
-		time.Sleep(10 * time.Second)
-
+	shownCode, lastMessage := "", ""
+	for deadline := time.Now().Add(17 * time.Minute); time.Now().Before(deadline); time.Sleep(3 * time.Second) {
 		statusBody, httpCode, err := cliDoGet(urlStatus)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: status poll error: %s (retrying)\n", err)
+		if err != nil || httpCode != http.StatusOK {
 			continue
 		}
-		if httpCode != http.StatusOK {
-			fmt.Fprintf(os.Stderr, "Warning: status returned HTTP %d (retrying)\n", httpCode)
+		var st struct {
+			State   string `json:"state"`
+			Message string `json:"message"`
+			Result  struct {
+				Device *struct {
+					UserCode                string `json:"userCode"`
+					VerificationURI         string `json:"verificationUri"`
+					VerificationURIComplete string `json:"verificationUriComplete"`
+				} `json:"device"`
+				LinkURL string `json:"linkUrl"`
+			} `json:"result"`
+		}
+		if json.Unmarshal(statusBody, &st) != nil {
 			continue
 		}
-
-		var st map[string]interface{}
-		if err := json.Unmarshal(statusBody, &st); err != nil {
+		if d := st.Result.Device; d != nil && d.UserCode != shownCode {
+			shownCode = d.UserCode
+			fmt.Printf("Open %s in any browser, log in to Cloud18 and enter the code %s\n", d.VerificationURI, d.UserCode)
 			continue
 		}
-		state, _ := st["state"].(string)
-		message, _ := st["message"].(string)
-
-		switch state {
+		switch st.State {
 		case "complete":
-			result, _ := st["result"].(map[string]interface{})
-			if connectErr, ok := result["connect_error"].(string); ok {
-				fmt.Printf("Registration complete for %s.\n", cliRegisterURI)
-				fmt.Printf("Warning: Cloud18 connect failed (%s).\n", connectErr)
-				fmt.Println("Set cloud18=true in global settings once GitLab is reachable.")
-			} else {
-				fmt.Printf("Registration complete. Cloud18 is now active for %s.\n", cliRegisterURI)
-			}
+			fmt.Println(st.Message)
 			return
-		case "timeout":
-			fmt.Fprintf(os.Stderr, "Registration timed out: %s\n", message)
+		case "link":
+			fmt.Fprintf(os.Stderr, "%s\nLink one at %s, then run this command again.\n", st.Message, st.Result.LinkURL)
 			os.Exit(1)
-		case "error":
-			fmt.Fprintf(os.Stderr, "Registration error: %s\n", message)
-			os.Exit(1)
-		default:
-			fmt.Printf("  status: %s — %s\n", state, message)
-		}
-	}
-
-	fmt.Fprintln(os.Stderr, "Client timeout waiting for registration to complete.")
-	os.Exit(1)
-}
-
-// cliRegisterConfirm calls POST /api/register/confirm (manual single-shot).
-// Useful when the background poller is not running or for scripted flows.
-func cliRegisterConfirm(password string) {
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/register/confirm"
-
-	payload, _ := json.Marshal(map[string]string{
-		"email":    cliRegisterEmail,
-		"password": password,
-		"uri":      cliRegisterURI,
-	})
-
-	body, status, err := cliDoPost(urlpost, payload)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
-	}
-
-	if status == http.StatusCreated {
-		var resp map[string]interface{}
-		if json.Unmarshal(body, &resp) == nil {
-			if connectErr, ok := resp["connect_error"].(string); ok {
-				fmt.Printf("Registration complete for %s.\n", cliRegisterURI)
-				fmt.Printf("Warning: Cloud18 connect failed (%s).\n", connectErr)
-				fmt.Println("Set cloud18=true in global settings once GitLab is reachable.")
-				return
-			}
-		}
-		fmt.Printf("Registration complete. Cloud18 is now active for %s.\n", cliRegisterURI)
-		return
-	}
-
-	var errBody map[string]interface{}
-	if json.Unmarshal(body, &errBody) == nil {
-		if msg, ok := errBody["error"].(string); ok {
-			fmt.Fprintf(os.Stderr, "Confirmation failed: %s\n", msg)
+		case "timeout", "error", "taken":
+			fmt.Fprintf(os.Stderr, "Registration %s: %s\n", st.State, st.Message)
 			os.Exit(1)
 		}
+		if st.Message != lastMessage {
+			lastMessage = st.Message
+			fmt.Printf("  %s\n", st.Message)
+		}
 	}
-	fmt.Fprintf(os.Stderr, "Confirmation failed (HTTP %d): %s\n", status, string(body))
+	fmt.Fprintln(os.Stderr, "Client timeout waiting for the registration to complete.")
 	os.Exit(1)
 }
 

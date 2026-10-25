@@ -271,11 +271,11 @@ export const reloadClustersPlanInfo = createGuardedAsyncThunk('globalClusters/re
 
 export const registerInstance = createGuardedAsyncThunk(
   'globalClusters/registerInstance',
-  async ({ email, password, uri }, thunkAPI) => {
+  async ({ uri, plan }, thunkAPI) => {
     try {
-      const { data, status } = await globalClustersService.register(email, password, uri)
+      const { data, status } = await globalClustersService.register(uri, plan)
       if (status === 202) {
-        showSuccessBanner('GitLab account created — check your email for the confirmation link', status, thunkAPI)
+        showSuccessBanner('Cloud18 registration started', status, thunkAPI)
         return { data, status }
       } else {
         throw new Error(typeof data === 'object' ? (data?.error || JSON.stringify(data)) : data)
