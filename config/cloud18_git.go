@@ -5,6 +5,7 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/go-git/go-git/v5"
+	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/githelper"
 )
@@ -163,4 +166,37 @@ func printable(s string) bool {
 		}
 	}
 	return true
+}
+
+// GitHeadPushed says whether the remote "origin" of the git working directory dir has its current
+// commit (the HEAD's branch on the remote points to it): a request repman pushed has reached GitLab.
+func (conf *Config) GitHeadPushed(dir, user, token string) (bool, error) {
+	r, err := git.PlainOpen(dir)
+	if err != nil {
+		return false, err
+	}
+	head, err := r.Head()
+	if err != nil {
+		return false, err
+	}
+	remote, err := r.Remote("origin")
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), gitNetworkTimeout)
+	defer cancel()
+	opts := &git.ListOptions{}
+	if token != "" {
+		opts.Auth = &git_https.BasicAuth{Username: user, Password: token}
+	}
+	refs, err := remote.ListContext(ctx, opts)
+	if err != nil {
+		return false, err
+	}
+	for _, ref := range refs {
+		if ref.Name() == head.Name() {
+			return ref.Hash() == head.Hash(), nil
+		}
+	}
+	return false, nil
 }

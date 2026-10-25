@@ -1030,9 +1030,6 @@ type Config struct {
 	Cloud18GitPullProjectID          int     `scope:"server" mapstructure:"cloud18-git-pull-project-id" toml:"cloud18-git-pull-project-id" json:"cloud18GitPullProjectId"`
 	Cloud18GitTokenExpires           string  `scope:"server" mapstructure:"cloud18-git-token-expires" toml:"cloud18-git-token-expires" json:"cloud18GitTokenExpires"`
 	Cloud18Unregister                bool    `scope:"server" mapstructure:"cloud18-unregister" toml:"cloud18-unregister" json:"cloud18Unregister"`
-	Cloud18SubscriptionPlanActive    string  `scope:"server" mapstructure:"cloud18-subscription-plan-active" toml:"cloud18-subscription-plan-active" json:"cloud18SubscriptionPlanActive"`
-	Cloud18SubscriptionState         string  `scope:"server" mapstructure:"cloud18-subscription-state" toml:"cloud18-subscription-state" json:"cloud18SubscriptionState"`
-	Cloud18SubscriptionMessage       string  `scope:"server" mapstructure:"cloud18-subscription-message" toml:"cloud18-subscription-message" json:"cloud18SubscriptionMessage"`
 	GitMonitoringTicker              int     `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
 	GitConfigSyncStandby             bool    `mapstructure:"git-config-sync-standby" toml:"git-config-sync-standby" json:"gitConfigSyncStandby"`
 	Cloud18                          bool    `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`

@@ -185,10 +185,11 @@ type ReplicationManager struct {
 	termlength                  int
 	exitMsg                     string
 	exit                        atomic.Bool
-	cloud18GitRotating          atomic.Bool  // a rotation of the Cloud18 project tokens runs (#2159)
-	cloud18PasswordRefused      atomic.Bool  // GitLab refused the password of an instance registered with it (#2159)
-	cloud18MigrateRefused       atomic.Value // sha256 of the stored GitLab password GitLab's sign-in refused (#2159)
-	cloud18MigrateNext          atomic.Int64 // unix time before which the migration is not tried again (#2159)
+	cloud18GitRotating          atomic.Bool      // a rotation of the Cloud18 project tokens runs (#2159)
+	cloud18PasswordRefused      atomic.Bool      // GitLab refused the password of an instance registered with it (#2159)
+	cloud18MigrateRefused       atomic.Value     // sha256 of the stored GitLab password GitLab's sign-in refused (#2159)
+	cloud18MigrateNext          atomic.Int64     // unix time before which the migration is not tried again (#2159)
+	cloud18Pull                 cloud18PullState // the back office's answer, pull repository cloud18.toml (#2159)
 	isStarted                   bool
 	// Confs holds every cluster's full config, used only INTERNALLY (config build,
 	// reload, delete). It is never read from the wire — the dashboard and CLI don't
@@ -766,9 +767,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.Cloud18GitPullProjectID, "cloud18-git-pull-project-id", 0, "GitLab project id of the instance's Cloud18 pull repository, set by a registration through Cloud18")
 	flags.StringVar(&conf.Cloud18GitTokenExpires, "cloud18-git-token-expires", "", "End date (YYYY-MM-DD) of the Cloud18 project tokens, renewed before it")
 	flags.BoolVar(&conf.Cloud18Unregister, "cloud18-unregister", false, "Request to unregister the instance from Cloud18, pushed to its config repository for the back office (#2159)")
-	flags.StringVar(&conf.Cloud18SubscriptionPlanActive, "cloud18-subscription-plan-active", "", "Subscription plan the back office applied (pull repository cloud18.toml)")
-	flags.StringVar(&conf.Cloud18SubscriptionState, "cloud18-subscription-state", "", "State of the requested plan, from the back office: active, pending or refused (pull repository cloud18.toml)")
-	flags.StringVar(&conf.Cloud18SubscriptionMessage, "cloud18-subscription-message", "", "The back office's message about the subscription (pull repository cloud18.toml)")
 	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 3600, "Git push periodic interval in seconds. Real config changes push on-change (dirty-gated, ~60s) independent of this timer; this interval is the safety-net full push AND the cadence on which the throttled agents.json runtime feed is staged for the BO. Lower it for fresher agent capacity, not for config latency.")
 	flags.BoolVar(&conf.GitConfigSyncStandby, "git-config-sync-standby", true, "Pull config from git when cluster is standby with arbitration")
 	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")

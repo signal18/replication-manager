@@ -64,10 +64,15 @@ handles; they answer where to register.
 
 No CRM call and no GitLab password after the registration either:
 - **instance → back office**, in the config repository's `default.toml`: `cloud18-subscription-plan`, the
-  **requested** plan (`POST /api/register/subscription` sets it, 202); `cloud18-unregister = true`, the
-  **request** to unregister (`POST /api/register/unregister`: saved, pushed, then `cloud18 = false` where the
-  value lives, so a restart keeps it off). A new registration sets `cloud18-unregister` back to false.
-- **back office → instance**, in the pull repository's `cloud18.toml` (read after each pull):
+  **requested** plan (`POST /api/register/subscription` sets it and pushes at once, 202);
+  `cloud18-unregister = true`, the **request** to unregister (`POST /api/register/unregister`: saved and
+  pushed, and only once the config repository has that commit (`GitHeadPushed`) `cloud18 = false` where the
+  value lives, so a restart keeps it off; not pushed: 503, Cloud18 stays on, the request goes with the next
+  push). A new registration sets `cloud18-unregister` back to false and pushes it at once; the back office
+  acts on an unregistration only if no newer commit set it back to false. The MCP tools use the same
+  requests.
+- **back office → instance**, in the pull repository's `cloud18.toml` (read after each pull, the three
+  values from one section; runtime only, never saved nor pushed by the instance; gone with the file):
   `cloud18-subscription-plan-active`, `cloud18-subscription-state` (`active`, `pending`, `refused`),
   `cloud18-subscription-message`. `GET /api/register/subscription` shows both sides; no answer yet, or an
   `active` state for another plan than the one requested, is `pending`; a refusal keeps the previous plan

@@ -1017,19 +1017,6 @@ func (repman *ReplicationManager) syncSubscriptionPlanFromCRM() {
 	repman.syncSubscriptionPlanFromCRMWithToken(tok)
 }
 
-func writeOfflineSubscriptionQueued(w http.ResponseWriter, plan, uri, detail string) {
-	out, _ := json.Marshal(map[string]interface{}{
-		"status":                    "queued_for_git_processing",
-		"mode":                      "offline_fallback",
-		"plan":                      plan,
-		"uri":                       uri,
-		"message":                   "CRM unreachable — subscription plan saved locally and queued for git processing",
-		"connectivity_error_detail": detail,
-	})
-	w.WriteHeader(http.StatusAccepted)
-	_, _ = w.Write(out)
-}
-
 // crmGetPlans fetches the available subscription plans from the CRM (no auth required).
 func crmGetPlans(crmBase string) (int, []byte, error) {
 	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/subscriptions/plans/instance", nil)
@@ -1502,47 +1489,6 @@ func (repman *ReplicationManager) ensureCRMSessionBootstrappedAsync(gitlabToken 
 
 		repman.ensureCRMSessionBootstrapped(gitlabToken)
 	}()
-}
-
-// crmChangeSubscription changes the plan for a specific URI on CRM using a GitLab PAT.
-func crmChangeSubscription(crmBase, gitlabToken, uri, plan string) (int, []byte, error) {
-	b, _ := json.Marshal(changeSubPayload{URI: uri, Plan: plan})
-	req, err := http.NewRequest(http.MethodPost, crmBase+"/api/subscription", bytes.NewReader(b))
-	if err != nil {
-		return 0, nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+gitlabToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	resp, err := crmHTTPClient15s.Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	return resp.StatusCode, body, err
-}
-
-// crmUnregister drops the GitLab projects for the given URI via the CRM.
-func crmUnregister(crmBase, gitlabToken, uri string) (int, []byte, error) {
-	type unregPayload struct {
-		URI string `json:"uri"`
-	}
-	b, _ := json.Marshal(unregPayload{URI: uri})
-	req, err := http.NewRequest(http.MethodPost, crmBase+"/api/unregister", bytes.NewReader(b))
-	if err != nil {
-		return 0, nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+gitlabToken)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	resp, err := crmHTTPClient30s.Do(req)
-	if err != nil {
-		return 0, nil, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	return resp.StatusCode, body, err
 }
 
 // gitlabTokenFromConfig obtains a GitLab PAT from the stored Cloud18 credentials,

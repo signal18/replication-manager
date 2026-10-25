@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/signal18/replication-manager/config"
 	repmanmcp "github.com/signal18/replication-manager/mcp"
 	"github.com/signal18/replication-manager/peer"
 )
@@ -116,27 +115,22 @@ func (repman *ReplicationManager) Cloud18RegisterConfirm(email, uri string) (map
 	return nil, errCloud18RegisterNeedsPassword
 }
 
-// Cloud18Unregister disconnects the instance from Cloud18.
+// Cloud18Unregister requests the unregistration (declarative, #2159): pushed for the back office,
+// then Cloud18 stops on the instance.
 func (repman *ReplicationManager) Cloud18Unregister() (map[string]any, error) {
-	uri := repman.registeredInstanceURI()
-	if !repman.Conf.Cloud18 || uri == "" {
-		return nil, errors.New("not registered to Cloud18")
-	}
-	tok, err := repman.gitlabTokenFromConfig()
+	out, err := repman.cloud18RequestUnregister()
 	if err != nil {
 		return nil, err
 	}
-	status, body, err := crmUnregister(repman.crmBase(), tok, uri)
-	if err != nil {
-		return nil, fmt.Errorf("CRM unreachable: %s", err)
+	return toAnyMap(out), nil
+}
+
+func toAnyMap(m map[string]string) map[string]any {
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
 	}
-	out := map[string]any{"crmStatus": status, "crmResponse": json.RawMessage(rawOrNull(body)), "uri": uri}
-	if status != http.StatusOK {
-		return out, fmt.Errorf("CRM refused the unregistration (HTTP %d): %s", status, strings.TrimSpace(string(body)))
-	}
-	repman.Conf.Cloud18 = false
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "unregister: Cloud18 disconnected for URI %s (MCP)", uri)
-	return out, nil
+	return out
 }
 
 // Cloud18SubscriptionPlans lists the instance plans offered by the CRM.
@@ -151,50 +145,23 @@ func (repman *ReplicationManager) Cloud18SubscriptionPlans() (json.RawMessage, e
 	return json.RawMessage(rawOrNull(body)), nil
 }
 
-// Cloud18Subscription returns the current plan of the instance from the CRM.
+// Cloud18Subscription returns the requested plan and the back office's answer (#2159).
 func (repman *ReplicationManager) Cloud18Subscription() (json.RawMessage, error) {
-	uri := repman.registeredInstanceURI()
-	if !repman.Conf.Cloud18 || uri == "" {
-		return nil, errors.New("not registered to Cloud18")
+	if !repman.Conf.Cloud18 {
+		return nil, errCloud18NotRegistered
 	}
-	tok, err := repman.gitlabTokenFromConfig()
-	if err != nil {
-		return nil, err
-	}
-	status, body, err := crmGetSubscription(repman.crmBase(), tok, uri)
-	if err != nil {
-		return nil, fmt.Errorf("CRM unreachable: %s", err)
-	}
-	if status != http.StatusOK {
-		return nil, fmt.Errorf("CRM answered HTTP %d: %s", status, strings.TrimSpace(string(body)))
-	}
-	return json.RawMessage(rawOrNull(body)), nil
+	repman.readCloud18PullState()
+	b, err := json.Marshal(repman.cloud18SubscriptionView())
+	return json.RawMessage(b), err
 }
 
-// Cloud18ChangeSubscription switches the instance plan.
+// Cloud18ChangeSubscription requests a plan (declarative, #2159): the back office applies it.
 func (repman *ReplicationManager) Cloud18ChangeSubscription(plan string) (map[string]any, error) {
-	uri := repman.registeredInstanceURI()
-	if !repman.Conf.Cloud18 || uri == "" {
-		return nil, errors.New("not registered to Cloud18")
-	}
-	plan = strings.TrimSpace(strings.ToLower(plan))
-	if plan == "" {
-		return nil, errors.New("plan is required (free, support, support-services, partner)")
-	}
-	tok, err := repman.gitlabTokenFromConfig()
+	out, err := repman.cloud18RequestPlan(plan)
 	if err != nil {
 		return nil, err
 	}
-	status, body, err := crmChangeSubscription(repman.crmBase(), tok, uri, plan)
-	if err != nil {
-		return nil, fmt.Errorf("CRM unreachable: %s", err)
-	}
-	out := map[string]any{"crmStatus": status, "crmResponse": json.RawMessage(rawOrNull(body)), "uri": uri, "plan": plan}
-	if status == http.StatusOK || status == http.StatusCreated || status == http.StatusAccepted {
-		repman.persistInstanceSubscriptionPlan(plan, uri)
-		return out, nil
-	}
-	return out, fmt.Errorf("CRM refused the plan change (HTTP %d): %s", status, strings.TrimSpace(string(body)))
+	return toAnyMap(out), nil
 }
 
 // Cloud18ClustersForSale returns the marketplace catalogue as the REST endpoint does.

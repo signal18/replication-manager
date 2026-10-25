@@ -216,6 +216,10 @@ func (repman *ReplicationManager) cloud18Declare(conf *config.Config, glToken, d
 	}
 	repman.cloud18PasswordRefused.Store(false)
 	repman.Save()
+	if repman.ConfigManager != nil && conf == repman.Conf {
+		// the reset cloud18-unregister reaches GitLab now, not at the next periodic push
+		repman.ConfigManager.GitPush(conf, repman.ClusterList, false)
+	}
 	msg := "registered " + uri + " as " + conf.Cloud18GitUser
 	if res.Reattach {
 		msg = "reconnected to " + uri + " as " + conf.Cloud18GitUser
