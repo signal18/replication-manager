@@ -41,7 +41,6 @@ func (server *ServerMonitor) RejoinLoop() error {
 	return nil
 }
 
-// RejoinMaster a server that just show up without slave status
 // rejoinHeldByBootstrap says whether an automatic rejoin waits for a bootstrap replication
 // in progress, which sets up every server itself (#2174); the skip is logged in debug.
 func (cluster *Cluster) rejoinHeldByBootstrap(server *ServerMonitor, what string) bool {
@@ -52,6 +51,7 @@ func (cluster *Cluster) rejoinHeldByBootstrap(server *ServerMonitor, what string
 	return true
 }
 
+// RejoinMaster a server that just show up without slave status
 func (server *ServerMonitor) RejoinMaster() error {
 	cluster := server.ClusterGroup
 	// Re-entrancy guard so this can be spawned async from EVERY call site (operator,
