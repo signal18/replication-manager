@@ -22,7 +22,7 @@ func TestOwnsEncryptedValues(t *testing.T) {
 	mine := &Config{SecretKey: testEncryptionKey}
 	other := &Config{SecretKey: []byte("fedcba9876543210fedcba9876543210")}
 	var mineValues, otherValues []string
-	for _, v := range []string{"s3cr3t-password", "glpat-0123456789abcdef", "root:Passw0rd!"} {
+	for _, v := range []string{"s3cr3t-password", "glpat-0123456789abcdef", "root:Passw0rd!", "mot de passe accentué é à ü", "-----BEGIN KEY-----\nMIIBVgIBADANBgkqhkiG9w0B\n-----END KEY-----\n"} {
 		mineValues = append(mineValues, mine.GetEncryptedString(v))
 		otherValues = append(otherValues, other.GetEncryptedString(v))
 	}

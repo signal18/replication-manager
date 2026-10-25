@@ -54,6 +54,7 @@ var (
 type cloud18Web struct {
 	client *http.Client
 	code   string
+	state  string
 }
 
 func newCloud18Web() *cloud18Web {
@@ -61,11 +62,15 @@ func newCloud18Web() *cloud18Web {
 	w := &cloud18Web{}
 	w.client = &http.Client{Timeout: cloud18WebTimeout, Jar: jar, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if strings.HasPrefix(req.URL.String(), cloud18GitLabOAuthRedirect) {
-			w.code = req.URL.Query().Get("code")
+			w.code, w.state = req.URL.Query().Get("code"), req.URL.Query().Get("state")
 			return http.ErrUseLastResponse
 		}
 		if len(via) > 15 {
 			return errors.New("too many redirects")
+		}
+		// never leave https (cookies and forms follow redirects), the loopback alone excepted
+		if cloud18SafeURL("redirect", req.URL.String()) != nil {
+			return fmt.Errorf("refused redirect to %s://%s", req.URL.Scheme, req.URL.Host)
 		}
 		return nil
 	}}
@@ -87,6 +92,11 @@ func (w *cloud18Web) do(method, target string, form url.Values) (string, *url.UR
 	req.Header.Set("User-Agent", "replication-manager")
 	resp, err := w.client.Do(req)
 	if err != nil {
+		// the URL of a login form carries short-lived session parameters: not in an error
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = fmt.Errorf("%s %s://%s: %w", method, req.URL.Scheme, req.URL.Host, uerr.Err)
+		}
 		return "", nil, err
 	}
 	defer resp.Body.Close()
@@ -104,6 +114,32 @@ var (
 	htmlTagRe       = regexp.MustCompile(`<[^>]+>|\s+`)
 	kcVerifyEmailRe = regexp.MustCompile(`(?i)verify your email|email verification|update password|required action`)
 )
+
+// ErrCloud18PageChanged: a GitLab or realm page no longer has the form repman fills (its layout
+// changed, or a step was added): the registration must be adapted.
+var ErrCloud18PageChanged = errors.New("the GitLab or Cloud18 page layout changed")
+
+// formTarget is the action of a form found on a page, accepted only on host (the realm's or
+// GitLab's) over https (the loopback alone in clear): a password is never posted anywhere else.
+func formTarget(action, host string) (string, error) {
+	target := html.UnescapeString(action)
+	u, err := url.Parse(target)
+	if err != nil || u.Host != host {
+		return "", fmt.Errorf("a form posts outside %s: refused", host)
+	}
+	if err := cloud18SafeURL("form", target); err != nil {
+		return "", err
+	}
+	return target, nil
+}
+
+func hostOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return u.Host
+}
 
 func pageText(s string) string {
 	return strings.TrimSpace(htmlTagRe.ReplaceAllString(html.UnescapeString(s), " "))
@@ -151,12 +187,15 @@ func (conf *Config) gitlabOAuthFinish(w *cloud18Web, gitlab, page, verifier stri
 	if w.code == "" {
 		if m := redirectLinkRe.FindStringSubmatch(page); m != nil {
 			if u, err := url.Parse(html.UnescapeString(m[1])); err == nil {
-				w.code = u.Query().Get("code")
+				w.code, w.state = u.Query().Get("code"), u.Query().Get("state")
 			}
 		}
 	}
 	if w.code == "" {
 		return "", nil
+	}
+	if w.state != "repman" {
+		return "", errors.New("GitLab answered an authorization that is not this one (state)")
 	}
 	resp, err := (&http.Client{Timeout: cloud18WebTimeout}).PostForm(gitlab+"/oauth/token", url.Values{"grant_type": {"authorization_code"}, "code": {w.code},
 		"redirect_uri": {cloud18GitLabOAuthRedirect}, "client_id": {ConstCloud18GitLabOAuthClientID}, "code_verifier": {verifier}})
@@ -186,7 +225,7 @@ func (conf *Config) Cloud18GitLabLogin(email, password string) (string, error) {
 	}
 	csrf := csrfMetaRe.FindStringSubmatch(page)
 	if csrf == nil {
-		return "", errors.New("GitLab: no sign-in page")
+		return "", fmt.Errorf("GitLab: no sign-in page (%w)", ErrCloud18PageChanged)
 	}
 	// "Sign in with Cloud18", then the realm's login form with the Cloud18 email and password
 	page, at, err := w.do(http.MethodPost, gitlab+"/users/auth/openid_connect", url.Values{"authenticity_token": {html.UnescapeString(csrf[1])}})
@@ -195,9 +234,14 @@ func (conf *Config) Cloud18GitLabLogin(email, password string) (string, error) {
 	}
 	login := kcLoginFormRe.FindStringSubmatch(page)
 	if login == nil {
-		return "", fmt.Errorf("GitLab did not send to the Cloud18 login (%s)", at.Host)
+		return "", fmt.Errorf("GitLab did not send to the Cloud18 login (%s): %w", at.Host, ErrCloud18PageChanged)
 	}
-	page, at, err = w.do(http.MethodPost, html.UnescapeString(login[1]), url.Values{"username": {email}, "password": {password}, "credentialId": {""}})
+	issuer, _ := conf.cloud18Issuer()
+	target, err := formTarget(login[1], hostOf(issuer))
+	if err != nil {
+		return "", fmt.Errorf("Cloud18 login: %w", err)
+	}
+	page, at, err = w.do(http.MethodPost, target, url.Values{"username": {email}, "password": {password}, "credentialId": {""}})
 	if err != nil {
 		return "", fmt.Errorf("Cloud18: %w", err)
 	}
@@ -215,11 +259,25 @@ func (conf *Config) Cloud18GitLabLogin(email, password string) (string, error) {
 	case kcVerifyEmailRe.MatchString(page):
 		return "", ErrCloud18AccountNotReady
 	}
+	return "", gitlabStop(page, at)
+}
+
+// gitlabStop says why GitLab gave no authorization after a successful login.
+func gitlabStop(page string, at *url.URL) error {
+	low := strings.ToLower(page)
+	switch {
+	case strings.Contains(low, "blocked"):
+		return errors.New("GitLab: the account is blocked")
+	case strings.Contains(low, "pending approval"):
+		return errors.New("GitLab: the account waits for an administrator's approval")
+	case strings.Contains(low, "terms"):
+		return errors.New("GitLab asks to accept its terms: log in once to GitLab with Cloud18 and accept them")
+	}
 	msg := kcMessages(page)
 	if msg == "" {
 		msg = at.Host + at.Path
 	}
-	return "", fmt.Errorf("GitLab gave no authorization (%s)", cloud18ErrorText(msg))
+	return fmt.Errorf("GitLab gave no authorization (%s)", cloud18ErrorText(msg))
 }
 
 // ErrGitLabPasswordRefused: GitLab's own sign-in refused the stored GitLab user and password.
@@ -237,7 +295,7 @@ func (conf *Config) GitLabPasswordLogin(user, password string) (string, error) {
 	}
 	csrf := csrfMetaRe.FindStringSubmatch(page)
 	if csrf == nil || !strings.Contains(page, `name="user[login]"`) {
-		return "", errors.New("GitLab: no password sign-in form")
+		return "", fmt.Errorf("GitLab: no password sign-in form (%w)", ErrCloud18PageChanged)
 	}
 	page, at, err := w.do(http.MethodPost, gitlab+"/users/sign_in", url.Values{"authenticity_token": {html.UnescapeString(csrf[1])},
 		"user[login]": {user}, "user[password]": {password}, "user[remember_me]": {"0"}})
@@ -282,13 +340,17 @@ func (conf *Config) Cloud18SignUp(f Cloud18SignUpForm) error {
 	}
 	form := kcSignUpFormRe.FindStringSubmatch(page)
 	if form == nil {
-		return errors.New("Cloud18: the sign-up is not open")
+		return fmt.Errorf("Cloud18: no sign-up form, the sign-up is closed or %w", ErrCloud18PageChanged)
+	}
+	target, err := formTarget(form[1], hostOf(issuer))
+	if err != nil {
+		return fmt.Errorf("Cloud18 sign-up: %w", err)
 	}
 	username := f.Email
 	if i := strings.Index(username, "@"); i > 0 {
 		username = username[:i]
 	}
-	page, _, err = w.do(http.MethodPost, html.UnescapeString(form[1]), url.Values{"username": {username}, "email": {f.Email},
+	page, _, err = w.do(http.MethodPost, target, url.Values{"username": {username}, "email": {f.Email},
 		"firstName": {f.FirstName}, "lastName": {f.LastName}, "company": {f.Company}, "phoneNumber": {f.Phone}})
 	if err != nil {
 		return fmt.Errorf("Cloud18: %w", err)

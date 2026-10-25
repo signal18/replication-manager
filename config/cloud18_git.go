@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/githelper"
@@ -130,7 +131,10 @@ func (conf *Config) RotateCloud18GitTokens(now time.Time) (err error) {
 
 // OwnsEncryptedValues says whether this instance's encryption key decrypts the encrypted values
 // (hash_…) of a saved config: AES-CFB has no integrity check, a wrong key gives random bytes, so
-// every value of 8 bytes or more must come back as printable text, and at least one must be there.
+// every value of 8 bytes or more must come back as text (valid UTF-8, no control character but
+// tab and line breaks: a key file or an accented password is text), and at least one must be
+// there. With a single 8-byte value, random bytes pass about once in a few thousand: the domain
+// membership checked first is the real gate.
 // Used to tell a reconnect (same instance or a peer: they share the key, never in git) from
 // another instance's URI.
 func (conf *Config) OwnsEncryptedValues(values []string) bool {
@@ -150,8 +154,11 @@ func (conf *Config) OwnsEncryptedValues(values []string) bool {
 }
 
 func printable(s string) bool {
+	if !utf8.ValidString(s) {
+		return false
+	}
 	for _, r := range s {
-		if r < 0x20 || r > 0x7e {
+		if (r < 0x20 && r != '\n' && r != '\r' && r != '\t') || r == 0x7f || (r >= 0x80 && r < 0xa0) {
 			return false
 		}
 	}

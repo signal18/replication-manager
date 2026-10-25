@@ -34,7 +34,9 @@ enough: no second sign-up on GitLab.
    `http://127.0.0.1/cloud18-register` never opened: GitLab answers a non-https redirect with its
    "Redirecting" page carrying the code), "Sign in with Cloud18", the realm's login form with the email
    and password, back to GitLab, the code traded for a GitLab token (scope `api`, 2 h). The password and
-   that token are **never stored**, also for a GitLab admin.
+   that token are **never stored**, also for a GitLab admin. The password is posted only to a form of
+   the realm's own host over https, and no redirect may leave https (the loopback alone in clear); a page
+   whose form is missing reports that the GitLab or realm page layout changed.
    - the realm refuses the password: state `credentials`; with `signUp` (first name, last name, company,
      phone) and an unknown email, **`config.Cloud18SignUp`** fills the realm's own sign-up form, as anyone
      can on the site. The realm creates the account **without password** (it ignores one sent) with the
@@ -80,7 +82,10 @@ a reconnect).
   repositories (its key decrypts their config): a reconnect, its own project tokens from then on. Validated
   live 2026-10-25 with a throwaway GitLab user (sign-in form, code, token `api`). When it cannot (a 2FA
   account, a captcha, a changed password), the instance keeps the password path untouched and the log
-  says why; `GWARN022` asks to register again once GitLab refuses that password too.
+  says why; `GWARN022` asks to register again once GitLab refuses that password too. A password GitLab's
+  sign-in refused is not tried again until it changes (GitLab locks an account after a few failures);
+  any other failure waits an hour. After the move the stored GitLab password stays (encrypted, unused):
+  it lets the instance roll back to an older release.
 
 ## Setup (realm and GitLab)
 

@@ -5,6 +5,8 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"regexp"
@@ -31,6 +33,10 @@ const (
 	RegStateCredentials = "credentials"
 	// RegStateTaken: the URI belongs to another instance
 	RegStateTaken = "taken"
+
+	// cloud18MigrateRetry: how long a migration that failed for another reason than a refused
+	// password waits before it is tried again
+	cloud18MigrateRetry = time.Hour
 )
 
 // cloud18RegisterResult is the status result of a registration through Cloud18.
@@ -161,9 +167,6 @@ func (repman *ReplicationManager) cloud18Declare(conf *config.Config, glToken, d
 	// 4. the instance's own project tokens: the only GitLab credentials it keeps
 	tokenName := "replication-manager " + uri
 	expires := time.Now().Add(config.Cloud18GitTokenLifetime)
-	// a reconnect or a migration replaces the instance's previous tokens: never a pile of them
-	githelper.GitLabRevokeProjectTokens(glToken, mainID, tokenName)
-	githelper.GitLabRevokeProjectTokens(glToken, pullID, tokenName)
 	mainTok, err := githelper.GitLabCreateProjectToken(glToken, mainID, tokenName, expires)
 	if err != nil {
 		repman.setRegStatus(RegStateError, "project token: "+err.Error(), res)
@@ -174,6 +177,10 @@ func (repman *ReplicationManager) cloud18Declare(conf *config.Config, glToken, d
 		repman.setRegStatus(RegStateError, "pull project token: "+err.Error(), res)
 		return repman.regState()
 	}
+	// a reconnect or a migration replaces the instance's previous tokens, once the new ones exist:
+	// never a pile of them, never none
+	githelper.GitLabRevokeProjectTokens(glToken, mainID, tokenName, mainTok.ID)
+	githelper.GitLabRevokeProjectTokens(glToken, pullID, tokenName, pullTok.ID)
 	glToken = ""
 
 	conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone = domain, subdomain, zone
@@ -255,8 +262,23 @@ func (repman *ReplicationManager) cloud18MigrateToProjectTokens(conf *config.Con
 	if user == "" || password == "" {
 		return
 	}
+	// a refused password is not tried again until it changes (GitLab locks an account after a few
+	// failed sign-ins); any other failure waits cloud18MigrateRetry before the next try
+	sum := sha256.Sum256([]byte(user + "\x00" + password))
+	fingerprint := hex.EncodeToString(sum[:])
+	if refused, _ := repman.cloud18MigrateRefused.Load().(string); refused == fingerprint {
+		return
+	}
+	if time.Now().Unix() < repman.cloud18MigrateNext.Load() {
+		return
+	}
 	glToken, err := conf.GitLabPasswordLogin(user, password)
 	if err != nil {
+		if errors.Is(err, config.ErrGitLabPasswordRefused) {
+			repman.cloud18MigrateRefused.Store(fingerprint)
+		} else {
+			repman.cloud18MigrateNext.Store(time.Now().Add(cloud18MigrateRetry).Unix())
+		}
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,
 			"Cloud18: %s stays on its GitLab password (not moved to its project tokens): %s", repman.registeredInstanceURI(), err)
 		return
@@ -265,6 +287,7 @@ func (repman *ReplicationManager) cloud18MigrateToProjectTokens(conf *config.Con
 	state := repman.cloud18Declare(conf, glToken, conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone, "", res)
 	_, msg, _ := repman.RegStatus.snapshot()
 	if state != RegStateOK {
+		repman.cloud18MigrateNext.Store(time.Now().Add(cloud18MigrateRetry).Unix())
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,
 			"Cloud18: %s stays on its GitLab password (not moved to its project tokens): %s", res.URI, msg)
 		return

@@ -39,6 +39,9 @@ type registerFakes struct {
 	files      map[int]string
 	logins     int
 	revoked    []string
+	signIns    int    // POSTs to GitLab's password sign-in
+	evilAction string // the realm login page posts there instead (a page that changed hands)
+	failCreate int    // the next project token creations that fail
 }
 
 func newRegisterFakes(t *testing.T) (*registerFakes, string) {
@@ -52,7 +55,11 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 		r.ParseForm()
 		switch r.URL.Path {
 		case "/realms/cloud18/login":
-			fmt.Fprintf(w, `<form id="kc-form-login" action="%s/realms/cloud18/login-actions/authenticate?session_code=1&amp;tab_id=2" method="post">`, realmURL)
+			action := realmURL
+			if f.evilAction != "" {
+				action = f.evilAction
+			}
+			fmt.Fprintf(w, `<form id="kc-form-login" action="%s/realms/cloud18/login-actions/authenticate?session_code=1&amp;tab_id=2" method="post">`, action)
 		case "/realms/cloud18/login-actions/authenticate":
 			pw, ok := f.accounts[r.Form.Get("username")]
 			switch {
@@ -104,6 +111,7 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 			http.SetCookie(w, &http.Cookie{Name: "after", Value: url.QueryEscape(r.URL.String()), Path: "/"})
 			http.Redirect(w, r, "/users/sign_in", http.StatusFound)
 		case path == "/users/sign_in" && r.Method == http.MethodPost:
+			f.signIns++
 			if pw, ok := f.gitlabPw[r.Form.Get("user[login]")]; ok && pw == r.Form.Get("user[password]") && r.Form.Get("authenticity_token") == "csrf+1" {
 				http.SetCookie(w, &http.Cookie{Name: "gl_session", Value: url.QueryEscape(r.Form.Get("user[login]")), Path: "/"})
 				after, _ := r.Cookie("after")
@@ -189,6 +197,9 @@ func (f *registerFakes) api(w http.ResponseWriter, r *http.Request, path string)
 	case strings.Contains(path, "/access_tokens/") && r.Method == http.MethodDelete:
 		f.revoked = append(f.revoked, path)
 		w.WriteHeader(http.StatusNoContent)
+	case strings.HasSuffix(path, "/access_tokens") && f.failCreate > 0:
+		f.failCreate--
+		w.WriteHeader(http.StatusInternalServerError)
 	case strings.HasSuffix(path, "/access_tokens"):
 		w.WriteHeader(http.StatusCreated)
 		fmt.Fprintf(w, `{"token":"glpat-%d","expires_at":%q}`, f.nextID, body["expires_at"])
@@ -349,5 +360,56 @@ func TestCloud18MigrateToProjectTokens(t *testing.T) {
 	refused.cloud18MigrateToProjectTokens(r)
 	if r.Cloud18GitProjects() || !r.Cloud18 || r.GetDecryptedValue("cloud18-gitlab-password") != "changed-since" {
 		t.Fatal("a refused password must leave the instance on its password path, untouched")
+	}
+}
+
+// #2159 review: the Cloud18 password goes only to the realm's own host (a login form posting
+// elsewhere is refused, nothing sent); a refused stored GitLab password is tried once, not at every
+// InitGitConfig; a re-register keeps the previous project tokens when the new ones cannot be made.
+func TestCloud18RegisterSafety(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	key := []byte("0123456789abcdef")
+
+	var evilHits int
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { evilHits++ }))
+	defer evil.Close()
+	f.mu.Lock()
+	f.evilAction = evil.URL
+	f.mu.Unlock()
+	rm := registerRepman(t, issuer, key)
+	rm.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, _ := regResult(t, rm); state != RegStateError || evilHits != 0 || !strings.Contains(msg, "outside") {
+		t.Fatalf("a login form posting elsewhere: %s %q, %d requests there", state, msg, evilHits)
+	}
+	f.mu.Lock()
+	f.evilAction = ""
+	f.mu.Unlock()
+
+	old := registerRepman(t, issuer, key)
+	c := old.Conf
+	c.Cloud18, c.Cloud18Domain, c.Cloud18SubDomain, c.Cloud18SubDomainZone, c.Cloud18GitUser = true, "acme", "ovh", "fr-1", "admin@acme.example"
+	c.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "stale"})
+	for i := 0; i < 3; i++ {
+		old.cloud18MigrateToProjectTokens(c)
+	}
+	if f.signIns != 1 || c.Cloud18GitProjects() {
+		t.Fatalf("a refused password must be tried once: %d sign-ins", f.signIns)
+	}
+	c.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "old-gitlab-password"}) // changed: tried again
+	old.cloud18MigrateToProjectTokens(c)
+	if f.signIns != 2 || !c.Cloud18GitProjects() {
+		t.Fatalf("a changed password is tried again: %d sign-ins, moved %v", f.signIns, c.Cloud18GitProjects())
+	}
+
+	f.mu.Lock()
+	f.revoked, f.failCreate = nil, 1
+	f.mu.Unlock()
+	again := registerRepman(t, issuer, key)
+	f.mu.Lock()
+	f.files[c.Cloud18GitProjectID] = "git-acces-token = \"" + again.Conf.GetEncryptedString("glpat-saved-token-0001") + "\"\n"
+	f.mu.Unlock()
+	again.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, _, _ := regResult(t, again); state != RegStateError || len(f.revoked) != 0 {
+		t.Fatalf("a failed token creation must leave the previous tokens: %s, revoked %v", state, f.revoked)
 	}
 }
