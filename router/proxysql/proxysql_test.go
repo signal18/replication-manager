@@ -151,3 +151,16 @@ func TestSetWriterWhenAlreadyWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// The mirror case: a server already in the reader hostgroup set reader again.
+func TestSetReaderWhenAlreadyReader(t *testing.T) {
+	psql, mock := newMock(t, FlavorMySQL)
+	expectExec(mock, "DELETE FROM mysql_servers WHERE hostgroup_id='0' AND hostname='db2' AND port='3306' AND EXISTS (SELECT 1 FROM mysql_servers WHERE hostgroup_id='1' AND hostname='db2' AND port='3306')")
+	expectExec(mock, "UPDATE mysql_servers SET status='ONLINE', hostgroup_id='1' WHERE hostname='db2' AND port='3306' AND hostgroup_id in ('1','0')")
+	if err := psql.SetReader("db2", "3306"); err != nil {
+		t.Fatal(err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

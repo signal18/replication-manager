@@ -47,6 +47,7 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck(clus
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replicas do not replicate from the new master %s 30s after the switchover", cluster.GetMaster().URL)
 			return false
 		}
+		time.Sleep(500 * time.Millisecond)
 	}
 	return true
 }
