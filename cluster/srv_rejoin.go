@@ -41,6 +41,16 @@ func (server *ServerMonitor) RejoinLoop() error {
 	return nil
 }
 
+// rejoinHeldByBootstrap says whether an automatic rejoin waits for a bootstrap replication
+// in progress, which sets up every server itself (#2174); the skip is logged in debug.
+func (cluster *Cluster) rejoinHeldByBootstrap(server *ServerMonitor, what string) bool {
+	if cluster.inBootstrapReplication.Load() == 0 {
+		return false
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "%s %s skipped: bootstrap replication in progress", what, server.URL)
+	return true
+}
+
 // RejoinMaster a server that just show up without slave status
 func (server *ServerMonitor) RejoinMaster() error {
 	cluster := server.ClusterGroup
@@ -73,7 +83,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 		return nil
 	}
 
-	if cluster.StateMachine.IsInFailover() {
+	if cluster.StateMachine.IsInFailover() || cluster.rejoinHeldByBootstrap(server, "rejoin of the master") {
 		return nil
 	}
 	// if cluster.Conf.LogLevel > 2 {
@@ -856,6 +866,9 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		// a PostgreSQL standby follows whom its primary_conninfo names: nothing to repoint here
 		return nil
 	}
+	if cluster.rejoinHeldByBootstrap(server, "rejoin of the replica") {
+		return nil
+	}
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep {
 		if cluster.GetTopology() == config.TopoMultiMasterRing {
 			server.RejoinLoop()
@@ -1274,6 +1287,9 @@ func (cluster *Cluster) RejoinClone(source *ServerMonitor, dest *ServerMonitor) 
 
 func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonitor) error {
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep {
+		return nil
+	}
+	if cluster.rejoinHeldByBootstrap(slave, "relay fix") {
 		return nil
 	}
 	cluster.SetState("ERR00045", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00045"], ErrFrom: "TOPO"})

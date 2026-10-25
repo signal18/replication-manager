@@ -929,6 +929,12 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Galera cluster ignoring replication setup")
 		return nil
 	}
+	// From the cleanup to the last server set up, the monitor rejoins nothing: its rejoin
+	// configured replication of its own in the middle of the bootstrap (an async channel
+	// on a group's secondaries, a concurrent START GROUP_REPLICATION) (#2174). Not the
+	// failover state: the discovery below skips while it is set.
+	cluster.inBootstrapReplication.Add(1)
+	defer cluster.inBootstrapReplication.Add(-1)
 	if clean {
 		err := cluster.BootstrapReplicationCleanup(ftwrl)
 		if err != nil {
