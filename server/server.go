@@ -1320,7 +1320,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18SubscriptionPlan, "cloud18-subscription-plan", "free", "Cloud18 subscription plan code (validated by CRM)")
 	flags.StringVar(&conf.Cloud18LicenseFile, "cloud18-license-file", "", "Path to a signed offline license (license.json; detached signature license.sig alongside). When set, the instance sources its Cloud18 plan from this file instead of the CRM — for air-gapped/PCI instances. Verified with plugin-signing-public-key. Empty = normal online CRM path")
 	flags.StringVar(&conf.Cloud18CrmApiUrl, "cloud18-crm-api-url", "https://api.crm.ovh-fr-2.signal18.cloud18.io", "Cloud18 CRM API base URL used for cluster registration")
-	flags.BoolVar(&conf.Cloud18RegtestReport, "cloud18-regtest-report", false, "Send each regtest run to the Cloud18 CRM, which offers in self-service only the setups that passed. For Signal18's test instances: the CRM accepts the runs of the instances it lists as regtest reporters only")
 	flags.StringVar(&conf.Cloud18DomainAddScript, "cloud18-domain-add-script", "/usr/share/replication-manager/scripts/prov_domain_add_script.sh", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainUser, "cloud18-domain-user", "", "First parameter to pass prov-domain-?-script")

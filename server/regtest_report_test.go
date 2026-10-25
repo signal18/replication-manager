@@ -16,7 +16,7 @@ func TestBuildRegtestReportsGroupsBySetup(t *testing.T) {
 	galera := regtestSetup{Orchestrator: "opensvc", Topology: "multi-master-wsrep", Flavor: "mariadb", DbVersion: "11.4", Proxy: "haproxy"}
 	upgrade := regtestSetup{Orchestrator: "opensvc", Topology: "master-slave", Flavor: "mariadb", DbVersion: "11.4", FromDbVersion: "10.11"}
 	tests := []regtestReportedTest{
-		{Setup: galera, Test: "testSwitchover", Result: "PASS", Duration: 42 * time.Second},
+		{Setup: galera, Test: "testSwitchover", Result: "PASS", Duration: 42 * time.Second, ClusterTOML: "[saved-galera]\ntitle = \"galera\"\n"},
 		{Setup: upgrade, Test: "testRollingUpgrade", Result: "FAIL", Duration: 90 * time.Second},
 		{Setup: galera, Test: "testFailover", Result: "PASS"},
 		{Setup: regtestSetup{Orchestrator: "opensvc", Topology: "master-slave"}, Test: "testNoVersion", Result: "PASS"},
@@ -34,6 +34,9 @@ func TestBuildRegtestReportsGroupsBySetup(t *testing.T) {
 	first, second := reports[0], reports[1]
 	if first.Run.Topology != "multi-master-wsrep" || len(first.Results) != 2 || first.Results[0].DurationSeconds != 42 {
 		t.Fatalf("first report = %+v", first)
+	}
+	if first.Run.ClusterTOML == "" || second.Run.ClusterTOML != "" {
+		t.Fatalf("each report carries the configuration of its setup: %q / %q", first.Run.ClusterTOML, second.Run.ClusterTOML)
 	}
 	if second.Run.FromDbVersion != "10.11" || second.Results[0].Result != "FAIL" {
 		t.Fatalf("second report = %+v", second)

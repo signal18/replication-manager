@@ -430,6 +430,7 @@ type Cluster struct {
 	DiffVariables                       []VariableDiff              `json:"diffVariables" groups:"web"`
 	inInitNodes                         bool                        `json:"-"`
 	initConfigDone                      atomic.Bool                 `json:"-"`
+	configSaveDone                      atomic.Int64                `json:"-"` // unix nanoseconds of the last SaveCallBack that completed, changed or not
 	inOptimizeTables                    bool                        `json:"inOptimizeTables" groups:"web"`
 	inAnalyzeTables                     bool                        `json:"inAnalyzeTables" groups:"web"`
 	inConnectVault                      bool                        `json:"-"`
@@ -2235,8 +2236,19 @@ func (cluster *Cluster) SaveCallBack() error {
 	if has_changed {
 		cluster.IsNeedGitPush = true
 	}
+	cluster.configSaveDone.Store(time.Now().UnixNano())
 
 	return nil
+}
+
+// ConfigSaveDoneAt is when the config-sync gate last completed a save of this cluster,
+// whether the files changed or not: a caller that asked for a Save() knows from it that
+// the files on disk hold the configuration it had in memory then.
+func (cluster *Cluster) ConfigSaveDoneAt() time.Time {
+	if n := cluster.configSaveDone.Load(); n != 0 {
+		return time.Unix(0, n)
+	}
+	return time.Time{}
 }
 
 func (cluster *Cluster) SaveConfigFile() (bool, error) {

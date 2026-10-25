@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -21,9 +23,11 @@ import (
 	"github.com/signal18/replication-manager/utils/releases"
 )
 
-// A regtest run is reported to the Cloud18 CRM (POST /api/instances/regtest-results),
-// which offers in self-service only the setups that passed (#2165). One report per setup:
-// a suite run moves from one test cluster to another.
+// Every registered instance running its regression tests (test mode) reports each run to
+// the Cloud18 CRM (POST /api/instances/regtest-results), which consolidates the results of
+// all users and offers in self-service only the setups that passed (#2165). One report per
+// setup, with the cluster's saved configuration: a suite run moves from one test cluster
+// to another.
 
 // regtestSetup is what a test ran on.
 type regtestSetup struct {
@@ -40,6 +44,8 @@ type regtestReportedTest struct {
 	Test     string
 	Result   string
 	Duration time.Duration
+	// ClusterTOML is the configuration the test started from
+	ClusterTOML string
 }
 
 type regtestReportResult struct {
@@ -54,6 +60,7 @@ type regtestReportRun struct {
 	RepmanVersion string `json:"repman_version"`
 	RepmanCommit  string `json:"repman_commit,omitempty"`
 	TestedAt      string `json:"tested_at"`
+	ClusterTOML   string `json:"cluster_toml,omitempty"`
 }
 
 type regtestReport struct {
@@ -97,17 +104,54 @@ func regtestSetupOf(cl *cluster.Cluster, test cluster.Test) regtestSetup {
 	return setup
 }
 
+// regtestClusterTOMLMax bounds the configuration sent with a run.
+const regtestClusterTOMLMax = 256 << 10
+
+// regtestFileTOML is a configuration file, bounded. Empty when it cannot be read.
+func regtestFileTOML(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	if len(data) > regtestClusterTOMLMax {
+		data = data[:regtestClusterTOMLMax]
+	}
+	return string(data)
+}
+
+// regtestReporting says whether this run will be reported: test mode on a registered instance.
+func (repman *ReplicationManager) regtestReporting() bool {
+	return repman.Conf.Test && repman.registeredInstanceURI() != ""
+}
+
+// regtestStartConfig is the configuration a test on a live cluster starts from: the
+// cluster's saved <cluster>.toml, read once the config-sync gate (the single writer of
+// that file) has completed a save asked for now, before any setter of the test ran.
+// Empty when the gate did not save within two of its periods: no configuration is
+// better than one that is not the test's.
+func (repman *ReplicationManager) regtestStartConfig(cl *cluster.Cluster) string {
+	asked := time.Now()
+	cl.Save()
+	wait := 2 * time.Duration(repman.Conf.MonitoringTicker) * 60 * time.Second
+	if wait < 30*time.Second {
+		wait = 30 * time.Second
+	}
+	for deadline := asked.Add(wait); !cl.ConfigSaveDoneAt().After(asked); time.Sleep(500 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "TEST : the configuration is not sent with the results: no config save completed within %s", wait)
+			return ""
+		}
+	}
+	return regtestFileTOML(filepath.Join(cl.Conf.WorkingDir, cl.Name, cl.Name+".toml"))
+}
+
 // reportRegtestResults sends the run to the CRM in the background, one report per setup,
-// when cloud18-regtest-report is on. A failure is logged and never changes the run.
+// in test mode. A failure is logged and never changes the run.
 func (repman *ReplicationManager) reportRegtestResults(cl *cluster.Cluster, tests []regtestReportedTest) {
-	if !repman.Conf.Cloud18RegtestReport || len(tests) == 0 {
+	if !repman.regtestReporting() || len(tests) == 0 {
 		return
 	}
 	uri := repman.registeredInstanceURI()
-	if uri == "" {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "TEST : regtest results not reported: this instance is not a registered Cloud18 instance")
-		return
-	}
 
 	reports, skipped := repman.buildRegtestReports(uri, tests, time.Now().UTC())
 	for _, name := range skipped {
@@ -161,6 +205,7 @@ func (repman *ReplicationManager) buildRegtestReports(uri string, tests []regtes
 				RepmanVersion: regtestReportField(repman.Version, 64),
 				RepmanCommit:  regtestReportField(repman.Fullversion, 64),
 				TestedAt:      testedAt.Format(time.RFC3339),
+				ClusterTOML:   t.ClusterTOML,
 			}}
 			if report.Run.RepmanVersion == "" {
 				report.Run.RepmanVersion = "dev"
