@@ -122,6 +122,31 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   the infrastructure's templates, DBU/APU range and free pool). The ranges are the constants
   `cloud18MaxDBCount`/`MaxDBU`/`MaxAPU`/`MaxProxyCount`, shared with the validation. An
   unreadable release table is said in `db_image_source`, never shown as a flavor without lines.
+  Each topology carries `testedReleases` (#2165): per release (8.0.41, the running
+  server's `version.ToString()`) and proxy, the latest regression test run reported to the
+  Cloud18 CRM (`GET /api/instances/tested-setups`, `crmGetTestedSetups`, read with the
+  instance's GitLab token; `testedSetupsAsOf` says when). The copy is kept for the
+  self-service cache interval (`cloud18-self-service-cache-seconds`; 0 asks the CRM at every
+  call), and on disk (`cloud18-tested-setups.json`, `writeConfigFileAtomic`) for restarts and
+  CRM outages; the CRM is asked by one caller at a time, never under the cache lock, and at
+  most once per interval when it fails. A copy older than 7 days no longer opens the gate.
+  A topology is creatable only when one of its releases passed; `cloud18-create-cluster`
+  resolves the requested image in the image list as provisioning does
+  (`config.ImageCatalog()` + `Catalog.Resolve`: `mariadb:11.4` is 11.4.5, `latest`/`lts`
+  through the list) and refuses a flavor + topology + release + proxy (`none`: any tested
+  proxy) whose latest run did not pass. The release itself counts when it has a run (a Percona
+  build 8.0.46-37 is release 8.0.46); else the newest tested release under it (a line the
+  list cannot resolve, PostgreSQL `17` covers 17.2.0). An image that resolves to no release
+  (a pointer absent from the list) is refused. Deliberately not matched: the orchestrator
+  (regression tests are functional, they gate on the topology) and the replication-manager
+  version (the latest run wins). Upgrade runs (`from_db_version`, the release before the
+  upgrade, set by the rolling upgrade tests) test an upgrade path and never open the gate for
+  the release they upgrade to.
+  The runs are sent by every registered instance from its clusters in test mode (the `test` setting, switchable at runtime), one report per setup
+  at the end of `RunAllTests` with the cluster's saved configuration (`<cluster>.toml` as kept
+  on disk), retried after 10 s and 60 s on a network error or 5xx (`crmPostRegtestResults`, the shape of the other `crmXxx` calls); the run fields are sent as they are and validated by the CRM. The setup server (`regtest.SetupServer`: the master, else the first server) names the flavor and release. The CRM consolidates the
+  results of all users: it accepts the runs of any instance whose owner (GitLab or Keycloak
+  token) holds the uri's live subscription, and shows which instance reported each run.
 - `get-cloud18-cluster-quote`: one **choice per partner infrastructure** (from the for-sale
   list, `Cloud18Infrastructures`). Each choice carries the partner, its zone and its
   infrastructure description from peer.json (`cloud18InfraDefinitionOf`: platform, CPU, data

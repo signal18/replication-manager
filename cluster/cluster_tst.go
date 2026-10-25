@@ -39,6 +39,8 @@ type Test struct {
 	ConfigFile string        `json:"config-file"`
 	ConfigInit config.Config `json:"config-init"`
 	ConfigTest config.Config `json:"config-test"`
+	// FromDbVersion is set by a rolling upgrade test: the database version it upgraded from.
+	FromDbVersion string `json:"from-db-version,omitempty"`
 }
 
 type SysbenchRecord struct {
