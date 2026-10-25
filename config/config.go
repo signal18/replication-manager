@@ -1025,6 +1025,11 @@ type Config struct {
 	GitUrlPull                       string  `scope:"server" mapstructure:"git-url-pull" toml:"git-url-pull" json:"gitUrlPull"`
 	GitUsername                      string  `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                    string  `scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
+	GitPullAccesToken                string  `scope:"server" mapstructure:"git-pull-access-token" toml:"git-pull-access-token" json:"-"`
+	Cloud18GitProjectID              int     `scope:"server" mapstructure:"cloud18-git-project-id" toml:"cloud18-git-project-id" json:"cloud18GitProjectId"`
+	Cloud18GitPullProjectID          int     `scope:"server" mapstructure:"cloud18-git-pull-project-id" toml:"cloud18-git-pull-project-id" json:"cloud18GitPullProjectId"`
+	Cloud18GitTokenExpires           string  `scope:"server" mapstructure:"cloud18-git-token-expires" toml:"cloud18-git-token-expires" json:"cloud18GitTokenExpires"`
+	Cloud18Unregister                bool    `scope:"server" mapstructure:"cloud18-unregister" toml:"cloud18-unregister" json:"cloud18Unregister"`
 	GitMonitoringTicker              int     `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
 	GitConfigSyncStandby             bool    `mapstructure:"git-config-sync-standby" toml:"git-config-sync-standby" json:"gitConfigSyncStandby"`
 	Cloud18                          bool    `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
@@ -1033,8 +1038,7 @@ type Config struct {
 	Cloud18SubDomainZone             string  `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" groups:"apps"`
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
-	Cloud18SSOClientID               string  `scope:"server" mapstructure:"cloud18-sso-client-id" toml:"cloud18-sso-client-id" json:"cloud18SsoClientId"`
-	Cloud18SSOClientSecret           string  `scope:"server" mapstructure:"cloud18-sso-client-secret" toml:"cloud18-sso-client-secret" json:"-"`
+	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
@@ -1942,12 +1946,12 @@ var SecretKeys = []string{
 	"alert-pushover-user-token",
 	"alert-pushover-app-token",
 	"git-acces-token",
+	"git-pull-access-token",
 	"mail-smtp-password",
 	"cloud18-gitlab-password",
 	"cloud18-dba-user-credentials",
 	"cloud18-sponsor-user-credentials",
 	"cloud18-domain-secret",
-	"cloud18-sso-client-secret",
 	"proxysql-user",
 	"vault-token",
 	"api-oauth-client-secret",
@@ -2226,7 +2230,7 @@ func (conf *Config) DecryptSecretsFromVault() {
 
 func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 	if conf.IsVaultUsed() {
-		log.Printf("Vault AppRole Authentification")
+		log.Printf("Vault authentication (%s)", conf.VaultAuth)
 		config := vault.DefaultConfig()
 
 		config.Address = conf.VaultServerAddr
@@ -2235,6 +2239,10 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 		if err != nil {
 			log.Printf("Unable to initialize AppRole auth method: %v", err)
 			return nil, err
+		}
+
+		if conf.VaultAuth == "jwt" {
+			return conf.vaultJWTLogin(client)
 		}
 
 		roleID := conf.VaultRoleId
@@ -2265,6 +2273,29 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 		return client, err
 	}
 	return nil, errors.New("Not using Vault")
+}
+
+// vaultJWTLogin logs in to the vault's jwt auth method with the instance's Cloud18 identity
+// token (#2159): no secret of the vault is kept here. The role is vault-role-id when set, else
+// the realm's client id (ConstCloud18IdentityClientID), the Cloud18 vault binding it on sub.
+func (conf *Config) vaultJWTLogin(client *vault.Client) (*vault.Client, error) {
+	token, _, err := conf.Cloud18IdentityToken()
+	if err != nil {
+		return nil, err
+	}
+	role := conf.VaultRoleId
+	if role == "" {
+		role = ConstCloud18IdentityClientID
+	}
+	secret, err := client.Logical().Write("auth/jwt/login", map[string]interface{}{"role": role, "jwt": token})
+	if err != nil {
+		return nil, fmt.Errorf("vault jwt login: %w", err)
+	}
+	if secret == nil || secret.Auth == nil || secret.Auth.ClientToken == "" {
+		return nil, errors.New("vault jwt login: no token in the answer")
+	}
+	client.SetToken(secret.Auth.ClientToken)
+	return client, nil
 }
 
 // encryptedTokenRe matches one encrypted value as GetEncryptedString writes it, anywhere
@@ -3873,11 +3904,6 @@ func (conf *Config) SwitchCloud18() {
 func (conf *Config) MonitorAPIURL() string {
 	return "https://" + conf.MonitorAddress + ":" + conf.APIPort
 }
-
-// ConstCloud18StorageSSOClientID is the GitLab application the Cloud18 storages trust (#2091),
-// cloud18-sso-client-id's default: a client id is public, the same for every instance, and the
-// application is not confidential, so nothing has to be delivered.
-const ConstCloud18StorageSSOClientID = "8af77a6d3cde0dc816de9f2072829a1d6f5e7f0f2e3d059df21b45b6b13a3821"
 
 // IsEnterprisePlan: registered to Cloud18 on a partner or support plan, which grants the
 // enterprise features (arbitration, the enterprise plugins). The plan is self-declared; the

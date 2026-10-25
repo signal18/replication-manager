@@ -24,6 +24,9 @@ export const globalClustersService = {
   reloadClustersPlanInfo,
   calibrateSmtGain,
   calibrateIops,
+  getCloud18Identity,
+  connectCloud18Identity,
+  disconnectCloud18Identity,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
   register,
@@ -132,6 +135,19 @@ function calibrateSmtGain(apply = true) {
   return getApi().post(`clusters/settings/actions/calibrate-smt-gain?apply=${apply}`)
 }
 
+// The Cloud18 login of this replication-manager (#2159): device login, no token ever returned
+function getCloud18Identity() {
+  return getApi().get(`clusters/settings/actions/cloud18-identity`)
+}
+
+function connectCloud18Identity() {
+  return getApi().post(`clusters/settings/actions/cloud18-identity/connect`)
+}
+
+function disconnectCloud18Identity() {
+  return getApi().post(`clusters/settings/actions/cloud18-identity/disconnect`)
+}
+
 function reloadClustersPlanInfo(download = true) {
   return getApi().post(`clusters/settings/actions/reload-clusters-plan-info`, { download })
 }
@@ -145,8 +161,10 @@ function getAppTemplateStructureGuide(clusterName, baseURL) {
 	return getApi(baseURL).get(`clusters/${clusterName}/templates/apps/structure-guide`)
 }
 
-function register(email, password, uri) {
-  return getApi().post('register', { email, password, uri })
+// Registration through Cloud18 (#2159): the URI, the admin's Cloud18 email and password (never stored),
+// or the details of a new Cloud18 account (signUp)
+function register(body) {
+  return getApi().post('register', body)
 }
 
 function confirmRegister(email, password, uri) {

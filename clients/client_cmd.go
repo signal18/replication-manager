@@ -342,9 +342,9 @@ func initPrintDefaultsFlags(cmd *cobra.Command) {
 
 func initRegisterFlags(cmd *cobra.Command) {
 	initServerApiFlags(cmd)
-	cmd.Flags().StringVar(&cliRegisterEmail, "email", "", "Email for the new GitLab account")
 	cmd.Flags().StringVar(&cliRegisterURI, "uri", "", "Registration URI in domain.subdomain.zone format")
-	cmd.Flags().Bool("confirm", false, "Step 2: confirm email and complete registration")
+	cmd.Flags().StringVar(&cliRegisterEmail, "email", "", "Your Cloud18 account (its password is asked)")
+	cmd.Flags().StringVar(&cliRegisterPlan, "plan", "", "Subscription plan declared with the registration (default: the instance's)")
 	viper.BindPFlags(cmd.Flags())
 }
 
@@ -373,6 +373,9 @@ func init() {
 
 	rootClientCmd.AddCommand(tokenCmd)
 	initTokenFlags()
+
+	rootClientCmd.AddCommand(cloud18Cmd)
+	initCloud18Flags()
 
 	rootClientCmd.AddCommand(backupCmd)
 	initBackupFlags(backupCmd)

@@ -1744,6 +1744,15 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 }
 
 func (cm *ConfigManager) RotateGitAccessToken(conf *config.Config) error {
+	if conf.Cloud18GitProjects() {
+		// registered through Cloud18 (#2159): the project tokens renew themselves; a token GitLab
+		// already refuses cannot, the instance must be registered again (GWARN022)
+		if err := conf.RotateCloud18GitTokens(time.Now()); err != nil {
+			cm.logger.Errorf("none", config.ConstLogModGit, "Cloud18 git tokens not renewed: %v", err)
+			return err
+		}
+		return nil
+	}
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 	if err != nil {
 		cm.logger.Errorf("none", config.ConstLogModGit, "Error getting GitLab token: %v", err)

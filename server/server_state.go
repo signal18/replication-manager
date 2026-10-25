@@ -456,6 +456,36 @@ func (repman *ReplicationManager) ProduceClusterAggregateStates() {
 			ErrFrom: "REPMAN",
 		})
 	}
+	// The Cloud18 login (#2159): refreshed at least daily so the realm's idle limit is never
+	// reached, and a warning when it ended (revoked, refused) or ends soon.
+	// Requests for action of the Cloud18 registration (#2159). An instance registered through
+	// Cloud18 keeps its Cloud18 login (refreshed at least daily: the realm's idle limit is never
+	// reached) for its SSO storages and vault, and its project tokens; GitLab refusing them, or
+	// refusing the password of an instance registered with it, asks to register again.
+	repman.Cloud18LoginState = ""
+	if repman.Conf != nil && repman.Conf.Cloud18 && repman.Conf.Cloud18GitProjects() {
+		repman.Conf.Cloud18IdentityKeepAlive()
+		st := repman.Conf.Cloud18IdentityStatus()
+		repman.Cloud18LoginState = st.State
+		if st.State == "none" {
+			st.State, st.Reason = "reconnect", "its Cloud18 login is missing"
+		}
+		if st.State == "reconnect" {
+			repman.SetState("GWARN021", state.State{
+				ErrType: "WARNING",
+				ErrKey:  "GWARN021",
+				ErrDesc: fmt.Sprintf(config.GlobalError["GWARN021"], st.Reason),
+				ErrFrom: "REPMAN",
+			})
+		}
+	}
+	if repman.Conf != nil && repman.Conf.Cloud18GitTokenLost() {
+		repman.SetState("GWARN022", state.State{ErrType: "WARNING", ErrKey: "GWARN022",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN022"], "GitLab refuses its git token"), ErrFrom: "REPMAN"})
+	} else if repman.cloud18PasswordRefused.Load() && repman.Conf != nil && !repman.Conf.Cloud18GitProjects() {
+		repman.SetState("GWARN022", state.State{ErrType: "WARNING", ErrKey: "GWARN022",
+			ErrDesc: fmt.Sprintf(config.GlobalError["GWARN022"], "GitLab refuses the password it was registered with"), ErrFrom: "REPMAN"})
+	}
 	if repman.MeetUserID != "" {
 		repman.SetState("GINF005", state.State{
 			ErrType: "INFO",

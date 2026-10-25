@@ -452,6 +452,18 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCalibrateIOPS)),
 	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/settings/actions/cloud18-identity", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18Identity)),
+	)).Methods(http.MethodGet)
+	router.Handle("/api/clusters/settings/actions/cloud18-identity/connect", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18IdentityConnect)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/settings/actions/cloud18-identity/disconnect", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18IdentityDisconnect)),
+	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/settings/actions/calibrate-smt-gain", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCalibrateSMTGain)),
@@ -5102,6 +5114,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return err
 		}
 		mycluster.Conf.Cloud18DomainSecret = string(val)
+	case "cloud18-identity-url":
+		mycluster.Conf.Cloud18IdentityURL = value
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":
@@ -11203,10 +11217,12 @@ func validateS3ProviderAPIRequest(p config.S3Provider, mycluster *cluster.Cluste
 			return fmt.Errorf("providerApp %q is not a known sibling app S3 provider", p.ProviderApp)
 		}
 	case config.S3ProviderSourceCustom:
-		if p.AccessKey == "" {
+		// a Cloud18 SSO provider holds no keys (they come from the instance's identity at the
+		// storage's STS); p.Validate refuses keys on it
+		if !p.Cloud18SSO && p.AccessKey == "" {
 			return fmt.Errorf("accesskey is required for custom mode")
 		}
-		if p.SecretKey == "" {
+		if !p.Cloud18SSO && p.SecretKey == "" {
 			return fmt.Errorf("secretkey is required for custom mode")
 		}
 		u, err := url.ParseRequestURI(p.Endpoint)
@@ -11298,6 +11314,10 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 	}
 	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
 		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+	if mycluster.S3ProvidersPinned() {
+		http.Error(w, "The S3 providers are set by a config file (s3-provider): change them there", http.StatusConflict)
 		return
 	}
 	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
@@ -11410,6 +11430,10 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderModify(w http.Respo
 		return
 	}
 	logLegacyS3ProviderMethodUsage(mycluster, "/api/clusters/{clusterName}/s3providers/{name}/modify", r.Method, http.MethodPut)
+	if mycluster.S3ProvidersPinned() {
+		http.Error(w, "The S3 providers are set by a config file (s3-provider): change them there", http.StatusConflict)
+		return
+	}
 	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
 		var req s3ProviderRequest
 		legacyUnknownFieldAccepted, err := decodeS3ProviderRequestBody(w, r, &req)
@@ -11462,6 +11486,10 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderDrop(w http.Respons
 		return
 	}
 	logLegacyS3ProviderMethodUsage(mycluster, "/api/clusters/{clusterName}/s3providers/{name}/drop", r.Method, http.MethodDelete)
+	if mycluster.S3ProvidersPinned() {
+		http.Error(w, "The S3 providers are set by a config file (s3-provider): change them there", http.StatusConflict)
+		return
+	}
 	resp := executeS3ProviderCRUDTransaction(mycluster, func() s3ProviderCRUDHTTPResponse {
 		name := vars["name"]
 		// Capture old state before removal so we can roll back if save fails.

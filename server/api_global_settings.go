@@ -277,6 +277,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 			return err
 		}
 		repman.Conf.Cloud18GitPassword = string(val)
+	case "cloud18-identity-url":
+		repman.Conf.Cloud18IdentityURL = value
 	case "cloud18-gateway-domain-name":
 		repman.Conf.Cloud18GatewayDomainName = value
 	case "cloud18-gateway-service":

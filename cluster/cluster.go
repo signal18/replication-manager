@@ -2341,7 +2341,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 
 	has_changed, err = cluster.saveConfigArtifact(filePath, buf.Bytes(), "saved-"+cluster.Name, true)
 	if err == nil && providersInConfig {
-		cluster.retireS3ProvidersFile()
+		cluster.markS3ProvidersInConfig()
 	}
 	if err == nil && has_changed {
 		// Stamp the last time the persisted cluster config actually hit disk.
@@ -2532,6 +2532,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetSponsorUser()+":"+cluster.GetSponsorPass())
 	case "git-acces-token":
 		return cluster.Conf.GetStableEncryptedValue("git-acces-token", cluster.Conf.GetDecryptedValue("git-acces-token"))
+	case "git-pull-access-token":
+		return cluster.Conf.GetStableEncryptedValue("git-pull-access-token", cluster.Conf.GetDecryptedValue("git-pull-access-token"))
 	case "vault-token":
 		return cluster.Conf.GetStableEncryptedValue("vault-token", cluster.Conf.GetDecryptedValue("vault-token"))
 	default:

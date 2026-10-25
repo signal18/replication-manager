@@ -461,6 +461,40 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, tok, conf.WorkingDir)
 	}
 
+	// An instance registered with the GitLab password moves to its own project tokens by
+	// itself (#2159); when it cannot, the password path below goes on as before.
+	repman.cloud18MigrateToProjectTokens(conf)
+
+	if conf.Cloud18 && conf.Cloud18GitProjects() {
+		// Registered through Cloud18 (#2159): the instance's own project tokens, one per
+		// repository, renewed by themselves before they end. No GitLab login, no password.
+		if conf.Cloud18Domain == "" || conf.Cloud18SubDomain == "" || conf.Cloud18SubDomainZone == "" {
+			return fmt.Errorf("Cloud18 URI is incomplete")
+		}
+		repman.SetCloudPartner()
+		name := conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
+		conf.GitUrl = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + name + ".git"
+		conf.GitUrlPull = conf.OAuthProvider + "/" + conf.Cloud18Domain + "/" + name + "-pull.git"
+		conf.GitUsername = "replication-manager" // GitLab takes any user name with a token
+		conf.SetImmuableFlag("git-url", conf.GitUrl)
+		conf.SetImmuableFlag("git-url-pull", conf.GitUrlPull)
+		conf.SetImmuableFlag("git-username", conf.GitUsername)
+		repman.rotateCloud18GitTokens(conf, false)
+		if conf.ConfRestoreOnStart {
+			conf.ConfRestoreOnStart = false
+			conf.SetImmuableFlag("monitoring-restore-config-on-start", false)
+			// the Cloud18 login is the instance's own, never in git: kept across the restore
+			keepLogin := conf.KeepCloud18LoginFile()
+			os.RemoveAll(conf.WorkingDir)
+			conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GetDecryptedValue("git-acces-token"), conf.WorkingDir)
+			conf.CloneConfigFromGit(conf.GitUrlPull, conf.GitUsername, conf.GitPullToken(), conf.WorkingDir+"/.pull")
+			if keepLogin != nil {
+				keepLogin()
+			}
+		}
+		return nil
+	}
+
 	if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
 		gituser := conf.Cloud18GitUser
 		gitpassword := conf.GetDecryptedValue("cloud18-gitlab-password")
@@ -470,6 +504,8 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 				// the user, never the password
 				repman.Logrus.Errorf("GitLab login of %s failed: %s", conf.Cloud18GitUser, err)
 			}
+			// GitLab stops the password grant (#2159): register again through Cloud18 (GWARN022)
+			repman.cloud18PasswordRefused.Store(true)
 			conf.Cloud18 = false
 			return err
 		}
@@ -570,9 +606,13 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 			if conf.ConfRestoreOnStart {
 				conf.ConfRestoreOnStart = false
 				conf.SetImmuableFlag("monitoring-restore-config-on-start", false)
+				keepLogin := conf.KeepCloud18LoginFile()
 				os.RemoveAll(conf.WorkingDir)
 				conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
 				conf.CloneConfigFromGit(conf.GitUrlPull, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir+"/.pull")
+				if keepLogin != nil {
+					keepLogin()
+				}
 			}
 
 		} else if conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlInfo) {
@@ -654,6 +694,7 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 }
 
 func (repman *ReplicationManager) PullCloud18Configs() {
+	defer repman.readCloud18PullState() // the back office's answer to the instance's requests (#2159)
 	gm := repman.ConfigManager.GetGitManager()
 	if gm == nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git manager not initialized")
@@ -683,11 +724,11 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		// directory blocks the checkout of the ../plugins symlink the -pull repo now
 		// ships, which aborts the whole pull. Normalize it up front.
 		repman.normalizePullPluginSymlinks(pullDir)
-		err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets.Get("git-acces-token").Value, pullDir)
+		err := repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.GitPullToken(), pullDir)
 		if err != nil {
 			os.RemoveAll(pullDir + "/.git")
 			repman.normalizePullPluginSymlinks(pullDir) // clear any remaining conflict before the retry
-			err = repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.Secrets.Get("git-acces-token").Value, pullDir)
+			err = repman.Conf.CloneConfigFromGit(repman.Conf.GitUrlPull, repman.Conf.GitUsername, repman.Conf.GitPullToken(), pullDir)
 			if err != nil {
 				pullErr = err
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Error pulling cloud18 git config: %v", err)

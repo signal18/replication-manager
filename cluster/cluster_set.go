@@ -2343,15 +2343,8 @@ func (cluster *Cluster) SetInjectVariables() {
 			var secret config.Secret
 			secret.Value = fmt.Sprintf("%v", val)
 			cluster.Conf.Secrets.Set("api-oauth-client-secret", secret)
-		case "cloud18-sso-client-id":
-			// the GitLab application the Cloud18 storages trust, pushed by the BO like
-			// api-oauth-client-id (#2091)
-			cluster.Conf.Cloud18SSOClientID = fmt.Sprintf("%v", val)
-		case "cloud18-sso-client-secret":
-			cluster.Conf.Cloud18SSOClientSecret = fmt.Sprintf("%v", val)
-			var secret config.Secret
-			secret.Value = fmt.Sprintf("%v", val)
-			cluster.Conf.Secrets.Set("cloud18-sso-client-secret", secret)
+		case "cloud18-identity-url":
+			cluster.Conf.Cloud18IdentityURL = fmt.Sprintf("%v", val)
 		case "api-credentials-external":
 			cluster.Conf.APIUsersExternal = fmt.Sprintf("%v", val)
 		case "api-credentials-acl-allow":

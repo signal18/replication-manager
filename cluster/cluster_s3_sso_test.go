@@ -5,15 +5,14 @@
 package cluster
 
 import (
-	"encoding/base64"
 	"errors"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
 )
 
-// #2091: an S3 provider reached with the Cloud18 SSO holds no keys, needs a registered
-// replication-manager, and its folder is named after the identity token's user
+// #2091, #2159: an S3 provider reached with the Cloud18 SSO holds no keys, needs a registered
+// replication-manager with its Cloud18 identity client, and assumes the storages' role
 func TestCloud18SSOProvider(t *testing.T) {
 	p := config.S3Provider{Name: "cloud18", ProviderSource: config.S3ProviderSourceCustom, Endpoint: "https://s3.example", Cloud18SSO: true}
 	if err := p.Validate(); err != nil {
@@ -40,25 +39,20 @@ func TestCloud18SSOProvider(t *testing.T) {
 	if err := cl.s3ProviderUsable(config.S3Provider{Cloud18SSO: true}); !errors.Is(err, ErrCloud18SSONotRegistered) {
 		t.Fatalf("not registered: %v", err)
 	}
+	cl.Conf.Cloud18 = true
+	if err := cl.s3ProviderUsable(config.S3Provider{Cloud18SSO: true}); !errors.Is(err, config.ErrCloud18IdentityNotSet) {
+		t.Fatalf("registered, nobody connected it: %v", err)
+	}
+	connectCloud18ForTest(t, cl)
+	if err := cl.s3ProviderUsable(config.S3Provider{Cloud18SSO: true}); err != nil {
+		t.Fatalf("registered and connected: %v", err)
+	}
 	if err := cl.s3ProviderUsable(config.S3Provider{}); err != nil {
 		t.Fatalf("a provider with keys: %v", err)
 	}
 
-	// the role MinIO printed for the crm storage's client id
-	if r := minioRoleArn("eu-west-1", "8af77a6d3cde0dc816de9f2072829a1d6f5e7f0f2e3d059df21b45b6b13a3821"); r != "arn:minio:iam:eu-west-1::role/M0hK6Ax3bHi3m7boieYiRr-ApYQ" {
+	// the role MinIO printed for the storages' audience (fr-1, fr-2 and mixr fr-1, 2026-10-24)
+	if r := minioRoleArn("eu-west-1", config.ConstCloud18StorageAudience); r != "arn:minio:iam:eu-west-1::role/uis-o2VW9GtZuoJDSshFCPUr0Rs" {
 		t.Fatalf("computed role %s", r)
-	}
-
-	tok := func(payload string) string {
-		return "h." + base64.RawURLEncoding.EncodeToString([]byte(payload)) + ".s"
-	}
-	// the folder is the permanent GitLab user id, never the username
-	if u, err := identityTokenUser(tok(`{"sub":"42","preferred_username":"acme"}`)); err != nil || u != "42" {
-		t.Fatalf("user %q %v", u, err)
-	}
-	for _, bad := range []string{"x.y", tok(`{}`), tok(`{"preferred_username":"acme"}`), tok(`{"sub":"a/b"}`)} {
-		if _, err := identityTokenUser(bad); err == nil {
-			t.Errorf("%q must be refused", bad)
-		}
 	}
 }

@@ -67,9 +67,11 @@ var instanceLocalConfigKeys = map[string]bool{
 	"vault-secret-id":         true,
 	"api-oauth-client-id":     true,
 	"api-oauth-client-secret": true,
-	// the storages' GitLab application, pushed by the BO to each instance (#2091)
-	"cloud18-sso-client-id":     true,
-	"cloud18-sso-client-secret": true,
+	// each instance registered through Cloud18 keeps its own project tokens (#2159)
+	"git-pull-access-token":       true,
+	"cloud18-git-project-id":      true,
+	"cloud18-git-pull-project-id": true,
+	"cloud18-git-token-expires":   true,
 }
 
 // IsInstanceLocalConfigKey reports whether a config key is excluded from
