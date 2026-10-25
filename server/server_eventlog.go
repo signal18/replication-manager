@@ -218,6 +218,19 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 		}
 	}
 
+	// the S3 provider list diffs per entry: "s3-provider.<name>.<key>" (#2155)
+	if rest, ok := strings.CutPrefix(ev.Key, "s3-provider."); ok {
+		if i := strings.LastIndex(rest, "."); i > 0 {
+			if err := cl.ApplyS3ProviderSetting(rest[:i], rest[i+1:], ev.Value, ev.Action == "unset"); err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Event log: cannot apply %s on %s: %s", ev.Key, ev.Cluster, err)
+				cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+				return false
+			}
+			cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+			return true
+		}
+	}
+
 	value := ev.Value
 	if ev.Action == "unset" {
 		def, ok := cl.Conf.DefaultFlagMap[ev.Key]

@@ -27,6 +27,15 @@ type s3ProviderState struct {
 	providers []config.S3Provider
 	mu        sync.RWMutex
 	crudMu    sync.Mutex
+	// fromFile: the list was read from s3providers.json, not from the config's
+	// [[s3-provider]] blocks: the next config save migrates it (#2155)
+	fromFile bool
+	// cipher: the ciphertext a key was read or replayed with, by plaintext, reused while it
+	// encodes the same key: a save rewrites identical bytes (no git change, no event)
+	cipher   map[string]string
+	cipherMu sync.Mutex
+	// pending: a provider a peer's events are creating, until its keys validate (#2155)
+	pending map[string]map[string]interface{}
 }
 
 // s3ProviderOnDisk is a private struct used exclusively for file I/O.
@@ -87,14 +96,14 @@ func (cluster *Cluster) s3ProvidersFilePath() string {
 func (cluster *Cluster) encryptS3Provider(p config.S3Provider) config.S3Provider {
 	out := p
 	if p.AccessKey != "" {
-		out.AccessKey = cluster.Conf.GetEncryptedString(p.AccessKey)
+		out.AccessKey = cluster.stableS3Cipher(p.AccessKey)
 		if !strings.HasPrefix(out.AccessKey, "hash_") {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"S3 provider %q: no encryption key loaded — AccessKey will be stored in plaintext", p.Name)
 		}
 	}
 	if p.SecretKey != "" {
-		out.SecretKey = cluster.Conf.GetEncryptedString(p.SecretKey)
+		out.SecretKey = cluster.stableS3Cipher(p.SecretKey)
 		if !strings.HasPrefix(out.SecretKey, "hash_") {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
 				"S3 provider %q: no encryption key loaded — SecretKey will be stored in plaintext", p.Name)
@@ -107,22 +116,72 @@ func (cluster *Cluster) encryptS3Provider(p config.S3Provider) config.S3Provider
 // Values that were not encrypted (no "hash_" prefix) are returned unchanged.
 func (cluster *Cluster) decryptS3Provider(p *config.S3Provider) {
 	if p.AccessKey != "" {
-		p.AccessKey = cluster.Conf.GetDecryptedPassword("s3provider-accesskey", p.AccessKey)
+		p.AccessKey = cluster.decryptS3Key("s3provider-accesskey", p.AccessKey)
 	}
 	if p.SecretKey != "" {
-		p.SecretKey = cluster.Conf.GetDecryptedPassword("s3provider-secretkey", p.SecretKey)
+		p.SecretKey = cluster.decryptS3Key("s3provider-secretkey", p.SecretKey)
 	}
 }
 
-// LoadS3Providers reads the per-cluster JSON file into ClusterS3Providers under a
-// write lock. Secrets are decrypted after reading via s3ProviderOnDisk (which
-// bypasses S3Provider.MarshalJSON). If the file is absent the field is set to an
-// empty slice and nil is returned. Struct parse errors are logged at LvlWarn and
-// yield an empty slice plus a non-nil error. Individual records that fail
-// Validate() or are duplicates are skipped (LvlWarn per record); valid records are
-// still loaded and a non-nil error is returned to signal partial data loss so
-// callers can decide whether to abort startup or alert. Startup is never blocked.
+// decryptS3Key decrypts one key and remembers its ciphertext for stableS3Cipher.
+func (cluster *Cluster) decryptS3Key(name string, value string) string {
+	plain := cluster.Conf.GetDecryptedPassword(name, value)
+	if strings.HasPrefix(value, "hash_") && plain != value {
+		cluster.s3Providers.cipherMu.Lock()
+		if cluster.s3Providers.cipher == nil {
+			cluster.s3Providers.cipher = map[string]string{}
+		}
+		cluster.s3Providers.cipher[plain] = value
+		cluster.s3Providers.cipherMu.Unlock()
+	}
+	return plain
+}
+
+// stableS3Cipher encrypts a key, reusing the ciphertext it was read with: encryption uses a
+// random IV, a new one at each save would change the saved config every time (#2155).
+func (cluster *Cluster) stableS3Cipher(plain string) string {
+	cluster.s3Providers.cipherMu.Lock()
+	defer cluster.s3Providers.cipherMu.Unlock()
+	if c, ok := cluster.s3Providers.cipher[plain]; ok {
+		return c
+	}
+	c := cluster.Conf.GetEncryptedString(plain)
+	if strings.HasPrefix(c, "hash_") {
+		if cluster.s3Providers.cipher == nil {
+			cluster.s3Providers.cipher = map[string]string{}
+		}
+		cluster.s3Providers.cipher[plain] = c
+	}
+	return c
+}
+
+// s3ProvidersInConfig tells whether the providers are kept in the cluster's config as
+// [[s3-provider]] blocks (#2155): with the dynamic config, unless a config file sets the list
+// (pinned). Otherwise s3providers.json stays their store.
+func (cluster *Cluster) s3ProvidersInConfig() bool {
+	if !cluster.Conf.ConfRewrite {
+		return false
+	}
+	_, pinned := cluster.Conf.GetImmuableFlag("s3-provider")
+	return !pinned
+}
+
+// LoadS3Providers loads the cluster's providers into ClusterS3Providers under a write lock:
+// from the config's [[s3-provider]] blocks (#2155), or, when there is none, from the
+// per-cluster JSON file it replaces, which the next config save then migrates. Secrets are
+// decrypted after reading. If neither is there the list is empty and nil is returned. Struct
+// parse errors are logged at LvlWarn and yield an empty slice plus a non-nil error.
+// Individual records that fail Validate() or are duplicates are skipped (LvlWarn per
+// record); valid records are still loaded and a non-nil error is returned to signal partial
+// data loss so callers can decide whether to abort startup or alert. Startup is never blocked.
 func (cluster *Cluster) LoadS3Providers() error {
+	if len(cluster.Conf.S3Providers) > 0 {
+		records := make([]config.S3Provider, 0, len(cluster.Conf.S3Providers))
+		for _, m := range cluster.Conf.S3Providers {
+			records = append(records, config.S3ProviderFromSettings(m))
+		}
+		return cluster.setLoadedS3Providers(records, "the config", false)
+	}
 	path := cluster.s3ProvidersFilePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -148,26 +207,41 @@ func (cluster *Cluster) LoadS3Providers() error {
 		return fmt.Errorf("parse S3 providers file %s: %w", path, err)
 	}
 
+	records := make([]config.S3Provider, 0, len(raw))
+	for _, d := range raw {
+		records = append(records, fromOnDisk(d))
+	}
+	err = cluster.setLoadedS3Providers(records, path, true)
+	if cluster.s3ProvidersInConfig() && len(records) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"S3 providers read from %s: the next config save moves them to the cluster config (#2155)", path)
+		cluster.Save()
+	}
+	return err
+}
+
+// setLoadedS3Providers decrypts, validates and dedups the loaded records, then sets them as
+// the cluster's list; from names where they come from, for the logs.
+func (cluster *Cluster) setLoadedS3Providers(records []config.S3Provider, from string, fromFile bool) error {
 	// Decrypt secrets, validate, and enforce first-wins name uniqueness.
 	// Invalid records and duplicate names are skipped with a LvlWarn per entry
 	// so a single corrupt entry does not wipe the rest of the provider set.
 	// Name uniqueness is enforced case-sensitively ("Provider" != "provider");
 	// this is intentional and documented in ValidateS3ProviderName.
-	seen := make(map[string]struct{}, len(raw))
-	valid := make([]config.S3Provider, 0, len(raw))
+	seen := make(map[string]struct{}, len(records))
+	valid := make([]config.S3Provider, 0, len(records))
 	skipped := 0
-	for _, d := range raw {
-		p := fromOnDisk(d)
+	for _, p := range records {
 		cluster.decryptS3Provider(&p)
 		if err := p.Validate(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"Skipping invalid S3 provider %q in %s: %v", p.Name, path, err)
+				"Skipping invalid S3 provider %q in %s: %v", p.Name, from, err)
 			skipped++
 			continue
 		}
 		if _, dup := seen[p.Name]; dup {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-				"Skipping duplicate S3 provider name %q in %s: first occurrence retained", p.Name, path)
+				"Skipping duplicate S3 provider name %q in %s: first occurrence retained", p.Name, from)
 			skipped++
 			continue
 		}
@@ -178,16 +252,18 @@ func (cluster *Cluster) LoadS3Providers() error {
 	cluster.s3Providers.mu.Lock()
 	defer cluster.s3Providers.mu.Unlock()
 	cluster.s3Providers.providers = valid
+	cluster.s3Providers.fromFile = fromFile && len(valid) > 0
 
 	if skipped > 0 {
-		return fmt.Errorf("S3 providers file %s: %d record(s) skipped due to validation errors or duplicate names — check logs for details", path, skipped)
+		return fmt.Errorf("S3 providers in %s: %d record(s) skipped due to validation errors or duplicate names — check logs for details", from, skipped)
 	}
 	return nil
 }
 
-// SaveS3Providers validates all providers, encrypts secrets, and atomically writes
-// to the deterministic per-cluster path via a temp-file + rename strategy.
-// The private s3ProviderOnDisk struct is used to bypass S3Provider.MarshalJSON
+// SaveS3Providers validates all providers and persists them: in the cluster's config, by the
+// next config save (#2155), or, when the config does not keep them (s3ProvidersInConfig),
+// encrypted in the per-cluster JSON file, written atomically via a temp-file + rename
+// strategy. The private s3ProviderOnDisk struct is used to bypass S3Provider.MarshalJSON
 // (which omits credentials) so that encrypted secrets reach the file.
 // File permissions are 0600 (owner read/write only).
 func (cluster *Cluster) SaveS3Providers() error {
@@ -208,6 +284,11 @@ func (cluster *Cluster) SaveS3Providers() error {
 			return fmt.Errorf("duplicate S3 provider name %q in snapshot: save aborted", snapshot[i].Name)
 		}
 		seen[snapshot[i].Name] = struct{}{}
+	}
+
+	if cluster.s3ProvidersInConfig() {
+		cluster.Save()
+		return nil
 	}
 
 	toWrite := make([]s3ProviderOnDisk, len(snapshot))
@@ -253,6 +334,108 @@ func (cluster *Cluster) SaveS3Providers() error {
 		return fmt.Errorf("chmod S3 providers file %s: %w", path, err)
 	}
 	return nil
+}
+
+// S3ProvidersToml renders the cluster's providers, keys encrypted, as the
+// [[<section>.s3-provider]] blocks of its saved config (#2155).
+func (cluster *Cluster) S3ProvidersToml(section string) (string, error) {
+	snapshot := cluster.GetS3ProvidersSnapshot()
+	for i := range snapshot {
+		snapshot[i] = cluster.encryptS3Provider(snapshot[i])
+	}
+	return config.S3ProvidersToml(section, snapshot)
+}
+
+// retireS3ProvidersFile renames s3providers.json once a config save holds its providers
+// (#2155): kept as s3providers.json.migrated, never read again.
+func (cluster *Cluster) retireS3ProvidersFile() {
+	cluster.s3Providers.mu.Lock()
+	fromFile := cluster.s3Providers.fromFile
+	cluster.s3Providers.fromFile = false
+	cluster.s3Providers.mu.Unlock()
+	path := cluster.s3ProvidersFilePath()
+	if _, err := os.Stat(path); err != nil {
+		return
+	}
+	if err := os.Rename(path, path+".migrated"); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
+			"S3 providers file %s not renamed after its move to the cluster config: %s", path, err)
+		return
+	}
+	if fromFile {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"S3 providers moved to the cluster config (#2155): %s kept as %s.migrated", path, path)
+	}
+}
+
+// ApplyS3ProviderSetting applies a peer's config event on the provider list (#2155): the
+// saved config diffs it per entry, "s3-provider.<name>.<key>". A key's ciphertext is
+// decrypted, and kept so this instance saves the same bytes. A provider the events create
+// joins the list once its keys validate; unsetting its name removes it.
+func (cluster *Cluster) ApplyS3ProviderSetting(name string, key string, value string, unset bool) error {
+	return cluster.WithS3ProviderCRUDLock(func() error {
+		var settings map[string]interface{}
+		exists := false
+		for _, p := range cluster.GetS3ProvidersSnapshot() {
+			if p.Name == name {
+				settings, exists = config.S3ProviderSettings(p), true
+			}
+		}
+		cluster.s3Providers.mu.Lock()
+		if !exists {
+			settings = cluster.s3Providers.pending[name]
+		}
+		cluster.s3Providers.mu.Unlock()
+		if unset && (key == "name" || settings == nil) {
+			cluster.s3Providers.mu.Lock()
+			delete(cluster.s3Providers.pending, name)
+			cluster.s3Providers.mu.Unlock()
+			if exists {
+				cluster.RemoveS3Provider(name)
+				cluster.Save()
+			}
+			return nil
+		}
+		if settings == nil {
+			settings = map[string]interface{}{"name": name}
+		}
+		switch {
+		case unset:
+			delete(settings, key)
+		case key == "access-key" || key == "secret-key":
+			settings[key] = cluster.decryptS3Key("s3provider-"+strings.ReplaceAll(key, "-", ""), value)
+		default:
+			settings[key] = value
+		}
+		settings["name"] = name
+		p := config.S3ProviderFromSettings(settings)
+		if err := p.Validate(); err != nil {
+			if exists {
+				return err
+			}
+			cluster.s3Providers.mu.Lock()
+			if cluster.s3Providers.pending == nil {
+				cluster.s3Providers.pending = map[string]map[string]interface{}{}
+			}
+			cluster.s3Providers.pending[name] = settings
+			cluster.s3Providers.mu.Unlock()
+			return nil
+		}
+		cluster.s3Providers.mu.Lock()
+		delete(cluster.s3Providers.pending, name)
+		cluster.s3Providers.mu.Unlock()
+		var err error
+		if exists {
+			err = cluster.UpdateS3Provider(p)
+		} else {
+			err = cluster.AddS3Provider(p)
+		}
+		if err == nil {
+			cluster.Save()
+			go cluster.RefreshBackupMount()
+		}
+		return err
+	})
 }
 
 // WithS3ProviderCRUDLock serializes S3 provider mutate+persist(+rollback)
