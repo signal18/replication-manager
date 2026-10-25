@@ -97,7 +97,7 @@ func TestCloud18TestedSetupsCache(t *testing.T) {
 		t.Fatalf("a stale copy must not be readable but keep its date: ok=%v asOf=%v", ok, asOf)
 	}
 	if w := cloud18SetupWarning(setups, ok, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4", "haproxy"); w == "" || !strings.Contains(w, "too long ago") {
-		t.Fatalf("a stale copy must refuse with its date: %v", w)
+		t.Fatalf("a stale copy must warn with its date: %v", w)
 	}
 }
 
@@ -146,7 +146,7 @@ func TestCloud18SetupTested(t *testing.T) {
 		t.Error("11.4.5 must not cover 11.4.50")
 	}
 	if w := cloud18SetupWarning(nil, false, time.Time{}, "mariadb", config.TopoMasterSlave, "11.4.5", "haproxy"); w == "" {
-		t.Error("unreadable tested setups must refuse")
+		t.Error("unreadable tested setups must warn")
 	}
 }
 

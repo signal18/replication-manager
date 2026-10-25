@@ -145,21 +145,25 @@ func (repman *ReplicationManager) refreshCloud18TestedSetups() {
 	}
 	fresh := &cloud18TestedSetupsCopy{FetchedAt: time.Now().UTC(), Setups: setups}
 	c.mu.Lock()
+	// the CRM sorts its answer (ORDER BY ... run_ref), so an unchanged answer compares equal
 	changed := c.held == nil || !reflect.DeepEqual(c.held.Setups, setups)
 	write := changed || time.Since(c.diskWritten) >= cloud18TestedSetupsDiskRewrite
 	c.held = fresh
-	if write {
-		c.diskWritten = time.Now()
-	}
 	c.mu.Unlock()
 	if !write {
 		return
 	}
-	if data, err := json.Marshal(fresh); err == nil {
-		if err := writeConfigFileAtomic(repman.testedSetupsFile(), data); err != nil {
-			repman.Logrus.Warnf("cloud18 tested setups not kept on disk: %s", err)
-		}
+	data, err := json.Marshal(fresh)
+	if err == nil {
+		err = writeConfigFileAtomic(repman.testedSetupsFile(), data)
 	}
+	if err != nil {
+		repman.Logrus.Warnf("cloud18 tested setups not kept on disk: %s", err)
+		return
+	}
+	c.mu.Lock()
+	c.diskWritten = time.Now()
+	c.mu.Unlock()
 }
 
 func (repman *ReplicationManager) fetchCloud18TestedSetupsFromCRM() ([]cloud18TestedSetup, error) {
@@ -345,7 +349,11 @@ func cloud18TopologiesTested(setups []cloud18TestedSetup, readable bool, asOf ti
 		for _, k := range keys {
 			run := runs[k]
 			passed = passed || run.Status == "passed"
-			tested = append(tested, map[string]any{"release": k.release, "proxy": k.proxy, "status": run.Status, "testedAt": run.TestedAt, "repmanVersion": run.RepmanVersion})
+			proxy := k.proxy
+			if proxy == "" {
+				proxy = "none" // the value a request sends for a cluster without a proxy
+			}
+			tested = append(tested, map[string]any{"release": k.release, "proxy": proxy, "status": run.Status, "testedAt": run.TestedAt, "repmanVersion": run.RepmanVersion})
 		}
 		e["testedReleases"] = tested
 		switch {
