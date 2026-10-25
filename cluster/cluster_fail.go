@@ -1423,9 +1423,9 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 
 		if errswitch == nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s elected as new leader %s", cluster.slaves[key].URL, result)
-
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Server %s failed to be elected as new leader %s: %s", cluster.slaves[key].URL, result, errswitch)
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s failed elected as new leader %s", cluster.slaves[key].URL, result)
 
 	}
 	// Failover for ring

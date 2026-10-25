@@ -35,6 +35,25 @@ func probeTablePresent(s *cluster.ServerMonitor) (bool, error) {
 	return n == 1, nil
 }
 
+// createProbeTable creates the empty probe table on the master: it is binlogged (or
+// certified by the group), so it reaches every other server and any reseed dump.
+func createProbeTable(master *cluster.ServerMonitor) error {
+	if _, err := master.Conn.Exec("CREATE DATABASE IF NOT EXISTS " + rollingProbeSchema); err != nil {
+		return fmt.Errorf("cannot create probe schema on master: %s", err)
+	}
+	if _, err := master.Conn.Exec("CREATE TABLE IF NOT EXISTS " + rollingProbeSchema + "." + rollingProbeTable + " (id INT PRIMARY KEY)"); err != nil {
+		return fmt.Errorf("cannot create probe table on master: %s", err)
+	}
+	return nil
+}
+
+// dropProbeTable drops the probe schema on the current master.
+func dropProbeTable(cl *cluster.Cluster) {
+	if m := cl.GetMaster(); m != nil && m.Conn != nil {
+		m.Conn.Exec("DROP DATABASE IF EXISTS " + rollingProbeSchema)
+	}
+}
+
 // rollingHealthCheck runs one of the cluster's rolling operations and asserts the
 // cluster is left healthy afterwards:
 //   - the SAME master as before (the op cycles the topology and must restore it);
@@ -91,19 +110,11 @@ func rollingHealthCheckVersions(cl *cluster.Cluster, opName string, op func() er
 	// Create an empty probe table on the master. It is binlogged, so it replicates
 	// to the slaves and is included in any reseed dump. It must still be there,
 	// everywhere, once the operation completes. Dropped on the way out.
-	if _, err := master.Conn.Exec("CREATE DATABASE IF NOT EXISTS " + rollingProbeSchema); err != nil {
-		logf("FAIL %s: cannot create probe schema on master: %s", opName, err)
+	if err := createProbeTable(master); err != nil {
+		logf("FAIL %s: %s", opName, err)
 		return false
 	}
-	defer func() {
-		if m := cl.GetMaster(); m != nil && m.Conn != nil {
-			m.Conn.Exec("DROP DATABASE IF EXISTS " + rollingProbeSchema)
-		}
-	}()
-	if _, err := master.Conn.Exec("CREATE TABLE IF NOT EXISTS " + rollingProbeSchema + "." + rollingProbeTable + " (id INT PRIMARY KEY)"); err != nil {
-		logf("FAIL %s: cannot create probe table on master: %s", opName, err)
-		return false
-	}
+	defer dropProbeTable(cl)
 
 	// Snapshot each server's uptime before, to prove afterwards they were really
 	// cycled (uptime read from the collected status, no extra query), and its version.
