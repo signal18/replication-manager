@@ -262,9 +262,23 @@ func (conf *Config) Cloud18GitLabLogin(email, password string) (string, error) {
 	return "", gitlabStop(page, at)
 }
 
+var gitlabFlashRe = regexp.MustCompile(`(?s)class="[^"]*(?:gl-alert-body|flash-[a-z]+|gl-alert-title)[^"]*"[^>]*>(.*?)</`)
+
+// gitlabFlash is the text of GitLab's alerts and flash messages on a page.
+func gitlabFlash(page string) string {
+	var out []string
+	for _, m := range gitlabFlashRe.FindAllStringSubmatch(page, 6) {
+		if t := pageText(m[1]); t != "" {
+			out = append(out, t)
+		}
+	}
+	return strings.Join(out, "; ")
+}
+
 // gitlabStop says why GitLab gave no authorization after a successful login.
 func gitlabStop(page string, at *url.URL) error {
-	low := strings.ToLower(page)
+	// the visible messages only: a page's navigation or footer links "Terms" everywhere
+	low := strings.ToLower(gitlabFlash(page) + " " + kcMessages(page))
 	switch {
 	case strings.Contains(low, "blocked"):
 		return errors.New("GitLab: the account is blocked")

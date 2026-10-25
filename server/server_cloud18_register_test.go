@@ -42,6 +42,7 @@ type registerFakes struct {
 	signIns    int    // POSTs to GitLab's password sign-in
 	evilAction string // the realm login page posts there instead (a page that changed hands)
 	failCreate int    // the next project token creations that fail
+	lastToken  int    // id of the last project token created
 }
 
 func newRegisterFakes(t *testing.T) (*registerFakes, string) {
@@ -193,7 +194,8 @@ func (f *registerFakes) api(w http.ResponseWriter, r *http.Request, path string)
 	case strings.HasSuffix(path, "/access_tokens/self/rotate"):
 		w.WriteHeader(http.StatusUnauthorized)
 	case strings.Contains(path, "/access_tokens") && r.Method == http.MethodGet:
-		fmt.Fprint(w, `[{"id":7,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false},{"id":8,"name":"someone else","active":true,"revoked":false}]`)
+		// an old token of the instance, another one, and the token just created (f.lastToken)
+		fmt.Fprintf(w, `[{"id":7,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false},{"id":8,"name":"someone else","active":true,"revoked":false},{"id":%d,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false}]`, f.lastToken)
 	case strings.Contains(path, "/access_tokens/") && r.Method == http.MethodDelete:
 		f.revoked = append(f.revoked, path)
 		w.WriteHeader(http.StatusNoContent)
@@ -201,8 +203,9 @@ func (f *registerFakes) api(w http.ResponseWriter, r *http.Request, path string)
 		f.failCreate--
 		w.WriteHeader(http.StatusInternalServerError)
 	case strings.HasSuffix(path, "/access_tokens"):
+		f.lastToken = 1000 + f.nextID
 		w.WriteHeader(http.StatusCreated)
-		fmt.Fprintf(w, `{"token":"glpat-%d","expires_at":%q}`, f.nextID, body["expires_at"])
+		fmt.Fprintf(w, `{"id":%d,"token":"glpat-%d","expires_at":%q}`, f.lastToken, f.nextID, body["expires_at"])
 	case strings.Contains(path, "/repository/files/"):
 		var pid int
 		fmt.Sscanf(strings.TrimPrefix(path, "/projects/"), "%d", &pid)
@@ -343,8 +346,8 @@ func TestCloud18MigrateToProjectTokens(t *testing.T) {
 	if old.Conf.Cloud18GitProjects() {
 		t.Fatal("the migration wrote into repman.Conf instead of the config being built")
 	}
-	if len(f.revoked) != 2 || !strings.HasSuffix(f.revoked[0], "/access_tokens/7") {
-		t.Fatalf("the instance's previous project tokens must be revoked (only those): %v", f.revoked)
+	if len(f.revoked) != 2 || !strings.HasSuffix(f.revoked[0], "/access_tokens/7") || !strings.HasSuffix(f.revoked[1], "/access_tokens/7") {
+		t.Fatalf("the instance's previous project tokens must be revoked, never the new ones nor someone else's: %v", f.revoked)
 	}
 	if !c.Cloud18GitProjects() || c.Cloud18GitProjectID != first.Conf.Cloud18GitProjectID || !strings.HasPrefix(c.GetDecryptedValue("git-acces-token"), "glpat-") {
 		t.Fatalf("not moved: projects %d/%d token %q", c.Cloud18GitProjectID, first.Conf.Cloud18GitProjectID, c.GetDecryptedValue("git-acces-token"))

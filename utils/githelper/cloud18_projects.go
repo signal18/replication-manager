@@ -202,8 +202,8 @@ func GitLabCreateProjectToken(oauthToken string, projectID int, name string, exp
 	err := gitlabCall(http.MethodPost, "/projects/"+strconv.Itoa(projectID)+"/access_tokens", oauthToken, true, map[string]interface{}{
 		"name": name, "scopes": ProjectTokenScopes, "access_level": 40, "expires_at": expires.Format("2006-01-02"),
 	}, &t)
-	if err == nil && t.Token == "" {
-		err = errors.New("GitLab gave no project token")
+	if err == nil && (t.Token == "" || t.ID <= 0) {
+		err = errors.New("GitLab gave no project token (or no id)")
 	}
 	return t, err
 }
@@ -222,6 +222,9 @@ func GitLabRotateProjectToken(projectToken string, projectID int, expires time.T
 // GitLabRevokeProjectTokens revokes the active project access tokens named name except keepID (an
 // instance's previous ones, once a reconnect gave it new ones). Best effort: how many it revoked.
 func GitLabRevokeProjectTokens(oauthToken string, projectID int, name string, keepID int) int {
+	if keepID <= 0 {
+		return 0 // without the new token's id, the new token itself could be revoked
+	}
 	var tokens []struct {
 		ID      int    `json:"id"`
 		Name    string `json:"name"`

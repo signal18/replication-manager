@@ -87,7 +87,7 @@ func (f *fakeGitLab) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
-		fmt.Fprintf(w, `{"token":%q,"expires_at":%q}`, tok, body["expires_at"])
+		fmt.Fprintf(w, `{"id":%d,"token":%q,"expires_at":%q}`, f.nextID, tok, body["expires_at"])
 	case strings.HasSuffix(path, "/access_tokens/self/rotate"):
 		old := r.Header.Get("PRIVATE-TOKEN")
 		if _, ok := f.tokens[old]; !ok {
