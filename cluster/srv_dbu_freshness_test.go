@@ -177,5 +177,9 @@ func TestGetDatabaseMetricsSlaveWithoutSlaveStatus(t *testing.T) {
 	server.WorkLoad = config.NewWorkLoadsMap()
 	server.IsSlave = true
 	server.SlaveStatus = nil
-	_ = server.GetDatabaseMetrics()
+	for _, m := range server.GetDatabaseMetrics() {
+		if strings.Contains(m.Name, "mysql_slave_status_") {
+			t.Fatalf("no slave series without a slave status, got %s", m.Name)
+		}
+	}
 }
