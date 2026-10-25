@@ -1413,20 +1413,24 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	cluster.master = cluster.Servers[skey]
 	cluster.failoverPreScript(fail)
 
-	// Phase 2: Reject updates and sync slaves on switchover
-	if !fail && cluster.GetTopology() != config.TopoMultiMasterWsrep {
+	// Phase 2: Reject updates and sync slaves on switchover. Not on a group: the
+	// group's primary change (group_replication_set_as_primary) waits for the old
+	// PRIMARY's transactions and makes it read-only itself, and a freeze (FTWRL,
+	// max_connections 1) stops that change (#2170); Galera for MDEV-9134.
+	if !fail && cluster.GetTopology() != config.TopoMultiMasterWsrep && !cluster.Conf.MultiMasterGrouprep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejecting updates on %s (old master)", cluster.oldMaster.URL)
 		cluster.oldMaster.freeze()
 	}
 	if !fail && cluster.Conf.MultiMasterGrouprep {
-		result, errswitch := cluster.slaves[key].SetGroupReplicationPrimary()
-
-		if errswitch == nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s elected as new leader %s", cluster.slaves[key].URL, result)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Server %s failed to be elected as new leader %s: %s", cluster.slaves[key].URL, result, errswitch)
+		logs, errswitch := cluster.slaves[key].SetGroupReplicationPrimary()
+		if errswitch != nil {
+			// the group kept its PRIMARY: so does replication-manager
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Server %s could not be made the group's PRIMARY (%s): %s; switchover canceled", cluster.slaves[key].URL, logs, errswitch)
+			cluster.vmaster = cluster.oldMaster
+			cluster.master = cluster.oldMaster
+			return false
 		}
-
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s is the group's new PRIMARY", cluster.slaves[key].URL)
 	}
 	// Failover for ring
 	if cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {

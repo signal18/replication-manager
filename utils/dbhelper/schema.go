@@ -1361,22 +1361,20 @@ func SetEventScheduler(db *sqlx.DB, state bool, myver *version.Version) (string,
 	return stmt, err
 }
 
-// SetGroupReplicationPrimary sets the current server as the group replication primary
+// SetGroupReplicationPrimary makes the server it is called on the group replication
+// PRIMARY (group_replication_set_as_primary with its own server_uuid), and returns the
+// statement and MySQL's error when the group refuses. MySQL and Percona only: PostgreSQL
+// and MariaDB have no group replication, an explicit error.
 func SetGroupReplicationPrimary(db *sqlx.DB, myver *version.Version) (string, error) {
+	if myver.IsPostgreSQL() || myver.IsMariaDB() {
+		return "", errors.New("group replication is a MySQL/Percona feature")
+	}
+	query := "SELECT group_replication_set_as_primary(@@server_uuid)"
 	var value string
-	uuid := ""
-	err := db.QueryRowx("SELECT @@server_uuid").Scan(&uuid)
-	if err != nil {
-		return "", err
+	if err := db.QueryRowx(query).Scan(&value); err != nil {
+		return query, err
 	}
-
-	// Use parameterized query to prevent SQL injection
-	query := "SELECT group_replication_set_as_primary(?)"
-	err = db.QueryRowx(query, uuid).Scan(&value)
-	if err != nil {
-		log.Println("ERROR: Could not set Group Replication Primary", err)
-	}
-	return value, nil
+	return query + ": " + value, nil
 }
 
 // CreateUser creates a new database user
