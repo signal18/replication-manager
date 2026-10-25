@@ -4704,6 +4704,9 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetStableEncryptedValue("api-oauth-client-secret", repman.Conf.GetDecryptedValue("api-oauth-client-secret"))
 	case "cloud18-gitlab-password":
 		return repman.Conf.GetStableEncryptedValue("cloud18-gitlab-password", repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
+	case "cloud18-identity-client-secret":
+		// the instance's Cloud18 identity client secret (#2159): without this case the save wrote it empty
+		return repman.Conf.GetStableEncryptedValue("cloud18-identity-client-secret", repman.Conf.GetDecryptedValue("cloud18-identity-client-secret"))
 	case "git-acces-token":
 		return repman.Conf.GetStableEncryptedValue("git-acces-token", repman.Conf.GetDecryptedValue("git-acces-token"))
 	case "vault-token":
