@@ -68,7 +68,8 @@ func reloadS3Providers(t *testing.T, cl *Cluster) []config.S3Provider {
 }
 
 // #2155: s3providers.json is read once, the config save writes the providers as
-// [[saved-<cluster>.s3-provider]] blocks, keys encrypted, and renames the file; the server's
+// [[saved-<cluster>.s3-provider]] blocks, keys encrypted, and marks the config as their store
+// (the file stays for older releases); the server's
 // load path reads them back; a second save writes identical bytes.
 func TestS3ProvidersMigrateToConfig(t *testing.T) {
 	cl := newS3ConfigTestCluster(t)
@@ -103,11 +104,11 @@ func TestS3ProvidersMigrateToConfig(t *testing.T) {
 	if strings.Contains(text, "AKID") || strings.Contains(text, "s3cr3t") {
 		t.Fatalf("keys saved in clear:\n%s", text)
 	}
-	if _, err := os.Stat(jsonPath); !os.IsNotExist(err) {
-		t.Fatal("s3providers.json still there")
+	if kept, err := os.ReadFile(jsonPath); err != nil || string(kept) != string(data) {
+		t.Fatalf("s3providers.json must stay as it was for older releases: %v", err)
 	}
-	if _, err := os.Stat(jsonPath + ".migrated"); err != nil {
-		t.Fatal("s3providers.json.migrated missing")
+	if _, err := os.Stat(filepath.Join(cl.WorkingDir, s3ProvidersInConfigMark)); err != nil {
+		t.Fatalf("%s missing", s3ProvidersInConfigMark)
 	}
 
 	got := reloadS3Providers(t, cl)
@@ -308,5 +309,34 @@ func TestS3CipherPruneAndRotation(t *testing.T) {
 	c := cl.stableS3Cipher("s3cr3t")
 	if c == old || cl.Conf.GetDecryptedPassword("t", c) != "s3cr3t" {
 		t.Fatalf("rotated key: ciphertext %q not renewed", c)
+	}
+}
+
+// #2155: once the config holds the providers, deleting them all does not bring back the ones
+// of s3providers.json, kept for older releases
+func TestS3ProvidersAllDeletedNotReadFromFile(t *testing.T) {
+	cl := newS3ConfigTestCluster(t)
+	data, _ := json.Marshal([]s3ProviderOnDisk{toOnDisk(cl.encryptS3Provider(s3TestProviders()[0]))})
+	if err := os.WriteFile(cl.s3ProvidersFilePath(), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := cl.LoadS3Providers(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.SaveConfigFile(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cl.RemoveS3Provider("bso-s3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.SaveConfigFile(); err != nil {
+		t.Fatal(err)
+	}
+	cl.Conf.S3Providers = nil // the saved config has no block left
+	if err := cl.LoadS3Providers(); err != nil {
+		t.Fatal(err)
+	}
+	if ps := cl.GetS3ProvidersSnapshot(); len(ps) != 0 {
+		t.Fatalf("deleted providers came back from s3providers.json: %+v", ps)
 	}
 }

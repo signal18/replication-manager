@@ -51,12 +51,16 @@ region = "eu-west-1"
 ## Migration
 
 `LoadS3Providers`: the config's blocks when the config keeps them, when they are pinned, or
-when there is no `s3providers.json`; else the file. Read from the file with the dynamic
-config, the providers are marked `fromFile` and a save is asked; the first `SaveConfigFile`
-that writes the blocks renames the file `s3providers.json.migrated` (kept, never read again).
-Only a list read from the file renames it. Records skipped at load (invalid, duplicate) are
-then only in the `.migrated` file: a WARN says how many. A failed save leaves the file in
-place: the next start reads it again, nothing is lost.
+when there is no `s3providers.json`; else the file, unless a save marked the config as the
+providers' store. Read from the file with the dynamic config, the providers are marked
+`fromFile` and a save is asked; the first `SaveConfigFile` that writes the blocks writes the
+mark `s3providers.json.in-config` (`markS3ProvidersInConfig`).
+
+`s3providers.json` itself is left as it was: a release before #2155 (a downgrade, or a peer
+on an older release reading a restored datadir) still finds the providers there, as they were
+at the migration. This release never reads it again once the mark exists, so deleting every
+provider does not bring back those of the file. A failed save writes no mark: the next start
+reads the file again, nothing is lost.
 
 ## Peers
 

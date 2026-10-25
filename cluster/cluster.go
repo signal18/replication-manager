@@ -2328,7 +2328,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 
 	has_changed, err = cluster.saveConfigArtifact(filePath, buf.Bytes(), "saved-"+cluster.Name, true)
 	if err == nil && providersInConfig {
-		cluster.retireS3ProvidersFile()
+		cluster.markS3ProvidersInConfig()
 	}
 	if err == nil && has_changed {
 		// Stamp the last time the persisted cluster config actually hit disk.

@@ -81,9 +81,10 @@ OpenBao). AppRole stays the default and the way to use one's own vault. The KV l
 
 There is no setting to keep the GitLab login for the storages: `cloud18-sso-client-id` /
 `cloud18-sso-client-secret` are removed. The servers accept both during the fleet upgrade: the Cloud18
-MinIOs have two OpenID providers (GitLab and Keycloak, two roles, the same policy), so an instance on the
-previous release keeps working until it upgrades. Once the fleet has upgraded, the GitLab provider is
-removed from the storages.
+MinIOs have two OpenID providers (GitLab and Keycloak, two roles, the same policy). Releases before this
+one keep logging in with GitLab: the storages keep trusting GitLab for as long as such releases run, and
+the folder is the same with both (per user, the GitLab id), so a customer mixing versions sees the same
+archives.
 
 ## Not here
 

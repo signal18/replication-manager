@@ -19,6 +19,11 @@ import (
 
 const s3ProvidersFileName = "s3providers.json"
 
+// s3ProvidersInConfigMark, next to s3providers.json, tells that the cluster config holds the
+// providers (#2155): the file is left as it was for a release before #2155 (a downgrade finds
+// its providers), never read again by this one.
+const s3ProvidersInConfigMark = s3ProvidersFileName + ".in-config"
+
 // s3ProviderState holds in-memory S3 provider data and its synchronization.
 // LOCKING CONTRACT:
 //   - providers reads/writes must hold mu (RLock for reads, Lock for writes)
@@ -30,9 +35,6 @@ type s3ProviderState struct {
 	// fromFile: the list was read from s3providers.json, not from the config's
 	// [[s3-provider]] blocks: the next config save migrates it (#2155)
 	fromFile bool
-	// skipped: records of the file left out at load (invalid or duplicate), kept only in
-	// s3providers.json.migrated once the file is retired
-	skipped int
 	// cipher: the ciphertext a key was read or replayed with, by plaintext, reused while it
 	// encodes the same key: a save rewrites identical bytes (no git change, no event)
 	cipher   map[string]string
@@ -205,7 +207,8 @@ func (cluster *Cluster) s3ProvidersInConfig() bool {
 // LoadS3Providers loads the cluster's providers into ClusterS3Providers under a write lock:
 // from the config's [[s3-provider]] blocks (#2155) when the config keeps them or a config file
 // sets them (pinned), else from the per-cluster JSON file they replace, which the next config
-// save then migrates. Blocks without a JSON file are read in any case. Secrets are
+// save then migrates. Blocks without a JSON file are read in any case, and so is the config
+// once a save marked it as holding the providers (s3ProvidersInConfigMark). Secrets are
 // decrypted after reading. If neither is there the list is empty and nil is returned. Struct
 // parse errors are logged at LvlWarn and yield an empty slice plus a non-nil error.
 // Individual records that fail Validate() or are duplicates are skipped (LvlWarn per
@@ -223,6 +226,10 @@ func (cluster *Cluster) LoadS3Providers() error {
 			}
 			return cluster.setLoadedS3Providers(records, "the config", false)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(cluster.WorkingDir, s3ProvidersInConfigMark)); err == nil && cluster.s3ProvidersInConfig() {
+		// the config holds the list, here empty: the file left for older releases is not read
+		return cluster.setLoadedS3Providers(nil, "the config", false)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -294,10 +301,6 @@ func (cluster *Cluster) setLoadedS3Providers(records []config.S3Provider, from s
 	defer cluster.s3Providers.mu.Unlock()
 	cluster.s3Providers.providers = valid
 	cluster.s3Providers.fromFile = fromFile && len(valid) > 0
-	cluster.s3Providers.skipped = 0
-	if fromFile {
-		cluster.s3Providers.skipped = skipped
-	}
 
 	if skipped > 0 {
 		return fmt.Errorf("S3 providers in %s: %d record(s) skipped due to validation errors or duplicate names — check logs for details", from, skipped)
@@ -408,28 +411,30 @@ func (cluster *Cluster) S3ProvidersToml(section string) (string, error) {
 	return config.S3ProvidersToml(section, snapshot)
 }
 
-// retireS3ProvidersFile renames s3providers.json once a config save holds the providers read
-// from it (#2155): kept as s3providers.json.migrated, never read again. A file the list was
-// not read from is left as it is.
-func (cluster *Cluster) retireS3ProvidersFile() {
+// markS3ProvidersInConfig marks, once a config save holds the providers (#2155), that the
+// config is their store: s3providers.json is left untouched (a release before #2155 still reads
+// it) and never read again by this one (s3ProvidersInConfigMark).
+func (cluster *Cluster) markS3ProvidersInConfig() {
 	cluster.s3Providers.mu.Lock()
-	fromFile, skipped := cluster.s3Providers.fromFile, cluster.s3Providers.skipped
-	cluster.s3Providers.fromFile, cluster.s3Providers.skipped = false, 0
+	fromFile := cluster.s3Providers.fromFile
+	cluster.s3Providers.fromFile = false
 	cluster.s3Providers.mu.Unlock()
-	if !fromFile {
-		return
-	}
 	path := cluster.s3ProvidersFilePath()
-	if err := os.Rename(path, path+".migrated"); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
-			"S3 providers file %s not renamed after its move to the cluster config: %s", path, err)
+	mark := filepath.Join(cluster.WorkingDir, s3ProvidersInConfigMark)
+	if _, err := os.Stat(path); err != nil {
 		return
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
-		"S3 providers moved to the cluster config (#2155): %s kept as %s.migrated", path, path)
-	if skipped > 0 {
+	if _, err := os.Stat(mark); err == nil {
+		return
+	}
+	if err := os.WriteFile(mark, []byte("The S3 providers are in the cluster config ([[s3-provider]] blocks, #2155); s3providers.json is kept for older releases.\n"), 0600); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn,
-			"S3 providers: %d record(s) of %s skipped at load (invalid or duplicate) are only in %s.migrated", skipped, path, path)
+			"S3 providers: cannot write %s: %s", mark, err)
+		return
+	}
+	if fromFile {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"S3 providers moved to the cluster config (#2155): %s kept for older releases, no longer read", path)
 	}
 }
 
