@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 // HasAppHost reports whether any app is persisted under host (any port).
@@ -100,6 +102,10 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 		return fmt.Errorf("app config content declares host %q port %q, which does not match requested host %q port %q",
 			mismatchHost, mismatchPort, host, port)
 	}
+	// The peer's app API token (#2158) belongs to the peer's token store: this replication-manager
+	// can neither renew nor revoke it. Forget it here; the saved file is rewritten below.
+	peerToken := loaded.AppAPITokenID != "" || loaded.AppAPIToken != ""
+	loaded.AppAPIToken, loaded.AppAPITokenID, loaded.AppAPITokenExpires = "", "", ""
 	cluster.Unlock()
 
 	// newAppList() locks internally, so run it outside the section above. On
@@ -115,6 +121,13 @@ func (cluster *Cluster) ImportAppConfig(host, port, tomlContent string) error {
 	// rebuild picked it up; don't report success if it's gone.
 	if !cluster.HasAppHostPort(host, port) {
 		return fmt.Errorf("app host %q port %q was concurrently removed during import", host, port)
+	}
+	if peerToken {
+		if app := cluster.GetAppByConfig(loaded); app != nil {
+			if _, err := cluster.SaveApp(app, ""); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s imported: the peer's API token is not removed from its saved config: %s", host, err)
+			}
+		}
 	}
 
 	return nil

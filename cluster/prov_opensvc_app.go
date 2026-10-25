@@ -473,6 +473,11 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		cluster.errorChan <- err
 		return err
 	}
+	// API token (#2158): renewed before the variables are pushed when close to expiry; a
+	// failure keeps the current token (still valid) and the provision goes on.
+	if _, err := cluster.RenewAppAPIToken(app); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App %s: API token not renewed: %s", app.Name, err)
+	}
 
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI && svc.IsV3() {
 		err = cluster.OpenSVCProvisionAppV3(app, svc, agent)

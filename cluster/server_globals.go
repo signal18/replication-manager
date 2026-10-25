@@ -17,6 +17,13 @@ type ServerGlobals struct {
 	// A cluster acquires a slot before starting a backup and releases it on
 	// completion. Nil when no limit is configured (0 = unlimited).
 	BackupSemaphore chan struct{}
+
+	// IssueAppAPIToken mints the read-only API token of an app whose template references
+	// {{app.api.token}} (#2158), owned by the cluster's admin user and scoped to the cluster;
+	// RevokeAppAPIToken revokes it. The token store lives in the server: nil (tests, no
+	// server) refuses the token.
+	IssueAppAPIToken  func(clusterName, appName string) (id, token string, expires time.Time, err error)
+	RevokeAppAPIToken func(id string) error
 }
 
 // AcquireBackupSlot blocks until a backup slot is available.

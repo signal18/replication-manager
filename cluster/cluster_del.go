@@ -242,6 +242,7 @@ func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
 				}
 			}
 		}
+		cluster.revokeAppAPIToken(appcnf) // its API token (#2158) goes with it
 		app.DelProvisionCookie()
 		cluster.RunDropMonitorScript(cluster.monitorHookApp(appcnf, app))
 	} else {
