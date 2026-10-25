@@ -162,3 +162,24 @@ func TestGetDatabaseMetricsSkipsDBUSeriesWhenStale(t *testing.T) {
 		t.Fatal("never measured keeps the continuous min-1 series")
 	}
 }
+
+// A server still flagged slave whose tracked state a reset just cleared (SlaveStatus nil,
+// as after an unprovision) must not crash the metrics goroutine (#2172).
+func TestGetDatabaseMetricsSlaveWithoutSlaveStatus(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.ClusterGraphite = &ClusterGraphite{cl: cluster}
+	server.Variables = config.NewStringsMap()
+	server.Variables.Set("HOSTNAME", "db2")
+	server.Status = config.NewStringsMap()
+	server.PrevStatus = config.NewStringsMap()
+	server.EngineInnoDB = config.NewStringsMap()
+	server.PFSQueries = dbhelper.NewPFSQueriesMap()
+	server.WorkLoad = config.NewWorkLoadsMap()
+	server.IsSlave = true
+	server.SlaveStatus = nil
+	for _, m := range server.GetDatabaseMetrics() {
+		if strings.Contains(m.Name, "mysql_slave_status_") {
+			t.Fatalf("no slave series without a slave status, got %s", m.Name)
+		}
+	}
+}

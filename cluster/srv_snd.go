@@ -27,22 +27,26 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-")
 	hostname := server.graphiteHostname()
 	var metrics []graphite.Metric
-	if server.IsSlave && server.GetCluster().GetTopology() != config.TopoMultiMasterWsrep && server.GetCluster().GetTopology() != config.TopoMultiMasterGrouprep {
-		m := graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", server.SlaveStatus.SecondsBehindMaster.Int64), time.Now().Unix())
+	// SlaveStatus is nil once a reset (unprovision, rejoin) cleared the server's tracked
+	// state while this goroutine of an earlier refresh still runs: read it once, never
+	// dereference a nil one (#2172)
+	ss := server.SlaveStatus
+	if server.IsSlave && ss != nil && server.GetCluster().GetTopology() != config.TopoMultiMasterWsrep && server.GetCluster().GetTopology() != config.TopoMultiMasterGrouprep {
+		m := graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_seconds_behind_master", hostname), fmt.Sprintf("%d", ss.SecondsBehindMaster.Int64), time.Now().Unix())
 		metrics = append(metrics, m)
-		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%s", server.SlaveStatus.ExecMasterLogPos.String), time.Now().Unix()))
-		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_read_master_log_pos", hostname), fmt.Sprintf("%s", server.SlaveStatus.ReadMasterLogPos.String), time.Now().Unix()))
-		if server.SlaveStatus.SlaveSQLRunning.String == "Yes" {
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_exec_master_log_pos", hostname), fmt.Sprintf("%s", ss.ExecMasterLogPos.String), time.Now().Unix()))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_read_master_log_pos", hostname), fmt.Sprintf("%s", ss.ReadMasterLogPos.String), time.Now().Unix()))
+		if ss.SlaveSQLRunning.String == "Yes" {
 			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_sql_running", hostname), "1", time.Now().Unix()))
 		} else {
 			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_sql_running", hostname), "0", time.Now().Unix()))
 		}
-		if server.SlaveStatus.SlaveIORunning.String == "Yes" {
+		if ss.SlaveIORunning.String == "Yes" {
 			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_io_running", hostname), "1", time.Now().Unix()))
 		} else {
 			metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_slave_io_running", hostname), "0", time.Now().Unix()))
 		}
-		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_last_errno", hostname), fmt.Sprintf("%s", server.SlaveStatus.LastSQLErrno.String), time.Now().Unix()))
+		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("mysql.%s.mysql_slave_status_last_errno", hostname), fmt.Sprintf("%s", ss.LastSQLErrno.String), time.Now().Unix()))
 
 	}
 
@@ -219,6 +223,8 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 }
 
 func (server *ServerMonitor) FetchDatabaseStats() {
+	// a goroutine of Refresh: a panic here is logged, never the end of the monitor (F2, #2172)
+	defer server.GetCluster().LogPanicToFile("graphite-metrics")
 	server.GetCluster().AddMetrics(server.GetDatabaseMetrics())
 }
 
