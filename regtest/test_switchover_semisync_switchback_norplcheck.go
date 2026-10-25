@@ -39,16 +39,15 @@ func (regtest *RegTest) TestSwitchover2TimesReplicationOkSemiSyncNoRplCheck(clus
 			return false
 		}
 	}
-	time.Sleep(2 * time.Second)
-	for _, s := range cluster.GetSlaves() {
-		if s.IsReplicationBroken() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Slave  %s issue on replication", s.URL)
+	// The monitor sees the new topology a tick or two after the switchover ends: read the
+	// replicas live (CheckSlavesRunning: SHOW SLAVE STATUS, threads and Master_Server_Id)
+	// until they all replicate from the new master, for at most 30 seconds (#2169).
+	for deadline := time.Now().Add(30 * time.Second); !cluster.CheckSlavesRunning(); {
+		if time.Now().After(deadline) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replicas do not replicate from the new master %s 30s after the switchover", cluster.GetMaster().URL)
 			return false
 		}
-		if s.GetReplicationServerID() != cluster.GetMaster().ServerID {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replication is  pointing to wrong master %s ", cluster.GetMaster().ServerID)
-			return false
-		}
+		time.Sleep(500 * time.Millisecond)
 	}
 	return true
 }

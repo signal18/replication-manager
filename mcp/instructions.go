@@ -78,6 +78,33 @@ Initial setup of replication between servers. Run cluster-bootstrap-replication 
 servers are running but replication has not been configured yet. The server marked
 prefered=true (db-servers-prefered-master setting) becomes master.
 
+**Topologies**
+The topology says how the servers replicate: master-slave (a master and replicas,
+default), active-passive (one node on a failover volume), multi-master-wsrep (MariaDB
+Galera), multi-master-grprep (MySQL/Percona group replication), master-slave-pg-stream
+or master-slave-pg-logical (PostgreSQL). get-cluster-topology shows the current one.
+
+To create a group replication cluster (multi-master-grprep):
+- On Cloud18 (self-service): cloud18-create-cluster with db_flavor mysql or percona,
+  topology multi-master-grprep and db_count 3, 5 or 7 (odd: the group keeps a majority
+  when a node is lost). replication-manager sets the topology and the grouprep
+  configurator tag (it drops semisync) before adding the nodes, provisions them and
+  bootstraps the group. Quote it first with get-cloud18-cluster-quote, same topology.
+  Prefer a MySQL 8.0 image: group replication on MySQL 8.4 aborts right after the
+  bootstrap (open bug). The options list (list-cloud18-cluster-options) says whether
+  replication-manager's regression tests passed on it (tested); an untested setup is
+  built with a testedSetupWarning, say so to the user.
+- On a cluster of this instance: cluster-set-setting topology-target=multi-master-grprep,
+  then the grouprep database tag in place of semisync (configurator in the GUI, or the
+  API settings/actions/add-db-tag and drop-db-tag), then a reprovision so the servers get
+  the group replication configuration, then cluster-bootstrap-replication. The preferred
+  master (db-servers-prefered-master) bootstraps the group, the others join it.
+- Afterwards get-cluster-topology shows one master (the group's PRIMARY) and the other
+  members as replicas. A switchover makes another member PRIMARY
+  (group_replication_set_as_primary); on a lost PRIMARY the group elects the next one
+  itself, replication-manager does not fail over.
+Galera (multi-master-wsrep, MariaDB) is created the same way with the wsrep tag.
+
 **Proxy**
 Load balancer or router sitting in front of the cluster (ProxySQL, MaxScale, HAProxy,
 etc.). replication-manager updates proxy backend lists automatically on topology changes.

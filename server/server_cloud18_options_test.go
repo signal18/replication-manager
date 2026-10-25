@@ -34,11 +34,14 @@ func TestClusterOptionsLocalDimensions(t *testing.T) {
 	})
 	out, _ = repman.Cloud18ClusterOptions(nil, "topology", "mariadb", "")
 	topo := out["topology"].(map[string]any)["mariadb"].([]map[string]any)
-	creatable := map[any]any{}
+	tested := map[any]any{}
 	for _, tp := range topo {
-		creatable[tp["topology"]] = tp["creatable"]
+		if tp["creatable"] != true {
+			t.Fatalf("an untested topology stays creatable (built with a warning): %v", tp)
+		}
+		tested[tp["topology"]] = tp["tested"]
 	}
-	if creatable[config.TopoActivePassive] != true || creatable[config.TopoMasterSlave] != true || creatable[config.TopoMultiMasterWsrep] != false {
+	if tested[config.TopoActivePassive] != "yes" || tested[config.TopoMasterSlave] != "yes" || tested[config.TopoMultiMasterWsrep] != "no" {
 		t.Fatalf("mariadb topologies: %v", topo)
 	}
 	if _, err := repman.Cloud18ClusterOptions(nil, "color", "", ""); err == nil {

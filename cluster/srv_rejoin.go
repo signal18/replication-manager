@@ -161,7 +161,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 			cluster.SetState("WARN0022", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0022"], server.URL, cluster.master.URL), ErrFrom: "REJOIN"})
 			server.RejoinScript()
 			if cluster.Conf.MultiMasterGrouprep {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Group replication rejoin  %s server to PRIMARY ", server.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Group replication rejoin: %s joins the group", server.URL)
 				server.StartGroupReplication()
 
 			} else {
@@ -802,6 +802,13 @@ func (server *ServerMonitor) attachAsReadOnlySlave(master *ServerMonitor) {
 
 func (server *ServerMonitor) rejoinMasterAsSlave() error {
 	cluster := server.ClusterGroup
+	if cluster.Conf.MultiMasterGrouprep {
+		// A group member rejoins the group, never through an asynchronous channel: a
+		// running channel makes START GROUP_REPLICATION fail on a secondary (#2170). The
+		// same rejoin as when a master is known; no channel is created, stopped or changed.
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Group replication rejoin: %s joins the group", server.URL)
+		return server.StartGroupReplication()
+	}
 	realmaster := cluster.lastmaster
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining old master server %s to saved master %s", server.URL, realmaster.URL)
 	logs, err := server.SetReadOnly()

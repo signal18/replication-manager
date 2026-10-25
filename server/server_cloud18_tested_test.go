@@ -96,8 +96,8 @@ func TestCloud18TestedSetupsCache(t *testing.T) {
 	if ok || asOf.IsZero() {
 		t.Fatalf("a stale copy must not be readable but keep its date: ok=%v asOf=%v", ok, asOf)
 	}
-	if err := cloud18SetupTested(setups, ok, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4", "haproxy"); err == nil || !strings.Contains(err.Error(), "too long ago") {
-		t.Fatalf("a stale copy must refuse with its date: %v", err)
+	if w := cloud18SetupWarning(setups, ok, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4", "haproxy"); w == "" || !strings.Contains(w, "too long ago") {
+		t.Fatalf("a stale copy must warn with its date: %v", w)
 	}
 }
 
@@ -111,40 +111,46 @@ func TestCloud18SetupTested(t *testing.T) {
 		// an upgrade run does not test the release it upgraded to as a fresh setup
 		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8.3", FromDbVersion: "11.4.5", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
 		{Flavor: "postgresql", Topology: config.TopoMasterSlavePgStream, DbVersion: "17.2.0", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8.3", Status: "passed", TestedAt: "2026-10-24T10:00:00Z"},
+		// a newer failing run with ProxySQL says nothing about the setup without a proxy
+		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8.3", Proxy: "proxysql", Status: "failing", TestedAt: "2026-10-26T10:00:00Z"},
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "haproxy"); err != nil {
-		t.Errorf("the latest Galera 11.4.5 run with HAProxy passed: %v", err)
+	if w := cloud18SetupWarning(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "haproxy"); w != "" {
+		t.Errorf("the latest Galera 11.4.5 run with HAProxy passed: %v", w)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.3", "haproxy"); err == nil || !strings.Contains(err.Error(), "release 11.4.3") {
-		t.Errorf("the release itself failed, a pass of another release does not count: %v", err)
+	if w := cloud18SetupWarning(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.3", "haproxy"); w == "" || !strings.Contains(w, "release 11.4.3") {
+		t.Errorf("the release itself failed, a pass of another release does not count: %v", w)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4", "haproxy"); err != nil {
-		t.Errorf("a line the list cannot resolve takes its newest tested release (11.4.5 passed): %v", err)
+	if w := cloud18SetupWarning(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4", "haproxy"); w != "" {
+		t.Errorf("a line the list cannot resolve takes its newest tested release (11.4.5 passed): %v", w)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "proxysql"); err == nil || !strings.Contains(err.Error(), "not been tested") {
-		t.Errorf("a pass with HAProxy must not approve ProxySQL: %v", err)
+	if w := cloud18SetupWarning(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "proxysql"); w == "" || !strings.Contains(w, "not been tested") {
+		t.Errorf("a pass with HAProxy must not approve ProxySQL: %v", w)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "none"); err != nil {
-		t.Errorf("without a proxy any tested proxy counts: %v", err)
+	if w := cloud18SetupWarning(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "none"); w == "" || !strings.Contains(w, "not been tested") {
+		t.Errorf("a cluster without a proxy is not covered by runs with HAProxy: %v", w)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mysql", config.TopoMultiMasterGrouprep, "8.4.11", "haproxy"); err == nil || !strings.Contains(err.Error(), "failed") {
-		t.Errorf("group replication 8.4.11 failed its latest run: %v", err)
+	if w := cloud18SetupWarning(setups, true, asOf, "mariadb", config.TopoMasterSlave, "11.8.3", "none"); w != "" {
+		t.Errorf("the run without a proxy passed: %v", w)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMasterSlave, "11.8.3", "haproxy"); err == nil || !strings.Contains(err.Error(), "not been tested") {
-		t.Errorf("master-slave 11.8.3 has only an upgrade run: %v", err)
+	if w := cloud18SetupWarning(setups, true, asOf, "mysql", config.TopoMultiMasterGrouprep, "8.4.11", "haproxy"); w == "" || !strings.Contains(w, "failed") {
+		t.Errorf("group replication 8.4.11 failed its latest run: %v", w)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "postgres", config.TopoMasterSlavePgStream, "17", "haproxy"); err != nil {
-		t.Errorf("postgres is reported as postgresql, 17 covers 17.2.0: %v", err)
+	if w := cloud18SetupWarning(setups, true, asOf, "mariadb", config.TopoMasterSlave, "11.8.3", "haproxy"); w == "" || !strings.Contains(w, "not been tested") {
+		t.Errorf("master-slave 11.8.3 has only an upgrade run: %v", w)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.50", "haproxy"); err == nil {
+	if w := cloud18SetupWarning(setups, true, asOf, "postgres", config.TopoMasterSlavePgStream, "17", "haproxy"); w != "" {
+		t.Errorf("postgres is reported as postgresql, 17 covers 17.2.0: %v", w)
+	}
+	if w := cloud18SetupWarning(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.50", "haproxy"); w == "" {
 		t.Error("11.4.5 must not cover 11.4.50")
 	}
-	if err := cloud18SetupTested(nil, false, time.Time{}, "mariadb", config.TopoMasterSlave, "11.4.5", "haproxy"); err == nil {
-		t.Error("unreadable tested setups must refuse")
+	if w := cloud18SetupWarning(nil, false, time.Time{}, "mariadb", config.TopoMasterSlave, "11.4.5", "haproxy"); w == "" {
+		t.Error("unreadable tested setups must warn")
 	}
 }
 
-// TestCloud18ResolvedReleaseMatchesReported: the release the gate resolves an image to in
+// TestCloud18ResolvedReleaseMatchesReported: the release the check resolves an image to in
 // the image list (Catalog.Resolve) is found among the releases the reporter sends
 // (version.ToString of the running server).
 func TestCloud18ResolvedReleaseMatchesReported(t *testing.T) {
@@ -167,8 +173,32 @@ func TestCloud18ResolvedReleaseMatchesReported(t *testing.T) {
 		repo, tag := releases.SplitImage(c.image)
 		release := catalog.Resolve(repo, c.flavor, tag)
 		setups := []cloud18TestedSetup{{Flavor: c.flavor, Topology: config.TopoMasterSlave, DbVersion: c.running.ToString(), Status: "passed", TestedAt: "2026-10-25T10:00:00Z"}}
-		if err := cloud18SetupTested(setups, true, time.Now(), c.flavor, config.TopoMasterSlave, release, "none"); err != nil {
-			t.Errorf("%s resolves to %s, the server reports %s: %v", c.image, release, c.running.ToString(), err)
+		if w := cloud18SetupWarning(setups, true, time.Now(), c.flavor, config.TopoMasterSlave, release, "none"); w != "" {
+			t.Errorf("%s resolves to %s, the server reports %s: %v", c.image, release, c.running.ToString(), w)
 		}
+	}
+}
+
+func TestCloud18TestedSetupsDiskOnlyWhenChanged(t *testing.T) {
+	dir := t.TempDir()
+	repman := &ReplicationManager{Conf: &config.Config{WorkingDir: dir}, Logrus: logrus.New()}
+	resetTestedSetupsCache(t)
+	setups := []cloud18TestedSetup{{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8.3", Status: "passed"}}
+	fakeCRM(t, func() ([]cloud18TestedSetup, error) { return setups, nil })
+
+	repman.refreshCloud18TestedSetups()
+	file := repman.testedSetupsFile()
+	if err := os.WriteFile(file, []byte("marker"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// the same answer again (cache interval 0: asked at every call): the disk copy is not rewritten
+	repman.refreshCloud18TestedSetups()
+	if data, _ := os.ReadFile(file); string(data) != "marker" {
+		t.Fatalf("an unchanged answer rewrote the disk copy: %s", data)
+	}
+	setups = append(setups, cloud18TestedSetup{Flavor: "mysql", Topology: config.TopoMasterSlave, DbVersion: "8.0.41", Status: "failing"})
+	repman.refreshCloud18TestedSetups()
+	if data, _ := os.ReadFile(file); string(data) == "marker" {
+		t.Fatal("a changed answer must be written to disk")
 	}
 }

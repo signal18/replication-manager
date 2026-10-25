@@ -297,6 +297,15 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testRollingUpgrade" {
 			res = regtest.TestRollingUpgrade(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testGroupReplicationBootstrap" {
+			res = regtest.TestGroupReplicationBootstrap(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testGroupReplicationSwitchover" {
+			res = regtest.TestGroupReplicationSwitchover(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testGroupReplicationPrimaryLoss" {
+			res = regtest.TestGroupReplicationPrimaryLoss(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testReplicationTLSAutoCertificate" {
 			res = regtest.TestReplicationTLSAutoCertificate(cl, test.ConfigFile, &test)
 		}

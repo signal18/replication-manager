@@ -258,7 +258,20 @@ func (psql *ProxySQL) SetOnlineSoft(host string, port string) error {
 }
 
 func (psql *ProxySQL) SetWriter(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", psql.WriterHG, host, port, psql.ReaderHG, psql.WriterHG)
+	return psql.moveToHostgroup(host, port, psql.WriterHG, psql.ReaderHG)
+}
+
+// moveToHostgroup puts a server's row in the target hostgroup, ONLINE. A server with a
+// row in both hostgroups (already the writer, or a reader too) would end up with two
+// identical rows, which ProxySQL refuses (UNIQUE constraint failed: ...hostgroup_id,
+// hostname, port): its row in the other hostgroup goes first, then the move.
+func (psql *ProxySQL) moveToHostgroup(host, port, target, other string) error {
+	t := psql.table("servers")
+	sql := fmt.Sprintf("DELETE FROM %s WHERE hostgroup_id='%s' AND hostname='%s' AND port='%s' AND EXISTS (SELECT 1 FROM %s WHERE hostgroup_id='%s' AND hostname='%s' AND port='%s')", t, other, host, port, t, target, host, port)
+	if _, err := psql.Connection.Exec(sql); err != nil {
+		return err
+	}
+	sql = fmt.Sprintf("UPDATE "+t+" SET status='ONLINE', hostgroup_id='%s' WHERE hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", target, host, port, psql.ReaderHG, psql.WriterHG)
 	_, err := psql.Connection.Exec(sql)
 	return err
 }
@@ -270,9 +283,7 @@ func (psql *ProxySQL) DeleteAllWriters() error {
 }
 
 func (psql *ProxySQL) SetReader(host string, port string) error {
-	sql := fmt.Sprintf("UPDATE "+psql.table("servers")+" SET status='ONLINE', hostgroup_id='%s' WHERE  hostname='%s' AND port='%s' AND hostgroup_id in ('%s','%s')", psql.ReaderHG, host, port, psql.ReaderHG, psql.WriterHG)
-	_, err := psql.Connection.Exec(sql)
-	return err
+	return psql.moveToHostgroup(host, port, psql.ReaderHG, psql.WriterHG)
 }
 
 func (psql *ProxySQL) DropReader(host string, port string) error {

@@ -35,13 +35,32 @@ func probeTablePresent(s *cluster.ServerMonitor) (bool, error) {
 	return n == 1, nil
 }
 
+// createProbeTable creates the empty probe table on the master: it is binlogged (or
+// certified by the group), so it reaches every other server and any reseed dump.
+func createProbeTable(master *cluster.ServerMonitor) error {
+	if _, err := master.Conn.Exec("CREATE DATABASE IF NOT EXISTS " + rollingProbeSchema); err != nil {
+		return fmt.Errorf("cannot create probe schema on master: %s", err)
+	}
+	if _, err := master.Conn.Exec("CREATE TABLE IF NOT EXISTS " + rollingProbeSchema + "." + rollingProbeTable + " (id INT PRIMARY KEY)"); err != nil {
+		return fmt.Errorf("cannot create probe table on master: %s", err)
+	}
+	return nil
+}
+
+// dropProbeTable drops the probe schema on the current master.
+func dropProbeTable(cl *cluster.Cluster) {
+	if m := cl.GetMaster(); m != nil && m.Conn != nil {
+		m.Conn.Exec("DROP DATABASE IF EXISTS " + rollingProbeSchema)
+	}
+}
+
 // rollingHealthCheck runs one of the cluster's rolling operations and asserts the
 // cluster is left healthy afterwards:
 //   - the SAME master as before (the op cycles the topology and must restore it);
 //   - every slave replicating (an un-reseeded/empty replica would not be);
-//   - every server actually cycled -- its uptime reset lower than before, which
-//     guards against a no-op that would otherwise still show the same master and
-//     running slaves;
+//   - every server actually cycled -- it started after the operation began (its uptime
+//     afterwards is shorter than the time elapsed since the snapshot), which guards
+//     against a no-op that would otherwise still show the same master and running slaves;
 //   - an empty probe table created on the master before the op is still present
 //     on the master AND every slave afterwards -- proving the data was preserved
 //     (restart/upgrade) or actually reseeded onto the replicas (reprovision),
@@ -91,22 +110,15 @@ func rollingHealthCheckVersions(cl *cluster.Cluster, opName string, op func() er
 	// Create an empty probe table on the master. It is binlogged, so it replicates
 	// to the slaves and is included in any reseed dump. It must still be there,
 	// everywhere, once the operation completes. Dropped on the way out.
-	if _, err := master.Conn.Exec("CREATE DATABASE IF NOT EXISTS " + rollingProbeSchema); err != nil {
-		logf("FAIL %s: cannot create probe schema on master: %s", opName, err)
+	if err := createProbeTable(master); err != nil {
+		logf("FAIL %s: %s", opName, err)
 		return false
 	}
-	defer func() {
-		if m := cl.GetMaster(); m != nil && m.Conn != nil {
-			m.Conn.Exec("DROP DATABASE IF EXISTS " + rollingProbeSchema)
-		}
-	}()
-	if _, err := master.Conn.Exec("CREATE TABLE IF NOT EXISTS " + rollingProbeSchema + "." + rollingProbeTable + " (id INT PRIMARY KEY)"); err != nil {
-		logf("FAIL %s: cannot create probe table on master: %s", opName, err)
-		return false
-	}
+	defer dropProbeTable(cl)
 
 	// Snapshot each server's uptime before, to prove afterwards they were really
 	// cycled (uptime read from the collected status, no extra query), and its version.
+	snapshotAt := time.Now()
 	uptimeBefore := make(map[string]int64, len(cl.Servers))
 	versionBefore := make(map[string]string, len(cl.Servers))
 	for _, s := range cl.Servers {
@@ -146,12 +158,15 @@ func rollingHealthCheckVersions(cl *cluster.Cluster, opName string, op func() er
 		return false
 	}
 
-	// Every server actually cycled: uptime reset lower than before.
+	// Every server actually cycled: it started after the snapshot. Its uptime before is no
+	// bound: a node restarted just before the test (by the previous one) has an uptime
+	// shorter than the operation itself (#2169).
+	elapsed := int64(time.Since(snapshotAt).Seconds())
 	for _, s := range cl.Servers {
 		before := uptimeBefore[s.URL]
 		after := s.GetDatabaseUptime()
-		if before > 0 && after >= before {
-			logf("FAIL %s: %s was not restarted (uptime before %ds, after %ds)", opName, s.URL, before, after)
+		if before > 0 && after >= elapsed {
+			logf("FAIL %s: %s was not restarted (uptime %ds, the operation started %ds ago; uptime before %ds)", opName, s.URL, after, elapsed, before)
 			return false
 		}
 	}
