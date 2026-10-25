@@ -933,8 +933,8 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 	// configured replication of its own in the middle of the bootstrap (an async channel
 	// on a group's secondaries, a concurrent START GROUP_REPLICATION) (#2174). Not the
 	// failover state: the discovery below skips while it is set.
-	cluster.inBootstrapReplication.Store(true)
-	defer cluster.inBootstrapReplication.Store(false)
+	cluster.inBootstrapReplication.Add(1)
+	defer cluster.inBootstrapReplication.Add(-1)
 	if clean {
 		err := cluster.BootstrapReplicationCleanup(ftwrl)
 		if err != nil {
