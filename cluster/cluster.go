@@ -430,6 +430,7 @@ type Cluster struct {
 	DiffVariables                       []VariableDiff              `json:"diffVariables" groups:"web"`
 	inInitNodes                         bool                        `json:"-"`
 	initConfigDone                      atomic.Bool                 `json:"-"`
+	inBootstrapReplication              atomic.Bool                 `json:"-"` // BootstrapReplication runs: the monitor does not rejoin (#2174)
 	configSaveDone                      atomic.Int64                `json:"-"` // unix nanoseconds of the last SaveCallBack that completed, changed or not
 	inOptimizeTables                    bool                        `json:"inOptimizeTables" groups:"web"`
 	inAnalyzeTables                     bool                        `json:"inAnalyzeTables" groups:"web"`

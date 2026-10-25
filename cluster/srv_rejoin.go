@@ -73,7 +73,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 		return nil
 	}
 
-	if cluster.StateMachine.IsInFailover() {
+	if cluster.StateMachine.IsInFailover() || cluster.inBootstrapReplication.Load() {
 		return nil
 	}
 	// if cluster.Conf.LogLevel > 2 {
