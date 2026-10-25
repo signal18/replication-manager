@@ -117,6 +117,7 @@ func (repman *ReplicationManager) cloud18RequestUnregister() (map[string]string,
 		repman.ConfigManager.SaveConfig(repman, true)
 		repman.ConfigManager.GitPush(conf, repman.ClusterList, true)
 	}
+	// the git manager pushes to "origin" (go-git's default remote), the remote GitHeadPushed reads
 	pushed, err := conf.GitHeadPushed(conf.WorkingDir, conf.GitUsername, conf.GetDecryptedValue("git-acces-token"))
 	if !pushed {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Cloud18: unregistration of %s not pushed yet (%v)", uri, err)
@@ -181,7 +182,11 @@ func (repman *ReplicationManager) handlerChangeSubscription(w http.ResponseWrite
 	}
 	view, err := repman.cloud18RequestPlan(req.Plan)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		code := http.StatusBadRequest
+		if errors.Is(err, errCloud18NotRegistered) {
+			code = http.StatusPreconditionFailed
+		}
+		writeJSONError(w, code, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusAccepted)

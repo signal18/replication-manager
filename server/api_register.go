@@ -1067,6 +1067,8 @@ func crmGetSignupStatus(crmBase, email string) (int, []byte, error) {
 	return resp.StatusCode, body, err
 }
 
+// crmGetSubscription is for instances registered with the GitLab password only (the legacy
+// best-effort plan sync, syncSubscriptionPlanFromCRMWithToken): it goes with that path (#2159).
 // crmGetSubscription fetches the current subscription from CRM using a GitLab PAT.
 // uri is the instance URI in domain.subdomain.zone format.
 func crmGetSubscription(crmBase, gitlabToken, uri string) (int, []byte, error) {
