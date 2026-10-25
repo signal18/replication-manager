@@ -1438,19 +1438,6 @@ func (server *ServerMonitor) Refresh() error {
 				} else {
 					server.DomainID = uint64(sid)
 				}
-				if cluster.Conf.MultiMasterGrouprep {
-					server.IsGroupReplicationMaster, err = dbhelper.IsGroupReplicationMaster(server.Conn, server.DBVersion, server.Host)
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not check group replication master: %s", err)
-					}
-					server.IsGroupReplicationSlave, err = dbhelper.IsGroupReplicationSlave(server.Conn, server.DBVersion, server.Host)
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not check group replication slave: %s", err)
-					}
-					if server.IsGroupReplicationSlave && server.State == stateUnconn {
-						server.SetState(stateSlave)
-					}
-				}
 			} else {
 				server.GTIDBinlogPos = gtid.NewMySQLList(server.Variables.Get("GTID_EXECUTED"), server.GetCluster().GetCrcTable())
 				server.GTIDExecuted = server.Variables.Get("GTID_EXECUTED")
@@ -1458,6 +1445,21 @@ func (server *ServerMonitor) Refresh() error {
 				server.SlaveGtid = gtid.NewList(server.Variables.Get("GTID_SLAVE_POS"))
 				server.HashUUID = crc64.Checksum([]byte(strings.ToUpper(server.Variables.Get("SERVER_UUID"))), server.GetCluster().GetCrcTable())
 				//		fmt.Fprintf(os.Stdout, "gniac2 "+strings.ToUpper(server.Variables.Get("SERVER_UUID"))+" "+strconv.FormatUint(server.HashUUID, 10))
+			}
+			// group replication is MySQL/Percona: its role was read in the MariaDB branch
+			// only, so never on a server that can run it (#2170)
+			if cluster.Conf.MultiMasterGrouprep {
+				server.IsGroupReplicationMaster, err = dbhelper.IsGroupReplicationMaster(server.Conn, server.DBVersion, server.Host)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not check group replication master: %s", err)
+				}
+				server.IsGroupReplicationSlave, err = dbhelper.IsGroupReplicationSlave(server.Conn, server.DBVersion, server.Host)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not check group replication slave: %s", err)
+				}
+				if server.IsGroupReplicationSlave && server.State == stateUnconn {
+					server.SetState(stateSlave)
+				}
 			}
 
 			var sid uint64
