@@ -20,10 +20,10 @@ import (
 // status (#1963): the units the request needs, whether they fit the free pool, whether a
 // creation is allowed there, and the MONTHLY PRICE AT FULL CAPACITY, the plan fully used
 // for the whole month, from the partner's own unit prices, and two more monthly prices: the
-// minimal, the database at its scale-down floor (prov-db-undercommit-pct) with the unused plan
-// units at the under-commit price, and the overcommit, the database borrowing up to its cap
-// (prov-db-overcommit-pct) the whole month at the over-commit unit price. Proxies, apps and
-// backups stay at their plan in both. The formulas are the billing's (planUnitCost).
+// minimal, every database node, proxy, app and the backups back to 1 unit (never under), the
+// unused plan units at the under-commit price, and the overcommit, the database borrowing up to
+// its cap (prov-db-overcommit-pct) the whole month at the over-commit unit price, proxies, apps
+// and backups at their plan. The formulas are the billing's (planUnitCost).
 //
 // Units: DBU = db_count x dbu per database node (prov-db-dbu is per node, every node can
 // become master); APU = the cluster's stateless services (proxy + apps); BKU = the
@@ -103,43 +103,45 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	q["breakdown"] = lines
 	q["monthlyAtFullCapacity"] = round2(total)
 	monthly := map[string]any{"plan": round2(total)}
-	dbuPrice, nodes := num(prices, "dbu"), float64(spec.DBCount)
-	// an older infrastructure serves no under-commit price or barriers: its minimal price is
-	// unknown, never guessed; the barriers then take replication-manager's defaults
-	pctOf := func(m map[string]any, k string, def float64) (float64, bool) {
-		v, ok := m[k].(float64)
-		if !ok {
-			return def, false
-		}
-		return v, true
+	dbuPrice, apuPrice, bkuPrice, nodes := num(prices, "dbu"), num(prices, "apu"), num(prices, "bku"), float64(spec.DBCount)
+	// A field absent from the infrastructure's JSON is an older release that does not serve it:
+	// its price is unknown, never guessed. A served 0 is a real setting (no reduction, no
+	// surcharge) and prices as such, the way the billing does.
+	pctOf := func(k string) (float64, bool) {
+		v, ok := prices[k].(float64)
+		return v, ok
 	}
-	if underPricePct, ok := pctOf(prices, "undercommitPricePct", 0); ok {
-		floorPct, _ := pctOf(prices, "undercommitFloorPct", 50)
-		floor := math.Max(1, math.Floor(perNode*(1-floorPct/100)))
-		if floor > perNode {
-			floor = perNode
-		}
-		unused := nodes * (perNode - floor)
-		monthly["minimal"] = round2(total - unused*dbuPrice*underPricePct/100)
-		q["undercommit"] = map[string]any{"pricePct": underPricePct, "floorPct": floorPct, "floorDbuPerNode": floor,
-			"dbuUnitPrice": round2(dbuPrice * (100 - underPricePct) / 100),
-			"note":         "per plan unit-month left unconsumed; the database never shrinks under floorDbuPerNode"}
+	if underPricePct, ok := pctOf("undercommitPricePct"); ok {
+		underPricePct = math.Min(100, math.Max(0, underPricePct)) // the billing's clamp (planUnitCost)
+		// minimal usage: every node and service back to 1 unit, never under (the under-commit
+		// floor), the plan units left unconsumed at the reduced price
+		services := float64(spec.ProxyCount + len(spec.Apps))
+		unused := nodes*(perNode-math.Min(perNode, 1)) + (apu - math.Min(apu, services)) + (bku - math.Min(bku, 1))
+		saving := nodes*(perNode-math.Min(perNode, 1))*dbuPrice + (apu-math.Min(apu, services))*apuPrice + (bku-math.Min(bku, 1))*bkuPrice
+		monthly["minimal"] = round2(total - saving*underPricePct/100)
+		q["undercommit"] = map[string]any{"pricePct": underPricePct, "unusedUnits": unused,
+			"dbuUnitPrice": round2(dbuPrice * (100 - underPricePct) / 100), "apuUnitPrice": round2(apuPrice * (100 - underPricePct) / 100),
+			"note": "per plan unit-month left unconsumed; every database node, proxy, app and the backups keep at least 1 unit"}
 	} else {
 		monthly["minimal"] = "unknown: the infrastructure serves no under-commit price (older release)"
 	}
-	if overPricePct, ok := pctOf(prices, "overcommitPricePct", 0); ok {
-		capPct, _ := pctOf(prices, "overcommitCapPct", 50)
+	// an infrastructure older than #1963's over-commit price sends no overcommitPricePct
+	if overPricePct, ok := pctOf("overcommitPricePct"); ok {
+		capPct, served := pctOf("overcommitCapPct")
+		if !served {
+			capPct = 50 // replication-manager's default prov-db-overcommit-pct
+		}
 		if spec.OvercommitPct != nil {
-			capPct = math.Max(0, float64(*spec.OvercommitPct))
+			capPct = float64(*spec.OvercommitPct)
 		}
 		borrowed := nodes * math.Floor(perNode*capPct/100)
 		overDbu := dbuPrice * (100 + overPricePct) / 100
 		monthly["overcommit"] = round2(total + borrowed*overDbu)
 		q["overcommit"] = map[string]any{"pricePct": overPricePct, "capPct": capPct, "borrowedDbu": borrowed,
-			"dbuUnitPrice": round2(overDbu), "apuUnitPrice": round2(num(prices, "apu") * (100 + overPricePct) / 100),
+			"dbuUnitPrice": round2(overDbu), "apuUnitPrice": round2(apuPrice * (100 + overPricePct) / 100),
 			"note": "per unit-month above the plan, billed instead of the unit price, only for the time used, never beyond capPct"}
 	} else {
-		monthly["overcommit"] = "unknown: the infrastructure serves no over-commit price"
+		monthly["overcommit"] = "unknown: the infrastructure serves no over-commit price (older release)"
 	}
 	q["monthly"] = monthly
 	return q

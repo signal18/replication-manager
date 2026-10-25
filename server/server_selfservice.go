@@ -119,10 +119,9 @@ type SelfServicePrices struct {
 	BAU                 float64 `json:"bau"`
 	OvercommitPricePct  int     `json:"overcommitPricePct"`  // surcharge of a unit above the plan, in % of the unit price
 	UndercommitPricePct int     `json:"undercommitPricePct"` // reduction of a plan unit left unconsumed, in % of the unit price
-	// the default commercial barriers of a cluster here: how far it may auto-grow over its plan
-	// (prov-db-overcommit-pct) and auto-shrink under it (prov-db-undercommit-pct), in % of the plan
-	OvercommitCapPct    int `json:"overcommitCapPct"`
-	UndercommitFloorPct int `json:"undercommitFloorPct"`
+	// OvercommitCapPct: how far a cluster here may auto-grow over its plan by default
+	// (prov-db-overcommit-pct), in % of the plan
+	OvercommitCapPct int `json:"overcommitCapPct"`
 }
 
 // selfServiceSnapshot is the identity-independent part of the self-service status, computed
@@ -265,7 +264,7 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 			DBU: repman.Conf.Cloud18MarketplaceDBUPrice, APU: repman.Conf.Cloud18MarketplaceAPUPrice,
 			BKU: repman.Conf.Cloud18MarketplaceBKUPrice, BAU: repman.Conf.Cloud18MarketplaceBAUPrice,
 			OvercommitPricePct: repman.Conf.Cloud18MarketplaceOvercommitPricePct, UndercommitPricePct: repman.Conf.Cloud18MarketplaceUndercommitPricePct,
-			OvercommitCapPct: repman.Conf.ProvDBOvercommitPct, UndercommitFloorPct: repman.Conf.ProvDBUndercommitPct},
+			OvercommitCapPct: repman.Conf.ProvDBOvercommitPct},
 	}
 	if !st.Pool.Known {
 		st.PoolNote = "infrastructure capacity unknown (no agent observed, no resource-manager-infra-* declared): the pool does not gate"

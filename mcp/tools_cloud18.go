@@ -192,7 +192,7 @@ func (s *MCPServer) registerCloud18Tools() {
 
 	s.addTool(
 		mcp.NewTool("get-cloud18-cluster-quote",
-			mcp.WithDescription("Quote a database cluster on every infrastructure of the Cloud18 marketplace, as yourself, before creating it. The answer is a list of CHOICES, one per partner infrastructure, each with the partner, its zone and its infrastructure description (platform, CPU, data centers, geo localizations, bandwidth, certifications, SLA, dbops/sysops offered), then the units the request needs (DBU = db_count x dbu per database node, APU for the proxies and apps, the default BKU), whether they fit the free pool, whether you may create it there (or why not), and three MONTHLY PRICES from that infrastructure's own unit prices: minimal (the database at its scale-down floor, the unused plan units at the under-commit price), plan (the plan fully used the whole month, with its breakdown) and overcommit (the database borrowing up to the over-commit cap the whole month, the borrowed units at the over-commit unit price), with the over-commit and under-commit unit prices. A partner that does not answer for your identity stays a described choice, with the reason and no price. Infrastructures where the creation is possible come first, cheapest first. Then create on the chosen one with cloud18-create-cluster and the same parameters."),
+			mcp.WithDescription("Quote a database cluster on every infrastructure of the Cloud18 marketplace, as yourself, before creating it. The answer is a list of CHOICES, one per partner infrastructure, each with the partner, its zone and its infrastructure description (platform, CPU, data centers, geo localizations, bandwidth, certifications, SLA, dbops/sysops offered), then the units the request needs (DBU = db_count x dbu per database node, APU for the proxies and apps, the default BKU), whether they fit the free pool, whether you may create it there (or why not), and three MONTHLY PRICES from that infrastructure's own unit prices: minimal (every database node, proxy, app and the backups back to 1 unit, never under, the unused plan units at the under-commit price), plan (the plan fully used the whole month, with its breakdown) and overcommit (the database borrowing up to the over-commit cap the whole month, the borrowed units at the over-commit unit price), with the over-commit and under-commit unit prices. A partner that does not answer for your identity stays a described choice, with the reason and no price. Infrastructures where the creation is possible come first, cheapest first. Then create on the chosen one with cloud18-create-cluster and the same parameters."),
 			mcp.WithString("db_image", mcp.Description("Database docker image, default mariadb:lts")),
 			mcp.WithNumber("db_count", mcp.Description("Number of database nodes, default 2 (a master and a replica), max 5; multi-master (Galera, group replication) 3, 5 or 7, default 3")),
 			mcp.WithNumber("dbu", mcp.Description("DBU per database node; default each infrastructure's (prov-db-dbu)")),
@@ -201,10 +201,14 @@ func (s *MCPServer) registerCloud18Tools() {
 			mcp.WithNumber("proxy_count", mcp.Description("Number of proxies, default 1, max 3")),
 			mcp.WithString("apps", mcp.Description("Comma-separated app template names, default phpmyadmin, none for no app")),
 			mcp.WithNumber("apu", mcp.Description("APU of the proxies and apps together; default each infrastructure's")),
-			mcp.WithNumber("overcommit_pct", mcp.Description("Over-commit cap: the % of its plan the database may borrow when the load needs it (prov-db-overcommit-pct), priced in the overcommit price; default each infrastructure's, 0 = no borrowing")),
+			mcp.WithNumber("overcommit_pct", mcp.Description("Over-commit cap: the % of its plan the database may borrow when the load needs it (prov-db-overcommit-pct), priced in the overcommit price; default each infrastructure's, 0 = no borrowing, at most 100")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			out, err := s.repman.Cloud18ClusterQuote(principalFrom(ctx), cloud18SpecFrom(req))
+			spec := cloud18SpecFrom(req)
+			if spec.OvercommitPct != nil && (*spec.OvercommitPct < 0 || *spec.OvercommitPct > Cloud18QuoteMaxOvercommitPct) {
+				return mcp.NewToolResultError(fmt.Sprintf("overcommit_pct must be between 0 and %d (%% of the plan)", Cloud18QuoteMaxOvercommitPct)), nil
+			}
+			out, err := s.repman.Cloud18ClusterQuote(principalFrom(ctx), spec)
 			if err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
@@ -312,6 +316,9 @@ func detail(out map[string]any) string {
 }
 
 // cloud18SpecFrom reads a cluster request from the arguments the create and quote tools share.
+// Cloud18QuoteMaxOvercommitPct: the highest over-commit cap a quote takes, twice the plan.
+const Cloud18QuoteMaxOvercommitPct = 100
+
 func cloud18SpecFrom(req mcp.CallToolRequest) Cloud18ClusterSpec {
 	spec := Cloud18ClusterSpec{
 		Infrastructure: req.GetString("infrastructure", ""),
