@@ -449,32 +449,6 @@ func applyRestoreEntriesToClusterConfigFile(configPath string, clusterName strin
 	return writeConfigFileAtomic(configPath, payload)
 }
 
-func writeConfigFileAtomic(path string, payload []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	tmpFile, err := os.CreateTemp(filepath.Dir(path), "cluster_restore-*.tmp")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmpFile.Name()
-	defer func() {
-		_ = os.Remove(tmpPath)
-	}()
-	if _, err := tmpFile.Write(payload); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Sync(); err != nil {
-		_ = tmpFile.Close()
-		return err
-	}
-	if err := tmpFile.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, path)
-}
-
 func validateSupportedRuntimeApplyKeys(keys []string) error {
 	for _, key := range keys {
 		if _, ok := supportedRuntimeApplySecretKeys[key]; !ok {
