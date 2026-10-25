@@ -69,15 +69,11 @@ timeout, 5xx, 429) is transient. A refusal of the refresh also ends the login (a
 (`retryInitGitConfig`, one loop at a time) until it succeeds, Cloud18 is turned off or the server stops;
 the rotation is tried again at the next push refused by GitLab.
 
-## GitLab token from the CRM (`Config.Cloud18GitLabToken`)
+## Git and registration
 
-The GitLab token the instance pushes and pulls its configuration repositories with comes from the
-Cloud18 CRM (`cloud18-crm-api-url`, `https`, `POST /api/instances/gitlab-token`) for the identity token.
-The CRM revokes the instance's previous token of the same name, so the requests are serialized and a
-token got less than 5 minutes ago is handed to the next callers instead of asked for again: two callers
-(start, the Cloud18 connect, a rotation) never get two tokens of which the first is already revoked. The
-CRM's error text is cut to 200 characters in the logs. The grant's `user_id` and `expires_at` are not
-used yet: `InitGitConfig` reads the user from GitLab, the rotation happens when GitLab refuses a push.
+The instance's git (config and pull repositories) no longer depends on the identity token: an instance
+registered through Cloud18 keeps its own GitLab project tokens and renews them itself, see
+[CLOUD18_REGISTRATION.md](CLOUD18_REGISTRATION.md). The CRM issues no GitLab token (removed).
 
 ## Support chat (meet)
 
@@ -126,9 +122,9 @@ archives.
   the vault jwt role `replication-manager` bound on `sub`.
 - A browser redirect login: only if repman registers its own redirect URL itself (a client of its own
   through the realm's client registration), not now.
-- The other uses of the GitLab password (`cloud18-gitlab-password`), to remove before the setting is:
-  - registration (`server/api_register.go`) and the Cloud18 connect from the settings
-    (`api_global_settings.go`), which store it;
+- The other uses of the GitLab password (`cloud18-gitlab-password`), to remove before the setting is
+  (registration no longer uses it, CLOUD18_REGISTRATION.md):
+  - the Cloud18 connect from the settings (`api_global_settings.go`), which stores it;
   - `Config.CreateGitlabProjects` (`config/config.go`), through a GitLab basic-auth token;
   - the peer credentials (`server/server.go`, `SetPeerCredentials`) and the peer login check
     (`server/api.go`, "Peer does not have cloud18 setup");
