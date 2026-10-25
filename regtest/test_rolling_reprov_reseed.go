@@ -210,9 +210,24 @@ func (regtest *RegTest) TestRollingUpgrade(cl *cluster.Cluster, conf string, tes
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL RollingUpgrade: plan refused: %s", err)
 		return false
 	}
+	test.FromDbVersion = upgradeFromLine(cl)
 	_, release := releases.SplitImage(plan.TargetImage)
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "RollingUpgrade plan: %s -> %s (%s), every node must run %s afterwards", plan.CurrentImage, plan.TargetImage, plan.Mechanic, release)
 	return rollingHealthCheckVersions(cl, "RollingUpgrade", func() error { return cl.RunRollingUpgrade(plan) }, release)
+}
+
+// upgradeFromLine is the release line the cluster runs before an upgrade test (its master's,
+// or its first server's), reported with the run so that an upgrade is told apart from a fresh
+// setup of the line it upgrades to (#2165). Empty when no version was read.
+func upgradeFromLine(cl *cluster.Cluster) string {
+	server := cl.GetMaster()
+	if server == nil && len(cl.Servers) > 0 {
+		server = cl.Servers[0]
+	}
+	if server == nil || server.DBVersion == nil {
+		return ""
+	}
+	return releases.ServerLine(server.DBVersion.Flavor, server.DBVersion.Major, server.DBVersion.Minor).String()
 }
 
 // TestRollingReprovReseed destroys, recreates and reseeds every node, and checks

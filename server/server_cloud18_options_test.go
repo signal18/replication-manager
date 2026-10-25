@@ -28,7 +28,7 @@ func TestClusterOptionsLocalDimensions(t *testing.T) {
 	}
 	// a topology is creatable once a release line passed its latest regression test run (#2165)
 	seedTestedSetups(t, []cloud18TestedSetup{
-		{Flavor: "mariadb", Topology: config.TopoActivePassive, DbVersion: "11.8", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "mariadb", Topology: config.TopoActivePassive, DbVersion: "11.8", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
 		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
 		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.8", Status: "failing", TestedAt: "2026-10-25T10:00:00Z"},
 	})

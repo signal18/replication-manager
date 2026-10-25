@@ -42,7 +42,7 @@ func TestBuildRegtestReportsGroupsBySetup(t *testing.T) {
 		t.Fatalf("both reports share run_ref %s", first.Run.RunRef)
 	}
 	// the CRM accepts [A-Za-z0-9._+-] only
-	if first.Run.RepmanCommit != "v3.1.45-abc123-" || first.Run.TestedAt != "2026-10-25T14:00:00Z" || first.URI != "signal18.ovh.fr-2" {
+	if first.Run.RepmanCommit != "v3.1.45-abc123" || first.Run.TestedAt != "2026-10-25T14:00:00Z" || first.URI != "signal18.ovh.fr-2" {
 		t.Fatalf("run = %+v", first.Run)
 	}
 }

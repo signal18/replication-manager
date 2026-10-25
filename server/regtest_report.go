@@ -18,6 +18,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/releases"
 )
 
 // A regtest run is reported to the Cloud18 CRM (POST /api/instances/regtest-results),
@@ -69,11 +70,11 @@ func regtestReportField(value string, max int) string {
 	if len(value) > max {
 		value = value[:max]
 	}
-	return value
+	return strings.Trim(value, "-")
 }
 
 // regtestSetupOf reads the setup the cluster runs: its topology, the master's flavor and
-// major.minor version (or the first server's when there is no master), its first proxy.
+// release line (or the first server's when there is no master), its first proxy.
 func regtestSetupOf(cl *cluster.Cluster, test cluster.Test) regtestSetup {
 	setup := regtestSetup{
 		Orchestrator:  cl.GetOrchestrator(),
@@ -87,7 +88,7 @@ func regtestSetupOf(cl *cluster.Cluster, test cluster.Test) regtestSetup {
 	if server != nil {
 		if v := server.GetVersion(); v != nil {
 			setup.Flavor = strings.ToLower(v.Flavor)
-			setup.DbVersion = fmt.Sprintf("%d.%d", v.Major, v.Minor)
+			setup.DbVersion = releases.ServerLine(v.Flavor, v.Major, v.Minor).String()
 		}
 	}
 	if proxies := cl.GetProxies(); len(proxies) > 0 {
@@ -172,25 +173,41 @@ func (repman *ReplicationManager) buildRegtestReports(uri string, tests []regtes
 	return reports, skipped
 }
 
+// regtestReportRetryDelays: a run is reported again after these delays when the CRM cannot
+// be reached or answers 5xx (the report is idempotent per run_ref); a 4xx is final.
+var regtestReportRetryDelays = []time.Duration{10 * time.Second, 60 * time.Second}
+
 func (repman *ReplicationManager) postRegtestReport(gitlabToken string, report *regtestReport) error {
+	retry, err := repman.postRegtestReportOnce(gitlabToken, report)
+	for _, delay := range regtestReportRetryDelays {
+		if err == nil || !retry {
+			break
+		}
+		time.Sleep(delay)
+		retry, err = repman.postRegtestReportOnce(gitlabToken, report)
+	}
+	return err
+}
+
+func (repman *ReplicationManager) postRegtestReportOnce(gitlabToken string, report *regtestReport) (retry bool, err error) {
 	body, err := json.Marshal(report)
 	if err != nil {
-		return err
+		return false, err
 	}
 	req, err := http.NewRequest(http.MethodPost, repman.crmBase()+"/api/instances/regtest-results", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return false, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+gitlabToken)
 	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
 	if err != nil {
-		return err
+		return true, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
-		return fmt.Errorf("CRM answered %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+		return resp.StatusCode >= 500, fmt.Errorf("CRM answered %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
-	return nil
+	return false, nil
 }

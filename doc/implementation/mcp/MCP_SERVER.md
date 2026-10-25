@@ -122,14 +122,22 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   the infrastructure's templates, DBU/APU range and free pool). The ranges are the constants
   `cloud18MaxDBCount`/`MaxDBU`/`MaxAPU`/`MaxProxyCount`, shared with the validation. An
   unreadable release table is said in `db_image_source`, never shown as a flavor without lines.
-  Each topology carries `testedLines` (#2165): per release line, the latest regression test
-  run reported to the Cloud18 CRM (`GET /api/instances/tested-setups`, read with the instance's
-  GitLab token, kept 10 minutes and on disk in `cloud18-tested-setups.json`). A topology is
-  creatable only when one of its lines passed; `cloud18-create-cluster` refuses a flavor,
-  topology and release line (`lts`/`latest` resolved through the release table) whose latest
-  run did not pass, or when no copy of the tested setups was ever read. The runs are sent by
-  test instances with `cloud18-regtest-report` (one report per setup at the end of
-  `RunAllTests`; the CRM accepts only the instances it lists as reporters).
+  Each topology carries `testedLines` (#2165): per release line and proxy, the latest
+  regression test run reported to the Cloud18 CRM (`GET /api/instances/tested-setups`, read
+  with the instance's GitLab token; `testedSetupsAsOf` says when). The copy is kept 10 minutes,
+  and on disk (`cloud18-tested-setups.json`, written atomically) for restarts and CRM outages;
+  the CRM is asked by one caller at a time, never under the cache lock, and at most once per
+  10 minutes when it fails. A copy older than 7 days no longer opens the gate.
+  A topology is creatable only when one of its lines passed; `cloud18-create-cluster` refuses a
+  flavor + topology + release line (`lts`/`latest` resolved through the release table, a
+  server's line by `releases.ServerLine`: PostgreSQL 10+ by its major) + proxy (`none`: any
+  tested proxy) whose latest run did not pass. Deliberately not matched: the orchestrator
+  (regression tests are functional, they gate on the topology) and the replication-manager
+  version (the latest run wins). Upgrade runs (`from_db_version`, set by the rolling upgrade
+  tests) test an upgrade path and never open the gate for the line they upgrade to.
+  The runs are sent by test instances with `cloud18-regtest-report` (one report per setup at
+  the end of `RunAllTests`, retried after 10 s and 60 s on a network error or 5xx; the CRM
+  accepts only the instances it lists as reporters).
 - `get-cloud18-cluster-quote`: one **choice per partner infrastructure** (from the for-sale
   list, `Cloud18Infrastructures`). Each choice carries the partner, its zone and its
   infrastructure description from peer.json (`cloud18InfraDefinitionOf`: platform, CPU, data

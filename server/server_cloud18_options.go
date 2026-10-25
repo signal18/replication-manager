@@ -12,6 +12,7 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	repmanmcp "github.com/signal18/replication-manager/mcp"
@@ -133,12 +134,15 @@ func (repman *ReplicationManager) Cloud18ClusterOptions(p *repmanmcp.Principal, 
 		out["db_image_source"] = source
 	}
 	if want("topology") {
-		setups, readable := repman.cloud18TestedSetupsList()
+		setups, asOf, readable := repman.cloud18TestedSetupsList()
 		topo := map[string]any{}
 		for _, f := range flavors {
-			topo[f] = cloud18TopologiesTested(setups, readable, f, cloud18Topologies[f])
+			topo[f] = cloud18TopologiesTested(setups, readable, asOf, f, cloud18Topologies[f])
 		}
 		out["topology"] = topo
+		if !asOf.IsZero() {
+			out["testedSetupsAsOf"] = asOf.Format(time.RFC3339)
+		}
 	}
 	if want("proxy") {
 		out["proxy"] = []map[string]any{
