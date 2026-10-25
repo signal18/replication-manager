@@ -81,6 +81,14 @@ func (repman *ReplicationManager) cloud18Register(domain, subdomain, zone, plan,
 	res := cloud18RegisterResult{URI: uri, User: email}
 	conf := repman.Conf
 
+	// a registered instance registers again only under its own URI (a reconnect): another URI
+	// would switch its settings and tokens but not its config repository's clone (git refused,
+	// the config no longer leaves the instance)
+	if current := repman.registeredInstanceURI(); conf.Cloud18 && current != "" && current != uri {
+		repman.setRegStatus(RegStateError, "this replication-manager is registered as "+current+": unregister it first to register it as "+uri, res)
+		return
+	}
+
 	// 1. the GitLab token of the Cloud18 account, GitLab logging the person in with Cloud18
 	glToken, err := conf.Cloud18GitLabLogin(email, password)
 	switch {

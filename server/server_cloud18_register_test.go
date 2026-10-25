@@ -417,3 +417,24 @@ func TestCloud18RegisterSafety(t *testing.T) {
 		t.Fatalf("a failed token creation must leave the previous tokens: %s, revoked %v", state, f.revoked)
 	}
 }
+
+// #2159: a registered instance registers again only under its own URI (a reconnect); another URI
+// is refused before anything is asked to the realm or GitLab (seen on dev: the clone kept its
+// old repository with the new repositories' tokens).
+func TestCloud18RegisterOtherURIRefused(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	rm := registerRepman(t, issuer, []byte("0123456789abcdef"))
+	rm.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, _ := regResult(t, rm); state != RegStateOK {
+		t.Fatalf("setup: %s %q", state, msg)
+	}
+	logins := f.logins
+	rm.cloud18Register("acme", "ovh", "fr-9", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, _ := regResult(t, rm); state != RegStateError || !strings.Contains(msg, "unregister it first") || f.logins != logins || rm.Conf.Cloud18SubDomainZone != "fr-1" {
+		t.Fatalf("another URI: %s %q, logins %d -> %d, zone %q", state, msg, logins, f.logins, rm.Conf.Cloud18SubDomainZone)
+	}
+	rm.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, res := regResult(t, rm); state != RegStateOK || !res.Reattach {
+		t.Fatalf("the same URI again is a reconnect: %s %q", state, msg)
+	}
+}
