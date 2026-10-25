@@ -184,6 +184,7 @@ type ReplicationManager struct {
 	termlength                  int
 	exitMsg                     string
 	exit                        atomic.Bool
+	cloud18GitRetrying          atomic.Bool // a retryInitGitConfig loop runs (#2159)
 	isStarted                   bool
 	// Confs holds every cluster's full config, used only INTERNALLY (config build,
 	// reload, delete). It is never read from the wire — the dashboard and CLI don't

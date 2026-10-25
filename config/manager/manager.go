@@ -1748,7 +1748,10 @@ func (cm *ConfigManager) RotateGitAccessToken(conf *config.Config) error {
 	grant, err := conf.Cloud18GitLabToken(conf.GetInstancePATName())
 	if err != nil {
 		cm.logger.Errorf("none", config.ConstLogModGit, "Error getting the Cloud18 GitLab token: %v", err)
-		conf.Cloud18 = false
+		if errors.Is(err, config.ErrCloud18Refused) {
+			// a definitive refusal; a transient error keeps Cloud18, the next push retries
+			conf.Cloud18 = false
+		}
 		return err
 	}
 	personal_access_token := grant.Token

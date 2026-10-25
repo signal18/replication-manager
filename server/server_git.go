@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -427,6 +428,32 @@ func (repman *ReplicationManager) SetIsGitPull(val bool) {
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Git pull changed: %t", val)
 }
 
+// cloud18GitRetryInterval: how often InitGitConfig is tried again after a transient failure
+// to get the Cloud18 GitLab token
+var cloud18GitRetryInterval = 5 * time.Minute
+
+// retryInitGitConfig tries InitGitConfig again every cloud18GitRetryInterval until it succeeds,
+// Cloud18 is turned off (a definitive refusal, or by the operator) or the server stops; one
+// retry loop at a time.
+func (repman *ReplicationManager) retryInitGitConfig(conf *config.Config) {
+	if !repman.cloud18GitRetrying.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer repman.cloud18GitRetrying.Store(false)
+		for {
+			time.Sleep(cloud18GitRetryInterval)
+			if repman.exit.Load() || !conf.Cloud18 {
+				return
+			}
+			// a transient failure of this call finds the loop running and leaves it to go on
+			if err := repman.InitGitConfig(conf); err == nil || !conf.Cloud18 {
+				return
+			}
+		}
+	}()
+}
+
 func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 	if repman.GetIsGitPush() {
 		return nil
@@ -492,7 +519,12 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 				if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
 					repman.Logrus.Errorf("Cloud18 GitLab token: %s", err)
 				}
-				conf.Cloud18 = false
+				if errors.Is(err, config.ErrCloud18Refused) {
+					conf.Cloud18 = false
+				} else {
+					// the realm or the CRM out of reach: Cloud18 stays on, tried again later
+					repman.retryInitGitConfig(conf)
+				}
 				return err
 			}
 			personal_access_token, minted = grant.Token, true
