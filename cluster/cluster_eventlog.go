@@ -67,9 +67,6 @@ var instanceLocalConfigKeys = map[string]bool{
 	"vault-secret-id":         true,
 	"api-oauth-client-id":     true,
 	"api-oauth-client-secret": true,
-	// the instance's Cloud18 identity client, pushed by the BO to each instance (#2159)
-	"cloud18-identity-client-id":     true,
-	"cloud18-identity-client-secret": true,
 }
 
 // IsInstanceLocalConfigKey reports whether a config key is excluded from

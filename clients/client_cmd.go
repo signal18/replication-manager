@@ -374,6 +374,9 @@ func init() {
 	rootClientCmd.AddCommand(tokenCmd)
 	initTokenFlags()
 
+	rootClientCmd.AddCommand(cloud18Cmd)
+	initCloud18Flags()
+
 	rootClientCmd.AddCommand(backupCmd)
 	initBackupFlags(backupCmd)
 

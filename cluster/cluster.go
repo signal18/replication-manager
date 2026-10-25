@@ -2513,9 +2513,6 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		return cluster.Conf.GetStableEncryptedValue("api-oauth-client-secret", cluster.Conf.GetDecryptedValue("api-oauth-client-secret"))
 	case "cloud18-gitlab-password":
 		return cluster.Conf.GetStableEncryptedValue("cloud18-gitlab-password", cluster.Conf.GetDecryptedValue("cloud18-gitlab-password"))
-	case "cloud18-identity-client-secret":
-		// the instance's Cloud18 identity client secret (#2159): without this case the save wrote it empty
-		return cluster.Conf.GetStableEncryptedValue("cloud18-identity-client-secret", cluster.Conf.GetDecryptedValue("cloud18-identity-client-secret"))
 	case "cloud18-dba-user-credentials":
 		return cluster.Conf.GetStableEncryptedValue(key, cluster.GetDbaUser()+":"+cluster.GetDbaPass())
 	case "cloud18-sponsor-user-credentials":

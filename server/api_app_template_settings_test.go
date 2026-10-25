@@ -385,26 +385,3 @@ func TestHandlerMuxSetGlobalSettings_RejectsNonAllowlistedClusterScopedKey(t *te
 		t.Fatalf("expected status %d for non-allowlisted cluster key, got %d", http.StatusNotImplemented, rr.Code)
 	}
 }
-
-// TestSetClusterSetting_Cloud18Identity verifies that the Cloud18 identity client and its secret
-// reach the cluster's config (#2159): a global setting fans out to each cluster through
-// setClusterSetting, and the S3 SSO reads the cluster's copy.
-func TestSetClusterSetting_Cloud18Identity(t *testing.T) {
-	cl := newTestClusterForAPI(t)
-	cl.Conf.Secrets = config.NewSecrets(nil)
-	cl.ConfigManager = newConfigManagerForTest()
-	repman := newTestRepmanWithCluster(t, cl.Name, cl)
-
-	if err := repman.setClusterSetting(cl, "cloud18-identity-client-id", "repman-acme"); err != nil || cl.Conf.Cloud18IdentityClientID != "repman-acme" {
-		t.Fatalf("client id %q err %v", cl.Conf.Cloud18IdentityClientID, err)
-	}
-	if err := repman.setClusterSetting(cl, "cloud18-identity-client-secret", base64.StdEncoding.EncodeToString([]byte("s3cr3t"))); err != nil {
-		t.Fatalf("secret: %v", err)
-	}
-	if v := cl.Conf.GetDecryptedValue("cloud18-identity-client-secret"); v != "s3cr3t" {
-		t.Errorf("the cluster reads secret %q", v)
-	}
-	if err := repman.setClusterSetting(cl, "cloud18-identity-client-secret", "!!not-base64!!"); err == nil {
-		t.Error("an invalid base64 secret must be refused")
-	}
-}

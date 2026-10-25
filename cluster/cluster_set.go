@@ -2345,15 +2345,6 @@ func (cluster *Cluster) SetInjectVariables() {
 			cluster.Conf.Secrets.Set("api-oauth-client-secret", secret)
 		case "cloud18-identity-url":
 			cluster.Conf.Cloud18IdentityURL = fmt.Sprintf("%v", val)
-		case "cloud18-identity-client-id":
-			// the instance's client in the Cloud18 identity realm, pushed by the BO like
-			// api-oauth-client-id (#2159)
-			cluster.Conf.Cloud18IdentityClientID = fmt.Sprintf("%v", val)
-		case "cloud18-identity-client-secret":
-			cluster.Conf.Cloud18IdentityClientSecret = fmt.Sprintf("%v", val)
-			var secret config.Secret
-			secret.Value = fmt.Sprintf("%v", val)
-			cluster.Conf.Secrets.Set("cloud18-identity-client-secret", secret)
 		case "api-credentials-external":
 			cluster.Conf.APIUsersExternal = fmt.Sprintf("%v", val)
 		case "api-credentials-acl-allow":

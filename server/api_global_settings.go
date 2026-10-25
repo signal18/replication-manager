@@ -279,17 +279,6 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.Cloud18GitPassword = string(val)
 	case "cloud18-identity-url":
 		repman.Conf.Cloud18IdentityURL = value
-	case "cloud18-identity-client-id":
-		repman.Conf.Cloud18IdentityClientID = value
-	case "cloud18-identity-client-secret":
-		val, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return errors.New("unable to decode")
-		}
-		if err := repman.CredentialChain().Set("cloud18-identity-client-secret", string(val)); err != nil {
-			return err
-		}
-		repman.Conf.Cloud18IdentityClientSecret = string(val)
 	case "cloud18-gateway-domain-name":
 		repman.Conf.Cloud18GatewayDomainName = value
 	case "cloud18-gateway-service":

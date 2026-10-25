@@ -452,6 +452,18 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCalibrateIOPS)),
 	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/settings/actions/cloud18-identity", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18Identity)),
+	)).Methods(http.MethodGet)
+	router.Handle("/api/clusters/settings/actions/cloud18-identity/connect", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18IdentityConnect)),
+	)).Methods(http.MethodPost)
+	router.Handle("/api/clusters/settings/actions/cloud18-identity/disconnect", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18IdentityDisconnect)),
+	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/settings/actions/calibrate-smt-gain", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCalibrateSMTGain)),
@@ -4202,7 +4214,7 @@ var base64LogValueSettings = map[string]struct{}{
 
 func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
 	switch name {
-	case "cloud18-identity-client-secret", "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential":
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "cloud18-domain-secret", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials", "haproxy-password", "backup-verification-credential":
 		return "API receive set setting %s to ****", []interface{}{name}
 	default:
 		logValue := value
@@ -5094,17 +5106,6 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Cloud18DomainSecret = string(val)
 	case "cloud18-identity-url":
 		mycluster.Conf.Cloud18IdentityURL = value
-	case "cloud18-identity-client-id":
-		mycluster.Conf.Cloud18IdentityClientID = value
-	case "cloud18-identity-client-secret":
-		val, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return errors.New("unable to decode")
-		}
-		if err := mycluster.CredentialChain().Set("cloud18-identity-client-secret", string(val)); err != nil {
-			return err
-		}
-		mycluster.Conf.Cloud18IdentityClientSecret = string(val)
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "log-level-file":

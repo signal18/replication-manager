@@ -583,8 +583,13 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 			if conf.ConfRestoreOnStart {
 				conf.ConfRestoreOnStart = false
 				conf.SetImmuableFlag("monitoring-restore-config-on-start", false)
+				// the Cloud18 login is the instance's own, never in git: kept across the restore
+				keepLogin := conf.KeepCloud18LoginFile()
 				os.RemoveAll(conf.WorkingDir)
 				conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir)
+				if keepLogin != nil {
+					keepLogin()
+				}
 				conf.CloneConfigFromGit(conf.GitUrlPull, conf.GitUsername, conf.GitAccesToken, conf.WorkingDir+"/.pull")
 			}
 

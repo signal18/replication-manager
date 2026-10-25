@@ -456,6 +456,24 @@ func (repman *ReplicationManager) ProduceClusterAggregateStates() {
 			ErrFrom: "REPMAN",
 		})
 	}
+	// The Cloud18 login (#2159): refreshed at least daily so the realm's idle limit is never
+	// reached, and a warning when it ended (revoked, refused) or ends soon.
+	if repman.Conf != nil && repman.Conf.Cloud18 {
+		repman.Conf.Cloud18IdentityKeepAlive()
+		st := repman.Conf.Cloud18IdentityStatus()
+		if st.State == "none" {
+			// an instance registered before the identity (GitLab login) too: its SSO storages wait for it
+			st.State, st.Reason = "reconnect", "nobody connected it yet"
+		}
+		if st.State == "reconnect" {
+			repman.SetState("GWARN021", state.State{
+				ErrType: "WARNING",
+				ErrKey:  "GWARN021",
+				ErrDesc: fmt.Sprintf(config.GlobalError["GWARN021"], st.Reason),
+				ErrFrom: "REPMAN",
+			})
+		}
+	}
 	if repman.MeetUserID != "" {
 		repman.SetState("GINF005", state.State{
 			ErrType: "INFO",

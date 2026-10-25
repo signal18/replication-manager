@@ -22,13 +22,13 @@ import (
 )
 
 // An S3 provider reached with the Cloud18 SSO (#2091) holds no keys: this replication-manager
-// gets a token of its own Cloud18 identity client (#2159, config.Cloud18IdentityToken, the
-// client_credentials grant of the Cloud18 realm: no password), and trades it at the storage's
-// STS (AssumeRoleWithWebIdentity) for short-lived keys, renewed before they expire. The storage
-// trusts the realm with the audience config.ConstCloud18StorageAudience, and its policy opens to
-// that identity its own folder only, named after the token's sub (${jwt:sub}): the instance's
-// permanent GitLab user id, carried by its client, so the folder did not move with the switch
-// from the GitLab login. Two SSO users never see each other's backups.
+// gets an access token of the person who connected it to the Cloud18 realm (#2159,
+// config.Cloud18IdentityToken, from the kept offline login: no password), and trades it at the
+// storage's STS (AssumeRoleWithWebIdentity) for short-lived keys, renewed before they expire. The
+// storage trusts the realm with the audience config.ConstCloud18StorageAudience, and its policy
+// opens to that identity its own folder only, named after the token's sub (${jwt:sub}): the
+// person's permanent GitLab user id, so the folder did not move with the switch from the GitLab
+// login. Two SSO users never see each other's backups.
 
 // ErrCloud18SSONotRegistered: an SSO provider needs a replication-manager registered to Cloud18.
 var ErrCloud18SSONotRegistered = errors.New("the S3 provider is reached with the Cloud18 SSO: this replication-manager is not registered to Cloud18")
@@ -44,7 +44,7 @@ func (cluster *Cluster) cloud18SSOReady() error {
 	if !cluster.Conf.Cloud18 {
 		return ErrCloud18SSONotRegistered
 	}
-	if cluster.Conf.Cloud18IdentityClientID == "" {
+	if !cluster.Conf.HasCloud18Login() {
 		return config.ErrCloud18IdentityNotSet
 	}
 	return nil

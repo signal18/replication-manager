@@ -749,7 +749,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.VaultSecretId, "vault-secret-id", "", "Vault secret id")
 	flags.StringVar(&conf.VaultMode, "vault-mode", cluster.VaultConfigStoreV2, "Vault mode : config_store_v2|database_engine")
 	flags.StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
-	flags.StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|jwt|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius (jwt: the Cloud18 identity token, role vault-role-id or cloud18-identity-client-id)")
+	flags.StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|jwt|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius (jwt: the Cloud18 identity token, role vault-role-id, else replication-manager)")
 	flags.StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
 	flags.IntVar(&conf.LogVaultLevel, "log-level-vault", 1, "Log level for vault")
@@ -1257,9 +1257,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.Cloud18Shared, "cloud18-shared", false, "Enable cluster sharing for Cloud 18 DBAAS")
 	flags.StringVar(&conf.Cloud18GitUser, "cloud18-gitlab-user", "", "Cloud 18 GitLab user")
 	flags.StringVar(&conf.Cloud18GitPassword, "cloud18-gitlab-password", "", "Cloud 18 GitLab password")
-	flags.StringVar(&conf.Cloud18IdentityURL, "cloud18-identity-url", config.ConstCloud18IdentityURL, "Cloud18 identity realm (OpenID Connect issuer) this replication-manager logs in to with its own client, for the S3 SSO storages and the Cloud18 vault")
-	flags.StringVar(&conf.Cloud18IdentityClientID, "cloud18-identity-client-id", "", "This replication-manager's client in the Cloud18 identity realm (client_credentials), pushed by the BO at registration")
-	flags.StringVar(&conf.Cloud18IdentityClientSecret, "cloud18-identity-client-secret", "", "Secret of cloud18-identity-client-id")
+	flags.StringVar(&conf.Cloud18IdentityURL, "cloud18-identity-url", config.ConstCloud18IdentityURL, "Cloud18 identity realm (OpenID Connect issuer): a person connects this replication-manager to it once (device login), for the S3 SSO storages, the Cloud18 vault and the Cloud18 GitLab token")
 	flags.StringVar(&conf.Cloud18PlatformDescription, "cloud18-platform-description", "", "Marketing banner display on the cloud18 portal describing the infrastucture")
 	flags.StringVar(&conf.Cloud18InfraDataCenters, "cloud18-infra-data-centers", "", "Infrastucture datacenters name")
 	flags.Float64Var(&conf.Cloud18InfraPublicBandwidth, "cloud18-infra-public-bandwidth", 0, "Infrastucture public bandwidth")
@@ -4704,9 +4702,6 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 		return repman.Conf.GetStableEncryptedValue("api-oauth-client-secret", repman.Conf.GetDecryptedValue("api-oauth-client-secret"))
 	case "cloud18-gitlab-password":
 		return repman.Conf.GetStableEncryptedValue("cloud18-gitlab-password", repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
-	case "cloud18-identity-client-secret":
-		// the instance's Cloud18 identity client secret (#2159): without this case the save wrote it empty
-		return repman.Conf.GetStableEncryptedValue("cloud18-identity-client-secret", repman.Conf.GetDecryptedValue("cloud18-identity-client-secret"))
 	case "git-acces-token":
 		return repman.Conf.GetStableEncryptedValue("git-acces-token", repman.Conf.GetDecryptedValue("git-acces-token"))
 	case "vault-token":

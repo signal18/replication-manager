@@ -1034,8 +1034,6 @@ type Config struct {
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`
-	Cloud18IdentityClientID          string  `scope:"server" mapstructure:"cloud18-identity-client-id" toml:"cloud18-identity-client-id" json:"cloud18IdentityClientId"`
-	Cloud18IdentityClientSecret      string  `scope:"server" mapstructure:"cloud18-identity-client-secret" toml:"cloud18-identity-client-secret" json:"-"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18CrmApiUrl                 string  `scope:"server" mapstructure:"cloud18-crm-api-url" toml:"cloud18-crm-api-url" json:"cloud18CrmApiUrl"`
@@ -1944,7 +1942,6 @@ var SecretKeys = []string{
 	"cloud18-dba-user-credentials",
 	"cloud18-sponsor-user-credentials",
 	"cloud18-domain-secret",
-	"cloud18-identity-client-secret",
 	"proxysql-user",
 	"vault-token",
 	"api-oauth-client-secret",
@@ -2270,7 +2267,7 @@ func (conf *Config) GetVaultConnection() (*vault.Client, error) {
 
 // vaultJWTLogin logs in to the vault's jwt auth method with the instance's Cloud18 identity
 // token (#2159): no secret of the vault is kept here. The role is vault-role-id when set, else
-// the instance's identity client id (one role per instance on the Cloud18 vault).
+// the realm's client id (ConstCloud18IdentityClientID), the Cloud18 vault binding it on sub.
 func (conf *Config) vaultJWTLogin(client *vault.Client) (*vault.Client, error) {
 	token, _, err := conf.Cloud18IdentityToken()
 	if err != nil {
@@ -2278,7 +2275,7 @@ func (conf *Config) vaultJWTLogin(client *vault.Client) (*vault.Client, error) {
 	}
 	role := conf.VaultRoleId
 	if role == "" {
-		role = conf.Cloud18IdentityClientID
+		role = ConstCloud18IdentityClientID
 	}
 	secret, err := client.Logical().Write("auth/jwt/login", map[string]interface{}{"role": role, "jwt": token})
 	if err != nil {

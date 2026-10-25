@@ -41,11 +41,11 @@ func TestCloud18SSOProvider(t *testing.T) {
 	}
 	cl.Conf.Cloud18 = true
 	if err := cl.s3ProviderUsable(config.S3Provider{Cloud18SSO: true}); !errors.Is(err, config.ErrCloud18IdentityNotSet) {
-		t.Fatalf("registered without an identity client: %v", err)
+		t.Fatalf("registered, nobody connected it: %v", err)
 	}
-	cl.Conf.Cloud18IdentityClientID = "repman-acme"
+	connectCloud18ForTest(t, cl)
 	if err := cl.s3ProviderUsable(config.S3Provider{Cloud18SSO: true}); err != nil {
-		t.Fatalf("registered with its identity client: %v", err)
+		t.Fatalf("registered and connected: %v", err)
 	}
 	if err := cl.s3ProviderUsable(config.S3Provider{}); err != nil {
 		t.Fatalf("a provider with keys: %v", err)

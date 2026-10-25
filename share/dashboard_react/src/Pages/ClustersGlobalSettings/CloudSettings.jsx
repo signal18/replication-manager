@@ -24,6 +24,7 @@ import modalStyles from '../../components/Modals/styles.module.scss'
 import remarkGfm from 'remark-gfm'
 import SignupForm from '../../components/Auth/SignupForm'
 import { authService } from '../../services/authService'
+import Cloud18Identity from './Cloud18Identity'
 
 function CloudSettings({ config }) {
   const dispatch = useDispatch()
@@ -477,8 +478,7 @@ Start create an account in https://gitlab.signal18.io
   const hStatus = `**Cloud18 Status**\n\nShows whether this instance is actively connected to Signal18 Cloud18.\nWhen ONLINE, configuration is automatically backed up to GitLab on every change, and marketplace features are available.\n\nConfig: \`cloud18\``
   const hGitUser = `**Git User**\n\nGitLab email or username at \`gitlab.signal18.io\`.\nCreated during registration — used for authentication, encrypted configuration backup, and marketplace identity.\n\n**Locked while connected.** To change the email, unregister first (which drops the GitLab projects for this URI), then register again with the new email.\n\nConfig: \`cloud18-gitlab-user\``
   const hGitPass = `**GitLab Password**\n\nPassword for the GitLab account at \`gitlab.signal18.io\`.\nStored encrypted in the replication-manager configuration.\n\nConfig: \`cloud18-gitlab-password\``
-  const hIdClient = `**Identity Client**\n\nThis instance's client in the Cloud18 identity realm (\`identity.cloud18.io\`). replication-manager gets its tokens with it (client_credentials, no password) for the S3 SSO archive storages and the Cloud18 vault (\`vault-auth = jwt\`).\n\nPushed by the BO at registration.\n\nConfig: \`cloud18-identity-client-id\`, realm \`cloud18-identity-url\``
-  const hIdSecret = `**Identity Client Secret**\n\nSecret of the identity client. Stored encrypted in the replication-manager configuration, never shown.\n\nConfig: \`cloud18-identity-client-secret\``
+  const hIdentity = `**Identity**\n\nThe person who connected this instance to the Cloud18 identity (\`identity.cloud18.io\`). replication-manager acts as that person for the S3 SSO archive storages (the archive folder is theirs), the Cloud18 vault (\`vault-auth = jwt\`) and its Cloud18 GitLab token.\n\n**Connect** shows a code: open the page in any browser, on any machine, log in and enter the code. Done once per instance; each peer connects with its own login. The login is kept encrypted on this instance only, never sent to a peer or to git, and renewed by replication-manager itself.\n\n**Reconnect** when the login was revoked or ended. **Disconnect** forgets it.\n\nConfig: realm \`cloud18-identity-url\``
   const hDomain = `**Domain**\n\nCompany namespace on Cloud18 (e.g. \`mycompany\`).\nA top-level GitLab group with this name is created at \`gitlab.signal18.io\` to host your cluster configurations.\n\nConfig: \`cloud18-domain\``
   const hSubdomain = `**Subdomain**\n\nDatacenter or environment identifier (e.g. \`ovh\`, \`aws\`).\nCreates a subgroup under your domain group, allowing multiple independent deployment environments.\n\nConfig: \`cloud18-sub-domain\``
   const hZone = `**Subdomain Zone**\n\nGeographic zone or region (e.g. \`fr-1\`, \`us-east\`).\nCompletes the three-part URI: \`domain.subdomain.zone\`. This URI uniquely identifies your instance on Cloud18.\n\nConfig: \`cloud18-sub-domain-zone\``
@@ -514,10 +514,7 @@ Start create an account in https://gitlab.signal18.io
     { key: 'GitLab Password',help: h(hGitPass,   'GitLab Password'),   value: isConnected
         ? <Text fontSize='sm'>••••••••</Text>
         : <TextForm value={config?.cloud18GitlabPassword} type='password' confirmTitle='Confirm GitLab password to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-gitlab-password', value: btoa(v) }))} /> },
-    { key: 'Identity Client', help: h(hIdClient, 'Identity Client'), value:
-        <TextForm value={config?.cloud18IdentityClientId} confirmTitle='Confirm identity client to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-identity-client-id', value: v }))} /> },
-    { key: 'Identity Secret', help: h(hIdSecret, 'Identity Client Secret'), value:
-        <TextForm value='' type='password' confirmTitle='Confirm identity client secret to ' onSave={(v) => dispatch(setGlobalSetting({ setting: 'cloud18-identity-client-secret', value: btoa(v) }))} /> },
+    { key: 'Identity', help: h(hIdentity, 'Identity'), value: <Cloud18Identity /> },
     { key: 'URI', help: h(`**URI**\n\nThis instance's Cloud18 identity — **domain / sub-domain / zone**. It forms the GitLab repos it syncs config and the peer catalog through.\n\nExamples: \`mycompany.headquarter.us1\`, \`signal18.ovh.fr-2\`.\n\nConfig: \`cloud18-domain\`, \`cloud18-sub-domain\`, \`cloud18-sub-domain-zone\``, 'URI'),
       // Credit-card style: the 3 URI parts as distinct fields on one line, with a SINGLE
       // edit pencil for the group. When locked (registered) the pencil warns instead of
