@@ -3100,7 +3100,7 @@ func (repman *ReplicationManager) Run() error {
 			select {
 			case <-ticker_PAT.C:
 				// an instance registered through Cloud18 renews its project tokens itself (#2159)
-				repman.rotateCloud18GitTokens(false)
+				repman.rotateCloud18GitTokens(repman.Conf, false)
 				//to do it only when auth to gitlab
 				if repman.Conf.GitUrl != "" && repman.OAuthAccessToken != nil && repman.Conf.Cloud18 {
 					//to obtain new app access token

@@ -38,6 +38,7 @@ type registerFakes struct {
 	projects   map[string]int
 	files      map[int]string
 	logins     int
+	revoked    []string
 }
 
 func newRegisterFakes(t *testing.T) (*registerFakes, string) {
@@ -181,6 +182,13 @@ func (f *registerFakes) api(w http.ResponseWriter, r *http.Request, path string)
 		f.projects[key] = f.nextID
 		w.WriteHeader(http.StatusCreated)
 		fmt.Fprintf(w, `{"id":%d}`, f.nextID)
+	case strings.HasSuffix(path, "/access_tokens/self/rotate"):
+		w.WriteHeader(http.StatusUnauthorized)
+	case strings.Contains(path, "/access_tokens") && r.Method == http.MethodGet:
+		fmt.Fprint(w, `[{"id":7,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false},{"id":8,"name":"someone else","active":true,"revoked":false}]`)
+	case strings.Contains(path, "/access_tokens/") && r.Method == http.MethodDelete:
+		f.revoked = append(f.revoked, path)
+		w.WriteHeader(http.StatusNoContent)
 	case strings.HasSuffix(path, "/access_tokens"):
 		w.WriteHeader(http.StatusCreated)
 		fmt.Fprintf(w, `{"token":"glpat-%d","expires_at":%q}`, f.nextID, body["expires_at"])
@@ -310,11 +318,23 @@ func TestCloud18MigrateToProjectTokens(t *testing.T) {
 	f.files[first.Conf.Cloud18GitProjectID] = "git-acces-token = \"" + first.Conf.GetEncryptedString("glpat-old-personal-token") + "\"\n"
 	f.mu.Unlock()
 
+	// at start InitGitConfig runs on the config being built, which replaces repman.Conf afterwards:
+	// the migration must write into that one, never into repman.Conf
 	old := registerRepman(t, issuer, key)
-	c := old.Conf
+	c := &config.Config{WorkingDir: old.Conf.WorkingDir, SecretKey: key, Cloud18IdentityURL: issuer, OAuthProvider: "https://gitlab.example"}
+	c.Secrets = config.NewSecrets(nil)
 	c.Cloud18, c.Cloud18Domain, c.Cloud18SubDomain, c.Cloud18SubDomainZone, c.Cloud18GitUser = true, "acme", "ovh", "fr-1", "admin@acme.example"
 	c.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "old-gitlab-password"})
+	f.mu.Lock()
+	f.revoked = nil
+	f.mu.Unlock()
 	old.cloud18MigrateToProjectTokens(c)
+	if old.Conf.Cloud18GitProjects() {
+		t.Fatal("the migration wrote into repman.Conf instead of the config being built")
+	}
+	if len(f.revoked) != 2 || !strings.HasSuffix(f.revoked[0], "/access_tokens/7") {
+		t.Fatalf("the instance's previous project tokens must be revoked (only those): %v", f.revoked)
+	}
 	if !c.Cloud18GitProjects() || c.Cloud18GitProjectID != first.Conf.Cloud18GitProjectID || !strings.HasPrefix(c.GetDecryptedValue("git-acces-token"), "glpat-") {
 		t.Fatalf("not moved: projects %d/%d token %q", c.Cloud18GitProjectID, first.Conf.Cloud18GitProjectID, c.GetDecryptedValue("git-acces-token"))
 	}

@@ -217,3 +217,26 @@ func GitLabRotateProjectToken(projectToken string, projectID int, expires time.T
 	}
 	return t, err
 }
+
+// GitLabRevokeProjectTokens revokes the active project access tokens named name (an instance's
+// previous ones, before a reconnect gives it new ones). Best effort: it returns how many it revoked.
+func GitLabRevokeProjectTokens(oauthToken string, projectID int, name string) int {
+	var tokens []struct {
+		ID      int    `json:"id"`
+		Name    string `json:"name"`
+		Active  bool   `json:"active"`
+		Revoked bool   `json:"revoked"`
+	}
+	if err := gitlabCall(http.MethodGet, "/projects/"+strconv.Itoa(projectID)+"/access_tokens?state=active&per_page=100", oauthToken, true, nil, &tokens); err != nil {
+		return 0
+	}
+	n := 0
+	for _, t := range tokens {
+		if t.Name == name && t.Active && !t.Revoked {
+			if gitlabCall(http.MethodDelete, "/projects/"+strconv.Itoa(projectID)+"/access_tokens/"+strconv.Itoa(t.ID), oauthToken, true, nil, nil) == nil {
+				n++
+			}
+		}
+	}
+	return n
+}

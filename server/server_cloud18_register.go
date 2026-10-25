@@ -55,7 +55,7 @@ var encryptedValueRe = regexp.MustCompile(`hash_[0-9a-fA-F]{34,}`)
 // cloud18ProjectOwnedHere says whether an existing config project is this instance's (or a
 // peer's): its saved config holds no encrypted value yet (a registration that did not finish),
 // or this instance's encryption key decrypts them (config.OwnsEncryptedValues).
-func (repman *ReplicationManager) cloud18ProjectOwnedHere(glToken string, projectID int) (bool, error) {
+func (repman *ReplicationManager) cloud18ProjectOwnedHere(conf *config.Config, glToken string, projectID int) (bool, error) {
 	data, err := githelper.GitLabProjectFile(glToken, true, projectID, "default.toml")
 	if err != nil {
 		return false, err
@@ -64,7 +64,7 @@ func (repman *ReplicationManager) cloud18ProjectOwnedHere(glToken string, projec
 	if len(values) == 0 {
 		return true, nil
 	}
-	return repman.Conf.OwnsEncryptedValues(values), nil
+	return conf.OwnsEncryptedValues(values), nil
 }
 
 // cloud18Register runs a registration through Cloud18 for the URI domain.subdomain.zone with the
@@ -101,7 +101,7 @@ func (repman *ReplicationManager) cloud18Register(domain, subdomain, zone, plan,
 		repman.setRegStatus(RegStateError, "Cloud18 login: "+err.Error(), res)
 		return
 	}
-	repman.cloud18Declare(glToken, domain, subdomain, zone, plan, res)
+	repman.cloud18Declare(conf, glToken, domain, subdomain, zone, plan, res)
 }
 
 // regState is the current registration state.
@@ -113,10 +113,10 @@ func (repman *ReplicationManager) regState() string {
 // cloud18Declare declares the instance in GitLab with the person's GitLab token (used for these
 // calls only, never kept): the domain group, the config and pull projects (an existing one must be
 // this instance's: a reconnect), one project token per project, then the settings. It returns the
-// final registration state.
-func (repman *ReplicationManager) cloud18Declare(glToken, domain, subdomain, zone, plan string, res cloud18RegisterResult) string {
+// final registration state. conf is the config being built: at start InitGitConfig runs on the
+// config that replaces repman.Conf afterwards, so nothing may be written to repman.Conf here.
+func (repman *ReplicationManager) cloud18Declare(conf *config.Config, glToken, domain, subdomain, zone, plan string, res cloud18RegisterResult) string {
 	uri := domain + "." + subdomain + "." + zone
-	conf := repman.Conf
 	user, err := githelper.GitLabTokenUser(glToken)
 	if err != nil {
 		repman.setRegStatus(RegStateError, "GitLab user: "+err.Error(), res)
@@ -141,7 +141,7 @@ func (repman *ReplicationManager) cloud18Declare(glToken, domain, subdomain, zon
 		return repman.regState()
 	}
 	if mainTaken {
-		owned, err := repman.cloud18ProjectOwnedHere(glToken, mainID)
+		owned, err := repman.cloud18ProjectOwnedHere(conf, glToken, mainID)
 		if err != nil {
 			repman.setRegStatus(RegStateError, "the existing repository of "+uri+" cannot be read: "+err.Error(), res)
 			return repman.regState()
@@ -161,6 +161,9 @@ func (repman *ReplicationManager) cloud18Declare(glToken, domain, subdomain, zon
 	// 4. the instance's own project tokens: the only GitLab credentials it keeps
 	tokenName := "replication-manager " + uri
 	expires := time.Now().Add(config.Cloud18GitTokenLifetime)
+	// a reconnect or a migration replaces the instance's previous tokens: never a pile of them
+	githelper.GitLabRevokeProjectTokens(glToken, mainID, tokenName)
+	githelper.GitLabRevokeProjectTokens(glToken, pullID, tokenName)
 	mainTok, err := githelper.GitLabCreateProjectToken(glToken, mainID, tokenName, expires)
 	if err != nil {
 		repman.setRegStatus(RegStateError, "project token: "+err.Error(), res)
@@ -189,7 +192,7 @@ func (repman *ReplicationManager) cloud18Declare(glToken, domain, subdomain, zon
 		end = expires.Format("2006-01-02")
 	}
 	conf.SetCloud18GitTokens(mainTok.Token, pullTok.Token, end)
-	repman.shareGitSecrets()
+	repman.shareGitSecrets(conf)
 	conf.Cloud18 = true
 	if err := repman.InitGitConfig(conf); err != nil {
 		repman.setRegStatus(RegStateError, "registered, the config repository not reached: "+err.Error(), res)
@@ -205,10 +208,10 @@ func (repman *ReplicationManager) cloud18Declare(glToken, domain, subdomain, zon
 	return RegStateOK
 }
 
-// shareGitSecrets gives the clusters the server's git tokens.
-func (repman *ReplicationManager) shareGitSecrets() {
+// shareGitSecrets gives the clusters the git tokens of conf.
+func (repman *ReplicationManager) shareGitSecrets(conf *config.Config) {
 	for _, key := range []string{"git-acces-token", "git-pull-access-token"} {
-		s := repman.Conf.Secrets.Get(key)
+		s := conf.Secrets.Get(key)
 		for _, cl := range repman.Clusters {
 			cl.Conf.Secrets.Set(key, s)
 		}
@@ -218,8 +221,7 @@ func (repman *ReplicationManager) shareGitSecrets() {
 // rotateCloud18GitTokens renews the project tokens of an instance registered through Cloud18 when
 // they end soon (or force). A token GitLab refuses raises the request to register again
 // (GWARN022, from the state checks: config.Cloud18GitTokenLost).
-func (repman *ReplicationManager) rotateCloud18GitTokens(force bool) error {
-	conf := repman.Conf
+func (repman *ReplicationManager) rotateCloud18GitTokens(conf *config.Config, force bool) error {
 	if !conf.Cloud18GitProjects() || (!force && !conf.Cloud18GitTokensDue(time.Now())) {
 		return nil
 	}
@@ -228,7 +230,7 @@ func (repman *ReplicationManager) rotateCloud18GitTokens(force bool) error {
 	}
 	defer repman.cloud18GitRotating.Store(false)
 	err := conf.RotateCloud18GitTokens(time.Now())
-	repman.shareGitSecrets()
+	repman.shareGitSecrets(conf)
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Cloud18 git tokens not renewed: %s", err)
 		repman.Save()
@@ -260,7 +262,7 @@ func (repman *ReplicationManager) cloud18MigrateToProjectTokens(conf *config.Con
 		return
 	}
 	res := cloud18RegisterResult{URI: conf.Cloud18Domain + "." + conf.Cloud18SubDomain + "." + conf.Cloud18SubDomainZone, User: user}
-	state := repman.cloud18Declare(glToken, conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone, "", res)
+	state := repman.cloud18Declare(conf, glToken, conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone, "", res)
 	_, msg, _ := repman.RegStatus.snapshot()
 	if state != RegStateOK {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,

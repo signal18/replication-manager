@@ -479,7 +479,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		conf.SetImmuableFlag("git-url", conf.GitUrl)
 		conf.SetImmuableFlag("git-url-pull", conf.GitUrlPull)
 		conf.SetImmuableFlag("git-username", conf.GitUsername)
-		repman.rotateCloud18GitTokens(false)
+		repman.rotateCloud18GitTokens(conf, false)
 		if conf.ConfRestoreOnStart {
 			conf.ConfRestoreOnStart = false
 			conf.SetImmuableFlag("monitoring-restore-config-on-start", false)
