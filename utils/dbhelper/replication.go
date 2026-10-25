@@ -156,8 +156,10 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			cm += ", " + masterOrSource + "_SSL_CA=''"
 		}
 
-		// Retry count supported from MariaDB 12 and MySQL 8.4
-		if myver.IsMariaDBGreater12() || myver.IsMySQLOrPerconaGreater84() {
+		// Retry count supported from MariaDB 12 and MySQL 8.4, never on the group
+		// replication recovery channel: MySQL 8.4 refuses the whole statement there (Error
+		// 3139), which left the group without recovery credentials (#2164)
+		if (myver.IsMariaDBGreater12() || myver.IsMySQLOrPerconaGreater84()) && opt.Mode != "GROUP_REPL" {
 			if opt.RetryCount != "" {
 				cm += ", " + masterOrSource + "_RETRY_COUNT=" + opt.RetryCount
 			}
