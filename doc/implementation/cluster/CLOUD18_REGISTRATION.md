@@ -73,9 +73,14 @@ a reconnect).
   GitLab password). **Rule: our GitLab is not upgraded to a version without the password grant before the
   fleet runs a release with this registration.** An account created through Cloud18 has no GitLab
   password, so it cannot register an older release.
-- **An instance registered with the password** keeps that path untouched on this release
-  (`InitGitConfig`, rotation). When GitLab refuses the password, `GWARN022` asks to register again; the
-  reconnect keeps its repositories.
+- **An instance registered with the password moves to its project tokens by itself** at start
+  (`cloud18MigrateToProjectTokens`, from `InitGitConfig`): nobody has to do anything. Its stored GitLab
+  user and password go through **GitLab's own web sign-in form** (`config.GitLabPasswordLogin`, not the
+  password grant GitLab ends), then GitLab's OAuth as above gives the token, and the declaration finds its
+  repositories (its key decrypts their config): a reconnect, its own project tokens from then on. Validated
+  live 2026-10-25 with a throwaway GitLab user (sign-in form, code, token `api`). When it cannot (a 2FA
+  account, a captcha, a changed password), the instance keeps the password path untouched and the log
+  says why; `GWARN022` asks to register again once GitLab refuses that password too.
 
 ## Setup (realm and GitLab)
 

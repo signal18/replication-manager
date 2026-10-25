@@ -30,6 +30,7 @@ import (
 type registerFakes struct {
 	mu         sync.Mutex
 	accounts   map[string]string // email -> password ("" = not activated yet)
+	gitlabPw   map[string]string // GitLab user -> GitLab password (an instance registered the old way)
 	signedUp   []string
 	challenges map[string]string // code -> PKCE challenge
 	nextID     int
@@ -40,7 +41,7 @@ type registerFakes struct {
 }
 
 func newRegisterFakes(t *testing.T) (*registerFakes, string) {
-	f := &registerFakes{accounts: map[string]string{"admin@acme.example": "s3cr3t-cloud18"}, challenges: map[string]string{},
+	f := &registerFakes{accounts: map[string]string{"admin@acme.example": "s3cr3t-cloud18"}, gitlabPw: map[string]string{"admin@acme.example": "old-gitlab-password"}, challenges: map[string]string{},
 		nextID: 10, groups: map[string]int{}, projects: map[string]int{}, files: map[int]string{}}
 	var gitlabURL, realmURL string
 
@@ -101,8 +102,17 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 			}
 			http.SetCookie(w, &http.Cookie{Name: "after", Value: url.QueryEscape(r.URL.String()), Path: "/"})
 			http.Redirect(w, r, "/users/sign_in", http.StatusFound)
+		case path == "/users/sign_in" && r.Method == http.MethodPost:
+			if pw, ok := f.gitlabPw[r.Form.Get("user[login]")]; ok && pw == r.Form.Get("user[password]") && r.Form.Get("authenticity_token") == "csrf+1" {
+				http.SetCookie(w, &http.Cookie{Name: "gl_session", Value: url.QueryEscape(r.Form.Get("user[login]")), Path: "/"})
+				after, _ := r.Cookie("after")
+				back, _ := url.QueryUnescape(after.Value)
+				http.Redirect(w, r, back, http.StatusFound)
+				return
+			}
+			fmt.Fprint(w, `<meta name="csrf-token" content="csrf&#43;1"><input name="user[login]"><input name="user[password]">`)
 		case path == "/users/sign_in":
-			fmt.Fprint(w, `<meta name="csrf-token" content="csrf&#43;1">`)
+			fmt.Fprint(w, `<meta name="csrf-token" content="csrf&#43;1"><input name="user[login]"><input name="user[password]">`)
 		case path == "/users/auth/openid_connect" && r.Method == http.MethodPost:
 			if r.Form.Get("authenticity_token") != "csrf+1" {
 				http.Error(w, "csrf", 422)
@@ -280,5 +290,44 @@ func TestCloud18Register(t *testing.T) {
 	newcomer.cloud18Register("newco", "ovh", "fr-1", "", "new@newco.example", "chosen-from-email", nil)
 	if state, msg, _ := regResult(t, newcomer); state != RegStateOK || newcomer.Conf.Cloud18GitUser != "new@newco.example" {
 		t.Fatalf("after the confirmation: %s %q", state, msg)
+	}
+}
+
+// #2159: an instance registered with the GitLab password moves to its own project tokens by itself
+// at start, through GitLab's web sign-in with its stored password (not the password grant): a
+// reconnect to its repositories; a refused password leaves it on its password path, untouched.
+func TestCloud18MigrateToProjectTokens(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	key := []byte("0123456789abcdef")
+
+	// the repositories the old registration created, holding the instance's saved config
+	first := registerRepman(t, issuer, key)
+	first.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, _ := regResult(t, first); state != RegStateOK {
+		t.Fatalf("setup: %s %q", state, msg)
+	}
+	f.mu.Lock()
+	f.files[first.Conf.Cloud18GitProjectID] = "git-acces-token = \"" + first.Conf.GetEncryptedString("glpat-old-personal-token") + "\"\n"
+	f.mu.Unlock()
+
+	old := registerRepman(t, issuer, key)
+	c := old.Conf
+	c.Cloud18, c.Cloud18Domain, c.Cloud18SubDomain, c.Cloud18SubDomainZone, c.Cloud18GitUser = true, "acme", "ovh", "fr-1", "admin@acme.example"
+	c.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "old-gitlab-password"})
+	old.cloud18MigrateToProjectTokens(c)
+	if !c.Cloud18GitProjects() || c.Cloud18GitProjectID != first.Conf.Cloud18GitProjectID || !strings.HasPrefix(c.GetDecryptedValue("git-acces-token"), "glpat-") {
+		t.Fatalf("not moved: projects %d/%d token %q", c.Cloud18GitProjectID, first.Conf.Cloud18GitProjectID, c.GetDecryptedValue("git-acces-token"))
+	}
+	if _, _, res := regResult(t, old); !res.Reattach {
+		t.Fatal("the migration must be a reconnect to the existing repositories")
+	}
+
+	refused := registerRepman(t, issuer, key)
+	r := refused.Conf
+	r.Cloud18, r.Cloud18Domain, r.Cloud18SubDomain, r.Cloud18SubDomainZone, r.Cloud18GitUser = true, "acme", "ovh", "fr-1", "admin@acme.example"
+	r.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "changed-since"})
+	refused.cloud18MigrateToProjectTokens(r)
+	if r.Cloud18GitProjects() || !r.Cloud18 || r.GetDecryptedValue("cloud18-gitlab-password") != "changed-since" {
+		t.Fatal("a refused password must leave the instance on its password path, untouched")
 	}
 }

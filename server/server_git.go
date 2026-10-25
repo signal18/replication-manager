@@ -461,6 +461,10 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, tok, conf.WorkingDir)
 	}
 
+	// An instance registered with the GitLab password moves to its own project tokens by
+	// itself (#2159); when it cannot, the password path below goes on as before.
+	repman.cloud18MigrateToProjectTokens(conf)
+
 	if conf.Cloud18 && conf.Cloud18GitProjects() {
 		// Registered through Cloud18 (#2159): the instance's own project tokens, one per
 		// repository, renewed by themselves before they end. No GitLab login, no password.
