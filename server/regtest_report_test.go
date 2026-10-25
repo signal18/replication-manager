@@ -12,9 +12,9 @@ import (
 )
 
 func TestBuildRegtestReportsGroupsBySetup(t *testing.T) {
-	repman := &ReplicationManager{Conf: &config.Config{}, UUID: "1a2b-3c4d", Version: "3.1.45", Fullversion: "v3.1.45 (abc123)"}
-	galera := regtestSetup{Orchestrator: "opensvc", Topology: "multi-master-wsrep", Flavor: "mariadb", DbVersion: "11.4", Proxy: "haproxy"}
-	upgrade := regtestSetup{Orchestrator: "opensvc", Topology: "master-slave", Flavor: "mariadb", DbVersion: "11.4", FromDbVersion: "10.11"}
+	repman := &ReplicationManager{Conf: &config.Config{}, UUID: "1a2b-3c4d", Version: "3.1.45", Fullversion: "v3.1.45-12-gabc123"}
+	galera := regtestSetup{Orchestrator: "opensvc", Topology: "multi-master-wsrep", Flavor: "mariadb", DbVersion: "11.4.5", Proxy: "haproxy"}
+	upgrade := regtestSetup{Orchestrator: "opensvc", Topology: "master-slave", Flavor: "mariadb", DbVersion: "11.4.5", FromDbVersion: "10.11.9"}
 	tests := []regtestReportedTest{
 		{Setup: galera, Test: "testSwitchover", Result: "PASS", Duration: 42 * time.Second, ClusterTOML: "[saved-galera]\ntitle = \"galera\"\n"},
 		{Setup: upgrade, Test: "testRollingUpgrade", Result: "FAIL", Duration: 90 * time.Second},
@@ -38,14 +38,14 @@ func TestBuildRegtestReportsGroupsBySetup(t *testing.T) {
 	if first.Run.ClusterTOML == "" || second.Run.ClusterTOML != "" {
 		t.Fatalf("each report carries the configuration of its setup: %q / %q", first.Run.ClusterTOML, second.Run.ClusterTOML)
 	}
-	if second.Run.FromDbVersion != "10.11" || second.Results[0].Result != "FAIL" {
+	if second.Run.FromDbVersion != "10.11.9" || second.Results[0].Result != "FAIL" {
 		t.Fatalf("second report = %+v", second)
 	}
 	if first.Run.RunRef == second.Run.RunRef {
 		t.Fatalf("both reports share run_ref %s", first.Run.RunRef)
 	}
-	// the CRM accepts [A-Za-z0-9._+-] only
-	if first.Run.RepmanCommit != "v3.1.45-abc123" || first.Run.TestedAt != "2026-10-25T14:00:00Z" || first.URI != "signal18.ovh.fr-2" {
+	// the run fields are sent as they are (git describe for the commit), the CRM validates them
+	if first.Run.RepmanCommit != "v3.1.45-12-gabc123" || first.Run.TestedAt != "2026-10-25T14:00:00Z" || first.URI != "signal18.ovh.fr-2" {
 		t.Fatalf("run = %+v", first.Run)
 	}
 }

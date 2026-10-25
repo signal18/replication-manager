@@ -13,6 +13,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/releases"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // seedTestedSetups puts a fresh copy of the tested setups in the cache for the test.
@@ -52,8 +53,8 @@ func fakeCRM(t *testing.T, answer func() ([]cloud18TestedSetup, error)) *int {
 
 func TestCloud18TestedSetupsCache(t *testing.T) {
 	dir := t.TempDir()
-	repman := &ReplicationManager{Conf: &config.Config{WorkingDir: dir}, Logrus: logrus.New()}
-	galera := []cloud18TestedSetup{{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.4", Status: "passed"}}
+	repman := &ReplicationManager{Conf: &config.Config{WorkingDir: dir, Cloud18SelfServiceCacheSeconds: 600}, Logrus: logrus.New()}
+	galera := []cloud18TestedSetup{{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.4.5", Status: "passed"}}
 
 	// CRM down, nothing on disk: not readable, and the CRM is not asked again within the TTL
 	resetTestedSetupsCache(t)
@@ -100,76 +101,74 @@ func TestCloud18TestedSetupsCache(t *testing.T) {
 	}
 }
 
-func TestCloud18ImageLine(t *testing.T) {
-	table := releases.Table{
-		LTS:   map[string][]string{"mariadb": {"10.11", "11.4", "11.8"}},
-		Lines: map[string][]string{"mariadb": {"10.11", "11.4", "11.8", "12.0"}},
-	}
-	for image, want := range map[string]string{
-		"mariadb:lts":    "11.8",
-		"mariadb:latest": "12.0",
-		"mariadb":        "12.0",
-		"mariadb:11.4":   "11.4",
-		"mariadb:11.4.5": "11.4",
-	} {
-		got, err := cloud18ImageLine(table, "mariadb", image)
-		if err != nil || got != want {
-			t.Errorf("%s: got %q %v, want %s", image, got, err, want)
-		}
-	}
-	if _, err := cloud18ImageLine(table, "mysql", "mysql:lts"); err == nil {
-		t.Error("a flavor without lines in the table must be an error")
-	}
-}
-
 func TestCloud18SetupTested(t *testing.T) {
 	asOf := time.Now()
 	setups := []cloud18TestedSetup{
-		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.4", Proxy: "haproxy", Status: "failing", TestedAt: "2026-10-20T10:00:00Z", RepmanVersion: "3.1.44"},
-		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.4", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z", RepmanVersion: "3.1.45"},
-		{Flavor: "mysql", Topology: config.TopoMultiMasterGrouprep, DbVersion: "8.4", Proxy: "haproxy", Status: "failing", TestedAt: "2026-10-25T10:00:00Z", RepmanVersion: "3.1.45"},
-		// an upgrade run does not test the line it upgraded to as a fresh setup
-		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8", FromDbVersion: "11.4", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
-		{Flavor: "postgresql", Topology: config.TopoMasterSlavePgStream, DbVersion: "17.0", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.4.5", Proxy: "haproxy", Status: "failing", TestedAt: "2026-10-20T10:00:00Z", RepmanVersion: "3.1.44"},
+		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.4.5", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z", RepmanVersion: "3.1.45"},
+		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.4.3", Proxy: "haproxy", Status: "failing", TestedAt: "2026-10-26T10:00:00Z", RepmanVersion: "3.1.45"},
+		{Flavor: "mysql", Topology: config.TopoMultiMasterGrouprep, DbVersion: "8.4.11", Proxy: "haproxy", Status: "failing", TestedAt: "2026-10-25T10:00:00Z", RepmanVersion: "3.1.45"},
+		// an upgrade run does not test the release it upgraded to as a fresh setup
+		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8.3", FromDbVersion: "11.4.5", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "postgresql", Topology: config.TopoMasterSlavePgStream, DbVersion: "17.2.0", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+	}
+	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "haproxy"); err != nil {
+		t.Errorf("the latest Galera 11.4.5 run with HAProxy passed: %v", err)
+	}
+	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.3", "haproxy"); err == nil || !strings.Contains(err.Error(), "release 11.4.3") {
+		t.Errorf("the release itself failed, a pass of another release does not count: %v", err)
 	}
 	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4", "haproxy"); err != nil {
-		t.Errorf("the latest Galera 11.4 run with HAProxy passed: %v", err)
+		t.Errorf("a line the list cannot resolve takes its newest tested release (11.4.5 passed): %v", err)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4", "proxysql"); err == nil || !strings.Contains(err.Error(), "not been tested") {
+	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "proxysql"); err == nil || !strings.Contains(err.Error(), "not been tested") {
 		t.Errorf("a pass with HAProxy must not approve ProxySQL: %v", err)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4", "none"); err != nil {
+	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.5", "none"); err != nil {
 		t.Errorf("without a proxy any tested proxy counts: %v", err)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mysql", config.TopoMultiMasterGrouprep, "8.4", "haproxy"); err == nil || !strings.Contains(err.Error(), "failed") {
-		t.Errorf("group replication 8.4 failed its latest run: %v", err)
+	if err := cloud18SetupTested(setups, true, asOf, "mysql", config.TopoMultiMasterGrouprep, "8.4.11", "haproxy"); err == nil || !strings.Contains(err.Error(), "failed") {
+		t.Errorf("group replication 8.4.11 failed its latest run: %v", err)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMasterSlave, "11.8", "haproxy"); err == nil || !strings.Contains(err.Error(), "not been tested") {
-		t.Errorf("master-slave 11.8 has only an upgrade run: %v", err)
+	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMasterSlave, "11.8.3", "haproxy"); err == nil || !strings.Contains(err.Error(), "not been tested") {
+		t.Errorf("master-slave 11.8.3 has only an upgrade run: %v", err)
 	}
-	if err := cloud18SetupTested(setups, true, asOf, "postgres", config.TopoMasterSlavePgStream, "17.0", "haproxy"); err != nil {
-		t.Errorf("postgres is reported as postgresql: %v", err)
+	if err := cloud18SetupTested(setups, true, asOf, "postgres", config.TopoMasterSlavePgStream, "17", "haproxy"); err != nil {
+		t.Errorf("postgres is reported as postgresql, 17 covers 17.2.0: %v", err)
 	}
-	if err := cloud18SetupTested(nil, false, time.Time{}, "mariadb", config.TopoMasterSlave, "11.4", "haproxy"); err == nil {
+	if err := cloud18SetupTested(setups, true, asOf, "mariadb", config.TopoMultiMasterWsrep, "11.4.50", "haproxy"); err == nil {
+		t.Error("11.4.5 must not cover 11.4.50")
+	}
+	if err := cloud18SetupTested(nil, false, time.Time{}, "mariadb", config.TopoMasterSlave, "11.4.5", "haproxy"); err == nil {
 		t.Error("unreadable tested setups must refuse")
 	}
 }
 
-func TestServerLineMatchesImageLine(t *testing.T) {
-	// the reporter names a server's line as the gate resolves an image tag
-	table := releases.Table{}
+// TestCloud18ResolvedReleaseMatchesReported: the release the gate resolves an image to in
+// the image list (Catalog.Resolve) is found among the releases the reporter sends
+// (version.ToString of the running server).
+func TestCloud18ResolvedReleaseMatchesReported(t *testing.T) {
+	catalog := &releases.Catalog{Tags: map[string][]releases.Tag{
+		"mariadb":  {{Name: "11.4"}, {Name: "11.4.3"}, {Name: "11.4.5"}},
+		"mysql":    {{Name: "8.0"}, {Name: "8.0.41"}},
+		"percona":  {{Name: "8.0"}, {Name: "8.0.46-37"}},
+		"postgres": {{Name: "17"}, {Name: "17.2"}},
+	}}
 	for _, c := range []struct {
-		flavor       string
-		major, minor int
-		image        string
+		image   string
+		flavor  string
+		running version.Version
 	}{
-		{"MariaDB", 11, 4, "mariadb:11.4"},
-		{"MySQL", 8, 4, "mysql:8.4"},
-		{"PostgreSQL", 17, 2, "postgres:17"},
+		{"mariadb:11.4", "mariadb", version.Version{Major: 11, Minor: 4, Release: 5}},
+		{"mysql:8.0", "mysql", version.Version{Major: 8, Minor: 0, Release: 41}},
+		{"percona:8.0", "percona", version.Version{Major: 8, Minor: 0, Release: 46}},
+		{"postgres:17", "postgresql", version.Version{Major: 17, Minor: 2}},
 	} {
-		img, err := cloud18ImageLine(table, releases.FlavorOfImage(c.image), c.image)
-		if got := releases.ServerLine(c.flavor, c.major, c.minor).String(); err != nil || got != img {
-			t.Errorf("%s %d.%d reports %s, %s resolves to %s (%v)", c.flavor, c.major, c.minor, got, c.image, img, err)
+		repo, tag := releases.SplitImage(c.image)
+		release := catalog.Resolve(repo, c.flavor, tag)
+		setups := []cloud18TestedSetup{{Flavor: c.flavor, Topology: config.TopoMasterSlave, DbVersion: c.running.ToString(), Status: "passed", TestedAt: "2026-10-25T10:00:00Z"}}
+		if err := cloud18SetupTested(setups, true, time.Now(), c.flavor, config.TopoMasterSlave, release, "none"); err != nil {
+			t.Errorf("%s resolves to %s, the server reports %s: %v", c.image, release, c.running.ToString(), err)
 		}
 	}
 }

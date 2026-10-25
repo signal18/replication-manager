@@ -7,7 +7,6 @@ package cluster
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -16,25 +15,7 @@ import (
 
 // loadImageCatalog builds the image list catalog of a cluster, a variable for tests.
 var loadImageCatalog = func(cluster *Cluster) (*releases.Catalog, error) {
-	table, _, err := releases.Load(cluster.Conf.ShareDir + "/plugins/data")
-	if err != nil {
-		return nil, err
-	}
-	repos, err := cluster.Conf.GetDockerRepos(cluster.Conf.ShareDir+"/repo/repos.json", cluster.Conf.Test)
-	if err != nil {
-		return nil, err
-	}
-	tags := map[string][]releases.Tag{}
-	for _, r := range repos {
-		for _, t := range r.Tags.Results {
-			tags[r.Image] = append(tags[r.Image], releases.Tag{Name: t.Name, Digest: t.Digest})
-		}
-	}
-	source := "embedded image list"
-	if st, err := os.Stat(filepath.Join(cluster.Conf.ShareDir, "plugins", "data", "repos.json")); err == nil && st.Size() > 0 {
-		source = "plugins/data/repos.json (back office)"
-	}
-	return &releases.Catalog{Table: table, Tags: tags, Source: source}, nil
+	return cluster.Conf.ImageCatalog()
 }
 
 // ImageCatalog is the configurator's image list for this instance.

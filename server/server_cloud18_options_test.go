@@ -7,7 +7,7 @@ import (
 )
 
 func TestClusterOptionsLocalDimensions(t *testing.T) {
-	repman := &ReplicationManager{Conf: &config.Config{}}
+	repman := &ReplicationManager{Conf: &config.Config{Cloud18SelfServiceCacheSeconds: 600}}
 	out, err := repman.Cloud18ClusterOptions(nil, "db_image", "mariadb", "")
 	if err != nil {
 		t.Fatal(err)
@@ -28,9 +28,9 @@ func TestClusterOptionsLocalDimensions(t *testing.T) {
 	}
 	// a topology is creatable once a release line passed its latest regression test run (#2165)
 	seedTestedSetups(t, []cloud18TestedSetup{
-		{Flavor: "mariadb", Topology: config.TopoActivePassive, DbVersion: "11.8", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
-		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
-		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.8", Status: "failing", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "mariadb", Topology: config.TopoActivePassive, DbVersion: "11.8.3", Proxy: "haproxy", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "mariadb", Topology: config.TopoMasterSlave, DbVersion: "11.8.3", Status: "passed", TestedAt: "2026-10-25T10:00:00Z"},
+		{Flavor: "mariadb", Topology: config.TopoMultiMasterWsrep, DbVersion: "11.8.3", Status: "failing", TestedAt: "2026-10-25T10:00:00Z"},
 	})
 	out, _ = repman.Cloud18ClusterOptions(nil, "topology", "mariadb", "")
 	topo := out["topology"].(map[string]any)["mariadb"].([]map[string]any)

@@ -23,23 +23,24 @@ import (
 )
 
 // Self-service builds only the setups whose latest regtest run passed (#2165): the
-// regtest runs of Signal18's test instances are stored in the Cloud18 CRM, read here
-// with this instance's GitLab token, kept 10 minutes in memory and on disk, so that
-// a restart or a CRM outage keeps the last known copy (for 7 days).
+// regtest runs of every registered instance are stored in the Cloud18 CRM, read here
+// with this instance's GitLab token, kept in memory and on disk for the self-service
+// cache interval (cloud18-self-service-cache-seconds), so that a restart or a CRM outage
+// keeps the last known copy (for 7 days).
 //
-// A setup is a flavor, topology and release line, with the proxy when the request has
-// one. Deliberately not part of it:
+// A setup is a flavor, topology and release (8.0.41), with the proxy when the request has
+// one. The release is the one the requested image resolves to in the image list, as
+// provisioning resolves it; when that release has no run (a line the list cannot resolve,
+// PostgreSQL), the newest tested release under the requested tag counts. Deliberately not
+// part of a setup:
 //   - the orchestrator: regression tests are functional and hold on every orchestrator
 //     (they gate on the topology, never on the orchestrator);
 //   - the replication-manager version: the latest run wins, whatever version ran it.
-// Upgrade runs (from_db_version set) test an upgrade path, not a fresh setup of the line
-// they upgrade to, and never open the gate.
+// Upgrade runs (from_db_version set) test an upgrade path, not a fresh setup of the
+// release they upgrade to, and never open the gate.
 
-const (
-	cloud18TestedSetupsTTL = 10 * time.Minute
-	// past this age (a CRM unreachable for that long) the last copy no longer opens the gate
-	cloud18TestedSetupsMaxAge = 7 * 24 * time.Hour
-)
+// past this age (a CRM unreachable for that long) the last copy no longer opens the gate
+const cloud18TestedSetupsMaxAge = 7 * 24 * time.Hour
 
 // cloud18TestedSetup is one line of the CRM's GET /api/instances/tested-setups.
 type cloud18TestedSetup struct {
@@ -81,8 +82,8 @@ func (repman *ReplicationManager) testedSetupsFile() string {
 }
 
 // cloud18TestedSetupsList returns the tested setups and when they were read from the CRM.
-// The CRM is asked again once the copy is older than the TTL, at most once per TTL when it
-// fails, by one caller at a time (the others keep the copy they have). ok is false when no
+// The CRM is asked again once the copy is older than the self-service cache interval, at
+// most once per interval when it fails, by one caller at a time (the others keep the copy they have). ok is false when no
 // copy is held, or when the one held is older than cloud18TestedSetupsMaxAge.
 func (repman *ReplicationManager) cloud18TestedSetupsList() (setups []cloud18TestedSetup, asOf time.Time, ok bool) {
 	c := &testedSetupsCache
@@ -94,7 +95,8 @@ func (repman *ReplicationManager) cloud18TestedSetupsList() (setups []cloud18Tes
 			c.held = &disk
 		}
 	}
-	due := (c.held == nil || time.Since(c.held.FetchedAt) >= cloud18TestedSetupsTTL) && time.Since(c.lastAttempt) >= cloud18TestedSetupsTTL
+	ttl := repman.selfServiceCacheTTL()
+	due := (c.held == nil || time.Since(c.held.FetchedAt) >= ttl) && time.Since(c.lastAttempt) >= ttl
 	c.mu.Unlock()
 
 	if due {
@@ -139,9 +141,8 @@ func (repman *ReplicationManager) refreshCloud18TestedSetups() {
 	c.held = fresh
 	c.mu.Unlock()
 	if data, err := json.Marshal(fresh); err == nil {
-		file := repman.testedSetupsFile()
-		if err := os.WriteFile(file+".tmp", data, 0600); err == nil {
-			_ = os.Rename(file+".tmp", file)
+		if err := writeConfigFileAtomic(repman.testedSetupsFile(), data); err != nil {
+			repman.Logrus.Warnf("cloud18 tested setups not kept on disk: %s", err)
 		}
 	}
 }
@@ -151,19 +152,12 @@ func (repman *ReplicationManager) fetchCloud18TestedSetupsFromCRM() ([]cloud18Te
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodGet, repman.crmBase()+"/api/instances/tested-setups", nil)
+	status, body, err := crmGetTestedSetups(repman.crmBase(), token)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("CRM answered %d: %s", resp.StatusCode, strings.TrimSpace(string(body[:min(len(body), 300)])))
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("CRM answered %d: %s", status, strings.TrimSpace(string(body[:min(len(body), 300)])))
 	}
 	var out struct {
 		Setups []cloud18TestedSetup `json:"setups"`
@@ -172,6 +166,23 @@ func (repman *ReplicationManager) fetchCloud18TestedSetupsFromCRM() ([]cloud18Te
 		return nil, err
 	}
 	return out.Setups, nil
+}
+
+// crmGetTestedSetups reads the consolidated regtest runs from the CRM using a GitLab PAT (#2165).
+func crmGetTestedSetups(crmBase, gitlabToken string) (int, []byte, error) {
+	req, err := http.NewRequest(http.MethodGet, crmBase+"/api/instances/tested-setups", nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient15s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
 }
 
 // cloud18TestedFlavor names a flavor as the regtest reports it (the server's flavor).
@@ -188,90 +199,80 @@ func cloud18TestedAt(run cloud18TestedSetup) time.Time {
 	return at
 }
 
-// cloud18TestedRuns gives, per release line, the latest run of a flavor and topology with
-// that proxy ("" or "none": any proxy), upgrade runs aside.
-func cloud18TestedRuns(setups []cloud18TestedSetup, flavor, topology, proxy string) map[string]cloud18TestedSetup {
+// cloud18TestedRun is the latest run of a flavor and topology with that proxy ("" or
+// "none": any proxy) on a release: the release itself when it has a run, else the newest
+// tested release under it (8.0 or 8 covers 8.0.41, PostgreSQL 17 covers 17.2.0), upgrade
+// runs aside.
+func cloud18TestedRun(setups []cloud18TestedSetup, flavor, topology, release, proxy string) (cloud18TestedSetup, bool) {
 	flavor = cloud18TestedFlavor(flavor)
 	anyProxy := proxy == "" || proxy == "none"
-	latest := map[string]cloud18TestedSetup{}
-	for _, s := range setups {
+	var exact, under *cloud18TestedSetup
+	for i := range setups {
+		s := &setups[i]
 		if s.Flavor != flavor || s.Topology != topology || s.FromDbVersion != "" || (!anyProxy && s.Proxy != proxy) {
 			continue
 		}
-		if cur, ok := latest[s.DbVersion]; !ok || cloud18TestedAt(s).After(cloud18TestedAt(cur)) {
-			latest[s.DbVersion] = s
+		switch {
+		// Percona's image names its build (8.0.46-37), the server its release (8.0.46)
+		case s.DbVersion == release || strings.HasPrefix(release, s.DbVersion+"-"):
+			if exact == nil || cloud18TestedAt(*s).After(cloud18TestedAt(*exact)) {
+				exact = s
+			}
+		case strings.HasPrefix(s.DbVersion, release+"."):
+			if under == nil || releases.CompareReleases(s.DbVersion, under.DbVersion) > 0 ||
+				(s.DbVersion == under.DbVersion && cloud18TestedAt(*s).After(cloud18TestedAt(*under))) {
+				under = s
+			}
 		}
 	}
-	return latest
+	switch {
+	case exact != nil:
+		return *exact, true
+	case under != nil:
+		return *under, true
+	}
+	return cloud18TestedSetup{}, false
 }
 
-// cloud18ImageLine is the release line an image runs: its tag when it names a line,
-// the newest long-term line for lts, the newest line for latest.
-func cloud18ImageLine(table releases.Table, flavor, image string) (string, error) {
-	tag := ""
-	if i := strings.LastIndex(image, ":"); i >= 0 && !strings.Contains(image[i:], "/") {
-		tag = strings.ToLower(image[i+1:])
-	}
-	var candidates []string
-	switch tag {
-	case "", "latest":
-		candidates = table.Lines[flavor]
-	case "lts":
-		candidates = table.LTS[flavor]
-	default:
-		l, err := releases.LineOf(tag)
-		if err != nil {
-			return "", fmt.Errorf("db_image %s: no release line in tag %q", image, tag)
-		}
-		return l.String(), nil
-	}
-	var best *releases.Line
-	for _, s := range candidates {
-		if l, err := releases.ParseLine(s); err == nil && (best == nil || best.Less(l)) {
-			x := l
-			best = &x
-		}
-	}
-	if best == nil {
-		return "", fmt.Errorf("db_image %s: the release table has no %s line for %s", image, tag, flavor)
-	}
-	return best.String(), nil
-}
-
-// cloud18SetupTested refuses a creation whose flavor, topology, release line and proxy has
-// no passing latest regtest run.
-func cloud18SetupTested(setups []cloud18TestedSetup, readable bool, asOf time.Time, flavor, topology, line, proxy string) error {
+// cloud18SetupTested refuses a creation whose flavor, topology, release and proxy has no
+// passing latest regtest run.
+func cloud18SetupTested(setups []cloud18TestedSetup, readable bool, asOf time.Time, flavor, topology, release, proxy string) error {
 	if !readable {
 		if asOf.IsZero() {
 			return fmt.Errorf("the tested setups cannot be read from the Cloud18 CRM: self-service builds only tested setups, try again later")
 		}
 		return fmt.Errorf("the tested setups were last read from the Cloud18 CRM on %s, too long ago: self-service builds only tested setups, try again later", asOf.Format("2006-01-02"))
 	}
-	what := fmt.Sprintf("%s %s with topology %s", flavor, line, topology)
+	what := fmt.Sprintf("%s %s with topology %s", flavor, release, topology)
 	if proxy != "" && proxy != "none" {
 		what += " and " + proxy
 	}
-	run, ok := cloud18TestedRuns(setups, flavor, topology, proxy)[line]
+	run, ok := cloud18TestedRun(setups, flavor, topology, release, proxy)
 	if !ok {
 		return fmt.Errorf("%s has not been tested by replication-manager's regression tests yet: it is available on request through sales", what)
 	}
 	if run.Status != "passed" {
-		return fmt.Errorf("%s failed its latest regression tests (%s, replication-manager %s): it is available on request through sales", what, run.TestedAt, run.RepmanVersion)
+		return fmt.Errorf("%s failed its latest regression tests (release %s, %s, replication-manager %s): it is available on request through sales", what, run.DbVersion, run.TestedAt, run.RepmanVersion)
 	}
 	return nil
 }
 
 // cloud18RequireTestedSetup checks a cluster request against the tested setups: its flavor,
-// topology (a master and replicas when unset), the release line of its image and its proxy.
+// topology (a master and replicas when unset), the release its image resolves to in the
+// image list (as provisioning resolves it) and its proxy.
 func (repman *ReplicationManager) cloud18RequireTestedSetup(spec Cloud18ClusterSpec) error {
-	table, source, err := releases.Load(repman.Conf.ShareDir + "/plugins/data")
+	catalog, err := repman.Conf.ImageCatalog()
 	if err != nil {
-		return fmt.Errorf("the release table cannot be read (%s): %w", source, err)
+		return fmt.Errorf("the image list cannot be read: %w", err)
 	}
 	flavor := releases.FlavorOfImage(spec.DBImage)
-	line, err := cloud18ImageLine(table, flavor, spec.DBImage)
-	if err != nil {
-		return err
+	repo, tag := releases.SplitImage(spec.DBImage)
+	if tag == "" {
+		tag = "latest"
+	}
+	release := catalog.Resolve(repo, flavor, tag)
+	if _, err := releases.LineOf(release); err != nil {
+		return fmt.Errorf("db_image %s does not resolve to a release in the image list: self-service builds only tested setups", spec.DBImage)
 	}
 	topology := spec.Topology
 	if topology == "" {
@@ -282,11 +283,11 @@ func (repman *ReplicationManager) cloud18RequireTestedSetup(spec Cloud18ClusterS
 		proxy = "none"
 	}
 	setups, asOf, readable := repman.cloud18TestedSetupsList()
-	return cloud18SetupTested(setups, readable, asOf, flavor, topology, line, proxy)
+	return cloud18SetupTested(setups, readable, asOf, flavor, topology, release, proxy)
 }
 
-// cloud18TopologiesTested adds to each topology of a flavor its tested release lines and
-// proxies, and makes it creatable only when one of them passed its latest run.
+// cloud18TopologiesTested adds to each topology of a flavor its tested releases and proxies,
+// and makes it creatable only when one of them passed its latest run.
 func cloud18TopologiesTested(setups []cloud18TestedSetup, readable bool, asOf time.Time, flavor string, topologies []map[string]any) []map[string]any {
 	out := make([]map[string]any, 0, len(topologies))
 	for _, t := range topologies {
@@ -295,8 +296,8 @@ func cloud18TopologiesTested(setups []cloud18TestedSetup, readable bool, asOf ti
 			e[k] = v
 		}
 		topology, _ := t["topology"].(string)
-		// the latest run per release line and proxy
-		type key struct{ line, proxy string }
+		// the latest run per release and proxy
+		type key struct{ release, proxy string }
 		runs := map[key]cloud18TestedSetup{}
 		for _, s := range setups {
 			if s.Flavor != cloud18TestedFlavor(flavor) || s.Topology != topology || s.FromDbVersion != "" {
@@ -312,13 +313,11 @@ func cloud18TopologiesTested(setups []cloud18TestedSetup, readable bool, asOf ti
 			keys = append(keys, k)
 		}
 		sort.Slice(keys, func(i, j int) bool {
-			a, aerr := releases.ParseLine(keys[i].line)
-			b, berr := releases.ParseLine(keys[j].line)
-			if aerr == nil && berr == nil && a != b {
-				return a.Less(b)
+			if c := releases.CompareReleases(keys[i].release, keys[j].release); c != 0 {
+				return c < 0
 			}
-			if keys[i].line != keys[j].line {
-				return keys[i].line < keys[j].line
+			if keys[i].release != keys[j].release {
+				return keys[i].release < keys[j].release
 			}
 			return keys[i].proxy < keys[j].proxy
 		})
@@ -327,9 +326,9 @@ func cloud18TopologiesTested(setups []cloud18TestedSetup, readable bool, asOf ti
 		for _, k := range keys {
 			run := runs[k]
 			passed = passed || run.Status == "passed"
-			tested = append(tested, map[string]any{"line": k.line, "proxy": k.proxy, "status": run.Status, "testedAt": run.TestedAt, "repmanVersion": run.RepmanVersion})
+			tested = append(tested, map[string]any{"release": k.release, "proxy": k.proxy, "status": run.Status, "testedAt": run.TestedAt, "repmanVersion": run.RepmanVersion})
 		}
-		e["testedLines"] = tested
+		e["testedReleases"] = tested
 		switch {
 		case !readable && asOf.IsZero():
 			e["creatable"] = false
@@ -341,7 +340,7 @@ func cloud18TopologiesTested(setups []cloud18TestedSetup, readable bool, asOf ti
 			e["creatable"] = false
 			e["note"] = "no passing regression test run yet: available on request through sales"
 		default:
-			e["note"] = "creatable with the release lines and proxies whose status is passed"
+			e["note"] = "creatable with the releases and proxies whose status is passed"
 		}
 		out = append(out, e)
 	}

@@ -369,7 +369,7 @@ func (regtest *RegTest) TestRollingUpgradeTransparentSSL(cl *cluster.Cluster, co
 	cl.Conf.ReplicationSSL = false
 	defer func() { cl.Conf.ReplicationSSL = prev }()
 
-	test.FromDbVersion = upgradeFromLine(cl)
+	test.FromDbVersion = upgradeFromRelease(cl)
 	plan, err := cl.PrepareRollingUpgrade(releases.TargetVersion, tlsReplicationUpgradeLine)
 	if err != nil {
 		tlsLogf(cl, "FAIL RollingUpgradeTransparentSSL: plan refused: %s", err)

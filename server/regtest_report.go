@@ -14,13 +14,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/releases"
+	"github.com/signal18/replication-manager/regtest"
 )
 
 // Every registered instance running its regression tests on a cluster in test mode reports each run to
@@ -69,33 +68,18 @@ type regtestReport struct {
 	Results []regtestReportResult `json:"results"`
 }
 
-// the CRM accepts letters, digits, '.', '_', '+' and '-' in the run fields
-var regtestReportFieldUnsafe = regexp.MustCompile(`[^A-Za-z0-9._+-]+`)
-
-func regtestReportField(value string, max int) string {
-	value = regtestReportFieldUnsafe.ReplaceAllString(strings.TrimSpace(value), "-")
-	if len(value) > max {
-		value = value[:max]
-	}
-	return strings.Trim(value, "-")
-}
-
-// regtestSetupOf reads the setup the cluster runs: its topology, the master's flavor and
-// release line (or the first server's when there is no master), its first proxy.
+// regtestSetupOf reads the setup the cluster runs: its topology, the flavor and release
+// (8.0.41) of its setup server, its first proxy.
 func regtestSetupOf(cl *cluster.Cluster, test cluster.Test) regtestSetup {
 	setup := regtestSetup{
 		Orchestrator:  cl.GetOrchestrator(),
 		Topology:      cl.GetTopology(),
 		FromDbVersion: test.FromDbVersion,
 	}
-	server := cl.GetMaster()
-	if server == nil && len(cl.GetServers()) > 0 {
-		server = cl.GetServers()[0]
-	}
-	if server != nil {
+	if server := regtest.SetupServer(cl); server != nil {
 		if v := server.GetVersion(); v != nil {
 			setup.Flavor = strings.ToLower(v.Flavor)
-			setup.DbVersion = releases.ServerLine(v.Flavor, v.Major, v.Minor).String()
+			setup.DbVersion = v.ToString()
 		}
 	}
 	if proxies := cl.GetProxies(); len(proxies) > 0 {
@@ -179,8 +163,8 @@ func (repman *ReplicationManager) reportRegtestResults(cl *cluster.Cluster, test
 }
 
 // buildRegtestReports groups the tests by setup, one report each in the order the setups were
-// first met, with the run fields made acceptable to the CRM. Tests whose setup is unknown are
-// returned by name instead.
+// first met; the CRM validates the run fields. Tests whose setup is unknown are returned by
+// name instead.
 func (repman *ReplicationManager) buildRegtestReports(uri string, tests []regtestReportedTest, testedAt time.Time) ([]*regtestReport, []string) {
 	bySetup := map[regtestSetup]*regtestReport{}
 	var reports []*regtestReport
@@ -192,19 +176,11 @@ func (repman *ReplicationManager) buildRegtestReports(uri string, tests []regtes
 		}
 		report, ok := bySetup[t.Setup]
 		if !ok {
-			setup := regtestSetup{
-				Orchestrator:  regtestReportField(t.Setup.Orchestrator, 32),
-				Topology:      regtestReportField(t.Setup.Topology, 64),
-				Flavor:        regtestReportField(t.Setup.Flavor, 32),
-				DbVersion:     regtestReportField(t.Setup.DbVersion, 32),
-				FromDbVersion: regtestReportField(t.Setup.FromDbVersion, 32),
-				Proxy:         regtestReportField(t.Setup.Proxy, 32),
-			}
 			report = &regtestReport{URI: uri, Run: regtestReportRun{
-				regtestSetup:  setup,
-				RunRef:        fmt.Sprintf("rt_%s_%d_%d", regtestReportField(repman.UUID, 24), testedAt.Unix(), len(reports)),
-				RepmanVersion: regtestReportField(repman.Version, 64),
-				RepmanCommit:  regtestReportField(repman.Fullversion, 64),
+				regtestSetup:  t.Setup,
+				RunRef:        fmt.Sprintf("rt_%s_%d_%d", repman.UUID, testedAt.Unix(), len(reports)),
+				RepmanVersion: repman.Version,
+				RepmanCommit:  repman.Fullversion,
 				TestedAt:      testedAt.Format(time.RFC3339),
 				ClusterTOML:   t.ClusterTOML,
 			}}
@@ -236,24 +212,34 @@ func (repman *ReplicationManager) postRegtestReport(gitlabToken string, report *
 }
 
 func (repman *ReplicationManager) postRegtestReportOnce(gitlabToken string, report *regtestReport) (retry bool, err error) {
-	body, err := json.Marshal(report)
+	status, body, err := crmPostRegtestResults(repman.crmBase(), gitlabToken, report)
 	if err != nil {
-		return false, err
+		return status == 0, err
 	}
-	req, err := http.NewRequest(http.MethodPost, repman.crmBase()+"/api/instances/regtest-results", bytes.NewReader(body))
-	if err != nil {
-		return false, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+gitlabToken)
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
-	if err != nil {
-		return true, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
-		return resp.StatusCode >= 500, fmt.Errorf("CRM answered %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+	if status != http.StatusOK {
+		return status >= 500, fmt.Errorf("CRM answered %d: %s", status, strings.TrimSpace(string(body[:min(len(body), 300)])))
 	}
 	return false, nil
+}
+
+// crmPostRegtestResults reports one regtest run to the CRM using a GitLab PAT (#2165).
+func crmPostRegtestResults(crmBase, gitlabToken string, report *regtestReport) (int, []byte, error) {
+	b, err := json.Marshal(report)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, crmBase+"/api/instances/regtest-results", bytes.NewReader(b))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+gitlabToken)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := crmHTTPClient30s.Do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
 }

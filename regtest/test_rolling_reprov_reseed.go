@@ -210,24 +210,34 @@ func (regtest *RegTest) TestRollingUpgrade(cl *cluster.Cluster, conf string, tes
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "FAIL RollingUpgrade: plan refused: %s", err)
 		return false
 	}
-	test.FromDbVersion = upgradeFromLine(cl)
+	test.FromDbVersion = upgradeFromRelease(cl)
 	_, release := releases.SplitImage(plan.TargetImage)
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "RollingUpgrade plan: %s -> %s (%s), every node must run %s afterwards", plan.CurrentImage, plan.TargetImage, plan.Mechanic, release)
 	return rollingHealthCheckVersions(cl, "RollingUpgrade", func() error { return cl.RunRollingUpgrade(plan) }, release)
 }
 
-// upgradeFromLine is the release line the cluster runs before an upgrade test (its master's,
-// or its first server's), reported with the run so that an upgrade is told apart from a fresh
-// setup of the line it upgrades to (#2165). Empty when no version was read.
-func upgradeFromLine(cl *cluster.Cluster) string {
-	server := cl.GetMaster()
-	if server == nil && len(cl.Servers) > 0 {
-		server = cl.Servers[0]
+// SetupServer is the server whose database version names the setup a test ran on: the
+// master, or the first server when there is none (#2165). Nil when the cluster has none.
+func SetupServer(cl *cluster.Cluster) *cluster.ServerMonitor {
+	if server := cl.GetMaster(); server != nil {
+		return server
 	}
-	if server == nil || server.DBVersion == nil {
-		return ""
+	if servers := cl.GetServers(); len(servers) > 0 {
+		return servers[0]
 	}
-	return releases.ServerLine(server.DBVersion.Flavor, server.DBVersion.Major, server.DBVersion.Minor).String()
+	return nil
+}
+
+// upgradeFromRelease is the release the cluster runs before an upgrade test (8.0.41),
+// reported with the run so that an upgrade is told apart from a fresh setup of the release
+// it upgrades to (#2165). Empty when no version was read.
+func upgradeFromRelease(cl *cluster.Cluster) string {
+	if server := SetupServer(cl); server != nil {
+		if v := server.GetVersion(); v != nil {
+			return v.ToString()
+		}
+	}
+	return ""
 }
 
 // TestRollingReprovReseed destroys, recreates and reseeds every node, and checks

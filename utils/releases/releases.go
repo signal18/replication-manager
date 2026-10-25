@@ -82,15 +82,6 @@ func Load(dataDir string) (Table, string, error) {
 // Line is a release line "major.minor".
 type Line struct{ Major, Minor int }
 
-// ServerLine is the release line of a running server: its major.minor, or its major
-// alone for PostgreSQL 10 and later, whose minor is a patch release (17.2 is line 17).
-func ServerLine(flavor string, major, minor int) Line {
-	if f := strings.ToLower(flavor); (f == "postgresql" || f == "postgres") && major >= 10 {
-		return Line{major, 0}
-	}
-	return Line{major, minor}
-}
-
 func (l Line) String() string { return strconv.Itoa(l.Major) + "." + strconv.Itoa(l.Minor) }
 
 func (l Line) Less(o Line) bool {
