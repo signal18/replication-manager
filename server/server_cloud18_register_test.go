@@ -42,12 +42,12 @@ type registerFakes struct {
 	signIns    int    // POSTs to GitLab's password sign-in
 	evilAction string // the realm login page posts there instead (a page that changed hands)
 	failCreate int    // the next project token creations that fail
-	lastToken  int    // id of the last project token created
+	created    map[string]int // project path -> id of the project token created last
 }
 
 func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 	f := &registerFakes{accounts: map[string]string{"admin@acme.example": "s3cr3t-cloud18"}, gitlabPw: map[string]string{"admin@acme.example": "old-gitlab-password"}, challenges: map[string]string{},
-		nextID: 10, groups: map[string]int{}, projects: map[string]int{}, files: map[int]string{}}
+		nextID: 10, groups: map[string]int{}, projects: map[string]int{}, files: map[int]string{}, created: map[string]int{}}
 	var gitlabURL, realmURL string
 
 	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -195,7 +195,7 @@ func (f *registerFakes) api(w http.ResponseWriter, r *http.Request, path string)
 		w.WriteHeader(http.StatusUnauthorized)
 	case strings.Contains(path, "/access_tokens") && r.Method == http.MethodGet:
 		// an old token of the instance, another one, and the token just created (f.lastToken)
-		fmt.Fprintf(w, `[{"id":7,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false},{"id":8,"name":"someone else","active":true,"revoked":false},{"id":%d,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false}]`, f.lastToken)
+		fmt.Fprintf(w, `[{"id":7,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false},{"id":8,"name":"someone else","active":true,"revoked":false},{"id":%d,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false}]`, f.created[strings.TrimSuffix(path, "/access_tokens")])
 	case strings.Contains(path, "/access_tokens/") && r.Method == http.MethodDelete:
 		f.revoked = append(f.revoked, path)
 		w.WriteHeader(http.StatusNoContent)
@@ -203,9 +203,10 @@ func (f *registerFakes) api(w http.ResponseWriter, r *http.Request, path string)
 		f.failCreate--
 		w.WriteHeader(http.StatusInternalServerError)
 	case strings.HasSuffix(path, "/access_tokens"):
-		f.lastToken = 1000 + f.nextID
+		id := 1000 + f.nextID
+		f.created[strings.TrimSuffix(path, "/access_tokens")] = id
 		w.WriteHeader(http.StatusCreated)
-		fmt.Fprintf(w, `{"id":%d,"token":"glpat-%d","expires_at":%q}`, f.lastToken, f.nextID, body["expires_at"])
+		fmt.Fprintf(w, `{"id":%d,"token":"glpat-%d","expires_at":%q}`, id, f.nextID, body["expires_at"])
 	case strings.Contains(path, "/repository/files/"):
 		var pid int
 		fmt.Sscanf(strings.TrimPrefix(path, "/projects/"), "%d", &pid)
