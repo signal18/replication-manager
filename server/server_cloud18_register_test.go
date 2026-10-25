@@ -39,9 +39,9 @@ type registerFakes struct {
 	files      map[int]string
 	logins     int
 	revoked    []string
-	signIns    int    // POSTs to GitLab's password sign-in
-	evilAction string // the realm login page posts there instead (a page that changed hands)
-	failCreate int    // the next project token creations that fail
+	signIns    int            // POSTs to GitLab's password sign-in
+	evilAction string         // the realm login page posts there instead (a page that changed hands)
+	failCreate int            // the next project token creations that fail
 	created    map[string]int // project path -> id of the project token created last
 }
 
