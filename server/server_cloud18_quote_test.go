@@ -239,24 +239,3 @@ func TestQuoteThreeMonthlyPrices(t *testing.T) {
 		t.Fatalf("overcommit must be unknown without an over-commit price: %v", m)
 	}
 }
-
-// The caller sizes the backups (#2189): bku replaces the infrastructure's default, bau prices an
-// archive billed on what is stored (no plan: the minimal counts 1); none asked, nothing priced.
-func TestQuoteRequestedBackups(t *testing.T) {
-	ss := ssFixture(true, "", 50, 50, 10, 6)
-	prices := ss["prices"].(map[string]any)
-	prices["bku"], prices["bau"], prices["undercommitPricePct"] = 2.0, 0.5, 100.0
-	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 1, DBU: 2, APU: 2, Proxy: "haproxy", ProxyCount: 1, Apps: []string{"phpmyadmin"}})
-	if u := cloud18QuoteOf(spec, ss)["units"].(map[string]float64); u["bku"] != 1 || u["bau"] != 0 {
-		t.Fatalf("default: the infrastructure's BKU, no BAU: %v", u)
-	}
-	spec.BKU, spec.BAU = 6, 16
-	q := cloud18QuoteOf(spec, ss)
-	if u := q["units"].(map[string]float64); u["bku"] != 6 || u["bau"] != 16 {
-		t.Fatalf("requested backups: %v", u)
-	}
-	// plan 20 + 12 + 12 + 8 = 52; minimal: 1 DBU, 2 APU, 1 BKU, 1 BAU -> 10 + 12 + 2 + 0.5
-	if m := q["monthly"].(map[string]any); m["plan"] != 52.0 || m["minimal"] != 24.5 {
-		t.Fatalf("monthly = %v", m)
-	}
-}

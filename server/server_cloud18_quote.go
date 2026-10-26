@@ -26,9 +26,8 @@ import (
 // and backups at their plan. The formulas are the billing's (planUnitCost).
 //
 // Units: DBU = db_count x dbu per database node (prov-db-dbu is per node, every node can
-// become master); APU = the cluster's stateless services (proxy + apps); BKU = the requested
-// backup units, else the infrastructure's default backup reservation; BAU = the requested
-// archive units, none by default (billed on what is stored: no plan, the minimal counts 1).
+// become master); APU = the cluster's stateless services (proxy + apps); BKU = the
+// infrastructure's default backup reservation.
 func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	num := func(m map[string]any, k string) float64 { v, _ := m[k].(float64); return v }
 	perNode := float64(spec.DBU)
@@ -39,15 +38,11 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	if apu <= 0 {
 		apu = num(ss, "defaultApu")
 	}
-	bku := float64(spec.BKU)
-	if bku <= 0 {
-		bku = num(ss, "defaultBku")
-	}
-	bau := float64(spec.BAU)
+	bku := num(ss, "defaultBku")
 	dbu := float64(spec.DBCount) * perNode
 	q := map[string]any{
 		"request": resolvedRequest(spec, perNode, apu, bku),
-		"units":   map[string]float64{"dbu": dbu, "apu": apu, "bku": bku, "bau": bau},
+		"units":   map[string]float64{"dbu": dbu, "apu": apu, "bku": bku},
 	}
 	pool, _ := ss["pool"].(map[string]any)
 	fits := pool != nil && num(pool, "freeDbu") >= dbu && num(pool, "freeApu") >= apu
@@ -103,7 +98,6 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	add("dbu", dbu, num(prices, "dbu"))
 	add("apu", apu, num(prices, "apu"))
 	add("bku", bku, num(prices, "bku"))
-	add("bau", bau, num(prices, "bau"))
 	currency, _ := prices["currency"].(string)
 	q["currency"] = currency
 	q["breakdown"] = lines
@@ -124,9 +118,7 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 		services := float64(spec.ProxyCount + len(spec.Apps))
 		unused := nodes*(perNode-math.Min(perNode, 1)) + (apu - math.Min(apu, services)) + (bku - math.Min(bku, 1))
 		saving := nodes*(perNode-math.Min(perNode, 1))*dbuPrice + (apu-math.Min(apu, services))*apuPrice + (bku-math.Min(bku, 1))*bkuPrice
-		// the archive has no plan: billed on what is stored, it starts at 1 unit
-		archived := (bau - math.Min(bau, 1)) * num(prices, "bau")
-		monthly["minimal"] = round2(total - saving*underPricePct/100 - archived)
+		monthly["minimal"] = round2(total - saving*underPricePct/100)
 		q["undercommit"] = map[string]any{"pricePct": underPricePct, "unusedUnits": unused,
 			"dbuUnitPrice": round2(dbuPrice * (100 - underPricePct) / 100), "apuUnitPrice": round2(apuPrice * (100 - underPricePct) / 100),
 			"note": "per plan unit-month left unconsumed; every database node, proxy, app and the backups keep at least 1 unit"}

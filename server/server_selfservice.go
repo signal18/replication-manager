@@ -255,7 +255,7 @@ func (repman *ReplicationManager) selfServiceStatusFor(identity string) SelfServ
 		Enabled: snap.capable, Reason: snap.reason, Orchestrator: repman.Conf.ProvOrchestrator,
 		MaxPerUser: repman.Conf.Cloud18SelfServiceMaxClustersPerUser,
 		Identity:   identity, Used: used, Clusters: names, Remaining: remaining,
-		DefaultDBU: repman.Conf.ProvDbDbu, DefaultAPU: repman.Conf.ProvServicePlanApu, DefaultBKU: repman.Conf.ProvDbBku,
+		DefaultDBU: repman.Conf.ProvDbDbu, DefaultAPU: repman.Conf.ProvServicePlanApu, DefaultBKU: repman.Conf.ProvServicePlanBku,
 		Pool: snap.pool, PoolOK: true,
 		Domain: repman.Conf.Cloud18Domain, SubDomain: repman.Conf.Cloud18SubDomain, Zone: repman.Conf.Cloud18SubDomainZone,
 		GatewayDomain: repman.Conf.PrimaryGatewayDomain(), AppTemplates: snap.templates,
@@ -540,7 +540,7 @@ func (repman *ReplicationManager) attachSelfServiceSponsor(cl *cluster.Cluster, 
 // when mail is configured, a message to mail-to. Nothing to accept.
 func (repman *ReplicationManager) notifySelfServiceCluster(cl *cluster.Cluster, identity string, remote string) {
 	msg := fmt.Sprintf("Self-service cluster %s created on %s by %s (default unit plan DBU %d / APU %d / BKU %d)",
-		cl.Name, repman.registeredInstanceURI(), identity, repman.Conf.ProvDbDbu, repman.Conf.ProvServicePlanApu, repman.Conf.ProvDbBku)
+		cl.Name, repman.registeredInstanceURI(), identity, repman.Conf.ProvDbDbu, repman.Conf.ProvServicePlanApu, repman.Conf.ProvServicePlanBku)
 	repman.logSecurityEvent("cloud18_self_service_cluster", identity, remote, msg)
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "%s", msg)
 	if repman.Conf.MailTo != "" && repman.Conf.MailSMTPAddr != "" {
