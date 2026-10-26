@@ -50,3 +50,39 @@ func TestAPIUsersCopyOnWrite(t *testing.T) {
 		t.Fatal("a write must keep the other users")
 	}
 }
+
+// #2185 review: AppendGrants and AppendRoles change an entry read from APIUsers: they copy its maps
+// first, so readers of the live entry never meet a map being written.
+func TestAppendGrantsRolesCopy(t *testing.T) {
+	c := &Cluster{Conf: &config.Config{}, Grants: map[string]string{"cluster-show": "cluster-show", "db-show": "db-show"},
+		APIUsers: map[string]APIUser{"u@x.io": {User: "u@x.io", Grants: map[string]bool{"cluster-show": true}, Roles: map[string]bool{"visitor": true}}}}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			u := c.APIUsers["u@x.io"]
+			for range u.Grants {
+			}
+			for range u.Roles {
+			}
+		}
+	}()
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		u := c.APIUsers["u@x.io"]
+		c.AppendGrants("db-show", &u)
+		c.AppendRoles("sponsor", &u)
+	}
+	close(stop)
+	wg.Wait()
+	if live := c.APIUsers["u@x.io"]; live.Grants["db-show"] || live.Roles["sponsor"] {
+		t.Fatal("AppendGrants/AppendRoles must not change the live entry's maps")
+	}
+}

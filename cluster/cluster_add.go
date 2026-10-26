@@ -261,6 +261,8 @@ func (cluster *Cluster) FilterGrants(grants string, delegator *APIUser) string {
 }
 
 func (cluster *Cluster) AppendGrants(grants string, user *APIUser) string {
+	// the user may be an entry read from APIUsers: its map is the live one, readers check it
+	user.Grants = maps.Clone(user.Grants)
 	cluster.SetUserGrants(user, grants)
 	allow, _ := config.GetCompactGrants(user.Grants)
 	return strings.Join(allow, " ")
@@ -271,6 +273,10 @@ func (cluster *Cluster) AppendRoles(roles string, user *APIUser) string {
 	// kept next to a real role it would be saved in the entry and hide the
 	// operator buttons (#1971). A real role drops it, and it is never added
 	// next to one.
+	// The user may be an entry read from APIUsers: its map is the live one, readers check it.
+	if user.Roles = maps.Clone(user.Roles); user.Roles == nil {
+		user.Roles = map[string]bool{}
+	}
 	for _, role := range strings.Fields(roles) {
 		if role == config.RoleVisitor {
 			continue

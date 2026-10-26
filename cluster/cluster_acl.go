@@ -100,24 +100,6 @@ func (u *APIUser) Granted(grant string) error {
 	return v3.NewErrorResource(codes.PermissionDenied, v3.ErrGrantNotFound, "grant not found", "").Err()
 }
 
-// IsValidACL authenticates strUser for URL. The auth model is keyed on whether
-// the account carries a local password:
-//
-//   - password present  => LOCAL account. Authenticated by password only; SSO is
-//     refused (a same-named GitLab identity must never ride a local account's
-//     ACL). The registering owner (Cloud18GitUser) is the one SSO account that
-//     legitimately carries a credential, so it is exempt.
-//   - no password        => SSO identity. Authenticated by OIDC only; local
-//     password auth is refused — an empty stored or submitted password must
-//     never authenticate, closing the blank-password bypass.
-//
-// IsLocalOnlyAccount reports whether strUser is a local (password-protected)
-// account that must authenticate by password only — SSO must never bind or
-// authenticate it, or a same-named GitLab identity would ride its ACL. The
-// registering owner (Cloud18GitUser) is exempt: it authenticates via SSO despite
-// carrying a GitLab password. Single source of truth for the auth-model
-// invariant, used by IsValidACL's OIDC branch and the OIDC callback's collision
-// guard in server/api.go.
 // setAPIUser sets one API user, copy on write (apiUsersMu): a new map is built and swapped in.
 func (cluster *Cluster) setAPIUser(name string, u APIUser) {
 	cluster.apiUsersMu.Lock()
@@ -143,6 +125,23 @@ func (cluster *Cluster) deleteAPIUser(name string) {
 	cluster.APIUsers = m
 }
 
+// IsValidACL authenticates strUser for URL. The auth model is keyed on whether
+// the account carries a local password:
+//
+//   - password present  => LOCAL account. Authenticated by password only; SSO is
+//     refused (a same-named GitLab identity must never ride a local account's
+//     ACL). The registering owner (Cloud18GitUser) is the one SSO account that
+//     legitimately carries a credential, so it is exempt.
+//   - no password        => SSO identity. Authenticated by OIDC only; local
+//     password auth is refused — an empty stored or submitted password must
+//     never authenticate, closing the blank-password bypass.
+//
+// IsLocalOnlyAccount reports whether strUser is a local (password-protected)
+// account that must authenticate by password only — SSO must never bind or
+// authenticate it, or a same-named GitLab identity would ride its ACL. The
+// registering owner (Cloud18GitUser) is exempt: it authenticates via SSO despite
+// carrying a GitLab password. Single source of truth for the auth-model
+// invariant, used by IsValidACL's OIDC branch.
 func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
 	user, ok := cluster.APIUsers[strUser]
 	if !ok {
