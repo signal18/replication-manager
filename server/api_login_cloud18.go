@@ -162,6 +162,30 @@ func (repman *ReplicationManager) cloud18TokenFor(tokenClaim, loginClaim string)
 	return t
 }
 
+// cloud18TokenMiddleware (#2182) runs on every route: a request with a realm token goes on with
+// the SSO session of its person (cloud18TokenSession), so the token middleware, the routes that
+// check the token themselves (isValidRequest, IsValidClusterACL) and the MCP all read an SSO
+// session; a refused token stops here with a 401, its detail in the security log only.
+// /api/login takes the realm token itself (cloud18TokenLogin).
+func (repman *ReplicationManager) cloud18TokenMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw := bearerOf(r)
+		if r.URL.Path == "/api/login" || !repman.acceptsCloud18Tokens(raw) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		session, _, err := repman.cloud18TokenSession(raw)
+		if err != nil {
+			repman.logSecurityEvent("api_auth_failure", "cloud18-token", r.RemoteAddr, "Cloud18 token refused: "+err.Error())
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			http.Error(w, "Cloud18 token refused", http.StatusUnauthorized)
+			return
+		}
+		r.Header.Set("Authorization", "Bearer "+session)
+		next.ServeHTTP(w, r)
+	})
+}
+
 // cloud18TokenLogin is /api/login with a realm token as bearer (another Cloud18 instance acting
 // for its user, or a client of the realm): the session of the token's person.
 func (repman *ReplicationManager) cloud18TokenLogin(w http.ResponseWriter, r *http.Request, raw string) {

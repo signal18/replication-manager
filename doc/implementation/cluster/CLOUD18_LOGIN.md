@@ -52,9 +52,11 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
 
 - `/api/login` with `Authorization: Bearer <realm token>` and an empty body (`{}`): the session of the
   token's person (`cloud18TokenLogin`).
-- The API middleware (`validateTokenMiddleware`) and the MCP (`AuthenticateMCP`): the request goes on with
-  the SSO session of the token's person (`cloud18TokenSession`: one session JWT per realm token, cached
-  until the token ends, bounded), so every handler and ACL check reads it as an SSO login. The session
+- Every other route (`cloud18TokenMiddleware`, on both routers, before any token check): the request
+  goes on with the SSO session of the token's person (`cloud18TokenSession`: one session JWT per realm
+  token, cached until the token ends, bounded), so the token middleware, the routes that check the token
+  themselves (`isValidRequest`, `IsValidClusterACL`: `/api/clusters`, `/api/peers`…) and the MCP all read
+  an SSO login. A refused token is a 401 with a generic text, the detail in the security log. The session
   keeps the realm token encrypted (`cloud18_token`) for the next instance.
 - Another instance (`peerLoginAs`, `DynamicPeerHandler`): logged into with the caller's realm token
   (`peerLoginAsIdentity`), got from the session (`cloud18TokenFor`: the token it came with, or one

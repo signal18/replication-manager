@@ -78,6 +78,7 @@ func (repman *ReplicationManager) httpserver() {
 	// with a slash (this router serves the API too when the dashboard port is used).
 	router.SkipClean(true)
 	router.Use(repman.RecoveryMiddleware)
+	router.Use(repman.cloud18TokenMiddleware)
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
 	graphiteHost := repman.Conf.GraphiteCarbonHost

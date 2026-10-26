@@ -7,7 +7,6 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -210,15 +209,6 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 		return &repmanmcp.Principal{User: t.User, AuthMethod: "token", TokenID: t.ID, TokenLabel: t.Label, Remote: r.RemoteAddr, Auth: t, Bearer: bearerOf(r)}, nil
 	} else if isAPIToken {
 		return nil, fmt.Errorf("API token invalid, revoked, expired or disabled")
-	}
-	// A realm token (#2182): the SSO session of its person, as the API middleware does.
-	if raw := bearerOf(r); repman.acceptsCloud18Tokens(raw) {
-		session, u, err := repman.cloud18TokenSession(raw)
-		if err != nil {
-			repman.logSecurityEvent("mcp_auth_failure", "cloud18-token", r.RemoteAddr, "Cloud18 token refused: "+err.Error())
-			return nil, errors.New("Cloud18 token refused")
-		}
-		return &repmanmcp.Principal{User: u.Email, AuthMethod: "oidc", Remote: r.RemoteAddr, Auth: "", Bearer: session, Cloud18Token: raw}, nil
 	}
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)

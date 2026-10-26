@@ -252,6 +252,7 @@ func (repman *ReplicationManager) apiserver() {
 	router.SkipClean(true)
 
 	router.Use(repman.RecoveryMiddleware)
+	router.Use(repman.cloud18TokenMiddleware)
 	//router.HandleFunc("/", repman.handlerApp)
 	// page to view which does not need authorization
 	graphiteHost := repman.Conf.GraphiteCarbonHost
@@ -1896,21 +1897,7 @@ func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter,
 		return
 	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	// A realm token (#2182): verified, then the request goes on with the SSO session of its
-	// person, so every handler and ACL check reads it as an SSO login.
-	if raw := bearerOf(r); repman.acceptsCloud18Tokens(raw) {
-		session, _, err := repman.cloud18TokenSession(raw)
-		if err != nil {
-			// the detail (keys, issuer) goes to the security log, not to the caller
-			repman.logSecurityEvent("api_auth_failure", "cloud18-token", r.RemoteAddr, "Cloud18 token refused: "+err.Error())
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, "Cloud18 token refused")
-			return
-		}
-		r.Header.Set("Authorization", "Bearer "+session)
-		next(w, r)
-		return
-	}
+	// (a Cloud18 realm token was turned into its person's session by cloud18TokenMiddleware)
 	//validate token
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor,
 		func(token *jwt.Token) (interface{}, error) {

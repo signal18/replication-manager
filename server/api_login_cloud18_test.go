@@ -129,38 +129,44 @@ func TestCloud18TokenAPIAndLogin(t *testing.T) {
 	repman.clustersReady.Store(true)
 	good := f.realmToken("person@acme.example", config.ConstCloud18APIAudience, true, 5*time.Minute)
 
-	var seen string
-	next := func(w http.ResponseWriter, r *http.Request) { seen = repman.GetUserFromRequest(r) }
+	// every route: the token middleware, a route checking the token itself (isValidRequest)
+	var seen, mcpUser, mcpToken string
+	var valid bool
+	h := repman.cloud18TokenMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		repman.validateTokenMiddleware(w, r, func(w http.ResponseWriter, r *http.Request) { seen = repman.GetUserFromRequest(r) })
+		valid, _ = repman.isValidRequest(r)
+		if p, err := repman.AuthenticateMCP(r); err == nil {
+			mcpUser, mcpToken = p.User, p.Cloud18Token
+		}
+	}))
 	r := httptest.NewRequest(http.MethodGet, "/api/clusters", nil)
 	r.Header.Set("Authorization", "Bearer "+good)
 	w := httptest.NewRecorder()
-	repman.validateTokenMiddleware(w, r, next)
-	if w.Code != http.StatusOK || seen != "person@acme.example" {
-		t.Fatalf("middleware: %d user %q", w.Code, seen)
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || seen != "person@acme.example" || !valid {
+		t.Fatalf("a realm token on the API: %d user %q valid %v", w.Code, seen, valid)
+	}
+	if mcpUser != "person@acme.example" || mcpToken != good {
+		t.Fatalf("MCP: user %q, the realm token kept for the other instances: %v", mcpUser, mcpToken == good)
 	}
 	r = httptest.NewRequest(http.MethodGet, "/api/clusters", nil)
 	r.Header.Set("Authorization", "Bearer "+f.realmToken("person@acme.example", config.ConstCloud18StorageAudience, true, 5*time.Minute))
 	w = httptest.NewRecorder()
 	seen = ""
-	repman.validateTokenMiddleware(w, r, next)
-	if w.Code != http.StatusUnauthorized || seen != "" {
-		t.Fatalf("a refused realm token: %d %q", w.Code, seen)
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusUnauthorized || seen != "" || strings.Contains(w.Body.String(), "audience") {
+		t.Fatalf("a refused realm token: %d %q %q", w.Code, seen, w.Body.String())
 	}
 
 	r = httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader("{}"))
 	r.Header.Set("Authorization", "Bearer "+good)
 	w = httptest.NewRecorder()
-	repman.loginHandler(w, r)
+	repman.cloud18TokenMiddleware(http.HandlerFunc(repman.loginHandler)).ServeHTTP(w, r)
 	var resp struct {
 		Token string `json:"token"`
 	}
 	if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &resp) != nil || resp.Token == "" {
 		t.Fatalf("/api/login with a realm token: %d %s", w.Code, w.Body.String())
-	}
-
-	p, err := repman.AuthenticateMCP(r)
-	if err != nil || p.User != "person@acme.example" || p.AuthMethod != "oidc" || p.Cloud18Token != good {
-		t.Fatalf("MCP: %+v %v", p, err)
 	}
 }
 
