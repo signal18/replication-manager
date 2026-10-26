@@ -152,44 +152,93 @@ func (conf *Config) IsCloud18Token(raw string) bool {
 
 // cloud18Keys are the key ids the realm publishes, fetched at most once per cloud18KeysRefetch:
 // a token naming another key is refused without asking the realm again (forged tokens with random
-// key ids would otherwise make every request fetch the realm's keys).
+// key ids would otherwise make every request fetch the realm's keys). The set is replaced only by a
+// successful fetch; a failed one keeps it and is retried after cloud18KeysRetry. The lock is never
+// held during the fetch (one fetch at a time). Keys come from the realm's certs URL, the one the
+// signature check (cloud18Verifier) uses too.
 var cloud18Keys = struct {
 	sync.Mutex
-	issuer  string
-	kids    map[string]bool
-	fetched time.Time
+	issuer   string
+	kids     map[string]bool
+	fetched  time.Time
+	failed   bool
+	fetching bool
 }{}
 
-// cloud18KeysRefetch is how often an unknown key id may refetch the realm's keys (tests lower it).
-var cloud18KeysRefetch = time.Minute
+// cloud18KeysRefetch is how often an unknown key id may refetch the realm's keys, cloud18KeysRetry
+// how soon after a failed fetch (variables: tests lower them).
+var (
+	cloud18KeysRefetch = time.Minute
+	cloud18KeysRetry   = 10 * time.Second
+)
 
-func (conf *Config) cloud18KeyKnown(issuer, kid string) bool {
+// ErrCloud18KeysUnavailable: the realm's keys could not be read (realm out of reach): the token
+// is not judged, so its refusal is not remembered.
+var ErrCloud18KeysUnavailable = errors.New("the Cloud18 realm's keys are out of reach")
+
+func (conf *Config) cloud18KeyKnown(issuer, kid string) (bool, error) {
+	cloud18Keys.Lock()
+	same := cloud18Keys.issuer == issuer
+	if same && cloud18Keys.kids[kid] {
+		cloud18Keys.Unlock()
+		return true, nil
+	}
+	wait := cloud18KeysRefetch
+	if cloud18Keys.failed {
+		wait = cloud18KeysRetry
+	}
+	if cloud18Keys.fetching || (same && time.Since(cloud18Keys.fetched) < wait) {
+		failed := cloud18Keys.fetching || (same && cloud18Keys.failed)
+		cloud18Keys.Unlock()
+		if failed {
+			return false, ErrCloud18KeysUnavailable
+		}
+		return false, nil
+	}
+	cloud18Keys.fetching, cloud18Keys.fetched = true, time.Now()
+	cloud18Keys.Unlock()
+
+	kids, err := fetchCloud18Kids(issuer)
+
 	cloud18Keys.Lock()
 	defer cloud18Keys.Unlock()
-	if cloud18Keys.issuer == issuer && cloud18Keys.kids[kid] {
-		return true
+	cloud18Keys.fetching = false
+	if err != nil {
+		if !same {
+			cloud18Keys.issuer, cloud18Keys.kids = issuer, map[string]bool{}
+		}
+		cloud18Keys.failed = true
+		return false, ErrCloud18KeysUnavailable
 	}
-	if cloud18Keys.issuer == issuer && time.Since(cloud18Keys.fetched) < cloud18KeysRefetch {
-		return false
-	}
-	cloud18Keys.issuer, cloud18Keys.fetched, cloud18Keys.kids = issuer, time.Now(), map[string]bool{}
+	cloud18Keys.issuer, cloud18Keys.kids, cloud18Keys.failed = issuer, kids, false
+	return kids[kid], nil
+}
+
+func fetchCloud18Kids(issuer string) (map[string]bool, error) {
 	resp, err := (&http.Client{Timeout: cloud18IdentityHTTPTimeout}).Get(issuer + "/protocol/openid-connect/certs")
 	if err != nil {
-		return false
+		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
 	var set struct {
 		Keys []struct {
 			Kid string `json:"kid"`
 		} `json:"keys"`
 	}
-	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&set) != nil {
-		return false
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&set); err != nil {
+		return nil, err
 	}
+	kids := map[string]bool{}
 	for _, k := range set.Keys {
-		cloud18Keys.kids[k.Kid] = true
+		kids[k.Kid] = true
 	}
-	return cloud18Keys.kids[kid]
+	if len(kids) == 0 {
+		return nil, errors.New("no keys")
+	}
+	return kids, nil
 }
 
 // tokenHeader reads a field of a JWT's header, unverified ("" when absent).
@@ -231,7 +280,15 @@ func (conf *Config) VerifyCloud18Token(raw string) (Cloud18User, error) {
 	if claims.Exp == 0 || time.Unix(int64(claims.Exp), 0).Before(time.Now()) {
 		return u, fmt.Errorf("%w: expired or without end", ErrCloud18TokenRefused)
 	}
-	if kid := tokenHeader(raw, "kid"); kid == "" || !conf.cloud18KeyKnown(issuer, kid) {
+	kid := tokenHeader(raw, "kid")
+	if kid == "" {
+		return u, fmt.Errorf("%w: no signing key id", ErrCloud18TokenRefused)
+	}
+	known, err := conf.cloud18KeyKnown(issuer, kid)
+	if err != nil {
+		return u, err // not judged: not remembered as refused
+	}
+	if !known {
 		return u, fmt.Errorf("%w: unknown signing key", ErrCloud18TokenRefused)
 	}
 	v, err := conf.cloud18Verifier()

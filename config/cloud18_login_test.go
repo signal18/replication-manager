@@ -5,9 +5,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -90,5 +92,60 @@ func TestCloud18LoginRefusedWait(t *testing.T) {
 	conf.Cloud18LoginAccess("rt-other-400")
 	if n := tries.Load(); n != 4 {
 		t.Fatalf("a 400 that is not invalid_grant is not cached, got %d", n)
+	}
+}
+
+// #2182 review 6: the realm's key ids. A failed fetch keeps the known keys and is not a refusal
+// (ErrCloud18KeysUnavailable, retried soon); a new key id after a rotation is learnt once the
+// refetch interval passed; within it an unknown key id costs no request.
+func TestCloud18KeyKnown(t *testing.T) {
+	var mu sync.Mutex
+	kids, fail, fetches := []string{"k1"}, false, 0
+	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		fetches++
+		if fail {
+			http.Error(w, "down", http.StatusBadGateway)
+			return
+		}
+		keys := []string{}
+		for _, k := range kids {
+			keys = append(keys, fmt.Sprintf(`{"kid":%q}`, k))
+		}
+		fmt.Fprintf(w, `{"keys":[%s]}`, strings.Join(keys, ","))
+	}))
+	defer realm.Close()
+	oldRefetch, oldRetry := cloud18KeysRefetch, cloud18KeysRetry
+	cloud18KeysRefetch, cloud18KeysRetry = 300*time.Millisecond, 100*time.Millisecond
+	defer func() { cloud18KeysRefetch, cloud18KeysRetry = oldRefetch, oldRetry }()
+	cloud18Keys.Lock()
+	cloud18Keys.issuer, cloud18Keys.kids, cloud18Keys.failed, cloud18Keys.fetching = "", nil, false, false
+	cloud18Keys.Unlock()
+	conf := &Config{}
+	issuer := realm.URL + "/realms/cloud18"
+	set := func(k []string, f bool) { mu.Lock(); kids, fail = k, f; mu.Unlock() }
+	count := func() int { mu.Lock(); defer mu.Unlock(); return fetches }
+
+	if ok, err := conf.cloud18KeyKnown(issuer, "k1"); !ok || err != nil {
+		t.Fatalf("k1 published: %v %v", ok, err)
+	}
+	if ok, err := conf.cloud18KeyKnown(issuer, "forged"); ok || err != nil || count() != 1 {
+		t.Fatalf("an unknown key id within the interval: no request, a refusal (%v %v, %d fetches)", ok, err, count())
+	}
+
+	time.Sleep(350 * time.Millisecond)
+	set([]string{"k1"}, true)
+	if _, err := conf.cloud18KeyKnown(issuer, "k2"); !errors.Is(err, ErrCloud18KeysUnavailable) {
+		t.Fatalf("a failed fetch is not a refusal: %v", err)
+	}
+	if ok, err := conf.cloud18KeyKnown(issuer, "k1"); !ok || err != nil {
+		t.Fatalf("a failed fetch keeps the known keys: %v %v", ok, err)
+	}
+
+	time.Sleep(150 * time.Millisecond)
+	set([]string{"k1", "k2"}, false)
+	if ok, err := conf.cloud18KeyKnown(issuer, "k2"); !ok || err != nil {
+		t.Fatalf("after the retry delay, the rotated key is learnt: %v %v", ok, err)
 	}
 }

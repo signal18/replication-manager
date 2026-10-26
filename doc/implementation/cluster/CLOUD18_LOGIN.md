@@ -60,8 +60,13 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
   keeps the realm token encrypted (`cloud18_token`) for the next instance.
 - Forged tokens (F4): an expired token, or one naming a key id the realm does not publish, is refused
   before any request to the realm, and an unknown key id refetches the realm's keys at most once a minute
-  (`cloud18KeyKnown`); a refused token is answered from memory for a minute (bounded); the security log
-  takes at most 30 refusals a minute, then one line saying the rest are not logged.
+  (`cloud18KeyKnown`, never holding its lock during the fetch); a refused token is answered from memory
+  for a minute (bounded); the security log takes at most 30 refusals a minute, then one line saying the
+  rest are not logged.
+- Realm out of reach: a failed key fetch keeps the keys already known and is retried after 10 s; it
+  answers `ErrCloud18KeysUnavailable`, which is not a refusal, so the token is not remembered as refused
+  and the next request tries again. A key the realm stops publishing stays known here until a refetch;
+  the signature check (go-oidc, same certs URL) stays the authority.
 - Another instance (`peerLoginAs`, `DynamicPeerHandler`): logged into with the caller's realm token
   (`peerLoginAsIdentity`), got from the session (`cloud18TokenFor`: the token it came with, or one
   refreshed from its `cloud18` refresh token, one refresh per token lifetime, `Cloud18LoginAccess`). The
