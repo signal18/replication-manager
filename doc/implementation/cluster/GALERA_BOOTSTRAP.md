@@ -40,6 +40,17 @@ Primary component. `GetGComm(nil)` (proxy services) always returns the full list
 Group replication is unaffected: `isGaleraBootstrapNode` is false outside wsrep, so its
 seed list is unchanged.
 
+## Provision order
+
+A full provision (`ProvisionServices`) is serialized on Galera: each node is started and
+waited for before the next, so joiners take their SST one at a time. It used to start the
+servers in declared order, assuming the first one bootstraps. Once the bootstrap node
+could be another one (the last master), a joiner started before it waited
+`pc.wait_prim_timeout` (30 s) for a Primary component that did not exist yet and aborted
+("failed to reach primary view"; seen on dev1: db1 at 15:31:39, aborted at 15:32:15,
+the bootstrap node db3 started at 15:35:40). `galeraProvisionOrder()` puts the bootstrap
+node first, then the others in declared order; other topologies keep the declared order.
+
 ## Detection
 
 `IsSameWsrepUUID` runs every monitor tick (after `CheckGaleraSSTAccount`). Two nodes, not
@@ -52,6 +63,6 @@ failover false-positive check.
 
 - `cluster/galera_bootstrap_test.go`: `TestGaleraBootstrapNode` (rule order, first declared
   server), `TestGaleraGCommOnlyBootstrapNodeEmpty` (empty list for the bootstrap node only,
-  proxy never), `TestGaleraSplitReported` (ERR00083 on a split, not on one cluster or an
+  proxy never), `TestGaleraProvisionOrder` (bootstrap node first), `TestGaleraSplitReported` (ERR00083 on a split, not on one cluster or an
   unread node).
 - Regtests (#2186): `testGaleraBootstrap`, `testGaleraSwitchover`, `testGaleraMasterLoss`.

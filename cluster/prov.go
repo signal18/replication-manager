@@ -139,7 +139,9 @@ func (cluster *Cluster) ProvisionServices() error {
 	path := cluster.WorkingDir + ".json"
 	os.Remove(path)
 	cluster.ResetCrashes()
-	for _, server := range cluster.Servers {
+	// Galera: the bootstrap node first, the joiners wait for its Primary component
+	servers := cluster.galeraProvisionOrder()
+	for _, server := range servers {
 		hasConfigPath[server.HostCnf] = server.HasConfigPathCookie()
 		server.DelConfigPathCookie() // remove the config path cookie since we are going to provision it
 		server.WipeDeltaConfig()
@@ -159,7 +161,7 @@ func (cluster *Cluster) ProvisionServices() error {
 
 		}
 		cluster.ProvisionDatabaseScript(server)
-		// Galera is always serialized: the first node bootstraps, then each joiner takes
+		// Galera is always serialized: the bootstrap node first, then each joiner takes
 		// its SST alone; started together, two joiners raced for the one donor and Galera
 		// aborted the second ("Will never receive state", dev3 galera-sst 2026-10-10)
 		if cluster.GetConf().ProvSerialized || cluster.GetTopologyTarget() == config.TopoMultiMasterWsrep {
@@ -168,7 +170,7 @@ func (cluster *Cluster) ProvisionServices() error {
 
 	}
 
-	for _, server := range cluster.Servers {
+	for _, server := range servers {
 		err := <-cluster.errorChan
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+server.Name)

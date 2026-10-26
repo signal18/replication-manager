@@ -120,3 +120,33 @@ func TestGaleraSplitReported(t *testing.T) {
 		})
 	}
 }
+
+// A full provision starts the bootstrap node first: a joiner started before it waits for
+// a Primary component that does not exist yet and aborts (#2191).
+func TestGaleraProvisionOrder(t *testing.T) {
+	db1, db2, db3 := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db2:3306", Host: "db2", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db3:3306", Host: "db3", Port: "3306", State: stateFailed}
+	c := &Cluster{Name: "g", WorkingDir: t.TempDir(), Conf: &config.Config{TopologyTarget: config.TopoMultiMasterWsrep}, Servers: []*ServerMonitor{db1, db2, db3}, StateMachine: new(state.StateMachine)}
+	c.StateMachine.Init()
+	for _, s := range c.Servers {
+		s.ClusterGroup = c
+	}
+	urls := func(l []*ServerMonitor) (u []string) {
+		for _, s := range l {
+			u = append(u, s.URL)
+		}
+		return u
+	}
+	c.lastmaster = db3
+	if got := strings.Join(urls(c.galeraProvisionOrder()), ","); got != "db3:3306,db1:3306,db2:3306" {
+		t.Fatalf("order %s, want the bootstrap node db3 first", got)
+	}
+	c.lastmaster = nil
+	if got := strings.Join(urls(c.galeraProvisionOrder()), ","); got != "db1:3306,db2:3306,db3:3306" {
+		t.Fatalf("order %s, want the declared order", got)
+	}
+	c.Conf.TopologyTarget = config.TopoMasterSlave
+	c.lastmaster = db3
+	if got := strings.Join(urls(c.galeraProvisionOrder()), ","); got != "db1:3306,db2:3306,db3:3306" {
+		t.Fatalf("not Galera: order %s, want the declared order", got)
+	}
+}

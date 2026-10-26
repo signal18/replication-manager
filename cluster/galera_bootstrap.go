@@ -35,6 +35,21 @@ func (cluster *Cluster) isGaleraBootstrapNode(server *ServerMonitor) bool {
 	return len(cluster.Servers) > 0 && cluster.Servers[0].URL == server.URL
 }
 
+// galeraProvisionOrder is the order a full provision starts the servers in: the Galera
+// bootstrap node first, the others in declared order. The provision is serialized and
+// each joiner waits pc.wait_prim_timeout for a Primary component: a joiner started
+// before the bootstrap node aborts ("failed to reach primary view", #2191). Other
+// topologies, or no bootstrap node (the cluster is up): the declared order.
+func (cluster *Cluster) galeraProvisionOrder() []*ServerMonitor {
+	for i, s := range cluster.Servers {
+		if cluster.isGaleraBootstrapNode(s) {
+			order := append([]*ServerMonitor{s}, cluster.Servers[:i]...)
+			return append(order, cluster.Servers[i+1:]...)
+		}
+	}
+	return cluster.Servers
+}
+
 // lastMasterURL is lastmaster's URL, from memory, else as saved in clusterstate.json
 // (read only here, on a full cluster start).
 func (cluster *Cluster) lastMasterURL() string {
