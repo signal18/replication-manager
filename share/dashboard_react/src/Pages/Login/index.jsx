@@ -12,6 +12,7 @@ import Message from '../../components/Message'
 import { useTheme } from '../../ThemeProvider'
 import { clearCluster } from '../../redux/clusterSlice'
 import { clearClusters } from '../../redux/globalClustersSlice'
+import { authService } from '../../services/authService'
 
 function Login({ dashboard = false }) {
   const [username, setUsername] = useState('')
@@ -19,6 +20,8 @@ function Login({ dashboard = false }) {
   const [usernameError, setUsernameError] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [cloud18Enabled, setCloud18Enabled] = useState(false)
+  const [cloud18Loading, setCloud18Loading] = useState(false)
   const { theme } = useTheme()
 
   const navigate = useNavigate()
@@ -65,8 +68,43 @@ function Login({ dashboard = false }) {
       })
   }, [dispatch, navigate])
 
+  // Sign in with Cloud18 (#2185): the button when this repman offers it, and the way back from the
+  // realm, a one-time code in the address traded once for the session (never a token in the address).
+  const cloud18Code = new URLSearchParams(window.location.search).get('cloud18')
+  useEffect(() => {
+    if (dashboard) return
+    authService.cloud18SSOStatus()
+      .then((resp) => setCloud18Enabled(resp?.status === 200 && resp?.data?.enabled === true))
+      .catch(() => setCloud18Enabled(false))
+    const params = new URLSearchParams(window.location.search)
+    const failed = params.get('cloud18_error')
+    if (failed) {
+      setErrorMessage('Sign in with Cloud18: ' + failed)
+      window.history.replaceState(null, '', '/login')
+    }
+    if (!cloud18Code) return
+    window.history.replaceState(null, '', '/login')
+    setCloud18Loading(true)
+    authService.cloud18SSOSession(cloud18Code)
+      .then((resp) => {
+        if (resp?.status === 200 && resp?.data?.token) {
+          localStorage.setItem('user_token', resp.data.token)
+          localStorage.setItem('username', resp.data.username)
+          localStorage.setItem('login_method', 'cloud18')
+          dispatch(setUserData())
+          navigate('/')
+        } else {
+          setErrorMessage('Sign in with Cloud18: ' + (resp?.data || 'refused'))
+        }
+      })
+      .catch(() => setErrorMessage('Sign in with Cloud18: no answer, try again'))
+      .finally(() => setCloud18Loading(false))
+  }, [])
+
   useEffect(() => {
     if (!dashboard) {
+      // Back from Sign in with Cloud18: the session comes from the code, no autologin.
+      if (cloud18Code) return
       // If a token exists, SessionGuard (App.jsx) is already validating it via whoami.
       // doAutologin will be called reactively below if whoami clears the stale token.
       if (isAuthorized()) return
@@ -189,6 +227,17 @@ function Login({ dashboard = false }) {
                   loadingText={'Signing in'}>
                   Sign in
                 </RMButton>
+                {cloud18Enabled && !dashboard && (
+                  <RMButton
+                    id='btnCloud18Login'
+                    type='button'
+                    size='medium'
+                    onClick={() => window.location.assign('/api/auth/cloud18/start')}
+                    isLoading={cloud18Loading}
+                    loadingText={'Signing in with Cloud18'}>
+                    Sign in with Cloud18
+                  </RMButton>
+                )}
                 <RMButton
                   id='btnGitRegister'
                   type='button'

@@ -157,6 +157,8 @@ function Navbar({ username, user }) {
 
 
   const handleLogout = () => {
+    // Signed in with Cloud18 (#2185): the realm's session ends too, so every partner asks again.
+    const viaCloud18 = localStorage.getItem('login_method') === 'cloud18'
     dispatch(logoutFromMeet())
     localStorage.removeItem('chatOpen');
     localStorage.removeItem('selectedChannel');
@@ -164,6 +166,9 @@ function Navbar({ username, user }) {
     dispatch(logout())
     dispatch(clearClusters())
     dispatch(clearCluster())
+    if (viaCloud18) {
+      window.location.assign('/api/auth/cloud18/logout')
+    }
   }
   const openAddUserModal = () => {
     setIsAddUserModalOpen(true)
