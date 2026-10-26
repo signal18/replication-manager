@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -113,11 +114,12 @@ func (repman *ReplicationManager) handlerMuxCloud18SSO(w http.ResponseWriter, r 
 }
 
 // handlerMuxCloud18SSOStart starts the browser sign-in: a state and a PKCE verifier kept here, the
-// browser sent to the realm: silently (silent=1: the login page's check on opening, no page shown),
-// or to sign up (signup=1).
+// browser sent to the realm: to sign in (login_hint: the email already typed on the login page),
+// silently (silent=1: the login page's check on opening, no page shown), or to sign up (signup=1).
 // @Summary Sign in with Cloud18: start
-// @Description Redirects the browser to the Cloud18 realm's silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback (#2185). Public.
+// @Description Redirects the browser to the Cloud18 realm's sign-in (login_hint), silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback (#2185). Public.
 // @Tags Auth
+// @Param login_hint query string false "the email typed on the login page, prefilled on the realm's page"
 // @Param silent query string false "1: sign in only if the person has a realm session, nothing shown"
 // @Param signup query string false "1: the realm's sign-up form"
 // @Success 302 {string} string "to the realm"
@@ -144,7 +146,10 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOStart(w http.ResponseWrite
 		return
 	}
 	q := r.URL.Query()
-	mode := config.Cloud18SSOMode{Silent: q.Get("silent") == "1", SignUp: q.Get("signup") == "1"}
+	mode := config.Cloud18SSOMode{Hint: q.Get("login_hint"), Silent: q.Get("silent") == "1", SignUp: q.Get("signup") == "1"}
+	if len(mode.Hint) > 254 || !strings.Contains(mode.Hint, "@") {
+		mode.Hint = "" // an email only: an internal name means nothing to the realm
+	}
 	target, err := repman.Conf.Cloud18SSOAuthorizeURL(public, state, challenge, mode)
 	if err != nil {
 		http.Error(w, "Sign in with Cloud18: "+err.Error(), http.StatusInternalServerError)

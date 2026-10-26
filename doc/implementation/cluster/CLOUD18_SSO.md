@@ -22,8 +22,10 @@ only Sign in:
 1. **Sign in**: name and password on repman's page, as before (an internal API user first, then the
    Cloud18 password checked by repman, #2182). Signs the person in on this repman only: a password typed
    in a repman form gives the browser no Cloud18 session other sites could reuse.
-2. **Sign in with Cloud18**: the browser goes to the realm's page and signs in there; the realm session
-   it leaves lets every other repman in scope in without a page.
+2. **Sign in with Cloud18** (below an "or", without the fields above): the browser goes to the realm's
+   page and signs in there, the email prefilled when one is typed above (`login_hint`, emails only, never
+   a password: the realm's page only takes a password typed on it); the realm session it leaves lets
+   every other repman in scope in without a page.
 3. **Sign up with Cloud18**: the realm's own sign-up form (`/registrations`).
 
 On opening the login page of a repman in scope, a silent check at the realm (`prompt=none`, once per

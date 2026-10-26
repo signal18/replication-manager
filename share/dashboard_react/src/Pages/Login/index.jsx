@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { login, logout, setUserData } from '../../redux/authSlice'
 import styles from './styles.module.scss'
-import { Box, Container, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text, HStack, Link } from '@chakra-ui/react'
+import { Box, Container, Divider, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text, HStack, Link } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
 import { isAuthorized } from '../../utility/common'
 import PasswordControl from '../../components/PasswordControl'
@@ -260,24 +260,31 @@ function Login({ dashboard = false }) {
                   Sign in
                 </RMButton>
                 {cloud18Enabled && (
-                  <RMButton
-                    id='btnCloud18Login'
-                    type='button'
-                    size='medium'
-                    onClick={() => window.location.assign('/api/auth/cloud18/start')}
-                    loadingText={'Signing in with Cloud18'}>
-                    Sign in with Cloud18
-                  </RMButton>
-                )}
-                {cloud18Enabled && (
-                  <RMButton
-                    id='btnCloud18Register'
-                    type='button'
-                    size='medium'
-                    onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}
-                    loadingText={'Signing up to Cloud18'}>
-                    Sign up with Cloud18
-                  </RMButton>
+                  <>
+                    {/* the fields above serve Sign in only: the Cloud18 password is typed on the
+                        Cloud18 page (#2185); an email already typed is prefilled there */}
+                    <HStack spacing='3'>
+                      <Divider />
+                      <Text fontSize='sm' color='gray.500' whiteSpace='nowrap'>or</Text>
+                      <Divider />
+                    </HStack>
+                    <RMButton
+                      id='btnCloud18Login'
+                      type='button'
+                      size='medium'
+                      onClick={() => window.location.assign('/api/auth/cloud18/start' + (username.includes('@') ? '?login_hint=' + encodeURIComponent(username.trim()) : ''))}
+                      loadingText={'Signing in with Cloud18'}>
+                      Sign in with Cloud18
+                    </RMButton>
+                    <RMButton
+                      id='btnCloud18Register'
+                      type='button'
+                      size='medium'
+                      onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}
+                      loadingText={'Signing up to Cloud18'}>
+                      Sign up with Cloud18
+                    </RMButton>
+                  </>
                 )}
               </Stack>
             </Stack>

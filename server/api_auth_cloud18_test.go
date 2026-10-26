@@ -303,7 +303,14 @@ func TestCloud18SSOSilentAndHint(t *testing.T) {
 		}
 		return u, nil
 	}
-	u, _ := start("signup=1")
+	u, _ := start("login_hint=" + url.QueryEscape("person@partner.example"))
+	if u.Query().Get("login_hint") != "person@partner.example" || u.Query().Get("prompt") != "" {
+		t.Fatalf("sign in with the email prefilled: %s", u)
+	}
+	if u, _ = start("login_hint=admin"); u.Query().Get("login_hint") != "" {
+		t.Fatalf("an internal name is not sent to the realm: %s", u)
+	}
+	u, _ = start("signup=1")
 	if !strings.HasSuffix(u.Path, "/protocol/openid-connect/registrations") {
 		t.Fatalf("sign up: %s", u)
 	}
