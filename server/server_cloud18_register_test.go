@@ -39,15 +39,21 @@ type registerFakes struct {
 	files      map[int]string
 	logins     int
 	revoked    []string
-	signIns    int            // POSTs to GitLab's password sign-in
-	evilAction string         // the realm login page posts there instead (a page that changed hands)
-	failCreate int            // the next project token creations that fail
-	created    map[string]int // project path -> id of the project token created last
+	signIns    int                     // POSTs to GitLab's password sign-in
+	evilAction string                  // the realm login page posts there instead (a page that changed hands)
+	failCreate int                     // the next project token creations that fail
+	tokens     map[string][]*fakeToken // ".../projects/<id>/access_tokens" -> the project's tokens
+}
+
+type fakeToken struct {
+	id     int
+	name   string
+	active bool
 }
 
 func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 	f := &registerFakes{accounts: map[string]string{"admin@acme.example": "s3cr3t-cloud18"}, gitlabPw: map[string]string{"admin@acme.example": "old-gitlab-password"}, challenges: map[string]string{},
-		nextID: 10, groups: map[string]int{}, projects: map[string]int{}, files: map[int]string{}, created: map[string]int{}}
+		nextID: 10, groups: map[string]int{}, projects: map[string]int{}, files: map[int]string{}, tokens: map[string][]*fakeToken{}}
 	var gitlabURL, realmURL string
 
 	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -194,17 +200,27 @@ func (f *registerFakes) api(w http.ResponseWriter, r *http.Request, path string)
 	case strings.HasSuffix(path, "/access_tokens/self/rotate"):
 		w.WriteHeader(http.StatusUnauthorized)
 	case strings.Contains(path, "/access_tokens") && r.Method == http.MethodGet:
-		// an old token of the instance, another one, and the token just created (f.lastToken)
-		fmt.Fprintf(w, `[{"id":7,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false},{"id":8,"name":"someone else","active":true,"revoked":false},{"id":%d,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false}]`, f.created[strings.TrimSuffix(path, "/access_tokens")])
+		// the project's tokens as created, under their real names, plus someone else's
+		list := []map[string]interface{}{{"id": 8, "name": "someone else", "active": true, "revoked": false}}
+		for _, tk := range f.tokens[strings.SplitN(path, "?", 2)[0]] {
+			list = append(list, map[string]interface{}{"id": tk.id, "name": tk.name, "active": tk.active, "revoked": !tk.active})
+		}
+		json.NewEncoder(w).Encode(list)
 	case strings.Contains(path, "/access_tokens/") && r.Method == http.MethodDelete:
 		f.revoked = append(f.revoked, path)
+		project := path[:strings.LastIndex(path, "/")]
+		for _, tk := range f.tokens[project] {
+			if strings.HasSuffix(path, fmt.Sprintf("/%d", tk.id)) {
+				tk.active = false
+			}
+		}
 		w.WriteHeader(http.StatusNoContent)
 	case strings.HasSuffix(path, "/access_tokens") && f.failCreate > 0:
 		f.failCreate--
 		w.WriteHeader(http.StatusInternalServerError)
 	case strings.HasSuffix(path, "/access_tokens"):
 		id := 1000 + f.nextID
-		f.created[strings.TrimSuffix(path, "/access_tokens")] = id
+		f.tokens[path] = append(f.tokens[path], &fakeToken{id: id, name: fmt.Sprint(body["name"]), active: true})
 		w.WriteHeader(http.StatusCreated)
 		fmt.Fprintf(w, `{"id":%d,"token":"glpat-%d","expires_at":%q}`, id, f.nextID, body["expires_at"])
 	case strings.Contains(path, "/repository/files/"):
@@ -347,8 +363,19 @@ func TestCloud18MigrateToProjectTokens(t *testing.T) {
 	if old.Conf.Cloud18GitProjects() {
 		t.Fatal("the migration wrote into repman.Conf instead of the config being built")
 	}
-	if len(f.revoked) != 2 || !strings.HasSuffix(f.revoked[0], "/access_tokens/7") || !strings.HasSuffix(f.revoked[1], "/access_tokens/7") {
-		t.Fatalf("the instance's previous project tokens must be revoked, never the new ones nor someone else's: %v", f.revoked)
+	if len(f.revoked) != 2 || strings.HasSuffix(f.revoked[0], "/access_tokens/8") || strings.HasSuffix(f.revoked[1], "/access_tokens/8") {
+		t.Fatalf("the instance's previous project tokens must be revoked (one per project), never the new ones nor someone else's: %v", f.revoked)
+	}
+	for _, list := range f.tokens {
+		active := 0
+		for _, tk := range list {
+			if tk.active {
+				active++
+			}
+		}
+		if active != 1 {
+			t.Fatalf("each project keeps exactly its one new token active: %d", active)
+		}
 	}
 	if !c.Cloud18GitProjects() || c.Cloud18GitProjectID != first.Conf.Cloud18GitProjectID || !strings.HasPrefix(c.GetDecryptedValue("git-acces-token"), "glpat-") {
 		t.Fatalf("not moved: projects %d/%d token %q", c.Cloud18GitProjectID, first.Conf.Cloud18GitProjectID, c.GetDecryptedValue("git-acces-token"))
@@ -436,5 +463,40 @@ func TestCloud18RegisterOtherURIRefused(t *testing.T) {
 	rm.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
 	if state, msg, res := regResult(t, rm); state != RegStateOK || !res.Reattach {
 		t.Fatalf("the same URI again is a reconnect: %s %q", state, msg)
+	}
+}
+
+// #2159: the peers of an HA pair share the URI; each one's project tokens carry its own name (its
+// arbitration unique id), so a peer's reconnect never revokes the other's tokens.
+func TestCloud18PeerTokensNotRevoked(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	key := []byte("0123456789abcdef")
+	first := registerRepman(t, issuer, key)
+	first.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, _ := regResult(t, first); state != RegStateOK {
+		t.Fatalf("setup: %s %q", state, msg)
+	}
+	f.mu.Lock()
+	f.revoked = nil
+	f.mu.Unlock()
+	peer := registerRepman(t, issuer, key)
+	peer.Conf.ArbitrationSasUniqueId = 2
+	peer.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, _ := regResult(t, peer); state != RegStateOK {
+		t.Fatalf("the peer: %s %q", state, msg)
+	}
+	if len(f.revoked) != 0 {
+		t.Fatalf("the peer revoked the first instance's tokens: %v", f.revoked)
+	}
+	names := map[string]int{}
+	for _, list := range f.tokens {
+		for _, tk := range list {
+			if tk.active {
+				names[tk.name]++
+			}
+		}
+	}
+	if names["replication-manager acme-ovh-fr-1-0"] != 2 || names["replication-manager acme-ovh-fr-1-2"] != 2 {
+		t.Fatalf("each peer has its own tokens on both projects: %v", names)
 	}
 }

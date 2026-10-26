@@ -1911,7 +1911,13 @@ const (
 // either instance rotated — and invalidated — the other's token, breaking
 // its git access until its own next restart.
 func (conf *Config) GetInstancePATName() string {
-	return conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone + "-" + strconv.Itoa(conf.ArbitrationSasUniqueId)
+	return InstancePATName(conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone, conf.ArbitrationSasUniqueId)
+}
+
+// InstancePATName is the per-instance name of a Cloud18 GitLab token: domain-subdomain-zone and
+// the instance's arbitration unique id, so the peers of an HA pair (same URI) never share one.
+func InstancePATName(domain, subdomain, zone string, uniqueID int) string {
+	return domain + "-" + subdomain + "-" + zone + "-" + strconv.Itoa(uniqueID)
 }
 
 func (conf *Config) GetSecrets() map[string]Secret {
