@@ -221,7 +221,17 @@ func TestCloud18SSOOtherBrowser(t *testing.T) {
 	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=expired") {
 		t.Fatalf("another browser's cookie: %s", w.Header().Get("Location"))
 	}
-	_ = mine
+	// someone's valid sign-in cookie on another sign-in's callback
+	stateA, cookieA := start()
+	_, cookieB := start()
+	req = httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?code=kc-code-x&state="+stateA, nil)
+	req.AddCookie(cookieB)
+	w = httptest.NewRecorder()
+	repman.handlerMuxCloud18SSOCallback(w, req)
+	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=expired") {
+		t.Fatalf("another valid sign-in's cookie: %s", w.Header().Get("Location"))
+	}
+	_, _ = mine, cookieA
 
 	state, mine = start()
 	req = httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?code=not-a-code&state="+state, nil)

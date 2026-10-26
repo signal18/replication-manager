@@ -5,6 +5,7 @@
 package server
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -84,7 +85,7 @@ func pruneCloud18SSOLocked(now time.Time) {
 // cloud18SSOFail sends the browser back to the login page with one of the fixed reasons (the detail
 // goes to the security log only).
 func (repman *ReplicationManager) cloud18SSOFail(w http.ResponseWriter, r *http.Request, public, reason, detail string) {
-	repman.logSecurityEvent("api_auth_failure", "cloud18-sso", r.RemoteAddr, "Sign in with Cloud18: "+reason+": "+detail)
+	repman.logCloud18Refusal("api_auth_failure", "cloud18-sso", r.RemoteAddr, "Sign in with Cloud18: "+reason+": "+detail)
 	clearCloud18SSOCookie(w)
 	http.Redirect(w, r, public+"/login?cloud18_error="+url.QueryEscape(reason), http.StatusFound)
 }
@@ -185,7 +186,7 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOCallback(w http.ResponseWr
 		repman.cloud18SSOFail(w, r, public, cloud18SSOExpired, "unknown state")
 		return
 	}
-	if c, err := r.Cookie(cloud18SSOCookie); err != nil || c.Value != p.nonce {
+	if c, err := r.Cookie(cloud18SSOCookie); err != nil || subtle.ConstantTimeCompare([]byte(c.Value), []byte(p.nonce)) != 1 {
 		repman.cloud18SSOFail(w, r, public, cloud18SSOExpired, "the sign-in was not started in this browser")
 		return
 	}
@@ -258,7 +259,7 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOSession(w http.ResponseWri
 	delete(cloud18SSO.codes, body.Code)
 	cloud18SSO.Unlock()
 	if !ok || !now.Before(c.expires) {
-		repman.logSecurityEvent("api_auth_failure", "cloud18-sso", r.RemoteAddr, "Sign in with Cloud18: unknown, used or expired code")
+		repman.logCloud18Refusal("api_auth_failure", "cloud18-sso", r.RemoteAddr, "Sign in with Cloud18: unknown, used or expired code")
 		http.Error(w, "Sign in with Cloud18: the code is unknown, used or expired, sign in again", http.StatusUnauthorized)
 		return
 	}

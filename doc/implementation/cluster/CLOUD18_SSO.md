@@ -43,7 +43,10 @@ login page with one fixed reason (`expired`, `refused`, `token`, `busy`, `failed
 its own text for each, never text from the address.
 
 Bounds (F4): at most 1024 sign-ins in progress, a new start is then refused (`busy`) rather than dropping
-the ones in progress; at most 1024 one-time codes, the oldest goes; ended entries are dropped.
+the ones in progress; at most 1024 one-time codes, the oldest goes; ended entries are dropped. Someone
+calling `/start` in a loop can keep the store full, refusing Sign in with Cloud18 to everyone for that
+time (the Sign in form is not affected); there is no per-address limit in repman to reuse. The refusals
+share the security-log bound of the realm-token refusals (30 lines a minute, text cleaned and capped).
 
 The former GitLab OAuth callback (`/api/auth/callback`), unused by the dashboard, is removed with its
 access token and its daily refresh of the instance's GitLab token (it ran only after a login through
