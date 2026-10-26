@@ -28,12 +28,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/iancoleman/strcase"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/sjson"
-	"golang.org/x/oauth2"
 
 	"github.com/codegangsta/negroni"
 	jwt "github.com/golang-jwt/jwt/v5"
@@ -371,10 +369,6 @@ func (repman *ReplicationManager) apiserver() {
 
 	router.Handle("/api/terms", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTerms)),
-	))
-
-	router.Handle("/api/auth/callback", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
 	))
 
 	router.Handle("/api/whoami", negroni.New(
@@ -1140,134 +1134,6 @@ func (repman *ReplicationManager) dashboardTokenHandler(w http.ResponseWriter, r
 		Token    string `json:"token"`
 		Username string `json:"username"`
 	}{Token: tokenString, Username: username}, w)
-}
-
-func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	OAuthContext := context.Background()
-	Provider, err := oidc.NewProvider(OAuthContext, repman.Conf.OAuthProvider)
-	if err != nil {
-		log.Printf("OAuth callback Failed to init oidc from gitlab:%s %v\n", repman.Conf.OAuthProvider, err)
-		return
-	}
-	OAuthConfig := oauth2.Config{
-		ClientID:     repman.Conf.OAuthClientID,
-		ClientSecret: repman.Conf.GetDecryptedPassword("api-oauth-client-secret", repman.Conf.OAuthClientSecret),
-		Endpoint:     Provider.Endpoint(),
-		RedirectURL:  repman.Conf.APIPublicURL + "/api/auth/callback",
-		Scopes:       []string{oidc.ScopeOpenID, "profile", "email", "read_api", "api"},
-	}
-	// the client id, never the secret
-	log.Printf("OAuth oidc to gitlab %s, client %s\n", repman.Conf.OAuthProvider, OAuthConfig.ClientID)
-	oauth2Token, err := OAuthConfig.Exchange(OAuthContext, r.URL.Query().Get("code"))
-	if err != nil {
-		http.Error(w, "Failed to exchange token: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	repman.OAuthAccessToken = oauth2Token
-
-	userInfo, err := Provider.UserInfo(OAuthContext, oauth2.StaticTokenSource(oauth2Token))
-	if err != nil {
-		http.Error(w, "Failed to get userinfo: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	r.Header.Get("Accept")
-
-	for _, cluster := range repman.Clusters {
-		// A password-protected account is a LOCAL account; SSO must never bind to
-		// it. If a GitLab identity matches a local account name, deny loudly so a
-		// real attempt to ride a reserved local name is visible in the security
-		// log. Uses cluster.IsLocalOnlyAccount — the single source of truth also
-		// enforced by IsValidACL's OIDC branch, so the two can't drift.
-		// NB: distinct from api_login_local_sso_mismatch (api_login_upgrade.go),
-		// which is "local login succeeded but the SSO upgrade was refused".
-		if cluster.IsLocalOnlyAccount(userInfo.Email) {
-			repman.logSecurityEvent("api_sso_local_collision", userInfo.Email, r.RemoteAddr,
-				"SSO denied: "+userInfo.Email+" is a password-protected local account; refusing to bind a GitLab identity to it")
-			continue
-		}
-		//validate user credentials
-		if cluster.IsValidACL(userInfo.Email, cluster.APIUsers[userInfo.Email].Password, r.URL.Path, "oidc") {
-			repman.ensureCRMSessionBootstrappedAsync(oauth2Token.AccessToken)
-			apiuser := cluster.APIUsers[userInfo.Email]
-			apiuser.GitToken = oauth2Token.AccessToken
-			tmp := strings.Split(userInfo.Profile, "/")
-			apiuser.GitUser = tmp[len(tmp)-1]
-			cluster.APIUsers[userInfo.Email] = apiuser
-
-			if cluster.Conf.Cloud18 {
-				tokenName := conf.GetInstancePATName()
-				new_token, user_id := githelper.GetGitLabTokenOAuth(oauth2Token.AccessToken, tokenName, cluster.Conf.LogGit)
-				//vault_aut_url := vaulthelper.GetVaultOIDCAuth()
-				//vaulthelper.GetVaultOIDCAuth()
-				//http.Redirect(w, r, vault_aut_url, http.StatusSeeOther)
-				if new_token != "" {
-					//to create project for user if not exist
-					path := cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone
-					name := cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone
-					githelper.GitLabCreateProject(new_token, name, path, cluster.Conf.Cloud18Domain, user_id, cluster.Conf.LogGit)
-					//to store new gitlab token
-					cluster.Conf.GitUrl = repman.Conf.OAuthProvider + "/" + cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone + ".git"
-					cluster.Conf.GitUsername = tmp[len(tmp)-1]
-					newSecret := cluster.Conf.Secrets.Get("git-acces-token")
-					newSecret.OldValue = newSecret.Value
-					newSecret.Value = new_token
-					cluster.Conf.Secrets.Set("git-acces-token", newSecret)
-					//cluster.Conf.GitAccesToken = tokenInfo.token
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Clone from git : url %s, tok %s, dir %s\n", cluster.Conf.GitUrl, cluster.Conf.PrintSecret(cluster.Conf.Secrets.Get("git-acces-token").Value), cluster.Conf.WorkingDir)
-					cluster.Conf.CloneConfigFromGit(cluster.Conf.GitUrl, cluster.Conf.GitUsername, cluster.Conf.Secrets.Get("git-acces-token").Value, cluster.Conf.WorkingDir)
-				} else {
-					log.Printf("Failed to get token from gitlab: %v\n", err)
-				}
-
-			}
-
-			callbackJTI, jtiErr := newUpgradeID()
-			if jtiErr != nil {
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
-				return
-			}
-			signer := jwt.New(jwt.SigningMethodRS256)
-			claims := signer.Claims.(jwt.MapClaims)
-			claims["iss"] = "https://api.replication-manager.signal18.io"
-			claims["iat"] = time.Now().Unix()
-			claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
-			claims["jti"] = callbackJTI
-			claims["token"] = oauth2Token.AccessToken
-			claims["CustomUserInfo"] = struct {
-				Name     string
-				Role     string
-				Password string
-			}{userInfo.Email, "Member", repman.Conf.GetEncryptedString(cluster.APIUsers[userInfo.Email].Password)}
-			password := cluster.APIUsers[userInfo.Email].Password
-			signer.Claims = claims
-			sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
-
-			tokenString, err := signer.SignedString(sk)
-
-			if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprintln(w, "Error while signing the token")
-				log.Printf("Error signing token: %v\n", err)
-			}
-			//create a token instance using the token string
-			specs := r.Header.Get("Accept")
-			resp := token{tokenString}
-			if strings.Contains(specs, "text/html") {
-				http.Redirect(w, r, repman.Conf.APIPublicURL+"/#!/dashboard?token="+tokenString+"&user="+userInfo.Email+"&pass="+password, http.StatusTemporaryRedirect)
-				return
-			}
-			repman.jsonResponse(resp, w)
-			return
-		}
-
-	}
-
-	w.WriteHeader(http.StatusForbidden)
-	fmt.Println("Error logging in")
-	fmt.Fprint(w, "Invalid credentials")
 }
 
 //AUTH TOKEN VALIDATION

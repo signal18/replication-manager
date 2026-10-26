@@ -42,7 +42,6 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
-	"golang.org/x/oauth2"
 	"google.golang.org/grpc"
 	"gopkg.in/natefinch/lumberjack.v2"
 
@@ -179,7 +178,6 @@ type ReplicationManager struct {
 	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, pending, connected, reconnect; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
-	OAuthAccessToken            *oauth2.Token               `json:"-"`
 	ViperConfig                 *viper.Viper                `json:"-"`
 	tlog                        s18log.TermLog
 	termlength                  int
@@ -3114,42 +3112,6 @@ func (repman *ReplicationManager) Run() error {
 
 	go repman.cloud18TokenRenewals()
 
-	ticker_PAT := time.NewTicker(86400 * time.Second)
-	quit_PAT := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-ticker_PAT.C:
-				//to do it only when auth to gitlab
-				if repman.Conf.GitUrl != "" && repman.OAuthAccessToken != nil && repman.Conf.Cloud18 {
-					//to obtain new app access token
-					repman.OAuthAccessToken.AccessToken, repman.OAuthAccessToken.RefreshToken, err = githelper.RefreshAccessToken(repman.OAuthAccessToken.RefreshToken, repman.Conf.OAuthClientID, repman.Conf.GetDecryptedPassword("api-oauth-client-secret", repman.Conf.OAuthClientSecret), repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-					//to obtain a new PAT
-					tokenName := conf.GetInstancePATName()
-					new_tok, _ := githelper.GetGitLabTokenOAuth(repman.OAuthAccessToken.AccessToken, tokenName, repman.Conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-					if new_tok == "" {
-						// keep the current token rather than blank it
-						continue
-					}
-
-					//save the new PAT
-					newSecret := repman.Conf.Secrets.Get("git-acces-token")
-					newSecret.OldValue = newSecret.Value
-					newSecret.Value = new_tok
-					repman.Conf.Secrets.Set("git-acces-token", newSecret)
-					for _, cluster := range repman.Clusters {
-						cluster.Conf.Secrets.Set("git-acces-token", newSecret)
-					}
-					keepGitAccessToken(repman.Conf, new_tok)
-					repman.Save()
-				}
-			case <-quit_PAT:
-				ticker_PAT.Stop()
-				return
-			}
-		}
-	}()
-
 	//	ticker := time.NewTicker(interval * time.Duration(repman.Conf.MonitoringTicker))
 	repman.isStarted = true
 	sigs := make(chan os.Signal, 1)
@@ -3169,7 +3131,6 @@ func (repman *ReplicationManager) Run() error {
 
 		repman.Logrus.Info("Shutdown: stopping ticker goroutines")
 		close(quit_GitPull)
-		close(quit_PAT)
 
 		repman.Logrus.Infof("Shutdown: stopping %d clusters", len(repman.Clusters))
 		clStart := time.Now()

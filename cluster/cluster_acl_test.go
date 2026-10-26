@@ -859,7 +859,6 @@ func TestIsURLPassACLPublicEndpoints(t *testing.T) {
 
 	publicEndpoints := []string{
 		"/api/login",
-		"/api/auth/callback",
 		"/api/clusters",
 		"/api/monitor",
 		"/api/health",

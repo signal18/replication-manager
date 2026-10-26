@@ -545,8 +545,6 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	switch URL {
 	case "/api/login":
 		return true
-	case "/api/auth/callback":
-		return true
 	case "/api/clusters":
 		return true
 	case "/api/monitor":
