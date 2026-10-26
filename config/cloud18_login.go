@@ -191,8 +191,9 @@ type cloud18LoginEntry struct {
 }
 
 // cloud18LoginRefusedWait is how long a refresh token the realm refused (revoked, its session
-// ended) is not sent again: every request to another instance would otherwise wait on the realm.
-const cloud18LoginRefusedWait = time.Minute
+// ended) is not sent again: every request to another instance would otherwise wait on the realm
+// (a variable: tests lower it).
+var cloud18LoginRefusedWait = time.Minute
 
 // cloud18LoginTokensMax bounds the logins kept (F4): past it, the least recently used one goes.
 const cloud18LoginTokensMax = 4096
@@ -273,7 +274,7 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	}
 	if code != http.StatusOK {
 		err := cloud18Status("the realm", code, ": "+cloud18RealmError(body))
-		if code == http.StatusBadRequest || code == http.StatusUnauthorized {
+		if code == http.StatusUnauthorized || (code == http.StatusBadRequest && strings.Contains(string(body), "invalid_grant")) {
 			// the refresh token is refused (invalid_grant): not again for a while; a network
 			// error or a 5xx is tried again at the next call
 			e.token, e.refused, e.refusedErr = "", now.Add(cloud18LoginRefusedWait), err
