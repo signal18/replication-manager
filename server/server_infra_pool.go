@@ -74,10 +74,13 @@ func (repman *ReplicationManager) infraCapacityInputs(clusters []*cluster.Cluste
 }
 
 // The floor a cluster for sale keeps in the plan pot (units, not ratios): it is
-// provisioned, so it never counts 0. Over-commit is measured on resources, not plans.
+// provisioned, so it never counts 0. 1 DBU per database node and 1 APU per compute unit
+// (each app and each proxy): an offer with phpMyAdmin and a status page keeps 2 APU, so it
+// stays on sale with a lower plan instead of losing an app. Over-commit is measured on
+// resources, not plans.
 const (
 	forSaleFloorDbuPerNode = 1.0
-	forSaleFloorApu        = 1.0
+	forSaleFloorApuPerUnit = 1.0
 )
 
 // InfraUnitPool is the infrastructure's unit pool as the ResourceManager sees it:
@@ -87,8 +90,8 @@ const (
 // capacity is observed or declared: the pool cannot gate anything then.
 // ForSale is the part of planned held by clusters for sale (cloud18-shared) that a
 // self-service client may take (#2144): an offer keeps its floor, 1 DBU per database
-// node and 1 APU (its BKU plan stays counted whole by the ledger); only its plan above
-// the floor is released.
+// node and 1 APU per app or proxy (its BKU plan stays counted whole by the ledger); only
+// its plan above the floor is released.
 type InfraUnitPool struct {
 	Known      bool    `json:"known"`
 	UsableDbu  float64 `json:"usableDbu"`
@@ -122,12 +125,12 @@ func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
 		if !cl.IsProvision {
 			continue // an unprovisioned cluster reserves nothing on the infrastructure
 		}
-		dbu, apu := float64(cl.GetPlanDbu()), rm.AppPlanByCluster(cl.Name).Apu
+		dbu, appPlan := float64(cl.GetPlanDbu()), rm.AppPlanByCluster(cl.Name)
 		pool.PlannedDbu += dbu
-		pool.PlannedApu += apu
+		pool.PlannedApu += appPlan.Apu
 		if cl.Conf.Cloud18Shared {
 			pool.ForSaleDbu += math.Max(0, dbu-forSaleFloorDbuPerNode*float64(len(cl.Servers)))
-			pool.ForSaleApu += math.Max(0, apu-forSaleFloorApu)
+			pool.ForSaleApu += math.Max(0, appPlan.Apu-forSaleFloorApuPerUnit*float64(appPlan.Units))
 		}
 	}
 	pool.FreeDbu = pool.UsableDbu - pool.PlannedDbu

@@ -196,6 +196,21 @@ func TestSelfServicePoolGate(t *testing.T) {
 	if err := repman.selfServiceCheck("u@x.io"); err != nil {
 		t.Errorf("a cluster for sale above its floor must not block a self-service creation: %v", err)
 	}
+	// Its APU floor is 1 per app or proxy: phpMyAdmin and a status page at 1 APU each
+	// release nothing, a third APU on one of them is released.
+	pma := cluster.AppKey{Cluster: cl.Name, App: "phpmyadmin", Kind: cluster.KindApp}
+	kuma := cluster.AppKey{Cluster: cl.Name, App: "uptime-kuma", Kind: cluster.KindApp}
+	repman.resourceManager.SetAppPlan(pma, &cluster.APUReading{ApuCpu: 1, Apu: 1})
+	repman.resourceManager.SetAppPlan(kuma, &cluster.APUReading{ApuCpu: 1, Apu: 1})
+	if pool := repman.infraUnitPool(); pool.PlannedApu != 2 || pool.ForSaleApu != 0 {
+		t.Errorf("an offer with two apps at 1 APU each must keep both: %+v", pool)
+	}
+	repman.resourceManager.SetAppPlan(kuma, &cluster.APUReading{ApuCpu: 2, Apu: 2})
+	if pool := repman.infraUnitPool(); pool.PlannedApu != 3 || pool.ForSaleApu != 1 {
+		t.Errorf("an offer with two apps at 3 APU must release 1: %+v", pool)
+	}
+	repman.resourceManager.SetAppPlan(pma, nil)
+	repman.resourceManager.SetAppPlan(kuma, nil)
 	// On two nodes its 2 DBU are its floor: nothing released, refused.
 	cl.Servers = []*cluster.ServerMonitor{{}, {}}
 	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "0.0 releasable from clusters for sale") {

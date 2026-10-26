@@ -26,8 +26,10 @@ import (
 // and backups at their plan. The formulas are the billing's (planUnitCost).
 //
 // Units: DBU = db_count x dbu per database node (prov-db-dbu is per node, every node can
-// become master); APU = the cluster's stateless services (proxy + apps); BKU = the
-// infrastructure's default backup reservation.
+// become master); APU = the cluster's stateless services (proxy + apps), at least 1 per app
+// and per proxy; BKU = the backup reservation, the infrastructure's default and at least
+// cloud18BkuPerDbu x the dbu per node; BAU = the archive estimate, cloud18BauPerDbu x the dbu
+// per node (billed on what is archived: no plan, the minimal counts 1).
 func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	num := func(m map[string]any, k string) float64 { v, _ := m[k].(float64); return v }
 	perNode := float64(spec.DBU)
@@ -36,13 +38,14 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	}
 	apu := float64(spec.APU)
 	if apu <= 0 {
-		apu = num(ss, "defaultApu")
+		apu = math.Max(num(ss, "defaultApu"), float64(len(spec.Apps)+spec.ProxyCount))
 	}
-	bku := num(ss, "defaultBku")
+	bku := math.Max(num(ss, "defaultBku"), cloud18BkuPerDbu*perNode)
+	bau := cloud18BauPerDbu * perNode
 	dbu := float64(spec.DBCount) * perNode
 	q := map[string]any{
 		"request": resolvedRequest(spec, perNode, apu, bku),
-		"units":   map[string]float64{"dbu": dbu, "apu": apu, "bku": bku},
+		"units":   map[string]float64{"dbu": dbu, "apu": apu, "bku": bku, "bau": bau},
 	}
 	pool, _ := ss["pool"].(map[string]any)
 	fits := pool != nil && num(pool, "freeDbu") >= dbu && num(pool, "freeApu") >= apu
@@ -98,6 +101,7 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	add("dbu", dbu, num(prices, "dbu"))
 	add("apu", apu, num(prices, "apu"))
 	add("bku", bku, num(prices, "bku"))
+	add("bau", bau, num(prices, "bau"))
 	currency, _ := prices["currency"].(string)
 	q["currency"] = currency
 	q["breakdown"] = lines
@@ -118,7 +122,9 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 		services := float64(spec.ProxyCount + len(spec.Apps))
 		unused := nodes*(perNode-math.Min(perNode, 1)) + (apu - math.Min(apu, services)) + (bku - math.Min(bku, 1))
 		saving := nodes*(perNode-math.Min(perNode, 1))*dbuPrice + (apu-math.Min(apu, services))*apuPrice + (bku-math.Min(bku, 1))*bkuPrice
-		monthly["minimal"] = round2(total - saving*underPricePct/100)
+		// the archive has no plan: billed on what is stored, it starts at 1 unit
+		archived := (bau - math.Min(bau, 1)) * num(prices, "bau")
+		monthly["minimal"] = round2(total - saving*underPricePct/100 - archived)
 		q["undercommit"] = map[string]any{"pricePct": underPricePct, "unusedUnits": unused,
 			"dbuUnitPrice": round2(dbuPrice * (100 - underPricePct) / 100), "apuUnitPrice": round2(apuPrice * (100 - underPricePct) / 100),
 			"note": "per plan unit-month left unconsumed; every database node, proxy, app and the backups keep at least 1 unit"}
@@ -146,6 +152,13 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	q["monthly"] = monthly
 	return q
 }
+
+// The backup sizes a request takes from its DBU per node: the backups kept on the cluster
+// (BKU) hold at least 3 copies of the data, the archive (BAU) 8.
+const (
+	cloud18BkuPerDbu = 3.0
+	cloud18BauPerDbu = 8.0
+)
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 

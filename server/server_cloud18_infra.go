@@ -423,6 +423,7 @@ func (repman *ReplicationManager) Cloud18CreateCluster(p *repmanmcp.Principal, s
 	if spec.DBU > 0 || spec.APU > 0 {
 		plan["unitPlan"] = "the requested plan, applied with change-plan-units (the infrastructure's ledger and plan-increase script decide)"
 	}
+	plan["unitPlan"] = fmt.Sprintf("%s; backups (BKU) at least %d x the DBU per node", plan["unitPlan"], int(cloud18BkuPerDbu))
 	if len(unresolved) > 0 {
 		plan["refused"] = fmt.Sprintf("app template not available on the infrastructure: %s (templates: %s)", strings.Join(unresolved, ", "), strings.Join(templates, ", "))
 		if !confirm {
@@ -939,13 +940,14 @@ func (repman *ReplicationManager) Cloud18GetClusterPrice(p *repmanmcp.Principal,
 }
 
 // applyRequestedPlan moves the new cluster's reservations to the request (#1963): DBU per
-// database node (prov-db-dbu) and the APU total shared by the proxies (prov-proxy-apu), each app
-// keeping its own reservation (at least 1 APU, more when its template sizes it larger).
-// Each move is a change-plan-units delta from the cluster's current value.
+// database node (prov-db-dbu), the APU total shared by the proxies (prov-proxy-apu), each app
+// keeping its own reservation (at least 1 APU, more when its template sizes it larger), and the
+// backups (prov-db-bku) up to cloud18BkuPerDbu x the DBU per node, never lowered: the quote
+// priced that much. Each move is a change-plan-units delta from the cluster's current value.
+// A refused BKU move does not fail the creation: backups above their plan are over-commit,
+// billed and never blocked, and an infrastructure before v3.1.43 has no BKU plan unit; the
+// note says the plan stayed.
 func applyRequestedPlan(sess *peerSession, cpath string, spec Cloud18ClusterSpec) (string, error) {
-	if spec.DBU <= 0 && spec.APU <= 0 {
-		return "", nil
-	}
 	body, err := sess.mustOK(http.MethodGet, cpath, nil)
 	if err != nil {
 		return "", err
@@ -954,6 +956,7 @@ func applyRequestedPlan(sess *peerSession, cpath string, spec Cloud18ClusterSpec
 		Config struct {
 			ProvDbDbu    int `json:"provDbDbu"`
 			ProvProxyApu int `json:"provProxyApu"`
+			ProvDbBku    int `json:"provDbBku"`
 		} `json:"config"`
 	}
 	if err := json.Unmarshal(body, &cl); err != nil {
@@ -978,6 +981,15 @@ func applyRequestedPlan(sess *peerSession, cpath string, spec Cloud18ClusterSpec
 		// shared by the proxies (rounded down, at least 1 each)
 		if err := move("APU", cl.Config.ProvProxyApu, proxyAPUOf(spec)); err != nil {
 			return "", err
+		}
+	}
+	perNode := cl.Config.ProvDbDbu
+	if spec.DBU > 0 {
+		perNode = spec.DBU
+	}
+	if bku := int(cloud18BkuPerDbu) * perNode; bku > cl.Config.ProvDbBku {
+		if err := move("BKU", cl.Config.ProvDbBku, bku); err != nil {
+			notes = append(notes, fmt.Sprintf("plan BKU stays %d: %v", cl.Config.ProvDbBku, err))
 		}
 	}
 	return strings.Join(notes, ", "), nil

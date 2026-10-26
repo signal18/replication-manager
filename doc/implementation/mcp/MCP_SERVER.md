@@ -154,7 +154,7 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
   list, `Cloud18Infrastructures`). Each choice carries the partner, its zone and its
   infrastructure description from peer.json (`cloud18InfraDefinitionOf`: platform, CPU, data
   centers, geo, bandwidth, certifications, SLA, dbops/sysops), then the quote from that
-  infrastructure's `GET /api/cloud18/self-service`: units (DBU = db_count x dbu, APU, BKU),
+  infrastructure's `GET /api/cloud18/self-service`: units (DBU = db_count x dbu, APU, BKU, BAU),
   whether they fit the free pool, `canCreate` or the reason, and three monthly prices from its
   own unit prices (#2166), with the billing's formulas (`planUnitCost`):
   - `monthly.minimal`: every database node, proxy, app and the backups back to 1 unit, never
@@ -178,7 +178,17 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
 proxies share the rest equally, rounded down, at least 1 each (`proxyAPUOf`).
 `normalizeSpec` refuses an `apu` below apps + proxies and replaces it by what
 `applyRequestedPlan` will reserve (`appliedAPU`), so the quote prices exactly that. Apps
-whose template sizes above 1 APU are not counted yet.
+whose template sizes above 1 APU are not counted yet. Without a requested `apu`, the quote
+takes the infrastructure's default APU, raised to 1 per app and per proxy when they need more.
+
+**Backups follow the DBU per node.** BKU = max(the infrastructure's `defaultBku`, 3 x dbu per
+node: three copies of the data, `cloud18BkuPerDbu`); BAU = 8 x dbu per node (`cloud18BauPerDbu`),
+an estimate of the archive: billed on what is stored (no plan), `monthly.minimal` counts 1 BAU.
+The self-service status serves `defaultBku` = `prov-db-bku`, the backup plan a cluster really
+takes (it served `prov-service-plan-bku` before, 1, read nowhere else). `applyRequestedPlan` raises
+the new cluster's `prov-db-bku` to 3 x its DBU per node (`change-plan-units/BKU`), never lowers
+it; a refused BKU move is only noted, the cluster stays: backups above their plan are
+over-commit, billed and never blocked, and an infrastructure before v3.1.43 has no BKU unit.
 
 **Pool verdict.** The infrastructure's `enabled=false` may come from its pool check, taken for
 its default cluster; the quote re-takes it for the requested units. The status says so with
