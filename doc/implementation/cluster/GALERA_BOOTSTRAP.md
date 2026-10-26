@@ -59,6 +59,17 @@ failed and not ignored, reporting different `WSREP_CLUSTER_STATE_UUID` open ERR0
 sees. A node with no UUID read yet is not compared. The same function still feeds the
 failover false-positive check.
 
+## Master kept after a switchover or failover
+
+`VMasterFailover` (ring, Galera, group replication) ended with `cluster.master = nil`. On
+Galera the discovery sets the master only when `GetMaster()` is nil, and `GetMaster()`
+falls back to the vmaster, so the master stayed nil: `CheckFailed` returned at "Master not
+discovered" and the loss of the new master was neither failed over nor reported (no
+ERR00002 in manual mode). Found by `testGaleraMasterLoss` run after
+`testGaleraSwitchover`; run alone after a fresh discovery it passed. Galera now keeps the
+new virtual master as `cluster.master`; ring and group replication are unchanged (group
+replication re-reads its PRIMARY every tick).
+
 ## Tests
 
 - `cluster/galera_bootstrap_test.go`: `TestGaleraBootstrapNode` (rule order, first declared
