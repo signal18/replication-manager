@@ -17,7 +17,8 @@ A repman without a public address keeps the Sign in form, which checks the Cloud
 
 ## What the person sees (`share/dashboard_react/src/Pages/Login`)
 
-Three buttons on a repman in scope (one, plus the former sign-up page, elsewhere):
+Three buttons on a repman in scope; any other repman (not registered, or without a public address) shows
+only Sign in:
 1. **Sign in**: name and password on repman's page, as before (an internal API user first, then the
    Cloud18 password checked by repman, #2182). Signs the person in on this repman only: a password typed
    in a repman form gives the browser no Cloud18 session other sites could reuse.
