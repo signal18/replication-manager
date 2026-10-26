@@ -1069,7 +1069,6 @@ func IsGroupReplicationSlave(db *sqlx.DB, myver *version.Version, host string) (
 	return value, err
 }
 
-// BootstrapGroupReplication bootstraps group replication
 // SetGroupReplicationAllowlist sets the hosts allowed to connect to the group, while
 // group replication is stopped: group_replication_ip_allowlist from MySQL 8.0.22,
 // group_replication_ip_whitelist before. An empty list changes nothing. MySQL 8.4 dropped
@@ -1092,6 +1091,7 @@ func SetGroupReplicationAllowlist(db *sqlx.DB, myver *version.Version, allowlist
 	return cmd, err
 }
 
+// BootstrapGroupReplication bootstraps group replication
 func BootstrapGroupReplication(db *sqlx.DB, myver *version.Version) (string, error) {
 	cmd := "SET GLOBAL group_replication_bootstrap_group = ON"
 	_, err := db.Exec(cmd)

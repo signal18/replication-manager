@@ -2637,7 +2637,7 @@ func (server *ServerMonitor) CertificatesReload() error {
 func (server *ServerMonitor) setGroupReplicationAllowlist() {
 	cluster := server.ClusterGroup
 	logs, err := dbhelper.SetGroupReplicationAllowlist(server.Conn, server.DBVersion, cluster.GetGroupReplicationWhiteList())
-	cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", config.LvlErr, "Group replication allowlist can't be set on server %s: %s", server.URL, err)
+	cluster.LogSQL(logs, err, server.URL, "SetGroupReplicationAllowlist", config.LvlErr, "Group replication allowlist can't be set on server %s: %s", server.URL, err)
 }
 
 func (server *ServerMonitor) BootstrapGroupReplication() error {
