@@ -17,12 +17,15 @@ Every other repman (clients, dev) keeps the Sign in form, which checks the Cloud
 
 ## Flow (`server/api_auth_cloud18.go`)
 
-1. **Start** `GET /api/auth/cloud18/start`: a random `state` and a PKCE verifier kept here (5 min,
-   bounded), the browser redirected to the realm's authorization of the client
-   `replication-manager-login`, redirect `<api-public-url>/api/auth/cloud18/callback`.
+1. **Start** `GET /api/auth/cloud18/start`: a random `state`, a PKCE verifier and a nonce kept here
+   (5 min); the nonce also goes to the browser in the cookie `repman_cloud18_sso` (HttpOnly, Secure,
+   SameSite=Lax, path `/api/auth/cloud18`), which ties the sign-in to this browser (login CSRF: someone
+   else's callback URL opened in another browser finds no matching cookie). The browser is redirected to
+   the realm's authorization of the client `replication-manager-login`, redirect
+   `<api-public-url>/api/auth/cloud18/callback`.
 2. The realm shows its login page, or answers at once when the person already has a realm session.
 3. **Callback** `GET /api/auth/cloud18/callback`: the `state` must be one this repman started, used
-   once; a realm error goes back to the login page; the code is traded with the verifier; the realm
+   once, and the browser's cookie must carry its nonce; a realm error goes back to the login page; the code is traded with the verifier; the realm
    token is verified as any realm token (#2182: keys, issuer, expiry, audience `replication-manager-api`,
    verified email); the SSO session of the email is issued (same shape and rights as an SSO login, the
    realm token and its refresh token encrypted in it). **No token in any address**: the browser goes to
@@ -34,11 +37,18 @@ Every other repman (clients, dev) keeps the Sign in form, which checks the Cloud
    `post_logout_redirect_uri = <api-public-url>/login`): the realm session ends, every partner asks again.
    Without an `id_token_hint` the realm asks the person to confirm the logout.
 
-Refusals (unknown or reused state, realm error, refused token, unknown/used/expired code) go to the
-security log (`api_auth_failure`, user `cloud18-sso`) and back to the login page with a short reason.
+Refusals (unknown or reused state, another browser, realm error, refused token, unknown/used/expired
+code) go to the security log (`api_auth_failure`, user `cloud18-sso`, with the detail) and back to the
+login page with one fixed reason (`expired`, `refused`, `token`, `busy`, `failed`); the login page shows
+its own text for each, never text from the address.
+
+Bounds (F4): at most 1024 sign-ins in progress, a new start is then refused (`busy`) rather than dropping
+the ones in progress; at most 1024 one-time codes, the oldest goes; ended entries are dropped.
 
 The former GitLab OAuth callback (`/api/auth/callback`), unused by the dashboard, is removed with its
-access token and its daily refresh.
+access token and its daily refresh of the instance's GitLab token (it ran only after a login through
+that callback since the last start). Checked 2026-10-26: one fleet instance had a GitLab OAuth
+application set (`api-oauth-client-id`), and GitLab's retained logs show no login through it.
 
 ## Realm setup
 

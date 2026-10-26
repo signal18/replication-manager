@@ -24,11 +24,24 @@ import (
 const (
 	cloud18SSOPendingTTL = 5 * time.Minute  // a sign-in started and not finished
 	cloud18SSOCodeTTL    = 60 * time.Second // the one-time code the dashboard trades for the session
-	cloud18SSOMax        = 1024             // per store (F4): past it, the store starts over
+	cloud18SSOMax        = 1024             // per store (F4): new sign-ins refused / oldest code out at it
+	// cloud18SSOCookie ties a sign-in to the browser that started it (login CSRF: a callback URL
+	// of someone else's sign-in, opened in a victim's browser, finds no matching cookie)
+	cloud18SSOCookie = "repman_cloud18_sso"
+)
+
+// cloud18SSOReasons are the only reasons the login page shows (never free text from the address).
+const (
+	cloud18SSOExpired = "expired" // the sign-in expired, or was not started in this browser
+	cloud18SSORefused = "refused" // the realm did not sign the person in
+	cloud18SSOToken   = "token"   // the realm token was refused
+	cloud18SSOBusy    = "busy"    // too many sign-ins in progress
+	cloud18SSOFailed  = "failed"  // no session could be opened
 )
 
 type cloud18SSOPending struct {
 	verifier string
+	nonce    string // the value of the browser's cloud18SSOCookie
 	expires  time.Time
 }
 
@@ -43,7 +56,9 @@ var cloud18SSO = struct {
 	codes   map[string]cloud18SSOCode    // one-time code -> session
 }{pending: map[string]cloud18SSOPending{}, codes: map[string]cloud18SSOCode{}}
 
-// pruneCloud18SSOLocked drops the ended entries; a store at its bound starts over. cloud18SSO held.
+// pruneCloud18SSOLocked drops the ended entries (cloud18SSO held). Sign-ins in progress are never
+// dropped before their end: at the bound, a new start is refused instead (cloud18SSOBusy), and the
+// oldest one-time code makes room for a new one.
 func pruneCloud18SSOLocked(now time.Time) {
 	for k, p := range cloud18SSO.pending {
 		if !now.Before(p.expires) {
@@ -55,19 +70,27 @@ func pruneCloud18SSOLocked(now time.Time) {
 			delete(cloud18SSO.codes, k)
 		}
 	}
-	if len(cloud18SSO.pending) >= cloud18SSOMax {
-		cloud18SSO.pending = map[string]cloud18SSOPending{}
-	}
 	if len(cloud18SSO.codes) >= cloud18SSOMax {
-		cloud18SSO.codes = map[string]cloud18SSOCode{}
+		oldest := ""
+		for k, c := range cloud18SSO.codes {
+			if oldest == "" || c.expires.Before(cloud18SSO.codes[oldest].expires) {
+				oldest = k
+			}
+		}
+		delete(cloud18SSO.codes, oldest)
 	}
 }
 
-// cloud18SSOFail sends the browser back to the login page with a short reason (no detail of the
-// realm's answer: that goes to the security log).
+// cloud18SSOFail sends the browser back to the login page with one of the fixed reasons (the detail
+// goes to the security log only).
 func (repman *ReplicationManager) cloud18SSOFail(w http.ResponseWriter, r *http.Request, public, reason, detail string) {
 	repman.logSecurityEvent("api_auth_failure", "cloud18-sso", r.RemoteAddr, "Sign in with Cloud18: "+reason+": "+detail)
+	clearCloud18SSOCookie(w)
 	http.Redirect(w, r, public+"/login?cloud18_error="+url.QueryEscape(reason), http.StatusFound)
+}
+
+func clearCloud18SSOCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{Name: cloud18SSOCookie, Value: "", Path: "/api/auth/cloud18", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 }
 
 // handlerMuxCloud18SSO says whether the login page offers Sign in with Cloud18.
@@ -105,6 +128,11 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOStart(w http.ResponseWrite
 		http.Error(w, "Sign in with Cloud18: no random state", http.StatusInternalServerError)
 		return
 	}
+	nonce, err := newUpgradeID()
+	if err != nil {
+		http.Error(w, "Sign in with Cloud18: no random state", http.StatusInternalServerError)
+		return
+	}
 	verifier, challenge, err := config.Cloud18PKCE()
 	if err != nil {
 		http.Error(w, "Sign in with Cloud18: no PKCE verifier", http.StatusInternalServerError)
@@ -118,8 +146,16 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOStart(w http.ResponseWrite
 	now := time.Now()
 	cloud18SSO.Lock()
 	pruneCloud18SSOLocked(now)
-	cloud18SSO.pending[state] = cloud18SSOPending{verifier: verifier, expires: now.Add(cloud18SSOPendingTTL)}
+	if len(cloud18SSO.pending) >= cloud18SSOMax {
+		cloud18SSO.Unlock()
+		repman.cloud18SSOFail(w, r, public, cloud18SSOBusy, "too many sign-ins in progress")
+		return
+	}
+	cloud18SSO.pending[state] = cloud18SSOPending{verifier: verifier, nonce: nonce, expires: now.Add(cloud18SSOPendingTTL)}
 	cloud18SSO.Unlock()
+	// Lax: the realm's redirect back is a top-level GET, which carries it
+	http.SetCookie(w, &http.Cookie{Name: cloud18SSOCookie, Value: nonce, Path: "/api/auth/cloud18", MaxAge: int(cloud18SSOPendingTTL.Seconds()),
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
@@ -146,21 +182,25 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOCallback(w http.ResponseWr
 	delete(cloud18SSO.pending, q.Get("state"))
 	cloud18SSO.Unlock()
 	if !ok || !now.Before(p.expires) {
-		repman.cloud18SSOFail(w, r, public, "sign-in expired or not started here", "unknown state")
+		repman.cloud18SSOFail(w, r, public, cloud18SSOExpired, "unknown state")
+		return
+	}
+	if c, err := r.Cookie(cloud18SSOCookie); err != nil || c.Value != p.nonce {
+		repman.cloud18SSOFail(w, r, public, cloud18SSOExpired, "the sign-in was not started in this browser")
 		return
 	}
 	if e := q.Get("error"); e != "" {
-		repman.cloud18SSOFail(w, r, public, "Cloud18 did not sign you in", e)
+		repman.cloud18SSOFail(w, r, public, cloud18SSORefused, e)
 		return
 	}
 	l, err := repman.Conf.Cloud18SSOExchange(public, q.Get("code"), p.verifier)
 	if err != nil {
-		repman.cloud18SSOFail(w, r, public, "Cloud18 did not sign you in", err.Error())
+		repman.cloud18SSOFail(w, r, public, cloud18SSORefused, err.Error())
 		return
 	}
 	u, err := repman.Conf.VerifyCloud18Token(l.Access)
 	if err != nil {
-		repman.cloud18SSOFail(w, r, public, "Cloud18 token refused", err.Error())
+		repman.cloud18SSOFail(w, r, public, cloud18SSOToken, err.Error())
 		return
 	}
 	info := struct {
@@ -177,18 +217,19 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOCallback(w http.ResponseWr
 		ssoLogin{cloud18: l}.cloud18Claim(repman.Conf), repman.Conf.GetEncryptedString(l.Access)}
 	jwt, err := repman.issueJWT(info, "")
 	if err != nil {
-		repman.cloud18SSOFail(w, r, public, "no session", err.Error())
+		repman.cloud18SSOFail(w, r, public, cloud18SSOFailed, err.Error())
 		return
 	}
 	code, err := newUpgradeID()
 	if err != nil {
-		repman.cloud18SSOFail(w, r, public, "no session", err.Error())
+		repman.cloud18SSOFail(w, r, public, cloud18SSOFailed, err.Error())
 		return
 	}
 	cloud18SSO.Lock()
 	pruneCloud18SSOLocked(now)
 	cloud18SSO.codes[code] = cloud18SSOCode{jwt: jwt, user: u.Email, expires: now.Add(cloud18SSOCodeTTL)}
 	cloud18SSO.Unlock()
+	clearCloud18SSOCookie(w)
 	http.Redirect(w, r, public+"/login?cloud18="+code, http.StatusFound)
 }
 

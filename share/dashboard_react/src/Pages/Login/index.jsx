@@ -71,6 +71,7 @@ function Login({ dashboard = false }) {
   // Sign in with Cloud18 (#2185): the button when this repman offers it, and the way back from the
   // realm, a one-time code in the address traded once for the session (never a token in the address).
   const cloud18Code = new URLSearchParams(window.location.search).get('cloud18')
+  const cloud18Traded = useRef(false) // the one-time code is sent once (StrictMode runs effects twice)
   useEffect(() => {
     if (dashboard) return
     authService.cloud18SSOStatus()
@@ -79,10 +80,19 @@ function Login({ dashboard = false }) {
     const params = new URLSearchParams(window.location.search)
     const failed = params.get('cloud18_error')
     if (failed) {
-      setErrorMessage('Sign in with Cloud18: ' + failed)
+      // only the server's fixed reasons are shown, never text from the address
+      const reasons = {
+        expired: 'the sign-in expired or was not started in this browser, try again',
+        refused: 'Cloud18 did not sign you in',
+        token: 'Cloud18 sent a token this repman refuses',
+        busy: 'too many sign-ins in progress, try again in a few minutes',
+        failed: 'no session could be opened'
+      }
+      setErrorMessage('Sign in with Cloud18: ' + (reasons[failed] || 'failed, try again'))
       window.history.replaceState(null, '', '/login')
     }
-    if (!cloud18Code) return
+    if (!cloud18Code || cloud18Traded.current) return
+    cloud18Traded.current = true
     window.history.replaceState(null, '', '/login')
     setCloud18Loading(true)
     authService.cloud18SSOSession(cloud18Code)
@@ -94,7 +104,7 @@ function Login({ dashboard = false }) {
           dispatch(setUserData())
           navigate('/')
         } else {
-          setErrorMessage('Sign in with Cloud18: ' + (resp?.data || 'refused'))
+          setErrorMessage('Sign in with Cloud18: the sign-in expired, try again')
         }
       })
       .catch(() => setErrorMessage('Sign in with Cloud18: no answer, try again'))

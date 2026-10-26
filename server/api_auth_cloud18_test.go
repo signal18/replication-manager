@@ -6,6 +6,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -61,7 +62,7 @@ var noFollow = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) 
 // code, traded once for an SSO session of the email; logout goes to the realm's logout, back to
 // the login page.
 func TestCloud18SSORoundTrip(t *testing.T) {
-	f, issuer := newRegisterFakes(t)
+	_, issuer := newRegisterFakes(t)
 	repman := ssoRepman(t, issuer)
 	public := "https://repman.partner.example"
 
@@ -80,6 +81,24 @@ func TestCloud18SSORoundTrip(t *testing.T) {
 		t.Fatalf("start: %d %s", w.Code, realmURL)
 	}
 	state := realmURL.Query().Get("state")
+	var browser *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == cloud18SSOCookie {
+			browser = c
+		}
+	}
+	if browser == nil || !browser.HttpOnly || !browser.Secure || browser.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("start must tie the sign-in to this browser with an HttpOnly, Secure, Lax cookie: %+v", browser)
+	}
+	callback := func(rawQuery string, c *http.Cookie) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?"+rawQuery, nil)
+		if c != nil {
+			req.AddCookie(c)
+		}
+		rec := httptest.NewRecorder()
+		repman.handlerMuxCloud18SSOCallback(rec, req)
+		return rec
+	}
 
 	// the realm: the person has a Cloud18 session there
 	req, _ := http.NewRequest(http.MethodGet, realmURL.String(), nil)
@@ -94,17 +113,15 @@ func TestCloud18SSORoundTrip(t *testing.T) {
 		t.Fatalf("realm answer: %s", back)
 	}
 
-	w = httptest.NewRecorder()
-	repman.handlerMuxCloud18SSOCallback(w, httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?"+back.RawQuery, nil))
+	w = callback(back.RawQuery, browser)
 	login, _ := url.Parse(w.Header().Get("Location"))
 	code := login.Query().Get("cloud18")
 	if w.Code != http.StatusFound || login.Path != "/login" || code == "" || strings.Contains(login.String(), "eyJ") {
 		t.Fatalf("callback: %d %s (a one-time code, never a token)", w.Code, login)
 	}
 
-	w = httptest.NewRecorder()
-	repman.handlerMuxCloud18SSOCallback(w, httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?"+back.RawQuery, nil))
-	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=") {
+	w = callback(back.RawQuery, browser)
+	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=expired") {
 		t.Fatalf("the same state twice must fail: %s", w.Header().Get("Location"))
 	}
 
@@ -131,7 +148,6 @@ func TestCloud18SSORoundTrip(t *testing.T) {
 	if !strings.HasPrefix(out.String(), issuer+"/protocol/openid-connect/logout?") || out.Query().Get("post_logout_redirect_uri") != public+"/login" {
 		t.Fatalf("logout: %s", out)
 	}
-	_ = f
 }
 
 // #2185: a callback with a state this repman never started, a refused sign-in, an expired code: the
@@ -169,5 +185,95 @@ func TestCloud18SSORefusals(t *testing.T) {
 	off.handlerMuxCloud18SSOStart(w, httptest.NewRequest(http.MethodGet, "/api/auth/cloud18/start", nil))
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("not offered: %d", w.Code)
+	}
+}
+
+// #2185 review: a sign-in is tied to the browser that started it (login CSRF): the callback URL of
+// someone's sign-in, opened in another browser, opens no session; a valid state with a bad code is
+// refused; the reasons shown are the fixed ones.
+func TestCloud18SSOOtherBrowser(t *testing.T) {
+	_, issuer := newRegisterFakes(t)
+	repman := ssoRepman(t, issuer)
+	start := func() (string, *http.Cookie) {
+		w := httptest.NewRecorder()
+		repman.handlerMuxCloud18SSOStart(w, httptest.NewRequest(http.MethodGet, "/api/auth/cloud18/start", nil))
+		u, _ := url.Parse(w.Header().Get("Location"))
+		for _, c := range w.Result().Cookies() {
+			if c.Name == cloud18SSOCookie {
+				return u.Query().Get("state"), c
+			}
+		}
+		t.Fatal("no browser cookie")
+		return "", nil
+	}
+	state, _ := start()
+	w := httptest.NewRecorder()
+	repman.handlerMuxCloud18SSOCallback(w, httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?code=kc-code-x&state="+state, nil))
+	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=expired") {
+		t.Fatalf("another browser (no cookie): %s", w.Header().Get("Location"))
+	}
+	state, mine := start()
+	other := &http.Cookie{Name: cloud18SSOCookie, Value: "someone-else"}
+	req := httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?code=kc-code-x&state="+state, nil)
+	req.AddCookie(other)
+	w = httptest.NewRecorder()
+	repman.handlerMuxCloud18SSOCallback(w, req)
+	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=expired") {
+		t.Fatalf("another browser's cookie: %s", w.Header().Get("Location"))
+	}
+	_ = mine
+
+	state, mine = start()
+	req = httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?code=not-a-code&state="+state, nil)
+	req.AddCookie(mine)
+	w = httptest.NewRecorder()
+	repman.handlerMuxCloud18SSOCallback(w, req)
+	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=refused") {
+		t.Fatalf("a valid state with a bad code: %s", w.Header().Get("Location"))
+	}
+}
+
+// #2185 review (F4): sign-ins in progress are never dropped before their end: at the bound a new
+// start is refused (busy); the one-time codes keep the newest; /session refuses bad bodies.
+func TestCloud18SSOBounds(t *testing.T) {
+	_, issuer := newRegisterFakes(t)
+	repman := ssoRepman(t, issuer)
+	cloud18SSO.Lock()
+	saved := cloud18SSO.pending
+	cloud18SSO.pending = map[string]cloud18SSOPending{}
+	for i := 0; i < cloud18SSOMax; i++ {
+		cloud18SSO.pending[fmt.Sprintf("s%d", i)] = cloud18SSOPending{expires: time.Now().Add(time.Minute)}
+	}
+	cloud18SSO.Unlock()
+	w := httptest.NewRecorder()
+	repman.handlerMuxCloud18SSOStart(w, httptest.NewRequest(http.MethodGet, "/api/auth/cloud18/start", nil))
+	cloud18SSO.Lock()
+	kept := len(cloud18SSO.pending)
+	cloud18SSO.pending = saved
+	cloud18SSO.Unlock()
+	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=busy") || kept != cloud18SSOMax {
+		t.Fatalf("at the bound: %s, %d sign-ins kept", w.Header().Get("Location"), kept)
+	}
+
+	cloud18SSO.Lock()
+	cloud18SSO.codes = map[string]cloud18SSOCode{}
+	for i := 0; i < cloud18SSOMax; i++ {
+		cloud18SSO.codes[fmt.Sprintf("c%d", i)] = cloud18SSOCode{expires: time.Now().Add(time.Duration(i+1) * time.Second)}
+	}
+	pruneCloud18SSOLocked(time.Now())
+	_, oldestKept := cloud18SSO.codes["c0"]
+	n := len(cloud18SSO.codes)
+	cloud18SSO.codes = map[string]cloud18SSOCode{}
+	cloud18SSO.Unlock()
+	if n != cloud18SSOMax-1 || oldestKept {
+		t.Fatalf("codes at the bound: the oldest goes (%d, oldest kept %v)", n, oldestKept)
+	}
+
+	for name, body := range map[string]string{"malformed": "{", "no code": "{}", "oversized": `{"code":"` + strings.Repeat("x", 8192) + `"}`} {
+		w = httptest.NewRecorder()
+		repman.handlerMuxCloud18SSOSession(w, httptest.NewRequest(http.MethodPost, "/api/auth/cloud18/session", strings.NewReader(body)))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("%s body: %d", name, w.Code)
+		}
 	}
 }
