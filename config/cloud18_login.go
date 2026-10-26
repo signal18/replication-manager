@@ -186,7 +186,13 @@ type cloud18LoginEntry struct {
 	refresh    string
 	refreshEnd time.Time
 	seen       time.Time
+	refused    time.Time // the realm refused the refresh token: not asked again before this
+	refusedErr error
 }
+
+// cloud18LoginRefusedWait is how long a refresh token the realm refused (revoked, its session
+// ended) is not sent again: every request to another instance would otherwise wait on the realm.
+const cloud18LoginRefusedWait = time.Minute
 
 // cloud18LoginTokensMax bounds the logins kept (F4): past it, the least recently used one goes.
 const cloud18LoginTokensMax = 4096
@@ -194,6 +200,10 @@ const cloud18LoginTokensMax = 4096
 // cloud18LoginTokens caches the realm token of each login until it nears its end: one refresh
 // per login and token lifetime, not one per request to another instance. An entry lives as long
 // as its refresh token, so a rotated refresh token is not lost when the access token ends.
+// The session keeps the first refresh token: the realm must let a refresh token be used again
+// (Keycloak's "Revoke Refresh Token" off, its default). With a realm rotating them, an entry
+// rebuilt (restart, eviction) holds a revoked token: the session goes on with the password, as
+// before #2182, until the person logs in again.
 var cloud18LoginTokens = struct {
 	sync.Mutex
 	m map[string]*cloud18LoginEntry
@@ -229,6 +239,13 @@ func cloud18LoginEntryFor(refresh string, now time.Time) *cloud18LoginEntry {
 	return e
 }
 
+// ForgetCloud18Logins drops the kept logins, as an instance restart does (tests).
+func ForgetCloud18Logins() {
+	cloud18LoginTokens.Lock()
+	cloud18LoginTokens.m = map[string]*cloud18LoginEntry{}
+	cloud18LoginTokens.Unlock()
+}
+
 // Cloud18LoginAccess returns a valid realm token of a login from its refresh token.
 func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	if refresh == "" {
@@ -238,8 +255,12 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	e := cloud18LoginEntryFor(refresh, now)
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	now = time.Now() // after waiting on a concurrent refresh
 	if e.token != "" && e.expires.Sub(now) > cloud18LoginRenewBefore {
 		return e.token, nil // also the token a concurrent caller just got
+	}
+	if now.Before(e.refused) {
+		return "", e.refusedErr
 	}
 	issuer, err := conf.cloud18Issuer()
 	if err != nil {
@@ -251,7 +272,13 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 		return "", err
 	}
 	if code != http.StatusOK {
-		return "", cloud18Status("the realm", code, ": "+cloud18RealmError(body))
+		err := cloud18Status("the realm", code, ": "+cloud18RealmError(body))
+		if code == http.StatusBadRequest || code == http.StatusUnauthorized {
+			// the refresh token is refused (invalid_grant): not again for a while; a network
+			// error or a 5xx is tried again at the next call
+			e.token, e.refused, e.refusedErr = "", now.Add(cloud18LoginRefusedWait), err
+		}
+		return "", err
 	}
 	var a cloud18TokenAnswer
 	if err := json.Unmarshal(body, &a); err != nil {
@@ -261,6 +288,7 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	e.refused, e.refusedErr = time.Time{}, nil
 	e.token, e.expires = a.AccessToken, now.Add(lifetime)
 	if a.RefreshToken != "" {
 		e.refresh = a.RefreshToken // a realm rotating refresh tokens

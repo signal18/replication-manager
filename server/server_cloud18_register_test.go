@@ -55,6 +55,7 @@ type registerFakes struct {
 	issuer        string            // the realm's issuer
 	loginCodes    map[string]string // code -> PKCE challenge|email
 	refreshes     int               // refresh grants answered
+	refreshTries  int               // refresh grants asked, refused ones included
 	rotate        bool              // each refresh gives a new refresh token and revokes the used one
 	shortTokens   bool              // access tokens of 30 s: every call refreshes
 	liveRefresh   map[string]bool   // refresh tokens still valid, when rotating
@@ -123,6 +124,7 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 				delete(f.loginCodes, r.Form.Get("code"))
 				email = parts[1]
 			case "refresh_token":
+				f.refreshTries++
 				rt := r.Form.Get("refresh_token")
 				if !strings.HasPrefix(rt, "rt-") || (f.rotate && f.liveRefresh != nil && !f.liveRefresh[rt] && f.refreshes > 0) {
 					http.Error(w, `{"error":"invalid_grant","error_description":"Invalid refresh token"}`, 400)

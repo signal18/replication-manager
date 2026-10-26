@@ -69,6 +69,13 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
   other client allowed to act as a person on the instances (the website assistant's client).
 - The device-login client `replication-manager` (an instance's own identity) does **not** get that
   audience.
+- Refresh tokens must be reusable (Keycloak's "Revoke Refresh Token" off, its default): the session
+  keeps the first refresh token of the login. The newest one the realm gives is kept in memory
+  (`Cloud18LoginAccess`), but an entry rebuilt after a restart or an eviction starts from the session's;
+  with a rotating realm that one is revoked, and the session goes on with the password until the person
+  logs in again. A refresh token the realm refuses (`invalid_grant`) is not sent again for a minute.
+- The password goes to another instance only on a 401 to the token login (an older release; or a token
+  that ended on the way): never on a 403, a 429, a 5xx or an unreachable instance.
 
 ## Rollout (step 3, later)
 

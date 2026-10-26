@@ -201,6 +201,53 @@ func TestPeerLoginAsIdentity(t *testing.T) {
 	if status, _ := repman.peerLoginAsIdentity(u, peerIdentity{user: "u@x.io", bearer: "realm-token"}); status != http.StatusUnauthorized {
 		t.Fatalf("no password and a refused token: %d", status)
 	}
+	// a 403 (an ACL denial), a 5xx: the password does not go out
+	for _, code := range []int{http.StatusForbidden, http.StatusTooManyRequests, http.StatusBadGateway} {
+		gotPassword = ""
+		other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			if strings.Contains(string(b), "clear") {
+				gotPassword = "clear"
+			}
+			w.WriteHeader(code)
+		}))
+		ou, _ := url.Parse(other.URL + "/api/login")
+		status, _ := repman.peerLoginAsIdentity(ou, peerIdentity{user: "u@x.io", password: "clear", bearer: "realm-token"})
+		other.Close()
+		if status != code || gotPassword != "" {
+			t.Errorf("HTTP %d to the token: returned as is, no password (got %d, password sent %v)", code, status, gotPassword != "")
+		}
+	}
+}
+
+// #2182 review: a refresh token the realm refuses is not sent again for a while (every request to
+// another instance would wait on the realm); a rotating realm after the entry is rebuilt (restart)
+// gives no token: the session goes on with the password.
+func TestCloud18LoginRefused(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	repman := loginRepman(t, issuer)
+	dead := repman.Conf.GetEncryptedString("dead-refresh")
+	if repman.cloud18TokenFor("", dead) != "" || repman.cloud18TokenFor("", dead) != "" {
+		t.Fatal("a refused refresh token gives no token")
+	}
+	f.mu.Lock()
+	calls := f.refreshTries
+	f.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("the refused refresh token must reach the realm once, not again (tries %d)", calls)
+	}
+
+	f.mu.Lock()
+	f.rotate = true
+	f.mu.Unlock()
+	claim := repman.Conf.GetEncryptedString("rt-restart@acme.example")
+	if repman.cloud18TokenFor("", claim) == "" {
+		t.Fatal("first refresh")
+	}
+	config.ForgetCloud18Logins() // an instance restart
+	if repman.cloud18TokenFor("", claim) != "" {
+		t.Fatal("a rotating realm revoked the session's refresh token: no realm token after a restart")
+	}
 }
 
 // #2182: a session's Cloud18 login gives a realm token from its refresh token, refreshed once per

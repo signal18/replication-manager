@@ -30,14 +30,14 @@ func (repman *ReplicationManager) PeerLogin(parsedPeerURL *url.URL, user userCre
 }
 
 // peerLoginAsIdentity logs in on another instance: with the caller's Cloud18 realm token when it
-// has one (#2182), with the password otherwise, or when the instance refuses the token (an older
-// release, which knows only passwords, answers 400, 401 or 403). Any other answer (unreachable,
-// 5xx) is returned as is: the password does not go out for it.
+// has one (#2182), with the password otherwise, or when the instance refuses the token with a 401
+// (an older release, which knows only passwords, answers an empty login so; also a token that
+// ended on the way). Any other answer (unreachable, 403, 429, 5xx) is returned as is: the password
+// does not go out for it.
 func (repman *ReplicationManager) peerLoginAsIdentity(parsedPeerURL *url.URL, id peerIdentity) (int, []byte) {
 	if id.bearer != "" {
 		status, body := repman.peerLoginRequest(parsedPeerURL, []byte("{}"), id.bearer)
-		refused := status == http.StatusBadRequest || status == http.StatusUnauthorized || status == http.StatusForbidden
-		if !refused || id.password == "" {
+		if status != http.StatusUnauthorized || id.password == "" {
 			return status, body
 		}
 	}
