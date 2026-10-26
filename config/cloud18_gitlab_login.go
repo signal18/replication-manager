@@ -5,9 +5,6 @@
 package config
 
 import (
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -50,7 +47,8 @@ var (
 )
 
 // cloud18Web is a cookie-keeping HTTPS client walking GitLab and realm pages; it stops before
-// following a redirect to cloud18GitLabOAuthRedirect.
+// following a redirect to one of its loopback redirects (cloud18GitLabOAuthRedirect,
+// cloud18LoginRedirect), whose code it keeps.
 type cloud18Web struct {
 	client *http.Client
 	code   string
@@ -61,7 +59,7 @@ func newCloud18Web() *cloud18Web {
 	jar, _ := cookiejar.New(nil)
 	w := &cloud18Web{}
 	w.client = &http.Client{Timeout: cloud18WebTimeout, Jar: jar, CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		if strings.HasPrefix(req.URL.String(), cloud18GitLabOAuthRedirect) {
+		if strings.HasPrefix(req.URL.String(), cloud18GitLabOAuthRedirect) || strings.HasPrefix(req.URL.String(), cloud18LoginRedirect) {
 			w.code, w.state = req.URL.Query().Get("code"), req.URL.Query().Get("state")
 			return http.ErrUseLastResponse
 		}
@@ -156,14 +154,6 @@ func kcMessages(page string) string {
 	return strings.Join(out, "; ")
 }
 
-func pkceS256() (string, string) {
-	b := make([]byte, 48)
-	rand.Read(b)
-	v := base64.RawURLEncoding.EncodeToString(b)
-	sum := sha256.Sum256([]byte(v))
-	return v, base64.RawURLEncoding.EncodeToString(sum[:])
-}
-
 // gitlabOAuthStart opens GitLab's OAuth authorization of the public application (PKCE): without
 // a session GitLab answers its sign-in page. It returns that page and the PKCE verifier.
 func (conf *Config) gitlabOAuthStart(w *cloud18Web) (gitlab, page, verifier string, err error) {
@@ -171,7 +161,10 @@ func (conf *Config) gitlabOAuthStart(w *cloud18Web) (gitlab, page, verifier stri
 	if err = cloud18SafeURL("GitLab", gitlab); err != nil {
 		return
 	}
-	verifier, challenge := pkceS256()
+	verifier, challenge, err := pkcePair()
+	if err != nil {
+		return
+	}
 	q := url.Values{"client_id": {ConstCloud18GitLabOAuthClientID}, "redirect_uri": {cloud18GitLabOAuthRedirect}, "response_type": {"code"},
 		"scope": {"api"}, "state": {"repman"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
 	page, _, err = w.do(http.MethodGet, gitlab+"/oauth/authorize?"+q.Encode(), nil)
@@ -215,51 +208,60 @@ func (conf *Config) gitlabOAuthFinish(w *cloud18Web, gitlab, page, verifier stri
 // Cloud18GitLabLogin returns a GitLab token (scope api, 2 h) of the Cloud18 account email,
 // GitLab logging the person in with Cloud18. The token is for the calls of a registration only.
 func (conf *Config) Cloud18GitLabLogin(email, password string) (string, error) {
+	token, _, err := conf.cloud18GitLabWalk(email, password)
+	return token, err
+}
+
+// cloud18GitLabWalk logs the person in to GitLab with Cloud18 and returns the GitLab token and
+// the walk, whose cookies hold the person's GitLab and realm sessions (Cloud18Login goes on with
+// them, no second password post).
+func (conf *Config) cloud18GitLabWalk(email, password string) (string, *cloud18Web, error) {
 	if _, err := conf.cloud18Issuer(); err != nil {
-		return "", err
+		return "", nil, err
 	}
 	w := newCloud18Web()
 	gitlab, page, verifier, err := conf.gitlabOAuthStart(w)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	csrf := csrfMetaRe.FindStringSubmatch(page)
 	if csrf == nil {
-		return "", fmt.Errorf("GitLab: no sign-in page (%w)", ErrCloud18PageChanged)
+		return "", nil, fmt.Errorf("GitLab: no sign-in page (%w)", ErrCloud18PageChanged)
 	}
 	// "Sign in with Cloud18", then the realm's login form with the Cloud18 email and password
 	page, at, err := w.do(http.MethodPost, gitlab+"/users/auth/openid_connect", url.Values{"authenticity_token": {html.UnescapeString(csrf[1])}})
 	if err != nil {
-		return "", fmt.Errorf("GitLab: %w", err)
+		return "", nil, fmt.Errorf("GitLab: %w", err)
 	}
 	login := kcLoginFormRe.FindStringSubmatch(page)
 	if login == nil {
-		return "", fmt.Errorf("GitLab did not send to the Cloud18 login (%s): %w", at.Host, ErrCloud18PageChanged)
+		return "", nil, fmt.Errorf("GitLab did not send to the Cloud18 login (%s): %w", at.Host, ErrCloud18PageChanged)
 	}
 	issuer, _ := conf.cloud18Issuer()
 	target, err := formTarget(login[1], hostOf(issuer))
 	if err != nil {
-		return "", fmt.Errorf("Cloud18 login: %w", err)
+		return "", nil, fmt.Errorf("Cloud18 login: %w", err)
 	}
 	page, at, err = w.do(http.MethodPost, target, url.Values{"username": {email}, "password": {password}, "credentialId": {""}})
 	if err != nil {
-		return "", fmt.Errorf("Cloud18: %w", err)
+		return "", nil, fmt.Errorf("Cloud18: %w", err)
 	}
 	token, err := conf.gitlabOAuthFinish(w, gitlab, page, verifier)
-	if err != nil || token != "" {
-		if token != "" {
-			conf.cloud18Log(LvlInfo, "%s logged in to GitLab with Cloud18", email)
-		}
-		return token, err
+	if err != nil {
+		return "", nil, err
+	}
+	if token != "" {
+		conf.cloud18Log(LvlInfo, "%s logged in to GitLab with Cloud18", email)
+		return token, w, nil
 	}
 	switch {
 	case kcLoginFormRe.MatchString(page):
 		conf.cloud18Log(LvlWarn, "Cloud18 refused the login of %s: %s", email, kcMessages(page))
-		return "", ErrCloud18BadCredentials
+		return "", nil, ErrCloud18BadCredentials
 	case kcVerifyEmailRe.MatchString(page):
-		return "", ErrCloud18AccountNotReady
+		return "", nil, ErrCloud18AccountNotReady
 	}
-	return "", gitlabStop(page, at)
+	return "", nil, gitlabStop(page, at)
 }
 
 var gitlabFlashRe = regexp.MustCompile(`(?s)class="[^"]*(?:gl-alert-body|flash-[a-z]+|gl-alert-title)[^"]*"[^>]*>(.*?)</`)
@@ -313,7 +315,10 @@ func (conf *Config) Cloud18SignUp(f Cloud18SignUpForm) error {
 		return err
 	}
 	w := newCloud18Web()
-	_, challenge := pkceS256()
+	_, challenge, err := pkcePair()
+	if err != nil {
+		return err
+	}
 	q := url.Values{"client_id": {"account-console"}, "response_type": {"code"}, "scope": {"openid"}, "redirect_uri": {issuer + "/account/"},
 		"code_challenge": {challenge}, "code_challenge_method": {"S256"}, "state": {"repman"}}
 	page, _, err := w.do(http.MethodGet, issuer+"/protocol/openid-connect/registrations?"+q.Encode(), nil)

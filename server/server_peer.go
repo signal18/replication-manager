@@ -26,13 +26,36 @@ func (repman *ReplicationManager) PeerLogin(parsedPeerURL *url.URL, user userCre
 	if err != nil {
 		return http.StatusInternalServerError, []byte("Failed to marshal modified JSON")
 	}
+	return repman.peerLoginRequest(parsedPeerURL, loginBody, "")
+}
 
+// peerLoginAsIdentity logs in on another instance: with the caller's Cloud18 realm token when it
+// has one (#2182), with the password otherwise, or when the instance refuses the token with a 401
+// (an older release, which knows only passwords, answers an empty login so; also a token that
+// ended on the way). Any other answer (unreachable, 403, 429, 5xx) is returned as is: the password
+// does not go out for it.
+func (repman *ReplicationManager) peerLoginAsIdentity(parsedPeerURL *url.URL, id peerIdentity) (int, []byte) {
+	if id.bearer != "" {
+		status, body := repman.peerLoginRequest(parsedPeerURL, []byte("{}"), id.bearer)
+		if status != http.StatusUnauthorized || id.password == "" {
+			return status, body
+		}
+	}
+	return repman.PeerLogin(parsedPeerURL, userCredentials{Username: id.user, Password: id.password})
+}
+
+// peerLoginRequest posts a login to another instance, with a bearer when one is given.
+func (repman *ReplicationManager) peerLoginRequest(parsedPeerURL *url.URL, loginBody []byte, bearer string) (int, []byte) {
 	rBody := io.NopCloser(bytes.NewBuffer(loginBody))
 
 	// Create a new request to forward to Peer
 	req, err := http.NewRequest("POST", parsedPeerURL.String(), rBody)
 	if err != nil {
 		return http.StatusInternalServerError, []byte("Failed to create request: " + err.Error())
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 
 	req.Close = true

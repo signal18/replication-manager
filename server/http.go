@@ -78,6 +78,7 @@ func (repman *ReplicationManager) httpserver() {
 	// with a slash (this router serves the API too when the dashboard port is used).
 	router.SkipClean(true)
 	router.Use(repman.RecoveryMiddleware)
+	router.Use(repman.cloud18TokenMiddleware)
 	router.PathPrefix("/debug/pprof/").Handler(http.DefaultServeMux)
 
 	graphiteHost := repman.Conf.GraphiteCarbonHost
@@ -150,7 +151,7 @@ func (repman *ReplicationManager) httpserver() {
 		}
 	})
 
-	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc(cloud18LoginPath, repman.loginHandler) // "/api/login": the realm-token middleware leaves this path to the handler (#2182)
 	router.HandleFunc("/api/login/upgrade", repman.upgradeHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Public auth routes are intentionally wired in both http.go and api.go because
 	// replication-manager can run either HTTP API path depending on runtime flags.

@@ -13,7 +13,7 @@ host), no admin right.
 
 Words: a **Cloud18 account** is anyone (partner infrastructure consumers too); **registration** is the
 repman admin registering the instance to Cloud18; **login** (a person entering repman with SSO) is
-designed separately.
+in `CLOUD18_LOGIN.md` (#2182).
 
 ## GitLab trusts Cloud18
 

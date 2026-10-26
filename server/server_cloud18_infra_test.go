@@ -63,30 +63,36 @@ func TestPeerIdentityFor(t *testing.T) {
 	cases := []struct {
 		name      string
 		p         *repmanmcp.Principal
+		cloud18   string
 		admin     bool
 		instance  string
 		wantMode  string
 		wantUser  string
 		wantInMsg string
 	}{
-		{"sso user is themselves", &repmanmcp.Principal{User: "u@x.io", AuthMethod: "oidc", Auth: "enc"}, false, "inst@x.io", "caller", "u@x.io", ""},
-		{"sso user without credential", &repmanmcp.Principal{User: "u@x.io", AuthMethod: "oidc", Auth: ""}, false, "inst@x.io", "refused", "", "log in again"},
-		{"api token refused", &repmanmcp.Principal{User: "u@x.io", AuthMethod: "token"}, true, "inst@x.io", "refused", "", "API token"},
-		{"local admin acts as the instance", &repmanmcp.Principal{User: "admin", AuthMethod: "password", Auth: "x"}, true, "inst@x.io", "instance", "inst@x.io", ""},
-		{"local admin on an unregistered instance", &repmanmcp.Principal{User: "admin", AuthMethod: "password"}, true, "", "refused", "", "Cloud18"},
-		{"local user refused", &repmanmcp.Principal{User: "bob", AuthMethod: "password"}, false, "inst@x.io", "refused", "", "Cloud18 (GitLab) account"},
-		{"nobody", nil, false, "inst@x.io", "refused", "", "unauthenticated"},
+		{"sso user is themselves", &repmanmcp.Principal{User: "u@x.io", AuthMethod: "oidc", Auth: "enc"}, "", false, "inst@x.io", "caller", "u@x.io", ""},
+		{"sso user with a realm token", &repmanmcp.Principal{User: "u@x.io", AuthMethod: "oidc", Auth: "enc"}, "realm-token", false, "inst@x.io", "caller", "u@x.io", ""},
+		{"realm token alone (no password)", &repmanmcp.Principal{User: "u@x.io", AuthMethod: "oidc", Auth: ""}, "realm-token", false, "inst@x.io", "caller", "u@x.io", ""},
+		{"sso user without credential", &repmanmcp.Principal{User: "u@x.io", AuthMethod: "oidc", Auth: ""}, "", false, "inst@x.io", "refused", "", "log in again"},
+		{"api token refused", &repmanmcp.Principal{User: "u@x.io", AuthMethod: "token"}, "realm-token", true, "inst@x.io", "refused", "", "API token"},
+		{"local admin acts as the instance", &repmanmcp.Principal{User: "admin", AuthMethod: "password", Auth: "x"}, "", true, "inst@x.io", "instance", "inst@x.io", ""},
+		{"local admin on an unregistered instance", &repmanmcp.Principal{User: "admin", AuthMethod: "password"}, "", true, "", "refused", "", "Cloud18"},
+		{"local user refused", &repmanmcp.Principal{User: "bob", AuthMethod: "password"}, "", false, "inst@x.io", "refused", "", "Cloud18 (GitLab) account"},
+		{"nobody", nil, "", false, "inst@x.io", "refused", "", "unauthenticated"},
 	}
 	for _, c := range cases {
-		got := peerIdentityFor(c.p, decrypt, c.admin, c.instance, "instpass")
+		got := peerIdentityFor(c.p, decrypt, c.cloud18, c.admin, c.instance, "instpass")
 		if got.mode != c.wantMode || got.user != c.wantUser {
 			t.Errorf("%s: got mode %q user %q, want %q %q", c.name, got.mode, got.user, c.wantMode, c.wantUser)
 		}
 		if c.wantInMsg != "" && !contains(got.reason, c.wantInMsg) {
 			t.Errorf("%s: reason %q must mention %q", c.name, got.reason, c.wantInMsg)
 		}
-		if got.mode == "caller" && got.password != "clear" {
+		if got.mode == "caller" && c.p.Auth != "" && got.password != "clear" {
 			t.Errorf("%s: the caller's credential must be the decrypted one", c.name)
+		}
+		if got.mode == "caller" && got.bearer != c.cloud18 {
+			t.Errorf("%s: the caller's realm token must be sent (%q)", c.name, got.bearer)
 		}
 	}
 }

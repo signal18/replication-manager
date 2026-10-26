@@ -45,6 +45,11 @@ type Principal struct {
 	// Auth carries what the server needs to re-run the cluster ACL for this
 	// principal (the login's password claim, or the token record). Opaque here.
 	Auth any
+	// Cloud18Token is the Cloud18 realm token the caller came with, and Cloud18Login the
+	// encrypted refresh token of its Cloud18 login (#2182): what reaches another Cloud18
+	// infrastructure instead of the password. Never logged.
+	Cloud18Token string
+	Cloud18Login string
 }
 
 // String renders the principal for logs.
