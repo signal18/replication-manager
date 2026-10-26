@@ -213,12 +213,18 @@ const docTemplate = `{
         },
         "/api/auth/cloud18/start": {
             "get": {
-                "description": "Redirects the browser to the Cloud18 realm's silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback (#2185). Public.",
+                "description": "Redirects the browser to the Cloud18 realm's sign-in (login_hint), silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback (#2185). Public.",
                 "tags": [
                     "Auth"
                 ],
                 "summary": "Sign in with Cloud18: start",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "the email typed on the login page, prefilled on the realm's page",
+                        "name": "login_hint",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "1: sign in only if the person has a realm session, nothing shown",
