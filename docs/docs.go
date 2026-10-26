@@ -99,6 +99,135 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/auth/cloud18": {
+            "get": {
+                "description": "On a partner repman with a public address (cloud18 on, plan partner, a public https api-public-url, cloud18-sso-login on), the login page offers Sign in with Cloud18 (#2185). Public.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: offered or not",
+                "responses": {
+                    "200": {
+                        "description": "enabled, and the reason when it is not",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/cloud18/callback": {
+            "get": {
+                "description": "The realm sends the browser back here with a code; the session is opened and the browser sent to /login with a one-time code (#2185). Public.",
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: the realm's answer",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "authorization code",
+                        "name": "code",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "the state of /api/auth/cloud18/start",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "to /login?cloud18=\u003cone-time code\u003e",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/cloud18/logout": {
+            "get": {
+                "description": "Redirects the browser to the realm's logout, back to /login (#2185). Public.",
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: logout",
+                "responses": {
+                    "302": {
+                        "description": "to the realm's logout",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/cloud18/session": {
+            "post": {
+                "description": "Trades the one-time code the callback gave the dashboard for the session token, once, within 60 s (#2185). Public.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: the session",
+                "parameters": [
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "token, username, loginMethod cloud18",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "unknown, used or expired code",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/cloud18/start": {
+            "get": {
+                "description": "Redirects the browser to the Cloud18 realm's sign-in, back to /api/auth/cloud18/callback (#2185). Public.",
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Sign in with Cloud18: start",
+                "responses": {
+                    "302": {
+                        "description": "to the realm",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/cloud18/self-service": {
             "get": {
                 "description": "Whether this instance accepts self-service cluster creation from Cloud18 users, the per-user limit, and how many clusters the caller already sponsors here.",
@@ -29803,6 +29932,9 @@ const docTemplate = `{
                 },
                 "cloud18SponsorUserCredential": {
                     "type": "string"
+                },
+                "cloud18SsoLogin": {
+                    "type": "boolean"
                 },
                 "cloud18SubDomain": {
                     "type": "string"
