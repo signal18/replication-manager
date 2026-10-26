@@ -213,11 +213,31 @@ const docTemplate = `{
         },
         "/api/auth/cloud18/start": {
             "get": {
-                "description": "Redirects the browser to the Cloud18 realm's sign-in, back to /api/auth/cloud18/callback (#2185). Public.",
+                "description": "Redirects the browser to the Cloud18 realm's sign-in (login_hint), silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback (#2185). Public.",
                 "tags": [
                     "Auth"
                 ],
                 "summary": "Sign in with Cloud18: start",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "the email typed on the login page",
+                        "name": "login_hint",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "1: sign in only if the person has a realm session, nothing shown",
+                        "name": "silent",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "1: the realm's sign-up form",
+                        "name": "signup",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "302": {
                         "description": "to the realm",
@@ -23896,6 +23916,43 @@ const docTemplate = `{
                         "description": "Error signing token",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/login/method": {
+            "post": {
+                "description": "\"password\" for an internal repman account (the login page asks its password), \"cloud18\" for a Cloud18 user on a partner repman with a public address (the browser goes to the Cloud18 realm, #2185). Public.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login method of a name",
+                "parameters": [
+                    {
+                        "description": "{\\",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "method: password or cloud18",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
