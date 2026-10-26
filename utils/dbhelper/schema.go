@@ -1070,6 +1070,28 @@ func IsGroupReplicationSlave(db *sqlx.DB, myver *version.Version, host string) (
 }
 
 // BootstrapGroupReplication bootstraps group replication
+// SetGroupReplicationAllowlist sets the hosts allowed to connect to the group, while
+// group replication is stopped: group_replication_ip_allowlist from MySQL 8.0.22,
+// group_replication_ip_whitelist before. An empty list changes nothing. MySQL 8.4 dropped
+// the whitelist name from the configuration (ignored as unknown), which left the allowlist
+// AUTOMATIC, and MySQL 8.4.11 aborts the PRIMARY when a member joins then (#2164). MySQL
+// and Percona only: MariaDB and PostgreSQL have no group replication, an explicit error.
+func SetGroupReplicationAllowlist(db *sqlx.DB, myver *version.Version, allowlist string) (string, error) {
+	if myver.IsPostgreSQL() || myver.IsMariaDB() {
+		return "", errors.New("group replication is a MySQL/Percona feature")
+	}
+	if allowlist == "" {
+		return "", nil
+	}
+	name := "group_replication_ip_allowlist"
+	if !myver.GreaterEqual("8.0.22") {
+		name = "group_replication_ip_whitelist"
+	}
+	cmd := "SET GLOBAL " + name + " = " + QuoteMySQLString(allowlist)
+	_, err := db.Exec(cmd)
+	return cmd, err
+}
+
 func BootstrapGroupReplication(db *sqlx.DB, myver *version.Version) (string, error) {
 	cmd := "SET GLOBAL group_replication_bootstrap_group = ON"
 	_, err := db.Exec(cmd)
