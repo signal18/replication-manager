@@ -866,7 +866,13 @@ func (cluster *Cluster) GetIgnoredROList() string {
 	return strings.Join(prevIgnoredRO, ",")
 }
 
-func (cluster *Cluster) GetGComm() string {
+// GetGComm is the member list server joins (wsrep_cluster_address, group replication seeds).
+// On Galera it is empty, which bootstraps a new cluster, only for the bootstrap node
+// (isGaleraBootstrapNode, the node --wsrep_new_cluster starts): every other node gets the
+// full list and waits for the Primary component. A list emptied whenever every server was
+// down bootstrapped each node rendered then, and the cluster came up split (#2191).
+// server nil (a proxy) always gets the full list.
+func (cluster *Cluster) GetGComm(server *ServerMonitor) string {
 	var gcomms []string
 	if len(cluster.Servers) == 0 {
 		return ""
@@ -880,8 +886,7 @@ func (cluster *Cluster) GetGComm() string {
 		}
 
 	}
-	//	For bootrap galera cluster on first node
-	if cluster.AllServersFailed() && cluster.GetTopology() == config.TopoMultiMasterWsrep {
+	if cluster.isGaleraBootstrapNode(server) {
 		return ""
 	}
 	if cluster.GetTopology() == config.TopoMultiMasterWsrep {

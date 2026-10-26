@@ -847,7 +847,7 @@ func (server *ServerMonitor) OpenSVCGetDBEnvSection() map[string]string {
 		svcenv["max_mem"] = strconv.Itoa(maxMemMB)
 		svcenv["max_cores"] = server.ClusterGroup.Conf.ProvCores
 		svcenv["micro_srv"] = server.ClusterGroup.Conf.ProvType
-		svcenv["gcomm"] = server.ClusterGroup.GetGComm()
+		svcenv["gcomm"] = server.ClusterGroup.GetGComm(server)
 		svcenv["server_id"] = string(server.Id[2:10])
 		svcenv["innodb_buffer_pool_size"] = server.ClusterGroup.GetConfigInnoDBBPSize()
 		svcenv["innodb_log_file_size"] = server.ClusterGroup.GetConfigInnoDBLogFileSize()
@@ -1482,7 +1482,7 @@ max_iops = ` + collector.ProvIops + `
 max_mem = ` + collector.ProvMem + `
 max_cores = ` + collector.ProvCores + `
 micro_srv = ` + collector.ProvMicroSrv + `
-gcomm	 = ` + server.ClusterGroup.GetGComm() + `
+gcomm	 = ` + server.ClusterGroup.GetGComm(server) + `
 mrm_api_addr = ` + server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort + `
 mrm_cluster_name = ` + server.ClusterGroup.GetClusterName() + `
 safe_ssl_ca_uuid = ` + server.ClusterGroup.Conf.ProvSSLCaUUID + `

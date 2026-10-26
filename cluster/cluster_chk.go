@@ -1119,8 +1119,13 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 			if sothers.IsFailed() || s.URL == sothers.URL || sothers.IsIgnored() {
 				continue
 			}
+			// a node not read yet has no UUID: nothing to compare
+			if s.Status.Get("WSREP_CLUSTER_STATE_UUID") == "" || sothers.Status.Get("WSREP_CLUSTER_STATE_UUID") == "" {
+				continue
+			}
+			// two clusters take writes neither sees: an error, not a risk
 			if s.Status.Get("WSREP_CLUSTER_STATE_UUID") != sothers.Status.Get("WSREP_CLUSTER_STATE_UUID") {
-				cluster.SetState("ERR00083", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00083"], s.URL, s.Status.Get("WSREP_CLUSTER_STATE_UUID"), sothers.URL, sothers.Status.Get("WSREP_CLUSTER_STATE_UUID")), ErrFrom: "MON", ServerUrl: s.URL})
+				cluster.SetState("ERR00083", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00083"], s.URL, s.Status.Get("WSREP_CLUSTER_STATE_UUID"), sothers.URL, sothers.Status.Get("WSREP_CLUSTER_STATE_UUID")), ErrFrom: "MON", ServerUrl: s.URL})
 				return false
 			}
 		}

@@ -1491,6 +1491,9 @@ func (cluster *Cluster) tickBody() {
 		cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
 		cluster.CheckDBCredentials()
 		cluster.CheckGaleraSSTAccount()
+		// a Galera split (nodes in different clusters) is reported every tick, not only when
+		// a failover is evaluated: CheckFailed returns early without a master (#2191)
+		cluster.IsSameWsrepUUID()
 		cluster.CheckReplicationTLS()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()

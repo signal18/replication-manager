@@ -17,7 +17,9 @@ import (
 //     non-nil, so NO node bootstrapped and the cluster could not restart;
 //   - else lastmaster, the master seen when the cluster went down (TopologyClusterDown),
 //     from memory or from clusterstate.json after a restart of replication-manager;
-//   - else, no master ever seen: the first node rendered, as before.
+//   - else, no master ever seen: the first declared server, never "any node": the empty
+//     member list (GetGComm) and the start option are rendered separately, each node
+//     answering true bootstrapped its own cluster (#2191).
 //
 // URLs are compared, never pointers: a config reload recreates the ServerMonitors.
 func (cluster *Cluster) isGaleraBootstrapNode(server *ServerMonitor) bool {
@@ -30,7 +32,7 @@ func (cluster *Cluster) isGaleraBootstrapNode(server *ServerMonitor) bool {
 	if u := cluster.lastMasterURL(); u != "" && cluster.GetServerFromURL(u) != nil {
 		return u == server.URL
 	}
-	return true
+	return len(cluster.Servers) > 0 && cluster.Servers[0].URL == server.URL
 }
 
 // lastMasterURL is lastmaster's URL, from memory, else as saved in clusterstate.json
