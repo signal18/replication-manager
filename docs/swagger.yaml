@@ -5922,14 +5922,9 @@ paths:
       - Auth
   /api/auth/cloud18/start:
     get:
-      description: Redirects the browser to the Cloud18 realm's sign-in (login_hint),
-        silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback
-        (#2185). Public.
+      description: Redirects the browser to the Cloud18 realm's silent check (silent=1)
+        or sign-up (signup=1), back to /api/auth/cloud18/callback (#2185). Public.
       parameters:
-      - description: the email typed on the login page
-        in: query
-        name: login_hint
-        type: string
       - description: '1: sign in only if the person has a realm session, nothing shown'
         in: query
         name: silent
@@ -22468,32 +22463,6 @@ paths:
           schema:
             type: string
       summary: User login
-      tags:
-      - Auth
-  /api/login/method:
-    post:
-      consumes:
-      - application/json
-      description: '"password" for an internal repman account (the login page asks
-        its password), "cloud18" for a Cloud18 user on a partner repman with a public
-        address (the browser goes to the Cloud18 realm, #2185). Public.'
-      parameters:
-      - description: '{\'
-        in: body
-        name: body
-        required: true
-        schema:
-          type: object
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: 'method: password or cloud18'
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Login method of a name
       tags:
       - Auth
   /api/me/units:

@@ -10,7 +10,6 @@ export const authService = {
   pollUpgrade,
   cloud18SSOStatus,
   cloud18SSOSession,
-  loginMethod,
 }
 
 function login(username, password, baseURL) {
@@ -51,11 +50,6 @@ function cloud18SSOStatus() {
 // Trades the one-time code the Cloud18 callback put in the address for the session, once.
 function cloud18SSOSession(code) {
   return publicApi.post('auth/cloud18/session', { code })
-}
-
-// How the login page signs a name in: 'password' (internal account) or 'cloud18' (#2185).
-function loginMethod(username) {
-  return publicApi.post('login/method', { username })
 }
 
 function pollUpgrade(upgradeId) {

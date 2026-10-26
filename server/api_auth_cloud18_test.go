@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -288,50 +287,8 @@ func TestCloud18SSOBounds(t *testing.T) {
 	}
 }
 
-// #2185: the login page asks the name first: an internal account (a name that is not an email, a
-// local password account, an admin other than the registered user) is signed in with its password
-// here; a Cloud18 user goes to the realm; a repman without Sign in with Cloud18 always asks the
-// password.
-func TestLoginMethod(t *testing.T) {
-	_, issuer := newRegisterFakes(t)
-	repman := ssoRepman(t, issuer)
-	for name, want := range map[string]string{"admin": "password", "system": "password", "": "password",
-		"person@partner.example": "cloud18", "owner@partner.example": "cloud18"} {
-		if got := repman.loginMethodFor(name); got != want {
-			t.Errorf("%q: %s, want %s", name, got, want)
-		}
-	}
-	cl := cluster.Cluster{Conf: &config.Config{}, APIUsers: map[string]cluster.APIUser{
-		"ops@partner.example":    {User: "ops@partner.example", Password: "x", Grants: map[string]bool{config.GrantGlobalAdminShow: true}},
-		"member@partner.example": {User: "member@partner.example", Password: "random-given-by-repman", Grants: map[string]bool{"cluster-show": true}}}}
-	repman.Clusters = map[string]*cluster.Cluster{"c1": &cl}
-	for _, name := range []string{"ops@partner.example", "Ops@Partner.example"} {
-		if repman.loginMethodFor(name) != "password" {
-			t.Errorf("%q: an administrator account, whatever the case, asks its password here", name)
-		}
-	}
-	if repman.loginMethodFor("member@partner.example") != "cloud18" {
-		t.Error("a user repman gave a local password to is still a Cloud18 user")
-	}
-	w := httptest.NewRecorder()
-	repman.handlerMuxLoginMethod(w, httptest.NewRequest(http.MethodPost, "/api/login/method", strings.NewReader(`{"username":"x@y.z"}`)))
-	if w.Header().Get("Access-Control-Allow-Origin") != "" {
-		t.Error("no CORS on /api/login/method")
-	}
-	repman.Conf.APIPublicURL = "https://127.0.0.1:10005"
-	if repman.loginMethodFor("person@partner.example") != "password" {
-		t.Error("a repman without Sign in with Cloud18 asks the password")
-	}
-	w = httptest.NewRecorder()
-	repman.handlerMuxLoginMethod(w, httptest.NewRequest(http.MethodPost, "/api/login/method", strings.NewReader(`{"username":"admin"}`)))
-	if !strings.Contains(w.Body.String(), `"method":"password"`) {
-		t.Fatalf("endpoint: %s", w.Body.String())
-	}
-}
-
-// #2185: the silent check (prompt=none) and the email prefill reach the realm; a silent check that
-// finds no realm session sends the page back to its form, not as a failure; sign-up goes to the
-// realm's sign-up form.
+// #2185: the silent check (prompt=none) reaches the realm; a silent check that finds no realm session
+// sends the page back to its form, not as a failure; sign-up goes to the realm's sign-up form.
 func TestCloud18SSOSilentAndHint(t *testing.T) {
 	_, issuer := newRegisterFakes(t)
 	repman := ssoRepman(t, issuer)
@@ -346,11 +303,7 @@ func TestCloud18SSOSilentAndHint(t *testing.T) {
 		}
 		return u, nil
 	}
-	u, _ := start("login_hint=" + url.QueryEscape("person@partner.example"))
-	if u.Query().Get("login_hint") != "person@partner.example" || u.Query().Get("prompt") != "" {
-		t.Fatalf("sign in with the email prefilled: %s", u)
-	}
-	u, _ = start("signup=1")
+	u, _ := start("signup=1")
 	if !strings.HasSuffix(u.Path, "/protocol/openid-connect/registrations") {
 		t.Fatalf("sign up: %s", u)
 	}

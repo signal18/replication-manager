@@ -22,9 +22,6 @@ function Login({ dashboard = false }) {
   const [errorMessage, setErrorMessage] = useState('')
   const [cloud18Enabled, setCloud18Enabled] = useState(false)
   const [cloud18Loading, setCloud18Loading] = useState(false)
-  // with Sign in with Cloud18 the page asks the name first: an internal account then shows the
-  // password field, a Cloud18 user goes to the realm (#2185)
-  const [showPassword, setShowPassword] = useState(false)
   // the Cloud18 status is known and no silent check is under way: autologin may run
   const [cloud18Ready, setCloud18Ready] = useState(false)
   const { theme } = useTheme()
@@ -212,26 +209,6 @@ function Login({ dashboard = false }) {
       return
     }
 
-    // Sign in with Cloud18 (#2185): the name decides, an internal account asks its password here,
-    // a Cloud18 user goes to the realm with the email prefilled (one password, on the realm's page)
-    if (cloud18Enabled && !showPassword) {
-      setCloud18Loading(true)
-      authService.loginMethod(username)
-        .then((resp) => {
-          if (resp?.status === 200 && resp?.data?.method === 'cloud18') {
-            window.location.assign('/api/auth/cloud18/start?login_hint=' + encodeURIComponent(username))
-            return
-          }
-          setCloud18Loading(false)
-          setShowPassword(true)
-        })
-        .catch(() => {
-          setCloud18Loading(false)
-          setShowPassword(true)
-        })
-      return
-    }
-
     if ('' === password) {
       setPasswordError('Please enter a password')
       return
@@ -259,16 +236,16 @@ function Login({ dashboard = false }) {
               <Stack spacing='5'>
                 <FormControl isInvalid={usernameError}>
                   <FormLabel className={theme === 'dark' ? styles.darkLoginText : ""} htmlFor='username'>Username or Email</FormLabel>
-                  <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => { setUsername(e.target.value); setShowPassword(false) }} />
+                  <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => setUsername(e.target.value)} />
                   <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
                 </FormControl>
-                {(!cloud18Enabled || showPassword) && <PasswordControl
+                <PasswordControl
                   passwordError={passwordError}
                   inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
                   labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
                   onChange={(e) => setPassword(e.target.value)}
                   className={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
-                />}
+                />
               </Stack>
               {errorMessage && <Message message={errorMessage} />}
 

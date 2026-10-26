@@ -473,11 +473,10 @@ func (conf *Config) Cloud18SSO() (string, error) {
 	return public, nil
 }
 
-// Cloud18SSOMode is how the browser goes to the realm: to sign in (the email prefilled when known),
-// silently (prompt=none: signed in only if the person already has a realm session, the realm
-// answers login_required otherwise, nothing shown), or to sign up (the realm's own sign-up form).
+// Cloud18SSOMode is how the browser goes to the realm: to sign in, silently (prompt=none: signed in
+// only if the person already has a realm session, the realm answers login_required otherwise,
+// nothing shown), or to sign up (the realm's own sign-up form).
 type Cloud18SSOMode struct {
-	Hint   string // login_hint: the email the person typed
 	Silent bool
 	SignUp bool
 }
@@ -491,9 +490,6 @@ func (conf *Config) Cloud18SSOAuthorizeURL(public, state, challenge string, mode
 	}
 	q := url.Values{"client_id": {ConstCloud18LoginClientID}, "redirect_uri": {public + Cloud18SSOCallbackPath}, "response_type": {"code"},
 		"scope": {"openid email profile"}, "state": {state}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
-	if mode.Hint != "" {
-		q.Set("login_hint", mode.Hint)
-	}
 	endpoint := "/protocol/openid-connect/auth?"
 	switch {
 	case mode.SignUp:
