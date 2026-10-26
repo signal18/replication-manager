@@ -55,6 +55,9 @@ type registerFakes struct {
 	issuer        string            // the realm's issuer
 	loginCodes    map[string]string // code -> PKCE challenge|email
 	refreshes     int               // refresh grants answered
+	rotate        bool              // each refresh gives a new refresh token and revokes the used one
+	shortTokens   bool              // access tokens of 30 s: every call refreshes
+	liveRefresh   map[string]bool   // refresh tokens still valid, when rotating
 }
 
 type fakeToken struct {
@@ -120,18 +123,34 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 				delete(f.loginCodes, r.Form.Get("code"))
 				email = parts[1]
 			case "refresh_token":
-				if !strings.HasPrefix(r.Form.Get("refresh_token"), "rt-") {
+				rt := r.Form.Get("refresh_token")
+				if !strings.HasPrefix(rt, "rt-") || (f.rotate && f.liveRefresh != nil && !f.liveRefresh[rt] && f.refreshes > 0) {
 					http.Error(w, `{"error":"invalid_grant","error_description":"Invalid refresh token"}`, 400)
 					return
 				}
 				f.refreshes++
-				email = strings.TrimPrefix(r.Form.Get("refresh_token"), "rt-")
+				email = strings.SplitN(strings.TrimPrefix(rt, "rt-"), "#", 2)[0]
+				if f.rotate {
+					if f.liveRefresh == nil {
+						f.liveRefresh = map[string]bool{}
+					}
+					delete(f.liveRefresh, rt)
+					next := fmt.Sprintf("rt-%s#%d", email, f.refreshes)
+					f.liveRefresh[next] = true
+					fmt.Fprintf(w, `{"access_token":%q,"expires_in":30,"refresh_token":%q,"refresh_expires_in":1800}`,
+						f.realmToken(email, config.ConstCloud18APIAudience, true, 30*time.Second), next)
+					return
+				}
 			default:
 				http.Error(w, `{"error":"unsupported_grant_type"}`, 400)
 				return
 			}
-			fmt.Fprintf(w, `{"access_token":%q,"expires_in":300,"refresh_token":%q,"refresh_expires_in":1800}`,
-				f.realmToken(email, config.ConstCloud18APIAudience, true, 5*time.Minute), "rt-"+email)
+			life := 300
+			if f.shortTokens {
+				life = 30
+			}
+			fmt.Fprintf(w, `{"access_token":%q,"expires_in":%d,"refresh_token":%q,"refresh_expires_in":1800}`,
+				f.realmToken(email, config.ConstCloud18APIAudience, true, time.Duration(life)*time.Second), life, "rt-"+email)
 		case "/realms/cloud18/protocol/openid-connect/certs":
 			pub := f.realmKey.PublicKey
 			fmt.Fprintf(w, `{"keys":[{"kty":"RSA","kid":"k1","use":"sig","alg":"RS256","n":%q,"e":%q}]}`,

@@ -1810,13 +1810,12 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 	}
 
 	userform.Username = uinfomap["User"]
-	userform.Password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
-
-	sso, _ := repman.ssoPasswordLogin(userform.Username, userform.Password)
-	tok := sso.token
-	if tok == "" {
-		http.Error(w, "Error logging in to Cloud18: the credentials are not valid", http.StatusUnauthorized)
-		return
+	if !isCloud18LoginSession(uinfomap) {
+		userform.Password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
+		if sso, _ := repman.ssoPasswordLogin(userform.Username, userform.Password); sso.token == "" {
+			http.Error(w, "Error logging in to Cloud18: the credentials are not valid", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	if repman.Conf.Cloud18GitUser == "" || repman.Conf.Cloud18GitPassword == "" || !repman.Conf.Cloud18 {
@@ -1858,7 +1857,13 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 	} else {
 		userform.Roles = strings.Join(roles, " ")
 		userform.Grants = strings.Join(grants, " ")
-		mycluster.AddUser(userform, repman.Conf.Cloud18GitUser, true)
+		if userform.Password == "" {
+			// a Cloud18 login (#2182): an SSO-only account, never a generated local password
+			// that would make it local-only and refuse the person's SSO login
+			mycluster.AddSSOOnlyUser(userform, repman.Conf.Cloud18GitUser, true)
+		} else {
+			mycluster.AddUser(userform, repman.Conf.Cloud18GitUser, true)
+		}
 	}
 
 	// User already listed as pending
@@ -1896,8 +1901,10 @@ func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter,
 	if raw := bearerOf(r); repman.acceptsCloud18Tokens(raw) {
 		session, _, err := repman.cloud18TokenSession(raw)
 		if err != nil {
+			// the detail (keys, issuer) goes to the security log, not to the caller
+			repman.logSecurityEvent("api_auth_failure", "cloud18-token", r.RemoteAddr, "Cloud18 token refused: "+err.Error())
 			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, err.Error())
+			fmt.Fprint(w, "Cloud18 token refused")
 			return
 		}
 		r.Header.Set("Authorization", "Bearer "+session)

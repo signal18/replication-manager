@@ -168,11 +168,19 @@ func (repman *ReplicationManager) cloud18TokenLogin(w http.ResponseWriter, r *ht
 	jwt, u, err := repman.cloud18TokenSession(raw)
 	if err != nil {
 		repman.logSecurityEvent("api_auth_failure", "cloud18-token", r.RemoteAddr, "API authentication failure: "+err.Error())
-		http.Error(w, "Error logging in: "+err.Error(), http.StatusUnauthorized)
+		http.Error(w, "Error logging in: Cloud18 token refused", http.StatusUnauthorized)
 		return
 	}
 	if repman.Conf.MonitoringLogAPILogin && !repman.isAPILoginSilenced(u.Email) {
 		repman.logSecurityEvent("api_login_success", u.Email, r.RemoteAddr, "API login successful (Cloud18 token)")
 	}
 	repman.jsonResponse(AuthTokenWithUpgrade{Token: jwt}, w)
+}
+
+// isCloud18LoginSession says whether a session (GetUserInfoMap) comes from the Cloud18 login: its
+// realm token or the refresh token of its login. The realm proved it, at login or by a token
+// verified on this request, so it has no password to check again (a session from a realm token
+// has none); an older SSO session re-checks its password.
+func isCloud18LoginSession(info map[string]string) bool {
+	return info["Cloud18Token"] != "" || info["Cloud18Login"] != ""
 }

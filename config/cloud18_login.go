@@ -176,43 +176,77 @@ func (conf *Config) VerifyCloud18Token(raw string) (Cloud18User, error) {
 	return Cloud18User{Email: strings.ToLower(c.Email), Name: c.Name, Expires: t.Expiry}, nil
 }
 
-type cloud18LoginAccess struct {
-	token   string
-	expires time.Time
+// cloud18LoginEntry is the realm token of one login (by its first refresh token), the newest
+// refresh token the realm gave (a realm rotating them refuses the first one once used) and how
+// long that refresh token lives. mu serializes the refreshes of one login.
+type cloud18LoginEntry struct {
+	mu         sync.Mutex
+	token      string
+	expires    time.Time
+	refresh    string
+	refreshEnd time.Time
+	seen       time.Time
 }
 
-// cloud18LoginTokens caches the realm token of each login (by its refresh token) until it nears
-// its end: one refresh per login, not one per request to another instance.
+// cloud18LoginTokensMax bounds the logins kept (F4): past it, the least recently used one goes.
+const cloud18LoginTokensMax = 4096
+
+// cloud18LoginTokens caches the realm token of each login until it nears its end: one refresh
+// per login and token lifetime, not one per request to another instance. An entry lives as long
+// as its refresh token, so a rotated refresh token is not lost when the access token ends.
 var cloud18LoginTokens = struct {
 	sync.Mutex
-	m map[string]cloud18LoginAccess
-}{m: map[string]cloud18LoginAccess{}}
+	m map[string]*cloud18LoginEntry
+}{m: map[string]*cloud18LoginEntry{}}
+
+// cloud18LoginEntryFor returns the entry of a login, created when new; the cache is pruned of
+// ended logins and bounded.
+func cloud18LoginEntryFor(refresh string, now time.Time) *cloud18LoginEntry {
+	sum := sha256.Sum256([]byte(refresh))
+	key := hex.EncodeToString(sum[:])
+	cloud18LoginTokens.Lock()
+	defer cloud18LoginTokens.Unlock()
+	if e, ok := cloud18LoginTokens.m[key]; ok {
+		e.seen = now
+		return e
+	}
+	for k, e := range cloud18LoginTokens.m {
+		if !e.refreshEnd.IsZero() && !now.Before(e.refreshEnd) {
+			delete(cloud18LoginTokens.m, k)
+		}
+	}
+	if len(cloud18LoginTokens.m) >= cloud18LoginTokensMax {
+		oldest := ""
+		for k, e := range cloud18LoginTokens.m {
+			if oldest == "" || e.seen.Before(cloud18LoginTokens.m[oldest].seen) {
+				oldest = k
+			}
+		}
+		delete(cloud18LoginTokens.m, oldest)
+	}
+	e := &cloud18LoginEntry{refresh: refresh, seen: now, refreshEnd: now.Add(cloud18IdentityMaxLifetime)}
+	cloud18LoginTokens.m[key] = e
+	return e
+}
 
 // Cloud18LoginAccess returns a valid realm token of a login from its refresh token.
 func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	if refresh == "" {
 		return "", errors.New("no Cloud18 login")
 	}
-	sum := sha256.Sum256([]byte(refresh))
-	key := hex.EncodeToString(sum[:])
 	now := time.Now()
-	cloud18LoginTokens.Lock()
-	for k, t := range cloud18LoginTokens.m {
-		if !now.Before(t.expires) {
-			delete(cloud18LoginTokens.m, k) // bounded: only live logins stay
-		}
+	e := cloud18LoginEntryFor(refresh, now)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.token != "" && e.expires.Sub(now) > cloud18LoginRenewBefore {
+		return e.token, nil // also the token a concurrent caller just got
 	}
-	if t, ok := cloud18LoginTokens.m[key]; ok && t.expires.Sub(now) > cloud18LoginRenewBefore {
-		cloud18LoginTokens.Unlock()
-		return t.token, nil
-	}
-	cloud18LoginTokens.Unlock()
 	issuer, err := conf.cloud18Issuer()
 	if err != nil {
 		return "", err
 	}
 	code, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/token", url.Values{"grant_type": {"refresh_token"},
-		"client_id": {ConstCloud18LoginClientID}, "refresh_token": {refresh}})
+		"client_id": {ConstCloud18LoginClientID}, "refresh_token": {e.refresh}})
 	if err != nil {
 		return "", err
 	}
@@ -227,8 +261,12 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	cloud18LoginTokens.Lock()
-	cloud18LoginTokens.m[key] = cloud18LoginAccess{token: a.AccessToken, expires: now.Add(lifetime)}
-	cloud18LoginTokens.Unlock()
-	return a.AccessToken, nil
+	e.token, e.expires = a.AccessToken, now.Add(lifetime)
+	if a.RefreshToken != "" {
+		e.refresh = a.RefreshToken // a realm rotating refresh tokens
+	}
+	if end := a.sessionEnd(now); !end.IsZero() {
+		e.refreshEnd = end
+	}
+	return e.token, nil
 }

@@ -7,6 +7,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -214,7 +215,8 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 	if raw := bearerOf(r); repman.acceptsCloud18Tokens(raw) {
 		session, u, err := repman.cloud18TokenSession(raw)
 		if err != nil {
-			return nil, err
+			repman.logSecurityEvent("mcp_auth_failure", "cloud18-token", r.RemoteAddr, "Cloud18 token refused: "+err.Error())
+			return nil, errors.New("Cloud18 token refused")
 		}
 		return &repmanmcp.Principal{User: u.Email, AuthMethod: "oidc", Remote: r.RemoteAddr, Auth: "", Bearer: session, Cloud18Token: raw}, nil
 	}

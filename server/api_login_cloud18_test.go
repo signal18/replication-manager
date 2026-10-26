@@ -224,3 +224,36 @@ func TestCloud18LoginAccess(t *testing.T) {
 		t.Fatal("a refused refresh gives no token")
 	}
 }
+
+// #2182 review: a realm rotating refresh tokens (the used one revoked) keeps giving tokens: the
+// newest refresh token is kept by the login, the first one (in the session) is never sent twice.
+func TestCloud18LoginAccessRotation(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	repman := loginRepman(t, issuer)
+	f.mu.Lock()
+	f.rotate = true
+	f.mu.Unlock()
+	claim := repman.Conf.GetEncryptedString("rt-rotating@acme.example")
+	for i := 0; i < 3; i++ {
+		if repman.cloud18TokenFor("", claim) == "" {
+			t.Fatalf("refresh %d with a rotating realm gave no token", i+1)
+		}
+	}
+	f.mu.Lock()
+	n := f.refreshes
+	f.mu.Unlock()
+	if n != 3 {
+		t.Fatalf("30 s tokens: each call refreshes with the newest refresh token, got %d refreshes", n)
+	}
+}
+
+// #2182 review: a session of the Cloud18 login is not asked its password again (subscribe); an
+// older SSO session is.
+func TestIsCloud18LoginSession(t *testing.T) {
+	if !isCloud18LoginSession(map[string]string{"Cloud18Token": "hash_x"}) || !isCloud18LoginSession(map[string]string{"Cloud18Login": "hash_y"}) {
+		t.Error("a session from a realm token or a Cloud18 login is proven by the realm")
+	}
+	if isCloud18LoginSession(map[string]string{"Password": "hash_z"}) {
+		t.Error("an older SSO session re-checks its password")
+	}
+}
