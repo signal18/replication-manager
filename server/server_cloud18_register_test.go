@@ -195,7 +195,7 @@ func (f *registerFakes) api(w http.ResponseWriter, r *http.Request, path string)
 		w.WriteHeader(http.StatusUnauthorized)
 	case strings.Contains(path, "/access_tokens") && r.Method == http.MethodGet:
 		// an old token of the instance, another one, and the token just created (f.lastToken)
-		fmt.Fprintf(w, `[{"id":7,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false},{"id":8,"name":"someone else","active":true,"revoked":false},{"id":%d,"name":"replication-manager acme.ovh.fr-1","active":true,"revoked":false}]`, f.created[strings.TrimSuffix(path, "/access_tokens")])
+		fmt.Fprintf(w, `[{"id":7,"name":"replication-manager acme-ovh-fr-1-0","active":true,"revoked":false},{"id":8,"name":"someone else","active":true,"revoked":false},{"id":%d,"name":"replication-manager acme-ovh-fr-1-0","active":true,"revoked":false}]`, f.created[strings.TrimSuffix(path, "/access_tokens")])
 	case strings.Contains(path, "/access_tokens/") && r.Method == http.MethodDelete:
 		f.revoked = append(f.revoked, path)
 		w.WriteHeader(http.StatusNoContent)
@@ -436,5 +436,29 @@ func TestCloud18RegisterOtherURIRefused(t *testing.T) {
 	rm.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
 	if state, msg, res := regResult(t, rm); state != RegStateOK || !res.Reattach {
 		t.Fatalf("the same URI again is a reconnect: %s %q", state, msg)
+	}
+}
+
+// #2159: the peers of an HA pair share the URI; each one's project tokens carry its own name (its
+// arbitration unique id), so a peer's reconnect never revokes the other's tokens.
+func TestCloud18PeerTokensNotRevoked(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	key := []byte("0123456789abcdef")
+	first := registerRepman(t, issuer, key)
+	first.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, _ := regResult(t, first); state != RegStateOK {
+		t.Fatalf("setup: %s %q", state, msg)
+	}
+	f.mu.Lock()
+	f.revoked = nil
+	f.mu.Unlock()
+	peer := registerRepman(t, issuer, key)
+	peer.Conf.ArbitrationSasUniqueId = 2
+	peer.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
+	if state, msg, _ := regResult(t, peer); state != RegStateOK {
+		t.Fatalf("the peer: %s %q", state, msg)
+	}
+	if len(f.revoked) != 0 {
+		t.Fatalf("the peer revoked the first instance's tokens: %v", f.revoked)
 	}
 }

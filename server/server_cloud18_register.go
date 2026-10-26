@@ -173,7 +173,10 @@ func (repman *ReplicationManager) cloud18Declare(conf *config.Config, glToken, d
 	}
 
 	// 4. the instance's own project tokens: the only GitLab credentials it keeps
-	tokenName := "replication-manager " + uri
+	// one name per instance (its arbitration unique id): peers of an HA pair share the URI and must
+	// never revoke each other's tokens
+	conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone = domain, subdomain, zone
+	tokenName := "replication-manager " + conf.GetInstancePATName()
 	expires := time.Now().Add(config.Cloud18GitTokenLifetime)
 	mainTok, err := githelper.GitLabCreateProjectToken(glToken, mainID, tokenName, expires)
 	if err != nil {
