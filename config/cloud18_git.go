@@ -220,6 +220,7 @@ func (conf *Config) RotateCloud18PersonalToken(now time.Time) (rotated bool, err
 	if err != nil {
 		return false, lost(err)
 	}
+	// a token without end date is renewed once (it then has one): GitLab caps lifetimes anyway
 	if e, perr := time.Parse("2006-01-02", end); end != "" && perr == nil && e.Sub(now) >= cloud18GitTokenRenewBefore {
 		conf.Cloud18GitTokenExpires = end
 		return false, nil

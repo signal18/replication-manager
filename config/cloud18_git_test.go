@@ -173,6 +173,12 @@ func TestRotateCloud18PersonalToken(t *testing.T) {
 		t.Fatalf("the renewed token must be saved encrypted: %v", v)
 	}
 
+	ends["never"] = "" // a token without end date: renewed once, it then has one
+	conf.keepSecret("git-acces-token", "never")
+	if rotated, err := conf.RotateCloud18PersonalToken(time.Now()); err != nil || !rotated || conf.Cloud18GitTokenExpires == "" {
+		t.Fatalf("no end date: rotated %v %v, end %q", rotated, err, conf.Cloud18GitTokenExpires)
+	}
+
 	conf.keepSecret("git-acces-token", "revoked")
 	if _, err := conf.RotateCloud18PersonalToken(time.Now()); !errors.Is(err, ErrCloud18GitTokenLost) {
 		t.Fatalf("a refused token: %v", err)

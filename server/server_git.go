@@ -475,7 +475,8 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		conf.SetImmuableFlag("git-url", conf.GitUrl)
 		conf.SetImmuableFlag("git-url-pull", conf.GitUrlPull)
 		conf.SetImmuableFlag("git-username", conf.GitUsername)
-		repman.rotateCloud18GitTokens(conf, false)
+		// no renewal here: at start conf is the config being built (it replaces repman.Conf
+		// afterwards), a renewed token could not be saved at once; cloud18TokenRenewals does it
 		if conf.ConfRestoreOnStart {
 			conf.ConfRestoreOnStart = false
 			conf.SetImmuableFlag("monitoring-restore-config-on-start", false)
@@ -494,9 +495,8 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 	if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
 		gituser := conf.Cloud18GitUser
 		gitpassword := conf.GetDecryptedValue("cloud18-gitlab-password")
-		// The instance's own token first (#2159): renewed by itself, it needs no password grant,
-		// which GitLab ends; the grant is only used when that token no longer works.
-		repman.rotateCloud18PersonalToken(conf)
+		// The instance's own token first (#2159): renewed by itself (cloud18TokenRenewals), it needs
+		// no password grant, which GitLab ends; the grant is only used when that token no longer works.
 		var acces_tok string
 		var err error
 		if saved := conf.GetDecryptedValue("git-acces-token"); saved != "" {

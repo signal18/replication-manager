@@ -259,7 +259,7 @@ func (repman *ReplicationManager) rotateCloud18GitTokens(conf *config.Config, fo
 		return err
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Cloud18 git tokens renewed until %s", conf.Cloud18GitTokenExpires)
-	repman.Save()
+	repman.saveRenewedToken(conf)
 	return nil
 }
 
@@ -267,6 +267,7 @@ func (repman *ReplicationManager) rotateCloud18GitTokens(conf *config.Config, fo
 // password, with itself (#2159): its git never depends on the password grant GitLab ends. A
 // refused token is left to the password path (it mints a new one while the grant exists).
 func (repman *ReplicationManager) rotateCloud18PersonalToken(conf *config.Config) error {
+	// one renewal at a time, personal or project tokens: the flag is shared on purpose
 	if !repman.cloud18GitRotating.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -280,7 +281,38 @@ func (repman *ReplicationManager) rotateCloud18PersonalToken(conf *config.Config
 		keepGitAccessToken(conf, conf.GetDecryptedValue("git-acces-token"))
 		repman.shareGitSecrets(conf)
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Cloud18 personal git token renewed by itself until %s", conf.Cloud18GitTokenExpires)
-		repman.Save()
+		repman.saveRenewedToken(conf)
 	}
 	return nil
+}
+
+// saveRenewedToken saves at once a token GitLab just renewed: the old one is already revoked, a
+// crash before the save would leave the instance with a dead token.
+func (repman *ReplicationManager) saveRenewedToken(conf *config.Config) {
+	if conf == repman.Conf && repman.ConfigManager != nil {
+		repman.ConfigManager.SaveConfig(repman, true)
+		return
+	}
+	repman.Save()
+}
+
+// cloud18TokenRenewalDelay: the first renewal check after start, once the config is the running one.
+var cloud18TokenRenewalDelay = 2 * time.Minute
+
+// cloud18TokenRenewals renews the instance's Cloud18 git tokens (personal or project ones) shortly
+// after start and then daily, on the running config, each renewal saved at once (#2159). Not at
+// start inside InitGitConfig, which works on the config being built.
+func (repman *ReplicationManager) cloud18TokenRenewals() {
+	time.Sleep(cloud18TokenRenewalDelay)
+	for {
+		if repman.exit.Load() {
+			return
+		}
+		if repman.Conf.Cloud18 {
+			repman.rotateCloud18GitTokens(repman.Conf, false)
+		}
+		for i := 0; i < 24*60 && !repman.exit.Load(); i++ {
+			time.Sleep(time.Minute)
+		}
+	}
 }
