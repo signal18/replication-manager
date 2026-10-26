@@ -97,7 +97,8 @@ Repman-global tools mapped with the `global:<grant>` form in `toolACLPaths`: `ad
 `AuthorizeMCPGlobal(principal, grant)` (grant held on at least one cluster, token narrowing
 applied, a token needs the `*` scope; "" = any authenticated principal). Reads:
 `get-cloud18-status`, `get-cloud18-register-status`, `get-cloud18-subscription`,
-`list-cloud18-subscription-plans`, `list-cloud18-clusters-for-sale`,
+`list-cloud18-subscription-plans`, `list-cloud18-archive-offers` (the BO's S3 and archive
+catalogue, `MarketplaceCatalogue`, see peer/MARKETPLACE.md §3), `list-cloud18-clusters-for-sale`,
 `list-cloud18-infrastructures` (distinct `api-public-url` of the clusters for sale). Actions
 (`global-admin-show`): `cloud18-register`, `cloud18-register-confirm`, `cloud18-unregister`,
 `cloud18-change-subscription`. Prompt `cloud18-onboarding`.

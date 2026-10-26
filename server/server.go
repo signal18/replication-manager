@@ -104,6 +104,7 @@ type ReplicationManager struct {
 	gatewayTraffic               *gatewayTraffic                    `json:"-"` // GWU collector state (#1872)
 	PeerManager                  *peer.PeerManager                  `json:"-"`
 	Partners                     []config.Partner                   `json:"partners"`
+	marketplaceCatalogue         marketplaceCatalogueRef            `json:"-"` // the back-office's S3 and archive offers (LoadMarketplaceCatalogue)
 	Partner                      config.Partner                     `json:"partner"`
 	Agents                       []opensvc.Host                     `json:"agents"`
 	UUID                         string                             `json:"uuid"`
@@ -2665,6 +2666,7 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
+	repman.LoadMarketplaceCatalogue()
 	repman.UpdateLocalPeer()
 
 	repman.clog.SetLevel(config.ToLogrusLevel(repman.Conf.LogGraphiteLevel))

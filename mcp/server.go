@@ -58,6 +58,9 @@ type RepmanProvider interface {
 	Cloud18ChangeSubscription(plan string) (map[string]any, error)
 	Cloud18ClustersForSale() ([]*peer.PeerCluster, error)
 	Cloud18Infrastructures() ([]Cloud18Infrastructure, error)
+	// MarketplaceCatalogue: the partners' S3 storages and archive offers the back-office
+	// pushes to every instance (server_git.go LoadMarketplaceCatalogue).
+	MarketplaceCatalogue() config.MarketplaceCatalogue
 	// Acting on an infrastructure AS THE PRINCIPAL: a Cloud18 (SSO) user is themselves on
 	// every public instance and sponsors what they create there; a local admin acts as the
 	// instance's registered identity; a local user or an API token is refused with the way

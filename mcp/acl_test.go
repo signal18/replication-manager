@@ -56,6 +56,9 @@ func (f *fakeRepman) Cloud18RegisterConfirm(e, u string) (map[string]any, error)
 	return map[string]any{"state": "complete"}, nil
 }
 func (f *fakeRepman) Cloud18Unregister() (map[string]any, error) { return map[string]any{}, nil }
+func (f *fakeRepman) MarketplaceCatalogue() config.MarketplaceCatalogue {
+	return config.MarketplaceCatalogue{}
+}
 func (f *fakeRepman) Cloud18SubscriptionPlans() (json.RawMessage, error) {
 	return json.RawMessage(`[]`), nil
 }

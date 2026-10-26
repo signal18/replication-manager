@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -750,6 +751,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 			repman.LoadPeerJson()
 			repman.UpdateLocalPeer()
 			repman.LoadPartnersJson()
+			repman.LoadMarketplaceCatalogue()
 		}
 
 		// Copy plugin binaries from pull repo into each cluster's working dir
@@ -1272,28 +1274,35 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 }
 
-func (repman *ReplicationManager) LoadPartnersJson() error {
-	filePath := filepath.Join(repman.Conf.WorkingDir, ".pull", "partners.json")
-
+// readPullJSON reads .pull/<name> when it changed since its last accepted read: by modification
+// time, then by content checksum, both kept under key. It answers nil content when nothing
+// changed; the caller stores the returned checksum in CheckSumConfig[key] once it accepts the
+// content, so a file that fails to decode is not marked as read.
+func (repman *ReplicationManager) readPullJSON(name, key string) ([]byte, hash.Hash, error) {
+	filePath := filepath.Join(repman.Conf.WorkingDir, ".pull", name)
 	fstat, err := os.Stat(filePath)
 	if err != nil {
-		repman.Partners = make([]config.Partner, 0)
-		if !os.IsNotExist(err) {
-			repman.Logrus.Errorf("failed reading partners file: %v", err)
-		}
-
-		return err
+		return nil, nil, err
 	}
-
 	modTime := fstat.ModTime()
-
-	if oldModTime, ok := repman.ModTimes["partners"]; ok && oldModTime.Equal(modTime) {
-		return nil // No changes in the file modification time
+	if oldModTime, ok := repman.ModTimes[key]; ok && oldModTime.Equal(modTime) {
+		return nil, nil, nil // No changes in the file modification time
 	}
-
-	repman.ModTimes["partners"] = modTime
-
+	repman.ModTimes[key] = modTime
 	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, nil, err
+	}
+	newHash := md5.New()
+	newHash.Write(content)
+	if oldHash, ok := repman.CheckSumConfig[key]; ok && bytes.Equal(oldHash.Sum(nil), newHash.Sum(nil)) {
+		return nil, nil, nil // No changes in the file content
+	}
+	return content, newHash, nil
+}
+
+func (repman *ReplicationManager) LoadPartnersJson() error {
+	content, newHash, err := repman.readPullJSON("partners.json", "partners")
 	if err != nil {
 		repman.Partners = make([]config.Partner, 0)
 		if !os.IsNotExist(err) {
@@ -1301,14 +1310,8 @@ func (repman *ReplicationManager) LoadPartnersJson() error {
 		}
 		return err
 	}
-
-	// Calculate the checksum
-	newHash := md5.New()
-	newHash.Write(content)
-
-	// Compare with the existing checksum
-	if oldHash, ok := repman.CheckSumConfig["partners"]; ok && bytes.Equal(oldHash.Sum(nil), newHash.Sum(nil)) {
-		return nil // No changes in the file content
+	if content == nil {
+		return nil
 	}
 
 	// Decode JSON
@@ -1324,6 +1327,66 @@ func (repman *ReplicationManager) LoadPartnersJson() error {
 	repman.SetCloudPartner()
 	return nil
 
+}
+
+// LoadMarketplaceCatalogue reads the marketplace catalogue the back-office pushes to every
+// instance, next to partners.json: the partners' S3 storages (.pull/marketplace-s3.json) and
+// archive offers (.pull/marketplace-archive.json). Each file is read again when it changes; an
+// absent file is an empty list (a back-office that does not push it yet), a file that does not
+// decode keeps the list read before.
+func (repman *ReplicationManager) LoadMarketplaceCatalogue() {
+	cur := repman.MarketplaceCatalogue()
+	next := cur
+	changed := false
+	load := func(name, key string, into any) bool {
+		content, newHash, err := repman.readPullJSON(name, key)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				repman.Logrus.Errorf("failed reading %s: %v", name, err)
+			}
+			return false
+		}
+		if content == nil {
+			return false
+		}
+		if err := json.Unmarshal(content, into); err != nil {
+			repman.Logrus.Errorf("failed to decode %s: %v", name, err)
+			return false
+		}
+		repman.CheckSumConfig[key] = newHash
+		return true
+	}
+	var s3 []config.MarketplaceS3
+	if load("marketplace-s3.json", "marketplace-s3", &s3) {
+		next.S3, changed = s3, true
+	} else if _, err := os.Stat(filepath.Join(repman.Conf.WorkingDir, ".pull", "marketplace-s3.json")); os.IsNotExist(err) && cur.S3 != nil {
+		next.S3, changed = nil, true
+		delete(repman.ModTimes, "marketplace-s3")
+		delete(repman.CheckSumConfig, "marketplace-s3")
+	}
+	var archives []config.MarketplaceArchiveOffer
+	if load("marketplace-archive.json", "marketplace-archive", &archives) {
+		next.Archives, changed = archives, true
+	} else if _, err := os.Stat(filepath.Join(repman.Conf.WorkingDir, ".pull", "marketplace-archive.json")); os.IsNotExist(err) && cur.Archives != nil {
+		next.Archives, changed = nil, true
+		delete(repman.ModTimes, "marketplace-archive")
+		delete(repman.CheckSumConfig, "marketplace-archive")
+	}
+	if changed {
+		repman.marketplaceCatalogue.Store(&next)
+	}
+}
+
+// marketplaceCatalogueRef holds the catalogue last read: the MCP reads it while a pull replaces it.
+type marketplaceCatalogueRef = atomic.Pointer[config.MarketplaceCatalogue]
+
+// MarketplaceCatalogue is the catalogue last read (LoadMarketplaceCatalogue). Its lists are
+// replaced whole at each read, never changed in place, so a caller may keep them.
+func (repman *ReplicationManager) MarketplaceCatalogue() config.MarketplaceCatalogue {
+	if c := repman.marketplaceCatalogue.Load(); c != nil {
+		return *c
+	}
+	return config.MarketplaceCatalogue{}
 }
 
 // AddPullToGitignore ensures ".pull/" is in .gitignore.
