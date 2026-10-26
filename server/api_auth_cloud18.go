@@ -351,7 +351,9 @@ func (repman *ReplicationManager) handlerMuxLoginMethod(w http.ResponseWriter, r
 		http.Error(w, "no username", http.StatusBadRequest)
 		return
 	}
-	repman.jsonResponse(map[string]string{"method": repman.loginMethodFor(strings.TrimSpace(body.Username))}, w)
+	// written here: jsonResponse would add a CORS header
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"method": repman.loginMethodFor(strings.TrimSpace(body.Username))})
 }
 
 // registerCloud18SSORoutes adds the Sign in with Cloud18 routes (public, both routers).
