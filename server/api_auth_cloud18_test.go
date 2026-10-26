@@ -287,3 +287,74 @@ func TestCloud18SSOBounds(t *testing.T) {
 		}
 	}
 }
+
+// #2185: the login page asks the name first: an internal account (a name that is not an email, a
+// local password account, an admin other than the registered user) is signed in with its password
+// here; a Cloud18 user goes to the realm; a repman without Sign in with Cloud18 always asks the
+// password.
+func TestLoginMethod(t *testing.T) {
+	_, issuer := newRegisterFakes(t)
+	repman := ssoRepman(t, issuer)
+	for name, want := range map[string]string{"admin": "password", "system": "password", "": "password",
+		"person@partner.example": "cloud18", "owner@partner.example": "cloud18"} {
+		if got := repman.loginMethodFor(name); got != want {
+			t.Errorf("%q: %s, want %s", name, got, want)
+		}
+	}
+	repman.Conf.Cloud18SubscriptionPlan = "free"
+	if repman.loginMethodFor("person@partner.example") != "password" {
+		t.Error("a repman without Sign in with Cloud18 asks the password")
+	}
+	w := httptest.NewRecorder()
+	repman.handlerMuxLoginMethod(w, httptest.NewRequest(http.MethodPost, "/api/login/method", strings.NewReader(`{"username":"admin"}`)))
+	if !strings.Contains(w.Body.String(), `"method":"password"`) {
+		t.Fatalf("endpoint: %s", w.Body.String())
+	}
+}
+
+// #2185: the silent check (prompt=none) and the email prefill reach the realm; a silent check that
+// finds no realm session sends the page back to its form, not as a failure; sign-up goes to the
+// realm's sign-up form.
+func TestCloud18SSOSilentAndHint(t *testing.T) {
+	_, issuer := newRegisterFakes(t)
+	repman := ssoRepman(t, issuer)
+	start := func(query string) (*url.URL, *http.Cookie) {
+		w := httptest.NewRecorder()
+		repman.handlerMuxCloud18SSOStart(w, httptest.NewRequest(http.MethodGet, "/api/auth/cloud18/start?"+query, nil))
+		u, _ := url.Parse(w.Header().Get("Location"))
+		for _, c := range w.Result().Cookies() {
+			if c.Name == cloud18SSOCookie {
+				return u, c
+			}
+		}
+		return u, nil
+	}
+	u, _ := start("login_hint=" + url.QueryEscape("person@partner.example"))
+	if u.Query().Get("login_hint") != "person@partner.example" || u.Query().Get("prompt") != "" {
+		t.Fatalf("sign in with the email prefilled: %s", u)
+	}
+	u, _ = start("signup=1")
+	if !strings.HasSuffix(u.Path, "/protocol/openid-connect/registrations") {
+		t.Fatalf("sign up: %s", u)
+	}
+	u, c := start("silent=1")
+	if u.Query().Get("prompt") != "none" {
+		t.Fatalf("silent check: %s", u)
+	}
+	req := httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?error=login_required&state="+u.Query().Get("state"), nil)
+	req.AddCookie(c)
+	w := httptest.NewRecorder()
+	repman.handlerMuxCloud18SSOCallback(w, req)
+	if loc := w.Header().Get("Location"); !strings.HasSuffix(loc, "/login?cloud18_silent=none") {
+		t.Fatalf("no realm session on a silent check: back to the form, no error: %s", loc)
+	}
+	// the same answer to a sign-in the person started is a refusal
+	u, c = start("")
+	req = httptest.NewRequest(http.MethodGet, config.Cloud18SSOCallbackPath+"?error=login_required&state="+u.Query().Get("state"), nil)
+	req.AddCookie(c)
+	w = httptest.NewRecorder()
+	repman.handlerMuxCloud18SSOCallback(w, req)
+	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=refused") {
+		t.Fatalf("a refused sign-in: %s", w.Header().Get("Location"))
+	}
+}

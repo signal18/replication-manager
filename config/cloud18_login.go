@@ -475,16 +475,35 @@ func (conf *Config) Cloud18SSO() (string, error) {
 	return public, nil
 }
 
-// Cloud18SSOAuthorizeURL is where the browser signs in: the realm's authorization for the login
-// client, back to this repman's callback.
-func (conf *Config) Cloud18SSOAuthorizeURL(public, state, challenge string) (string, error) {
+// Cloud18SSOMode is how the browser goes to the realm: to sign in (the email prefilled when known),
+// silently (prompt=none: signed in only if the person already has a realm session, the realm
+// answers login_required otherwise, nothing shown), or to sign up (the realm's own sign-up form).
+type Cloud18SSOMode struct {
+	Hint   string // login_hint: the email the person typed
+	Silent bool
+	SignUp bool
+}
+
+// Cloud18SSOAuthorizeURL is where the browser goes: the realm's authorization (or sign-up) for the
+// login client, back to this repman's callback.
+func (conf *Config) Cloud18SSOAuthorizeURL(public, state, challenge string, mode Cloud18SSOMode) (string, error) {
 	issuer, err := conf.cloud18Issuer()
 	if err != nil {
 		return "", err
 	}
 	q := url.Values{"client_id": {ConstCloud18LoginClientID}, "redirect_uri": {public + Cloud18SSOCallbackPath}, "response_type": {"code"},
 		"scope": {"openid email profile"}, "state": {state}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
-	return issuer + "/protocol/openid-connect/auth?" + q.Encode(), nil
+	if mode.Hint != "" {
+		q.Set("login_hint", mode.Hint)
+	}
+	endpoint := "/protocol/openid-connect/auth?"
+	switch {
+	case mode.SignUp:
+		endpoint = "/protocol/openid-connect/registrations?"
+	case mode.Silent:
+		q.Set("prompt", "none")
+	}
+	return issuer + endpoint + q.Encode(), nil
 }
 
 // Cloud18SSOExchange trades the code of the browser sign-in for the realm tokens.

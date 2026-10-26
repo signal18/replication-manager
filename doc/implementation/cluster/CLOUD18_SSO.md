@@ -15,9 +15,28 @@ default, not a private address), a realm (`cloud18-identity-url`), and `cloud18-
 Every other repman (clients, dev) keeps the Sign in form, which checks the Cloud18 account since #2182.
 `GET /api/auth/cloud18` tells the login page (`{"enabled": …}`).
 
+## What the person sees (`share/dashboard_react/src/Pages/Login`)
+
+One Sign in button and one Sign up button, nothing else.
+- **Opening the login page** of a partner: a silent check at the realm (`prompt=none`, once per tab).
+  Already signed in at Cloud18 in this browser (on another partner): straight into the dashboard, no
+  page, no password. Not signed in: the realm answers `login_required` and the page shows its form.
+- **Sign in**: the page asks the name first. `POST /api/login/method` answers `password` for an internal
+  repman account (a name that is not an email, a local password account, an admin other than the
+  registered user) and the password field appears, checked by `/api/login` as before; it answers
+  `cloud18` for anyone else, and the browser goes to the realm's page with the email prefilled
+  (`login_hint`): one password, typed there once for every partner.
+- **Sign up**: the realm's own sign-up form (`/registrations`), instead of the GitLab one.
+- **Logout**: the session here, then the realm session (every partner forgets the person). That is also
+  how to come back to an internal API user: Logout, then type its name. A repman without Sign in with
+  Cloud18 shows the Sign in form as before (internal account, then the Cloud18 password, #2182).
+
+`/api/login/method` tells whether a name is an internal account: a way to probe internal account names,
+limited to them (a Cloud18 user always gets `cloud18`), accepted for the single Sign in button.
+
 ## Flow (`server/api_auth_cloud18.go`)
 
-1. **Start** `GET /api/auth/cloud18/start`: a random `state`, a PKCE verifier and a nonce kept here
+1. **Start** `GET /api/auth/cloud18/start` (`login_hint`, `silent=1`, `signup=1`): a random `state`, a PKCE verifier and a nonce kept here
    (5 min); the nonce also goes to the browser in the cookie `repman_cloud18_sso` (HttpOnly, Secure,
    SameSite=Lax, path `/api/auth/cloud18`), which ties the sign-in to this browser (login CSRF: someone
    else's callback URL opened in another browser finds no matching cookie). The browser is redirected to
@@ -25,7 +44,9 @@ Every other repman (clients, dev) keeps the Sign in form, which checks the Cloud
    `<api-public-url>/api/auth/cloud18/callback`.
 2. The realm shows its login page, or answers at once when the person already has a realm session.
 3. **Callback** `GET /api/auth/cloud18/callback`: the `state` must be one this repman started, used
-   once, and the browser's cookie must carry its nonce; a realm error goes back to the login page; the code is traded with the verifier; the realm
+   once, and the browser's cookie must carry its nonce; a silent check the realm answers with
+   `login_required` (or another "needs the person") goes back to `/login?cloud18_silent=none`, not a
+   failure; any other realm error goes back to the login page with a reason; the code is traded with the verifier; the realm
    token is verified as any realm token (#2182: keys, issuer, expiry, audience `replication-manager-api`,
    verified email); the SSO session of the email is issued (same shape and rights as an SSO login, the
    realm token and its refresh token encrypted in it). **No token in any address**: the browser goes to

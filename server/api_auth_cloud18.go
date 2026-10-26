@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +44,7 @@ const (
 type cloud18SSOPending struct {
 	verifier string
 	nonce    string // the value of the browser's cloud18SSOCookie
+	silent   bool   // a silent check (prompt=none): no realm session is not a failure
 	expires  time.Time
 }
 
@@ -112,10 +114,14 @@ func (repman *ReplicationManager) handlerMuxCloud18SSO(w http.ResponseWriter, r 
 }
 
 // handlerMuxCloud18SSOStart starts the browser sign-in: a state and a PKCE verifier kept here, the
-// browser sent to the realm.
+// browser sent to the realm: to sign in (login_hint: the email typed on the login page), silently
+// (silent=1: the login page's check on opening, no page shown), or to sign up (signup=1).
 // @Summary Sign in with Cloud18: start
-// @Description Redirects the browser to the Cloud18 realm's sign-in, back to /api/auth/cloud18/callback (#2185). Public.
+// @Description Redirects the browser to the Cloud18 realm's sign-in (login_hint), silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback (#2185). Public.
 // @Tags Auth
+// @Param login_hint query string false "the email typed on the login page"
+// @Param silent query string false "1: sign in only if the person has a realm session, nothing shown"
+// @Param signup query string false "1: the realm's sign-up form"
 // @Success 302 {string} string "to the realm"
 // @Router /api/auth/cloud18/start [get]
 func (repman *ReplicationManager) handlerMuxCloud18SSOStart(w http.ResponseWriter, r *http.Request) {
@@ -139,7 +145,12 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOStart(w http.ResponseWrite
 		http.Error(w, "Sign in with Cloud18: no PKCE verifier", http.StatusInternalServerError)
 		return
 	}
-	target, err := repman.Conf.Cloud18SSOAuthorizeURL(public, state, challenge)
+	q := r.URL.Query()
+	mode := config.Cloud18SSOMode{Hint: q.Get("login_hint"), Silent: q.Get("silent") == "1", SignUp: q.Get("signup") == "1"}
+	if len(mode.Hint) > 254 {
+		mode.Hint = ""
+	}
+	target, err := repman.Conf.Cloud18SSOAuthorizeURL(public, state, challenge, mode)
 	if err != nil {
 		http.Error(w, "Sign in with Cloud18: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -152,7 +163,7 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOStart(w http.ResponseWrite
 		repman.cloud18SSOFail(w, r, public, cloud18SSOBusy, "too many sign-ins in progress")
 		return
 	}
-	cloud18SSO.pending[state] = cloud18SSOPending{verifier: verifier, nonce: nonce, expires: now.Add(cloud18SSOPendingTTL)}
+	cloud18SSO.pending[state] = cloud18SSOPending{verifier: verifier, nonce: nonce, silent: mode.Silent && !mode.SignUp, expires: now.Add(cloud18SSOPendingTTL)}
 	cloud18SSO.Unlock()
 	// Lax: the realm's redirect back is a top-level GET, which carries it
 	http.SetCookie(w, &http.Cookie{Name: cloud18SSOCookie, Value: nonce, Path: "/api/auth/cloud18", MaxAge: int(cloud18SSOPendingTTL.Seconds()),
@@ -191,6 +202,12 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOCallback(w http.ResponseWr
 		return
 	}
 	if e := q.Get("error"); e != "" {
+		if p.silent && (e == "login_required" || e == "interaction_required" || e == "consent_required" || e == "account_selection_required") {
+			// the silent check found no realm session: the login page shows its form, no failure
+			clearCloud18SSOCookie(w)
+			http.Redirect(w, r, public+"/login?cloud18_silent=none", http.StatusFound)
+			return
+		}
 		repman.cloud18SSOFail(w, r, public, cloud18SSORefused, e)
 		return
 	}
@@ -290,8 +307,51 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOLogout(w http.ResponseWrit
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
+// loginMethodFor says how the login page signs a name in: "password" for an internal repman account
+// (a local password, admin, a name that is not an email) or when this repman does not offer Sign in
+// with Cloud18; "cloud18" otherwise (the browser goes to the realm, the email prefilled).
+func (repman *ReplicationManager) loginMethodFor(user string) string {
+	if _, err := repman.Conf.Cloud18SSO(); err != nil {
+		return "password"
+	}
+	if user == "" || user == "system" || !strings.Contains(user, "@") {
+		return "password"
+	}
+	if repman.isAdminUser(user) && user != repman.Conf.Cloud18GitUser {
+		return "password"
+	}
+	for _, cl := range repman.Clusters {
+		if cl.IsLocalOnlyAccount(user) {
+			return "password"
+		}
+	}
+	return "cloud18"
+}
+
+// handlerMuxLoginMethod tells the login page how to sign a name in (loginMethodFor).
+// @Summary Login method of a name
+// @Description "password" for an internal repman account (the login page asks its password), "cloud18" for a Cloud18 user on a partner repman with a public address (the browser goes to the Cloud18 realm, #2185). Public.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param body body object true "{\"username\": \"<name or email>\"}"
+// @Success 200 {object} map[string]string "method: password or cloud18"
+// @Router /api/login/method [post]
+func (repman *ReplicationManager) handlerMuxLoginMethod(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var body struct {
+		Username string `json:"username"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+		http.Error(w, "no username", http.StatusBadRequest)
+		return
+	}
+	repman.jsonResponse(map[string]string{"method": repman.loginMethodFor(strings.TrimSpace(body.Username))}, w)
+}
+
 // registerCloud18SSORoutes adds the Sign in with Cloud18 routes (public, both routers).
 func (repman *ReplicationManager) registerCloud18SSORoutes(router *mux.Router) {
+	router.HandleFunc("/api/login/method", repman.handlerMuxLoginMethod).Methods(http.MethodPost)
 	router.HandleFunc("/api/auth/cloud18", repman.handlerMuxCloud18SSO).Methods(http.MethodGet)
 	router.HandleFunc("/api/auth/cloud18/start", repman.handlerMuxCloud18SSOStart).Methods(http.MethodGet)
 	router.HandleFunc(config.Cloud18SSOCallbackPath, repman.handlerMuxCloud18SSOCallback).Methods(http.MethodGet)

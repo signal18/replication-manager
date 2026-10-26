@@ -22,6 +22,9 @@ function Login({ dashboard = false }) {
   const [errorMessage, setErrorMessage] = useState('')
   const [cloud18Enabled, setCloud18Enabled] = useState(false)
   const [cloud18Loading, setCloud18Loading] = useState(false)
+  // with Sign in with Cloud18 the page asks the name first: an internal account then shows the
+  // password field, a Cloud18 user goes to the realm (#2185)
+  const [showPassword, setShowPassword] = useState(false)
   const { theme } = useTheme()
 
   const navigate = useNavigate()
@@ -68,16 +71,37 @@ function Login({ dashboard = false }) {
       })
   }, [dispatch, navigate])
 
-  // Sign in with Cloud18 (#2185): the button when this repman offers it, and the way back from the
-  // realm, a one-time code in the address traded once for the session (never a token in the address).
-  const cloud18Code = new URLSearchParams(window.location.search).get('cloud18')
+  // Sign in with Cloud18 (#2185) on a partner repman: the silent check on opening (already signed in
+  // at Cloud18 in this browser: straight in, nothing shown), and the way back from the realm, a
+  // one-time code in the address traded once for the session (never a token in the address).
+  const searchParams = new URLSearchParams(window.location.search)
+  const cloud18Code = searchParams.get('cloud18')
+  const cloud18Back = cloud18Code || searchParams.get('cloud18_error') || searchParams.get('cloud18_silent')
   const cloud18Traded = useRef(false) // the one-time code is sent once (StrictMode runs effects twice)
   useEffect(() => {
     if (dashboard) return
     authService.cloud18SSOStatus()
-      .then((resp) => setCloud18Enabled(resp?.status === 200 && resp?.data?.enabled === true))
-      .catch(() => setCloud18Enabled(false))
+      .then((resp) => {
+        const enabled = resp?.status === 200 && resp?.data?.enabled === true
+        setCloud18Enabled(enabled)
+        // once per tab: after a Logout (which ends the Cloud18 session) or a check that found none,
+        // the page shows its form and does not try again
+        if (enabled && !cloud18Back && !isAuthorized() && sessionStorage.getItem('cloud18_silent_tried') !== '1') {
+          sessionStorage.setItem('cloud18_silent_tried', '1')
+          window.location.assign('/api/auth/cloud18/start?silent=1')
+          return
+        }
+        // no silent check: the page's usual autologin (not after a Cloud18 return with a code)
+        if (!cloud18Code && !isAuthorized()) doAutologin()
+      })
+      .catch(() => {
+        setCloud18Enabled(false)
+        if (!cloud18Code && !isAuthorized()) doAutologin()
+      })
     const params = new URLSearchParams(window.location.search)
+    if (params.get('cloud18_silent')) {
+      window.history.replaceState(null, '', '/login')
+    }
     const failed = params.get('cloud18_error')
     if (failed) {
       // only the server's fixed reasons are shown, never text from the address
@@ -113,14 +137,8 @@ function Login({ dashboard = false }) {
 
   useEffect(() => {
     if (!dashboard) {
-      // Back from Sign in with Cloud18: the session comes from the code, no autologin.
-      if (cloud18Code) return
-      // If a token exists, SessionGuard (App.jsx) is already validating it via whoami.
-      // doAutologin will be called reactively below if whoami clears the stale token.
-      if (isAuthorized()) return
-
-      // No token on mount: try autologin immediately.
-      doAutologin()
+      // On mount, autologin starts once the page knows whether a silent Cloud18 check runs
+      // (the Cloud18 status above, #2185); a token, if any, is validated by SessionGuard (App.jsx).
       return
     }
 
@@ -187,6 +205,26 @@ function Login({ dashboard = false }) {
       return
     }
 
+    // Sign in with Cloud18 (#2185): the name decides, an internal account asks its password here,
+    // a Cloud18 user goes to the realm with the email prefilled (one password, on the realm's page)
+    if (cloud18Enabled && !showPassword) {
+      setCloud18Loading(true)
+      authService.loginMethod(username)
+        .then((resp) => {
+          if (resp?.status === 200 && resp?.data?.method === 'cloud18') {
+            window.location.assign('/api/auth/cloud18/start?login_hint=' + encodeURIComponent(username))
+            return
+          }
+          setCloud18Loading(false)
+          setShowPassword(true)
+        })
+        .catch(() => {
+          setCloud18Loading(false)
+          setShowPassword(true)
+        })
+      return
+    }
+
     if ('' === password) {
       setPasswordError('Please enter a password')
       return
@@ -214,16 +252,16 @@ function Login({ dashboard = false }) {
               <Stack spacing='5'>
                 <FormControl isInvalid={usernameError}>
                   <FormLabel className={theme === 'dark' ? styles.darkLoginText : ""} htmlFor='username'>Username or Email</FormLabel>
-                  <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => setUsername(e.target.value)} />
+                  <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => { setUsername(e.target.value); setShowPassword(false) }} />
                   <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
                 </FormControl>
-                <PasswordControl
+                {(!cloud18Enabled || showPassword) && <PasswordControl
                   passwordError={passwordError}
                   inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
                   labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
                   onChange={(e) => setPassword(e.target.value)}
                   className={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
-                />
+                />}
               </Stack>
               {errorMessage && <Message message={errorMessage} />}
 
@@ -233,29 +271,18 @@ function Login({ dashboard = false }) {
                   type='submit'
                   size='medium'
                   onClick={onButtonClick}
-                  isLoading={loading}
+                  isLoading={loading || cloud18Loading}
                   loadingText={'Signing in'}>
                   Sign in
                 </RMButton>
-                {cloud18Enabled && !dashboard && (
-                  <RMButton
-                    id='btnCloud18Login'
-                    type='button'
-                    size='medium'
-                    onClick={() => window.location.assign('/api/auth/cloud18/start')}
-                    isLoading={cloud18Loading}
-                    loadingText={'Signing in with Cloud18'}>
-                    Sign in with Cloud18
-                  </RMButton>
-                )}
                 <RMButton
                   id='btnGitRegister'
                   type='button'
                   size='medium'
-                  onClick={() => navigate('/signup')}
+                  onClick={() => (cloud18Enabled ? window.location.assign('/api/auth/cloud18/start?signup=1') : navigate('/signup'))}
                   isLoading={loadingGitLogin}
                   loadingText={'Signing up to Cloud18'}>
-                  Sign up with GitLab SSO
+                  Sign up
                 </RMButton>
               </Stack>
             </Stack>
