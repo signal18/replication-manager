@@ -332,7 +332,6 @@ func TestCloud18Register(t *testing.T) {
 	}
 }
 
-
 // #2159 review: the Cloud18 password goes only to the realm's own host (a login form posting
 // elsewhere is refused, nothing sent); a re-register keeps the previous project tokens when the new
 // ones cannot be made.
