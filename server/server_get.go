@@ -210,6 +210,14 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 	} else if isAPIToken {
 		return nil, fmt.Errorf("API token invalid, revoked, expired or disabled")
 	}
+	// A realm token (#2182): the SSO session of its person, as the API middleware does.
+	if raw := bearerOf(r); repman.acceptsCloud18Tokens(raw) {
+		session, u, err := repman.cloud18TokenSession(raw)
+		if err != nil {
+			return nil, err
+		}
+		return &repmanmcp.Principal{User: u.Email, AuthMethod: "oidc", Remote: r.RemoteAddr, Auth: "", Bearer: session, Cloud18Token: raw}, nil
+	}
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 		return vk, nil
@@ -235,7 +243,15 @@ func (repman *ReplicationManager) AuthenticateMCP(r *http.Request) (*repmanmcp.P
 	if user == "" {
 		return nil, fmt.Errorf("JWT carries no user name")
 	}
-	return &repmanmcp.Principal{User: user, AuthMethod: method, Remote: r.RemoteAddr, Auth: password, Bearer: bearerOf(r)}, nil
+	p := &repmanmcp.Principal{User: user, AuthMethod: method, Remote: r.RemoteAddr, Auth: password, Bearer: bearerOf(r)}
+	if method == "oidc" {
+		// the session's Cloud18 login (#2182), for the other Cloud18 instances
+		p.Cloud18Login, _ = info["cloud18"].(string)
+		if t, ok := info["cloud18_token"].(string); ok && t != "" {
+			p.Cloud18Token = repman.Conf.GetDecryptedPassword("cloud18-token", t)
+		}
+	}
+	return p, nil
 }
 
 // AuthorizeMCP runs the cluster ACL for a principal on the REST URL an MCP tool

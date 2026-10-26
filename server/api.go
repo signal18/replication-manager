@@ -657,6 +657,10 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 			UserInfoMap["Email"] = mycutinfo["email"].(string)
 			UserInfoMap["profile"] = profile
 			UserInfoMap["AuthType"] = "SSO"
+			// the Cloud18 login (#2182): its encrypted refresh token, or the realm token the
+			// session came with, both for the other Cloud18 instances
+			UserInfoMap["Cloud18Login"], _ = mycutinfo["cloud18"].(string)
+			UserInfoMap["Cloud18Token"], _ = mycutinfo["cloud18_token"].(string)
 			return UserInfoMap, nil
 		}
 		return nil, fmt.Errorf("invalid oauth provider")
@@ -787,6 +791,13 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	if !repman.clustersReady.Load() {
 		w.Header().Set("Retry-After", "5")
 		http.Error(w, "replication-manager is starting, authentication not ready: retry in a few seconds", http.StatusServiceUnavailable)
+		return
+	}
+
+	// A realm token and no password: another Cloud18 instance acting for its user, or a client of
+	// the Cloud18 realm (#2182). The token is verified here, no password involved.
+	if raw := bearerOf(r); user.Password == "" && repman.acceptsCloud18Tokens(raw) {
+		repman.cloud18TokenLogin(w, r, raw)
 		return
 	}
 
@@ -931,22 +942,24 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Local auth failed: synchronous SSO fallback.
-	tok, ssoErr := githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
-	if ssoErr != nil || tok == "" {
+	// Local auth failed: synchronous SSO fallback, the Cloud18 account (#2182), then GitLab's
+	// password grant while it is on.
+	sso, ssoErr := repman.ssoPasswordLogin(user.Username, user.Password)
+	if ssoErr != nil {
 		// Retry only for transient failures (same policy as async path).
 		backoff := []time.Duration{250 * time.Millisecond, 750 * time.Millisecond}
-		for attempt := 0; attempt < len(backoff) && (ssoErr != nil || tok == "") &&
+		for attempt := 0; attempt < len(backoff) && ssoErr != nil &&
 			classifySSOAuthError(ssoErr) == "transient"; attempt++ {
 			time.Sleep(backoff[attempt])
-			tok, ssoErr = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
+			sso, ssoErr = repman.ssoPasswordLogin(user.Username, user.Password)
 		}
 	}
 
-	if tok == "" {
+	if ssoErr != nil {
 		authFail()
 		return
 	}
+	tok := sso.token
 
 	// SSO fallback succeeded: build SSO JWT and return without upgrade_id.
 	resetAuthTry()
@@ -969,8 +982,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	if meetUser == "" {
 		meetUser = user.Username
 	}
-	meetUserID, err := meethelper.CreateMeetUserClient(meetUser, user.Password,
-		repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	meetUserID, err := repman.ssoMeetUser(meetUser, user.Password, sso)
 	if err != nil {
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %v", err)
@@ -990,7 +1002,8 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			Email       string `json:"email"`
 			Profile     string `json:"profile"`
 			MeetUserID  string `json:"meet_user_id"`
-		}{user.Username, displayName, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID}
+			Cloud18     string `json:"cloud18,omitempty"`
+		}{user.Username, displayName, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID, sso.cloud18Claim(repman.Conf)}
 	} else {
 		ssoUserInfo = struct {
 			Name        string
@@ -1794,9 +1807,10 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 	userform.Username = uinfomap["User"]
 	userform.Password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
 
-	tok, _ := githelper.GetGitLabTokenBasicAuth(userform.Username, userform.Password, false)
+	sso, _ := repman.ssoPasswordLogin(userform.Username, userform.Password)
+	tok := sso.token
 	if tok == "" {
-		http.Error(w, "Error logging in to gitlab: Token credentials is not valid", http.StatusUnauthorized)
+		http.Error(w, "Error logging in to Cloud18: the credentials are not valid", http.StatusUnauthorized)
 		return
 	}
 
@@ -1872,6 +1886,19 @@ func (repman *ReplicationManager) validateTokenMiddleware(w http.ResponseWriter,
 		return
 	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// A realm token (#2182): verified, then the request goes on with the SSO session of its
+	// person, so every handler and ACL check reads it as an SSO login.
+	if raw := bearerOf(r); repman.acceptsCloud18Tokens(raw) {
+		session, _, err := repman.cloud18TokenSession(raw)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, err.Error())
+			return
+		}
+		r.Header.Set("Authorization", "Bearer "+session)
+		next(w, r)
+		return
+	}
 	//validate token
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor,
 		func(token *jwt.Token) (interface{}, error) {
@@ -2350,8 +2377,16 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 		}
 
 		if _, ok := uinfomap["profile"]; ok {
-			// SSO/GitLab session: use the session user's decrypted password.
-			user.Password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
+			// SSO session: its Cloud18 realm token (#2182), the password only for a peer on an
+			// older release.
+			id := peerIdentity{user: user.Username, bearer: repman.cloud18TokenFor(uinfomap["Cloud18Token"], uinfomap["Cloud18Login"])}
+			if uinfomap["Password"] != "" {
+				id.password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
+			}
+			status, body = repman.peerLoginAsIdentity(parsedPeerURL, id)
+			w.WriteHeader(status)
+			w.Write(body)
+			return
 		} else if repman.isAdminUser(uinfomap["User"]) && repman.Conf.Cloud18GitUser != "" {
 			// Local admin on a registered instance: peers don't know our local 'admin'
 			// identity, so authenticate AS the registered user (Cloud18GitUser) with the

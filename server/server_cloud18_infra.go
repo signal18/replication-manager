@@ -645,6 +645,7 @@ func (repman *ReplicationManager) Cloud18CreateClusterToken(p *repmanmcp.Princip
 type peerIdentity struct {
 	user     string
 	password string
+	bearer   string // the caller's Cloud18 realm token (#2182), tried before the password
 	mode     string // "caller" (the SSO user), "instance" (the registered identity), "refused"
 	reason   string
 }
@@ -654,18 +655,23 @@ type peerIdentity struct {
 // (GitLab) account is themselves everywhere, so the infrastructure sees them and they
 // sponsor what they create; a local admin without that identity acts as the instance's
 // registered identity; anyone else (a local user, an API token: no Cloud18 identity to
-// carry) is refused with the way in. Pure, for tests.
-func peerIdentityFor(p *repmanmcp.Principal, decrypt func(string) string, isAdmin bool, instanceUser, instancePassword string) peerIdentity {
+// carry) is refused with the way in. A caller with a Cloud18 realm token (cloud18, #2182) is
+// sent with it, the password (if the session has one) only for an infrastructure on an older
+// release. Pure, for tests.
+func peerIdentityFor(p *repmanmcp.Principal, decrypt func(string) string, cloud18 string, isAdmin bool, instanceUser, instancePassword string) peerIdentity {
 	if p == nil {
 		return peerIdentity{mode: "refused", reason: "unauthenticated"}
 	}
 	switch p.AuthMethod {
 	case "oidc":
 		pwd, _ := p.Auth.(string)
-		if pwd = decrypt(pwd); pwd == "" {
-			return peerIdentity{mode: "refused", reason: "your Cloud18 session carries no credential: log in again with your Cloud18 (GitLab) account"}
+		if pwd != "" {
+			pwd = decrypt(pwd)
 		}
-		return peerIdentity{user: p.User, password: pwd, mode: "caller"}
+		if pwd == "" && cloud18 == "" {
+			return peerIdentity{mode: "refused", reason: "your Cloud18 session carries no credential: log in again with your Cloud18 account"}
+		}
+		return peerIdentity{user: p.User, password: pwd, bearer: cloud18, mode: "caller"}
 	case "token":
 		return peerIdentity{mode: "refused", reason: "an API token carries no Cloud18 identity: log in with your Cloud18 (GitLab) account to act on an infrastructure"}
 	}
@@ -720,7 +726,11 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 	if repman.PeerManager == nil || !repman.PeerManager.HasPeerURL(base) {
 		return nil, "", fmt.Errorf("%s is not a known Cloud18 infrastructure: pick one from list-cloud18-infrastructures", base)
 	}
-	id := peerIdentityFor(p, func(v string) string { return repman.Conf.GetDecryptedPassword("peer-login", v) },
+	cloud18 := ""
+	if p != nil && p.AuthMethod == "oidc" {
+		cloud18 = repman.cloud18TokenFor(p.Cloud18Token, p.Cloud18Login)
+	}
+	id := peerIdentityFor(p, func(v string) string { return repman.Conf.GetDecryptedPassword("peer-login", v) }, cloud18,
 		p != nil && repman.isAdminUser(p.User), repman.Conf.Cloud18GitUser,
 		repman.Conf.GetDecryptedPassword("git-password", repman.Conf.Secrets.Get("cloud18-gitlab-password").Value))
 	if id.mode == "refused" {
@@ -737,7 +747,7 @@ func (repman *ReplicationManager) peerLoginAs(p *repmanmcp.Principal, infra stri
 	if err != nil {
 		return nil, "", err
 	}
-	status, body := repman.PeerLogin(loginURL, userCredentials{Username: id.user, Password: id.password})
+	status, body := repman.peerLoginAsIdentity(loginURL, id)
 	if status != http.StatusOK {
 		return nil, "", fmt.Errorf("login on %s as %s refused (HTTP %d): %s", base, id.user, status, strings.TrimSpace(string(body)))
 	}

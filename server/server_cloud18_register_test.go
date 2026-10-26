@@ -5,16 +5,22 @@
 package server
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -43,6 +49,12 @@ type registerFakes struct {
 	evilAction string                  // the realm login page posts there instead (a page that changed hands)
 	failCreate int                     // the next project token creations that fail
 	tokens     map[string][]*fakeToken // ".../projects/<id>/access_tokens" -> the project's tokens
+	// the realm's login client (#2182)
+	noLoginClient bool              // the realm has no replication-manager-login client (not set up yet)
+	realmKey      *rsa.PrivateKey   // signs the realm tokens, published at .../certs
+	issuer        string            // the realm's issuer
+	loginCodes    map[string]string // code -> PKCE challenge|email
+	refreshes     int               // refresh grants answered
 }
 
 type fakeToken struct {
@@ -52,8 +64,13 @@ type fakeToken struct {
 }
 
 func newRegisterFakes(t *testing.T) (*registerFakes, string) {
+	realmKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
 	f := &registerFakes{accounts: map[string]string{"admin@acme.example": "s3cr3t-cloud18"}, gitlabPw: map[string]string{"admin@acme.example": "old-gitlab-password"}, challenges: map[string]string{},
-		nextID: 10, groups: map[string]int{}, projects: map[string]int{}, files: map[int]string{}, tokens: map[string][]*fakeToken{}}
+		nextID: 10, groups: map[string]int{}, projects: map[string]int{}, files: map[int]string{}, tokens: map[string][]*fakeToken{},
+		realmKey: realmKey, loginCodes: map[string]string{}}
 	var gitlabURL, realmURL string
 
 	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,10 +91,51 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 				fmt.Fprint(w, `<h1 id="kc-page-title">Email verification</h1><div class="kc-feedback-text">You need to verify your email address to activate your account.</div>`)
 			case ok && pw == r.Form.Get("password"):
 				f.logins++
+				http.SetCookie(w, &http.Cookie{Name: "KEYCLOAK_IDENTITY", Value: url.QueryEscape(r.Form.Get("username")), Path: "/realms/cloud18/"})
 				http.Redirect(w, r, gitlabURL+"/users/auth/openid_connect/callback?code=kc&user="+url.QueryEscape(r.Form.Get("username")), http.StatusFound)
 			default:
 				fmt.Fprintf(w, `<span class="input-error">Invalid username or password.</span><form id="kc-form-login" action="%s/realms/cloud18/login-actions/authenticate" method="post">`, realmURL)
 			}
+		case "/realms/cloud18/protocol/openid-connect/auth":
+			c, err := r.Cookie("KEYCLOAK_IDENTITY")
+			if err != nil || f.noLoginClient || r.Form.Get("client_id") != config.ConstCloud18LoginClientID || r.Form.Get("code_challenge_method") != "S256" {
+				http.Error(w, "Client not found.", 400)
+				return
+			}
+			email, _ := url.QueryUnescape(c.Value)
+			code := fmt.Sprintf("kc-code-%d", f.nextID)
+			f.nextID++
+			f.loginCodes[code] = r.Form.Get("code_challenge") + "|" + email
+			http.Redirect(w, r, r.Form.Get("redirect_uri")+"?code="+code+"&state="+url.QueryEscape(r.Form.Get("state")), http.StatusFound)
+		case "/realms/cloud18/protocol/openid-connect/token":
+			email := ""
+			switch r.Form.Get("grant_type") {
+			case "authorization_code":
+				parts := strings.SplitN(f.loginCodes[r.Form.Get("code")], "|", 2)
+				sum := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
+				if len(parts) != 2 || base64.RawURLEncoding.EncodeToString(sum[:]) != parts[0] || r.Form.Get("client_id") != config.ConstCloud18LoginClientID {
+					http.Error(w, `{"error":"invalid_grant"}`, 400)
+					return
+				}
+				delete(f.loginCodes, r.Form.Get("code"))
+				email = parts[1]
+			case "refresh_token":
+				if !strings.HasPrefix(r.Form.Get("refresh_token"), "rt-") {
+					http.Error(w, `{"error":"invalid_grant","error_description":"Invalid refresh token"}`, 400)
+					return
+				}
+				f.refreshes++
+				email = strings.TrimPrefix(r.Form.Get("refresh_token"), "rt-")
+			default:
+				http.Error(w, `{"error":"unsupported_grant_type"}`, 400)
+				return
+			}
+			fmt.Fprintf(w, `{"access_token":%q,"expires_in":300,"refresh_token":%q,"refresh_expires_in":1800}`,
+				f.realmToken(email, config.ConstCloud18APIAudience, true, 5*time.Minute), "rt-"+email)
+		case "/realms/cloud18/protocol/openid-connect/certs":
+			pub := f.realmKey.PublicKey
+			fmt.Fprintf(w, `{"keys":[{"kty":"RSA","kid":"k1","use":"sig","alg":"RS256","n":%q,"e":%q}]}`,
+				base64.RawURLEncoding.EncodeToString(pub.N.Bytes()), base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()))
 		case "/realms/cloud18/protocol/openid-connect/registrations":
 			fmt.Fprintf(w, `<form id="kc-register-form" action="%s/realms/cloud18/login-actions/registration?session_code=3" method="post">`, realmURL)
 		case "/realms/cloud18/login-actions/registration":
@@ -156,10 +214,29 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 		}
 	}))
 	gitlabURL, realmURL = gitlab.URL, realm.URL
+	f.issuer = realm.URL + "/realms/cloud18"
 	old := githelper.GitLabURL
 	githelper.GitLabURL = gitlab.URL
 	t.Cleanup(func() { githelper.GitLabURL = old; realm.Close(); gitlab.Close() })
 	return f, realm.URL + "/realms/cloud18"
+}
+
+// realmToken is a token of the realm for email, signed with its key (call with f.mu held or
+// before the fakes serve).
+func (f *registerFakes) realmToken(email, aud string, verified bool, life time.Duration) string {
+	return signRealmToken(f.realmKey, f.issuer, email, aud, verified, life)
+}
+
+// signRealmToken is a realm token signed with key for issuer.
+func signRealmToken(key *rsa.PrivateKey, issuer, email, aud string, verified bool, life time.Duration) string {
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": issuer, "aud": []string{aud, "account"}, "azp": config.ConstCloud18LoginClientID,
+		"sub": "kc-" + email, "email": email, "email_verified": verified, "name": "A Person", "exp": time.Now().Add(life).Unix(), "iat": time.Now().Unix()})
+	tok.Header["kid"] = "k1"
+	s, err := tok.SignedString(key)
+	if err != nil {
+		panic(err)
+	}
+	return s
 }
 
 // api is the GitLab API part: only the person's token (gl-<email>) is accepted.

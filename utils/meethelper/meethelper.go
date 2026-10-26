@@ -105,6 +105,16 @@ type MeetAlertField struct {
 }
 
 func CreateMeetUserClient(userName string, password string, isLogSupport bool) (string, error) {
+	return createMeetUserClient(userName, password, func() (string, error) { return GetMeetToken(userName, password, isLogSupport) })
+}
+
+// CreateMeetUserClientWeb is CreateMeetUserClient for a person logged in to GitLab by the Cloud18
+// login (#2182): web is that login's session, no password.
+func CreateMeetUserClientWeb(userName string, web *http.Client, isLogSupport bool) (string, error) {
+	return createMeetUserClient(userName, "", func() (string, error) { return meetTokenWith(web, isLogSupport) })
+}
+
+func createMeetUserClient(userName string, password string, getToken func() (string, error)) (string, error) {
 	if IsMeetUserExist(userName) {
 		if IsMeetClientExist(GetUserID(userName)) {
 			return GetUserID(userName), nil
@@ -118,7 +128,7 @@ func CreateMeetUserClient(userName string, password string, isLogSupport bool) (
 	errChan := make(chan error, 1)
 
 	go func() {
-		meetTok, err := GetMeetToken(userName, password, isLogSupport)
+		meetTok, err := getToken()
 		if err != nil {
 			errChan <- err
 			return
@@ -327,11 +337,21 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 		return "", err
 	}
 
+	return meetTokenWith(client, isLogSupport)
+}
+
+// meetTokenWith logs in to meet with a client already logged in to GitLab (its cookies): meet
+// uses GitLab as its login, so no password is needed here.
+func meetTokenWith(client *http.Client, isLogSupport bool) (string, error) {
+	if client == nil || client.Jar == nil {
+		return "", fmt.Errorf("no GitLab session to log in to meet with")
+	}
+	jar := client.Jar
 	// 2. Login meet
 	// 2.1 Request login with gitlab account and land on mattermost meetlogin channel
 	meetLoginPageURL := fmt.Sprintf("%s/oauth/gitlab/login?redirect_to=%s/signal18/channels/meetlogin", meetUrl, meetUrl)
 
-	body, err = misc.GetRequest(client, meetLoginPageURL)
+	body, err := misc.GetRequest(client, meetLoginPageURL)
 	if err != nil {
 		if isLogSupport {
 			fmt.Println("GetMeetToken: cannot get login request from mattermost:", err)
@@ -362,7 +382,8 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 		return "", err
 	}
 
-	// 2.4 Get MMAUTHTOKEN from cookies
+	// 2.4 Get MMAUTHTOKEN from cookies (this login's, never another login's)
+	meetToken := ""
 	meetParsedUrl, _ := url.Parse(meetUrl)
 	for _, cookie := range jar.Cookies(meetParsedUrl) {
 		if cookie.Name == "MMAUTHTOKEN" {

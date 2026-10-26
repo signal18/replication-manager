@@ -18,7 +18,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/githelper"
-	"github.com/signal18/replication-manager/utils/meethelper"
 )
 
 const (
@@ -42,10 +41,10 @@ var upgradeBackoffDelays = []time.Duration{250 * time.Millisecond, 750 * time.Mi
 // LoginUpgradeJob tracks the state of an async SSO upgrade started during login.
 type LoginUpgradeJob struct {
 	mu         sync.Mutex
-	Status     string    // pending, ready, failed, consumed, expired
-	NewJWT     string    // set on success, cleared after one-time delivery
-	Reason     string    // credential_mismatch, not_registered, unknown_non_retryable, claim_mismatch, retry_exhausted
-	Error      string    // internal detail, never exposed to client
+	Status     string // pending, ready, failed, consumed, expired
+	NewJWT     string // set on success, cleared after one-time delivery
+	Reason     string // credential_mismatch, not_registered, unknown_non_retryable, claim_mismatch, retry_exhausted
+	Error      string // internal detail, never exposed to client
 	Attempts   int
 	CreatedAt  time.Time
 	ReadyAt    time.Time // set when SSO upgrade succeeds; governs delivery TTL
@@ -317,6 +316,14 @@ func classifySSOAuthError(err error) string {
 		return ""
 	}
 
+	// The Cloud18 account's answers (#2182, GitLab's password grant off or not tried).
+	switch {
+	case errors.Is(err, config.ErrCloud18BadCredentials):
+		return "credential_mismatch"
+	case errors.Is(err, config.ErrCloud18AccountNotReady):
+		return "not_registered"
+	}
+
 	// Structured path: type-assert to *OAuthError for reliable field-level matching.
 	var oauthErr *githelper.OAuthError
 	if errors.As(err, &oauthErr) {
@@ -439,6 +446,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 ) {
 	var (
 		ssoToken   string
+		sso        ssoLogin
 		failReason string
 		lastErr    error
 	)
@@ -449,7 +457,8 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 		job.mu.Unlock()
 
 		var err error
-		ssoToken, err = githelper.GetGitLabTokenBasicAuth(username, password, false)
+		sso, err = repman.ssoPasswordLogin(username, password)
+		ssoToken = sso.token
 		if err == nil && ssoToken != "" {
 			break // success
 		}
@@ -503,9 +512,7 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 		meetUser = username
 	}
 
-	meetPassword := password
-	meetUserID, err := meethelper.CreateMeetUserClient(meetUser, meetPassword,
-		repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	meetUserID, err := repman.ssoMeetUser(meetUser, password, sso)
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr,
 			"SSO upgrade: error retrieving meet token: %v", err)
@@ -523,7 +530,8 @@ func (repman *ReplicationManager) runAsyncSSOUpgrade(
 			Email      string `json:"email"`
 			Profile    string `json:"profile"`
 			MeetUserID string `json:"meet_user_id"`
-		}{username, "Member", repman.Conf.GetEncryptedString(password), email, repman.Conf.OAuthProvider, meetUserID}
+			Cloud18    string `json:"cloud18,omitempty"`
+		}{username, "Member", repman.Conf.GetEncryptedString(password), email, repman.Conf.OAuthProvider, meetUserID, sso.cloud18Claim(repman.Conf)}
 	} else {
 		userInfo = struct {
 			Name       string
