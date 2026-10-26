@@ -103,6 +103,8 @@ type Cloud18ClusterSpec struct {
 	Apps           []string `json:"apps"`       // app template names, e.g. phpmyadmin
 	DBU            int      `json:"dbu"`        // DBU per database node; 0 = the infrastructure's default (prov-db-dbu)
 	APU            int      `json:"apu"`        // APU of the cluster (proxy + apps); 0 = the infrastructure's default
+	BKU            int      `json:"bku"`        // quote only: backup units to price; 0 = the infrastructure's default
+	BAU            int      `json:"bau"`        // quote only: archive units to price (billed on what is stored); 0 = none
 	Topology       string   `json:"topology"`   // PostgreSQL: master-slave-pg-stream (default) or master-slave-pg-logical; one node = active-passive
 	// OvercommitPct: the quote's over-commit cap, in % of the plan the database may borrow
 	// (prov-db-overcommit-pct); nil = the infrastructure's default, 0 = no borrowing

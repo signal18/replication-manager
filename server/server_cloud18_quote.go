@@ -26,10 +26,9 @@ import (
 // and backups at their plan. The formulas are the billing's (planUnitCost).
 //
 // Units: DBU = db_count x dbu per database node (prov-db-dbu is per node, every node can
-// become master); APU = the cluster's stateless services (proxy + apps), at least 1 per app
-// and per proxy; BKU = the backup reservation, the infrastructure's default and at least
-// cloud18BkuPerDbu x the dbu per node; BAU = the archive estimate, cloud18BauPerDbu x the dbu
-// per node (billed on what is archived: no plan, the minimal counts 1).
+// become master); APU = the cluster's stateless services (proxy + apps); BKU = the requested
+// backup units, else the infrastructure's default backup reservation; BAU = the requested
+// archive units, none by default (billed on what is stored: no plan, the minimal counts 1).
 func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	num := func(m map[string]any, k string) float64 { v, _ := m[k].(float64); return v }
 	perNode := float64(spec.DBU)
@@ -38,10 +37,13 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	}
 	apu := float64(spec.APU)
 	if apu <= 0 {
-		apu = math.Max(num(ss, "defaultApu"), float64(len(spec.Apps)+spec.ProxyCount))
+		apu = num(ss, "defaultApu")
 	}
-	bku := math.Max(num(ss, "defaultBku"), cloud18BkuPerDbu*perNode)
-	bau := cloud18BauPerDbu * perNode
+	bku := float64(spec.BKU)
+	if bku <= 0 {
+		bku = num(ss, "defaultBku")
+	}
+	bau := float64(spec.BAU)
 	dbu := float64(spec.DBCount) * perNode
 	q := map[string]any{
 		"request": resolvedRequest(spec, perNode, apu, bku),
@@ -152,13 +154,6 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	q["monthly"] = monthly
 	return q
 }
-
-// The backup sizes a request takes from its DBU per node: the backups kept on the cluster
-// (BKU) hold at least 3 copies of the data, the archive (BAU) 8.
-const (
-	cloud18BkuPerDbu = 3.0
-	cloud18BauPerDbu = 8.0
-)
 
 func round2(v float64) float64 { return math.Round(v*100) / 100 }
 

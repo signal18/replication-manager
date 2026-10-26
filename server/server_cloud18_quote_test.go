@@ -164,13 +164,13 @@ func TestQuotePoolBlockedFlag(t *testing.T) {
 // applyRequestedPlan moves the plan through change-plan-units by the difference, per unit.
 func TestApplyRequestedPlan(t *testing.T) {
 	var calls []string
-	refuse, refuseBku := false, false
+	refuse := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls = append(calls, r.Method+" "+r.URL.Path)
 		switch {
 		case r.URL.Path == "/api/clusters/q":
-			_, _ = w.Write([]byte(`{"config":{"provDbDbu":2,"provProxyApu":1,"provDbBku":6}}`))
-		case refuse, refuseBku && strings.Contains(r.URL.Path, "/BKU/"):
+			_, _ = w.Write([]byte(`{"config":{"provDbDbu":2,"provProxyApu":1}}`))
+		case refuse:
 			http.Error(w, "plan increase refused", http.StatusForbidden)
 		default:
 			_, _ = w.Write([]byte(`{}`))
@@ -180,22 +180,12 @@ func TestApplyRequestedPlan(t *testing.T) {
 	sess := &peerSession{base: srv.URL}
 	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBU: 4, APU: 5})
 	note, err := applyRequestedPlan(sess, "/api/clusters/q", spec)
-	if err != nil || note != "plan DBU 2 -> 4, plan APU 1 -> 4, plan BKU 6 -> 12" {
+	if err != nil || note != "plan DBU 2 -> 4, plan APU 1 -> 4" {
 		t.Fatalf("note %q err %v calls %v", note, err, calls)
 	}
-	want := []string{"GET /api/clusters/q", "POST /api/clusters/q/settings/actions/change-plan-units/DBU/2", "POST /api/clusters/q/settings/actions/change-plan-units/APU/3", "POST /api/clusters/q/settings/actions/change-plan-units/BKU/6"}
+	want := []string{"GET /api/clusters/q", "POST /api/clusters/q/settings/actions/change-plan-units/DBU/2", "POST /api/clusters/q/settings/actions/change-plan-units/APU/3"}
 	if strings.Join(calls, "|") != strings.Join(want, "|") {
 		t.Fatalf("calls %v, want %v", calls, want)
-	}
-	// the default plan: 2 DBU per node already hold their 6 BKU, nothing moves
-	calls = nil
-	if note, err := applyRequestedPlan(sess, "/api/clusters/q", Cloud18ClusterSpec{ClusterName: "q"}); err != nil || note != "" || len(calls) != 1 {
-		t.Fatalf("default plan: note %q err %v calls %v", note, err, calls)
-	}
-	// a refused BKU keeps the cluster: backups above their plan are billed, never blocked
-	refuseBku = true
-	if note, err := applyRequestedPlan(sess, "/api/clusters/q", spec); err != nil || !strings.Contains(note, "plan BKU stays 6") {
-		t.Fatalf("a refused BKU must only be noted: note %q err %v", note, err)
 	}
 	calls, refuse = nil, true
 	if _, err := applyRequestedPlan(sess, "/api/clusters/q", spec); err == nil || !strings.Contains(err.Error(), "refused") {
@@ -204,33 +194,33 @@ func TestApplyRequestedPlan(t *testing.T) {
 }
 
 func TestQuoteThreeMonthlyPrices(t *testing.T) {
-	// 2 nodes x 4 DBU at 10, 5 APU at 6, 3 x 4 = 12 BKU at 2: plan 80 + 30 + 24 = 134
+	// 2 nodes x 4 DBU at 10, 5 APU at 6, 1 BKU at 2: plan 80 + 30 + 2 = 112
 	ss := ssFixture(true, "", 50, 50, 10, 6)
 	prices := ss["prices"].(map[string]any)
 	prices["bku"], prices["overcommitPricePct"], prices["undercommitPricePct"], prices["overcommitCapPct"] = 2.0, 150.0, 80.0, 50.0
 	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 4, APU: 5, Proxy: "haproxy", ProxyCount: 1, Apps: []string{"phpmyadmin"}})
 	q := cloud18QuoteOf(spec, ss)
 	m := q["monthly"].(map[string]any)
-	// minimal: every node, proxy, app and the backups back to 1 unit: 2 x 3 DBU, 3 APU and
-	// 11 BKU unused, at 20 % of their price -> 134 - (60 + 18 + 22) x 0.8 = 54
-	// overcommit: 2 x 2 borrowed DBU at 10 x 2.5 -> 134 + 100 = 234
-	if m["plan"] != 134.0 || m["minimal"] != 54.0 || m["overcommit"] != 234.0 {
+	// minimal: every node, proxy, app and the backups back to 1 unit: 2 x 3 DBU and 3 APU
+	// unused, at 20 % of their price -> 112 - (60 + 18) x 0.8 = 49.6
+	// overcommit: 2 x 2 borrowed DBU at 10 x 2.5 -> 112 + 100 = 212
+	if m["plan"] != 112.0 || m["minimal"] != 49.6 || m["overcommit"] != 212.0 {
 		t.Fatalf("monthly = %v", m)
 	}
 	if o := q["overcommit"].(map[string]any); o["dbuUnitPrice"] != 25.0 || o["apuUnitPrice"] != 15.0 || o["borrowedDbu"] != 4.0 {
 		t.Fatalf("the over-commit unit price is the billing's, unit price x (100 + pct) / 100: %v", o)
 	}
 	// the visitor's cap: 100 % borrows 4 DBU per node, 0 borrows nothing
-	for cap, want := range map[int]float64{100: 334, 0: 134} {
+	for cap, want := range map[int]float64{100: 312, 0: 112} {
 		c := cap
 		spec.OvercommitPct = &c
 		if got := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any)["overcommit"]; got != want {
 			t.Fatalf("cap %d: overcommit = %v, want %v", cap, got, want)
 		}
 	}
-	// 1 DBU per node and 1 APU per service: only the 3 BKU shrink, to 1 -> 38 - 2 x 2 x 0.8
+	// already 1 unit everywhere: nothing to shrink, minimal = plan
 	spec, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 1, APU: 2, Proxy: "haproxy", ProxyCount: 1, Apps: []string{"phpmyadmin"}})
-	if m := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any); m["plan"] != 38.0 || m["minimal"] != 34.8 {
+	if m := cloud18QuoteOf(spec, ss)["monthly"].(map[string]any); m["minimal"] != m["plan"] {
 		t.Fatalf("1 unit everywhere: %v", m)
 	}
 	// a reduction above 100 % is clamped like the billing: the unused units cost 0, never less
@@ -250,28 +240,23 @@ func TestQuoteThreeMonthlyPrices(t *testing.T) {
 	}
 }
 
-// The backups follow the DBU per node: BKU at least 3 x (never under the infrastructure's
-// default), the archive estimate 8 x, billed on what is stored (the minimal counts 1 BAU).
-// Without a requested APU, the apps and proxies count 1 APU each above the default.
-func TestQuoteBackupSizesFollowTheDBU(t *testing.T) {
+// The caller sizes the backups (#2189): bku replaces the infrastructure's default, bau prices an
+// archive billed on what is stored (no plan: the minimal counts 1); none asked, nothing priced.
+func TestQuoteRequestedBackups(t *testing.T) {
 	ss := ssFixture(true, "", 50, 50, 10, 6)
 	prices := ss["prices"].(map[string]any)
 	prices["bku"], prices["bau"], prices["undercommitPricePct"] = 2.0, 0.5, 100.0
 	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 1, DBU: 2, APU: 2, Proxy: "haproxy", ProxyCount: 1, Apps: []string{"phpmyadmin"}})
+	if u := cloud18QuoteOf(spec, ss)["units"].(map[string]float64); u["bku"] != 1 || u["bau"] != 0 {
+		t.Fatalf("default: the infrastructure's BKU, no BAU: %v", u)
+	}
+	spec.BKU, spec.BAU = 6, 16
 	q := cloud18QuoteOf(spec, ss)
 	if u := q["units"].(map[string]float64); u["bku"] != 6 || u["bau"] != 16 {
-		t.Fatalf("2 DBU per node: 6 BKU and 16 BAU, got %v", u)
+		t.Fatalf("requested backups: %v", u)
 	}
 	// plan 20 + 12 + 12 + 8 = 52; minimal: 1 DBU, 2 APU, 1 BKU, 1 BAU -> 10 + 12 + 2 + 0.5
 	if m := q["monthly"].(map[string]any); m["plan"] != 52.0 || m["minimal"] != 24.5 {
 		t.Fatalf("monthly = %v", m)
-	}
-	ss["defaultBku"] = 10.0
-	if u := cloud18QuoteOf(spec, ss)["units"].(map[string]float64); u["bku"] != 10 {
-		t.Fatalf("a larger default BKU is kept: %v", u)
-	}
-	spec, _ = normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 1, Apps: []string{"phpmyadmin", "uptime-kuma", "wordpress", "mattermost"}, ProxyCount: 2})
-	if u := cloud18QuoteOf(spec, ss)["units"].(map[string]float64); u["apu"] != 6 {
-		t.Fatalf("4 apps and 2 proxies need 6 APU above the default 4: %v", u)
 	}
 }

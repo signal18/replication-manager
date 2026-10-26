@@ -202,9 +202,14 @@ func (s *MCPServer) registerCloud18Tools() {
 			mcp.WithString("apps", mcp.Description("Comma-separated app template names, default phpmyadmin, none for no app")),
 			mcp.WithNumber("apu", mcp.Description("APU of the proxies and apps together; default each infrastructure's")),
 			mcp.WithNumber("overcommit_pct", mcp.Description("Over-commit cap: the % of its plan the database may borrow when the load needs it (prov-db-overcommit-pct), priced in the overcommit price; default each infrastructure's, 0 = no borrowing, at most 100")),
+			mcp.WithNumber("bku", mcp.Description("Backup units kept on the cluster (BKU, 20 GB each) to price; default each infrastructure's backup plan (prov-db-bku)")),
+			mcp.WithNumber("bau", mcp.Description("Archive units (BAU, 20 GB each on the partner's S3) to price, billed on what is stored; default none")),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			spec := cloud18SpecFrom(req)
+			if spec.BKU < 0 || spec.BAU < 0 {
+				return mcp.NewToolResultError("bku and bau must be 0 or more units"), nil
+			}
 			if spec.OvercommitPct != nil && (*spec.OvercommitPct < 0 || *spec.OvercommitPct > Cloud18QuoteMaxOvercommitPct) {
 				return mcp.NewToolResultError(fmt.Sprintf("overcommit_pct must be between 0 and %d (%% of the plan)", Cloud18QuoteMaxOvercommitPct)), nil
 			}
@@ -330,6 +335,8 @@ func cloud18SpecFrom(req mcp.CallToolRequest) Cloud18ClusterSpec {
 		ProxyCount:     req.GetInt("proxy_count", 0),
 		DBU:            req.GetInt("dbu", 0),
 		APU:            req.GetInt("apu", 0),
+		BKU:            req.GetInt("bku", 0),
+		BAU:            req.GetInt("bau", 0),
 	}
 	if apps := req.GetString("apps", ""); apps != "" {
 		spec.Apps = strings.Split(apps, ",")

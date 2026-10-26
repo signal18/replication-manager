@@ -178,17 +178,14 @@ Three MCP tools take the same request (`db_image`, `db_count`, `dbu` per databas
 proxies share the rest equally, rounded down, at least 1 each (`proxyAPUOf`).
 `normalizeSpec` refuses an `apu` below apps + proxies and replaces it by what
 `applyRequestedPlan` will reserve (`appliedAPU`), so the quote prices exactly that. Apps
-whose template sizes above 1 APU are not counted yet. Without a requested `apu`, the quote
-takes the infrastructure's default APU, raised to 1 per app and per proxy when they need more.
+whose template sizes above 1 APU are not counted yet.
 
-**Backups follow the DBU per node.** BKU = max(the infrastructure's `defaultBku`, 3 x dbu per
-node: three copies of the data, `cloud18BkuPerDbu`); BAU = 8 x dbu per node (`cloud18BauPerDbu`),
-an estimate of the archive: billed on what is stored (no plan), `monthly.minimal` counts 1 BAU.
-The self-service status serves `defaultBku` = `prov-db-bku`, the backup plan a cluster really
-takes (it served `prov-service-plan-bku` before, 1, read nowhere else). `applyRequestedPlan` raises
-the new cluster's `prov-db-bku` to 3 x its DBU per node (`change-plan-units/BKU`), never lowers
-it; a refused BKU move is only noted, the cluster stays: backups above their plan are
-over-commit, billed and never blocked, and an infrastructure before v3.1.43 has no BKU unit.
+**Backups: the caller's sizes (#2189).** `bku` and `bau` are quote-only arguments: repman holds
+no sizing rule, the caller (the website's sales assistant) sends the units it wants priced. `bku`
+replaces the infrastructure's `defaultBku`, which is `prov-db-bku`, the backup plan a cluster is
+created and billed with (the status served `prov-service-plan-bku`, 1, read nowhere else, so every
+quote under-priced the backups). `bau` prices an archive billed on what is stored (no plan, no
+under-commit price; `monthly.minimal` counts 1 BAU); 0 prices none. Creation does not apply them.
 
 **Pool verdict.** The infrastructure's `enabled=false` may come from its pool check, taken for
 its default cluster; the quote re-takes it for the requested units. The status says so with
