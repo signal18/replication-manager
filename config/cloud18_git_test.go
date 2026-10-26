@@ -125,3 +125,63 @@ func TestRotateCloud18GitTokens(t *testing.T) {
 		t.Fatalf("an instance registered with the password: %v", err)
 	}
 }
+
+// #2159: an instance registered with the GitLab password renews its personal token with itself, no
+// password: not before 30 days of its end, then rotated (the old one stops, the new one is saved
+// encrypted); a token GitLab refuses is lost; an instance on project tokens is not concerned.
+func TestRotateCloud18PersonalToken(t *testing.T) {
+	ends := map[string]string{"far": time.Now().Add(200 * 24 * time.Hour).Format("2006-01-02"), "soon": time.Now().Add(4 * 24 * time.Hour).Format("2006-01-02")}
+	rotations := 0
+	gitlab := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tok := r.Header.Get("PRIVATE-TOKEN")
+		end, ok := ends[tok]
+		if !ok {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"message":"401 Unauthorized"}`)
+			return
+		}
+		switch {
+		case r.URL.Path == "/api/v4/personal_access_tokens/self":
+			fmt.Fprintf(w, `{"active":true,"expires_at":%q}`, end)
+		case r.URL.Path == "/api/v4/personal_access_tokens/self/rotate":
+			rotations++
+			delete(ends, tok)
+			ends["renewed"] = r.URL.Query().Get("expires_at")
+			fmt.Fprintf(w, `{"id":5,"token":"renewed","expires_at":%q}`, ends["renewed"])
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer gitlab.Close()
+	old := githelper.GitLabURL
+	githelper.GitLabURL = gitlab.URL
+	defer func() { githelper.GitLabURL = old }()
+
+	conf := &Config{WorkingDir: t.TempDir(), SecretKey: testEncryptionKey, Cloud18: true}
+	conf.Secrets = NewSecrets(nil)
+	conf.keepSecret("git-acces-token", "far")
+	if rotated, err := conf.RotateCloud18PersonalToken(time.Now()); err != nil || rotated || rotations != 0 || conf.Cloud18GitTokenExpires != ends["far"] {
+		t.Fatalf("not due: rotated %v %v, %d rotations, end %q", rotated, err, rotations, conf.Cloud18GitTokenExpires)
+	}
+
+	conf.keepSecret("git-acces-token", "soon")
+	rotated, err := conf.RotateCloud18PersonalToken(time.Now())
+	if err != nil || !rotated || conf.GetDecryptedValue("git-acces-token") != "renewed" || conf.Cloud18GitTokenExpires != ends["renewed"] {
+		t.Fatalf("due: rotated %v %v, token %q end %q", rotated, err, conf.GetDecryptedValue("git-acces-token"), conf.Cloud18GitTokenExpires)
+	}
+	if v, ok := conf.GetDynamicFlag("git-acces-token"); !ok || !strings.HasPrefix(fmt.Sprint(v), "hash_") {
+		t.Fatalf("the renewed token must be saved encrypted: %v", v)
+	}
+
+	conf.keepSecret("git-acces-token", "revoked")
+	if _, err := conf.RotateCloud18PersonalToken(time.Now()); !errors.Is(err, ErrCloud18GitTokenLost) {
+		t.Fatalf("a refused token: %v", err)
+	}
+
+	projects := &Config{Cloud18GitProjectID: 3}
+	projects.Secrets = NewSecrets(nil)
+	projects.keepSecret("git-acces-token", "soon")
+	if rotated, err := projects.RotateCloud18PersonalToken(time.Now()); rotated || err != nil {
+		t.Fatalf("an instance on project tokens: %v %v", rotated, err)
+	}
+}

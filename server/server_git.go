@@ -461,10 +461,6 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		conf.CloneConfigFromGit(conf.GitUrl, conf.GitUsername, tok, conf.WorkingDir)
 	}
 
-	// An instance registered with the GitLab password moves to its own project tokens by
-	// itself (#2159); when it cannot, the password path below goes on as before.
-	repman.cloud18MigrateToProjectTokens(conf)
-
 	if conf.Cloud18 && conf.Cloud18GitProjects() {
 		// Registered through Cloud18 (#2159): the instance's own project tokens, one per
 		// repository, renewed by themselves before they end. No GitLab login, no password.
@@ -498,7 +494,19 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 	if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
 		gituser := conf.Cloud18GitUser
 		gitpassword := conf.GetDecryptedValue("cloud18-gitlab-password")
-		acces_tok, err := githelper.GetGitLabTokenBasicAuth(gituser, gitpassword, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+		// The instance's own token first (#2159): renewed by itself, it needs no password grant,
+		// which GitLab ends; the grant is only used when that token no longer works.
+		repman.rotateCloud18PersonalToken(conf)
+		var acces_tok string
+		var err error
+		if saved := conf.GetDecryptedValue("git-acces-token"); saved != "" {
+			if valid, _ := githelper.PATValid(saved); valid {
+				acces_tok = saved
+			}
+		}
+		if acces_tok == "" {
+			acces_tok, err = githelper.GetGitLabTokenBasicAuth(gituser, gitpassword, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+		}
 		if err != nil {
 			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
 				// the user, never the password

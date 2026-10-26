@@ -44,7 +44,9 @@ enough: no second sign-up on GitLab.
      the person registers again with the chosen password. An existing email: state `credentials`.
    - the account waits for its email confirmation: state `verify`.
 2. **Domain group** (`githelper.GitLabEnsureDomainGroup`): created private when absent (every GitLab user
-   may create groups), else the person must be a member (Developer or more): otherwise state `taken`.
+   may create groups, the person is its owner), else the person must be a member: not a member, state
+   `taken`; a member below Maintainer, state `credentials` "ask the domain owner to make you Maintainer"
+   (a project token needs Maintainer).
 3. **Projects** `{subdomain}-{zone}` and `-pull` (`githelper.GitLabCreateProjectIn`). GitLab refusing an
    existing path ("has already been taken") **is the URI's uniqueness**. An existing config project is a
    **reconnect** when its `default.toml` holds no encrypted value yet (a registration that did not finish)
@@ -97,18 +99,15 @@ a reconnect).
   GitLab password). **Rule: our GitLab is not upgraded to a version without the password grant before the
   fleet runs a release with this registration.** An account created through Cloud18 has no GitLab
   password, so it cannot register an older release.
-- **An instance registered with the password moves to its project tokens by itself** at start
-  (`cloud18MigrateToProjectTokens`, from `InitGitConfig`): nobody has to do anything. Its stored GitLab
-  user and password go through **GitLab's own web sign-in form** (`config.GitLabPasswordLogin`, not the
-  password grant GitLab ends), then GitLab's OAuth as above gives the token, and the declaration finds its
-  repositories (its key decrypts their config): a reconnect, its own project tokens from then on. Validated
-  live 2026-10-25 with a throwaway GitLab user (sign-in form, code, token `api`). When it cannot (a 2FA
-  account, a captcha, a changed password), the instance keeps the password path untouched and the log
-  says why; `GWARN022` asks to register again once GitLab refuses that password too. A password GitLab's
-  sign-in refused is not tried again until it changes (GitLab locks an account after a few failures);
-  any other failure waits an hour. That memory is not kept across a restart: one failed sign-in per start
-  remains possible. After the move the stored GitLab password stays (encrypted, unused):
-  it lets the instance roll back to an older release.
+- **An instance registered with the password keeps its personal token and renews it by itself**
+  (`RotateCloud18PersonalToken`, `/personal_access_tokens/self/rotate` with the token itself, scope `api`):
+  at start and daily, 30 days before its end; no password, no web sign-in, nothing created. At start it
+  uses that token directly when it is valid, so its git no longer depends on the password grant; the grant
+  is used only when the token no longer works (refused or expired), as before, and `GWARN022` asks to
+  register again once GitLab refuses the password too. Validated live 2026-10-25 (renewal 200, a year,
+  same name and scopes, the old token refused, the new one renews again). The earlier idea, moving these
+  instances to project tokens through GitLab's web sign-in, was dropped: their accounts are Developer on
+  their projects (the CRM added them so) and a project token needs Maintainer.
 
 ## Setup (realm and GitLab)
 

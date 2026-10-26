@@ -294,38 +294,6 @@ func gitlabStop(page string, at *url.URL) error {
 	return fmt.Errorf("GitLab gave no authorization (%s)", cloud18ErrorText(msg))
 }
 
-// ErrGitLabPasswordRefused: GitLab's own sign-in refused the stored GitLab user and password.
-var ErrGitLabPasswordRefused = errors.New("GitLab refused the stored GitLab user and password")
-
-// GitLabPasswordLogin returns a GitLab token of an instance registered with the GitLab password,
-// through GitLab's own web sign-in form (not the password grant GitLab ends), so the upgrade
-// migrates the instance to its project tokens by itself (#2159). A 2FA account or a captcha
-// stops it: the instance then keeps the password path.
-func (conf *Config) GitLabPasswordLogin(user, password string) (string, error) {
-	w := newCloud18Web()
-	gitlab, page, verifier, err := conf.gitlabOAuthStart(w)
-	if err != nil {
-		return "", err
-	}
-	csrf := csrfMetaRe.FindStringSubmatch(page)
-	if csrf == nil || !strings.Contains(page, `name="user[login]"`) {
-		return "", fmt.Errorf("GitLab: no password sign-in form (%w)", ErrCloud18PageChanged)
-	}
-	page, at, err := w.do(http.MethodPost, gitlab+"/users/sign_in", url.Values{"authenticity_token": {html.UnescapeString(csrf[1])},
-		"user[login]": {user}, "user[password]": {password}, "user[remember_me]": {"0"}})
-	if err != nil {
-		return "", fmt.Errorf("GitLab: %w", err)
-	}
-	token, err := conf.gitlabOAuthFinish(w, gitlab, page, verifier)
-	if err != nil || token != "" {
-		return token, err
-	}
-	if strings.Contains(page, `name="user[login]"`) {
-		return "", ErrGitLabPasswordRefused
-	}
-	return "", fmt.Errorf("GitLab gave no authorization after its sign-in (%s): two-factor or captcha?", at.Path)
-}
-
 // Cloud18SignUpForm is what the realm's sign-up asks (no password: the person chooses it from
 // the confirmation email).
 type Cloud18SignUpForm struct {
