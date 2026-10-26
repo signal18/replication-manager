@@ -9,6 +9,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -156,6 +157,33 @@ func TestCloud18TokenAPIAndLogin(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusUnauthorized || seen != "" || strings.Contains(w.Body.String(), "audience") {
 		t.Fatalf("a refused realm token: %d %q %q", w.Code, seen, w.Body.String())
+	}
+
+	// a normal session JWT goes through untouched
+	local, _ := repman.issueJWT(struct{ Name, Role, Password string }{"admin", "Member", ""}, "")
+	var gotAuth string
+	pass := repman.cloud18TokenMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { gotAuth = r.Header.Get("Authorization") }))
+	r = httptest.NewRequest(http.MethodGet, "/api/clusters", nil)
+	r.Header.Set("Authorization", "Bearer "+local)
+	pass.ServeHTTP(httptest.NewRecorder(), r)
+	if gotAuth != "Bearer "+local {
+		t.Fatal("a non-realm bearer must not be touched")
+	}
+	// /api/login keeps the realm token (it verifies it itself)
+	r = httptest.NewRequest(http.MethodPost, cloud18LoginPath, strings.NewReader("{}"))
+	r.Header.Set("Authorization", "Bearer "+good)
+	pass.ServeHTTP(httptest.NewRecorder(), r)
+	if cloud18LoginPath != "/api/login" || gotAuth != "Bearer "+good {
+		t.Fatal("the middleware must leave /api/login's realm token to the handler")
+	}
+	// an instance not registered to Cloud18: the realm token passes through, never a session
+	repman.Conf.Cloud18 = false
+	r = httptest.NewRequest(http.MethodGet, "/api/clusters", nil)
+	r.Header.Set("Authorization", "Bearer "+good)
+	pass.ServeHTTP(httptest.NewRecorder(), r)
+	repman.Conf.Cloud18 = true
+	if gotAuth != "Bearer "+good {
+		t.Fatal("an unregistered instance never turns a realm token into a session")
 	}
 
 	r = httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader("{}"))
@@ -308,5 +336,51 @@ func TestIsCloud18LoginSession(t *testing.T) {
 	}
 	if isCloud18LoginSession(map[string]string{"Password": "hash_z"}) {
 		t.Error("an older SSO session re-checks its password")
+	}
+}
+
+// #2182 review: forged realm tokens cost no realm request beyond one key fetch per minute, a refused
+// token is answered from memory, and the security log is bounded.
+func TestCloud18TokenFlood(t *testing.T) {
+	f, issuer := newRegisterFakes(t)
+	repman := loginRepman(t, issuer)
+	certs := func() int {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.certFetches
+	}
+	good := f.realmToken("person@acme.example", config.ConstCloud18APIAudience, true, 5*time.Minute)
+	if _, _, err := repman.cloud18TokenSession(good); err != nil {
+		t.Fatal(err)
+	}
+	base := certs()
+	for i := 0; i < 50; i++ {
+		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{"iss": issuer, "aud": config.ConstCloud18APIAudience, "exp": time.Now().Add(time.Minute).Unix()})
+		tok.Header["kid"] = fmt.Sprintf("forged-%d", i)
+		raw, _ := tok.SignedString(f.realmKey)
+		if _, _, err := repman.cloud18TokenSession(raw); err == nil {
+			t.Fatal("a token naming an unknown key must be refused")
+		}
+	}
+	if n := certs() - base; n > 1 {
+		t.Fatalf("50 unknown key ids: at most one key fetch per minute, got %d", n)
+	}
+	expired := f.realmToken("person@acme.example", config.ConstCloud18APIAudience, true, -time.Minute)
+	if _, _, err := repman.cloud18TokenSession(expired); !errors.Is(err, config.ErrCloud18TokenRefused) {
+		t.Fatalf("an expired token: %v", err)
+	}
+	if _, _, err := repman.cloud18TokenSession(expired); !errors.Is(err, errCloud18TokenRefusedAgain) {
+		t.Fatalf("a refused token is answered from memory: %v", err)
+	}
+	cloud18TokenLog.Lock()
+	cloud18TokenLog.window, cloud18TokenLog.n = time.Now(), cloud18TokenLogMax
+	cloud18TokenLog.Unlock()
+	repman.logCloud18TokenRefused("api_auth_failure", "x", config.ErrCloud18TokenRefused)
+	repman.logCloud18TokenRefused("api_auth_failure", "x", config.ErrCloud18TokenRefused)
+	cloud18TokenLog.Lock()
+	n := cloud18TokenLog.n
+	cloud18TokenLog.Unlock()
+	if n != cloud18TokenLogMax+2 {
+		t.Fatalf("the log counter: %d", n)
 	}
 }

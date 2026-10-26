@@ -56,6 +56,7 @@ type registerFakes struct {
 	loginCodes    map[string]string // code -> PKCE challenge|email
 	refreshes     int               // refresh grants answered
 	refreshTries  int               // refresh grants asked, refused ones included
+	certFetches   int               // fetches of the realm's keys
 	rotate        bool              // each refresh gives a new refresh token and revokes the used one
 	shortTokens   bool              // access tokens of 30 s: every call refreshes
 	liveRefresh   map[string]bool   // refresh tokens still valid, when rotating
@@ -154,6 +155,7 @@ func newRegisterFakes(t *testing.T) (*registerFakes, string) {
 			fmt.Fprintf(w, `{"access_token":%q,"expires_in":%d,"refresh_token":%q,"refresh_expires_in":1800}`,
 				f.realmToken(email, config.ConstCloud18APIAudience, true, time.Duration(life)*time.Second), life, "rt-"+email)
 		case "/realms/cloud18/protocol/openid-connect/certs":
+			f.certFetches++
 			pub := f.realmKey.PublicKey
 			fmt.Fprintf(w, `{"keys":[{"kty":"RSA","kid":"k1","use":"sig","alg":"RS256","n":%q,"e":%q}]}`,
 				base64.RawURLEncoding.EncodeToString(pub.N.Bytes()), base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()))

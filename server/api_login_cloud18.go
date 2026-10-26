@@ -73,6 +73,10 @@ func (repman *ReplicationManager) ssoMeetUser(meetUser, password string, l ssoLo
 	return meethelper.CreateMeetUserClient(meetUser, password, logs)
 }
 
+// cloud18LoginPath is the login route: the only one taking a realm token itself, so
+// cloud18TokenMiddleware leaves its bearer as is (registered with this constant, api.go).
+const cloud18LoginPath = "/api/login"
+
 // cloud18TokenSessionMax bounds the cache of sessions made from realm tokens (one per live
 // realm token: they last minutes).
 const cloud18TokenSessionMax = 4096
@@ -85,8 +89,52 @@ type cloud18TokenSessionEntry struct {
 
 var cloud18TokenSessions = struct {
 	sync.Mutex
-	m map[string]cloud18TokenSessionEntry
-}{m: map[string]cloud18TokenSessionEntry{}}
+	m       map[string]cloud18TokenSessionEntry
+	refused map[string]cloud18TokenRefusal // refused tokens, not verified again for a while
+}{m: map[string]cloud18TokenSessionEntry{}, refused: map[string]cloud18TokenRefusal{}}
+
+type cloud18TokenRefusal struct {
+	err   error
+	until time.Time
+}
+
+// cloud18TokenRefusedWait is how long a refused realm token is answered from memory (a client
+// retrying, a flood of the same token): no verification, no security log line.
+const cloud18TokenRefusedWait = time.Minute
+
+// errCloud18TokenRefusedAgain: a token already refused, answered from memory.
+var errCloud18TokenRefusedAgain = errors.New("Cloud18 token refused (again)")
+
+// cloud18TokenLog bounds the security log lines of refused realm tokens (F4): at most
+// cloud18TokenLogMax per minute, a flood of distinct forged tokens never fills the disk.
+var cloud18TokenLog = struct {
+	sync.Mutex
+	window time.Time
+	n      int
+}{}
+
+const cloud18TokenLogMax = 30
+
+// logCloud18TokenRefused writes a refused realm token to the security log within the bound.
+func (repman *ReplicationManager) logCloud18TokenRefused(event, remote string, err error) {
+	if errors.Is(err, errCloud18TokenRefusedAgain) {
+		return
+	}
+	cloud18TokenLog.Lock()
+	now := time.Now()
+	if now.Sub(cloud18TokenLog.window) >= time.Minute {
+		cloud18TokenLog.window, cloud18TokenLog.n = now, 0
+	}
+	cloud18TokenLog.n++
+	n := cloud18TokenLog.n
+	cloud18TokenLog.Unlock()
+	switch {
+	case n <= cloud18TokenLogMax:
+		repman.logSecurityEvent(event, "cloud18-token", remote, "Cloud18 token refused: "+err.Error())
+	case n == cloud18TokenLogMax+1:
+		repman.logSecurityEvent(event, "cloud18-token", remote, "Cloud18 tokens refused: more than 30 in a minute, the next ones are not logged this minute")
+	}
+}
 
 // acceptsCloud18Tokens: a registered Cloud18 instance with a realm takes realm tokens as an SSO
 // identity. An instance not registered to Cloud18 never trusts the Cloud18 realm for its users.
@@ -107,9 +155,26 @@ func (repman *ReplicationManager) cloud18TokenSession(raw string) (string, confi
 		cloud18TokenSessions.Unlock()
 		return e.jwt, e.user, nil
 	}
+	if f, ok := cloud18TokenSessions.refused[key]; ok && now.Before(f.until) {
+		cloud18TokenSessions.Unlock()
+		return "", config.Cloud18User{}, errCloud18TokenRefusedAgain
+	}
 	cloud18TokenSessions.Unlock()
 	u, err := repman.Conf.VerifyCloud18Token(raw)
 	if err != nil {
+		if errors.Is(err, config.ErrCloud18TokenRefused) {
+			cloud18TokenSessions.Lock()
+			for k, f := range cloud18TokenSessions.refused {
+				if !now.Before(f.until) {
+					delete(cloud18TokenSessions.refused, k)
+				}
+			}
+			if len(cloud18TokenSessions.refused) >= cloud18TokenSessionMax {
+				cloud18TokenSessions.refused = map[string]cloud18TokenRefusal{}
+			}
+			cloud18TokenSessions.refused[key] = cloud18TokenRefusal{err: err, until: now.Add(cloud18TokenRefusedWait)}
+			cloud18TokenSessions.Unlock()
+		}
 		return "", u, err
 	}
 	info := struct {
@@ -166,17 +231,17 @@ func (repman *ReplicationManager) cloud18TokenFor(tokenClaim, loginClaim string)
 // the SSO session of its person (cloud18TokenSession), so the token middleware, the routes that
 // check the token themselves (isValidRequest, IsValidClusterACL) and the MCP all read an SSO
 // session; a refused token stops here with a 401, its detail in the security log only.
-// /api/login takes the realm token itself (cloud18TokenLogin).
+// /api/login (cloud18LoginPath) takes the realm token itself (cloud18TokenLogin).
 func (repman *ReplicationManager) cloud18TokenMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw := bearerOf(r)
-		if r.URL.Path == "/api/login" || !repman.acceptsCloud18Tokens(raw) {
+		if r.URL.Path == cloud18LoginPath || !repman.acceptsCloud18Tokens(raw) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		session, _, err := repman.cloud18TokenSession(raw)
 		if err != nil {
-			repman.logSecurityEvent("api_auth_failure", "cloud18-token", r.RemoteAddr, "Cloud18 token refused: "+err.Error())
+			repman.logCloud18TokenRefused("api_auth_failure", r.RemoteAddr, err)
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			http.Error(w, "Cloud18 token refused", http.StatusUnauthorized)
 			return
@@ -191,7 +256,7 @@ func (repman *ReplicationManager) cloud18TokenMiddleware(next http.Handler) http
 func (repman *ReplicationManager) cloud18TokenLogin(w http.ResponseWriter, r *http.Request, raw string) {
 	jwt, u, err := repman.cloud18TokenSession(raw)
 	if err != nil {
-		repman.logSecurityEvent("api_auth_failure", "cloud18-token", r.RemoteAddr, "API authentication failure: "+err.Error())
+		repman.logCloud18TokenRefused("api_auth_failure", r.RemoteAddr, err)
 		http.Error(w, "Error logging in: Cloud18 token refused", http.StatusUnauthorized)
 		return
 	}

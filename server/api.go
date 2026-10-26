@@ -323,7 +323,7 @@ func (repman *ReplicationManager) apiserver() {
 
 	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
-	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc(cloud18LoginPath, repman.loginHandler) // "/api/login": the realm-token middleware leaves this path to the handler (#2182)
 	router.HandleFunc("/api/login/upgrade", repman.upgradeHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Public auth routes are intentionally wired in both api.go and http.go because
 	// replication-manager can run this API server path independently of httpserver().

@@ -7,10 +7,12 @@ package config
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -148,10 +150,90 @@ func (conf *Config) IsCloud18Token(raw string) bool {
 	return strings.TrimRight(tokenClaim(raw, "iss"), "/") == issuer
 }
 
+// cloud18Keys are the key ids the realm publishes, fetched at most once per cloud18KeysRefetch:
+// a token naming another key is refused without asking the realm again (forged tokens with random
+// key ids would otherwise make every request fetch the realm's keys).
+var cloud18Keys = struct {
+	sync.Mutex
+	issuer  string
+	kids    map[string]bool
+	fetched time.Time
+}{}
+
+// cloud18KeysRefetch is how often an unknown key id may refetch the realm's keys (tests lower it).
+var cloud18KeysRefetch = time.Minute
+
+func (conf *Config) cloud18KeyKnown(issuer, kid string) bool {
+	cloud18Keys.Lock()
+	defer cloud18Keys.Unlock()
+	if cloud18Keys.issuer == issuer && cloud18Keys.kids[kid] {
+		return true
+	}
+	if cloud18Keys.issuer == issuer && time.Since(cloud18Keys.fetched) < cloud18KeysRefetch {
+		return false
+	}
+	cloud18Keys.issuer, cloud18Keys.fetched, cloud18Keys.kids = issuer, time.Now(), map[string]bool{}
+	resp, err := (&http.Client{Timeout: cloud18IdentityHTTPTimeout}).Get(issuer + "/protocol/openid-connect/certs")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	var set struct {
+		Keys []struct {
+			Kid string `json:"kid"`
+		} `json:"keys"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&set) != nil {
+		return false
+	}
+	for _, k := range set.Keys {
+		cloud18Keys.kids[k.Kid] = true
+	}
+	return cloud18Keys.kids[kid]
+}
+
+// tokenHeader reads a field of a JWT's header, unverified ("" when absent).
+func tokenHeader(token, field string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	b, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return ""
+	}
+	var h map[string]interface{}
+	if json.Unmarshal(b, &h) != nil {
+		return ""
+	}
+	v, _ := h[field].(string)
+	return v
+}
+
 // VerifyCloud18Token verifies a realm token (signature against the realm's keys, issuer, expiry,
 // the replication-manager API audience) and returns its person, who must have a verified email.
+// An expired token, or one naming a key the realm does not publish, is refused before any request
+// to the realm.
 func (conf *Config) VerifyCloud18Token(raw string) (Cloud18User, error) {
 	var u Cloud18User
+	issuer, err := conf.cloud18Issuer()
+	if err != nil {
+		return u, err
+	}
+	var claims struct {
+		Exp float64 `json:"exp"`
+	}
+	if parts := strings.Split(raw, "."); len(parts) == 3 {
+		if b, err := base64.RawURLEncoding.DecodeString(parts[1]); err == nil {
+			json.Unmarshal(b, &claims)
+		}
+	}
+	if claims.Exp == 0 || time.Unix(int64(claims.Exp), 0).Before(time.Now()) {
+		return u, fmt.Errorf("%w: expired or without end", ErrCloud18TokenRefused)
+	}
+	if kid := tokenHeader(raw, "kid"); kid == "" || !conf.cloud18KeyKnown(issuer, kid) {
+		return u, fmt.Errorf("%w: unknown signing key", ErrCloud18TokenRefused)
+	}
 	v, err := conf.cloud18Verifier()
 	if err != nil {
 		return u, err

@@ -58,6 +58,10 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
   themselves (`isValidRequest`, `IsValidClusterACL`: `/api/clusters`, `/api/peers`…) and the MCP all read
   an SSO login. A refused token is a 401 with a generic text, the detail in the security log. The session
   keeps the realm token encrypted (`cloud18_token`) for the next instance.
+- Forged tokens (F4): an expired token, or one naming a key id the realm does not publish, is refused
+  before any request to the realm, and an unknown key id refetches the realm's keys at most once a minute
+  (`cloud18KeyKnown`); a refused token is answered from memory for a minute (bounded); the security log
+  takes at most 30 refusals a minute, then one line saying the rest are not logged.
 - Another instance (`peerLoginAs`, `DynamicPeerHandler`): logged into with the caller's realm token
   (`peerLoginAsIdentity`), got from the session (`cloud18TokenFor`: the token it came with, or one
   refreshed from its `cloud18` refresh token, one refresh per token lifetime, `Cloud18LoginAccess`). The
