@@ -90,8 +90,7 @@ To create a group replication cluster (multi-master-grprep):
   when a node is lost). replication-manager sets the topology and the grouprep
   configurator tag (it drops semisync) before adding the nodes, provisions them and
   bootstraps the group. Quote it first with get-cloud18-cluster-quote, same topology.
-  Prefer a MySQL 8.0 image: group replication on MySQL 8.4 aborts right after the
-  bootstrap (open bug). The options list (list-cloud18-cluster-options) says whether
+  The options list (list-cloud18-cluster-options) says whether
   replication-manager's regression tests passed on it (tested); an untested setup is
   built with a testedSetupWarning, say so to the user.
 - On a cluster of this instance: cluster-set-setting topology-target=multi-master-grprep,
