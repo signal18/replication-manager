@@ -17,21 +17,19 @@ A repman without a public address keeps the Sign in form, which checks the Cloud
 
 ## What the person sees (`share/dashboard_react/src/Pages/Login`)
 
-Two paths, one login page.
-- **Path 1, never signed in at Cloud18 in this browser**: the login page as before, name and password;
-  an internal repman API user first, then the Cloud18 password checked by repman (#2182). This signs the
-  person in on this repman only: a password typed in a repman form gives the browser no Cloud18 session
-  other sites could reuse.
-- **Path 2, already signed in at Cloud18** (on the realm's own page: the website, another repman's
-  realm sign-in): opening the login page of a repman in scope does a silent check at the realm
-  (`prompt=none`, once per tab); the realm knows the browser, the person is straight in with their
-  identity, no page. Without a realm session the realm answers `login_required` and the page shows its
-  form (path 1).
-- **Sign up**: the realm's own sign-up form (`/registrations`) on a repman in scope, the former sign-up
-  page elsewhere.
-- **Logout**: the session here, then, for a session that came from the realm, the realm session too
-  (every repman forgets the person); the login page then shows its form and no longer lets the person in
-  by itself: the way to come back to an internal API user.
+Three buttons on a repman in scope (one, plus the former sign-up page, elsewhere):
+1. **Sign in**: name and password on repman's page, as before (an internal API user first, then the
+   Cloud18 password checked by repman, #2182). Signs the person in on this repman only: a password typed
+   in a repman form gives the browser no Cloud18 session other sites could reuse.
+2. **Sign in with Cloud18**: the browser goes to the realm's page and signs in there; the realm session
+   it leaves lets every other repman in scope in without a page.
+3. **Sign up with Cloud18**: the realm's own sign-up form (`/registrations`).
+
+On opening the login page of a repman in scope, a silent check at the realm (`prompt=none`, once per
+tab): a browser already signed in at Cloud18 is straight in with its identity; otherwise the realm answers
+`login_required` and the page shows its three buttons. **Logout** ends the session here and, for a
+session that came from the realm, the realm session too (every repman forgets the person): the way back
+to an internal API user.
 
 The copy on write of `APIUsers` (`setAPIUser`, `deleteAPIUser`, `LoadAPIUsers` under `apiUsersMu`, grant
 and role maps copied before a change) keeps the login routes, which read it without a lock, from ever

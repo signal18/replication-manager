@@ -259,6 +259,16 @@ function Login({ dashboard = false }) {
                   loadingText={'Signing in'}>
                   Sign in
                 </RMButton>
+                {cloud18Enabled && (
+                  <RMButton
+                    id='btnCloud18Login'
+                    type='button'
+                    size='medium'
+                    onClick={() => window.location.assign('/api/auth/cloud18/start')}
+                    loadingText={'Signing in with Cloud18'}>
+                    Sign in with Cloud18
+                  </RMButton>
+                )}
                 <RMButton
                   id='btnGitRegister'
                   type='button'
@@ -266,7 +276,7 @@ function Login({ dashboard = false }) {
                   onClick={() => (cloud18Enabled ? window.location.assign('/api/auth/cloud18/start?signup=1') : navigate('/signup'))}
                   isLoading={loadingGitLogin}
                   loadingText={'Signing up to Cloud18'}>
-                  Sign up
+                  {cloud18Enabled ? 'Sign up with Cloud18' : 'Sign up'}
                 </RMButton>
               </Stack>
             </Stack>
