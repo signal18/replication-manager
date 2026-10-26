@@ -40,7 +40,6 @@ func TestCloud18SSOScope(t *testing.T) {
 		"switch off":         func(c *config.Config) { c.Cloud18SSOLogin = false },
 		"not registered":     func(c *config.Config) { c.Cloud18 = false },
 		"no registered user": func(c *config.Config) { c.Cloud18GitUser = "" },
-		"not a partner":      func(c *config.Config) { c.Cloud18SubscriptionPlan = "developer" },
 		"loopback default":   func(c *config.Config) { c.APIPublicURL = "https://127.0.0.1:10005" },
 		"private address":    func(c *config.Config) { c.APIPublicURL = "https://10.60.50.66:10005" },
 		"plain http":         func(c *config.Config) { c.APIPublicURL = "http://repman.partner.example" },
@@ -181,7 +180,7 @@ func TestCloud18SSORefusals(t *testing.T) {
 	}
 
 	off := ssoRepman(t, issuer)
-	off.Conf.Cloud18SubscriptionPlan = "free"
+	off.Conf.APIPublicURL = "https://10.0.0.1"
 	w = httptest.NewRecorder()
 	off.handlerMuxCloud18SSOStart(w, httptest.NewRequest(http.MethodGet, "/api/auth/cloud18/start", nil))
 	if w.Code != http.StatusNotFound {
@@ -319,7 +318,7 @@ func TestLoginMethod(t *testing.T) {
 	if w.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Error("no CORS on /api/login/method")
 	}
-	repman.Conf.Cloud18SubscriptionPlan = "free"
+	repman.Conf.APIPublicURL = "https://127.0.0.1:10005"
 	if repman.loginMethodFor("person@partner.example") != "password" {
 		t.Error("a repman without Sign in with Cloud18 asks the password")
 	}

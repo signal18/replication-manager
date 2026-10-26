@@ -450,16 +450,14 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 const Cloud18SSOCallbackPath = "/api/auth/cloud18/callback"
 
 // Cloud18SSO says whether this repman offers Sign in with Cloud18, and if not why: registered to
-// Cloud18, plan partner, a public https address (api-public-url, not the loopback default), a realm,
-// and cloud18-sso-login on. It returns the public address.
+// Cloud18 (whatever its plan), a public https address (api-public-url, not the loopback default nor
+// a private address), a realm, and cloud18-sso-login on. It returns the public address.
 func (conf *Config) Cloud18SSO() (string, error) {
 	switch {
 	case !conf.Cloud18SSOLogin:
 		return "", errors.New("off (cloud18-sso-login)")
 	case !conf.Cloud18 || conf.Cloud18GitUser == "":
 		return "", errors.New("not registered to Cloud18")
-	case strings.ToLower(strings.TrimSpace(conf.Cloud18SubscriptionPlan)) != "partner":
-		return "", errors.New("not a partner (cloud18-subscription-plan)")
 	}
 	if _, err := conf.cloud18Issuer(); err != nil {
 		return "", err

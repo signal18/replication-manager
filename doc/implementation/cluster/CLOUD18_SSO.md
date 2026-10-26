@@ -9,10 +9,10 @@ session. **No repman talks to another** for this: only the browser, the repman a
 
 ## Where (`config.Cloud18SSO`)
 
-Only a partner with a public address: `cloud18` on with a registered user (`cloud18-gitlab-user`),
-`cloud18-subscription-plan = partner`, `api-public-url` a public https address (not the loopback
+Any repman registered to Cloud18 with a public address, whatever its plan: `cloud18` on with a
+registered user (`cloud18-gitlab-user`), `api-public-url` a public https address (not the loopback
 default, not a private address), a realm (`cloud18-identity-url`), and `cloud18-sso-login` on (default).
-Every other repman (clients, dev) keeps the Sign in form, which checks the Cloud18 account since #2182.
+A repman without a public address keeps the Sign in form, which checks the Cloud18 account since #2182.
 `GET /api/auth/cloud18` tells the login page (`{"enabled": …}`).
 
 ## What the person sees (`share/dashboard_react/src/Pages/Login`)
