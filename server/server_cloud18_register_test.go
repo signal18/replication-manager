@@ -332,71 +332,9 @@ func TestCloud18Register(t *testing.T) {
 	}
 }
 
-// #2159: an instance registered with the GitLab password moves to its own project tokens by itself
-// at start, through GitLab's web sign-in with its stored password (not the password grant): a
-// reconnect to its repositories; a refused password leaves it on its password path, untouched.
-func TestCloud18MigrateToProjectTokens(t *testing.T) {
-	f, issuer := newRegisterFakes(t)
-	key := []byte("0123456789abcdef")
-
-	// the repositories the old registration created, holding the instance's saved config
-	first := registerRepman(t, issuer, key)
-	first.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
-	if state, msg, _ := regResult(t, first); state != RegStateOK {
-		t.Fatalf("setup: %s %q", state, msg)
-	}
-	f.mu.Lock()
-	f.files[first.Conf.Cloud18GitProjectID] = "git-acces-token = \"" + first.Conf.GetEncryptedString("glpat-old-personal-token") + "\"\n"
-	f.mu.Unlock()
-
-	// at start InitGitConfig runs on the config being built, which replaces repman.Conf afterwards:
-	// the migration must write into that one, never into repman.Conf
-	old := registerRepman(t, issuer, key)
-	c := &config.Config{WorkingDir: old.Conf.WorkingDir, SecretKey: key, Cloud18IdentityURL: issuer, OAuthProvider: "https://gitlab.example"}
-	c.Secrets = config.NewSecrets(nil)
-	c.Cloud18, c.Cloud18Domain, c.Cloud18SubDomain, c.Cloud18SubDomainZone, c.Cloud18GitUser = true, "acme", "ovh", "fr-1", "admin@acme.example"
-	c.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "old-gitlab-password"})
-	f.mu.Lock()
-	f.revoked = nil
-	f.mu.Unlock()
-	old.cloud18MigrateToProjectTokens(c)
-	if old.Conf.Cloud18GitProjects() {
-		t.Fatal("the migration wrote into repman.Conf instead of the config being built")
-	}
-	if len(f.revoked) != 2 || strings.HasSuffix(f.revoked[0], "/access_tokens/8") || strings.HasSuffix(f.revoked[1], "/access_tokens/8") {
-		t.Fatalf("the instance's previous project tokens must be revoked (one per project), never the new ones nor someone else's: %v", f.revoked)
-	}
-	for _, list := range f.tokens {
-		active := 0
-		for _, tk := range list {
-			if tk.active {
-				active++
-			}
-		}
-		if active != 1 {
-			t.Fatalf("each project keeps exactly its one new token active: %d", active)
-		}
-	}
-	if !c.Cloud18GitProjects() || c.Cloud18GitProjectID != first.Conf.Cloud18GitProjectID || !strings.HasPrefix(c.GetDecryptedValue("git-acces-token"), "glpat-") {
-		t.Fatalf("not moved: projects %d/%d token %q", c.Cloud18GitProjectID, first.Conf.Cloud18GitProjectID, c.GetDecryptedValue("git-acces-token"))
-	}
-	if _, _, res := regResult(t, old); !res.Reattach {
-		t.Fatal("the migration must be a reconnect to the existing repositories")
-	}
-
-	refused := registerRepman(t, issuer, key)
-	r := refused.Conf
-	r.Cloud18, r.Cloud18Domain, r.Cloud18SubDomain, r.Cloud18SubDomainZone, r.Cloud18GitUser = true, "acme", "ovh", "fr-1", "admin@acme.example"
-	r.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "changed-since"})
-	refused.cloud18MigrateToProjectTokens(r)
-	if r.Cloud18GitProjects() || !r.Cloud18 || r.GetDecryptedValue("cloud18-gitlab-password") != "changed-since" {
-		t.Fatal("a refused password must leave the instance on its password path, untouched")
-	}
-}
-
 // #2159 review: the Cloud18 password goes only to the realm's own host (a login form posting
-// elsewhere is refused, nothing sent); a refused stored GitLab password is tried once, not at every
-// InitGitConfig; a re-register keeps the previous project tokens when the new ones cannot be made.
+// elsewhere is refused, nothing sent); a re-register keeps the previous project tokens when the new
+// ones cannot be made.
 func TestCloud18RegisterSafety(t *testing.T) {
 	f, issuer := newRegisterFakes(t)
 	key := []byte("0123456789abcdef")
@@ -416,28 +354,12 @@ func TestCloud18RegisterSafety(t *testing.T) {
 	f.evilAction = ""
 	f.mu.Unlock()
 
-	old := registerRepman(t, issuer, key)
-	c := old.Conf
-	c.Cloud18, c.Cloud18Domain, c.Cloud18SubDomain, c.Cloud18SubDomainZone, c.Cloud18GitUser = true, "acme", "ovh", "fr-1", "admin@acme.example"
-	c.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "stale"})
-	for i := 0; i < 3; i++ {
-		old.cloud18MigrateToProjectTokens(c)
-	}
-	if f.signIns != 1 || c.Cloud18GitProjects() {
-		t.Fatalf("a refused password must be tried once: %d sign-ins", f.signIns)
-	}
-	c.Secrets.Set("cloud18-gitlab-password", config.Secret{Value: "old-gitlab-password"}) // changed: tried again
-	old.cloud18MigrateToProjectTokens(c)
-	if f.signIns != 2 || !c.Cloud18GitProjects() {
-		t.Fatalf("a changed password is tried again: %d sign-ins, moved %v", f.signIns, c.Cloud18GitProjects())
-	}
-
 	f.mu.Lock()
 	f.revoked, f.failCreate = nil, 1
 	f.mu.Unlock()
 	again := registerRepman(t, issuer, key)
 	f.mu.Lock()
-	f.files[c.Cloud18GitProjectID] = "git-acces-token = \"" + again.Conf.GetEncryptedString("glpat-saved-token-0001") + "\"\n"
+	f.files[11] = "git-acces-token = \"" + again.Conf.GetEncryptedString("glpat-saved-token-0001") + "\"\n"
 	f.mu.Unlock()
 	again.cloud18Register("acme", "ovh", "fr-1", "", "admin@acme.example", "s3cr3t-cloud18", nil)
 	if state, _, _ := regResult(t, again); state != RegStateError || len(f.revoked) != 0 {

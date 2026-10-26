@@ -145,6 +145,14 @@ func TestCloud18GitLabRegistration(t *testing.T) {
 	if _, err := GitLabEnsureDomainGroup("person", "other", u.ID); !errors.Is(err, ErrNotDomainMember) {
 		t.Fatalf("a reporter of the domain: %v", err)
 	}
+	f.members["999/2"] = 30 // developer: no project token
+	if _, err := GitLabEnsureDomainGroup("person", "other", u.ID); !errors.Is(err, ErrNotDomainMaintainer) {
+		t.Fatalf("a developer of the domain: %v", err)
+	}
+	f.members["999/2"] = 40
+	if id, err := GitLabEnsureDomainGroup("person", "other", u.ID); err != nil || id != 999 {
+		t.Fatalf("a maintainer of the domain: %d %v", id, err)
+	}
 
 	pid, taken, err := GitLabCreateProjectIn("person", gid, "acme", "ovh-fr-1")
 	if err != nil || taken || pid == 0 {

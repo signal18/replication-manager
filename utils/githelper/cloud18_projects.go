@@ -113,8 +113,16 @@ func GitLabTokenUser(oauthToken string) (GitLabUser, error) {
 // least Developer): the domain belongs to someone else.
 var ErrNotDomainMember = errors.New("the domain exists in Cloud18 and you are not one of its members")
 
+// ErrNotDomainMaintainer: the person is a member of the domain but not Maintainer, which a
+// registration needs to give the instance its project tokens.
+var ErrNotDomainMaintainer = errors.New("you are a member of this Cloud18 domain but not Maintainer: ask the domain owner to make you Maintainer, then register again")
+
+// MaintainerAccess is GitLab's Maintainer access level.
+const MaintainerAccess = 40
+
 // GitLabEnsureDomainGroup returns the id of the domain group, created (private) when it does not
-// exist; an existing one must count the person among its members.
+// exist (the person is then its owner); an existing one must count the person among its members,
+// Maintainer at least (ErrNotDomainMaintainer otherwise).
 func GitLabEnsureDomainGroup(oauthToken, domain string, userID int) (int, error) {
 	var g struct {
 		ID int `json:"id"`
@@ -139,6 +147,9 @@ func GitLabEnsureDomainGroup(oauthToken, domain string, userID int) (int, error)
 	}
 	if err != nil {
 		return 0, err
+	}
+	if m.AccessLevel < MaintainerAccess {
+		return 0, ErrNotDomainMaintainer
 	}
 	return g.ID, nil
 }
@@ -243,4 +254,31 @@ func GitLabRevokeProjectTokens(oauthToken string, projectID int, name string, ke
 		}
 	}
 	return n
+}
+
+// GitLabPersonalTokenExpires returns the end date (YYYY-MM-DD, "" when none) of a personal access
+// token, read with the token itself.
+func GitLabPersonalTokenExpires(token string) (string, error) {
+	var t struct {
+		ExpiresAt string `json:"expires_at"`
+		Active    bool   `json:"active"`
+	}
+	if err := gitlabCall(http.MethodGet, "/personal_access_tokens/self", token, false, nil, &t); err != nil {
+		return "", err
+	}
+	if !t.Active {
+		return "", &GitLabError{Status: http.StatusUnauthorized, Message: "token not active"}
+	}
+	return t.ExpiresAt, nil
+}
+
+// GitLabRotatePersonalToken renews a personal access token with itself (scope api): same name and
+// scopes, the old one stops working. No password (#2159). A 401 means it was already refused.
+func GitLabRotatePersonalToken(token string, expires time.Time) (ProjectToken, error) {
+	var t ProjectToken
+	err := gitlabCall(http.MethodPost, "/personal_access_tokens/self/rotate?expires_at="+expires.Format("2006-01-02"), token, false, nil, &t)
+	if err == nil && t.Token == "" {
+		err = errors.New("GitLab gave no personal token")
+	}
+	return t, err
 }

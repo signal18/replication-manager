@@ -200,3 +200,37 @@ func (conf *Config) GitHeadPushed(dir, user, token string) (bool, error) {
 	}
 	return false, nil
 }
+
+// RotateCloud18PersonalToken renews the personal token of an instance registered with the GitLab
+// password (git-acces-token, scope api) with itself, when it ends within cloud18GitTokenRenewBefore:
+// no password, no password grant (#2159). GitLab refusing it returns ErrCloud18GitTokenLost (the
+// password path may still mint a new one while GitLab accepts the password grant).
+func (conf *Config) RotateCloud18PersonalToken(now time.Time) (rotated bool, err error) {
+	token := conf.GetDecryptedValue("git-acces-token")
+	if conf.Cloud18GitProjects() || token == "" {
+		return false, nil
+	}
+	lost := func(err error) error {
+		if s := githelper.GitLabStatus(err); s == http.StatusUnauthorized || s == http.StatusForbidden {
+			return fmt.Errorf("%w (%v)", ErrCloud18GitTokenLost, err)
+		}
+		return err
+	}
+	end, err := githelper.GitLabPersonalTokenExpires(token)
+	if err != nil {
+		return false, lost(err)
+	}
+	// a token without end date is renewed once (it then has one): GitLab caps lifetimes anyway
+	if e, perr := time.Parse("2006-01-02", end); end != "" && perr == nil && e.Sub(now) >= cloud18GitTokenRenewBefore {
+		conf.Cloud18GitTokenExpires = end
+		return false, nil
+	}
+	t, err := githelper.GitLabRotatePersonalToken(token, now.Add(Cloud18GitTokenLifetime))
+	if err != nil {
+		return false, lost(err)
+	}
+	conf.GitAccesToken = t.Token
+	conf.keepSecret("git-acces-token", t.Token)
+	conf.Cloud18GitTokenExpires = t.ExpiresAt
+	return true, nil
+}

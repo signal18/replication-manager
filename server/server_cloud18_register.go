@@ -5,8 +5,6 @@
 package server
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"regexp"
@@ -33,10 +31,6 @@ const (
 	RegStateCredentials = "credentials"
 	// RegStateTaken: the URI belongs to another instance
 	RegStateTaken = "taken"
-
-	// cloud18MigrateRetry: how long a migration that failed for another reason than a refused
-	// password waits before it is tried again
-	cloud18MigrateRetry = time.Hour
 )
 
 // cloud18RegisterResult is the status result of a registration through Cloud18.
@@ -145,6 +139,9 @@ func (repman *ReplicationManager) cloud18Declare(conf *config.Config, glToken, d
 		if errors.Is(err, githelper.ErrNotDomainMember) {
 			state = RegStateTaken
 		}
+		if errors.Is(err, githelper.ErrNotDomainMaintainer) {
+			state = RegStateCredentials
+		}
 		repman.setRegStatus(state, "domain "+domain+": "+err.Error(), res)
 		return repman.regState()
 	}
@@ -244,6 +241,9 @@ func (repman *ReplicationManager) shareGitSecrets(conf *config.Config) {
 // they end soon (or force). A token GitLab refuses raises the request to register again
 // (GWARN022, from the state checks: config.Cloud18GitTokenLost).
 func (repman *ReplicationManager) rotateCloud18GitTokens(conf *config.Config, force bool) error {
+	if conf.Cloud18 && !conf.Cloud18GitProjects() {
+		return repman.rotateCloud18PersonalToken(conf)
+	}
 	if !conf.Cloud18GitProjects() || (!force && !conf.Cloud18GitTokensDue(time.Now())) {
 		return nil
 	}
@@ -259,54 +259,60 @@ func (repman *ReplicationManager) rotateCloud18GitTokens(conf *config.Config, fo
 		return err
 	}
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Cloud18 git tokens renewed until %s", conf.Cloud18GitTokenExpires)
-	repman.Save()
+	repman.saveRenewedToken(conf)
 	return nil
 }
 
-// cloud18MigrateToProjectTokens moves an instance registered with the GitLab password to its own
-// project tokens, by itself, at start (#2159): its stored GitLab user and password through
-// GitLab's own web sign-in (config.GitLabPasswordLogin, not the password grant GitLab ends), then
-// the same declaration as a registration, which finds its repositories (its key decrypts their
-// config): a reconnect. Nobody has to do anything. When it cannot (a 2FA account, a captcha, a
-// GitLab without password sign-in), the instance keeps its password path and says why in the log.
-func (repman *ReplicationManager) cloud18MigrateToProjectTokens(conf *config.Config) {
-	if !conf.Cloud18 || conf.Cloud18GitProjects() || conf.Cloud18Domain == "" || conf.Cloud18SubDomain == "" || conf.Cloud18SubDomainZone == "" {
-		return
+// rotateCloud18PersonalToken renews the personal token of an instance registered with the GitLab
+// password, with itself (#2159): its git never depends on the password grant GitLab ends. A
+// refused token is left to the password path (it mints a new one while the grant exists).
+func (repman *ReplicationManager) rotateCloud18PersonalToken(conf *config.Config) error {
+	// one renewal at a time, personal or project tokens: the flag is shared on purpose
+	if !repman.cloud18GitRotating.CompareAndSwap(false, true) {
+		return nil
 	}
-	user, password := conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password")
-	if user == "" || password == "" {
-		return
-	}
-	// a refused password is not tried again until it changes (GitLab locks an account after a few
-	// failed sign-ins); any other failure waits cloud18MigrateRetry before the next try
-	sum := sha256.Sum256([]byte(user + "\x00" + password))
-	fingerprint := hex.EncodeToString(sum[:])
-	if refused, _ := repman.cloud18MigrateRefused.Load().(string); refused == fingerprint {
-		return
-	}
-	if time.Now().Unix() < repman.cloud18MigrateNext.Load() {
-		return
-	}
-	glToken, err := conf.GitLabPasswordLogin(user, password)
+	defer repman.cloud18GitRotating.Store(false)
+	rotated, err := conf.RotateCloud18PersonalToken(time.Now())
 	if err != nil {
-		if errors.Is(err, config.ErrGitLabPasswordRefused) {
-			repman.cloud18MigrateRefused.Store(fingerprint)
-		} else {
-			repman.cloud18MigrateNext.Store(time.Now().Add(cloud18MigrateRetry).Unix())
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn, "Cloud18 personal git token not renewed: %s", err)
+		return err
+	}
+	if rotated {
+		keepGitAccessToken(conf, conf.GetDecryptedValue("git-acces-token"))
+		repman.shareGitSecrets(conf)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Cloud18 personal git token renewed by itself until %s", conf.Cloud18GitTokenExpires)
+		repman.saveRenewedToken(conf)
+	}
+	return nil
+}
+
+// saveRenewedToken saves at once a token GitLab just renewed: the old one is already revoked, a
+// crash before the save would leave the instance with a dead token.
+func (repman *ReplicationManager) saveRenewedToken(conf *config.Config) {
+	if conf == repman.Conf && repman.ConfigManager != nil {
+		repman.ConfigManager.SaveConfig(repman, true)
+		return
+	}
+	repman.Save()
+}
+
+// cloud18TokenRenewalDelay: the first renewal check after start, once the config is the running one.
+var cloud18TokenRenewalDelay = 2 * time.Minute
+
+// cloud18TokenRenewals renews the instance's Cloud18 git tokens (personal or project ones) shortly
+// after start and then daily, on the running config, each renewal saved at once (#2159). Not at
+// start inside InitGitConfig, which works on the config being built.
+func (repman *ReplicationManager) cloud18TokenRenewals() {
+	time.Sleep(cloud18TokenRenewalDelay)
+	for {
+		if repman.exit.Load() {
+			return
 		}
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,
-			"Cloud18: %s stays on its GitLab password (not moved to its project tokens): %s", repman.registeredInstanceURI(), err)
-		return
+		if repman.Conf.Cloud18 {
+			repman.rotateCloud18GitTokens(repman.Conf, false)
+		}
+		for i := 0; i < 24*60 && !repman.exit.Load(); i++ {
+			time.Sleep(time.Minute)
+		}
 	}
-	res := cloud18RegisterResult{URI: conf.Cloud18Domain + "." + conf.Cloud18SubDomain + "." + conf.Cloud18SubDomainZone, User: user}
-	state := repman.cloud18Declare(conf, glToken, conf.Cloud18Domain, conf.Cloud18SubDomain, conf.Cloud18SubDomainZone, "", res)
-	_, msg, _ := repman.RegStatus.snapshot()
-	if state != RegStateOK {
-		repman.cloud18MigrateNext.Store(time.Now().Add(cloud18MigrateRetry).Unix())
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn,
-			"Cloud18: %s stays on its GitLab password (not moved to its project tokens): %s", res.URI, msg)
-		return
-	}
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo,
-		"Cloud18: %s moved to its own project tokens (%s)", res.URI, msg)
 }
