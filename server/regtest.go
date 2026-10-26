@@ -306,6 +306,15 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testGroupReplicationPrimaryLoss" {
 			res = regtest.TestGroupReplicationPrimaryLoss(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testGaleraBootstrap" {
+			res = regtest.TestGaleraBootstrap(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testGaleraSwitchover" {
+			res = regtest.TestGaleraSwitchover(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testGaleraMasterLoss" {
+			res = regtest.TestGaleraMasterLoss(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testReplicationTLSAutoCertificate" {
 			res = regtest.TestReplicationTLSAutoCertificate(cl, test.ConfigFile, &test)
 		}
