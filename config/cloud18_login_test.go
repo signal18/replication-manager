@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -51,15 +53,19 @@ func TestCloud18LoginTokensBounded(t *testing.T) {
 // #2182 review 3: a refresh token the realm refused (invalid_grant) is not sent again before
 // cloud18LoginRefusedWait, then it is (never blocked for good); another 400 is not cached.
 func TestCloud18LoginRefusedWait(t *testing.T) {
-	tries := 0
+	var tries atomic.Int32
+	var mu sync.Mutex
 	answer := `{"error":"invalid_grant","error_description":"Token is not active"}`
 	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		tries++
-		http.Error(w, answer, http.StatusBadRequest)
+		tries.Add(1)
+		mu.Lock()
+		a := answer
+		mu.Unlock()
+		http.Error(w, a, http.StatusBadRequest)
 	}))
 	defer realm.Close()
 	old := cloud18LoginRefusedWait
-	cloud18LoginRefusedWait = 200 * time.Millisecond
+	cloud18LoginRefusedWait = time.Second
 	defer func() { cloud18LoginRefusedWait = old }()
 	conf := &Config{Cloud18IdentityURL: realm.URL + "/realms/cloud18"}
 
@@ -68,19 +74,21 @@ func TestCloud18LoginRefusedWait(t *testing.T) {
 			t.Fatal("a refused refresh token gives no token")
 		}
 	}
-	if tries != 1 {
-		t.Fatalf("within the wait the realm is asked once, got %d", tries)
+	if n := tries.Load(); n != 1 {
+		t.Fatalf("within the wait the realm is asked once, got %d", n)
 	}
-	time.Sleep(250 * time.Millisecond)
+	time.Sleep(1200 * time.Millisecond)
 	conf.Cloud18LoginAccess("rt-dead-wait")
-	if tries != 2 {
-		t.Fatalf("after the wait the realm is asked again, got %d", tries)
+	if n := tries.Load(); n != 2 {
+		t.Fatalf("after the wait the realm is asked again, got %d", n)
 	}
 
+	mu.Lock()
 	answer = `{"error":"invalid_request"}`
+	mu.Unlock()
 	conf.Cloud18LoginAccess("rt-other-400")
 	conf.Cloud18LoginAccess("rt-other-400")
-	if tries != 4 {
-		t.Fatalf("a 400 that is not invalid_grant is not cached, got %d", tries)
+	if n := tries.Load(); n != 4 {
+		t.Fatalf("a 400 that is not invalid_grant is not cached, got %d", n)
 	}
 }
