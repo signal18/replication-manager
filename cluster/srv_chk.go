@@ -280,11 +280,11 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	master := cluster.GetMaster()
 	if sl.IsPostgreSQLHost() {
 		// PostgreSQL has no semi-sync plugin: nothing to enforce, nothing to warn about
-	} else if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
+	} else if cluster.Conf.ForceSlaveSemisync && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "DEBUG", "Enforce semisync on slave %s", sl.URL)
 		logs, err := dbhelper.InstallSemiSync(sl.Conn, server.DBVersion)
 		cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlErr, "Could not enforce semisync on %s: %s", sl.URL, err)
-	} else if !sl.IsIgnored() && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep {
+	} else if !sl.IsIgnored() && !sl.HaveSemiSync && cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 		cluster.SetState("WARN0048", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0048"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 

@@ -175,7 +175,11 @@ func (cluster *Cluster) isAutomaticFailover() bool {
 	if !cluster.Conf.Interactive {
 		return true
 	}
-	cluster.SetState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: clusterError["ERR00002"], ErrFrom: "CHECK"})
+	// An operator failover is awaited only once the master has failed, and never on group
+	// replication: the group elects its PRIMARY and replication-manager follows it (#2180)
+	if cluster.isMasterFailed() && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
+		cluster.SetState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: clusterError["ERR00002"], ErrFrom: "CHECK"})
+	}
 	return false
 }
 
