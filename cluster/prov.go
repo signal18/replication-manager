@@ -995,7 +995,18 @@ func (cluster *Cluster) BootstrapReplication(clean bool, ftwrl bool) error {
 	// Assume master-slave if nothing else is declared
 	if !cluster.Conf.ActivePassive && !cluster.Conf.MultiMasterRing && !cluster.Conf.MultiMaster && !cluster.Conf.MxsBinlogOn && !cluster.Conf.MultiTierSlave {
 
-		for key, server := range cluster.Servers {
+		// The master is set up first, the others after: a group member cannot join before
+		// the master bootstrapped the group (a master that is not the first server left
+		// every member before it outside the group), and a PostgreSQL subscriber needs
+		// the publication (#2164).
+		order := []int{masterKey}
+		for key := range cluster.Servers {
+			if key != masterKey {
+				order = append(order, key)
+			}
+		}
+		for _, key := range order {
+			server := cluster.Servers[key]
 			if server.State == stateFailed {
 				continue
 			}

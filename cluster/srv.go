@@ -2632,7 +2632,16 @@ func (server *ServerMonitor) CertificatesReload() error {
 	return nil
 }
 
+// setGroupReplicationAllowlist names the cluster's servers as the hosts allowed to join,
+// before group replication starts (#2164). A failure is logged: the start goes on.
+func (server *ServerMonitor) setGroupReplicationAllowlist() {
+	cluster := server.ClusterGroup
+	logs, err := dbhelper.SetGroupReplicationAllowlist(server.Conn, server.DBVersion, cluster.GetGroupReplicationWhiteList())
+	cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", config.LvlErr, "Group replication allowlist can't be set on server %s: %s", server.URL, err)
+}
+
 func (server *ServerMonitor) BootstrapGroupReplication() error {
+	server.setGroupReplicationAllowlist()
 	logs, err := dbhelper.BootstrapGroupReplication(server.Conn, server.DBVersion)
 	cluster := server.ClusterGroup
 	if err != nil {
@@ -2643,6 +2652,7 @@ func (server *ServerMonitor) BootstrapGroupReplication() error {
 }
 
 func (server *ServerMonitor) StartGroupReplication() error {
+	server.setGroupReplicationAllowlist()
 	logs, err := dbhelper.StartGroupReplication(server.Conn, server.DBVersion)
 	cluster := server.ClusterGroup
 	if err != nil {
