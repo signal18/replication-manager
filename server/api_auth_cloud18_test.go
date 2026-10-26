@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -301,11 +302,23 @@ func TestLoginMethod(t *testing.T) {
 			t.Errorf("%q: %s, want %s", name, got, want)
 		}
 	}
+	cl := cluster.Cluster{Conf: &config.Config{}, APIUsers: map[string]cluster.APIUser{"local@partner.example": {User: "local@partner.example", Password: "x"}}}
+	repman.Clusters = map[string]*cluster.Cluster{"c1": &cl}
+	for _, name := range []string{"local@partner.example", "Local@Partner.example"} {
+		if repman.loginMethodFor(name) != "password" {
+			t.Errorf("%q: an internal account with a password, whatever the case, asks its password", name)
+		}
+	}
+	w := httptest.NewRecorder()
+	repman.handlerMuxLoginMethod(w, httptest.NewRequest(http.MethodPost, "/api/login/method", strings.NewReader(`{"username":"x@y.z"}`)))
+	if w.Header().Get("Access-Control-Allow-Origin") != "" {
+		t.Error("no CORS on /api/login/method")
+	}
 	repman.Conf.Cloud18SubscriptionPlan = "free"
 	if repman.loginMethodFor("person@partner.example") != "password" {
 		t.Error("a repman without Sign in with Cloud18 asks the password")
 	}
-	w := httptest.NewRecorder()
+	w = httptest.NewRecorder()
 	repman.handlerMuxLoginMethod(w, httptest.NewRequest(http.MethodPost, "/api/login/method", strings.NewReader(`{"username":"admin"}`)))
 	if !strings.Contains(w.Body.String(), `"method":"password"`) {
 		t.Fatalf("endpoint: %s", w.Body.String())
@@ -336,6 +349,10 @@ func TestCloud18SSOSilentAndHint(t *testing.T) {
 	u, _ = start("signup=1")
 	if !strings.HasSuffix(u.Path, "/protocol/openid-connect/registrations") {
 		t.Fatalf("sign up: %s", u)
+	}
+	u, _ = start("signup=1&silent=1")
+	if u.Query().Get("prompt") != "" || !strings.HasSuffix(u.Path, "/registrations") {
+		t.Fatalf("sign up is never silent: %s", u)
 	}
 	u, c := start("silent=1")
 	if u.Query().Get("prompt") != "none" {

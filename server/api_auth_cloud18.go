@@ -317,12 +317,16 @@ func (repman *ReplicationManager) loginMethodFor(user string) string {
 	if user == "" || user == "system" || !strings.Contains(user, "@") {
 		return "password"
 	}
-	if repman.isAdminUser(user) && user != repman.Conf.Cloud18GitUser {
-		return "password"
-	}
+	// an internal account of that name, whatever its case (the login form may differ from the
+	// account's case): the reads are safe without a lock, APIUsers is copy on write
 	for _, cl := range repman.Clusters {
-		if cl.IsLocalOnlyAccount(user) {
-			return "password"
+		for name, u := range cl.APIUsers {
+			if !strings.EqualFold(name, user) || strings.EqualFold(name, repman.Conf.Cloud18GitUser) {
+				continue
+			}
+			if u.Password != "" || u.Grants[config.GrantGlobalAdminShow] {
+				return "password"
+			}
 		}
 	}
 	return "cloud18"
@@ -338,7 +342,8 @@ func (repman *ReplicationManager) loginMethodFor(user string) string {
 // @Success 200 {object} map[string]string "method: password or cloud18"
 // @Router /api/login/method [post]
 func (repman *ReplicationManager) handlerMuxLoginMethod(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// same origin only (the dashboard): no CORS header, another site cannot probe account names
+	// from a visitor's browser
 	var body struct {
 		Username string `json:"username"`
 	}

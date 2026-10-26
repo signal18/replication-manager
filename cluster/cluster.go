@@ -511,6 +511,10 @@ type Cluster struct {
 	apiTokenPrincipals sync.Map `json:"-"`
 	// Whether a user holds token-create, set by LoadAPIUsers, read by the tick (WARN0251).
 	apiTokenIssuer atomic.Bool
+	// apiUsersMu serializes the writers of APIUsers (copy on write: setAPIUser, deleteAPIUser,
+	// LoadAPIUsers). Readers take no lock: each writer swaps in a new map whole, so a reader never
+	// sees a map being written (a concurrent map read and write stops the process, #2185 review).
+	apiUsersMu sync.Mutex
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
 	preservedVars               map[string]string          `json:"-"`
 	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}

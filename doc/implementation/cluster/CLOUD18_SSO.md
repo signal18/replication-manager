@@ -31,8 +31,16 @@ One Sign in button and one Sign up button, nothing else.
   how to come back to an internal API user: Logout, then type its name. A repman without Sign in with
   Cloud18 shows the Sign in form as before (internal account, then the Cloud18 password, #2182).
 
-`/api/login/method` tells whether a name is an internal account: a way to probe internal account names,
-limited to them (a Cloud18 user always gets `cloud18`), accepted for the single Sign in button.
+`/api/login/method` tells whether a name is an internal account (whatever its case): a way to probe
+internal account names, limited to them (a Cloud18 user always gets `cloud18`), accepted for the single
+Sign in button; same origin only (no CORS header), so another site cannot probe from a visitor's browser.
+It reads the API users without a lock, like every login route: `APIUsers` is copy on write
+(`setAPIUser`, `deleteAPIUser`, `LoadAPIUsers` under `apiUsersMu`, grant and role maps copied before a
+change), so a reader never meets a map being written, which would stop the process.
+
+The password field appears only after the name, so a password manager does not prefill it for an
+internal email-style account. A tab that opened with an expired session skips the silent check until
+it is reloaded (the session is cleared, the form shows).
 
 ## Flow (`server/api_auth_cloud18.go`)
 

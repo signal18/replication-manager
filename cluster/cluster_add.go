@@ -9,6 +9,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -443,9 +444,11 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 
 		cluster.Conf.APIUsersACLDiscardExternal = strings.Join(new_acls, ",")
 
+		// the entry's maps are the live map's: readers check them, so they are copied first
+		auser.Grants, auser.Roles = maps.Clone(auser.Grants), maps.Clone(auser.Roles)
 		cluster.SetUserGrants(&auser, grants)
 		cluster.SetUserRoles(&auser, roles)
-		cluster.APIUsers[user] = auser
+		cluster.setAPIUser(user, auser)
 
 		if reloadACL {
 			cluster.LoadAPIUsers()
@@ -487,7 +490,7 @@ func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 			}
 		}
 
-		delete(cluster.APIUsers, user)
+		cluster.deleteAPIUser(user)
 		cluster.Conf.APIUsersExternal = strings.Join(new_cred, ",")
 		if reloadACL {
 			cluster.SaveAcls()

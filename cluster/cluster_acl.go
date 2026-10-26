@@ -9,6 +9,7 @@ package cluster
 import (
 	"crypto/subtle"
 	"fmt"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -117,6 +118,31 @@ func (u *APIUser) Granted(grant string) error {
 // carrying a GitLab password. Single source of truth for the auth-model
 // invariant, used by IsValidACL's OIDC branch and the OIDC callback's collision
 // guard in server/api.go.
+// setAPIUser sets one API user, copy on write (apiUsersMu): a new map is built and swapped in.
+func (cluster *Cluster) setAPIUser(name string, u APIUser) {
+	cluster.apiUsersMu.Lock()
+	defer cluster.apiUsersMu.Unlock()
+	m := make(map[string]APIUser, len(cluster.APIUsers)+1)
+	for k, v := range cluster.APIUsers {
+		m[k] = v
+	}
+	m[name] = u
+	cluster.APIUsers = m
+}
+
+// deleteAPIUser removes one API user, copy on write (apiUsersMu).
+func (cluster *Cluster) deleteAPIUser(name string) {
+	cluster.apiUsersMu.Lock()
+	defer cluster.apiUsersMu.Unlock()
+	m := make(map[string]APIUser, len(cluster.APIUsers))
+	for k, v := range cluster.APIUsers {
+		if k != name {
+			m[k] = v
+		}
+	}
+	cluster.APIUsers = m
+}
+
 func (cluster *Cluster) IsLocalOnlyAccount(strUser string) bool {
 	user, ok := cluster.APIUsers[strUser]
 	if !ok {
@@ -382,7 +408,9 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		}
 	}
 	cluster.apiTokenIssuer.Store(issuer)
+	cluster.apiUsersMu.Lock()
 	cluster.APIUsers = meUsers
+	cluster.apiUsersMu.Unlock()
 	// Every (re)load reinstates the persisted `system` password, which can be stale
 	// (an older binary stored a random one before AddUser honoured an explicit password;
 	// a SecretKey change would also drift it). Force it back to the current derived key
@@ -402,14 +430,16 @@ func (cluster *Cluster) reconcileSystemServiceGrants() {
 		return
 	}
 	stripped := false
+	grants := maps.Clone(u.Grants) // never the live map's entry: readers hold it
 	for _, g := range config.GetGrantToken() {
-		if u.Grants[g] {
-			u.Grants[g] = false
+		if grants[g] {
+			grants[g] = false
 			stripped = true
 		}
 	}
 	if stripped {
-		cluster.APIUsers["system"] = u
+		u.Grants = grants
+		cluster.setAPIUser("system", u)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Stripped API token grants from the `system` service account: a machine identity never issues tokens")
 	}
 }

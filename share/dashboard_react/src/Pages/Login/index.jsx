@@ -25,6 +25,8 @@ function Login({ dashboard = false }) {
   // with Sign in with Cloud18 the page asks the name first: an internal account then shows the
   // password field, a Cloud18 user goes to the realm (#2185)
   const [showPassword, setShowPassword] = useState(false)
+  // the Cloud18 status is known and no silent check is under way: autologin may run
+  const [cloud18Ready, setCloud18Ready] = useState(false)
   const { theme } = useTheme()
 
   const navigate = useNavigate()
@@ -92,10 +94,12 @@ function Login({ dashboard = false }) {
           return
         }
         // no silent check: the page's usual autologin (not after a Cloud18 return with a code)
+        setCloud18Ready(true)
         if (!cloud18Code && !isAuthorized()) doAutologin()
       })
       .catch(() => {
         setCloud18Enabled(false)
+        setCloud18Ready(true)
         if (!cloud18Code && !isAuthorized()) doAutologin()
       })
     const params = new URLSearchParams(window.location.search)
@@ -178,10 +182,13 @@ function Login({ dashboard = false }) {
   //  - autologinRetryCount increments (previous attempt hit a network failure during restart).
   useEffect(() => {
     if (dashboard) return
+    // not before the Cloud18 status is known (a silent check may be under way), never on a
+    // Cloud18 return with a code (#2185)
+    if (!cloud18Ready || cloud18Code) return
     if (sessionStatus !== 'unauthenticated') return
     if (isAuthorized()) return
     doAutologin()
-  }, [sessionStatus, autologinRetryCount, doAutologin])
+  }, [sessionStatus, autologinRetryCount, doAutologin, cloud18Ready])
 
   useEffect(() => {
     if (!loading || !loadingGitLogin) {
