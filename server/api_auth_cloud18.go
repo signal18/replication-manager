@@ -308,8 +308,11 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOLogout(w http.ResponseWrit
 }
 
 // loginMethodFor says how the login page signs a name in: "password" for an internal repman account
-// (a local password, admin, a name that is not an email) or when this repman does not offer Sign in
-// with Cloud18; "cloud18" otherwise (the browser goes to the realm, the email prefilled).
+// (a name that is not an email: admin, system, local users; or an email that is an administrator
+// account other than the registered user) or when this repman does not offer Sign in with Cloud18;
+// "cloud18" for any other email (the browser goes to the realm, the email prefilled). A local
+// password alone does not make an email internal: repman gives one to every user it adds, SSO
+// users included.
 func (repman *ReplicationManager) loginMethodFor(user string) string {
 	if _, err := repman.Conf.Cloud18SSO(); err != nil {
 		return "password"
@@ -317,14 +320,14 @@ func (repman *ReplicationManager) loginMethodFor(user string) string {
 	if user == "" || user == "system" || !strings.Contains(user, "@") {
 		return "password"
 	}
-	// an internal account of that name, whatever its case (the login form may differ from the
+	// an administrator account of that name, whatever its case (the login form may differ from the
 	// account's case): the reads are safe without a lock, APIUsers is copy on write
 	for _, cl := range repman.Clusters {
 		for name, u := range cl.APIUsers {
 			if !strings.EqualFold(name, user) || strings.EqualFold(name, repman.Conf.Cloud18GitUser) {
 				continue
 			}
-			if u.Password != "" || u.Grants[config.GrantGlobalAdminShow] {
+			if u.Grants[config.GrantGlobalAdminShow] {
 				return "password"
 			}
 		}

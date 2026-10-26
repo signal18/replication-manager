@@ -22,17 +22,19 @@ One Sign in button and one Sign up button, nothing else.
   Already signed in at Cloud18 in this browser (on another partner): straight into the dashboard, no
   page, no password. Not signed in: the realm answers `login_required` and the page shows its form.
 - **Sign in**: the page asks the name first. `POST /api/login/method` answers `password` for an internal
-  repman account (a name that is not an email, a local password account, an admin other than the
-  registered user) and the password field appears, checked by `/api/login` as before; it answers
-  `cloud18` for anyone else, and the browser goes to the realm's page with the email prefilled
+  repman account (a name that is not an email: admin, system, local users; or an email that is an
+  administrator account other than the registered user) and the password field appears, checked by
+  `/api/login` as before; it answers `cloud18` for any other email (a local password alone does not make
+  an email internal: repman gives one to every user it adds, SSO users included), and the browser goes to the realm's page with the email prefilled
   (`login_hint`): one password, typed there once for every partner.
 - **Sign up**: the realm's own sign-up form (`/registrations`), instead of the GitLab one.
 - **Logout**: the session here, then the realm session (every partner forgets the person). That is also
   how to come back to an internal API user: Logout, then type its name. A repman without Sign in with
   Cloud18 shows the Sign in form as before (internal account, then the Cloud18 password, #2182).
 
-`/api/login/method` tells whether a name is an internal account (whatever its case): a way to probe
-internal account names, limited to them (a Cloud18 user always gets `cloud18`), accepted for the single
+`/api/login/method` tells whether an email is an administrator account (whatever its case): a way to
+probe administrator emails, limited to them (any other email gets `cloud18`, a name without `@` always
+`password`), accepted for the single
 Sign in button; same origin only (no CORS header), so another site cannot probe from a visitor's browser.
 It reads the API users without a lock, like every login route: `APIUsers` is copy on write
 (`setAPIUser`, `deleteAPIUser`, `LoadAPIUsers` under `apiUsersMu`, grant and role maps copied before a

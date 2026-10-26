@@ -302,12 +302,17 @@ func TestLoginMethod(t *testing.T) {
 			t.Errorf("%q: %s, want %s", name, got, want)
 		}
 	}
-	cl := cluster.Cluster{Conf: &config.Config{}, APIUsers: map[string]cluster.APIUser{"local@partner.example": {User: "local@partner.example", Password: "x"}}}
+	cl := cluster.Cluster{Conf: &config.Config{}, APIUsers: map[string]cluster.APIUser{
+		"ops@partner.example":    {User: "ops@partner.example", Password: "x", Grants: map[string]bool{config.GrantGlobalAdminShow: true}},
+		"member@partner.example": {User: "member@partner.example", Password: "random-given-by-repman", Grants: map[string]bool{"cluster-show": true}}}}
 	repman.Clusters = map[string]*cluster.Cluster{"c1": &cl}
-	for _, name := range []string{"local@partner.example", "Local@Partner.example"} {
+	for _, name := range []string{"ops@partner.example", "Ops@Partner.example"} {
 		if repman.loginMethodFor(name) != "password" {
-			t.Errorf("%q: an internal account with a password, whatever the case, asks its password", name)
+			t.Errorf("%q: an administrator account, whatever the case, asks its password here", name)
 		}
+	}
+	if repman.loginMethodFor("member@partner.example") != "cloud18" {
+		t.Error("a user repman gave a local password to is still a Cloud18 user")
 	}
 	w := httptest.NewRecorder()
 	repman.handlerMuxLoginMethod(w, httptest.NewRequest(http.MethodPost, "/api/login/method", strings.NewReader(`{"username":"x@y.z"}`)))
