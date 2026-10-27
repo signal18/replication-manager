@@ -19,9 +19,9 @@ Goal: **no GitLab password anywhere in repman**; the GitLab token stays, for git
 ## Login with the Cloud18 account (`server/api_login_cloud18.go`, `ssoPasswordLogin`)
 
 `/api/login`, the async SSO upgrade and subscribe check a name and password: local account (unchanged),
-then the **Cloud18 account** (`config.Cloud18Login`), then GitLab's password grant while
-`cloud18-gitlab-password-grant` is on (default during the rollout: accounts still on a GitLab password;
-their GitLab and Cloud18 passwords may differ). The error is the last one tried; `classifySSOAuthError`
+then the **Cloud18 account** (`config.Cloud18Login`). GitLab's password grant is no longer tried: the
+GitLab passwords were moved into the realm (2026-10-26, bcrypt hashes copied, re-hashed by the realm at
+each person's next login), and the `cloud18-gitlab-password-grant` switch is gone. The error is the Cloud18 one; `classifySSOAuthError`
 reads `ErrCloud18BadCredentials` as `credential_mismatch` and `ErrCloud18AccountNotReady` as
 `not_registered`. One failed login counts once for the lockout.
 
@@ -91,7 +91,7 @@ issuer is the realm): an instance not registered to Cloud18 never trusts the rea
 ## Rollout (step 3, later)
 
 Older releases keep logging in with GitLab's password grant as long as GitLab accepts it. Once the fleet
-runs this release: switch `cloud18-gitlab-password-grant` off, drop the encrypted password from the session
+runs this release: (done: the switch `cloud18-gitlab-password-grant` is removed, the passwords are in the realm) drop the encrypted password from the session
 (it is kept now only for instances on an older release), then disable the grant on GitLab. Rule kept from
 #2159: GitLab is not upgraded past the password grant before the fleet runs this release.
 

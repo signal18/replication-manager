@@ -152,6 +152,7 @@ func (repman *ReplicationManager) httpserver() {
 	})
 
 	router.HandleFunc(cloud18LoginPath, repman.loginHandler) // "/api/login": the realm-token middleware leaves this path to the handler (#2182)
+	repman.registerCloud18SSORoutes(router)                  // Sign in with Cloud18 (#2185)
 	router.HandleFunc("/api/login/upgrade", repman.upgradeHandler).Methods(http.MethodGet, http.MethodOptions)
 	// Public auth routes are intentionally wired in both http.go and api.go because
 	// replication-manager can run either HTTP API path depending on runtime flags.
@@ -230,10 +231,6 @@ func (repman *ReplicationManager) httpserver() {
 
 	router.Handle("/api/health", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxHealth)),
-	))
-
-	router.Handle("/api/auth/callback", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
 	))
 
 	router.Handle("/api/whoami", negroni.New(

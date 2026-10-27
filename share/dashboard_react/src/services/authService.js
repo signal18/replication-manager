@@ -8,6 +8,8 @@ export const authService = {
   getSignupPromo,
   getSignupStatus,
   pollUpgrade,
+  cloud18SSOStatus,
+  cloud18SSOSession,
 }
 
 function login(username, password, baseURL) {
@@ -38,6 +40,16 @@ function getSignupPromo() {
 
 function getSignupStatus(email) {
   return publicApi.get('signup/status', { email })
+}
+
+// Sign in with Cloud18 (#2185): offered on a partner repman with a public address.
+function cloud18SSOStatus() {
+  return publicApi.get('auth/cloud18')
+}
+
+// Trades the one-time code the Cloud18 callback put in the address for the session, once.
+function cloud18SSOSession(code) {
+  return publicApi.post('auth/cloud18/session', { code })
 }
 
 function pollUpgrade(upgradeId) {

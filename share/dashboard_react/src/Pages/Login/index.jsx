@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { login, logout, setUserData } from '../../redux/authSlice'
 import styles from './styles.module.scss'
-import { Box, Container, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text, HStack, Link } from '@chakra-ui/react'
+import { Box, Container, Divider, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text, HStack, Link } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
 import { isAuthorized } from '../../utility/common'
 import PasswordControl from '../../components/PasswordControl'
@@ -12,6 +12,7 @@ import Message from '../../components/Message'
 import { useTheme } from '../../ThemeProvider'
 import { clearCluster } from '../../redux/clusterSlice'
 import { clearClusters } from '../../redux/globalClustersSlice'
+import { authService } from '../../services/authService'
 
 function Login({ dashboard = false }) {
   const [username, setUsername] = useState('')
@@ -19,6 +20,10 @@ function Login({ dashboard = false }) {
   const [usernameError, setUsernameError] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [cloud18Enabled, setCloud18Enabled] = useState(false)
+  const [cloud18Loading, setCloud18Loading] = useState(false)
+  // the Cloud18 status is known and no silent check is under way: autologin may run
+  const [cloud18Ready, setCloud18Ready] = useState(false)
   const { theme } = useTheme()
 
   const navigate = useNavigate()
@@ -65,14 +70,76 @@ function Login({ dashboard = false }) {
       })
   }, [dispatch, navigate])
 
+  // Sign in with Cloud18 (#2185) on a partner repman: the silent check on opening (already signed in
+  // at Cloud18 in this browser: straight in, nothing shown), and the way back from the realm, a
+  // one-time code in the address traded once for the session (never a token in the address).
+  const searchParams = new URLSearchParams(window.location.search)
+  const cloud18Code = searchParams.get('cloud18')
+  const cloud18Back = cloud18Code || searchParams.get('cloud18_error') || searchParams.get('cloud18_silent')
+  const cloud18Traded = useRef(false) // the one-time code is sent once (StrictMode runs effects twice)
+  useEffect(() => {
+    if (dashboard) return
+    authService.cloud18SSOStatus()
+      .then((resp) => {
+        const enabled = resp?.status === 200 && resp?.data?.enabled === true
+        setCloud18Enabled(enabled)
+        // once per tab: after a Logout (which ends the Cloud18 session) or a check that found none,
+        // the page shows its form and does not try again
+        if (enabled && !cloud18Back && !isAuthorized() && sessionStorage.getItem('cloud18_silent_tried') !== '1') {
+          sessionStorage.setItem('cloud18_silent_tried', '1')
+          window.location.assign('/api/auth/cloud18/start?silent=1')
+          return
+        }
+        // no silent check: the page's usual autologin (not after a Cloud18 return with a code)
+        setCloud18Ready(true)
+        if (!cloud18Code && !isAuthorized()) doAutologin()
+      })
+      .catch(() => {
+        setCloud18Enabled(false)
+        setCloud18Ready(true)
+        if (!cloud18Code && !isAuthorized()) doAutologin()
+      })
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('cloud18_silent')) {
+      window.history.replaceState(null, '', '/login')
+    }
+    const failed = params.get('cloud18_error')
+    if (failed) {
+      // only the server's fixed reasons are shown, never text from the address
+      const reasons = {
+        expired: 'the sign-in expired or was not started in this browser, try again',
+        refused: 'Cloud18 did not sign you in',
+        token: 'Cloud18 sent a token this repman refuses',
+        busy: 'too many sign-ins in progress, try again in a few minutes',
+        failed: 'no session could be opened'
+      }
+      setErrorMessage('Sign in with Cloud18: ' + (reasons[failed] || 'failed, try again'))
+      window.history.replaceState(null, '', '/login')
+    }
+    if (!cloud18Code || cloud18Traded.current) return
+    cloud18Traded.current = true
+    window.history.replaceState(null, '', '/login')
+    setCloud18Loading(true)
+    authService.cloud18SSOSession(cloud18Code)
+      .then((resp) => {
+        if (resp?.status === 200 && resp?.data?.token) {
+          localStorage.setItem('user_token', resp.data.token)
+          localStorage.setItem('username', resp.data.username)
+          localStorage.setItem('login_method', 'cloud18')
+          dispatch(setUserData())
+          navigate('/')
+        } else {
+          setErrorMessage('Sign in with Cloud18: the sign-in expired, try again')
+        }
+      })
+      .catch(() => setErrorMessage('Sign in with Cloud18: no answer, try again'))
+      .finally(() => setCloud18Loading(false))
+  }, [])
+
   useEffect(() => {
     if (!dashboard) {
-      // If a token exists, SessionGuard (App.jsx) is already validating it via whoami.
-      // doAutologin will be called reactively below if whoami clears the stale token.
-      if (isAuthorized()) return
-
-      // No token on mount: try autologin immediately.
-      doAutologin()
+      // On mount, autologin starts once the page knows whether a silent Cloud18 check runs
+      // (the Cloud18 status above, #2185); a token, if any, is validated by SessionGuard (App.jsx).
       return
     }
 
@@ -112,10 +179,13 @@ function Login({ dashboard = false }) {
   //  - autologinRetryCount increments (previous attempt hit a network failure during restart).
   useEffect(() => {
     if (dashboard) return
+    // not before the Cloud18 status is known (a silent check may be under way), never on a
+    // Cloud18 return with a code (#2185)
+    if (!cloud18Ready || cloud18Code) return
     if (sessionStatus !== 'unauthenticated') return
     if (isAuthorized()) return
     doAutologin()
-  }, [sessionStatus, autologinRetryCount, doAutologin])
+  }, [sessionStatus, autologinRetryCount, doAutologin, cloud18Ready])
 
   useEffect(() => {
     if (!loading || !loadingGitLogin) {
@@ -185,19 +255,35 @@ function Login({ dashboard = false }) {
                   type='submit'
                   size='medium'
                   onClick={onButtonClick}
-                  isLoading={loading}
+                  isLoading={loading || cloud18Loading}
                   loadingText={'Signing in'}>
                   Sign in
                 </RMButton>
-                <RMButton
-                  id='btnGitRegister'
-                  type='button'
-                  size='medium'
-                  onClick={() => navigate('/signup')}
-                  isLoading={loadingGitLogin}
-                  loadingText={'Signing up to Cloud18'}>
-                  Sign up with GitLab SSO
-                </RMButton>
+                {cloud18Enabled && (
+                  <>
+                    {/* the fields above serve Sign in only: the Cloud18 password is typed on the
+                        Cloud18 page (#2185); an email already typed is prefilled there */}
+                    <HStack spacing='3'>
+                      <Divider />
+                      <Text fontSize='sm' color='gray.500' whiteSpace='nowrap'>or</Text>
+                      <Divider />
+                    </HStack>
+                    <RMButton
+                      id='btnCloud18Login'
+                      type='button'
+                      size='medium'
+                      onClick={() => window.location.assign('/api/auth/cloud18/start' + (username.includes('@') ? '?login_hint=' + encodeURIComponent(username.trim()) : ''))}>
+                      Sign in with Cloud18
+                    </RMButton>
+                    <RMButton
+                      id='btnCloud18Register'
+                      type='button'
+                      size='medium'
+                      onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}>
+                      Sign up with Cloud18
+                    </RMButton>
+                  </>
+                )}
               </Stack>
             </Stack>
           </Box>

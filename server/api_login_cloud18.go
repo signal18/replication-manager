@@ -9,11 +9,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
 )
 
@@ -29,29 +30,18 @@ type ssoLogin struct {
 	cloud18 *config.Cloud18Login
 }
 
-// ssoPasswordLogin checks a person's name and password for an SSO login: the Cloud18 account
-// first, then, while cloud18-gitlab-password-grant is on, GitLab's password grant (an account
-// still on its GitLab password). The error is the last one tried (classifySSOAuthError).
+// ssoPasswordLogin checks a person's name and password for an SSO login against the Cloud18
+// account only: GitLab's password grant is no longer tried, the GitLab passwords were moved into
+// the realm (2026-10-26). The error is classified by classifySSOAuthError.
 func (repman *ReplicationManager) ssoPasswordLogin(user, password string) (ssoLogin, error) {
-	err := errors.New("no Cloud18 realm (cloud18-identity-url) and GitLab's password grant is off (cloud18-gitlab-password-grant)")
-	if repman.Conf.Cloud18IdentityURL != "" {
-		l, cerr := repman.Conf.Cloud18Login(user, password)
-		if cerr == nil {
-			return ssoLogin{token: l.GitLabToken, cloud18: l}, nil
-		}
-		err = cerr
+	if repman.Conf.Cloud18IdentityURL == "" {
+		return ssoLogin{}, errors.New("no Cloud18 realm (cloud18-identity-url)")
 	}
-	if !repman.Conf.Cloud18GitLabPasswordGrant {
+	l, err := repman.Conf.Cloud18Login(user, password)
+	if err != nil {
 		return ssoLogin{}, err
 	}
-	tok, gerr := githelper.GetGitLabTokenBasicAuth(user, password, false)
-	if gerr != nil || tok == "" {
-		if gerr == nil {
-			gerr = errors.New("GitLab gave no token")
-		}
-		return ssoLogin{}, gerr
-	}
-	return ssoLogin{token: tok}, nil
+	return ssoLogin{token: l.GitLabToken, cloud18: l}, nil
 }
 
 // cloud18Claim is the session's Cloud18 login, the encrypted refresh token of its realm token:
@@ -120,6 +110,13 @@ func (repman *ReplicationManager) logCloud18TokenRefused(event, remote string, e
 	if errors.Is(err, errCloud18TokenRefusedAgain) {
 		return
 	}
+	repman.logCloud18Refusal(event, "cloud18-token", remote, "Cloud18 token refused: "+err.Error())
+}
+
+// logCloud18Refusal writes a Cloud18 refusal (a realm token, Sign in with Cloud18) to the security
+// log within one bound shared by all of them (F4: at most cloud18TokenLogMax lines a minute, then
+// one line saying the rest are not logged), its text cleaned of control characters and capped.
+func (repman *ReplicationManager) logCloud18Refusal(event, user, remote, msg string) {
 	cloud18TokenLog.Lock()
 	now := time.Now()
 	if now.Sub(cloud18TokenLog.window) >= time.Minute {
@@ -130,9 +127,18 @@ func (repman *ReplicationManager) logCloud18TokenRefused(event, remote string, e
 	cloud18TokenLog.Unlock()
 	switch {
 	case n <= cloud18TokenLogMax:
-		repman.logSecurityEvent(event, "cloud18-token", remote, "Cloud18 token refused: "+err.Error())
+		msg = strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return ' '
+			}
+			return r
+		}, msg)
+		if len(msg) > 300 {
+			msg = msg[:300] + "…"
+		}
+		repman.logSecurityEvent(event, user, remote, msg)
 	case n == cloud18TokenLogMax+1:
-		repman.logSecurityEvent(event, "cloud18-token", remote, "Cloud18 tokens refused: more than 30 in a minute, the next ones are not logged this minute")
+		repman.logSecurityEvent(event, user, remote, "Cloud18 refusals: more than 30 in a minute, the next ones are not logged this minute")
 	}
 }
 

@@ -2829,8 +2829,6 @@ definitions:
         type: string
       cloud18GitUser:
         type: string
-      cloud18GitlabPasswordGrant:
-        type: boolean
       cloud18HealthRefreshInterval:
         type: integer
       cloud18IdentityUrl:
@@ -2932,6 +2930,8 @@ definitions:
         type: number
       cloud18SponsorUserCredential:
         type: string
+      cloud18SsoLogin:
+        type: boolean
       cloud18SubDomain:
         type: string
       cloud18SubDomainZone:
@@ -5839,6 +5839,111 @@ paths:
       summary: Toggle server active/standby (server-level, calm-period switchover)
       tags:
       - Monitor
+  /api/auth/cloud18:
+    get:
+      description: On a partner repman with a public address (cloud18 on, plan partner,
+        a public https api-public-url, cloud18-sso-login on), the login page offers
+        Sign in with Cloud18 (#2185). Public.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: enabled, and the reason when it is not
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 'Sign in with Cloud18: offered or not'
+      tags:
+      - Auth
+  /api/auth/cloud18/callback:
+    get:
+      description: The realm sends the browser back here with a code; the session
+        is opened and the browser sent to /login with a one-time code (#2185). Public.
+      parameters:
+      - description: authorization code
+        in: query
+        name: code
+        required: true
+        type: string
+      - description: the state of /api/auth/cloud18/start
+        in: query
+        name: state
+        required: true
+        type: string
+      responses:
+        "302":
+          description: to /login?cloud18=<one-time code>
+          schema:
+            type: string
+      summary: 'Sign in with Cloud18: the realm''s answer'
+      tags:
+      - Auth
+  /api/auth/cloud18/logout:
+    get:
+      description: Redirects the browser to the realm's logout, back to /login (#2185).
+        Public.
+      responses:
+        "302":
+          description: to the realm's logout
+          schema:
+            type: string
+      summary: 'Sign in with Cloud18: logout'
+      tags:
+      - Auth
+  /api/auth/cloud18/session:
+    post:
+      consumes:
+      - application/json
+      description: Trades the one-time code the callback gave the dashboard for the
+        session token, once, within 60 s (#2185). Public.
+      parameters:
+      - description: '{\'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: token, username, loginMethod cloud18
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: unknown, used or expired code
+          schema:
+            type: string
+      summary: 'Sign in with Cloud18: the session'
+      tags:
+      - Auth
+  /api/auth/cloud18/start:
+    get:
+      description: Redirects the browser to the Cloud18 realm's sign-in (login_hint),
+        silent check (silent=1) or sign-up (signup=1), back to /api/auth/cloud18/callback
+        (#2185). Public.
+      parameters:
+      - description: the email typed on the login page, prefilled on the realm's page
+        in: query
+        name: login_hint
+        type: string
+      - description: '1: sign in only if the person has a realm session, nothing shown'
+        in: query
+        name: silent
+        type: string
+      - description: '1: the realm''s sign-up form'
+        in: query
+        name: signup
+        type: string
+      responses:
+        "302":
+          description: to the realm
+          schema:
+            type: string
+      summary: 'Sign in with Cloud18: start'
+      tags:
+      - Auth
   /api/cloud18/self-service:
     get:
       description: Whether this instance accepts self-service cluster creation from
@@ -22322,8 +22427,8 @@ paths:
       - application/json
       description: |-
         Authenticates a user and returns a JWT token upon successful login. A local account,
-        then (Cloud18 instance) the Cloud18 account (email and Cloud18 password), then GitLab's
-        password grant while cloud18-gitlab-password-grant is on. On a registered Cloud18
+        then (Cloud18 instance) the Cloud18 account (email and Cloud18 password); GitLab's
+        password grant is no longer tried. On a registered Cloud18
         instance, a Cloud18 realm token as bearer with an empty body ({}) logs its person in
         (another Cloud18 instance acting for its user, #2182).
       parameters:
@@ -23305,6 +23410,13 @@ paths:
           description: Unauthorized user
           schema:
             type: string
+        "409":
+          description: 'A Sign in with Cloud18 session: open the chat''s web app at
+            url'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:

@@ -836,7 +836,7 @@ func (cluster *Cluster) reconcileSystemServicePassword() {
 	}
 	if u, ok := cluster.APIUsers["system"]; ok && u.Password != apikey {
 		u.Password = apikey
-		cluster.APIUsers["system"] = u
+		cluster.setAPIUser("system", u)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reconciled `system` service-account password to the current derived API key")
 	}
 }
