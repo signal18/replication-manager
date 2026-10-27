@@ -65,7 +65,10 @@ until it ends (`pinGaleraBootstrap`, `galeraProvisionBootstrap`). Without it the
 computed at the start and each config at its render: the discovery running meanwhile can set
 a master (the ERR00012 path takes the first failed server with an empty state), and the
 node started first and the node rendered with the empty list could differ again. The pin
-still applies only while the cluster is down.
+still applies only while the cluster is down. Only a full provision pins: a single-node
+reprovision uses the live rule. A config reload during the provision that removes the
+pinned server leaves no bootstrap node, and the provision fails as before the fix
+("failed to reach primary view").
 
 ## Detection
 

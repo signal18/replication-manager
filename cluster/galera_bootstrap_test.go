@@ -182,6 +182,9 @@ func TestGaleraBootstrapPinnedDuringProvision(t *testing.T) {
 		t.Fatal("during the provision the pinned node db3 bootstraps, db1 joins")
 	}
 	release()
+	if c.galeraProvisionBootstrap.Load() != nil {
+		t.Fatal("the provision ended: the pin is released")
+	}
 	if !c.isGaleraBootstrapNode(db1) || c.isGaleraBootstrapNode(db3) {
 		t.Fatal("after the provision the rule applies again")
 	}

@@ -58,6 +58,9 @@ func (cluster *Cluster) pinGaleraBootstrap() func() {
 		return func() {}
 	}
 	u := cluster.galeraBootstrapURL()
+	if u == "" {
+		return func() {}
+	}
 	cluster.galeraProvisionBootstrap.Store(&u)
 	return func() { cluster.galeraProvisionBootstrap.Store(nil) }
 }
