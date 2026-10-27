@@ -56,6 +56,9 @@ with 1146 until a restart (26,412 in ProxySQL's digest). Now:
   for, and a view replaced every tick is a cluster-wide DDL (TOI) blocking every node. The
   setup creates no `pseudo_gtid_v` view on Galera either: only the positional failover
   reads it (`GetLastPseudoGTID`), so a setup rerun sends the `IF NOT EXISTS` statements only.
+  The rejoin and backup paths that call `pointSlaveToMasterPositional` reach it only for a
+  MySQL/Percona replica without GTID; such a replica of a Galera node would find no view
+  (positional failover is not supported on Galera). A view created by an older repman stays.
 - **No other drop:** no other code path drops `replication_manager_schema` (grep of
   `DROP DATABASE` on 2026-10-27: the other regtests drop their own `regtest_*` schemas).
 - **Tests never drop the schema:** the regtest probe (`dropProbeTable`) and the table bench
