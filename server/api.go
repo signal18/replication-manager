@@ -657,6 +657,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 			// session came with, both for the other Cloud18 instances
 			UserInfoMap["Cloud18Login"], _ = mycutinfo["cloud18"].(string)
 			UserInfoMap["Cloud18Token"], _ = mycutinfo["cloud18_token"].(string)
+			UserInfoMap["ChatAs"], _ = mycutinfo["chat_as"].(string)
 			return UserInfoMap, nil
 		}
 		return nil, fmt.Errorf("invalid oauth provider")
@@ -891,15 +892,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 		resetAuthTry()
-		meetUser := repman.Conf.Cloud18GitUser
-		meetPassword := repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
-		meetUserID, err := meethelper.CreateMeetUserClient(meetUser, meetPassword,
-			repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
-		if err != nil {
-			if repman.Conf.LogSupport {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %v", err)
-			}
-		}
+		meetUserID := repman.instanceMeetUser()
 		finalInfo := struct {
 			Name       string
 			Role       string
@@ -2707,4 +2700,21 @@ func (repman *ReplicationManager) handlerMuxHealth(w http.ResponseWriter, r *htt
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(healths)
+}
+
+// instanceMeetUser opens the support chat with the instance's own GitLab account
+// (cloud18-gitlab-user): the chat of a local login, and of a Sign in with Cloud18 login, as
+// repman cannot open the person's own account there (no password, no GitLab session). Empty
+// when the chat cannot be opened (logged under the support module).
+func (repman *ReplicationManager) instanceMeetUser() string {
+	if repman.Conf.Cloud18GitUser == "" {
+		return "" // not registered: no instance account to open the chat with
+	}
+	meetPassword := repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
+	meetUserID, err := meethelper.CreateMeetUserClient(repman.Conf.Cloud18GitUser, meetPassword,
+		repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	if err != nil && repman.Conf.LogSupport {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %v", err)
+	}
+	return meetUserID
 }

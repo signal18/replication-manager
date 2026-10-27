@@ -440,13 +440,13 @@ func (conf *Config) Cloud18LoginAccess(refresh string) (string, error) {
 	return e.token, nil
 }
 
-// Sign in with Cloud18 (#2185): on a partner repman with a public address, the browser signs in at
-// the realm itself (authorization code, PKCE) and comes back to the repman's callback; the realm's
-// session then signs the person in on every other partner without a password. No repman talks to
-// another. Clients and dev instances keep the Sign in form (Cloud18Login).
+// Sign in with Cloud18 (#2185): on a registered repman with a public https address, the browser
+// signs in at the realm itself (authorization code, PKCE) and comes back to the repman's callback;
+// the realm's session then signs the person in on every other such repman without a password. No
+// repman talks to another. The other repmans keep the Sign in form only (Cloud18Login).
 
 // Cloud18SSOCallbackPath is the callback route of the browser sign-in, under api-public-url (the
-// realm's client lists it for each partner).
+// realm's client lists it for each such repman).
 const Cloud18SSOCallbackPath = "/api/auth/cloud18/callback"
 
 // Cloud18SSO says whether this repman offers Sign in with Cloud18, and if not why: registered to
@@ -525,7 +525,7 @@ func (conf *Config) Cloud18SSOExchange(public, code, verifier string) (*Cloud18L
 	return &Cloud18Login{Access: a.AccessToken, Refresh: a.RefreshToken}, nil
 }
 
-// Cloud18SSOLogoutURL ends the person's realm session (every partner asks again) and comes back to
+// Cloud18SSOLogoutURL ends the person's realm session (every such repman asks again) and comes back to
 // this repman's login page.
 func (conf *Config) Cloud18SSOLogoutURL(public string) (string, error) {
 	issuer, err := conf.cloud18Issuer()

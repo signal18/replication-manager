@@ -90,17 +90,50 @@ func extractToken(r *http.Request) (string, error) {
 }
 
 func (repman *ReplicationManager) getUserIDFromHeader(r *http.Request) (string, error) {
+	userInfo, err := repman.getUserInfoFromHeader(r)
+	if err != nil {
+		return "", err
+	}
+	return userInfo["MeetUserID"], nil
+}
+
+// getUserInfoFromHeader is the session of the request's bearer token (GetUserInfoMap).
+func (repman *ReplicationManager) getUserInfoFromHeader(r *http.Request) (map[string]string, error) {
 	tokString, err := extractToken(r)
 	if err != nil {
 		fmt.Printf("Error extracting token: %v\n", err)
-		return "", err
+		return nil, err
 	}
 	userInfo, err := repman.ParseWebSocketJWT(tokString)
 	if err != nil {
 		fmt.Printf("Error parsing JWT: %v\n", err)
-		return "", err
+		return nil, err
 	}
-	return userInfo["MeetUserID"], nil
+	return userInfo, nil
+}
+
+// chatAsInstance marks a session whose support chat is the instance's account
+// (instanceMeetUser): a Sign in with Cloud18 login, whose person repman cannot open the chat as.
+const chatAsInstance = "instance"
+
+// chatSignature is what a message written in a chatAsInstance session starts with: the
+// person's name and email from the verified Cloud18 token, so support sees who writes
+// through the instance's account. Empty for the other sessions.
+func chatSignature(userInfo map[string]string) string {
+	if userInfo["ChatAs"] != chatAsInstance {
+		return ""
+	}
+	name := strings.NewReplacer("*", "", "\n", " ").Replace(strings.TrimSpace(userInfo["DisplayName"]))
+	email := strings.TrimSpace(userInfo["Email"])
+	switch {
+	case name != "" && email != "":
+		return "**" + name + "** (" + email + "): "
+	case email != "":
+		return "**" + email + "**: "
+	case name != "":
+		return "**" + name + "**: "
+	}
+	return ""
 }
 
 // @Summary Retrieve Meet user information.
@@ -245,7 +278,8 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID, err := repman.getUserIDFromHeader(r)
+	userInfo, err := repman.getUserInfoFromHeader(r)
+	userID := userInfo["MeetUserID"]
 
 	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
@@ -283,7 +317,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	message_id, err := meetClient.PostMessage(channelID, request.Message)
+	message_id, err := meetClient.PostMessage(channelID, chatSignature(userInfo)+request.Message)
 	if err != nil {
 		http.Error(w, "Error posting message API", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {

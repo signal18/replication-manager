@@ -1,11 +1,11 @@
-# Sign in with Cloud18 on partner repmans (#2185)
+# Sign in with Cloud18 on registered public repmans (#2185)
 
 ## Why
 
-Each repman address is its own site: a person signed in on one partner repman typed the password again
-on the next. Partner repmans now let the Cloud18 realm (Keycloak) sign the person in, in the browser:
-the first partner shows the realm's login page, every other one comes back at once thanks to the realm's
-session. **No repman talks to another** for this: only the browser, the repman and the realm.
+Each repman address is its own site: a person signed in on one repman typed the password again on the
+next. Registered repmans with a public https address now let the Cloud18 realm (Keycloak) sign the
+person in, in the browser: the first one shows the realm's login page, every other one comes back at
+once thanks to the realm's session. **No repman talks to another** for this: only the browser, the repman and the realm.
 
 ## Where (`config.Cloud18SSO`)
 
@@ -59,7 +59,7 @@ meeting a map being written, which would stop the process.
    once; it keeps `login_method = cloud18`.
 5. **Logout**: the dashboard drops its sessions as before, then, for a Cloud18 session, goes to
    `GET /api/auth/cloud18/logout`, redirected to the realm's logout (`client_id`,
-   `post_logout_redirect_uri = <api-public-url>/login`): the realm session ends, every partner asks again.
+   `post_logout_redirect_uri = <api-public-url>/login`): the realm session ends, every such repman asks again.
    Without an `id_token_hint` the realm asks the person to confirm the logout.
 
 Refusals (unknown or reused state, another browser, realm error, refused token, unknown/used/expired
@@ -80,9 +80,19 @@ application set (`api-oauth-client-id`), and GitLab's retained logs show no logi
 
 ## Realm setup
 
-The client `replication-manager-login` lists, for each partner, the redirect URI
-`https://<partner public address>/api/auth/cloud18/callback` and the post-logout redirect URI
-`https://<partner public address>/login`. Signal18 adds them when a partner is set up.
+The client `replication-manager-login` lists, for each such repman, the redirect URI
+`https://<public address>/api/auth/cloud18/callback` and the post-logout redirect URI
+`https://<public address>/login`. Signal18 adds them when the repman is registered.
+
+## Support chat of a Sign in with Cloud18 session
+
+The chat (meet) signs people in through GitLab, and a Sign in with Cloud18 session gives repman neither
+the password nor a GitLab session. Such a session opens the chat with the instance's own account
+(`instanceMeetUser`, `cloud18-gitlab-user`), as a local login does, and carries `chat_as = instance`:
+`PostMeetHandler` starts each message with the person's name and email from the verified realm token
+(`chatSignature`), so support sees who writes. The person's own channels and direct messages are in the
+chat app, or with Sign in (name and password), which opens their own account as before. Old releases
+are unchanged: the chat stays on GitLab.
 
 ## Tests
 

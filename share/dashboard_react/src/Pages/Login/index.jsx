@@ -272,16 +272,14 @@ function Login({ dashboard = false }) {
                       id='btnCloud18Login'
                       type='button'
                       size='medium'
-                      onClick={() => window.location.assign('/api/auth/cloud18/start' + (username.includes('@') ? '?login_hint=' + encodeURIComponent(username.trim()) : ''))}
-                      loadingText={'Signing in with Cloud18'}>
+                      onClick={() => window.location.assign('/api/auth/cloud18/start' + (username.includes('@') ? '?login_hint=' + encodeURIComponent(username.trim()) : ''))}>
                       Sign in with Cloud18
                     </RMButton>
                     <RMButton
                       id='btnCloud18Register'
                       type='button'
                       size='medium'
-                      onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}
-                      loadingText={'Signing up to Cloud18'}>
+                      onClick={() => window.location.assign('/api/auth/cloud18/start?signup=1')}>
                       Sign up with Cloud18
                     </RMButton>
                   </>
