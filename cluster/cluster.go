@@ -2092,6 +2092,30 @@ func (cluster *Cluster) Save() {
 	cluster.IsNeedConfigSave = true
 }
 
+// stateToSave is the cluster's runtime state as clusterstate.json carries it; the back-office
+// harvests it from the config repo into clusters_state and publishes it in peer.json.
+// isProvisioned is the provisioned flag SetStatus refreshes every tick (IsProvisioned), never
+// IsAllDbUp, which nothing sets true (#2200).
+func (cluster *Cluster) stateToSave() ClusterState {
+	var clsave ClusterState
+	clsave.Crashes = cluster.Crashes
+	clsave.Servers = cluster.Conf.Hosts
+	clsave.IsAllDbUp = cluster.IsAllDbUp
+	clsave.RepmgrVersion = cluster.RepMgrVersion
+	clsave.RepmgrFullVersion = cluster.RepMgrFullVersion
+	clsave.RepmgrRestartTime = cluster.RepMgrRestartTime
+	clsave.RepmgrArch = cluster.Conf.GoArch
+	clsave.RepmgrOS = cluster.Conf.GoOS
+	clsave.IsDown = cluster.IsDown
+	clsave.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().State == "Failed"
+	clsave.IsFailable = !cluster.IsNotMonitoring && cluster.StateMachine.GetHeartbeats() > 0
+	clsave.IsProvisioned = cluster.IsProvision
+	if cluster.lastmaster != nil {
+		clsave.LastMaster = cluster.lastmaster.URL
+	}
+	return clsave
+}
+
 // SaveCallBack performs the actual config persist (former Save body): the
 // cluster .toml, runtime json (agents/clusterstate/sla/queryrules), and the
 // peer event log. Invoked only by the repman config-sync gate.
@@ -2106,22 +2130,7 @@ func (cluster *Cluster) SaveCallBack() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
 
-	var clsave ClusterState
-	clsave.Crashes = cluster.Crashes
-	clsave.Servers = cluster.Conf.Hosts
-	clsave.IsAllDbUp = cluster.IsAllDbUp
-	clsave.RepmgrVersion = cluster.RepMgrVersion
-	clsave.RepmgrFullVersion = cluster.RepMgrFullVersion
-	clsave.RepmgrRestartTime = cluster.RepMgrRestartTime
-	clsave.RepmgrArch = cluster.Conf.GoArch
-	clsave.RepmgrOS = cluster.Conf.GoOS
-	clsave.IsDown = cluster.IsDown
-	clsave.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().State == "Failed"
-	clsave.IsFailable = !cluster.IsNotMonitoring && cluster.StateMachine.GetHeartbeats() > 0
-	clsave.IsProvisioned = cluster.IsAllDbUp
-	if cluster.lastmaster != nil {
-		clsave.LastMaster = cluster.lastmaster.URL
-	}
+	clsave := cluster.stateToSave()
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
