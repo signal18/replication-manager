@@ -173,6 +173,34 @@ live-poll for-sale clusters"** are the *same* requirement — the async path is 
 makes the sale fast, and live polling is what made it hang. Live status is reserved
 for clusters you *own or were delegated* (§4–§5), where you actually operate them.
 
+### The S3 and archive catalogue (`marketplace-s3.json`, `marketplace-archive.json`)
+
+The same channel carries the partners' storage offers. The BO's `inject_peer.sh` builds two
+lists from its `partner_archive_offers` table and pushes them, the same for every instance,
+next to `partners.json`:
+
+- `.pull/marketplace-s3.json`: the S3 storages, in `S3Provider` fields (`name`,
+  `providerSource`, `endpoint`, `region`, `cloud18Sso`) plus `title`, `partner`, `auth`
+  (`cloud18-sso`, `cloud18-keys`, `partner-token`), `storageClass`, `dc`, `dcLocation`;
+- `.pull/marketplace-archive.json`: the archive offers, with their plugin, the S3 storage of an
+  S3 offer (`s3Provider`), access kind, data center and prices (`priceEurMonth` per `sizeUnit`,
+  `priceEurBauMonth`, `retrievalCostEurGib`; null when the BO has none, never 0).
+
+Public fields only: they reach every instance and its config repo, so no key, cost, markup or
+commission, and no endpoint in the archive list (a PBS endpoint is its tenant's). A cluster's
+own access to the offer it chose is per cluster (`inject.toml`), not in the catalogue.
+
+`LoadMarketplaceCatalogue` (`server_git.go`) reads them at start and after each pull, with
+the change detection of `partners.json` (`readPullJSON`: modification time, then checksum). A
+new version that does not decode keeps the list read before; a file the BO no longer pushes
+empties its list. The catalogue is held in an `atomic.Pointer` (the MCP reads it while a pull
+replaces it), never copied into the config: the BO stays its single source. A release that
+does not read these files ignores them (`.pull` is read by name; the one directory scan,
+`normalizePullPluginSymlinks`, skips files).
+
+Exposed by the MCP tool `list-cloud18-archive-offers` (any authenticated principal), which
+the website's sales assistant calls to propose the archive offers with their prices.
+
 ---
 
 ## 4. Health-poll modes (`cloud18-peer-health-mode`)

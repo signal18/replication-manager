@@ -99,3 +99,10 @@ Everything is in bits, like every cloud: no gigabytes anywhere. GWU is bandwidth
 
 The earlier volume axis (100 MB units, 1 GB free) was wrong and is removed: with GWU =
 100 Mb/s, "10 GWU free" is 1 Gb/s of bandwidth, not a transfer volume.
+
+## Locking (#2196)
+
+`Cluster.GatewayUnits` is written by the manager's gateway collector (`SetGatewayTraffic`)
+and read through `GetGatewayUnits`, under its own `gatewayUnitsMu`, never the cluster lock:
+one cluster whose tick holds its lock (a slow ping in `TopologyDiscover`) must not stop the
+collector, which walks every cluster.

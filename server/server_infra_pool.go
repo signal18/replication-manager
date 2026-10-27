@@ -73,22 +73,17 @@ func (repman *ReplicationManager) infraCapacityInputs(clusters []*cluster.Cluste
 	return in
 }
 
-// The floor a cluster for sale keeps in the plan pot (units, not ratios): it is
-// provisioned, so it never counts 0. Over-commit is measured on resources, not plans.
-const (
-	forSaleFloorDbuPerNode = 1.0
-	forSaleFloorApu        = 1.0
-)
-
 // InfraUnitPool is the infrastructure's unit pool as the ResourceManager sees it:
 // usable = capacity (binding axis) × quota, planned = Σ of every cluster's plan
 // (the contracts already sold), free = usable − planned. DBU and APU are the
 // SAME metal projected through the two profiles. Known is false when no
 // capacity is observed or declared: the pool cannot gate anything then.
 // ForSale is the part of planned held by clusters for sale (cloud18-shared) that a
-// self-service client may take (#2144): an offer keeps its floor, 1 DBU per database
-// node and 1 APU (its BKU plan stays counted whole by the ledger); only its plan above
-// the floor is released.
+// self-service client may take (#2144): an offer is provisioned, so it never counts 0; it
+// keeps what its plans hold once given back to their floors (Cluster.PlanFloorUnits: the
+// plan rules, 1 DBU per node, 1 APU per proxy and per running app instance, an admin-locked
+// plan whole), so it stays on sale with a lower plan instead of losing an app. Its BKU plan
+// stays counted whole by the ledger. Over-commit is measured on resources, not plans.
 type InfraUnitPool struct {
 	Known      bool    `json:"known"`
 	UsableDbu  float64 `json:"usableDbu"`
@@ -126,8 +121,9 @@ func (repman *ReplicationManager) infraUnitPool() InfraUnitPool {
 		pool.PlannedDbu += dbu
 		pool.PlannedApu += apu
 		if cl.Conf.Cloud18Shared {
-			pool.ForSaleDbu += math.Max(0, dbu-forSaleFloorDbuPerNode*float64(len(cl.Servers)))
-			pool.ForSaleApu += math.Max(0, apu-forSaleFloorApu)
+			floorDbu, floorApu := cl.PlanFloorUnits()
+			pool.ForSaleDbu += math.Max(0, dbu-floorDbu)
+			pool.ForSaleApu += math.Max(0, apu-floorApu)
 		}
 	}
 	pool.FreeDbu = pool.UsableDbu - pool.PlannedDbu

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/signal18/replication-manager/config"
 )
 
 // Cloud18 tools (issue #1838): registration of the instance with Signal18
@@ -93,6 +94,22 @@ func (s *MCPServer) registerCloud18Tools() {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			return mcp.NewToolResultText(string(out)), nil
+		},
+	)
+
+	s.addTool(
+		mcp.NewTool("list-cloud18-archive-offers",
+			mcp.WithDescription("The archive offers of the Cloud18 marketplace: each partner's storage sold for backup archives (S3 or Proxmox Backup Server), with its data center and location, how it is reached (Cloud18 sign-in or keys delivered per cluster), and its price per size unit and per BAU (20 GiB) per month; and the S3 storages behind the S3 offers. Published by Signal18 to every instance. A client can also archive on its own S3 storage, not listed here."),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			c := s.repman.MarketplaceCatalogue()
+			if c.S3 == nil {
+				c.S3 = []config.MarketplaceS3{}
+			}
+			if c.Archives == nil {
+				c.Archives = []config.MarketplaceArchiveOffer{}
+			}
+			return mcp.NewToolResultText(toJSON(c)), nil
 		},
 	)
 

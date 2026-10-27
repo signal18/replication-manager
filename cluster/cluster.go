@@ -226,6 +226,7 @@ type Cluster struct {
 	catalogueMu    sync.Mutex                 // guards catalogueSaved
 	catalogueSaved map[string][]byte          // global backup catalogue file -> its content last written (#2091)
 	catalogueRun   catalogueRebuildState      // the catalogue's rebuild from the archives (#2091), guarded by catalogueMu
+	gatewayUnitsMu sync.Mutex                 // guards GatewayUnits: the gateway collector never waits on the cluster lock a tick holds (#2196)
 	BackupMount    BackupMountState           `json:"backupMount" groups:"web"` // its state, for the Backup settings
 	Agents         []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq   map[string]int64           `json:"-"`
@@ -387,6 +388,8 @@ type Cluster struct {
 	injectTrafficInFlight      atomic.Bool            `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
 	galeraProvisionBootstrap   atomic.Pointer[string] `json:"-"` // Galera bootstrap node URL kept during a full provision (galera_bootstrap.go)
 	injectTrafficSince         atomic.Int64           `json:"-"` // unix time the running injection started
+	injectTrafficStopped       atomic.Bool            `json:"-"` // traffic stopped since the last injection: the next one creates the marker table again (#2195)
+	injectTrafficErr           atomic.Pointer[string] `json:"-"` // last injection error, re-asserted as ERR00050 every tick until one succeeds
 	binlogServerIDs            *binlogServerIDPool    `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
 	binlogServerIDsOnce        sync.Once              `json:"-"`
 	resources                  *ResourceManager       `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
@@ -1370,6 +1373,8 @@ func (cluster *Cluster) tickBody() {
 					// for the marker, and a marker still stuck from an earlier tick is not
 					// doubled -- see cluster_inject_traffic.go.
 					cluster.startInjectProxiesTraffic()
+				} else {
+					cluster.stopInjectProxiesTraffic()
 				}
 				if heartbeats%3600 == 0 {
 					goRun(cluster.PurgeExpiredDirectReseedSystemArtifacts)
@@ -2095,6 +2100,30 @@ func (cluster *Cluster) Save() {
 	cluster.IsNeedConfigSave = true
 }
 
+// stateToSave is the cluster's runtime state as clusterstate.json carries it; the back-office
+// harvests it from the config repo into clusters_state and publishes it in peer.json.
+// isProvisioned is the provisioned flag SetStatus refreshes every tick (IsProvisioned), never
+// IsAllDbUp, which nothing sets true (#2200).
+func (cluster *Cluster) stateToSave() ClusterState {
+	var clsave ClusterState
+	clsave.Crashes = cluster.Crashes
+	clsave.Servers = cluster.Conf.Hosts
+	clsave.IsAllDbUp = cluster.IsAllDbUp
+	clsave.RepmgrVersion = cluster.RepMgrVersion
+	clsave.RepmgrFullVersion = cluster.RepMgrFullVersion
+	clsave.RepmgrRestartTime = cluster.RepMgrRestartTime
+	clsave.RepmgrArch = cluster.Conf.GoArch
+	clsave.RepmgrOS = cluster.Conf.GoOS
+	clsave.IsDown = cluster.IsDown
+	clsave.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().State == "Failed"
+	clsave.IsFailable = !cluster.IsNotMonitoring && cluster.StateMachine.GetHeartbeats() > 0
+	clsave.IsProvisioned = cluster.IsProvision
+	if cluster.lastmaster != nil {
+		clsave.LastMaster = cluster.lastmaster.URL
+	}
+	return clsave
+}
+
 // SaveCallBack performs the actual config persist (former Save body): the
 // cluster .toml, runtime json (agents/clusterstate/sla/queryrules), and the
 // peer event log. Invoked only by the repman config-sync gate.
@@ -2109,22 +2138,7 @@ func (cluster *Cluster) SaveCallBack() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
 
-	var clsave ClusterState
-	clsave.Crashes = cluster.Crashes
-	clsave.Servers = cluster.Conf.Hosts
-	clsave.IsAllDbUp = cluster.IsAllDbUp
-	clsave.RepmgrVersion = cluster.RepMgrVersion
-	clsave.RepmgrFullVersion = cluster.RepMgrFullVersion
-	clsave.RepmgrRestartTime = cluster.RepMgrRestartTime
-	clsave.RepmgrArch = cluster.Conf.GoArch
-	clsave.RepmgrOS = cluster.Conf.GoOS
-	clsave.IsDown = cluster.IsDown
-	clsave.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().State == "Failed"
-	clsave.IsFailable = !cluster.IsNotMonitoring && cluster.StateMachine.GetHeartbeats() > 0
-	clsave.IsProvisioned = cluster.IsAllDbUp
-	if cluster.lastmaster != nil {
-		clsave.LastMaster = cluster.lastmaster.URL
-	}
+	clsave := cluster.stateToSave()
 
 	saveJson, _ := json.MarshalIndent(clsave, "", "\t")
 	err := os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/clusterstate.json", saveJson, 0644)
@@ -2970,6 +2984,13 @@ var variableExceptions = map[string]bool{
 	"LOG_SLOW_QUERY_FILE":   true,
 	"PLUGIN_DIR":            true,
 	"SERVER_UID":            true,
+	// each node's own address: the provisioning binds every server to its host name, a
+	// group member and a Galera node announce their own address to the others (#2180)
+	"BIND_ADDRESS":                    true,
+	"GROUP_REPLICATION_LOCAL_ADDRESS": true,
+	"WSREP_NODE_ADDRESS":              true,
+	"WSREP_NODE_INCOMING_ADDRESS":     true,
+	"WSREP_SST_RECEIVE_ADDRESS":       true,
 }
 
 func (cluster *Cluster) MonitorVariablesDiff() {

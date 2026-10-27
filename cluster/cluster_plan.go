@@ -243,6 +243,34 @@ func (cluster *Cluster) planUnitSpec(unit PlanUnit) (cur int, floor int, apply f
 	}
 }
 
+// PlanFloorUnits simulates the cluster giving its plans back as far as the plan rules let it,
+// without moving anything: the DBU and APU it still holds once every unit is at its floor.
+// The floors are ChangePlanUnits' (planUnitSpec: DBU per node, APU per proxy) and the
+// billing's for the apps (one APU per running instance: a failover app holds 1, a flex app 1 per
+// agent, appInstanceCount); a plan the admin pinned immutable cannot be given back and stays
+// whole. A stateful app or an engine that is a monitored server holds no APU.
+func (cluster *Cluster) PlanFloorUnits() (dbu, apu float64) {
+	floorOf := func(unit PlanUnit, instances int) float64 {
+		cur, floor, _, err := cluster.planUnitSpec(unit)
+		if err != nil {
+			return 0
+		}
+		if !cluster.CanPlanChange(unit) {
+			floor = cur
+		}
+		return float64(floor * instances)
+	}
+	dbu = floorOf(PlanUnitDBU, len(cluster.Servers))
+	apu = floorOf(PlanUnitAPU, len(cluster.Proxies))
+	for _, app := range cluster.Apps {
+		if app == nil || cluster.engineServerOfApp(app) != nil || (app.AppConfig != nil && app.AppConfig.AppStateful) {
+			continue
+		}
+		apu += float64(cluster.appInstanceCount(app))
+	}
+	return dbu, apu
+}
+
 // planFlag is the config flag name backing a unit's reservation -- the admin-lock target.
 func (cluster *Cluster) planFlag(unit PlanUnit) string {
 	switch PlanUnit(strings.ToUpper(string(unit))) {

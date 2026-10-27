@@ -158,7 +158,7 @@ func TestMoveGlobalPoolSamePortIsNoop(t *testing.T) {
 func fakeServicePort(t *testing.T) *[]string {
 	asked := &[]string{}
 	previous := connectServicePort
-	connectServicePort = func(dsn string) (*sqlx.DB, error) {
+	connectServicePort = func(dsn string, seconds int) (*sqlx.DB, error) {
 		*asked = append(*asked, dsn)
 		db, _, err := sqlmock.New()
 		if err != nil {

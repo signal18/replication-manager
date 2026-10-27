@@ -518,7 +518,7 @@ func (repman *ReplicationManager) handlerMuxGlobalResources(w http.ResponseWrite
 			Apu: apuCons.Apu, PlanApu: apuPlan.Apu, Servers: a.Servers,
 			StatefulDbu: stCons.Dbu, PlanStatefulDbu: stPlan.Dbu,
 		}
-		if g := cl.GatewayUnits; g != nil {
+		if g := cl.GetGatewayUnits(); g != nil {
 			row.Gwu, row.PlanGwu = g.Units, g.Plan
 			consumedGwu += g.Units
 		}

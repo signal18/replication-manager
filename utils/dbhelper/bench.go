@@ -338,13 +338,11 @@ func WriteConcurrent2(dsn string, qt int) (string, error) {
 	return result, nil
 }
 
-// BenchCleanup cleans up benchmark tables
+// BenchCleanup drops the benchmark table, never its schema: replication_manager_schema also
+// holds repman's jobs, heartbeat and traffic marker (#2195). PostgreSQL: the same statement,
+// schema.table is valid there.
 func BenchCleanup(db *sqlx.DB) error {
 	_, err := db.Exec("DROP TABLE IF EXISTS replication_manager_schema.bench")
-	if err != nil {
-		return err
-	}
-	_, err = db.Exec("DROP DATABASE IF EXISTS replication_manager_schema")
 	return err
 }
 
