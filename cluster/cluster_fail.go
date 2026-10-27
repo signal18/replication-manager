@@ -1558,7 +1558,13 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.FailoverCtr++
 		cluster.FailoverTs = time.Now().Unix()
 	}
-	cluster.master = nil
+	// Galera keeps the new virtual master as its master: the discovery sets a wsrep master
+	// only when GetMaster is nil, which the vmaster never lets happen, and CheckFailed skips
+	// a cluster without one, so after a switchover or a failover the loss of the new master
+	// was neither failed over nor reported (no ERR00002 in manual mode, #2191)
+	if cluster.GetTopology() != config.TopoMultiMasterWsrep {
+		cluster.master = nil
+	}
 
 	return true
 }

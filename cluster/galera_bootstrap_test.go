@@ -2,7 +2,9 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
@@ -19,9 +21,9 @@ func TestGaleraBootstrapNode(t *testing.T) {
 	for _, s := range c.Servers {
 		s.ClusterGroup = c
 	}
-	// no master ever seen: the first node rendered bootstraps
-	if !c.isGaleraBootstrapNode(db2) {
-		t.Fatal("no master known: any node may bootstrap (the first rendered)")
+	// no master ever seen: the first declared server bootstraps, and only it (#2191)
+	if !c.isGaleraBootstrapNode(db1) || c.isGaleraBootstrapNode(db2) || c.isGaleraBootstrapNode(db3) {
+		t.Fatal("no master known: the first declared server bootstraps, the others wait")
 	}
 	// lastmaster saved by an earlier replication-manager
 	b, _ := json.Marshal(ClusterState{LastMaster: "db3:3306"})
@@ -43,5 +45,178 @@ func TestGaleraBootstrapNode(t *testing.T) {
 	c.Conf.TopologyTarget = config.TopoMasterSlave
 	if c.isGaleraBootstrapNode(db1) {
 		t.Fatal("not Galera: no bootstrap")
+	}
+}
+
+// The empty member list (a new cluster) goes to the bootstrap node only: a list emptied for
+// every node rendered while all were down bootstrapped two of them, a split cluster (#2191).
+func TestGaleraGCommOnlyBootstrapNodeEmpty(t *testing.T) {
+	dir := t.TempDir()
+	db1, db2, db3 := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db2:3306", Host: "db2", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db3:3306", Host: "db3", Port: "3306", State: stateFailed}
+	c := &Cluster{Name: "g", WorkingDir: dir, Conf: &config.Config{TopologyTarget: config.TopoMultiMasterWsrep, MultiMasterWsrep: true, MultiMasterWsrepPort: 4567}, Servers: []*ServerMonitor{db1, db2, db3}, StateMachine: new(state.StateMachine)}
+	c.StateMachine.Init()
+	for _, s := range c.Servers {
+		s.ClusterGroup = c
+	}
+	// all down, the last master was db3: only db3 bootstraps, db1 waits for it
+	c.lastmaster = db3
+	if got := c.GetGComm(db3); got != "" {
+		t.Fatalf("bootstrap node db3: gcomm %q, want empty", got)
+	}
+	for _, s := range []*ServerMonitor{db1, db2} {
+		if got := c.GetGComm(s); got == "" || !strings.Contains(got, "db3:4567") {
+			t.Fatalf("%s: gcomm %q, want the full member list", s.URL, got)
+		}
+	}
+	// a proxy never bootstraps
+	if c.GetGComm(nil) == "" {
+		t.Fatal("proxy: empty gcomm")
+	}
+	// the cluster is up: nobody bootstraps
+	db3.State = stateMaster
+	c.master = db3
+	if c.GetGComm(db3) == "" {
+		t.Fatal("cluster up: db3 must join, not bootstrap")
+	}
+}
+
+// Nodes in different Galera clusters open ERR00083, an error, whatever the master. Only two
+// Primary components are compared: a node not read yet (no UUID), joining or in SST (not
+// Primary, or the all-zero UUID) is not a split (#2191).
+func TestGaleraSplitReported(t *testing.T) {
+	uuidA, uuidB := "6f453265-d144-11f1-ae3b-defce0f46df1", "97eeb82b-d144-11f1-abc0-3357161f1a1d"
+	zero := "00000000-0000-0000-0000-000000000000"
+	node := func(name, uuid string) *ServerMonitor {
+		st := config.NewStringsMap()
+		// "uuid/NON-PRIMARY": a node outside the Primary component
+		status := "PRIMARY"
+		if i := strings.Index(uuid, "/"); i >= 0 {
+			uuid, status = uuid[:i], uuid[i+1:]
+		}
+		if uuid != "" {
+			st.Set("WSREP_CLUSTER_STATE_UUID", uuid)
+		}
+		st.Set("WSREP_CLUSTER_STATUS", status)
+		return &ServerMonitor{URL: name + ":3306", Host: name, Port: "3306", State: stateWsrep, Status: st}
+	}
+	cases := []struct {
+		name  string
+		uuids []string
+		split bool
+	}{
+		{"one cluster", []string{uuidA, uuidA, uuidA}, false},
+		{"split", []string{uuidA, uuidA, uuidB}, true},
+		{"a node not read yet", []string{uuidA, uuidA, ""}, false},
+		{"a joiner with the zero UUID", []string{uuidA, uuidA, zero}, false},
+		{"a node not in the Primary component", []string{uuidA, uuidA, uuidB + "/NON-PRIMARY"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Cluster{Name: "g", Conf: &config.Config{TopologyTarget: config.TopoMultiMasterWsrep}, StateMachine: new(state.StateMachine)}
+			c.StateMachine.Init()
+			c.Topology = config.TopoMultiMasterWsrep
+			for i, u := range tc.uuids {
+				s := node(fmt.Sprintf("db%d", i+1), u)
+				s.ClusterGroup = c
+				c.Servers = append(c.Servers, s)
+			}
+			if same := c.IsSameWsrepUUID(); same == tc.split {
+				t.Fatalf("IsSameWsrepUUID = %v, split %v", same, tc.split)
+			}
+			open := false
+			for _, s := range c.Servers {
+				open = open || c.StateMachine.IsInState(state.BuildStateKey("ERR00083", s.URL))
+			}
+			if open != tc.split {
+				t.Fatalf("ERR00083 open = %v, want %v", open, tc.split)
+			}
+		})
+	}
+}
+
+// A full provision starts the bootstrap node first: a joiner started before it waits for
+// a Primary component that does not exist yet and aborts (#2191).
+func TestGaleraProvisionOrder(t *testing.T) {
+	db1, db2, db3 := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db2:3306", Host: "db2", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db3:3306", Host: "db3", Port: "3306", State: stateFailed}
+	c := &Cluster{Name: "g", WorkingDir: t.TempDir(), Conf: &config.Config{TopologyTarget: config.TopoMultiMasterWsrep}, Servers: []*ServerMonitor{db1, db2, db3}, StateMachine: new(state.StateMachine)}
+	c.StateMachine.Init()
+	for _, s := range c.Servers {
+		s.ClusterGroup = c
+	}
+	urls := func(l []*ServerMonitor) (u []string) {
+		for _, s := range l {
+			u = append(u, s.URL)
+		}
+		return u
+	}
+	c.lastmaster = db3
+	if got := strings.Join(urls(c.galeraProvisionOrder()), ","); got != "db3:3306,db1:3306,db2:3306" {
+		t.Fatalf("order %s, want the bootstrap node db3 first", got)
+	}
+	c.lastmaster = nil
+	if got := strings.Join(urls(c.galeraProvisionOrder()), ","); got != "db1:3306,db2:3306,db3:3306" {
+		t.Fatalf("order %s, want the declared order", got)
+	}
+	c.Conf.TopologyTarget = config.TopoMasterSlave
+	c.lastmaster = db3
+	if got := strings.Join(urls(c.galeraProvisionOrder()), ","); got != "db1:3306,db2:3306,db3:3306" {
+		t.Fatalf("not Galera: order %s, want the declared order", got)
+	}
+}
+
+// The bootstrap node chosen when a full provision starts is kept until it ends: a master set
+// by the discovery meanwhile must not make the node started first and the node rendered with
+// the empty member list differ (#2191).
+func TestGaleraBootstrapPinnedDuringProvision(t *testing.T) {
+	db1, db2, db3 := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db2:3306", Host: "db2", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db3:3306", Host: "db3", Port: "3306", State: stateFailed}
+	c := &Cluster{Name: "g", WorkingDir: t.TempDir(), Conf: &config.Config{TopologyTarget: config.TopoMultiMasterWsrep, MultiMasterWsrep: true, MultiMasterWsrepPort: 4567}, Servers: []*ServerMonitor{db1, db2, db3}, StateMachine: new(state.StateMachine)}
+	c.StateMachine.Init()
+	for _, s := range c.Servers {
+		s.ClusterGroup = c
+	}
+	c.lastmaster = db3
+	release := c.pinGaleraBootstrap()
+	// the discovery picks the first failed node as master (ERR00012 path)
+	c.master = db1
+	if c.GetGComm(db1) == "" || c.GetGComm(db3) != "" || !c.isGaleraBootstrapNode(db3) {
+		t.Fatal("during the provision the pinned node db3 bootstraps, db1 joins")
+	}
+	release()
+	if c.galeraProvisionBootstrap.Load() != nil {
+		t.Fatal("the provision ended: the pin is released")
+	}
+	if !c.isGaleraBootstrapNode(db1) || c.isGaleraBootstrapNode(db3) {
+		t.Fatal("after the provision the rule applies again")
+	}
+	// the cluster up at the start of a provision: nothing pinned
+	db1.State = stateMaster
+	release = c.pinGaleraBootstrap()
+	defer release()
+	if c.galeraProvisionBootstrap.Load() != nil {
+		t.Fatal("cluster up: no bootstrap node pinned")
+	}
+}
+
+// After a switchover the new master is kept (VMasterFailover); when the whole cluster then
+// goes down it is saved as lastmaster and bootstraps, not the old master (#2191).
+func TestGaleraBootstrapAfterSwitchoverThenTotalLoss(t *testing.T) {
+	db1, db2, db3 := &ServerMonitor{URL: "db1:3306", Host: "db1", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db2:3306", Host: "db2", Port: "3306", State: stateFailed}, &ServerMonitor{URL: "db3:3306", Host: "db3", Port: "3306", State: stateFailed}
+	c := &Cluster{Name: "g", WorkingDir: t.TempDir(), Conf: &config.Config{TopologyTarget: config.TopoMultiMasterWsrep}, Servers: []*ServerMonitor{db1, db2, db3}, StateMachine: new(state.StateMachine)}
+	c.StateMachine.Init()
+	c.StateMachine.Discovered = true
+	for _, s := range c.Servers {
+		s.ClusterGroup = c
+	}
+	// switched db1 -> db2: master and vmaster are db2, the others are its slaves
+	c.master, c.vmaster = db2, db2
+	c.slaves = []*ServerMonitor{db1, db3}
+	if !c.TopologyClusterDown() {
+		t.Fatal("every node failed: the cluster is down")
+	}
+	if c.lastmaster != db2 {
+		t.Fatalf("lastmaster %v, want the new master db2", c.lastmaster)
+	}
+	if !c.isGaleraBootstrapNode(db2) || c.isGaleraBootstrapNode(db1) {
+		t.Fatal("the new master db2 bootstraps, not the old one")
 	}
 }

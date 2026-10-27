@@ -386,6 +386,7 @@ type Cluster struct {
 	backupChanges              sync.Map               `json:"-"`
 	backupRegistrationChecking atomic.Bool            `json:"-"`
 	injectTrafficInFlight      atomic.Bool            `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
+	galeraProvisionBootstrap   atomic.Pointer[string] `json:"-"` // Galera bootstrap node URL kept during a full provision (galera_bootstrap.go)
 	injectTrafficSince         atomic.Int64           `json:"-"` // unix time the running injection started
 	injectTrafficStopped       atomic.Bool            `json:"-"` // traffic stopped since the last injection: the next one creates the marker table again (#2195)
 	injectTrafficErr           atomic.Pointer[string] `json:"-"` // last injection error, re-asserted as ERR00050 every tick until one succeeds
@@ -1496,6 +1497,9 @@ func (cluster *Cluster) tickBody() {
 		cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
 		cluster.CheckDBCredentials()
 		cluster.CheckGaleraSSTAccount()
+		// a Galera split (nodes in different clusters) is reported every tick, not only when
+		// a failover is evaluated: CheckFailed returns early without a master (#2191)
+		cluster.IsSameWsrepUUID()
 		cluster.CheckReplicationTLS()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
