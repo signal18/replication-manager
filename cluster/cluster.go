@@ -2970,6 +2970,13 @@ var variableExceptions = map[string]bool{
 	"LOG_SLOW_QUERY_FILE":   true,
 	"PLUGIN_DIR":            true,
 	"SERVER_UID":            true,
+	// each node's own address: the provisioning binds every server to its host name, a
+	// group member and a Galera node announce their own address to the others (#2180)
+	"BIND_ADDRESS":                    true,
+	"GROUP_REPLICATION_LOCAL_ADDRESS": true,
+	"WSREP_NODE_ADDRESS":              true,
+	"WSREP_NODE_INCOMING_ADDRESS":     true,
+	"WSREP_SST_RECEIVE_ADDRESS":       true,
 }
 
 func (cluster *Cluster) MonitorVariablesDiff() {

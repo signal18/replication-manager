@@ -109,6 +109,7 @@ var toolACLPaths = map[string]string{
 	"get-cloud18-register-status":       globalPrefix,
 	"get-cloud18-subscription":          globalPrefix,
 	"list-cloud18-subscription-plans":   globalPrefix,
+	"list-cloud18-archive-offers":       globalPrefix,
 	"list-cloud18-infrastructures":      globalPrefix,
 	"get-cloud18-infrastructures":       globalPrefix,
 	"get-cloud18-cluster-quote":         globalPrefix,
