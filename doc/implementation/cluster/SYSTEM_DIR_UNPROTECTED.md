@@ -43,15 +43,37 @@ backup and every mysqldump reseed from such a server failed. mydumper already ra
   with named databases writes the same `CREATE DATABASE` / `USE` statements; checked with
   `mariadb-dump` 11.4 and `mysqldump` 5.7, options and names interleaved.
 
-## Not changed
+## Restores: a .system the restore creates is removed
 
-- An existing `.system` folder is not removed: it is in the client's datadir (F1). The user doc
-  says how to move it or hide it.
-- The reseed restore still stages in `<datadir>/.system/backup` (`BACKUPDIR` in the script): its
-  files are moved into the datadir, so they must stay on the datadir's filesystem. The dump fix
-  covers a folder left there.
+The physical reseed and flashback (and the partial restore they run) stage in `<datadir>/.system`:
+`backup` (the received backup, moved into the datadir file by file, so it must be on the datadir's
+disk), `mrm_defs_ro` / `mrm_defs_run` (the definitions server), `orphan-quarantine-*`. These stay
+in the datadir. What changes is who removes `.system` (`share/scripts/dbjobs_new.sh`):
+
+- `reset_backupdir`, the first step of every restore job, calls `system_dir_claim`: when `.system`
+  does not exist, the run creates it with the cookie `.system/.mrm_created` holding its process
+  group (`proc_pgid`, field 5 of `/proc/$$/stat`). A `.system` found in place (the configurator's,
+  holding binlogs, redo and logs) gets no cookie and is never removed.
+- At the end of the restore job, success or failure, `system_dir_release self` removes the
+  `.system` this run owns, whole (`rm -rf`). A failed restore leaves a clean datadir: the staged
+  backup is a copy of a backup repman still holds, and the quarantine goes with it (moving it out of
+  the datadir would need disk nobody sized).
+- At the start of every run, after `recoverDeadJobs` (which stops the definitions server of a killed
+  restore), `system_dir_release` removes a `.system` left by a killed run, only once no process of
+  its process group is left (`kill -0 -<pgid>`). A process still writing there (mbstream, mariabackup
+  --prepare) would otherwise keep writing into deleted files: the disk is not freed until it closes
+  them, and its next file fails. A reused group number only delays the removal.
+- `pr_paths_ok` guards both: with an empty or relative datadir nothing is created or removed.
+
+So `.system` exists on such a server only while a restore runs, and the existing `.system` folder of
+a server is never removed (F1).
 
 ## Tests
+
+- The claim and release (`share/scripts/dbjobs_new.sh` functions), run on a Linux host on a fake
+  datadir: a restore removes the `.system` it created; a `.system` in place with a binlog is kept; a
+  killed run whose child is alive keeps it, then removes it once the group is gone; an empty datadir
+  creates nothing at `/`.
 
 - `utils/dbhelper/schema_dump_test.go`: the split of the listed databases, PostgreSQL sends no query.
 - `cluster/srv_system_dir_test.go`: `IsSystemDirIgnored` per flavor and `ignore_db_dirs` value;
