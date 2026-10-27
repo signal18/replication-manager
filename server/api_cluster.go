@@ -7164,6 +7164,9 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 
 				if port == "0" || port == "" {
 					port = "3306"
+					if srvtype == "postgresql" {
+						port = "5432"
+					}
 				}
 
 				// update image
@@ -7177,7 +7180,7 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 						mycluster.Conf.ProvDbImg = repoimg
 					}
 				}
-				err = mycluster.AddSeededServer(host + ":" + port)
+				err = mycluster.AddSeededServer(seededServerHost(srvtype, host, port))
 			}
 		}
 
@@ -12189,4 +12192,15 @@ func (repman *ReplicationManager) handlerMuxClusterPrice(w http.ResponseWriter, 
 	st, _ := repman.resourceManager.Statement("", time.Now())
 	out := map[string]any{"month": st.Month, "elapsedPct": st.ElapsedPct, "currency": st.Currency, "prices": st.Prices, "cluster": cs}
 	repman.jsonResponse(out, w)
+}
+
+// seededServerHost is the db-servers-hosts entry of a database added by type: a PostgreSQL
+// server is declared host:port/postgres, as the PostgreSQL app declares itself
+// (registerEngineAppAsServer). Without the suffix, a topology other than pg-stream or
+// pg-logical monitors it as MySQL (#2196).
+func seededServerHost(srvtype, host, port string) string {
+	if srvtype == "postgresql" {
+		return host + ":" + port + "/postgres"
+	}
+	return host + ":" + port
 }

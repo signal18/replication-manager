@@ -80,9 +80,9 @@ func (cluster *Cluster) SetGatewayTraffic(bytes int64, mbpsNow, planMbps, onTopG
 		r.OnTop = r.Units - float64(r.FreeUnits)
 	}
 	r.Priced = r.UnitPrice > 0
-	cluster.Lock()
+	cluster.gatewayUnitsMu.Lock()
 	cluster.GatewayUnits = r
-	cluster.Unlock()
+	cluster.gatewayUnitsMu.Unlock()
 	ts := now.Unix()
 	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 4, 64) }
 	cluster.AddMetrics([]graphite.Metric{
@@ -109,11 +109,17 @@ func (cluster *Cluster) gatewayUsage(pr BillingPrices) (UnitUsage, bool) {
 	}
 	u := UnitUsage{Family: BillingFamilyGateway, Unit: "GWU", Plan: float64(free), FreePlan: true,
 		Priced: pr.GWU > 0, UnitPrice: pr.GWU, OverPct: pr.OverPct, UnderPct: pr.UnderPct}
-	cluster.Lock()
-	r := cluster.GatewayUnits
-	cluster.Unlock()
+	r := cluster.GetGatewayUnits()
 	if r != nil {
 		u.Billable = r.Units
 	}
 	return u, true
+}
+
+// GetGatewayUnits is the last gateway traffic reading (nil before the first), under its own
+// lock: the gateway collector and its readers never wait on a cluster's tick (#2196).
+func (cluster *Cluster) GetGatewayUnits() *GWUReading {
+	cluster.gatewayUnitsMu.Lock()
+	defer cluster.gatewayUnitsMu.Unlock()
+	return cluster.GatewayUnits
 }
