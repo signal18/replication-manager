@@ -7,6 +7,7 @@
 package server
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -108,10 +109,21 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		}
 		// A test whose targets the cluster misses does not run, and a test that did not run
 		// is not a tested setup: SKIP, not reported.
-		if reason := regtest.SkipReason(cl, test.Name); reason != "" {
+		target, reason := regtest.MatchTarget(cl, test.Name)
+		if reason != "" {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skip %s: %s", test.Name, reason)
 			test.Result = regtest.GetTestSkipLabel()
 			test.SkipReason = reason
+			closeTest()
+			allTests[key] = test
+			continue
+		}
+		// The values the test runs with, set as an operator sets them through the API;
+		// closeTest restores them with the rest of the configuration. A value that cannot be
+		// set leaves the test unrun: ERR, not reported.
+		if err := repman.setTestVariables(cl, test.Name, target.ConfigVariableMustSet); err != nil {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s not run: %s", test.Name, err)
+			test.Result = "ERR"
 			closeTest()
 			allTests[key] = test
 			continue
@@ -466,4 +478,21 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	regtest.SaveTestsFromResult(cl, allTests)
 	repman.reportRegtestResults(cl, reported)
 	return vals
+}
+
+// setTestVariables sets the must-set configuration variables of a test, in key order, through
+// setClusterSetting, the path of the API and the GUI.
+func (repman *ReplicationManager) setTestVariables(cl *cluster.Cluster, name string, variables map[string]string) error {
+	keys := make([]string, 0, len(variables))
+	for key := range variables {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "%s sets %s=%s", name, key, variables[key])
+		if err := repman.setClusterSetting(cl, key, variables[key]); err != nil {
+			return fmt.Errorf("set %s=%s: %w", key, variables[key], err)
+		}
+	}
+	return nil
 }

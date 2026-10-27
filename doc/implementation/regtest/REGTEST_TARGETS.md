@@ -23,7 +23,8 @@ skipped PASS marked a setup tested when nothing ran, and a skipped FAIL marked a
   | `FlavorTarget []string` | flavor-target | the version of `SetupServer(cl)`, lowercased, as `regtestSetupOf` reports it |
   | `OrchestratorTarget []string` | orchestrator-target | `cl.GetOrchestrator()` |
   | `DbuTarget int` | dbu-target | `cl.GetPlanDbu() / nodes`, a minimum per node |
-  | `ConfigVariableTarget map[string]string` | config-variable-target | `cl.Conf.GetValueByKey(key)`, compared case-insensitively |
+  | `ConfigVariableMustHave map[string]string` | config-variable-must-have | `cl.Conf.GetValueByKey(key)`, compared case-insensitively: checked, never set |
+  | `ConfigVariableMustSet map[string]string` | config-variable-must-set | set by the runner before the test, not a condition |
 
 - `testTargets` maps a test name to a list of `TestTarget`: the test runs when the cluster matches at
   least one of them (OR). One list per test, not one target, because the other conditions depend on
@@ -41,7 +42,7 @@ skipped PASS marked a setup tested when nothing ran, and a skipped FAIL marked a
 - `TestResultSkip = "SKIP"`, returned by `GetTestSkipLabel()` (the runner shadows the package name with its
   `regtest` variable, as for `GetTestResultLabel`).
 
-`server/regtest.go` `RunAllTests` calls `SkipReason` once the cluster is ready (after the suite's
+`server/regtest.go` `RunAllTests` calls `MatchTarget` once the cluster is ready (after the suite's
 `InitTestCluster`, after `SaveTestConf` on a live cluster), before the dispatch. A skipped test is logged
 `Skip <test>: <reason>`, kept in `tests.json` with `SKIP` and the reason in `skip-reason`
 (`cluster.Test.SkipReason`), its cluster closed or its configuration restored as for
@@ -49,6 +50,31 @@ a test that ran, and it is not appended to the CRM report.
 
 `config.(*Config).GetValueByKey` reads a key through `configField`, the key-to-field index the configuration
 archive already builds (T2), and prints it as the archive stores it (`true`, `4`, `opensvc`).
+
+## Must have, must set
+
+Two kinds of configuration variables, both declared per target:
+
+- **Must have**: a setting that describes the architecture (`arbitration-external`, `topology-staging`,
+  `prov-db-start-fetch-config`). Turning it on would not build what it describes (an arbitrator and a
+  peer replication-manager, a staging cluster), so the runner only checks it: a cluster without it
+  gives SKIP. A cluster that declares it but whose architecture does not work (the arbitrator does not
+  answer) runs the test and FAILs: a broken cluster is reported, not hidden.
+- **Must set**: a behaviour the test exercises (`check-replication-state`, `failover-max-slave-delay`,
+  the rejoin modes). After the match, `setTestVariables` sets them in key order through
+  `setClusterSetting`, the path of the API and the GUI, so the test runs with what an operator would
+  set; `closeTest` restores them (`RestoreConf`, which also saves over a TOML the saver may have
+  written, or the suite's cluster close). A key setClusterSetting refuses leaves the test unrun: ERR.
+
+The order for each test: check the must-have (SKIP) → set the must-set (ERR) → run → restore. The
+check reads the configuration before the test's own code runs, so a must-have never names a value the
+test sets itself.
+
+What stays in a test's code: runtime state that is no configuration key (`SetFailoverCtr`, the
+failover counter; `SetBenchMethod`, an internal field), and a value changed in the middle of the
+scenario (`TestBackupArchiveRemoveOriginal` picks `backup-physical-type` from the master's flavor).
+A scan of the tests found no other change after the first action. 48 tests set configuration values at
+their start; they move to must-set as they are worked on.
 
 ## Who reads SKIP
 
@@ -71,7 +97,12 @@ on a cluster of the right setup, a missing replica is a broken cluster, not a te
   2 nodes, `prov-db-start-fetch-config = true`); its "no slaves available" PASS is now a FAIL: a 2-node
   cluster without a replica is broken
 - `testStagingRecoverNoReadOnly` (config `topology-staging = true`), now in the `ALL` list
-- `testSwitchoverAllSlavesStopRplCheckNoSemiSync` (topology `master-slave`, 2 nodes)
+- `testSwitchoverAllSlavesStopRplCheckNoSemiSync` (topology `master-slave`, 2 nodes; must set
+  `check-replication-state = true`, `failover-max-slave-delay = 0`, which its code no longer sets)
+- the split-brain tests (`testSetMinorityWithMaster`, `testSetMinorityWithMasterSysbench`,
+  `testSetMinorityWithoutMaster`, `testSetDualActive`, `testSplitBrainNoWinner`): must have
+  `arbitration-external = true` (`arbitrationRequired`). Their "arbitration not enabled → PASS" gate is
+  gone: a cluster without arbitration gave a PASS where nothing ran
 
 The other tests declare `anyCluster` for now; they get real targets as they are worked on.
 
@@ -79,6 +110,7 @@ The other tests declare `anyCluster` for now; they get real targets as they are 
 
 `regtest/regtest_targets_test.go`: `TestSkipReason` covers each condition, matched and missed, the unknown
 DBU, and a test with two targets (either matches; both missed gives both reasons); `TestTargetsDeclared`
-checks every test declares targets and every declaration names a test;
-`TestConfigVariableTargetKeys` checks every declared configuration key exists, since a typo would skip its test
+checks every test declares targets and every declaration names a test; `server/regtest_must_set_test.go`
+checks the must-set goes through setClusterSetting and an unknown key stops the test;
+`TestConfigVariableKeys` checks every must-have and must-set key exists, since a typo would skip its test
 on every cluster.

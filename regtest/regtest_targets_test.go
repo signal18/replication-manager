@@ -54,24 +54,27 @@ func TestSkipReason(t *testing.T) {
 		{"dbu under the target", newCluster(2, config.ConstOrchestratorOnPremise, 2, false), "testTargetsDbu", "dbu-target"},
 		{"dbu at the target", newCluster(2, config.ConstOrchestratorOnPremise, 4, false), "testTargetsDbu", ""},
 		{"dbu unknown", newCluster(2, config.ConstOrchestratorOnPremise, 0, false), "testTargetsDbu", ""},
-		{"staging test without topology-staging", newCluster(2, config.ConstOrchestratorOnPremise, 0, false), "testStagingRecoverNoReadOnly", "config-variable-target"},
+		{"staging test without topology-staging", newCluster(2, config.ConstOrchestratorOnPremise, 0, false), "testStagingRecoverNoReadOnly", "config-variable-must-have"},
 		{"staging test with topology-staging", staging, "testStagingRecoverNoReadOnly", ""},
 	} {
-		got := regtest.SkipReason(c.cl, c.test)
+		_, got := regtest.MatchTarget(c.cl, c.test)
 		if c.skip == "" && got != "" || c.skip != "" && !strings.Contains(got, c.skip) {
 			t.Errorf("%s: %q, want %q", c.name, got, c.skip)
 		}
 	}
 }
 
-// A config-variable target names a key that exists: a typo would skip its test everywhere.
-func TestConfigVariableTargetKeys(t *testing.T) {
+// A must-have or must-set variable names a key that exists: a typo would skip its test
+// everywhere, or fail it.
+func TestConfigVariableKeys(t *testing.T) {
 	conf := new(config.Config)
 	for name, targets := range testTargets {
 		for _, target := range targets {
-			for key := range target.ConfigVariableTarget {
-				if _, ok := conf.GetValueByKey(key); !ok {
-					t.Errorf("%s: config-variable target %s is not a configuration key", name, key)
+			for _, keys := range []map[string]string{target.ConfigVariableMustHave, target.ConfigVariableMustSet} {
+				for key := range keys {
+					if _, ok := conf.GetValueByKey(key); !ok {
+						t.Errorf("%s: config variable %s is not a configuration key", name, key)
+					}
 				}
 			}
 		}

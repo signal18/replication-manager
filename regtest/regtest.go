@@ -177,14 +177,24 @@ type TestTarget struct {
 	OrchestratorTarget []string
 	// DbuTarget is the minimum DBU per database server (the cluster's plan, GetPlanDbu).
 	DbuTarget int
-	// ConfigVariableTarget maps 1 to n configuration keys (toml names) to the value the
-	// test needs, printed as GetValueByKey prints it (true, 4, opensvc).
-	ConfigVariableTarget map[string]string
+	// ConfigVariableMustHave maps 1 to n configuration keys (toml names) to the value the
+	// cluster must already have, printed as GetValueByKey prints it (true, 4, opensvc): a
+	// setting that describes the architecture (arbitration, staging, orchestrator), which
+	// setting it would not build. Checked before the test, never set.
+	ConfigVariableMustHave map[string]string
+	// ConfigVariableMustSet maps configuration keys to the value the test runs with: a
+	// behaviour the test exercises. The runner sets them before the test, as the API does,
+	// and restores the configuration after it.
+	ConfigVariableMustSet map[string]string
 }
 
 // testTargets declares the targets of a test by its name. A test not listed has none.
 // anyCluster is the targets of a test that runs on every cluster.
 var anyCluster = []TestTarget{{}}
+
+// arbitrationRequired is the targets of the split-brain tests: arbitration is the architecture
+// they test (an arbitrator and a peer replication-manager), which turning it on would not build.
+var arbitrationRequired = []TestTarget{{ConfigVariableMustHave: map[string]string{"arbitration-external": "true"}}}
 
 // testTargets holds the targets of every test in tests (TestTargetsDeclared checks it): the test
 // runs when the cluster matches at least one of them. anyCluster marks a test not classified yet,
@@ -201,7 +211,7 @@ var testTargets = map[string][]TestTarget{
 	"testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck":        anyCluster,
 	"testSwitchover2TimesReplicationOkSemiSyncNoRplCheck":          anyCluster,
 	"testSwitchoverBackPreferedMasterNoRplCheckSemiSync":           anyCluster,
-	"testSwitchoverAllSlavesStopRplCheckNoSemiSync":                {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
+	"testSwitchoverAllSlavesStopRplCheckNoSemiSync":                {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2, ConfigVariableMustSet: map[string]string{"check-replication-state": "true", "failover-max-slave-delay": "0"}}},
 	"testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck":              anyCluster,
 	"testSwitchoverAllSlavesDelayRplCheckNoSemiSync":               anyCluster,
 	"testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync":            anyCluster,
@@ -235,13 +245,13 @@ var testTargets = map[string][]TestTarget{
 	"testSlaReplAllSlavesStopNoSemiSync":                           anyCluster,
 	"testSlaReplAllSlavesDelayNoSemiSync":                          anyCluster,
 	"testMasterSuspect":                                            anyCluster,
-	"testSetMinorityWithMaster":                                    anyCluster,
-	"testSetMinorityWithMasterSysbench":                            anyCluster,
-	"testSetMinorityWithoutMaster":                                 anyCluster,
-	"testSetDualActive":                                            anyCluster,
-	"testSplitBrainNoWinner":                                       anyCluster,
+	"testSetMinorityWithMaster":                                    arbitrationRequired,
+	"testSetMinorityWithMasterSysbench":                            arbitrationRequired,
+	"testSetMinorityWithoutMaster":                                 arbitrationRequired,
+	"testSetDualActive":                                            arbitrationRequired,
+	"testSplitBrainNoWinner":                                       arbitrationRequired,
 	"testMasterNil":                                                anyCluster,
-	"testStagingRecoverNoReadOnly":                                 {{ConfigVariableTarget: map[string]string{"topology-staging": "true"}}},
+	"testStagingRecoverNoReadOnly":                                 {{ConfigVariableMustHave: map[string]string{"topology-staging": "true"}}},
 	"testRunSysbenchTPCPerMinuteIncreaseThreads":                   anyCluster,
 	"testConfigPersistBackupOption":                                anyCluster,
 	"testCredentialPersistTagReload":                               anyCluster,
@@ -266,7 +276,7 @@ var testTargets = map[string][]TestTarget{
 	"testResticReseedMydumper":                                     anyCluster,
 	"testResticReseedXtrabackup":                                   anyCluster,
 	"testResticReseedMariabackup":                                  anyCluster,
-	"testOpenSVCUpgradeWarnRecovery":                               {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}, NumberNodesTarget: 2, ConfigVariableTarget: map[string]string{"prov-db-start-fetch-config": "true"}}},
+	"testOpenSVCUpgradeWarnRecovery":                               {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}, NumberNodesTarget: 2, ConfigVariableMustHave: map[string]string{"prov-db-start-fetch-config": "true"}}},
 	"testRejoinStaleCrashKeepsMaster":                              anyCluster,
 	"testMisplacedReplicaNotRelay":                                 anyCluster,
 	"testRollingRestart":                                           anyCluster,
@@ -307,23 +317,24 @@ var testTargets = map[string][]TestTarget{
 // not run, so it is neither a PASS nor a FAIL of the setup.
 const TestResultSkip = "SKIP"
 
-// SkipReason says why the cluster matches none of the targets of a test, empty when it
-// matches one (or the test declares none). An unknown flavor (no database version read yet)
-// or DBU (no plan) does not skip: the test runs and its result says what it found.
-func (regtest *RegTest) SkipReason(cl *cluster.Cluster, name string) string {
+// MatchTarget returns the first target of a test the cluster matches, or, when it matches
+// none, why: the miss of each target joined by "; ". A test that declares no targets matches
+// with an empty target. An unknown flavor (no database version read yet) or DBU (no plan)
+// does not miss: the test runs and its result says what it found.
+func (regtest *RegTest) MatchTarget(cl *cluster.Cluster, name string) (TestTarget, string) {
 	targets := testTargets[name]
 	if len(targets) == 0 {
-		return ""
+		return TestTarget{}, ""
 	}
 	misses := make([]string, 0, len(targets))
 	for _, target := range targets {
 		miss := target.missReason(cl)
 		if miss == "" {
-			return ""
+			return target, ""
 		}
 		misses = append(misses, miss)
 	}
-	return strings.Join(misses, "; ")
+	return TestTarget{}, strings.Join(misses, "; ")
 }
 
 // missReason says which condition of the target the cluster misses, empty when it matches.
@@ -350,10 +361,10 @@ func (target TestTarget) missReason(cl *cluster.Cluster) string {
 		}
 	}
 	// sorted, so the reason names the same key at every run
-	for _, key := range slices.Sorted(maps.Keys(target.ConfigVariableTarget)) {
-		want := target.ConfigVariableTarget[key]
+	for _, key := range slices.Sorted(maps.Keys(target.ConfigVariableMustHave)) {
+		want := target.ConfigVariableMustHave[key]
 		if value, ok := cl.Conf.GetValueByKey(key); !ok || !strings.EqualFold(value, want) {
-			return fmt.Sprintf("config-variable-target %s=%s, cluster has %s", key, want, value)
+			return fmt.Sprintf("config-variable-must-have %s=%s, cluster has %s", key, want, value)
 		}
 	}
 	return ""
@@ -466,7 +477,7 @@ func (regtest *RegTest) GetTestsFromPath(cl *cluster.Cluster, tests map[string]c
 	return allTests
 }
 
-// GetTestSkipLabel is the result of a test SkipReason kept from running.
+// GetTestSkipLabel is the result of a test MatchTarget kept from running.
 func (regtest *RegTest) GetTestSkipLabel() string {
 	return TestResultSkip
 }
