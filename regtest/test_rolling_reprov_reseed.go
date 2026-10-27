@@ -47,10 +47,11 @@ func createProbeTable(master *cluster.ServerMonitor) error {
 	return nil
 }
 
-// dropProbeTable drops the probe schema on the current master.
+// dropProbeTable drops the probe table on the current master, never its schema:
+// replication_manager_schema also holds repman's jobs, heartbeat and traffic marker (#2195).
 func dropProbeTable(cl *cluster.Cluster) {
 	if m := cl.GetMaster(); m != nil && m.Conn != nil {
-		m.Conn.Exec("DROP DATABASE IF EXISTS " + rollingProbeSchema)
+		m.Conn.Exec("DROP TABLE IF EXISTS " + rollingProbeSchema + "." + rollingProbeTable)
 	}
 }
 

@@ -110,6 +110,10 @@ func (cluster *Cluster) postgresInjectTrafficMarker(db *sqlx.DB, uuid string, re
 		cluster.injectTrafficTableReady[readyKey] = true
 	}
 	_, err := db.Exec("INSERT INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, $1, now()) ON CONFLICT (id) DO UPDATE SET uuid = EXCLUDED.uuid, ts = EXCLUDED.ts", uuid)
+	if markerTableMissing(err) {
+		// Dropped under a running repman: created again by the next injection (#2195).
+		delete(cluster.injectTrafficTableReady, readyKey)
+	}
 	return err
 }
 
