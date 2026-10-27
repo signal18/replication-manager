@@ -3,6 +3,7 @@ package repmanmcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -17,10 +18,11 @@ import (
 // fakeRepman records the ACL questions the MCP layer asks and answers them from
 // a table, so the mapping tool → REST URL is tested without a real server.
 type fakeRepman struct {
-	clusters map[string]*cluster.Cluster
-	allowed  map[string]bool // "user url" → allowed
-	asked    []string
-	events   []string
+	clusters  map[string]*cluster.Cluster
+	catalogue config.MarketplaceCatalogue
+	allowed   map[string]bool // "user url" → allowed
+	asked     []string
+	events    []string
 }
 
 func (f *fakeRepman) GetClusters() map[string]*cluster.Cluster { return f.clusters }
@@ -55,7 +57,8 @@ func (f *fakeRepman) Cloud18Register(e, u string) (map[string]any, error) {
 func (f *fakeRepman) Cloud18RegisterConfirm(e, u string) (map[string]any, error) {
 	return map[string]any{"state": "complete"}, nil
 }
-func (f *fakeRepman) Cloud18Unregister() (map[string]any, error) { return map[string]any{}, nil }
+func (f *fakeRepman) Cloud18Unregister() (map[string]any, error)        { return map[string]any{}, nil }
+func (f *fakeRepman) MarketplaceCatalogue() config.MarketplaceCatalogue { return f.catalogue }
 func (f *fakeRepman) Cloud18SubscriptionPlans() (json.RawMessage, error) {
 	return json.RawMessage(`[]`), nil
 }
@@ -382,5 +385,48 @@ func TestClusterToolNeedsClusterName(t *testing.T) {
 	}
 	if len(f.asked) != 0 {
 		t.Errorf("no ACL lookup must run without a cluster: %v", f.asked)
+	}
+}
+
+// list-cloud18-archive-offers answers lists, never null, and an unknown price stays null.
+func TestListArchiveOffers(t *testing.T) {
+	s, f := newTestMCP(true, false)
+	if out := call(s, context.Background(), "list-cloud18-archive-offers", nil); !strings.Contains(out, "unauthenticated") {
+		t.Fatalf("no principal must be refused, got %s", out)
+	}
+	ctx := withPrincipal(context.Background(), &Principal{User: "alice", AuthMethod: "token"})
+	// the tool's text, decoded
+	answer := func() map[string]any {
+		t.Helper()
+		var rpc struct {
+			Result struct {
+				Content []struct {
+					Text string `json:"text"`
+				} `json:"content"`
+			} `json:"result"`
+		}
+		out := call(s, ctx, "list-cloud18-archive-offers", nil)
+		var body map[string]any
+		if err := json.Unmarshal([]byte(out), &rpc); err != nil || len(rpc.Result.Content) != 1 || json.Unmarshal([]byte(rpc.Result.Content[0].Text), &body) != nil {
+			t.Fatalf("not a JSON answer: %s", out)
+		}
+		return body
+	}
+	if body := answer(); fmt.Sprint(body["s3"]) != "[]" || fmt.Sprint(body["archives"]) != "[]" {
+		t.Fatalf("an empty catalogue must answer empty lists, got %v", body)
+	}
+	price := 0.2577
+	f.catalogue = config.MarketplaceCatalogue{
+		S3:       []config.MarketplaceS3{{Name: "s3-a", Partner: "p", Cloud18SSO: true, Auth: "cloud18-sso"}},
+		Archives: []config.MarketplaceArchiveOffer{{Name: "pbs-a", Partner: "p", Plugin: "archive-pbs", SizeUnit: "TB", PriceEurBauMonth: &price}},
+	}
+	body := answer()
+	s3 := body["s3"].([]any)[0].(map[string]any)
+	offer := body["archives"].([]any)[0].(map[string]any)
+	if s3["name"] != "s3-a" || s3["cloud18Sso"] != true || offer["priceEurBauMonth"] != 0.2577 {
+		t.Fatalf("catalogue = %v", body)
+	}
+	if v, ok := offer["priceEurMonth"]; !ok || v != nil {
+		t.Fatalf("an unknown price must be null, got %v", offer)
 	}
 }
