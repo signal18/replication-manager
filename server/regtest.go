@@ -129,7 +129,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 			continue
 		}
 		if test.Name == "testFailoverManual" {
-			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXMS(cl, test.ConfigFile, &test)
+			res = regtest.TestFailoverManual(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testFailoverSemisyncAutoRejoinSafeMSMXMS" {
 			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXMS(cl, test.ConfigFile, &test)
