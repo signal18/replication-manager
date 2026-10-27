@@ -5,6 +5,7 @@
 package regtest
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,8 +23,14 @@ func TestSkipReason(t *testing.T) {
 		cl.Servers = make([]*cluster.ServerMonitor, nodes)
 		return cl
 	}
-	testTargets["testTargetsDbu"] = TestTarget{DbuTarget: 4}
+	testTargets["testTargetsDbu"] = []TestTarget{{DbuTarget: 4}}
 	defer delete(testTargets, "testTargetsDbu")
+	// either master-slave from 2 nodes or group replication from 3: one match is enough
+	testTargets["testTargetsAny"] = []TestTarget{
+		{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2},
+		{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 3},
+	}
+	defer delete(testTargets, "testTargetsAny")
 	staging := newCluster(2, config.ConstOrchestratorOnPremise, 0, false)
 	staging.Conf.TopologyStaging = true
 	regtest := new(RegTest)
@@ -33,7 +40,10 @@ func TestSkipReason(t *testing.T) {
 		test string
 		skip string // a word of the reason, empty when the test runs
 	}{
-		{"no targets", newCluster(1, config.ConstOrchestratorOnPremise, 0, false), "testFailoverManual", ""},
+		{"any cluster", newCluster(1, config.ConstOrchestratorOnPremise, 0, false), "testFailoverManual", ""},
+		{"first of two targets", newCluster(2, config.ConstOrchestratorOnPremise, 0, false), "testTargetsAny", ""},
+		{"second of two targets", newCluster(3, config.ConstOrchestratorOnPremise, 0, true), "testTargetsAny", ""},
+		{"none of two targets", newCluster(2, config.ConstOrchestratorOnPremise, 0, true), "testTargetsAny", "topology-target master-slave, cluster is multi-master-grprep; number-nodes-target 3, cluster has 2"},
 		{"master-slave, 2 nodes", newCluster(2, config.ConstOrchestratorOnPremise, 0, false), "testSwitchoverAllSlavesStopRplCheckNoSemiSync", ""},
 		{"one node", newCluster(1, config.ConstOrchestratorOnPremise, 0, false), "testSwitchoverAllSlavesStopRplCheckNoSemiSync", "number-nodes-target"},
 		{"group replication on master-slave", newCluster(3, config.ConstOrchestratorOnPremise, 0, false), "testGroupReplicationBootstrap", "topology-target"},
@@ -57,11 +67,28 @@ func TestSkipReason(t *testing.T) {
 // A config-variable target names a key that exists: a typo would skip its test everywhere.
 func TestConfigVariableTargetKeys(t *testing.T) {
 	conf := new(config.Config)
-	for name, target := range testTargets {
-		for key := range target.ConfigVariableTarget {
-			if _, ok := conf.GetValueByKey(key); !ok {
-				t.Errorf("%s: config-variable target %s is not a configuration key", name, key)
+	for name, targets := range testTargets {
+		for _, target := range targets {
+			for key := range target.ConfigVariableTarget {
+				if _, ok := conf.GetValueByKey(key); !ok {
+					t.Errorf("%s: config-variable target %s is not a configuration key", name, key)
+				}
 			}
+		}
+	}
+}
+
+// Every test declares its targets (anyCluster when it runs everywhere), and every declaration
+// names a test: a test added or renamed without its targets fails here.
+func TestTargetsDeclared(t *testing.T) {
+	for _, name := range tests {
+		if len(testTargets[name]) == 0 {
+			t.Errorf("%s declares no targets in testTargets", name)
+		}
+	}
+	for name := range testTargets {
+		if !slices.Contains(tests, name) {
+			t.Errorf("testTargets declares %s, which is not in tests", name)
 		}
 	}
 }

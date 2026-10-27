@@ -13,7 +13,8 @@ skipped PASS marked a setup tested when nothing ran, and a skipped FAIL marked a
 
 `regtest/regtest.go`:
 
-- `TestTarget` holds the targets of a test. An empty field (0 for a number, nil for a map) means any.
+- `TestTarget` holds one set of conditions, all required (AND). An empty field (0 for a number, nil for
+  a map) means any.
 
   | Field | Name in logs and docs | Read from |
   |---|---|---|
@@ -24,9 +25,17 @@ skipped PASS marked a setup tested when nothing ran, and a skipped FAIL marked a
   | `DbuTarget int` | dbu-target | `cl.GetPlanDbu() / nodes`, a minimum per node |
   | `ConfigVariableTarget map[string]string` | config-variable-target | `cl.Conf.GetValueByKey(key)`, compared case-insensitively |
 
-- `testTargets` maps a test name to its targets, next to the `tests` list. A test not in the map has none.
-- `SkipReason(cl, name)` returns the first target the cluster misses, empty when it matches. The
-  configuration variables are checked in key order, so the reason is the same at every run.
+- `testTargets` maps a test name to a list of `TestTarget`: the test runs when the cluster matches at
+  least one of them (OR). One list per test, not one target, because the other conditions depend on
+  the topology: a switchover can apply to master-slave from 2 nodes and to Galera from 3 nodes on
+  MariaDB only.
+- Every test of the `tests` list declares its targets, and every key of `testTargets` is a test of the
+  list (`TestTargetsDeclared`): a test added or renamed without them fails the unit tests. `anyCluster`
+  (one empty target) marks a test that runs on every cluster; the tests not classified yet carry it, and
+  get real targets as they are worked on.
+- `SkipReason(cl, name)` returns empty when one target matches, otherwise the miss of each target
+  (`missReason`, the first condition it misses) joined by `; `. The configuration variables are checked
+  in key order, so the reason is the same at every run.
   An unknown flavor (no version read) or DBU (no plan) does not skip: the test runs and its own result says what
   it found, so a down cluster is a FAIL, not a SKIP that would hide it.
 - `TestResultSkip = "SKIP"`, returned by `GetTestSkipLabel()` (the runner shadows the package name with its
@@ -64,10 +73,12 @@ on a cluster of the right setup, a missing replica is a broken cluster, not a te
 - `testStagingRecoverNoReadOnly` (config `topology-staging = true`), now in the `ALL` list
 - `testSwitchoverAllSlavesStopRplCheckNoSemiSync` (topology `master-slave`, 2 nodes)
 
-The other tests have no targets yet; they get them as they are worked on.
+The other tests declare `anyCluster` for now; they get real targets as they are worked on.
 
 ## Tests
 
-`regtest/regtest_targets_test.go`: `TestSkipReason` covers each target, matched and missed, and the unknown DBU;
+`regtest/regtest_targets_test.go`: `TestSkipReason` covers each condition, matched and missed, the unknown
+DBU, and a test with two targets (either matches; both missed gives both reasons); `TestTargetsDeclared`
+checks every test declares targets and every declaration names a test;
 `TestConfigVariableTargetKeys` checks every declared configuration key exists, since a typo would skip its test
 on every cluster.

@@ -183,30 +183,151 @@ type TestTarget struct {
 }
 
 // testTargets declares the targets of a test by its name. A test not listed has none.
-var testTargets = map[string]TestTarget{
-	"testSwitchoverAllSlavesStopRplCheckNoSemiSync": {TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2},
-	"testGroupReplicationBootstrap":                 {TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}},
-	"testGroupReplicationSwitchover":                {TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}},
+// anyCluster is the targets of a test that runs on every cluster.
+var anyCluster = []TestTarget{{}}
+
+// testTargets holds the targets of every test in tests (TestTargetsDeclared checks it): the test
+// runs when the cluster matches at least one of them. anyCluster marks a test not classified yet,
+// which runs on every cluster.
+var testTargets = map[string][]TestTarget{
+	"testSwitchoverNoDivergenceOnOldMaster":                        anyCluster,
+	"testSwitchoverAllSlavesDelayMultimasterNoRplChecksNoSemiSync": anyCluster,
+	"testSwitchoverLongTransactionNoRplCheckNoSemiSync":            anyCluster,
+	"testSwitchoverLongTransactionWaitNoRplCheckNoSemiSync":        anyCluster,
+	"testSwitchoverLongQueryNoRplCheckNoSemiSync":                  anyCluster,
+	"testSwitchoverLongTrxWithoutCommitNoRplCheckNoSemiSync":       anyCluster,
+	"testSwitchoverReadOnlyNoRplCheck":                             anyCluster,
+	"testSwitchoverNoReadOnlyNoRplCheck":                           anyCluster,
+	"testSwitchover2TimesReplicationOkNoSemiSyncNoRplCheck":        anyCluster,
+	"testSwitchover2TimesReplicationOkSemiSyncNoRplCheck":          anyCluster,
+	"testSwitchoverBackPreferedMasterNoRplCheckSemiSync":           anyCluster,
+	"testSwitchoverAllSlavesStopRplCheckNoSemiSync":                {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2}},
+	"testSwitchoverAllSlavesStopNoSemiSyncNoRplCheck":              anyCluster,
+	"testSwitchoverAllSlavesDelayRplCheckNoSemiSync":               anyCluster,
+	"testSwitchoverAllSlavesDelayNoRplChecksNoSemiSync":            anyCluster,
+	"testFailoverSemisyncAutoRejoinSafeMSMXMS":                     anyCluster,
+	"testFailoverSemisyncAutoRejoinSafeMSXMSM":                     anyCluster,
+	"testFailoverSemisyncAutoRejoinSafeMSMXXXRMXMS":                anyCluster,
+	"testFailoverSemisyncAutoRejoinSafeMSMXXXRXSMS":                anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXMS":                   anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXMXMS":               anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM":               anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSXMSM":                   anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS":               anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXMXXXMSM":              anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS":              anyCluster,
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM":              anyCluster,
+	"testFailoverAssyncAutoRejoinRelay":                            anyCluster,
+	"testFailoverAssyncAutoRejoinNoGtid":                           anyCluster,
+	"testFailoverAllSlavesDelayNoRplChecksNoSemiSync":              anyCluster,
+	"testFailoverAllSlavesDelayRplChecksNoSemiSync":                anyCluster,
+	"testFailoverNoRplChecksNoSemiSync":                            anyCluster,
+	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat":             anyCluster,
+	"testFailoverNumberFailureLimitReach":                          anyCluster,
+	"testFailoverTimeNotReach":                                     anyCluster,
+	"testFailoverManual":                                           anyCluster,
+	"testFailoverAssyncAutoRejoinFlashback":                        anyCluster,
+	"testFailoverSemisyncAutoRejoinFlashback":                      anyCluster,
+	"testFailoverAssyncAutoRejoinNowrites":                         anyCluster,
+	"testFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM":                anyCluster,
+	"testFailoverSemisyncAutoRejoinMSSXMSXXMXSMSSM":                anyCluster,
+	"testFailoverSemisyncSlavekilledAutoRejoin":                    anyCluster,
+	"testSlaReplAllSlavesStopNoSemiSync":                           anyCluster,
+	"testSlaReplAllSlavesDelayNoSemiSync":                          anyCluster,
+	"testMasterSuspect":                                            anyCluster,
+	"testSetMinorityWithMaster":                                    anyCluster,
+	"testSetMinorityWithMasterSysbench":                            anyCluster,
+	"testSetMinorityWithoutMaster":                                 anyCluster,
+	"testSetDualActive":                                            anyCluster,
+	"testSplitBrainNoWinner":                                       anyCluster,
+	"testMasterNil":                                                anyCluster,
+	"testStagingRecoverNoReadOnly":                                 {{ConfigVariableTarget: map[string]string{"topology-staging": "true"}}},
+	"testRunSysbenchTPCPerMinuteIncreaseThreads":                   anyCluster,
+	"testConfigPersistBackupOption":                                anyCluster,
+	"testCredentialPersistTagReload":                               anyCluster,
+	"testConfigCookiePushBasic":                                    anyCluster,
+	"testConfigCookiePushLifecycle":                                anyCluster,
+	"testConfigCookiePushMultipleServers":                          anyCluster,
+	"testConfigCookiePushTiming":                                   anyCluster,
+	"testConfigCookiePushCookieDir":                                anyCluster,
+	"testConfigCookiePushNoConfigFetchCookie":                      anyCluster,
+	"testRestartCookieBasic":                                       anyCluster,
+	"testRestartCookieLifecycle":                                   anyCluster,
+	"testRestartCookieMultipleServers":                             anyCluster,
+	"testRestartCookieParameters":                                  anyCluster,
+	"testRestartCookieCleanup":                                     anyCluster,
+	"testRestartCookieTiming":                                      anyCluster,
+	"testRestartCookieConcurrent":                                  anyCluster,
+	"testResticReseedRestore":                                      anyCluster,
+	"testResticReseedDump":                                         anyCluster,
+	"testResticReseedMount":                                        anyCluster,
+	"testResticReseedFallback":                                     anyCluster,
+	"testResticReseedMysqldump":                                    anyCluster,
+	"testResticReseedMydumper":                                     anyCluster,
+	"testResticReseedXtrabackup":                                   anyCluster,
+	"testResticReseedMariabackup":                                  anyCluster,
+	"testOpenSVCUpgradeWarnRecovery":                               {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}, NumberNodesTarget: 2, ConfigVariableTarget: map[string]string{"prov-db-start-fetch-config": "true"}}},
+	"testRejoinStaleCrashKeepsMaster":                              anyCluster,
+	"testMisplacedReplicaNotRelay":                                 anyCluster,
+	"testRollingRestart":                                           anyCluster,
+	"testRollingUpgrade":                                           anyCluster,
+	"testRollingReprovReseed":                                      anyCluster,
+	"testGroupReplicationBootstrap":                                {{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
+	"testGroupReplicationSwitchover":                               {{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}}},
 	// the group keeps a majority after losing its PRIMARY only from 3 members
-	"testGroupReplicationPrimaryLoss":        {TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}},
-	"testK8SProvisionSchedulerVolumeBinding": {OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}},
-	"testK8SStopStartDatabaseService":        {OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}},
-	"testOpenSVCUpgradeWarnRecovery":         {OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}, NumberNodesTarget: 2, ConfigVariableTarget: map[string]string{"prov-db-start-fetch-config": "true"}},
-	"testStagingRecoverNoReadOnly":           {ConfigVariableTarget: map[string]string{"topology-staging": "true"}},
+	"testGroupReplicationPrimaryLoss":                                          {{TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}}},
+	"testK8SProvisionSchedulerVolumeBinding":                                   {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
+	"testK8SStopStartDatabaseService":                                          {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
+	"testSchemaPlugin":                                                         anyCluster,
+	"testGraphiteMetricsQueueBound":                                            anyCluster,
+	"testDirectReseedSystemAllEmptyDestination":                                anyCluster,
+	"testDirectReseedSystemAllPluginAlreadyActive":                             anyCluster,
+	"testDirectReseedSystemAllPreExistingUserAppliedViaAlterUser":              anyCluster,
+	"testDirectReseedSystemAllRetainsArtifactOnPhaseTwoFailure":                anyCluster,
+	"testDirectReseedSystemAllSplitUserSingleAuthority":                        anyCluster,
+	"testDirectReseedSystemAllStrictPasswordValidationIdenticalAccountSkipped": anyCluster,
+	"testHaproxyRuntimeAPIDynamicServerLifecycle":                              anyCluster,
+	"testProxyReadBackendReconciliation":                                       anyCluster,
+	"testMaintenancePersistReload":                                             anyCluster,
+	"testAppWarningDebounceAndRecovery":                                        anyCluster,
+	"testReplicationTLSAutoCertificate":                                        anyCluster,
+	"testReplicationTLSStaleCAEmptied":                                         anyCluster,
+	"testReplicationTLSVerifyOffWarns":                                         anyCluster,
+	"testReplicationTLSSSLTagLifecycle":                                        anyCluster,
+	"testRollingUpgradeTransparentSSL":                                         anyCluster,
+	"testRejoinRefusesNodeWithData":                                            anyCluster,
+	"testCreateStaging":                                                        anyCluster,
+	"testCreateChild":                                                          anyCluster,
+	"testCreateStagingSplitdump":                                               anyCluster,
+	"testCreateChildSplitdump":                                                 anyCluster,
+	"testAlterEngine":                                                          anyCluster,
 }
 
 // TestResultSkip is the result of a test whose targets the cluster does not match: it did
 // not run, so it is neither a PASS nor a FAIL of the setup.
 const TestResultSkip = "SKIP"
 
-// SkipReason says why the cluster does not match the targets of a test, empty when it
-// does. An unknown flavor (no database version read yet) or DBU (no plan) does not skip:
-// the test runs and its result says what it found.
+// SkipReason says why the cluster matches none of the targets of a test, empty when it
+// matches one (or the test declares none). An unknown flavor (no database version read yet)
+// or DBU (no plan) does not skip: the test runs and its result says what it found.
 func (regtest *RegTest) SkipReason(cl *cluster.Cluster, name string) string {
-	target, ok := testTargets[name]
-	if !ok {
+	targets := testTargets[name]
+	if len(targets) == 0 {
 		return ""
 	}
+	misses := make([]string, 0, len(targets))
+	for _, target := range targets {
+		miss := target.missReason(cl)
+		if miss == "" {
+			return ""
+		}
+		misses = append(misses, miss)
+	}
+	return strings.Join(misses, "; ")
+}
+
+// missReason says which condition of the target the cluster misses, empty when it matches.
+func (target TestTarget) missReason(cl *cluster.Cluster) string {
 	if topology := cl.GetTopologyTarget(); len(target.TopologyTarget) > 0 && !misc.Contains(target.TopologyTarget, topology) {
 		return fmt.Sprintf("topology-target %s, cluster is %s", strings.Join(target.TopologyTarget, ","), topology)
 	}
