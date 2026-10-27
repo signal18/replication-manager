@@ -33,12 +33,11 @@ func loginRepman(t *testing.T, issuer string) *ReplicationManager {
 
 // #2182: a login with the Cloud18 email and password gives the GitLab token (GitLab logging the
 // person in with Cloud18) and a realm token of the login client, verified by repman itself; a
-// wrong password is refused as a credential mismatch, never through GitLab's password grant once
-// it is off; a realm without the login client still logs the person in (the GitLab token only).
+// wrong password is refused as a credential mismatch, never through GitLab's password grant (it is
+// no longer tried); a realm without the login client still logs the person in (the GitLab token only).
 func TestCloud18PasswordLogin(t *testing.T) {
 	f, issuer := newRegisterFakes(t)
 	repman := loginRepman(t, issuer)
-	repman.Conf.Cloud18GitLabPasswordGrant = false
 
 	sso, err := repman.ssoPasswordLogin("admin@acme.example", "s3cr3t-cloud18")
 	if err != nil || sso.token != "gl-admin%40acme.example" || sso.cloud18 == nil {
@@ -57,7 +56,7 @@ func TestCloud18PasswordLogin(t *testing.T) {
 
 	_, err = repman.ssoPasswordLogin("admin@acme.example", "old-gitlab-password")
 	if !errors.Is(err, config.ErrCloud18BadCredentials) || classifySSOAuthError(err) != "credential_mismatch" {
-		t.Fatalf("a wrong Cloud18 password, the grant off: %v (%s)", err, classifySSOAuthError(err))
+		t.Fatalf("a wrong Cloud18 password: %v (%s)", err, classifySSOAuthError(err))
 	}
 
 	f.mu.Lock()

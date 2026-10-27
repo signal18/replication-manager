@@ -15,7 +15,6 @@ import (
 	"unicode"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
 )
 
@@ -31,29 +30,18 @@ type ssoLogin struct {
 	cloud18 *config.Cloud18Login
 }
 
-// ssoPasswordLogin checks a person's name and password for an SSO login: the Cloud18 account
-// first, then, while cloud18-gitlab-password-grant is on, GitLab's password grant (an account
-// still on its GitLab password). The error is the last one tried (classifySSOAuthError).
+// ssoPasswordLogin checks a person's name and password for an SSO login against the Cloud18
+// account only: GitLab's password grant is no longer tried, the GitLab passwords were moved into
+// the realm (2026-10-26). The error is classified by classifySSOAuthError.
 func (repman *ReplicationManager) ssoPasswordLogin(user, password string) (ssoLogin, error) {
-	err := errors.New("no Cloud18 realm (cloud18-identity-url) and GitLab's password grant is off (cloud18-gitlab-password-grant)")
-	if repman.Conf.Cloud18IdentityURL != "" {
-		l, cerr := repman.Conf.Cloud18Login(user, password)
-		if cerr == nil {
-			return ssoLogin{token: l.GitLabToken, cloud18: l}, nil
-		}
-		err = cerr
+	if repman.Conf.Cloud18IdentityURL == "" {
+		return ssoLogin{}, errors.New("no Cloud18 realm (cloud18-identity-url)")
 	}
-	if !repman.Conf.Cloud18GitLabPasswordGrant {
+	l, err := repman.Conf.Cloud18Login(user, password)
+	if err != nil {
 		return ssoLogin{}, err
 	}
-	tok, gerr := githelper.GetGitLabTokenBasicAuth(user, password, false)
-	if gerr != nil || tok == "" {
-		if gerr == nil {
-			gerr = errors.New("GitLab gave no token")
-		}
-		return ssoLogin{}, gerr
-	}
-	return ssoLogin{token: tok}, nil
+	return ssoLogin{token: l.GitLabToken, cloud18: l}, nil
 }
 
 // cloud18Claim is the session's Cloud18 login, the encrypted refresh token of its realm token:

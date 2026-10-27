@@ -1039,7 +1039,6 @@ type Config struct {
 	Cloud18GitUser                   string  `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword               string  `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18IdentityURL               string  `scope:"server" mapstructure:"cloud18-identity-url" toml:"cloud18-identity-url" json:"cloud18IdentityUrl"`
-	Cloud18GitLabPasswordGrant       bool    `scope:"server" mapstructure:"cloud18-gitlab-password-grant" toml:"cloud18-gitlab-password-grant" json:"cloud18GitlabPasswordGrant"`
 	Cloud18SSOLogin                  bool    `scope:"server" mapstructure:"cloud18-sso-login" toml:"cloud18-sso-login" json:"cloud18SsoLogin"`
 	Cloud18GatewayDomainName         string  `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
 	Cloud18GatewayService            string  `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`

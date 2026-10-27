@@ -761,8 +761,8 @@ func (repman *ReplicationManager) UserHasGlobalGrant(r *http.Request, grant stri
 // loginHandler handles user login requests.
 // @Summary User login
 // @Description Authenticates a user and returns a JWT token upon successful login. A local account,
-// @Description then (Cloud18 instance) the Cloud18 account (email and Cloud18 password), then GitLab's
-// @Description password grant while cloud18-gitlab-password-grant is on. On a registered Cloud18
+// @Description then (Cloud18 instance) the Cloud18 account (email and Cloud18 password); GitLab's
+// @Description password grant is no longer tried. On a registered Cloud18
 // @Description instance, a Cloud18 realm token as bearer with an empty body ({}) logs its person in
 // @Description (another Cloud18 instance acting for its user, #2182).
 // @Tags Auth
