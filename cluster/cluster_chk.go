@@ -1119,8 +1119,9 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 			if sothers.IsFailed() || s.URL == sothers.URL || sothers.IsIgnored() {
 				continue
 			}
-			// a node not read yet has no UUID: nothing to compare
-			if s.Status.Get("WSREP_CLUSTER_STATE_UUID") == "" || sothers.Status.Get("WSREP_CLUSTER_STATE_UUID") == "" {
+			// a node not read yet has no UUID, a node joining or in SST is not Primary and
+			// may report the all-zero UUID: only two Primary components can be a split
+			if !wsrepClusterUUIDKnown(s) || !wsrepClusterUUIDKnown(sothers) {
 				continue
 			}
 			// two clusters take writes neither sees: an error, not a risk
@@ -1131,6 +1132,12 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 		}
 	}
 	return true
+}
+
+// wsrepClusterUUIDKnown: the node is in a Primary component with a real cluster UUID.
+func wsrepClusterUUIDKnown(s *ServerMonitor) bool {
+	u := s.Status.Get("WSREP_CLUSTER_STATE_UUID")
+	return u != "" && u != "00000000-0000-0000-0000-000000000000" && s.HasWsrepPrimary()
 }
 
 func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {

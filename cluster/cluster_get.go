@@ -871,18 +871,19 @@ func (cluster *Cluster) GetIgnoredROList() string {
 // (isGaleraBootstrapNode, the node --wsrep_new_cluster starts): every other node gets the
 // full list and waits for the Primary component. A list emptied whenever every server was
 // down bootstrapped each node rendered then, and the cluster came up split (#2191).
-// server nil (a proxy) always gets the full list.
+// server nil (a proxy) always gets the full list. Group replication has no bootstrap node
+// here (isGaleraBootstrapNode is false off Galera): always the full seed list.
 func (cluster *Cluster) GetGComm(server *ServerMonitor) string {
 	var gcomms []string
 	if len(cluster.Servers) == 0 {
 		return ""
 	}
 
-	for _, server := range cluster.Servers {
+	for _, member := range cluster.Servers {
 		if cluster.Conf.MultiMasterWsrep {
-			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterWsrepPort))
+			gcomms = append(gcomms, member.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterWsrepPort))
 		} else {
-			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterGrouprepPort))
+			gcomms = append(gcomms, member.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterGrouprepPort))
 		}
 
 	}

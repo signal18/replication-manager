@@ -40,6 +40,15 @@ Primary component. `GetGComm(nil)` (proxy services) always returns the full list
 Group replication is unaffected: `isGaleraBootstrapNode` is false outside wsrep, so its
 seed list is unchanged.
 
+The rule answers only while the cluster is down. A config rendered once the first node is
+Synced gives every node the full list, the bootstrap node included: a later restart of
+that node alone joins the running cluster instead of starting a new one.
+
+The `Servers[0]` fallback depends on the declared order. If both the master and lastmaster
+are unknown and a config reload reorders `db-servers-hosts` between two renders, two nodes
+could each be "first"; the provision pin below covers a full provision, a hand-made
+reorder in the middle of a manual restart is not covered.
+
 ## Provision order
 
 A full provision (`ProvisionServices`) is serialized on Galera: each node is started and
@@ -51,13 +60,23 @@ could be another one (the last master), a joiner started before it waited
 the bootstrap node db3 started at 15:35:40). `galeraProvisionOrder()` puts the bootstrap
 node first, then the others in declared order; other topologies keep the declared order.
 
+The bootstrap node is chosen once, when the provision starts on a down cluster, and kept
+until it ends (`pinGaleraBootstrap`, `galeraProvisionBootstrap`). Without it the order was
+computed at the start and each config at its render: the discovery running meanwhile can set
+a master (the ERR00012 path takes the first failed server with an empty state), and the
+node started first and the node rendered with the empty list could differ again. The pin
+still applies only while the cluster is down.
+
 ## Detection
 
 `IsSameWsrepUUID` runs every monitor tick (after `CheckGaleraSSTAccount`). Two nodes, not
 failed and not ignored, reporting different `WSREP_CLUSTER_STATE_UUID` open ERR00083 as an
 **ERROR** on the server of the first differing pair: two clusters take writes neither
-sees. A node with no UUID read yet is not compared. The same function still feeds the
-failover false-positive check.
+sees. Only two nodes in a Primary component (`WSREP_CLUSTER_STATUS`) with a real UUID are
+compared: a node not read yet, joining, or in SST (not Primary, or the all-zero UUID some
+versions report) would otherwise open a false split at every join. The state closes on the
+first tick where the UUIDs match, like every tick-set state. The same function still feeds
+the failover false-positive check.
 
 ## Master kept after a switchover or failover
 
@@ -74,6 +93,9 @@ replication re-reads its PRIMARY every tick).
 
 - `cluster/galera_bootstrap_test.go`: `TestGaleraBootstrapNode` (rule order, first declared
   server), `TestGaleraGCommOnlyBootstrapNodeEmpty` (empty list for the bootstrap node only,
-  proxy never), `TestGaleraProvisionOrder` (bootstrap node first), `TestGaleraSplitReported` (ERR00083 on a split, not on one cluster or an
-  unread node).
+  proxy never), `TestGaleraProvisionOrder` (bootstrap node first), `TestGaleraSplitReported`
+  (ERR00083 on a split, not on one cluster, an unread node, a zero UUID or a non-Primary
+  node), `TestGaleraBootstrapPinnedDuringProvision` (a master set during the provision does
+  not move the bootstrap node), `TestGaleraBootstrapAfterSwitchoverThenTotalLoss` (the new
+  master is saved as lastmaster and bootstraps).
 - Regtests (#2186): `testGaleraBootstrap`, `testGaleraSwitchover`, `testGaleraMasterLoss`.

@@ -380,15 +380,16 @@ type Cluster struct {
 	// backupRegisterResult: a path names one server, each server's backup folder holding its
 	// host_port, GetMyBackupDirectoryPath), the registered discovered backups whose file changed (key backup
 	// id, a *BackupRegistrationChange), and the change check running
-	backupCandidates           sync.Map            `json:"-"`
-	backupRegisterResults      sync.Map            `json:"-"`
-	backupChanges              sync.Map            `json:"-"`
-	backupRegistrationChecking atomic.Bool         `json:"-"`
-	injectTrafficInFlight      atomic.Bool         `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
-	injectTrafficSince         atomic.Int64        `json:"-"` // unix time the running injection started
-	binlogServerIDs            *binlogServerIDPool `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
-	binlogServerIDsOnce        sync.Once           `json:"-"`
-	resources                  *ResourceManager    `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
+	backupCandidates           sync.Map               `json:"-"`
+	backupRegisterResults      sync.Map               `json:"-"`
+	backupChanges              sync.Map               `json:"-"`
+	backupRegistrationChecking atomic.Bool            `json:"-"`
+	injectTrafficInFlight      atomic.Bool            `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
+	galeraProvisionBootstrap   atomic.Pointer[string] `json:"-"` // Galera bootstrap node URL kept during a full provision (galera_bootstrap.go)
+	injectTrafficSince         atomic.Int64           `json:"-"` // unix time the running injection started
+	binlogServerIDs            *binlogServerIDPool    `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
+	binlogServerIDsOnce        sync.Once              `json:"-"`
+	resources                  *ResourceManager       `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
 	// provisioningMutex serialises every provision/unprovision operation that
 	// reports its result through the shared, unbuffered errorChan (the ~10
 	// receivers in prov.go + srv.go Uprovision). Without it, two overlapping

@@ -139,7 +139,9 @@ func (cluster *Cluster) ProvisionServices() error {
 	path := cluster.WorkingDir + ".json"
 	os.Remove(path)
 	cluster.ResetCrashes()
-	// Galera: the bootstrap node first, the joiners wait for its Primary component
+	// Galera: the bootstrap node first, the joiners wait for its Primary component; the
+	// node is kept for the whole provision, the order and the rendered configs agree
+	defer cluster.pinGaleraBootstrap()()
 	servers := cluster.galeraProvisionOrder()
 	for _, server := range servers {
 		hasConfigPath[server.HostCnf] = server.HasConfigPathCookie()
