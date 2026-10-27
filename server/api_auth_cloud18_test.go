@@ -348,3 +348,28 @@ func TestCloud18SSOSilentAndHint(t *testing.T) {
 		t.Fatalf("a refused sign-in: %s", w.Header().Get("Location"))
 	}
 }
+
+// #2185: only a realm session reads the chat claim: a local session carrying chat=password is never
+// sent to the chat's web app.
+func TestMeetInfoChatClaimRealmOnly(t *testing.T) {
+	repman := ssoRepman(t, "https://keycloak.example/realms/cloud18")
+	tok, err := repman.issueJWT(struct {
+		Name     string
+		Role     string
+		Password string
+		Chat     string `json:"chat"`
+	}{"admin", "Admin", "enc", chatNeedsPassword}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodGet, "/api/meet/info", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	if info, err := repman.getUserInfoFromHeader(r); err != nil || info["AuthType"] != "Local" || info["Chat"] != "" {
+		t.Fatalf("a local session never carries the chat claim: %v %v", info, err)
+	}
+	w := httptest.NewRecorder()
+	repman.MeetInfoHandler(w, r)
+	if w.Code == http.StatusConflict {
+		t.Fatalf("a local session must not get the chat's web app: %s", w.Body.String())
+	}
+}

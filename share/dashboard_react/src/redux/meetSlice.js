@@ -18,7 +18,8 @@ export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkA
   condition: (_, { getState }) => {
     const { meet } = getState();
     // Block if already fetching or Redux state records a previous failure
-    if (meet.isFetchingInfo || meet.meetError) {
+    // meetWebURL: a Sign in with Cloud18 session, the answer is known (409) until logout
+    if (meet.isFetchingInfo || meet.meetError || meet.meetWebURL) {
       return false;
     }
     // Also block if a previous failure was recorded in sessionStorage
@@ -307,6 +308,8 @@ const meetSlice = createSlice({
       })
       .addCase(logoutFromMeet.pending, (state) => {
         state.loading = true;
+        // the next session (same tab) asks again: it may open the chat inside repman
+        state.meetWebURL = null;
       })
       .addCase(getMeetInfo.rejected, (state, action) => {
         state.meetInfo = null;
@@ -316,6 +319,7 @@ const meetSlice = createSlice({
           state.meetError = false;
           return;
         }
+        state.meetWebURL = null;
         state.meetError = true;
         // Persist failure so re-login/Redux-reset cycles don't retry needlessly
         sessionStorage.setItem(MEET_UNAVAILABLE_KEY, 'true');
