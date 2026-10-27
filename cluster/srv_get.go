@@ -1215,8 +1215,6 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 	return conn, err
 }
 
-// connectMonitorDSN opens a connection on server.DSN, the monitoring port: the TLS
-// retries below rebuild it with SetDSN.
 // monitorConnect opens a monitor connection bounded by db-servers-connect-timeout, the
 // server greeting included. The DSN's readTimeout (db-servers-read-timeout, an hour by
 // default) is for queries: a port that does not speak first, as MySQL does (PostgreSQL
@@ -1237,6 +1235,8 @@ func connectBounded(driver, dsn string, seconds int) (*sqlx.DB, error) {
 	return sqlx.ConnectContext(ctx, driver, dsn)
 }
 
+// connectMonitorDSN opens a connection on server.DSN, the monitoring port: the TLS
+// retries below rebuild it with SetDSN.
 func (server *ServerMonitor) connectMonitorDSN() (*sqlx.DB, error) {
 	// get topology is call to late
 	if server.IsPostgreSQLHost() {
