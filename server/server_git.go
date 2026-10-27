@@ -1274,10 +1274,16 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 }
 
-// readPullJSON reads .pull/<name> when it changed since its last accepted read: by modification
-// time, then by content checksum, both kept under key. It answers nil content when nothing
-// changed; the caller stores the returned checksum in CheckSumConfig[key] once it accepts the
-// content, so a file that fails to decode is not marked as read.
+// pullJSONMaxBytes bounds a JSON file the back-office pushes into .pull (partners, the
+// marketplace catalogue): kilobytes in practice, never read whole beyond this (F2).
+const pullJSONMaxBytes = 8 << 20
+
+// readPullJSON reads .pull/<name> when it changed since its last read: by modification time,
+// then by content checksum, both kept under key. It answers nil content when nothing changed;
+// the caller stores the returned checksum in CheckSumConfig[key] once it accepts the content.
+// The modification time is recorded before, so a version that is refused (too large, does not
+// decode) is logged once and read again only when the back-office pushes another one. An absent
+// file answers an error for which os.IsNotExist holds.
 func (repman *ReplicationManager) readPullJSON(name, key string) ([]byte, hash.Hash, error) {
 	filePath := filepath.Join(repman.Conf.WorkingDir, ".pull", name)
 	fstat, err := os.Stat(filePath)
@@ -1289,6 +1295,9 @@ func (repman *ReplicationManager) readPullJSON(name, key string) ([]byte, hash.H
 		return nil, nil, nil // No changes in the file modification time
 	}
 	repman.ModTimes[key] = modTime
+	if fstat.Size() > pullJSONMaxBytes {
+		return nil, nil, fmt.Errorf("%s is %d bytes, more than %d", name, fstat.Size(), pullJSONMaxBytes)
+	}
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, nil, err
@@ -1338,43 +1347,45 @@ func (repman *ReplicationManager) LoadMarketplaceCatalogue() {
 	cur := repman.MarketplaceCatalogue()
 	next := cur
 	changed := false
-	load := func(name, key string, into any) bool {
-		content, newHash, err := repman.readPullJSON(name, key)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				repman.Logrus.Errorf("failed reading %s: %v", name, err)
-			}
-			return false
-		}
-		if content == nil {
-			return false
-		}
-		if err := json.Unmarshal(content, into); err != nil {
-			repman.Logrus.Errorf("failed to decode %s: %v", name, err)
-			return false
-		}
-		repman.CheckSumConfig[key] = newHash
-		return true
-	}
 	var s3 []config.MarketplaceS3
-	if load("marketplace-s3.json", "marketplace-s3", &s3) {
+	if read, gone := repman.loadPullList("marketplace-s3.json", "marketplace-s3", &s3); read {
 		next.S3, changed = s3, true
-	} else if _, err := os.Stat(filepath.Join(repman.Conf.WorkingDir, ".pull", "marketplace-s3.json")); os.IsNotExist(err) && cur.S3 != nil {
+	} else if gone && cur.S3 != nil {
 		next.S3, changed = nil, true
-		delete(repman.ModTimes, "marketplace-s3")
-		delete(repman.CheckSumConfig, "marketplace-s3")
 	}
 	var archives []config.MarketplaceArchiveOffer
-	if load("marketplace-archive.json", "marketplace-archive", &archives) {
+	if read, gone := repman.loadPullList("marketplace-archive.json", "marketplace-archive", &archives); read {
 		next.Archives, changed = archives, true
-	} else if _, err := os.Stat(filepath.Join(repman.Conf.WorkingDir, ".pull", "marketplace-archive.json")); os.IsNotExist(err) && cur.Archives != nil {
+	} else if gone && cur.Archives != nil {
 		next.Archives, changed = nil, true
-		delete(repman.ModTimes, "marketplace-archive")
-		delete(repman.CheckSumConfig, "marketplace-archive")
 	}
 	if changed {
 		repman.marketplaceCatalogue.Store(&next)
 	}
+}
+
+// loadPullList decodes a new version of .pull/<name> into list: read when it did, gone when the
+// file is absent (its change detection is reset, so a file pushed again is read).
+func (repman *ReplicationManager) loadPullList(name, key string, list any) (read bool, gone bool) {
+	content, newHash, err := repman.readPullJSON(name, key)
+	if os.IsNotExist(err) {
+		delete(repman.ModTimes, key)
+		delete(repman.CheckSumConfig, key)
+		return false, true
+	}
+	if err != nil {
+		repman.Logrus.Errorf("failed reading %s: %v", name, err)
+		return false, false
+	}
+	if content == nil {
+		return false, false
+	}
+	if err := json.Unmarshal(content, list); err != nil {
+		repman.Logrus.Errorf("failed to decode %s: %v", name, err)
+		return false, false
+	}
+	repman.CheckSumConfig[key] = newHash
+	return true, false
 }
 
 // marketplaceCatalogueRef holds the catalogue last read: the MCP reads it while a pull replaces it.

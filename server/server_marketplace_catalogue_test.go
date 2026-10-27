@@ -76,3 +76,54 @@ func TestLoadMarketplaceCatalogue(t *testing.T) {
 		t.Fatalf("file gone: %+v", c)
 	}
 }
+
+// A file above the size bound is refused and the list read before stays; a file removed and
+// pushed again with the same modification time is read again.
+func TestLoadMarketplaceCatalogueBounds(t *testing.T) {
+	dir := t.TempDir()
+	pull := filepath.Join(dir, ".pull")
+	if err := os.MkdirAll(pull, 0755); err != nil {
+		t.Fatal(err)
+	}
+	repman := &ReplicationManager{
+		Conf:           &config.Config{WorkingDir: dir},
+		ModTimes:       map[string]time.Time{},
+		CheckSumConfig: map[string]hash.Hash{},
+		Logrus:         log.New(),
+	}
+	p := filepath.Join(pull, "marketplace-s3.json")
+	at := time.Now().Add(-time.Hour)
+	put := func(content []byte, when time.Time) {
+		t.Helper()
+		if err := os.WriteFile(p, content, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, when, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	good := []byte(`[{"name":"s3-a","partner":"p","providerSource":"custom","cloud18Sso":false,"auth":"cloud18-keys"}]`)
+	put(good, at)
+	repman.LoadMarketplaceCatalogue()
+	if len(repman.MarketplaceCatalogue().S3) != 1 {
+		t.Fatal("first read")
+	}
+	big := make([]byte, pullJSONMaxBytes+1)
+	put(big, at.Add(time.Minute))
+	repman.LoadMarketplaceCatalogue()
+	if c := repman.MarketplaceCatalogue(); len(c.S3) != 1 || c.S3[0].Name != "s3-a" {
+		t.Fatalf("an oversized file must keep the list: %+v", c.S3)
+	}
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	repman.LoadMarketplaceCatalogue()
+	if repman.MarketplaceCatalogue().S3 != nil {
+		t.Fatal("a removed file empties its list")
+	}
+	put(good, at) // pushed again, same modification time as the first read
+	repman.LoadMarketplaceCatalogue()
+	if len(repman.MarketplaceCatalogue().S3) != 1 {
+		t.Fatal("a file pushed again must be read again")
+	}
+}
