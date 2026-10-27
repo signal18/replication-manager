@@ -111,6 +111,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if reason := regtest.SkipReason(cl, test.Name); reason != "" {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skip %s: %s", test.Name, reason)
 			test.Result = regtest.GetTestSkipLabel()
+			test.SkipReason = reason
 			closeTest()
 			allTests[key] = test
 			continue

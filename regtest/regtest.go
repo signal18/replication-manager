@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -189,7 +191,7 @@ var testTargets = map[string]TestTarget{
 	"testGroupReplicationPrimaryLoss":        {TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}},
 	"testK8SProvisionSchedulerVolumeBinding": {OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}},
 	"testK8SStopStartDatabaseService":        {OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}},
-	"testOpenSVCUpgradeWarnRecovery":         {OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}, NumberNodesTarget: 2},
+	"testOpenSVCUpgradeWarnRecovery":         {OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}, NumberNodesTarget: 2, ConfigVariableTarget: map[string]string{"prov-db-start-fetch-config": "true"}},
 	"testStagingRecoverNoReadOnly":           {ConfigVariableTarget: map[string]string{"topology-staging": "true"}},
 }
 
@@ -226,7 +228,9 @@ func (regtest *RegTest) SkipReason(cl *cluster.Cluster, name string) string {
 			return fmt.Sprintf("dbu-target %d per node, cluster has %d", target.DbuTarget, dbu)
 		}
 	}
-	for key, want := range target.ConfigVariableTarget {
+	// sorted, so the reason names the same key at every run
+	for _, key := range slices.Sorted(maps.Keys(target.ConfigVariableTarget)) {
+		want := target.ConfigVariableTarget[key]
 		if value, ok := cl.Conf.GetValueByKey(key); !ok || !strings.EqualFold(value, want) {
 			return fmt.Sprintf("config-variable-target %s=%s, cluster has %s", key, want, value)
 		}

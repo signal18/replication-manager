@@ -34,8 +34,10 @@ var savedFailoverCtr int
 var savedFailoverTs int64
 
 type Test struct {
-	Name       string        `json:"name"`
-	Result     string        `json:"result"`
+	Name   string `json:"name"`
+	Result string `json:"result"`
+	// SkipReason is the target the cluster missed, when Result is SKIP.
+	SkipReason string        `json:"skip-reason,omitempty"`
 	ConfigFile string        `json:"config-file"`
 	ConfigInit config.Config `json:"config-init"`
 	ConfigTest config.Config `json:"config-test"`

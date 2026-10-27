@@ -46,10 +46,13 @@ var regTestCmd = &cobra.Command{
 			}
 			var tmplgreen = "<tr><td>%s</td><td bgcolor=\"#adebad\">%s</td></tr>"
 			var tmplred = "<tr><td>%s</td><td  bgcolor=\"##ff8080\">%s</td></tr>"
+			var tmplgrey = "<tr><td>%s</td><td bgcolor=\"#d9d9d9\">%s</td></tr>"
 			fmt.Printf("<table>")
 			for _, v := range cltests.Results {
-				if v.Result == "FAIL" {
+				if v.Result == "FAIL" || v.Result == "ERR" {
 					fmt.Printf(tmplred, v.Name, v.Result)
+				} else if v.Result == "SKIP" {
+					fmt.Printf(tmplgrey, v.Name, v.Result+": "+v.SkipReason)
 				} else {
 					fmt.Printf(tmplgreen, v.Name, v.Result)
 				}

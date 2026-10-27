@@ -25,7 +25,8 @@ skipped PASS marked a setup tested when nothing ran, and a skipped FAIL marked a
   | `ConfigVariableTarget map[string]string` | config-variable-target | `cl.Conf.GetValueByKey(key)`, compared case-insensitively |
 
 - `testTargets` maps a test name to its targets, next to the `tests` list. A test not in the map has none.
-- `SkipReason(cl, name)` returns the first target the cluster misses, empty when it matches.
+- `SkipReason(cl, name)` returns the first target the cluster misses, empty when it matches. The
+  configuration variables are checked in key order, so the reason is the same at every run.
   An unknown flavor (no version read) or DBU (no plan) does not skip: the test runs and its own result says what
   it found, so a down cluster is a FAIL, not a SKIP that would hide it.
 - `TestResultSkip = "SKIP"`, returned by `GetTestSkipLabel()` (the runner shadows the package name with its
@@ -33,11 +34,20 @@ skipped PASS marked a setup tested when nothing ran, and a skipped FAIL marked a
 
 `server/regtest.go` `RunAllTests` calls `SkipReason` once the cluster is ready (after the suite's
 `InitTestCluster`, after `SaveTestConf` on a live cluster), before the dispatch. A skipped test is logged
-`Skip <test>: <reason>`, kept in `tests.json` with `SKIP`, its cluster closed or its configuration restored as for
+`Skip <test>: <reason>`, kept in `tests.json` with `SKIP` and the reason in `skip-reason`
+(`cluster.Test.SkipReason`), its cluster closed or its configuration restored as for
 a test that ran, and it is not appended to the CRM report.
 
 `config.(*Config).GetValueByKey` reads a key through `configField`, the key-to-field index the configuration
 archive already builds (T2), and prints it as the archive stores it (`true`, `4`, `opensvc`).
+
+## Who reads SKIP
+
+- The CRM report: a skipped test is not sent (not a tested setup).
+- The CLI `--convert` HTML report: SKIP is grey with its reason; FAIL and ERR red, PASS green.
+- The dashboard (Run a regression test): the API answers 200 whatever the result, and the banner said
+  "ran successfuly" even for a FAIL. It now follows the result: PASS success, SKIP warning with the
+  reason, anything else error.
 
 ## Targets vs runtime preconditions
 
@@ -48,7 +58,9 @@ on a cluster of the right setup, a missing replica is a broken cluster, not a te
 ## Gates moved to targets
 
 - the group replication gate (topology `multi-master-grprep`, flavors mysql/percona, 3 nodes for the primary loss)
-- the Kubernetes tests (orchestrator `kubernetes`) and `testOpenSVCUpgradeWarnRecovery` (orchestrator `opensvc`)
+- the Kubernetes tests (orchestrator `kubernetes`) and `testOpenSVCUpgradeWarnRecovery` (orchestrator `opensvc`,
+  2 nodes, `prov-db-start-fetch-config = true`); its "no slaves available" PASS is now a FAIL: a 2-node
+  cluster without a replica is broken
 - `testStagingRecoverNoReadOnly` (config `topology-staging = true`), now in the `ALL` list
 - `testSwitchoverAllSlavesStopRplCheckNoSemiSync` (topology `master-slave`, 2 nodes)
 
