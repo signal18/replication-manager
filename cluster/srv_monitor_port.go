@@ -28,7 +28,9 @@ const monitorExtraPortRetry = time.Minute
 
 // connectServicePort opens the fallback connection on the service port; a variable so the
 // tests replace the server that answers there.
-var connectServicePort = func(dsn string) (*sqlx.DB, error) { return sqlx.Connect("mysql", dsn) }
+var connectServicePort = func(dsn string, seconds int) (*sqlx.DB, error) {
+	return connectBounded("mysql", dsn, seconds)
+}
 
 // monitorExtraPortFallback holds the DSN of the service port, written by SetDSN, and the
 // record that the extra port failed: until when the service port is used, and why, for
@@ -129,7 +131,7 @@ func (server *ServerMonitor) getNewDBConnPort() (*sqlx.DB, string, error) {
 			return nil, extraPort, err
 		}
 	}
-	conn, err := connectServicePort(serviceDSN)
+	conn, err := connectServicePort(serviceDSN, server.ClusterGroup.Conf.Timeout)
 	if err != nil {
 		return nil, server.Port, err
 	}
