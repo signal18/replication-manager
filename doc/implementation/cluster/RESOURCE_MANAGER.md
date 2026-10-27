@@ -165,8 +165,13 @@ follow-up (today the dynamic driver only shrinks on under-use). The archive clas
 BAU pot. `/api/global/resources` carries `ledger`; the Resource Manager page shows the table and the three unit pots;
 `infraUnitPool` (self-service gate) takes its free DBU/APU from the ledger's plan pot instead of per-unit double counts.
 **A cluster for sale does not block self-service (#2144, Stéphane 2026-10-22: a self-service client is preferred over
-an offer):** an offer is provisioned, so it never counts 0: it keeps a floor of 1 DBU per database node and 1 APU
-(its BKU plan stays counted whole by the ledger), and only its plan above the floor is releasable. `infraUnitPool`
+an offer):** an offer is provisioned, so it never counts 0: it keeps what its plans hold once given back to their
+floors, a simulation of `ChangePlanUnits` that moves nothing (`Cluster.PlanFloorUnits`, #2189): the plan rules of
+`planUnitSpec` (1 DBU per node, 2 on ColumnStore; 1 APU per proxy), the billing's floor for the apps (1 APU per running
+instance, `appInstanceCount`: a failover phpMyAdmin keeps 1, a flex one on 3 agents 3), and a plan the admin pinned
+immutable stays whole (`CanPlanChange`). An offer stays on sale with a lower plan instead of losing an app or a proxy
+(its BKU plan stays counted whole by the ledger), and only
+its plan above the floor is releasable. `infraUnitPool`
 sums that part apart (`forSaleDbu`/`forSaleApu`), `selfServicePoolCheck` admits the creation against free + releasable.
 This is no over-commit: over-commit is measured on resources (what the services consume, the over-commit pot), never on
 plans; the plan pot only gates what is sold. `freeDbu` stays the ledger's plan pot; the enabled-script gets

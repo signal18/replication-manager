@@ -387,6 +387,8 @@ type Cluster struct {
 	injectTrafficInFlight      atomic.Bool            `json:"-"` // traffic marker injection running in the background (cluster_inject_traffic.go)
 	galeraProvisionBootstrap   atomic.Pointer[string] `json:"-"` // Galera bootstrap node URL kept during a full provision (galera_bootstrap.go)
 	injectTrafficSince         atomic.Int64           `json:"-"` // unix time the running injection started
+	injectTrafficStopped       atomic.Bool            `json:"-"` // traffic stopped since the last injection: the next one creates the marker table again (#2195)
+	injectTrafficErr           atomic.Pointer[string] `json:"-"` // last injection error, re-asserted as ERR00050 every tick until one succeeds
 	binlogServerIDs            *binlogServerIDPool    `json:"-"` // replica server-id leases for every binlog consumer (cluster_binlog_serverid.go, #1886)
 	binlogServerIDsOnce        sync.Once              `json:"-"`
 	resources                  *ResourceManager       `json:"-"` // repman-side RESOURCE authority (see resource_manager.go); injected via SetResourceManager; DBU/APU are unit projections over it, survives ServerMonitor recreation
@@ -1370,6 +1372,8 @@ func (cluster *Cluster) tickBody() {
 					// for the marker, and a marker still stuck from an earlier tick is not
 					// doubled -- see cluster_inject_traffic.go.
 					cluster.startInjectProxiesTraffic()
+				} else {
+					cluster.stopInjectProxiesTraffic()
 				}
 				if heartbeats%3600 == 0 {
 					goRun(cluster.PurgeExpiredDirectReseedSystemArtifacts)
@@ -2970,6 +2974,13 @@ var variableExceptions = map[string]bool{
 	"LOG_SLOW_QUERY_FILE":   true,
 	"PLUGIN_DIR":            true,
 	"SERVER_UID":            true,
+	// each node's own address: the provisioning binds every server to its host name, a
+	// group member and a Galera node announce their own address to the others (#2180)
+	"BIND_ADDRESS":                    true,
+	"GROUP_REPLICATION_LOCAL_ADDRESS": true,
+	"WSREP_NODE_ADDRESS":              true,
+	"WSREP_NODE_INCOMING_ADDRESS":     true,
+	"WSREP_SST_RECEIVE_ADDRESS":       true,
 }
 
 func (cluster *Cluster) MonitorVariablesDiff() {
