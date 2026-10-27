@@ -1217,20 +1217,40 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 
 // connectMonitorDSN opens a connection on server.DSN, the monitoring port: the TLS
 // retries below rebuild it with SetDSN.
+// monitorConnect opens a monitor connection bounded by db-servers-connect-timeout, the
+// server greeting included. The DSN's readTimeout (db-servers-read-timeout, an hour by
+// default) is for queries: a port that does not speak first, as MySQL does (PostgreSQL
+// declared as MySQL, any other service), held the connect that long, and with it the
+// cluster lock TopologyDiscover holds while it pings (#2196).
+func (server *ServerMonitor) monitorConnect(driver string) (*sqlx.DB, error) {
+	return connectBounded(driver, server.DSN, server.ClusterGroup.Conf.Timeout)
+}
+
+// connectBounded is sqlx.Connect within seconds (db-servers-connect-timeout; its default
+// when unset): the drivers give up the dial, the handshake and the ping at the deadline.
+func connectBounded(driver, dsn string, seconds int) (*sqlx.DB, error) {
+	if seconds <= 0 {
+		seconds = 5
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(seconds)*time.Second)
+	defer cancel()
+	return sqlx.ConnectContext(ctx, driver, dsn)
+}
+
 func (server *ServerMonitor) connectMonitorDSN() (*sqlx.DB, error) {
 	// get topology is call to late
 	if server.IsPostgreSQLHost() {
-		return sqlx.Connect("postgres", server.DSN)
+		return server.monitorConnect("postgres")
 
 	}
-	conn, err := sqlx.Connect("mysql", server.DSN)
+	conn, err := server.monitorConnect("mysql")
 	if err != nil && !server.ClusterGroup.HaveDBTLSCert && !server.ForceTLSSkipVerify {
 		if driverErr, ok := err.(*mysql.MySQLError); ok && driverErr.Number == 3159 {
 			// Server has require_secure_transport=ON but we connected without SSL.
 			// Auto-upgrade to skip-verify TLS and persist so future connections skip this retry.
 			server.ForceTLSSkipVerify = true
 			server.SetDSN()
-			conn, err = sqlx.Connect("mysql", server.DSN)
+			conn, err = server.monitorConnect("mysql")
 			if err != nil {
 				server.ForceTLSSkipVerify = false
 				server.SetDSN()
@@ -1255,14 +1275,14 @@ func (server *ServerMonitor) connectMonitorDSN() (*sqlx.DB, error) {
 		// Possible can't connect because of SSL key rotation try old key until server rebooted or key reloaded
 		server.TLSConfigUsed = ConstTLSOldConfig
 		server.SetDSN()
-		conn, err := sqlx.Connect("mysql", server.DSN)
+		conn, err := server.monitorConnect("mysql")
 		if err == nil {
 			server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
 			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00080"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 		} else {
 			server.TLSConfigUsed = ConstTLSNoConfig
 			server.SetDSN()
-			conn, err := sqlx.Connect("mysql", server.DSN)
+			conn, err := server.monitorConnect("mysql")
 			if err == nil {
 				server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
 

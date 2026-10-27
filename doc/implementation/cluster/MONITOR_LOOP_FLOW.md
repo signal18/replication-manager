@@ -126,3 +126,19 @@ state machine lifecycle (ClearState → SetState/PreserveState → StateProcessi
 
 Without barriers, `ArbitratorHandler` would read `hosts=0` during `newServerList()`
 rebuild (the Hosts=0 bug), and `MonitorQueryRules` would read stale proxy state.
+
+## Monitor connections are bounded by the connect timeout (#2196)
+
+`TopologyDiscover` holds the cluster lock while it pings the servers, so a monitor connect
+must end quickly whatever answers on the port. `connectMonitorDSN` (and the extra-port
+fallback) open their connections through `connectBounded`: `sqlx.ConnectContext` with a
+deadline of `db-servers-connect-timeout` (5 s by default), which go-sql-driver/mysql and
+lib/pq apply to the dial, the server greeting and the ping. The DSN's `readTimeout`
+(`db-servers-read-timeout`, an hour) stays for queries only: before this, a port that does
+not speak first, as MySQL does (a PostgreSQL server declared without `/postgres`, any other
+service), held the connect, the cluster lock and every waiter of that lock for an hour at
+each attempt.
+
+`addserver` with the `postgresql` type declares `host:port/postgres` (default port 5432),
+the form the PostgreSQL app uses (`registerEngineAppAsServer`): in a topology other than
+pg-stream or pg-logical, the suffix is what makes a server PostgreSQL.
