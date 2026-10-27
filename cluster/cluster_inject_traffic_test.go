@@ -102,6 +102,28 @@ func TestInjectTrafficRecreatesDroppedTable(t *testing.T) {
 	}
 }
 
+// Galera: the setup creates the table but no view, so a rerun sends no CREATE OR REPLACE
+// (a cluster-wide TOI) (#2195).
+func TestInjectTrafficNoViewOnGalera(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	sdb := sqlx.NewDb(db, "sqlmock")
+	c := &Cluster{Name: "c", Conf: &config.Config{InjectTrafficMode: "dml", MultiMasterWsrep: true}}
+
+	mock.ExpectExec("CREATE DATABASE IF NOT EXISTS replication_manager_schema").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("CREATE TABLE IF NOT EXISTS replication_manager_schema.pseudo_gtid_hist").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("INSERT IGNORE INTO replication_manager_schema.pseudo_gtid_hist").WillReturnResult(sqlmock.NewResult(0, 1))
+	if err := c.injectTrafficMarker(sdb, "", "prx1"); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // A traffic stop makes the next start run the CREATE ... IF NOT EXISTS setup again, and
 // the last error is kept for the tick until an injection succeeds (no ERR00050 flapping).
 func TestInjectTrafficStopAndErrorKept(t *testing.T) {

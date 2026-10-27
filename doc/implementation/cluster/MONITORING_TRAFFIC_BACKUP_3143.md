@@ -41,16 +41,23 @@ process: on a dev Galera cluster the regtests dropped the schema, and every `REP
 with 1146 until a restart (26,412 in ProxySQL's digest). Now:
 
 - **Traffic stop:** a tick with no traffic to inject (`stopInjectProxiesTraffic`) marks the
-  traffic stopped; the next injection clears the flags and runs the setup again.
+  traffic stopped; the next injection clears the flags and runs the setup again. While the
+  heartbeat or test traffic stays on, the traffic never stops: a drop is then recovered by
+  the 1146 path below only.
 - **Table gone:** a `REPLACE` failing with 1146 (MySQL/MariaDB) or 42P01 (PostgreSQL,
   `markerTableMissing`) clears that proxy's flag; the next injection creates the table again.
+  The failing tick still reports the 1146, so ERR00050 shows for one tick after a drop.
 - **No flapping:** the injection returns at any point of a tick, so ERR00050 opened and
   resolved every ~20 s (GERR005 with it). The injection now only records its last error
   (`recordInjectTrafficResult`); the tick re-asserts ERR00050 from it until an injection
-  succeeds.
+  succeeds. With several proxies, the state shows the last failing proxy's error.
 - **Galera:** `injectTrafficUsesDDL()` is false on wsrep (configured or discovered), whatever
   `inject-traffic-mode` or `force-slave-no-gtid-mode` say: there is no positional rejoin to grep
-  for, and a view replaced every tick is a cluster-wide DDL (TOI) blocking every node.
+  for, and a view replaced every tick is a cluster-wide DDL (TOI) blocking every node. The
+  setup creates no `pseudo_gtid_v` view on Galera either: only the positional failover
+  reads it (`GetLastPseudoGTID`), so a setup rerun sends the `IF NOT EXISTS` statements only.
+- **No other drop:** no other code path drops `replication_manager_schema` (grep of
+  `DROP DATABASE` on 2026-10-27: the other regtests drop their own `regtest_*` schemas).
 - **Tests never drop the schema:** the regtest probe (`dropProbeTable`) and the table bench
   (`dbhelper.BenchCleanup`) drop only the table they created; sysbench keeps its own `cleanup`.
   The schema also holds `jobs`, `heartbeat` and `ddl_log`.

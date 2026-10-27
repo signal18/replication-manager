@@ -305,10 +305,16 @@ func (cluster *Cluster) newProxyList() error {
 // for, and a view replaced on every tick is a cluster-wide DDL (TOI) that
 // blocks every node each time (#2195).
 func (cluster *Cluster) injectTrafficUsesDDL() bool {
-	if cluster.Conf.MultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterWsrep {
+	if cluster.injectTrafficOnWsrep() {
 		return false
 	}
 	return cluster.Conf.ForceSlaveNoGtid || cluster.Conf.InjectTrafficMode == "ddl"
+}
+
+// injectTrafficOnWsrep reports a Galera cluster, configured or discovered: every DDL there
+// is a cluster-wide TOI, so the marker sends none after its table exists (#2195).
+func (cluster *Cluster) injectTrafficOnWsrep() bool {
+	return cluster.Conf.MultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterWsrep
 }
 
 func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKey string) error {
@@ -347,7 +353,11 @@ func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKe
 		if _, err := db.Exec("INSERT IGNORE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())"); err != nil {
 			return err
 		}
-		db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v AS SELECT uuid FROM replication_manager_schema.pseudo_gtid_hist WHERE id=1")
+		// The view serves the positional failover only (GetLastPseudoGTID), which Galera
+		// never runs: no view there, so a setup rerun adds no TOI beyond IF NOT EXISTS.
+		if !cluster.injectTrafficOnWsrep() {
+			db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v AS SELECT uuid FROM replication_manager_schema.pseudo_gtid_hist WHERE id=1")
+		}
 		cluster.injectTrafficTableReady[readyKey] = true
 		// The seed INSERT above already advanced the marker this tick — skip
 		// the otherwise-redundant REPLACE with the same uuid.
@@ -356,7 +366,8 @@ func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKe
 	_, err := db.Exec("REPLACE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())")
 	if markerTableMissing(err) {
 		// The schema was dropped under a running repman: the next injection creates it
-		// again instead of failing until a restart (#2195).
+		// again instead of failing until a restart (#2195). This tick still returns the
+		// 1146, so ERR00050 shows for one tick before the table is back.
 		delete(cluster.injectTrafficTableReady, readyKey)
 	}
 	return err
