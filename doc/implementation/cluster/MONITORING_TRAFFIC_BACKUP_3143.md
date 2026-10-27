@@ -32,6 +32,29 @@ as the variable to change. The flag default moved from `ddl` to `dml` (a single-
 The old help text called dml experimental pending the topology matrix: rejoin and flashback on
 the test clusters are the places to watch.
 
+### The marker table after a drop (#2195)
+
+The dml marker creates `replication_manager_schema` and `pseudo_gtid_hist` through the proxy
+(`CREATE ... IF NOT EXISTS`, never `OR REPLACE`), then only runs the `REPLACE`. The
+"table ready" flag (`injectTrafficTableReady`, per proxy) used to live for the whole repman
+process: on a dev Galera cluster the regtests dropped the schema, and every `REPLACE` failed
+with 1146 until a restart (26,412 in ProxySQL's digest). Now:
+
+- **Traffic stop:** a tick with no traffic to inject (`stopInjectProxiesTraffic`) marks the
+  traffic stopped; the next injection clears the flags and runs the setup again.
+- **Table gone:** a `REPLACE` failing with 1146 (MySQL/MariaDB) or 42P01 (PostgreSQL,
+  `markerTableMissing`) clears that proxy's flag; the next injection creates the table again.
+- **No flapping:** the injection returns at any point of a tick, so ERR00050 opened and
+  resolved every ~20 s (GERR005 with it). The injection now only records its last error
+  (`recordInjectTrafficResult`); the tick re-asserts ERR00050 from it until an injection
+  succeeds.
+- **Galera:** `injectTrafficUsesDDL()` is false on wsrep (configured or discovered), whatever
+  `inject-traffic-mode` or `force-slave-no-gtid-mode` say: there is no positional rejoin to grep
+  for, and a view replaced every tick is a cluster-wide DDL (TOI) blocking every node.
+- **Tests never drop the schema:** the regtest probe (`dropProbeTable`) and the table bench
+  (`dbhelper.BenchCleanup`) drop only the table they created; sysbench keeps its own `cleanup`.
+  The schema also holds `jobs`, `heartbeat` and `ddl_log`.
+
 ## Backup progress (#1892)
 
 `cluster/cluster_backup_progress.go`, one `BackupProgress` per running backup, keyed

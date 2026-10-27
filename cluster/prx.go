@@ -26,7 +26,6 @@ import (
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
-	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
 )
 
@@ -302,7 +301,13 @@ func (cluster *Cluster) newProxyList() error {
 // clusters get the DML row, so repman's own traffic can never poison a
 // flashback recovery. This keeps the marker in sync with the replication
 // style instead of a blanket default that could break battle-tested topologies.
+// Galera (wsrep) always gets the DML row: it has no positional rejoin to grep
+// for, and a view replaced on every tick is a cluster-wide DDL (TOI) that
+// blocks every node each time (#2195).
 func (cluster *Cluster) injectTrafficUsesDDL() bool {
+	if cluster.Conf.MultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterWsrep {
+		return false
+	}
 	return cluster.Conf.ForceSlaveNoGtid || cluster.Conf.InjectTrafficMode == "ddl"
 }
 
@@ -321,8 +326,9 @@ func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKe
 	// flows to every slave in the SAME binlog stream BEFORE any REPLACE that
 	// follows it. Binlog ordering guarantees a slave applies the CREATE before
 	// the REPLACE (no 1032), and a reseeded node gets the table in its
-	// snapshot — so no presence-checking state is needed. IF NOT EXISTS makes
-	// the one-time setup idempotent across restarts.
+	// snapshot. IF NOT EXISTS makes the setup idempotent: it runs again at
+	// every traffic start (stopInjectProxiesTraffic) and when the REPLACE finds
+	// the table gone (#2195).
 	if cluster.injectTrafficTableReady == nil {
 		cluster.injectTrafficTableReady = make(map[string]bool)
 	}
@@ -348,6 +354,11 @@ func (cluster *Cluster) injectTrafficMarker(db *sqlx.DB, definer string, readyKe
 		return nil
 	}
 	_, err := db.Exec("REPLACE INTO replication_manager_schema.pseudo_gtid_hist (id, uuid, ts) VALUES (1, '" + uuid + "', NOW())")
+	if markerTableMissing(err) {
+		// The schema was dropped under a running repman: the next injection creates it
+		// again instead of failing until a restart (#2195).
+		delete(cluster.injectTrafficTableReady, readyKey)
+	}
 	return err
 }
 
@@ -362,8 +373,17 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 	// as the peer LIVENESS signal (isPeerAliveViaDatabase): it must only ever
 	// advance under the pen of the instance that holds authority.
 	if cluster.Conf.Arbitration && !cluster.IsActive() {
+		cluster.recordInjectTrafficResult(nil)
 		return
 	}
+	// The injection is not reentrant, so only this goroutine touches the "table ready"
+	// flags: a stop seen by the tick is applied here, before the next marker (#2195).
+	if cluster.injectTrafficStopped.Swap(false) {
+		cluster.injectTrafficTableReady = nil
+	}
+	// The last error of this run, re-asserted as ERR00050 by the tick (startInjectProxiesTraffic).
+	var failed error
+	defer func() { cluster.recordInjectTrafficResult(failed) }()
 	// Found server from ServerId
 	if cluster.Conf.TopologyStaging && cluster.Conf.TestInjectTrafficStaging {
 		for _, pr := range cluster.Proxies {
@@ -373,7 +393,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 			}
 			db, err := pr.GetClusterConnection()
 			if err != nil {
-				cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+				failed = err
 			} else {
 				if pr.GetType() == config.ConstProxyMyProxy {
 					definer = "DEFINER = root@localhost"
@@ -381,7 +401,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 					definer = ""
 				}
 				if err := cluster.injectTrafficMarker(db, definer, pr.GetId()); err != nil {
-					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+					failed = err
 				}
 				db.Close()
 			}
@@ -396,7 +416,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 			}
 			db, err := pr.GetClusterConnection()
 			if err != nil {
-				cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+				failed = err
 			} else {
 				if pr.GetType() == config.ConstProxyMyProxy {
 					definer = "DEFINER = root@localhost"
@@ -404,7 +424,7 @@ func (cluster *Cluster) InjectProxiesTraffic() {
 					definer = ""
 				}
 				if err := cluster.injectTrafficMarker(db, definer, pr.GetId()); err != nil {
-					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+					failed = err
 				}
 				db.Close()
 			}
