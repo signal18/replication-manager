@@ -137,7 +137,31 @@ func (cluster *Cluster) getMysqlDumpOptions(server *ServerMonitor, usegtid strin
 		dumpargs = append(dumpargs, "--ignore-table=mysql.user")
 	}
 	dumpargs = append(dumpargs, server.GetSSLClientParam("client-dump")...)
-	return misc.RemoveEmptyString(dumpargs)
+	return server.dumpSelectableDatabases(misc.RemoveEmptyString(dumpargs))
+}
+
+// dumpSelectableDatabases: --all-databases aborts the whole dump on the first database the
+// server lists under the #mysql50# prefix (error 1102), a folder of the datadir that
+// ignore_db_dirs does not hide, such as the .system of the database jobs (#2202). When the
+// server lists one, the dump names the databases --all-databases would select instead; the
+// options are otherwise left as they are.
+func (server *ServerMonitor) dumpSelectableDatabases(dumpargs []string) []string {
+	all := slices.IndexFunc(dumpargs, func(a string) bool { return a == "--all-databases" || a == "-A" })
+	if all < 0 || server.Conn == nil {
+		return dumpargs
+	}
+	cluster := server.ClusterGroup
+	schemas, invalid, query, err := dbhelper.GetAllDatabasesDumpSchemas(server.Conn, server.DBVersion)
+	if err != nil {
+		cluster.LogSQL(query, err, server.URL, "dumpSelectableDatabases", config.LvlWarn, "Could not list the databases of %s, the dump keeps --all-databases: %s", server.URL, err)
+		return dumpargs
+	}
+	if len(invalid) == 0 || len(schemas) == 0 {
+		return dumpargs
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModBackupStream, config.LvlWarn, "Dump of %s names its databases instead of --all-databases, which fails on %s: a folder of the datadir the server does not ignore (ignore_db_dirs)", server.URL, strings.Join(invalid, ", "))
+	args := slices.Delete(slices.Clone(dumpargs), all, all+1)
+	return append(append(args, "--databases"), schemas...)
 }
 
 // mariadbSkipLogQueriesCompatible tells whether a MariaDB dump can take --skip-log-queries:
