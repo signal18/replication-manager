@@ -2998,7 +2998,14 @@ func (cluster *Cluster) SetStagingServer(srv *ServerMonitor) {
 	cluster.Conf.StagingServerHost = srvhost
 }
 
+// SetStandaloneAsStaging chooses the staging server of a staging cluster: the configured one
+// when it is standalone, else the first standalone server. Without topology-staging it chooses
+// nothing: a server only standalone for a moment (a master just failed over) would otherwise
+// become the staging server and be saved as staging-server-host.
 func (cluster *Cluster) SetStandaloneAsStaging() *ServerMonitor {
+	if !cluster.Conf.TopologyStaging {
+		return nil
+	}
 	stagingsrv, _ := cluster.GetStandaloneServerByIndex(0)
 
 	stagingcnf := cluster.GetStagingServerFromConfig()
