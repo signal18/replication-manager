@@ -99,6 +99,22 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 			cl.SaveTestConf()
 		}
 		test.ConfigFile = cl.GetConf().ConfigFile
+		closeTest := func() {
+			if testExp == "SUITE" {
+				cl.CloseTestCluster(test.ConfigFile, &test)
+			} else {
+				cl.RestoreConf()
+			}
+		}
+		// A test whose targets the cluster misses does not run, and a test that did not run
+		// is not a tested setup: SKIP, not reported.
+		if reason := regtest.SkipReason(cl, test.Name); reason != "" {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skip %s: %s", test.Name, reason)
+			test.Result = regtest.GetTestSkipLabel()
+			closeTest()
+			allTests[key] = test
+			continue
+		}
 		if test.Name == "testFailoverManual" {
 			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXMS(cl, test.ConfigFile, &test)
 		}
@@ -430,11 +446,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		test.Result = regtest.GetTestResultLabel(res)
 		// the setup is read before the suite closes its test cluster
 		reported = append(reported, regtestReportedTest{Setup: regtestSetupOf(cl, test), Test: test.Name, Result: test.Result, Duration: time.Since(testStart), ClusterTOML: testConfig})
-		if testExp == "SUITE" {
-			cl.CloseTestCluster(test.ConfigFile, &test)
-		} else {
-			cl.RestoreConf()
-		}
+		closeTest()
 		allTests[key] = test
 
 	} //end loop on all tests

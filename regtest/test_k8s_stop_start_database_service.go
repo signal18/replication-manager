@@ -31,11 +31,6 @@ import (
 // Kubernetes API connection (kind, minikube, or a real cluster) --
 // the same T13 gap TestK8SProvisionSchedulerVolumeBinding documents.
 func (regtest *RegTest) TestK8SStopStartDatabaseService(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cl.GetOrchestrator() != config.ConstOrchestratorKubernetes {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: requires Kubernetes orchestrator")
-		return true
-	}
-
 	var slave *cluster.ServerMonitor
 	if slaves := cl.GetSlaves(); len(slaves) > 0 {
 		slave = slaves[0]

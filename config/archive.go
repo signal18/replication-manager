@@ -608,6 +608,16 @@ func fieldValue(f reflect.Value) interface{} {
 	}
 }
 
+// GetValueByKey is the value of a configuration key (its toml name), printed: true/false,
+// a number, a string. False when no field has that key.
+func (conf *Config) GetValueByKey(key string) (string, bool) {
+	f, ok := configField(conf, key)
+	if !ok {
+		return "", false
+	}
+	return fmt.Sprintf("%v", fieldValue(f)), true
+}
+
 // setField sets a field from any printed form (TOML value, pflag default, event string).
 func setField(f reflect.Value, v interface{}) error {
 	s := fmt.Sprintf("%v", v)

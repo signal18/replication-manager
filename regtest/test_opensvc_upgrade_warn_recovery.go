@@ -36,11 +36,6 @@ import (
 //   - At least one slave
 //   - prov-db-start-fetch-config = true (so the broken config is actually fetched)
 func (regtest *RegTest) TestOpenSVCUpgradeWarnRecovery(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cl.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: requires OpenSVC orchestrator")
-		return true
-	}
-
 	if len(cl.GetSlaves()) == 0 {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: no slaves available")
 		return true

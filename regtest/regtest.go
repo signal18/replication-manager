@@ -3,6 +3,7 @@ package regtest
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,15 +65,11 @@ var tests = []string{
 	"testSetDualActive",
 	"testSplitBrainNoWinner",
 	"testMasterNil",
-	// testStagingRecoverNoReadOnly is intentionally not in this list: it
-	// requires topology-staging=true and a resolvable staging-server-host,
-	// which most clusters don't have. Including it here would make it run
-	// (and hard-FAIL, since this framework has no "skip" result) as part of
-	// "ALL" on every non-staging cluster. Run it explicitly by name instead:
-	// --test=testStagingRecoverNoReadOnly
-	// testPhysicalReseedRestore is intentionally not in this list for the same
-	// reason: it needs a jobs container next to each database and a physical
-	// backup tool matching the servers, and it reseeds a replica. Run it by
+	// skipped on a cluster without topology-staging (its config-variable target)
+	"testStagingRecoverNoReadOnly",
+	// testPhysicalReseedRestore is intentionally not in this list: it needs a
+	// jobs container next to each database and a physical backup tool matching
+	// the servers, and it reseeds a replica. Run it by
 	// name: /api/clusters/<cluster>/tests/actions/run/testPhysicalReseedRestore
 	// testBackupArchiveRemoveOriginal is not in this list either: it needs a jobs
 	// container next to each database, a physical backup tool and restic, and it
@@ -162,6 +159,79 @@ var tests = []string{
 	"testCreateStagingSplitdump",
 	"testCreateChildSplitdump",
 	"testAlterEngine",
+}
+
+// TestTarget is the setup a test applies to. An empty target means any: a test without
+// targets runs on every cluster.
+type TestTarget struct {
+	// TopologyTarget lists the declared topologies (GetTopologyTarget) the test applies to.
+	TopologyTarget []string
+	// NumberNodesTarget is the minimum number of database servers.
+	NumberNodesTarget int
+	// FlavorTarget lists the flavors, lowercase: mariadb, mysql, percona, postgresql.
+	FlavorTarget []string
+	// OrchestratorTarget lists the orchestrators, only for a test of orchestrator
+	// mechanics: a functional test applies to every orchestrator.
+	OrchestratorTarget []string
+	// DbuTarget is the minimum DBU per database server (the cluster's plan, GetPlanDbu).
+	DbuTarget int
+	// ConfigVariableTarget maps 1 to n configuration keys (toml names) to the value the
+	// test needs, printed as GetValueByKey prints it (true, 4, opensvc).
+	ConfigVariableTarget map[string]string
+}
+
+// testTargets declares the targets of a test by its name. A test not listed has none.
+var testTargets = map[string]TestTarget{
+	"testSwitchoverAllSlavesStopRplCheckNoSemiSync": {TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2},
+	"testGroupReplicationBootstrap":                 {TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}},
+	"testGroupReplicationSwitchover":                {TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 2, FlavorTarget: []string{"mysql", "percona"}},
+	// the group keeps a majority after losing its PRIMARY only from 3 members
+	"testGroupReplicationPrimaryLoss":        {TopologyTarget: []string{config.TopoMultiMasterGrouprep}, NumberNodesTarget: 3, FlavorTarget: []string{"mysql", "percona"}},
+	"testK8SProvisionSchedulerVolumeBinding": {OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}},
+	"testK8SStopStartDatabaseService":        {OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}},
+	"testOpenSVCUpgradeWarnRecovery":         {OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}, NumberNodesTarget: 2},
+	"testStagingRecoverNoReadOnly":           {ConfigVariableTarget: map[string]string{"topology-staging": "true"}},
+}
+
+// TestResultSkip is the result of a test whose targets the cluster does not match: it did
+// not run, so it is neither a PASS nor a FAIL of the setup.
+const TestResultSkip = "SKIP"
+
+// SkipReason says why the cluster does not match the targets of a test, empty when it
+// does. An unknown flavor (no database version read yet) or DBU (no plan) does not skip:
+// the test runs and its result says what it found.
+func (regtest *RegTest) SkipReason(cl *cluster.Cluster, name string) string {
+	target, ok := testTargets[name]
+	if !ok {
+		return ""
+	}
+	if topology := cl.GetTopologyTarget(); len(target.TopologyTarget) > 0 && !misc.Contains(target.TopologyTarget, topology) {
+		return fmt.Sprintf("topology-target %s, cluster is %s", strings.Join(target.TopologyTarget, ","), topology)
+	}
+	if nodes := len(cl.GetServers()); nodes < target.NumberNodesTarget {
+		return fmt.Sprintf("number-nodes-target %d, cluster has %d", target.NumberNodesTarget, nodes)
+	}
+	if len(target.FlavorTarget) > 0 {
+		if server := SetupServer(cl); server != nil {
+			if v := server.GetVersion(); v != nil && !misc.Contains(target.FlavorTarget, strings.ToLower(v.Flavor)) {
+				return fmt.Sprintf("flavor-target %s, cluster is %s", strings.Join(target.FlavorTarget, ","), strings.ToLower(v.Flavor))
+			}
+		}
+	}
+	if orchestrator := cl.GetOrchestrator(); len(target.OrchestratorTarget) > 0 && !misc.Contains(target.OrchestratorTarget, orchestrator) {
+		return fmt.Sprintf("orchestrator-target %s, cluster is %s", strings.Join(target.OrchestratorTarget, ","), orchestrator)
+	}
+	if nodes := len(cl.GetServers()); target.DbuTarget > 0 && nodes > 0 {
+		if dbu := cl.GetPlanDbu() / nodes; dbu > 0 && dbu < target.DbuTarget {
+			return fmt.Sprintf("dbu-target %d per node, cluster has %d", target.DbuTarget, dbu)
+		}
+	}
+	for key, want := range target.ConfigVariableTarget {
+		if value, ok := cl.Conf.GetValueByKey(key); !ok || !strings.EqualFold(value, want) {
+			return fmt.Sprintf("config-variable-target %s=%s, cluster has %s", key, want, value)
+		}
+	}
+	return ""
 }
 
 const recoverTime = 8
@@ -269,6 +339,11 @@ func (regtest *RegTest) GetTestsFromPath(cl *cluster.Cluster, tests map[string]c
 		}
 	}
 	return allTests
+}
+
+// GetTestSkipLabel is the result of a test SkipReason kept from running.
+func (regtest *RegTest) GetTestSkipLabel() string {
+	return TestResultSkip
 }
 
 func (regtest *RegTest) GetTestResultLabel(res bool) string {
