@@ -87,12 +87,14 @@ The client `replication-manager-login` lists, for each such repman, the redirect
 ## Support chat of a Sign in with Cloud18 session
 
 The chat (meet) signs people in through GitLab, and a Sign in with Cloud18 session gives repman neither
-the password nor a GitLab session. Such a session opens the chat with the instance's own account
-(`instanceMeetUser`, `cloud18-gitlab-user`), as a local login does, and carries `chat_as = instance`:
-`PostMeetHandler` starts each message with the person's name and email from the verified realm token
-(`chatSignature`), so support sees who writes. The person's own channels and direct messages are in the
-chat app, or with Sign in (name and password), which opens their own account as before. Old releases
-are unchanged: the chat stays on GitLab.
+the password nor a GitLab session, so repman cannot open the chat for it. The session carries
+`chat = password` (`chatNeedsPassword`): `/api/meet/info` answers 409 with the chat's web address, and
+Support opens the chat's web app in a new tab, where the person signs in with GitLab themselves. Sign in
+(name and password) still opens the chat inside repman, as before.
+
+The instance's own account (`cloud18-gitlab-user`, the chat of a local login) is not used for these
+sessions: every Sign in with Cloud18 session on a repman would read the same channels and history, so
+one client could read another's. Old releases are unchanged: the chat stays on GitLab.
 
 ## Tests
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/meethelper"
 )
 
 func ssoRepman(t *testing.T, issuer string) *ReplicationManager {
@@ -135,8 +136,13 @@ func TestCloud18SSORoundTrip(t *testing.T) {
 	if user := repman.GetUserFromRequest(r); user != "person@partner.example" {
 		t.Fatalf("the session is the SSO login of the email: %q", user)
 	}
-	if info, err := repman.getUserInfoFromHeader(r); err != nil || info["ChatAs"] != chatAsInstance || !strings.Contains(chatSignature(info), "person@partner.example") {
-		t.Fatalf("the session chats through the instance's account, signed with the person: %v %v", info["ChatAs"], err)
+	if info, err := repman.getUserInfoFromHeader(r); err != nil || info["Chat"] != chatNeedsPassword || info["MeetUserID"] != "" {
+		t.Fatalf("the session has no chat, never the instance's account: %v %q %v", info["Chat"], info["MeetUserID"], err)
+	}
+	w = httptest.NewRecorder()
+	repman.MeetInfoHandler(w, r)
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), meethelper.MeetURL) {
+		t.Fatalf("the chat of the session is the chat's web app: %d %s", w.Code, w.Body.String())
 	}
 	w = httptest.NewRecorder()
 	repman.handlerMuxCloud18SSOSession(w, httptest.NewRequest(http.MethodPost, "/api/auth/cloud18/session", strings.NewReader(`{"code":"`+code+`"}`)))
@@ -340,25 +346,5 @@ func TestCloud18SSOSilentAndHint(t *testing.T) {
 	repman.handlerMuxCloud18SSOCallback(w, req)
 	if !strings.Contains(w.Header().Get("Location"), "cloud18_error=refused") {
 		t.Fatalf("a refused sign-in: %s", w.Header().Get("Location"))
-	}
-}
-
-// #2185: a Sign in with Cloud18 session writes in the chat through the instance's account; its
-// messages start with the person's name and email, the other sessions' messages are unchanged.
-func TestChatSignature(t *testing.T) {
-	cases := []struct {
-		info map[string]string
-		want string
-	}{
-		{map[string]string{"ChatAs": chatAsInstance, "DisplayName": "Ada Lovelace", "Email": "ada@acme.example"}, "**Ada Lovelace** (ada@acme.example): "},
-		{map[string]string{"ChatAs": chatAsInstance, "DisplayName": "**Bold**\nName", "Email": "b@acme.example"}, "**Bold Name** (b@acme.example): "},
-		{map[string]string{"ChatAs": chatAsInstance, "Email": "c@acme.example"}, "**c@acme.example**: "},
-		{map[string]string{"DisplayName": "Ada", "Email": "ada@acme.example"}, ""},
-		{nil, ""},
-	}
-	for _, c := range cases {
-		if got := chatSignature(c.info); got != c.want {
-			t.Fatalf("%v: got %q, want %q", c.info, got, c.want)
-		}
 	}
 }

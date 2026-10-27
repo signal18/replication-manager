@@ -25285,6 +25285,15 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "409": {
+                        "description": "A Sign in with Cloud18 session: open the chat's web app at url",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
                         "schema": {

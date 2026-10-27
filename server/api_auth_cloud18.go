@@ -229,10 +229,10 @@ func (repman *ReplicationManager) handlerMuxCloud18SSOCallback(w http.ResponseWr
 		Email        string `json:"email"`
 		Profile      string `json:"profile"`
 		MeetUserID   string `json:"meet_user_id"`
-		ChatAs       string `json:"chat_as"`
+		Chat         string `json:"chat"`
 		Cloud18      string `json:"cloud18,omitempty"`
 		Cloud18Token string `json:"cloud18_token"`
-	}{u.Email, u.Name, "Member", "", u.Email, repman.Conf.OAuthProvider, repman.instanceMeetUser(), chatAsInstance,
+	}{u.Email, u.Name, "Member", "", u.Email, repman.Conf.OAuthProvider, "", chatNeedsPassword,
 		ssoLogin{cloud18: l}.cloud18Claim(repman.Conf), repman.Conf.GetEncryptedString(l.Access)}
 	jwt, err := repman.issueJWT(info, "")
 	if err != nil {

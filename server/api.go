@@ -657,7 +657,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 			// session came with, both for the other Cloud18 instances
 			UserInfoMap["Cloud18Login"], _ = mycutinfo["cloud18"].(string)
 			UserInfoMap["Cloud18Token"], _ = mycutinfo["cloud18_token"].(string)
-			UserInfoMap["ChatAs"], _ = mycutinfo["chat_as"].(string)
+			UserInfoMap["Chat"], _ = mycutinfo["chat"].(string)
 			return UserInfoMap, nil
 		}
 		return nil, fmt.Errorf("invalid oauth provider")
@@ -2703,9 +2703,8 @@ func (repman *ReplicationManager) handlerMuxHealth(w http.ResponseWriter, r *htt
 }
 
 // instanceMeetUser opens the support chat with the instance's own GitLab account
-// (cloud18-gitlab-user): the chat of a local login, and of a Sign in with Cloud18 login, as
-// repman cannot open the person's own account there (no password, no GitLab session). Empty
-// when the chat cannot be opened (logged under the support module).
+// (cloud18-gitlab-user): the chat of a local login. Empty when the chat cannot be opened
+// (logged under the support module).
 func (repman *ReplicationManager) instanceMeetUser() string {
 	if repman.Conf.Cloud18GitUser == "" {
 		return "" // not registered: no instance account to open the chat with

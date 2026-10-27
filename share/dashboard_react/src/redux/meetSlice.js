@@ -11,7 +11,7 @@ export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkA
   } catch (error) {
     // Use rejectWithValue instead of throw to avoid console noise for expected
     // failures (e.g. viewer tokens that have no meet user ID).
-    return thunkAPI.rejectWithValue({ errorMessage: error.message, errorStatus: error.errorStatus || 500 })
+    return thunkAPI.rejectWithValue({ errorMessage: error.message, errorStatus: error.errorStatus || 500, webURL: error.errorStatus === 409 ? error.data?.url : null })
   }
 },
 {
@@ -271,6 +271,9 @@ const meetSlice = createSlice({
     loading: false,
     error: null,
     meetError: false,
+    // A Sign in with Cloud18 session: repman cannot open the chat for it (409), Support opens
+    // the chat's web app instead, where the person signs in.
+    meetWebURL: null,
     unreadMessagesByChannel: {},
     channels: [],
   },
@@ -291,6 +294,7 @@ const meetSlice = createSlice({
       .addCase(getMeetInfo.fulfilled, (state, action) => {
         sessionStorage.removeItem(MEET_UNAVAILABLE_KEY);
         state.meetInfo = action.payload.data;
+        state.meetWebURL = null;
         //localStorage.setItem('userID', state.meetInfo?.user_id);
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
         state.meetError = false;
@@ -305,9 +309,14 @@ const meetSlice = createSlice({
         state.loading = true;
       })
       .addCase(getMeetInfo.rejected, (state, action) => {
-        state.meetError = true;
         state.meetInfo = null;
         state.isFetchingInfo = false;
+        if (action.payload?.webURL) {
+          state.meetWebURL = action.payload.webURL;
+          state.meetError = false;
+          return;
+        }
+        state.meetError = true;
         // Persist failure so re-login/Redux-reset cycles don't retry needlessly
         sessionStorage.setItem(MEET_UNAVAILABLE_KEY, 'true');
       })

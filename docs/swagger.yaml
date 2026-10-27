@@ -23410,6 +23410,13 @@ paths:
           description: Unauthorized user
           schema:
             type: string
+        "409":
+          description: 'A Sign in with Cloud18 session: open the chat''s web app at
+            url'
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:

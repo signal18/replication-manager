@@ -60,7 +60,7 @@ function Navbar({ username, user }) {
   const [showImageLogo, setShowImageLogo] = useState(true)
   const [logoText, setLogoText] = useState('REPLICATION MANAGER')
 
-  const { meetInfo, unreadMessagesByChannel, meetError } = useSelector(selectMeetUIState)
+  const { meetInfo, unreadMessagesByChannel, meetError, meetWebURL } = useSelector(selectMeetUIState)
   const { isMobile, isDesktop } = useSelector((state) => state.common)
   const clusterAlerts = useSelector((state) => state?.cluster?.clusterAlerts)
   const clusterData = useSelector((state) => state?.cluster?.clusterData)
@@ -124,6 +124,11 @@ function Navbar({ username, user }) {
 
   //to toggle chat and save state
   const toggleChat = () => {
+    if (meetWebURL) {
+      // Sign in with Cloud18: the chat's web app, where the person signs in
+      window.open(meetWebURL, '_blank', 'noopener,noreferrer')
+      return
+    }
     if (!isChatOpen && meetError) {
       // Un-latch a stale failure and retry: the chat may work even though a
       // previous getMeetInfo failed (e.g. during a server restart).
@@ -561,7 +566,7 @@ function Navbar({ username, user }) {
         </HStack>
       </Flex>
 
-      <MattermostIntegration isOpen={isChatOpen} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)} cloud18={monitor?.config?.cloud18} />
+      <MattermostIntegration isOpen={isChatOpen && !meetWebURL} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)} cloud18={monitor?.config?.cloud18} />
 
       {alertModalType && (
         <AlertModal type={alertModalType} title='Cluster' isOpen={alertModalType.length !== 0} closeModal={closeAlertModal} />

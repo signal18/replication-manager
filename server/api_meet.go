@@ -112,29 +112,12 @@ func (repman *ReplicationManager) getUserInfoFromHeader(r *http.Request) (map[st
 	return userInfo, nil
 }
 
-// chatAsInstance marks a session whose support chat is the instance's account
-// (instanceMeetUser): a Sign in with Cloud18 login, whose person repman cannot open the chat as.
-const chatAsInstance = "instance"
-
-// chatSignature is what a message written in a chatAsInstance session starts with: the
-// person's name and email from the verified Cloud18 token, so support sees who writes
-// through the instance's account. Empty for the other sessions.
-func chatSignature(userInfo map[string]string) string {
-	if userInfo["ChatAs"] != chatAsInstance {
-		return ""
-	}
-	name := strings.NewReplacer("*", "", "\n", " ").Replace(strings.TrimSpace(userInfo["DisplayName"]))
-	email := strings.TrimSpace(userInfo["Email"])
-	switch {
-	case name != "" && email != "":
-		return "**" + name + "** (" + email + "): "
-	case email != "":
-		return "**" + email + "**: "
-	case name != "":
-		return "**" + name + "**: "
-	}
-	return ""
-}
+// chatNeedsPassword marks a session repman cannot open the support chat for: a Sign in with
+// Cloud18 login gives repman neither the person's password nor a GitLab session, and the chat
+// signs in through GitLab. The GUI sends the person to the chat's web app instead, where they
+// sign in themselves. The instance's account is not used: every such session on a repman would
+// read the same channels and history, one client the other's.
+const chatNeedsPassword = "password"
 
 // @Summary Retrieve Meet user information.
 // @Description Fetch user-related information, including available channels and unread messages.
@@ -143,6 +126,7 @@ func chatSignature(userInfo map[string]string) string {
 // @Param X-User-ID header string true "User ID for authentication"
 // @Success 200 {array} map[string]interface{} "User information retrieved successfully"
 // @Failure 401 {string} string "Unauthorized user"
+// @Failure 409 {object} map[string]string "A Sign in with Cloud18 session: open the chat's web app at url"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /meet/info [get]
 func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http.Request) {
@@ -150,8 +134,14 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID, err := repman.getUserIDFromHeader(r)
+	userInfo, err := repman.getUserInfoFromHeader(r)
+	userID := userInfo["MeetUserID"]
 
+	if err == nil && userInfo["Chat"] == chatNeedsPassword {
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"url": meethelper.MeetURL})
+		return
+	}
 	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -278,8 +268,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userInfo, err := repman.getUserInfoFromHeader(r)
-	userID := userInfo["MeetUserID"]
+	userID, err := repman.getUserIDFromHeader(r)
 
 	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
@@ -317,7 +306,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	message_id, err := meetClient.PostMessage(channelID, chatSignature(userInfo)+request.Message)
+	message_id, err := meetClient.PostMessage(channelID, request.Message)
 	if err != nil {
 		http.Error(w, "Error posting message API", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {

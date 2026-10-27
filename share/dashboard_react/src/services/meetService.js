@@ -24,6 +24,7 @@ async function getMeetInfo() {
     if (response.status !== 200) {
         const err = new Error(`Error fetching meet info: ${response.status} ${response.data}`);
         err.errorStatus = response.status;
+        err.data = response.data;
         throw err;
     }
     return response;
