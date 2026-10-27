@@ -23859,7 +23859,7 @@ const docTemplate = `{
         },
         "/api/login": {
             "post": {
-                "description": "Authenticates a user and returns a JWT token upon successful login. A local account,\nthen (Cloud18 instance) the Cloud18 account (email and Cloud18 password), then GitLab's\npassword grant while cloud18-gitlab-password-grant is on. On a registered Cloud18\ninstance, a Cloud18 realm token as bearer with an empty body ({}) logs its person in\n(another Cloud18 instance acting for its user, #2182).",
+                "description": "Authenticates a user and returns a JWT token upon successful login. A local account,\nthen (Cloud18 instance) the Cloud18 account (email and Cloud18 password); GitLab's\npassword grant is no longer tried. On a registered Cloud18\ninstance, a Cloud18 realm token as bearer with an empty body ({}) logs its person in\n(another Cloud18 instance acting for its user, #2182).",
                 "consumes": [
                     "application/json"
                 ],
@@ -29806,9 +29806,6 @@ const docTemplate = `{
                 },
                 "cloud18GitUser": {
                     "type": "string"
-                },
-                "cloud18GitlabPasswordGrant": {
-                    "type": "boolean"
                 },
                 "cloud18HealthRefreshInterval": {
                     "type": "integer"
