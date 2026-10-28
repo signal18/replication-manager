@@ -6,10 +6,13 @@ package cluster
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
+	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
@@ -168,15 +171,123 @@ func TestCheckReplicationHeartbeatPeriodWarns(t *testing.T) {
 	}
 }
 
-// force-slave-heartbeat never restarts a channel whose thread someone stopped.
-func TestCheckReplicationHeartbeatPeriodKeepsStoppedThreads(t *testing.T) {
-	cl, _, slave := heartbeatTestCluster(t)
-	cl.Conf.ForceSlaveHeartbeat = true
-	slave.replicationHeartbeatKnown = true
-	slave.ReplicationHeartbeatPeriod = 30
-	slave.Replications[0].SlaveSQLRunning = sql.NullString{String: "No", Valid: true}
-	slave.checkReplicationHeartbeatPeriod() // no connection: a change would panic
-	if !cl.StateMachine.IsInState(state.BuildStateKey("WARN0050", slave.URL)) || cl.StateMachine.IsInState(state.BuildStateKey("CINF0023", slave.URL)) {
-		t.Fatal("a stopped SQL thread: warn, no change")
+// stubSetSlaveHeartbeat records the period changes force-slave-heartbeat makes.
+func stubSetSlaveHeartbeat(t *testing.T, err error) *[]string {
+	t.Helper()
+	calls := new([]string)
+	saved := setSlaveHeartbeat
+	setSlaveHeartbeat = func(_ *sqlx.DB, interval string, channel string, _ *version.Version) (string, error) {
+		*calls = append(*calls, channel+"="+interval)
+		return "", err
 	}
+	t.Cleanup(func() { setSlaveHeartbeat = saved })
+	return calls
+}
+
+// force-slave-heartbeat sets the managed channel to force-slave-heartbeat-time once
+// (CINF0023), never on a channel whose thread someone stopped, never on an ignored server,
+// and does not retry a failure while the period stays the same (WARN0268).
+func TestCheckReplicationHeartbeatPeriodEnforces(t *testing.T) {
+	setup := func() (*Cluster, *ServerMonitor) {
+		cl, _, slave := heartbeatTestCluster(t)
+		cl.Conf.ForceSlaveHeartbeat = true
+		slave.replicationHeartbeatKnown = true
+		slave.ReplicationHeartbeatPeriod = 30
+		return cl, slave
+	}
+	key := func(code string, s *ServerMonitor) string { return state.BuildStateKey(code, s.URL) }
+
+	calls := stubSetSlaveHeartbeat(t, nil)
+	cl, slave := setup()
+	slave.checkReplicationHeartbeatPeriod()
+	if len(*calls) != 1 || (*calls)[0] != "bench=3" || !cl.StateMachine.IsInState(key("CINF0023", slave)) || cl.StateMachine.IsInState(key("WARN0050", slave)) {
+		t.Fatalf("calls %v", *calls)
+	}
+
+	calls = stubSetSlaveHeartbeat(t, nil)
+	cl, slave = setup()
+	slave.Replications[0].SlaveSQLRunning = sql.NullString{String: "No", Valid: true}
+	slave.checkReplicationHeartbeatPeriod()
+	if len(*calls) != 0 || !cl.StateMachine.IsInState(key("WARN0050", slave)) {
+		t.Fatalf("a stopped SQL thread: warn, no change; calls %v", *calls)
+	}
+
+	calls = stubSetSlaveHeartbeat(t, nil)
+	cl, slave = setup()
+	slave.Ignored = true
+	slave.checkReplicationHeartbeatPeriod()
+	if len(*calls) != 0 || len(cl.StateMachine.GetOpenStates()) != 0 {
+		t.Fatalf("an ignored server: no change, no state; calls %v", *calls)
+	}
+
+	calls = stubSetSlaveHeartbeat(t, errors.New("refused"))
+	cl, slave = setup()
+	slave.checkReplicationHeartbeatPeriod()
+	slave.checkReplicationHeartbeatPeriod()
+	if len(*calls) != 1 || !cl.StateMachine.IsInState(key("WARN0268", slave)) {
+		t.Fatalf("a failure is not retried while the period stays: calls %v", *calls)
+	}
+	slave.ReplicationHeartbeatPeriod = 60
+	slave.checkReplicationHeartbeatPeriod()
+	if len(*calls) != 2 {
+		t.Fatalf("a new period is tried again: calls %v", *calls)
+	}
+}
+
+// MySQL reads the last receive from performance_schema, aged on the replica's clock.
+func TestRefreshReplicationLastReceivedMySQL(t *testing.T) {
+	_, _, slave := heartbeatTestCluster(t)
+	slave.DBVersion = &version.Version{Flavor: "MySQL", Major: 8, Minor: 0, Release: 41}
+	raw, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	slave.Conn = sqlx.NewDb(raw, "mysql")
+	mock.ExpectQuery("performance_schema.replication_connection_status").WithArgs("bench").
+		WillReturnRows(sqlmock.NewRows([]string{"last", "now", "period"}).AddRow("1000.000000", "1002.500000", "3.000"))
+	slave.refreshReplicationLastReceived()
+	age, ok := slave.GetReplicationLastReceivedAge()
+	if !ok || age < 2500*time.Millisecond || age > 3500*time.Millisecond || slave.GetReplicationHearbeatPeriod() != 3 {
+		t.Fatalf("age %s ok %t period %v", age, ok, slave.GetReplicationHearbeatPeriod())
+	}
+	mock.ExpectQuery("performance_schema.replication_connection_status").WithArgs("bench").
+		WillReturnRows(sqlmock.NewRows([]string{"last", "now", "period"}).AddRow("0.000000", "1002.500000", "3.000"))
+	slave.refreshReplicationLastReceived()
+	if _, ok := slave.GetReplicationLastReceivedAge(); ok {
+		t.Fatal("a channel that never received has no last receive")
+	}
+	// MySQL before 5.7 records nothing: no query, nothing tracked
+	slave.DBVersion = &version.Version{Flavor: "MySQL", Major: 5, Minor: 6, Release: 51}
+	slave.refreshReplicationLastReceived()
+	if known, _, _ := slave.replicationReceived(); known {
+		t.Fatal("MySQL 5.6: not tracked")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The tick writes the tracking while the failover check and the API read it (go test -race).
+// The slave status slice stays fixed: the tick replacing it is the monitor's existing
+// pattern, not this tracking; every refresh still rewrites the tracking fields.
+func TestReplicationLastReceivedConcurrent(t *testing.T) {
+	cl, master, slave := heartbeatTestCluster(t)
+	master.State = stateFailed
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			slave.refreshReplicationLastReceived()
+			if i%50 == 0 {
+				slave.resetReplicationLastReceived()
+			}
+		}
+	}()
+	for i := 0; i < 200; i++ {
+		cl.isOneSlaveHeartbeatIncreasing()
+		cl.reportReplicasLastReceived()
+		slave.GetReplicationHearbeatPeriod()
+	}
+	<-done
 }

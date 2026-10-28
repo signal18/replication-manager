@@ -24,16 +24,30 @@ import (
 func (server *ServerMonitor) refreshReplicationLastReceived() {
 	cluster := server.ClusterGroup
 	ss, err := server.GetSlaveStatus(server.ReplicationSourceName)
-	if err != nil || server.DBVersion.IsPostgreSQL() || !(cluster.Conf.CheckFalsePositiveHeartbeat || cluster.Conf.ForceSlaveHeartbeat) {
+	if err != nil || server.DBVersion.IsPostgreSQL() || !(cluster.Conf.CheckFalsePositiveHeartbeat || cluster.Conf.ForceSlaveHeartbeat) ||
+		(!server.DBVersion.IsMariaDB() && !server.DBVersion.GreaterEqual("5.7")) {
 		server.resetReplicationLastReceived()
 		return
 	}
+	var lr dbhelper.ReplicationLastReceived
+	if !server.DBVersion.IsMariaDB() {
+		// read before taking the lock: a query must never hold it
+		var logs string
+		lr, logs, err = dbhelper.GetReplicationLastReceived(server.Conn, server.ReplicationSourceName, server.DBVersion)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not read when %s last received from its source: %s", server.URL, err)
+		if err != nil {
+			server.resetReplicationLastReceived()
+			return
+		}
+	}
 	now := time.Now()
+	server.replicationReceivedMutex.Lock()
+	defer server.replicationReceivedMutex.Unlock()
 	// a channel moved to another source (a failover's CHANGE MASTER) received nothing from
 	// the new one yet: its position moved by the repoint, not by a receive
 	source := ss.MasterHost.String + ":" + ss.MasterPort.String
 	if source != server.replicationReceivedSource {
-		server.resetReplicationLastReceived()
+		server.resetReplicationLastReceivedLocked()
 		server.replicationReceivedSource = source
 	}
 	if server.DBVersion.IsMariaDB() {
@@ -49,12 +63,6 @@ func (server *ServerMonitor) refreshReplicationLastReceived() {
 		server.replicationHeartbeatKnown = true
 		return
 	}
-	lr, logs, err := dbhelper.GetReplicationLastReceived(server.Conn, server.ReplicationSourceName, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not read when %s last received from its source: %s", server.URL, err)
-	if err != nil {
-		server.resetReplicationLastReceived()
-		return
-	}
 	server.ReplicationHeartbeatPeriod = lr.HeartbeatPeriod
 	server.replicationHeartbeatKnown = true
 	server.ReplicationLastReceivedAt = time.Time{}
@@ -64,6 +72,12 @@ func (server *ServerMonitor) refreshReplicationLastReceived() {
 }
 
 func (server *ServerMonitor) resetReplicationLastReceived() {
+	server.replicationReceivedMutex.Lock()
+	defer server.replicationReceivedMutex.Unlock()
+	server.resetReplicationLastReceivedLocked()
+}
+
+func (server *ServerMonitor) resetReplicationLastReceivedLocked() {
 	server.ReplicationLastReceivedAt = time.Time{}
 	server.ReplicationHeartbeatPeriod = 0
 	server.replicationHeartbeatKnown = false
@@ -72,13 +86,22 @@ func (server *ServerMonitor) resetReplicationLastReceived() {
 	server.replicationReceivedSource = ""
 }
 
+// replicationReceived is a consistent read of the tracking: known (read for this channel),
+// the last receive (zero: none seen) and the heartbeat period.
+func (server *ServerMonitor) replicationReceived() (known bool, lastReceivedAt time.Time, period float64) {
+	server.replicationReceivedMutex.Lock()
+	defer server.replicationReceivedMutex.Unlock()
+	return server.replicationHeartbeatKnown, server.ReplicationLastReceivedAt, server.ReplicationHeartbeatPeriod
+}
+
 // GetReplicationLastReceivedAge is how long ago the managed channel last received from its
 // source; false when not seen since the replica is monitored.
 func (server *ServerMonitor) GetReplicationLastReceivedAge() (time.Duration, bool) {
-	if server.ReplicationLastReceivedAt.IsZero() {
+	_, last, _ := server.replicationReceived()
+	if last.IsZero() {
 		return 0, false
 	}
-	return time.Since(server.ReplicationLastReceivedAt), true
+	return time.Since(last), true
 }
 
 // falsePositiveHeartbeatWindow is how recent a receive proves the master alive: an idle
@@ -86,7 +109,8 @@ func (server *ServerMonitor) GetReplicationLastReceivedAge() (time.Duration, boo
 // configured failover-falsepositive-heartbeat-timeout margin.
 func (server *ServerMonitor) falsePositiveHeartbeatWindow() time.Duration {
 	conf := server.ClusterGroup.Conf
-	return time.Duration(server.ReplicationHeartbeatPeriod*float64(time.Second)) +
+	_, _, period := server.replicationReceived()
+	return time.Duration(period*float64(time.Second)) +
 		time.Duration(conf.MonitoringTicker)*time.Second +
 		time.Duration(conf.CheckFalsePositiveHeartbeatTimeout)*time.Second
 }
@@ -108,14 +132,15 @@ func (cluster *Cluster) reportReplicasLastReceived() {
 		return
 	}
 	for _, slave := range cluster.slaves {
-		if !slave.replicationHeartbeatKnown || !cluster.isDirectReplicaOfMaster(slave) {
+		known, last, period := slave.replicationReceived()
+		if !known || !cluster.isDirectReplicaOfMaster(slave) {
 			continue
 		}
 		received := "nothing since it is monitored"
-		if age, ok := slave.GetReplicationLastReceivedAge(); ok {
-			received = age.Round(100*time.Millisecond).String() + " ago"
+		if !last.IsZero() {
+			received = time.Since(last).Round(100*time.Millisecond).String() + " ago"
 		}
-		cluster.SetState("CINF0022", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0022"], slave.URL, master.URL, received, formatHeartbeatPeriod(slave.ReplicationHeartbeatPeriod)), ErrFrom: "CHECK", ServerUrl: slave.URL})
+		cluster.SetState("CINF0022", state.State{ErrType: config.LvlInfo, ErrDesc: fmt.Sprintf(clusterError["CINF0022"], slave.URL, master.URL, received, formatHeartbeatPeriod(period)), ErrFrom: "CHECK", ServerUrl: slave.URL})
 	}
 }
 
@@ -126,6 +151,9 @@ func formatHeartbeatPeriod(period float64) string {
 	return strconv.FormatFloat(period, 'f', -1, 64) + "s"
 }
 
+// setSlaveHeartbeat changes a channel's period; a variable so a test sees the call.
+var setSlaveHeartbeat = dbhelper.SetSlaveHeartbeat
+
 // checkReplicationHeartbeatPeriod: a failover decision waits up to one heartbeat period for
 // the false-positive heartbeat check, so a period above force-slave-heartbeat-time (or 0,
 // heartbeats off) is a WARN0050 while the check is on. force-slave-heartbeat is the client's
@@ -135,10 +163,10 @@ func formatHeartbeatPeriod(period float64) string {
 // Every change is a state naming the server, the channel and both periods.
 func (server *ServerMonitor) checkReplicationHeartbeatPeriod() {
 	cluster := server.ClusterGroup
-	if !server.replicationHeartbeatKnown || server.IsMaintenance || cluster.Conf.ForceSlaveHeartbeatTime <= 0 {
+	known, _, period := server.replicationReceived()
+	if !known || server.IsIgnored() || server.IsMaintenance || cluster.Conf.ForceSlaveHeartbeatTime <= 0 {
 		return
 	}
-	period := server.ReplicationHeartbeatPeriod
 	target := float64(cluster.Conf.ForceSlaveHeartbeatTime)
 	if period > 0 && period <= target {
 		server.heartbeatEnforceFailed = false
@@ -148,7 +176,7 @@ func (server *ServerMonitor) checkReplicationHeartbeatPeriod() {
 	if cluster.Conf.ForceSlaveHeartbeat && !(server.heartbeatEnforceFailed && period == server.heartbeatEnforceFailedPeriod) {
 		ss, err := server.GetSlaveStatus(channel)
 		if err == nil && ss.SlaveIORunning.String == "Yes" && ss.SlaveSQLRunning.String == "Yes" {
-			logs, err := dbhelper.SetSlaveHeartbeat(server.Conn, strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime), channel, server.DBVersion)
+			logs, err := setSlaveHeartbeat(server.Conn, strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime), channel, server.DBVersion)
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlInfo, "Could not set the heartbeat period of %s: %s", server.URL, err)
 			if err != nil {
 				server.heartbeatEnforceFailed = true

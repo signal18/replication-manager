@@ -3771,7 +3771,9 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchForceBinlogRow()
 	case "force-slave-semisync":
 		mycluster.SwitchForceSlaveSemisync()
-	case "force-slave-heartbeat", "force-slave-Heartbeat": // the GUI sends the key; the capital H never matched it
+	// force-slave-heartbeat is the key (the GUI sends it, #2208); the capital H was the only
+	// spelling matched before: kept for API scripts that sent it, to drop at the next major
+	case "force-slave-heartbeat", "force-slave-Heartbeat":
 		mycluster.SwitchForceSlaveHeartbeat()
 	case "force-slave-gtid":
 		mycluster.SwitchForceSlaveGtid()
@@ -5861,7 +5863,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ForceBinlogRow = applyIsActive(mycluster.Conf.ForceBinlogRow, isactive)
 	case "force-slave-semisync":
 		mycluster.Conf.ForceSlaveSemisync = applyIsActive(mycluster.Conf.ForceSlaveSemisync, isactive)
-	case "force-slave-Heartbeat":
+	// see the switch: the capital H kept for API scripts, to drop at the next major
+	case "force-slave-heartbeat", "force-slave-Heartbeat":
 		mycluster.Conf.ForceSlaveHeartbeat = applyIsActive(mycluster.Conf.ForceSlaveHeartbeat, isactive)
 	case "force-slave-gtid":
 		mycluster.Conf.ForceSlaveGtid = applyIsActive(mycluster.Conf.ForceSlaveGtid, isactive)

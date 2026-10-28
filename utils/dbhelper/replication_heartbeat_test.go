@@ -5,6 +5,7 @@
 package dbhelper
 
 import (
+	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -95,5 +96,31 @@ func TestSetSlaveHeartbeatStatement(t *testing.T) {
 		if got, err := setSlaveHeartbeatStatement(bad.interval, bad.channel, bad.v); err == nil {
 			t.Errorf("%q %q on %s: %q, want an error", bad.interval, bad.channel, bad.v.Flavor, got)
 		}
+	}
+}
+
+// A failed change still starts the channel again: it was running before (#2208).
+func TestSetSlaveHeartbeatRestartsAfterFailedChange(t *testing.T) {
+	raw, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	db := sqlx.NewDb(raw, "mysql")
+	v := &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8, Release: 9}
+	mock.ExpectExec(regexp.QuoteMeta("STOP SLAVE 'bench'")).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(regexp.QuoteMeta("CHANGE MASTER 'bench' TO MASTER_HEARTBEAT_PERIOD=3")).WillReturnError(errors.New("refused"))
+	mock.ExpectExec(regexp.QuoteMeta("START SLAVE 'bench'")).WillReturnResult(sqlmock.NewResult(0, 0))
+	if _, err := SetSlaveHeartbeat(db, "3", "bench", v); err == nil || err.Error() != "refused" {
+		t.Fatalf("want the change error, got %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectExec(regexp.QuoteMeta("STOP SLAVE 'bench'")).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(regexp.QuoteMeta("CHANGE MASTER 'bench' TO MASTER_HEARTBEAT_PERIOD=3")).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(regexp.QuoteMeta("START SLAVE 'bench'")).WillReturnError(errors.New("no"))
+	if _, err := SetSlaveHeartbeat(db, "3", "bench", v); err == nil || !regexp.MustCompile("left stopped").MatchString(err.Error()) {
+		t.Fatalf("a failed start must say the channel is left stopped, got %v", err)
 	}
 }

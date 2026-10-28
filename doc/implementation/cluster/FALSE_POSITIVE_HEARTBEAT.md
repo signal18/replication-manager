@@ -70,7 +70,15 @@ managed channel's period to `force-slave-heartbeat-time` (was a hard-coded 1 s):
 - only while both threads run, as the change is STOP SLAVE / CHANGE / START SLAVE and must
   not start a thread someone stopped;
 - once: the next tick reads the new period. A failure is not retried while the period stays
-  the same (no STOP/START every tick).
+  the same (no STOP/START every tick);
+- never on an ignored server (`IsIgnored`) or one in maintenance;
+- a failed CHANGE still starts the channel again (it was running); a failed START says the
+  channel is left stopped, in WARN0268.
+
+The tracking fields are written by `Refresh` and read by the failover check, CINF0022 and
+WARN0050 under `replicationReceivedMutex` (`replicationReceived()` is the consistent read);
+the MySQL query runs before the lock is taken, on the monitoring connection and its
+`read-timeout`. MySQL before 5.7 and PostgreSQL are skipped with no query.
 
 `force-slave-heartbeat-time` is set from the GUI (Settings, Replication, Replication
 Heartbeat Period) through `setClusterSetting`.

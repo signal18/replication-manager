@@ -184,7 +184,8 @@ func (server *ServerMonitor) GetReplicationDelay() int64 {
 // GetReplicationHearbeatPeriod is the managed channel's heartbeat period, read with its
 // last received time (srv_heartbeat.go): 0 when unknown or off.
 func (server *ServerMonitor) GetReplicationHearbeatPeriod() float64 {
-	return server.ReplicationHeartbeatPeriod
+	_, _, period := server.replicationReceived()
+	return period
 }
 
 func (server *ServerMonitor) GetReplicationUsingGtid() string {

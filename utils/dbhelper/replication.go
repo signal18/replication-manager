@@ -970,12 +970,17 @@ func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, myver *vers
 		return logs, err
 	}
 	logs += "\n" + stmt
-	if _, err = db.Exec(stmt); err != nil {
-		return logs, err
-	}
-	log, err := StartSlave(db, Channel, myver)
+	_, changeErr := db.Exec(stmt)
+	// started again even when the change failed: the channel was running before
+	log, startErr := StartSlave(db, Channel, myver)
 	logs += "\n" + log
-	return logs, err
+	switch {
+	case startErr != nil && changeErr != nil:
+		return logs, fmt.Errorf("%v; the channel is left stopped: %v", changeErr, startErr)
+	case startErr != nil:
+		return logs, fmt.Errorf("the channel is left stopped: %v", startErr)
+	}
+	return logs, changeErr
 }
 
 // setSlaveHeartbeatStatement is the CHANGE MASTER / CHANGE REPLICATION SOURCE of
