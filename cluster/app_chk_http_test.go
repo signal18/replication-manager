@@ -26,23 +26,24 @@ func TestAppMonitorHTTPRoute(t *testing.T) {
 		t.Fatal("nil config: no http check")
 	}
 	r, ok := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "HTTPS", AppHost: "web.example.com", AppPort: "443"}, "web.example.com.c1.svc.cloud18")
-	if !ok || r.Protocol != "https" || r.CName != "web.example.com" {
-		t.Fatalf("full name on the default port: want https web.example.com (no :443 in the Host header), got %v %+v", ok, r)
+	if !ok || r.Protocol != "https" || r.CName != "web.example.com" || r.Mode != "host" {
+		t.Fatalf("full name on the default port: want a host route on web.example.com (no :443 in the Host header), got %v %+v", ok, r)
 	}
-	if r, _ := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "https", AppHost: "web.example.com", AppPort: "8443"}, ""); r.CName != "web.example.com:8443" {
-		t.Fatalf("other port: kept in the URL, got %q", r.CName)
-	}
-	if r, _ := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "http", AppHost: "web.example.com", AppPort: "80"}, ""); r.CName != "web.example.com" {
-		t.Fatalf("http on 80: no port in the URL, got %q", r.CName)
-	}
-	if r, _ := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "http", AppHost: "web.example.com", AppPort: "443"}, ""); r.CName != "web.example.com:443" {
-		t.Fatalf("http on 443 is not a default port: kept, got %q", r.CName)
+	for _, c := range []struct{ mode, port, wantMode, wantSource string }{
+		{"https", "8443", "port", "8443"},
+		{"http", "80", "host", ""},
+		{"http", "443", "port", "443"},
+	} {
+		r, _ := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: c.mode, AppHost: "web.example.com", AppPort: c.port}, "")
+		if r.CName != "web.example.com" || r.Mode != c.wantMode || r.SourcePort != c.wantSource {
+			t.Fatalf("%s on %s: want %s route source %q, got %+v", c.mode, c.port, c.wantMode, c.wantSource, r)
+		}
 	}
 	if r.Monitor == nil || r.Monitor.Path != "/" || r.Monitor.ExpectStatus != "200" {
 		t.Fatalf("defaults: want / and 200, got %+v", r.Monitor)
 	}
 	r, _ = appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "http", AppHost: "web", AppPort: "8080", AppMonitorPath: "/health", AppMonitorExpectStatus: "200,204"}, "web.c1.svc.cloud18")
-	if r.Protocol != "http" || r.CName != "web.c1.svc.cloud18:8080" || r.Monitor.Path != "/health" || r.Monitor.ExpectStatus != "200,204" {
+	if r.Protocol != "http" || r.CName != "web.c1.svc.cloud18" || r.SourcePort != "8080" || r.Monitor.Path != "/health" || r.Monitor.ExpectStatus != "200,204" {
 		t.Fatalf("short name: want the cluster address and the set path/status, got %+v %+v", r, r.Monitor)
 	}
 }
