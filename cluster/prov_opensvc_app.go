@@ -354,6 +354,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 		return nil
 	}
 	agent := app.GetAgent()
+	// not AppRestartAllNodes: on v2 no node means the default agent, not every node
 	if strings.ToUpper(node) == "ALL" || node == "*" {
 		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), "*", rid)
 		if err != nil {
@@ -673,6 +674,8 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 		// service that reads a rewritten key, everywhere, even on an identical value (live
 		// status app 2026-10-28: each definition refresh restarted all its flex instances).
 		// V2: an existing key is fine. The value is never logged.
+		// A failed read (missing key or not) falls through to the write: converging on the
+		// right value beats skipping it, at the cost of one restart of the readers.
 		published := false
 		if svc.IsV3() {
 			cur, err := svc.GetSecretKeyValueV3(cluster.Name, "env", "SENSOR_API_KEY")

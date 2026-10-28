@@ -28,7 +28,9 @@ expect `restarted`). So a node restart turned into a restart of every instance. 
 read first (`GetSecretKeyValueV3`) and written only when it is missing or differs. The
 definition push itself (`UpdateObjectV3`) did not restart anything. The database refresh
 (`OpenSVCUpdateDatabaseTemplate`) and the proxy provisioning run the same prerequisites and
-get the same fix.
+get the same fix. A failed read falls through to the write (one restart of the readers rather
+than a stale key), and a key that really changes, a rotated system key, still restarts every
+service that reads it, once.
 
 ## OpenSVC v2
 
