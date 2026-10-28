@@ -164,11 +164,22 @@ func (server *ServerMonitor) checkStoppedReplication(ss *dbhelper.SlaveStatus) s
 			server.SetState(stateRelayErr)
 		}
 		return "NOT OK, ALL Stopped"
-	} else if ss.SlaveSQLRunning.String == "Connecting" {
+	} else if ss.SlaveIORunning.String == "Connecting" {
+		// the IO thread retries its source (the SQL thread is never "Connecting": this
+		// tested it before #2218, and a replica that never connected showed Running OK).
+		// The server stays a slave, the election is unchanged; an error while retrying
+		// is a state naming it (a TLS handshake failure, 2026, is WARN0236's).
 		if !server.IsRelay && !server.IsMaxscale {
 			server.SetState(stateSlave)
 		} else if server.IsRelay {
 			server.SetState(stateRelay)
+		}
+		if ss.LastIOErrno.String != "" && ss.LastIOErrno.String != "0" {
+			if ss.LastIOErrno.String == "2026" {
+				return "NOT OK, IO Connecting (2026)"
+			}
+			server.ClusterGroup.SetState("WARN0269", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0269"], server.URL, ss.ConnectionName.String, ss.LastIOErrno.String, ss.LastIOError.String), ErrFrom: "TOPO", ServerUrl: server.URL})
+			return fmt.Sprintf("NOT OK, IO Connecting (%s)", ss.LastIOErrno.String)
 		}
 		return "NOT OK, IO Connecting"
 	}

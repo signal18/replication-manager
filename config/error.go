@@ -375,6 +375,7 @@ var ClusterError = map[string]string{
 	"WARN0266":  "Dynamic config with resources set in /etc (%s): it never moves them, and each start reads them back -- remove them from cluster.d to let the dynamic config own them",
 	"WARN0267":  "Server %s: monitoring extra port %s unusable (%s), monitoring on the service port %s until it answers again",
 	"WARN0268":  "Could not set the heartbeat period of slave %s channel '%s' (force-slave-heartbeat): %s",
+	"WARN0269":  "Slave %s channel '%s' can not connect to its source: replication IO error %s: %s",
 	"WARN0264":  "Binlog budget of %s at its floor, %s (%s): the data leaves no room, each closed binlog is purged at once, its copy and lagging replicas with it -- grow the disk or free data",
 	"WARN0265":  "Replica %s, disconnected, needs binlog %s of %s, beyond its binlog size limit %s (oldest kept %s): MariaDB purges it by size, the replica will need a reseed unless it reconnects first",
 	"WARN0263":  "Archive %s keeps its snapshots unencrypted on %s: no client encryption-key -- set one to encrypt its next snapshots (those taken stay as they are), or no-encrypt to keep it so",

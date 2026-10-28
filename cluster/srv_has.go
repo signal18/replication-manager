@@ -734,7 +734,10 @@ func (server *ServerMonitor) HasGTIDReplication() bool {
 
 func (server *ServerMonitor) HasReplicationIssue() bool {
 	ret := server.CheckReplication()
-	if ret == "Running OK" || ((ret == "NOT OK, IO Connecting" || !server.IsIOThreadRunning()) && server.ClusterGroup.GetMaster() == nil) {
+	// an IO thread retrying with no error yet (a reconnect) keeps the replica, as when it
+	// read Running OK before #2218; retrying with an error (it never connects) is an issue
+	if ret == "Running OK" || ret == "NOT OK, IO Connecting" ||
+		((strings.HasPrefix(ret, "NOT OK, IO Connecting") || !server.IsIOThreadRunning()) && server.ClusterGroup.GetMaster() == nil) {
 		return false
 	}
 	return true

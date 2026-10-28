@@ -115,3 +115,49 @@ func TestChangeMasterRetryCountNotOnGroupRecovery(t *testing.T) {
 		t.Fatalf("an ordinary channel keeps its retry count on 8.4: %s", replica)
 	}
 }
+
+// MySQL 8's caching_sha2_password replication user needs the source's public key without
+// TLS (error 2061): GET_MASTER_PUBLIC_KEY / GET_SOURCE_PUBLIC_KEY, never with TLS, on the
+// group replication recovery channel, on MariaDB or before MySQL 8.0 (#2218).
+func TestChangeMasterGetPublicKey(t *testing.T) {
+	run := func(opt ChangeMasterOpt, v *version.Version) string {
+		db, mock, err := sqlmock.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		mock.ExpectExec("CHANGE").WillReturnResult(sqlmock.NewResult(0, 0))
+		cm, err := ChangeMaster(sqlx.NewDb(db, "sqlmock"), opt, v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cm
+	}
+	base := ChangeMasterOpt{Host: "db1", Port: "3306", User: "repl", Password: "pw", Retry: "10", Heartbeat: "3", Mode: "MASTER_AUTO_POSITION", Channel: "bench"}
+	for _, c := range []struct {
+		v    *version.Version
+		want string
+	}{
+		{&version.Version{Flavor: "MySQL", Major: 8, Minor: 0, Release: 22}, "GET_MASTER_PUBLIC_KEY=1"},
+		{&version.Version{Flavor: "MySQL", Major: 8, Minor: 0, Release: 41}, "GET_SOURCE_PUBLIC_KEY=1"},
+		{&version.Version{Flavor: "Percona", Major: 8, Minor: 4, Release: 3}, "GET_SOURCE_PUBLIC_KEY=1"},
+	} {
+		if cm := run(base, c.v); !strings.Contains(cm, c.want) || !strings.HasSuffix(cm, "FOR CHANNEL 'bench'") {
+			t.Errorf("%s %d.%d.%d: %s", c.v.Flavor, c.v.Major, c.v.Minor, c.v.Release, cm)
+		}
+	}
+	mysql80 := &version.Version{Flavor: "MySQL", Major: 8, Minor: 0, Release: 41}
+	tls := base
+	tls.SSL = true
+	group := ChangeMasterOpt{User: "repl", Password: "pw", Retry: "10", Heartbeat: "1", Mode: "GROUP_REPL", Channel: "group_replication_recovery"}
+	for name, cm := range map[string]string{
+		"TLS":            run(tls, mysql80),
+		"group recovery": run(group, mysql80),
+		"MariaDB":        run(base, mariaDBVersionForTest()),
+		"MySQL 5.7":      run(base, &version.Version{Flavor: "MySQL", Major: 5, Minor: 7, Release: 44}),
+	} {
+		if strings.Contains(cm, "PUBLIC_KEY") {
+			t.Errorf("%s: no public key option, got %s", name, cm)
+		}
+	}
+}

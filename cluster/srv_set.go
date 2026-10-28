@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -1087,8 +1088,10 @@ type ReplicationTLS struct {
 //   - Primary on its auto-generated certificate: the CA is emptied.
 //   - Primary on a configured certificate, with replication-use-ssl: the CA is named
 //     from replication-ssl-ca, else the CA shipped on a provisioned cluster with the ssl
-//     tag, else the replica's own ssl_ca when it is the primary's too; otherwise the
-//     channel keeps its CA (one an operator set stays).
+//     tag, else the replica's own ssl_ca when it is the primary's too (an absolute
+//     path: a relative one is each node's own datadir file, MySQL's auto-generated
+//     ca.pem, and empties the CA, #2218); otherwise the channel keeps its CA (one an
+//     operator set stays).
 func (server *ServerMonitor) ReplicationTLSFor(host, port string, useSSL bool) ReplicationTLS {
 	cluster := server.ClusterGroup
 	if cluster == nil || cluster.Conf == nil || server.DBVersion == nil || server.DBVersion.IsPostgreSQL() {
@@ -1131,6 +1134,13 @@ func (server *ServerMonitor) ReplicationTLSFor(host, port string, useSSL bool) R
 		}
 	}
 	if ca, ok := server.liveVariable("SSL_CA"); ok && ca.String != "" {
+		// A relative CA is a file in each node's own datadir: MySQL's auto_generate_certs
+		// gives every node its own ca.pem under that one name, so an equal name proves
+		// nothing about who signed the primary's certificate (error 2026, #2218). The
+		// channel gets no CA, as for an auto-generated MariaDB certificate.
+		if !filepath.IsAbs(ca.String) {
+			return ReplicationTLS{ClearCA: true}
+		}
 		if pca, ok := primary.liveVariable("SSL_CA"); ok && pca.String == ca.String {
 			return ReplicationTLS{CA: ca.String}
 		}
