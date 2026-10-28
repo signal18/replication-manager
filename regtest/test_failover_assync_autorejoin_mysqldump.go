@@ -27,8 +27,14 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinDump(cluster *cluster.Cluste
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL
 	//clusteruster.DelayAllSlaves()
-	cluster.CleanupBench() // the table of a previous run fails the prepare (1050)
-	cluster.PrepareBench()
+	// the table of a previous run fails the prepare (1050); none on a first run
+	if err := cluster.CleanupBench(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Benchmark cleanup: %s", err)
+	}
+	if err := cluster.PrepareBench(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Benchmark prepare failed: %s", err)
+		return false
+	}
 	// run on the prepared table: RunSysbench would clean up and prepare it again, a second
 	// prepare racing this one (error 1050, #2228)
 	go cluster.RunBench()

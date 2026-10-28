@@ -594,15 +594,24 @@ func (cluster *Cluster) BenchTable() string {
 }
 
 func (cluster *Cluster) CheckTableConsistency(table string) bool {
+	if cluster.master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master to check table %s against", table)
+		return false
+	}
 	// The replicas first apply all the master wrote: a checksum taken while they catch up
 	// differs (MariaDB 11.8, 693504 of 1000000 rows applied after the 1000000-row prepare, #2228).
+	// Only the replicas taking part, as the restore gate: a stopped, broken or delayed one is
+	// not waited for (its checksum is compared all the same).
 	if target, err := cluster.master.ReadReplicationTarget(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not read the position of %s to wait for the replicas: %s", cluster.master.URL, err)
 	} else {
 		for _, s := range cluster.slaves {
-			reached, err := cluster.waitReplicaReachTarget(s.URL, target, func(*ServerMonitor) bool { return true })
-			if !reached {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replica %s did not reach %s before the consistency check: %v", s.URL, target, err)
+			reached, err := cluster.waitReplicaReachTarget(s.URL, target, replicaTakesPart)
+			switch {
+			case err != nil:
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replica %s did not reach %s before the consistency check: %s", s.URL, target, err)
+			case !reached:
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replica %s not waited for before the consistency check: its replication is stopped, broken or delayed", s.URL)
 			}
 		}
 	}

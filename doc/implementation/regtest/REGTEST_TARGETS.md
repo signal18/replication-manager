@@ -127,7 +127,8 @@ sysbench does not create its database. `PrepareBench` now creates `replication_m
 master first (`dbhelper.CreateReplicationManagerSchema`), with the binary log on so the replicas get it.
 On a MySQL cluster nothing else had created it, and every prepare failed with error 1049.
 
-`CheckTableConsistency` first waits for every replica to reach the master's position, read once
+`CheckTableConsistency` first waits for every replica taking part (`replicaTakesPart`: not stopped,
+broken or delayed) to reach the master's position, read once
 (`waitReplicaReachTarget`: `WaitSyncToTarget` turns, ended by an SQL error or no progress for
 `replicaNoProgressFor`, the loop the restore gate uses too). Compared at once, a replica still applying
 the 1,000,000-row prepare differed (MariaDB 11.8: 693,504 rows applied). The flashback and mysqldump
