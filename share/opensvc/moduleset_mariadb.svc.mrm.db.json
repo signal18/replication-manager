@@ -2524,6 +2524,25 @@
                 }
             ],
             "fset_name": "mariadb.engine.tidesdb"
+        },
+        {
+            "fset_stats": false,
+            "id": 431,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "inmemory",
+                        "f_table": "v_tags",
+                        "id": 387
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.memory.inmemory"
         }
     ],
     "rulesets": [
@@ -4368,6 +4387,14 @@
                     "var_updated": "2026-10-12 16:24:45",
                     "var_name": "db_cnf_engine_tidesdb",
                     "id": 6377
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_mem_inmemory.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# IN MEMORY: hot data fits in the buffer pool\\n# Works around the InnoDB LRU regression of MariaDB 10.5 to 11.8.9 (MDEV-33966, fixed in 11.8.10).\\n# Pages are no longer promoted in the LRU: do not use when the data does not fit in the buffer pool.\\n# mariadb_command: SET GLOBAL innodb_old_blocks_time=2147483647;\\n# mariadb_default: SET GLOBAL innodb_old_blocks_time=1000;\\n\\n[mysqld]\\nloose_innodb_old_blocks_time = 2147483647\\n\"}",
+                    "var_updated": "2026-10-28 20:54:21",
+                    "var_name": "db_cnf_mem_with_inmemory",
+                    "id": 6379
                 }
             ],
             "ruleset_public": false,
@@ -4501,7 +4528,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.sec_withcheckpwdreuse",
                 "mariadb.svc.mrm.db.cnf.generic.test_badconfig",
                 "mariadb.svc.mrm.db.cnf.generic.rep_no128krowmaxsize",
-                "mariadb.svc.mrm.db.cnf.generic.enginetidesdb"
+                "mariadb.svc.mrm.db.cnf.generic.enginetidesdb",
+                "mariadb.svc.mrm.db.cnf.generic.mem_withinmemory"
             ],
             "publications": [
                 "replication-manager"
@@ -7929,6 +7957,30 @@
                 "replication-manager"
             ],
             "id": 1187,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.memory.inmemory",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.mem_withinmemory",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/30_with_mem_inmemory.cnf\",\"target\":\"../replication-manager.d/with_mem_inmemory.cnf\"}",
+                    "var_updated": "2026-10-28 20:54:24",
+                    "var_name": "symlink_withinmemory",
+                    "id": 6380
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1188,
             "responsibles": [
                 "replication-manager"
             ]
