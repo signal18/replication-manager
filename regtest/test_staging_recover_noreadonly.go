@@ -13,29 +13,17 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-// TestStagingRecoverNoReadOnly reproduces the preprod incident reported on
-// mzsc-de-prex-ang (2026-08-18): the topology-staging standalone flapped
-// Suspect -> Failed -> StandAlone and got forced read-only on recovery, even
-// though topology-staging is meant to exempt it. Requires the target cluster
-// to already be configured with topology-staging=true and a valid
-// staging-server-host pointing at a live standalone node.
-//
-// Not registered in the tests list regtest.go's "ALL" mode draws from, since
-// most clusters don't have topology-staging configured and this framework
-// has no "skip" result (see regtest.go). "SUITE" mode never drew from that
-// list anyway - it discovers scenarios from .todo files under share/tests/,
-// so it was never a factor here. Run this one explicitly by name instead:
-// --test=testStagingRecoverNoReadOnly
+// TestStagingRecoverNoReadOnly reproduces a preprod incident (2026-08-18): the
+// topology-staging standalone flapped Suspect -> Failed -> StandAlone and got
+// forced read-only on recovery, even though topology-staging is meant to
+// exempt it. Its config-variable target is topology-staging=true (testTargets):
+// on any other cluster it is skipped. It also needs a valid staging-server-host
+// pointing at a live standalone node.
 func (regtest *RegTest) TestStagingRecoverNoReadOnly(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
 	// Applicability checks only below this line - no mutation of the live
 	// cluster object yet, so an explicit run against a non-staging or
 	// not-yet-applicable cluster leaves it exactly as found.
-	if !cluster.Conf.TopologyStaging {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "topology-staging is not enabled on this cluster, skipping")
-		return false
-	}
-
 	staging := cluster.GetStagingServerFromConfig()
 	if staging == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "no staging server resolved from staging-server-host, skipping")

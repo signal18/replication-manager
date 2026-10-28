@@ -49,10 +49,6 @@ const minorityHold = 120 * time.Second
 // TestSetMinorityWithMaster — master on the minority side, reachable. Must not
 // keep sole authority (dual-master guard) and must not fail over.
 func (regtest *RegTest) TestSetMinorityWithMaster(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if !cl.Conf.Arbitration {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
-		return true
-	}
 	return minorityDoesNothing(cl, setMinorityWithMaster, "testSetMinorityWithMaster")
 }
 
@@ -67,10 +63,6 @@ func (regtest *RegTest) TestSetMinorityWithMaster(cl *cluster.Cluster, conf stri
 // assertions (detected, minority yields, no failover) and additionally reports
 // the master's GTID advance across the window (= the divergent tail size).
 func (regtest *RegTest) TestSetMinorityWithMasterSysbench(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if !cl.Conf.Arbitration {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
-		return true
-	}
 	master := cl.GetMaster()
 	if master == nil {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "testSetMinorityWithMasterSysbench: no master, skipping")
@@ -108,10 +100,6 @@ func (regtest *RegTest) TestSetMinorityWithMasterSysbench(cl *cluster.Cluster, c
 // only a slave and its master looks failed. It enters the failover path but
 // as the minority must not promote.
 func (regtest *RegTest) TestSetMinorityWithoutMaster(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if !cl.Conf.Arbitration {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
-		return true
-	}
 	return minorityDoesNothing(cl, setMinorityWithoutMaster, "testSetMinorityWithoutMaster")
 }
 
@@ -328,10 +316,6 @@ func minorityDoesNothing(cl *cluster.Cluster, setup func(*cluster.Cluster), labe
 // pass condition is that after a transient split the pair RECONVERGES to a
 // single active.
 func (regtest *RegTest) TestSetDualActive(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if !cl.Conf.Arbitration {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
-		return true
-	}
 	return dualActiveMustResolve(cl, "testSetDualActive")
 }
 
@@ -447,10 +431,6 @@ func dualActiveMustResolve(cl *cluster.Cluster, label string) bool {
 // the single-lease / loser-loser decision for the reach-both case; the contest
 // state must also move back to the shared DB). Keep this test RED until then.
 func (regtest *RegTest) TestSplitBrainNoWinner(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if !cl.Conf.Arbitration {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: arbitration not enabled")
-		return true
-	}
 	return splitBrainNoWinner(cl, "testSplitBrainNoWinner")
 }
 

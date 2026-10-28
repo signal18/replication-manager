@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
-import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
+import { handleError, showErrorBanner, showSuccessBanner, showWarningBanner } from '../utility/common'
 import { get, isEqual } from 'lodash'
 
 const pendingKeySelectors = {
@@ -1919,7 +1919,14 @@ export const runRegressionTests = createGuardedAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.runRegressionTests(clusterName, testName, baseURL)
-      showSuccessBanner('Regression test ran successfuly!', status, thunkAPI)
+      // the API answers 200 whatever the result: the banner follows the result
+      if (data?.result === 'PASS') {
+        showSuccessBanner(`Regression test ${testName} passed`, status, thunkAPI)
+      } else if (data?.result === 'SKIP') {
+        showWarningBanner(`Regression test ${testName} skipped: ${data?.['skip-reason'] || 'the cluster does not match its targets'}`, status, thunkAPI)
+      } else {
+        showErrorBanner(`Regression test ${testName} ended with ${data?.result || 'no result'}`, '', thunkAPI)
+      }
       return { data, status }
     } catch (error) {
       showErrorBanner('Regression test failed!', error, thunkAPI)

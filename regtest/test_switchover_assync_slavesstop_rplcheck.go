@@ -15,8 +15,8 @@ import (
 
 func (regtest *RegTest) TestSwitchoverAllSlavesStopRplCheckNoSemiSync(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
-	cluster.SetRplMaxDelay(0)
-	cluster.SetRplChecks(true)
+	// check-replication-state=true and failover-max-slave-delay=0 are its must-set variables
+	// (testTargets): the runner sets them before the test.
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)

@@ -18,7 +18,7 @@ import (
 // TestOpenSVCUpgradeWarnRecovery simulates a failed rolling upgrade that leaves
 // an OpenSVC service in warn state, then verifies recovery via clear + start.
 //
-// Scenario (reproduces the bug from the flacq cluster May 2026 incident):
+// Scenario (reproduces a May 2026 incident on a managed cluster):
 //   1. Pick a slave
 //   2. Stop it via orchestrator (clean stop)
 //   3. Inject a broken 02_delta.cnf with an invalid variable (no loose_ prefix)
@@ -36,14 +36,10 @@ import (
 //   - At least one slave
 //   - prov-db-start-fetch-config = true (so the broken config is actually fetched)
 func (regtest *RegTest) TestOpenSVCUpgradeWarnRecovery(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
-	if cl.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: requires OpenSVC orchestrator")
-		return true
-	}
-
+	// Its targets ask for 2 nodes: a cluster without a replica is broken, not out of scope.
 	if len(cl.GetSlaves()) == 0 {
-		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skipping: no slaves available")
-		return true
+		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No replica on a cluster of %d nodes", len(cl.GetServers()))
+		return false
 	}
 
 	slave := cl.GetSlaves()[0]
