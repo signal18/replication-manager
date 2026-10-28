@@ -32915,7 +32915,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "added": {
-                    "description": "Added: the cluster has an S3 provider of the offer's storage name",
+                    "description": "Added: the cluster has the offer's storage: an S3 provider of its name, on its endpoint (and\nreached with the Cloud18 SSO for an SSO storage)",
                     "type": "boolean"
                 },
                 "auth": {

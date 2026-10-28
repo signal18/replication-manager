@@ -28,7 +28,7 @@ func TestArchiveOffers(t *testing.T) {
 			{Name: "pbs", Plugin: "archive-pbs", Auth: "partner-token"},
 		},
 	}
-	got := archiveOffers(cat, []config.S3Provider{{Name: "s3-sso"}}, archiveOfferRequests(""), nil)
+	got := archiveOffers(cat, []config.S3Provider{{Name: "s3-sso", Endpoint: "https://s3.example/", Cloud18SSO: true}}, archiveOfferRequests(""), nil)
 	if len(got) != 3 {
 		t.Fatalf("one row per offer: %d", len(got))
 	}
@@ -41,8 +41,18 @@ func TestArchiveOffers(t *testing.T) {
 	if o := archiveOffers(cat, nil, archiveOfferRequests(" pbs, s3-keys "), nil)[1]; o.Usable || o.Requestable || !o.Requested || o.Reason != archiveOfferRequested {
 		t.Fatalf("a requested storage waits for its keys: %+v", o)
 	}
-	if o := archiveOffers(cat, []config.S3Provider{{Name: "s3-keys"}}, archiveOfferRequests("s3-keys"), nil)[1]; !o.Usable || !o.Added || o.Reason != "" {
+	if o := archiveOffers(cat, []config.S3Provider{{Name: "s3-keys", Endpoint: "https://s3.ovh.example"}}, archiveOfferRequests("s3-keys"), nil)[1]; !o.Usable || !o.Added || o.Reason != "" {
 		t.Fatalf("a delivered storage is usable: %+v", o)
+	}
+	// a provider of the offer's name that is another storage: a conflict, never used as the offer
+	for _, other := range []config.S3Provider{{Name: "s3-sso", Endpoint: "https://elsewhere.example"}, {Name: "s3-sso", Endpoint: "https://s3.example"}} {
+		if o := archiveOffers(cat, []config.S3Provider{other}, nil, nil)[0]; o.Usable || o.Added || o.Reason != archiveOfferConflict {
+			t.Fatalf("another storage of the offer's name %+v: %+v", other, o)
+		}
+	}
+	dup := config.MarketplaceCatalogue{S3: append([]config.MarketplaceS3{{Name: "s3-sso", Endpoint: "https://first.example", Bucket: "b", Cloud18SSO: true}}, cat.S3...), Archives: cat.Archives[:1]}
+	if o := archiveOffers(dup, nil, nil, nil)[0]; o.S3 == nil || o.S3.Endpoint != "https://first.example" {
+		t.Fatalf("a duplicated storage name keeps the first: %+v", o.S3)
 	}
 	if o := got[2]; o.Usable || o.S3 != nil || o.Requestable || o.Reason != archiveOfferOnRequest {
 		t.Fatalf("a partner-token offer is on request: %+v", o)

@@ -400,7 +400,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     if (!clusterName) return
     try {
       const { data, status } = await clusterService.getArchiveOffers(clusterName)
-      if (status >= 200 && status < 300 && Array.isArray(data)) setOffers(data)
+      setOffers(status >= 200 && status < 300 && Array.isArray(data) ? data : [])
     } catch (e) {
       setOffers([])
     }
@@ -411,6 +411,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
   // an offer reached with the Cloud18 SSO: its S3 provider is added to the cluster (no key),
   // then the archive form opens with its plugin and that provider; repman gives the folder
   const takeOffer = async (o) => {
+    if (!o.s3) return
     if (!o.added) {
       const err = await call(() => clusterService.addS3Provider(clusterName, {
         name: o.s3.name, providerSource: 'custom', endpoint: o.s3.endpoint, region: o.s3.region, cloud18Sso: true,

@@ -18,7 +18,8 @@ type ArchiveOffer struct {
 	config.MarketplaceArchiveOffer
 	// S3 is the catalogue's storage of an S3 offer (MarketplaceArchiveOffer.S3Provider)
 	S3 *config.MarketplaceS3 `json:"s3,omitempty"`
-	// Added: the cluster has an S3 provider of the offer's storage name
+	// Added: the cluster has the offer's storage: an S3 provider of its name, on its endpoint (and
+	// reached with the Cloud18 SSO for an SSO storage)
 	Added bool `json:"added"`
 	// Usable: the cluster can add an archive on the offer's storage now: a storage reached with
 	// the Cloud18 SSO on a replication-manager connected to Cloud18 (no key), or a storage whose
@@ -40,6 +41,7 @@ const (
 	archiveOfferRequest   = "request it: Cloud18 creates the cluster's bucket and keys"
 	archiveOfferRequested = "requested: Cloud18 creates the cluster's bucket and keys, then they arrive with the cluster's config"
 	archiveOfferNoBucket  = "not yet: the catalogue gives no bucket for this storage"
+	archiveOfferConflict  = "an S3 provider of this name is another storage: rename it to use the offer"
 )
 
 // archiveOfferRequests is the set of the offers cloud18-archive-offer-requests asks for.
@@ -59,11 +61,13 @@ func archiveOfferRequests(setting string) map[string]bool {
 func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provider, requested map[string]bool, ssoReady error) []ArchiveOffer {
 	storages := make(map[string]config.MarketplaceS3, len(cat.S3))
 	for _, s := range cat.S3 {
-		storages[s.Name] = s
+		if _, dup := storages[s.Name]; !dup { // remote data: the first of a duplicated name
+			storages[s.Name] = s
+		}
 	}
-	have := make(map[string]bool, len(providers))
+	have := make(map[string]config.S3Provider, len(providers))
 	for _, p := range providers {
-		have[p.Name] = true
+		have[p.Name] = p
 	}
 	offers := make([]ArchiveOffer, 0, len(cat.Archives))
 	for _, o := range cat.Archives {
@@ -71,9 +75,18 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 		if s, ok := storages[o.S3Provider]; ok && o.S3Provider != "" {
 			s := s
 			row.S3 = &s
-			row.Added = have[s.Name]
+		}
+		conflict := false
+		if row.S3 != nil {
+			if p, ok := have[row.S3.Name]; ok {
+				// the offer's storage only: same endpoint, and the SSO for an SSO storage
+				row.Added = strings.TrimRight(p.Endpoint, "/") == strings.TrimRight(row.S3.Endpoint, "/") && p.Cloud18SSO == row.S3.Cloud18SSO
+				conflict = !row.Added
+			}
 		}
 		switch {
+		case conflict:
+			row.Reason = archiveOfferConflict
 		case row.S3 != nil && row.S3.Cloud18SSO:
 			switch {
 			case ssoReady != nil:
