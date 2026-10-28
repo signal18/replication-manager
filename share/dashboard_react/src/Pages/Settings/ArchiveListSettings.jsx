@@ -413,13 +413,23 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
   const takeOffer = async (o) => {
     if (!o.added) {
       const err = await call(() => clusterService.addS3Provider(clusterName, {
-        name: o.s3.name, providerSource: 'custom', endpoint: o.s3.endpoint, region: o.s3.region, cloud18Sso: true
+        name: o.s3.name, providerSource: 'custom', endpoint: o.s3.endpoint, region: o.s3.region, cloud18Sso: true,
+        ...(o.s3.bucket ? { bucket: o.s3.bucket } : {})
       }))
       if (err) return
       fetchOffers()
     }
     const taken = list.archives.some((a) => a.name === o.name)
     setAdding({ plugin: o.plugin, name: taken ? '' : o.name, settings: { 's3-provider': o.s3.name } })
+  }
+
+  // an offer whose keys Cloud18 issues: asked in cloud18-archive-offer-requests; the back-office
+  // creates the cluster's bucket and keys and delivers its S3 provider with the cluster's config
+  const requestOffer = async (o) => {
+    const asked = (config?.cloud18ArchiveOfferRequests || '').split(',').map((n) => n.trim()).filter(Boolean)
+    if (asked.includes(o.name)) return
+    await dispatch(setSetting({ clusterName, setting: 'cloud18-archive-offer-requests', value: [...asked, o.name].join(',') }))
+    fetchOffers()
   }
 
   // a remove, a size read or a catalogue rebuild runs in the background: follow it until it ends
@@ -666,7 +676,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
     },
     ...(offers.length > 0 ? [{
       key: 'Cloud18 offers',
-      help: help('**Cloud18 offers**\n\nThe partners\' storages sold for archives, with their price. A storage reached with the Cloud18 SSO is used at once: **Use** adds it to the cluster\'s S3 providers (no key: replication-manager signs in with its Cloud18 identity, in a folder of its own) and opens the archive form. The other offers need their access delivered to the cluster by Cloud18: on request.', 'Cloud18 offers'),
+      help: help('**Cloud18 offers**\n\nThe partners\' storages sold for archives, with their price. A storage reached with the Cloud18 SSO is used at once: **Use** adds it to the cluster\'s S3 providers (no key: replication-manager signs in with its Cloud18 identity, in a folder of its own) and opens the archive form. A storage whose keys Cloud18 issues is **Request**ed: Cloud18 creates the cluster\'s own bucket and keys and delivers the S3 provider with the cluster\'s config, then the offer can be used. The other offers are on request.\n\nConfig: `cloud18-archive-offer-requests`', 'Cloud18 offers'),
       value: (
         <Stack spacing='2' width='100%'>
           {offers.map((o) => (
@@ -677,9 +687,9 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
                   {[o.partner, o.dcLocation || o.dc, o.priceEurMonth != null ? `${o.priceEurMonth} €/${o.sizeUnit}/month` : 'price on request'].filter(Boolean).join(' · ')}
                 </Text>
               </Box>
-              {o.usable
-                ? <RMButton size='sm' isDisabled={!canSet || list.plugins.length === 0} onClick={() => takeOffer(o)}>{o.added ? 'Add an archive' : 'Use'}</RMButton>
-                : <Text fontSize='xs' maxW='260px'>{o.reason}</Text>}
+              {o.usable && <RMButton size='sm' isDisabled={!canSet || list.plugins.length === 0} onClick={() => takeOffer(o)}>{o.added ? 'Add an archive' : 'Use'}</RMButton>}
+              {o.requestable && <RMButton size='sm' isDisabled={!canSet} onClick={() => requestOffer(o)}>Request</RMButton>}
+              {!o.usable && <Text fontSize='xs' maxW='260px'>{o.reason}</Text>}
             </Flex>
           ))}
         </Stack>

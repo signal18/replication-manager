@@ -6,6 +6,7 @@ package server
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -19,21 +20,43 @@ type ArchiveOffer struct {
 	S3 *config.MarketplaceS3 `json:"s3,omitempty"`
 	// Added: the cluster has an S3 provider of the offer's storage name
 	Added bool `json:"added"`
-	// Usable: the cluster can add the storage and an archive on it now, with no key to
-	// deliver (a storage reached with the Cloud18 SSO, on a replication-manager connected to Cloud18)
+	// Usable: the cluster can add an archive on the offer's storage now: a storage reached with
+	// the Cloud18 SSO on a replication-manager connected to Cloud18 (no key), or a storage whose
+	// keys the back-office delivered (the S3 provider is there)
 	Usable bool `json:"usable"`
+	// Requestable: the back-office delivers the storage's keys to the cluster on request
+	// (cloud18-archive-offer-requests); Requested: asked, not delivered yet
+	Requestable bool `json:"requestable"`
+	Requested   bool `json:"requested"`
 	// Reason: why the offer is not usable now
 	Reason string `json:"reason,omitempty"`
 }
 
-// The offers whose access the back-office delivers per cluster (keys, a partner token) are
-// shown on request: that delivery is not there yet.
-const archiveOfferOnRequest = "on request: Cloud18 delivers this storage's access to the cluster"
+const (
+	// archiveOfferAuthKeys: the back-office issues the cluster's own keys (its bucket, its user)
+	archiveOfferAuthKeys = "cloud18-keys"
+	// an offer whose access nobody delivers yet (a partner token)
+	archiveOfferOnRequest = "on request: Cloud18 delivers this storage's access to the cluster"
+	archiveOfferRequest   = "request it: Cloud18 creates the cluster's bucket and keys"
+	archiveOfferRequested = "requested: Cloud18 creates the cluster's bucket and keys, then they arrive with the cluster's config"
+	archiveOfferNoBucket  = "not yet: the catalogue gives no bucket for this storage"
+)
 
-// archiveOffers joins the catalogue's archive offers with their S3 storages and the cluster's
-// S3 providers. ssoReady is the cluster's Cloud18SSOReady: why a storage reached with the
-// Cloud18 SSO cannot be used here, nil when it can.
-func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provider, ssoReady error) []ArchiveOffer {
+// archiveOfferRequests is the set of the offers cloud18-archive-offer-requests asks for.
+func archiveOfferRequests(setting string) map[string]bool {
+	set := map[string]bool{}
+	for _, name := range strings.Split(setting, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			set[name] = true
+		}
+	}
+	return set
+}
+
+// archiveOffers joins the catalogue's archive offers with their S3 storages, the cluster's S3
+// providers and the offers it requested. ssoReady is the cluster's Cloud18SSOReady: why a
+// storage reached with the Cloud18 SSO cannot be used here, nil when it can.
+func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provider, requested map[string]bool, ssoReady error) []ArchiveOffer {
 	storages := make(map[string]config.MarketplaceS3, len(cat.S3))
 	for _, s := range cat.S3 {
 		storages[s.Name] = s
@@ -51,12 +74,28 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 			row.Added = have[s.Name]
 		}
 		switch {
-		case row.S3 == nil || !row.S3.Cloud18SSO:
-			row.Reason = archiveOfferOnRequest
-		case ssoReady != nil:
-			row.Reason = ssoReady.Error()
+		case row.S3 != nil && row.S3.Cloud18SSO:
+			switch {
+			case ssoReady != nil:
+				row.Reason = ssoReady.Error()
+			case row.S3.Bucket == "":
+				row.Reason = archiveOfferNoBucket
+			default:
+				row.Usable = true
+			}
+		case row.S3 != nil && o.Auth == archiveOfferAuthKeys:
+			row.Requested = requested[o.Name]
+			switch {
+			case row.Added: // delivered: the back-office's S3 provider holds the keys
+				row.Usable = true
+			case row.Requested:
+				row.Reason = archiveOfferRequested
+			default:
+				row.Requestable = true
+				row.Reason = archiveOfferRequest
+			}
 		default:
-			row.Usable = true
+			row.Reason = archiveOfferOnRequest
 		}
 		offers = append(offers, row)
 	}
@@ -65,7 +104,7 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 
 // handlerMuxArchiveOffers lists the marketplace's archive offers for the cluster.
 // @Summary List the archive offers
-// @Description The archive offers of the marketplace catalogue the back-office pushes to every instance, each with its S3 storage, whether the cluster already has that storage and whether it can use the offer now: a storage reached with the Cloud18 SSO needs no key, the others are on request. Public fields only, no key.
+// @Description The archive offers of the marketplace catalogue the back-office pushes to every instance, each with its S3 storage, whether the cluster already has that storage and whether it can use the offer now: a storage reached with the Cloud18 SSO needs no key; a storage whose keys Cloud18 issues is requested (cloud18-archive-offer-requests) and usable once its S3 provider is delivered; the others are on request. Public fields only, no key.
 // @Tags ClusterArchive
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -76,6 +115,7 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 // @Router /api/clusters/{clusterName}/archive-offers [get]
 func (repman *ReplicationManager) handlerMuxArchiveOffers(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
-		writeArchiveJSON(w, archiveOffers(repman.MarketplaceCatalogue(), mycluster.GetS3ProvidersSnapshot(), mycluster.Cloud18SSOReady()))
+		writeArchiveJSON(w, archiveOffers(repman.MarketplaceCatalogue(), mycluster.GetS3ProvidersSnapshot(),
+			archiveOfferRequests(mycluster.Conf.Cloud18ArchiveOfferRequests), mycluster.Cloud18SSOReady()))
 	})
 }

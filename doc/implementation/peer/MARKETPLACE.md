@@ -209,8 +209,21 @@ whether the cluster already has that S3 provider (`added`) and whether it can us
 - a storage reached with the Cloud18 SSO (`cloud18Sso`) is usable on a replication-manager
   connected to Cloud18 (`Cluster.Cloud18SSOReady`): it needs no key, the storage gives the
   cluster short-lived keys for a folder of its own (`archiveBucketFolder`);
-- an offer whose access is a key or a partner token is "on request": that access is per cluster
-  and the BO does not deliver it yet.
+  The catalogue gives the storage's `bucket` (each identity has its own folder in it); a storage
+  without one is not usable yet;
+- an offer whose keys Cloud18 issues (`auth = cloud18-keys`, the OVH S3 offers) is
+  `requestable`: **Request** adds its name to the cluster setting
+  `cloud18-archive-offer-requests` (comma-separated). The BO harvests it, creates the cluster's
+  own bucket and S3 user with the OVH API, and writes an `[[s3-provider]]` block (name of the
+  catalogue's storage, endpoint, region, `bucket`, keys) in the cluster's `inject.toml`. Once
+  applied, the provider is there: the offer is `added` and `usable`. Until then it is
+  `requested`. The keys reach the instance in clear in its private `-pull` repo (accepted for
+  these per-cluster, per-bucket keys); replication-manager saves them encrypted;
+- an offer whose access is a partner token is "on request": the BO does not deliver it yet.
+
+An S3 provider has an optional `bucket` (`[[s3-provider]]` key `bucket`, `S3Provider.Bucket`):
+an archive on it that names no bucket uses it (`archiveBucketFolder`). An edit that does not
+send it keeps it.
 
 The archive settings show the offers ("Cloud18 offers"). **Use** adds the storage through the
 existing `s3providers/add` (no write path of its own: `cloudSso`, no key, the role computed by

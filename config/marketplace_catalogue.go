@@ -14,6 +14,9 @@ type MarketplaceS3 struct {
 	ProviderSource S3ProviderSource `json:"providerSource"`
 	Endpoint       string           `json:"endpoint,omitempty"`
 	Region         string           `json:"region,omitempty"`
+	// Bucket: the bucket an archive on this storage uses (S3Provider.Bucket); with the Cloud18
+	// SSO, each identity has its own folder in it
+	Bucket string `json:"bucket,omitempty"`
 	// Cloud18SSO: reached with the Cloud18 identity, no keys (S3Provider.Cloud18SSO)
 	Cloud18SSO   bool   `json:"cloud18Sso"`
 	Auth         string `json:"auth"` // cloud18-sso, cloud18-keys or partner-token

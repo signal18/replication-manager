@@ -2129,6 +2129,11 @@ definitions:
       auth:
         description: cloud18-sso, cloud18-keys or partner-token
         type: string
+      bucket:
+        description: |-
+          Bucket: the bucket an archive on this storage uses (S3Provider.Bucket); with the Cloud18
+          SSO, each identity has its own folder in it
+        type: string
       cloud18Sso:
         description: 'Cloud18SSO: reached with the Cloud18 identity, no keys (S3Provider.Cloud18SSO)'
         type: boolean
@@ -2835,6 +2840,12 @@ definitions:
       cloud18AlertSlackUrl:
         type: string
       cloud18AlertSlackUser:
+        type: string
+      cloud18ArchiveOfferRequests:
+        description: |-
+          Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
+          the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
+          delivers the S3 provider in the cluster's inject.toml
         type: string
       cloud18CostCurrency:
         type: string
@@ -4942,6 +4953,13 @@ definitions:
         type: string
       region:
         type: string
+      requestable:
+        description: |-
+          Requestable: the back-office delivers the storage's keys to the cluster on request
+          (cloud18-archive-offer-requests); Requested: asked, not delivered yet
+        type: boolean
+      requested:
+        type: boolean
       retrievalCostEurGib:
         type: number
       s3:
@@ -4961,8 +4979,9 @@ definitions:
         type: string
       usable:
         description: |-
-          Usable: the cluster can add the storage and an archive on it now, with no key to
-          deliver (a storage reached with the Cloud18 SSO, on a replication-manager connected to Cloud18)
+          Usable: the cluster can add an archive on the offer's storage now: a storage reached with
+          the Cloud18 SSO on a replication-manager connected to Cloud18 (no key), or a storage whose
+          keys the back-office delivered (the S3 provider is there)
         type: boolean
     type: object
   server.AuthTokenWithUpgrade:
@@ -10292,8 +10311,9 @@ paths:
       description: 'The archive offers of the marketplace catalogue the back-office
         pushes to every instance, each with its S3 storage, whether the cluster already
         has that storage and whether it can use the offer now: a storage reached with
-        the Cloud18 SSO needs no key, the others are on request. Public fields only,
-        no key.'
+        the Cloud18 SSO needs no key; a storage whose keys Cloud18 issues is requested
+        (cloud18-archive-offer-requests) and usable once its S3 provider is delivered;
+        the others are on request. Public fields only, no key.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token

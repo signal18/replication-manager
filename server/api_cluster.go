@@ -5126,6 +5126,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Cloud18IdentityURL = value
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
+	case "cloud18-archive-offer-requests":
+		mycluster.Conf.Cloud18ArchiveOfferRequests = value
 	case "log-level-file":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
@@ -11157,6 +11159,7 @@ type s3ProviderRequest struct {
 	SecretKey      string                  `json:"secretkey,omitempty"`
 	Cloud18SSO     bool                    `json:"cloud18Sso,omitempty"`
 	RoleArn        string                  `json:"roleArn,omitempty"`
+	Bucket         string                  `json:"bucket,omitempty"`
 }
 
 const s3ProviderRequestBodyMaxBytes int64 = 1 << 20 // 1 MiB
@@ -11211,6 +11214,7 @@ type s3ProviderResponse struct {
 	Region         string                  `json:"region,omitempty"`
 	SecretKey      string                  `json:"secretkey,omitempty"`
 	Cloud18SSO     bool                    `json:"cloud18Sso,omitempty"`
+	Bucket         string                  `json:"bucket,omitempty"`
 }
 
 // maskS3Provider builds a read-safe response from a provider:
@@ -11223,6 +11227,7 @@ func maskS3Provider(p config.S3Provider) s3ProviderResponse {
 		Endpoint:       p.Endpoint,
 		Region:         p.Region,
 		Cloud18SSO:     p.Cloud18SSO,
+		Bucket:         p.Bucket,
 	}
 	if p.SecretKey != "" {
 		resp.SecretKey = "****"
@@ -11371,6 +11376,7 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 			SecretKey:      req.SecretKey,
 			Cloud18SSO:     req.Cloud18SSO,
 			RoleArn:        req.RoleArn,
+			Bucket:         req.Bucket,
 		}
 		if err := p.Validate(); err != nil {
 			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: fmt.Sprintf("Validation error: %v", err)}
@@ -11416,6 +11422,7 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 		SecretKey:      req.SecretKey,
 		Cloud18SSO:     req.Cloud18SSO,
 		RoleArn:        req.RoleArn,
+		Bucket:         req.Bucket,
 	}
 
 	// Capture old state and merge blank credentials before validation.
@@ -11435,6 +11442,10 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 		if p.SecretKey == "" {
 			p.SecretKey = oldProvider.SecretKey
 		}
+	}
+	// the bucket a provider was delivered with stays when the edit form does not send it
+	if oldProvider != nil && p.Bucket == "" {
+		p.Bucket = oldProvider.Bucket
 	}
 
 	if err := p.Validate(); err != nil {
