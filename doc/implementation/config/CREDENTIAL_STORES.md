@@ -50,67 +50,92 @@ type CredentialStore interface {
 | `VaultKV` (`VaultConfigStoreV2`) | `secret_kv-vault`, external, **enterprise** | the value at a path | `Patch` at the path, as the rotation already does | **yes** (Vault versions) | no |
 | `VaultDbEngine` (`VaultDbEngine`) | `secret_kv-vault`, external, **enterprise** | nothing repman sets | refused | yes | **yes** (`rotate-role`) |
 
-## Store entries: one primary, its copies (#2227)
+## Versioned stores: every secret in every active store (#2227)
 
-A cluster's stores are **entries**, the same model as its archives
-(`doc/implementation/cluster/BACKUP_ARCHIVE_PLUGINS.md`, `config/archive.go`): a TOML array
-of tables, `[[<cluster>.secret-kv]]` in a config file and `[[saved-<cluster>.secret-kv]]` in
-the saved `<cluster>.toml`, each entry a name, its plugin, its settings (secrets encrypted,
-F9) and whether it is on. The entry forms are drawn from the plugin's manifest, as for
-archives.
+Design closed 2026-10-28. It replaces the single store of "the four chains" below for the
+choice of where a credential lives; the interface, the chain's one write point and the
+cache stay.
 
-| Plugin | Entry settings |
-|---|---|
-| `secret_kv-config` | none: always there, the starting value |
-| `secret_kv-localstore` (the local encrypted file, `SecretVersionStore` today) | the file, the versions kept |
-| `secret_kv-vault` | address, mount, auth (`approle`, `jwt`), its credentials |
+### The stores
 
-- **The primary** is the entry named by `secret-kv-name` (`""` = the config, today's
-  behaviour). Reads, `CanSet`, `Versioned`, `Generates` and the rotation are the primary's,
-  as the chain does now. A Vault primary is the reference: repman's files hold its path.
-- **Every other entry that is on is a copy.** Each successful `chain.SetAll` writes the
-  primary, then hands the plain values to each copy. Turning a copy on runs one full pass,
-  so the secrets that exist are copied. Activating x entries makes x copies.
-- **A copy never holds the reference**, is never read back, and never blocks: it runs after
-  the chain's lock is released, with a timeout, from a bounded queue (T18, the latest value
-  per key wins). A failed copy is retried at the next pass and tracked as a state (WARNING,
-  security domain, per entry), never only a log line (F2, T5). A value never reaches a log
-  (F10).
-- **Turning a copy off** stops the copies; what it already holds is left in place.
-- **One Vault code**: `DecryptSecretsFromVault`, `GetVaultConnection`, `SetSecretsToVault`
-  and the rotation's `Patch` move into `secret_kv-vault`. The user's own Vault and the
-  Cloud18 vault are two entries of that plugin, never two code paths. `vault-server-addr`
-  and the `vault-*` keys are migrated into an entry (`vault-default`) at load: the switch comes with the
-  release, no old|new toggle.
+Two plugins:
 
-### What a copy holds, and where
+| Plugin | What it is | Versions |
+|---|---|---|
+| `secret_kv-config` | built in, always there: the config (the seed) plus the local versioned file `cluster.d/<cluster>_secret_store.json` | when `monitoring-secret-versioning` is on, bounded by `monitoring-secret-versioning-keep-last` |
+| `secret_kv-vault` | n entries `[[<cluster>.secret-kv]]`, each on or off: address, mount, auth (`approle`, `jwt` with the instance's Cloud18 identity), mode (`config_store_v2`, `database_engine`) | always (KV v2); repman sets `max-versions` to the same keep-last |
 
-Every secret of the cluster, not only the chain's keys: the chain's credentials, the proxy
-passwords (`haproxy-password`, `proxysql-password`, `maxscale-pass`, `myproxy-password`,
-`mysqlrouter-pass`, `shardproxy-credential`), the app secrets (generated password, secret
-variables, database user), and the values the orchestrator layer gives OpenSVC
-(`CreateSecretKeyValue*`) and Kubernetes (`k8sPatchSecretValues`). Those writers report
-to the copies; they never read the orchestrator back. A Vault entry lays them out as:
+The local versioned file is part of `secret_kv-config`: the separate `secret_kv-localstore`
+plugin of the sections below is not built, and the enterprise tiers there are left aside for now.
 
-```
-<mount>/<domain>/<subdomain>/<cluster>/
-    databases/<server name>/<secret key>
-    proxies/<proxy name>/<secret key>
-    apps/<app name>/<secret key>
-```
+The vault entries follow the same model as archives and S3 providers (`config/plugin_entry.go`): name, plugin,
+settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 
-A secret the whole cluster shares (the database credential) is written under every server
-that uses it. Each key keeps the setting's name.
+### The rules
+
+1. **The config holds the seed only**: the first value, known at provisioning or typed by
+   an operator. From the first rotation or change, the current value and its versions live
+   in the active stores. Provisioning, a reprovision and the regtests read the current
+   version, never the seed; the GUI shows the seed as the initial value.
+2. **Every write is a version in every active store.** The file synchronously, as today;
+   each vault through a bounded queue (T18: the latest value per key wins, a hard cap,
+   drops counted) and a worker with a timeout per write, after the chain's lock: it never
+   blocks the write, a provisioning or the monitor (F2). Only the active monitor writes.
+3. **Read**: the newest version wins across the stores (timestamp and writing instance,
+   the event log's LWW rule); the seed last. A store behind the others is a tracked state
+   (WARN0269, security domain, per entry) and gets the winning version at the next pass.
+4. **Full pass**: when a store is turned on, at start, and after queue drops (WARN0270).
+   It runs in the worker, reads each store's current version and writes only when it
+   differs: no version churn, no blocking read at load.
+5. **Paths are computed by repman, never typed**:
+   ```
+   <mount>/<space>/<cluster>/
+       databases/<server name>/<key>
+       proxies/<proxy name>/<key>
+       apps/<app name>/<key>
+       archives/<archive name>/<key>
+   ```
+   `<space>` is `<domain>/<subdomain>` on Cloud18; off Cloud18, the identifier an active
+   monitor and its standby share (never a per-instance id: after a switch the peer must
+   write the same folder). A secret the whole cluster shares (the database credential) is
+   written under every server that uses it. Each key keeps the setting's name.
+6. **What is a secret of the cluster**: the chain's credentials, the proxy passwords, the
+   app secrets (generated password, secret variables, database user), the archive secrets.
+   Instance secrets (git token, OAuth secret, the vault logins) stay instance-local and are
+   never copied.
+7. **Orchestrator objects are consumers, not stores**: the OpenSVC `sec` object and the
+   Kubernetes Secret get the current version at provisioning and after each rotation, as
+   today. Their writers report the values they set (`CopySecret`); nothing reads them back.
+8. **`database_engine`** is a vault store that generates: a rotation asks Vault
+   (`rotate-role`); the value it returns is written as a new version to the other active
+   stores; it is read from the engine first.
+9. **Rotation** is allowed when an active store keeps versions (the file with versioning
+   on, or any vault entry); refused otherwise, as today (`canRotatePasswordsOutsideVault`,
+   its check becoming "an active store keeps versions"). A pinned value stays refused.
+   Turning versioning or a store off is allowed; it only brings that refusal back.
+10. **Turning a store off** stops its versions and leaves what it holds. Repman never
+    deletes a secret; a removed object's secrets stay, a renamed one writes under its new
+    name.
+11. **Peers (active and standby)**: the file is per host and not in the config push; a
+    change already travels in the event log, encrypted (F9), and the peer's replay writes
+    the version into its own file. Vaults are shared and need nothing more.
+12. **Migration, with the release (no toggle)**: the `vault-*` keys become the entry
+    `vault-default`, `database_engine` included. A config value that is a Vault path is
+    read once at load as the seed and written through the chain. A path pinned in a file
+    is read at each start, as today, and a config state asks the operator to remove the
+    pin. `SetSecretsToVault` (the old flat copy) is removed.
+13. **repman's key**: changing it re-encrypts the file; the vaults encrypt their own data.
+14. **Access**: an instance's vault policy writes its own clusters' spaces only; people
+    read through the space policies (on the Cloud18 vault: the sponsor, the owner, the
+    administrators).
+15. **Never a value in a log** (F10); the log line names the store, path and key.
 
 ### The Cloud18 vault entry
 
 On a Cloud18-registered instance the marketplace catalogue offers a `secret_kv-vault` entry
 for the Cloud18 vault, as it offers Cloud18 storages for archives: its address comes with
-the registration, and it signs in with the instance's Cloud18 identity (`vault-auth = jwt`,
-#2159), no setting to type. Its space is the one the back-office gives the cluster
-(`<domain>/<subdomain>/<cluster>/`), readable by the cluster's sponsor, its owner and the
-administrators; the instance's policy can write its own clusters' spaces only. The sponsor
-turns it on per cluster. It can be the primary or a copy like any entry.
+the registration, it signs in with the instance's Cloud18 identity (`jwt`, #2159), no
+setting to type. The sponsor turns it on per cluster.
 
 ## Packaging: the `secret_kv` plugin family
 
@@ -219,9 +244,9 @@ One epic issue for the interface, with these steps:
    the chain and the cache; every setter on `chain.Set`: fixes #2017 (its test must
    pass), plus a set → tag → save → reload test and a `-race` test of concurrent setters;
 2. the external plugin wire and its loader (signature, timeouts, state when missing);
-3. `secret_kv-localstore` from `SecretVersionStore`, and the start order (#2041);
+3. the local versioned file inside `secret_kv-config` (no separate plugin), and the start order (#2041);
 4. `secret_kv-vault` (enterprise) from the Vault code, and the Vault setter (#2057);
-5. store entries, the primary and its copies, the Cloud18 vault entry (#2227).
+5. versioned stores: every secret in every active store, vault entries, the Cloud18 vault entry (#2227).
 
 ## Open questions
 
