@@ -12,8 +12,10 @@ package cluster
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -336,6 +338,9 @@ func (cluster *Cluster) finishCrash(moved *Crash, url string, result string) *Cr
 	}
 	if moved.ArchiveDir != "" {
 		cluster.ensureCrashArchive(moved)
+	} else {
+		// no disk record: the rebuild below keeps it in memory (rejoinMarkers)
+		cluster.FailoverHistory = append(cluster.FailoverHistory, moved)
 	}
 	// Rebuild history from disk so it reflects the real archived crashes (deduped,
 	// one per dir) rather than an accumulating in-memory list.
@@ -679,7 +684,42 @@ func (cluster *Cluster) LoadFailoverHistory() {
 		}
 		// else: archive with no recoverable metadata — leave it on disk, skip.
 	}
-	cluster.FailoverHistory = history
+	cluster.FailoverHistory = append(history, cluster.rejoinMarkers()...)
+}
+
+// rejoinMarkers returns the outcomes finishCrash recorded without an archive (a rejoin
+// with no crash: nothing on disk), the newest per server. The rebuild from disk dropped
+// them, so the one-shot guard never saw the attempt and a rejoin whose CHANGE MASTER
+// failed ran again at every tick (#2226, a MySQL replica without GTID). One per server:
+// bounded by the servers of the cluster.
+func (cluster *Cluster) rejoinMarkers() crashList {
+	newest := make(map[string]*Crash)
+	for _, cr := range cluster.FailoverHistory {
+		if cr == nil || cr.ArchiveDir != "" || cr.RejoinResult == "" {
+			continue
+		}
+		if kept, ok := newest[cr.URL]; !ok || cr.RejoinResultTs >= kept.RejoinResultTs {
+			newest[cr.URL] = cr
+		}
+	}
+	markers := make(crashList, 0, len(newest))
+	for _, url := range slices.Sorted(maps.Keys(newest)) {
+		markers = append(markers, newest[url])
+	}
+	return markers
+}
+
+// forgetRejoinMarker drops the archive-less rejoin outcome of url: the server went down
+// and came back (a new event owed its attempt), or its instance was forgotten.
+func (cluster *Cluster) forgetRejoinMarker(url string) {
+	kept := make(crashList, 0, len(cluster.FailoverHistory))
+	for _, cr := range cluster.FailoverHistory {
+		if cr != nil && cr.ArchiveDir == "" && cr.URL == url {
+			continue
+		}
+		kept = append(kept, cr)
+	}
+	cluster.FailoverHistory = kept
 }
 
 func (crash *Crash) Purge(path string, keep int) error {

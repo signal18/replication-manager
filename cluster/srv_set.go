@@ -387,8 +387,24 @@ func (server *ServerMonitor) SetCredential(url string, user string, pass string)
 
 }
 
+// errNoMySQLGTID: a MySQL/Percona replica or source without GTID has no GTID position
+// to rejoin on; MASTER_AUTO_POSITION=1 is refused there (Error 1777, #2226).
+var errNoMySQLGTID = errors.New("MySQL GTID is off on the replica or its source (gtid_mode, enforce_gtid_consistency): no GTID position to rejoin on, positional coordinates needed")
+
+// mysqlGTIDRejoinable tells whether a MySQL/Percona server can be pointed to master on
+// its GTID position: both have GTID. A MariaDB server always can.
+func (server *ServerMonitor) mysqlGTIDRejoinable(master *ServerMonitor) bool {
+	if !server.DBVersion.IsMySQLOrPercona() {
+		return true
+	}
+	return server.HasMySQLGTID() && (master == nil || master.IsMaxscale || master.HasMySQLGTID())
+}
+
 func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *ServerMonitor) (string, error) {
 	cluster := server.ClusterGroup
+	if !server.mysqlGTIDRejoinable(master) {
+		return "", errNoMySQLGTID
+	}
 	server.StopSlave()
 
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
@@ -402,6 +418,9 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) (string, error) {
 	cluster := server.ClusterGroup
+	if !server.mysqlGTIDRejoinable(master) {
+		return "", errNoMySQLGTID
+	}
 
 	changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {

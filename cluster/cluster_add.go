@@ -92,6 +92,31 @@ func (cluster *Cluster) addColumnstoreTag() {
 	}
 }
 
+// ProvisionMySQLGTIDTag is the database tag whose ruleset turns GTID on for MySQL and
+// Percona (gtid-mode=ON, enforce-gtid-consistency=ON).
+const ProvisionMySQLGTIDTag = "mysqlgtid"
+
+// provDbImageIsMySQL tells whether the provisioned database image is MySQL or Percona
+// Server, by its name as the provisioning reads it (run-as user, volume identity).
+func (cluster *Cluster) provDbImageIsMySQL() bool {
+	img := strings.ToLower(cluster.Conf.ProvDbImg)
+	return strings.Contains(img, "mysql") || strings.Contains(img, "percona")
+}
+
+// addMySQLGTIDTag: a MySQL or Percona cluster provisioned by replication-manager
+// replicates on GTID (#2226). Without it a failover is positional: the replicas wait in
+// maintenance on the dead master and the rejoins have no GTID position. Group
+// replication has GTID from its own tag. Called at provisioning only: turning GTID on
+// for a running server is an operator procedure (gtid_mode through OFF_PERMISSIVE and
+// ON_PERMISSIVE), never a tag added behind its back.
+func (cluster *Cluster) addMySQLGTIDTag() {
+	if !cluster.provDbImageIsMySQL() || cluster.Conf.MultiMasterGrouprep || cluster.Conf.MultiMasterWsrep || cluster.Configurator.HaveDBTag(ProvisionMySQLGTIDTag) {
+		return
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag %s: a MySQL cluster is provisioned with GTID", ProvisionMySQLGTIDTag)
+	cluster.AddDBTagConfig(ProvisionMySQLGTIDTag)
+}
+
 // ErrColumnstoreNoDynamic: the columnstore topology turns down prov-db-dynamic-resource and
 // prov-db-apply-dynamic-config, which size and tune InnoDB (buffer pool, thread pool, IO
 // threads): a ColumnStore server keeps its plan's resources, its memory sized by ColumnStore

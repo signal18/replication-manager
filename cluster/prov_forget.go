@@ -64,6 +64,7 @@ func (cluster *Cluster) ForgetInstance(server *ServerMonitor) {
 	}
 	cluster.Crashes = kept
 	cluster.Unlock()
+	cluster.forgetRejoinMarker(server.URL)
 	cluster.LoadFailoverHistory()
 	// 3. memory: the instance starts its life with nothing tracked.
 	server.FailCount = 0

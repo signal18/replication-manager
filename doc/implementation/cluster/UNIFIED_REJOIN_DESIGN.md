@@ -487,3 +487,26 @@ success path (`Unprovision`, `UnprovisionDatabaseService`; `ForgetProxyInstance`
 Nothing here changes the rejoin's one-shot-per-event rule: an unprovisioned instance simply has no
 events left. The declared side (config, plan, agents) is untouched. Test:
 `TestForgetInstance_CleanSlateWithoutRestart`.
+
+## MySQL without GTID and the archive-less outcome (2026-10-28, #2226)
+
+Seen on a MySQL 8.0 cluster provisioned without the `mysqlgtid` tag (`gtid_mode=OFF`): after a failover
+the elected master, now an extra master, was rejoined under the old one every tick, each attempt
+`Error 1777 ... GTID_MODE = OFF`, each ending "no-divergence". Three causes, three fixes:
+
+- `SetReplicationGTIDCurrentPosFromServer` / `SetReplicationGTIDSlavePosFromServer` chose
+  `MASTER_AUTO_POSITION` from the version alone. They now require GTID on the replica and its source
+  (`mysqlGTIDRejoinable`, from `HasMySQLGTID`) and otherwise return `errNoMySQLGTID` without sending
+  anything: without GTID there is no position to rejoin on, positional coordinates are needed.
+- `attachAsReadOnlySlave` returns the CHANGE MASTER error (and no longer starts the channel after a
+  failed CHANGE). The no-crash rejoin then ends `failed` (WARN0186), not `no-divergence`.
+- `finishCrash` never kept the outcome of a rejoin without a crash: it built a marker with no archive and
+  the rebuild from disk (`LoadFailoverHistory`) had nothing of it, so `rejoinAlreadyAttempted` was false at
+  the next tick. The marker now goes into `FailoverHistory` and the rebuild keeps the newest one per server
+  (`rejoinMarkers`, bounded by the servers). `forgetRejoinMarker` drops it when the server comes back
+  after a failure (a new event is owed its attempt) and in `ForgetInstance`.
+
+Not fixed here: the old master was designated master again when it came back, its replica having
+reconnected to it on its own; which topology rule did it is not in the logs (topology module not
+logged) and is to be reproduced on a cluster without GTID.
+

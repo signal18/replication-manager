@@ -1060,6 +1060,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			}
 			server.FailCount = 0
+			// back after a failure: a new event, owed its rejoin attempt (#2226)
+			cluster.forgetRejoinMarker(server.URL)
 			cluster.backendStateChangeProxies()
 			server.SendAlert()
 

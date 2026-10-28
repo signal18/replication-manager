@@ -11,6 +11,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // A test runs only on a cluster that matches its targets; a test without targets runs everywhere.
@@ -58,6 +59,36 @@ func TestSkipReason(t *testing.T) {
 		{"staging test with topology-staging", staging, "testStagingRecoverNoReadOnly", ""},
 	} {
 		_, got := regtest.MatchTarget(c.cl, c.test)
+		if c.skip == "" && got != "" || c.skip != "" && !strings.Contains(got, c.skip) {
+			t.Errorf("%s: %q, want %q", c.name, got, c.skip)
+		}
+	}
+}
+
+// A MySQL or Percona cluster runs the tests only when it declares the mysqlgtid tag, as
+// the provisioning builds it (#2226); group replication and MariaDB need no tag.
+func TestMySQLClusterDeclaresGTIDTag(t *testing.T) {
+	newCluster := func(flavor string, grouprep bool, tags ...string) *cluster.Cluster {
+		cl := &cluster.Cluster{Conf: new(config.Config)}
+		cl.Conf.MultiMasterGrouprep = grouprep
+		cl.Servers = []*cluster.ServerMonitor{{DBVersion: &version.Version{Flavor: flavor, Major: 8, Minor: 4}}}
+		cl.Configurator.DBTags = tags
+		return cl
+	}
+	regtest := new(RegTest)
+	for _, c := range []struct {
+		name string
+		cl   *cluster.Cluster
+		skip string
+	}{
+		{"mysql without the tag", newCluster("MySQL", false, "semisync", "row"), "mysqlgtid"},
+		{"percona without the tag", newCluster("Percona", false), "mysqlgtid"},
+		{"mysql with the tag", newCluster("MySQL", false, "semisync", "mysqlgtid"), ""},
+		{"mysql group replication", newCluster("MySQL", true), ""},
+		{"mariadb", newCluster("MariaDB", false), ""},
+	} {
+		// a test without targets: the tag applies to every test
+		_, got := regtest.MatchTarget(c.cl, "testFailoverAssyncAutoRejoinNoGtid")
 		if c.skip == "" && got != "" || c.skip != "" && !strings.Contains(got, c.skip) {
 			t.Errorf("%s: %q, want %q", c.name, got, c.skip)
 		}

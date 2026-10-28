@@ -139,6 +139,7 @@ func (cluster *Cluster) ProvisionServices() error {
 	path := cluster.WorkingDir + ".json"
 	os.Remove(path)
 	cluster.ResetCrashes()
+	cluster.addMySQLGTIDTag()
 	// Galera: the bootstrap node first, the joiners wait for its Primary component; the
 	// node is kept for the whole provision, the order and the rendered configs agree
 	defer cluster.pinGaleraBootstrap()()

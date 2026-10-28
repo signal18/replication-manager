@@ -219,8 +219,13 @@ func (server *ServerMonitor) RejoinMaster() error {
 					// No crash, no old-master anchor, no autoseed: attach read-only
 					// under the elected master on current GTID (no divergence record to
 					// recover). Strict mode still protects if anything is out of order.
-					server.attachAsReadOnlySlave(cluster.master)
-					cluster.finishRejoin(server.URL, RejoinResultNoDivergence)
+					// A failed attach ends the rejoin as failed (WARN0186), never as
+					// no-divergence: the server is not replicating (#2226).
+					result := RejoinResultNoDivergence
+					if err := server.attachAsReadOnlySlave(cluster.master); err != nil {
+						result = RejoinResultFailed
+					}
+					cluster.finishRejoin(server.URL, result)
 					cluster.backendStateChangeProxies()
 					return nil
 				} //crash info is available
@@ -796,18 +801,23 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 // mode is the protection (Stephane): a divergent old master goes SlaveErr (the
 // out-of-order sequence is refused, no corruption) instead of drifting as a second
 // writable master; the operator then resolves the SlaveErr via the manual-repair
-// state (WARN0186) or an explicit re-arm with a chosen method.
-func (server *ServerMonitor) attachAsReadOnlySlave(master *ServerMonitor) {
+// state (WARN0186) or an explicit re-arm with a chosen method. Returns the CHANGE MASTER
+// error: the server is then fenced read-only but not replicating.
+func (server *ServerMonitor) attachAsReadOnlySlave(master *ServerMonitor) error {
 	cluster := server.ClusterGroup
 	if master == nil || master.URL == server.URL {
-		return
+		return nil
 	}
 	logs, err := server.SetReadOnly()
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to fence %s read-only before attach: %s", server.URL, err)
 	logs, err = server.SetReplicationGTIDCurrentPosFromServer(master)
-	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed CHANGE MASTER of %s to %s: %s", server.URL, master.URL, err)
+	if err != nil {
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed CHANGE MASTER of %s to %s: %s", server.URL, master.URL, err)
+		return err
+	}
 	logs, err = server.StartSlave()
 	cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "Started replication of %s under %s (strict mode protects a divergent tail as SlaveErr): %s", server.URL, master.URL, err)
+	return nil
 }
 
 func (server *ServerMonitor) rejoinMasterAsSlave() error {
