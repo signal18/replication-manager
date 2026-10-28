@@ -56,6 +56,10 @@ func (cluster *Cluster) SwitchForceSlaveSemisync() {
 	cluster.Conf.ForceSlaveSemisync = !cluster.Conf.ForceSlaveSemisync
 }
 
+func (cluster *Cluster) SwitchCheckFalsePositiveHeartbeat() {
+	cluster.Conf.CheckFalsePositiveHeartbeat = !cluster.Conf.CheckFalsePositiveHeartbeat
+}
+
 func (cluster *Cluster) SwitchForceSlaveHeartbeat() {
 	cluster.Conf.ForceSlaveHeartbeat = !cluster.Conf.ForceSlaveHeartbeat
 }

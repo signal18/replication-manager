@@ -330,6 +330,20 @@ const TestResultSkip = "SKIP"
 // none, why: the miss of each target joined by "; ". A test that declares no targets matches
 // with an empty target. An unknown flavor (no database version read yet) or DBU (no plan)
 // does not miss: the test runs and its result says what it found.
+// ConfigVariablesMustSet lists every must-set variable of every test, by test: the server
+// checks that the API can set each one (a key it refuses leaves its test unrun, ERR).
+func ConfigVariablesMustSet() map[string][]map[string]string {
+	all := make(map[string][]map[string]string)
+	for name, targets := range testTargets {
+		for _, target := range targets {
+			if len(target.ConfigVariableMustSet) > 0 {
+				all[name] = append(all[name], target.ConfigVariableMustSet)
+			}
+		}
+	}
+	return all
+}
+
 func (regtest *RegTest) MatchTarget(cl *cluster.Cluster, name string) (TestTarget, string) {
 	targets := testTargets[name]
 	if len(targets) == 0 {

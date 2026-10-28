@@ -3543,6 +3543,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchCheckReplicationFilters()
 	case "check-replication-state":
 		mycluster.SwitchRplChecks()
+	case "failover-falsepositive-heartbeat":
+		mycluster.SwitchCheckFalsePositiveHeartbeat()
 	case "scheduler-db-servers-logical-backup":
 		mycluster.SwitchSchedulerBackupLogical()
 	case "scheduler-db-servers-physical-backup":
@@ -5618,6 +5620,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.CheckReplFilter = applyIsActive(mycluster.Conf.CheckReplFilter, isactive)
 	case "check-replication-state":
 		mycluster.Conf.RplChecks = applyIsActive(mycluster.Conf.RplChecks, isactive)
+	case "failover-falsepositive-heartbeat":
+		mycluster.Conf.CheckFalsePositiveHeartbeat = applyIsActive(mycluster.Conf.CheckFalsePositiveHeartbeat, isactive)
+	case "failover-falsepositive-heartbeat-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("failover-falsepositive-heartbeat-timeout must be a whole number of seconds: %q", value)
+		}
+		mycluster.Conf.CheckFalsePositiveHeartbeatTimeout = val
 	case "scheduler-db-servers-logical-backup":
 		oldValue := mycluster.Conf.SchedulerBackupLogical
 		newValue := applyIsActive(oldValue, isactive)
