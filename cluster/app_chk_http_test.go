@@ -26,8 +26,17 @@ func TestAppMonitorHTTPRoute(t *testing.T) {
 		t.Fatal("nil config: no http check")
 	}
 	r, ok := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "HTTPS", AppHost: "web.example.com", AppPort: "443"}, "web.example.com.c1.svc.cloud18")
-	if !ok || r.Protocol != "https" || r.CName != "web.example.com:443" {
-		t.Fatalf("full name: want https web.example.com:443, got %v %+v", ok, r)
+	if !ok || r.Protocol != "https" || r.CName != "web.example.com" {
+		t.Fatalf("full name on the default port: want https web.example.com (no :443 in the Host header), got %v %+v", ok, r)
+	}
+	if r, _ := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "https", AppHost: "web.example.com", AppPort: "8443"}, ""); r.CName != "web.example.com:8443" {
+		t.Fatalf("other port: kept in the URL, got %q", r.CName)
+	}
+	if r, _ := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "http", AppHost: "web.example.com", AppPort: "80"}, ""); r.CName != "web.example.com" {
+		t.Fatalf("http on 80: no port in the URL, got %q", r.CName)
+	}
+	if r, _ := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "http", AppHost: "web.example.com", AppPort: "443"}, ""); r.CName != "web.example.com:443" {
+		t.Fatalf("http on 443 is not a default port: kept, got %q", r.CName)
 	}
 	if r.Monitor == nil || r.Monitor.Path != "/" || r.Monitor.ExpectStatus != "200" {
 		t.Fatalf("defaults: want / and 200, got %+v", r.Monitor)
@@ -308,5 +317,25 @@ func TestAddSeededAppMonitorOnlyOptIn(t *testing.T) {
 	}
 	if err := cl.AddSeededApp("web.example.com", "443", "nginx:1", "", true); err == nil || !strings.Contains(err.Error(), "monitor-only") {
 		t.Fatalf("monitor-only with an image: refused, got %v", err)
+	}
+}
+
+// The request's Host header is the bare name on the scheme's default port: a virtual-host
+// gateway routes on it (HAProxy hdr(host) answered 503 to "name:443" on preprod, #2209).
+func TestAppMonitorHostHeader(t *testing.T) {
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	host, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	app := &App{Id: "ap1", Host: host, Port: port, ClusterGroup: &Cluster{Conf: &config.Config{Timeout: 2}},
+		AppConfig: &config.AppConfig{AppHost: host, AppPort: port, AppMonitorMode: "http"}}
+	if _, err := app.probeNoRoute(2 * time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if gotHost != host+":"+port {
+		t.Fatalf("non-default port: Host header %q, want %q", gotHost, host+":"+port)
 	}
 }

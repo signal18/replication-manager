@@ -113,7 +113,10 @@ func pingHost(host string, timeout time.Duration) error {
 // appMonitorHTTPRoute: the check of an app in app-monitor-mode http or https (#2209), as
 // the route the HTTP check of the routes takes, never published on a gateway. A full
 // app-host name (with a dot: a web service that lives elsewhere) is called as is, a short
-// one on the app's cluster address. ok is false in the other modes. Pure, for tests.
+// one on the app's cluster address. The port is left out of the URL when it is the
+// scheme's default (443 for https, 80 for http), as a browser does: the request's Host
+// header is then the bare name, which a virtual-host gateway routes on (an HAProxy
+// hdr(host) rule answers 503 to "name:443"). ok is false in the other modes. Pure.
 func appMonitorHTTPRoute(cnf *config.AppConfig, clusterHost string) (route config.Route, ok bool) {
 	if cnf == nil {
 		return config.Route{}, false
@@ -132,7 +135,11 @@ func appMonitorHTTPRoute(cnf *config.AppConfig, clusterHost string) (route confi
 	}
 	monitor := &config.RouteMonitor{Path: cnf.AppMonitorPath, ExpectStatus: cnf.AppMonitorExpectStatus}
 	monitor.Normalize()
-	return config.Route{Name: "app-monitor", Protocol: mode, CName: host + ":" + cnf.AppPort, Monitor: monitor}, true
+	cname := host + ":" + cnf.AppPort
+	if (mode == "https" && cnf.AppPort == "443") || (mode == "http" && cnf.AppPort == "80") {
+		cname = host
+	}
+	return config.Route{Name: "app-monitor", Protocol: mode, CName: cname, Monitor: monitor}, true
 }
 
 // appMonitorCertDefaultDays: app-monitor-cert-expire-days when unset.
@@ -195,7 +202,11 @@ func (app *App) probeNoRoute(timeout time.Duration) (string, error) {
 			return ErrAppConnectFailed, err
 		}
 		if appMonitorModeIsHTTPSCert(app.AppConfig) {
-			return ErrAppCertificate, checkCertificate(route.CName, timeout, app.AppConfig.AppMonitorCertExpireDays)
+			hostPort := route.CName
+			if _, _, splitErr := net.SplitHostPort(hostPort); splitErr != nil {
+				hostPort = net.JoinHostPort(hostPort, app.AppConfig.AppPort) // default port left out of the URL
+			}
+			return ErrAppCertificate, checkCertificate(hostPort, timeout, app.AppConfig.AppMonitorCertExpireDays)
 		}
 		return ErrAppConnectFailed, nil
 	}

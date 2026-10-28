@@ -37,7 +37,9 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
   allowed, set it with `--sysctl net.ipv4.ping_group_range="0 2147483647"` or in the
   service definition).
 
-- `http` / `https` (#2209): a GET on `<mode>://<host>:<app-port><app-monitor-path>` through
+- `http` / `https` (#2209): a GET on `<mode>://<host>[:<app-port>]<app-monitor-path>` (the port
+  left out when it is the scheme's default, 443 or 80, so the Host header is the bare name a
+  virtual-host gateway routes on: HAProxy answered 503 to `name:443` on preprod) through
   the HTTP check of the routes (`GetAppHTTPStatus`: cluster `timeout`, redirects followed so
   the status compared is the final one (a 302 is matched by expecting the page it leads to),
   TLS not verified like the route checks), expecting `app-monitor-expect-status`. An answer
