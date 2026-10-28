@@ -75,7 +75,7 @@ func buildLocalCheckKey(appHost string, route config.Route) string {
 func (app *App) GetMonitoringStatus() string {
 	cluster := app.ClusterGroup
 	routes := app.GetAppConfig().Deployment.Routes
-	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed}
+	appErrKeys := []string{ErrAppConnectFailed, ErrAppUnexpectedStatus, ErrAppTCPConnectFailed, ErrAppUnsupportedProto, ErrAppGatewayConflict, ErrAppDbProvision, ErrAppPingFailed, ErrAppCertificate}
 	errStates := make(map[string]state.State)
 
 	// Database auto-create (#1870): a refused provision stays visible until one goes through.
@@ -129,7 +129,8 @@ func (app *App) GetMonitoringStatus() string {
 		// is up when its port answers, probed over TCP on the app host; a process that
 		// listens on nothing (app-monitor-mode = ping, #1919) is up when its host answers
 		// an ICMP echo; a web service (app-monitor-mode = http/https, #2209) when a GET
-		// answers the expected status in time.
+		// answers the expected status in time, https-cert also when its certificate is
+		// valid and not about to expire (else AppWarning).
 		app.ResetAppErrConsecutiveCntExcept("app-port") // routes gone: their debounce counters go with them
 		if errKey, err := app.probeNoRoute(time.Duration(cluster.Conf.Timeout) * time.Second); err != nil {
 			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: app.noRouteProbeErrDesc(errKey, err), ServerUrl: app.Host}}, err)
@@ -144,6 +145,10 @@ func (app *App) GetMonitoringStatus() string {
 			}
 		}
 		app.SetRouteStatuses(nil)
+		if _, certOnly := errStates[ErrAppCertificate]; certOnly && len(errStates) == 1 {
+			// the service answers, its certificate needs an operator: a warning (#2209)
+			return stateAppWarning
+		}
 		if len(errStates) > 0 {
 			return stateFailed
 		}

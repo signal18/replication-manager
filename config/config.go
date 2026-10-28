@@ -1215,13 +1215,17 @@ type AppConfig struct {
 	// listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
 	// "http" and "https" send a GET to <mode>://<app-host>:<app-port><app-monitor-path> and
 	// expect app-monitor-expect-status, for a web service that accepts connections and may
-	// never answer (#2209); a full app-host name (with a dot) is called as is.
+	// never answer (#2209); a full app-host name (with a dot) is called as is. "https-cert"
+	// is https that also verifies the certificate and its expiry (app-monitor-cert-expire-days).
 	AppMonitorMode string `mapstructure:"app-monitor-mode" toml:"app-monitor-mode" json:"appMonitorMode"`
 	// AppMonitorPath: the path of the http/https check (default "/"), like a route's monitor path.
 	AppMonitorPath string `mapstructure:"app-monitor-path" toml:"app-monitor-path" json:"appMonitorPath"`
 	// AppMonitorExpectStatus: the accepted status codes of the http/https check (default
 	// "200"), same syntax as a route's monitor expect-status.
 	AppMonitorExpectStatus string `mapstructure:"app-monitor-expect-status" toml:"app-monitor-expect-status" json:"appMonitorExpectStatus"`
+	// AppMonitorCertExpireDays: in app-monitor-mode https-cert, the certificate warns when it
+	// expires within this many days (0: 14).
+	AppMonitorCertExpireDays int `mapstructure:"app-monitor-cert-expire-days" toml:"app-monitor-cert-expire-days" json:"appMonitorCertExpireDays"`
 	// AppMonitorOnly: the app was added without image nor template to watch a service that
 	// runs elsewhere (#2209): checked by app-monitor-mode, never provisioned, reserves no plan unit.
 	AppMonitorOnly bool `mapstructure:"app-monitor-only" toml:"app-monitor-only" json:"appMonitorOnly"`

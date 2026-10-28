@@ -382,7 +382,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                 >
                   Monitor only
                 </Checkbox>
-                <FormHelperText>A service that runs elsewhere: no image, never provisioned. Choose how it is checked (port, ping, http, https) in the app settings.</FormHelperText>
+                <FormHelperText>A service that runs elsewhere: no image, never provisioned. Choose how it is checked (port, ping, http, https, https + certificate) in the app settings.</FormHelperText>
               </FormControl>
             )}
 

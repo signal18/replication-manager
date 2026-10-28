@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"strconv"
@@ -118,7 +119,11 @@ func appMonitorHTTPRoute(cnf *config.AppConfig, clusterHost string) (route confi
 		return config.Route{}, false
 	}
 	mode := strings.ToLower(strings.TrimSpace(cnf.AppMonitorMode))
-	if mode != "http" && mode != "https" {
+	switch mode {
+	case "http", "https":
+	case "https-cert":
+		mode = "https" // the same GET, the certificate is checked next (checkCertificate)
+	default:
 		return config.Route{}, false
 	}
 	host := clusterHost
@@ -130,9 +135,53 @@ func appMonitorHTTPRoute(cnf *config.AppConfig, clusterHost string) (route confi
 	return config.Route{Name: "app-monitor", Protocol: mode, CName: host + ":" + cnf.AppPort, Monitor: monitor}, true
 }
 
+// appMonitorCertDefaultDays: app-monitor-cert-expire-days when unset.
+const appMonitorCertDefaultDays = 14
+
+// certExpiryError: nil while the certificate is valid for more than days, else what is
+// wrong (expired, expires in N days). Pure, for tests.
+func certExpiryError(notAfter, now time.Time, days int) error {
+	if days <= 0 {
+		days = appMonitorCertDefaultDays
+	}
+	left := notAfter.Sub(now)
+	if left <= 0 {
+		return fmt.Errorf("certificate expired on %s", notAfter.UTC().Format("2006-01-02"))
+	}
+	if left < time.Duration(days)*24*time.Hour {
+		return fmt.Errorf("certificate expires in %d days, on %s (warning below %d days)", int(left.Hours()/24), notAfter.UTC().Format("2006-01-02"), days)
+	}
+	return nil
+}
+
+// checkCertificate opens a TLS connection to hostPort within timeout, verifies the
+// server certificate (system roots, the host name) and its expiry (app-monitor-mode
+// https-cert, #2209). The GET of the check runs without verification like the route
+// checks; this is the separate, verified look at the certificate.
+func checkCertificate(hostPort string, timeout time.Duration, days int) error {
+	host, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return err
+	}
+	dialer := &tls.Dialer{NetDialer: &net.Dialer{Timeout: timeout}, Config: &tls.Config{ServerName: host}}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	conn, err := dialer.DialContext(ctx, "tcp", hostPort)
+	if err != nil {
+		return fmt.Errorf("certificate of %s not valid: %w", hostPort, err)
+	}
+	defer conn.Close()
+	certs := conn.(*tls.Conn).ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return fmt.Errorf("no certificate presented by %s", hostPort)
+	}
+	return certExpiryError(certs[0].NotAfter, time.Now(), days)
+}
+
 // probeNoRoute runs the probe of an app without a route and returns the error key that
 // a failure opens: APPERR009 for a ping, APPERR001 or APPERR002 for an http/https check
-// (no answer, unexpected status), APPERR003 for a TCP connect to app-port.
+// (no answer, unexpected status), APPERR010 for an https-cert check whose certificate is
+// invalid or expiring, APPERR003 for a TCP connect to app-port.
 func (app *App) probeNoRoute(timeout time.Duration) (string, error) {
 	if appMonitorModeIsPing(app.AppConfig) {
 		return ErrAppPingFailed, pingHost(app.GetHost(), timeout)
@@ -142,10 +191,21 @@ func (app *App) probeNoRoute(timeout time.Duration) (string, error) {
 		if err != nil && strings.HasPrefix(err.Error(), "unexpected status code") {
 			return ErrAppUnexpectedStatus, fmt.Errorf("%d", status)
 		}
-		return ErrAppConnectFailed, err
+		if err != nil {
+			return ErrAppConnectFailed, err
+		}
+		if appMonitorModeIsHTTPSCert(app.AppConfig) {
+			return ErrAppCertificate, checkCertificate(route.CName, timeout, app.AppConfig.AppMonitorCertExpireDays)
+		}
+		return ErrAppConnectFailed, nil
 	}
 	probe := config.Route{Name: "app-port", Protocol: "tcp", Port: app.AppConfig.AppPort}
 	return ErrAppTCPConnectFailed, app.GetAppLocalTCPStatus(probe)
+}
+
+// appMonitorModeIsHTTPSCert: the https check also verifies the certificate (#2209). Pure.
+func appMonitorModeIsHTTPSCert(cnf *config.AppConfig) bool {
+	return cnf != nil && strings.EqualFold(strings.TrimSpace(cnf.AppMonitorMode), "https-cert")
 }
 
 // noRouteProbeErrDesc renders the state text of a failed no-route probe.
@@ -158,6 +218,8 @@ func (app *App) noRouteProbeErrDesc(errKey string, err error) string {
 	case ErrAppUnexpectedStatus:
 		status, _ := strconv.Atoi(err.Error())
 		return fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), status)
+	case ErrAppCertificate:
+		return fmt.Sprintf(config.ClusterError[ErrAppCertificate], app.GetId(), err.Error())
 	}
 	return fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), app.GetHost()+":"+app.AppConfig.AppPort+": "+err.Error())
 }

@@ -28412,12 +28412,16 @@ const docTemplate = `{
                 "appHostsIpv6": {
                     "type": "string"
                 },
+                "appMonitorCertExpireDays": {
+                    "description": "AppMonitorCertExpireDays: in app-monitor-mode https-cert, the certificate warns when it\nexpires within this many days (0: 14).",
+                    "type": "integer"
+                },
                 "appMonitorExpectStatus": {
                     "description": "AppMonitorExpectStatus: the accepted status codes of the http/https check (default\n\"200\"), same syntax as a route's monitor expect-status.",
                     "type": "string"
                 },
                 "appMonitorMode": {
-                    "description": "AppMonitorMode: how an app without a route is probed. \"port\" (default) connects to\napp-port over TCP; \"ping\" sends an ICMP echo to the app host, for a process that\nlistens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.\n\"http\" and \"https\" send a GET to \u003cmode\u003e://\u003capp-host\u003e:\u003capp-port\u003e\u003capp-monitor-path\u003e and\nexpect app-monitor-expect-status, for a web service that accepts connections and may\nnever answer (#2209); a full app-host name (with a dot) is called as is.",
+                    "description": "AppMonitorMode: how an app without a route is probed. \"port\" (default) connects to\napp-port over TCP; \"ping\" sends an ICMP echo to the app host, for a process that\nlistens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.\n\"http\" and \"https\" send a GET to \u003cmode\u003e://\u003capp-host\u003e:\u003capp-port\u003e\u003capp-monitor-path\u003e and\nexpect app-monitor-expect-status, for a web service that accepts connections and may\nnever answer (#2209); a full app-host name (with a dot) is called as is. \"https-cert\"\nis https that also verifies the certificate and its expiry (app-monitor-cert-expire-days).",
                     "type": "string"
                 },
                 "appMonitorOnly": {

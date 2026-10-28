@@ -1860,6 +1860,11 @@ definitions:
         type: string
       appHostsIpv6:
         type: string
+      appMonitorCertExpireDays:
+        description: |-
+          AppMonitorCertExpireDays: in app-monitor-mode https-cert, the certificate warns when it
+          expires within this many days (0: 14).
+        type: integer
       appMonitorExpectStatus:
         description: |-
           AppMonitorExpectStatus: the accepted status codes of the http/https check (default
@@ -1872,7 +1877,8 @@ definitions:
           listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
           "http" and "https" send a GET to <mode>://<app-host>:<app-port><app-monitor-path> and
           expect app-monitor-expect-status, for a web service that accepts connections and may
-          never answer (#2209); a full app-host name (with a dot) is called as is.
+          never answer (#2209); a full app-host name (with a dot) is called as is. "https-cert"
+          is https that also verifies the certificate and its expiry (app-monitor-cert-expire-days).
         type: string
       appMonitorOnly:
         description: |-

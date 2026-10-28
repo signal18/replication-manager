@@ -58,11 +58,12 @@ func (regtest *RegTest) TestAppMonitorHTTP(cl *cluster.Cluster, conf string, tes
 	host := "127.0.0.1"
 	port := strconv.Itoa(ln.Addr().(*net.TCPAddr).Port)
 
-	added := false
+	var app *cluster.App
 	defer func() {
 		close(release)
-		if added {
-			if err := cl.RemoveAppMonitor(host, port); err != nil {
+		if app != nil {
+			// the app is registered under its cluster host (127.0.0.1.<cluster>.svc.<orchestrator>)
+			if err := cl.RemoveAppMonitor(app.GetHost(), app.GetPort()); err != nil {
 				logf(config.LvlWarn, "TEST app-monitor-http: teardown: RemoveAppMonitor failed: %s", err)
 			}
 		}
@@ -73,14 +74,17 @@ func (regtest *RegTest) TestAppMonitorHTTP(cl *cluster.Cluster, conf string, tes
 		logf(config.LvlErr, "TEST app-monitor-http: FAIL adding a monitor-only app: %s", err)
 		return false
 	}
-	added = true
-	app := cl.GetAppByConfig(&config.AppConfig{AppHost: host, AppPort: port})
+	app = cl.GetAppByConfig(&config.AppConfig{AppHost: host, AppPort: port})
 	if app == nil {
 		logf(config.LvlErr, "TEST app-monitor-http: FAIL the added app is not in the cluster")
 		return false
 	}
 	if !app.AppConfig.IsMonitorOnly() {
 		logf(config.LvlErr, "TEST app-monitor-http: FAIL an app added without image nor template is not monitor-only")
+		return false
+	}
+	if routes := app.GetDeploymentRoutesSnapshot(); len(routes) > 0 {
+		logf(config.LvlErr, "TEST app-monitor-http: FAIL a monitor-only app got routes (published on the gateway): %+v", routes)
 		return false
 	}
 	for k, v := range map[string]string{"app-monitor-mode": "http", "app-monitor-path": "/health"} {
@@ -129,6 +133,17 @@ func (regtest *RegTest) TestAppMonitorHTTP(cl *cluster.Cluster, conf string, tes
 		return false
 	}
 	logf("TEST", "app-monitor-http: service answering again -> %s -- OK", appStateRunningForTest)
+
+	// https-cert on a plain-HTTP service: the TLS connection fails, the app leaves Running
+	if err := app.SetSetting("app-monitor-mode", "https-cert"); err != nil {
+		logf(config.LvlErr, "TEST app-monitor-http: FAIL setting https-cert: %s", err)
+		return false
+	}
+	if !proxyReadBackendWaitFor(wait, func() bool { return app.GetState() != appStateRunningForTest }) {
+		logf(config.LvlErr, "TEST app-monitor-http: FAIL https-cert on a service without TLS stayed %s", app.GetState())
+		return false
+	}
+	logf("TEST", "app-monitor-http: https-cert on a service without TLS -> %s -- OK", app.GetState())
 
 	if err := cl.InitAppService(app); err == nil || !strings.Contains(err.Error(), "monitor-only") {
 		logf(config.LvlErr, "TEST app-monitor-http: FAIL provision of a monitor-only app was not refused: %v", err)

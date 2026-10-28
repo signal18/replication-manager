@@ -390,8 +390,8 @@ func (app *App) SetSetting(key, value string) error {
 		// (ICMP echo to the host, for a process that listens on nothing, #1919), or http /
 		// https (a GET that must answer app-monitor-expect-status, #2209).
 		mode := strings.ToLower(strings.TrimSpace(value))
-		if mode != "" && mode != "port" && mode != "ping" && mode != "http" && mode != "https" {
-			return fmt.Errorf("app-monitor-mode: %q is not port, ping, http or https", value)
+		if mode != "" && mode != "port" && mode != "ping" && mode != "http" && mode != "https" && mode != "https-cert" {
+			return fmt.Errorf("app-monitor-mode: %q is not port, ping, http, https or https-cert", value)
 		}
 		app.AppConfig.AppMonitorMode = mode
 	case "app-monitor-path":
@@ -408,6 +408,16 @@ func (app *App) SetSetting(key, value string) error {
 			}
 		}
 		app.AppConfig.AppMonitorExpectStatus = status
+	case "app-monitor-cert-expire-days":
+		days := 0
+		if v := strings.TrimSpace(value); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil || n < 0 {
+				return fmt.Errorf("app-monitor-cert-expire-days: %q is not a number of days", value)
+			}
+			days = n
+		}
+		app.AppConfig.AppMonitorCertExpireDays = days
 	case "app-stateful":
 		// Stateful app (minio and the like): accounted as DBU, not APU. The plan and the
 		// billing re-project on the spot; the sensor's next push lands on the DBU track.

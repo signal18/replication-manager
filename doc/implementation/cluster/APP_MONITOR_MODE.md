@@ -49,10 +49,23 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
   a web service that accepts connections and never answers (a reverse proxy in front of a
   backend whose database crashed): `port` and `ping` stay green on it.
 
+- `https-cert` (#2209): the `https` check, then a separate verified TLS connection to the
+  same host and port (`checkCertificate`: system roots, the host name, the cluster
+  `timeout`) and the leaf certificate's `NotAfter` (`certExpiryError`). An invalid
+  certificate, or one that expires within `app-monitor-cert-expire-days` (default 14),
+  opens **APPERR010**; the app is then **AppWarning**, not Failed: the service answers,
+  the certificate needs an operator. The GET itself stays unverified like every route
+  check, so `https` alone never fails on a certificate.
+
   Settings, named after the route monitor fields: `app-monitor-path` (default `/`, must
   start with `/`) and `app-monitor-expect-status` (default `200`, the comma list of a
-  route's `expect-status`, `config.ParseExpectStatus`). GUI: the two fields show on the app
-  page when the mode is http or https.
+  route's `expect-status`, `config.ParseExpectStatus`), and `app-monitor-cert-expire-days`
+  for `https-cert`. GUI: the fields show on the app page for the http modes.
+
+  Scheduling: every app is checked in its own goroutine (no worker pool), each check
+  bounded by the cluster `timeout` and reading at most 1 MiB of the body; the tick waits for
+  the batch after its database and proxy work, at most `timeout` + 1 s
+  (`appRefreshTickWait`). `app-refresh-concurrency` is deprecated and ignored.
 
 Apps with routes are unaffected: their routes are probed as before.
 
@@ -70,8 +83,10 @@ monitor-only, so its plan units and service actions are unchanged.
   ours.
 - It reserves nothing: the plan gate (`appPlanIncreaseAllowed`) lets it through and
   `RefreshComputePlanAPU` clears its APU and DBU plans.
-- It adds no gateway route as long as it has no route; adding a route to it would publish
-  that route like any app's.
+- It gets no default route at registration (`appGetsDefaultRoute`): an app without
+  template otherwise receives `https://<app>.<cluster>.<zone>…:<port>`, which would be
+  published on the cluster's gateway and checked on the cluster address (found on preprod).
+  Adding a route by hand would publish that route like any app's.
 
 ## Route label
 

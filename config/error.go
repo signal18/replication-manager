@@ -20,6 +20,7 @@ var ClusterError = map[string]string{
 	"APPERR008": "Application %s: database provisioning refused: %s -- nothing was altered; free the names with app-db-schema / app-db-user, or mark app-db-owned when the objects belong to this app",
 	"APPERR007": "App refresh for cluster %s has not completed in over %s (last success: %s)",
 	"APPERR009": "Application %s unreachable: ping %s failed: %s",
+	"APPERR010": "Application %s certificate: %s",
 	"ERR00001":  "Monitor freeze while running critical section",
 	"ERR00002":  "Waiting for a user manual failover",
 	"ERR00004":  "Database %s access denied: %s",

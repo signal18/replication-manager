@@ -179,3 +179,69 @@ func TestProbeNoRouteHTTPBodyBounded(t *testing.T) {
 		t.Fatalf("body must be capped at %d bytes, got %d", appHTTPCheckMaxBody, len(body))
 	}
 }
+
+// A monitor-only app gets no default route at registration: a route would be published on
+// the cluster's gateway and its check would call the cluster address (#2209, found on
+// preprod). An app declared from an image keeps it; a template decides its own routes.
+func TestAppGetsDefaultRoute(t *testing.T) {
+	if appGetsDefaultRoute(&config.AppConfig{AppMonitorOnly: true}) {
+		t.Fatal("monitor-only app: no default route")
+	}
+	if !appGetsDefaultRoute(&config.AppConfig{ProvAppDockerImg: "nginx:1"}) {
+		t.Fatal("app from an image: default route")
+	}
+	if appGetsDefaultRoute(&config.AppConfig{ProvAppTemplate: "shared/nginx/nginx"}) {
+		t.Fatal("app from a template: the template decides")
+	}
+}
+
+// The certificate warns when it expires within the days set (14 by default), and says
+// when it already expired (#2209).
+func TestCertExpiryError(t *testing.T) {
+	now := time.Date(2026, 10, 28, 0, 0, 0, 0, time.UTC)
+	if err := certExpiryError(now.Add(60*24*time.Hour), now, 0); err != nil {
+		t.Fatalf("60 days left, default 14: valid, got %v", err)
+	}
+	if err := certExpiryError(now.Add(10*24*time.Hour), now, 0); err == nil || !strings.Contains(err.Error(), "expires in 10 days") {
+		t.Fatalf("10 days left, default 14: want a warning, got %v", err)
+	}
+	if err := certExpiryError(now.Add(10*24*time.Hour), now, 7); err != nil {
+		t.Fatalf("10 days left, warning below 7: valid, got %v", err)
+	}
+	if err := certExpiryError(now.Add(-time.Hour), now, 14); err == nil || !strings.Contains(err.Error(), "expired") {
+		t.Fatalf("past: want expired, got %v", err)
+	}
+}
+
+// https-cert: the GET passes (no verification, like the route checks), then the verified
+// look at the certificate refuses a self-signed one with APPERR010; plain https does not
+// look at the certificate (#2209).
+func TestProbeNoRouteHTTPSCert(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }))
+	defer srv.Close()
+	host, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "https://"))
+	appFor := func(mode string) *App {
+		return &App{Id: "ap1", Host: host, Port: port, ClusterGroup: &Cluster{Conf: &config.Config{Timeout: 2}},
+			AppConfig: &config.AppConfig{AppHost: host, AppPort: port, AppMonitorMode: mode}}
+	}
+	if key, err := appFor("https").probeNoRoute(2 * time.Second); err != nil {
+		t.Fatalf("https on a self-signed service: the GET passes, got %s %v", key, err)
+	}
+	app := appFor("https-cert")
+	key, err := app.probeNoRoute(2 * time.Second)
+	if key != ErrAppCertificate || err == nil {
+		t.Fatalf("https-cert on a self-signed certificate: want APPERR010, got %s %v", key, err)
+	}
+	if desc := app.noRouteProbeErrDesc(key, err); !strings.Contains(desc, "ap1") || !strings.Contains(desc, "not valid") {
+		t.Fatalf("APPERR010 text: %q", desc)
+	}
+	if err := app.SetSetting("app-monitor-mode", "https-cert"); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SetSetting("app-monitor-cert-expire-days", "30"); err != nil || app.AppConfig.AppMonitorCertExpireDays != 30 {
+		t.Fatalf("days: %v %d", err, app.AppConfig.AppMonitorCertExpireDays)
+	}
+	if err := app.SetSetting("app-monitor-cert-expire-days", "-1"); err == nil || app.AppConfig.AppMonitorCertExpireDays != 30 {
+		t.Fatalf("negative days must be refused and not stored: %v %d", err, app.AppConfig.AppMonitorCertExpireDays)
+	}
+}
