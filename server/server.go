@@ -146,6 +146,11 @@ type ReplicationManager struct {
 	// written under the repman lock during Heartbeat.
 	peerHeartbeatFailures map[string]string `json:"-"`
 	peerHeartbeatSameUID  bool              `json:"-"`
+	// pullPluginRefused holds, per pulled plugin binary, the hash of the copy
+	// whose signature check failed, so the same binary is neither verified nor
+	// logged again at the next pull (#2233). Only syncPluginsFromPull uses it,
+	// and the git manager runs one pull at a time.
+	pullPluginRefused map[string]string `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`

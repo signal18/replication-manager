@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash"
@@ -867,22 +868,37 @@ func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
 				src := filepath.Join(srcDir, e.Name())
 				dst := filepath.Join(sharedDir, e.Name())
 
+				// Hash before the signature: a binary already installed was
+				// verified when it was copied, and one already refused is the
+				// same refusal, so neither is verified nor logged again (#2233).
+				if gitPluginFilesEqual(src, dst) {
+					delete(repman.pullPluginRefused, e.Name())
+					continue
+				}
+
 				if filepath.Ext(e.Name()) == "" {
 					if repman.Conf.PluginSigningPublicKey != "" {
+						srcHash, hashErr := gitPluginFileHash(src)
+						if hashErr == nil && repman.pullPluginRefused[e.Name()] == hex.EncodeToString(srcHash) {
+							continue
+						}
 						sigDir := filepath.Join(repman.Conf.ShareDir, "plugins")
 						if err := logplugin.VerifyPluginSignature(src, sigDir, repman.Conf.PluginSigningPublicKey); err != nil {
 							repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
 								"[logplugin] skipping pull plugin %s: %v", e.Name(), err)
+							if hashErr == nil {
+								if repman.pullPluginRefused == nil {
+									repman.pullPluginRefused = make(map[string]string)
+								}
+								repman.pullPluginRefused[e.Name()] = hex.EncodeToString(srcHash)
+							}
 							continue
 						}
+						delete(repman.pullPluginRefused, e.Name())
 					} else {
 						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
 							"[logplugin] copying unsigned pull plugin %s (no public key configured)", e.Name())
 					}
-				}
-
-				if gitPluginFilesEqual(src, dst) {
-					continue
 				}
 
 				if err := gitPluginCopyFile(src, dst); err != nil {

@@ -838,6 +838,28 @@ bug. Dev/nightly docker images stay self-consistent because every
 the freshly built binaries with the image-local key and placing sigs + public
 key in `share/plugins/`.
 
+#### Pull sync: hash before the signature (#2233)
+
+`syncPluginsFromPull` (server/server_git.go) copies the pulled binaries into
+`<WorkingDir>/plugins/` at every pull. It compares hashes before it checks a
+signature:
+
+- a pulled binary identical to the installed copy is skipped: that copy was
+  verified when it was installed, and the loader verifies it again;
+- a binary whose signature check fails is skipped and its hash is kept in
+  `pullPluginRefused` (plugin name → hash, one entry per plugin file, so it is
+  bounded by the pull directory);
+- at the next pulls the same binary (same hash) is skipped without a new check
+  and without a new log line; a different binary is checked (and logged) again;
+- a binary that is installed, or found identical to the installed copy, clears
+  its entry.
+
+Why: a nightly image older than the plugin set published for its wire version
+refuses every pulled plugin until the image is updated. Before this, each pull
+(every ~2 minutes) logged one WARN per plugin, about 14,000 lines a day per
+monitor, for the same refusal. The refusal itself is unchanged, and the
+previously installed plugins keep running.
+
 ### Rejection States (WARN0206 / WARN0207)
 
 Plugins rejected at load time are reported through the cluster state machine,
