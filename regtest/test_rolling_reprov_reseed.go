@@ -225,7 +225,7 @@ func (regtest *RegTest) TestRollingUpgrade(cl *cluster.Cluster, conf string, tes
 	// Nothing to upgrade: the declared image resolves to the release the nodes run (an exact
 	// release declares itself). Not a tested upgrade, whatever the health check says: SKIP
 	// (#2228, 8.0.41 -> 8.0.41 and 8.0.46 -> 8.0.46 reported PASS). Read from the plan alone,
-	// before Prepare declares or pushes anything.
+	// before Prepare declares or pushes anything. A plan error is reported by Prepare below.
 	if planned, err := cl.PlanRollingUpgrade("patch", ""); err == nil {
 		if _, release := releases.SplitImage(planned.TargetImage); nothingToUpgrade(test.FromDbVersion, release) {
 			test.SkipReason = fmt.Sprintf("nothing to upgrade: %s resolves to %s, the release the nodes run; declare a line (e.g. mysql:8.0) to upgrade to its newest release", planned.DeclaredAfter, planned.TargetImage)
