@@ -301,12 +301,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		sl.SetReadOnly()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce read only on slave %s, ReadOnly:%s, InIgnored:%t MultiMaster:%t", sl.URL, sl.ReadOnly, server.IsIgnoredReadonly(), cluster.IsMultiMaster())
 	}
-	if cluster.Conf.ForceSlaveHeartbeat && sl.GetReplicationHearbeatPeriod() > 1 {
-		dbhelper.SetSlaveHeartbeat(sl.Conn, "1", cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce heartbeat to 1s on slave %s", sl.URL)
-	} else if !sl.IsIgnored() && sl.GetReplicationHearbeatPeriod() > 1 {
-		cluster.SetState("WARN0050", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
-	}
+	sl.checkReplicationHeartbeatPeriod()
 	if cluster.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
 		hasErr := false
 		if master != nil && master.DBVersion.IsMySQLOrPercona() && master.DBVersion.GreaterEqual("5.7.6") && !master.HaveMySQLGTID {

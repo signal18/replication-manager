@@ -5444,6 +5444,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "replication-master-retry-count":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.MasterRetryCount = val
+	case "force-slave-heartbeat-time":
+		// the period force-slave-heartbeat sets, and above which WARN0050 warns (#2208)
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 {
+			return fmt.Errorf("force-slave-heartbeat-time must be a whole number of seconds, at least 1: %q", value)
+		}
+		mycluster.Conf.ForceSlaveHeartbeatTime = val
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
 	case "haproxy-mode":

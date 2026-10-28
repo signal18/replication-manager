@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,8 +17,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -46,6 +43,7 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Master not discovered, skipping failover check")
 		return
 	}
+	cluster.reportReplicasLastReceived()
 	cluster.SetFalsePositiveCheck("FoundCandidateMaster", cluster.isFoundCandidateMaster())
 	cluster.SetFalsePositiveCheck("BetweenFailoverTimeValid", cluster.isBetweenFailoverTimeValid())
 	cluster.SetFalsePositiveCheck("NotHavingMySQLErrantTransaction", cluster.IsNotHavingMySQLErrantTransaction())
@@ -251,82 +249,29 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 		return false
 	}
 
-	timeout := time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second
-	// Total context timeout to cover all goroutines duration
-	ctx, cancel := context.WithTimeout(context.Background(), timeout*3)
-	defer cancel()
-
-	var found int32
-	var wg sync.WaitGroup
-
+	// A direct replica that received a heartbeat (idle master) or an event (busy master)
+	// within the window proves the master alive. Read from what the tick recorded
+	// (srv_heartbeat.go), with no wait: the global SLAVE_RECEIVED_HEARTBEATS this read before
+	// counted only MariaDB's default connection and does not exist on MySQL 5.7+ (#2208).
+	found := false
 	for _, slave := range cluster.slaves {
-		relaycheck, _ := cluster.GetMasterFromReplication(slave)
-		// Only a direct replica of the master sees its heartbeat: skip a replica of a
-		// relay or of an intermediate replica (not in multi-master, where every node is a
-		// replica, as the relay flag was never set there).
-		if relaycheck == nil || relaycheck.IsRelay || (!cluster.Conf.MultiMaster && relaycheck.IsSlave) {
+		if !cluster.isDirectReplicaOfMaster(slave) {
 			continue
 		}
-
-		wg.Add(1)
-		go func(slave *ServerMonitor) {
-			defer wg.Done()
-
-			// Check if already found an increasing heartbeat
-			if atomic.LoadInt32(&found) == 1 {
-				return
-			}
-
-			// First heartbeat status fetch
-			status1, logs, err := dbhelper.GetStatusAsInt(slave.Conn, slave.DBVersion)
-			cluster.LogSQL(logs, err, slave.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "Monitor")
-			if err != nil || atomic.LoadInt32(&found) == 1 {
-				return
-			}
-
-			hb1 := status1["SLAVE_RECEIVED_HEARTBEATS"]
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
-				"SLAVE_RECEIVED_HEARTBEATS %d (first check)", hb1)
-
-			// Wait for timeout or cancellation before second check
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(timeout):
-				// continue after timeout
-			}
-
-			if atomic.LoadInt32(&found) == 1 {
-				return
-			}
-
-			// Second heartbeat status fetch
-			status2, logs, err := dbhelper.GetStatusAsInt(slave.Conn, slave.DBVersion)
-			cluster.LogSQL(logs, err, slave.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "Monitor")
-			if err != nil {
-				return
-			}
-
-			hb2 := status2["SLAVE_RECEIVED_HEARTBEATS"]
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
-				"SLAVE_RECEIVED_HEARTBEATS %d (second check)", hb2)
-
-			// Check if heartbeat increased
-			if hb2 > hb1 {
-				cluster.SetState("ERR00028", state.State{
-					ErrType: config.LvlErr,
-					ErrDesc: fmt.Sprintf(clusterError["ERR00028"], slave.URL),
-					ErrFrom: "CHECK",
-				})
-				if atomic.CompareAndSwapInt32(&found, 0, 1) {
-					cancel() // cancel all other goroutines
-				}
-			}
-		}(slave)
+		age, received := slave.GetReplicationLastReceivedAge()
+		window := slave.falsePositiveHeartbeatWindow()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+			"Slave %s last received from the master %s ago (received %t), window %s", slave.URL, age, received, window)
+		if received && age < window {
+			cluster.SetState("ERR00028", state.State{
+				ErrType: config.LvlErr,
+				ErrDesc: fmt.Sprintf(clusterError["ERR00028"], slave.URL, age.Round(100*time.Millisecond), window),
+				ErrFrom: "CHECK",
+			})
+			found = true
+		}
 	}
-
-	wg.Wait()
-	return atomic.LoadInt32(&found) == 1
+	return found
 }
 
 func (cluster *Cluster) isMaxscaleSupectRunning() bool {

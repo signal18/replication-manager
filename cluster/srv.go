@@ -171,7 +171,18 @@ type ServerMonitor struct {
 	QPS                         int64                       `json:"qps"`
 	ReplicationGroupCommitSize  float64                     `json:"replicationGroupCommitSize"` // avg binlog group commit size over the last tick (Binlog_commits / Binlog_group_commits deltas): the commit concurrency a slave can apply in parallel; 0 when no commit in the tick
 	ReplicationParallelThreads  int64                       `json:"replicationParallelThreads"` // slave_parallel_threads (MariaDB) / slave_parallel_workers (MySQL) as the server runs it -- the workers, to compare with the group commit size
-	lastParallelModeEnforce     time.Time                   `json:"-"`                          // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
+	lastParallelModeEnforce     time.Time                   `json:"-"`
+
+	// when the managed channel last received from its source and its heartbeat period, for
+	// the false-positive heartbeat check (#2208, srv_heartbeat.go)
+	ReplicationLastReceivedAt     time.Time `json:"replicationLastReceivedAt"`
+	ReplicationHeartbeatPeriod    float64   `json:"replicationHeartbeatPeriod"`
+	replicationHeartbeatKnown     bool
+	replicationReceivedHeartbeats int64
+	replicationReceivedPosition   string
+	heartbeatEnforceFailed        bool
+	heartbeatEnforceFailedPeriod  float64
+                          // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist      `json:"-"`
@@ -1620,6 +1631,7 @@ func (server *ServerMonitor) Refresh() error {
 
 	// select a replication status get an err if repliciations array is empty
 	server.SlaveStatus, err = server.GetSlaveStatus(server.ReplicationSourceName)
+	server.refreshReplicationLastReceived()
 	if err != nil {
 		// Do not reset  server.MasterServerID = 0 as we may need it for recovery
 		if server.IsGroupReplicationSlave {

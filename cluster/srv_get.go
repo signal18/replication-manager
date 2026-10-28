@@ -181,12 +181,10 @@ func (server *ServerMonitor) GetReplicationDelay() int64 {
 	return ss.SecondsBehindMaster.Int64
 }
 
+// GetReplicationHearbeatPeriod is the managed channel's heartbeat period, read with its
+// last received time (srv_heartbeat.go): 0 when unknown or off.
 func (server *ServerMonitor) GetReplicationHearbeatPeriod() float64 {
-	ss, sserr := server.GetSlaveStatus(server.ReplicationSourceName)
-	if sserr != nil {
-		return 0
-	}
-	return ss.SlaveHeartbeatPeriod
+	return server.ReplicationHeartbeatPeriod
 }
 
 func (server *ServerMonitor) GetReplicationUsingGtid() string {
