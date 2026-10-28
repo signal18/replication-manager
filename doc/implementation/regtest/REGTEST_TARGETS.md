@@ -141,6 +141,14 @@ is about. The flashback and mysqldump
 failover tests prepare through `ResetBench` (cleanup, then prepare) and run `RunBench` on the table they prepared, as the other failover tests do: `RunSysbench`
 cleans up and prepares again, which raced the first prepare (error 1050).
 
+## A test that finds nothing to exercise SKIPs (#2228)
+
+A test may set `test.SkipReason` and return: the runner then records SKIP with that reason, like a missed
+target, and does not report it to the tested setups. `testRollingUpgrade` does so when the declared image
+resolves to the release the nodes already run (an exact release declares itself; a line, such as
+`mysql:8.0`, resolves to its newest release): it had reported PASS for 8.0.41 -> 8.0.41 and 8.0.46 -> 8.0.46
+without upgrading anything.
+
 ## Tests
 
 `regtest/regtest_targets_test.go`: `TestSkipReason` covers each condition, matched and missed, the unknown

@@ -228,6 +228,13 @@ func (regtest *RegTest) TestRollingUpgrade(cl *cluster.Cluster, conf string, tes
 	}
 	test.FromDbVersion = upgradeFromRelease(cl)
 	_, release := releases.SplitImage(plan.TargetImage)
+	// Nothing to upgrade: the declared image resolves to the release the nodes run (an exact
+	// release declares itself). Not a tested upgrade, whatever the health check says: SKIP
+	// (#2228, 8.0.41 -> 8.0.41 and 8.0.46 -> 8.0.46 reported PASS).
+	if release != "" && release == test.FromDbVersion {
+		test.SkipReason = fmt.Sprintf("nothing to upgrade: %s resolves to %s, the release the nodes run; declare a line (e.g. mysql:8.0) to upgrade to its newest release", plan.DeclaredAfter, plan.TargetImage)
+		return false
+	}
 	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "RollingUpgrade plan: %s -> %s (%s), every node must run %s afterwards", plan.CurrentImage, plan.TargetImage, plan.Mechanic, release)
 	return rollingHealthCheckVersions(cl, "RollingUpgrade", func() error { return cl.RunRollingUpgrade(plan) }, release)
 }
