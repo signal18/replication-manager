@@ -181,9 +181,11 @@ type ServerMonitor struct {
 	replicationReceivedHeartbeats int64
 	replicationReceivedPosition   string
 	replicationReceivedSource     string
-	heartbeatEnforceFailed        bool
-	heartbeatEnforceFailedPeriod  float64
 	replicationReceivedMutex      sync.Mutex // the fields above: written by Refresh, read by the failover check
+	// force-slave-heartbeat's last failure: read and written by CheckSlaveSettings only, on
+	// the monitor goroutine, so outside replicationReceivedMutex
+	heartbeatEnforceFailed       bool
+	heartbeatEnforceFailedPeriod float64
 
 	ReplicationHealth           string                      `json:"replicationHealth"`
 	EventStatus                 []dbhelper.Event            `json:"eventStatus"`

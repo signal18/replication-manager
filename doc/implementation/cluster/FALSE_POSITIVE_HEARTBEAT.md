@@ -43,7 +43,10 @@ intermediate replica) received within:
     heartbeat period + monitoring-ticker + failover-falsepositive-heartbeat-timeout
 
 An idle master sends one heartbeat per period, repman sees it at the next tick, the timeout
-is the margin. A dead master stops sending: once the age passes the window, the next tick
+is the margin. On MariaDB the receive time is the tick that sees the counter move, so its
+resolution is one `monitoring-ticker`, which the window includes. After `force-slave-heartbeat`
+changed a period, the new value is read by the next `Refresh`, which runs before
+`CheckSlaveSettings` on each tick: the change is made once. A dead master stops sending: once the age passes the window, the next tick
 lets the failover go. With repman's 3 s period and a 2 s ticker the window is 8 s, usually
 already spent by the fail count; with MariaDB's default period (`slave_net_timeout / 2`,
 30 s) the failover decision waits up to ~35 s, hence WARN0050.
