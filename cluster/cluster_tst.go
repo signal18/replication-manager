@@ -289,6 +289,15 @@ func (cluster *Cluster) PrepareBench() error {
 	return nil
 }
 
+// ResetBench prepares the benchmark from a clean table: the table of a previous run fails
+// the prepare (1050); there is none on a first run, a cleanup error is only logged.
+func (cluster *Cluster) ResetBench() error {
+	if err := cluster.CleanupBench(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Benchmark cleanup: %s", err)
+	}
+	return cluster.PrepareBench()
+}
+
 func (cluster *Cluster) CleanupBench() error {
 	prx, err := cluster.getFirstProxy()
 	if err != nil {
@@ -593,16 +602,44 @@ func (cluster *Cluster) BenchTable() string {
 	return "replication_manager_schema.sbtest1"
 }
 
+// consistencyReplicas is the servers replicating, other than the master, read from the
+// cluster's servers: not cluster.slaves, which a topology pass rebuilds from empty. A
+// replica that failed stays in it and fails the check by design: the test asserts every
+// replica holds the master's data.
+func (cluster *Cluster) consistencyReplicas() []*ServerMonitor {
+	var replicas []*ServerMonitor
+	for _, s := range cluster.GetServers() {
+		if s != nil && s != cluster.master && s.IsSlave && s.Conn != nil {
+			replicas = append(replicas, s)
+		}
+	}
+	return replicas
+}
+
 func (cluster *Cluster) CheckTableConsistency(table string) bool {
+	if cluster.master == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master to check table %s against", table)
+		return false
+	}
 	// The replicas first apply all the master wrote: a checksum taken while they catch up
 	// differs (MariaDB 11.8, 693504 of 1000000 rows applied after the 1000000-row prepare, #2228).
+	// Only the replicas taking part, as the restore gate: a stopped, broken or delayed one is
+	// not waited for (its checksum is compared all the same).
+	// The replicas are listed once from the servers, and that list is both waited for and
+	// compared: cluster.slaves is rebuilt from empty at every topology pass, an old master
+	// just rejoined was missing from it at the wait and back at the checksum, compared
+	// while it still caught up (MariaDB 11.8, #2228).
+	replicas := cluster.consistencyReplicas()
 	if target, err := cluster.master.ReadReplicationTarget(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not read the position of %s to wait for the replicas: %s", cluster.master.URL, err)
 	} else {
-		for _, s := range cluster.slaves {
-			reached, err := cluster.waitReplicaReachTarget(s.URL, target, func(*ServerMonitor) bool { return true })
-			if !reached {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replica %s did not reach %s before the consistency check: %v", s.URL, target, err)
+		for _, s := range replicas {
+			reached, err := cluster.waitReplicaReachTarget(s.URL, target, replicaTakesPart)
+			switch {
+			case err != nil:
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replica %s did not reach %s before the consistency check: %s", s.URL, target, err)
+			case !reached:
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replica %s not waited for before the consistency check: its replication is stopped, broken or delayed", s.URL)
 			}
 		}
 	}
@@ -636,7 +673,7 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 		}
 	}
 	ctslave := 0
-	for _, s := range cluster.slaves {
+	for _, s := range replicas {
 		ctslave++
 
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)

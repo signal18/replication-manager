@@ -127,12 +127,27 @@ sysbench does not create its database. `PrepareBench` now creates `replication_m
 master first (`dbhelper.CreateReplicationManagerSchema`), with the binary log on so the replicas get it.
 On a MySQL cluster nothing else had created it, and every prepare failed with error 1049.
 
-`CheckTableConsistency` first waits for every replica to reach the master's position, read once
+`CheckTableConsistency` lists its replicas once from the cluster's servers (`consistencyReplicas`), not
+from `cluster.slaves`, which every topology pass rebuilds from empty: an old master just rejoined was
+missing at the wait and back at the checksum. It first waits for every replica of that list taking part (`replicaTakesPart`: not stopped,
+broken or delayed) to reach the master's position, read once
 (`waitReplicaReachTarget`: `WaitSyncToTarget` turns, ended by an SQL error or no progress for
 `replicaNoProgressFor`, the loop the restore gate uses too). Compared at once, a replica still applying
-the 1,000,000-row prepare differed (MariaDB 11.8: 693,504 rows applied). The flashback and mysqldump
-failover tests run `RunBench` on the table they prepared, as the other failover tests do: `RunSysbench`
+the 1,000,000-row prepare differed (MariaDB 11.8: 693,504 rows applied). A replica it does not wait for (stopped, broken, delayed) is
+still compared, so a replica lagging that way fails the check. The rejoin's end (`WaitRejoin`) comes before
+the next monitoring pass makes the old master a replica: the flashback and mysqldump failover tests wait
+for it (`WaitDatabaseReplica`), otherwise the check ran without the old master, the one server the test
+is about. The flashback and mysqldump
+failover tests prepare through `ResetBench` (cleanup, then prepare) and run `RunBench` on the table they prepared, as the other failover tests do: `RunSysbench`
 cleans up and prepares again, which raced the first prepare (error 1050).
+
+## A test that finds nothing to exercise SKIPs (#2228)
+
+A test may set `test.SkipReason` and return: the runner then records SKIP with that reason, like a missed
+target, and does not report it to the tested setups. `testRollingUpgrade` does so when the declared image
+resolves to the release the nodes already run (an exact release declares itself; a line, such as
+`mysql:8.0`, resolves to its newest release): it had reported PASS for 8.0.41 -> 8.0.41 and 8.0.46 -> 8.0.46
+without upgrading anything.
 
 ## Tests
 

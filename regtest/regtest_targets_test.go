@@ -151,3 +151,21 @@ func TestConsistencyChecksUseBenchTable(t *testing.T) {
 		}
 	}
 }
+
+// A rolling upgrade to the release the nodes run upgrades nothing: SKIP, never PASS (#2228).
+func TestNothingToUpgrade(t *testing.T) {
+	for _, c := range []struct {
+		from, release string
+		want          bool
+	}{
+		{"8.0.41", "8.0.41", true},
+		{"8.0.41", "8.0.46", false},
+		{"", "8.0.46", false},
+		{"8.0.41", "", false},
+		{"", "", false},
+	} {
+		if got := nothingToUpgrade(c.from, c.release); got != c.want {
+			t.Errorf("%q -> %q: %t, want %t", c.from, c.release, got, c.want)
+		}
+	}
+}
