@@ -895,8 +895,11 @@ func (app *App) GetStartTimeout() string {
 	if app != nil && app.ClusterGroup != nil && strings.TrimSpace(app.ClusterGroup.Conf.ProvAppStartTimeout) != "" {
 		return strings.TrimSpace(app.ClusterGroup.Conf.ProvAppStartTimeout)
 	}
-	return "2m"
+	return appDefaultStartTimeout
 }
+
+// appDefaultStartTimeout: the start timeout of an app when neither the app nor the cluster set one.
+const appDefaultStartTimeout = "2m"
 
 // MaskAppGeneratedSecrets masks, on a copy for the wire, the secrets replication-manager
 // generates for an app ({{app.randompassword}}, {{app.api.token}} #2158): stored encrypted,

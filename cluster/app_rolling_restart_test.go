@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 // fakeInstances: the up instances of a flex service, changed by stop/start like the
@@ -69,7 +71,7 @@ func (f *fakeInstances) upNodes() ([]string, error) {
 	return up, nil
 }
 
-func noLog(string, ...interface{}) {}
+func noLog(string, string, ...interface{}) {}
 
 // Node by node: each instance is stopped, seen down, started and seen up before the next
 // one; never more than one instance down at a time (#2217).
@@ -150,5 +152,34 @@ func TestAppRestartAllNodes(t *testing.T) {
 	}
 	if appRestartAllNodes("s18-fr-4") {
 		t.Fatal("a node name: that instance only")
+	}
+}
+
+// The nodes a roll goes over: none up is an error, one up of several is refused (stopping it
+// stops the service), a one-copy flex app rolls its instance (#2217, review).
+func TestRollingNodes(t *testing.T) {
+	if _, err := rollingNodes(nil, 3); err == nil || !strings.Contains(err.Error(), "no instance is up") {
+		t.Fatalf("none up: want an error, got %v", err)
+	}
+	if _, err := rollingNodes([]string{"n1"}, 3); err == nil || !strings.Contains(err.Error(), "only 1 of 3") || !strings.Contains(err.Error(), "n1") {
+		t.Fatalf("1 of 3 up: want a refusal naming n1, got %v", err)
+	}
+	if nodes, err := rollingNodes([]string{"n1"}, 1); err != nil || len(nodes) != 1 {
+		t.Fatalf("one-copy flex app: roll its instance, got %v %v", nodes, err)
+	}
+	if nodes, err := rollingNodes([]string{"n1", "n2"}, 3); err != nil || len(nodes) != 2 {
+		t.Fatalf("2 of 3 up: roll those two, got %v %v", nodes, err)
+	}
+}
+
+// The start timeout falls back to the named default when the setting does not parse.
+func TestAppStartTimeout(t *testing.T) {
+	app := &App{AppConfig: &config.AppConfig{ProvAppStartTimeout: "15m"}, ClusterGroup: &Cluster{Conf: &config.Config{}}}
+	if d := appStartTimeout(app); d != 15*time.Minute {
+		t.Fatalf("15m: got %s", d)
+	}
+	app.AppConfig.ProvAppStartTimeout = "soon"
+	if d := appStartTimeout(app); d != 2*time.Minute {
+		t.Fatalf("unparsable: want the 2m default, got %s", d)
 	}
 }

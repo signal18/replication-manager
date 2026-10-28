@@ -844,24 +844,28 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 	nodeParam := vars["node"]
 	if mycluster.AppRestartIsRolling(app, nodeParam) {
 		// node by node, minutes: in the background, progress in the orchestrator log and in
-		// the app's rollingRestartInProgress; a second one is refused while it runs
-		if app.GetAppAPIView().RollingRestartInProgress {
+		// the app's rollingRestartInProgress; the guard is taken before answering, so a second
+		// request gets 409, never a second 202
+		if err := mycluster.StartAppRollingRestart(app); err != nil {
 			w.WriteHeader(http.StatusConflict)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "a rolling restart of this app is already running"})
+			if encErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encErr != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", encErr)
+			}
 			return
 		}
-		go func() {
-			if restarted, err := mycluster.OpenSVCRestartAppService(app, nodeParam, ridParam); err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App %s rolling restart failed after %v: %s", app.Name, restarted, err)
-			}
-		}()
 		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{"message": "Rolling restart started, node by node", "app": app.GetName(), "rolling": true})
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"message": "Rolling restart started, node by node", "app": app.GetName(), "rolling": true}); encErr != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", encErr)
+		}
 		return
 	}
 	restarted, err := mycluster.OpenSVCRestartAppService(app, nodeParam, ridParam)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		code := http.StatusInternalServerError
+		if errors.Is(err, cluster.ErrAppRestartNoNode) {
+			code = http.StatusBadRequest
+		}
+		w.WriteHeader(code)
 		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": fmt.Sprintf("Failed to restart app service: %s", err), "restarted": restarted}); encErr != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", encErr)
 		}

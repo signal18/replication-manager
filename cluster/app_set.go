@@ -114,11 +114,6 @@ func (app *App) SetPrevState(state string) {
 	app.PrevState = state
 }
 
-// SetRefreshInProgress marks whether this app's Refresh() is currently
-// running, under app.Lock() -- meant to be read from a different goroutine
-// than the one that writes it (any status/API reader vs. the
-// maybeRefreshAppsAsync worker calling Refresh()), so it needs to actually
-// be safe to do so.
 // TryStartRollingRestart marks a rolling restart started; false when one already runs (#2217).
 func (app *App) TryStartRollingRestart() bool {
 	app.Lock()
@@ -137,6 +132,11 @@ func (app *App) EndRollingRestart() {
 	app.RollingRestartInProgress = false
 }
 
+// SetRefreshInProgress marks whether this app's Refresh() is currently
+// running, under app.Lock() -- meant to be read from a different goroutine
+// than the one that writes it (any status/API reader vs. the
+// maybeRefreshAppsAsync worker calling Refresh()), so it needs to actually
+// be safe to do so.
 func (app *App) SetRefreshInProgress(v bool) {
 	app.Lock()
 	defer app.Unlock()
