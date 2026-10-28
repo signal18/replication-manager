@@ -1860,11 +1860,23 @@ definitions:
         type: string
       appHostsIpv6:
         type: string
+      appMonitorExpectStatus:
+        description: |-
+          AppMonitorExpectStatus: the accepted status codes of the http/https check (default
+          "200"), same syntax as a route's monitor expect-status.
+        type: string
       appMonitorMode:
         description: |-
           AppMonitorMode: how an app without a route is probed. "port" (default) connects to
           app-port over TCP; "ping" sends an ICMP echo to the app host, for a process that
           listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
+          "http" and "https" send a GET to <mode>://<app-host>:<app-port><app-monitor-path> and
+          expect app-monitor-expect-status, for a web service that accepts connections and may
+          never answer (#2209); a full app-host name (with a dot) is called as is.
+        type: string
+      appMonitorPath:
+        description: 'AppMonitorPath: the path of the http/https check (default "/"),
+          like a route''s monitor path.'
         type: string
       appPort:
         type: string
