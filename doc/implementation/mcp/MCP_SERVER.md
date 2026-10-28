@@ -189,8 +189,8 @@ and in every case by the partner itself at creation (`selfServiceCheck`).
 
 **Room (#2212).** The quote fits the request against the room the creation check uses,
 `InfraUnitPool.RoomDbu()` / `RoomApu()`: the free pool plus what the clusters for sale give
-back above their floors (`forSaleDbu`, `forSaleApu` of the status pool, decoded into
-`InfraUnitPool`). Before, the quote read `freeDbu`/`freeApu` only, and refused an
+back above their floors (`forSaleDbu`, `forSaleApu` of the status pool, each field read on its own into
+`InfraUnitPool`: a missing or non-numeric one is 0). Before, the quote read `freeDbu`/`freeApu` only, and refused an
 infrastructure whose creation would succeed; the sales assistant followed it. The answer
 carries `free` and `forSale`, and `roomNote` when the free pool alone is short. An older
 infrastructure publishes no for-sale figure: 0, the free pool alone. The quote does not know
@@ -227,8 +227,9 @@ the user, a local admin with the instance's Cloud18 identity, an API token is re
 no credential for another infrastructure). This instance is called over the loopback with the
 caller's own credential.
 
-Tests: `TestQuote*` (`TestQuoteCountsWhatClustersForSaleGiveBack` for the room), `TestApplyRequestedPlan` (fake infrastructure: per-unit difference,
-refusal), `TestCloud18SpecPostgres`, `TestCloud18SpecMySQLFamily`, `TestInfraDefinitionOfPeer`.
+Tests: `TestQuote*` (the room: `TestQuoteCountsWhatClustersForSaleGiveBack`,
+`TestQuoteOlderInfrastructureWithoutForSale`), `TestApplyRequestedPlan` (fake infrastructure:
+per-unit difference, refusal), `TestCloud18SpecPostgres`, `TestCloud18SpecMySQLFamily`, `TestInfraDefinitionOfPeer`.
 
 ## Self-service clusters on an infrastructure (server_selfservice.go, server_cloud18_infra.go)
 

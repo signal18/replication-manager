@@ -7,7 +7,6 @@
 package server
 
 import (
-	"encoding/json"
 	"math"
 	"sort"
 	"strings"
@@ -46,14 +45,15 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 		"request": resolvedRequest(spec, perNode, apu, bku),
 		"units":   map[string]float64{"dbu": dbu, "apu": apu, "bku": bku},
 	}
-	// the room is the creation check's own rule; an older infrastructure publishes no
-	// forSaleDbu/forSaleApu, read as 0: the free pool alone
+	// the room is the creation check's own rule. Each field is read on its own: a missing or
+	// non-numeric one is 0 and leaves the others, so an older infrastructure without
+	// forSaleDbu/forSaleApu is quoted on the free pool alone
 	poolMap, hasPool := ss["pool"].(map[string]any)
 	var pool InfraUnitPool
 	if hasPool {
-		if b, err := json.Marshal(poolMap); err == nil {
-			_ = json.Unmarshal(b, &pool)
-		}
+		pool = InfraUnitPool{Known: poolMap["known"] == true,
+			FreeDbu: num(poolMap, "freeDbu"), ForSaleDbu: num(poolMap, "forSaleDbu"),
+			FreeApu: num(poolMap, "freeApu"), ForSaleApu: num(poolMap, "forSaleApu")}
 	}
 	fits := hasPool && pool.RoomDbu() >= dbu && pool.RoomApu() >= apu
 	if !hasPool || !pool.Known {
