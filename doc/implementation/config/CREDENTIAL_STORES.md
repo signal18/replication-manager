@@ -197,6 +197,21 @@ file.
   version changed; a standby merges the file the config pull brings (versions known by time
   and writer) and never writes it. A remote newer version is inserted with its own time and
   writer (no new version, rule 3).
+- **Secret-store CLI tools** (`server/server_secret_store.go`): `secret-store-restore`
+  restores a versioned secret as a new version of the file (offline: appended atomically,
+  `AppendSecretVersionFile`; with `--apply-runtime`: through the running cluster's chain and
+  its save), never into `cluster.d/<cluster>.toml`, so the config keeps its starting value;
+  the other secrets go to the config file as before. `secret-store-prune` prunes a loaded
+  cluster's version store (the save writes the file), offline the file as before.
+  `secret-store-copy` is unchanged (an export copy).
+- **Orchestrator and app writers** (rule 7): `reportOrchestratorSecret` after each
+  successful OpenSVC `CreateSecretKeyValue*` and `k8sPatchSecretValues` (the root password
+  under every database server, the shard proxy password under every shard proxy, an app's
+  secret variables, git and S3 secrets under `apps/<app>`), and the app's generated password
+  (`apps/<app>/app-random-password`). The instance's secrets are never copied.
+- **Rule 13 not implemented**: repman has no runtime path that changes its encryption key
+  (the key is read at start; `keygen --overwrite` replaces the file offline and re-encrypts
+  nothing, the config included). Re-encrypting the file needs that key-change feature first.
 - **States**: WARN0269 (security, per entry: behind, or failing), WARN0270 (security: drops
   not repaired), WARN0271 (config, per key: a Vault path pinned in a file).
 - **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.
