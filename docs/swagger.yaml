@@ -2832,7 +2832,7 @@ definitions:
         description: |-
           Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
           the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
-          delivers the S3 provider in the cluster's inject.toml
+          delivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)
         type: string
       cloud18CostCurrency:
         type: string

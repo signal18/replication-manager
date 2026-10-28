@@ -29758,7 +29758,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "cloud18ArchiveOfferRequests": {
-                    "description": "Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access\nthe cluster asks the back-office for (comma-separated offer names); the BO harvests it and\ndelivers the S3 provider in the cluster's inject.toml",
+                    "description": "Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access\nthe cluster asks the back-office for (comma-separated offer names); the BO harvests it and\ndelivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)",
                     "type": "string"
                 },
                 "cloud18CostCurrency": {

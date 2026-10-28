@@ -127,7 +127,15 @@ func TestArchiveOffersDeliveredAsArchive(t *testing.T) {
 	if o := offersOf(cat, nil, archiveOfferRequests("pbs-simple"), nil, false, config.ArchiveConfig{Name: "pbs-simple", Plugin: "archive-pbs"})[0]; !o.Added || !o.Usable || o.Reason != "" {
 		t.Fatalf("a delivered PBS offer: %+v", o)
 	}
-	if o := offersOf(cat, nil, nil, nil, false, config.ArchiveConfig{Name: "pbs-simple", Plugin: "archive-restic-s3"})[0]; o.Added {
-		t.Fatalf("an archive of the name with another plugin is not the offer: %+v", o)
+	if o := offersOf(cat, nil, nil, nil, false, config.ArchiveConfig{Name: "pbs-simple", Plugin: "archive-restic-s3"})[0]; o.Added || o.Requestable || o.Reason != archiveOfferArchiveConflict {
+		t.Fatalf("an archive of the name with another plugin is a conflict, not the offer: %+v", o)
+	}
+	// a requestable offer with an S3 storage takes the S3 path (an OVH offer the catalogue marks requestable)
+	s3cat := config.MarketplaceCatalogue{
+		S3:       []config.MarketplaceS3{{Name: "ovh-gra", Endpoint: "https://s3.gra.example", Auth: "cloud18-keys"}},
+		Archives: []config.MarketplaceArchiveOffer{{Name: "ovh-gra", Plugin: "archive-plakar-s3", S3Provider: "ovh-gra", Auth: "cloud18-keys", Requestable: true}},
+	}
+	if o := offersOf(s3cat, nil, nil, nil, false)[0]; o.S3 == nil || !o.Requestable || o.Reason != archiveOfferRequest {
+		t.Fatalf("a requestable S3 offer takes the S3 path: %+v", o)
 	}
 }

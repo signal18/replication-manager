@@ -49,6 +49,7 @@ const (
 	// an offer the back-office delivers as an archive (a PBS token)
 	archiveOfferRequestArchive   = "request it: Cloud18 creates the cluster's access and adds the archive"
 	archiveOfferRequestedArchive = "requested: Cloud18 creates the cluster's access, then the archive arrives with the cluster's config"
+	archiveOfferArchiveConflict  = "an archive of this name is another archive: rename it to receive the offer"
 	archiveOfferConflict         = "an S3 provider of this name is another storage: rename it to use the offer"
 	archiveOfferPinned           = "the S3 providers are set in the configuration file (s3-provider): add this one there"
 )
@@ -154,12 +155,15 @@ func archiveOffers(cat config.MarketplaceCatalogue, cl archiveOfferCluster) []Ar
 		case row.S3 == nil && o.Requestable:
 			// delivered as an archive of the offer's name (archive-pbs: the cluster's own token)
 			row.Requested = requested[o.Name]
+			taken := false // an archive of the offer's name with another plugin: the delivery cannot land
 			for _, a := range cl.archives {
-				if a.Name == o.Name && a.Plugin == o.Plugin {
-					row.Added = true
+				if a.Name == o.Name {
+					row.Added, taken = a.Plugin == o.Plugin, a.Plugin != o.Plugin
 				}
 			}
 			switch {
+			case taken:
+				row.Reason = archiveOfferArchiveConflict
 			case row.Added:
 				row.Usable = true
 			case row.Requested:
@@ -189,7 +193,7 @@ func archiveOffers(cat config.MarketplaceCatalogue, cl archiveOfferCluster) []Ar
 // @Router /api/clusters/{clusterName}/archive-offers [get]
 func (repman *ReplicationManager) handlerMuxArchiveOffers(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
-		archives, _ := mycluster.Conf.ArchiveList()
+		archives, _ := mycluster.Conf.ArchiveList() // the second value is the attached archive's name
 		writeArchiveJSON(w, archiveOffers(repman.MarketplaceCatalogue(), archiveOfferCluster{
 			providers: mycluster.GetS3ProvidersSnapshot(),
 			archives:  archives,

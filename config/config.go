@@ -1150,7 +1150,7 @@ type Config struct {
 	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
 	// Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
 	// the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
-	// delivers the S3 provider in the cluster's inject.toml
+	// delivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)
 	Cloud18ArchiveOfferRequests string `mapstructure:"cloud18-archive-offer-requests" toml:"cloud18-archive-offer-requests" json:"cloud18ArchiveOfferRequests"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
