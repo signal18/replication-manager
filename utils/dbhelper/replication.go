@@ -1511,19 +1511,22 @@ func GetReplicationLastReceived(db *sqlx.DB, channel string, myver *version.Vers
 	if !myver.IsMySQLOrPercona() || !myver.GreaterEqual("5.7") {
 		return lr, "", errors.New("no last received time recorded by " + myver.Flavor + " " + myver.ToString())
 	}
-	last := "s.LAST_HEARTBEAT_TIMESTAMP"
+	// a channel that never received holds the zero timestamp, which MySQL 8 refuses in a
+	// comparison (error 1525): compare Unix times, the zero one reads 0
+	last := "UNIX_TIMESTAMP(s.LAST_HEARTBEAT_TIMESTAMP)"
 	if myver.GreaterEqual("8.0") {
-		last = "GREATEST(s.LAST_HEARTBEAT_TIMESTAMP, s.LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP)"
+		last = "GREATEST(UNIX_TIMESTAMP(s.LAST_HEARTBEAT_TIMESTAMP), UNIX_TIMESTAMP(s.LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP))"
 	}
-	// a channel that never received holds the zero timestamp: TIMESTAMPDIFF returns NULL
-	query := "SELECT TIMESTAMPDIFF(MICROSECOND, NULLIF(" + last + ", '0000-00-00 00:00:00'), NOW(6)), c.HEARTBEAT_INTERVAL " +
+	query := "SELECT " + last + ", UNIX_TIMESTAMP(NOW(6)), c.HEARTBEAT_INTERVAL " +
 		"FROM performance_schema.replication_connection_status s " +
 		"JOIN performance_schema.replication_connection_configuration c ON c.CHANNEL_NAME = s.CHANNEL_NAME WHERE s.CHANNEL_NAME = ?"
-	var age sql.NullInt64
-	if err := db.QueryRowx(query, channel).Scan(&age, &lr.HeartbeatPeriod); err != nil {
+	var lastReceived, now float64
+	if err := db.QueryRowx(query, channel).Scan(&lastReceived, &now, &lr.HeartbeatPeriod); err != nil {
 		return lr, query, err
 	}
-	lr.Received = age.Valid
-	lr.Age = time.Duration(age.Int64) * time.Microsecond
+	lr.Received = lastReceived > 0
+	if lr.Received {
+		lr.Age = time.Duration((now - lastReceived) * float64(time.Second))
+	}
 	return lr, query, nil
 }

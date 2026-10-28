@@ -23,15 +23,15 @@ func TestGetReplicationLastReceivedMySQL(t *testing.T) {
 	}
 	defer raw.Close()
 	db := sqlx.NewDb(raw, "mysql")
-	mock.ExpectQuery(regexp.QuoteMeta("GREATEST(s.LAST_HEARTBEAT_TIMESTAMP, s.LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP)")).WithArgs("bench").
-		WillReturnRows(sqlmock.NewRows([]string{"age", "HEARTBEAT_INTERVAL"}).AddRow(1500000, "3.000"))
+	mock.ExpectQuery(regexp.QuoteMeta("GREATEST(UNIX_TIMESTAMP(s.LAST_HEARTBEAT_TIMESTAMP), UNIX_TIMESTAMP(s.LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP))")).WithArgs("bench").
+		WillReturnRows(sqlmock.NewRows([]string{"last", "now", "HEARTBEAT_INTERVAL"}).AddRow("1761638400.250000", "1761638401.750000", "3.000"))
 	lr, _, err := GetReplicationLastReceived(db, "bench", &version.Version{Flavor: "MySQL", Major: 8, Minor: 0, Release: 41})
 	if err != nil || !lr.Received || lr.Age != 1500*time.Millisecond || lr.HeartbeatPeriod != 3 {
 		t.Fatalf("%+v %v", lr, err)
 	}
-	// a channel that never received: NULL age
-	mock.ExpectQuery(regexp.QuoteMeta("s.LAST_HEARTBEAT_TIMESTAMP")).WithArgs("").
-		WillReturnRows(sqlmock.NewRows([]string{"age", "HEARTBEAT_INTERVAL"}).AddRow(nil, "30.000"))
+	// a channel that never received: the zero timestamp reads 0
+	mock.ExpectQuery(regexp.QuoteMeta("UNIX_TIMESTAMP(s.LAST_HEARTBEAT_TIMESTAMP)")).WithArgs("").
+		WillReturnRows(sqlmock.NewRows([]string{"last", "now", "HEARTBEAT_INTERVAL"}).AddRow("0.000000", "1761638401.750000", "30.000"))
 	lr, query, err := GetReplicationLastReceived(db, "", &version.Version{Flavor: "MySQL", Major: 5, Minor: 7, Release: 44})
 	if err != nil || lr.Received || lr.HeartbeatPeriod != 30 {
 		t.Fatalf("%+v %v", lr, err)
