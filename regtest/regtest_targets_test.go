@@ -132,6 +132,7 @@ func TestTargetsDeclared(t *testing.T) {
 
 // A consistency check names the table the benchmark writes (Cluster.BenchTable), never
 // test.sbtest: nothing writes it, and a table that cannot be checksummed fails (#2228).
+// It catches a literal table only: a name held in a variable passes it.
 func TestConsistencyChecksUseBenchTable(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {

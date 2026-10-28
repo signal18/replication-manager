@@ -232,6 +232,9 @@ func (cluster *Cluster) PrepareBench() error {
 		if master := cluster.GetMaster(); master != nil && master.Conn != nil {
 			logs, err := dbhelper.CreateReplicationManagerSchema(master.Conn, master.DBVersion)
 			cluster.LogSQL(logs, err, master.URL, "Benchmark", config.LvlErr, "Could not create the benchmark schema on %s: %s", master.URL, err)
+			if err != nil {
+				return fmt.Errorf("benchmark schema on %s: %w", master.URL, err)
+			}
 		}
 		test := "--test=oltp"
 		threads := "--threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads)
@@ -582,6 +585,7 @@ func (cluster *Cluster) CheckSlavesRunning() bool {
 // the table benchmark replication_manager_schema.bench. The regtests checked test.sbtest,
 // which nothing writes: since CheckTableConsistency fails on a table it cannot checksum,
 // every one of them failed (#2228).
+// Any other type is sysbench's: the two types SetBenchMethod is given today.
 func (cluster *Cluster) BenchTable() string {
 	if cluster.benchmarkType == "table" {
 		return "replication_manager_schema.bench"
