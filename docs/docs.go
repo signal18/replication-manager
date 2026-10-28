@@ -31887,6 +31887,15 @@ const docTemplate = `{
                 "replicationUseSsl": {
                     "type": "boolean"
                 },
+                "resourceManagerDiscoveredCpuCores": {
+                    "type": "number"
+                },
+                "resourceManagerDiscoveredInterval": {
+                    "type": "integer"
+                },
+                "resourceManagerDiscoveredMemoryMb": {
+                    "type": "number"
+                },
                 "resourceManagerInfraCpuCores": {
                     "type": "number"
                 },
@@ -32805,7 +32814,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "added": {
-                    "description": "Added: the cluster has the offer's storage: an S3 provider of its name, on its endpoint (and\nreached with the Cloud18 SSO for an SSO storage)",
+                    "description": "Added: the cluster has the offer's storage: an S3 provider of its name, on its endpoint (and\nreached with the Cloud18 SSO for an SSO storage); for an offer delivered as an archive (PBS),\nan archive of its name and plugin",
                     "type": "boolean"
                 },
                 "auth": {
