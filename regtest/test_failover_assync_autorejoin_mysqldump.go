@@ -28,8 +28,9 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinDump(cluster *cluster.Cluste
 	SaveMasterURL := SaveMaster.URL
 	//clusteruster.DelayAllSlaves()
 	cluster.PrepareBench()
-	//go clusteruster.RunBench()
-	go cluster.RunSysbench()
+	// run on the prepared table: RunSysbench would clean up and prepare it again, a second
+	// prepare racing this one (error 1050, #2228)
+	go cluster.RunBench()
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)

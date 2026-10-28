@@ -594,6 +594,18 @@ func (cluster *Cluster) BenchTable() string {
 }
 
 func (cluster *Cluster) CheckTableConsistency(table string) bool {
+	// The replicas first apply all the master wrote: a checksum taken while they catch up
+	// differs (MariaDB 11.8, 693504 of 1000000 rows applied after the 1000000-row prepare, #2228).
+	if target, err := cluster.master.ReadReplicationTarget(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not read the position of %s to wait for the replicas: %s", cluster.master.URL, err)
+	} else {
+		for _, s := range cluster.slaves {
+			reached, err := cluster.waitReplicaReachTarget(s.URL, target, func(*ServerMonitor) bool { return true })
+			if !reached {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replica %s did not reach %s before the consistency check: %v", s.URL, target, err)
+			}
+		}
+	}
 	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
 
 	// A table that cannot be checksummed is not consistent: a missing table answers

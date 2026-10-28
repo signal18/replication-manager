@@ -27,8 +27,9 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	SaveMaster := cluster.GetMaster()
 	//clusteruster.DelayAllSlaves()
 	cluster.PrepareBench()
-	//go clusteruster.RunBench()
-	go cluster.RunSysbench()
+	// run on the prepared table: RunSysbench would clean up and prepare it again, a second
+	// prepare racing this one (error 1050, #2228)
+	go cluster.RunBench()
 	time.Sleep(4 * time.Second)
 	cluster.FailoverAndWait()
 	/// give time to start the failover
@@ -38,7 +39,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 
 		return false
 	}
-	cluster.RunSysbench()
+	cluster.RunBench()
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
