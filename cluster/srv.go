@@ -429,7 +429,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Domain = domain
 	server.TLSConfigUsed = ConstTLSCurrentConfig
 	server.ClusterGroup = cluster
-	server.DBVersion, _ = version.NewMySQLVersion("Unknowed-0.0.0", "")
+	server.DBVersion, _ = version.NewMySQLVersion(serverVersionPlaceholder, "")
 	server.Name, server.Port, server.PostgressDB = misc.SplitHostPortDB(url)
 	if server.PostgressDB != "" {
 		// host:port/database is the PostgreSQL form of a host entry: this server is opened

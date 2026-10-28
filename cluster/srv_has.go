@@ -660,6 +660,18 @@ func (server *ServerMonitor) HasHighNumberSlowQueries() bool {
 }
 
 // IsDown() returns true is the server is Failed or Suspect or or auth error
+// serverVersionPlaceholder is the version a ServerMonitor is created with, until the
+// server answers: parsed as MySQL 0.0.0.
+const serverVersionPlaceholder = "Unknowed-0.0.0"
+
+// neverAnswered tells whether the server has not answered in this process: its version is
+// still the placeholder (flavor set, 0.0.0). A failed version read leaves an empty
+// version (no flavor), which is not taken for it (#2226).
+func (server *ServerMonitor) neverAnswered() bool {
+	v := server.DBVersion
+	return v == nil || (v.Flavor != "" && v.Major == 0 && v.Minor == 0 && v.Release == 0)
+}
+
 func (server *ServerMonitor) IsDown() bool {
 	if server.State == stateFailed || server.State == stateSuspect || server.State == stateErrorAuth {
 		return true

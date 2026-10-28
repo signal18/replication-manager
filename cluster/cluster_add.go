@@ -130,9 +130,9 @@ func (cluster *Cluster) addMySQLGTIDTag() {
 }
 
 // hasDatabaseServerUp tells whether a database server of the cluster runs, or may run:
-// any state but Failed, and Suspect only once the server answered in this process (its
-// version is no longer the "Unknowed-0.0.0" it is created with), as a running server goes
-// Suspect on one failed ping. ErrorAuth runs: it refuses our login. Limit: right after a
+// any state but Failed, and Suspect only once the server answered in this process
+// (neverAnswered: its version is no longer the placeholder it is created with), as a
+// running server goes Suspect on one failed ping. ErrorAuth runs: it refuses our login. Limit: right after a
 // restart of replication-manager, before the first ping, a running server is Suspect with
 // no version yet and counts as down.
 func (cluster *Cluster) hasDatabaseServerUp() bool {
@@ -140,7 +140,7 @@ func (cluster *Cluster) hasDatabaseServerUp() bool {
 		if s == nil || s.State == stateFailed {
 			continue
 		}
-		if s.State == stateSuspect && (s.DBVersion == nil || s.DBVersion.Major == 0) {
+		if s.State == stateSuspect && s.neverAnswered() {
 			continue
 		}
 		return true

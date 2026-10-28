@@ -153,12 +153,13 @@ func TestAddMySQLGTIDTag(t *testing.T) {
 		{"servers running", "mysql:8.4", false, true, false},
 		{"first provision, servers never pinged (Suspect)", "mysql:8.4", false, false, true},
 		{"suspect after answering (a failed ping)", "mysql:8.4", false, false, false},
+		{"suspect after a failed version read (empty version)", "mysql:8.4", false, false, false},
 		{"reprovision after unprovision (Failed, version known)", "mysql:8.4", false, false, true},
 	} {
 		c := newColumnstoreTestCluster()
 		c.Conf.ProvDbImg, c.Conf.MultiMasterGrouprep = tc.image, tc.grouprep
 		state := stateFailed
-		unknown, _ := version.NewMySQLVersion("Unknowed-0.0.0", "")
+		unknown, _ := version.NewMySQLVersion(serverVersionPlaceholder, "")
 		known := &version.Version{Flavor: "MySQL", Major: 8, Minor: 4}
 		dbVersion := unknown
 		switch {
@@ -166,6 +167,8 @@ func TestAddMySQLGTIDTag(t *testing.T) {
 			state, dbVersion = stateMaster, known
 		case strings.HasPrefix(tc.name, "first provision"):
 			state = stateSuspect
+		case strings.HasPrefix(tc.name, "suspect after a failed version read"):
+			state, dbVersion = stateSuspect, &version.Version{}
 		case strings.HasPrefix(tc.name, "suspect after"):
 			state, dbVersion = stateSuspect, known
 		case strings.HasPrefix(tc.name, "reprovision"):
