@@ -107,7 +107,7 @@ var ClusterError = map[string]string{
 	"ERR00085":  "No replica found for routing reads",
 	"ERR00086":  "Sharding proxy refresh: no database monitor initialized yet",
 	"ERR00087":  "Skip slave in election %s IO Thread is stopped with valid leader",
-	"ERR00088":  "Authentication error in replication IO thread",
+	"ERR00088":  "Authentication error in replication IO thread of %s",
 	"ERR00089":  "Authentication error to Vault %s",
 	"ERR00090":  "Monitoring save config enabled but no encryption key for password, see the keygen command",
 	"ERR00091":  "Proxysql %s found active server %s as OFFLINE_SOFT in ProxySQL.",
