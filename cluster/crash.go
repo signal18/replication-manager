@@ -438,7 +438,10 @@ func (cluster *Cluster) rearmRejoin(url string, method string) bool {
 // the operator triggers a cluster rejoin without naming a server.
 func (cluster *Cluster) LatestCrashURL() string {
 	var newest *Crash
-	for _, cr := range cluster.FailoverHistory {
+	cluster.rejoinMarkerMu.Lock()
+	history := cluster.FailoverHistory
+	cluster.rejoinMarkerMu.Unlock()
+	for _, cr := range history {
 		if cr == nil {
 			continue
 		}

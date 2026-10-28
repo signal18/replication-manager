@@ -152,17 +152,26 @@ func TestAddMySQLGTIDTag(t *testing.T) {
 		{"group replication", "mysql:8.4", true, false, false},
 		{"servers running", "mysql:8.4", false, true, false},
 		{"first provision, servers never pinged (Suspect)", "mysql:8.4", false, false, true},
+		{"suspect after answering (a failed ping)", "mysql:8.4", false, false, false},
+		{"reprovision after unprovision (Failed, version known)", "mysql:8.4", false, false, true},
 	} {
 		c := newColumnstoreTestCluster()
 		c.Conf.ProvDbImg, c.Conf.MultiMasterGrouprep = tc.image, tc.grouprep
 		state := stateFailed
-		if strings.HasPrefix(tc.name, "first provision") {
+		unknown, _ := version.NewMySQLVersion("Unknowed-0.0.0", "")
+		known := &version.Version{Flavor: "MySQL", Major: 8, Minor: 4}
+		dbVersion := unknown
+		switch {
+		case tc.running:
+			state, dbVersion = stateMaster, known
+		case strings.HasPrefix(tc.name, "first provision"):
 			state = stateSuspect
+		case strings.HasPrefix(tc.name, "suspect after"):
+			state, dbVersion = stateSuspect, known
+		case strings.HasPrefix(tc.name, "reprovision"):
+			dbVersion = known
 		}
-		if tc.running {
-			state = stateMaster
-		}
-		c.Servers = []*ServerMonitor{{URL: "db1:3306", State: state, ClusterGroup: c}}
+		c.Servers = []*ServerMonitor{{URL: "db1:3306", State: state, DBVersion: dbVersion, ClusterGroup: c}}
 		c.addMySQLGTIDTag()
 		if got := c.Configurator.HaveDBTag(ProvisionMySQLGTIDTag); got != tc.want {
 			t.Errorf("%s: tag %t, want %t (tags %s)", tc.name, got, tc.want, c.Conf.ProvTags)

@@ -517,8 +517,12 @@ the elected master, now an extra master, was rejoined under the old one every ti
 Provisioning adds the `mysqlgtid` tag (`addMySQLGTIDTag`) when the image repository's last segment is
 `mysql`, `mysql-server`, `percona` or `percona-server`. That excludes Percona XtraDB Cluster and any
 name that merely contains `mysql`, and group replication or Galera topologies are skipped too. The tag
-is added only while no database server answers (`hasDatabaseServerUp`: Failed, Suspect — a server never
-pinged yet — and ErrorAuth count as down): `ProvisionServices` also runs from
+is added only while no database server runs (`hasDatabaseServerUp`). Failed counts as down. Suspect
+counts as down only while the server has never answered in this process (its version is still the
+`Unknowed-0.0.0` it is created with), since a running server goes Suspect on one failed ping. ErrorAuth
+counts as up: the server runs and only refuses our login. Accepted limit: right after a restart of
+replication-manager, before the first ping, a running server is Suspect with no version, so a
+`Bootstrap` issued in that window would add the tag: `ProvisionServices` also runs from
 `Bootstrap` on an existing cluster, and turning GTID on for running servers is an operator procedure.
 
 Not fixed here: the old master was designated master again when it came back, its replica having
