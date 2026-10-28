@@ -467,16 +467,9 @@ func (repman *ReplicationManager) ProduceClusterAggregateStates() {
 		repman.Conf.Cloud18IdentityKeepAlive()
 		st := repman.Conf.Cloud18IdentityStatus()
 		repman.Cloud18LoginState = st.State
-		if st.State == "none" {
-			st.State, st.Reason = "reconnect", "its Cloud18 login is missing"
-		}
-		if st.State == "reconnect" {
-			repman.SetState("GWARN021", state.State{
-				ErrType: "WARNING",
-				ErrKey:  "GWARN021",
-				ErrDesc: fmt.Sprintf(config.GlobalError["GWARN021"], st.Reason),
-				ErrFrom: "REPMAN",
-			})
+		if st.State == "refused" {
+			repman.SetState("GWARN022", state.State{ErrType: "WARNING", ErrKey: "GWARN022",
+				ErrDesc: fmt.Sprintf(config.GlobalError["GWARN022"], "Cloud18 refuses the account it was registered with: "+st.Reason), ErrFrom: "REPMAN"})
 		}
 	}
 	if repman.Conf != nil && repman.Conf.Cloud18GitTokenLost() {

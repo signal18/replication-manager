@@ -109,7 +109,13 @@ func (repman *ReplicationManager) cloud18Register(domain, subdomain, zone, plan,
 		repman.setRegStatus(RegStateError, "Cloud18 login: "+err.Error(), res)
 		return
 	}
-	repman.cloud18Declare(conf, glToken, domain, subdomain, zone, plan, res)
+	if repman.cloud18Declare(conf, glToken, domain, subdomain, zone, plan, res) == RegStateOK {
+		// the Cloud18 login, with the password just given (used for this sign-in, never kept): the
+		// S3 SSO storages and the Cloud18 vault use it from now on
+		if err := conf.KeepCloud18Login(email, password); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "register: registered, the Cloud18 login not made: %s", err)
+		}
+	}
 }
 
 // regState is the current registration state.

@@ -176,7 +176,7 @@ type ReplicationManager struct {
 	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
-	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, pending, connected, reconnect; "" Cloud18 off
+	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, registered, connected, refused; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	ViperConfig                 *viper.Viper                `json:"-"`

@@ -724,7 +724,7 @@ const docTemplate = `{
         },
         "/api/clusters/settings/actions/cloud18-identity": {
             "get": {
-                "description": "state none (nobody connected it), pending (a device login waits: device holds the code and the page), connected, or reconnect (the login ended: reason). Never a token.",
+                "description": "state none (not registered to Cloud18), registered (no login yet: made with the registered account at the next use or keep-alive), connected, or refused (the realm refused the registered account: register again, reason). Never a token.",
                 "produces": [
                     "application/json"
                 ],
@@ -751,96 +751,6 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/settings/actions/cloud18-identity/connect": {
-            "post": {
-                "description": "Asks the realm for a code: the person opens the page (device.verificationUri), logs in and types the code (device.userCode); replication-manager then keeps the login. Replaces a login still waiting.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "GlobalSetting"
-                ],
-                "summary": "Connect this replication-manager to the Cloud18 identity (device login)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/config.Cloud18IdentityStatus"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "409": {
-                        "description": "The realm or the setting refused the login",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "The realm cannot be reached",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/settings/actions/cloud18-identity/disconnect": {
-            "post": {
-                "description": "Forgets the kept login and ends it at the realm (best effort). The S3 SSO storages and the Cloud18 vault refuse until someone connects it again.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "GlobalSetting"
-                ],
-                "summary": "Disconnect this replication-manager from the Cloud18 identity",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/config.Cloud18IdentityStatus"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "The login file cannot be removed",
                         "schema": {
                             "type": "string"
                         }
@@ -28709,31 +28619,11 @@ const docTemplate = `{
                 }
             }
         },
-        "config.Cloud18DeviceLogin": {
-            "type": "object",
-            "properties": {
-                "expiresAt": {
-                    "type": "string"
-                },
-                "userCode": {
-                    "type": "string"
-                },
-                "verificationUri": {
-                    "type": "string"
-                },
-                "verificationUriComplete": {
-                    "type": "string"
-                }
-            }
-        },
         "config.Cloud18IdentityStatus": {
             "type": "object",
             "properties": {
                 "connectedAt": {
                     "type": "string"
-                },
-                "device": {
-                    "$ref": "#/definitions/config.Cloud18DeviceLogin"
                 },
                 "expires": {
                     "type": "string"
@@ -28742,7 +28632,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "state": {
-                    "description": "none: nobody connected it; pending: a device login waits for the person; connected;\nreconnect: the login ended or ends soon, someone must connect again",
+                    "description": "none: not registered; registered: no login yet, made at the next use or keep-alive;\nconnected; refused: the realm refused the registered account, register again",
                     "type": "string"
                 },
                 "sub": {

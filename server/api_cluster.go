@@ -460,14 +460,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18Identity)),
 	)).Methods(http.MethodGet)
-	router.Handle("/api/clusters/settings/actions/cloud18-identity/connect", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18IdentityConnect)),
-	)).Methods(http.MethodPost)
-	router.Handle("/api/clusters/settings/actions/cloud18-identity/disconnect", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18IdentityDisconnect)),
-	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/settings/actions/calibrate-smt-gain", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCalibrateSMTGain)),
