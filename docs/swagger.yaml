@@ -4988,6 +4988,11 @@ definitions:
       authType:
         description: '"password" or "token"'
         type: string
+      monitorOnly:
+        description: |-
+          MonitorOnly: add a monitor-only app (#2209), without image nor template: the explicit
+          opt-in, an add without image nor template and without it is refused.
+        type: boolean
       password:
         type: string
       private:

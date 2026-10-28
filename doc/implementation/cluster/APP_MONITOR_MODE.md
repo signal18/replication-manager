@@ -38,8 +38,11 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
   service definition).
 
 - `http` / `https` (#2209): a GET on `<mode>://<host>:<app-port><app-monitor-path>` through
-  the HTTP check of the routes (`GetAppHTTPStatus`: cluster `timeout`, redirects followed,
-  TLS not verified like the route checks), expecting `app-monitor-expect-status`.
+  the HTTP check of the routes (`GetAppHTTPStatus`: cluster `timeout`, redirects followed so
+  the status compared is the final one (a 302 is matched by expecting the page it leads to),
+  TLS not verified like the route checks), expecting `app-monitor-expect-status`. An answer
+  outside the accepted codes is the typed `appUnexpectedStatusError`, told apart with
+  `errors.As` by the route and no-route checks alike.
   `appMonitorHTTPRoute` (`cluster/app_chk_ping.go`) builds that check as a route that is
   never published: an app without a route contributes nothing to the gateway. A full
   `app-host` name (with a dot: a service that runs elsewhere) is called as is; a short one
@@ -71,8 +74,11 @@ Apps with routes are unaffected: their routes are probed as before.
 
 ## Monitor-only apps (#2209)
 
-An app added without image nor template (`AddSeededApp`, the add-app API with an empty tag
-and no template, the GUI "Monitor only" box) is **monitor-only**: a service that runs
+An app added with the explicit opt-in (`AddSeededApp(..., monitorOnly=true)`, the add-app API
+body `{"monitorOnly": true}` with no tag and no template, the GUI "Monitor only" box) is
+**monitor-only**. Without the opt-in an add without image nor template is still refused
+(400), and an image or a template with it is refused: a missing field is never read as
+monitor-only: a service that runs
 elsewhere, watched with the modes above. The add sets `app-monitor-only = true` in the app
 config (`AppConfig.IsMonitorOnly()`); an existing app without image nor template is not
 monitor-only, so its plan units and service actions are unchanged.

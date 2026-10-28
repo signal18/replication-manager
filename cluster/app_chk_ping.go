@@ -9,9 +9,9 @@ package cluster
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 
@@ -187,9 +187,9 @@ func (app *App) probeNoRoute(timeout time.Duration) (string, error) {
 		return ErrAppPingFailed, pingHost(app.GetHost(), timeout)
 	}
 	if route, ok := appMonitorHTTPRoute(app.AppConfig, app.GetHost()); ok {
-		status, _, err := app.GetAppHTTPStatus(route, false)
-		if err != nil && strings.HasPrefix(err.Error(), "unexpected status code") {
-			return ErrAppUnexpectedStatus, fmt.Errorf("%d", status)
+		_, _, err := app.GetAppHTTPStatus(route, false)
+		if isAppUnexpectedStatus(err) {
+			return ErrAppUnexpectedStatus, err
 		}
 		if err != nil {
 			return ErrAppConnectFailed, err
@@ -216,8 +216,13 @@ func (app *App) noRouteProbeErrDesc(errKey string, err error) string {
 	case ErrAppConnectFailed:
 		return fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err.Error())
 	case ErrAppUnexpectedStatus:
-		status, _ := strconv.Atoi(err.Error())
-		return fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), status)
+		var statusErr *appUnexpectedStatusError
+		errors.As(err, &statusErr)
+		code := 0
+		if statusErr != nil {
+			code = statusErr.Code
+		}
+		return fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), code)
 	case ErrAppCertificate:
 		return fmt.Sprintf(config.ClusterError[ErrAppCertificate], app.GetId(), err.Error())
 	}

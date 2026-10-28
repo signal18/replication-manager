@@ -887,7 +887,10 @@ func (cluster *Cluster) writeTomlAtomically(t *toml.Tree, filePath string) error
 // 	return true, nil
 // }
 
-func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) error {
+// AddSeededApp adds an app from a docker image or a template, or, with monitorOnly, a
+// monitor-only app without either (#2209): the opt-in is explicit, a missing image is
+// never read as monitor-only.
+func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string, monitorOnly bool) error {
 	var newViper *viper.Viper
 	var content []byte
 	var err error
@@ -901,8 +904,12 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		return errors.New("app host is required")
 	}
 
-	// Without image nor template the app is monitor-only (#2209, AppMonitorOnly): a service
-	// that runs elsewhere, checked by app-monitor-mode, never provisioned (refuseMonitorOnlyApp).
+	if monitorOnly && (dockerImg != "" || template != "") {
+		return errors.New("a monitor-only app has no docker image nor template")
+	}
+	if !monitorOnly && dockerImg == "" && template == "" {
+		return errors.New("docker image or template is required")
+	}
 
 	if template != "" {
 		content, err = cluster.GetTemplateContent(template)
@@ -942,7 +949,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	appcnf := cluster.NewAppConfig(srv, port)
 	appcnf.ProvAppDockerImg = dockerImg
 	appcnf.ProvAppTemplate = template
-	appcnf.AppMonitorOnly = dockerImg == "" && template == ""
+	appcnf.AppMonitorOnly = monitorOnly
 	if err := cluster.RunAddMonitorScript(cluster.monitorHookApp(appcnf, nil)); err != nil {
 		return err
 	}

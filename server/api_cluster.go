@@ -7097,9 +7097,11 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				}
 			}
 
-			// Without image nor template the app is monitor-only (#2209): checked by
-			// app-monitor-mode, never provisioned.
-			err = mycluster.AddSeededApp(host, port, tag, template)
+			if tag == "" && template == "" && !formData.MonitorOnly {
+				http.Error(w, "Docker image or template is required for app monitor (or monitorOnly for a service that runs elsewhere)", http.StatusBadRequest)
+				return
+			}
+			err = mycluster.AddSeededApp(host, port, tag, template, formData.MonitorOnly)
 		} else {
 			repopath = repman.GetDockerRepoPath(srvtype)
 
@@ -10474,6 +10476,9 @@ type DockerRegistryLoginForm struct {
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	Template  string `json:"template"` // Optional template for the registry, e.g., "docker.io" or "quay.io"
+	// MonitorOnly: add a monitor-only app (#2209), without image nor template: the explicit
+	// opt-in, an add without image nor template and without it is refused.
+	MonitorOnly bool `json:"monitorOnly"`
 }
 
 // handlerDockerRegistryConnect handles the HTTP request to login to a Docker registry.

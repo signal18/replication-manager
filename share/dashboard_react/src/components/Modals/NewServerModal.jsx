@@ -312,7 +312,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       port: parsedPort,
       monitorType,
       tag: finalTag,
-      dockerRegistry: isAppMonitor && monitorOnly ? { ...dockerRegistry, private: false, template: '' } : dockerRegistry
+      dockerRegistry: isAppMonitor && monitorOnly ? { ...dockerRegistry, private: false, template: '', monitorOnly: true } : dockerRegistry
     }))
 
     closeModal()

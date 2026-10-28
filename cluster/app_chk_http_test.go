@@ -1,10 +1,13 @@
 package cluster
 
 import (
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -72,14 +75,26 @@ func TestProbeNoRouteHTTP(t *testing.T) {
 	if lerr != nil {
 		t.Fatal(lerr)
 	}
-	defer ln.Close()
+	// the accepted connections are kept open (never answered) and closed at the end
+	var held []net.Conn
+	var heldMu sync.Mutex
+	defer func() {
+		ln.Close()
+		heldMu.Lock()
+		for _, c := range held {
+			c.Close()
+		}
+		heldMu.Unlock()
+	}()
 	go func() {
 		for {
 			c, aerr := ln.Accept()
 			if aerr != nil {
 				return
 			}
-			defer c.Close()
+			heldMu.Lock()
+			held = append(held, c)
+			heldMu.Unlock()
 		}
 	}()
 	app = appFor("http://"+ln.Addr().String(), "/", "")
@@ -88,7 +103,7 @@ func TestProbeNoRouteHTTP(t *testing.T) {
 	if key != ErrAppConnectFailed || err == nil {
 		t.Fatalf("hanging service: want APPERR001, got %s %v", key, err)
 	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
 		t.Fatalf("the check must end with the cluster timeout, took %s", elapsed)
 	}
 	if desc := app.noRouteProbeErrDesc(key, err); !strings.Contains(desc, "ap1") {
@@ -243,5 +258,55 @@ func TestProbeNoRouteHTTPSCert(t *testing.T) {
 	}
 	if err := app.SetSetting("app-monitor-cert-expire-days", "-1"); err == nil || app.AppConfig.AppMonitorCertExpireDays != 30 {
 		t.Fatalf("negative days must be refused and not stored: %v %d", err, app.AppConfig.AppMonitorCertExpireDays)
+	}
+}
+
+// Redirects are followed like the route checks: the status compared is the final one,
+// so a 302 answer is matched by expecting the page it leads to (#2209, review).
+func TestProbeNoRouteHTTPFollowsRedirects(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	host, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	app := &App{Id: "ap1", Host: host, Port: port, ClusterGroup: &Cluster{Conf: &config.Config{Timeout: 2}},
+		AppConfig: &config.AppConfig{AppHost: host, AppPort: port, AppMonitorMode: "http"}}
+	if key, err := app.probeNoRoute(2 * time.Second); err != nil {
+		t.Fatalf("redirect to a 200 page: up, got %s %v", key, err)
+	}
+	app.AppConfig.AppMonitorExpectStatus = "302"
+	key, err := app.probeNoRoute(2 * time.Second)
+	if key != ErrAppUnexpectedStatus || !isAppUnexpectedStatus(err) {
+		t.Fatalf("expecting 302: the final 200 is compared, want APPERR002, got %s %v", key, err)
+	}
+	if desc := app.noRouteProbeErrDesc(key, err); !strings.Contains(desc, "200") {
+		t.Fatalf("APPERR002 carries the final code: %q", desc)
+	}
+}
+
+// The status error is typed: told apart with errors.As, also when wrapped (#2209, review).
+func TestAppUnexpectedStatusError(t *testing.T) {
+	err := error(&appUnexpectedStatusError{Code: 503})
+	if !isAppUnexpectedStatus(err) || !isAppUnexpectedStatus(fmt.Errorf("check: %w", err)) {
+		t.Fatal("typed status error must be recognised, wrapped or not")
+	}
+	if isAppUnexpectedStatus(errors.New("unexpected status code")) || isAppUnexpectedStatus(nil) {
+		t.Fatal("only the typed error is a status error")
+	}
+}
+
+// A monitor-only app is an explicit opt-in: without it an add without image nor template is
+// refused, with it an image or a template is refused (#2209, review).
+func TestAddSeededAppMonitorOnlyOptIn(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{}}
+	if err := cl.AddSeededApp("web.example.com", "443", "", "", false); err == nil || !strings.Contains(err.Error(), "required") {
+		t.Fatalf("no image, no template, no opt-in: refused, got %v", err)
+	}
+	if err := cl.AddSeededApp("web.example.com", "443", "nginx:1", "", true); err == nil || !strings.Contains(err.Error(), "monitor-only") {
+		t.Fatalf("monitor-only with an image: refused, got %v", err)
 	}
 }

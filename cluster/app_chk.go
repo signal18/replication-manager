@@ -172,7 +172,7 @@ func (app *App) GetMonitoringStatus() string {
 		case "https", "http":
 			status, _, err := app.GetAppLocalHTTPStatus(route, false)
 			res := &localResult{err: err, status: status, errKey: ErrAppConnectFailed}
-			if err != nil && strings.HasPrefix(err.Error(), "unexpected status code") {
+			if isAppUnexpectedStatus(err) {
 				res.errKey = ErrAppUnexpectedStatus
 			}
 			localCache[lKey] = res
@@ -211,7 +211,7 @@ func (app *App) GetMonitoringStatus() string {
 				} else {
 					errKey := ErrAppConnectFailed
 					errDesc := fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), extErr)
-					if strings.HasPrefix(extErr.Error(), "unexpected status code") {
+					if isAppUnexpectedStatus(extErr) {
 						errKey = ErrAppUnexpectedStatus
 						errDesc = fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), extStatus)
 					}
@@ -325,6 +325,20 @@ func (app *App) GetDeploymentRoutesSnapshot() []config.Route {
 	return cp
 }
 
+// appUnexpectedStatusError: the HTTP check got an answer outside the accepted codes
+// (APPERR002), told from a failed connection (APPERR001) with errors.As, never by its text.
+type appUnexpectedStatusError struct{ Code int }
+
+func (e *appUnexpectedStatusError) Error() string {
+	return fmt.Sprintf("unexpected status code %d", e.Code)
+}
+
+// isAppUnexpectedStatus: err is an answer outside the accepted codes.
+func isAppUnexpectedStatus(err error) bool {
+	var statusErr *appUnexpectedStatusError
+	return errors.As(err, &statusErr)
+}
+
 // appHTTPCheckMaxBody: the most of a response body an HTTP check reads.
 const appHTTPCheckMaxBody = 1 << 20
 
@@ -417,7 +431,7 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 		}
 	}
 	if !accepted {
-		return resp.StatusCode, body, errors.New("unexpected status code")
+		return resp.StatusCode, body, &appUnexpectedStatusError{Code: resp.StatusCode}
 	}
 
 	if !getBody {

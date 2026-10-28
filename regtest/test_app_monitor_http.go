@@ -70,7 +70,7 @@ func (regtest *RegTest) TestAppMonitorHTTP(cl *cluster.Cluster, conf string, tes
 		srv.Close()
 	}()
 
-	if err := cl.AddSeededApp(host, port, "", ""); err != nil {
+	if err := cl.AddSeededApp(host, port, "", "", true); err != nil {
 		logf(config.LvlErr, "TEST app-monitor-http: FAIL adding a monitor-only app: %s", err)
 		return false
 	}

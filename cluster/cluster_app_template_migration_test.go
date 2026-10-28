@@ -210,7 +210,7 @@ func TestAddSeededApp_CanonicalizesLegacyResolvedTemplateBeforeUnmarshal(t *test
 		},
 	}
 
-	if err := cluster.AddSeededApp("seed-host", "8080", "nginx:latest", "legacy-seed"); err != nil {
+	if err := cluster.AddSeededApp("seed-host", "8080", "nginx:latest", "legacy-seed", false); err != nil {
 		t.Fatalf("AddSeededApp failed: %v", err)
 	}
 
@@ -258,7 +258,7 @@ func TestAddSeededApp_InvalidTemplateDoesNotRegisterApp(t *testing.T) {
 		},
 	}
 
-	if err := cluster.AddSeededApp("seed-host", "8080", "nginx:latest", "invalid-seed"); err == nil {
+	if err := cluster.AddSeededApp("seed-host", "8080", "nginx:latest", "invalid-seed", false); err == nil {
 		t.Fatalf("expected AddSeededApp to fail for invalid template")
 	}
 
@@ -748,7 +748,7 @@ func TestAddSeededApp_MergesMultiRowVolumePoolWithResolvedName(t *testing.T) {
 		},
 	}
 
-	if err := cluster.AddSeededApp("seed-vol-host", "8080", "nginx:latest", "legacy-vol-seed"); err != nil {
+	if err := cluster.AddSeededApp("seed-vol-host", "8080", "nginx:latest", "legacy-vol-seed", false); err != nil {
 		t.Fatalf("AddSeededApp failed: %v", err)
 	}
 
@@ -912,7 +912,7 @@ func TestAddSeededApp_StampsAppConfigVersion(t *testing.T) {
 		},
 	}
 
-	if err := cluster.AddSeededApp("seed-version-host", "8080", "nginx:latest", "legacy-version-seed"); err != nil {
+	if err := cluster.AddSeededApp("seed-version-host", "8080", "nginx:latest", "legacy-version-seed", false); err != nil {
 		t.Fatalf("AddSeededApp failed: %v", err)
 	}
 
