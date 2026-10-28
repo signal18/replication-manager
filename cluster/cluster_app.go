@@ -901,8 +901,8 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		return errors.New("app host is required")
 	}
 
-	// Without image nor template the app is monitor-only (#2209): a service that runs
-	// elsewhere, checked by app-monitor-mode, never provisioned (see refuseMonitorOnlyApp).
+	// Without image nor template the app is monitor-only (#2209, AppMonitorOnly): a service
+	// that runs elsewhere, checked by app-monitor-mode, never provisioned (refuseMonitorOnlyApp).
 
 	if template != "" {
 		content, err = cluster.GetTemplateContent(template)
@@ -942,6 +942,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	appcnf := cluster.NewAppConfig(srv, port)
 	appcnf.ProvAppDockerImg = dockerImg
 	appcnf.ProvAppTemplate = template
+	appcnf.AppMonitorOnly = dockerImg == "" && template == ""
 	if err := cluster.RunAddMonitorScript(cluster.monitorHookApp(appcnf, nil)); err != nil {
 		return err
 	}
@@ -1525,6 +1526,16 @@ func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 	return haTopology
 }
 
+// appRefreshTickWait: how long the tick waits for the app refresh after its database
+// and proxy work (#2209): one check timeout and a second of margin. Each app runs in its
+// own goroutine, so a batch whose checks all honour the timeout ends within it.
+func appRefreshTickWait(timeoutSeconds int) time.Duration {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 5
+	}
+	return time.Duration(timeoutSeconds+1) * time.Second
+}
+
 // appRefreshStaleThreshold picks the staleness/stuck threshold for
 // APPERR007: the largest of three lower bounds.
 //
@@ -1594,10 +1605,10 @@ func appRefreshStaleness(inProgress bool, lastStart, lastEnd, now time.Time, thr
 
 // maybeRefreshAppsAsync runs one app-refresh batch, unless a previous batch
 // is still in flight (single-flight, guarded by cluster.appRefreshInProgress).
-// It is launched via trackTickGoroutine as fire-and-forget background work,
-// deliberately kept off the tick's waited-on critical path: topology
-// discovery and failover detection must not stall behind slow or
-// unresponsive app backends. Per-app results are aggregated locally and
+// The tick launches it next to the database and proxy work and waits for it
+// at the end, at most appRefreshTickWait (#2209): topology discovery and
+// failover detection never wait on it, and an app whose refresh outlives the
+// wait keeps this guard closed until it returns instead of piling up batches. Per-app results are aggregated locally and
 // published to cluster.publishedAppErrStates in a single atomic Store once
 // the whole batch completes, so EmitAppErrors() never observes a
 // half-old/half-new mix of app error state.
@@ -1642,10 +1653,10 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 	var workerWg sync.WaitGroup
 	appChan := make(chan *App)
 
-	workerCount := cluster.Conf.AppRefreshConcurrency
-	if workerCount <= 0 {
-		workerCount = 1
-	}
+	// One goroutine per app (#2209): every check is bounded by its own timeout, so a
+	// hanging app costs that timeout and delays no other app (a pool of N workers let two
+	// hanging apps hold back every other check of the batch).
+	workerCount := len(apps)
 
 	// Keyed by state.BuildStateKey(errKey, ServerUrl), not the bare error
 	// key: multiple apps can raise the same error code (e.g. APPERR002), and

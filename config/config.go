@@ -1222,6 +1222,9 @@ type AppConfig struct {
 	// AppMonitorExpectStatus: the accepted status codes of the http/https check (default
 	// "200"), same syntax as a route's monitor expect-status.
 	AppMonitorExpectStatus string `mapstructure:"app-monitor-expect-status" toml:"app-monitor-expect-status" json:"appMonitorExpectStatus"`
+	// AppMonitorOnly: the app was added without image nor template to watch a service that
+	// runs elsewhere (#2209): checked by app-monitor-mode, never provisioned, reserves no plan unit.
+	AppMonitorOnly bool `mapstructure:"app-monitor-only" toml:"app-monitor-only" json:"appMonitorOnly"`
 	// AppConfigVersion is the explicit persisted migration marker stamped by
 	// cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
 	// content; AppConfigVersionV2 means content already matches the V1 -> V2
@@ -1230,10 +1233,9 @@ type AppConfig struct {
 	Deployment       *Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
 }
 
-// IsMonitorOnly: an app added without image nor template (#2209), a service that runs
-// elsewhere: checked by app-monitor-mode, never provisioned, reserves no plan unit.
+// IsMonitorOnly: see AppMonitorOnly (#2209).
 func (appcnf *AppConfig) IsMonitorOnly() bool {
-	return appcnf != nil && strings.TrimSpace(appcnf.ProvAppDockerImg) == "" && strings.TrimSpace(appcnf.ProvAppTemplate) == ""
+	return appcnf != nil && appcnf.AppMonitorOnly
 }
 
 func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {

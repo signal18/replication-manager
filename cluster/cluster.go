@@ -1349,10 +1349,14 @@ func (cluster *Cluster) tickBody() {
 				goRun(cluster.ArbitratorHandler)
 				wg.Add(1)
 				go cluster.refreshProxies(wg)
-				// App refresh is deliberately not part of this waited group: it
-				// must never stall topology discovery/failover detection behind
-				// slow or unresponsive app backends. See maybeRefreshAppsAsync.
-				cluster.trackTickGoroutine(cluster.maybeRefreshAppsAsync)
+				// App refresh is not part of this waited group: topology
+				// discovery and failover detection never wait on it. The tick
+				// waits for it after its own work, at most appRefreshTickWait.
+				appsDone := make(chan struct{})
+				cluster.trackTickGoroutine(func() {
+					defer close(appsDone)
+					cluster.maybeRefreshAppsAsync()
+				})
 				if heartbeats%10 == 0 {
 					goRun(cluster.MonitorTableSchemaDiff)
 					cluster.trackTickGoroutine(cluster.ScrapeComputeSensors) // APU sensor: om3 per-service cgroup metrics of the apps + proxies (cluster_compute_sensor.go); HTTP to the agents, never waited by the tick
@@ -1425,6 +1429,13 @@ func (cluster *Cluster) tickBody() {
 				}
 				cluster.CheckReseedReadiness() // WARN0222/0223/0224 gate the rolling reprov across a major
 				wg.Wait()
+				// the apps' checks ran meanwhile, one goroutine per app, each bounded by
+				// its timeout: wait for them so this tick emits fresh app states, never
+				// longer than appRefreshTickWait (#2209)
+				select {
+				case <-appsDone:
+				case <-time.After(appRefreshTickWait(cluster.Conf.Timeout)):
+				}
 
 				// PreserveState for non-running ticks (fast, no I/O)
 				if heartbeats%10 != 0 {
@@ -1472,7 +1483,7 @@ func (cluster *Cluster) tickBody() {
 				lastDurationMs := cluster.AppRefreshLastDurationMs
 				cluster.Unlock()
 				if appCount > 0 {
-					threshold := appRefreshStaleThreshold(cluster.Conf.MonitoringTicker, appCount, cluster.Conf.AppRefreshConcurrency, cluster.Conf.Timeout, lastDurationMs)
+					threshold := appRefreshStaleThreshold(cluster.Conf.MonitoringTicker, appCount, appCount, cluster.Conf.Timeout, lastDurationMs)
 					inProgress := cluster.appRefreshInProgress.Load()
 					stale, stuck := appRefreshStaleness(inProgress, lastStart, lastEnd, time.Now(), threshold)
 					if stale || stuck {

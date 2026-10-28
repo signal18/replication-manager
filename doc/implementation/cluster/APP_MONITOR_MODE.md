@@ -60,7 +60,9 @@ Apps with routes are unaffected: their routes are probed as before.
 
 An app added without image nor template (`AddSeededApp`, the add-app API with an empty tag
 and no template, the GUI "Monitor only" box) is **monitor-only**: a service that runs
-elsewhere, watched with the modes above. `config.AppConfig.IsMonitorOnly()`.
+elsewhere, watched with the modes above. The add sets `app-monitor-only = true` in the app
+config (`AppConfig.IsMonitorOnly()`); an existing app without image nor template is not
+monitor-only, so its plan units and service actions are unchanged.
 
 - It is never provisioned: `refuseMonitorOnlyApp` (`cluster/prov.go`) refuses provision
   (`InitAppService`), unprovision, start, stop, restart and abort with a clear error,

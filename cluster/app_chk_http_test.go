@@ -124,13 +124,13 @@ func TestSetAppMonitorHTTPSettings(t *testing.T) {
 	}
 }
 
-// An app without image nor template is monitor-only: the service actions refuse it with
-// a clear error, an app with an image or a template is not (#2209).
+// A monitor-only app (app-monitor-only, set when added without image nor template): the
+// service actions refuse it with a clear error; any other app is not refused (#2209).
 func TestRefuseMonitorOnlyApp(t *testing.T) {
 	cl := &Cluster{Conf: &config.Config{}}
-	mon := &App{Id: "ap1", AppConfig: &config.AppConfig{}}
+	mon := &App{Id: "ap1", AppConfig: &config.AppConfig{AppMonitorOnly: true}}
 	if !mon.AppConfig.IsMonitorOnly() {
-		t.Fatal("no image nor template: monitor-only")
+		t.Fatal("app-monitor-only: monitor-only")
 	}
 	if err := cl.refuseMonitorOnlyApp(mon); err == nil || !strings.Contains(err.Error(), "monitor-only") {
 		t.Fatalf("monitor-only app must be refused: %v", err)
@@ -138,7 +138,9 @@ func TestRefuseMonitorOnlyApp(t *testing.T) {
 	if err := cl.InitAppService(mon); err == nil || !strings.Contains(err.Error(), "monitor-only") {
 		t.Fatalf("provision of a monitor-only app must be refused before the orchestrator: %v", err)
 	}
-	for _, cnf := range []*config.AppConfig{{ProvAppDockerImg: "nginx:1"}, {ProvAppTemplate: "shared/nginx/nginx"}} {
+	// an app config without image nor template is NOT monitor-only unless flagged: an
+	// existing app keeps its plan units and its service actions
+	for _, cnf := range []*config.AppConfig{{}, {ProvAppDockerImg: "nginx:1"}, {ProvAppTemplate: "shared/nginx/nginx"}} {
 		if cnf.IsMonitorOnly() {
 			t.Fatalf("%+v is deployable", cnf)
 		}

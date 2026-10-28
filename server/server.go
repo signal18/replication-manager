@@ -1463,7 +1463,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
 	flags.IntVar(&conf.AppErrorDebounceThreshold, "app-error-debounce-threshold", 3, "Consecutive app route failures before emitting runtime app errors")
-	flags.IntVar(&conf.AppRefreshConcurrency, "app-refresh-concurrency", 2, "Number of concurrent refresh for deployed apps")
+	flags.IntVar(&conf.AppRefreshConcurrency, "app-refresh-concurrency", 2, "Deprecated, ignored: each app is checked in its own goroutine (#2209)")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4G", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
