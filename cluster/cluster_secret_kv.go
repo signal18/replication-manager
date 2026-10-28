@@ -925,3 +925,40 @@ func (cluster *Cluster) ReadVaultsAtStart() {
 	}
 	cluster.CredentialChain().Refresh()
 }
+
+// IsVersionedSecretKey: key is a secret the versioned stores hold (#2227 rule 1): its config
+// value is the starting value, never overwritten.
+func IsVersionedSecretKey(key string) bool { return isVersionedKey(key) }
+
+// AppendSecretVersionFile adds a version to the local versioned file of a cluster that is not
+// loaded (the offline secret-store tools, #2227 rule 2): the value as given (encrypted),
+// now, by instance by; written atomically in the file's format.
+func AppendSecretVersionFile(path, key, hashValue string, by int) error {
+	store, err := loadSecretVersionStore(path)
+	if err != nil {
+		return err
+	}
+	versions := store[key]
+	n := 1
+	if len(versions) > 0 {
+		n = versions[len(versions)-1].Version + 1
+	}
+	store[key] = append(versions, secretVersion{Version: n, HashValue: hashValue, RotatedAt: time.Now().UTC().Format(time.RFC3339Nano), WrittenBy: by})
+	return writeSecretVersionStoreAtomic(path, store)
+}
+
+// PruneSecretVersions keeps the last keepLast versions of each secret of a loaded cluster:
+// in the version store, the file written by the next save (#2227 rule 2).
+func (cluster *Cluster) PruneSecretVersions(keepLast int, dryRun bool) SecretVersionStorePruneSummary {
+	vs := cluster.versionStore()
+	file, _ := vs.Export()
+	vs.MarkDirty()
+	pruned, keys, removed := pruneSecretVersionStore(file, keepLast)
+	summary := SecretVersionStorePruneSummary{StorePath: SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name), KeysTotal: len(file), KeysPruned: keys, VersionsRemoved: removed, Changed: removed > 0, DryRun: dryRun}
+	if !dryRun && removed > 0 {
+		vs.Load(pruned)
+		vs.MarkDirty()
+		cluster.Save()
+	}
+	return summary
+}

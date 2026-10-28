@@ -377,3 +377,37 @@ func TestReadVaultsAtStartBounded(t *testing.T) {
 		t.Fatalf("states %v", cl.SecurityStateMachine.GetStates())
 	}
 }
+
+// #2227 rule 2: the prune of a loaded cluster changes its version store, the save writes the
+// file; an offline append keeps the file's format
+func TestPruneSecretVersionsThroughSave(t *testing.T) {
+	cl := secretKvTestCluster(t)
+	cl.Conf.MonitoringSecretVersioning = true
+	if err := os.MkdirAll(filepath.Join(cl.Conf.WorkingDir, cl.Name), 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []string{"r:1", "r:2", "r:3"} {
+		if err := cl.CredentialChain().Set("replication-credential", v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cl.ReconcileSecretVersionStore()
+	path := SecretVersionStorePath(cl.Conf.WorkingDir, cl.Name)
+	before, _ := os.ReadFile(path)
+	if s := cl.PruneSecretVersions(1, false); s.VersionsRemoved != 2 {
+		t.Fatalf("summary %+v", s)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Fatal("the prune wrote the file: the save callback does")
+	}
+	cl.ReconcileSecretVersionStore()
+	if vs, _ := cl.SecretVersionsInFile("replication-credential"); len(vs) != 1 || vs[0] != "r:3" {
+		t.Fatalf("file %v", vs)
+	}
+	if err := AppendSecretVersionFile(path, "replication-credential", cl.Conf.EncryptSecretValue("r:4"), 7); err != nil {
+		t.Fatal(err)
+	}
+	if vs, _ := cl.SecretVersionsInFile("replication-credential"); len(vs) != 2 || vs[1] != "r:4" {
+		t.Fatalf("file after append %v", vs)
+	}
+}
