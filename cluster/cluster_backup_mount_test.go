@@ -325,6 +325,12 @@ func TestArchiveBucketFolder(t *testing.T) {
 	if b, p := cl.archiveBucketFolder(a, ""); b != "" || p != "c1/archive/archive-plakar-s3-1" {
 		t.Fatalf("custom provider: %q %q", b, p)
 	}
+	// a provider delivered with its bucket (the Cloud18 back-office): the archive takes it
+	cl.s3Providers.providers = []config.S3Provider{{Name: "aws", Bucket: "/c18-bucket/"}}
+	if b, _ := cl.archiveBucketFolder(a, ""); b != "c18-bucket" {
+		t.Fatalf("provider's bucket: %q", b)
+	}
+	cl.s3Providers.providers = nil
 	a.Settings[config.ConstArchiveSettingS3Provider] = ConstCloud18Provider
 	check := func(sso, wantBucket, wantPrefix string) {
 		t.Helper()

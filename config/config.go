@@ -1145,6 +1145,10 @@ type Config struct {
 	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
 	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
 	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
+	// Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
+	// the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
+	// delivers the S3 provider in the cluster's inject.toml
+	Cloud18ArchiveOfferRequests string `mapstructure:"cloud18-archive-offer-requests" toml:"cloud18-archive-offer-requests" json:"cloud18ArchiveOfferRequests"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API

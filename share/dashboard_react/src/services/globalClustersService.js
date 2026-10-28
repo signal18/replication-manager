@@ -25,8 +25,6 @@ export const globalClustersService = {
   calibrateSmtGain,
   calibrateIops,
   getCloud18Identity,
-  connectCloud18Identity,
-  disconnectCloud18Identity,
   refreshAppTemplateRepo,
   getAppTemplateStructureGuide,
   register,
@@ -138,14 +136,6 @@ function calibrateSmtGain(apply = true) {
 // The Cloud18 login of this replication-manager (#2159): device login, no token ever returned
 function getCloud18Identity() {
   return getApi().get(`clusters/settings/actions/cloud18-identity`)
-}
-
-function connectCloud18Identity() {
-  return getApi().post(`clusters/settings/actions/cloud18-identity/connect`)
-}
-
-function disconnectCloud18Identity() {
-  return getApi().post(`clusters/settings/actions/cloud18-identity/disconnect`)
 }
 
 function reloadClustersPlanInfo(download = true) {

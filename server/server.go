@@ -176,7 +176,7 @@ type ReplicationManager struct {
 	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
-	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, pending, connected, reconnect; "" Cloud18 off
+	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, registered, connected, refused; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	ViperConfig                 *viper.Viper                `json:"-"`
@@ -1269,6 +1269,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18IdentityURL, "cloud18-identity-url", config.ConstCloud18IdentityURL, "Cloud18 identity realm (OpenID Connect issuer): a person connects this replication-manager to it once (device login), for the S3 SSO storages, the Cloud18 vault and the Cloud18 GitLab token")
 	flags.BoolVar(&conf.Cloud18SSOLogin, "cloud18-sso-login", true, "On a registered repman with a public https address (api-public-url), the login page offers Sign in and Sign up with Cloud18: the browser signs in at the Cloud18 realm once for every such repman (#2185)")
 	flags.StringVar(&conf.Cloud18PlatformDescription, "cloud18-platform-description", "", "Marketing banner display on the cloud18 portal describing the infrastucture")
+	flags.StringVar(&conf.Cloud18ArchiveOfferRequests, "cloud18-archive-offer-requests", "", "Archive offers of the Cloud18 marketplace whose access the cluster asks the back-office for (comma-separated offer names)")
 	flags.StringVar(&conf.Cloud18InfraDataCenters, "cloud18-infra-data-centers", "", "Infrastucture datacenters name")
 	flags.Float64Var(&conf.Cloud18InfraPublicBandwidth, "cloud18-infra-public-bandwidth", 0, "Infrastucture public bandwidth")
 	flags.Float64Var(&conf.Cloud18PromotionPct, "cloud18-promotion-pct", 0, "Promotion in pourcentage")

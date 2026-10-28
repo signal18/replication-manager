@@ -56,6 +56,7 @@ type s3ProviderOnDisk struct {
 	SecretKey      string                  `json:"secretkey,omitempty"`
 	Cloud18SSO     bool                    `json:"cloud18Sso,omitempty"`
 	RoleArn        string                  `json:"roleArn,omitempty"`
+	Bucket         string                  `json:"bucket,omitempty"`
 }
 
 func toOnDisk(p config.S3Provider) s3ProviderOnDisk {
@@ -69,6 +70,7 @@ func toOnDisk(p config.S3Provider) s3ProviderOnDisk {
 		SecretKey:      p.SecretKey,
 		Cloud18SSO:     p.Cloud18SSO,
 		RoleArn:        p.RoleArn,
+		Bucket:         p.Bucket,
 	}
 }
 
@@ -83,6 +85,7 @@ func fromOnDisk(d s3ProviderOnDisk) config.S3Provider {
 		SecretKey:      d.SecretKey,
 		Cloud18SSO:     d.Cloud18SSO,
 		RoleArn:        d.RoleArn,
+		Bucket:         d.Bucket,
 	}
 }
 

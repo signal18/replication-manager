@@ -5,7 +5,6 @@
 package config
 
 import (
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -13,7 +12,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -77,157 +75,145 @@ func accessAnswer(sub string, expiresIn int) string {
 	return fmt.Sprintf(`{"access_token":%q,"expires_in":%d}`, testToken(`{"sub":"`+sub+`","preferred_username":"acme","aud":["cloud18-storage"]}`), expiresIn)
 }
 
-// #2159: a person connects the instance with the device grant of the public client (no secret,
-// no redirect): repman shows the code and the realm's page, polls until approved, keeps the
-// offline token encrypted in a 0600 file, and gets access tokens with it
-func TestCloud18DeviceLogin(t *testing.T) {
-	defer func(d time.Duration) { cloud18DeviceMinInterval = d }(cloud18DeviceMinInterval)
-	cloud18DeviceMinInterval = 10 * time.Millisecond
-	var polls, refreshes atomic.Int32
-	var realmURL, challenge string
-	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// registeredConf: an instance registered to Cloud18 with user and password, set to realm, no login kept
+func registeredConf(t *testing.T, realm, user, password string) *Config {
+	t.Helper()
+	conf := identityConf(t, realm)
+	conf.Cloud18, conf.Cloud18GitUser, conf.Cloud18GitPassword = true, user, password
+	return conf
+}
+
+// passwordRealm answers the password grant of the public client for user/password (offline
+// token offline-1), the refresh grant for the tokens it gave; anything else is refused.
+func passwordRealm(t *testing.T, user, password *string, calls *atomic.Int32) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
 		r.ParseForm()
-		if r.Form.Get("client_id") != ConstCloud18IdentityClientID || r.Form.Get("client_secret") != "" || r.Form.Get("redirect_uri") != "" {
-			t.Errorf("public client only: %v", r.Form)
-		}
+		ok := r.URL.Path == "/realms/cloud18/protocol/openid-connect/token" && r.Form.Get("client_id") == ConstCloud18IdentityClientID && r.Form.Get("client_secret") == ""
 		switch {
-		case r.URL.Path == "/realms/cloud18/protocol/openid-connect/auth/device":
-			if !strings.Contains(r.Form.Get("scope"), "offline_access") {
-				t.Errorf("scope %q", r.Form.Get("scope"))
-			}
-			if challenge = r.Form.Get("code_challenge"); challenge == "" || r.Form.Get("code_challenge_method") != "S256" {
-				t.Errorf("PKCE S256 is required by the public client: %v", r.Form)
-			}
-			fmt.Fprintf(w, `{"device_code":"dev-1","user_code":"WDJB-MJHT","verification_uri":%q,"verification_uri_complete":%q,"expires_in":600,"interval":0}`,
-				realmURL+"/realms/cloud18/device", realmURL+"/realms/cloud18/device?user_code=WDJB-MJHT")
-		case r.Form.Get("grant_type") == "urn:ietf:params:oauth:grant-type:device_code" && r.Form.Get("device_code") == "dev-1":
-			sum := sha256.Sum256([]byte(r.Form.Get("code_verifier")))
-			if base64.RawURLEncoding.EncodeToString(sum[:]) != challenge {
-				t.Error("the code verifier does not match the challenge")
-			}
-			if polls.Add(1) < 3 {
-				w.WriteHeader(http.StatusBadRequest)
-				fmt.Fprint(w, `{"error":"authorization_pending"}`)
-				return
-			}
-			fmt.Fprintf(w, `{"access_token":%q,"expires_in":300,"refresh_token":"offline-1","refresh_expires_in":0}`, testToken(`{"sub":"82","preferred_username":"acme"}`))
-		case r.Form.Get("grant_type") == "refresh_token" && r.Form.Get("refresh_token") == "offline-1":
-			refreshes.Add(1)
+		case ok && r.Form.Get("grant_type") == "password" && r.Form.Get("username") == *user && r.Form.Get("password") == *password &&
+			strings.Contains(r.Form.Get("scope"), "offline_access"):
+			fmt.Fprintf(w, `{"access_token":%q,"expires_in":300,"refresh_token":"offline-1"}`, testToken(`{"sub":"82","preferred_username":"acme"}`))
+		case ok && r.Form.Get("grant_type") == "refresh_token" && r.Form.Get("refresh_token") == "offline-1" && r.Form.Get("password") == "":
 			fmt.Fprint(w, accessAnswer("82", 300))
 		default:
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"error":"invalid_grant"}`)
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"error":"invalid_grant","error_description":"Invalid user credentials"}`)
 		}
 	}))
+}
+
+// #2225: a registered instance signs in with its registered account (the password grant of the
+// public client, offline_access) and keeps the login: later tokens come from the refresh token,
+// never the password again; the file survives a restart.
+func TestCloud18RegisteredLogin(t *testing.T) {
+	var calls atomic.Int32
+	user, password := "acme@example.com", "s3cret"
+	realm := passwordRealm(t, &user, &password, &calls)
 	defer realm.Close()
-	realmURL = realm.URL
-
-	conf := identityConf(t, realm.URL+"/realms/cloud18")
-	if st := conf.Cloud18IdentityStatus(); st.State != "none" || conf.HasCloud18Login() {
-		t.Fatalf("before: %+v", st)
+	conf := registeredConf(t, realm.URL+"/realms/cloud18", user, password)
+	if !conf.HasCloud18Login() || conf.Cloud18IdentityStatus().State != "registered" {
+		t.Fatalf("a registered instance can have its login: %+v", conf.Cloud18IdentityStatus())
 	}
-	if _, _, err := conf.Cloud18IdentityToken(); !errors.Is(err, ErrCloud18IdentityNotSet) || !errors.Is(err, ErrCloud18Refused) {
-		t.Fatalf("not connected: %v", err)
+	token, sub, err := conf.Cloud18IdentityToken()
+	if err != nil || sub != "82" || token == "" {
+		t.Fatalf("sign-in with the registered account: %q %v", sub, err)
 	}
-	d, err := conf.StartCloud18DeviceLogin()
-	if err != nil || d.UserCode != "WDJB-MJHT" || !strings.HasSuffix(d.VerificationURI, "/realms/cloud18/device") {
-		t.Fatalf("device %+v %v", d, err)
-	}
-	if st := conf.Cloud18IdentityStatus(); st.State != "pending" || st.Device == nil || st.Device.UserCode != "WDJB-MJHT" {
-		t.Fatalf("pending: %+v", st)
-	}
-	var st Cloud18IdentityStatus
-	for i := 0; i < 200; i++ {
-		if st = conf.Cloud18IdentityStatus(); st.State != "pending" {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if st.State != "connected" || st.User != "acme" || st.Sub != "82" || st.Expires != nil {
-		t.Fatalf("after approval: %+v", st)
-	}
-
-	info, err := os.Stat(conf.cloud18IdentityPath())
-	if err != nil || info.Mode().Perm() != 0600 {
-		t.Fatalf("login file %v %v", info, err)
+	if st := conf.Cloud18IdentityStatus(); st.State != "connected" || st.User != "acme" {
+		t.Errorf("after the sign-in: %+v", st)
 	}
 	data, _ := os.ReadFile(conf.cloud18IdentityPath())
-	if strings.Contains(string(data), "offline-1") || !strings.Contains(string(data), `"refresh_token": "hash_`) {
-		t.Fatalf("the offline token must be kept encrypted: %s", data)
+	if strings.Contains(string(data), password) || strings.Contains(string(data), "offline-1") {
+		t.Error("the login file holds the password or the refresh token in clear")
 	}
-
-	if _, sub, err := conf.Cloud18IdentityToken(); err != nil || sub != "82" || refreshes.Load() != 0 {
-		t.Fatalf("the approval's token is used first: %q %v %d", sub, err, refreshes.Load())
+	forgetCloud18Session(conf) // a restart: the kept login, refreshed, no password
+	password = "changed"
+	if _, sub, err := conf.Cloud18IdentityToken(); err != nil || sub != "82" {
+		t.Fatalf("the kept login after a restart: %v", err)
 	}
-	forgetCloud18Session(conf) // a restart
-	if _, sub, err := conf.Cloud18IdentityToken(); err != nil || sub != "82" || refreshes.Load() != 1 {
-		t.Fatalf("after a restart the kept login gives the token: %q %v %d", sub, err, refreshes.Load())
+	if calls.Load() != 2 {
+		t.Errorf("one sign-in then one refresh, got %d requests", calls.Load())
 	}
 }
 
-// #2159: a login the person refuses or lets expire keeps nothing and says why; a device page
-// outside the realm is refused; no encryption key, no login (never kept in clear)
-func TestCloud18DeviceLoginRefused(t *testing.T) {
-	defer func(d time.Duration) { cloud18DeviceMinInterval = d }(cloud18DeviceMinInterval)
-	cloud18DeviceMinInterval = 10 * time.Millisecond
-	page := ""
-	answer := `{"error":"access_denied"}`
-	var realmURL string
-	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/auth/device") {
-			p := page
-			if p == "" {
-				p = realmURL + "/realms/cloud18/device"
-			}
-			fmt.Fprintf(w, `{"device_code":"d","user_code":"C","verification_uri":%q,"expires_in":600}`, p)
-			return
-		}
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, answer)
-	}))
+// #2225: an account the realm refuses is not asked again until the registration changes, the
+// status says to register again; a realm out of reach is tried again; a login the realm ends
+// signs in again with the registered account; an instance not registered has no login.
+func TestCloud18RegisteredLoginRefused(t *testing.T) {
+	var calls atomic.Int32
+	user, password := "acme@example.com", "right"
+	realm := passwordRealm(t, &user, &password, &calls)
 	defer realm.Close()
-	realmURL = realm.URL
 	issuer := realm.URL + "/realms/cloud18"
 
-	for _, c := range []struct{ answer, reason string }{
-		{`{"error":"access_denied"}`, "the login was refused"},
-		{`{"error":"expired_token"}`, "the code expired before it was approved"},
-	} {
-		answer = c.answer
-		conf := identityConf(t, issuer)
-		if _, err := conf.StartCloud18DeviceLogin(); err != nil {
-			t.Fatal(err)
-		}
-		var st Cloud18IdentityStatus
-		for i := 0; i < 200; i++ {
-			if st = conf.Cloud18IdentityStatus(); st.State != "pending" {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		if st.State != "none" || st.Reason != c.reason {
-			t.Errorf("%s: %+v", c.answer, st)
-		}
-		if _, err := os.Stat(conf.cloud18IdentityPath()); !os.IsNotExist(err) {
-			t.Errorf("%s: a login file was written", c.answer)
-		}
+	conf := registeredConf(t, issuer, user, "wrong")
+	if _, _, err := conf.Cloud18IdentityToken(); !errors.Is(err, ErrCloud18Refused) {
+		t.Fatalf("a refused account: %v", err)
+	}
+	conf.Cloud18IdentityToken()
+	conf.Cloud18IdentityKeepAlive()
+	time.Sleep(50 * time.Millisecond)
+	if calls.Load() != 1 {
+		t.Errorf("a refused account is asked once: %d requests", calls.Load())
+	}
+	if st := conf.Cloud18IdentityStatus(); st.State != "refused" || !strings.Contains(st.Reason, "Invalid user credentials") || conf.HasCloud18Login() {
+		t.Errorf("a refused account: %+v", st)
+	}
+	conf.Cloud18GitPassword = "right" // registered again
+	if _, _, err := conf.Cloud18IdentityToken(); err != nil || conf.Cloud18IdentityStatus().State != "connected" {
+		t.Fatalf("a new registration signs in: %v", err)
 	}
 
-	page = "https://phishing.example.com/device"
-	if _, err := identityConf(t, issuer).StartCloud18DeviceLogin(); !errors.Is(err, ErrCloud18Refused) {
-		t.Errorf("a page outside the realm: %v", err)
+	ended := registeredConf(t, issuer, user, password)
+	l := cloud18Login{Issuer: issuer, RefreshToken: "revoked", User: "acme", Sub: "82", ConnectedAt: time.Now()}
+	if err := ended.writeCloud18Login(l); err != nil {
+		t.Fatal(err)
 	}
-	page = ""
-	noKey := &Config{Cloud18IdentityURL: issuer, WorkingDir: t.TempDir(), MonitoringKeyPath: filepath.Join(t.TempDir(), "none.key")}
-	if _, err := noKey.StartCloud18DeviceLogin(); !errors.Is(err, ErrCloud18Refused) {
-		t.Errorf("no encryption key: %v", err)
+	if _, sub, err := ended.Cloud18IdentityToken(); err != nil || sub != "82" {
+		t.Fatalf("a login the realm ended signs in again with the registered account: %v", err)
 	}
-	if _, err := identityConf(t, "http://identity.example.com/realms/cloud18").StartCloud18DeviceLogin(); !errors.Is(err, ErrCloud18Refused) {
-		t.Errorf("a realm in clear: %v", err)
+
+	down := httptest.NewServer(http.NotFoundHandler())
+	down.Close()
+	offline := registeredConf(t, down.URL+"/realms/cloud18", user, password)
+	if _, _, err := offline.Cloud18IdentityToken(); err == nil || errors.Is(err, ErrCloud18Refused) {
+		t.Errorf("a realm out of reach is transient: %v", err)
+	}
+	if st := offline.Cloud18IdentityStatus(); st.State != "registered" {
+		t.Errorf("a realm out of reach refuses nothing: %+v", st)
+	}
+	// the realm out of reach is not asked again at each use, only after cloud18RegisteredRetry
+	if _, _, err := offline.Cloud18IdentityToken(); err == nil || !strings.Contains(err.Error(), "asked again in") {
+		t.Errorf("a second use right after: %v", err)
+	}
+
+	// registered by a release that keeps no password: the registration makes the login
+	noPassword := registeredConf(t, issuer, user, "")
+	if st := noPassword.Cloud18IdentityStatus(); st.State != "refused" || st.Reason != cloud18NoLoginKept {
+		t.Errorf("registered without a login: %+v", st)
+	}
+	if _, _, err := noPassword.Cloud18IdentityToken(); !errors.Is(err, ErrCloud18Refused) {
+		t.Errorf("registered without a login: %v", err)
+	}
+	if err := noPassword.KeepCloud18Login(user, password); err != nil {
+		t.Fatalf("the registration's sign-in: %v", err)
+	}
+	if st := noPassword.Cloud18IdentityStatus(); st.State != "connected" || !noPassword.HasCloud18Login() {
+		t.Errorf("after the registration's sign-in: %+v", st)
+	}
+	if strings.Contains(noPassword.Cloud18GitPassword, password) {
+		t.Error("the registration's password is kept")
+	}
+
+	notRegistered := identityConf(t, issuer)
+	if _, _, err := notRegistered.Cloud18IdentityToken(); !errors.Is(err, ErrCloud18IdentityNotSet) || notRegistered.HasCloud18Login() {
+		t.Errorf("not registered: %v", err)
+	}
+	if st := notRegistered.Cloud18IdentityStatus(); st.State != "none" {
+		t.Errorf("not registered: %+v", st)
 	}
 }
 
-// #2159: a realm refusing the kept login (revoked, ended) ends it: refused, reported to
 // reconnect, not asked again; a realm out of reach or failing is transient and keeps it
 func TestCloud18IdentityRefusedOrTransient(t *testing.T) {
 	for _, c := range []struct {
@@ -246,7 +232,7 @@ func TestCloud18IdentityRefusedOrTransient(t *testing.T) {
 			t.Errorf("realm %d: refused=%v, want %v (%v)", c.code, errors.Is(err, ErrCloud18Refused), c.refused, err)
 		}
 		st := conf.Cloud18IdentityStatus()
-		if c.refused && (st.State != "reconnect" || !strings.Contains(st.Reason, "Offline session not active")) {
+		if c.refused && (st.State != "refused" || !strings.Contains(st.Reason, "Offline session not active")) {
 			t.Errorf("realm %d: %+v", c.code, st)
 		}
 		if !c.refused && st.State != "connected" {
@@ -270,7 +256,7 @@ func TestCloud18IdentityRefusedOrTransient(t *testing.T) {
 
 // #2159: the login goes to an https realm only (http to the loopback for tests); a login of
 // another realm is not used; a token needs a lifetime, kept 24 h at most; a rotated refresh
-// token is kept (also across a restart); a login the realm says ends soon is reported
+// token is kept (also across a restart); the end the realm tells is shown
 func TestCloud18IdentityChecks(t *testing.T) {
 	for _, u := range []string{"http://identity.example.com/realms/cloud18", "ftp://identity.example.com", "identity.example.com"} {
 		if _, _, err := connectedConf(t, u, "x").Cloud18IdentityToken(); !errors.Is(err, ErrCloud18Refused) {
@@ -313,8 +299,8 @@ func TestCloud18IdentityChecks(t *testing.T) {
 	if _, _, err := conf.Cloud18IdentityToken(); err != nil {
 		t.Fatal(err)
 	}
-	if st := conf.Cloud18IdentityStatus(); st.State != "reconnect" || st.Expires == nil || !strings.Contains(st.Reason, "ends on") {
-		t.Errorf("a login ending in 3 days: %+v", st)
+	if st := conf.Cloud18IdentityStatus(); st.State != "connected" || st.Expires == nil {
+		t.Errorf("a login whose end the realm tells: %+v", st)
 	}
 	forgetCloud18Session(conf)
 	cloud18Sessions.Lock()
@@ -372,17 +358,11 @@ func TestCloud18IdentityConcurrent(t *testing.T) {
 	}
 }
 
-// #2159: disconnect forgets the login (file, token) and ends it at the realm; keep-alive
-// refreshes a login nothing used for a day; a restore of the working directory keeps the file
-func TestCloud18IdentityDisconnectKeepAlive(t *testing.T) {
-	var revoked string
+// #2159: keep-alive refreshes a login nothing used for a day; a restore of the working directory
+// keeps the file
+func TestCloud18IdentityKeepAlive(t *testing.T) {
 	var refreshes atomic.Int32
 	realm := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.ParseForm()
-		if strings.HasSuffix(r.URL.Path, "/revoke") {
-			revoked = r.Form.Get("token")
-			return
-		}
 		refreshes.Add(1)
 		fmt.Fprint(w, accessAnswer("82", 300))
 	}))
@@ -418,22 +398,6 @@ func TestCloud18IdentityDisconnectKeepAlive(t *testing.T) {
 	forgetCloud18Session(conf)
 	if !conf.HasCloud18Login() {
 		t.Error("the login file is not kept across a restore")
-	}
-
-	if err := conf.DisconnectCloud18Identity(); err != nil {
-		t.Fatal(err)
-	}
-	if revoked != "offline-1" {
-		t.Errorf("revoked %q", revoked)
-	}
-	if _, err := os.Stat(conf.cloud18IdentityPath()); !os.IsNotExist(err) {
-		t.Error("the login file is still there")
-	}
-	if st := conf.Cloud18IdentityStatus(); st.State != "none" || conf.HasCloud18Login() {
-		t.Errorf("after disconnect: %+v", st)
-	}
-	if _, _, err := conf.Cloud18IdentityToken(); !errors.Is(err, ErrCloud18IdentityNotSet) {
-		t.Errorf("after disconnect: %v", err)
 	}
 }
 

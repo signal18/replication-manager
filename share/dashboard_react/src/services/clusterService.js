@@ -54,6 +54,7 @@ export const clusterService = {
   resticCopyRepo,
   resticWipeRepo,
   getArchiveList,
+  getArchiveOffers,
   addArchive,
   editArchive,
   renameArchive,
@@ -1146,6 +1147,10 @@ function resticWipeRepo(clusterName, payload, baseURL) {
 // archive list (#2091): secrets go in through add and edit and never come back
 function getArchiveList(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/archive-list`)
+}
+
+function getArchiveOffers(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/archive-offers`)
 }
 
 function addArchive(clusterName, spec, baseURL) {

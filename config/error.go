@@ -419,7 +419,6 @@ var GlobalError = map[string]string{
 	"GWARN018": "Peer heartbeat failed: %s",
 	"GWARN019": "Arbitration peer %s answers on %s only: set arbitration-peer-hosts to %s",
 	"GWARN020": "The arbitration peer has the same arbitration-external-unique-id %d: when both instances are Standby neither claims Active, give each instance its own id",
-	"GWARN021": "Action required: connect this replication-manager to Cloud18 again (Cloud18 settings, Identity, Connect, or cli cloud18 connect): %s",
 	"GWARN022": "Action required: register this replication-manager again through Cloud18 (Cloud18 settings, Register, same URI: it reconnects to its repositories): %s",
 	// GINF: informational operating modes (state-as-tag), never counted as alerts
 	"GINF001": "ReplicationManager has %d cluster(s) in standby pulling config from active peer: %s",

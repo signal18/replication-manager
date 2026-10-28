@@ -55,6 +55,9 @@ type S3Provider struct {
 	// RoleArn: the storage's role the SSO identity assumes; empty, it is computed as MinIO
 	// names it (arn:minio:iam:<region>::role/<base64url(sha1(client id))>): set only to override
 	RoleArn string `json:"roleArn,omitempty" groups:"web"`
+	// Bucket: the bucket an archive on this provider uses when it names none (a provider
+	// delivered with its own bucket, e.g. by the Cloud18 back-office)
+	Bucket string `json:"bucket,omitempty" groups:"web"`
 }
 
 // s3ProviderWeb is the JSON representation used for all API/web serialization.
@@ -67,6 +70,7 @@ type s3ProviderWeb struct {
 	Region         string           `json:"region,omitempty"`
 	Cloud18SSO     bool             `json:"cloud18Sso,omitempty"`
 	RoleArn        string           `json:"roleArn,omitempty"`
+	Bucket         string           `json:"bucket,omitempty"`
 }
 
 // MarshalJSON emits only non-sensitive fields.
@@ -82,6 +86,7 @@ func (p S3Provider) MarshalJSON() ([]byte, error) {
 		Region:         p.Region,
 		Cloud18SSO:     p.Cloud18SSO,
 		RoleArn:        p.RoleArn,
+		Bucket:         p.Bucket,
 	})
 }
 
@@ -178,6 +183,8 @@ func S3ProviderFromSettings(m map[string]interface{}) S3Provider {
 			p.Cloud18SSO = s == "true"
 		case "role-arn":
 			p.RoleArn = s
+		case "bucket":
+			p.Bucket = s
 		}
 	}
 	return p
@@ -188,7 +195,7 @@ func S3ProviderFromSettings(m map[string]interface{}) S3Provider {
 func S3ProviderSettings(p S3Provider) map[string]interface{} {
 	m := map[string]interface{}{"name": p.Name, "provider-source": string(p.ProviderSource)}
 	for k, v := range map[string]string{"provider-app": p.ProviderApp, "endpoint": p.Endpoint, "region": p.Region,
-		"access-key": p.AccessKey, "secret-key": p.SecretKey, "role-arn": p.RoleArn} {
+		"access-key": p.AccessKey, "secret-key": p.SecretKey, "role-arn": p.RoleArn, "bucket": p.Bucket} {
 		if v != "" {
 			m[k] = v
 		}

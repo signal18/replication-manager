@@ -39,8 +39,8 @@ const (
 	cloud18SSOHTTPTimeout    = 30 * time.Second
 )
 
-// cloud18SSOReady says why the Cloud18 SSO cannot be used here, nil when it can.
-func (cluster *Cluster) cloud18SSOReady() error {
+// Cloud18SSOReady says why the Cloud18 SSO cannot be used here, nil when it can.
+func (cluster *Cluster) Cloud18SSOReady() error {
 	if !cluster.Conf.Cloud18 {
 		return ErrCloud18SSONotRegistered
 	}
@@ -113,7 +113,7 @@ type cloud18SSOCredentials struct {
 func (p *cloud18SSOCredentials) Retrieve() (credentials.Value, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if err := p.cluster.cloud18SSOReady(); err != nil {
+	if err := p.cluster.Cloud18SSOReady(); err != nil {
 		return credentials.Value{}, err
 	}
 	idToken, user, err := p.cluster.Conf.Cloud18IdentityToken()
@@ -157,7 +157,7 @@ var _ credentials.Provider = (*cloud18SSOCredentials)(nil)
 // s3ProviderUsable says why an S3 provider cannot be used here, nil when it can.
 func (cluster *Cluster) s3ProviderUsable(p config.S3Provider) error {
 	if p.Cloud18SSO {
-		return cluster.cloud18SSOReady()
+		return cluster.Cloud18SSOReady()
 	}
 	return nil
 }

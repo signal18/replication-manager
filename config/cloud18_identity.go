@@ -29,20 +29,21 @@ import (
 // The Cloud18 identity (#2159): a replication-manager gets its identity by itself from the
 // Cloud18 identity realm (cloud18-identity-url, Keycloak), with no client of its own, no secret
 // and no redirect: every instance uses the realm's one public client
-// (ConstCloud18IdentityClientID) and the device authorization grant (RFC 8628). A person
-// connects the instance once: repman shows a code and the realm's device page, the person logs
-// in there from any browser and approves. repman keeps the person's offline refresh token,
-// encrypted, in a file of its working directory that git never pushes (never sent to a peer:
-// each peer connects with its own login), and gets its access tokens with it. The token carries
-// the audience the Cloud18 services trust (cloud18-storage) and as sub the person's permanent
-// GitLab user id, so an S3 SSO archive keeps the folder it had with the GitLab login. The S3 SSO
-// storages and the Cloud18 vault (vault-auth = jwt) take that token.
+// (ConstCloud18IdentityClientID). The login is the account the instance is registered with: the
+// registration signs in once with the email and password the person gives it (KeepCloud18Login,
+// the password never kept), an instance registered before keeps its password and signs in with it
+// when it has no login (cloud18RegisteredLogin). repman keeps the account's offline refresh token,
+// encrypted, in a file of its working directory that git never pushes (never sent to a peer),
+// and gets its access tokens with it. The token carries the audience the Cloud18 services trust
+// (cloud18-storage) and as sub the account's permanent GitLab user id, so an S3 SSO archive keeps
+// the folder it had with the GitLab login. The S3 SSO storages and the Cloud18 vault
+// (vault-auth = jwt) take that token.
 
 const (
 	// ConstCloud18IdentityURL is cloud18-identity-url's default, the Cloud18 realm's issuer.
 	ConstCloud18IdentityURL = "https://identity.cloud18.io/realms/cloud18"
 	// ConstCloud18IdentityClientID is the realm's public client every replication-manager logs
-	// in with: device grant only, no secret, no redirect URI.
+	// in with: password and refresh grants only, no secret, no redirect URI.
 	ConstCloud18IdentityClientID = "replication-manager"
 	// ConstCloud18StorageAudience is the audience the Cloud18 S3 storages trust: their OpenID
 	// client id, so the role MinIO derives from it is the same for every instance.
@@ -57,20 +58,15 @@ const (
 	// the login is refreshed at least this often, so the realm's offline idle limit is never
 	// reached by a running instance, whatever uses the token
 	cloud18IdentityKeepAlive = 24 * time.Hour
-	// the login is reported to reconnect when the realm says it ends within this: below the
-	// realm's offline idle limit (30 days, no maximum lifetime), so only a refresh missing for
-	// weeks (or a maximum set on the realm) brings it there
-	cloud18IdentityReconnectBefore = 14 * 24 * time.Hour
-	// a device login waits for the person at most this long, whatever the realm says
-	cloud18DeviceMaxWait = 15 * time.Minute
-	cloud18ErrorTextMax  = 200
+	cloud18ErrorTextMax      = 200
 )
 
-// cloud18DeviceMinInterval is the shortest wait between two polls of a device login (tests lower it).
-var cloud18DeviceMinInterval = 5 * time.Second
+// cloud18RegisteredRetry is the shortest wait between two sign-ins with the registered account
+// the realm did not answer (out of reach, 5xx): the keep-alive asks again after it (tests lower it).
+var cloud18RegisteredRetry = 5 * time.Minute
 
-// ErrCloud18IdentityNotSet: nobody connected this instance to the Cloud18 identity yet.
-var ErrCloud18IdentityNotSet = errors.New("Cloud18 identity: this replication-manager is not connected (Cloud18 settings, Connect)")
+// ErrCloud18IdentityNotSet: the instance has no Cloud18 login: not registered to Cloud18.
+var ErrCloud18IdentityNotSet = errors.New("Cloud18 identity: this replication-manager is not registered to Cloud18 (Cloud18 settings, Register)")
 
 // ErrCloud18Refused marks a definitive answer (a 4xx of the realm or the CRM, a missing or
 // unsafe setting): retrying gives the same. Any other error (network, timeout, 5xx, 429) is
@@ -160,14 +156,6 @@ type cloud18Login struct {
 	Expires time.Time `json:"expires,omitempty"`
 }
 
-// cloud18Device is a device login waiting for the person.
-type cloud18Device struct {
-	login      Cloud18DeviceLogin
-	deviceCode string
-	verifier   string // PKCE (S256): the public client requires it
-	interval   time.Duration
-}
-
 // pkcePair is a PKCE code verifier and its S256 challenge.
 func pkcePair() (string, string, error) {
 	b := make([]byte, 48)
@@ -181,14 +169,17 @@ func pkcePair() (string, string, error) {
 
 // cloud18Session is the identity of one instance (one working directory), in memory: the login
 // read from the identity file with its refresh token decrypted, why it ended when the realm
-// refused it, and the device login in progress.
+// refused it, and the registered account the realm refused to sign in (its fingerprint: never
+// asked again until the registration changes).
 type cloud18Session struct {
 	loaded      bool
 	login       cloud18Login
 	ended       string
 	refreshedAt time.Time
-	device      *cloud18Device
-	deviceError string
+	refused     string // fingerprint of the registered account the realm refused
+	refusedWhy  string
+	attemptedAt time.Time // the last sign-in with the registered account
+	unanswered  string    // why the realm did not answer that sign-in (out of reach, 5xx); "" answered
 	keepAlive   atomic.Bool
 }
 
@@ -365,10 +356,10 @@ func cacheCloud18IdentityToken(key string, t cloud18IdentityToken) {
 	cloud18IdentityTokens.Unlock()
 }
 
-// Cloud18IdentityToken returns a valid access token of the person who connected this instance
-// and its sub claim (the folder name on the S3 SSO storages), got with the kept offline refresh
-// token. A refusal of the realm (the login ended, revoked or past its lifetime) ends the login
-// until someone connects the instance again.
+// Cloud18IdentityToken returns a valid access token of the account the instance is registered
+// with and its sub claim (the folder name on the S3 SSO storages), got with the kept offline
+// refresh token. With no login kept, or one the realm ended (revoked, past its lifetime), the
+// instance signs in again with its registered account (cloud18RegisteredLogin).
 func (conf *Config) Cloud18IdentityToken() (string, string, error) {
 	key := conf.cloud18IdentityPath()
 	if t, ok := cachedCloud18IdentityToken(key); ok {
@@ -379,13 +370,7 @@ func (conf *Config) Cloud18IdentityToken() (string, string, error) {
 		return "", "", err
 	}
 
-	cloud18IdentityTokens.Lock()
-	fetch, ok := cloud18IdentityTokens.fetch[key]
-	if !ok {
-		fetch = &sync.Mutex{}
-		cloud18IdentityTokens.fetch[key] = fetch
-	}
-	cloud18IdentityTokens.Unlock()
+	fetch := cloud18FetchLock(key)
 	fetch.Lock()
 	defer fetch.Unlock()
 	if t, ok := cachedCloud18IdentityToken(key); ok {
@@ -396,11 +381,8 @@ func (conf *Config) Cloud18IdentityToken() (string, string, error) {
 	s := conf.cloud18SessionLocked()
 	login, ended := s.login, s.ended
 	cloud18Sessions.Unlock()
-	if ended != "" {
-		return "", "", cloud18Refused("Cloud18 identity: the login ended (%s): connect this replication-manager again", ended)
-	}
-	if login.RefreshToken == "" || login.Issuer != issuer {
-		return "", "", fmt.Errorf("%w (%w)", ErrCloud18IdentityNotSet, ErrCloud18Refused)
+	if ended != "" || login.RefreshToken == "" || login.Issuer != issuer {
+		return conf.cloud18RegisteredLogin(issuer, s)
 	}
 
 	code, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/token", url.Values{
@@ -421,7 +403,8 @@ func (conf *Config) Cloud18IdentityToken() (string, string, error) {
 				s.ended = detail
 			}
 			cloud18Sessions.Unlock()
-			conf.cloud18Log(LvlErr, "the realm ended the login of %s (%s): action required, connect this replication-manager again", login.User, detail)
+			conf.cloud18Log(LvlWarn, "the realm ended the login of %s (%s): signing in again with the registered account", login.User, detail)
+			return conf.cloud18RegisteredLogin(issuer, s)
 		} else {
 			conf.cloud18Log(LvlWarn, "the login of %s not refreshed, tried again later: %s", login.User, err)
 		}
@@ -467,10 +450,17 @@ func (conf *Config) Cloud18IdentityToken() (string, string, error) {
 // instance. Cheap to call at every tick.
 func (conf *Config) Cloud18IdentityKeepAlive() {
 	key := conf.cloud18IdentityPath()
+	user, password, registered := conf.cloud18Registered()
 	cloud18Sessions.Lock()
 	s := conf.cloud18SessionLocked()
 	due := s.login.RefreshToken != "" && s.ended == "" && time.Since(s.refreshedAt) > cloud18IdentityKeepAlive
-	user := s.login.User
+	// registered with no login yet (the first start of a release that keeps one): signed in now,
+	// not at the first use of a storage
+	due = due || (registered && s.login.RefreshToken == "" && s.refused != cloud18AccountFingerprint(user, password) &&
+		time.Since(s.attemptedAt) > cloud18RegisteredRetry)
+	if s.login.User != "" {
+		user = s.login.User
+	}
 	cloud18Sessions.Unlock()
 	if !due || !s.keepAlive.CompareAndSwap(false, true) {
 		return
@@ -484,233 +474,189 @@ func (conf *Config) Cloud18IdentityKeepAlive() {
 	}()
 }
 
-// Cloud18DeviceLogin is what the person needs to connect the instance: the code to type on the
-// realm's device page.
-type Cloud18DeviceLogin struct {
-	UserCode                string    `json:"userCode"`
-	VerificationURI         string    `json:"verificationUri"`
-	VerificationURIComplete string    `json:"verificationUriComplete,omitempty"`
-	ExpiresAt               time.Time `json:"expiresAt"`
+// cloud18NoLoginKept: registered with no password kept and no login (registered before the
+// registration made the login): registering again under the same URI makes it.
+const cloud18NoLoginKept = "registered without its Cloud18 login: register this replication-manager again (same URI)"
+
+// cloud18FetchLock serializes the requests of one instance (identity file) to the realm.
+func cloud18FetchLock(key string) *sync.Mutex {
+	cloud18IdentityTokens.Lock()
+	defer cloud18IdentityTokens.Unlock()
+	fetch, ok := cloud18IdentityTokens.fetch[key]
+	if !ok {
+		fetch = &sync.Mutex{}
+		cloud18IdentityTokens.fetch[key] = fetch
+	}
+	return fetch
 }
 
-// StartCloud18DeviceLogin starts connecting the instance (the device authorization grant): the
-// realm gives a code for the person, and repman polls the realm in the background until the
-// person approves, refuses, or the code expires. A new start replaces a login still waiting.
-func (conf *Config) StartCloud18DeviceLogin() (Cloud18DeviceLogin, error) {
+// KeepCloud18Login makes the instance's Cloud18 login with the account it is being registered with
+// (the email and password the person just gave the registration, used for this sign-in only, never
+// kept): the registration no longer keeps a password (#2159), so this is when the login is made.
+func (conf *Config) KeepCloud18Login(user, password string) error {
 	issuer, err := conf.cloud18Issuer()
 	if err != nil {
-		return Cloud18DeviceLogin{}, err
+		return err
 	}
-	if conf.cloud18EncryptionKey() == nil {
-		return Cloud18DeviceLogin{}, cloud18Refused("Cloud18 identity: this replication-manager has no encryption key to keep the login")
-	}
-	verifier, challenge, err := pkcePair()
-	if err != nil {
-		return Cloud18DeviceLogin{}, err
-	}
-	code, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/auth/device", url.Values{
-		"client_id":             {ConstCloud18IdentityClientID},
-		"scope":                 {cloud18IdentityScope},
-		"code_challenge":        {challenge},
-		"code_challenge_method": {"S256"},
-	})
-	if err != nil {
-		return Cloud18DeviceLogin{}, err
-	}
-	if code != http.StatusOK {
-		return Cloud18DeviceLogin{}, fmt.Errorf("Cloud18 identity: %w", cloud18Status("the realm", code, ": "+cloud18RealmError(body)))
-	}
-	var a struct {
-		DeviceCode              string `json:"device_code"`
-		UserCode                string `json:"user_code"`
-		VerificationURI         string `json:"verification_uri"`
-		VerificationURIComplete string `json:"verification_uri_complete"`
-		ExpiresIn               int    `json:"expires_in"`
-		Interval                int    `json:"interval"`
-	}
-	if err := json.Unmarshal(body, &a); err != nil || a.DeviceCode == "" || a.UserCode == "" || a.VerificationURI == "" {
-		return Cloud18DeviceLogin{}, errors.New("Cloud18 identity: the realm gave no device code")
-	}
-	// the page the person opens comes from the realm: only the realm's own https pages
-	for _, u := range []string{a.VerificationURI, a.VerificationURIComplete} {
-		if u != "" && !strings.HasPrefix(u, issuer+"/") {
-			return Cloud18DeviceLogin{}, cloud18Refused("Cloud18 identity: the realm gave a device page outside the realm")
-		}
-	}
-	wait := time.Duration(a.ExpiresIn) * time.Second
-	if wait <= 0 || wait > cloud18DeviceMaxWait {
-		wait = cloud18DeviceMaxWait
-	}
-	interval := time.Duration(a.Interval) * time.Second
-	if interval < cloud18DeviceMinInterval {
-		interval = cloud18DeviceMinInterval
-	}
-	d := &cloud18Device{
-		login:      Cloud18DeviceLogin{UserCode: a.UserCode, VerificationURI: a.VerificationURI, VerificationURIComplete: a.VerificationURIComplete, ExpiresAt: time.Now().Add(wait)},
-		deviceCode: a.DeviceCode,
-		verifier:   verifier,
-		interval:   interval,
-	}
+	fetch := cloud18FetchLock(conf.cloud18IdentityPath())
+	fetch.Lock()
+	defer fetch.Unlock()
 	cloud18Sessions.Lock()
 	s := conf.cloud18SessionLocked()
-	s.device, s.deviceError = d, ""
 	cloud18Sessions.Unlock()
-	conf.cloud18Log(LvlInfo, "device login started: open %s and enter the code %s before %s", d.login.VerificationURI, d.login.UserCode, d.login.ExpiresAt.Format("15:04:05"))
-	go conf.pollCloud18Device(issuer, s, d)
-	return d.login, nil
+	_, _, err = conf.cloud18PasswordLogin(issuer, s, user, password)
+	return err
 }
 
-// pollCloud18Device asks the realm for the person's tokens until the person approves (the login
-// is kept), refuses or the code expires (the error is kept for the status), or a new login or a
-// disconnect replaced this one.
-func (conf *Config) pollCloud18Device(issuer string, s *cloud18Session, d *cloud18Device) {
-	interval := d.interval
-	unreachable := false
-	stop := func(e string) {
-		cloud18Sessions.Lock()
-		current := s.device == d
-		if current {
-			s.device, s.deviceError = nil, e
-		}
-		cloud18Sessions.Unlock()
-		if current {
-			conf.cloud18Log(LvlWarn, "device login not completed: %s", e)
-		}
+// cloud18Registered is the account the instance is registered to Cloud18 with: its user and
+// password (cloud18-gitlab-user, cloud18-gitlab-password), the realm's own since the accounts moved
+// to it; ok false when not registered.
+func (conf *Config) cloud18Registered() (string, string, bool) {
+	if !conf.Cloud18 || conf.Cloud18GitUser == "" {
+		return "", "", false
 	}
-	for {
-		time.Sleep(interval)
-		cloud18Sessions.Lock()
-		current := s.device == d
-		cloud18Sessions.Unlock()
-		if !current {
-			return
-		}
-		if time.Now().After(d.login.ExpiresAt) {
-			stop("the code expired before it was approved")
-			return
-		}
-		code, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/token", url.Values{
-			"grant_type":    {"urn:ietf:params:oauth:grant-type:device_code"},
-			"device_code":   {d.deviceCode},
-			"client_id":     {ConstCloud18IdentityClientID},
-			"code_verifier": {d.verifier},
-		})
-		if err != nil || code >= 500 || code == http.StatusTooManyRequests {
-			if !unreachable {
-				unreachable = true
-				conf.cloud18Log(LvlWarn, "the realm is out of reach while the device login waits (asked again until the code expires): %v %d", err, code)
-			}
-			continue // the realm out of reach: asked again until the code expires
-		}
-		if code != http.StatusOK {
-			var e struct {
-				Error string `json:"error"`
-			}
-			json.Unmarshal(body, &e)
-			switch e.Error {
-			case "authorization_pending":
-				continue
-			case "slow_down":
-				interval += 5 * time.Second
-				continue
-			case "access_denied":
-				stop("the login was refused")
-			case "expired_token":
-				stop("the code expired before it was approved")
-			default:
-				stop("the realm answered " + cloud18RealmError(body))
-			}
-			return
-		}
-		if err := conf.keepCloud18DeviceLogin(issuer, s, d, body); err != nil {
-			stop(err.Error())
-		}
-		return
+	password := conf.GetDecryptedPassword("cloud18-gitlab-password", conf.Cloud18GitPassword)
+	if password == "" || strings.HasPrefix(password, "hash_") {
+		return "", "", false // no password, or one this instance's key cannot read
 	}
+	return conf.Cloud18GitUser, password, true
 }
 
-func (conf *Config) keepCloud18DeviceLogin(issuer string, s *cloud18Session, d *cloud18Device, body []byte) error {
+// cloud18AccountFingerprint names a registered account without its password.
+func cloud18AccountFingerprint(user, password string) string {
+	sum := sha256.Sum256([]byte(user + "\x00" + password))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// cloud18RegisteredLogin signs in with the account kept by the registration (an instance
+// registered before #2159 keeps its password): cloud18PasswordLogin. Without one, the login made at
+// the registration (KeepCloud18Login) is the only one; once it ends, the instance registers again.
+// The caller holds the instance's fetch lock.
+func (conf *Config) cloud18RegisteredLogin(issuer string, s *cloud18Session) (string, string, error) {
+	user, password, ok := conf.cloud18Registered()
+	if !ok {
+		cloud18Sessions.Lock()
+		ended := s.ended
+		cloud18Sessions.Unlock()
+		if ended != "" {
+			return "", "", cloud18Refused("Cloud18 identity: the login ended (%s): register this replication-manager again", ended)
+		}
+		if conf.Cloud18 && conf.Cloud18GitUser != "" {
+			return "", "", cloud18Refused("Cloud18 identity: %s", cloud18NoLoginKept)
+		}
+		return "", "", fmt.Errorf("%w (%w)", ErrCloud18IdentityNotSet, ErrCloud18Refused)
+	}
+	cloud18Sessions.Lock()
+	waitFor, why := cloud18RegisteredRetry-time.Since(s.attemptedAt), s.unanswered
+	cloud18Sessions.Unlock()
+	if why != "" && waitFor > 0 {
+		// the realm did not answer the last sign-in: every archive or vault call does not ask it again
+		return "", "", fmt.Errorf("Cloud18 identity: the realm did not answer the sign-in with the registered account (%s), asked again in %s", why, waitFor.Round(time.Second))
+	}
+	return conf.cloud18PasswordLogin(issuer, s, user, password)
+}
+
+// cloud18PasswordLogin signs in with user and password (the password grant of the realm's public
+// client, offline_access) and keeps the login as the identity file: the refresh token is used from
+// then on. An account the realm refuses is not asked again until it changes. The caller holds the
+// instance's fetch lock.
+func (conf *Config) cloud18PasswordLogin(issuer string, s *cloud18Session, user, password string) (string, string, error) {
+	fingerprint := cloud18AccountFingerprint(user, password)
+	cloud18Sessions.Lock()
+	refused, why := s.refused == fingerprint, s.refusedWhy
+	s.attemptedAt = time.Now()
+	cloud18Sessions.Unlock()
+	if refused {
+		return "", "", cloud18Refused("Cloud18 identity: the realm refused the account %s is registered with (%s): register this replication-manager again", user, why)
+	}
+	if conf.cloud18EncryptionKey() == nil {
+		return "", "", cloud18Refused("Cloud18 identity: this replication-manager has no encryption key to keep the login")
+	}
+	code, body, err := postCloud18Realm(issuer+"/protocol/openid-connect/token", url.Values{
+		"grant_type": {"password"},
+		"client_id":  {ConstCloud18IdentityClientID},
+		"username":   {user},
+		"password":   {password},
+		"scope":      {cloud18IdentityScope},
+	})
+	if err != nil {
+		cloud18Sessions.Lock()
+		s.unanswered = err.Error()
+		cloud18Sessions.Unlock()
+		conf.cloud18Log(LvlWarn, "no sign-in with the registered account %s, the realm is out of reach (tried again later): %s", user, err)
+		return "", "", err
+	}
+	if code != http.StatusOK {
+		detail := cloud18RealmError(body)
+		err := cloud18Status("the realm", code, ": "+detail)
+		if errors.Is(err, ErrCloud18Refused) {
+			cloud18Sessions.Lock()
+			s.refused, s.refusedWhy = fingerprint, detail
+			cloud18Sessions.Unlock()
+			conf.cloud18Log(LvlErr, "the realm refused the registered account %s (%s): action required, register this replication-manager again", user, detail)
+		} else {
+			cloud18Sessions.Lock()
+			s.unanswered = err.Error()
+			cloud18Sessions.Unlock()
+			conf.cloud18Log(LvlWarn, "no sign-in with the registered account %s, tried again later: %s", user, err)
+		}
+		return "", "", fmt.Errorf("Cloud18 identity: %w", err)
+	}
 	var a cloud18TokenAnswer
 	if err := json.Unmarshal(body, &a); err != nil {
-		return errors.New("the realm gave no token")
+		return "", "", errors.New("Cloud18 identity: the realm gave no token")
 	}
 	lifetime, err := a.lifetime()
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	if a.RefreshToken == "" {
-		return errors.New("the realm gave no offline token (offline_access)")
+		return "", "", errors.New("Cloud18 identity: the realm gave no offline token (offline_access)")
 	}
 	sub, err := TokenSubject(a.AccessToken)
 	if err != nil {
-		return err
+		return "", "", err
 	}
 	now := time.Now()
 	l := cloud18Login{Issuer: issuer, RefreshToken: a.RefreshToken, User: tokenClaim(a.AccessToken, "preferred_username"), Sub: sub, ConnectedAt: now, Expires: a.sessionEnd(now)}
+	if l.User == "" {
+		l.User = user
+	}
 	cloud18Sessions.Lock()
 	defer cloud18Sessions.Unlock()
-	if s.device != d {
-		return nil // replaced meanwhile: the newer login decides
-	}
 	if err := conf.writeCloud18Login(l); err != nil {
-		return err
+		return "", "", err
 	}
-	s.login, s.ended, s.refreshedAt, s.device, s.deviceError = l, "", now, nil, ""
+	s.login, s.ended, s.refreshedAt, s.refused, s.refusedWhy, s.unanswered = l, "", now, "", "", ""
 	cacheCloud18IdentityToken(conf.cloud18IdentityPath(), cloud18IdentityToken{token: a.AccessToken, sub: sub, expires: now.Add(lifetime)})
-	conf.cloud18Log(LvlInfo, "connected as %s (sub %s), login kept in %s", l.User, sub, conf.cloud18IdentityPath())
-	return nil
-}
-
-// DisconnectCloud18Identity forgets the login (the identity file and the cached token) and ends
-// the offline session at the realm, best effort; a device login waiting is dropped.
-func (conf *Config) DisconnectCloud18Identity() error {
-	path := conf.cloud18IdentityPath()
-	cloud18Sessions.Lock()
-	s := conf.cloud18SessionLocked()
-	token := s.login.RefreshToken
-	s.login, s.ended, s.device, s.deviceError, s.refreshedAt = cloud18Login{}, "", nil, "", time.Time{}
-	cloud18Sessions.Unlock()
-	cacheCloud18IdentityToken(path, cloud18IdentityToken{})
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("Cloud18 identity: %w", err)
-	}
-	if token != "" {
-		if issuer, err := conf.cloud18Issuer(); err == nil {
-			code, _, err := postCloud18Realm(issuer+"/protocol/openid-connect/revoke", url.Values{
-				"client_id":       {ConstCloud18IdentityClientID},
-				"token":           {token},
-				"token_type_hint": {"refresh_token"},
-			})
-			if err != nil || code != http.StatusOK {
-				conf.cloud18Log(LvlWarn, "login forgotten here, the realm did not confirm its end (%v %d): end it in the realm", err, code)
-			} else {
-				conf.cloud18Log(LvlInfo, "login forgotten and ended in the realm")
-			}
-		}
-	}
-	return nil
+	conf.cloud18Log(LvlInfo, "signed in with the registered account %s (sub %s), login kept in %s", l.User, sub, conf.cloud18IdentityPath())
+	return a.AccessToken, sub, nil
 }
 
 // Cloud18IdentityStatus is the instance's Cloud18 login as the API shows it: never a token.
 type Cloud18IdentityStatus struct {
-	// none: nobody connected it; pending: a device login waits for the person; connected;
-	// reconnect: the login ended or ends soon, someone must connect again
-	State       string              `json:"state"`
-	User        string              `json:"user,omitempty"`
-	Sub         string              `json:"sub,omitempty"`
-	ConnectedAt *time.Time          `json:"connectedAt,omitempty"`
-	Expires     *time.Time          `json:"expires,omitempty"`
-	Reason      string              `json:"reason,omitempty"`
-	Device      *Cloud18DeviceLogin `json:"device,omitempty"`
+	// none: not registered; registered: no login yet, made at the next use or keep-alive;
+	// connected; refused: the realm refused the registered account, register again
+	State       string     `json:"state"`
+	User        string     `json:"user,omitempty"`
+	Sub         string     `json:"sub,omitempty"`
+	ConnectedAt *time.Time `json:"connectedAt,omitempty"`
+	Expires     *time.Time `json:"expires,omitempty"`
+	Reason      string     `json:"reason,omitempty"`
 }
 
-// HasCloud18Login says whether someone connected this instance to the realm it is set to
-// (the login may since have ended: Cloud18IdentityToken says).
+// HasCloud18Login says whether the instance has, or can make, its Cloud18 login on the realm it
+// is set to: a login kept, or the account it is registered with (not refused by the realm).
+// The login may since have ended: Cloud18IdentityToken says.
 func (conf *Config) HasCloud18Login() bool {
+	user, password, registered := conf.cloud18Registered()
 	cloud18Sessions.Lock()
 	defer cloud18Sessions.Unlock()
 	s := conf.cloud18SessionLocked()
-	return s.login.RefreshToken != "" && s.login.Issuer == strings.TrimRight(conf.Cloud18IdentityURL, "/")
+	if s.login.RefreshToken != "" && s.login.Issuer == strings.TrimRight(conf.Cloud18IdentityURL, "/") {
+		return true
+	}
+	return registered && s.refused != cloud18AccountFingerprint(user, password)
 }
 
 // KeepCloud18LoginFile returns a function writing the identity file back as it is now, for a
@@ -730,29 +676,31 @@ func (conf *Config) KeepCloud18LoginFile() func() {
 
 // Cloud18IdentityStatus reads the login from memory (no request to the realm).
 func (conf *Config) Cloud18IdentityStatus() Cloud18IdentityStatus {
+	user, password, registered := conf.cloud18Registered()
 	cloud18Sessions.Lock()
 	defer cloud18Sessions.Unlock()
 	s := conf.cloud18SessionLocked()
-	st := Cloud18IdentityStatus{State: "none", Reason: s.deviceError}
+	st := Cloud18IdentityStatus{State: "none"}
+	if registered {
+		st.State, st.User = "registered", user
+	}
 	issuer := strings.TrimRight(conf.Cloud18IdentityURL, "/")
-	if s.login.RefreshToken != "" && s.login.Issuer == issuer {
+	if s.login.RefreshToken != "" && s.login.Issuer == issuer && s.ended == "" {
 		st.State, st.User, st.Sub = "connected", s.login.User, s.login.Sub
 		at := s.login.ConnectedAt
 		st.ConnectedAt = &at
 		if !s.login.Expires.IsZero() {
 			end := s.login.Expires
 			st.Expires = &end
-			if time.Until(end) < cloud18IdentityReconnectBefore {
-				st.State, st.Reason = "reconnect", "the login ends on "+end.Format("2006-01-02")
-			}
 		}
 	}
-	if s.ended != "" {
-		st.State, st.Reason = "reconnect", s.ended
-	}
-	if s.device != nil {
-		d := s.device.login
-		st.State, st.Device = "pending", &d
+	switch {
+	case registered && s.refused == cloud18AccountFingerprint(user, password):
+		st.State, st.Reason = "refused", s.refusedWhy
+	case !registered && s.ended != "":
+		st.State, st.Reason = "refused", s.ended
+	case st.State == "none" && conf.Cloud18 && conf.Cloud18GitUser != "":
+		st.State, st.User, st.Reason = "refused", conf.Cloud18GitUser, cloud18NoLoginKept
 	}
 	return st
 }

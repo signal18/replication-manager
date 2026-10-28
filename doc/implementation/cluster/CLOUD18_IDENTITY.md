@@ -1,4 +1,4 @@
-# Cloud18 identity: a person's device login, no GitLab password (#2159)
+# Cloud18 identity: the registered account's login, no GitLab password (#2159)
 
 ## Why
 
@@ -12,34 +12,52 @@ off by a GitLab admin setting, and is removed in GitLab 19 (#2146).
 The Cloud18 identity realm, `cloud18-identity-url` (default `https://identity.cloud18.io/realms/cloud18`,
 Keycloak). The instance gets its identity **by itself**: no client of its own, no secret, no redirect
 URI, nothing pushed by the BO. Every instance uses the realm's one public client
-`replication-manager` (`config.ConstCloud18IdentityClientID`): device authorization grant (RFC 8628)
-only, every other flow off, consent screen on, no redirect URI.
+`replication-manager` (`config.ConstCloud18IdentityClientID`): password and refresh grants only, every
+other flow off, no redirect URI.
 
-### Connect (`config.StartCloud18DeviceLogin`)
+### The login: the registered account
 
-A person connects the instance once, from the Cloud18 settings (row *Identity*, `Cloud18Identity.jsx`)
-or the CLI (`replication-manager-cli cloud18 connect`):
+The Cloud18 login is the account the instance is registered with. Nobody connects it by hand: an
+instance that is not registered cannot use what the login opens anyway (2026-10-28, the Connect button
+and the device login it started are removed).
 
-1. `POST <realm>/protocol/openid-connect/auth/device` (client id, scope `openid offline_access`): the
-   realm gives a device code, a user code and its device page. A page outside the realm is refused.
-2. repman shows the code and the page; the person opens it in any browser, on any machine, logs in
-   (their GitLab account through the realm) and approves. Only outbound HTTPS from the instance.
-3. repman polls the token endpoint (`urn:ietf:params:oauth:grant-type:device_code`, interval of the
-   realm, 5 s at least, +5 s on `slow_down`) until approved, refused (`access_denied`) or expired (15 min
-   at most). A new Connect replaces a login still waiting.
-4. Approved: the **offline refresh token** is kept in `<working dir>/cloud18-identity.json` (0600,
-   the token encrypted with the instance's key, `hash_`), with the realm, the person (`preferred_username`,
-   `sub`) and the connection date. No encryption key: no login (never kept in clear).
+- **At the registration** (`cloud18Register`, then `config.KeepCloud18Login`): once the instance is
+  registered, repman signs in with the email and password the person just gave (`grant_type=password`,
+  the public client, scope `openid offline_access`). The password serves this sign-in only and is never
+  kept, as the registration never keeps it.
+- **An instance registered before** keeps its password (`cloud18-gitlab-user`,
+  `cloud18-gitlab-password`, encrypted with its key; the accounts and their passwords moved to the realm
+  on 2026-10-26). With no login kept, it signs in with it (`cloud18RegisteredLogin`): at the first
+  keep-alive after the start (`Cloud18IdentityKeepAlive`, every 5 minutes at most while the realm is out
+  of reach), or at the first use. An instance upgraded from a GitLab-login release keeps its SSO archives
+  with nothing to do.
+- **Registered with neither** (no password, no login: registered by a release that kept none and made no
+  login): state `refused`, "register this replication-manager again (same URI)", which makes the login.
+
+- **The registration's sign-in** is asked again 3 times (5 s, 20 s, 1 min) while the realm does not
+  answer; a refusal is final at once. A login still not made is said in the registration's result
+  ("register again under the same URI to make it"), the password being gone.
+- **Spacing:** a sign-in with the kept password the realm did not answer is not asked again before
+  5 minutes (`cloud18RegisteredRetry`), whatever archive or vault call needs the token.
+- **The realm (checked 2026-10-28):** the email is the username (`loginWithEmailAllowed`), brute-force
+  protection on for the whole realm, password grant included (30 failures, waits growing by 60 s up to
+  15 min). An account with a second factor or a pending required action cannot sign in with a password:
+  the realm refuses it (state `refused`, its reason), and that account's instance cannot use the S3 SSO
+  providers or the Cloud18 vault.
+
+The answer's **offline refresh token** is kept in `<working dir>/cloud18-identity.json` (0600, the
+token encrypted with the instance's key, `hash_`), with the realm, the account (`preferred_username`,
+`sub`) and the date. No encryption key: no login (never kept in clear). The password is never sent again
+while the login is valid.
 
 The file is the instance's own: git pushes only `<cluster>/*.toml`, `default.toml` and the event logs,
 so it never reaches the config repository or a peer (each peer connects with its own login). A restore
 of the config at start (`monitoring-restore-config-on-start`, which empties the working directory) keeps
 it (`KeepCloud18LoginFile`).
 
-API (global settings grant): `GET /api/clusters/settings/actions/cloud18-identity` (state `none`,
-`pending` with the code and page, `connected`, `reconnect` with the reason; never a token),
-`POST …/cloud18-identity/connect`, `POST …/cloud18-identity/disconnect` (forgets the file and revokes the
-token at the realm, best effort).
+API (global settings grant): `GET /api/clusters/settings/actions/cloud18-identity` (state `none` not
+registered, `registered` no login yet, `connected`, `refused` with the reason; never a token). CLI:
+`replication-manager-cli cloud18 status`. GUI: Cloud18 settings, row *Identity* (`Cloud18Identity.jsx`).
 
 ### Tokens (`config.Cloud18IdentityToken`)
 
@@ -56,14 +74,15 @@ share it), and its `sub` is returned. A refresh token the realm rotates is writt
 - **Lifetime**: the realm's offline session has **no maximum**, idle 30 days. A running instance
   refreshes the login at least daily (`Cloud18IdentityKeepAlive`, from the server's state checks),
   whatever uses it, so it never reaches the idle limit and nobody connects it again unless it is revoked.
-- **Ended**: the realm refusing the refresh (revoked, ended, idle) ends the login: refused, not asked
-  again, state `reconnect` with the realm's reason. The server raises `GWARN021` while Cloud18 is on and
-  the login is missing, ended, or ends within 14 days by the realm's `refresh_expires_in`.
+- **Ended**: the realm refusing the refresh (revoked, ended, idle) ends the login; an instance with a
+  kept password signs in again at once. An account the realm refuses is not asked again until the
+  registration changes (its fingerprint, never the password): state `refused` with the realm's reason,
+  and the server raises `GWARN022` ("register this replication-manager again").
 
 ## Refused or transient
 
 `config.ErrCloud18Refused` marks a definitive answer: a 4xx of the realm or of the CRM (except 408 and
-429), nobody connected the instance, an ended login, no encryption key, no CRM URL, a URL not `https`. Anything else (network error,
+429), an instance not registered, a refused account, an ended login, no encryption key, no CRM URL, a URL not `https`. Anything else (network error,
 timeout, 5xx, 429) is transient. A refusal of the refresh also ends the login (above). Only a refusal turns Cloud18 off: `InitGitConfig` and
 `RotateGitAccessToken` keep it on for a transient error. `InitGitConfig` then tries again every 5 minutes
 (`retryInitGitConfig`, one loop at a time) until it succeeds, Cloud18 is turned off or the server stops;
@@ -94,7 +113,8 @@ The public client carries the realm's `cloud18-storage` client scope:
 (`AssumeRoleWithWebIdentity`) with the role MinIO derives from the storages' client id:
 `minioRoleArn(region, "cloud18-storage")` = `arn:minio:iam:<region>::role/uis-o2VW9GtZuoJDSshFCPUr0Rs`
 (or the provider's own `roleArn`). `cloud18SSOReady()` refuses a provider when the instance is not
-registered (`ErrCloud18SSONotRegistered`) or nobody connected it (`config.ErrCloud18IdentityNotSet`).
+registered (`ErrCloud18SSONotRegistered`) or has no Cloud18 login and cannot make one
+(`config.HasCloud18Login`: a login kept, or a registered account the realm did not refuse).
 The STS exchange and the renewal before expiry are unchanged.
 
 ## Vault (`config.GetVaultConnection`)
@@ -117,14 +137,16 @@ archives.
 
 ## Not here
 
-- The realm's setup: the public client `replication-manager` (device grant only, consent, scope
-  `cloud18-storage` as default, `offline_access`), offline session without maximum and idle 30 days, and
-  the vault jwt role `replication-manager` bound on `sub`.
+- The realm's setup: the public client `replication-manager` (password grant, `directAccessGrantsEnabled`,
+  2026-10-28; scope `cloud18-storage` as default, `offline_access`), offline session without maximum and
+  idle 30 days, and the vault jwt role `replication-manager` bound on `sub`.
 - A browser redirect login: only if repman registers its own redirect URL itself (a client of its own
   through the realm's client registration), not now.
 - The other uses of the GitLab password (`cloud18-gitlab-password`), to remove before the setting is
   (registration no longer uses it, CLOUD18_REGISTRATION.md):
   - the Cloud18 connect from the settings (`api_global_settings.go`), which stores it;
+  - the Cloud18 login of an instance registered before #2159 (`cloud18RegisteredLogin`): once that
+    password is gone, the login made at the registration is the only one;
   - `Config.CreateGitlabProjects` (`config/config.go`), through a GitLab basic-auth token;
   - the peer credentials (`server/server.go`, `SetPeerCredentials`) and the peer login check
     (`server/api.go`, "Peer does not have cloud18 setup");
