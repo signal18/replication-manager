@@ -603,7 +603,9 @@ func (cluster *Cluster) BenchTable() string {
 }
 
 // consistencyReplicas is the servers replicating, other than the master, read from the
-// cluster's servers: not cluster.slaves, which a topology pass rebuilds from empty.
+// cluster's servers: not cluster.slaves, which a topology pass rebuilds from empty. A
+// replica that failed stays in it and fails the check by design: the test asserts every
+// replica holds the master's data.
 func (cluster *Cluster) consistencyReplicas() []*ServerMonitor {
 	var replicas []*ServerMonitor
 	for _, s := range cluster.GetServers() {

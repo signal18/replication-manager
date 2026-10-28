@@ -107,6 +107,10 @@ func TestConsistencyReplicas(t *testing.T) {
 	c.slaves = []*ServerMonitor{replica}
 	got := c.consistencyReplicas()
 	if len(got) != 2 || got[0] != replica || got[1] != rejoined {
-		t.Fatalf("the replicas of the servers, not of cluster.slaves: %v", got)
+		urls := make([]string, 0, len(got))
+		for _, s := range got {
+			urls = append(urls, s.URL)
+		}
+		t.Fatalf("the replicas of the servers, not of cluster.slaves: %v", urls)
 	}
 }
