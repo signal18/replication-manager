@@ -1874,6 +1874,11 @@ definitions:
           expect app-monitor-expect-status, for a web service that accepts connections and may
           never answer (#2209); a full app-host name (with a dot) is called as is.
         type: string
+      appMonitorOnly:
+        description: |-
+          AppMonitorOnly: the app was added without image nor template to watch a service that
+          runs elsewhere (#2209): checked by app-monitor-mode, never provisioned, reserves no plan unit.
+        type: boolean
       appMonitorPath:
         description: 'AppMonitorPath: the path of the http/https check (default "/"),
           like a route''s monitor path.'

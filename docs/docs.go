@@ -28420,6 +28420,10 @@ const docTemplate = `{
                     "description": "AppMonitorMode: how an app without a route is probed. \"port\" (default) connects to\napp-port over TCP; \"ping\" sends an ICMP echo to the app host, for a process that\nlistens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.\n\"http\" and \"https\" send a GET to \u003cmode\u003e://\u003capp-host\u003e:\u003capp-port\u003e\u003capp-monitor-path\u003e and\nexpect app-monitor-expect-status, for a web service that accepts connections and may\nnever answer (#2209); a full app-host name (with a dot) is called as is.",
                     "type": "string"
                 },
+                "appMonitorOnly": {
+                    "description": "AppMonitorOnly: the app was added without image nor template to watch a service that\nruns elsewhere (#2209): checked by app-monitor-mode, never provisioned, reserves no plan unit.",
+                    "type": "boolean"
+                },
                 "appMonitorPath": {
                     "description": "AppMonitorPath: the path of the http/https check (default \"/\"), like a route's monitor path.",
                     "type": "string"
