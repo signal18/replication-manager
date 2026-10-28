@@ -289,6 +289,15 @@ func (cluster *Cluster) PrepareBench() error {
 	return nil
 }
 
+// ResetBench prepares the benchmark from a clean table: the table of a previous run fails
+// the prepare (1050); there is none on a first run, a cleanup error is only logged.
+func (cluster *Cluster) ResetBench() error {
+	if err := cluster.CleanupBench(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Benchmark cleanup: %s", err)
+	}
+	return cluster.PrepareBench()
+}
+
 func (cluster *Cluster) CleanupBench() error {
 	prx, err := cluster.getFirstProxy()
 	if err != nil {

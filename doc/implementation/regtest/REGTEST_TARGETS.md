@@ -133,8 +133,12 @@ missing at the wait and back at the checksum. It first waits for every replica o
 broken or delayed) to reach the master's position, read once
 (`waitReplicaReachTarget`: `WaitSyncToTarget` turns, ended by an SQL error or no progress for
 `replicaNoProgressFor`, the loop the restore gate uses too). Compared at once, a replica still applying
-the 1,000,000-row prepare differed (MariaDB 11.8: 693,504 rows applied). The flashback and mysqldump
-failover tests run `RunBench` on the table they prepared, as the other failover tests do: `RunSysbench`
+the 1,000,000-row prepare differed (MariaDB 11.8: 693,504 rows applied). A replica it does not wait for (stopped, broken, delayed) is
+still compared, so a replica lagging that way fails the check. The rejoin's end (`WaitRejoin`) comes before
+the next monitoring pass makes the old master a replica: the flashback and mysqldump failover tests wait
+for it (`WaitDatabaseReplica`), otherwise the check ran without the old master, the one server the test
+is about. The flashback and mysqldump
+failover tests prepare through `ResetBench` (cleanup, then prepare) and run `RunBench` on the table they prepared, as the other failover tests do: `RunSysbench`
 cleans up and prepares again, which raced the first prepare (error 1050).
 
 ## Tests

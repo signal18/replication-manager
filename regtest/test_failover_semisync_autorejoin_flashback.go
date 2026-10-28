@@ -26,11 +26,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	SaveMasterURL := cluster.GetMaster().URL
 	SaveMaster := cluster.GetMaster()
 	//clusteruster.DelayAllSlaves()
-	// the table of a previous run fails the prepare (1050); none on a first run
-	if err := cluster.CleanupBench(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Benchmark cleanup: %s", err)
-	}
-	if err := cluster.PrepareBench(); err != nil {
+	if err := cluster.ResetBench(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Benchmark prepare failed: %s", err)
 		return false
 	}
@@ -52,6 +48,11 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	go cluster.WaitRejoin(wg2)
 	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
+	// the old master is compared too: the rejoin ends before it replicates (#2228)
+	if err := cluster.WaitDatabaseReplica(SaveMaster); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Old master %s does not replicate after its rejoin: %s", SaveMaster.URL, err)
+		return false
+	}
 	SaveMaster.ReadAllRelayLogs()
 	if cluster.CheckTableConsistency(cluster.BenchTable()) != true {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")

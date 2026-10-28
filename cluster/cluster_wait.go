@@ -204,6 +204,24 @@ func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
 	return nil
 }
 
+// WaitDatabaseReplica waits for server to replicate again (IsSlave, state Slave), read by URL
+// at each tick: a rejoin signals its end (WaitRejoin) before the next monitoring pass makes
+// the rejoined server a replica, and a consistency check run in between leaves it out (#2228).
+func (cluster *Cluster) WaitDatabaseReplica(server *ServerMonitor) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state slave on %s", server.URL)
+	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
+	defer ticker.Stop()
+	for exitloop := int64(0); exitloop < cluster.Conf.MonitorWaitRetry; exitloop++ {
+		<-ticker.C
+		if s := cluster.GetServerFromURL(server.URL); s != nil && s.IsSlave && s.State == stateSlave {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state slave reach on %s", server.URL)
+			return nil
+		}
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait state slave timeout on %s", server.URL)
+	return errors.New("Failed to wait state slave")
+}
+
 func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state failed on %s", server.URL)
 	exitloop := 0
