@@ -218,6 +218,17 @@ const xtrabackupStockPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/
 // own, and the injection must never change what it does. For such an image nothing is added to its environment (the
 // bundle is then not on its PATH) and no series is checked.
 func IsStockMySQLImage(ref string) bool {
+	switch dockerImageRepository(ref) {
+	case "mysql", "library/mysql", "percona/percona-server":
+		return true
+	}
+	return false
+}
+
+// dockerImageRepository is the repository of an image reference, lowercase, without its
+// tag, its digest or a Docker Hub host: "docker.io/library/mysql:8.4@sha256:..." is
+// "library/mysql", "registry.example/team/mysql:8.4" stays "registry.example/team/mysql".
+func dockerImageRepository(ref string) string {
 	ref = strings.ToLower(strings.TrimSpace(ref))
 	if i := strings.Index(ref, "@"); i >= 0 {
 		ref = ref[:i]
@@ -228,11 +239,7 @@ func IsStockMySQLImage(ref string) bool {
 	for _, host := range []string{"docker.io/", "index.docker.io/", "registry-1.docker.io/"} {
 		ref = strings.TrimPrefix(ref, host)
 	}
-	switch ref {
-	case "mysql", "library/mysql", "percona/percona-server":
-		return true
-	}
-	return false
+	return ref
 }
 
 // xtrabackupBundlePath is the PATH given to the jobs container so that xtrabackup, xbstream and socat are found by

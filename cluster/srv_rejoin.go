@@ -267,6 +267,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 						// ALWAYS end attached read-only under the elected master: strict
 						// mode protects a divergent tail as SlaveErr — never a floating
 						// writable standalone.
+						// its error is logged inside; the result is already a failure
 						server.attachAsReadOnlySlave(cluster.master)
 						cluster.finishRejoin(server.URL, result)
 						cluster.backendStateChangeProxies()
@@ -789,6 +790,7 @@ func (server *ServerMonitor) rejoinWithMethod(crash *Crash) {
 		if crash.DeltaAnalyzed && crash.Diverged() && !crash.DeltaFlashable {
 			result = RejoinResultNotFlashback
 		}
+		// its error is logged inside; the result is already a failure
 		server.attachAsReadOnlySlave(cluster.master)
 	}
 	cluster.finishRejoin(server.URL, result)

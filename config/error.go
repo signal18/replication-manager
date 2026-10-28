@@ -283,7 +283,7 @@ var ClusterError = map[string]string{
 	"WARN0182": "Failed to backup lost events of old master %s after failover — flashback rejoin impossible: %s",
 	"WARN0184": "Diverged old master %s: captured lost events are flashback-able (row-DML only)",
 	"WARN0185": "Diverged old master %s: captured lost events are NOT flashback-able (DDL or statement events) — reseed or forward apply required",
-	"WARN0186": "Rejoin of %s could not complete automatically (%s) — manual repair or explicit re-arm required",
+	"WARN0186": "Rejoin of %s could not complete automatically (%s) — manual repair or explicit re-arm required: the rejoin is not retried by itself, re-arm it once the cause is fixed (e.g. GTID turned on)",
 	"WARN0187": "Rejoin of %s pending: peer election verdict unavailable (transient split / peer unreachable) — retrying",
 	"WARN0188": "Rejoin can not use unsafe method reset-master-reslave on %s because replication points to an invalid position on the new master",
 	"WARN0189": "Restore in progress on %s: %s — restoring backup %s",

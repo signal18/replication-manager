@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"sync"
@@ -97,20 +98,31 @@ func (cluster *Cluster) addColumnstoreTag() {
 const ProvisionMySQLGTIDTag = "mysqlgtid"
 
 // provDbImageIsMySQL tells whether the provisioned database image is MySQL or Percona
-// Server, by its name as the provisioning reads it (run-as user, volume identity).
+// Server, by the last segment of its repository (any registry): mysql, mysql-server,
+// percona, percona-server. Not a Percona XtraDB Cluster image (Galera), nor a name that
+// only contains mysql.
 func (cluster *Cluster) provDbImageIsMySQL() bool {
-	img := strings.ToLower(cluster.Conf.ProvDbImg)
-	return strings.Contains(img, "mysql") || strings.Contains(img, "percona")
+	switch path.Base(dockerImageRepository(cluster.Conf.ProvDbImg)) {
+	case "mysql", "mysql-server", "percona", "percona-server":
+		return true
+	}
+	return false
 }
 
 // addMySQLGTIDTag: a MySQL or Percona cluster provisioned by replication-manager
 // replicates on GTID (#2226). Without it a failover is positional: the replicas wait in
 // maintenance on the dead master and the rejoins have no GTID position. Group
-// replication has GTID from its own tag. Called at provisioning only: turning GTID on
-// for a running server is an operator procedure (gtid_mode through OFF_PERMISSIVE and
-// ON_PERMISSIVE), never a tag added behind its back.
+// replication has GTID from its own tag. Only while no database server answers (a new
+// cluster, or all of them down): ProvisionServices also runs from Bootstrap on an
+// existing cluster, and turning GTID on for a running server is an operator procedure
+// (gtid_mode through OFF_PERMISSIVE and ON_PERMISSIVE), never a tag rendered behind its
+// back for its next restart.
 func (cluster *Cluster) addMySQLGTIDTag() {
 	if !cluster.provDbImageIsMySQL() || cluster.Conf.MultiMasterGrouprep || cluster.Conf.MultiMasterWsrep || cluster.Configurator.HaveDBTag(ProvisionMySQLGTIDTag) {
+		return
+	}
+	if !cluster.HasAllDbDown() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database tag %s not added: database servers of %s are running, turning GTID on for them is an operator procedure", ProvisionMySQLGTIDTag, cluster.Name)
 		return
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag %s: a MySQL cluster is provisioned with GTID", ProvisionMySQLGTIDTag)

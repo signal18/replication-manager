@@ -71,6 +71,10 @@ type Crash struct {
 	// OVERRIDES the automatic flashback/SST cascade for that one attempt, then is
 	// cleared by finishRejoin. "" = automatic.
 	RejoinMethod string `json:"rejoinMethod"`
+	// Rearmed marks the working copy rearmRejoin made: the operator asked for one more
+	// attempt, with a method or the automatic one ("" — which alone could not tell the
+	// one-shot guard apart from the outcome it was copied from, #2226).
+	Rearmed bool `json:"rearmed,omitempty"`
 }
 
 // Operator-chosen rejoin methods (Crash.RejoinMethod), from the GUI delta viewer.
@@ -326,6 +330,7 @@ func (cluster *Cluster) finishCrash(moved *Crash, url string, result string) *Cr
 	}
 	moved.RejoinResult = result
 	moved.RejoinResultTs = now.Unix()
+	moved.Rearmed = false
 	cluster.Crashes = kept
 	// Stamp the outcome INTO the crash's own archive dir (crash-bin/crash.json) —
 	// the single record for this real crash. No separate failover.<ts>.json, no
@@ -340,7 +345,9 @@ func (cluster *Cluster) finishCrash(moved *Crash, url string, result string) *Cr
 		cluster.ensureCrashArchive(moved)
 	} else {
 		// no disk record: the rebuild below keeps it in memory (rejoinMarkers)
+		cluster.rejoinMarkerMu.Lock()
 		cluster.FailoverHistory = append(cluster.FailoverHistory, moved)
+		cluster.rejoinMarkerMu.Unlock()
 	}
 	// Rebuild history from disk so it reflects the real archived crashes (deduped,
 	// one per dir) rather than an accumulating in-memory list.
@@ -361,7 +368,7 @@ func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
 	// finished — without it, the history result below would block forever.
 	var newestWorking int64
 	for _, cr := range cluster.Crashes {
-		if cr != nil && cr.URL == url && cr.RejoinMethod != "" && cr.RejoinResult == "" {
+		if cr != nil && cr.URL == url && (cr.RejoinMethod != "" || cr.Rearmed) && cr.RejoinResult == "" {
 			return false
 		}
 		if cr != nil && cr.URL == url && cr.UnixTimestamp > newestWorking {
@@ -414,6 +421,7 @@ func (cluster *Cluster) rearmRejoin(url string, method string) bool {
 	mat.RejoinResult = ""
 	mat.RejoinResultTs = 0
 	mat.RejoinMethod = method
+	mat.Rearmed = true
 	cluster.Crashes = append(cluster.Crashes, &mat)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rejoin re-armed for %s (explicit, method=%q): copied from history to working set for one more attempt", url, method)
 	return true
@@ -684,14 +692,16 @@ func (cluster *Cluster) LoadFailoverHistory() {
 		}
 		// else: archive with no recoverable metadata — leave it on disk, skip.
 	}
+	cluster.rejoinMarkerMu.Lock()
 	cluster.FailoverHistory = append(history, cluster.rejoinMarkers()...)
+	cluster.rejoinMarkerMu.Unlock()
 }
 
 // rejoinMarkers returns the outcomes finishCrash recorded without an archive (a rejoin
 // with no crash: nothing on disk), the newest per server. The rebuild from disk dropped
 // them, so the one-shot guard never saw the attempt and a rejoin whose CHANGE MASTER
 // failed ran again at every tick (#2226, a MySQL replica without GTID). One per server:
-// bounded by the servers of the cluster.
+// bounded by the servers of the cluster. The caller holds rejoinMarkerMu.
 func (cluster *Cluster) rejoinMarkers() crashList {
 	newest := make(map[string]*Crash)
 	for _, cr := range cluster.FailoverHistory {
@@ -712,6 +722,8 @@ func (cluster *Cluster) rejoinMarkers() crashList {
 // forgetRejoinMarker drops the archive-less rejoin outcome of url: the server went down
 // and came back (a new event owed its attempt), or its instance was forgotten.
 func (cluster *Cluster) forgetRejoinMarker(url string) {
+	cluster.rejoinMarkerMu.Lock()
+	defer cluster.rejoinMarkerMu.Unlock()
 	kept := make(crashList, 0, len(cluster.FailoverHistory))
 	for _, cr := range cluster.FailoverHistory {
 		if cr != nil && cr.ArchiveDir == "" && cr.URL == url {

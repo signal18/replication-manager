@@ -83,6 +83,7 @@ func TestMySQLClusterDeclaresGTIDTag(t *testing.T) {
 	}{
 		{"mysql without the tag", newCluster("MySQL", false, "semisync", "row"), "mysqlgtid"},
 		{"percona without the tag", newCluster("Percona", false), "mysqlgtid"},
+		{"percona with the tag", newCluster("Percona", false, "mysqlgtid"), ""},
 		{"mysql with the tag", newCluster("MySQL", false, "semisync", "mysqlgtid"), ""},
 		{"mysql group replication", newCluster("MySQL", true), ""},
 		{"mariadb", newCluster("MariaDB", false), ""},

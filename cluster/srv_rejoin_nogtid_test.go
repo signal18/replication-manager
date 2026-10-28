@@ -2,6 +2,7 @@ package cluster
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -10,8 +11,9 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
-// mysqlGTIDServer is a MySQL 8.0 server whose GTID variables answer gtidMode, with a
-// connection that accepts nothing: a statement sent fails the test's expectations.
+// mysqlGTIDServer is a MySQL 8.0 server with gtid_mode gtidMode (enforce_gtid_consistency
+// ON unless gtidMode is OFF), with a connection that accepts nothing: a statement sent
+// fails the test's expectations.
 func mysqlGTIDServer(t *testing.T, c *Cluster, host, gtidMode string) (*ServerMonitor, sqlmock.Sqlmock) {
 	t.Helper()
 	db, mock, err := sqlmock.New()
@@ -22,20 +24,31 @@ func mysqlGTIDServer(t *testing.T, c *Cluster, host, gtidMode string) (*ServerMo
 	s := &ServerMonitor{URL: host + ":3306", Host: host, Port: "3306", ClusterGroup: c, Conn: sqlx.NewDb(db, "sqlmock"),
 		DBVersion: &version.Version{Flavor: "MySQL", Major: 8, Minor: 0, Release: 41}, Variables: config.NewStringsMap()}
 	s.Variables.Set("GTID_MODE", gtidMode)
-	s.Variables.Set("ENFORCE_GTID_CONSISTENCY", gtidMode)
+	s.Variables.Set("ENFORCE_GTID_CONSISTENCY", "ON")
+	if gtidMode == "OFF" {
+		s.Variables.Set("ENFORCE_GTID_CONSISTENCY", "OFF")
+	}
 	return s, mock
 }
 
 // A MySQL replica or source without GTID is never sent MASTER_AUTO_POSITION=1 (Error
-// 1777, #2226): the rejoin helpers return errNoMySQLGTID and issue no statement.
+// 1777, #2226): the rejoin helpers return errNoMySQLGTID and issue no statement. The
+// gate reads gtid_mode itself: enforce_gtid_consistency=ON with gtid_mode=OFF (the first
+// step of the migration) has no GTID position either.
 func TestRejoinGTIDHelpersRefuseMySQLWithoutGTID(t *testing.T) {
 	c := &Cluster{Name: "c1", Conf: &config.Config{}}
 	for _, tc := range []struct{ name, replica, source string }{
 		{"both off", "OFF", "OFF"},
 		{"replica off", "OFF", "ON"},
 		{"source off", "ON", "OFF"},
+		{"enforce on, gtid_mode off", "OFF_ENFORCED", "ON"},
+		{"source on_permissive", "ON", "ON_PERMISSIVE"},
 	} {
 		replica, mock := mysqlGTIDServer(t, c, "db2", tc.replica)
+		if tc.replica == "OFF_ENFORCED" {
+			replica.Variables.Set("GTID_MODE", "OFF")
+			replica.Variables.Set("ENFORCE_GTID_CONSISTENCY", "ON")
+		}
 		source, _ := mysqlGTIDServer(t, c, "db1", tc.source)
 		if _, err := replica.SetReplicationGTIDCurrentPosFromServer(source); !errors.Is(err, errNoMySQLGTID) {
 			t.Errorf("%s, current pos: %v", tc.name, err)
@@ -47,14 +60,23 @@ func TestRejoinGTIDHelpersRefuseMySQLWithoutGTID(t *testing.T) {
 			t.Errorf("%s: %v", tc.name, err)
 		}
 	}
+	for _, replicaMode := range []string{"ON", "ON_PERMISSIVE"} {
+		replica, _ := mysqlGTIDServer(t, c, "db2", replicaMode)
+		source, _ := mysqlGTIDServer(t, c, "db1", "ON")
+		if err := replica.mysqlGTIDRejoinError(source); err != nil {
+			t.Fatalf("replica %s, source ON: rejoinable on GTID, got %v", replicaMode, err)
+		}
+	}
 	replica, _ := mysqlGTIDServer(t, c, "db2", "ON")
 	source, _ := mysqlGTIDServer(t, c, "db1", "ON")
-	if !replica.mysqlGTIDRejoinable(source) {
-		t.Fatalf("GTID on both: rejoinable on GTID")
+	forced := &Cluster{Name: "c2", Conf: &config.Config{ForceSlaveNoGtid: true}}
+	replica.ClusterGroup = forced
+	if err := replica.mysqlGTIDRejoinError(source); !errors.Is(err, errNoMySQLGTID) || !strings.Contains(err.Error(), "force-slave-no-gtid") {
+		t.Fatalf("force-slave-no-gtid names itself: %v", err)
 	}
 	maria := &ServerMonitor{DBVersion: &version.Version{Flavor: "MariaDB", Major: 11, Minor: 4}, Variables: config.NewStringsMap()}
-	if !maria.mysqlGTIDRejoinable(nil) {
-		t.Fatalf("MariaDB always has its GTID position")
+	if err := maria.mysqlGTIDRejoinError(nil); err != nil {
+		t.Fatalf("MariaDB always has its GTID position: %v", err)
 	}
 }
 
@@ -78,6 +100,29 @@ func TestRejoinMarkerSurvivesHistoryRebuild(t *testing.T) {
 	if !c.rejoinAlreadyAttempted(url) {
 		t.Fatalf("the marker must survive another rebuild")
 	}
+	// an explicit re-arm runs once more, and its outcome replaces the marker
+	if !c.rearmRejoin(url, "") {
+		t.Fatalf("the marker can be re-armed")
+	}
+	if c.rejoinAlreadyAttempted(url) {
+		t.Fatalf("a re-armed rejoin is owed its attempt")
+	}
+	c.finishRejoin(url, RejoinResultSuccess)
+	if !c.rejoinAlreadyAttempted(url) {
+		t.Fatalf("the re-armed attempt's outcome blocks again")
+	}
+	n := 0
+	for _, cr := range c.FailoverHistory {
+		if cr.URL == url {
+			n++
+			if cr.RejoinResult != RejoinResultSuccess {
+				t.Fatalf("the newest outcome is kept: %+v", cr)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("one marker for %s after the re-arm, got %d", url, n)
+	}
 	c.forgetRejoinMarker(url)
 	if c.rejoinAlreadyAttempted(url) {
 		t.Fatalf("back from a failure: a new attempt is owed")
@@ -87,21 +132,33 @@ func TestRejoinMarkerSurvivesHistoryRebuild(t *testing.T) {
 	}
 }
 
-// A MySQL or Percona cluster is provisioned with the mysqlgtid tag; MariaDB and group
-// replication are not.
+// A MySQL or Percona cluster is provisioned with the mysqlgtid tag, recognized by its
+// image repository; MariaDB, Percona XtraDB Cluster and group replication are not, nor a
+// cluster whose servers are running (Bootstrap on an existing cluster).
 func TestAddMySQLGTIDTag(t *testing.T) {
 	for _, tc := range []struct {
 		name, image string
 		grouprep    bool
+		running     bool
 		want        bool
 	}{
-		{"mysql", "mysql:8.4", false, true},
-		{"percona", "percona/percona-server:8.0", false, true},
-		{"mariadb", "mariadb:11.8", false, false},
-		{"group replication", "mysql:8.4", true, false},
+		{"mysql", "mysql:8.4", false, false, true},
+		{"mysql on a registry", "registry.example/team/mysql:8.4@sha256:0123", false, false, true},
+		{"oracle mysql-server", "container-registry.oracle.com/mysql/mysql-server:8.0", false, false, true},
+		{"percona", "percona/percona-server:8.0", false, false, true},
+		{"mariadb", "mariadb:11.8", false, false, false},
+		{"name containing mysql", "team/mysql-compat-mariadb:11.4", false, false, false},
+		{"percona xtradb cluster", "percona/percona-xtradb-cluster:8.0", false, false, false},
+		{"group replication", "mysql:8.4", true, false, false},
+		{"servers running", "mysql:8.4", false, true, false},
 	} {
 		c := newColumnstoreTestCluster()
 		c.Conf.ProvDbImg, c.Conf.MultiMasterGrouprep = tc.image, tc.grouprep
+		state := stateFailed
+		if tc.running {
+			state = stateMaster
+		}
+		c.Servers = []*ServerMonitor{{URL: "db1:3306", State: state, ClusterGroup: c}}
 		c.addMySQLGTIDTag()
 		if got := c.Configurator.HaveDBTag(ProvisionMySQLGTIDTag); got != tc.want {
 			t.Errorf("%s: tag %t, want %t (tags %s)", tc.name, got, tc.want, c.Conf.ProvTags)

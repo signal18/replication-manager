@@ -227,6 +227,7 @@ type Cluster struct {
 	catalogueSaved map[string][]byte          // global backup catalogue file -> its content last written (#2091)
 	catalogueRun   catalogueRebuildState      // the catalogue's rebuild from the archives (#2091), guarded by catalogueMu
 	gatewayUnitsMu sync.Mutex                 // guards GatewayUnits: the gateway collector never waits on the cluster lock a tick holds (#2196)
+	rejoinMarkerMu sync.Mutex                 // guards the FailoverHistory writes of the rejoin outcomes (#2226), a leaf lock: nothing else is taken under it
 	BackupMount    BackupMountState           `json:"backupMount" groups:"web"` // its state, for the Backup settings
 	Agents         []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq   map[string]int64           `json:"-"`
