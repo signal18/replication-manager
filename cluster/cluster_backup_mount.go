@@ -84,11 +84,7 @@ func (cluster *Cluster) backupMountPoint() string {
 // as its secrets and billing name it), so instances sharing a bucket never mix. On the Cloud18
 // SSO it is itself under the SSO user's folder (mountTarget.spec, archiveBucketFolder).
 func (cluster *Cluster) bucketClusterFolder() string {
-	c := cluster.Conf
-	if c.Cloud18 && c.Cloud18Domain != "" && c.Cloud18SubDomain != "" {
-		return c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone + "/" + cluster.Name
-	}
-	return cluster.Name
+	return cluster.Conf.ClusterSpace(cluster.Name)
 }
 
 // The cluster's folder holds its backups folder and its archives side by side, so the mounted

@@ -755,6 +755,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
 	flags.StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|jwt|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius (jwt: the Cloud18 identity token, role vault-role-id, else replication-manager)")
 	flags.StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
+	flags.StringVar(&conf.SecretKvName, "secret-kv-name", "", "Credential store entry (secret-kv) that is the primary: read, rotated, the reference; empty for the built-in config store. Every other enabled entry takes a copy")
+	flags.IntVar(&conf.SecretKvCopyQueueLimit, "secret-kv-copy-queue-limit", 1000, "Max secrets waiting for a copy to the credential store entries; the oldest are dropped once exceeded. <= 0 falls back to this default, never unbounded")
+	flags.IntVar(&conf.SecretKvCopyTimeout, "secret-kv-copy-timeout", 10, "Timeout in seconds of each write (and of the login) to a credential store copy")
+	flags.IntVar(&conf.SecretKvCopyRetryInterval, "secret-kv-copy-retry-interval", 60, "Seconds between two tries of the copies that failed")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
 	flags.IntVar(&conf.LogVaultLevel, "log-level-vault", 1, "Log level for vault")
 

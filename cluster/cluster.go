@@ -734,6 +734,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	*cluster.Conf = confs.ConfInit
 	// the archive list, migrated from backup-archive-mode / backup-restic-* (#2077)
 	cluster.Conf.MigrateArchives()
+	// the credential store entries, vault-* migrated into vault-default (#2227)
+	cluster.Conf.MigrateSecretKvs()
 	// the cluster's own scheduler-jobs-exec-remote, not the map parsed for the defaults
 	cluster.Conf.ParseJobsExecOverrides()
 
@@ -2205,6 +2207,8 @@ func (cluster *Cluster) SaveCallBack() error {
 
 		// a setter changed a BackupRestic* field: archive 1 carries it into the save (#2077)
 		cluster.Conf.SyncArchiveFromConfig()
+		// a setter or inject.toml changed a Vault* field: the primary Vault entry carries it (#2227)
+		cluster.Conf.SyncSecretKvFromConfig()
 
 		// Save the main configuration file
 		changed, err := cluster.SaveConfigFile()
@@ -2326,9 +2330,10 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 		}
 		_, dynamic := cluster.Conf.GetDynamicFlag(key)
 		_, secret := cluster.Conf.Secrets.Lookup(key)
-		if ok || config.IsArchiveLegacyKey(key) || cluster.Conf.ArchiveHoldsSecret(key) {
+		if ok || config.IsArchiveLegacyKey(key) || cluster.Conf.ArchiveHoldsSecret(key) || cluster.Conf.SecretKvHoldsLegacyKey(key) {
 			// a legacy archive key is carried by the archive list (#2077), a secret the
-			// connected archive holds by its entry (#2088)
+			// connected archive holds by its entry (#2088), a vault-* key by the primary
+			// Vault entry (#2227)
 			s.Delete(key)
 		} else if secret && dynamic {
 			// a secret the dynamic config store holds (#2075): written whatever its raw
@@ -2361,6 +2366,16 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 			return false, err
 		}
 		buf.WriteString(archives)
+	}
+
+	// the credential store entries, unless a config file pins them (#2227)
+	if _, pinned := cluster.Conf.GetImmuableFlag("secret-kv"); !pinned {
+		stores, err := cluster.Conf.SecretKvsToml("saved-" + cluster.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error rendering the credential store list: %s", err)
+			return false, err
+		}
+		buf.WriteString(stores)
 	}
 
 	// the S3 provider list, unless the config does not keep it (#2155)
@@ -2708,6 +2723,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	cluster.Lock()
 	*cluster.Conf = conf
 	cluster.Conf.MigrateArchives()
+	cluster.Conf.MigrateSecretKvs()
 	cluster.Conf.ParseJobsExecOverrides()
 	cluster.Unlock()
 	// the backups already read glued to the archive list as the config is (#2091)

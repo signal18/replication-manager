@@ -916,6 +916,11 @@ type Config struct {
 	BackupArchiveName                         string            `mapstructure:"backup-archive-name" toml:"backup-archive-name" json:"backupArchiveName"`
 	Archives                                  []ArchiveConfig   `mapstructure:"archive" toml:"archive" json:"archives"`
 	S3Providers                               S3ProviderBlocks  `mapstructure:"s3-provider" toml:"-" json:"-"`
+	SecretKvs                                 []SecretKvConfig  `mapstructure:"secret-kv" toml:"secret-kv" json:"secretKvs"`
+	SecretKvName                              string            `mapstructure:"secret-kv-name" toml:"secret-kv-name" json:"secretKvName"`
+	SecretKvCopyQueueLimit                    int               `mapstructure:"secret-kv-copy-queue-limit" toml:"secret-kv-copy-queue-limit" json:"secretKvCopyQueueLimit"`
+	SecretKvCopyTimeout                       int               `mapstructure:"secret-kv-copy-timeout" toml:"secret-kv-copy-timeout" json:"secretKvCopyTimeout"`
+	SecretKvCopyRetryInterval                 int               `mapstructure:"secret-kv-copy-retry-interval" toml:"secret-kv-copy-retry-interval" json:"secretKvCopyRetryInterval"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
 	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
 	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`

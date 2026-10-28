@@ -9,10 +9,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
-
-	"github.com/pelletier/go-toml"
 )
 
 // S3ProviderSource constrains the allowed provider mode values.
@@ -204,23 +201,8 @@ func S3ProviderSettings(p S3Provider) map[string]interface{} {
 func S3ProvidersToml(section string, providers []S3Provider) (string, error) {
 	var b strings.Builder
 	for _, p := range providers {
-		b.WriteString("\n[[" + section + ".s3-provider]]\n")
-		m := S3ProviderSettings(p)
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			t, err := toml.TreeFromMap(map[string]interface{}{k: m[k]})
-			if err != nil {
-				return "", err
-			}
-			line, err := t.ToTomlString()
-			if err != nil {
-				return "", err
-			}
-			b.WriteString(line)
+		if err := writeEntryToml(&b, section, "s3-provider", S3ProviderSettings(p)); err != nil {
+			return "", err
 		}
 	}
 	return b.String(), nil

@@ -218,6 +218,33 @@ func (repman *ReplicationManager) applyPeerConfigEvent(ev cluster.ConfigChangeEv
 		}
 	}
 
+	// the credential store list diffs per entry: "secret-kv.<name>.<setting>" (#2227)
+	if rest, ok := strings.CutPrefix(ev.Key, "secret-kv."); ok {
+		if i := strings.LastIndex(rest, "."); i > 0 {
+			if err := cl.Conf.SetSecretKvSetting(rest[:i], rest[i+1:], ev.Value, ev.Action == "unset"); err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Event log: cannot apply %s on %s: %s", ev.Key, ev.Cluster, err)
+				cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+				return false
+			}
+			cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+			return true
+		}
+	}
+	// the primary credential store: the Vault* fields follow it (#2227)
+	if ev.Key == "secret-kv-name" {
+		value := ev.Value
+		if ev.Action == "unset" {
+			value = ""
+		}
+		if err := cl.Conf.SetSecretKvName(value); err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Event log: cannot apply %s on %s: %s", ev.Key, ev.Cluster, err)
+			cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+			return false
+		}
+		cl.RecordEventProvenance(ev.Key, ev.Value, ev.Ts, ev.Author)
+		return true
+	}
+
 	// the S3 provider list diffs per entry: "s3-provider.<name>.<key>" (#2155)
 	if rest, ok := strings.CutPrefix(ev.Key, "s3-provider."); ok {
 		if i := strings.LastIndex(rest, "."); i > 0 {
