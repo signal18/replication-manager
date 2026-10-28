@@ -322,7 +322,12 @@ the capacity discovered from the agents goes into the config, not into a separat
 - `SaveDiscoveredResources` (`server/server_resources_discovered.go`) updates a value only when it is
   > 0 and differs (cores rounded to 0.01, MB to 1, so a stable hardware never rewrites the config),
   then `Save()`: the config-sync gate writes `default.toml` and pushes it. An axis the agents do not
-  show keeps its last value (no flap at a restart).
+  show keeps its last value (no flap at a restart). It writes only through `Save()`, never a file
+  itself (T25: the config-sync gate is the one writer of `default.toml`).
+- A key set in a config file (immutable, `IsVariableImmutable`) is the operator's: the loop never
+  rewrites it (logged once). Without this, the agents' value would replace it in memory, `SaveDynamic`
+  would drop it from `default.toml` (immutable keys are never saved there), and the file value would
+  come back at each restart only to be replaced again.
 - Its own timer, `discoveredResourcesLoop`, not the monitoring loop: after a start it retries every
   `monitoring-ticker` until the agents have been read, then every `resource-manager-discovered-interval`
   (default 3600 s; read again before each wait, so a change applies without a restart; 0 = off). It

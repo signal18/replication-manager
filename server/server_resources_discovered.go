@@ -6,6 +6,7 @@ package server
 
 import (
 	"math"
+	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -31,11 +32,11 @@ func (repman *ReplicationManager) SaveDiscoveredResources() bool {
 	cores := math.Round(in.AgentsCores*100) / 100
 	memMB := math.Round(in.AgentsMemMB)
 	changed := false
-	if cores > 0 && cores != repman.Conf.ResourceManagerDiscoveredCpuCores {
+	if cores > 0 && cores != repman.Conf.ResourceManagerDiscoveredCpuCores && repman.discoveredKeyWritable("resource-manager-discovered-cpu-cores") {
 		repman.Conf.ResourceManagerDiscoveredCpuCores = cores
 		changed = true
 	}
-	if memMB > 0 && memMB != repman.Conf.ResourceManagerDiscoveredMemoryMB {
+	if memMB > 0 && memMB != repman.Conf.ResourceManagerDiscoveredMemoryMB && repman.discoveredKeyWritable("resource-manager-discovered-memory-mb") {
 		repman.Conf.ResourceManagerDiscoveredMemoryMB = memMB
 		changed = true
 	}
@@ -45,6 +46,24 @@ func (repman *ReplicationManager) SaveDiscoveredResources() bool {
 		repman.Save()
 	}
 	return cores > 0 || memMB > 0
+}
+
+// discoveredPinnedLogged remembers the discovered keys already reported as pinned, so the log says it once.
+var discoveredPinnedLogged sync.Map
+
+// discoveredKeyWritable reports whether replication-manager may write a discovered key: not when it is
+// set in a config file (immutable, ImmuableFlagMap). The operator's value is kept, never overwritten
+// by what the agents show; SaveDynamic would drop the key from default.toml anyway, so the file value
+// would come back at each restart and be replaced again at the next reading.
+func (repman *ReplicationManager) discoveredKeyWritable(key string) bool {
+	if !repman.Conf.IsVariableImmutable(key) {
+		return true
+	}
+	if _, logged := discoveredPinnedLogged.LoadOrStore(key, true); !logged {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"Resource Manager discovered capacity: %s is set in a config file, kept as is (not rewritten from the agents)", key)
+	}
+	return false
 }
 
 // discoveredTimeUnit is the unit of resource-manager-discovered-interval and of the first-reading

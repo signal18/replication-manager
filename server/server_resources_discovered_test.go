@@ -65,6 +65,22 @@ func TestSaveDiscoveredResources(t *testing.T) {
 			repman.Conf.ResourceManagerDiscoveredCpuCores, repman.Conf.ResourceManagerDiscoveredMemoryMB, repman.IsNeedConfigSave)
 	}
 
+	// A key set in a config file (immutable) is the operator's: never rewritten from the agents.
+	repman.Conf.SetImmuableFlag("resource-manager-discovered-cpu-cores", 6.0)
+	repman.Conf.ResourceManagerDiscoveredCpuCores = 6
+	repman.IsNeedConfigSave = false
+	c1.Agents = append(c1.Agents, cluster.Agent{Id: "d", HostName: "node-d", CpuCores: 2, MemBytes: 8192})
+	repman.SaveDiscoveredResources()
+	if repman.Conf.ResourceManagerDiscoveredCpuCores != 6 {
+		t.Errorf("a pinned key must keep the file value 6, got %v", repman.Conf.ResourceManagerDiscoveredCpuCores)
+	}
+	if !repman.IsNeedConfigSave || repman.Conf.ResourceManagerDiscoveredMemoryMB != 65536 {
+		t.Errorf("the unpinned memory key still follows the agents: %v MB, save %v", repman.Conf.ResourceManagerDiscoveredMemoryMB, repman.IsNeedConfigSave)
+	}
+	repman.Conf.DeleteImmuableFlag("resource-manager-discovered-cpu-cores")
+	c1.Agents = c1.Agents[:3]
+	repman.SaveDiscoveredResources() // back to the agents: 15 cores, 57344 MB
+
 	// default.toml carries them (their flag default is 0, so a discovered value is saved).
 	repman.DefaultFlagMap = map[string]interface{}{
 		"resource-manager-discovered-cpu-cores": 0.0,
