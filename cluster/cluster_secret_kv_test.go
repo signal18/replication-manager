@@ -411,3 +411,31 @@ func TestPruneSecretVersionsThroughSave(t *testing.T) {
 		t.Fatalf("file after append %v", vs)
 	}
 }
+
+// #2227 rule 7: the orchestrator writers report the values they set: the shared root password
+// under every database server, an app's secret under apps/<app>; the instance's secrets
+// (system API key, API auth header) never
+func TestOrchestratorSecretsReported(t *testing.T) {
+	v := vaultfake.New("kv", "role", "sid")
+	defer v.Close()
+	cl := secretKvTestCluster(t, v)
+	cl.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", "root-pass")
+	cl.reportOrchestratorSecret("env", "SENSOR_API_KEY", "x")
+	cl.reportOrchestratorSecret("env", "REPMAN_AUTH_HEADER", "x")
+	cl.reportOrchestratorSecret("mattermost", "MM_SQLSETTINGS_DATASOURCE", "dsn-secret")
+	cl.ApplyAppRandomPassword(&config.AppConfig{AppHost: "erp:8000"})
+	var got []string
+	for _, it := range cl.storeQueue().Take() {
+		got = append(got, it.Path+"/"+it.Key)
+	}
+	sort.Strings(got)
+	want := []string{
+		"c1/apps/erp/app-random-password",
+		"c1/apps/mattermost/MM_SQLSETTINGS_DATASOURCE",
+		"c1/databases/db1/MYSQL_ROOT_PASSWORD",
+		"c1/databases/db2/MYSQL_ROOT_PASSWORD",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("queued %v, want %v", got, want)
+	}
+}

@@ -962,3 +962,40 @@ func (cluster *Cluster) PruneSecretVersions(keepLast int, dryRun bool) SecretVer
 	}
 	return summary
 }
+
+// orchestratorSecretKind is the place, in the stores' layout, of a key the orchestrator layer
+// sets in the cluster's shared secret object ("env": the OpenSVC sec object, the Kubernetes
+// Secret): the database root password under every database server, the shard proxy password
+// under every shard proxy. The others are the instance's (the API admin password, the system
+// API key, the API auth header): never copied (rule 6).
+var orchestratorSecretKind = map[string]string{
+	"MYSQL_ROOT_PASSWORD":      credstore.KindDatabases,
+	"SHARDPROXY_ROOT_PASSWORD": credstore.KindProxies,
+}
+
+// reportOrchestratorSecret is what an orchestrator writer calls once it set a secret (rule 7):
+// the value goes to the stores as a version, the orchestrator is never read back. object is
+// "env", the cluster's shared secret object, or an app's name (apps/<app>/<key>).
+func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
+	if value == "" || key == "SENSOR_API_KEY" {
+		return
+	}
+	if object != "env" {
+		cluster.CopySecret(credstore.KindApps, object, key, value)
+		return
+	}
+	switch orchestratorSecretKind[key] {
+	case credstore.KindDatabases:
+		for _, srv := range cluster.Servers {
+			if srv != nil {
+				cluster.CopySecret(credstore.KindDatabases, secretServerName(srv), key, value)
+			}
+		}
+	case credstore.KindProxies:
+		for _, prx := range cluster.Proxies {
+			if prx != nil && prx.GetType() == config.ConstProxySpider {
+				cluster.CopySecret(credstore.KindProxies, prx.GetName(), key, value)
+			}
+		}
+	}
+}

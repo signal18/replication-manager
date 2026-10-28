@@ -322,10 +322,16 @@ func (cluster *Cluster) openSVCCreateMapsV2(svc opensvc.Collector, agent string)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
 	}
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
+	if err == nil {
+		cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
+	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 	}
 	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
+	if err == nil {
+		cluster.reportOrchestratorSecret("env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
+	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
 	}
@@ -384,10 +390,16 @@ func (cluster *Cluster) openSVCCreateMapsV3(svc opensvc.Collector, agent string)
 		errs["REPLICATION_MANAGER_PASSWORD"] = err
 	}
 	err = svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
+	if err == nil {
+		cluster.reportOrchestratorSecret("env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
+	}
 	if err != nil {
 		errs["MYSQL_ROOT_PASSWORD"] = err
 	}
 	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
+	if err == nil {
+		cluster.reportOrchestratorSecret("env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
+	}
 	if err != nil {
 		errs["SHARDPROXY_ROOT_PASSWORD"] = err
 	}
