@@ -16,7 +16,7 @@ It read the global status `SLAVE_RECEIVED_HEARTBEATS` twice, the timeout apart:
 - a busy master sends events, not heartbeats: the counter stays flat;
 - the default timeout (3 s) equalled repman's heartbeat period (3 s).
 
-Found by `testFailoverManual`, which forces a live master to failed and expects no
+Found by `testFailoverManual` (renamed `testCancelFailoverReplicationHeartbeatDetection`), which forces a live master to failed and expects no
 failover: on MariaDB 11.8 with channel `bench`, the channel counter went 12531 → 12542 in
 35 s, the global counter stayed 0, and the failover happened.
 
@@ -94,7 +94,7 @@ period to 0, turning its heartbeats off. The PostgreSQL status queries alias the
 
 - Unit: `utils/dbhelper/replication_heartbeat_test.go` (per-engine queries and statements),
   `cluster/srv_heartbeat_test.go` (tracking, guard, CINF0022, WARN0050, stopped threads).
-- MariaDB 11.8, named channel, on a test cluster: `testFailoverManual` (a live master forced
+- MariaDB 11.8, named channel, on a test cluster: `testCancelFailoverReplicationHeartbeatDetection` (a live master forced
   to failed) PASS, cancelled by ERR00028 (received 2.3 s ago, window 8 s); a real failover
   (`testFailoverSemisyncAutoRejoinFlashback`, busy master stopped) went on with no ERR00028;
   `force-slave-heartbeat-time` 2 raised WARN0050, `force-slave-heartbeat` set the channel to

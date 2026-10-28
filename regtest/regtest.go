@@ -51,7 +51,7 @@ var tests = []string{
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
 	"testFailoverNumberFailureLimitReach",
 	"testFailoverTimeNotReach",
-	"testFailoverManual",
+	"testCancelFailoverReplicationHeartbeatDetection",
 	"testFailoverAssyncAutoRejoinFlashback",
 	"testFailoverSemisyncAutoRejoinFlashback",
 	"testFailoverAssyncAutoRejoinNowrites",
@@ -239,7 +239,8 @@ var testTargets = map[string][]TestTarget{
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat":             anyCluster,
 	"testFailoverNumberFailureLimitReach":                          anyCluster,
 	"testFailoverTimeNotReach":                                     anyCluster,
-	"testFailoverManual":                                           anyCluster,
+	// a direct replica receives from the master: the check reads it on master-slave only
+	"testCancelFailoverReplicationHeartbeatDetection": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2, ConfigVariableMustSet: map[string]string{"failover-falsepositive-heartbeat": "true"}}},
 	"testFailoverAssyncAutoRejoinFlashback":                        anyCluster,
 	"testFailoverSemisyncAutoRejoinFlashback":                      anyCluster,
 	"testFailoverAssyncAutoRejoinNowrites":                         anyCluster,

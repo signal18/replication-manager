@@ -40,7 +40,7 @@ func TestSkipReason(t *testing.T) {
 		test string
 		skip string // a word of the reason, empty when the test runs
 	}{
-		{"any cluster", newCluster(1, config.ConstOrchestratorOnPremise, 0, false), "testFailoverManual", ""},
+		{"any cluster", newCluster(1, config.ConstOrchestratorOnPremise, 0, false), "testFailoverAssyncAutoRejoinNoGtid", ""},
 		{"first of two targets", newCluster(2, config.ConstOrchestratorOnPremise, 0, false), "testTargetsAny", ""},
 		{"second of two targets", newCluster(3, config.ConstOrchestratorOnPremise, 0, true), "testTargetsAny", ""},
 		{"none of two targets", newCluster(2, config.ConstOrchestratorOnPremise, 0, true), "testTargetsAny", "topology-target master-slave, cluster is multi-master-grprep; number-nodes-target 3, cluster has 2"},

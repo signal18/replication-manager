@@ -128,8 +128,8 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 			allTests[key] = test
 			continue
 		}
-		if test.Name == "testFailoverManual" {
-			res = regtest.TestFailoverManual(cl, test.ConfigFile, &test)
+		if test.Name == "testCancelFailoverReplicationHeartbeatDetection" {
+			res = regtest.TestCancelFailoverReplicationHeartbeatDetection(cl, test.ConfigFile, &test)
 		}
 		if test.Name == "testFailoverSemisyncAutoRejoinSafeMSMXMS" {
 			res = regtest.TestFailoverSemisyncAutoRejoinSafeMSMXMS(cl, test.ConfigFile, &test)
