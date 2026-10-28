@@ -176,7 +176,7 @@ func TestFullPassDatabaseEngineFirst(t *testing.T) {
 		t.Fatalf("current %q, want the engine's", v)
 	}
 	cl.secretWritePass()
-	if kv.Get(testSpace+"/databases/db2/replication-credential")["replication-credential"] != "repl:from-engine" {
+	if kv.Get(testSpace + "/databases/db2/replication-credential")["replication-credential"] != "repl:from-engine" {
 		t.Fatal("the KV store did not get the engine's value")
 	}
 }
@@ -209,7 +209,7 @@ func TestRotateWithVaultEngine(t *testing.T) {
 		t.Fatalf("rotations %d value %q", engine.Rotations("repman"), cl.Conf.Secrets.Get("db-servers-credential").Value)
 	}
 	cl.secretWritePass()
-	if kv.Get(testSpace+"/databases/db1/db-servers-credential")["db-servers-credential"] != "repman:rotated-1" {
+	if kv.Get(testSpace + "/databases/db1/db-servers-credential")["db-servers-credential"] != "repman:rotated-1" {
 		t.Fatal("the rotated value is not a version in the KV store")
 	}
 }
