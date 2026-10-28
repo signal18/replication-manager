@@ -202,7 +202,7 @@ func (s *MCPServer) registerAppLifecycleTools() {
 				case "stop":
 					err = cl.OpenSVCStopAppService(a, node)
 				case "restart":
-					err = cl.OpenSVCRestartAppService(a, node, "")
+					_, err = cl.OpenSVCRestartAppService(a, node, "")
 				}
 				if err != nil {
 					return mcp.NewToolResultError("app " + action + " " + a.Name + ": " + err.Error()), nil

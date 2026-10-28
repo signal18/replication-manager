@@ -788,8 +788,10 @@ func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *ht
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Param node path string false "Node Name (optional, if not provided, will restart default node). Can use ALL or * to restart on all nodes."
+// @Param node path string false "Node Name (optional). Without it, or with ALL or *, a flex app restarts rolling, node by node, and a failover app its service. The answer lists the nodes restarted."
 // @Success 200 {string} string "App Service Restarted"
+// @Success 202 {string} string "Rolling restart started (flex app, OpenSVC v3), node by node in the background"
+// @Failure 409 {string} string "A rolling restart of this app is already running"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" "Server Not Found"
 // @Router /api/clusters/{clusterName}/apps/{appName}/actions/restart [post]
@@ -838,21 +840,29 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 		}
 		return
 	}
+	// no node: a flex app restarts rolling over its instances, a failover app its service (#2217)
 	nodeParam := vars["node"]
-	if nodeParam == "" {
-		nodeParam = app.GetAgent()
-	}
-	if nodeParam == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		if err := json.NewEncoder(w).Encode(map[string]string{"error": "Node is required when app has no default agent"}); err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
+	if mycluster.AppRestartIsRolling(app, nodeParam) {
+		// node by node, minutes: in the background, progress in the orchestrator log and in
+		// the app's rollingRestartInProgress; a second one is refused while it runs
+		if app.GetAppAPIView().RollingRestartInProgress {
+			w.WriteHeader(http.StatusConflict)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "a rolling restart of this app is already running"})
+			return
 		}
+		go func() {
+			if restarted, err := mycluster.OpenSVCRestartAppService(app, nodeParam, ridParam); err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App %s rolling restart failed after %v: %s", app.Name, restarted, err)
+			}
+		}()
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"message": "Rolling restart started, node by node", "app": app.GetName(), "rolling": true})
 		return
 	}
-
-	if err := mycluster.OpenSVCRestartAppService(app, nodeParam, ridParam); err != nil {
+	restarted, err := mycluster.OpenSVCRestartAppService(app, nodeParam, ridParam)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		if encErr := json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to restart app service: %s", err)}); encErr != nil {
+		if encErr := json.NewEncoder(w).Encode(map[string]interface{}{"error": fmt.Sprintf("Failed to restart app service: %s", err), "restarted": restarted}); encErr != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", encErr)
 		}
 		return
@@ -860,10 +870,11 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
-		"message": "App service restarted successfully",
-		"app":     app.GetName(),
-		"node":    nodeParam,
-		"rid":     ridParam,
+		"message":   "App service restarted successfully",
+		"app":       app.GetName(),
+		"node":      nodeParam,
+		"restarted": restarted,
+		"rid":       ridParam,
 	}); err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
 	}

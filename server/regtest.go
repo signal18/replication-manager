@@ -467,6 +467,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAppMonitorHTTP" {
 			res = regtest.TestAppMonitorHTTP(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAppRollingRestart" {
+			res = regtest.TestAppRollingRestart(cl, test.ConfigFile, &test)
+		}
 
 		test.Result = regtest.GetTestResultLabel(res)
 		// the setup is read before the suite closes its test cluster

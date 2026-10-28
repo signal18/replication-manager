@@ -2654,7 +2654,8 @@ export const restartApp = createGuardedAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.restartApp(clusterName, appId, rid, baseURL)
-      showSuccessBanner('Restarting app successful!', status, thunkAPI)
+      // 202: a flex app restarts rolling, node by node, in the background
+      showSuccessBanner(status === 202 ? 'Rolling restart started, node by node' : 'Restarting app successful!', status, thunkAPI)
       return { data, status }
     } catch (error) {
       showErrorBanner('Restarting app failed!', error, thunkAPI)

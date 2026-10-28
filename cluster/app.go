@@ -80,6 +80,9 @@ type App struct {
 	LastRefreshError      string    `json:"lastRefreshError"`
 	DbProvisionError      string    `json:"dbProvisionError"` // last app database auto-create refusal (#1870), "" once one goes through
 	RefreshInProgress     bool      `json:"refreshInProgress"`
+	// RollingRestartInProgress: a rolling restart of this flex app runs (#2217); a second
+	// one is refused until it ends. Under app.Mutex (TryStartRollingRestart).
+	RollingRestartInProgress bool `json:"rollingRestartInProgress"`
 	// Route-scoped debounce counters are the single source of truth.
 	AppErrConsecutiveMap map[string]int         `json:"-"`
 	ErrState             map[string]state.State `json:"-"`

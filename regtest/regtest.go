@@ -300,6 +300,7 @@ var testTargets = map[string][]TestTarget{
 	"testSchemaPlugin":                                                         anyCluster,
 	// its own local web service: any cluster
 	"testAppMonitorHTTP": anyCluster,
+	"testAppRollingRestart": {{OrchestratorTarget: []string{config.ConstOrchestratorOpenSVC}}},
 	"testGraphiteMetricsQueueBound":                                            anyCluster,
 	"testDirectReseedSystemAllEmptyDestination":                                anyCluster,
 	"testDirectReseedSystemAllPluginAlreadyActive":                             anyCluster,

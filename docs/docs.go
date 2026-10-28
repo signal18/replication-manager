@@ -4644,8 +4644,20 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "202": {
+                        "description": "Rolling restart started (flex app, OpenSVC v3), node by node in the background",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A rolling restart of this app is already running",
                         "schema": {
                             "type": "string"
                         }
@@ -4697,7 +4709,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Node Name (optional, if not provided, will restart default node). Can use ALL or * to restart on all nodes.",
+                        "description": "Node Name (optional). Without it, or with ALL or *, a flex app restarts rolling, node by node, and a failover app its service. The answer lists the nodes restarted.",
                         "name": "node",
                         "in": "path"
                     }
@@ -4709,8 +4721,20 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
+                    "202": {
+                        "description": "Rolling restart started (flex app, OpenSVC v3), node by node in the background",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "A rolling restart of this app is already running",
                         "schema": {
                             "type": "string"
                         }
@@ -26832,6 +26856,10 @@ const docTemplate = `{
                 "refreshInProgress": {
                     "type": "boolean"
                 },
+                "rollingRestartInProgress": {
+                    "description": "RollingRestartInProgress: a rolling restart of this flex app runs (#2217); a second\none is refused until it ends. Under app.Mutex (TryStartRollingRestart).",
+                    "type": "boolean"
+                },
                 "routeStatus": {
                     "type": "array",
                     "items": {
@@ -28168,6 +28196,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "result": {
+                    "type": "string"
+                },
+                "skip-reason": {
+                    "description": "SkipReason is the target the cluster missed, when Result is SKIP.",
                     "type": "string"
                 }
             }
@@ -29952,6 +29984,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "cloud18SelfServiceClustersCanBorrow": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceClustersCanConsumeForSale": {
                     "type": "boolean"
                 },
                 "cloud18SelfServiceClustersEnabledScript": {

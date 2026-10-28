@@ -149,6 +149,9 @@ type AppAPIView struct {
 	TemplateMD5Prov       string               `json:"templateMD5Prov"`
 	TemplateMD5           string               `json:"templateMD5"`
 	IsHashingTemplate     bool                 `json:"isHashingTemplate"`
+
+	// RollingRestartInProgress: see App.RollingRestartInProgress (#2217).
+	RollingRestartInProgress bool `json:"rollingRestartInProgress"`
 }
 
 // GetAppAPIView builds an independent, race-free snapshot of app for the
@@ -190,6 +193,8 @@ func (app *App) GetAppAPIView() *AppAPIView {
 		TemplateMD5Prov:       app.TemplateMD5Prov,
 		TemplateMD5:           app.TemplateMD5,
 		IsHashingTemplate:     app.IsHashingTemplate,
+
+		RollingRestartInProgress: app.RollingRestartInProgress,
 	}
 	if app.RouteStatus != nil {
 		view.RouteStatus = append([]config.RouteStatus(nil), app.RouteStatus...)

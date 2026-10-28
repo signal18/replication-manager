@@ -307,13 +307,91 @@ func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
 	return svc.WaitObjectConfigSettledV3(app.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
 }
 
-func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
+// appRollingPoll: how often a rolling app restart reads the instances' state.
+const appRollingPoll = 2 * time.Second
+
+// rollAppInstances restarts the instances on nodes one at a time (#2217): stop the node's
+// instance, wait until it is no longer up, start it, wait until it is up again (each wait
+// bounded by timeout), then the next node. The first instance that does not stop or does not
+// come back ends the roll with an error naming its node: the instances not reached yet are
+// left untouched, up. Returns the nodes restarted. The orchestrator calls are parameters,
+// for tests.
+func rollAppInstances(nodes []string, stop, start func(node string) error, upNodes func() ([]string, error),
+	timeout, poll time.Duration, logf func(format string, args ...interface{})) ([]string, error) {
+	isUp := func(node string) (bool, error) {
+		up, err := upNodes()
+		if err != nil {
+			return false, err
+		}
+		for _, n := range up {
+			if n == node {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	waitState := func(node string, want bool) error {
+		deadline := time.Now().Add(timeout)
+		for {
+			up, err := isUp(node)
+			if err == nil && up == want {
+				return nil
+			}
+			if time.Now().After(deadline) {
+				state := map[bool]string{true: "up", false: "down"}[want]
+				if err != nil {
+					return fmt.Errorf("instance on %s not %s after %s: %w", node, state, timeout, err)
+				}
+				return fmt.Errorf("instance on %s not %s after %s", node, state, timeout)
+			}
+			time.Sleep(poll)
+		}
+	}
+	done := make([]string, 0, len(nodes))
+	for i, node := range nodes {
+		logf("Rolling restart %d/%d: stopping the instance on %s", i+1, len(nodes), node)
+		if err := stop(node); err != nil {
+			return done, fmt.Errorf("stop on %s: %w", node, err)
+		}
+		if err := waitState(node, false); err != nil {
+			return done, err
+		}
+		logf("Rolling restart %d/%d: starting the instance on %s", i+1, len(nodes), node)
+		if err := start(node); err != nil {
+			return done, fmt.Errorf("start on %s: %w", node, err)
+		}
+		if err := waitState(node, true); err != nil {
+			return done, err
+		}
+		logf("Rolling restart %d/%d: the instance on %s is up", i+1, len(nodes), node)
+		done = append(done, node)
+	}
+	return done, nil
+}
+
+// appRestartAllNodes: no node, ALL or * restarts every instance.
+func appRestartAllNodes(node string) bool {
+	return node == "" || strings.ToUpper(node) == "ALL" || node == "*"
+}
+
+// AppRestartIsRolling: this restart of the app is a rolling one, node by node, which lasts
+// minutes (OpenSVC v3, a flex app, every node): the API runs it in the background (#2217).
+func (cluster *Cluster) AppRestartIsRolling(app *App, node string) bool {
+	svc := cluster.OpenSVCConnect()
+	return appRestartAllNodes(node) && cluster.GetAppHATopology(app.AppConfig) == config.OpenSVCTopologyFlex && svc.IsV3()
+}
+
+// OpenSVCRestartAppService restarts an app and returns the nodes restarted. On OpenSVC v3
+// a flex app (one instance per node) restarts rolling, node by node, so the service never
+// has all its instances down (#2217); a node given restarts that instance only; a failover
+// app restarts its service.
+func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) ([]string, error) {
 	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
-		return err
+		return nil, err
 	}
 	if err := ValidateAppRestartRid(rid); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App restart validation failed: %s", err)
-		return err
+		return nil, err
 	}
 
 	svc := cluster.OpenSVCConnect()
@@ -325,32 +403,64 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 		if rid != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
 		}
-		err := svc.RestartServiceV3(cluster.Name, app.GetServiceName())
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
-			return err
+		all := appRestartAllNodes(node)
+		if all && cluster.GetAppHATopology(app.AppConfig) != config.OpenSVCTopologyFlex {
+			if err := svc.RestartServiceV3(cluster.Name, app.GetServiceName()); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
+				return nil, err
+			}
+			return []string{app.GetAgent()}, nil
 		}
-		return nil
+		nodes := []string{node}
+		if all {
+			if !app.TryStartRollingRestart() {
+				return nil, fmt.Errorf("a rolling restart of %s is already running", app.Name)
+			}
+			defer app.EndRollingRestart()
+			up, err := svc.GetServiceNodeFromStateV3(app.GetServiceName())
+			if err != nil {
+				return nil, fmt.Errorf("rolling restart of %s: instances not read: %w", app.Name, err)
+			}
+			nodes = up
+		}
+		timeout, err := time.ParseDuration(app.GetStartTimeout())
+		if err != nil || timeout <= 0 {
+			timeout = 2 * time.Minute
+		}
+		logf := func(format string, args ...interface{}) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "App %s: "+format, append([]interface{}{app.Name}, args...)...)
+		}
+		done, err := rollAppInstances(nodes,
+			func(n string) error { return svc.StopInstanceV3(n, app.GetServiceName()) },
+			func(n string) error { return svc.StartInstanceV3(n, app.GetServiceName()) },
+			func() ([]string, error) { return svc.GetServiceNodeFromStateV3(app.GetServiceName()) },
+			timeout, appRollingPoll, logf)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App %s rolling restart stopped after %v: %s", app.Name, done, err)
+			return done, err
+		}
+		return done, nil
 	}
 	agent := app.GetAgent()
 	if strings.ToUpper(node) == "ALL" || node == "*" {
 		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), "*", rid)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
-			return err
+			return nil, err
 		}
-	} else {
-		if node != "" {
-			agent = node
-		}
-		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), agent, rid)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
-			return err
-		}
-		return nil
+		return []string{"*"}, nil
 	}
-	return nil
+	if node != "" {
+		agent = node
+	}
+	if agent == "" {
+		return nil, errors.New("node is required when the app has no default agent")
+	}
+	if err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), agent, rid); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
+		return nil, err
+	}
+	return []string{agent}, nil
 }
 
 func (cluster *Cluster) OpenSVCAbortAppService(app *App) error {

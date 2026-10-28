@@ -119,6 +119,24 @@ func (app *App) SetPrevState(state string) {
 // than the one that writes it (any status/API reader vs. the
 // maybeRefreshAppsAsync worker calling Refresh()), so it needs to actually
 // be safe to do so.
+// TryStartRollingRestart marks a rolling restart started; false when one already runs (#2217).
+func (app *App) TryStartRollingRestart() bool {
+	app.Lock()
+	defer app.Unlock()
+	if app.RollingRestartInProgress {
+		return false
+	}
+	app.RollingRestartInProgress = true
+	return true
+}
+
+// EndRollingRestart marks the rolling restart ended.
+func (app *App) EndRollingRestart() {
+	app.Lock()
+	defer app.Unlock()
+	app.RollingRestartInProgress = false
+}
+
 func (app *App) SetRefreshInProgress(v bool) {
 	app.Lock()
 	defer app.Unlock()
