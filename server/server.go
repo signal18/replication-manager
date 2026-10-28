@@ -1207,7 +1207,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.Float64Var(&conf.ResourceManagerInfraNetworkMbps, "resource-manager-infra-network-mbps", 0, "ResourceManager infra capacity override: total public network bandwidth in Mbps (the BPU axis). 0 = unset (use the monitored value).")
 	flags.Float64Var(&conf.ResourceManagerDiscoveredCpuCores, "resource-manager-discovered-cpu-cores", 0, "ResourceManager infra capacity discovered from the agents: total CPU cores (x SMT gain). Written by replication-manager, not an override.")
 	flags.Float64Var(&conf.ResourceManagerDiscoveredMemoryMB, "resource-manager-discovered-memory-mb", 0, "ResourceManager infra capacity discovered from the agents: total memory in MB. Written by replication-manager, not an override.")
-	flags.IntVar(&conf.ResourceManagerDiscoveredInterval, "resource-manager-discovered-interval", 3600, "Seconds between two readings of the agents' capacity into resource-manager-discovered-*, on its own timer (not the monitoring loop). 0 = never.")
+	flags.IntVar(&conf.ResourceManagerDiscoveredInterval, "resource-manager-discovered-interval", 3600, "Seconds between two readings of the agents' capacity into resource-manager-discovered-*, on its own timer (not the monitoring loop); after a start it is read as soon as the agents are, then every interval. A change applies without a restart. 0 = never.")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")

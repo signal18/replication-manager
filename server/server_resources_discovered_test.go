@@ -88,36 +88,42 @@ func TestSaveDiscoveredResources(t *testing.T) {
 	}
 }
 
-// The reading runs on its own timer (resource-manager-discovered-interval), not the monitoring loop:
-// 0 turns it off, otherwise it writes the agents' capacity each interval and stops with replication-manager.
+// The reading runs on its own timer (resource-manager-discovered-interval), not the monitoring loop. The
+// time unit is shortened to a millisecond so the test does not hang on a real ticker: 0 reads nothing, and
+// after a start the agents' capacity is read at the first monitoring tick (not one full interval later);
+// the timer stops with replication-manager. Values are read only after the loop has returned.
 func TestDiscoveredResourcesLoop(t *testing.T) {
+	defer func(u time.Duration) { discoveredTimeUnit = u }(discoveredTimeUnit)
+	discoveredTimeUnit = time.Millisecond
 	repman, c1 := newTokenTestManager(t)
 	repman.Conf.Secrets = config.NewSecrets(map[string]config.Secret{})
+	repman.Conf.MonitoringTicker = 2
 	c1.Agents = []cluster.Agent{{Id: "a", HostName: "node-a", CpuCores: 8, MemBytes: 32768}}
 
-	done := make(chan struct{})
-	go func() { repman.discoveredResourcesLoop(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("interval 0 must not start the timer")
-	}
-	if repman.Conf.ResourceManagerDiscoveredCpuCores != 0 {
-		t.Error("interval 0: nothing written")
+	run := func(d time.Duration) {
+		t.Helper()
+		repman.exit.Store(false)
+		done := make(chan struct{})
+		go func() { repman.discoveredResourcesLoop(); close(done) }()
+		time.Sleep(d)
+		repman.exit.Store(true)
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the timer must stop with replication-manager")
+		}
 	}
 
-	// Interval 1 s: let it tick, stop it, then read (after the loop has returned, no concurrent access).
-	repman.Conf.ResourceManagerDiscoveredInterval = 1
-	done = make(chan struct{})
-	go func() { repman.discoveredResourcesLoop(); close(done) }()
-	time.Sleep(1500 * time.Millisecond)
-	repman.exit.Store(true)
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("the timer must stop with replication-manager")
+	// 0: off, nothing read.
+	run(200 * time.Millisecond)
+	if repman.Conf.ResourceManagerDiscoveredCpuCores != 0 {
+		t.Errorf("interval 0: nothing written, got %v cores", repman.Conf.ResourceManagerDiscoveredCpuCores)
 	}
+
+	// A long interval (100 000 units): still read at the first monitoring tick after the start.
+	repman.Conf.ResourceManagerDiscoveredInterval = 100000
+	run(200 * time.Millisecond)
 	if repman.Conf.ResourceManagerDiscoveredCpuCores != 8 || repman.Conf.ResourceManagerDiscoveredMemoryMB != 32768 {
-		t.Fatalf("interval 1 s: %v cores, %v MB", repman.Conf.ResourceManagerDiscoveredCpuCores, repman.Conf.ResourceManagerDiscoveredMemoryMB)
+		t.Fatalf("first reading after a start: %v cores, %v MB", repman.Conf.ResourceManagerDiscoveredCpuCores, repman.Conf.ResourceManagerDiscoveredMemoryMB)
 	}
 }

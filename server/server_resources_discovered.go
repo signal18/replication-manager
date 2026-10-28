@@ -19,12 +19,15 @@ import (
 // resource-manager-infra-* values still win when set, and replication-manager rewrites these.
 // An axis the agents do not show (none monitored yet, e.g. at startup) keeps its last value, so a
 // restart does not flap the config; the config is saved only when a value changes. Run on its own
-// timer (discoveredResourcesLoop), never from the monitoring loop.
-func (repman *ReplicationManager) SaveDiscoveredResources() {
+// timer (discoveredResourcesLoop), never from the monitoring loop. Returns whether the agents showed
+// any capacity.
+func (repman *ReplicationManager) SaveDiscoveredResources() bool {
 	if repman == nil || repman.Conf == nil {
-		return
+		return false
 	}
 	in := repman.infraCapacityInputs(repman.sortedClusters())
+	// Rounded the same way every time (cores to 0.01, MB to 1), so the != below compares values that
+	// went through the same rounding and a stable hardware never rewrites the config.
 	cores := math.Round(in.AgentsCores*100) / 100
 	memMB := math.Round(in.AgentsMemMB)
 	changed := false
@@ -36,27 +39,45 @@ func (repman *ReplicationManager) SaveDiscoveredResources() {
 		repman.Conf.ResourceManagerDiscoveredMemoryMB = memMB
 		changed = true
 	}
-	if !changed {
-		return
+	if changed {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
+			"Resource Manager discovered capacity: %v cores, %v MB of memory", repman.Conf.ResourceManagerDiscoveredCpuCores, repman.Conf.ResourceManagerDiscoveredMemoryMB)
+		repman.Save()
 	}
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlInfo,
-		"Resource Manager discovered capacity: %v cores, %v MB of memory", repman.Conf.ResourceManagerDiscoveredCpuCores, repman.Conf.ResourceManagerDiscoveredMemoryMB)
-	repman.Save()
+	return cores > 0 || memMB > 0
 }
 
-// discoveredResourcesLoop runs SaveDiscoveredResources every resource-manager-discovered-interval
-// seconds, on its own timer so the monitoring loop is not involved; 0 turns it off.
+// discoveredTimeUnit is the unit of resource-manager-discovered-interval and of the first-reading
+// retry (a test shortens it).
+var discoveredTimeUnit = time.Second
+
+// discoveredResourcesLoop runs SaveDiscoveredResources on its own timer, so the monitoring loop is not
+// involved. Until the agents have been read once (after a start) it retries every monitoring-ticker,
+// then every resource-manager-discovered-interval. The interval is read again before each wait, so a
+// change applies without a restart; 0 turns the reading off (checked again every minute). It stops
+// within a second of replication-manager stopping.
 func (repman *ReplicationManager) discoveredResourcesLoop() {
-	interval := repman.Conf.ResourceManagerDiscoveredInterval
-	if interval <= 0 {
-		return
-	}
-	ticker := time.NewTicker(time.Duration(interval) * time.Second)
-	defer ticker.Stop()
-	for range ticker.C {
+	seen := false
+	for !repman.exit.Load() {
+		interval := repman.Conf.ResourceManagerDiscoveredInterval
+		wait := time.Duration(interval) * discoveredTimeUnit
+		if interval <= 0 {
+			wait = 60 * discoveredTimeUnit
+		} else if !seen {
+			wait = time.Duration(max(repman.Conf.MonitoringTicker, 1)) * discoveredTimeUnit
+		}
+		// Wait in steps of one unit, so replication-manager stopping is seen within a second.
+		for deadline := time.Now().Add(wait); time.Now().Before(deadline); {
+			if repman.exit.Load() {
+				return
+			}
+			time.Sleep(min(time.Until(deadline), discoveredTimeUnit))
+		}
 		if repman.exit.Load() {
 			return
 		}
-		repman.SaveDiscoveredResources()
+		if repman.Conf.ResourceManagerDiscoveredInterval > 0 && repman.SaveDiscoveredResources() {
+			seen = true
+		}
 	}
 }
