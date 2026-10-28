@@ -21,6 +21,7 @@ type infraCapacityInputs struct {
 	Cores, MemMB, DiskGB, Iops, NetMbps float64
 	Src                                 map[string]string  // axis -> "config" | "agents"
 	AgentCores                          map[string]float64 // per-agent physical cores
+	AgentsCores, AgentsMemMB            float64            // the agents' sums, whatever the override
 }
 
 func (repman *ReplicationManager) sortedClusters() []*cluster.Cluster {
@@ -65,6 +66,7 @@ func (repman *ReplicationManager) infraCapacityInputs(clusters []*cluster.Cluste
 		in.Src[axis] = "agents"
 		return agents
 	}
+	in.AgentsCores, in.AgentsMemMB = sumCores, sumMemMB
 	in.Cores = pick("cpu", repman.Conf.ResourceManagerInfraCpuCores, sumCores)
 	in.MemMB = pick("mem", repman.Conf.ResourceManagerInfraMemoryMB, sumMemMB)
 	in.DiskGB = pick("disk", repman.Conf.ResourceManagerInfraDiskGB, 0)

@@ -20,10 +20,12 @@ import styles from '../ClustersGlobalSettings/styles.module.scss'
 // The two measurements only PROPOSE a value, from sysbench on the host replication-manager
 // runs on (an unlimited container: it measures the host), representative when every node
 // has the same hardware; every field stays editable and overwrites a measured value.
+// CPU cores and memory also show, read-only, what the agents report (resource-manager-discovered-*,
+// written by replication-manager into the config).
 const fields = [
   { key: 'Quota', setting: 'resource-manager-infra-quota-pct', conf: 'resourceManagerInfraQuotaPct', unit: '%', help: 'Share of the metal replication-manager may sell (protects non-repman workloads). The plan pot is capacity x quota.' },
-  { key: 'CPU cores', setting: 'resource-manager-infra-cpu-cores', conf: 'resourceManagerInfraCpuCores', unit: 'cores', help: 'Physical cores of the whole infrastructure. 0 = summed from the agents (cores x SMT gain on an SMT node).' },
-  { key: 'Memory', setting: 'resource-manager-infra-memory-mb', conf: 'resourceManagerInfraMemoryMb', unit: 'MB', help: 'Memory of the whole infrastructure. 0 = summed from the agents.' },
+  { key: 'CPU cores', setting: 'resource-manager-infra-cpu-cores', conf: 'resourceManagerInfraCpuCores', discovered: 'resourceManagerDiscoveredCpuCores', unit: 'cores', help: 'Physical cores of the whole infrastructure. 0 = summed from the agents (cores x SMT gain on an SMT node). **Discovered** is what the agents report, read-only (`resource-manager-discovered-cpu-cores`, saved in the config by replication-manager).' },
+  { key: 'Memory', setting: 'resource-manager-infra-memory-mb', conf: 'resourceManagerInfraMemoryMb', discovered: 'resourceManagerDiscoveredMemoryMb', unit: 'MB', help: 'Memory of the whole infrastructure. 0 = summed from the agents. **Discovered** is what the agents report, read-only (`resource-manager-discovered-memory-mb`, saved in the config by replication-manager).' },
   { key: 'Disk', setting: 'resource-manager-infra-disk-gb', conf: 'resourceManagerInfraDiskGb', unit: 'GB', help: 'Disk of the whole infrastructure (the agents do not report it).' },
   { key: 'IOPS', setting: 'resource-manager-infra-iops', conf: 'resourceManagerInfraIops', unit: 'IOPS', help: 'Random IOPS of the whole infrastructure (the agents do not report it). **Measure IOPS** runs sysbench fileio (16 KiB random read/write, direct IO, 20 s) in the working directory and proposes host IOPS x agents.', measure: 'iops' },
   { key: 'Network', setting: 'resource-manager-infra-network-mbps', conf: 'resourceManagerInfraNetworkMbps', unit: 'Mb/s', help: 'Network of the whole infrastructure.' },
@@ -60,6 +62,9 @@ function DeclaredCapacity() {
       <Flex align='center' gap={2} wrap='wrap'>
         <TextForm value={config?.[f.conf]} confirmTitle={`Confirm ${f.key} (${f.unit}) to `} onSave={(value) => dispatch(setGlobalSetting({ setting: f.setting, value }))} />
         <Text fontSize='sm' opacity={0.7}>{f.unit}</Text>
+        {f.discovered && config?.[f.discovered] > 0 && (
+          <Text fontSize='sm' opacity={0.7}>discovered: {Number(config[f.discovered]).toLocaleString()} {f.unit}</Text>
+        )}
         {f.measure && (
           <RMButton isLoading={running[f.measure]} loadingText='Measuring…' onClick={() => setConfirm(f.measure)}>
             {f.measure === 'smt' ? 'Measure SMT' : 'Measure IOPS'}

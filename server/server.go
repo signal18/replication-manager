@@ -1205,6 +1205,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.Float64Var(&conf.ResourceManagerSmtGain, "resource-manager-smt-gain", 1, "Throughput of a physical core with all its SMT threads busy, relative to one thread (hyperthreading gain, e.g. 1.15). On a node whose agent reports more threads than cores, the capacity counts cores x gain and a DBU core gets threads-per-core / gain logical CPUs of quota, so a DBU core delivers a real core. 1 or less = SMT not accounted (capacity in physical cores, quota 1 CPU per core)")
 	flags.Float64Var(&conf.ResourceManagerInfraIops, "resource-manager-infra-iops", 0, "ResourceManager infra capacity override: total IOPS. 0 = unset (use the monitored/calibrated value).")
 	flags.Float64Var(&conf.ResourceManagerInfraNetworkMbps, "resource-manager-infra-network-mbps", 0, "ResourceManager infra capacity override: total public network bandwidth in Mbps (the BPU axis). 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerDiscoveredCpuCores, "resource-manager-discovered-cpu-cores", 0, "ResourceManager infra capacity discovered from the agents: total CPU cores (x SMT gain). Written by replication-manager, not an override.")
+	flags.Float64Var(&conf.ResourceManagerDiscoveredMemoryMB, "resource-manager-discovered-memory-mb", 0, "ResourceManager infra capacity discovered from the agents: total memory in MB. Written by replication-manager, not an override.")
+	flags.IntVar(&conf.ResourceManagerDiscoveredInterval, "resource-manager-discovered-interval", 3600, "Seconds between two readings of the agents' capacity into resource-manager-discovered-*, on its own timer (not the monitoring loop); after a start it is read as soon as the agents are, then every interval. A change applies without a restart. 0 = never.")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
@@ -3102,6 +3105,8 @@ func (repman *ReplicationManager) Run() error {
 	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
 	// GWU (#1872): poll the gateways' HAProxy stats for the egress of every cluster.
 	go repman.gatewayTrafficLoop()
+	// resource-manager-discovered-*: the agents' capacity into the config, on its own interval.
+	go repman.discoveredResourcesLoop()
 
 	// App API tokens (#2158) are renewed at provision: warn daily about those close to expiry.
 	go func() {
