@@ -507,8 +507,9 @@ the elected master, now an extra master, was rejoined under the old one every ti
   the rebuild from disk (`LoadFailoverHistory`) had nothing of it, so `rejoinAlreadyAttempted` was false at
   the next tick. The marker now goes into `FailoverHistory` and the rebuild keeps the newest one per server
   (`rejoinMarkers`, bounded by the servers). `forgetRejoinMarker` drops it when the server comes back
-  after a failure (a new event is owed its attempt) and in `ForgetInstance`. These writes take
-  `rejoinMarkerMu`, a leaf lock: `Ping` runs one goroutine per server.
+  after a failure (a new event is owed its attempt) and in `ForgetInstance`. These slice swaps, and
+  the reads of the one-shot guard and of the re-arm, take `rejoinMarkerMu`, a leaf lock: `Ping` runs one
+  goroutine per server.
 - Found by the re-arm test: `rearmRejoin` with the automatic method (`""`) produced a copy the one-shot
   guard could not tell apart from the outcome it came from, so the re-arm never ran. The copy is now
   marked `Rearmed`, which the guard honours like a chosen method, and `finishCrash` clears it.
@@ -516,7 +517,8 @@ the elected master, now an extra master, was rejoined under the old one every ti
 Provisioning adds the `mysqlgtid` tag (`addMySQLGTIDTag`) when the image repository's last segment is
 `mysql`, `mysql-server`, `percona` or `percona-server`. That excludes Percona XtraDB Cluster and any
 name that merely contains `mysql`, and group replication or Galera topologies are skipped too. The tag
-is added only while every database server is down (`HasAllDbDown`): `ProvisionServices` also runs from
+is added only while no database server answers (`hasDatabaseServerUp`: Failed, Suspect — a server never
+pinged yet — and ErrorAuth count as down): `ProvisionServices` also runs from
 `Bootstrap` on an existing cluster, and turning GTID on for running servers is an operator procedure.
 
 Not fixed here: the old master was designated master again when it came back, its replica having

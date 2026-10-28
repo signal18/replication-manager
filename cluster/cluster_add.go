@@ -121,12 +121,23 @@ func (cluster *Cluster) addMySQLGTIDTag() {
 	if !cluster.provDbImageIsMySQL() || cluster.Conf.MultiMasterGrouprep || cluster.Conf.MultiMasterWsrep || cluster.Configurator.HaveDBTag(ProvisionMySQLGTIDTag) {
 		return
 	}
-	if !cluster.HasAllDbDown() {
+	if cluster.hasDatabaseServerUp() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database tag %s not added: database servers of %s are running, turning GTID on for them is an operator procedure", ProvisionMySQLGTIDTag, cluster.Name)
 		return
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag %s: a MySQL cluster is provisioned with GTID", ProvisionMySQLGTIDTag)
 	cluster.AddDBTagConfig(ProvisionMySQLGTIDTag)
+}
+
+// hasDatabaseServerUp tells whether a database server of the cluster answers: not
+// Failed, Suspect (the state of a server never pinged yet) nor ErrorAuth.
+func (cluster *Cluster) hasDatabaseServerUp() bool {
+	for _, s := range cluster.Servers {
+		if s != nil && !s.IsDown() {
+			return true
+		}
+	}
+	return false
 }
 
 // ErrColumnstoreNoDynamic: the columnstore topology turns down prov-db-dynamic-resource and

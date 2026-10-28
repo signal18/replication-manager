@@ -151,10 +151,14 @@ func TestAddMySQLGTIDTag(t *testing.T) {
 		{"percona xtradb cluster", "percona/percona-xtradb-cluster:8.0", false, false, false},
 		{"group replication", "mysql:8.4", true, false, false},
 		{"servers running", "mysql:8.4", false, true, false},
+		{"first provision, servers never pinged (Suspect)", "mysql:8.4", false, false, true},
 	} {
 		c := newColumnstoreTestCluster()
 		c.Conf.ProvDbImg, c.Conf.MultiMasterGrouprep = tc.image, tc.grouprep
 		state := stateFailed
+		if strings.HasPrefix(tc.name, "first provision") {
+			state = stateSuspect
+		}
 		if tc.running {
 			state = stateMaster
 		}

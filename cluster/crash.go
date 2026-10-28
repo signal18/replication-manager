@@ -375,7 +375,10 @@ func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
 			newestWorking = cr.UnixTimestamp
 		}
 	}
-	for _, cr := range cluster.FailoverHistory {
+	cluster.rejoinMarkerMu.Lock()
+	history := cluster.FailoverHistory
+	cluster.rejoinMarkerMu.Unlock()
+	for _, cr := range history {
 		if cr == nil || cr.URL != url || cr.RejoinResult == "" {
 			continue
 		}
@@ -406,7 +409,10 @@ func (cluster *Cluster) rejoinAlreadyAttempted(url string) bool {
 // method "" means automatic. Returns false if there is no history record to re-arm.
 func (cluster *Cluster) rearmRejoin(url string, method string) bool {
 	var newest *Crash
-	for _, cr := range cluster.FailoverHistory {
+	cluster.rejoinMarkerMu.Lock()
+	history := cluster.FailoverHistory
+	cluster.rejoinMarkerMu.Unlock()
+	for _, cr := range history {
 		if cr == nil || cr.URL != url {
 			continue
 		}
