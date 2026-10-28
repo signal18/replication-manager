@@ -226,6 +226,16 @@ func (cluster *Cluster) PrepareBench() error {
 		return err
 	}
 	if cluster.benchmarkType == "sysbench" {
+		// sysbench writes into replication_manager_schema (--mysql-db) and does not create
+		// it: on a MySQL cluster nothing else had, and every prepare failed with error 1049
+		// (#2228)
+		if master := cluster.GetMaster(); master != nil && master.Conn != nil {
+			logs, err := dbhelper.CreateReplicationManagerSchema(master.Conn, master.DBVersion)
+			cluster.LogSQL(logs, err, master.URL, "Benchmark", config.LvlErr, "Could not create the benchmark schema on %s: %s", master.URL, err)
+			if err != nil {
+				return fmt.Errorf("benchmark schema on %s: %w", master.URL, err)
+			}
+		}
 		test := "--test=oltp"
 		threads := "--threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads)
 		tablesize := "--oltp-table-size=1000000"
@@ -328,17 +338,12 @@ func (cluster *Cluster) CleanupBench() error {
 }
 
 func (cluster *Cluster) ChecksumBench() bool {
-	if cluster.benchmarkType == "table" {
-		if !cluster.CheckTableConsistency("replication_manager_schema.bench") {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
-			return false
-		}
+	if cluster.benchmarkType != "table" && cluster.benchmarkType != "sysbench" {
+		return true
 	}
-	if cluster.benchmarkType == "sysbench" {
-		if !cluster.CheckTableConsistency("test.sbtest") {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
-			return false
-		}
+	if !cluster.CheckTableConsistency(cluster.BenchTable()) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
+		return false
 	}
 	return true
 }
@@ -575,7 +580,32 @@ func (cluster *Cluster) CheckSlavesRunning() bool {
 	return true
 }
 
+// BenchTable is the table the cluster's benchmark writes, the one the regtests check for
+// consistency: sysbench writes replication_manager_schema.sbtest1 (--mysql-db, one table),
+// the table benchmark replication_manager_schema.bench. The regtests checked test.sbtest,
+// which nothing writes: since CheckTableConsistency fails on a table it cannot checksum,
+// every one of them failed (#2228).
+// Any other type is sysbench's: the two types SetBenchMethod is given today.
+func (cluster *Cluster) BenchTable() string {
+	if cluster.benchmarkType == "table" {
+		return "replication_manager_schema.bench"
+	}
+	return "replication_manager_schema.sbtest1"
+}
+
 func (cluster *Cluster) CheckTableConsistency(table string) bool {
+	// The replicas first apply all the master wrote: a checksum taken while they catch up
+	// differs (MariaDB 11.8, 693504 of 1000000 rows applied after the 1000000-row prepare, #2228).
+	if target, err := cluster.master.ReadReplicationTarget(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not read the position of %s to wait for the replicas: %s", cluster.master.URL, err)
+	} else {
+		for _, s := range cluster.slaves {
+			reached, err := cluster.waitReplicaReachTarget(s.URL, target, func(*ServerMonitor) bool { return true })
+			if !reached {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replica %s did not reach %s before the consistency check: %v", s.URL, target, err)
+			}
+		}
+	}
 	checksum, err := dbhelper.ChecksumTable(cluster.master.Conn, table)
 
 	// A table that cannot be checksummed is not consistent: a missing table answers

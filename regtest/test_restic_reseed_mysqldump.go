@@ -184,7 +184,7 @@ func (regtest *RegTest) TestResticReseedMysqldump(cl *clusterpkg.Cluster, conf s
 
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after auto strategy reseed")
 		return false
 	}
@@ -212,7 +212,7 @@ func (regtest *RegTest) TestResticReseedMysqldump(cl *clusterpkg.Cluster, conf s
 
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after dump strategy reseed")
 		return false
 	}
@@ -240,7 +240,7 @@ func (regtest *RegTest) TestResticReseedMysqldump(cl *clusterpkg.Cluster, conf s
 
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after restore strategy reseed")
 		return false
 	}
@@ -268,7 +268,7 @@ func (regtest *RegTest) TestResticReseedMysqldump(cl *clusterpkg.Cluster, conf s
 
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after uncompressed dump strategy reseed")
 		return false
 	}
@@ -296,7 +296,7 @@ func (regtest *RegTest) TestResticReseedMysqldump(cl *clusterpkg.Cluster, conf s
 
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after uncompressed restore strategy reseed")
 		return false
 	}
@@ -325,7 +325,7 @@ func (regtest *RegTest) TestResticReseedMysqldump(cl *clusterpkg.Cluster, conf s
 
 		time.Sleep(5 * time.Second)
 
-		if !cl.CheckTableConsistency("test.sbtest") {
+		if !cl.CheckTableConsistency(cl.BenchTable()) {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after mount strategy reseed")
 			return false
 		}

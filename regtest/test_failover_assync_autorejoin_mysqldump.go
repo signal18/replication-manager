@@ -27,9 +27,11 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinDump(cluster *cluster.Cluste
 	SaveMaster := cluster.GetMaster()
 	SaveMasterURL := SaveMaster.URL
 	//clusteruster.DelayAllSlaves()
+	cluster.CleanupBench() // the table of a previous run fails the prepare (1050)
 	cluster.PrepareBench()
-	//go clusteruster.RunBench()
-	go cluster.RunSysbench()
+	// run on the prepared table: RunSysbench would clean up and prepare it again, a second
+	// prepare racing this one (error 1050, #2228)
+	go cluster.RunBench()
 	time.Sleep(4 * time.Second)
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
@@ -51,7 +53,7 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinDump(cluster *cluster.Cluste
 	wg2.Wait()
 	//Wait for replication recovery
 	time.Sleep(2 * time.Second)
-	if cluster.CheckTableConsistency("test.sbtest") != true {
+	if cluster.CheckTableConsistency(cluster.BenchTable()) != true {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 
 		return false

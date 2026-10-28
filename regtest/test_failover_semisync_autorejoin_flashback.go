@@ -26,9 +26,11 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	SaveMasterURL := cluster.GetMaster().URL
 	SaveMaster := cluster.GetMaster()
 	//clusteruster.DelayAllSlaves()
+	cluster.CleanupBench() // the table of a previous run fails the prepare (1050)
 	cluster.PrepareBench()
-	//go clusteruster.RunBench()
-	go cluster.RunSysbench()
+	// run on the prepared table: RunSysbench would clean up and prepare it again, a second
+	// prepare racing this one (error 1050, #2228)
+	go cluster.RunBench()
 	time.Sleep(4 * time.Second)
 	cluster.FailoverAndWait()
 	/// give time to start the failover
@@ -38,14 +40,14 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 
 		return false
 	}
-	cluster.RunSysbench()
+	cluster.RunBench()
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
 	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 	SaveMaster.ReadAllRelayLogs()
-	if cluster.CheckTableConsistency("test.sbtest") != true {
+	if cluster.CheckTableConsistency(cluster.BenchTable()) != true {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 
 		return false

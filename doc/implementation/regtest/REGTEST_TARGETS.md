@@ -114,6 +114,27 @@ provisioning adds the tag to every MySQL/Percona cluster it builds (`Cluster.add
 cluster without it is not what a client runs: there a failover is positional, the replicas wait in
 maintenance on the dead master, and a run on it reported failures of a setup nobody provisions.
 
+## The table a consistency check reads (#2228)
+
+The tests that end with `CheckTableConsistency` checked `test.sbtest`, a table nothing writes, while
+sysbench writes `replication_manager_schema.sbtest1` (`--mysql-db`). Two NULL checksums used to compare
+equal, so those tests passed without checking anything. Since a78c2f0a9, a table that cannot be
+checksummed fails, so they all failed, whatever the failover did. They now read `Cluster.BenchTable()`:
+`replication_manager_schema.sbtest1` for sysbench, `replication_manager_schema.bench` for the table
+benchmark.
+
+sysbench does not create its database. `PrepareBench` now creates `replication_manager_schema` on the
+master first (`dbhelper.CreateReplicationManagerSchema`), with the binary log on so the replicas get it.
+On a MySQL cluster nothing else had created it, and every prepare failed with error 1049.
+
+`CheckTableConsistency` first waits for every replica to reach the master's position, read once
+(`waitReplicaReachTarget`: `WaitSyncToTarget` turns, ended by an SQL error or no progress for
+`replicaNoProgressFor`, the loop the restore gate uses too). Compared at once, a replica still applying
+the 1,000,000-row prepare differed (MariaDB 11.8: 693,504 rows applied). The flashback and mysqldump
+failover tests run `RunBench` on the table they prepared, as the other failover tests do: `RunSysbench`
+cleans up and prepares again, which raced the first prepare (error 1050).
+
+## Tests
 
 `regtest/regtest_targets_test.go`: `TestSkipReason` covers each condition, matched and missed, the unknown
 DBU, and a test with two targets (either matches; both missed gives both reasons); `TestTargetsDeclared`
@@ -121,3 +142,5 @@ checks every test declares targets and every declaration names a test; `server/r
 checks the must-set goes through setClusterSetting and an unknown key stops the test;
 `TestConfigVariableKeys` checks every must-have and must-set key exists, since a typo would skip its test
 on every cluster. `TestMySQLClusterDeclaresGTIDTag` covers the MySQL GTID tag gate.
+`TestConsistencyChecksUseBenchTable` refuses a regtest that checks a literal table instead of
+`BenchTable()`.
