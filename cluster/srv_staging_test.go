@@ -173,3 +173,23 @@ func TestReseedGTIDSlavePos(t *testing.T) {
 		}
 	}
 }
+
+// A master failed over is standalone for a moment: outside a staging topology it must not
+// become the staging server nor be saved as staging-server-host; in one, the first
+// standalone server still is.
+func TestSetStandaloneAsStaging(t *testing.T) {
+	for _, staging := range []bool{false, true} {
+		standalone := &ServerMonitor{Id: "db1", HostCnf: "db1", State: stateUnconn}
+		cluster := &Cluster{
+			Conf:    &config.Config{TopologyStaging: staging},
+			Servers: serverList{standalone},
+		}
+		got := cluster.SetStandaloneAsStaging()
+		if !staging && (got != nil || cluster.StagingServer != nil || cluster.Conf.StagingServerHost != "") {
+			t.Fatalf("topology-staging off: chose %v, staging-server-host %q", got, cluster.Conf.StagingServerHost)
+		}
+		if staging && (got != standalone || cluster.Conf.StagingServerHost != "db1") {
+			t.Fatalf("topology-staging on: chose %v, staging-server-host %q", got, cluster.Conf.StagingServerHost)
+		}
+	}
+}
