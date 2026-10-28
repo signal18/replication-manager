@@ -1121,3 +1121,30 @@ func (cluster *Cluster) initialSource(key string) string {
 	}
 	return credstore.SourceDefault
 }
+
+// EnsureMarketplaceVaults gives a Cloud18-registered cluster the entries of the marketplace's
+// vault offers, off until its sponsor turns them on (#2227): the Cloud18 vault, as the Cloud18
+// storages for the archives. The path-prefix is the offer's, else the instance's URI.
+func (cluster *Cluster) EnsureMarketplaceVaults(offers []config.MarketplaceVaultOffer) {
+	if !cluster.cloud18Registered() || len(offers) == 0 || cluster.SecretKvsPinned() {
+		return
+	}
+	c := cluster.Conf
+	uri := c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone
+	changed := false
+	for _, o := range offers {
+		prefix := o.PathPrefix
+		if prefix == "" {
+			prefix = uri
+		}
+		ok, err := c.EnsureMarketplaceVault(o, prefix)
+		if err != nil {
+			cluster.LogModulePrintf(c.Verbose, config.ConstLogModVault, config.LvlWarn, "Marketplace vault offer not given to the cluster: %s", err)
+			continue
+		}
+		changed = changed || ok
+	}
+	if changed {
+		cluster.Save()
+	}
+}

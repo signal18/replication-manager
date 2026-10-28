@@ -565,3 +565,52 @@ func (conf *Config) DeleteSecretKv(name string) error {
 	}
 	return fmt.Errorf("unknown credential store %s", name)
 }
+
+// ConstSecretKvMarketplacePrefix starts the name of the entry a marketplace vault offer gives
+// a cluster: cloud18-<offer name>.
+const ConstSecretKvMarketplacePrefix = "cloud18-"
+
+// EnsureMarketplaceVault gives the cluster the entry of a marketplace vault offer (#2227):
+// added off (the sponsor turns it on), signed in with the instance's Cloud18 identity (jwt),
+// at the offer's address, mount and path-prefix; an existing one follows the offer's address,
+// mount, role and path-prefix, its switch untouched. True when it changed.
+func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPrefix string) (bool, error) {
+	name := ConstSecretKvMarketplacePrefix + offer.Name
+	if err := validateEntryName("credential store", name); err != nil {
+		return false, err
+	}
+	if strings.TrimSpace(offer.Address) == "" {
+		return false, fmt.Errorf("vault offer %s: no address", offer.Name)
+	}
+	mount := offer.Mount
+	if mount == "" {
+		mount = "kv"
+	}
+	want := map[string]interface{}{
+		ConstSecretKvVaultAddress:    offer.Address,
+		ConstSecretKvVaultMount:      mount,
+		ConstSecretKvVaultAuth:       ConstVaultAuthJWT,
+		ConstSecretKvVaultPathPrefix: pathPrefix,
+	}
+	if offer.Role != "" {
+		want[ConstSecretKvVaultRoleID] = offer.Role
+	}
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByName(name)
+	if e == nil {
+		conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: name, Plugin: ConstSecretKvPluginVault, Settings: want})
+		return true, nil
+	}
+	if e.Plugin != ConstSecretKvPluginVault {
+		return false, fmt.Errorf("credential store %s is not a vault entry", name)
+	}
+	changed := false
+	for k, v := range want {
+		if fmt.Sprintf("%v", e.Settings[k]) != fmt.Sprintf("%v", v) {
+			e.Settings[k] = v
+			changed = true
+		}
+	}
+	return changed, nil
+}

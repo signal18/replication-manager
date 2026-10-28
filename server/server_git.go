@@ -1364,8 +1364,23 @@ func (repman *ReplicationManager) LoadMarketplaceCatalogue() {
 	} else if gone && cur.Archives != nil {
 		next.Archives, changed = nil, true
 	}
+	var vaults []config.MarketplaceVaultOffer
+	vaultsRead := false
+	if read, gone := repman.loadPullList("marketplace-vault.json", "marketplace-vault", &vaults); read {
+		next.Vaults, changed, vaultsRead = vaults, true, true
+	} else if gone && cur.Vaults != nil {
+		next.Vaults, changed = nil, true
+	}
 	if changed {
 		repman.marketplaceCatalogue.Store(&next)
+	}
+	if vaultsRead {
+		// the vault offers become entries of the registered clusters, off (#2227)
+		for _, cl := range repman.Clusters {
+			if cl != nil {
+				cl.EnsureMarketplaceVaults(next.Vaults)
+			}
+		}
 	}
 }
 

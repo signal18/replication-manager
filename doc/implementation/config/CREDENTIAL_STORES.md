@@ -1,8 +1,10 @@
 # Credential stores: one interface for config, local store and Vault (design)
 
 Status: step 1 (`secret_kv-config`, the chain) implemented in `config/credstore`; versioned
-stores (#2227) designed and closed 2026-10-28, rules 1-5, 8, 9, 11, 12 implemented for the
-database credentials and the chain keys (branch `feat/vault-secrets-copy-2227`, not merged):
+stores (#2227) designed and closed 2026-10-28: rules 1-12, 15, 16 implemented with the API,
+the GUI and the Cloud18 vault offer; rule 14 (the vault's policies) and the offer's catalogue
+file are the back-office's, to do; rule 13 is out of #2227 (branch
+`feat/vault-secrets-copy-2227`, not merged):
 see "Implementation" below. Issues: #2017 (cause), #2041 (local store wins at start), #2057
 (Vault settings and setter), #2227 (versioned stores). Related laws: T2 (one way to do a
 thing), T25 (tracked files written only by the save callback).
@@ -143,7 +145,9 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
     read once at load as the seed and written through the chain. A path pinned in a file
     is read at each start, as today, and a config state asks the operator to remove the
     pin. `SetSecretsToVault` (the old flat copy) is removed.
-13. **repman's key**: changing it re-encrypts the file; the vaults encrypt their own data.
+13. **repman's key**: OUT of #2227, a separate key-rotation issue: repman has no path that
+    changes its encryption key today (it is read at start; `keygen --overwrite` replaces the
+    file offline and re-encrypts nothing). The vaults encrypt their own data.
 14. **Access**: an instance's vault policy writes its own clusters' spaces only; people
     read through the space policies (on the Cloud18 vault: the sponsor, the owner, the
     administrators).
@@ -209,9 +213,30 @@ file.
   under every database server, the shard proxy password under every shard proxy, an app's
   secret variables, git and S3 secrets under `apps/<app>`), and the app's generated password
   (`apps/<app>/app-random-password`). The instance's secrets are never copied.
-- **Rule 13 not implemented**: repman has no runtime path that changes its encryption key
-  (the key is read at start; `keygen --overwrite` replaces the file offline and re-encrypts
-  nothing, the config included). Re-encrypting the file needs that key-change feature first.
+- **API** (`server/api_secret_kv.go`, T6): `GET /api/clusters/{cluster}/secret-kv-list`
+  (entries with `secretsSet` only, per-entry state: last write and behind/WARN0269, the
+  queue's drops/WARN0270, the manifests, the copy settings, the credentials' initial source,
+  current source, version count and last change); `POST .../secret-kv-actions/add`,
+  `edit/{entry}`, `enable/{entry}`, `disable/{entry}`, `remove/{entry}` (409 when a config
+  file sets `secret-kv`). ACL: `cluster-settings` for all; the list, enable and disable also
+  `db-config-flag`, the grant a cluster's sponsor holds by default, so the sponsor turns an
+  entry on or off. `secret-kv-queue-limit`, `-write-timeout`, `-retry-interval`,
+  `-start-timeout` through the settings setter. No MCP tool: the archive entries have none.
+- **GUI** (`share/dashboard_react`, Database Credentials): `SecretKvEntries.jsx` (entries,
+  switch, state pill, form from the manifest with the archives' `SettingField`), each
+  credential's current and initial source, version count and last change.
+- **Cloud18 vault offer**: the catalogue file `.pull/marketplace-vault.json`, a JSON array
+  the back-office pushes like `marketplace-archive.json`:
+  ```json
+  [{"name": "vault-fr", "title": "Cloud18 vault", "partner": "signal18",
+    "address": "https://vault.example:8200", "mount": "kv", "role": "",
+    "pathPrefix": "", "dc": "", "dcLocation": ""}]
+  ```
+  `mount` defaults to `kv`, `role` to the realm's client id, `pathPrefix` to the instance's
+  URI `<domain>/<sub-domain>-<zone>` (as the buckets). Each Cloud18-registered cluster gets
+  `cloud18-<name>`, sign-in `jwt`, **off**: the sponsor turns it on; a new catalogue updates
+  its address, mount, role and prefix, never its switch. The back-office side (the file, the
+  vault's jwt role and the space policies of rule 14) is not built yet.
 - **States**: WARN0269 (security, per entry: behind, or failing), WARN0270 (security: drops
   not repaired), WARN0271 (config, per key: a Vault path pinned in a file).
 - **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.
