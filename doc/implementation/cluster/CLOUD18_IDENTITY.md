@@ -34,6 +34,17 @@ and the device login it started are removed).
 - **Registered with neither** (no password, no login: registered by a release that kept none and made no
   login): state `refused`, "register this replication-manager again (same URI)", which makes the login.
 
+- **The registration's sign-in** is asked again 3 times (5 s, 20 s, 1 min) while the realm does not
+  answer; a refusal is final at once. A login still not made is said in the registration's result
+  ("register again under the same URI to make it"), the password being gone.
+- **Spacing:** a sign-in with the kept password the realm did not answer is not asked again before
+  5 minutes (`cloud18RegisteredRetry`), whatever archive or vault call needs the token.
+- **The realm (checked 2026-10-28):** the email is the username (`loginWithEmailAllowed`), brute-force
+  protection on for the whole realm, password grant included (30 failures, waits growing by 60 s up to
+  15 min). An account with a second factor or a pending required action cannot sign in with a password:
+  the realm refuses it (state `refused`, its reason), and that account's instance cannot use the S3 SSO
+  providers or the Cloud18 vault.
+
 The answer's **offline refresh token** is kept in `<working dir>/cloud18-identity.json` (0600, the
 token encrypted with the instance's key, `hash_`), with the realm, the account (`preferred_username`,
 `sub`) and the date. No encryption key: no login (never kept in clear). The password is never sent again

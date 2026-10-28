@@ -179,6 +179,7 @@ type cloud18Session struct {
 	refused     string // fingerprint of the registered account the realm refused
 	refusedWhy  string
 	attemptedAt time.Time // the last sign-in with the registered account
+	unanswered  string    // why the realm did not answer that sign-in (out of reach, 5xx); "" answered
 	keepAlive   atomic.Bool
 }
 
@@ -545,6 +546,13 @@ func (conf *Config) cloud18RegisteredLogin(issuer string, s *cloud18Session) (st
 		}
 		return "", "", fmt.Errorf("%w (%w)", ErrCloud18IdentityNotSet, ErrCloud18Refused)
 	}
+	cloud18Sessions.Lock()
+	waitFor, why := cloud18RegisteredRetry-time.Since(s.attemptedAt), s.unanswered
+	cloud18Sessions.Unlock()
+	if why != "" && waitFor > 0 {
+		// the realm did not answer the last sign-in: every archive or vault call does not ask it again
+		return "", "", fmt.Errorf("Cloud18 identity: the realm did not answer the sign-in with the registered account (%s), asked again in %s", why, waitFor.Round(time.Second))
+	}
 	return conf.cloud18PasswordLogin(issuer, s, user, password)
 }
 
@@ -572,6 +580,9 @@ func (conf *Config) cloud18PasswordLogin(issuer string, s *cloud18Session, user,
 		"scope":      {cloud18IdentityScope},
 	})
 	if err != nil {
+		cloud18Sessions.Lock()
+		s.unanswered = err.Error()
+		cloud18Sessions.Unlock()
 		conf.cloud18Log(LvlWarn, "no sign-in with the registered account %s, the realm is out of reach (tried again later): %s", user, err)
 		return "", "", err
 	}
@@ -584,6 +595,9 @@ func (conf *Config) cloud18PasswordLogin(issuer string, s *cloud18Session, user,
 			cloud18Sessions.Unlock()
 			conf.cloud18Log(LvlErr, "the realm refused the registered account %s (%s): action required, register this replication-manager again", user, detail)
 		} else {
+			cloud18Sessions.Lock()
+			s.unanswered = err.Error()
+			cloud18Sessions.Unlock()
 			conf.cloud18Log(LvlWarn, "no sign-in with the registered account %s, tried again later: %s", user, err)
 		}
 		return "", "", fmt.Errorf("Cloud18 identity: %w", err)
@@ -613,7 +627,7 @@ func (conf *Config) cloud18PasswordLogin(issuer string, s *cloud18Session, user,
 	if err := conf.writeCloud18Login(l); err != nil {
 		return "", "", err
 	}
-	s.login, s.ended, s.refreshedAt, s.refused, s.refusedWhy = l, "", now, "", ""
+	s.login, s.ended, s.refreshedAt, s.refused, s.refusedWhy, s.unanswered = l, "", now, "", "", ""
 	cacheCloud18IdentityToken(conf.cloud18IdentityPath(), cloud18IdentityToken{token: a.AccessToken, sub: sub, expires: now.Add(lifetime)})
 	conf.cloud18Log(LvlInfo, "signed in with the registered account %s (sub %s), login kept in %s", l.User, sub, conf.cloud18IdentityPath())
 	return a.AccessToken, sub, nil

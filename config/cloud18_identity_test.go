@@ -182,6 +182,10 @@ func TestCloud18RegisteredLoginRefused(t *testing.T) {
 	if st := offline.Cloud18IdentityStatus(); st.State != "registered" {
 		t.Errorf("a realm out of reach refuses nothing: %+v", st)
 	}
+	// the realm out of reach is not asked again at each use, only after cloud18RegisteredRetry
+	if _, _, err := offline.Cloud18IdentityToken(); err == nil || !strings.Contains(err.Error(), "asked again in") {
+		t.Errorf("a second use right after: %v", err)
+	}
 
 	// registered by a release that keeps no password: the registration makes the login
 	noPassword := registeredConf(t, issuer, user, "")

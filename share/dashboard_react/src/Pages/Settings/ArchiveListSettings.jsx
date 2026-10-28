@@ -365,6 +365,7 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false) // true, or the preset of an archive offer
   const [offers, setOffers] = useState([])
+  const [requesting, setRequesting] = useState(false) // a Request is being saved
   const s3Providers = useSelector(selectClusterS3Providers)
   const [rename, setRename] = useState(null)
   const [removeName, setRemoveName] = useState('')
@@ -426,11 +427,22 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
 
   // an offer whose keys Cloud18 issues: asked in cloud18-archive-offer-requests; the back-office
   // creates the cluster's bucket and keys and delivers its S3 provider with the cluster's config
+  // the requests already saved are read from the offers (requested), refreshed after each one,
+  // and one Request runs at a time: two clicks never overwrite each other
   const requestOffer = async (o) => {
-    const asked = (config?.cloud18ArchiveOfferRequests || '').split(',').map((n) => n.trim()).filter(Boolean)
-    if (asked.includes(o.name)) return
-    await dispatch(setSetting({ clusterName, setting: 'cloud18-archive-offer-requests', value: [...asked, o.name].join(',') }))
-    fetchOffers()
+    if (requesting) return
+    const asked = new Set([
+      ...(config?.cloud18ArchiveOfferRequests || '').split(',').map((n) => n.trim()).filter(Boolean),
+      ...offers.filter((x) => x.requested).map((x) => x.name)
+    ])
+    if (asked.has(o.name)) return
+    setRequesting(true)
+    try {
+      await dispatch(setSetting({ clusterName, setting: 'cloud18-archive-offer-requests', value: [...asked, o.name].join(',') }))
+      await fetchOffers()
+    } finally {
+      setRequesting(false)
+    }
   }
 
   // a remove, a size read or a catalogue rebuild runs in the background: follow it until it ends
@@ -685,11 +697,13 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
               <Box flex='1' minW='200px'>
                 <Text fontSize='sm' fontWeight='semibold'>{o.title || o.name}</Text>
                 <Text fontSize='xs'>
-                  {[o.partner, o.dcLocation || o.dc, o.priceEurMonth != null ? `${o.priceEurMonth} €/${o.sizeUnit}/month` : 'price on request'].filter(Boolean).join(' · ')}
+                  {[o.partner, o.dcLocation || o.dc,
+                    o.priceEurMonth != null ? `${o.priceEurMonth} €/${o.sizeUnit}/month`
+                      : o.priceEurBauMonth != null ? `${o.priceEurBauMonth} €/BAU/month` : 'price on request'].filter(Boolean).join(' · ')}
                 </Text>
               </Box>
               {o.usable && <RMButton size='sm' isDisabled={!canSet || list.plugins.length === 0} onClick={() => takeOffer(o)}>{o.added ? 'Add an archive' : 'Use'}</RMButton>}
-              {o.requestable && <RMButton size='sm' isDisabled={!canSet} onClick={() => requestOffer(o)}>Request</RMButton>}
+              {o.requestable && <RMButton size='sm' isDisabled={!canSet || requesting} onClick={() => requestOffer(o)}>Request</RMButton>}
               {!o.usable && <Text fontSize='xs' maxW='260px'>{o.reason}</Text>}
             </Flex>
           ))}

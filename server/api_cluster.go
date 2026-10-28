@@ -5119,7 +5119,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
 	case "cloud18-archive-offer-requests":
-		mycluster.Conf.Cloud18ArchiveOfferRequests = value
+		if err := validArchiveOfferRequests(value); err != nil {
+			return err
+		}
+		mycluster.Conf.Cloud18ArchiveOfferRequests = normalizedArchiveOfferRequests(value)
 	case "log-level-file":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val

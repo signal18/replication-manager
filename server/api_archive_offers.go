@@ -5,7 +5,11 @@
 package server
 
 import (
+	"fmt"
+	"maps"
 	"net/http"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -42,7 +46,33 @@ const (
 	archiveOfferRequested = "requested: Cloud18 creates the cluster's bucket and keys, then they arrive with the cluster's config"
 	archiveOfferNoBucket  = "not yet: the catalogue gives no bucket for this storage"
 	archiveOfferConflict  = "an S3 provider of this name is another storage: rename it to use the offer"
+	archiveOfferPinned    = "the S3 providers are set in the configuration file (s3-provider): add this one there"
 )
+
+// archiveOfferRequestsMax bounds cloud18-archive-offer-requests: offer names, each a catalogue name.
+const archiveOfferRequestsMax = 16
+
+var archiveOfferNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+
+// validArchiveOfferRequests checks a value of cloud18-archive-offer-requests: at most
+// archiveOfferRequestsMax offer names, comma-separated, each a plain catalogue name.
+func validArchiveOfferRequests(value string) error {
+	set := archiveOfferRequests(value)
+	if len(set) > archiveOfferRequestsMax {
+		return fmt.Errorf("cloud18-archive-offer-requests: %d offers, at most %d", len(set), archiveOfferRequestsMax)
+	}
+	for name := range set {
+		if !archiveOfferNameRe.MatchString(name) {
+			return fmt.Errorf("cloud18-archive-offer-requests: %q is not an offer name", name)
+		}
+	}
+	return nil
+}
+
+// normalizedArchiveOfferRequests is the value kept: the names once each, sorted.
+func normalizedArchiveOfferRequests(value string) string {
+	return strings.Join(slices.Sorted(maps.Keys(archiveOfferRequests(value))), ",")
+}
 
 // archiveOfferRequests is the set of the offers cloud18-archive-offer-requests asks for.
 func archiveOfferRequests(setting string) map[string]bool {
@@ -57,8 +87,10 @@ func archiveOfferRequests(setting string) map[string]bool {
 
 // archiveOffers joins the catalogue's archive offers with their S3 storages, the cluster's S3
 // providers and the offers it requested. ssoReady is the cluster's Cloud18SSOReady: why a
-// storage reached with the Cloud18 SSO cannot be used here, nil when it can.
-func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provider, requested map[string]bool, ssoReady error) []ArchiveOffer {
+// storage reached with the Cloud18 SSO cannot be used here, nil when it can. pinned: a
+// configuration file sets the provider list (S3ProvidersPinned), so neither Use nor a delivery
+// can add one.
+func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provider, requested map[string]bool, ssoReady error, pinned bool) []ArchiveOffer {
 	storages := make(map[string]config.MarketplaceS3, len(cat.S3))
 	for _, s := range cat.S3 {
 		if _, dup := storages[s.Name]; !dup { // remote data: the first of a duplicated name
@@ -73,7 +105,6 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 	for _, o := range cat.Archives {
 		row := ArchiveOffer{MarketplaceArchiveOffer: o}
 		if s, ok := storages[o.S3Provider]; ok && o.S3Provider != "" {
-			s := s
 			row.S3 = &s
 		}
 		conflict := false
@@ -87,6 +118,8 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 		switch {
 		case conflict:
 			row.Reason = archiveOfferConflict
+		case pinned && row.S3 != nil && !row.Added:
+			row.Reason = archiveOfferPinned
 		case row.S3 != nil && row.S3.Cloud18SSO:
 			switch {
 			case ssoReady != nil:
@@ -129,6 +162,6 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 func (repman *ReplicationManager) handlerMuxArchiveOffers(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
 		writeArchiveJSON(w, archiveOffers(repman.MarketplaceCatalogue(), mycluster.GetS3ProvidersSnapshot(),
-			archiveOfferRequests(mycluster.Conf.Cloud18ArchiveOfferRequests), mycluster.Cloud18SSOReady()))
+			archiveOfferRequests(mycluster.Conf.Cloud18ArchiveOfferRequests), mycluster.Cloud18SSOReady(), mycluster.S3ProvidersPinned()))
 	})
 }

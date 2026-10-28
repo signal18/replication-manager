@@ -111,11 +111,34 @@ func (repman *ReplicationManager) cloud18Register(domain, subdomain, zone, plan,
 	}
 	if repman.cloud18Declare(conf, glToken, domain, subdomain, zone, plan, res) == RegStateOK {
 		// the Cloud18 login, with the password just given (used for this sign-in, never kept): the
-		// S3 SSO storages and the Cloud18 vault use it from now on
-		if err := conf.KeepCloud18Login(email, password); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "register: registered, the Cloud18 login not made: %s", err)
+		// S3 SSO storages and the Cloud18 vault use it from now on. The password is gone after
+		// this: a realm out of reach is asked again a few times, and a login not made is said in
+		// the registration's result, not only in the log
+		if err := repman.keepCloud18LoginAtRegistration(conf, email, password); err != nil {
+			_, msg, _ := repman.RegStatus.snapshot()
+			repman.setRegStatus(RegStateOK, msg+"; the Cloud18 login was not made ("+err.Error()+"): register again under the same URI to make it", res)
 		}
 	}
+}
+
+// cloud18RegistrationLoginWaits are the waits before asking the realm again for the login a
+// registration makes, when it did not answer (out of reach, 5xx); tests shorten them.
+var cloud18RegistrationLoginWaits = []time.Duration{5 * time.Second, 20 * time.Second, time.Minute}
+
+// keepCloud18LoginAtRegistration makes the Cloud18 login with the registration's email and
+// password (config.KeepCloud18Login), asking the realm again after each wait while it does not
+// answer; a refusal is final at once.
+func (repman *ReplicationManager) keepCloud18LoginAtRegistration(conf *config.Config, email, password string) error {
+	err := conf.KeepCloud18Login(email, password)
+	for _, wait := range cloud18RegistrationLoginWaits {
+		if err == nil || errors.Is(err, config.ErrCloud18Refused) {
+			break
+		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "register: the Cloud18 login not made yet, asked again in %s: %s", wait, err)
+		time.Sleep(wait)
+		err = conf.KeepCloud18Login(email, password)
+	}
+	return err
 }
 
 // regState is the current registration state.
