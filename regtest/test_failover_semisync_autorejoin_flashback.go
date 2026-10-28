@@ -26,6 +26,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinFlashback(cluster *cluster
 	SaveMasterURL := cluster.GetMaster().URL
 	SaveMaster := cluster.GetMaster()
 	//clusteruster.DelayAllSlaves()
+	cluster.CleanupBench() // the table of a previous run fails the prepare (1050)
 	cluster.PrepareBench()
 	// run on the prepared table: RunSysbench would clean up and prepare it again, a second
 	// prepare racing this one (error 1050, #2228)
