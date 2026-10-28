@@ -6,8 +6,8 @@ package cluster
 
 import (
 	"os"
-	"strings"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/pelletier/go-toml"

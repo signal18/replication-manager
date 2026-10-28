@@ -783,3 +783,52 @@ func (cluster *Cluster) startingValueEncrypted(raw string) string {
 	c.startingCipher[raw] = enc
 	return enc
 }
+
+// ChainAtStart is the credential chain a start builds for this cluster from the files on disk
+// (#2227 rule 1b): started is the config the start loads, the version store is filled from
+// the local file as at a start. It leaves the running cluster as it is.
+func (cluster *Cluster) ChainAtStart(started *config.Config) *credstore.Chain {
+	vs := credstore.NewVersionStore(func() *config.Config { return started }, isVersionedKey, nil, nil)
+	if started.IsMonitoringSecretVersioningEnabled() {
+		if file, err := loadSecretVersionStore(SecretVersionStorePath(started.WorkingDir, cluster.Name)); err == nil {
+			vs.Load(file)
+		}
+	}
+	return credstore.NewVersionedChain(started, nil, vs)
+}
+
+// SecretVersionsInFile are the values (decrypted, for a test's comparison only) the local
+// file holds for key, oldest first.
+func (cluster *Cluster) SecretVersionsInFile(key string) ([]string, error) {
+	file, err := loadSecretVersionStore(SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name))
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, v := range file[key] {
+		out = append(out, cluster.Conf.DecryptSecretValue(key, v.HashValue))
+	}
+	return out, nil
+}
+
+// SecretKvRead reads key under a database server's folder in an active vault entry: for a
+// test's comparison only.
+func (cluster *Cluster) SecretKvRead(e config.SecretKvConfig, server, key string) (string, bool, error) {
+	kv := cluster.vaultStore(e)
+	timeout := time.Duration(cluster.storeTimeout())
+	if timeout <= 0 {
+		timeout = credstore.DefaultStoreWriteTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*timeout)
+	defer cancel()
+	client, err := kv.Connect(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	it := credstore.StoreItem{Path: cluster.Conf.SecretKvFolder(e, cluster.Name) + "/" + credstore.KindDatabases + "/" + server, Key: key}
+	v, found, err := kv.ReadItem(ctx, client, it, "")
+	return v.Value, found, err
+}
+
+// SecretServerName is the name of a database server in the credential stores' layout.
+func SecretServerName(srv *ServerMonitor) string { return secretServerName(srv) }

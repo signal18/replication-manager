@@ -416,6 +416,12 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testCredentialPersistTagReload" {
 			res = regtest.TestCredentialPersistTagReload(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testCredentialVersionsRotation" {
+			res = regtest.TestCredentialVersionsRotation(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testCredentialVersionsRotationVault" {
+			res = regtest.TestCredentialVersionsRotationVault(cl, test.ConfigFile, &test)
+		}
 		if test.Name == "testGraphiteMetricsQueueBound" {
 			res = regtest.TestGraphiteMetricsQueueBound(cl, test.ConfigFile, &test)
 		}

@@ -152,6 +152,15 @@ error, logged in with `pass2`; the config still holds `pass1`; the file holds bo
 versions. Variant with a Vault container and a vault entry on: the same, and the vault
 holds `pass2` at `databases/<server>/db-servers-credential`.
 
+Implemented as `testCredentialVersionsRotation` (in the default list, MariaDB and MySQL,
+`monitoring-secret-versioning` on) and `testCredentialVersionsRotationVault` (run by name on
+a cluster whose config enables a `[[<cluster>.secret-kv]]` on a Vault or OpenBao dev
+container) in `regtest/test_credential_versions_rotation.go`. A repman restart is simulated
+in-process as `testCredentialPersistTagReload` does: the config the server builds from the
+files on disk, and the chain a start builds over it with the local file
+(`Cluster.ChainAtStart`). The rotation needs `db-servers-credential` not pinned in a config
+file.
+
 ### Implementation (#2227)
 
 | Piece | Where |
