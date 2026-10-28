@@ -1,9 +1,11 @@
 # Credential stores: one interface for config, local store and Vault (design)
 
-Status: step 1 (`secret_kv-config`, the chain) implemented in `config/credstore`; store
-entries and copies designed (2026-10-28, #2227). Issues: #2017 (cause), #2041 (local
-store wins at start), #2057 (Vault settings and setter), #2227 (store entries, copies). Related laws: T2 (one way to do
-a thing), T25 (tracked files written only by the save callback).
+Status: step 1 (`secret_kv-config`, the chain) implemented in `config/credstore`; versioned
+stores (#2227) designed and closed 2026-10-28, rules 1-5, 8, 9, 11, 12 implemented for the
+database credentials and the chain keys (branch `feat/vault-secrets-copy-2227`, not merged):
+see "Implementation" below. Issues: #2017 (cause), #2041 (local store wins at start), #2057
+(Vault settings and setter), #2227 (versioned stores). Related laws: T2 (one way to do a
+thing), T25 (tracked files written only by the save callback).
 
 ## Why
 
@@ -129,6 +131,34 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
     read through the space policies (on the Cloud18 vault: the sponsor, the owner, the
     administrators).
 15. **Never a value in a log** (F10); the log line names the store, path and key.
+
+### Implementation (#2227)
+
+| Piece | Where |
+|---|---|
+| entry list, manifests, migration of `vault-*` (database engine included) into `vault-default`, the flat Vault fields reset | `config/secret_kv.go` (`MigrateSecretKvs`, `SyncSecretKvFromConfig`) |
+| helpers shared with archives and S3 providers | `config/plugin_entry.go` |
+| the one Vault code: approle/jwt sign-in, KV v2 versions (`written-at`, `written-by` fields, `max-versions` at a secret's first write), database engine (`rotate-role`, `static-creds`) | `config/credstore/vault.go` (`VaultKV`) |
+| bounded queue (latest version per secret, drops counted), `Version.Newer` (LWW) | `config/credstore/store_queue.go` |
+| chain hook after its lock (`Chain.OnSet`) | `config/credstore/credstore.go` |
+| layout, writes, worker, full pass, seed of bare paths, states, database engine rotation | `cluster/cluster_secret_kv.go` |
+| fake Vault for the tests | `config/credstore/vaultfake` |
+
+- **Settings** (TOML, T16): `[[<cluster>.secret-kv]]` with `name`, `plugin`, `enabled` and
+  `address`, `mount`, `mode`, `auth`, `role-id`, `secret-id` (encrypted, left out without
+  an encryption key); `secret-kv-queue-limit` (1000), `secret-kv-write-timeout` (10 s),
+  `secret-kv-retry-interval` (60 s). An entry's `role-id` and `secret-id` are instance-local
+  (never replayed), as `vault-role-id` and `vault-secret-id`.
+- **`<space>`** off Cloud18 is the pair the arbitrator knows the active monitor and its
+  standby by: their shared `arbitration-external-secret`, written as `pair-` and the first 16
+  hex digits of its SHA-256 (never the secret itself). With no arbitration secret (no
+  standby) the cluster alone. On Cloud18, `<domain>/<sub-domain>-<zone>` as the buckets.
+- **The file** (`secret_kv-config`): every chain write marks it (`MarkSecretVersionStoreDirty`),
+  recorded at the next tick as before; its latest `rotated_at` is its version time in the
+  LWW read.
+- **States**: WARN0269 (security, per entry: behind, or failing), WARN0270 (security: drops
+  not repaired), WARN0271 (config, per key: a Vault path pinned in a file).
+- **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.
 
 ### The Cloud18 vault entry
 

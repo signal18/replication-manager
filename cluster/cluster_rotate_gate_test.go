@@ -44,6 +44,25 @@ func TestCanRotatePasswords(t *testing.T) {
 			c.Conf.MonitoringSecretVersioning = false
 			c.Conf.VaultServerAddr = "https://vault:8200"
 		}, ""},
+		// #2227: an active store keeps versions: the file with versioning on, or a vault entry
+		{"versioning off, a vault entry enabled", func(c *Cluster) {
+			c.Conf.MonitoringSecretVersioning = false
+			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
+		}, ""},
+		{"versioning off, the vault entry off", func(c *Cluster) {
+			c.Conf.MonitoringSecretVersioning = false
+			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault}}
+		}, "no credential store keeps versions"},
+		{"vault entry enabled, db credential in a file", func(c *Cluster) {
+			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
+			c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
+		}, "db-servers-credential is set in a config file"},
+		{"replication stopped, a database engine entry", func(c *Cluster) {
+			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}}
+			c.Servers = append(c.Servers, replica)
+			c.slaves = serverList{replica}
+			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{"mode": config.VaultDbEngine}}}
+		}, ""},
 		{"no encryption key", func(c *Cluster) { c.Conf.SecretKey = nil }, "no encryption key"},
 		{"config not saved", func(c *Cluster) { c.Conf.ConfRewrite = false }, "monitoring-save-config is off"},
 		{"db credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, "db-servers-credential is set in a config file"},

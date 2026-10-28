@@ -54,6 +54,11 @@ type secretKvStores struct {
 	queue   *credstore.StoreQueue
 	running atomic.Bool
 	passDue atomic.Bool
+	// applying: a newer version read from a store is becoming the current one here: the
+	// chain's hook records it, the full pass writes it where it differs, no new version
+	applying atomic.Bool
+	// apply gives the servers a credential that changed; nil: the cluster's own setters
+	apply func(key string)
 
 	mu              sync.Mutex
 	behind          map[string]string    // entry -> why it is behind (never a value)
@@ -180,6 +185,9 @@ func (cluster *Cluster) onCredentialChange(changes []credstore.Change) {
 	}
 	c.mu.Unlock()
 	cluster.MarkSecretVersionStoreDirty()
+	if c.applying.Load() {
+		return
+	}
 	for _, ch := range changes {
 		ver := credstore.Version{Value: ch.Value, At: now, By: cluster.Conf.ArbitrationSasUniqueId}
 		cluster.queueVersions("", ch.Key, cluster.secretFolders(ch.Key), ver, false)
@@ -414,7 +422,7 @@ func (cluster *Cluster) secretFullPass() {
 			}
 		}
 		if from != "" && winner.Value != local.Value {
-			cluster.applyStoreWinner(key, winner.Value, from)
+			cluster.applyStoreWinner(key, winner, from)
 		}
 		for _, r := range reads {
 			if r.found && r.ver.Value == winner.Value {
@@ -442,18 +450,37 @@ func splitUser(credential string) (string, string) {
 	return credential, ""
 }
 
-// applyStoreWinner makes a newer value read from a store the current one here, through the
-// chain (a pinned key is left to its file), and gives it to the servers.
-func (cluster *Cluster) applyStoreWinner(key, value, from string) {
+// applyStoreWinner makes a newer version read from a store the current one here, through the
+// chain (a pinned key is left to its file; the local file records it), keeping its time, and
+// gives it to the servers.
+func (cluster *Cluster) applyStoreWinner(key string, winner credstore.Version, from string) {
 	chain := cluster.CredentialChain()
 	if err := chain.CanSet(key); err != nil {
 		return
 	}
-	if err := chain.Set(key, value); err != nil {
+	c := &cluster.secretKv
+	c.applying.Store(true)
+	err := chain.Set(key, winner.Value)
+	c.applying.Store(false)
+	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Credential stores: newer %s from %s not applied: %s", key, from, credstore.Reason(err))
 		return
 	}
+	if !winner.At.IsZero() {
+		c.mu.Lock()
+		c.lastWrite[key] = winner.At
+		c.mu.Unlock()
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential stores: %s takes the newer version held by %s", key, from)
+	cluster.applyCredential(key)
+}
+
+// applyCredential gives the servers a credential that changed.
+func (cluster *Cluster) applyCredential(key string) {
+	if cluster.secretKv.apply != nil {
+		cluster.secretKv.apply(key)
+		return
+	}
 	switch key {
 	case "db-servers-credential":
 		cluster.SetClusterMonitorCredentialsFromConfig()
@@ -640,9 +667,8 @@ func (cluster *Cluster) rotateWithVaultEngine(e config.SecretKvConfig) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation: Vault rotated the passwords, repman could not store them: %s", err)
 		return err
 	}
-	cluster.SetClusterMonitorCredentialsFromConfig()
-	cluster.SetClusterReplicationCredentialsFromConfig()
-	cluster.ApplyMonitorCredential()
+	cluster.applyCredential("db-servers-credential")
+	cluster.applyCredential("replication-credential")
 	for _, s := range cluster.slaves {
 		for _, ss := range s.Replications {
 			if err := s.rejoinSlaveChangePassword(&ss); err != nil {
