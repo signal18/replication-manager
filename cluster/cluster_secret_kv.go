@@ -832,3 +832,96 @@ func (cluster *Cluster) SecretKvRead(e config.SecretKvConfig, server, key string
 
 // SecretServerName is the name of a database server in the credential stores' layout.
 func SecretServerName(srv *ServerMonitor) string { return secretServerName(srv) }
+
+// ReadVaultsAtStart reads, once at the cluster's start and before monitoring begins, the
+// newest version the enabled vault entries hold for each versioned secret the local file does
+// not version (versioning off, or no version yet): a database engine first, else the newest
+// across the entries (rule 1b). The value becomes the current one with its own time, no new
+// version. The whole read is bounded by secret-kv-start-timeout: past it, or on a failure,
+// the cluster starts on what it has and the entry is behind (WARN0269); the background full
+// pass catches up. Never on the monitor tick.
+func (cluster *Cluster) ReadVaultsAtStart() {
+	entries := cluster.Conf.SecretKvActive()
+	if len(entries) == 0 {
+		return
+	}
+	vs := cluster.versionStore()
+	var keys []string
+	for _, key := range cluster.secretKeys() {
+		if !vs.Holds(key) {
+			continue
+		}
+		if _, ok := vs.Latest(key); ok && cluster.Conf.IsMonitoringSecretVersioningEnabled() {
+			continue // the local file holds it
+		}
+		if v := cluster.Conf.Secrets.Get(key).Value; v == "" || cluster.Conf.IsPath(v) {
+			continue // no starting value, or a Vault path the seed reads
+		}
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return cluster.vaultStore(entries[i]).Generates() && !cluster.vaultStore(entries[j]).Generates()
+	})
+	timeout := time.Duration(cluster.Conf.SecretKvStartTimeout) * time.Second
+	if timeout <= 0 {
+		timeout = 3 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	newest := map[string]credstore.Version{}
+	engine := map[string]bool{}
+	from := map[string]string{}
+	for _, e := range entries {
+		kv := cluster.vaultStore(e)
+		client, err := kv.Connect(ctx)
+		if err != nil {
+			cluster.setStoreBehind(e.Name, "read at start: vault login: "+err.Error())
+			continue
+		}
+		space := cluster.Conf.SecretKvFolder(e, cluster.Name)
+		for _, key := range keys {
+			if kv.Generates() {
+				if !isEngineKey(key) {
+					continue
+				}
+				user, _ := splitUser(cluster.Conf.Secrets.Get(key).Value)
+				value, at, err := kv.StaticCreds(ctx, client, user)
+				if err != nil {
+					cluster.setStoreBehind(e.Name, fmt.Sprintf("read at start: database/static-creds/%s: %s", user, err))
+					continue
+				}
+				newest[key], engine[key], from[key] = credstore.Version{Value: value, At: at}, true, e.Name
+				continue
+			}
+			if engine[key] {
+				continue
+			}
+			for _, folder := range cluster.secretFolders(key) {
+				it := credstore.StoreItem{Entry: e.Name, Path: space + "/" + folder, Key: key}
+				ver, found, err := kv.ReadItem(ctx, client, it, "")
+				if err != nil {
+					cluster.setStoreBehind(e.Name, fmt.Sprintf("read at start: %s/%s: %s", it.Path, key, err))
+					break
+				}
+				if found && (newest[key].Value == "" || ver.Newer(newest[key])) {
+					newest[key], from[key] = ver, e.Name
+				}
+			}
+		}
+	}
+	for _, key := range keys {
+		ver, ok := newest[key]
+		if !ok || ver.Value == "" || ver.Value == cluster.Conf.Secrets.Get(key).Value {
+			continue
+		}
+		if _, pinned := cluster.Conf.GetImmuableFlag(key); pinned {
+			continue
+		}
+		vs.Insert(key, ver)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential stores: %s at start is the version held by %s", key, from[key])
+	}
+	cluster.CredentialChain().Refresh()
+}

@@ -327,3 +327,53 @@ func TestStandbyLoadsPeerVersions(t *testing.T) {
 		t.Fatal("the standby rewrote the file")
 	}
 }
+
+// #2227 rule 1b at start: versioning off, the vault holds pass2: the start reads it once and
+// runs on it, the config keeps pass1, no new version is written to the vault
+func TestReadVaultsAtStartRestores(t *testing.T) {
+	v := vaultfake.New("kv", "role", "sid")
+	defer v.Close()
+	cl := secretKvTestCluster(t, v)
+	key := "monitoring-write-heartbeat-credential"
+	cl.Conf.SetDynamicFlag(key, "hb:pass1")
+	cl.CredentialChain().Refresh()
+	for _, srv := range []string{"db1", "db2"} {
+		v.Put(testSpace+"/databases/"+srv+"/"+key, map[string]interface{}{key: "hb:pass2", "written-at": time.Now().UTC().Format(time.RFC3339Nano), "written-by": "2"})
+	}
+	writes := v.Writes
+	cl.ReadVaultsAtStart()
+	if got := cl.Conf.Secrets.Get(key).Value; got != "hb:pass2" {
+		t.Fatalf("at start %q, want pass2", got)
+	}
+	if raw, _ := cl.Conf.GetDynamicFlag(key); raw != "hb:pass1" {
+		t.Fatalf("config %v", raw)
+	}
+	if v.Writes != writes || cl.storeQueue().Len() != 0 {
+		t.Fatal("the read at start wrote a version")
+	}
+}
+
+// #2227 rule 1b at start: a slow vault is bounded by secret-kv-start-timeout: the start goes
+// on with what it has and the entry is behind (WARN0269)
+func TestReadVaultsAtStartBounded(t *testing.T) {
+	v := vaultfake.New("kv", "role", "sid")
+	defer v.Close()
+	v.Delay = 3 * time.Second
+	cl := secretKvTestCluster(t, v)
+	cl.Conf.SecretKvStartTimeout = 1
+	key := "monitoring-write-heartbeat-credential"
+	cl.Conf.SetDynamicFlag(key, "hb:pass1")
+	cl.CredentialChain().Refresh()
+	start := time.Now()
+	cl.ReadVaultsAtStart()
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("the start waited %s", d)
+	}
+	if got := cl.Conf.Secrets.Get(key).Value; got != "hb:pass1" {
+		t.Fatalf("at start %q", got)
+	}
+	cl.CheckSecretKvStores()
+	if !hasState(cl.SecurityStateMachine, "WARN0269@vault-a") {
+		t.Fatalf("states %v", cl.SecurityStateMachine.GetStates())
+	}
+}

@@ -882,6 +882,10 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.ensureCloud18Provider() // registered to Cloud18: the Cloud18 storage, SSO (#2091)
 	cluster.LoadArchivePlugins()    // the external archive plugins' manifests, once per process (#2091)
 
+	// the newest version the vault entries hold, read once before monitoring begins, for
+	// the secrets the local file does not version (#2227 rule 1b, bounded)
+	cluster.CredentialChain().Refresh()
+	cluster.ReadVaultsAtStart()
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
 	cluster.EnsureSystemServiceUser() // `system` API-key service account (derived key) for the app/proxy compute sensor

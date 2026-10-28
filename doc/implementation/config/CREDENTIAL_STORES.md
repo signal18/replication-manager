@@ -86,6 +86,12 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    peer replay, `SetClusterCredentialsFromConfig` all go through `chain.Refresh()`, which
    applies the newest version of the active stores; the config's starting value only when
    no store holds one (before the first change). This is what keeps #2017 fixed.
+   At a cluster's start only, before monitoring begins, a secret the local file does not
+   version (versioning off, or no version yet) is read once from the enabled vault entries
+   (`Cluster.ReadVaultsAtStart`: a database engine first, else the newest version), bounded
+   by `secret-kv-start-timeout` (3 s): the value becomes the current one with its own time,
+   no new version. Past the timeout or on a failure the cluster starts on what it has, the
+   entry is behind (WARN0269) and the full pass catches up. Never on the monitor tick.
 2. **Every write is a version in every active store.** The version is made in memory at the
    write, with its time and writing instance; the file is written only by the cluster's save
    callback after `cluster.Save()` (T25) and is in the config git push (encrypted values
@@ -97,7 +103,8 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    (WARN0269, security domain, per entry) and gets the winning version at the next pass.
 4. **Full pass**: when a store is turned on, at start, and after queue drops (WARN0270).
    It runs in the worker, reads each store's current version and writes only when it
-   differs: no version churn, no blocking read at load.
+   differs: no version churn, no blocking read at load (the one exception is the bounded
+   read at start of rule 1b).
 5. **Paths are computed by repman, never typed**:
    ```
    <mount>/<path-prefix>/<cluster>/
@@ -178,7 +185,7 @@ file.
 - **Settings** (TOML, T16): `[[<cluster>.secret-kv]]` with `name`, `plugin`, `enabled` and
   `address`, `mount`, `path-prefix`, `mode`, `auth`, `role-id`, `secret-id` (encrypted, left out without
   an encryption key); `secret-kv-queue-limit` (1000), `secret-kv-write-timeout` (10 s),
-  `secret-kv-retry-interval` (60 s). An entry's `role-id` and `secret-id` are instance-local
+  `secret-kv-retry-interval` (60 s), `secret-kv-start-timeout` (3 s). An entry's `role-id` and `secret-id` are instance-local
   (never replayed), as `vault-role-id` and `vault-secret-id`.
 - **Versioned secrets** (rule 1): the database credentials (`db-servers-credential`,
   `replication-credential`, `monitoring-write-heartbeat-credential`) and the proxy

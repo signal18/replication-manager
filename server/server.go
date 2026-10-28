@@ -757,6 +757,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
 	flags.IntVar(&conf.SecretKvQueueLimit, "secret-kv-queue-limit", 1000, "Max secret versions waiting to be written to the credential store entries (secret-kv); the oldest are dropped once exceeded, and a full pass writes every secret again once the queue drains. <= 0 falls back to this default, never unbounded")
 	flags.IntVar(&conf.SecretKvWriteTimeout, "secret-kv-write-timeout", 10, "Timeout in seconds of each write (and of the login) to a credential store entry")
+	flags.IntVar(&conf.SecretKvStartTimeout, "secret-kv-start-timeout", 3, "Timeout in seconds of the read of the vault entries at a cluster's start, for the secrets the local versioned file does not hold (versioning off, or no version yet); past it the cluster starts on what it has and the entry is behind (WARN0269)")
 	flags.IntVar(&conf.SecretKvRetryInterval, "secret-kv-retry-interval", 60, "Seconds between two tries of the writes to a credential store entry that failed")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
 	flags.IntVar(&conf.LogVaultLevel, "log-level-vault", 1, "Log level for vault")
