@@ -57,7 +57,10 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
   `timeout`) and the leaf certificate's `NotAfter` (`certExpiryError`). An invalid
   certificate, or one that expires within `app-monitor-cert-expire-days` (default 14),
   opens **APPERR010**; the app is then **AppWarning**, not Failed: the service answers,
-  the certificate needs an operator. The GET itself stays unverified like every route
+  the certificate needs an operator. The certificate is verified against the name called:
+  use `https-cert` with a full `app-host` name (the public name the certificate carries);
+  a short one is called on the cluster address (`<host>.<cluster>.svc.<orchestrator>`),
+  which a public certificate does not name. The GET itself stays unverified like every route
   check, so `https` alone never fails on a certificate.
 
   Settings, named after the route monitor fields: `app-monitor-path` (default `/`, must
@@ -65,10 +68,15 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
   route's `expect-status`, `config.ParseExpectStatus`), and `app-monitor-cert-expire-days`
   for `https-cert`. GUI: the fields show on the app page for the http modes.
 
-  Scheduling: every app is checked in its own goroutine (no worker pool), each check
+  Scheduling: every app is checked in its own goroutine (no worker pool: a batch opens one
+  check per configured app at once, bounded by the app list), each check
   bounded by the cluster `timeout` and reading at most 1 MiB of the body; the tick waits for
   the batch after its database and proxy work, at most `timeout` + 1 s
-  (`appRefreshTickWait`). `app-refresh-concurrency` is deprecated and ignored.
+  (`appRefreshTickWait`). What runs after that wait in the tick is the state bookkeeping
+  (PreserveState, the APPERR007 staleness check, EmitAppErrors, state emission); topology
+  detection, failover and the proxies run before it, so a hanging app never delays a
+  failover decision, only the end of that tick, by at most the wait.
+  `app-refresh-concurrency` is deprecated and ignored.
 
 Apps with routes are unaffected: their routes are probed as before.
 

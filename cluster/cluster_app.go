@@ -1615,10 +1615,13 @@ func appRefreshStaleness(inProgress bool, lastStart, lastEnd, now time.Time, thr
 // The tick launches it next to the database and proxy work and waits for it
 // at the end, at most appRefreshTickWait (#2209): topology discovery and
 // failover detection never wait on it, and an app whose refresh outlives the
-// wait keeps this guard closed until it returns instead of piling up batches. Per-app results are aggregated locally and
-// published to cluster.publishedAppErrStates in a single atomic Store once
-// the whole batch completes, so EmitAppErrors() never observes a
-// half-old/half-new mix of app error state.
+// wait keeps this guard closed until it returns instead of piling up batches.
+// Each app is refreshed in its own goroutine, so the batch opens one check per
+// configured app at once: bounded by the app list, never by the checks' speed.
+// Per-app results are aggregated locally and published to
+// cluster.publishedAppErrStates in a single atomic Store once the whole batch
+// completes, so EmitAppErrors() never observes a half-old/half-new mix of app
+// error state.
 func (cluster *Cluster) maybeRefreshAppsAsync() {
 	if !cluster.appRefreshInProgress.CompareAndSwap(false, true) {
 		cluster.Lock()
@@ -1658,12 +1661,6 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 	cluster.Unlock()
 
 	var workerWg sync.WaitGroup
-	appChan := make(chan *App)
-
-	// One goroutine per app (#2209): every check is bounded by its own timeout, so a
-	// hanging app costs that timeout and delays no other app (a pool of N workers let two
-	// hanging apps hold back every other check of the batch).
-	workerCount := len(apps)
 
 	// Keyed by state.BuildStateKey(errKey, ServerUrl), not the bare error
 	// key: multiple apps can raise the same error code (e.g. APPERR002), and
@@ -1672,32 +1669,29 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 	var aggMu sync.Mutex
 	aggregated := make(map[string]state.State)
 
-	for range workerCount {
-		workerWg.Add(1)
-		go func() {
-			defer workerWg.Done()
-			for app := range appChan {
-				app.Refresh()
-				app.Lock()
-				for key, st := range app.ErrState {
-					if st.ErrKey == "" {
-						st.ErrKey = key
-					}
-					aggMu.Lock()
-					aggregated[state.BuildStateKey(key, st.ServerUrl)] = st
-					aggMu.Unlock()
-				}
-				app.Unlock()
-			}
-		}()
-	}
-
+	// One goroutine per app (#2209): every check is bounded by its own timeout, so a
+	// hanging app costs that timeout and delays no other app (a pool of N workers let two
+	// hanging apps hold back every other check of the batch).
 	for _, app := range apps {
-		if app != nil {
-			appChan <- app
+		if app == nil {
+			continue
 		}
+		workerWg.Add(1)
+		go func(app *App) {
+			defer workerWg.Done()
+			app.Refresh()
+			app.Lock()
+			for key, st := range app.ErrState {
+				if st.ErrKey == "" {
+					st.ErrKey = key
+				}
+				aggMu.Lock()
+				aggregated[state.BuildStateKey(key, st.ServerUrl)] = st
+				aggMu.Unlock()
+			}
+			app.Unlock()
+		}(app)
 	}
-	close(appChan)
 
 	workerWg.Wait()
 

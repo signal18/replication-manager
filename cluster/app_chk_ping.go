@@ -216,10 +216,9 @@ func (app *App) noRouteProbeErrDesc(errKey string, err error) string {
 	case ErrAppConnectFailed:
 		return fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err.Error())
 	case ErrAppUnexpectedStatus:
-		var statusErr *appUnexpectedStatusError
-		errors.As(err, &statusErr)
 		code := 0
-		if statusErr != nil {
+		var statusErr *appUnexpectedStatusError
+		if errors.As(err, &statusErr) {
 			code = statusErr.Code
 		}
 		return fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), code)

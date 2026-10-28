@@ -1432,10 +1432,12 @@ func (cluster *Cluster) tickBody() {
 				// the apps' checks ran meanwhile, one goroutine per app, each bounded by
 				// its timeout: wait for them so this tick emits fresh app states, never
 				// longer than appRefreshTickWait (#2209)
+				appsWait := time.NewTimer(appRefreshTickWait(cluster.Conf.Timeout))
 				select {
 				case <-appsDone:
-				case <-time.After(appRefreshTickWait(cluster.Conf.Timeout)):
+				case <-appsWait.C:
 				}
+				appsWait.Stop()
 
 				// PreserveState for non-running ticks (fast, no I/O)
 				if heartbeats%10 != 0 {
