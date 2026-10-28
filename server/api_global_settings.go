@@ -646,6 +646,8 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.Cloud18SelfServiceClustersEnabledScript = strings.TrimSpace(value)
 	case "cloud18-self-service-clusters-can-borrow":
 		repman.Conf.Cloud18SelfServiceClustersCanBorrow = isactive
+	case "cloud18-self-service-clusters-can-consume-for-sale":
+		repman.Conf.Cloud18SelfServiceClustersCanConsumeForSale = isactive
 	case "cloud18-self-service-max-clusters-per-user":
 		n, err := strconv.Atoi(strings.TrimSpace(value))
 		if err != nil || n < 0 {
@@ -789,6 +791,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.Cloud18SelfServiceClusters = !repman.Conf.Cloud18SelfServiceClusters
 	case "cloud18-self-service-clusters-can-borrow":
 		repman.Conf.Cloud18SelfServiceClustersCanBorrow = !repman.Conf.Cloud18SelfServiceClustersCanBorrow
+	case "cloud18-self-service-clusters-can-consume-for-sale":
+		repman.Conf.Cloud18SelfServiceClustersCanConsumeForSale = !repman.Conf.Cloud18SelfServiceClustersCanConsumeForSale
 	case "mcp-auth-enabled":
 		repman.Conf.MCPAuthEnabled = !repman.Conf.MCPAuthEnabled
 		repman.restartMCPServer()

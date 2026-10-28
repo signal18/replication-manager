@@ -1078,20 +1078,21 @@ type Config struct {
 	// Cloud18LicenseFile, when set, is the single switch for offline-license mode:
 	// the instance sources its plan from this signed file instead of the CRM (for
 	// air-gapped/PCI instances). Empty = normal online CRM path.
-	Cloud18LicenseFile                      string  `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
-	Cloud18PeerHealthMode                   string  `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
-	Cloud18DisablePeers                     bool    `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
-	Cloud18SelfServiceClusters              bool    `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
-	Cloud18SelfServiceMaxClustersPerUser    int     `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
-	Cloud18SelfServiceCacheSeconds          int     `scope:"server" mapstructure:"cloud18-self-service-cache-seconds" toml:"cloud18-self-service-cache-seconds" json:"cloud18SelfServiceCacheSeconds"`
-	Cloud18SelfServiceClustersEnabledScript string  `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
-	Cloud18SelfServiceClustersCanBorrow     bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
-	Cloud18DisableForSale                   bool    `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
-	Cloud18MarketplacePricingMode           string  `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
-	Cloud18MarketplaceDBUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
-	Cloud18MarketplaceAPUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
-	Cloud18MarketplaceBKUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
-	Cloud18MarketplaceBAUPrice              float64 `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
+	Cloud18LicenseFile                          string  `scope:"server" mapstructure:"cloud18-license-file" toml:"cloud18-license-file" json:"cloud18LicenseFile"`
+	Cloud18PeerHealthMode                       string  `scope:"server" mapstructure:"cloud18-peer-health-mode" toml:"cloud18-peer-health-mode" json:"cloud18PeerHealthMode"`
+	Cloud18DisablePeers                         bool    `scope:"server" mapstructure:"cloud18-disable-peers" toml:"cloud18-disable-peers" json:"cloud18DisablePeers"`
+	Cloud18SelfServiceClusters                  bool    `scope:"server" mapstructure:"cloud18-self-service-clusters" toml:"cloud18-self-service-clusters" json:"cloud18SelfServiceClusters"`
+	Cloud18SelfServiceMaxClustersPerUser        int     `scope:"server" mapstructure:"cloud18-self-service-max-clusters-per-user" toml:"cloud18-self-service-max-clusters-per-user" json:"cloud18SelfServiceMaxClustersPerUser"`
+	Cloud18SelfServiceCacheSeconds              int     `scope:"server" mapstructure:"cloud18-self-service-cache-seconds" toml:"cloud18-self-service-cache-seconds" json:"cloud18SelfServiceCacheSeconds"`
+	Cloud18SelfServiceClustersEnabledScript     string  `scope:"server" mapstructure:"cloud18-self-service-clusters-enabled-script" toml:"cloud18-self-service-clusters-enabled-script" json:"cloud18SelfServiceClustersEnabledScript"`
+	Cloud18SelfServiceClustersCanBorrow         bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-borrow" toml:"cloud18-self-service-clusters-can-borrow" json:"cloud18SelfServiceClustersCanBorrow"`
+	Cloud18SelfServiceClustersCanConsumeForSale bool    `scope:"server" mapstructure:"cloud18-self-service-clusters-can-consume-for-sale" toml:"cloud18-self-service-clusters-can-consume-for-sale" json:"cloud18SelfServiceClustersCanConsumeForSale"`
+	Cloud18DisableForSale                       bool    `scope:"server" mapstructure:"cloud18-disable-for-sale" toml:"cloud18-disable-for-sale" json:"cloud18DisableForSale"`
+	Cloud18MarketplacePricingMode               string  `scope:"server" mapstructure:"cloud18-marketplace-pricing-mode" toml:"cloud18-marketplace-pricing-mode" json:"cloud18MarketplacePricingMode"`
+	Cloud18MarketplaceDBUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-dbu-price" toml:"cloud18-marketplace-dbu-price" json:"cloud18MarketplaceDbuPrice"`
+	Cloud18MarketplaceAPUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-apu-price" toml:"cloud18-marketplace-apu-price" json:"cloud18MarketplaceApuPrice"`
+	Cloud18MarketplaceBKUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-bku-price" toml:"cloud18-marketplace-bku-price" json:"cloud18MarketplaceBkuPrice"`
+	Cloud18MarketplaceBAUPrice                  float64 `scope:"server" mapstructure:"cloud18-marketplace-bau-price" toml:"cloud18-marketplace-bau-price" json:"cloud18MarketplaceBauPrice"`
 	// GWU (#1872): the gateway network unit, egress through the Cloud18 gateways.
 	// Cloud18GatewayBandwidthMbit: the shared uplink of each gateway in Mb/s, a list aligned with
 	// cloud18-gateway-service; the bandwidth is tracked per cluster against it, not invoiced (#1872).

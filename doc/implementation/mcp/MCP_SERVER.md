@@ -187,6 +187,15 @@ its default cluster; the quote re-takes it for the requested units. The status s
 wording (`reason == poolNote`). The per-user limit is checked from `remaining` when present,
 and in every case by the partner itself at creation (`selfServiceCheck`).
 
+**Room (#2212).** The quote fits the request against the room the creation check uses,
+`InfraUnitPool.RoomDbu()` / `RoomApu()`: the free pool plus what the clusters for sale give
+back above their floors (`forSaleDbu`, `forSaleApu` of the status pool, decoded into
+`InfraUnitPool`). Before, the quote read `freeDbu`/`freeApu` only, and refused an
+infrastructure whose creation would succeed; the sales assistant followed it. The answer
+carries `free` and `forSale`, and `roomNote` when the free pool alone is short. An older
+infrastructure publishes no for-sale figure: 0, the free pool alone. The quote does not know
+the borrowing `cloud18-self-service-clusters-can-borrow` allows at creation.
+
 **Creation steps** (`Cloud18CreateCluster`): add the cluster; apply the requested plan through
 `change-plan-units` (the partner's ledger and plan-increase script decide); **a refused plan
 deletes the cluster** (`DELETE /api/clusters/actions/delete/<name>`) so none is left on a plan
@@ -218,7 +227,7 @@ the user, a local admin with the instance's Cloud18 identity, an API token is re
 no credential for another infrastructure). This instance is called over the loopback with the
 caller's own credential.
 
-Tests: `TestQuote*`, `TestApplyRequestedPlan` (fake infrastructure: per-unit difference,
+Tests: `TestQuote*` (`TestQuoteCountsWhatClustersForSaleGiveBack` for the room), `TestApplyRequestedPlan` (fake infrastructure: per-unit difference,
 refusal), `TestCloud18SpecPostgres`, `TestCloud18SpecMySQLFamily`, `TestInfraDefinitionOfPeer`.
 
 ## Self-service clusters on an infrastructure (server_selfservice.go, server_cloud18_infra.go)
@@ -241,6 +250,13 @@ without the subscription / email-acceptance chain; the partner is only informed.
   SPONSORED_CLUSTERS/NEEDED_DBU/NEEDED_APU/FREE_DBU/FREE_APU/BORROW_DBU/BORROW_APU.
   Non-zero exit or a 30 s timeout = veto, reason = first output line (or the error). Can only
   refuse more than the switch.
+- Clusters for sale: `infraUnitPool` adds to `ForSaleDbu`/`ForSaleApu` each provisioned
+  `cloud18-shared` cluster's plan above `Cluster.PlanFloorUnits` (1 DBU per database node; 1 APU
+  per proxy and per running app instance, none for a stateful app or an engine that is a
+  monitored server; an admin-locked plan whole; BKU never released). Only with
+  `cloud18-self-service-clusters-can-consume-for-sale` (server scope, default true, #2212): off,
+  both are 0, so the creation check, the enabled script's REPMAN_FOR_SALE_* and the quote see
+  the free pool alone.
 - Can-borrow: `cloud18-self-service-clusters-can-borrow` (server scope). `selfServicePoolCheck`
   returns `(borrowNote, err)`: when the plan pot is short and the flag is on, `CanBorrow` on the
   Database profile for the DBU and the Compute profile for the APU decides; both ok = created on

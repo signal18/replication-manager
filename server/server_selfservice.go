@@ -384,10 +384,10 @@ func (repman *ReplicationManager) selfServicePoolCheck() (borrowNote string, err
 	// A self-service client takes precedence over a cluster for sale (cloud18-shared):
 	// the plans of the offers do not block the creation (#2144).
 	var short error
-	if needDbu > pool.FreeDbu+pool.ForSaleDbu {
+	if needDbu > pool.RoomDbu() {
 		short = fmt.Errorf("no free DBU on this infrastructure for a new cluster: %.0f DBU needed (2 × prov-db-dbu), %.1f free + %.1f releasable from clusters for sale, of %.1f usable (%.1f already planned)",
 			needDbu, pool.FreeDbu, pool.ForSaleDbu, pool.UsableDbu, pool.PlannedDbu)
-	} else if needApu > pool.FreeApu+pool.ForSaleApu {
+	} else if needApu > pool.RoomApu() {
 		short = fmt.Errorf("no free APU on this infrastructure for a new cluster: %.0f APU needed (prov-service-plan-apu), %.1f free + %.1f releasable from clusters for sale, of %.1f usable (%.1f already planned)",
 			needApu, pool.FreeApu, pool.ForSaleApu, pool.UsableApu, pool.PlannedApu)
 	}
