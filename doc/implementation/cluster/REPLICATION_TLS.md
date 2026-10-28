@@ -33,7 +33,8 @@ Every `CHANGE MASTER` goes through `ServerMonitor.ChangeMaster`, which reads the
 | unreachable | nothing: the channel keeps what it has |
 | no TLS (`have_ssl` not `YES`), `replication-use-ssl` off | `MASTER_SSL=0`: an 11.4+ replica defaults to TLS and would not connect (MDEV-35584, mixed versions during an upgrade) |
 | auto-generated certificate (11.4+) | `MASTER_SSL_CA=''`: any CA breaks it, the password verifies it. Keyed on the primary: a MySQL or pre-11.4 replica cannot verify that way, the empty CA only clears a stale one and the channel is reported (WARN0235) |
-| configured certificate, `replication-use-ssl` on | `MASTER_SSL_CA` = `replication-ssl-ca`, else `/etc/mysql/ssl/ca-cert.pem` on a provisioned cluster with the `ssl` tag, else the replica's own `ssl_ca` when it is the primary's too; otherwise nothing (a CA an operator set stays) |
+| configured certificate, `replication-use-ssl` on | `MASTER_SSL_CA` = `replication-ssl-ca`, else `/etc/mysql/ssl/ca-cert.pem` on a provisioned cluster with the `ssl` tag, else the replica's own `ssl_ca` when it is the primary's too and an absolute path; otherwise nothing (a CA an operator set stays) |
+| configured certificate, the replica's `ssl_ca` relative (MySQL `auto_generate_certs`: `ca.pem`) | `MASTER_SSL_CA=''` (#2218): a relative path is each node's own datadir file, every MySQL node generates its own CA under that one name, so an equal name proves nothing and naming it is error 2026. The link is encrypted, unverified (WARN0235) |
 
 `MASTER_SSL_CERT`/`KEY` are never emitted (a server certificate is not necessarily a
 valid client certificate). `MASTER_SSL_VERIFY_SERVER_CERT` is never forced: zero-config
@@ -94,3 +95,20 @@ carries the decision; by hand, on the replica:
 | `testReplicationTLSVerifyOffWarns` | same | verification off opens WARN0235, on resolves it |
 | `testReplicationTLSSSLTagLifecycle` | provisioned 11.4+, no ssl tag | tag add/drop never cost the monitoring; rolling restarts move every server to the shipped certificates and back; replicas verify with the shipped CA, then with none |
 | `testRollingUpgradeTransparentSSL` | provisioned MariaDB before 11.4 | rolling upgrade to 11.8 through mixed versions, then replication-use-ssl on: encrypted, no CA, replicating |
+
+## MySQL 8 authentication without TLS (#2218)
+
+MySQL 8's default `caching_sha2_password` refuses a replication connection without TLS
+unless the replica obtains the source's RSA public key: error 2061 "Authentication
+requires secure connection", retried forever. `dbhelper.ChangeMaster` adds
+`GET_MASTER_PUBLIC_KEY=1` (`GET_SOURCE_PUBLIC_KEY=1` from 8.0.23) on MySQL/Percona 8.0+
+when the channel is not set to TLS, never on the group replication recovery channel (it
+has `group_replication_recovery_get_public_key`). Measured on a provisioned MySQL 8.0.41
+cluster: with TLS off every replica stayed on 2061; with TLS on and the replica's `ca.pem`
+named, every replica stayed on 2026.
+
+An IO thread retrying (`Slave_IO_Running: Connecting`) read "Running OK" before #2218 (the
+check tested the SQL thread). It now reads "NOT OK, IO Connecting (errno)", and an error
+other than 2026 (WARN0236's) opens WARN0269 naming the server, the channel and the error.
+The server state stays Slave (no change to the election); `HasReplicationIssue` keeps a
+reconnect without error in the read pool and excludes a replica retrying with an error.

@@ -106,11 +106,18 @@ on a cluster of the right setup, a missing replica is a broken cluster, not a te
 
 The other tests declare `anyCluster` for now; they get real targets as they are worked on.
 
-## Tests
+## MySQL runs on GTID (#2226)
+
+Before any target, `MatchTarget` skips every test on a MySQL or Percona cluster that does not declare the
+`mysqlgtid` tag (`prov-db-tags`), group replication excepted (GTID comes from its own tag). The
+provisioning adds the tag to every MySQL/Percona cluster it builds (`Cluster.addMySQLGTIDTag`), so a
+cluster without it is not what a client runs: there a failover is positional, the replicas wait in
+maintenance on the dead master, and a run on it reported failures of a setup nobody provisions.
+
 
 `regtest/regtest_targets_test.go`: `TestSkipReason` covers each condition, matched and missed, the unknown
 DBU, and a test with two targets (either matches; both missed gives both reasons); `TestTargetsDeclared`
 checks every test declares targets and every declaration names a test; `server/regtest_must_set_test.go`
 checks the must-set goes through setClusterSetting and an unknown key stops the test;
 `TestConfigVariableKeys` checks every must-have and must-set key exists, since a typo would skip its test
-on every cluster.
+on every cluster. `TestMySQLClusterDeclaresGTIDTag` covers the MySQL GTID tag gate.
