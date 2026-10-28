@@ -75,12 +75,21 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 
 ### The rules
 
-1. **The config holds the seed only**: the first value, known at provisioning or typed by
-   an operator. From the first rotation or change, the current value and its versions live
-   in the active stores. Provisioning, a reprovision and the regtests read the current
-   version, never the seed; the GUI shows the seed as the initial value.
-2. **Every write is a version in every active store.** The file synchronously, as today;
-   each vault through a bounded queue (T18: the latest value per key wins, a hard cap,
+1. **The config keeps the starting value forever**: the first value, known at provisioning
+   or typed by an operator (`root:pass1`). A rotation or a change never writes the config:
+   the current value and its versions live only in the active stores. When no active store
+   keeps versions (versioning off, no vault), a change is refused as a rotation is (rule 9),
+   so the config never holds anything else. Provisioning, a reprovision and the regtests
+   read the current version, never the starting value; the GUI shows it as the initial
+   value.
+1b. **Every reload restores the last value**: a restart, a config reload, a tag change, a
+   peer replay, `SetClusterCredentialsFromConfig` all go through `chain.Refresh()`, which
+   applies the newest version of the active stores; the config's starting value only when
+   no store holds one (before the first change). This is what keeps #2017 fixed.
+2. **Every write is a version in every active store.** The version is made in memory at the
+   write, with its time and writing instance; the file is written only by the cluster's save
+   callback after `cluster.Save()` (T25) and is in the config git push (encrypted values
+   only, F9; versions change only at rotations and changes, T17). Each vault through a bounded queue (T18: the latest value per key wins, a hard cap,
    drops counted) and a worker with a timeout per write, after the chain's lock: it never
    blocks the write, a provisioning or the monitor (F2). Only the active monitor writes.
 3. **Read**: the newest version wins across the stores (timestamp and writing instance,
@@ -97,8 +106,8 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
        apps/<app name>/<key>
        archives/<archive name>/<key>
    ```
-   `<space>` is `<domain>/<subdomain>` on Cloud18; off Cloud18, the identifier an active
-   monitor and its standby share (never a per-instance id: after a switch the peer must
+   `<space>` is `<domain>/<subdomain>` on Cloud18; off Cloud18, a stable pair identifier
+   saved in the config, the one an active monitor and its standby share (never a per-instance id: after a switch the peer must
    write the same folder). A secret the whole cluster shares (the database credential) is
    written under every server that uses it. Each key keeps the setting's name.
 6. **What is a secret of the cluster**: the chain's credentials, the proxy passwords, the
@@ -118,9 +127,9 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
 10. **Turning a store off** stops its versions and leaves what it holds. Repman never
     deletes a secret; a removed object's secrets stay, a renamed one writes under its new
     name.
-11. **Peers (active and standby)**: the file is per host and not in the config push; a
-    change already travels in the event log, encrypted (F9), and the peer's replay writes
-    the version into its own file. Vaults are shared and need nothing more.
+11. **Peers (active and standby)**: the file travels in the config git like
+    `<cluster>.toml`; the peer reads it from there, so both see the same history. Vaults
+    are shared and need nothing more.
 12. **Migration, with the release (no toggle)**: the `vault-*` keys become the entry
     `vault-default`, `database_engine` included. A config value that is a Vault path is
     read once at load as the seed and written through the chain. A path pinned in a file
@@ -131,6 +140,16 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
     read through the space policies (on the Cloud18 vault: the sponsor, the owner, the
     administrators).
 15. **Never a value in a log** (F10); the log line names the store, path and key.
+16. **Accepted race**: an API change made while a newer remote value is being applied may
+    skip its vault writes; the next full pass repairs it.
+
+### Regtest (T13)
+
+MariaDB and MySQL in Docker: provision with `pass1`; rotate (`pass2`); reload the config;
+add then drop a tag; restart repman. After each step: every server monitored with no auth
+error, logged in with `pass2`; the config still holds `pass1`; the file holds both
+versions. Variant with a Vault container and a vault entry on: the same, and the vault
+holds `pass2` at `databases/<server>/db-servers-credential`.
 
 ### Implementation (#2227)
 
