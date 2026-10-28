@@ -386,13 +386,28 @@ func (app *App) SetSetting(key, value string) error {
 	case "prov-app-ha-topology":
 		app.AppConfig.ProvAppHATopology = value
 	case "app-monitor-mode":
-		// How an app without a route is probed: port (TCP connect to app-port) or ping
-		// (ICMP echo to the host, for a process that listens on nothing, #1919).
+		// How an app without a route is probed: port (TCP connect to app-port), ping
+		// (ICMP echo to the host, for a process that listens on nothing, #1919), or http /
+		// https (a GET that must answer app-monitor-expect-status, #2209).
 		mode := strings.ToLower(strings.TrimSpace(value))
-		if mode != "" && mode != "port" && mode != "ping" {
-			return fmt.Errorf("app-monitor-mode: %q is not port or ping", value)
+		if mode != "" && mode != "port" && mode != "ping" && mode != "http" && mode != "https" {
+			return fmt.Errorf("app-monitor-mode: %q is not port, ping, http or https", value)
 		}
 		app.AppConfig.AppMonitorMode = mode
+	case "app-monitor-path":
+		path := strings.TrimSpace(value)
+		if path != "" && !strings.HasPrefix(path, "/") {
+			return fmt.Errorf("app-monitor-path: %q must start with /", value)
+		}
+		app.AppConfig.AppMonitorPath = path
+	case "app-monitor-expect-status":
+		status := strings.TrimSpace(value)
+		if status != "" {
+			if _, err := config.ParseExpectStatus(status); err != nil {
+				return fmt.Errorf("app-monitor-expect-status: %w", err)
+			}
+		}
+		app.AppConfig.AppMonitorExpectStatus = status
 	case "app-stateful":
 		// Stateful app (minio and the like): accounted as DBU, not APU. The plan and the
 		// billing re-project on the spot; the sensor's next push lands on the DBU track.

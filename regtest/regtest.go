@@ -154,6 +154,7 @@ var tests = []string{
 	"testProxyReadBackendReconciliation",
 	"testMaintenancePersistReload",
 	"testAppWarningDebounceAndRecovery",
+	"testAppMonitorHTTP",
 	"testReplicationTLSAutoCertificate",
 	"testReplicationTLSStaleCAEmptied",
 	"testReplicationTLSVerifyOffWarns",

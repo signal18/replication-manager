@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,11 +109,40 @@ func pingHost(host string, timeout time.Duration) error {
 	}
 }
 
+// appMonitorHTTPRoute: the check of an app in app-monitor-mode http or https (#2209), as
+// the route the HTTP check of the routes takes, never published on a gateway. A full
+// app-host name (with a dot: a web service that lives elsewhere) is called as is, a short
+// one on the app's cluster address. ok is false in the other modes. Pure, for tests.
+func appMonitorHTTPRoute(cnf *config.AppConfig, clusterHost string) (route config.Route, ok bool) {
+	if cnf == nil {
+		return config.Route{}, false
+	}
+	mode := strings.ToLower(strings.TrimSpace(cnf.AppMonitorMode))
+	if mode != "http" && mode != "https" {
+		return config.Route{}, false
+	}
+	host := clusterHost
+	if strings.Contains(cnf.AppHost, ".") {
+		host = cnf.AppHost
+	}
+	monitor := &config.RouteMonitor{Path: cnf.AppMonitorPath, ExpectStatus: cnf.AppMonitorExpectStatus}
+	monitor.Normalize()
+	return config.Route{Name: "app-monitor", Protocol: mode, CName: host + ":" + cnf.AppPort, Monitor: monitor}, true
+}
+
 // probeNoRoute runs the probe of an app without a route and returns the error key that
-// a failure opens: APPERR009 for a ping, APPERR003 for a TCP connect to app-port.
+// a failure opens: APPERR009 for a ping, APPERR001 or APPERR002 for an http/https check
+// (no answer, unexpected status), APPERR003 for a TCP connect to app-port.
 func (app *App) probeNoRoute(timeout time.Duration) (string, error) {
 	if appMonitorModeIsPing(app.AppConfig) {
 		return ErrAppPingFailed, pingHost(app.GetHost(), timeout)
+	}
+	if route, ok := appMonitorHTTPRoute(app.AppConfig, app.GetHost()); ok {
+		status, _, err := app.GetAppHTTPStatus(route, false)
+		if err != nil && strings.HasPrefix(err.Error(), "unexpected status code") {
+			return ErrAppUnexpectedStatus, fmt.Errorf("%d", status)
+		}
+		return ErrAppConnectFailed, err
 	}
 	probe := config.Route{Name: "app-port", Protocol: "tcp", Port: app.AppConfig.AppPort}
 	return ErrAppTCPConnectFailed, app.GetAppLocalTCPStatus(probe)
@@ -120,8 +150,14 @@ func (app *App) probeNoRoute(timeout time.Duration) (string, error) {
 
 // noRouteProbeErrDesc renders the state text of a failed no-route probe.
 func (app *App) noRouteProbeErrDesc(errKey string, err error) string {
-	if errKey == ErrAppPingFailed {
+	switch errKey {
+	case ErrAppPingFailed:
 		return fmt.Sprintf(config.ClusterError[ErrAppPingFailed], app.GetId(), app.GetHost(), err.Error())
+	case ErrAppConnectFailed:
+		return fmt.Sprintf(config.ClusterError[ErrAppConnectFailed], app.GetId(), err.Error())
+	case ErrAppUnexpectedStatus:
+		status, _ := strconv.Atoi(err.Error())
+		return fmt.Sprintf(config.ClusterError[ErrAppUnexpectedStatus], app.GetId(), status)
 	}
 	return fmt.Sprintf(config.ClusterError[ErrAppTCPConnectFailed], app.GetId(), app.GetHost()+":"+app.AppConfig.AppPort+": "+err.Error())
 }

@@ -901,9 +901,8 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		return errors.New("app host is required")
 	}
 
-	if dockerImg == "" && template == "" {
-		return errors.New("docker image or template is required")
-	}
+	// Without image nor template the app is monitor-only (#2209): a service that runs
+	// elsewhere, checked by app-monitor-mode, never provisioned (see refuseMonitorOnlyApp).
 
 	if template != "" {
 		content, err = cluster.GetTemplateContent(template)
@@ -1081,7 +1080,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 // fits the plan pot. A monitored engine server (PostgreSQL app) reserves through the
 // cluster's DBU plan, not here. Unknown capacity never gates.
 func (cluster *Cluster) appPlanIncreaseAllowed(appcnf *config.AppConfig, app *App) (bool, string) {
-	if cluster.resources == nil || appcnf == nil {
+	if cluster.resources == nil || appcnf == nil || appcnf.IsMonitorOnly() {
 		return true, ""
 	}
 	if app != nil && cluster.engineServerOfApp(app) != nil {
@@ -1395,6 +1394,12 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 			continue
 		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
+		if app.AppConfig.IsMonitorOnly() {
+			// a monitor-only app (#2209) runs elsewhere: nothing reserved here
+			cluster.resources.SetAppPlan(k, nil)
+			cluster.resources.SetStatefulPlan(k, nil)
+			continue
+		}
 		if app.AppConfig != nil && app.AppConfig.AppStateful {
 			// STATEFUL app (app-stateful, e.g. minio): the same declared shape and the same
 			// instance rule, but on the DATABASE profile -> whole DBU, reserved in the DBU

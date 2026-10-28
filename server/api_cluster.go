@@ -7097,11 +7097,8 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				}
 			}
 
-			if tag == "" && template == "" {
-				http.Error(w, "Docker image is required for app monitor", http.StatusBadRequest)
-				return
-			}
-
+			// Without image nor template the app is monitor-only (#2209): checked by
+			// app-monitor-mode, never provisioned.
 			err = mycluster.AddSeededApp(host, port, tag, template)
 		} else {
 			repopath = repman.GetDockerRepoPath(srvtype)

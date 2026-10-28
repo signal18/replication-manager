@@ -435,6 +435,9 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testAppWarningDebounceAndRecovery" {
 			res = regtest.TestAppWarningDebounceAndRecovery(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testAppMonitorHTTP" {
+			res = regtest.TestAppMonitorHTTP(cl, test.ConfigFile, &test)
+		}
 
 		test.Result = regtest.GetTestResultLabel(res)
 		// the setup is read before the suite closes its test cluster

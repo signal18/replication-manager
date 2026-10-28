@@ -37,7 +37,39 @@ process that listens on nothing (ERPNext worker and scheduler) was therefore sho
   allowed, set it with `--sysctl net.ipv4.ping_group_range="0 2147483647"` or in the
   service definition).
 
+- `http` / `https` (#2209): a GET on `<mode>://<host>:<app-port><app-monitor-path>` through
+  the HTTP check of the routes (`GetAppHTTPStatus`: cluster `timeout`, redirects followed,
+  TLS not verified like the route checks), expecting `app-monitor-expect-status`.
+  `appMonitorHTTPRoute` (`cluster/app_chk_ping.go`) builds that check as a route that is
+  never published: an app without a route contributes nothing to the gateway. A full
+  `app-host` name (with a dot: a service that runs elsewhere) is called as is; a short one
+  on the app's cluster address (`<host>.<cluster>.svc.<orchestrator>` on a CNI network).
+  No answer within the timeout, or a refused connection, opens **APPERR001**; an answer
+  outside the accepted codes opens **APPERR002** with the code. This is the mode that sees
+  a web service that accepts connections and never answers (a reverse proxy in front of a
+  backend whose database crashed): `port` and `ping` stay green on it.
+
+  Settings, named after the route monitor fields: `app-monitor-path` (default `/`, must
+  start with `/`) and `app-monitor-expect-status` (default `200`, the comma list of a
+  route's `expect-status`, `config.ParseExpectStatus`). GUI: the two fields show on the app
+  page when the mode is http or https.
+
 Apps with routes are unaffected: their routes are probed as before.
+
+## Monitor-only apps (#2209)
+
+An app added without image nor template (`AddSeededApp`, the add-app API with an empty tag
+and no template, the GUI "Monitor only" box) is **monitor-only**: a service that runs
+elsewhere, watched with the modes above. `config.AppConfig.IsMonitorOnly()`.
+
+- It is never provisioned: `refuseMonitorOnlyApp` (`cluster/prov.go`) refuses provision
+  (`InitAppService`), unprovision, start, stop, restart and abort with a clear error,
+  instead of failing half-way in the template builder or acting on a service that is not
+  ours.
+- It reserves nothing: the plan gate (`appPlanIncreaseAllowed`) lets it through and
+  `RefreshComputePlanAPU` clears its APU and DBU plans.
+- It adds no gateway route as long as it has no route; adding a route to it would publish
+  that route like any app's.
 
 ## Route label
 
@@ -46,4 +78,6 @@ behind the gateway (`https://name -> :8080`) instead of `name:8080`, which read 
 public port that does not exist: the gateway terminates TLS on 443. Port routes keep
 `cname:source -> destination`.
 
-Tests: `cluster/app_chk_ping_test.go` (mode decision, loopback echo, unresolvable host).
+Tests: `cluster/app_chk_ping_test.go` (mode decision, loopback echo, unresolvable host),
+`cluster/app_chk_http_test.go` (http check built per mode and host, answering / wrong status /
+hanging service, settings validation, monitor-only refusal).

@@ -52,6 +52,7 @@ const initialState = {
     monitorType: '',
     dockerImage: '',
     tag: '',
+    monitorOnly: false,
     dockerRegistry: {
       private: false,
       authType: 'password',
@@ -192,7 +193,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   const isRefreshingAppTemplates = Boolean(pendingThunks?.[appTemplateRefreshPendingKey])
   const [formState, formDispatch] = useReducer(formReducer, initialState)
   const { formData, tagOptions, templateOptions, errors } = formState
-  const { host, port, monitorType, dockerImage, tag, dockerRegistry } = formData
+  const { host, port, monitorType, dockerImage, tag, monitorOnly, dockerRegistry } = formData
   const { private: isPrivateRegistry, url, username, password, authType, template } = dockerRegistry
   const isAppMonitor = monitorType === 'app'
   const isPortReadOnly = Boolean(monitorType) && !isAppMonitor
@@ -271,7 +272,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       dockerPassword: ''
     }
 
-    if (isAppMonitor) {
+    if (isAppMonitor && !monitorOnly) {
       if (!template && (!dockerImage || dockerImage.trim().length === 0)) {
         nextErrors.dockerImage = 'Docker image is required'
       }
@@ -296,7 +297,10 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
     }
 
     let finalTag = ''
-    if (isAppMonitor && dockerImage && dockerImage.trim().length > 0) {
+    if (isAppMonitor && monitorOnly) {
+      // monitor-only app: no image nor template, checked by its monitor mode, never provisioned
+      finalTag = ''
+    } else if (isAppMonitor && dockerImage && dockerImage.trim().length > 0) {
       finalTag = dockerImage.trim()
     } else if (tag && tag.length > 0) {
       finalTag = tag
@@ -308,7 +312,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       port: parsedPort,
       monitorType,
       tag: finalTag,
-      dockerRegistry
+      dockerRegistry: isAppMonitor && monitorOnly ? { ...dockerRegistry, private: false, template: '' } : dockerRegistry
     }))
 
     closeModal()
@@ -370,7 +374,19 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
               <FormErrorMessage>{errors.monitorType}</FormErrorMessage>
             </FormControl>
 
-            {isAppMonitor ? (
+            {isAppMonitor && (
+              <FormControl>
+                <Checkbox
+                  isChecked={monitorOnly}
+                  onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { monitorOnly: e.target.checked } })}
+                >
+                  Monitor only
+                </Checkbox>
+                <FormHelperText>A service that runs elsewhere: no image, never provisioned. Choose how it is checked (port, ping, http, https) in the app settings.</FormHelperText>
+              </FormControl>
+            )}
+
+            {isAppMonitor && monitorOnly ? null : isAppMonitor ? (
               <>
                 <FormControl>
                   <Flex className={parentStyles.modalFieldWithAction}>
@@ -469,7 +485,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
               {isPortReadOnly && <FormHelperText className={parentStyles.portHintText}>Using cluster configured default port for this monitor type.</FormHelperText>}
             </FormControl>
 
-            {isAppMonitor && (
+            {isAppMonitor && !monitorOnly && (
               <>
                 <FormControl>
                   <Checkbox

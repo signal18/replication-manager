@@ -128,7 +128,8 @@ func (app *App) GetMonitoringStatus() string {
 		// No route: the app lives on the cluster network only (a database, a cache). It
 		// is up when its port answers, probed over TCP on the app host; a process that
 		// listens on nothing (app-monitor-mode = ping, #1919) is up when its host answers
-		// an ICMP echo.
+		// an ICMP echo; a web service (app-monitor-mode = http/https, #2209) when a GET
+		// answers the expected status in time.
 		app.ResetAppErrConsecutiveCntExcept("app-port") // routes gone: their debounce counters go with them
 		if errKey, err := app.probeNoRoute(time.Duration(cluster.Conf.Timeout) * time.Second); err != nil {
 			debouncedRecordAppErr("app-port", []state.State{{ErrType: "WARN", ErrKey: errKey, ErrDesc: app.noRouteProbeErrDesc(errKey, err), ServerUrl: app.Host}}, err)

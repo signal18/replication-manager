@@ -1213,13 +1213,27 @@ type AppConfig struct {
 	// AppMonitorMode: how an app without a route is probed. "port" (default) connects to
 	// app-port over TCP; "ping" sends an ICMP echo to the app host, for a process that
 	// listens on nothing (ERPNext worker and scheduler, #1919). The port stays the identity.
+	// "http" and "https" send a GET to <mode>://<app-host>:<app-port><app-monitor-path> and
+	// expect app-monitor-expect-status, for a web service that accepts connections and may
+	// never answer (#2209); a full app-host name (with a dot) is called as is.
 	AppMonitorMode string `mapstructure:"app-monitor-mode" toml:"app-monitor-mode" json:"appMonitorMode"`
+	// AppMonitorPath: the path of the http/https check (default "/"), like a route's monitor path.
+	AppMonitorPath string `mapstructure:"app-monitor-path" toml:"app-monitor-path" json:"appMonitorPath"`
+	// AppMonitorExpectStatus: the accepted status codes of the http/https check (default
+	// "200"), same syntax as a route's monitor expect-status.
+	AppMonitorExpectStatus string `mapstructure:"app-monitor-expect-status" toml:"app-monitor-expect-status" json:"appMonitorExpectStatus"`
 	// AppConfigVersion is the explicit persisted migration marker stamped by
 	// cluster.CanonicalizeAppContent. 0/missing means unflagged legacy (V1)
 	// content; AppConfigVersionV2 means content already matches the V1 -> V2
 	// migration baseline and does not need re-canonicalizing for shape alone.
 	AppConfigVersion int         `mapstructure:"app-config-version" toml:"app-config-version" json:"appConfigVersion"`
 	Deployment       *Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
+}
+
+// IsMonitorOnly: an app added without image nor template (#2209), a service that runs
+// elsewhere: checked by app-monitor-mode, never provisioned, reserves no plan unit.
+func (appcnf *AppConfig) IsMonitorOnly() bool {
+	return appcnf != nil && strings.TrimSpace(appcnf.ProvAppDockerImg) == "" && strings.TrimSpace(appcnf.ProvAppTemplate) == ""
 }
 
 func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {
