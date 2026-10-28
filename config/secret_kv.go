@@ -14,27 +14,24 @@ import (
 	"sync"
 )
 
-// A cluster's credential stores are entries (#2227, doc/implementation/config/
-// CREDENTIAL_STORES.md "Store entries"), the same model as its archives (archive.go): a TOML
-// array of tables, [[<cluster>.secret-kv]] in a config file, [[saved-<cluster>.secret-kv]] in
-// the saved <cluster>.toml, each entry a name, its plugin, its settings (secrets encrypted,
-// F9) and whether it is enabled.
+// A cluster's credential stores (#2227, doc/implementation/config/CREDENTIAL_STORES.md "Store
+// entries"): the built-in secret_kv-config store (the config, whose value is only the seed,
+// and the versioned local file, monitoring-secret-versioning), and n secret_kv-vault entries,
+// the same model as the archives (archive.go): a TOML array of tables, [[<cluster>.secret-kv]]
+// in a config file, [[saved-<cluster>.secret-kv]] in the saved <cluster>.toml, each entry a
+// name, its plugin, its settings (secrets encrypted, F9) and whether it is enabled. There is no
+// primary: every enabled store is versioned and gets every version of every secret, at a path
+// repman computes (<mount>/<space>/databases/<server>/<key>), never typed.
 //
-// The primary is the entry secret-kv-name names ("" = the config, the behaviour before the
-// entries): it is read, it rotates, it is the reference. Every other enabled entry is a copy:
-// the credential chain hands it the plain values after each change, it is never read back.
-//
-// The Vault settings of a cluster (vault-server-addr and the vault-* keys) are migrated at load
-// into the entry vault-default, the primary. In this step the runtime still reads the Vault*
-// fields: the primary Vault entry is projected onto them at load, at a peer replay and at a
-// change of the primary, and they are captured back into it at each save, as the archive list
-// does with the BackupRestic* fields. The saved config holds the entry, never the vault-* keys
-// it replaced.
+// The Vault settings of a cluster (vault-server-addr and the vault-* keys, KV v2 mode) are
+// migrated at load into the entry vault-default, enabled, and the Vault* fields go back to
+// their defaults: a cluster no longer declares Vault by a bare path in a credential. A
+// database_engine Vault (Vault makes the passwords) is left as it was, not migrated.
 
 // The secret_kv plugins: two. secret_kv-config is built in and always there: the config
 // files and the versioned local file (secret_store.json) as one store, holding every secret
-// and its versions; it is the base store, never an entry of the list, and the primary when
-// secret-kv-name is "". secret_kv-vault has n entries, the list holds only those.
+// and its versions; it is the base store, never an entry of the list. secret_kv-vault has n
+// entries, the list holds only those.
 const (
 	ConstSecretKvPluginConfig = "secret_kv-config" // built in: the config and the versioned local file
 	ConstSecretKvPluginVault  = "secret_kv-vault"  // a Vault KV, one per entry
@@ -43,37 +40,19 @@ const (
 // ConstSecretKvVaultDefault is the entry the vault-* keys are migrated into.
 const ConstSecretKvVaultDefault = "vault-default"
 
-// Credential store plugin capabilities.
-const (
-	ConstSecretKvCapPrimary = "primary" // it can be the primary
-	ConstSecretKvCapCopy    = "copy"    // it takes copies (a writer exists for it)
-)
-
 // SecretKvPluginManifest is the config a secret_kv plugin comes with: the typed settings of
-// its entries (secrets included) and what it can be. The entry forms are drawn from it.
+// its entries (secrets included). The entry forms are drawn from it.
 type SecretKvPluginManifest struct {
-	Name         string         `json:"name"`
-	Description  string         `json:"description"`
-	Tier         string         `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
-	Settings     PluginSettings `json:"settings"`
-	Capabilities []string       `json:"capabilities"`
-}
-
-// Can: the plugin has the capability.
-func (m SecretKvPluginManifest) Can(capability string) bool {
-	for _, c := range m.Capabilities {
-		if c == capability {
-			return true
-		}
-	}
-	return false
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Tier        string         `json:"tier,omitempty"` // ConstArchiveTierEnterprise, "" for every plan
+	Settings    PluginSettings `json:"settings"`
 }
 
 // The settings of a secret_kv-vault entry.
 const (
 	ConstSecretKvVaultAddress  = "address"
 	ConstSecretKvVaultMount    = "mount"
-	ConstSecretKvVaultMode     = "mode"
 	ConstSecretKvVaultAuth     = "auth"
 	ConstSecretKvVaultRoleID   = "role-id"
 	ConstSecretKvVaultSecretID = "secret-id"
@@ -87,23 +66,20 @@ const (
 
 var secretKvManifests = map[string]SecretKvPluginManifest{
 	ConstSecretKvPluginConfig: {
-		Name:         ConstSecretKvPluginConfig,
-		Description:  "Built in, always there: the config and the versioned local file, every secret with its versions",
-		Settings:     PluginSettings{},
-		Capabilities: []string{ConstSecretKvCapPrimary},
+		Name:        ConstSecretKvPluginConfig,
+		Description: "Built in, always there: the config (the seed) and the versioned local file (monitoring-secret-versioning)",
+		Settings:    PluginSettings{},
 	},
 	ConstSecretKvPluginVault: {
 		Name:        ConstSecretKvPluginVault,
-		Description: "A Vault KV: the user's own, or the Cloud18 vault",
+		Description: "A Vault KV v2: the user's own, or the Cloud18 vault; every version of every secret",
 		Settings: PluginSettings{
 			{Name: ConstSecretKvVaultAddress, Type: ConstArchiveSettingTypeString},
 			{Name: ConstSecretKvVaultMount, Type: ConstArchiveSettingTypeString},
-			{Name: ConstSecretKvVaultMode, Type: ConstArchiveSettingTypeEnum, Values: []string{VaultConfigStoreV2, VaultDbEngine}},
 			{Name: ConstSecretKvVaultAuth, Type: ConstArchiveSettingTypeEnum, Values: []string{ConstVaultAuthAppRole, ConstVaultAuthJWT}},
 			{Name: ConstSecretKvVaultRoleID, Type: ConstArchiveSettingTypeString},
 			{Name: ConstSecretKvVaultSecretID, Type: ConstArchiveSettingTypeSecret},
 		},
-		Capabilities: []string{ConstSecretKvCapPrimary, ConstSecretKvCapCopy},
 	},
 }
 
@@ -128,14 +104,17 @@ func SecretKvPlugins() []SecretKvPluginManifest {
 var secretKvVaultLegacyKeys = map[string]string{
 	ConstSecretKvVaultAddress:  "vault-server-addr",
 	ConstSecretKvVaultMount:    "vault-mount",
-	ConstSecretKvVaultMode:     "vault-mode",
 	ConstSecretKvVaultAuth:     "vault-auth",
 	ConstSecretKvVaultRoleID:   "vault-role-id",
 	ConstSecretKvVaultSecretID: "vault-secret-id",
 }
 
-// IsSecretKvLegacyKey: key is one of the vault-* keys an entry replaces.
+// IsSecretKvLegacyKey: key is one of the vault-* keys an entry replaces (vault-mode
+// included: a migrated cluster is KV v2).
 func IsSecretKvLegacyKey(key string) bool {
+	if key == "vault-mode" {
+		return true
+	}
 	for _, k := range secretKvVaultLegacyKeys {
 		if k == key {
 			return true
@@ -205,8 +184,8 @@ func (conf *Config) SecretKvSetting(e SecretKvConfig, name string) string {
 	return v
 }
 
-// secretKvMu guards the list and secret-kv-name: the save, the peer replay and the copy
-// worker read and write them.
+// secretKvMu guards the list: the save, the peer replay and the store writer read and write
+// it.
 var secretKvMu sync.Mutex
 
 func cloneSecretKvs(in []SecretKvConfig) []SecretKvConfig {
@@ -257,56 +236,88 @@ func (conf *Config) cleanSecretKvSettings() {
 	}
 }
 
-// primaryVaultEntry is the primary when it is an enabled secret_kv-vault entry.
-func (conf *Config) primaryVaultEntry() *SecretKvConfig {
-	if conf.SecretKvName == "" {
-		return nil
-	}
-	e := conf.secretKvByName(conf.SecretKvName)
-	if e == nil || e.Plugin != ConstSecretKvPluginVault || !e.Enabled {
-		return nil
-	}
-	return e
+// vaultMigrates: the flat Vault settings are a KV v2 Vault, migrated into vault-default. A
+// database_engine Vault is left as it was.
+func (conf *Config) vaultMigrates() bool {
+	return conf.VaultServerAddr != "" && conf.VaultMode != VaultDbEngine
 }
 
-// MigrateSecretKvs resolves the credential store list at cluster init: a cluster without a
-// list that uses Vault (vault-server-addr set) gets vault-default from its vault-* keys,
-// enabled and primary, so a cluster using Vault keeps doing so. With a list, the vault-* keys
-// a config file pins are the file's: they replace the settings of vault-default (the file
-// wins). Then the primary Vault entry is projected onto the Vault* fields.
+// MigrateSecretKvs resolves the credential store list at cluster init: a cluster using a KV
+// Vault (vault-server-addr set) gets vault-default from its vault-* keys, enabled, unless the
+// list has it; the vault-* keys a config file pins replace its settings (the file wins). Then
+// the Vault* fields go back to their defaults: Vault is an entry, no longer the flat config.
 func (conf *Config) MigrateSecretKvs() {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
 	// a Config is copied by value: the list must not share entries with another copy
 	conf.SecretKvs = cloneSecretKvs(conf.SecretKvs)
 	conf.cleanSecretKvSettings()
-	if len(conf.SecretKvs) == 0 {
-		conf.createVaultDefault()
-	} else if e := conf.secretKvByName(ConstSecretKvVaultDefault); e != nil && e.Plugin == ConstSecretKvPluginVault {
-		for name, key := range secretKvVaultLegacyKeys {
-			if v, pinned := conf.GetImmuableFlag(key); pinned && v != nil {
-				conf.storeSecretKvValue(e, name, fmt.Sprintf("%v", v))
-			}
-		}
-	}
-	conf.projectSecretKv()
+	conf.captureVaultDefault()
 }
 
-// createVaultDefault adds vault-default from the vault-* keys when Vault is used, the primary
-// unless a config file pins secret-kv-name. Call it under secretKvMu with an empty list.
-func (conf *Config) createVaultDefault() {
-	if conf.VaultServerAddr == "" {
+// SyncSecretKvFromConfig moves into vault-default the Vault* fields a setter or inject.toml
+// changed since the load (the back-office injects vault-role-id and vault-secret-id), as at
+// load.
+func (conf *Config) SyncSecretKvFromConfig() {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	conf.captureVaultDefault()
+}
+
+// captureVaultDefault stores the non-default vault-* fields into vault-default (created
+// enabled when missing, with an address), then resets the fields. Call it under secretKvMu.
+func (conf *Config) captureVaultDefault() {
+	if conf.VaultMode == VaultDbEngine {
 		return
 	}
-	conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: ConstSecretKvVaultDefault, Plugin: ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{}})
-	e := &conf.SecretKvs[len(conf.SecretKvs)-1]
-	for name, key := range secretKvVaultLegacyKeys {
+	e := conf.secretKvByName(ConstSecretKvVaultDefault)
+	changed := false
+	for _, key := range secretKvVaultLegacyKeys {
 		if f, ok := configField(conf, key); ok && !conf.isDefaultValue(key, f) {
-			conf.storeSecretKvValue(e, name, fmt.Sprintf("%v", fieldValue(f)))
+			changed = true
 		}
 	}
-	if !conf.isPinned("secret-kv-name") {
-		conf.SecretKvName = ConstSecretKvVaultDefault
+	if !changed {
+		return
+	}
+	if e == nil {
+		if conf.VaultServerAddr == "" {
+			return // a login without a Vault: kept flat until the address comes
+		}
+		conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: ConstSecretKvVaultDefault, Plugin: ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{}})
+		e = &conf.SecretKvs[len(conf.SecretKvs)-1]
+	}
+	for name, key := range secretKvVaultLegacyKeys {
+		f, ok := configField(conf, key)
+		if !ok || conf.isDefaultValue(key, f) {
+			continue
+		}
+		v := fmt.Sprintf("%v", fieldValue(f))
+		if e.isSecret(name) && conf.GetDecryptedPassword(name, v) == conf.GetDecryptedPassword(name, conf.secretKvSetting(e, name)) {
+			continue // the same secret: keep its ciphertext, the save stays stable
+		}
+		conf.storeSecretKvValue(e, name, v)
+	}
+	conf.resetVaultFields()
+}
+
+// resetVaultFields puts the migrated Vault* fields back to their defaults: Vault is not used
+// through the flat config any more (IsVaultUsed false). vault-mode included.
+func (conf *Config) resetVaultFields() {
+	keys := []string{"vault-mode"}
+	for _, key := range secretKvVaultLegacyKeys {
+		keys = append(keys, key)
+	}
+	for _, key := range keys {
+		f, ok := configField(conf, key)
+		if !ok {
+			continue
+		}
+		if def, ok := conf.DefaultFlagMap[key]; ok {
+			setField(f, def)
+		} else {
+			f.Set(reflect.Zero(f.Type()))
+		}
 	}
 }
 
@@ -330,80 +341,28 @@ func (conf *Config) storeSecretKvValue(e *SecretKvConfig, name, value string) {
 	}
 }
 
-// projectSecretKv sets the Vault* fields from the primary Vault entry; with no primary Vault
-// entry they go back to their default, so Vault is not used. A pinned key keeps its value.
-// Call it under secretKvMu.
-func (conf *Config) projectSecretKv() {
-	p := conf.primaryVaultEntry()
-	for name, key := range secretKvVaultLegacyKeys {
-		if conf.isPinned(key) {
-			continue
-		}
-		f, ok := configField(conf, key)
-		if !ok {
-			continue
-		}
-		if p != nil {
-			if v, ok := p.Settings[name]; ok && v != nil {
-				setField(f, v)
-				continue
-			}
-		}
-		if def, ok := conf.DefaultFlagMap[key]; ok {
-			setField(f, def)
-		} else {
-			f.Set(reflect.Zero(f.Type()))
-		}
-	}
-}
-
-// SyncSecretKvFromConfig captures the Vault* fields into the primary Vault entry before a
-// save: a setter or inject.toml changed the field the runtime reads. No list and Vault used:
-// vault-default is created from them, as at load.
-func (conf *Config) SyncSecretKvFromConfig() {
-	secretKvMu.Lock()
-	defer secretKvMu.Unlock()
-	if len(conf.SecretKvs) == 0 {
-		conf.createVaultDefault()
-		return
-	}
-	p := conf.primaryVaultEntry()
-	if p == nil {
-		return
-	}
-	for name, key := range secretKvVaultLegacyKeys {
-		f, ok := configField(conf, key)
-		if !ok {
-			continue
-		}
-		if conf.isDefaultValue(key, f) && !conf.isPinned(key) {
-			delete(p.Settings, name)
-			continue
-		}
-		v := fmt.Sprintf("%v", fieldValue(f))
-		if p.isSecret(name) && conf.GetDecryptedPassword(name, v) == conf.GetDecryptedPassword(name, conf.secretKvSetting(p, name)) {
-			continue // the same secret: keep its ciphertext, the save stays stable
-		}
-		conf.storeSecretKvValue(p, name, v)
-	}
-}
-
-// SecretKvHoldsLegacyKey: the primary Vault entry carries the vault-* key, so the save leaves
-// the flat key out. A secret the entry cannot hold encrypted (no encryption key) stays flat:
-// the entry never writes it (F9).
+// SecretKvHoldsLegacyKey: vault-default carries the vault-* key, so the save leaves the flat
+// key out. A secret it cannot hold encrypted (no encryption key) stays flat: the entry never
+// writes it (F9).
 func (conf *Config) SecretKvHoldsLegacyKey(key string) bool {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	p := conf.primaryVaultEntry()
-	if p == nil {
+	if conf.VaultMode == VaultDbEngine {
 		return false
+	}
+	e := conf.secretKvByName(ConstSecretKvVaultDefault)
+	if e == nil {
+		return false
+	}
+	if key == "vault-mode" {
+		return true
 	}
 	for name, k := range secretKvVaultLegacyKeys {
 		if k != key {
 			continue
 		}
-		if p.isSecret(name) {
-			v, ok := p.Settings[name]
+		if e.isSecret(name) {
+			v, ok := e.Settings[name]
 			return ok && strings.HasPrefix(fmt.Sprintf("%v", v), "hash_")
 		}
 		return true
@@ -434,30 +393,30 @@ func (conf *Config) SecretKvsToml(section string) (string, error) {
 	return b.String(), nil
 }
 
-// SecretKvList is a copy of the list and the primary's name.
-func (conf *Config) SecretKvList() ([]SecretKvConfig, string) {
+// SecretKvList is a copy of the list.
+func (conf *Config) SecretKvList() []SecretKvConfig {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	return cloneSecretKvs(conf.SecretKvs), conf.SecretKvName
+	return cloneSecretKvs(conf.SecretKvs)
 }
 
-// SecretKvCopies are the entries that take copies: enabled Vault entries, not the primary.
-func (conf *Config) SecretKvCopies() []SecretKvConfig {
+// SecretKvActive are the enabled entries, in the list's order: each gets every version of
+// every secret.
+func (conf *Config) SecretKvActive() []SecretKvConfig {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
 	var out []SecretKvConfig
 	for _, e := range conf.SecretKvs {
-		if !e.Enabled || e.Name == conf.SecretKvName || e.Plugin != ConstSecretKvPluginVault {
-			continue
+		if e.Enabled && e.Plugin == ConstSecretKvPluginVault {
+			out = append(out, cloneSecretKvs([]SecretKvConfig{e})[0])
 		}
-		out = append(out, cloneSecretKvs([]SecretKvConfig{e})[0])
 	}
 	return out
 }
 
-// SecretKvCopy is the entry name when it takes copies now.
-func (conf *Config) SecretKvCopy(name string) (SecretKvConfig, bool) {
-	for _, e := range conf.SecretKvCopies() {
+// SecretKvActiveEntry is the entry name when it is enabled.
+func (conf *Config) SecretKvActiveEntry(name string) (SecretKvConfig, bool) {
+	for _, e := range conf.SecretKvActive() {
 		if e.Name == name {
 			return e, true
 		}
@@ -465,28 +424,20 @@ func (conf *Config) SecretKvCopy(name string) (SecretKvConfig, bool) {
 	return SecretKvConfig{}, false
 }
 
-// SetSecretKvName makes name the primary ("" the config) and projects it.
-func (conf *Config) SetSecretKvName(name string) error {
-	secretKvMu.Lock()
-	defer secretKvMu.Unlock()
-	if name != "" {
-		e := conf.secretKvByName(name)
-		if e == nil {
-			return fmt.Errorf("unknown credential store %s", name)
-		}
-		if m, ok := SecretKvPlugin(e.Plugin); ok && !m.Can(ConstSecretKvCapPrimary) {
-			return fmt.Errorf("credential store %s: plugin %s cannot be the primary", name, e.Plugin)
-		}
+// SecretSpace is the cluster's space in a credential store: the cluster under the Cloud18 URI
+// on Cloud18 (ClusterSpace), else under the instance's identifier
+// (arbitration-external-unique-id).
+func (conf *Config) SecretSpace(cluster string) string {
+	if conf.Cloud18 && conf.Cloud18Domain != "" && conf.Cloud18SubDomain != "" {
+		return conf.ClusterSpace(cluster)
 	}
-	conf.SecretKvName = name
-	conf.projectSecretKv()
-	return nil
+	return fmt.Sprintf("%d/%s", conf.ArbitrationSasUniqueId, cluster)
 }
 
 // SetSecretKvSetting applies one entry setting by name (a peer's event
-// "secret-kv.<name>.<setting>"), creating the entry when needed, then projects the primary.
-// unset removes the setting or, for "plugin", the entry. A secret is the peer's ciphertext:
-// peers share the encryption key.
+// "secret-kv.<name>.<setting>"), creating the entry when needed. unset removes the setting
+// or, for "plugin", the entry. A secret is the peer's ciphertext: peers share the encryption
+// key.
 func (conf *Config) SetSecretKvSetting(entry, setting, value string, unset bool) error {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
@@ -550,6 +501,5 @@ func (conf *Config) SetSecretKvSetting(entry, setting, value string, unset bool)
 			e.Settings[setting] = value
 		}
 	}
-	conf.projectSecretKv()
 	return nil
 }

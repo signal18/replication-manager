@@ -36,8 +36,6 @@ import (
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
-	vault "github.com/hashicorp/vault/api"
-	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -917,10 +915,9 @@ type Config struct {
 	Archives                                  []ArchiveConfig   `mapstructure:"archive" toml:"archive" json:"archives"`
 	S3Providers                               S3ProviderBlocks  `mapstructure:"s3-provider" toml:"-" json:"-"`
 	SecretKvs                                 []SecretKvConfig  `mapstructure:"secret-kv" toml:"secret-kv" json:"secretKvs"`
-	SecretKvName                              string            `mapstructure:"secret-kv-name" toml:"secret-kv-name" json:"secretKvName"`
-	SecretKvCopyQueueLimit                    int               `mapstructure:"secret-kv-copy-queue-limit" toml:"secret-kv-copy-queue-limit" json:"secretKvCopyQueueLimit"`
-	SecretKvCopyTimeout                       int               `mapstructure:"secret-kv-copy-timeout" toml:"secret-kv-copy-timeout" json:"secretKvCopyTimeout"`
-	SecretKvCopyRetryInterval                 int               `mapstructure:"secret-kv-copy-retry-interval" toml:"secret-kv-copy-retry-interval" json:"secretKvCopyRetryInterval"`
+	SecretKvQueueLimit                        int               `mapstructure:"secret-kv-queue-limit" toml:"secret-kv-queue-limit" json:"secretKvQueueLimit"`
+	SecretKvWriteTimeout                      int               `mapstructure:"secret-kv-write-timeout" toml:"secret-kv-write-timeout" json:"secretKvWriteTimeout"`
+	SecretKvRetryInterval                     int               `mapstructure:"secret-kv-retry-interval" toml:"secret-kv-retry-interval" json:"secretKvRetryInterval"`
 	BackupArchiveRemoveOriginal               bool              `mapstructure:"backup-archive-remove-original" toml:"backup-archive-remove-original" json:"backupArchiveRemoveOriginal"`
 	BackupDiscovery                           bool              `mapstructure:"backup-discovery" toml:"backup-discovery" json:"backupDiscovery"`
 	BackupDiscoveryCandidateMax               int               `mapstructure:"backup-discovery-candidate-max" toml:"backup-discovery-candidate-max" json:"backupDiscoveryCandidateMax"`
@@ -2212,123 +2209,6 @@ func (conf *Config) GetStableEncryptedValue(key string, value string) string {
 		conf.Secrets.Set(key, sec)
 	}
 	return enc
-}
-
-func (conf *Config) GetVaultCredentials(client *vault.Client, path string, key string) (string, error) {
-	if conf.IsVaultUsed() && conf.IsPath(path) {
-		if conf.VaultMode == VaultConfigStoreV2 {
-			secret, err := client.KVv2(conf.VaultMount).Get(context.Background(), path)
-
-			if err != nil {
-				return "", err
-			}
-			return secret.Data[key].(string), nil
-		} else {
-			secret, err := client.KVv1("").Get(context.Background(), path)
-			if err != nil {
-				return "", err
-			}
-			return secret.Data["username"].(string) + ":" + secret.Data["password"].(string), nil
-		}
-	}
-	return "", errors.New("Failed to get vault credentials")
-}
-
-func (conf *Config) DecryptSecretsFromVault() {
-	for k, v := range conf.Secrets.Snapshot() {
-		origin_value := v.Value
-		var secret Secret
-		secret.Value = fmt.Sprintf("%v", origin_value)
-		if conf.IsVaultUsed() && conf.IsPath(secret.Value) {
-			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Decrypting all the secret variables on Vault")
-			vault_config := vault.DefaultConfig()
-			vault_config.Address = conf.VaultServerAddr
-			client, err := conf.GetVaultConnection()
-			if err == nil {
-				if conf.VaultMode == VaultConfigStoreV2 {
-					vault_value, err := conf.GetVaultCredentials(client, secret.Value, k)
-					if err != nil {
-						log.Printf("Unable to get %s Vault secret: %v", k, err)
-					} else if vault_value != "" {
-						secret.Value = vault_value
-					}
-				}
-			} else {
-				log.Printf("Unable to initialize AppRole auth method: %v", err)
-			}
-			conf.Secrets.Set(k, secret)
-		}
-	}
-}
-
-func (conf *Config) GetVaultConnection() (*vault.Client, error) {
-	if conf.IsVaultUsed() {
-		log.Printf("Vault authentication (%s)", conf.VaultAuth)
-		config := vault.DefaultConfig()
-
-		config.Address = conf.VaultServerAddr
-
-		client, err := vault.NewClient(config)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		if conf.VaultAuth == "jwt" {
-			return conf.vaultJWTLogin(client)
-		}
-
-		roleID := conf.VaultRoleId
-		secretID := &auth.SecretID{FromString: conf.GetDecryptedPassword("vault-secret-id", conf.VaultSecretId)}
-		if roleID == "" || secretID == nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		appRoleAuth, err := auth.NewAppRoleAuth(
-			roleID,
-			secretID,
-		)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-
-		authInfo, err := client.Auth().Login(context.Background(), appRoleAuth)
-		if err != nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-		if authInfo == nil {
-			log.Printf("Unable to initialize AppRole auth method: %v", err)
-			return nil, err
-		}
-		return client, err
-	}
-	return nil, errors.New("Not using Vault")
-}
-
-// vaultJWTLogin logs in to the vault's jwt auth method with the instance's Cloud18 identity
-// token (#2159): no secret of the vault is kept here. The role is vault-role-id when set, else
-// the realm's client id (ConstCloud18IdentityClientID), the Cloud18 vault binding it on sub.
-func (conf *Config) vaultJWTLogin(client *vault.Client) (*vault.Client, error) {
-	token, _, err := conf.Cloud18IdentityToken()
-	if err != nil {
-		return nil, err
-	}
-	role := conf.VaultRoleId
-	if role == "" {
-		role = ConstCloud18IdentityClientID
-	}
-	secret, err := client.Logical().Write("auth/jwt/login", map[string]interface{}{"role": role, "jwt": token})
-	if err != nil {
-		return nil, fmt.Errorf("vault jwt login: %w", err)
-	}
-	if secret == nil || secret.Auth == nil || secret.Auth.ClientToken == "" {
-		return nil, errors.New("vault jwt login: no token in the answer")
-	}
-	client.SetToken(secret.Auth.ClientToken)
-	return client, nil
 }
 
 // encryptedTokenRe matches one encrypted value as GetEncryptedString writes it, anywhere

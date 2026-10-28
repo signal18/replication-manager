@@ -29,7 +29,6 @@ import (
 	"time"
 
 	"github.com/bluele/logrus_slack"
-	vault "github.com/hashicorp/vault/api"
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster/configurator"
@@ -562,6 +561,8 @@ type Cluster struct {
 	credChainMu             sync.Mutex       `json:"-"`
 	secretVersionStoreMu    sync.Mutex       `json:"-"`
 	secretVersionStoreDirty bool             `json:"-"`
+	// secretKv: the copies to the credential store entries that are not the primary (#2227)
+	secretKv secretKvCopies `json:"-"`
 
 	// archiveOps: archive name -> a running remove, or its error (#2091)
 	archiveOps   map[string]string `json:"-"`
@@ -1520,6 +1521,8 @@ func (cluster *Cluster) tickBody() {
 		// a failover is evaluated: CheckFailed returns early without a master (#2191)
 		cluster.IsSameWsrepUUID()
 		cluster.CheckReplicationTLS()
+		// the copies to the credential store entries: full passes, failing entries (#2227)
+		cluster.CheckSecretKvCopies()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)
@@ -2111,6 +2114,8 @@ func (cluster *Cluster) CredentialChain() *credstore.Chain {
 	defer cluster.credChainMu.Unlock()
 	if cluster.credChain == nil || cluster.credChain.Conf() != cluster.Conf {
 		cluster.credChain = credstore.NewConfigChain(cluster.Conf, cluster.Save)
+		// each change goes to the copies too, queued after the chain's lock (#2227)
+		cluster.credChain.OnSet(cluster.queueChainCopies)
 	}
 	return cluster.credChain
 }
@@ -3778,35 +3783,19 @@ func (cluster *Cluster) ResetStates() {
 	//cluster.StateMachine.RemoveFailoverState()
 }
 
+// DecryptSecretsFromVault replaces each credential whose config value is a Vault path by the
+// value the primary Vault holds there (#2227: one sign-in for all of them).
 func (cluster *Cluster) DecryptSecretsFromVault() {
-	// Only proceed if Vault is being used
 	if !cluster.Conf.IsVaultUsed() {
 		return
 	}
-
-	for k, v := range cluster.Conf.Secrets.Snapshot() {
-		origin_value := v.Value
-		var secret config.Secret
-		secret.Value = fmt.Sprintf("%v", origin_value)
-		if cluster.Conf.IsPath(secret.Value) {
-			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault,LvlInfo, "Decrypting all the secret variables on Vault")
-			vault_config := vault.DefaultConfig()
-			vault_config.Address = cluster.Conf.VaultServerAddr
-			client, err := cluster.Conf.GetVaultConnection()
-			if err == nil {
-				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
-					vault_value, err := cluster.Conf.GetVaultCredentials(client, secret.Value, k)
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Unable to get %s Vault secret: %v", k, err)
-					} else if vault_value != "" {
-						secret.Value = vault_value
-					}
-				}
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
-			}
-			cluster.Conf.Secrets.Set(k, secret)
-		}
+	errs, err := cluster.primaryVault().Resolve(context.Background(), cluster.Conf)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to sign in to Vault (%s): %v", cluster.Conf.VaultAuth, err)
+		return
+	}
+	for k, err := range errs {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Unable to get %s Vault secret: %v", k, err)
 	}
 }
 

@@ -21,7 +21,6 @@ import (
 	"slices"
 	"strings"
 
-	vault "github.com/hashicorp/vault/api"
 	"github.com/jordan-wright/email"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/credstore"
@@ -159,10 +158,8 @@ func (cluster *Cluster) RotatePasswords() error {
 	if cluster.Conf.IsVaultUsed() {
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Start password rotation using Vault.")
-		vconfig := vault.DefaultConfig()
-
-		vconfig.Address = cluster.Conf.VaultServerAddr
-
+		vkv := cluster.primaryVault()
+		ctx := context.Background()
 		client, err := cluster.GetVaultConnection()
 
 		if err != nil {
@@ -174,18 +171,18 @@ func (cluster *Cluster) RotatePasswords() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Vault Database Engine mode activated")
 			if cluster.GetDbUser() == cluster.GetRplUser() {
 
-				err := client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetDbUser(), nil)
+				err := vkv.RotateRole(ctx, client, cluster.GetDbUser())
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
 				}
 			} else {
 
-				err := client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetDbUser(), nil)
+				err := vkv.RotateRole(ctx, client, cluster.GetDbUser())
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
 				}
 
-				err = client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetRplUser(), nil)
+				err = vkv.RotateRole(ctx, client, cluster.GetRplUser())
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetRplUser(), err)
 				}
@@ -220,13 +217,13 @@ func (cluster *Cluster) RotatePasswords() error {
 
 			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,config.LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
 
-			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().User, secretData_db)
+			err = vkv.Patch(ctx, client, cluster.GetConf().User, secretData_db)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Password rotation cancel, unable to write secret: %v", err)
 				new_password_db = cluster.GetDbPass()
 			}
 
-			_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.GetConf().RplUser, secretData_rpl)
+			err = vkv.Patch(ctx, client, cluster.GetConf().RplUser, secretData_rpl)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replication Password rotation cancel, unable to write secret: %v", err)
 				new_password_rpl = cluster.GetRplPass()
@@ -237,7 +234,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				secretData_proxysql := map[string]interface{}{
 					"proxysql-password": new_password_proxysql,
 				}
-				_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.Conf.ProxysqlPassword, secretData_proxysql)
+				err = vkv.Patch(ctx, client, cluster.Conf.ProxysqlPassword, secretData_proxysql)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
 					new_password_proxysql = cluster.Conf.Secrets.Get("proxysql-password").Value
@@ -250,7 +247,7 @@ func (cluster *Cluster) RotatePasswords() error {
 				secretData_shardproxy := map[string]interface{}{
 					"shardproxy-credential": cluster.GetShardUser() + ":" + new_password_shard,
 				}
-				_, err = client.KVv2(cluster.Conf.VaultMount).Patch(context.Background(), cluster.Conf.MdbsProxyCredential, secretData_shardproxy)
+				err = vkv.Patch(ctx, client, cluster.Conf.MdbsProxyCredential, secretData_shardproxy)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Shard Proxy Password rotation cancel, unable to write secret: %v", err)
 					new_password_shard = cluster.GetShardPass()

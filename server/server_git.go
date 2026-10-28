@@ -22,6 +22,7 @@ import (
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/githelper"
@@ -441,11 +442,15 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		var tok string
 
 		if conf.IsVaultUsed() && conf.IsPath(conf.GitAccesToken) {
-			conn, err := conf.GetVaultConnection()
+			// the server's own Vault, through the one Vault code (#2227)
+			vkv := credstore.NewVaultKV(credstore.VaultSettingsFromConfig(conf), nil)
+			ctx := context.Background()
+			conn, err := vkv.Connect(ctx)
 			if err != nil {
 				repman.Logrus.Printf("Error vault connection %v", err)
+			} else {
+				tok, err = vkv.Read(ctx, conn, conf.GitAccesToken, "git-acces-token")
 			}
-			tok, err = conf.GetVaultCredentials(conn, conf.GitAccesToken, "git-acces-token")
 			if err != nil {
 				repman.Logrus.Printf("Error get vault git-acces-token value %v", err)
 				tok = conf.GetDecryptedValue("git-acces-token")

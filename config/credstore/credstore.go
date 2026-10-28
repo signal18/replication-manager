@@ -255,6 +255,17 @@ type Chain struct {
 	mu     sync.Mutex
 	conf   *config.Config
 	stores []CredentialStore
+	// copies is told the plain values of each successful SetAll, outside the lock: the
+	// copies to the entries that are not the primary (#2227). It must never block.
+	copies func([]Change)
+}
+
+// OnSet sets the hook told the changes of each successful SetAll, called outside the lock:
+// it queues the copies (#2227) and must never block.
+func (c *Chain) OnSet(copies func([]Change)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.copies = copies
 }
 
 // NewConfigChain returns the chain of the internal secret_kv-config plugin: the connected
@@ -411,8 +422,12 @@ func (c *Chain) SetAll(changes ...Change) error {
 		// the ciphertext is left empty: the save reuses the store's (GetStableEncryptedValue)
 		c.conf.Secrets.Set(ch.Key, config.Secret{Value: ch.Value, OldValue: old.Value})
 	}
+	copies := c.copies
 	c.mu.Unlock()
 	c.saveEvents(writers)
+	if copies != nil {
+		copies(changes)
+	}
 	return nil
 }
 
