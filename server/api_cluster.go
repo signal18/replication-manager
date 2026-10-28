@@ -3771,7 +3771,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchForceBinlogRow()
 	case "force-slave-semisync":
 		mycluster.SwitchForceSlaveSemisync()
-	case "force-slave-Heartbeat":
+	case "force-slave-heartbeat", "force-slave-Heartbeat": // the GUI sends the key; the capital H never matched it
 		mycluster.SwitchForceSlaveHeartbeat()
 	case "force-slave-gtid":
 		mycluster.SwitchForceSlaveGtid()
