@@ -73,6 +73,13 @@ func TestRefreshReplicationLastReceivedMariaDB(t *testing.T) {
 	if age, _ := slave.GetReplicationLastReceivedAge(); age < time.Minute {
 		t.Fatal("a counter going down is a restart, not a receive")
 	}
+	slave.ReplicationLastReceivedAt = time.Now().Add(-time.Minute)
+	setHeartbeatStatus(slave, 1, "1-1-12", 3)
+	slave.Replications[0].MasterHost = sql.NullString{String: "db3", Valid: true} // repointed by a failover
+	slave.refreshReplicationLastReceived()
+	if _, ok := slave.GetReplicationLastReceivedAge(); ok {
+		t.Fatal("a repoint to another source is not a receive")
+	}
 	slave.ClusterGroup.Conf.CheckFalsePositiveHeartbeat = false
 	slave.refreshReplicationLastReceived()
 	if _, ok := slave.GetReplicationLastReceivedAge(); ok || slave.replicationHeartbeatKnown {

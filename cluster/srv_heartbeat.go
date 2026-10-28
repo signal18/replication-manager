@@ -29,6 +29,13 @@ func (server *ServerMonitor) refreshReplicationLastReceived() {
 		return
 	}
 	now := time.Now()
+	// a channel moved to another source (a failover's CHANGE MASTER) received nothing from
+	// the new one yet: its position moved by the repoint, not by a receive
+	source := ss.MasterHost.String + ":" + ss.MasterPort.String
+	if source != server.replicationReceivedSource {
+		server.resetReplicationLastReceived()
+		server.replicationReceivedSource = source
+	}
 	if server.DBVersion.IsMariaDB() {
 		received := ss.SlaveReceivedHeartbeats.Int64
 		position := ss.GtidIOPos.String + " " + ss.MasterLogFile.String + ":" + ss.ReadMasterLogPos.String
@@ -62,6 +69,7 @@ func (server *ServerMonitor) resetReplicationLastReceived() {
 	server.replicationHeartbeatKnown = false
 	server.replicationReceivedHeartbeats = 0
 	server.replicationReceivedPosition = ""
+	server.replicationReceivedSource = ""
 }
 
 // GetReplicationLastReceivedAge is how long ago the managed channel last received from its

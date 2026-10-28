@@ -180,6 +180,7 @@ type ServerMonitor struct {
 	replicationHeartbeatKnown     bool
 	replicationReceivedHeartbeats int64
 	replicationReceivedPosition   string
+	replicationReceivedSource     string
 	heartbeatEnforceFailed        bool
 	heartbeatEnforceFailedPeriod  float64
                           // last STOP/SET/START of slave_parallel_mode by CheckSlaveSettings (rate limit)
