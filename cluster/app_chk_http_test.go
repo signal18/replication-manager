@@ -26,14 +26,24 @@ func TestAppMonitorHTTPRoute(t *testing.T) {
 		t.Fatal("nil config: no http check")
 	}
 	r, ok := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "HTTPS", AppHost: "web.example.com", AppPort: "443"}, "web.example.com.c1.svc.cloud18")
-	if !ok || r.Protocol != "https" || r.CName != "web.example.com:443" {
-		t.Fatalf("full name: want https web.example.com:443, got %v %+v", ok, r)
+	if !ok || r.Protocol != "https" || r.CName != "web.example.com" || r.Mode != "host" {
+		t.Fatalf("full name on the default port: want a host route on web.example.com (no :443 in the Host header), got %v %+v", ok, r)
+	}
+	for _, c := range []struct{ mode, port, wantMode, wantSource string }{
+		{"https", "8443", "port", "8443"},
+		{"http", "80", "host", ""},
+		{"http", "443", "port", "443"},
+	} {
+		r, _ := appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: c.mode, AppHost: "web.example.com", AppPort: c.port}, "")
+		if r.CName != "web.example.com" || r.Mode != c.wantMode || r.SourcePort != c.wantSource {
+			t.Fatalf("%s on %s: want %s route source %q, got %+v", c.mode, c.port, c.wantMode, c.wantSource, r)
+		}
 	}
 	if r.Monitor == nil || r.Monitor.Path != "/" || r.Monitor.ExpectStatus != "200" {
 		t.Fatalf("defaults: want / and 200, got %+v", r.Monitor)
 	}
 	r, _ = appMonitorHTTPRoute(&config.AppConfig{AppMonitorMode: "http", AppHost: "web", AppPort: "8080", AppMonitorPath: "/health", AppMonitorExpectStatus: "200,204"}, "web.c1.svc.cloud18")
-	if r.Protocol != "http" || r.CName != "web.c1.svc.cloud18:8080" || r.Monitor.Path != "/health" || r.Monitor.ExpectStatus != "200,204" {
+	if r.Protocol != "http" || r.CName != "web.c1.svc.cloud18" || r.SourcePort != "8080" || r.Monitor.Path != "/health" || r.Monitor.ExpectStatus != "200,204" {
 		t.Fatalf("short name: want the cluster address and the set path/status, got %+v %+v", r, r.Monitor)
 	}
 }
@@ -247,6 +257,11 @@ func TestProbeNoRouteHTTPSCert(t *testing.T) {
 	if key != ErrAppCertificate || err == nil {
 		t.Fatalf("https-cert on a self-signed certificate: want APPERR010, got %s %v", key, err)
 	}
+	// the dial reached the server on app-port and refused its certificate (not a connection
+	// error on a wrong address)
+	if !strings.Contains(err.Error(), "certificate") || !strings.Contains(err.Error(), net.JoinHostPort(host, port)) {
+		t.Fatalf("https-cert must dial %s and refuse the certificate, got %v", net.JoinHostPort(host, port), err)
+	}
 	if desc := app.noRouteProbeErrDesc(key, err); !strings.Contains(desc, "ap1") || !strings.Contains(desc, "not valid") {
 		t.Fatalf("APPERR010 text: %q", desc)
 	}
@@ -308,5 +323,41 @@ func TestAddSeededAppMonitorOnlyOptIn(t *testing.T) {
 	}
 	if err := cl.AddSeededApp("web.example.com", "443", "nginx:1", "", true); err == nil || !strings.Contains(err.Error(), "monitor-only") {
 		t.Fatalf("monitor-only with an image: refused, got %v", err)
+	}
+}
+
+// The request's Host header is the bare name on the scheme's default port: a virtual-host
+// gateway routes on it (HAProxy hdr(host) answered 503 to "name:443" on preprod, #2209).
+func TestAppMonitorHostHeader(t *testing.T) {
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	host, port, _ := net.SplitHostPort(strings.TrimPrefix(srv.URL, "http://"))
+	app := &App{Id: "ap1", Host: host, Port: port, ClusterGroup: &Cluster{Conf: &config.Config{Timeout: 2}},
+		AppConfig: &config.AppConfig{AppHost: host, AppPort: port, AppMonitorMode: "http"}}
+	if _, err := app.probeNoRoute(2 * time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if gotHost != host+":"+port {
+		t.Fatalf("non-default port: Host header %q, want %q", gotHost, host+":"+port)
+	}
+}
+
+// app-port is validated when set: a number 1-65535, never empty (#2209, review).
+func TestSetAppPortValidated(t *testing.T) {
+	app := &App{AppConfig: &config.AppConfig{AppPort: "443"}, ClusterGroup: &Cluster{}}
+	for _, bad := range []string{"", "0", "65536", "web", "44 3"} {
+		if err := app.SetSetting("app-port", bad); err == nil {
+			t.Fatalf("%q must be refused", bad)
+		}
+	}
+	if app.AppConfig.AppPort != "443" {
+		t.Fatalf("a refused port must not be stored, got %q", app.AppConfig.AppPort)
+	}
+	if err := app.SetSetting("app-port", " 8443 "); err != nil || app.AppConfig.AppPort != "8443" {
+		t.Fatalf("8443: %v %q", err, app.AppConfig.AppPort)
 	}
 }
