@@ -275,6 +275,13 @@ func NewConfigChain(conf *config.Config, save func()) *Chain {
 	return NewChain(conf, &ArchiveStore{conf: conf, save: save}, &DynamicConfig{conf: conf, save: save}, &PinnedConfig{conf: conf})
 }
 
+// NewVersionedChain is a cluster's chain (#2227): its versioned store first, then the
+// internal secret_kv-config stores. The config keeps the starting value of the secrets the
+// version store holds.
+func NewVersionedChain(conf *config.Config, save func(), versions *VersionStore) *Chain {
+	return NewChain(conf, versions, &ArchiveStore{conf: conf, save: save}, &DynamicConfig{conf: conf, save: save}, &PinnedConfig{conf: conf})
+}
+
 // NewChain returns a chain of stores, read and written in their order.
 func NewChain(conf *config.Config, stores ...CredentialStore) *Chain {
 	return &Chain{conf: conf, stores: stores}
@@ -321,6 +328,10 @@ func (c *Chain) writer(key string) (CredentialStore, error) {
 		err := s.CanSet(key)
 		if err == nil {
 			return s, nil
+		}
+		if isHeldRefusal(err) {
+			// the key is this store's: no later store takes it instead (#2227 rule 1)
+			return nil, &RefusedError{Reason: errors.Unwrap(err)}
 		}
 		if first == nil && !errors.Is(err, ErrNotHeld) {
 			first = err

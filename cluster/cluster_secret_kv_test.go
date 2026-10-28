@@ -5,6 +5,8 @@
 package cluster
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -15,7 +17,7 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-const testSpace = "c1" // no Cloud18, no arbitration pair: the cluster alone
+const testSpace = "c1" // no path-prefix: the cluster at the mount's root
 
 func secretKvTestCluster(t *testing.T, vaults ...*vaultfake.Vault) *Cluster {
 	t.Helper()
@@ -65,8 +67,8 @@ func TestSecretFoldersLayout(t *testing.T) {
 			t.Fatalf("instance secret %s copied to %v", key, f)
 		}
 	}
-	cl.Conf.Cloud18, cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = true, "d", "s", "fr"
-	if p := cl.Conf.SecretSpace(cl.Name) + "/" + cl.secretFolders("backup-restic-password")[0]; p != "d/s-fr/c1/archives/archive-s3-1" {
+	e := config.SecretKvConfig{Name: "cloud18", Plugin: config.ConstSecretKvPluginVault, Settings: map[string]interface{}{"path-prefix": "/d/s/"}}
+	if p := cl.Conf.SecretKvFolder(e, cl.Name) + "/" + cl.secretFolders("backup-restic-password")[0]; p != "d/s/c1/archives/archive-s3-1" {
 		t.Fatalf("path %s", p)
 	}
 }
@@ -132,7 +134,8 @@ func TestFullPassNewestWinsNoChurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	cl.storeQueue().Take()
-	local := cl.secretKv.lastWrite[key]
+	lv, _ := cl.versionStore().Latest(key)
+	local := lv.At
 	for _, srv := range []string{"db1", "db2"} {
 		a.Put(testSpace+"/databases/"+srv+"/"+key, map[string]interface{}{key: "hb:old", "written-at": local.Add(-time.Hour).Format(time.RFC3339Nano), "written-by": "1"})
 		b.Put(testSpace+"/databases/"+srv+"/"+key, map[string]interface{}{key: "hb:remote", "written-at": local.Add(time.Hour).Format(time.RFC3339Nano), "written-by": "2"})
@@ -231,8 +234,12 @@ func TestSeedVaultPathSecrets(t *testing.T) {
 	if got := cl.Conf.Secrets.Get("db-servers-credential").Value; got != "u:seed" {
 		t.Fatalf("seed %q", got)
 	}
-	if raw, _ := cl.Conf.GetDynamicFlag("db-servers-credential"); !strings.Contains(raw.(string), "hash_") {
-		t.Fatalf("the config holds %v, want the value encrypted", raw)
+	// rule 1: the config keeps its starting value, the value read is a version
+	if raw, _ := cl.Conf.GetDynamicFlag("db-servers-credential"); raw != "legacy/c1/db" {
+		t.Fatalf("the config holds %v, want its starting value", raw)
+	}
+	if v, ok := cl.versionStore().Latest("db-servers-credential"); !ok || v.Value != "u:seed" {
+		t.Fatalf("version %+v %v", v, ok)
 	}
 	if got := cl.Conf.Secrets.Get("replication-credential").Value; got != "r:seed" {
 		t.Fatalf("pinned %q", got)
@@ -281,12 +288,42 @@ func TestStandbyWritesNoVault(t *testing.T) {
 	cl := secretKvTestCluster(t, v)
 	cl.Status = ConstMonitorStandby
 	cl.CredentialChain().Set("db-servers-credential", "u:x")
-	if cl.storeQueue().Len() != 0 || !cl.secretVersionStoreDirty {
-		t.Fatalf("queued %d, file marked %v", cl.storeQueue().Len(), cl.secretVersionStoreDirty)
+	if v, ok := cl.versionStore().Latest("db-servers-credential"); cl.storeQueue().Len() != 0 || !ok || v.Value != "u:x" {
+		t.Fatalf("queued %d, version %+v", cl.storeQueue().Len(), v)
 	}
 	paths := v.Paths()
 	sort.Strings(paths)
 	if len(paths) != 0 {
 		t.Fatalf("written %v", paths)
+	}
+}
+
+// #2227 rule 11: a standby takes the versions the active monitor wrote in the file the config
+// pull brings, never writes it, and the newest version is its current value
+func TestStandbyLoadsPeerVersions(t *testing.T) {
+	active := secretKvTestCluster(t)
+	active.Conf.MonitoringSecretVersioning = true
+	if err := os.MkdirAll(filepath.Join(active.Conf.WorkingDir, active.Name), 0700); err != nil {
+		t.Fatal(err)
+	}
+	standby := secretKvTestCluster(t)
+	standby.Conf.MonitoringSecretVersioning = true
+	standby.Conf.WorkingDir = active.Conf.WorkingDir // the pull: the same file
+	standby.Status = ConstMonitorStandby
+	standby.CredentialChain().Refresh()
+
+	if err := active.CredentialChain().Set("replication-credential", "r:pass2"); err != nil {
+		t.Fatal(err)
+	}
+	active.ReconcileSecretVersionStore()
+	time.Sleep(10 * time.Millisecond)
+	standby.CheckSecretKvStores()
+	if v := standby.Conf.Secrets.Get("replication-credential").Value; v != "r:pass2" {
+		t.Fatalf("standby current %q", v)
+	}
+	before, _ := os.ReadFile(SecretVersionStorePath(active.Conf.WorkingDir, active.Name))
+	standby.ReconcileSecretVersionStore()
+	if after, _ := os.ReadFile(SecretVersionStorePath(active.Conf.WorkingDir, active.Name)); string(after) != string(before) {
+		t.Fatal("the standby rewrote the file")
 	}
 }

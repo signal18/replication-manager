@@ -100,15 +100,16 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    differs: no version churn, no blocking read at load.
 5. **Paths are computed by repman, never typed**:
    ```
-   <mount>/<space>/<cluster>/
+   <mount>/<path-prefix>/<cluster>/
        databases/<server name>/<key>
        proxies/<proxy name>/<key>
        apps/<app name>/<key>
        archives/<archive name>/<key>
    ```
-   `<space>` is `<domain>/<subdomain>` on Cloud18; off Cloud18, a stable pair identifier
-   saved in the config, the one an active monitor and its standby share (never a per-instance id: after a switch the peer must
-   write the same folder). A secret the whole cluster shares (the database credential) is
+   `path-prefix` is a setting of the vault entry, empty by default (then
+   `<mount>/<cluster>/...`): the client lays its own Vault out with it; on Cloud18 the
+   marketplace entry fills it with `<domain>/<subdomain>`. An active monitor and its standby
+   share the entry, so they write the same folder. A secret the whole cluster shares (the database credential) is
    written under every server that uses it. Each key keeps the setting's name.
 6. **What is a secret of the cluster**: the chain's credentials, the proxy passwords, the
    app secrets (generated password, secret variables, database user), the archive secrets.
@@ -157,6 +158,8 @@ holds `pass2` at `databases/<server>/db-servers-credential`.
 |---|---|
 | entry list, manifests, migration of `vault-*` (database engine included) into `vault-default`, the flat Vault fields reset | `config/secret_kv.go` (`MigrateSecretKvs`, `SyncSecretKvFromConfig`) |
 | helpers shared with archives and S3 providers | `config/plugin_entry.go` |
+| the versions in memory (head of the cluster's chain: the config keeps the starting value; a change refused when no store keeps versions), the file's version format (`written_by` added) | `config/credstore/versions.go` (`VersionStore`), `cluster/secret_version_store.go` |
+| the file written by the save callback only, staged in the config push | `Cluster.ReconcileSecretVersionStore` (called by `SaveCallBack`), `config/manager` `ClusterStagedJSONFiles` |
 | the one Vault code: approle/jwt sign-in, KV v2 versions (`written-at`, `written-by` fields, `max-versions` at a secret's first write), database engine (`rotate-role`, `static-creds`) | `config/credstore/vault.go` (`VaultKV`) |
 | bounded queue (latest version per secret, drops counted), `Version.Newer` (LWW) | `config/credstore/store_queue.go` |
 | chain hook after its lock (`Chain.OnSet`) | `config/credstore/credstore.go` |
@@ -164,17 +167,20 @@ holds `pass2` at `databases/<server>/db-servers-credential`.
 | fake Vault for the tests | `config/credstore/vaultfake` |
 
 - **Settings** (TOML, T16): `[[<cluster>.secret-kv]]` with `name`, `plugin`, `enabled` and
-  `address`, `mount`, `mode`, `auth`, `role-id`, `secret-id` (encrypted, left out without
+  `address`, `mount`, `path-prefix`, `mode`, `auth`, `role-id`, `secret-id` (encrypted, left out without
   an encryption key); `secret-kv-queue-limit` (1000), `secret-kv-write-timeout` (10 s),
   `secret-kv-retry-interval` (60 s). An entry's `role-id` and `secret-id` are instance-local
   (never replayed), as `vault-role-id` and `vault-secret-id`.
-- **`<space>`** off Cloud18 is the pair the arbitrator knows the active monitor and its
-  standby by: their shared `arbitration-external-secret`, written as `pair-` and the first 16
-  hex digits of its SHA-256 (never the secret itself). With no arbitration secret (no
-  standby) the cluster alone. On Cloud18, `<domain>/<sub-domain>-<zone>` as the buckets.
-- **The file** (`secret_kv-config`): every chain write marks it (`MarkSecretVersionStoreDirty`),
-  recorded at the next tick as before; its latest `rotated_at` is its version time in the
-  LWW read.
+- **Versioned secrets** (rule 1): the database credentials (`db-servers-credential`,
+  `replication-credential`, `monitoring-write-heartbeat-credential`) and the proxy
+  credentials. The archive secrets stay in their archive's entry, the other secrets
+  (instance secrets, `backup-verification-credential`...) in the config as before; the file
+  still records their history at each save.
+- **The file** (`secret_kv-config`, `<cluster>/secret_store.json`): loaded at the cluster's
+  start when versioning is on, written by the save callback only (T25), atomically, when a
+  version changed; a standby merges the file the config pull brings (versions known by time
+  and writer) and never writes it. A remote newer version is inserted with its own time and
+  writer (no new version, rule 3).
 - **States**: WARN0269 (security, per entry: behind, or failing), WARN0270 (security: drops
   not repaired), WARN0271 (config, per key: a Vault path pinned in a file).
 - **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.

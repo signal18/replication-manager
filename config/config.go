@@ -2697,6 +2697,12 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 					}
 				}
 			}
+			// the versions of the secrets, encrypted (#2227)
+			if _, err := os.Stat(conf.WorkingDir + "/" + name + "/secret_store.json"); err == nil {
+				if _, err := w.Add(name + "/secret_store.json"); err != nil && conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
+					log.Errorf("Git error : cannot Add %s : %s", name+"/secret_store.json", err)
+				}
+			}
 		}
 	}
 

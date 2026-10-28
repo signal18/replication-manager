@@ -1236,7 +1236,6 @@ func (cluster *Cluster) trackTickGoroutine(fn func()) {
 // reloadMu can wrap it with a plain defer (see Run()) without reformatting
 // the ~225-line body itself.
 func (cluster *Cluster) tickBody() {
-	cluster.ReconcileSecretVersionStore()
 	cluster.ServerIdList = cluster.GetDBServerIdList()
 	cluster.ProxyIdList = cluster.GetProxyServerIdList()
 	cluster.AppIdList = cluster.GetAppServerIdList()
@@ -2113,7 +2112,8 @@ func (cluster *Cluster) CredentialChain() *credstore.Chain {
 	cluster.credChainMu.Lock()
 	defer cluster.credChainMu.Unlock()
 	if cluster.credChain == nil || cluster.credChain.Conf() != cluster.Conf {
-		cluster.credChain = credstore.NewConfigChain(cluster.Conf, cluster.Save)
+		// the version store first: the config keeps the starting value (#2227 rule 1)
+		cluster.credChain = credstore.NewVersionedChain(cluster.Conf, cluster.Save, cluster.versionStore())
 		// each change is a version in every active store, queued after the chain's lock (#2227)
 		cluster.credChain.OnSet(cluster.onCredentialChange)
 	}
@@ -2203,6 +2203,9 @@ func (cluster *Cluster) SaveCallBack() error {
 	if err != nil {
 		return err
 	}
+
+	// the local versioned file of the secrets, written here only (#2227 rule 2, T25)
+	cluster.ReconcileSecretVersionStore()
 
 	has_changed := false
 
@@ -2340,6 +2343,13 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 			// connected archive holds by its entry (#2088), a vault-* key by the primary
 			// Vault entry (#2227)
 			s.Delete(key)
+		} else if isVersionedKey(key) {
+			// a versioned secret: the config keeps its starting value forever, the current
+			// one lives in the versioned stores (#2227 rule 1)
+			s.Delete(key)
+			if raw, ok := cluster.Conf.GetDynamicFlag(key); ok && raw != nil && fmt.Sprintf("%v", raw) != "" {
+				buf.WriteString(key + " = \"" + cluster.startingValueEncrypted(fmt.Sprintf("%v", raw)) + "\"\n")
+			}
 		} else if secret && dynamic {
 			// a secret the dynamic config store holds (#2075): written whatever its raw
 			// field says, a value set at runtime (rotation, API) survives the restart
@@ -2421,7 +2431,10 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 	for _, key := range keys {
 		val, _ := cluster.Conf.GetImmuableFlag(key)
 		_, ok := cluster.Conf.Secrets.Lookup(key)
-		if ok {
+		if ok && isVersionedKey(key) {
+			// the file's starting value, never the current one (#2227 rule 1)
+			buf.WriteString(key + " = \"" + cluster.startingValueEncrypted(fmt.Sprintf("%v", val)) + "\"\n")
+		} else if ok {
 			encrypt_val := cluster.GetEncryptedValueFromMemory(key)
 			buf.WriteString(key + " = \"" + encrypt_val + "\"\n")
 		} else {

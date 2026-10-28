@@ -16,6 +16,8 @@ import (
 func TestTagChangeKeepsRuntimeCredentials(t *testing.T) {
 	cl, _ := newTestClusterServer(t)
 	cl.ConfigManager = &manager.ConfigManager{} // a save is an event, no I/O
+	// a runtime change is a version in a versioned store (#2227 rule 1)
+	cl.Conf.MonitoringSecretVersioning = true
 	cl.Conf.DynamicFlagMap = map[string]interface{}{
 		"replication-credential":         "repl:loaded-at-start",
 		"backup-verification-credential": "verif:loaded-at-start",

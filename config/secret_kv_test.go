@@ -216,22 +216,19 @@ func TestSecretKvSetSettingFromEvent(t *testing.T) {
 	}
 }
 
-// #2227: the cluster's folder: the Cloud18 URI, else the pair the arbitrator knows (never the
-// secret itself, never a per-instance id), else the cluster alone
-func TestSecretSpace(t *testing.T) {
-	conf := &Config{Cloud18: true, Cloud18Domain: "d", Cloud18SubDomain: "s", Cloud18SubDomainZone: "fr", ArbitrationSasSecret: "pairsecret"}
-	if s := conf.SecretSpace("c1"); s != "d/s-fr/c1" {
-		t.Fatalf("cloud18 space %q", s)
+// #2227: the cluster's folder in a vault entry: <path-prefix>/<cluster>, or the cluster at the
+// mount's root
+func TestSecretKvFolder(t *testing.T) {
+	conf := &Config{}
+	e := SecretKvConfig{Name: "v", Plugin: ConstSecretKvPluginVault, Settings: map[string]interface{}{}}
+	if f := conf.SecretKvFolder(e, "c1"); f != "c1" {
+		t.Fatalf("folder %q", f)
 	}
-	a := &Config{ArbitrationSasSecret: "pairsecret", ArbitrationSasUniqueId: 1}
-	b := &Config{ArbitrationSasSecret: "pairsecret", ArbitrationSasUniqueId: 2}
-	if a.SecretSpace("c1") != b.SecretSpace("c1") || !strings.HasPrefix(a.SecretSpace("c1"), "pair-") || strings.Contains(a.SecretSpace("c1"), "pairsecret") {
-		t.Fatalf("pair spaces %q %q", a.SecretSpace("c1"), b.SecretSpace("c1"))
+	e.Settings["path-prefix"] = "d/s"
+	if f := conf.SecretKvFolder(e, "c1"); f != "d/s/c1" {
+		t.Fatalf("folder %q", f)
 	}
-	if s := (&Config{}).SecretSpace("c1"); s != "c1" {
-		t.Fatalf("lone space %q", s)
-	}
-	if s := (&Config{}).ClusterSpace("c1"); s != "c1" {
+	if s := conf.ClusterSpace("c1"); s != "c1" {
 		t.Fatalf("bucket space %q", s)
 	}
 }

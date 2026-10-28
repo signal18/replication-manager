@@ -25,11 +25,17 @@ func TestCanSetCredential(t *testing.T) {
 		{"db credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, "db-servers-credential is set in a config file"},
 		{"replication credential in a file", "replication-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, "replication-credential is set in a config file"},
 		{"another credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
-		{"config not saved", "replication-credential", func(c *Cluster) { c.Conf.ConfRewrite = false }, "monitoring-save-config is off"},
+		// #2227 rule 1: the change is a version in the versioned stores, never in the config
+		{"config not saved, versioning on", "replication-credential", func(c *Cluster) { c.Conf.ConfRewrite = false }, ""},
+		{"no versioned store", "replication-credential", func(c *Cluster) { c.Conf.MonitoringSecretVersioning = false }, "no credential store keeps versions"},
+		{"no versioned store, a vault entry", "replication-credential", func(c *Cluster) {
+			c.Conf.MonitoringSecretVersioning = false
+			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
+		}, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &Cluster{Conf: &config.Config{ConfRewrite: true, ImmuableFlagMap: map[string]interface{}{}}}
+			c := &Cluster{Conf: &config.Config{ConfRewrite: true, MonitoringSecretVersioning: true, ImmuableFlagMap: map[string]interface{}{}}}
 			tc.change(c)
 			err := c.CanSetCredential(tc.key)
 			if tc.want == "" {
@@ -51,8 +57,9 @@ func TestCanSetCredential(t *testing.T) {
 // #2050: the GUI gets each credential's user, source and refusal, never a password
 func TestGetCredentialsInfo(t *testing.T) {
 	c := &Cluster{Conf: &config.Config{
-		ConfRewrite:     true,
-		ImmuableFlagMap: map[string]interface{}{"replication-credential": "repl:x"},
+		ConfRewrite:                true,
+		MonitoringSecretVersioning: true,
+		ImmuableFlagMap:            map[string]interface{}{"replication-credential": "repl:x"},
 		Secrets: config.NewSecrets(map[string]config.Secret{
 			"db-servers-credential":  {Value: "monitor:secret-db"},
 			"replication-credential": {Value: "repl:secret-rpl"},

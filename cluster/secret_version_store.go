@@ -12,16 +12,14 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/credstore"
 )
 
 const secretVersionStoreFilename = "secret_store.json"
 const SecretVersionLatest = "latest"
 
-type secretVersion struct {
-	Version   int    `json:"version"`
-	HashValue string `json:"hash_value"`
-	RotatedAt string `json:"rotated_at"`
-}
+// secretVersion is one version in the file: the version store's (#2227), with its writer.
+type secretVersion = credstore.FileVersion
 
 type secretVersionStore map[string][]secretVersion
 
@@ -59,8 +57,8 @@ type SecretVersionStoreRestoreEntry struct {
 
 const secretHashPrefix = "hash_"
 
-// MarkSecretVersionStoreDirty marks cluster secret version reconciliation as
-// needed on the next reconciliation call.
+// MarkSecretVersionStoreDirty asks the next save to record the current secrets as versions
+// and write the file: the save event, the file is written by the save callback only (T25).
 func (cluster *Cluster) MarkSecretVersionStoreDirty() {
 	if cluster == nil {
 		return
@@ -69,17 +67,15 @@ func (cluster *Cluster) MarkSecretVersionStoreDirty() {
 	cluster.secretVersionStoreMu.Lock()
 	cluster.secretVersionStoreDirty = true
 	cluster.secretVersionStoreMu.Unlock()
+	cluster.Save()
 }
 
-// ReconcileSecretVersionStore keeps the per-cluster secret_store.json in sync
-// with currently tracked secrets for this cluster.
-//
-// Behavior:
-//   - returns immediately when feature is disabled
-//   - bootstraps missing keys as version 1
-//   - appends a new version only when semantic (decrypted) value changed
-//   - stores encrypted/hash values only
-//   - writes atomically to avoid partial store files
+// ReconcileSecretVersionStore is the save callback's part for the local versioned file
+// (#2227 rule 2): when asked (MarkSecretVersionStoreDirty), the current value of each tracked
+// secret becomes a version when it differs from the last one (a secret without a version gets
+// version 1: the starting value); the versions the chain made at each change are already
+// there, with their own time and writer. Then the file is written, atomically, from the
+// version store. Encrypted values only (F9). Nothing when versioning is off.
 func (cluster *Cluster) ReconcileSecretVersionStore() {
 	if cluster == nil || cluster.Conf == nil {
 		return
@@ -89,64 +85,22 @@ func (cluster *Cluster) ReconcileSecretVersionStore() {
 		return
 	}
 
+	vs := cluster.versionStore()
 	cluster.secretVersionStoreMu.Lock()
-	defer cluster.secretVersionStoreMu.Unlock()
-	if !cluster.secretVersionStoreDirty {
-		return
-	}
-
-	storePath := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
-	store, err := loadSecretVersionStore(storePath)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-			"Secret versioning disabled for this tick: cannot read store %s: %v", storePath, err)
-		return
-	}
-
-	currentValues := cluster.getTrackedSecretStoreValues()
-	now := time.Now().UTC().Format(time.RFC3339)
-	hasChanges := false
-
-	for _, key := range sortedTrackedSecretKeys(currentValues) {
-		current := currentValues[key]
-		versions := store[key]
-
-		if len(versions) == 0 {
-			store[key] = append(versions, secretVersion{Version: 1, HashValue: current.StoredValue, RotatedAt: now})
-			hasChanges = true
-			continue
-		}
-
-		latest := versions[len(versions)-1]
-		latestCompareValue := cluster.getStoredSecretCompareValue(key, latest.HashValue)
-		if latestCompareValue == current.CompareValue {
-			continue
-		}
-
-		store[key] = append(versions, secretVersion{Version: latest.Version + 1, HashValue: current.StoredValue, RotatedAt: now})
-		hasChanges = true
-	}
-
-	if autoPruneEnabled, keepLast := cluster.getSecretVersionStoreAutoPruneSettings(); autoPruneEnabled {
-		prunedStore, _, versionsRemoved := pruneSecretVersionStore(store, keepLast)
-		if versionsRemoved > 0 {
-			store = prunedStore
-			hasChanges = true
-		}
-	}
-
-	if !hasChanges {
-		cluster.secretVersionStoreDirty = false
-		return
-	}
-
-	if err := writeSecretVersionStoreAtomic(storePath, store); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-			"Failed to persist secret version store %s: %v", storePath, err)
-		return
-	}
-
+	dirty := cluster.secretVersionStoreDirty
 	cluster.secretVersionStoreDirty = false
+	cluster.secretVersionStoreMu.Unlock()
+	if dirty {
+		currentValues := cluster.getTrackedSecretStoreValues()
+		for _, key := range sortedTrackedSecretKeys(currentValues) {
+			current := currentValues[key]
+			vs.Record(key, current.StoredValue, current.CompareValue)
+		}
+	}
+	if err := cluster.writeSecretVersionFile(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Failed to persist secret version store %s: %v", SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name), err)
+	}
 }
 
 func (cluster *Cluster) getSecretVersionStoreAutoPruneSettings() (bool, int) {

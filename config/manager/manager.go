@@ -316,6 +316,11 @@ func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 	return newcm
 }
 
+// ClusterStagedJSONFiles are the JSON files of a cluster's folder the config push stages at
+// each cycle when they exist. secret_store.json holds encrypted values only (F9) and changes
+// only at a credential change or rotation (T17); the standby reads it from the pull (#2227).
+var ClusterStagedJSONFiles = []string{"queryrules.json", "clusterstate.json", "secret_store.json"}
+
 // gitAgentsSyncInterval throttles how often agents.json is staged for commit.
 // agents.json is re-serialized every monitoring cycle (agent load/status), so
 // staging it on every git push previously dominated .git history (~288
@@ -1582,10 +1587,11 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			}
 		}
 
-		// queryrules.json and clusterstate.json move on config/human timescales
-		// (hours+), so stage them every cycle. agents.json is handled separately
-		// below — it churns every monitoring cycle and must be throttled.
-		for _, jsonFile := range []string{"queryrules.json", "clusterstate.json"} {
+		// queryrules.json, clusterstate.json and secret_store.json (the versions of the
+		// secrets, encrypted, #2227) move on config/human timescales (hours+), so stage
+		// them every cycle. agents.json is handled separately below — it churns every
+		// monitoring cycle and must be throttled.
+		for _, jsonFile := range ClusterStagedJSONFiles {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
 				stage(name, jsonPath)

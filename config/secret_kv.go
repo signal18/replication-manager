@@ -5,8 +5,6 @@
 package config
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -53,12 +51,15 @@ type SecretKvPluginManifest struct {
 
 // The settings of a secret_kv-vault entry.
 const (
-	ConstSecretKvVaultAddress  = "address"
-	ConstSecretKvVaultMount    = "mount"
-	ConstSecretKvVaultMode     = "mode" // config_store_v2 (KV v2), database_engine (Vault makes the passwords)
-	ConstSecretKvVaultAuth     = "auth"
-	ConstSecretKvVaultRoleID   = "role-id"
-	ConstSecretKvVaultSecretID = "secret-id"
+	ConstSecretKvVaultAddress = "address"
+	ConstSecretKvVaultMount   = "mount"
+	// ConstSecretKvVaultPathPrefix: the folder under the mount the cluster's folder goes in
+	// (empty: the cluster at the mount's root)
+	ConstSecretKvVaultPathPrefix = "path-prefix"
+	ConstSecretKvVaultMode       = "mode" // config_store_v2 (KV v2), database_engine (Vault makes the passwords)
+	ConstSecretKvVaultAuth       = "auth"
+	ConstSecretKvVaultRoleID     = "role-id"
+	ConstSecretKvVaultSecretID   = "secret-id"
 )
 
 // Vault auth methods an entry signs in with.
@@ -79,6 +80,7 @@ var secretKvManifests = map[string]SecretKvPluginManifest{
 		Settings: PluginSettings{
 			{Name: ConstSecretKvVaultAddress, Type: ConstArchiveSettingTypeString},
 			{Name: ConstSecretKvVaultMount, Type: ConstArchiveSettingTypeString},
+			{Name: ConstSecretKvVaultPathPrefix, Type: ConstArchiveSettingTypeString},
 			{Name: ConstSecretKvVaultMode, Type: ConstArchiveSettingTypeEnum, Values: []string{VaultConfigStoreV2, VaultDbEngine}},
 			{Name: ConstSecretKvVaultAuth, Type: ConstArchiveSettingTypeEnum, Values: []string{ConstVaultAuthAppRole, ConstVaultAuthJWT}},
 			{Name: ConstSecretKvVaultRoleID, Type: ConstArchiveSettingTypeString},
@@ -406,19 +408,12 @@ func (conf *Config) SecretKvActiveEntry(name string) (SecretKvConfig, bool) {
 	return SecretKvConfig{}, false
 }
 
-// SecretSpace is the cluster's folder in a credential store, <space>/<cluster>: on Cloud18
-// <space> is the instance's URI (<domain>/<sub-domain>-<zone>, ClusterSpace); off Cloud18 it is
-// what an active monitor and its standby share, the pair the arbitrator knows them by: its
-// secret (arbitration-external-secret), never written as it is but as "pair-" and the first
-// 16 hex digits of its SHA-256. Never a per-instance id: after a switch the peer writes the
-// same folder. An instance with no arbitration secret has no pair: the cluster alone.
-func (conf *Config) SecretSpace(cluster string) string {
-	if conf.Cloud18 && conf.Cloud18Domain != "" && conf.Cloud18SubDomain != "" {
-		return conf.ClusterSpace(cluster)
-	}
-	if conf.ArbitrationSasSecret != "" {
-		sum := sha256.Sum256([]byte(conf.GetDecryptedPassword("arbitration-external-secret", conf.ArbitrationSasSecret)))
-		return "pair-" + hex.EncodeToString(sum[:])[:16] + "/" + cluster
+// SecretKvFolder is the cluster's folder in a vault entry, below its mount:
+// <path-prefix>/<cluster>, or <cluster> with no prefix. The client lays its own Vault out with
+// the prefix; on Cloud18 the marketplace entry fills it with <domain>/<sub-domain>.
+func (conf *Config) SecretKvFolder(e SecretKvConfig, cluster string) string {
+	if prefix := strings.Trim(conf.secretKvSetting(&e, ConstSecretKvVaultPathPrefix), "/"); prefix != "" {
+		return prefix + "/" + cluster
 	}
 	return cluster
 }

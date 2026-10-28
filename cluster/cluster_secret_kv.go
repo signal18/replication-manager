@@ -6,7 +6,9 @@ package cluster
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -54,17 +56,20 @@ type secretKvStores struct {
 	queue   *credstore.StoreQueue
 	running atomic.Bool
 	passDue atomic.Bool
-	// applying: a newer version read from a store is becoming the current one here: the
-	// chain's hook records it, the full pass writes it where it differs, no new version
-	applying atomic.Bool
+	// versions: the in-memory versions of the cluster's secrets, head of its chain; the
+	// local file is their copy, written by the save callback only (T25)
+	versions *credstore.VersionStore
+	// fileModTime: the local file as last loaded or written: a standby loads it again when
+	// the config pull changes it (rule 11)
+	fileModTime time.Time
 	// apply gives the servers a credential that changed; nil: the cluster's own setters
 	apply func(key string)
 
 	mu              sync.Mutex
-	behind          map[string]string    // entry -> why it is behind (never a value)
-	passed          map[string]bool      // entries given their full pass in this run
-	lastWrite       map[string]time.Time // key -> when this instance last wrote it
-	pinnedPaths     map[string]bool      // keys pinned to a Vault path in a config file
+	behind          map[string]string // entry -> why it is behind (never a value)
+	passed          map[string]bool   // entries given their full pass in this run
+	pinnedPaths     map[string]bool   // keys pinned to a Vault path in a config file
+	startingCipher  map[string]string // starting value -> its ciphertext in the saved files
 	dropsSeen       uint64
 	dropsUnresolved bool
 }
@@ -75,8 +80,8 @@ func (cluster *Cluster) storeQueue() *credstore.StoreQueue {
 		c.queue = credstore.NewStoreQueue(func() int { return cluster.Conf.SecretKvQueueLimit })
 		c.behind = map[string]string{}
 		c.passed = map[string]bool{}
-		c.lastWrite = map[string]time.Time{}
 		c.pinnedPaths = map[string]bool{}
+		c.startingCipher = map[string]string{}
 	})
 	return c.queue
 }
@@ -157,11 +162,11 @@ func (cluster *Cluster) queueVersions(entry, key string, folders []string, ver c
 		return
 	}
 	var items []credstore.StoreItem
-	space := cluster.Conf.SecretSpace(cluster.Name)
 	for _, e := range cluster.Conf.SecretKvActive() {
 		if entry != "" && e.Name != entry {
 			continue
 		}
+		space := cluster.Conf.SecretKvFolder(e, cluster.Name)
 		for _, f := range folders {
 			items = append(items, credstore.StoreItem{Entry: e.Name, Path: space + "/" + f, Key: key, Version: ver, Compare: compare})
 		}
@@ -173,23 +178,15 @@ func (cluster *Cluster) queueVersions(entry, key string, folders []string, ver c
 	cluster.startSecretStores()
 }
 
-// onCredentialChange is the credential chain's hook, outside its lock: each change is a
-// version in the local file (recorded at the next tick) and in every vault entry.
+// onCredentialChange is the credential chain's hook, outside its lock: each version the
+// version store just made goes to every vault entry, with its time and writer.
 func (cluster *Cluster) onCredentialChange(changes []credstore.Change) {
-	cluster.storeQueue()
-	c := &cluster.secretKv
-	now := time.Now().UTC()
-	c.mu.Lock()
+	vs := cluster.versionStore()
 	for _, ch := range changes {
-		c.lastWrite[ch.Key] = now
-	}
-	c.mu.Unlock()
-	cluster.MarkSecretVersionStoreDirty()
-	if c.applying.Load() {
-		return
-	}
-	for _, ch := range changes {
-		ver := credstore.Version{Value: ch.Value, At: now, By: cluster.Conf.ArbitrationSasUniqueId}
+		ver, ok := vs.Latest(ch.Key)
+		if !ok || !vs.Holds(ch.Key) {
+			ver = cluster.selfVersion(ch.Value)
+		}
 		cluster.queueVersions("", ch.Key, cluster.secretFolders(ch.Key), ver, false)
 	}
 }
@@ -296,38 +293,13 @@ func (cluster *Cluster) setStoreBehind(entry, why string) {
 	c.behind[entry] = why
 }
 
-// localVersion is this instance's current version of key: the cache's value, written when
-// this instance last wrote it or the local file last recorded it.
-func (cluster *Cluster) localVersion(key string, fileAt map[string]time.Time) credstore.Version {
-	c := &cluster.secretKv
-	c.mu.Lock()
-	at := c.lastWrite[key]
-	c.mu.Unlock()
-	if f, ok := fileAt[key]; ok && f.After(at) {
-		at = f
+// localVersion is this instance's current version of key: the version store's, else the
+// cache's value (the starting value) with no time, any stored version newer.
+func (cluster *Cluster) localVersion(key string) credstore.Version {
+	if v, ok := cluster.versionStore().Latest(key); ok {
+		return v
 	}
-	return credstore.Version{Value: cluster.Conf.Secrets.Get(key).Value, At: at, By: cluster.Conf.ArbitrationSasUniqueId}
-}
-
-// fileVersionTimes are the times the local file recorded the latest version of each key.
-func (cluster *Cluster) fileVersionTimes() map[string]time.Time {
-	out := map[string]time.Time{}
-	if !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
-		return out
-	}
-	store, err := loadSecretVersionStore(SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name))
-	if err != nil {
-		return out
-	}
-	for key, versions := range store {
-		if len(versions) == 0 {
-			continue
-		}
-		if at, err := time.Parse(time.RFC3339, versions[len(versions)-1].RotatedAt); err == nil {
-			out[key] = at
-		}
-	}
-	return out
+	return credstore.Version{Value: cluster.Conf.Secrets.Get(key).Value}
 }
 
 // secretFullPass reads the current version of every secret in every active store: a database
@@ -347,8 +319,6 @@ func (cluster *Cluster) secretFullPass() {
 	sort.SliceStable(entries, func(i, j int) bool {
 		return cluster.vaultStore(entries[i]).Generates() && !cluster.vaultStore(entries[j]).Generates()
 	})
-	space := cluster.Conf.SecretSpace(cluster.Name)
-	fileAt := cluster.fileVersionTimes()
 	ctx := context.Background()
 	timeout := time.Duration(cluster.storeTimeout())
 	if timeout <= 0 {
@@ -373,13 +343,14 @@ func (cluster *Cluster) secretFullPass() {
 		conns = append(conns, conn{e, kv, client})
 	}
 	for _, key := range cluster.secretKeys() {
-		local := cluster.localVersion(key, fileAt)
+		local := cluster.localVersion(key)
 		if local.Value == "" || cluster.Conf.IsPath(local.Value) {
 			continue // no value, or a Vault path not read
 		}
 		winner, from, engineWon := local, "", false
 		type read struct {
 			entry  string
+			space  string
 			folder string
 			ver    credstore.Version
 			found  bool
@@ -406,6 +377,7 @@ func (cluster *Cluster) secretFullPass() {
 				}
 				continue
 			}
+			space := cluster.Conf.SecretKvFolder(e, cluster.Name)
 			for _, folder := range cluster.secretFolders(key) {
 				it := credstore.StoreItem{Entry: e.Name, Path: space + "/" + folder, Key: key}
 				rctx, cancel := context.WithTimeout(ctx, timeout)
@@ -415,7 +387,7 @@ func (cluster *Cluster) secretFullPass() {
 					cluster.setStoreBehind(e.Name, fmt.Sprintf("%s/%s: %s", it.Path, key, err))
 					continue
 				}
-				reads = append(reads, read{e.Name, folder, ver, found})
+				reads = append(reads, read{e.Name, space, folder, ver, found})
 				if found && !engineWon && ver.Value != winner.Value && ver.Newer(winner) {
 					winner, from = ver, e.Name
 				}
@@ -428,7 +400,7 @@ func (cluster *Cluster) secretFullPass() {
 			if r.found && r.ver.Value == winner.Value {
 				continue
 			}
-			cluster.setStoreBehind(r.entry, fmt.Sprintf("%s/%s/%s holds another version", space, r.folder, key))
+			cluster.setStoreBehind(r.entry, fmt.Sprintf("%s/%s/%s holds another version", r.space, r.folder, key))
 			cluster.queueVersions(r.entry, key, []string{r.folder}, winner, true)
 		}
 	}
@@ -450,27 +422,21 @@ func splitUser(credential string) (string, string) {
 	return credential, ""
 }
 
-// applyStoreWinner makes a newer version read from a store the current one here, through the
-// chain (a pinned key is left to its file; the local file records it), keeping its time, and
-// gives it to the servers.
+// applyStoreWinner makes a newer version read from a store the current one here: the
+// version store takes it with its own time and writer (no new version), the chain's cache
+// reads it, the save writes the file, and the servers get it. A key pinned in a file is left
+// to its file.
 func (cluster *Cluster) applyStoreWinner(key string, winner credstore.Version, from string) {
-	chain := cluster.CredentialChain()
-	if err := chain.CanSet(key); err != nil {
+	if _, pinned := cluster.Conf.GetImmuableFlag(key); pinned {
 		return
 	}
-	c := &cluster.secretKv
-	c.applying.Store(true)
-	err := chain.Set(key, winner.Value)
-	c.applying.Store(false)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Credential stores: newer %s from %s not applied: %s", key, from, credstore.Reason(err))
+	vs := cluster.versionStore()
+	if !vs.Holds(key) {
 		return
 	}
-	if !winner.At.IsZero() {
-		c.mu.Lock()
-		c.lastWrite[key] = winner.At
-		c.mu.Unlock()
-	}
+	vs.Insert(key, winner)
+	cluster.CredentialChain().Refresh()
+	cluster.Save()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential stores: %s takes the newer version held by %s", key, from)
 	cluster.applyCredential(key)
 }
@@ -565,11 +531,130 @@ func (cluster *Cluster) activeStoreKeepsVersions() bool {
 	return cluster.Conf.IsMonitoringSecretVersioningEnabled() || len(cluster.Conf.SecretKvActive()) > 0
 }
 
+// errNoVersionedStore is the refusal of a change or a rotation when no active store keeps
+// the versions (rules 1 and 9): the config keeps the starting value, nothing else.
+var errNoVersionedStore = errors.New("no credential store keeps versions: monitoring-secret-versioning is off and no vault entry (secret-kv) is enabled, the new value would live only in memory and a restart would lose it; turn versioning on or enable a vault entry")
+
+// versionsKeepError is nil when an active store keeps the versions.
+func (cluster *Cluster) versionsKeepError() error {
+	if cluster.activeStoreKeepsVersions() {
+		return nil
+	}
+	return errNoVersionedStore
+}
+
+// isVersionedKey: a secret of the cluster the version store holds (rule 1): the database and
+// proxy credentials. The archive secrets stay in their archive's entry, the instance secrets
+// in the config.
+func isVersionedKey(key string) bool {
+	return isDatabaseSecretKey(key) || proxySecretKeys[key] != ""
+}
+
+// versionStore is the cluster's version store, made once (a reload keeps it) and filled from
+// the local file when versioning is on.
+func (cluster *Cluster) versionStore() *credstore.VersionStore {
+	cluster.storeQueue()
+	c := &cluster.secretKv
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.versions == nil {
+		c.versions = credstore.NewVersionStore(func() *config.Config { return cluster.Conf }, isVersionedKey, cluster.versionsKeepError, cluster.Save)
+		if cluster.Conf != nil && cluster.Conf.IsMonitoringSecretVersioningEnabled() {
+			path := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
+			if file, err := loadSecretVersionStore(path); err == nil {
+				c.versions.Load(file)
+				if st, err := os.Stat(path); err == nil {
+					c.fileModTime = st.ModTime()
+				}
+			}
+		}
+	}
+	return c.versions
+}
+
+// reloadVersionsFromPeer: on a standby, the local file the config pull brought (written by
+// the active monitor, rule 11) is merged into the version store, and the newest versions are
+// the current ones here.
+func (cluster *Cluster) reloadVersionsFromPeer() {
+	if cluster.IsActive() || !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
+		return
+	}
+	vs := cluster.versionStore()
+	path := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
+	st, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	c := &cluster.secretKv
+	c.mu.Lock()
+	seen := !st.ModTime().After(c.fileModTime)
+	c.fileModTime = st.ModTime()
+	c.mu.Unlock()
+	if seen {
+		return
+	}
+	file, err := loadSecretVersionStore(path)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Credential versions: %s not read: %s", path, err)
+		return
+	}
+	before := map[string]string{}
+	for _, key := range databaseSecretKeys {
+		before[key] = cluster.Conf.Secrets.Get(key).Value
+	}
+	if !vs.Merge(file) {
+		return
+	}
+	vs.Export() // the standby does not write it back: the active monitor's file is the copy
+	cluster.CredentialChain().Refresh()
+	for key, old := range before {
+		if cluster.Conf.Secrets.Get(key).Value != old {
+			cluster.applyCredential(key)
+		}
+	}
+}
+
+// writeSecretVersionFile writes the local file from the version store: called by the save
+// callback only (T25), versioning on, when a version changed or the file is missing. The
+// values are the encrypted ones (F9); the file is in the config push.
+func (cluster *Cluster) writeSecretVersionFile() error {
+	// only the active repman runs the save callback (the config-sync gate): a standby reads
+	// the active monitor's file from the config pull
+	if !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
+		return nil
+	}
+	vs := cluster.versionStore()
+	path := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
+	file, changed := vs.Export()
+	if autoPrune, keepLast := cluster.getSecretVersionStoreAutoPruneSettings(); autoPrune {
+		if pruned, _, removed := pruneSecretVersionStore(file, keepLast); removed > 0 {
+			file, changed = pruned, true
+			vs.Load(pruned)
+		}
+	}
+	if !changed {
+		return nil
+	}
+	if err := writeSecretVersionStoreAtomic(path, file); err != nil {
+		vs.MarkDirty()
+		return err
+	}
+	if st, err := os.Stat(path); err == nil {
+		c := &cluster.secretKv
+		c.mu.Lock()
+		c.fileModTime = st.ModTime()
+		c.mu.Unlock()
+	}
+	return nil
+}
+
 // CheckSecretKvStores runs at each tick on the active monitor: the full pass at start, for a
 // store turned on and after drops; the worker back when versions wait; the states raised
 // again: WARN0269 per store behind, WARN0270 while drops are not repaired, WARN0271 per
 // credential pinned to a Vault path. It only queues: never blocks.
 func (cluster *Cluster) CheckSecretKvStores() {
+	// a standby takes the versions the active monitor pushed (rule 11)
+	cluster.reloadVersionsFromPeer()
 	q := cluster.storeQueue()
 	c := &cluster.secretKv
 	c.mu.Lock()
@@ -678,4 +763,23 @@ func (cluster *Cluster) rotateWithVaultEngine(e config.SecretKvConfig) error {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Password rotation by the Vault database engine of credential store %s done", e.Name)
 	return nil
+}
+
+// startingValueEncrypted is a starting value as the config file holds it: encrypted (F9),
+// an already encrypted one or a Vault path as it is.
+func (cluster *Cluster) startingValueEncrypted(raw string) string {
+	if strings.Contains(raw, "hash_") || cluster.Conf.IsPath(raw) {
+		return raw
+	}
+	cluster.storeQueue()
+	c := &cluster.secretKv
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	// encrypted once: each save writes the same bytes
+	if enc, ok := c.startingCipher[raw]; ok {
+		return enc
+	}
+	enc := cluster.Conf.EncryptSecretValue(raw)
+	c.startingCipher[raw] = enc
+	return enc
 }

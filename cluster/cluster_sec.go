@@ -66,8 +66,8 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	}
 	// an active store keeps the versions (#2227): the local file with versioning on, or a
 	// vault entry
-	if !cluster.activeStoreKeepsVersions() {
-		return errors.New("no credential store keeps versions: monitoring-secret-versioning is off and no vault entry (secret-kv) is enabled, the new passwords would live only in memory and a restart would lose access to the servers; turn versioning on or enable a vault entry")
+	if err := cluster.versionsKeepError(); err != nil {
+		return err
 	}
 	// the credential chain must take the new values (#2075): a credential pinned in a config
 	// file is refused, the file would win at the next restart. Lifted when a versioned store
