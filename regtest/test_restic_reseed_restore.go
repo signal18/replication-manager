@@ -109,7 +109,7 @@ func (regtest *RegTest) TestResticReseedRestore(cl *clusterpkg.Cluster, conf str
 	// Wait briefly for reseed to settle.
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after restic reseed")
 		return false
 	}

@@ -215,9 +215,9 @@ func (regtest *RegTest) TestBackupArchiveRemoveOriginal(cl *clusterpkg.Cluster, 
 	// replicate.
 	consistent := func(kind string) bool {
 		if !physReseedWait(5*time.Minute, func() bool {
-			return cl.CheckSlavesRunning() && cl.CheckTableConsistency("replication_manager_schema.sbtest1")
+			return cl.CheckSlavesRunning() && cl.CheckTableConsistency(cl.BenchTable())
 		}) {
-			return fail("after the %s reseed under sysbench: replicas running %v, replication_manager_schema.sbtest1 consistent %v", kind, cl.CheckSlavesRunning(), cl.CheckTableConsistency("replication_manager_schema.sbtest1"))
+			return fail("after the %s reseed under sysbench: replicas running %v, replication_manager_schema.sbtest1 consistent %v", kind, cl.CheckSlavesRunning(), cl.CheckTableConsistency(cl.BenchTable()))
 		}
 		return true
 	}

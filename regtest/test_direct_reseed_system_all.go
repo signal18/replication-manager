@@ -197,7 +197,7 @@ func (regtest *RegTest) TestDirectReseedSystemAllEmptyDestination(cl *clusterpkg
 		return false
 	}
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after direct reseed")
 		return false
 	}

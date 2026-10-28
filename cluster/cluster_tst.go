@@ -226,6 +226,13 @@ func (cluster *Cluster) PrepareBench() error {
 		return err
 	}
 	if cluster.benchmarkType == "sysbench" {
+		// sysbench writes into replication_manager_schema (--mysql-db) and does not create
+		// it: on a MySQL cluster nothing else had, and every prepare failed with error 1049
+		// (#2228)
+		if master := cluster.GetMaster(); master != nil && master.Conn != nil {
+			logs, err := dbhelper.CreateReplicationManagerSchema(master.Conn, master.DBVersion)
+			cluster.LogSQL(logs, err, master.URL, "Benchmark", config.LvlErr, "Could not create the benchmark schema on %s: %s", master.URL, err)
+		}
 		test := "--test=oltp"
 		threads := "--threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads)
 		tablesize := "--oltp-table-size=1000000"
@@ -328,17 +335,12 @@ func (cluster *Cluster) CleanupBench() error {
 }
 
 func (cluster *Cluster) ChecksumBench() bool {
-	if cluster.benchmarkType == "table" {
-		if !cluster.CheckTableConsistency("replication_manager_schema.bench") {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
-			return false
-		}
+	if cluster.benchmarkType != "table" && cluster.benchmarkType != "sysbench" {
+		return true
 	}
-	if cluster.benchmarkType == "sysbench" {
-		if !cluster.CheckTableConsistency("test.sbtest") {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
-			return false
-		}
+	if !cluster.CheckTableConsistency(cluster.BenchTable()) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
+		return false
 	}
 	return true
 }
@@ -573,6 +575,18 @@ func (cluster *Cluster) CheckSlavesRunning() bool {
 		}
 	}
 	return true
+}
+
+// BenchTable is the table the cluster's benchmark writes, the one the regtests check for
+// consistency: sysbench writes replication_manager_schema.sbtest1 (--mysql-db, one table),
+// the table benchmark replication_manager_schema.bench. The regtests checked test.sbtest,
+// which nothing writes: since CheckTableConsistency fails on a table it cannot checksum,
+// every one of them failed (#2228).
+func (cluster *Cluster) BenchTable() string {
+	if cluster.benchmarkType == "table" {
+		return "replication_manager_schema.bench"
+	}
+	return "replication_manager_schema.sbtest1"
 }
 
 func (cluster *Cluster) CheckTableConsistency(table string) bool {

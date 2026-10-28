@@ -5,6 +5,8 @@
 package regtest
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -124,6 +126,27 @@ func TestTargetsDeclared(t *testing.T) {
 	for name := range testTargets {
 		if !slices.Contains(tests, name) {
 			t.Errorf("testTargets declares %s, which is not in tests", name)
+		}
+	}
+}
+
+// A consistency check names the table the benchmark writes (Cluster.BenchTable), never
+// test.sbtest: nothing writes it, and a table that cannot be checksummed fails (#2228).
+func TestConsistencyChecksUseBenchTable(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(src), `CheckTableConsistency("`) {
+			t.Errorf("%s: CheckTableConsistency with a literal table, use BenchTable()", f)
 		}
 	}
 }

@@ -51,7 +51,7 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinDump(cluster *cluster.Cluste
 	wg2.Wait()
 	//Wait for replication recovery
 	time.Sleep(2 * time.Second)
-	if cluster.CheckTableConsistency("test.sbtest") != true {
+	if cluster.CheckTableConsistency(cluster.BenchTable()) != true {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Inconsitant slave")
 
 		return false
