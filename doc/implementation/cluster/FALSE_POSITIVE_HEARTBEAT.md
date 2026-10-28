@@ -30,7 +30,7 @@ called by `Refresh` after the slave status read):
 | Engine | Source | Cost |
 | --- | --- | --- |
 | MariaDB | no timestamp exists. `Slave_received_heartbeats` and the IO position (`Gtid_IO_Pos`, `Master_Log_File:Read_Master_Log_Pos`) from `SHOW ALL SLAVES STATUS`, which the tick already reads. The tick that sees either move stamps `ReplicationLastReceivedAt`. The counter going down is a restarted channel, not a receive. | none |
-| MySQL / Percona 5.7+ | `dbhelper.GetReplicationLastReceived`: `performance_schema.replication_connection_status` `LAST_HEARTBEAT_TIMESTAMP` (8.0: and `LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP`), aged with the replica's `NOW(6)`; period from `replication_connection_configuration.HEARTBEAT_INTERVAL` | one query per replica per tick |
+| MySQL / Percona 5.7+ | `dbhelper.GetReplicationLastReceived`: `performance_schema.replication_connection_status` `LAST_HEARTBEAT_TIMESTAMP` (8.0: and `LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP`), aged with the replica's `NOW(6)`; period from `replication_connection_configuration.HEARTBEAT_INTERVAL`. Compared as `UNIX_TIMESTAMP`: MySQL 8 refuses the zero timestamp of a channel that never received in a comparison (error 1525), and `GREATEST` over a zero and a valid TIMESTAMP is not the valid one | one query per replica per tick |
 | MySQL < 5.7, PostgreSQL | none: no last receive, the check never cancels | none |
 
 `SHOW SLAVE '<name>' STATUS` has no heartbeat columns on MariaDB: only `SHOW ALL SLAVES
@@ -81,3 +81,16 @@ Heartbeat Period) through `setClusterSetting`.
 `Slave_heartbeat_period`, so it always read 0. That kept the WARN0050 / enforcement code
 dormant, and made the multi-source move (`cluster_fail.go`) set a moved channel's heartbeat
 period to 0, turning its heartbeats off. The PostgreSQL status queries alias the same name.
+
+## Tests
+
+- Unit: `utils/dbhelper/replication_heartbeat_test.go` (per-engine queries and statements),
+  `cluster/srv_heartbeat_test.go` (tracking, guard, CINF0022, WARN0050, stopped threads).
+- MariaDB 11.8, named channel, on a test cluster: `testFailoverManual` (a live master forced
+  to failed) PASS, cancelled by ERR00028 (received 2.3 s ago, window 8 s); a real failover
+  (`testFailoverSemisyncAutoRejoinFlashback`, busy master stopped) went on with no ERR00028;
+  `force-slave-heartbeat-time` 2 raised WARN0050, `force-slave-heartbeat` set the channel to
+  2 s once (CINF0023).
+- MySQL 5.7.44, 8.0.41, 8.4.13 containers, channel `bench`: the query reads ~0.15 s idle,
+  the event's time after one, and grows after the source stops; the heartbeat statements
+  set the named channel.
