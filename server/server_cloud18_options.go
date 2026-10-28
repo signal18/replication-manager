@@ -172,6 +172,7 @@ func (repman *ReplicationManager) Cloud18ClusterOptions(p *repmanmcp.Principal, 
 			e := map[string]any{"unit": "DBU per database node", "min": 1, "max": cloud18MaxDBU, "default": num(ss, "defaultDbu")}
 			if pool != nil {
 				e["freeInPool"] = math.Round(num(pool, "freeDbu")*100) / 100
+				e["forSaleInPool"] = math.Round(num(pool, "forSaleDbu")*100) / 100
 			}
 			out["dbu"] = e
 		}
@@ -179,6 +180,7 @@ func (repman *ReplicationManager) Cloud18ClusterOptions(p *repmanmcp.Principal, 
 			e := map[string]any{"unit": "APU of the proxies and apps together (each app at least 1)", "min": 1, "max": cloud18MaxAPU, "default": num(ss, "defaultApu")}
 			if pool != nil {
 				e["freeInPool"] = math.Round(num(pool, "freeApu")*100) / 100
+				e["forSaleInPool"] = math.Round(num(pool, "forSaleApu")*100) / 100
 			}
 			out["apu"] = e
 		}

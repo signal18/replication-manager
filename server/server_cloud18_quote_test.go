@@ -61,6 +61,34 @@ func TestQuotePoolVerdictRetakenForTheRequest(t *testing.T) {
 	}
 }
 
+// The quote takes the room the creation check takes: the free pool plus what the clusters
+// for sale give back (#2212). A default cluster, 4 DBU and 4 APU, on a pool 2.4 short.
+func TestQuoteCountsWhatClustersForSaleGiveBack(t *testing.T) {
+	spec, _ := normalizeSpec(Cloud18ClusterSpec{ClusterName: "q", DBCount: 2, DBU: 2, APU: 4})
+	ss := ssFixture(false, "no free DBU on this infrastructure", -2.4, -2.4, 16, 13)
+	ss["poolBlocked"] = true
+	pool := ss["pool"].(map[string]any)
+	pool["forSaleDbu"], pool["forSaleApu"] = 85.0, 12.0
+	q := cloud18QuoteOf(spec, ss)
+	if q["canCreate"] != true || q["fits"] != true || q["roomNote"] == nil {
+		t.Fatalf("the clusters for sale give back 85 DBU / 12 APU, the request fits: %v", q)
+	}
+	if fs := q["forSale"].(map[string]float64); fs["dbu"] != 85 || fs["apu"] != 12 {
+		t.Fatalf("forSale = %v", fs)
+	}
+	// what they give back is not enough: refused, the reason names both
+	pool["forSaleDbu"], pool["forSaleApu"] = 5.0, 4.0
+	q = cloud18QuoteOf(spec, ss)
+	if q["canCreate"] != false || q["fits"] != false || !strings.Contains(q["reason"].(string), "clusters for sale") {
+		t.Fatalf("2.6 DBU of room for 4: %v", q)
+	}
+	// the free pool alone holds it: no note
+	pool["freeDbu"], pool["freeApu"] = 10.0, 10.0
+	if q = cloud18QuoteOf(spec, ss); q["canCreate"] != true || q["roomNote"] != nil {
+		t.Fatalf("free pool enough: %v", q)
+	}
+}
+
 func TestQuoteUnknownPrice(t *testing.T) {
 	ss := ssFixture(true, "", 50, 50, 0, 0)
 	delete(ss, "prices")

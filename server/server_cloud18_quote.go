@@ -7,6 +7,7 @@
 package server
 
 import (
+	"encoding/json"
 	"math"
 	"sort"
 	"strings"
@@ -17,7 +18,8 @@ import (
 )
 
 // cloud18QuoteOf prices a cluster request on one infrastructure from its self-service
-// status (#1963): the units the request needs, whether they fit the free pool, whether a
+// status (#1963): the units the request needs, whether they fit the room (the free pool plus
+// what the clusters for sale give back, InfraUnitPool.RoomDbu, #2212), whether a
 // creation is allowed there, and the MONTHLY PRICE AT FULL CAPACITY, the plan fully used
 // for the whole month, from the partner's own unit prices, and two more monthly prices: the
 // minimal, every database node, proxy, app and the backups back to 1 unit (never under), the
@@ -44,14 +46,26 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 		"request": resolvedRequest(spec, perNode, apu, bku),
 		"units":   map[string]float64{"dbu": dbu, "apu": apu, "bku": bku},
 	}
-	pool, _ := ss["pool"].(map[string]any)
-	fits := pool != nil && num(pool, "freeDbu") >= dbu && num(pool, "freeApu") >= apu
-	if pool == nil || pool["known"] != true {
+	// the room is the creation check's own rule; an older infrastructure publishes no
+	// forSaleDbu/forSaleApu, read as 0: the free pool alone
+	poolMap, hasPool := ss["pool"].(map[string]any)
+	var pool InfraUnitPool
+	if hasPool {
+		if b, err := json.Marshal(poolMap); err == nil {
+			_ = json.Unmarshal(b, &pool)
+		}
+	}
+	fits := hasPool && pool.RoomDbu() >= dbu && pool.RoomApu() >= apu
+	if !hasPool || !pool.Known {
 		fits = true // an unknown pool does not gate (the infrastructure says so)
 	}
 	q["fits"] = fits
-	if pool != nil {
-		q["free"] = map[string]float64{"dbu": round2(num(pool, "freeDbu")), "apu": round2(num(pool, "freeApu"))}
+	if hasPool {
+		q["free"] = map[string]float64{"dbu": round2(pool.FreeDbu), "apu": round2(pool.FreeApu)}
+		q["forSale"] = map[string]float64{"dbu": round2(pool.ForSaleDbu), "apu": round2(pool.ForSaleApu)}
+		if fits && pool.Known && (pool.FreeDbu < dbu || pool.FreeApu < apu) {
+			q["roomNote"] = "the free pool alone is short: the room comes from what the clusters for sale give back above their floors"
+		}
 	}
 	// Creation: the infrastructure's own verdict, except its pool verdict, which was taken for
 	// its DEFAULT cluster: that one is re-taken here for the requested units.
@@ -69,7 +83,7 @@ func cloud18QuoteOf(spec Cloud18ClusterSpec, ss map[string]any) map[string]any {
 	case enabled || blockedByPoolOnly:
 		reason = ""
 		if !fits {
-			reason = "the free pool cannot hold the request"
+			reason = "the free pool, with what the clusters for sale give back, cannot hold the request"
 		} else if rem, ok := ss["remaining"].(float64); ok && rem <= 0 {
 			reason = "per-user limit reached on this infrastructure"
 		}

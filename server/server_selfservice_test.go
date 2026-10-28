@@ -156,6 +156,7 @@ func TestSelfServicePoolGate(t *testing.T) {
 	repman.Conf.ProvOrchestrator = config.ConstOrchestratorOpenSVC
 	repman.Conf.ProvDbDbu = 1
 	repman.Conf.ProvServicePlanApu = 1
+	repman.Conf.Cloud18SelfServiceClustersCanConsumeForSale = true // the flag's default
 	// No capacity known: the pool cannot gate.
 	if err := repman.selfServiceCheck("u@x.io"); err != nil {
 		t.Fatalf("unknown pool must not gate: %v", err)
@@ -196,6 +197,15 @@ func TestSelfServicePoolGate(t *testing.T) {
 	if err := repman.selfServiceCheck("u@x.io"); err != nil {
 		t.Errorf("a cluster for sale above its floor must not block a self-service creation: %v", err)
 	}
+	// cloud18-self-service-clusters-can-consume-for-sale off: the offer gives nothing back (#2212)
+	repman.Conf.Cloud18SelfServiceClustersCanConsumeForSale = false
+	if pool := repman.infraUnitPool(); pool.ForSaleDbu != 0 || pool.FreeDbu != 1 {
+		t.Errorf("switch off: nothing released from the offer: %+v", pool)
+	}
+	if err := repman.selfServiceCheck("u@x.io"); err == nil || !contains(err.Error(), "0.0 releasable from clusters for sale") {
+		t.Errorf("switch off: 1 DBU free must refuse a 2 DBU cluster, got %v", err)
+	}
+	repman.Conf.Cloud18SelfServiceClustersCanConsumeForSale = true
 	// Its APU floor is the plan rules' (Cluster.PlanFloorUnits): phpMyAdmin, a failover app,
 	// keeps 1 APU of a 3 APU app plan, so 2 are released.
 	cl.Apps = []*cluster.App{{Name: "phpmyadmin", AppConfig: &config.AppConfig{ProvAppHATopology: "failover"}}}

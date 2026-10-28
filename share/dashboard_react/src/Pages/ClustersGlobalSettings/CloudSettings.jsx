@@ -704,6 +704,17 @@ Start create an account in https://gitlab.signal18.io
         />
       )
     },
+    {
+      key: 'Self-Service Consumes For Sale',
+      help: h(`**Self-Service Consumes For Sale**\n\nLet a new self-service cluster take the plans your clusters for sale hold above their floors (1 DBU per database node, 1 APU per proxy and per running app instance, a locked plan whole): the offer stays on sale with a lower plan. The Cloud18 quote counts the same room. Off: only the free pool counts, at creation and in the quote.\n\nConfig: \`cloud18-self-service-clusters-can-consume-for-sale\``, 'Self-Service Consumes For Sale'),
+      value: (
+        <RMSwitch
+          confirmTitle='Confirm switch settings for cloud18-self-service-clusters-can-consume-for-sale?'
+          onChange={() => dispatch(switchGlobalSetting({ setting: 'cloud18-self-service-clusters-can-consume-for-sale' }))}
+          isChecked={config?.cloud18SelfServiceClustersCanConsumeForSale}
+        />
+      )
+    },
   ] : []
 
   return (
