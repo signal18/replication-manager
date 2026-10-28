@@ -307,6 +307,13 @@ func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
 	return svc.WaitObjectConfigSettledV3(app.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
 }
 
+// AppRestartAllNodes: no node, ALL or * restarts every instance.
+func AppRestartAllNodes(node string) bool {
+	return node == "" || strings.ToUpper(node) == "ALL" || node == "*"
+}
+
+// OpenSVCRestartAppService restarts an app: on OpenSVC v3, the instance on node when one is
+// given (#2223), else every instance, which the orchestrator restarts one at a time.
 func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
 	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
 		return err
@@ -325,6 +332,16 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 		if rid != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
 		}
+		if !AppRestartAllNodes(node) {
+			// a node given: that instance only (#2223)
+			if err := svc.RestartInstanceV3(node, app.GetServiceName()); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app %s on %s: %s", app.Name, node, err)
+				return err
+			}
+			return nil
+		}
+		// every instance: the orchestrator restarts them one at a time, each after the
+		// prior instance is back up
 		err := svc.RestartServiceV3(cluster.Name, app.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)

@@ -1682,6 +1682,9 @@ definitions:
         type: string
       result:
         type: string
+      skip-reason:
+        description: SkipReason is the target the cluster missed, when Result is SKIP.
+        type: string
     type: object
   cluster.UnitBillingRow:
     properties:
@@ -2938,6 +2941,8 @@ definitions:
       cloud18SelfServiceClusters:
         type: boolean
       cloud18SelfServiceClustersCanBorrow:
+        type: boolean
+      cloud18SelfServiceClustersCanConsumeForSale:
         type: boolean
       cloud18SelfServiceClustersEnabledScript:
         type: string
@@ -8546,8 +8551,9 @@ paths:
         name: appName
         required: true
         type: string
-      - description: Node Name (optional, if not provided, will restart default node).
-          Can use ALL or * to restart on all nodes.
+      - description: 'Node Name (optional). OpenSVC v3: without it, ALL or *, every
+          instance restarts, one at a time by the orchestrator; with it, that instance
+          only. OpenSVC v2: without it, the default node.'
         in: path
         name: node
         type: string

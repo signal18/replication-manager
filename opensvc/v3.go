@@ -1015,6 +1015,17 @@ func (collector *Collector) StopInstanceV3(node, svc string) error {
 	return err
 }
 
+// RestartInstanceV3 restarts the instance of svc on node only (#2223).
+func (collector *Collector) RestartInstanceV3(node, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	_, err := collector.handleInstanceActionV3(node, svcparts[0], svcparts[1], svcparts[2], "restart", nil)
+	return err
+}
+
 func (collector *Collector) RestartServiceV3(cluster, svc string) error {
 	svcparts := strings.SplitN(svc, "/", 3)
 	if len(svcparts) != 3 {

@@ -4697,7 +4697,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Node Name (optional, if not provided, will restart default node). Can use ALL or * to restart on all nodes.",
+                        "description": "Node Name (optional). OpenSVC v3: without it, ALL or *, every instance restarts, one at a time by the orchestrator; with it, that instance only. OpenSVC v2: without it, the default node.",
                         "name": "node",
                         "in": "path"
                     }
@@ -28169,6 +28169,10 @@ const docTemplate = `{
                 },
                 "result": {
                     "type": "string"
+                },
+                "skip-reason": {
+                    "description": "SkipReason is the target the cluster missed, when Result is SKIP.",
+                    "type": "string"
                 }
             }
         },
@@ -29952,6 +29956,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "cloud18SelfServiceClustersCanBorrow": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceClustersCanConsumeForSale": {
                     "type": "boolean"
                 },
                 "cloud18SelfServiceClustersEnabledScript": {
