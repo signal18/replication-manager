@@ -45,7 +45,7 @@ func TestAppDbDefaultsAndTemplateKeys(t *testing.T) {
 	os.WriteFile(localPath, []byte(template), 0o644)
 	cluster := &Cluster{Name: "test-cluster", WorkingDir: workingDir, crcTable: crc64.MakeTable(crc64.ECMA),
 		Conf: &config.Config{WorkingDir: workingDir, Apps: make([]*config.AppConfig, 0)}}
-	if err := cluster.AddSeededApp("erp-backend", "8000", "", "dbapp"); err != nil {
+	if err := cluster.AddSeededApp("erp-backend", "8000", "", "dbapp", false); err != nil {
 		t.Fatalf("AddSeededApp: %v", err)
 	}
 	if len(cluster.Conf.Apps) != 1 {
@@ -69,7 +69,7 @@ func TestAppDbDefaultsAndTemplateKeys(t *testing.T) {
 	sibling := "app-host = \"{{app.name}}\"\napp-port = \"9000\"\nprov-app-docker-img = \"frappe/erpnext:v16\"\n\n[deployment]\n" +
 		"  [[deployment.variables]]\n    name = \"DB_USER\"\n    type = \"env\"\n    value = \"{{apps.#(name==erp-backend).db.user}}\"\n"
 	os.WriteFile(filepath.Join(workingDir, ".templates", "apps", "dbsib.toml"), []byte(sibling), 0o644)
-	if err := cluster.AddSeededApp("erp-worker", "9000", "", "dbsib"); err != nil {
+	if err := cluster.AddSeededApp("erp-worker", "9000", "", "dbsib", false); err != nil {
 		t.Fatalf("AddSeededApp sibling: %v", err)
 	}
 	w := cluster.Conf.Apps[1]
@@ -81,7 +81,7 @@ func TestAppDbDefaultsAndTemplateKeys(t *testing.T) {
 	}
 	// without a database request the keys stay unresolved and the add is refused
 	os.WriteFile(filepath.Join(workingDir, ".templates", "apps", "nodb.toml"), []byte("app-host = \"{{app.name}}\"\napp-port = \"1\"\nprov-app-docker-img = \"x\"\n"), 0o644)
-	if err := cluster.AddSeededApp("plain", "1", "", "nodb"); err != nil {
+	if err := cluster.AddSeededApp("plain", "1", "", "nodb", false); err != nil {
 		t.Fatalf("plain app: %v", err)
 	}
 	if cluster.Conf.Apps[2].AppDbAutoCreate {

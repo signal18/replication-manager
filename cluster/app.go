@@ -32,6 +32,7 @@ const (
 	ErrAppGatewayConflict  = "APPERR005"
 	ErrAppDbProvision      = "APPERR008" // database auto-create refused or failed (#1870)
 	ErrAppPingFailed       = "APPERR009" // app-monitor-mode ping: the ICMP echo to the app host failed (#1919)
+	ErrAppCertificate      = "APPERR010" // app-monitor-mode https-cert: certificate invalid or expiring (#2209)
 	StateAppRunning        = stateAppRunning // exported for the MCP tools
 	appErrFailureThreshold = 3
 )
@@ -159,6 +160,12 @@ func (cluster *Cluster) newAppList() error {
 	return nil
 }
 
+// appGetsDefaultRoute: an app declared from a docker image gets the default https route;
+// one from a template follows its template, a monitor-only one (#2209) gets none. Pure.
+func appGetsDefaultRoute(cnf *config.AppConfig) bool {
+	return cnf == nil || (strings.TrimSpace(cnf.ProvAppTemplate) == "" && !cnf.IsMonitorOnly())
+}
+
 // initializeAppForRegistration performs the shared app bootstrap sequence used by
 // both addAppToList and AddApp.
 func (c *Cluster) initializeAppForRegistration(app *App) error {
@@ -168,8 +175,10 @@ func (c *Cluster) initializeAppForRegistration(app *App) error {
 	app.SetServiceName(c.Name)
 	// A template says what is routed: one without routes is an app that stays on the
 	// cluster network (a database, a cache: never on a gateway port, Stéphane
-	// 2026-10-02). The default https route is for an app declared from a docker image.
-	if app.AppConfig == nil || strings.TrimSpace(app.AppConfig.ProvAppTemplate) == "" {
+	// 2026-10-02). The default https route is for an app declared from a docker image;
+	// a monitor-only app (#2209) runs elsewhere and gets none: a route would be published
+	// on the cluster's gateway and its check would call the cluster address.
+	if appGetsDefaultRoute(app.AppConfig) {
 		if err := app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name); err != nil {
 			return fmt.Errorf("app %s: default route generation failed: %w", app.Name, err)
 		}

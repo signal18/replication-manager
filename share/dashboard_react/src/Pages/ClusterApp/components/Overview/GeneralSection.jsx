@@ -82,7 +82,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
   const [resetImpactForceRefresh, setResetImpactForceRefresh] = useState(false)
   const [resetImpactChanges, setResetImpactChanges] = useState([])
   const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);
-  const monitorModeOptions = useMemo(() => ([{ value: 'port', name: 'Port (TCP connect to app-port)' }, { value: 'ping', name: 'Ping (ICMP echo to the host)' }]), []);
+  const monitorModeOptions = useMemo(() => ([{ value: 'port', name: 'Port (TCP connect to app-port)' }, { value: 'ping', name: 'Ping (ICMP echo to the host)' }, { value: 'http', name: 'HTTP (GET, expected status)' }, { value: 'https', name: 'HTTPS (GET, expected status)' }, { value: 'https-cert', name: 'HTTPS + certificate (valid, not expiring)' }]), []);
   const templateOptions = useMemo(() => {
     const templateList = Array.isArray(dockerTemplates) ? dockerTemplates : []
     return [{ name: 'Select Template', value: '' }, ...templateList.map(item => ({ name: item, value: item }))]
@@ -91,7 +91,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppStartTimeout = '',
     provAppAgents = '', provAppHaTopology = '',
     provAppSizingMode: appSizingMode = '', provAppCpuCores = '', provAppMemory = '', provAppDiskSize = '',
-    appS3Provider = false, appStateful = false, appMonitorMode = '',
+    appS3Provider = false, appStateful = false, appMonitorMode = '', appMonitorPath = '', appMonitorExpectStatus = '', appMonitorCertExpireDays = 0,
     appDbAutoCreate = false, appDbOwned = false, appDbSchema = '', appDbUser = ''
   } = appConfig;
 
@@ -195,6 +195,9 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: newList.join(',') }))
   }, [clusterName, appId, dispatch])
 
+  const onSaveMonitorPath = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-path', value: value })), [clusterName, appId, dispatch])
+  const onSaveMonitorExpectStatus = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-expect-status', value: value })), [clusterName, appId, dispatch])
+  const onSaveMonitorCertExpireDays = useCallback((value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-cert-expire-days', value: value })), [clusterName, appId, dispatch])
   const onMonitorModeChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-monitor-mode', value: value })) }, [clusterName, appId, dispatch])
   const onHATopologyChange = useCallback((value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }, [clusterName, appId, dispatch])
   const onS3ProviderChange = useCallback(() => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-s3-provider', value: appS3Provider ? 'false' : 'true' })) }, [clusterName, appId, appS3Provider, dispatch])
@@ -359,6 +362,46 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
           />
         )
       },
+      ...(['http', 'https', 'https-cert'].includes(appMonitorMode) ? [
+        {
+          key: 'Monitor path',
+          value: (
+            <TextForm
+              value={appMonitorPath}
+              placeholder='/'
+              confirmTitle="Monitor Path Change"
+              confirmBody='Path of the http/https check, called on the app host and port. Change "app-monitor-path" to: '
+              onSave={onSaveMonitorPath}
+            />
+          )
+        },
+        {
+          key: 'Monitor expected status',
+          value: (
+            <TextForm
+              value={appMonitorExpectStatus}
+              placeholder='200'
+              confirmTitle="Monitor Expected Status Change"
+              confirmBody='Accepted status codes of the http/https check, comma separated (200,204). Change "app-monitor-expect-status" to: '
+              onSave={onSaveMonitorExpectStatus}
+            />
+          )
+        },
+      ] : []),
+      ...(appMonitorMode === 'https-cert' ? [
+        {
+          key: 'Certificate warning (days)',
+          value: (
+            <TextForm
+              value={appMonitorCertExpireDays ? String(appMonitorCertExpireDays) : ''}
+              placeholder='14'
+              confirmTitle="Certificate Warning Change"
+              confirmBody='The app goes to warning when its certificate expires within this many days. Change "app-monitor-cert-expire-days" to: '
+              onSave={onSaveMonitorCertExpireDays}
+            />
+          )
+        },
+      ] : []),
       {
         key: 'S3 Provider (storage app)',
         value: (
@@ -563,6 +606,7 @@ const GeneralSection = ({ clusterName, appId, appName, appHost, config, appConfi
     onSaveAppAsTemplate, templateOptions, provAppTemplate, onPreviewTemplate,
     onResetAppFromTemplate, onRefreshAndResetAppFromTemplate,
     agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions, onMonitorModeChange, appMonitorMode, monitorModeOptions,
+    appMonitorPath, appMonitorExpectStatus, onSaveMonitorPath, onSaveMonitorExpectStatus, appMonitorCertExpireDays, onSaveMonitorCertExpireDays,
     appS3Provider, onS3ProviderChange, appStateful, onStatefulChange,
     isUnitMode, isManualMode, isLegacyMode,
     appSizingMode, clusterSizingMode, provAppSizingMode,

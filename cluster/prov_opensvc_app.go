@@ -34,6 +34,9 @@ import (
 // This source code is licensed under the GNU General Public License, version 3.
 
 func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	var opErr error
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
@@ -91,6 +94,9 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) error {
 }
 
 func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + app.GetName())
@@ -149,6 +155,9 @@ func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
 }
 
 func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	if svc.IsV3() {
 		err := cluster.openSVCStartOrRecoverV3(svc, app.GetServiceName())
@@ -299,6 +308,9 @@ func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
 }
 
 func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	if err := ValidateAppRestartRid(rid); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "App restart validation failed: %s", err)
 		return err
@@ -342,6 +354,9 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 }
 
 func (cluster *Cluster) OpenSVCAbortAppService(app *App) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI || !svc.IsV3() {
 		err := ErrOpenSVCAbortNotSupported

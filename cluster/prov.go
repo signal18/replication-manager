@@ -313,7 +313,20 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	return nil
 }
 
+// refuseMonitorOnlyApp: a monitor-only app (#2209, app-monitor-only) runs elsewhere;
+// provision, unprovision and the service actions refuse it instead of failing half-way
+// in the template builder or acting on a service that is not ours.
+func (cluster *Cluster) refuseMonitorOnlyApp(app *App) error {
+	if app != nil && app.AppConfig.IsMonitorOnly() {
+		return fmt.Errorf("app %s is monitor-only (app-monitor-only): it runs elsewhere and has no service here", app.GetId())
+	}
+	return nil
+}
+
 func (cluster *Cluster) InitAppService(app *App) error {
+	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
+		return err
+	}
 	// Serialise errorChan use against other provision/unprovision ops (#1769).
 	cluster.provisioningMutex.Lock()
 	defer cluster.provisioningMutex.Unlock()

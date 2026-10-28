@@ -887,7 +887,10 @@ func (cluster *Cluster) writeTomlAtomically(t *toml.Tree, filePath string) error
 // 	return true, nil
 // }
 
-func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) error {
+// AddSeededApp adds an app from a docker image or a template, or, with monitorOnly, a
+// monitor-only app without either (#2209): the opt-in is explicit, a missing image is
+// never read as monitor-only.
+func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string, monitorOnly bool) error {
 	var newViper *viper.Viper
 	var content []byte
 	var err error
@@ -901,7 +904,10 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 		return errors.New("app host is required")
 	}
 
-	if dockerImg == "" && template == "" {
+	if monitorOnly && (dockerImg != "" || template != "") {
+		return errors.New("a monitor-only app has no docker image nor template")
+	}
+	if !monitorOnly && dockerImg == "" && template == "" {
 		return errors.New("docker image or template is required")
 	}
 
@@ -943,6 +949,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	appcnf := cluster.NewAppConfig(srv, port)
 	appcnf.ProvAppDockerImg = dockerImg
 	appcnf.ProvAppTemplate = template
+	appcnf.AppMonitorOnly = monitorOnly
 	if err := cluster.RunAddMonitorScript(cluster.monitorHookApp(appcnf, nil)); err != nil {
 		return err
 	}
@@ -1081,7 +1088,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 // fits the plan pot. A monitored engine server (PostgreSQL app) reserves through the
 // cluster's DBU plan, not here. Unknown capacity never gates.
 func (cluster *Cluster) appPlanIncreaseAllowed(appcnf *config.AppConfig, app *App) (bool, string) {
-	if cluster.resources == nil || appcnf == nil {
+	if cluster.resources == nil || appcnf == nil || appcnf.IsMonitorOnly() {
 		return true, ""
 	}
 	if app != nil && cluster.engineServerOfApp(app) != nil {
@@ -1395,6 +1402,12 @@ func (cluster *Cluster) RefreshComputePlanAPU() {
 			continue
 		}
 		k := AppKey{Cluster: cluster.Name, App: app.Name, Kind: KindApp}
+		if app.AppConfig.IsMonitorOnly() {
+			// a monitor-only app (#2209) runs elsewhere: nothing reserved here
+			cluster.resources.SetAppPlan(k, nil)
+			cluster.resources.SetStatefulPlan(k, nil)
+			continue
+		}
 		if app.AppConfig != nil && app.AppConfig.AppStateful {
 			// STATEFUL app (app-stateful, e.g. minio): the same declared shape and the same
 			// instance rule, but on the DATABASE profile -> whole DBU, reserved in the DBU
@@ -1520,6 +1533,16 @@ func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
 	return haTopology
 }
 
+// appRefreshTickWait: how long the tick waits for the app refresh after its database
+// and proxy work (#2209): one check timeout and a second of margin. Each app runs in its
+// own goroutine, so a batch whose checks all honour the timeout ends within it.
+func appRefreshTickWait(timeoutSeconds int) time.Duration {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 5
+	}
+	return time.Duration(timeoutSeconds+1) * time.Second
+}
+
 // appRefreshStaleThreshold picks the staleness/stuck threshold for
 // APPERR007: the largest of three lower bounds.
 //
@@ -1589,13 +1612,16 @@ func appRefreshStaleness(inProgress bool, lastStart, lastEnd, now time.Time, thr
 
 // maybeRefreshAppsAsync runs one app-refresh batch, unless a previous batch
 // is still in flight (single-flight, guarded by cluster.appRefreshInProgress).
-// It is launched via trackTickGoroutine as fire-and-forget background work,
-// deliberately kept off the tick's waited-on critical path: topology
-// discovery and failover detection must not stall behind slow or
-// unresponsive app backends. Per-app results are aggregated locally and
-// published to cluster.publishedAppErrStates in a single atomic Store once
-// the whole batch completes, so EmitAppErrors() never observes a
-// half-old/half-new mix of app error state.
+// The tick launches it next to the database and proxy work and waits for it
+// at the end, at most appRefreshTickWait (#2209): topology discovery and
+// failover detection never wait on it, and an app whose refresh outlives the
+// wait keeps this guard closed until it returns instead of piling up batches.
+// Each app is refreshed in its own goroutine, so the batch opens one check per
+// configured app at once: bounded by the app list, never by the checks' speed.
+// Per-app results are aggregated locally and published to
+// cluster.publishedAppErrStates in a single atomic Store once the whole batch
+// completes, so EmitAppErrors() never observes a half-old/half-new mix of app
+// error state.
 func (cluster *Cluster) maybeRefreshAppsAsync() {
 	if !cluster.appRefreshInProgress.CompareAndSwap(false, true) {
 		cluster.Lock()
@@ -1635,12 +1661,6 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 	cluster.Unlock()
 
 	var workerWg sync.WaitGroup
-	appChan := make(chan *App)
-
-	workerCount := cluster.Conf.AppRefreshConcurrency
-	if workerCount <= 0 {
-		workerCount = 1
-	}
 
 	// Keyed by state.BuildStateKey(errKey, ServerUrl), not the bare error
 	// key: multiple apps can raise the same error code (e.g. APPERR002), and
@@ -1649,32 +1669,29 @@ func (cluster *Cluster) maybeRefreshAppsAsync() {
 	var aggMu sync.Mutex
 	aggregated := make(map[string]state.State)
 
-	for range workerCount {
-		workerWg.Add(1)
-		go func() {
-			defer workerWg.Done()
-			for app := range appChan {
-				app.Refresh()
-				app.Lock()
-				for key, st := range app.ErrState {
-					if st.ErrKey == "" {
-						st.ErrKey = key
-					}
-					aggMu.Lock()
-					aggregated[state.BuildStateKey(key, st.ServerUrl)] = st
-					aggMu.Unlock()
-				}
-				app.Unlock()
-			}
-		}()
-	}
-
+	// One goroutine per app (#2209): every check is bounded by its own timeout, so a
+	// hanging app costs that timeout and delays no other app (a pool of N workers let two
+	// hanging apps hold back every other check of the batch).
 	for _, app := range apps {
-		if app != nil {
-			appChan <- app
+		if app == nil {
+			continue
 		}
+		workerWg.Add(1)
+		go func(app *App) {
+			defer workerWg.Done()
+			app.Refresh()
+			app.Lock()
+			for key, st := range app.ErrState {
+				if st.ErrKey == "" {
+					st.ErrKey = key
+				}
+				aggMu.Lock()
+				aggregated[state.BuildStateKey(key, st.ServerUrl)] = st
+				aggMu.Unlock()
+			}
+			app.Unlock()
+		}(app)
 	}
-	close(appChan)
 
 	workerWg.Wait()
 

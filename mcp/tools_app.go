@@ -100,7 +100,7 @@ func (s *MCPServer) registerAppTools() {
 				name = short + "1"
 			}
 			port := strings.TrimSpace(req.GetString("port", "")) // "" = the template's app-port
-			if err := cl.AddSeededApp(name, port, "", template); err != nil {
+			if err := cl.AddSeededApp(name, port, "", template, false); err != nil {
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			a := appByNameOrID(cl, name)
