@@ -10,42 +10,62 @@ import (
 	"time"
 )
 
-// Copies (#2227): every enabled credential store entry that is not the primary takes a copy
-// of each secret of the cluster. A copy is never read back, never the reference, and never
-// blocks the primary, a provisioning or the monitor (F2): the chain hands the plain values to
-// a bounded queue (T18) after its lock, a worker writes them with a timeout per write.
+// Versioned stores (#2227, CREDENTIAL_STORES.md "Versioned stores"): every write of a secret
+// of the cluster is a version in every active store. The vault entries are written by a
+// worker from a bounded queue (T18) filled after the chain's lock, with a timeout per write:
+// a write never blocks the chain, a provisioning or the monitor (F2).
 
-// The kinds of object a secret of the cluster belongs to, the first level of a copy's layout:
-// <space>/<kind>/<object name>/<key>.
+// The kinds of object a secret of the cluster belongs to, the first level of its folder:
+// <space>/<cluster>/<kind>/<object name>/<key>.
 const (
 	KindDatabases = "databases"
 	KindProxies   = "proxies"
 	KindApps      = "apps"
+	KindArchives  = "archives"
 )
 
-// StoreItem is one secret to copy to an entry: Value at <Path>/<Key>, Path being
-// <space>/<kind>/<object name>. Value is plain: it never reaches a log (F10).
-type StoreItem struct {
-	Entry string
-	Path  string
-	Key   string
+// Version is a value of a secret and when, by which instance, it was written: the newest wins
+// across the stores (the event log's LWW rule: the time, then the instance id).
+type Version struct {
 	Value string
+	At    time.Time
+	By    int
 }
 
-// SecretPath is the folder of an object's secrets in a copy: <space>/<kind>/<object name>.
+// Newer: v wins over o.
+func (v Version) Newer(o Version) bool {
+	if !v.At.Equal(o.At) {
+		return v.At.After(o.At)
+	}
+	return v.By > o.By
+}
+
+// StoreItem is one version of a secret for an entry: at <Path>/<Key>, Path being
+// <space>/<cluster>/<kind>/<object name>. Compare: written only when the store holds another
+// value (a full pass). The value is plain: it never reaches a log (F10).
+type StoreItem struct {
+	Entry   string
+	Path    string
+	Key     string
+	Version Version
+	Compare bool
+}
+
+// SecretPath is the folder of an object's secrets: <space>/<cluster>/<kind>/<object name>
+// (space being config.SecretSpace's).
 func SecretPath(space, kind, object string) string {
 	return space + "/" + kind + "/" + object
 }
 
 func (it StoreItem) id() string { return it.Entry + "\x00" + it.Path + "\x00" + it.Key }
 
-// Copier is a store that takes copies: it writes items, each within timeout, and returns
-// those not written and the first error.
+// StoreWriter is a store the worker writes: items each within timeout; it returns those not
+// written and the first error.
 type StoreWriter interface {
 	WriteAll(ctx context.Context, items []StoreItem, timeout Timeout) ([]StoreItem, error)
 }
 
-// Timeout is the time a copy's sign-in and each of its writes may take.
+// Timeout is the time a store's sign-in and each of its writes may take.
 type Timeout time.Duration
 
 func (t Timeout) context(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -57,12 +77,12 @@ func (t Timeout) context(ctx context.Context) (context.Context, context.CancelFu
 
 // Defaults when the settings are unset or <= 0: never unbounded, never without a timeout.
 const (
-	DefaultStoreQueueLimit = 1000
-	DefaultStoreWriteTimeout    = 10 * time.Second
+	DefaultStoreQueueLimit   = 1000
+	DefaultStoreWriteTimeout = 10 * time.Second
 )
 
-// StoreQueue holds the copies waiting for the worker: the latest value of each secret of each
-// entry wins, at most limit secrets; once full the oldest is dropped, and counted (T18).
+// StoreQueue holds the versions waiting for the worker: the latest value of each secret of
+// each entry wins, at most limit secrets; once full the oldest is dropped, and counted (T18).
 type StoreQueue struct {
 	mu      sync.Mutex
 	limit   func() int
@@ -108,8 +128,9 @@ func (q *StoreQueue) Requeue(items []StoreItem) {
 // push: call it under the lock.
 func (q *StoreQueue) push(it StoreItem, keepNewer bool) {
 	id := it.id()
-	if _, queued := q.items[id]; queued {
-		if !keepNewer {
+	if cur, queued := q.items[id]; queued {
+		// the latest version wins; a requeued failure never replaces what was queued since
+		if !keepNewer && !cur.Version.Newer(it.Version) {
 			q.items[id] = it
 		}
 		return

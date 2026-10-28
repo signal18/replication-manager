@@ -49,7 +49,8 @@ func (cluster *Cluster) CanRotatePasswords() error {
 		return errors.New("databases are down (or one of them)")
 	}
 	// outside Vault's database engine, repman changes the password on every replica itself
-	vaultEngine := cluster.Conf.IsVaultUsed() && cluster.Conf.VaultMode == VaultDbEngine
+	_, engineEntry := cluster.vaultEngineEntry()
+	vaultEngine := engineEntry || cluster.Conf.IsVaultUsed() && cluster.Conf.VaultMode == VaultDbEngine
 	if !vaultEngine && len(cluster.slaves) > 0 && !cluster.slaves.HasAllSlavesRunning() {
 		return errors.New("replication is not running on every replica")
 	}
@@ -63,8 +64,10 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	if !cluster.Conf.ConfRewrite {
 		return errors.New("monitoring-save-config is off: the new passwords cannot be saved")
 	}
-	if !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
-		return errors.New("monitoring-secret-versioning is off: the new passwords would live only in memory and a restart would lose access to the servers; turn it on or use Vault")
+	// an active store keeps the versions (#2227): the local file with versioning on, or a
+	// vault entry
+	if !cluster.activeStoreKeepsVersions() {
+		return errors.New("no credential store keeps versions: monitoring-secret-versioning is off and no vault entry (secret-kv) is enabled, the new passwords would live only in memory and a restart would lose access to the servers; turn versioning on or enable a vault entry")
 	}
 	// the credential chain must take the new values (#2075): a credential pinned in a config
 	// file is refused, the file would win at the next restart. Lifted when a versioned store
@@ -154,6 +157,9 @@ func (cluster *Cluster) RotatePasswords() error {
 	if err := cluster.CanRotatePasswords(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused: %s", err)
 		return err
+	}
+	if e, ok := cluster.vaultEngineEntry(); ok {
+		return cluster.rotateWithVaultEngine(e)
 	}
 	if cluster.Conf.IsVaultUsed() {
 

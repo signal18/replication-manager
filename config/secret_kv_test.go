@@ -31,17 +31,17 @@ func secretKvTestConf() *Config {
 	}
 }
 
-// #2227: no Vault, no entry: the config stays the primary
+// #2227: no Vault, no entry
 func TestSecretKvNoMigrationWithoutVault(t *testing.T) {
 	conf := secretKvTestConf()
 	conf.MigrateSecretKvs()
-	if len(conf.SecretKvs) != 0 || conf.SecretKvName != "" || conf.IsVaultUsed() {
-		t.Fatalf("entries %+v primary %q", conf.SecretKvs, conf.SecretKvName)
+	if len(conf.SecretKvs) != 0 || conf.IsVaultUsed() {
+		t.Fatalf("entries %+v", conf.SecretKvs)
 	}
 }
 
-// #2227: a cluster using Vault gets vault-default from its vault-* keys, the primary, the
-// secret encrypted, and the runtime keeps using Vault with the same settings
+// #2227: a cluster using Vault gets vault-default from its vault-* keys, enabled, the secret
+// encrypted; the flat Vault fields go back to their defaults: Vault is an entry now
 func TestSecretKvMigrationFromVaultKeys(t *testing.T) {
 	conf := secretKvTestConf()
 	conf.VaultServerAddr = "https://vault.example:8200"
@@ -50,8 +50,8 @@ func TestSecretKvMigrationFromVaultKeys(t *testing.T) {
 	conf.VaultSecretId = "s3cr3t-id"
 	conf.MigrateSecretKvs()
 
-	if len(conf.SecretKvs) != 1 || conf.SecretKvName != ConstSecretKvVaultDefault {
-		t.Fatalf("entries %+v primary %q", conf.SecretKvs, conf.SecretKvName)
+	if len(conf.SecretKvs) != 1 {
+		t.Fatalf("entries %+v", conf.SecretKvs)
 	}
 	e := conf.SecretKvs[0]
 	if e.Name != ConstSecretKvVaultDefault || e.Plugin != ConstSecretKvPluginVault || !e.Enabled {
@@ -67,37 +67,33 @@ func TestSecretKvMigrationFromVaultKeys(t *testing.T) {
 	if !strings.HasPrefix(sid, "hash_") || conf.SecretKvSetting(e, "secret-id") != "s3cr3t-id" {
 		t.Fatalf("secret-id held %q", sid)
 	}
-	if !conf.IsVaultUsed() || conf.VaultServerAddr != "https://vault.example:8200" || conf.VaultMount != "secret" || conf.VaultRoleId != "role-1" {
-		t.Fatalf("runtime changed: %q %q %q", conf.VaultServerAddr, conf.VaultMount, conf.VaultRoleId)
-	}
-	if conf.GetDecryptedPassword("vault-secret-id", conf.VaultSecretId) != "s3cr3t-id" {
-		t.Fatal("runtime secret-id lost")
+	if conf.IsVaultUsed() || conf.VaultMount != "kv" || conf.VaultRoleId != "" || conf.VaultSecretId != "" {
+		t.Fatalf("flat Vault fields kept: %q %q %q", conf.VaultServerAddr, conf.VaultMount, conf.VaultRoleId)
 	}
 	if !conf.SecretKvHoldsLegacyKey("vault-server-addr") || !conf.SecretKvHoldsLegacyKey("vault-secret-id") {
 		t.Fatal("the save would keep the flat vault keys")
 	}
-	if len(conf.SecretKvCopies()) != 0 {
-		t.Fatal("the primary is a copy")
+	if a := conf.SecretKvActive(); len(a) != 1 || a[0].Name != ConstSecretKvVaultDefault {
+		t.Fatalf("active %+v", a)
+	}
+	// a second load (the saved list) leaves it as it is
+	conf.MigrateSecretKvs()
+	if len(conf.SecretKvs) != 1 || conf.SecretKvs[0].Settings["address"] != "https://vault.example:8200" {
+		t.Fatalf("second load %+v", conf.SecretKvs)
 	}
 }
 
-// #2227: the primary back to the config: the Vault* fields go to their defaults, vault-default
-// becomes a copy
-func TestSecretKvPrimaryToConfig(t *testing.T) {
+// #2227: a database engine Vault is migrated too, its mode kept
+func TestSecretKvMigrationDatabaseEngine(t *testing.T) {
 	conf := secretKvTestConf()
 	conf.VaultServerAddr = "https://vault.example:8200"
+	conf.VaultMode = VaultDbEngine
 	conf.MigrateSecretKvs()
-	if err := conf.SetSecretKvName(""); err != nil {
-		t.Fatal(err)
+	if len(conf.SecretKvs) != 1 || conf.SecretKvs[0].Settings["mode"] != VaultDbEngine {
+		t.Fatalf("entries %+v", conf.SecretKvs)
 	}
-	if conf.IsVaultUsed() {
-		t.Fatalf("Vault still used: %q", conf.VaultServerAddr)
-	}
-	if c := conf.SecretKvCopies(); len(c) != 1 || c[0].Name != ConstSecretKvVaultDefault {
-		t.Fatalf("copies %+v", c)
-	}
-	if err := conf.SetSecretKvName("nope"); err == nil {
-		t.Fatal("unknown entry accepted as primary")
+	if conf.IsVaultUsed() || conf.VaultMode != VaultConfigStoreV2 {
+		t.Fatalf("flat fields %q %q", conf.VaultServerAddr, conf.VaultMode)
 	}
 }
 
@@ -105,12 +101,24 @@ func TestSecretKvPrimaryToConfig(t *testing.T) {
 func TestSecretKvPinnedKeyWins(t *testing.T) {
 	conf := secretKvTestConf()
 	conf.SecretKvs = []SecretKvConfig{{Name: ConstSecretKvVaultDefault, Plugin: ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{"address": "https://old:8200"}}}
-	conf.SecretKvName = ConstSecretKvVaultDefault
 	conf.ImmuableFlagMap["vault-server-addr"] = "https://new:8200"
 	conf.VaultServerAddr = "https://new:8200"
 	conf.MigrateSecretKvs()
-	if conf.SecretKvs[0].Settings["address"] != "https://new:8200" || conf.VaultServerAddr != "https://new:8200" {
+	if conf.SecretKvs[0].Settings["address"] != "https://new:8200" || conf.IsVaultUsed() {
 		t.Fatalf("entry %+v runtime %q", conf.SecretKvs[0].Settings, conf.VaultServerAddr)
+	}
+}
+
+// #2227: a login injected after the load (the back-office) goes into vault-default
+func TestSecretKvSyncInjectedLogin(t *testing.T) {
+	conf := secretKvTestConf()
+	conf.VaultServerAddr = "https://vault.example:8200"
+	conf.MigrateSecretKvs()
+	conf.VaultRoleId, conf.VaultSecretId = "role-2", "id-2"
+	conf.SyncSecretKvFromConfig()
+	e := conf.SecretKvs[0]
+	if e.Settings["role-id"] != "role-2" || conf.SecretKvSetting(e, "secret-id") != "id-2" || conf.VaultRoleId != "" {
+		t.Fatalf("entry %+v field %q", e.Settings, conf.VaultRoleId)
 	}
 }
 
@@ -121,7 +129,7 @@ func TestSecretKvsTomlRoundTrip(t *testing.T) {
 	conf.VaultServerAddr = "https://vault.example:8200"
 	conf.VaultSecretId = "s3cr3t-id"
 	conf.MigrateSecretKvs()
-	conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: "cloud18", Plugin: ConstSecretKvPluginVault, Enabled: true, Settings: map[string]interface{}{"address": "https://c18:8200", "auth": "jwt"}})
+	conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: "cloud18", Plugin: ConstSecretKvPluginVault, Enabled: false, Settings: map[string]interface{}{"address": "https://c18:8200", "auth": "jwt"}})
 
 	out, err := conf.SecretKvsToml("saved-c1")
 	if err != nil {
@@ -132,7 +140,7 @@ func TestSecretKvsTomlRoundTrip(t *testing.T) {
 	}
 	v := viper.New()
 	v.SetConfigType("toml")
-	if err := v.ReadConfig(strings.NewReader("[saved-c1]\ntitle = \"c1\"\nsecret-kv-name = \"vault-default\"\n" + out)); err != nil {
+	if err := v.ReadConfig(strings.NewReader("[saved-c1]\ntitle = \"c1\"\n" + out)); err != nil {
 		t.Fatalf("%s\n%s", err, out)
 	}
 	var back Config
@@ -140,8 +148,8 @@ func TestSecretKvsTomlRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	back.SecretKey = conf.SecretKey
-	if len(back.SecretKvs) != 2 || back.SecretKvName != ConstSecretKvVaultDefault {
-		t.Fatalf("read back %+v primary %q from\n%s", back.SecretKvs, back.SecretKvName, out)
+	if len(back.SecretKvs) != 2 {
+		t.Fatalf("read back %+v from\n%s", back.SecretKvs, out)
 	}
 	e := back.SecretKvs[0]
 	if e.Name != ConstSecretKvVaultDefault || !e.Enabled || e.Settings["address"] != "https://vault.example:8200" || back.SecretKvSetting(e, "secret-id") != "s3cr3t-id" {
@@ -150,8 +158,11 @@ func TestSecretKvsTomlRoundTrip(t *testing.T) {
 	if _, ok := e.Settings["name"]; ok {
 		t.Fatalf("name kept as a setting: %+v", e.Settings)
 	}
-	if back.SecretKvs[1].Name != "cloud18" || back.SecretKvs[1].Settings["auth"] != "jwt" {
+	if back.SecretKvs[1].Name != "cloud18" || back.SecretKvs[1].Enabled || back.SecretKvs[1].Settings["auth"] != "jwt" {
 		t.Fatalf("cloud18 %+v", back.SecretKvs[1])
+	}
+	if a := back.SecretKvActive(); len(a) != 1 {
+		t.Fatalf("active %+v", a)
 	}
 	js, _ := json.Marshal(back.SecretKvs[0])
 	if strings.Contains(string(js), "hash_") || !strings.Contains(string(js), `"secretsSet":["secret-id"]`) {
@@ -188,8 +199,8 @@ func TestSecretKvSetSettingFromEvent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if c := conf.SecretKvCopies(); len(c) != 1 || c[0].Settings["address"] != "https://c18:8200" {
-		t.Fatalf("copies %+v", c)
+	if a := conf.SecretKvActive(); len(a) != 1 || a[0].Settings["address"] != "https://c18:8200" {
+		t.Fatalf("active %+v", a)
 	}
 	if err := conf.SetSecretKvSetting("cloud18", "nonsense", "1", false); err == nil {
 		t.Fatal("unknown setting accepted")
@@ -197,7 +208,7 @@ func TestSecretKvSetSettingFromEvent(t *testing.T) {
 	if err := conf.SetSecretKvSetting("other", "plugin", "secret_kv-localstore", false); err == nil {
 		t.Fatal("a non-Vault entry accepted")
 	}
-	if err := conf.SetSecretKvSetting("cloud18", "plugin", "", true); err != nil || len(conf.SecretKvCopies()) != 0 {
+	if err := conf.SetSecretKvSetting("cloud18", "plugin", "", true); err != nil || len(conf.SecretKvActive()) != 0 {
 		t.Fatalf("unset plugin: %v %+v", err, conf.SecretKvs)
 	}
 	if !IsSecretKvInstanceLocalKey("secret-kv.vault-default.secret-id") || IsSecretKvInstanceLocalKey("secret-kv.vault-default.address") {
@@ -205,14 +216,22 @@ func TestSecretKvSetSettingFromEvent(t *testing.T) {
 	}
 }
 
-// #2227: the cluster's space in a shared store
-func TestClusterSpace(t *testing.T) {
-	conf := &Config{}
-	if s := conf.ClusterSpace("c1"); s != "c1" {
-		t.Fatalf("space %q", s)
+// #2227: the cluster's folder: the Cloud18 URI, else the pair the arbitrator knows (never the
+// secret itself, never a per-instance id), else the cluster alone
+func TestSecretSpace(t *testing.T) {
+	conf := &Config{Cloud18: true, Cloud18Domain: "d", Cloud18SubDomain: "s", Cloud18SubDomainZone: "fr", ArbitrationSasSecret: "pairsecret"}
+	if s := conf.SecretSpace("c1"); s != "d/s-fr/c1" {
+		t.Fatalf("cloud18 space %q", s)
 	}
-	conf = &Config{Cloud18: true, Cloud18Domain: "d", Cloud18SubDomain: "s", Cloud18SubDomainZone: "fr"}
-	if s := conf.ClusterSpace("c1"); s != "d/s-fr/c1" {
-		t.Fatalf("space %q", s)
+	a := &Config{ArbitrationSasSecret: "pairsecret", ArbitrationSasUniqueId: 1}
+	b := &Config{ArbitrationSasSecret: "pairsecret", ArbitrationSasUniqueId: 2}
+	if a.SecretSpace("c1") != b.SecretSpace("c1") || !strings.HasPrefix(a.SecretSpace("c1"), "pair-") || strings.Contains(a.SecretSpace("c1"), "pairsecret") {
+		t.Fatalf("pair spaces %q %q", a.SecretSpace("c1"), b.SecretSpace("c1"))
+	}
+	if s := (&Config{}).SecretSpace("c1"); s != "c1" {
+		t.Fatalf("lone space %q", s)
+	}
+	if s := (&Config{}).ClusterSpace("c1"); s != "c1" {
+		t.Fatalf("bucket space %q", s)
 	}
 }

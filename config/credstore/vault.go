@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	vault "github.com/hashicorp/vault/api"
 	auth "github.com/hashicorp/vault/api/auth/approle"
@@ -33,6 +35,9 @@ type VaultSettings struct {
 	SecretID string
 	// JWT is the identity token of a jwt sign-in: the instance's Cloud18 identity (#2159)
 	JWT func() (string, error)
+	// MaxVersions is the versions a secret keeps (KV v2 max-versions), set at its first write:
+	// monitoring-secret-versioning-keep-last. 0 leaves the mount's default.
+	MaxVersions int
 }
 
 // cloud18JWT is the instance's Cloud18 identity token.
@@ -57,16 +62,32 @@ func VaultSettingsFromConfig(conf *config.Config) VaultSettings {
 	}
 }
 
-// VaultSettingsFromEntry are the settings of a secret_kv-vault entry.
+// VaultSettingsFromEntry are the settings of a secret_kv-vault entry; unset, the mode is KV v2,
+// the mount kv, the sign-in approle, as the vault-* keys default.
 func VaultSettingsFromEntry(conf *config.Config, e config.SecretKvConfig) VaultSettings {
+	s := vaultSettingsFromEntry(conf, e)
+	if s.Mode == "" {
+		s.Mode = config.VaultConfigStoreV2
+	}
+	if s.Mount == "" {
+		s.Mount = "kv"
+	}
+	if s.Auth == "" {
+		s.Auth = config.ConstVaultAuthAppRole
+	}
+	return s
+}
+
+func vaultSettingsFromEntry(conf *config.Config, e config.SecretKvConfig) VaultSettings {
 	return VaultSettings{
-		Address:  conf.SecretKvSetting(e, config.ConstSecretKvVaultAddress),
-		Mount:    conf.SecretKvSetting(e, config.ConstSecretKvVaultMount),
-		Mode:     conf.SecretKvSetting(e, config.ConstSecretKvVaultMode),
-		Auth:     conf.SecretKvSetting(e, config.ConstSecretKvVaultAuth),
-		RoleID:   conf.SecretKvSetting(e, config.ConstSecretKvVaultRoleID),
-		SecretID: conf.SecretKvSetting(e, config.ConstSecretKvVaultSecretID),
-		JWT:      cloud18JWT(conf),
+		Address:     conf.SecretKvSetting(e, config.ConstSecretKvVaultAddress),
+		Mount:       conf.SecretKvSetting(e, config.ConstSecretKvVaultMount),
+		Mode:        conf.SecretKvSetting(e, config.ConstSecretKvVaultMode),
+		Auth:        conf.SecretKvSetting(e, config.ConstSecretKvVaultAuth),
+		RoleID:      conf.SecretKvSetting(e, config.ConstSecretKvVaultRoleID),
+		SecretID:    conf.SecretKvSetting(e, config.ConstSecretKvVaultSecretID),
+		JWT:         cloud18JWT(conf),
+		MaxVersions: conf.MonitoringSecretVersioningKeepLast,
 	}
 }
 
@@ -290,16 +311,88 @@ func (v *VaultKV) Set(key, value string) error {
 	return v.Patch(ctx, client, path, map[string]interface{}{key: value})
 }
 
-// vaultSecretPath is where a copy of key goes: <space>/<path>/<key>, path being
-// <kind>/<object name>.
+// vaultSecretPath is where a version of key goes: <path>/<key>, path being
+// <space>/<cluster>/<kind>/<object name>.
 func vaultSecretPath(item StoreItem) string {
 	return strings.Trim(item.Path, "/") + "/" + item.Key
 }
 
-// WriteAll writes the copies, signing in once; each write (and the sign-in) within timeout.
-// A copy is a whole secret, one field named after the key, at <path>/<key>. It returns the
-// items not written and the first error.
+// The fields a version carries next to the value, the field named after the key: when and by
+// which instance it was written, for the newest-wins read.
+const (
+	vaultFieldWrittenAt = "written-at"
+	vaultFieldWrittenBy = "written-by"
+)
+
+// ReadVersion is the current version of key at path (KV v2); found false when the store holds
+// none.
+func (v *VaultKV) ReadVersion(ctx context.Context, client *vault.Client, path, key string) (Version, bool, error) {
+	secret, err := client.KVv2(v.settings.Mount).Get(ctx, path)
+	if errors.Is(err, vault.ErrSecretNotFound) {
+		return Version{}, false, nil
+	}
+	if err != nil {
+		return Version{}, false, err
+	}
+	value, ok := secret.Data[key].(string)
+	if !ok {
+		return Version{}, false, nil
+	}
+	ver := Version{Value: value}
+	if at, ok := secret.Data[vaultFieldWrittenAt].(string); ok {
+		ver.At, _ = time.Parse(time.RFC3339Nano, at)
+	}
+	if by, ok := secret.Data[vaultFieldWrittenBy].(string); ok {
+		ver.By, _ = strconv.Atoi(by)
+	}
+	if ver.At.IsZero() && secret.VersionMetadata != nil {
+		ver.At = secret.VersionMetadata.CreatedTime
+	}
+	return ver, true, nil
+}
+
+// ReadItem is the current version an item's path holds in this store: KV v2 at <path>/<key>,
+// or for the database engine the static role named after the credential's user.
+func (v *VaultKV) ReadItem(ctx context.Context, client *vault.Client, it StoreItem, user string) (Version, bool, error) {
+	if v.Generates() {
+		value, at, err := v.StaticCreds(ctx, client, user)
+		if err != nil {
+			return Version{}, false, err
+		}
+		return Version{Value: value, At: at}, true, nil
+	}
+	return v.ReadVersion(ctx, client, vaultSecretPath(it), it.Key)
+}
+
+// StaticCreds is the database engine's current "user:password" of the static role user, and
+// when Vault last rotated it.
+func (v *VaultKV) StaticCreds(ctx context.Context, client *vault.Client, user string) (string, time.Time, error) {
+	secret, err := client.Logical().ReadWithContext(ctx, "database/static-creds/"+user)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	if secret == nil || secret.Data == nil {
+		return "", time.Time{}, fmt.Errorf("vault database engine: no static role %s", user)
+	}
+	u, _ := secret.Data["username"].(string)
+	p, _ := secret.Data["password"].(string)
+	var at time.Time
+	if s, ok := secret.Data["last_vault_rotation"].(string); ok {
+		at, _ = time.Parse(time.RFC3339Nano, s)
+	}
+	return u + ":" + p, at, nil
+}
+
+// WriteAll writes the versions, signing in once; each write (and the sign-in) within timeout.
+// A version is a whole KV v2 secret at <path>/<key>: the value in the field named after the
+// key, with written-at and written-by; a secret written the first time gets max-versions.
+// A compare item is written only when the store holds another value. The database engine
+// takes no write: it makes its passwords. It returns the items not written and the first
+// error.
 func (v *VaultKV) WriteAll(ctx context.Context, items []StoreItem, timeout Timeout) ([]StoreItem, error) {
+	if v.Generates() {
+		return nil, nil
+	}
 	lctx, cancel := timeout.context(ctx)
 	client, err := v.Connect(lctx)
 	cancel()
@@ -310,7 +403,7 @@ func (v *VaultKV) WriteAll(ctx context.Context, items []StoreItem, timeout Timeo
 	var first error
 	for _, it := range items {
 		wctx, cancel := timeout.context(ctx)
-		err := v.Put(wctx, client, vaultSecretPath(it), map[string]interface{}{it.Key: it.Value})
+		err := v.writeItem(wctx, client, it)
 		cancel()
 		if err != nil {
 			failed = append(failed, it)
@@ -320,4 +413,33 @@ func (v *VaultKV) WriteAll(ctx context.Context, items []StoreItem, timeout Timeo
 		}
 	}
 	return failed, first
+}
+
+func (v *VaultKV) writeItem(ctx context.Context, client *vault.Client, it StoreItem) error {
+	path := vaultSecretPath(it)
+	if it.Compare {
+		cur, found, err := v.ReadVersion(ctx, client, path, it.Key)
+		if err != nil {
+			return err
+		}
+		if found && cur.Value == it.Version.Value {
+			return nil
+		}
+	}
+	at := it.Version.At
+	if at.IsZero() {
+		at = time.Now()
+	}
+	meta, err := client.KVv2(v.settings.Mount).Put(ctx, path, map[string]interface{}{
+		it.Key:              it.Version.Value,
+		vaultFieldWrittenAt: at.UTC().Format(time.RFC3339Nano),
+		vaultFieldWrittenBy: strconv.Itoa(it.Version.By),
+	})
+	if err != nil {
+		return err
+	}
+	if v.settings.MaxVersions > 0 && meta != nil && meta.VersionMetadata != nil && meta.VersionMetadata.Version == 1 {
+		return client.KVv2(v.settings.Mount).PutMetadata(ctx, path, vault.KVMetadataPutInput{MaxVersions: v.settings.MaxVersions})
+	}
+	return nil
 }

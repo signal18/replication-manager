@@ -5,6 +5,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -23,10 +25,10 @@ import (
 // primary: every enabled store is versioned and gets every version of every secret, at a path
 // repman computes (<mount>/<space>/databases/<server>/<key>), never typed.
 //
-// The Vault settings of a cluster (vault-server-addr and the vault-* keys, KV v2 mode) are
-// migrated at load into the entry vault-default, enabled, and the Vault* fields go back to
-// their defaults: a cluster no longer declares Vault by a bare path in a credential. A
-// database_engine Vault (Vault makes the passwords) is left as it was, not migrated.
+// The Vault settings of a cluster (vault-server-addr and the vault-* keys, database_engine
+// mode included) are migrated at load into the entry vault-default, enabled, and the Vault*
+// fields go back to their defaults: a cluster no longer declares Vault by a bare path in a
+// credential (a path left in the config is read once as the seed, cluster_secret_kv.go).
 
 // The secret_kv plugins: two. secret_kv-config is built in and always there: the config
 // files and the versioned local file (secret_store.json) as one store, holding every secret
@@ -53,6 +55,7 @@ type SecretKvPluginManifest struct {
 const (
 	ConstSecretKvVaultAddress  = "address"
 	ConstSecretKvVaultMount    = "mount"
+	ConstSecretKvVaultMode     = "mode" // config_store_v2 (KV v2), database_engine (Vault makes the passwords)
 	ConstSecretKvVaultAuth     = "auth"
 	ConstSecretKvVaultRoleID   = "role-id"
 	ConstSecretKvVaultSecretID = "secret-id"
@@ -72,10 +75,11 @@ var secretKvManifests = map[string]SecretKvPluginManifest{
 	},
 	ConstSecretKvPluginVault: {
 		Name:        ConstSecretKvPluginVault,
-		Description: "A Vault KV v2: the user's own, or the Cloud18 vault; every version of every secret",
+		Description: "A Vault: the user's own or the Cloud18 vault, KV v2 (every version of every secret) or its database engine (Vault makes the passwords)",
 		Settings: PluginSettings{
 			{Name: ConstSecretKvVaultAddress, Type: ConstArchiveSettingTypeString},
 			{Name: ConstSecretKvVaultMount, Type: ConstArchiveSettingTypeString},
+			{Name: ConstSecretKvVaultMode, Type: ConstArchiveSettingTypeEnum, Values: []string{VaultConfigStoreV2, VaultDbEngine}},
 			{Name: ConstSecretKvVaultAuth, Type: ConstArchiveSettingTypeEnum, Values: []string{ConstVaultAuthAppRole, ConstVaultAuthJWT}},
 			{Name: ConstSecretKvVaultRoleID, Type: ConstArchiveSettingTypeString},
 			{Name: ConstSecretKvVaultSecretID, Type: ConstArchiveSettingTypeSecret},
@@ -104,17 +108,14 @@ func SecretKvPlugins() []SecretKvPluginManifest {
 var secretKvVaultLegacyKeys = map[string]string{
 	ConstSecretKvVaultAddress:  "vault-server-addr",
 	ConstSecretKvVaultMount:    "vault-mount",
+	ConstSecretKvVaultMode:     "vault-mode",
 	ConstSecretKvVaultAuth:     "vault-auth",
 	ConstSecretKvVaultRoleID:   "vault-role-id",
 	ConstSecretKvVaultSecretID: "vault-secret-id",
 }
 
-// IsSecretKvLegacyKey: key is one of the vault-* keys an entry replaces (vault-mode
-// included: a migrated cluster is KV v2).
+// IsSecretKvLegacyKey: key is one of the vault-* keys an entry replaces.
 func IsSecretKvLegacyKey(key string) bool {
-	if key == "vault-mode" {
-		return true
-	}
 	for _, k := range secretKvVaultLegacyKeys {
 		if k == key {
 			return true
@@ -236,14 +237,8 @@ func (conf *Config) cleanSecretKvSettings() {
 	}
 }
 
-// vaultMigrates: the flat Vault settings are a KV v2 Vault, migrated into vault-default. A
-// database_engine Vault is left as it was.
-func (conf *Config) vaultMigrates() bool {
-	return conf.VaultServerAddr != "" && conf.VaultMode != VaultDbEngine
-}
-
-// MigrateSecretKvs resolves the credential store list at cluster init: a cluster using a KV
-// Vault (vault-server-addr set) gets vault-default from its vault-* keys, enabled, unless the
+// MigrateSecretKvs resolves the credential store list at cluster init: a cluster using Vault
+// (vault-server-addr set, KV v2 or database engine) gets vault-default from its vault-* keys, enabled, unless the
 // list has it; the vault-* keys a config file pins replace its settings (the file wins). Then
 // the Vault* fields go back to their defaults: Vault is an entry, no longer the flat config.
 func (conf *Config) MigrateSecretKvs() {
@@ -267,9 +262,6 @@ func (conf *Config) SyncSecretKvFromConfig() {
 // captureVaultDefault stores the non-default vault-* fields into vault-default (created
 // enabled when missing, with an address), then resets the fields. Call it under secretKvMu.
 func (conf *Config) captureVaultDefault() {
-	if conf.VaultMode == VaultDbEngine {
-		return
-	}
 	e := conf.secretKvByName(ConstSecretKvVaultDefault)
 	changed := false
 	for _, key := range secretKvVaultLegacyKeys {
@@ -302,13 +294,9 @@ func (conf *Config) captureVaultDefault() {
 }
 
 // resetVaultFields puts the migrated Vault* fields back to their defaults: Vault is not used
-// through the flat config any more (IsVaultUsed false). vault-mode included.
+// through the flat config any more (IsVaultUsed false).
 func (conf *Config) resetVaultFields() {
-	keys := []string{"vault-mode"}
 	for _, key := range secretKvVaultLegacyKeys {
-		keys = append(keys, key)
-	}
-	for _, key := range keys {
 		f, ok := configField(conf, key)
 		if !ok {
 			continue
@@ -347,15 +335,9 @@ func (conf *Config) storeSecretKvValue(e *SecretKvConfig, name, value string) {
 func (conf *Config) SecretKvHoldsLegacyKey(key string) bool {
 	secretKvMu.Lock()
 	defer secretKvMu.Unlock()
-	if conf.VaultMode == VaultDbEngine {
-		return false
-	}
 	e := conf.secretKvByName(ConstSecretKvVaultDefault)
 	if e == nil {
 		return false
-	}
-	if key == "vault-mode" {
-		return true
 	}
 	for name, k := range secretKvVaultLegacyKeys {
 		if k != key {
@@ -424,14 +406,21 @@ func (conf *Config) SecretKvActiveEntry(name string) (SecretKvConfig, bool) {
 	return SecretKvConfig{}, false
 }
 
-// SecretSpace is the cluster's space in a credential store: the cluster under the Cloud18 URI
-// on Cloud18 (ClusterSpace), else under the instance's identifier
-// (arbitration-external-unique-id).
+// SecretSpace is the cluster's folder in a credential store, <space>/<cluster>: on Cloud18
+// <space> is the instance's URI (<domain>/<sub-domain>-<zone>, ClusterSpace); off Cloud18 it is
+// what an active monitor and its standby share, the pair the arbitrator knows them by: its
+// secret (arbitration-external-secret), never written as it is but as "pair-" and the first
+// 16 hex digits of its SHA-256. Never a per-instance id: after a switch the peer writes the
+// same folder. An instance with no arbitration secret has no pair: the cluster alone.
 func (conf *Config) SecretSpace(cluster string) string {
 	if conf.Cloud18 && conf.Cloud18Domain != "" && conf.Cloud18SubDomain != "" {
 		return conf.ClusterSpace(cluster)
 	}
-	return fmt.Sprintf("%d/%s", conf.ArbitrationSasUniqueId, cluster)
+	if conf.ArbitrationSasSecret != "" {
+		sum := sha256.Sum256([]byte(conf.GetDecryptedPassword("arbitration-external-secret", conf.ArbitrationSasSecret)))
+		return "pair-" + hex.EncodeToString(sum[:])[:16] + "/" + cluster
+	}
+	return cluster
 }
 
 // SetSecretKvSetting applies one entry setting by name (a peer's event

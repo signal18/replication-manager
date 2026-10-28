@@ -561,8 +561,8 @@ type Cluster struct {
 	credChainMu             sync.Mutex       `json:"-"`
 	secretVersionStoreMu    sync.Mutex       `json:"-"`
 	secretVersionStoreDirty bool             `json:"-"`
-	// secretKv: the copies to the credential store entries that are not the primary (#2227)
-	secretKv secretKvCopies `json:"-"`
+	// secretKv: the versions written to the credential store entries (#2227)
+	secretKv secretKvStores `json:"-"`
 
 	// archiveOps: archive name -> a running remove, or its error (#2091)
 	archiveOps   map[string]string `json:"-"`
@@ -1521,8 +1521,8 @@ func (cluster *Cluster) tickBody() {
 		// a failover is evaluated: CheckFailed returns early without a master (#2191)
 		cluster.IsSameWsrepUUID()
 		cluster.CheckReplicationTLS()
-		// the copies to the credential store entries: full passes, failing entries (#2227)
-		cluster.CheckSecretKvCopies()
+		// the credential store entries: full passes, stores behind, queue drops (#2227)
+		cluster.CheckSecretKvStores()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)
@@ -2114,8 +2114,8 @@ func (cluster *Cluster) CredentialChain() *credstore.Chain {
 	defer cluster.credChainMu.Unlock()
 	if cluster.credChain == nil || cluster.credChain.Conf() != cluster.Conf {
 		cluster.credChain = credstore.NewConfigChain(cluster.Conf, cluster.Save)
-		// each change goes to the copies too, queued after the chain's lock (#2227)
-		cluster.credChain.OnSet(cluster.queueChainCopies)
+		// each change is a version in every active store, queued after the chain's lock (#2227)
+		cluster.credChain.OnSet(cluster.onCredentialChange)
 	}
 	return cluster.credChain
 }
