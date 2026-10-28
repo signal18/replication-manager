@@ -92,3 +92,21 @@ func TestWaitReplicaReachTarget(t *testing.T) {
 		t.Fatalf("a replica without progress: %v", err)
 	}
 }
+
+// The consistency check lists its replicas once from the servers: an old master rejoined as
+// a replica is in it even while cluster.slaves, rebuilt at every topology pass, lacks it.
+func TestConsistencyReplicas(t *testing.T) {
+	master, _ := newMyLoaderPositionServer(t, &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8}, true)
+	c := master.ClusterGroup
+	c.master = master
+	conn := master.Conn
+	rejoined := &ServerMonitor{URL: "db3:3306", IsSlave: true, Conn: conn}
+	replica := &ServerMonitor{URL: "db2:3306", IsSlave: true, Conn: conn}
+	standalone := &ServerMonitor{URL: "db4:3306", Conn: conn}
+	c.Servers = []*ServerMonitor{master, replica, rejoined, standalone}
+	c.slaves = []*ServerMonitor{replica}
+	got := c.consistencyReplicas()
+	if len(got) != 2 || got[0] != replica || got[1] != rejoined {
+		t.Fatalf("the replicas of the servers, not of cluster.slaves: %v", got)
+	}
+}

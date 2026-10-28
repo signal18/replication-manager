@@ -593,6 +593,18 @@ func (cluster *Cluster) BenchTable() string {
 	return "replication_manager_schema.sbtest1"
 }
 
+// consistencyReplicas is the servers replicating, other than the master, read from the
+// cluster's servers: not cluster.slaves, which a topology pass rebuilds from empty.
+func (cluster *Cluster) consistencyReplicas() []*ServerMonitor {
+	var replicas []*ServerMonitor
+	for _, s := range cluster.GetServers() {
+		if s != nil && s != cluster.master && s.IsSlave && s.Conn != nil {
+			replicas = append(replicas, s)
+		}
+	}
+	return replicas
+}
+
 func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	if cluster.master == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master to check table %s against", table)
@@ -602,10 +614,15 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 	// differs (MariaDB 11.8, 693504 of 1000000 rows applied after the 1000000-row prepare, #2228).
 	// Only the replicas taking part, as the restore gate: a stopped, broken or delayed one is
 	// not waited for (its checksum is compared all the same).
+	// The replicas are listed once from the servers, and that list is both waited for and
+	// compared: cluster.slaves is rebuilt from empty at every topology pass, an old master
+	// just rejoined was missing from it at the wait and back at the checksum, compared
+	// while it still caught up (MariaDB 11.8, #2228).
+	replicas := cluster.consistencyReplicas()
 	if target, err := cluster.master.ReadReplicationTarget(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not read the position of %s to wait for the replicas: %s", cluster.master.URL, err)
 	} else {
-		for _, s := range cluster.slaves {
+		for _, s := range replicas {
 			reached, err := cluster.waitReplicaReachTarget(s.URL, target, replicaTakesPart)
 			switch {
 			case err != nil:
@@ -645,7 +662,7 @@ func (cluster *Cluster) CheckTableConsistency(table string) bool {
 		}
 	}
 	ctslave := 0
-	for _, s := range cluster.slaves {
+	for _, s := range replicas {
 		ctslave++
 
 		checksumslave, err := dbhelper.ChecksumTable(s.Conn, table)

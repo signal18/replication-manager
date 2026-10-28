@@ -127,7 +127,9 @@ sysbench does not create its database. `PrepareBench` now creates `replication_m
 master first (`dbhelper.CreateReplicationManagerSchema`), with the binary log on so the replicas get it.
 On a MySQL cluster nothing else had created it, and every prepare failed with error 1049.
 
-`CheckTableConsistency` first waits for every replica taking part (`replicaTakesPart`: not stopped,
+`CheckTableConsistency` lists its replicas once from the cluster's servers (`consistencyReplicas`), not
+from `cluster.slaves`, which every topology pass rebuilds from empty: an old master just rejoined was
+missing at the wait and back at the checksum. It first waits for every replica of that list taking part (`replicaTakesPart`: not stopped,
 broken or delayed) to reach the master's position, read once
 (`waitReplicaReachTarget`: `WaitSyncToTarget` turns, ended by an SQL error or no progress for
 `replicaNoProgressFor`, the loop the restore gate uses too). Compared at once, a replica still applying
