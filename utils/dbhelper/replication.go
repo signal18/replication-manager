@@ -157,6 +157,13 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			cm += ", " + masterOrSource + "_SSL_CA=''"
 		}
 
+		// MySQL 8's replication user is caching_sha2_password: without TLS it needs the
+		// source's RSA public key, else every connection fails with error 2061 (#2218).
+		// The group replication recovery channel has its own
+		// group_replication_recovery_get_public_key.
+		if myver.IsMySQLOrPercona() && myver.GreaterEqual("8.0") && opt.Mode != "GROUP_REPL" && !opt.SSL {
+			cm += ", GET_" + masterOrSource + "_PUBLIC_KEY=1"
+		}
 		// Retry count supported from MariaDB 12 and MySQL 8.4, never on the group
 		// replication recovery channel: MySQL 8.4 refuses the whole statement there (Error
 		// 3139), which left the group without recovery credentials (#2164)

@@ -487,3 +487,46 @@ success path (`Unprovision`, `UnprovisionDatabaseService`; `ForgetProxyInstance`
 Nothing here changes the rejoin's one-shot-per-event rule: an unprovisioned instance simply has no
 events left. The declared side (config, plan, agents) is untouched. Test:
 `TestForgetInstance_CleanSlateWithoutRestart`.
+
+## MySQL without GTID and the archive-less outcome (2026-10-28, #2226)
+
+Seen on a MySQL 8.0 cluster provisioned without the `mysqlgtid` tag (`gtid_mode=OFF`): after a failover
+the elected master, now an extra master, was rejoined under the old one every tick, each attempt
+`Error 1777 ... GTID_MODE = OFF`, each ending "no-divergence". Three causes, three fixes:
+
+- `SetReplicationGTIDCurrentPosFromServer` / `SetReplicationGTIDSlavePosFromServer` chose
+  `MASTER_AUTO_POSITION` from the version alone. They now go through `mysqlGTIDRejoinError`: `gtid_mode`
+  `ON` on the source, `ON` or `ON_PERMISSIVE` on the replica, and `force-slave-no-gtid` off. Otherwise
+  they return `errNoMySQLGTID`, naming the cause, without sending anything: without GTID there is no
+  position to rejoin on, and positional coordinates are needed. It reads `gtid_mode` itself, not
+  `HasMySQLGTID`, which is also true for `enforce_gtid_consistency=ON` with `gtid_mode` still OFF (the
+  first step of the OFF → ON migration).
+- `attachAsReadOnlySlave` returns the CHANGE MASTER error (and no longer starts the channel after a
+  failed CHANGE). The no-crash rejoin then ends `failed` (WARN0186), not `no-divergence`.
+- `finishCrash` never kept the outcome of a rejoin without a crash: it built a marker with no archive and
+  the rebuild from disk (`LoadFailoverHistory`) had nothing of it, so `rejoinAlreadyAttempted` was false at
+  the next tick. The marker now goes into `FailoverHistory` and the rebuild keeps the newest one per server
+  (`rejoinMarkers`, bounded by the servers). `forgetRejoinMarker` drops it when the server comes back
+  after a failure (a new event is owed its attempt) and in `ForgetInstance`. These slice swaps, and
+  the reads of the one-shot guard and of the re-arm, take `rejoinMarkerMu`, a leaf lock: `Ping` runs one
+  goroutine per server.
+- Found by the re-arm test: `rearmRejoin` with the automatic method (`""`) produced a copy the one-shot
+  guard could not tell apart from the outcome it came from, so the re-arm never ran. The copy is now
+  marked `Rearmed`, which the guard honours like a chosen method, and `finishCrash` clears it.
+
+Provisioning adds the `mysqlgtid` tag (`addMySQLGTIDTag`) when the image repository's last segment is
+`mysql`, `mysql-server`, `percona` or `percona-server`. That excludes Percona XtraDB Cluster and any
+name that merely contains `mysql`, and group replication or Galera topologies are skipped too. The tag
+is added only while no database server runs (`hasDatabaseServerUp`). Failed counts as down. Suspect
+counts as down only while the server has never answered in this process (`neverAnswered`: its version is
+still the `serverVersionPlaceholder` it is created with, MySQL 0.0.0), since a running server goes Suspect on
+one failed ping. A failed version read leaves an empty version without a flavor, which counts as answered. ErrorAuth
+counts as up: the server runs and only refuses our login. Accepted limit: right after a restart of
+replication-manager, before the first ping, a running server is Suspect with no version, so a
+`Bootstrap` issued in that window would add the tag: `ProvisionServices` also runs from
+`Bootstrap` on an existing cluster, and turning GTID on for running servers is an operator procedure.
+
+Not fixed here: the old master was designated master again when it came back, its replica having
+reconnected to it on its own; which topology rule did it is not in the logs (topology module not
+logged) and is to be reproduced on a cluster without GTID.
+
