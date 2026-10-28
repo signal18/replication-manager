@@ -659,7 +659,6 @@ func (server *ServerMonitor) HasHighNumberSlowQueries() bool {
 
 }
 
-// IsDown() returns true is the server is Failed or Suspect or or auth error
 // serverVersionPlaceholder is the version a ServerMonitor is created with, until the
 // server answers: parsed as MySQL 0.0.0.
 const serverVersionPlaceholder = "Unknowed-0.0.0"
@@ -672,6 +671,7 @@ func (server *ServerMonitor) neverAnswered() bool {
 	return v == nil || (v.Flavor != "" && v.Major == 0 && v.Minor == 0 && v.Release == 0)
 }
 
+// IsDown() returns true is the server is Failed or Suspect or or auth error
 func (server *ServerMonitor) IsDown() bool {
 	if server.State == stateFailed || server.State == stateSuspect || server.State == stateErrorAuth {
 		return true
