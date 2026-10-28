@@ -330,7 +330,11 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s restarts on its current definition, the refresh failed: %s", app.Name, err)
 		}
 		if rid != "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
+			scope := "every instance"
+			if !AppRestartAllNodes(node) {
+				scope = "the instance on " + node
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, restarting %s of app %s", scope, app.Name)
 		}
 		if !AppRestartAllNodes(node) {
 			// a node given: that instance only (#2223)

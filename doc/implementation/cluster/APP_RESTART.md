@@ -18,6 +18,18 @@ The definition is refreshed first (`OpenSVCUpdateAppTemplate`), then:
 
 `rid` is not supported on v3 (logged, the whole instance or service restarts).
 
+### The refresh must not touch an unchanged secret key
+
+The refresh first runs the sensor prerequisites (`openSVCEnsureSensorPrerequisites`), which
+publish `SENSOR_API_KEY` in the namespace `env` secret. The daemon restarts every service that
+reads a rewritten key, on all its nodes, **even when the value is the same** (preprod, a
+3-instance flex app: each `set key SENSOR_API_KEY` was followed within a second by global
+expect `restarted`). So a node restart turned into a restart of every instance. The key is now
+read first (`GetSecretKeyValueV3`) and written only when it is missing or differs. The
+definition push itself (`UpdateObjectV3`) did not restart anything. The database refresh
+(`OpenSVCUpdateDatabaseTemplate`) and the proxy provisioning run the same prerequisites and
+get the same fix.
+
 ## OpenSVC v2
 
 Unchanged: `RestartServiceV2` on the node given, `*` for every node, or the app's default

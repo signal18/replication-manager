@@ -841,10 +841,11 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 	nodeParam := vars["node"]
 	// OpenSVC v3: no node restarts every instance (the orchestrator does it one at a time),
 	// a node that instance only (#2223); v2 restarts the default agent
-	if nodeParam == "" && mycluster.GetOrchestratorVersion() != "v3" {
+	isV3 := mycluster.GetOrchestratorVersion() == "v3"
+	if nodeParam == "" && !isV3 {
 		nodeParam = app.GetAgent()
 	}
-	if nodeParam == "" && mycluster.GetOrchestratorVersion() != "v3" {
+	if nodeParam == "" && !isV3 {
 		w.WriteHeader(http.StatusBadRequest)
 		if err := json.NewEncoder(w).Encode(map[string]string{"error": "Node is required when app has no default agent"}); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
