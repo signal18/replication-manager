@@ -307,6 +307,13 @@ func (cluster *Cluster) OpenSVCUpdateAppTemplate(app *App) error {
 	return svc.WaitObjectConfigSettledV3(app.Agent, ns, kind, svcname, openSVCConfigSettleTimeout)
 }
 
+// AppRestartAllNodes: no node, ALL or * restarts every instance.
+func AppRestartAllNodes(node string) bool {
+	return node == "" || strings.ToUpper(node) == "ALL" || node == "*"
+}
+
+// OpenSVCRestartAppService restarts an app: on OpenSVC v3, the instance on node when one is
+// given (#2223), else every instance, which the orchestrator restarts one at a time.
 func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
 	if err := cluster.refuseMonitorOnlyApp(app); err != nil {
 		return err
@@ -323,8 +330,22 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "App %s restarts on its current definition, the refresh failed: %s", app.Name, err)
 		}
 		if rid != "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, falling back to full service restart")
+			scope := "every instance"
+			if !AppRestartAllNodes(node) {
+				scope = "the instance on " + node
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "RID restart is not supported in OpenSVC v3, restarting %s of app %s", scope, app.Name)
 		}
+		if !AppRestartAllNodes(node) {
+			// a node given: that instance only (#2223)
+			if err := svc.RestartInstanceV3(node, app.GetServiceName()); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app %s on %s: %s", app.Name, node, err)
+				return err
+			}
+			return nil
+		}
+		// every instance: the orchestrator restarts them one at a time, each after the
+		// prior instance is back up
 		err := svc.RestartServiceV3(cluster.Name, app.GetServiceName())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
@@ -333,6 +354,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid stri
 		return nil
 	}
 	agent := app.GetAgent()
+	// not AppRestartAllNodes: on v2 no node means the default agent, not every node
 	if strings.ToUpper(node) == "ALL" || node == "*" {
 		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), "*", rid)
 		if err != nil {
@@ -648,9 +670,21 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 		return nil
 	}
 	if k := cluster.GetSystemAPIKey(); k != "" {
-		// V3: create-or-update; V2: an existing key is fine. The value is never logged.
-		if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
-			return fmt.Errorf("publish sensor credential key: %w", err)
+		// V3: create-or-update, but only when the key differs: the daemon restarts every
+		// service that reads a rewritten key, everywhere, even on an identical value (live
+		// status app 2026-10-28: each definition refresh restarted all its flex instances).
+		// V2: an existing key is fine. The value is never logged.
+		// A failed read (missing key or not) falls through to the write: converging on the
+		// right value beats skipping it, at the cost of one restart of the readers.
+		published := false
+		if svc.IsV3() {
+			cur, err := svc.GetSecretKeyValueV3(cluster.Name, "env", "SENSOR_API_KEY")
+			published = err == nil && string(cur) == k
+		}
+		if !published {
+			if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
+				return fmt.Errorf("publish sensor credential key: %w", err)
+			}
 		}
 	}
 	return cluster.openSVCPublishAppJobScript(svc)
