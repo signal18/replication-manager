@@ -54,6 +54,10 @@ export const clusterService = {
   resticCopyRepo,
   resticWipeRepo,
   getArchiveList,
+  getSecretKvList,
+  putSecretKv,
+  switchSecretKv,
+  removeSecretKv,
   addArchive,
   editArchive,
   renameArchive,
@@ -1141,6 +1145,25 @@ function resticCopyRepo(clusterName, payload, baseURL) {
 
 function resticWipeRepo(clusterName, payload, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/restic/wipe`, payload)
+}
+
+// credential store entries, the vault entries (#2227): secrets go in through add and edit and
+// never come back (secretsSet)
+function getSecretKvList(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/secret-kv-list`)
+}
+
+function putSecretKv(clusterName, spec, isEdit, baseURL) {
+  const path = isEdit ? `edit/${encodeURIComponent(spec.name)}` : 'add'
+  return getApi(baseURL).post(`clusters/${clusterName}/secret-kv-actions/${path}`, spec)
+}
+
+function switchSecretKv(clusterName, entryName, enabled, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/secret-kv-actions/${enabled ? 'enable' : 'disable'}/${encodeURIComponent(entryName)}`)
+}
+
+function removeSecretKv(clusterName, entryName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/secret-kv-actions/remove/${encodeURIComponent(entryName)}`)
 }
 
 // archive list (#2091): secrets go in through add and edit and never come back
