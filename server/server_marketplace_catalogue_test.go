@@ -1,9 +1,13 @@
 package server
 
 import (
+	"fmt"
 	"hash"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -163,5 +167,14 @@ func TestLoadMarketplaceVaultOffers(t *testing.T) {
 	conf.SetSecretKvEnabled(e.Name, true)
 	if changed, _ := conf.EnsureMarketplaceVault(c.Vaults[0], "d/s-fr"); changed || !conf.SecretKvs[0].Enabled {
 		t.Fatalf("read again: changed %v, entry %+v", changed, conf.SecretKvs[0])
+	}
+}
+
+// #2227: the edit or the remove of an entry a marketplace offer gives is a conflict (409)
+func TestSecretKvOfferRefusalIsConflict(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeSecretKvError(w, fmt.Errorf("credential store cloud18-v: %w", config.ErrSecretKvOfferManaged))
+	if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), "marketplace offer") {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
 }

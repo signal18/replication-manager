@@ -6,6 +6,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -143,6 +144,18 @@ type SecretKvConfig struct {
 	Plugin   string                 `mapstructure:"plugin" toml:"plugin" json:"plugin"`
 	Enabled  bool                   `mapstructure:"enabled" toml:"enabled" json:"enabled"`
 	Settings map[string]interface{} `mapstructure:",remain" toml:"-" json:"settings"`
+	// Offer names the marketplace vault offer the entry comes from ("" for the user's own):
+	// the back-office manages its settings, only its switch is the cluster's
+	Offer string `mapstructure:"offer" toml:"offer" json:"-"`
+	// OfferInfo is the offer as the catalogue describes it, for the API (never saved)
+	OfferInfo *SecretKvOffer `mapstructure:"-" toml:"-" json:"offer"`
+}
+
+// SecretKvOffer is the marketplace vault offer an entry comes from, as the API gives it.
+type SecretKvOffer struct {
+	Name    string `json:"name"`
+	Title   string `json:"title,omitempty"`
+	Partner string `json:"partner,omitempty"`
 }
 
 // isSecret: the entry's plugin declares name as a secret.
@@ -154,13 +167,18 @@ func (e SecretKvConfig) isSecret(name string) bool {
 // MarshalJSON never sends a secret, not even encrypted: secretsSet names the ones held.
 func (e SecretKvConfig) MarshalJSON() ([]byte, error) {
 	settings, secrets := splitSecretSettings(e.Settings, e.isSecret)
+	offer := e.OfferInfo
+	if offer == nil && e.Offer != "" {
+		offer = &SecretKvOffer{Name: e.Offer}
+	}
 	return json.Marshal(struct {
 		Name       string                 `json:"name"`
 		Plugin     string                 `json:"plugin"`
 		Enabled    bool                   `json:"enabled"`
 		Settings   map[string]interface{} `json:"settings"`
 		SecretsSet []string               `json:"secretsSet"`
-	}{e.Name, e.Plugin, e.Enabled, settings, secrets})
+		Offer      *SecretKvOffer         `json:"offer"`
+	}{e.Name, e.Plugin, e.Enabled, settings, secrets, offer})
 }
 
 // Setting is the entry's setting as a string: its value, else the default of the flat key it
@@ -363,6 +381,9 @@ func (conf *Config) SecretKvsToml(section string) (string, error) {
 	var b strings.Builder
 	for _, e := range conf.SecretKvs {
 		head := map[string]interface{}{"name": e.Name, "plugin": e.Plugin, "enabled": e.Enabled}
+		if e.Offer != "" {
+			head["offer"] = e.Offer
+		}
 		settings := make(map[string]interface{}, len(e.Settings))
 		for k, v := range e.Settings {
 			if e.isSecret(k) && !strings.HasPrefix(fmt.Sprintf("%v", v), "hash_") {
@@ -455,6 +476,12 @@ func (conf *Config) SetSecretKvSetting(entry, setting, value string, unset bool)
 		} else {
 			e.Plugin = value
 		}
+	case "offer":
+		if unset {
+			e.Offer = ""
+		} else {
+			e.Offer = value
+		}
 	case "enabled":
 		if unset {
 			e.Enabled = false
@@ -513,10 +540,16 @@ func (conf *Config) PutSecretKv(spec SecretKvSpec, create bool) (string, error) 
 	}
 	var e SecretKvConfig
 	if cur != nil {
+		if cur.Offer != "" {
+			return "", fmt.Errorf("credential store %s: %w", spec.Name, ErrSecretKvOfferManaged)
+		}
 		e = cloneSecretKvs([]SecretKvConfig{*cur})[0]
 	} else {
 		if err := validateEntryName("credential store", spec.Name); err != nil {
 			return "", err
+		}
+		if strings.HasPrefix(spec.Name, ConstSecretKvMarketplacePrefix) {
+			return "", fmt.Errorf("credential store %s: the names %s* are the marketplace's offers", spec.Name, ConstSecretKvMarketplacePrefix)
 		}
 		e = SecretKvConfig{Name: spec.Name, Plugin: ConstSecretKvPluginVault, Settings: map[string]interface{}{}}
 	}
@@ -559,12 +592,19 @@ func (conf *Config) DeleteSecretKv(name string) error {
 	defer secretKvMu.Unlock()
 	for i := range conf.SecretKvs {
 		if conf.SecretKvs[i].Name == name {
+			if conf.SecretKvs[i].Offer != "" {
+				return fmt.Errorf("credential store %s: %w", name, ErrSecretKvOfferManaged)
+			}
 			conf.SecretKvs = append(conf.SecretKvs[:i], conf.SecretKvs[i+1:]...)
 			return nil
 		}
 	}
 	return fmt.Errorf("unknown credential store %s", name)
 }
+
+// ErrSecretKvOfferManaged refuses a change of an entry a marketplace offer gives: the
+// back-office manages its settings, only its switch is the cluster's.
+var ErrSecretKvOfferManaged = errors.New("it comes from a Cloud18 marketplace offer: the back-office manages its settings, only its switch can be changed")
 
 // ConstSecretKvMarketplacePrefix starts the name of the entry a marketplace vault offer gives
 // a cluster: cloud18-<offer name>.
@@ -599,13 +639,16 @@ func (conf *Config) EnsureMarketplaceVault(offer MarketplaceVaultOffer, pathPref
 	defer secretKvMu.Unlock()
 	e := conf.secretKvByName(name)
 	if e == nil {
-		conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: name, Plugin: ConstSecretKvPluginVault, Settings: want})
+		conf.SecretKvs = append(conf.SecretKvs, SecretKvConfig{Name: name, Plugin: ConstSecretKvPluginVault, Settings: want, Offer: offer.Name})
 		return true, nil
 	}
 	if e.Plugin != ConstSecretKvPluginVault {
 		return false, fmt.Errorf("credential store %s is not a vault entry", name)
 	}
 	changed := false
+	if e.Offer != offer.Name {
+		e.Offer, changed = offer.Name, true
+	}
 	for k, v := range want {
 		if fmt.Sprintf("%v", e.Settings[k]) != fmt.Sprintf("%v", v) {
 			e.Settings[k] = v

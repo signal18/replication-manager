@@ -28,7 +28,7 @@ func decodeSecretKvSpec(w http.ResponseWriter, r *http.Request) (config.SecretKv
 }
 
 func writeSecretKvError(w http.ResponseWriter, err error) {
-	if errors.Is(err, cluster.ErrSecretKvsPinned) {
+	if errors.Is(err, cluster.ErrSecretKvsPinned) || errors.Is(err, config.ErrSecretKvOfferManaged) {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
@@ -37,7 +37,7 @@ func writeSecretKvError(w http.ResponseWriter, err error) {
 
 // handlerMuxSecretKvList lists the cluster's vault entries.
 // @Summary List the credential store entries
-// @Description The cluster's vault entries (secrets never returned, only the names of those set), each one's state (last write, behind: WARN0269), the queue's drops (WARN0270), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.
+// @Description The cluster's vault entries (secrets never returned, only the names of those set; offer: the Cloud18 marketplace offer an entry comes from, name, title and partner, null for the user's own), each one's state (last write, behind: WARN0269), the queue's drops (WARN0270), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.
 // @Tags ClusterCredentials
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -94,7 +94,7 @@ func (repman *ReplicationManager) handlerMuxSecretKvAdd(w http.ResponseWriter, r
 // @Success 200 {object} map[string]string "name"
 // @Failure 400 {string} string "Invalid entry"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 409 {string} string "The list is set by a config file"
+// @Failure 409 {string} string "The list is set by a config file, or the entry comes from a Cloud18 marketplace offer (its settings are the back-office's)"
 // @Router /api/clusters/{clusterName}/secret-kv-actions/edit/{entryName} [post]
 func (repman *ReplicationManager) handlerMuxSecretKvEdit(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
@@ -169,7 +169,7 @@ func (repman *ReplicationManager) handlerMuxSecretKvDisable(w http.ResponseWrite
 // @Success 200 {string} string "Credential store removed"
 // @Failure 400 {string} string "Unknown entry"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 409 {string} string "The list is set by a config file"
+// @Failure 409 {string} string "The list is set by a config file, or the entry comes from a Cloud18 marketplace offer (its settings are the back-office's)"
 // @Router /api/clusters/{clusterName}/secret-kv-actions/remove/{entryName} [post]
 func (repman *ReplicationManager) handlerMuxSecretKvRemove(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {

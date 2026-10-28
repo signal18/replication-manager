@@ -235,7 +235,12 @@ file.
   `mount` defaults to `kv`, `role` to the realm's client id, `pathPrefix` to the instance's
   URI `<domain>/<sub-domain>-<zone>` (as the buckets). Each Cloud18-registered cluster gets
   `cloud18-<name>`, sign-in `jwt`, **off**: the sponsor turns it on; a new catalogue updates
-  its address, mount, role and prefix, never its switch. The back-office side (the file, the
+  its address, mount, role and prefix, never its switch. The entry records its origin
+  (`offer = "<name>"` in the saved config); the list API gives `offer` (name, title, partner
+  from the catalogue; null for the user's own entries); its edit and remove are refused (409:
+  the back-office manages its settings), only enable and disable remain; a user's own entry
+  cannot take a `cloud18-` name. The GUI shows a Cloud18 badge with the offer's title and
+  partner and no Edit or Remove. The back-office side (the file, the
   vault's jwt role and the space policies of rule 14) is not built yet.
 - **States**: WARN0269 (security, per entry: behind, or failing), WARN0270 (security: drops
   not repaired), WARN0271 (config, per key: a Vault path pinned in a file).

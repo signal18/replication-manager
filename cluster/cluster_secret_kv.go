@@ -66,11 +66,12 @@ type secretKvStores struct {
 	apply func(key string)
 
 	mu              sync.Mutex
-	behind          map[string]string    // entry -> why it is behind (never a value)
-	passed          map[string]bool      // entries given their full pass in this run
-	pinnedPaths     map[string]bool      // keys pinned to a Vault path in a config file
-	startingCipher  map[string]string    // starting value -> its ciphertext in the saved files
-	lastWritten     map[string]time.Time // entry -> its last successful write
+	behind          map[string]string                       // entry -> why it is behind (never a value)
+	passed          map[string]bool                         // entries given their full pass in this run
+	pinnedPaths     map[string]bool                         // keys pinned to a Vault path in a config file
+	startingCipher  map[string]string                       // starting value -> its ciphertext in the saved files
+	lastWritten     map[string]time.Time                    // entry -> its last successful write
+	offers          map[string]config.MarketplaceVaultOffer // offer name -> the catalogue's offer
 	dropsSeen       uint64
 	dropsUnresolved bool
 }
@@ -84,6 +85,7 @@ func (cluster *Cluster) storeQueue() *credstore.StoreQueue {
 		c.pinnedPaths = map[string]bool{}
 		c.startingCipher = map[string]string{}
 		c.lastWritten = map[string]time.Time{}
+		c.offers = map[string]config.MarketplaceVaultOffer{}
 	})
 	return c.queue
 }
@@ -1055,8 +1057,16 @@ func (cluster *Cluster) SecretKvList() SecretKvListResult {
 	}
 	c.mu.Lock()
 	out.DropsPending = c.dropsUnresolved
-	for _, e := range out.Entries {
+	for i, e := range out.Entries {
 		out.States[e.Name] = SecretKvState{LastWrite: c.lastWritten[e.Name], Behind: c.behind[e.Name]}
+		if e.Offer != "" {
+			// the offer as the catalogue describes it; gone from it, its name only
+			info := &config.SecretKvOffer{Name: e.Offer}
+			if o, ok := c.offers[e.Offer]; ok {
+				info.Title, info.Partner = o.Title, o.Partner
+			}
+			out.Entries[i].OfferInfo = info
+		}
 	}
 	c.mu.Unlock()
 	return out
@@ -1129,6 +1139,12 @@ func (cluster *Cluster) EnsureMarketplaceVaults(offers []config.MarketplaceVault
 	if !cluster.cloud18Registered() || len(offers) == 0 || cluster.SecretKvsPinned() {
 		return
 	}
+	cluster.storeQueue()
+	cluster.secretKv.mu.Lock()
+	for _, o := range offers {
+		cluster.secretKv.offers[o.Name] = o
+	}
+	cluster.secretKv.mu.Unlock()
 	c := cluster.Conf
 	uri := c.Cloud18Domain + "/" + c.Cloud18SubDomain + "-" + c.Cloud18SubDomainZone
 	changed := false

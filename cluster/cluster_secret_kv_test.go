@@ -5,6 +5,8 @@
 package cluster
 
 import (
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -437,5 +439,65 @@ func TestOrchestratorSecretsReported(t *testing.T) {
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("queued %v, want %v", got, want)
+	}
+}
+
+// #2227: an entry from a marketplace offer: the list carries its offer (name, title, partner),
+// its settings are the back-office's (edit and remove refused), its switch is the cluster's;
+// the user's own entries carry no offer and cannot take a cloud18- name
+func TestMarketplaceVaultEntryManaged(t *testing.T) {
+	cl := secretKvTestCluster(t)
+	cl.Conf.Cloud18, cl.Conf.Cloud18GitUser = true, "u"
+	cl.Conf.Cloud18Domain, cl.Conf.Cloud18SubDomain, cl.Conf.Cloud18SubDomainZone = "d", "s", "fr"
+	cl.EnsureMarketplaceVaults([]config.MarketplaceVaultOffer{{Name: "vault-fr", Title: "Cloud18 vault", Partner: "partner-a", Address: "https://v:8200"}})
+	if _, err := cl.PutSecretKv(config.SecretKvSpec{Name: "own", Settings: map[string]interface{}{"address": "https://own:8200"}}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cl.PutSecretKv(config.SecretKvSpec{Name: "cloud18-mine", Settings: map[string]interface{}{"address": "https://x"}}, true); err == nil {
+		t.Fatal("a cloud18- name accepted for the user's own entry")
+	}
+	if _, err := cl.PutSecretKv(config.SecretKvSpec{Name: "cloud18-vault-fr", Settings: map[string]interface{}{"mount": "other"}}, false); !errors.Is(err, config.ErrSecretKvOfferManaged) {
+		t.Fatalf("edit: %v", err)
+	}
+	if err := cl.RemoveSecretKv("cloud18-vault-fr"); !errors.Is(err, config.ErrSecretKvOfferManaged) {
+		t.Fatalf("remove: %v", err)
+	}
+	if err := cl.SetSecretKvEnabled("cloud18-vault-fr", true); err != nil {
+		t.Fatal(err)
+	}
+	js, _ := json.Marshal(cl.SecretKvList())
+	var got struct {
+		Entries []struct {
+			Name    string `json:"name"`
+			Enabled bool   `json:"enabled"`
+			Offer   *struct {
+				Name, Title, Partner string
+			} `json:"offer"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(js, &got); err != nil {
+		t.Fatal(err)
+	}
+	offers := map[string]bool{}
+	for _, e := range got.Entries {
+		switch e.Name {
+		case "cloud18-vault-fr":
+			if e.Offer == nil || e.Offer.Name != "vault-fr" || e.Offer.Title != "Cloud18 vault" || e.Offer.Partner != "partner-a" || !e.Enabled {
+				t.Fatalf("offer entry %+v", e)
+			}
+			offers[e.Name] = true
+		case "own":
+			if e.Offer != nil {
+				t.Fatalf("own entry carries an offer: %+v", e.Offer)
+			}
+			offers[e.Name] = true
+		}
+	}
+	if len(offers) != 2 {
+		t.Fatalf("entries %s", js)
+	}
+	out, err := cl.Conf.SecretKvsToml("saved-c1")
+	if err != nil || !strings.Contains(out, `offer = "vault-fr"`) {
+		t.Fatalf("saved %s %v", out, err)
 	}
 }

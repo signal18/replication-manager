@@ -12139,7 +12139,7 @@
                         }
                     },
                     "409": {
-                        "description": "The list is set by a config file",
+                        "description": "The list is set by a config file, or the entry comes from a Cloud18 marketplace offer (its settings are the back-office's)",
                         "schema": {
                             "type": "string"
                         }
@@ -12263,7 +12263,7 @@
                         }
                     },
                     "409": {
-                        "description": "The list is set by a config file",
+                        "description": "The list is set by a config file, or the entry comes from a Cloud18 marketplace offer (its settings are the back-office's)",
                         "schema": {
                             "type": "string"
                         }
@@ -12273,7 +12273,7 @@
         },
         "/api/clusters/{clusterName}/secret-kv-list": {
             "get": {
-                "description": "The cluster's vault entries (secrets never returned, only the names of those set), each one's state (last write, behind: WARN0269), the queue's drops (WARN0270), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.",
+                "description": "The cluster's vault entries (secrets never returned, only the names of those set; offer: the Cloud18 marketplace offer an entry comes from, name, title and partner, null for the user's own), each one's state (last write, behind: WARN0269), the queue's drops (WARN0270), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.",
                 "produces": [
                     "application/json"
                 ],
@@ -29402,12 +29402,34 @@
                 "name": {
                     "type": "string"
                 },
+                "offer": {
+                    "description": "OfferInfo is the offer as the catalogue describes it, for the API (never saved)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.SecretKvOffer"
+                        }
+                    ]
+                },
                 "plugin": {
                     "type": "string"
                 },
                 "settings": {
                     "type": "object",
                     "additionalProperties": true
+                }
+            }
+        },
+        "config.SecretKvOffer": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
                 }
             }
         },

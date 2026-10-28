@@ -2314,11 +2314,25 @@ definitions:
         type: boolean
       name:
         type: string
+      offer:
+        allOf:
+        - $ref: '#/definitions/config.SecretKvOffer'
+        description: OfferInfo is the offer as the catalogue describes it, for the
+          API (never saved)
       plugin:
         type: string
       settings:
         additionalProperties: true
         type: object
+    type: object
+  config.SecretKvOffer:
+    properties:
+      name:
+        type: string
+      partner:
+        type: string
+      title:
+        type: string
     type: object
   config.SecretKvPluginManifest:
     properties:
@@ -13896,7 +13910,8 @@ paths:
           schema:
             type: string
         "409":
-          description: The list is set by a config file
+          description: The list is set by a config file, or the entry comes from a
+            Cloud18 marketplace offer (its settings are the back-office's)
           schema:
             type: string
       summary: Edit a credential store entry
@@ -13982,7 +13997,8 @@ paths:
           schema:
             type: string
         "409":
-          description: The list is set by a config file
+          description: The list is set by a config file, or the entry comes from a
+            Cloud18 marketplace offer (its settings are the back-office's)
           schema:
             type: string
       summary: Remove a credential store entry
@@ -13991,10 +14007,11 @@ paths:
   /api/clusters/{clusterName}/secret-kv-list:
     get:
       description: 'The cluster''s vault entries (secrets never returned, only the
-        names of those set), each one''s state (last write, behind: WARN0269), the
-        queue''s drops (WARN0270), the plugins'' manifests, the copy settings, and
-        the database credentials'' starting value source, current source, version
-        count and refusal.'
+        names of those set; offer: the Cloud18 marketplace offer an entry comes from,
+        name, title and partner, null for the user''s own), each one''s state (last
+        write, behind: WARN0269), the queue''s drops (WARN0270), the plugins'' manifests,
+        the copy settings, and the database credentials'' starting value source, current
+        source, version count and refusal.'
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token

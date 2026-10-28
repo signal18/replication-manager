@@ -174,20 +174,32 @@ function SecretKvEntries({ clusterName, user }) {
       {list.entries.length === 0 && <Text as='span' color='gray.500'>no vault: the versions live in the local file only</Text>}
       {list.entries.map((e) => {
         const state = list.states[e.name]
+        // an entry from a Cloud18 marketplace offer: the back-office manages its settings, only
+        // its switch is the cluster's
+        const offer = e.offer
         return (
           <Flex key={e.name} align='center' gap='3' wrap='wrap'>
             <Switch isChecked={!!e.enabled} isDisabled={!canSwitch || list.pinned}
               onChange={() => call(() => clusterService.switchSecretKv(clusterName, e.name, !e.enabled))} />
             <Text as='span' fontWeight='semibold'>{e.name}</Text>
             {statePill(e, state)}
+            {offer && (
+              <Tooltip label='from the Cloud18 marketplace: its settings are managed by Cloud18, only its switch is yours' hasArrow>
+                <Badge colorScheme='teal'>Cloud18{offer.title ? ` · ${offer.title}` : ''}{offer.partner ? ` · ${offer.partner}` : ''}</Badge>
+              </Tooltip>
+            )}
             <Badge colorScheme='purple'>{e.settings?.address || 'no address'}</Badge>
             <Text as='span' fontSize='sm' color='gray.500'>
               {(e.settings?.mount || 'kv') + '/' + (e.settings?.['path-prefix'] ? e.settings['path-prefix'] + '/' : '') + clusterName}
               {e.settings?.mode === 'database_engine' ? ' (database engine)' : ''}
               {state?.lastWrite && !state.lastWrite.startsWith('0001') ? ` · last write ${new Date(state.lastWrite).toLocaleString()}` : ''}
             </Text>
-            <RMButton size='sm' variant='outline' isDisabled={!canManage || list.pinned} onClick={() => setEditing(e)}>Edit</RMButton>
-            <RMButton size='sm' variant='outline' isDisabled={!canManage || list.pinned} onClick={() => setRemoveName(e.name)}>Remove</RMButton>
+            {!offer && (
+              <>
+                <RMButton size='sm' variant='outline' isDisabled={!canManage || list.pinned} onClick={() => setEditing(e)}>Edit</RMButton>
+                <RMButton size='sm' variant='outline' isDisabled={!canManage || list.pinned} onClick={() => setRemoveName(e.name)}>Remove</RMButton>
+              </>
+            )}
           </Flex>
         )
       })}
