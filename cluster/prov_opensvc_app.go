@@ -665,9 +665,19 @@ func (cluster *Cluster) openSVCEnsureSensorPrerequisites(svc opensvc.Collector) 
 		return nil
 	}
 	if k := cluster.GetSystemAPIKey(); k != "" {
-		// V3: create-or-update; V2: an existing key is fine. The value is never logged.
-		if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
-			return fmt.Errorf("publish sensor credential key: %w", err)
+		// V3: create-or-update, but only when the key differs: the daemon restarts every
+		// service that reads a rewritten key, everywhere, even on an identical value (live
+		// status app 2026-10-28: each definition refresh restarted all its flex instances).
+		// V2: an existing key is fine. The value is never logged.
+		published := false
+		if svc.IsV3() {
+			cur, err := svc.GetSecretKeyValueV3(cluster.Name, "env", "SENSOR_API_KEY")
+			published = err == nil && string(cur) == k
+		}
+		if !published {
+			if err := svc.CreateSecretKeyValue(cluster.Name, "env", "SENSOR_API_KEY", k); err != nil && !isOpenSVCAlreadyExists(err) {
+				return fmt.Errorf("publish sensor credential key: %w", err)
+			}
 		}
 	}
 	return cluster.openSVCPublishAppJobScript(svc)
