@@ -7007,6 +7007,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/archive-offers": {
+            "get": {
+                "description": "The archive offers of the marketplace catalogue the back-office pushes to every instance, each with its S3 storage, whether the cluster already has that storage and whether it can use the offer now: a storage reached with the Cloud18 SSO needs no key, the others are on request. Public fields only, no key.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "List the archive offers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.ArchiveOffer"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/archive-snapshots/{archiveName}": {
             "get": {
                 "description": "The snapshots of an archive plugin's archive (plakar ...), newest first: id, time, host, tags, paths, size. The plugin is asked at each call. A restic archive's snapshots are listed by /restic/snapshots.",
@@ -28169,6 +28221,10 @@ const docTemplate = `{
                 },
                 "result": {
                     "type": "string"
+                },
+                "skip-reason": {
+                    "description": "SkipReason is the target the cluster missed, when Result is SKIP.",
+                    "type": "string"
                 }
             }
         },
@@ -28755,6 +28811,46 @@ const docTemplate = `{
                 }
             }
         },
+        "config.MarketplaceS3": {
+            "type": "object",
+            "properties": {
+                "auth": {
+                    "description": "cloud18-sso, cloud18-keys or partner-token",
+                    "type": "string"
+                },
+                "cloud18Sso": {
+                    "description": "Cloud18SSO: reached with the Cloud18 identity, no keys (S3Provider.Cloud18SSO)",
+                    "type": "boolean"
+                },
+                "dc": {
+                    "type": "string"
+                },
+                "dcLocation": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "providerSource": {
+                    "$ref": "#/definitions/config.S3ProviderSource"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "storageClass": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "config.PathMapping": {
             "type": "object",
             "properties": {
@@ -28926,6 +29022,17 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "config.S3ProviderSource": {
+            "type": "string",
+            "enum": [
+                "app",
+                "custom"
+            ],
+            "x-enum-varnames": [
+                "S3ProviderSourceApp",
+                "S3ProviderSourceCustom"
+            ]
         },
         "config.ServerTaskList": {
             "type": "object",
@@ -29952,6 +30059,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "cloud18SelfServiceClustersCanBorrow": {
+                    "type": "boolean"
+                },
+                "cloud18SelfServiceClustersCanConsumeForSale": {
                     "type": "boolean"
                 },
                 "cloud18SelfServiceClustersEnabledScript": {
@@ -32789,6 +32899,77 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "server.ArchiveOffer": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "description": "Added: the cluster has an S3 provider of the offer's storage name",
+                    "type": "boolean"
+                },
+                "auth": {
+                    "type": "string"
+                },
+                "dc": {
+                    "type": "string"
+                },
+                "dcLocation": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "description": "the archive plugin it runs with (archive-plakar-s3, archive-pbs)",
+                    "type": "string"
+                },
+                "priceEurBauMonth": {
+                    "description": "per BAU (20 GiB) per month",
+                    "type": "number"
+                },
+                "priceEurMonth": {
+                    "type": "number"
+                },
+                "reason": {
+                    "description": "Reason: why the offer is not usable now",
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "retrievalCostEurGib": {
+                    "type": "number"
+                },
+                "s3": {
+                    "description": "S3 is the catalogue's storage of an S3 offer (MarketplaceArchiveOffer.S3Provider)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.MarketplaceS3"
+                        }
+                    ]
+                },
+                "s3Provider": {
+                    "description": "S3Provider names the MarketplaceS3 entry of an S3 offer; empty for the others",
+                    "type": "string"
+                },
+                "sizeUnit": {
+                    "description": "the unit priceEurMonth is for: GiB, TiB or TB",
+                    "type": "string"
+                },
+                "storageClass": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "usable": {
+                    "description": "Usable: the cluster can add the storage and an archive on it now, with no key to\ndeliver (a storage reached with the Cloud18 SSO, on a replication-manager connected to Cloud18)",
                     "type": "boolean"
                 }
             }

@@ -209,6 +209,7 @@ var clusterACLRules = []ACLRule{
 	// Archive list (#2091): one pattern per action and none covering another, so a weaker
 	// grant never reaches a stronger action through the less specific fallback
 	{"/archive-list", nil, []string{config.GrantClusterShowBackups}},
+	{"/archive-offers", nil, []string{config.GrantClusterShowBackups}},
 	{"/archive-actions/add", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/edit/", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/rename/", nil, []string{config.GrantClusterSettings}},

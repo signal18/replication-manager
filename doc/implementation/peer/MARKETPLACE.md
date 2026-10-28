@@ -201,6 +201,23 @@ does not read these files ignores them (`.pull` is read by name; the one directo
 Exposed by the MCP tool `list-cloud18-archive-offers` (any authenticated principal), which
 the website's sales assistant calls to propose the archive offers with their prices.
 
+In the GUI and the API, `GET /api/clusters/{cluster}/archive-offers` (`api_archive_offers.go`,
+grant `cluster-show-backups` like `archive-list`) gives each archive offer with its S3 storage,
+whether the cluster already has that S3 provider (`added`) and whether it can use the offer now
+(`usable`, else `reason`):
+
+- a storage reached with the Cloud18 SSO (`cloud18Sso`) is usable on a replication-manager
+  connected to Cloud18 (`Cluster.Cloud18SSOReady`): it needs no key, the storage gives the
+  cluster short-lived keys for a folder of its own (`archiveBucketFolder`);
+- an offer whose access is a key or a partner token is "on request": that access is per cluster
+  and the BO does not deliver it yet.
+
+The archive settings show the offers ("Cloud18 offers"). **Use** adds the storage through the
+existing `s3providers/add` (no write path of its own: `cloudSso`, no key, the role computed by
+`minioRoleArn`) and opens the archive form preset with the offer's plugin, its name and that
+`s3-provider`; the form's `s3-provider` setting is a choice among the cluster's S3 providers.
+The archive is added by `archive-actions/add` as any other.
+
 ---
 
 ## 4. Health-poll modes (`cloud18-peer-health-mode`)

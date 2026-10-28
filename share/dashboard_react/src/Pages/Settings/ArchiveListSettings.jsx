@@ -18,14 +18,14 @@ import {
   Text
 } from '@chakra-ui/react'
 import React, { useCallback, useEffect, useState } from 'react'
-import { useDispatch } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import RMButton from '../../components/RMButton'
 import RMSwitch from '../../components/RMSwitch'
 import Dropdown from '../../components/Dropdown'
 import TextForm from '../../components/TextForm'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import TextInputModal from '../../components/Modals/TextInputModal'
-import { resticCopyRepo } from '../../redux/clusterSlice'
+import { resticCopyRepo, selectClusterS3Providers } from '../../redux/clusterSlice'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import NumberInput from '../../components/NumberInput'
 import parentStyles from '../../components/Modals/styles.module.scss'
@@ -207,7 +207,16 @@ const KEEP_WITHIN = [
 ]
 const DURATION_PATTERN = '^(\\d+y)?(\\d+m)?(\\d+d)?(\\d+h)?$'
 
-function SettingField({ st, value, onChange, secretSet }) {
+function SettingField({ st, value, onChange, secretSet, s3Providers }) {
+  // the archive's S3 storage: one of the cluster's S3 providers (an offer's is added first)
+  if (st.name === 's3-provider' && s3Providers) {
+    const names = [...new Set([...s3Providers.map((p) => p.name), ...(value ? [value] : [])])]
+    return (
+      <Select size='sm' value={value ?? ''} onChange={(e) => onChange(e.target.value)} placeholder='an S3 provider'>
+        {names.map((n) => <option key={n} value={n}>{n}</option>)}
+      </Select>
+    )
+  }
   if (st.type === 'bool') {
     return <Switch isChecked={value === true || value === 'true'} onChange={(e) => onChange(e.target.checked)} />
   }
@@ -231,12 +240,13 @@ function SettingField({ st, value, onChange, secretSet }) {
   )
 }
 
-export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave, enterprisePlan }) {
+// preset: a new archive's plugin, name and settings chosen beforehand (an archive offer)
+export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave, enterprisePlan, s3Providers, preset }) {
   const { theme } = useTheme()
   const isEdit = !!archive
-  const [plugin, setPlugin] = useState(archive?.plugin || plugins?.find((p) => p.tier !== 'enterprise' || enterprisePlan)?.name || '')
-  const [name, setName] = useState(archive?.name || '')
-  const [values, setValues] = useState({ ...(archive?.settings || {}) })
+  const [plugin, setPlugin] = useState(archive?.plugin || preset?.plugin || plugins?.find((p) => p.tier !== 'enterprise' || enterprisePlan)?.name || '')
+  const [name, setName] = useState(archive?.name || preset?.name || '')
+  const [values, setValues] = useState({ ...(archive?.settings || preset?.settings || {}) })
   const [showMore, setShowMore] = useState(false)
   const [error, setError] = useState('')
   const [isSaving, setIsSaving] = useState(false)
@@ -273,7 +283,7 @@ export function ArchiveFormModal({ isOpen, closeModal, plugins, archive, onSave,
     <FormControl key={st.name}>
       <FormLabel fontSize='sm' mb='1'>{settingLabel(st.name, plugin)}</FormLabel>
       <SettingField st={st} value={values[st.name]} onChange={(v) => setValue(st.name, v)}
-        secretSet={(archive?.secretsSet || []).includes(st.name)} />
+        secretSet={(archive?.secretsSet || []).includes(st.name)} s3Providers={s3Providers} />
     </FormControl>
   )
 
@@ -353,7 +363,9 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
   const { theme } = useTheme()
   const [list, setList] = useState({ attached: '', archives: [], plugins: [], enterprisePlan: false, catalogueRebuilding: '', catalogueRebuilds: [] })
   const [error, setError] = useState('')
-  const [adding, setAdding] = useState(false)
+  const [adding, setAdding] = useState(false) // true, or the preset of an archive offer
+  const [offers, setOffers] = useState([])
+  const s3Providers = useSelector(selectClusterS3Providers)
   const [rename, setRename] = useState(null)
   const [removeName, setRemoveName] = useState('')
   const [open, setOpen] = useState({}) // archive name -> its settings shown
@@ -382,6 +394,33 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
   }, [clusterName])
 
   useEffect(() => { fetchList() }, [fetchList])
+
+  // the marketplace's archive offers (the catalogue the back-office pushes to every instance)
+  const fetchOffers = useCallback(async () => {
+    if (!clusterName) return
+    try {
+      const { data, status } = await clusterService.getArchiveOffers(clusterName)
+      if (status >= 200 && status < 300 && Array.isArray(data)) setOffers(data)
+    } catch (e) {
+      setOffers([])
+    }
+  }, [clusterName])
+
+  useEffect(() => { fetchOffers() }, [fetchOffers])
+
+  // an offer reached with the Cloud18 SSO: its S3 provider is added to the cluster (no key),
+  // then the archive form opens with its plugin and that provider; repman gives the folder
+  const takeOffer = async (o) => {
+    if (!o.added) {
+      const err = await call(() => clusterService.addS3Provider(clusterName, {
+        name: o.s3.name, providerSource: 'custom', endpoint: o.s3.endpoint, region: o.s3.region, cloud18Sso: true
+      }))
+      if (err) return
+      fetchOffers()
+    }
+    const taken = list.archives.some((a) => a.name === o.name)
+    setAdding({ plugin: o.plugin, name: taken ? '' : o.name, settings: { 's3-provider': o.s3.name } })
+  }
 
   // a remove, a size read or a catalogue rebuild runs in the background: follow it until it ends
   const running = list.archives.some((a) => a.status === 'removing' || a.status === 'sizing') || !!list.catalogueRebuilding
@@ -625,6 +664,27 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
         </Stack>
       )
     },
+    ...(offers.length > 0 ? [{
+      key: 'Cloud18 offers',
+      help: help('**Cloud18 offers**\n\nThe partners\' storages sold for archives, with their price. A storage reached with the Cloud18 SSO is used at once: **Use** adds it to the cluster\'s S3 providers (no key: replication-manager signs in with its Cloud18 identity, in a folder of its own) and opens the archive form. The other offers need their access delivered to the cluster by Cloud18: on request.', 'Cloud18 offers'),
+      value: (
+        <Stack spacing='2' width='100%'>
+          {offers.map((o) => (
+            <Flex key={o.name} gap='2' align='center' wrap='wrap'>
+              <Box flex='1' minW='200px'>
+                <Text fontSize='sm' fontWeight='semibold'>{o.title || o.name}</Text>
+                <Text fontSize='xs'>
+                  {[o.partner, o.dcLocation || o.dc, o.priceEurMonth != null ? `${o.priceEurMonth} €/${o.sizeUnit}/month` : 'price on request'].filter(Boolean).join(' · ')}
+                </Text>
+              </Box>
+              {o.usable
+                ? <RMButton size='sm' isDisabled={!canSet || list.plugins.length === 0} onClick={() => takeOffer(o)}>{o.added ? 'Add an archive' : 'Use'}</RMButton>
+                : <Text fontSize='xs' maxW='260px'>{o.reason}</Text>}
+            </Flex>
+          ))}
+        </Stack>
+      )
+    }] : []),
     {
       key: 'Retention policy',
       help: help('**Retention policy**\n\nWhat the cluster keeps: the snapshots any rule keeps stay, the others are purged. The keep values are the default policy, the tagged policies take the snapshots carrying their tag. They apply to every archive, unless an archive sets its own purge policies; the attached archive is asked to apply them, its own way (its Purge options).', 'Retention policy'),
@@ -671,7 +731,8 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
   const modals = (
     <>
       {adding && (
-        <ArchiveFormModal isOpen={adding} closeModal={() => setAdding(false)} plugins={list.plugins} enterprisePlan={list.enterprisePlan}
+        <ArchiveFormModal isOpen={!!adding} closeModal={() => setAdding(false)} plugins={list.plugins} enterprisePlan={list.enterprisePlan}
+          s3Providers={s3Providers} preset={adding === true ? null : adding}
           onSave={async (spec) => {
             const err = await call(() => clusterService.addArchive(clusterName, { name: spec.name, plugin: spec.plugin, settings: spec.settings }))
             if (!err) setAdding(false)

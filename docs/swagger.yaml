@@ -1682,6 +1682,9 @@ definitions:
         type: string
       result:
         type: string
+      skip-reason:
+        description: SkipReason is the target the cluster missed, when Result is SKIP.
+        type: string
     type: object
   cluster.UnitBillingRow:
     properties:
@@ -2121,6 +2124,33 @@ definitions:
       volumename:
         type: string
     type: object
+  config.MarketplaceS3:
+    properties:
+      auth:
+        description: cloud18-sso, cloud18-keys or partner-token
+        type: string
+      cloud18Sso:
+        description: 'Cloud18SSO: reached with the Cloud18 identity, no keys (S3Provider.Cloud18SSO)'
+        type: boolean
+      dc:
+        type: string
+      dcLocation:
+        type: string
+      endpoint:
+        type: string
+      name:
+        type: string
+      partner:
+        type: string
+      providerSource:
+        $ref: '#/definitions/config.S3ProviderSource'
+      region:
+        type: string
+      storageClass:
+        type: string
+      title:
+        type: string
+    type: object
   config.PathMapping:
     properties:
       dockerpath:
@@ -2239,6 +2269,14 @@ definitions:
       volumename:
         type: string
     type: object
+  config.S3ProviderSource:
+    enum:
+    - app
+    - custom
+    type: string
+    x-enum-varnames:
+    - S3ProviderSourceApp
+    - S3ProviderSourceCustom
   config.ServerTaskList:
     properties:
       serverUrl:
@@ -2938,6 +2976,8 @@ definitions:
       cloud18SelfServiceClusters:
         type: boolean
       cloud18SelfServiceClustersCanBorrow:
+        type: boolean
+      cloud18SelfServiceClustersCanConsumeForSale:
         type: boolean
       cloud18SelfServiceClustersEnabledScript:
         type: string
@@ -4871,6 +4911,58 @@ definitions:
       data:
         type: string
       success:
+        type: boolean
+    type: object
+  server.ArchiveOffer:
+    properties:
+      added:
+        description: 'Added: the cluster has an S3 provider of the offer''s storage
+          name'
+        type: boolean
+      auth:
+        type: string
+      dc:
+        type: string
+      dcLocation:
+        type: string
+      name:
+        type: string
+      partner:
+        type: string
+      plugin:
+        description: the archive plugin it runs with (archive-plakar-s3, archive-pbs)
+        type: string
+      priceEurBauMonth:
+        description: per BAU (20 GiB) per month
+        type: number
+      priceEurMonth:
+        type: number
+      reason:
+        description: 'Reason: why the offer is not usable now'
+        type: string
+      region:
+        type: string
+      retrievalCostEurGib:
+        type: number
+      s3:
+        allOf:
+        - $ref: '#/definitions/config.MarketplaceS3'
+        description: S3 is the catalogue's storage of an S3 offer (MarketplaceArchiveOffer.S3Provider)
+      s3Provider:
+        description: S3Provider names the MarketplaceS3 entry of an S3 offer; empty
+          for the others
+        type: string
+      sizeUnit:
+        description: 'the unit priceEurMonth is for: GiB, TiB or TB'
+        type: string
+      storageClass:
+        type: string
+      title:
+        type: string
+      usable:
+        description: |-
+          Usable: the cluster can add the storage and an archive on it now, with no key to
+          deliver (a storage reached with the Cloud18 SSO, on a replication-manager connected to Cloud18)
         type: boolean
     type: object
   server.AuthTokenWithUpgrade:
@@ -10193,6 +10285,45 @@ paths:
           schema:
             type: string
       summary: List the archives
+      tags:
+      - ClusterArchive
+  /api/clusters/{clusterName}/archive-offers:
+    get:
+      description: 'The archive offers of the marketplace catalogue the back-office
+        pushes to every instance, each with its S3 storage, whether the cluster already
+        has that storage and whether it can use the offer now: a storage reached with
+        the Cloud18 SSO needs no key, the others are on request. Public fields only,
+        no key.'
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/server.ArchiveOffer'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: List the archive offers
       tags:
       - ClusterArchive
   /api/clusters/{clusterName}/archive-snapshots/{archiveName}:
