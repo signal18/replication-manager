@@ -759,6 +759,9 @@ type Config struct {
 	ResourceManagerInfraDiskGB                float64           `scope:"server" mapstructure:"resource-manager-infra-disk-gb" toml:"resource-manager-infra-disk-gb" json:"resourceManagerInfraDiskGb"`
 	ResourceManagerInfraIops                  float64           `scope:"server" mapstructure:"resource-manager-infra-iops" toml:"resource-manager-infra-iops" json:"resourceManagerInfraIops"`
 	ResourceManagerInfraNetworkMbps           float64           `scope:"server" mapstructure:"resource-manager-infra-network-mbps" toml:"resource-manager-infra-network-mbps" json:"resourceManagerInfraNetworkMbps"`
+	ResourceManagerDiscoveredCpuCores         float64           `scope:"server" mapstructure:"resource-manager-discovered-cpu-cores" toml:"resource-manager-discovered-cpu-cores" json:"resourceManagerDiscoveredCpuCores"`
+	ResourceManagerDiscoveredMemoryMB         float64           `scope:"server" mapstructure:"resource-manager-discovered-memory-mb" toml:"resource-manager-discovered-memory-mb" json:"resourceManagerDiscoveredMemoryMb"`
+	ResourceManagerDiscoveredInterval         int               `scope:"server" mapstructure:"resource-manager-discovered-interval" toml:"resource-manager-discovered-interval" json:"resourceManagerDiscoveredInterval"`
 	ResourceManagerSmtGain                    float64           `scope:"server" mapstructure:"resource-manager-smt-gain" toml:"resource-manager-smt-gain" json:"resourceManagerSmtGain"`
 	ProvDbBootstrapScript                     string            `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
 	ProvProxyBootstrapScript                  string            `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
