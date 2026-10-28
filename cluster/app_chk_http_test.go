@@ -151,3 +151,29 @@ func TestRefuseMonitorOnlyApp(t *testing.T) {
 		t.Fatal("nil config is not monitor-only")
 	}
 }
+
+// A check reads at most appHTTPCheckMaxBody of the body: a service answering a huge page
+// costs no more memory per check (F4, #2209).
+func TestProbeNoRouteHTTPBodyBounded(t *testing.T) {
+	big := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		chunk := make([]byte, 64<<10)
+		for i := 0; i < 64; i++ { // 4 MiB
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+		}
+	}))
+	defer big.Close()
+	host, port, _ := net.SplitHostPort(strings.TrimPrefix(big.URL, "http://"))
+	app := &App{Id: "ap1", Host: host, Port: port, ClusterGroup: &Cluster{Conf: &config.Config{Timeout: 5}},
+		AppConfig: &config.AppConfig{AppHost: host, AppPort: port, AppMonitorMode: "http"}}
+	route, _ := appMonitorHTTPRoute(app.AppConfig, host)
+	status, body, err := app.GetAppHTTPStatus(route, true)
+	if err != nil || status != http.StatusOK {
+		t.Fatalf("want 200, got %d %v", status, err)
+	}
+	if len(body) != appHTTPCheckMaxBody {
+		t.Fatalf("body must be capped at %d bytes, got %d", appHTTPCheckMaxBody, len(body))
+	}
+}

@@ -320,6 +320,9 @@ func (app *App) GetDeploymentRoutesSnapshot() []config.Route {
 	return cp
 }
 
+// appHTTPCheckMaxBody: the most of a response body an HTTP check reads.
+const appHTTPCheckMaxBody = 1 << 20
+
 func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {
 	cluster := app.ClusterGroup
 
@@ -387,7 +390,9 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// The body is read up to appHTTPCheckMaxBody (F4): a check decides on the status, and
+	// a service that runs elsewhere (#2209) may answer a page of any size on every tick.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, appHTTPCheckMaxBody))
 	if err != nil {
 		return resp.StatusCode, nil, fmt.Errorf("error reading response body from %s: %v", urlpost, err)
 	}
