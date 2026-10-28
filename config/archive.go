@@ -1255,22 +1255,8 @@ func (conf *Config) BuildArchive(spec ArchiveSpec, create, upsert bool) (Archive
 		return a, false, fmt.Errorf("archive %s: plugin %s cannot be edited", a.Name, a.Plugin)
 	}
 	cleanArchiveEntry(&a)
-	for name, v := range spec.Settings {
-		st, ok := m.Setting(name)
-		if !ok {
-			return a, false, fmt.Errorf("plugin %s has no setting %s", a.Plugin, name)
-		}
-		if st.Type == ConstArchiveSettingTypeSecret && fmt.Sprintf("%v", v) == "" {
-			continue // an empty secret field in a form keeps the secret
-		}
-		tv, err := conf.typedSettingValue(st, v)
-		if err != nil {
-			return a, false, err
-		}
-		a.Settings[name] = tv
-	}
-	for _, name := range spec.Unset {
-		delete(a.Settings, name)
+	if err := conf.applyEntrySpec(a.Settings, m.Settings, a.Plugin, spec.Settings, spec.Unset); err != nil {
+		return a, false, err
 	}
 	return a, isNew, nil
 }

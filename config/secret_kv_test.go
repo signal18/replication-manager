@@ -232,3 +232,39 @@ func TestSecretKvFolder(t *testing.T) {
 		t.Fatalf("bucket space %q", s)
 	}
 }
+
+// #2227: an entry added and changed from its manifest's settings: the secret encrypted and
+// kept by an empty field, an unknown setting or another plugin refused, an address required
+func TestPutSecretKv(t *testing.T) {
+	conf := secretKvTestConf()
+	on := true
+	if _, err := conf.PutSecretKv(SecretKvSpec{Name: "own", Enabled: &on, Settings: map[string]interface{}{"address": "https://v:8200", "role-id": "r", "secret-id": "s1"}}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conf.PutSecretKv(SecretKvSpec{Name: "own", Settings: map[string]interface{}{"address": "https://v:8200"}}, true); err == nil {
+		t.Fatal("added twice")
+	}
+	if _, err := conf.PutSecretKv(SecretKvSpec{Name: "own", Settings: map[string]interface{}{"secret-id": "", "path-prefix": "d/s"}}, false); err != nil {
+		t.Fatal(err)
+	}
+	e := conf.SecretKvs[0]
+	if !e.Enabled || e.Settings["path-prefix"] != "d/s" || conf.SecretKvSetting(e, "secret-id") != "s1" || !strings.HasPrefix(e.Settings["secret-id"].(string), "hash_") {
+		t.Fatalf("entry %+v", e)
+	}
+	for _, bad := range []SecretKvSpec{
+		{Name: "x", Settings: map[string]interface{}{"address": "https://v", "nonsense": 1}},
+		{Name: "y", Plugin: "secret_kv-localstore", Settings: map[string]interface{}{"address": "https://v"}},
+		{Name: "z", Settings: map[string]interface{}{"mount": "kv"}},
+		{Name: "Bad Name", Settings: map[string]interface{}{"address": "https://v"}},
+	} {
+		if _, err := conf.PutSecretKv(bad, true); err == nil {
+			t.Errorf("%+v accepted", bad)
+		}
+	}
+	if err := conf.SetSecretKvEnabled("own", false); err != nil || conf.SecretKvs[0].Enabled {
+		t.Fatal("not turned off")
+	}
+	if err := conf.DeleteSecretKv("own"); err != nil || len(conf.SecretKvs) != 0 {
+		t.Fatal("not removed")
+	}
+}

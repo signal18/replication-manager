@@ -208,6 +208,14 @@ var clusterACLRules = []ACLRule{
 
 	// Archive list (#2091): one pattern per action and none covering another, so a weaker
 	// grant never reaches a stronger action through the less specific fallback
+	// the vault entries (#2227): an operator adds, edits and removes them; the cluster's
+	// sponsor (db-config-flag) also sees them and turns them on or off
+	{"/secret-kv-list", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
+	{"/secret-kv-actions/add", nil, []string{config.GrantClusterSettings}},
+	{"/secret-kv-actions/edit/", nil, []string{config.GrantClusterSettings}},
+	{"/secret-kv-actions/remove/", nil, []string{config.GrantClusterSettings}},
+	{"/secret-kv-actions/enable/", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
+	{"/secret-kv-actions/disable/", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
 	{"/archive-list", nil, []string{config.GrantClusterShowBackups}},
 	{"/archive-actions/add", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/edit/", nil, []string{config.GrantClusterSettings}},

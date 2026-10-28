@@ -487,3 +487,81 @@ func (conf *Config) SetSecretKvSetting(entry, setting, value string, unset bool)
 	}
 	return nil
 }
+
+// SecretKvSpec is a vault entry to add or change, from the API or the GUI: Settings by the
+// names of the plugin's manifest (a secret written only, never returned), Unset the names to
+// clear, Enabled when given.
+type SecretKvSpec struct {
+	Name     string                 `json:"name"`
+	Plugin   string                 `json:"plugin"`
+	Enabled  *bool                  `json:"enabled,omitempty"`
+	Settings map[string]interface{} `json:"settings"`
+	Unset    []string               `json:"unset,omitempty"`
+}
+
+// PutSecretKv adds (create) or changes the entry spec gives, checked against its plugin's
+// manifest; the list holds secret_kv-vault entries only. It returns the entry's name.
+func (conf *Config) PutSecretKv(spec SecretKvSpec, create bool) (string, error) {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	cur := conf.secretKvByName(spec.Name)
+	switch {
+	case create && cur != nil:
+		return "", fmt.Errorf("credential store %s already exists", spec.Name)
+	case !create && cur == nil:
+		return "", fmt.Errorf("unknown credential store %s", spec.Name)
+	}
+	var e SecretKvConfig
+	if cur != nil {
+		e = cloneSecretKvs([]SecretKvConfig{*cur})[0]
+	} else {
+		if err := validateEntryName("credential store", spec.Name); err != nil {
+			return "", err
+		}
+		e = SecretKvConfig{Name: spec.Name, Plugin: ConstSecretKvPluginVault, Settings: map[string]interface{}{}}
+	}
+	if spec.Plugin != "" && spec.Plugin != ConstSecretKvPluginVault {
+		return "", fmt.Errorf("plugin %q: the list holds %s entries only", spec.Plugin, ConstSecretKvPluginVault)
+	}
+	m, _ := SecretKvPlugin(e.Plugin)
+	if err := conf.applyEntrySpec(e.Settings, m.Settings, e.Plugin, spec.Settings, spec.Unset); err != nil {
+		return "", err
+	}
+	if spec.Enabled != nil {
+		e.Enabled = *spec.Enabled
+	}
+	if strings.TrimSpace(conf.secretKvSetting(&e, ConstSecretKvVaultAddress)) == "" {
+		return "", fmt.Errorf("credential store %s: an address is required", e.Name)
+	}
+	if cur != nil {
+		*cur = e
+	} else {
+		conf.SecretKvs = append(conf.SecretKvs, e)
+	}
+	return e.Name, nil
+}
+
+// SetSecretKvEnabled turns an entry on or off. Off stops its versions; what it holds stays.
+func (conf *Config) SetSecretKvEnabled(name string, enabled bool) error {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	e := conf.secretKvByName(name)
+	if e == nil {
+		return fmt.Errorf("unknown credential store %s", name)
+	}
+	e.Enabled = enabled
+	return nil
+}
+
+// DeleteSecretKv takes the entry out of the list; repman never deletes what it holds.
+func (conf *Config) DeleteSecretKv(name string) error {
+	secretKvMu.Lock()
+	defer secretKvMu.Unlock()
+	for i := range conf.SecretKvs {
+		if conf.SecretKvs[i].Name == name {
+			conf.SecretKvs = append(conf.SecretKvs[:i], conf.SecretKvs[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown credential store %s", name)
+}

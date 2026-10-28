@@ -20,6 +20,7 @@ import (
 	"net/smtp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/jordan-wright/email"
 	"github.com/signal18/replication-manager/config"
@@ -107,8 +108,13 @@ func (cluster *Cluster) CanSetCredential(key string) error {
 type CredentialInfo struct {
 	Key     string `json:"key"`
 	User    string `json:"user"`
-	Source  string `json:"source"`  // where the value comes from (credstore.Source*): config-file (immutable), dynamic-config, runtime-config (monitoring-save-config off), default, vault
+	Source  string `json:"source"`  // where the value comes from (credstore.Source*): versions (a version of the versioned stores), config-file (immutable), dynamic-config, runtime-config (monitoring-save-config off), default, vault
 	Refusal string `json:"refusal"` // why a change through the API is refused now, empty when allowed
+	// Initial is where the starting value is (#2227 rule 1): config-file, dynamic-config,
+	// default; Versions how many versions the versioned stores hold, LastChange the newest's time
+	Initial    string    `json:"initial"`
+	Versions   int       `json:"versions"`
+	LastChange time.Time `json:"lastChange,omitempty"`
 }
 
 // GetCredentialsInfo lists the monitoring and replication credentials, computed at each
@@ -126,6 +132,11 @@ func (cluster *Cluster) GetCredentialsInfo() []CredentialInfo {
 		}
 		if err := cluster.CanSetCredential(c.key); err != nil {
 			info.Refusal = credstore.Reason(err)
+		}
+		info.Initial = cluster.initialSource(c.key)
+		info.Versions = cluster.versionStore().Count(c.key)
+		if v, ok := cluster.versionStore().Latest(c.key); ok {
+			info.LastChange = v.At
 		}
 		out = append(out, info)
 	}

@@ -93,3 +93,27 @@ func (conf *Config) ClusterSpace(cluster string) string {
 	}
 	return cluster
 }
+
+// applyEntrySpec applies a spec's settings to an entry's, each checked against the plugin's
+// setting and stored typed (a secret encrypted); an empty secret keeps the one held (a form
+// leaves it empty), unset clears names.
+func (conf *Config) applyEntrySpec(settings map[string]interface{}, ss PluginSettings, plugin string, spec map[string]interface{}, unset []string) error {
+	for name, v := range spec {
+		st, ok := ss.Setting(name)
+		if !ok {
+			return fmt.Errorf("plugin %s has no setting %s", plugin, name)
+		}
+		if st.Type == ConstArchiveSettingTypeSecret && fmt.Sprintf("%v", v) == "" {
+			continue // an empty secret field in a form keeps the secret
+		}
+		tv, err := conf.typedSettingValue(st, v)
+		if err != nil {
+			return err
+		}
+		settings[name] = tv
+	}
+	for _, name := range unset {
+		delete(settings, name)
+	}
+	return nil
+}

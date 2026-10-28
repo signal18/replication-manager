@@ -66,10 +66,11 @@ type secretKvStores struct {
 	apply func(key string)
 
 	mu              sync.Mutex
-	behind          map[string]string // entry -> why it is behind (never a value)
-	passed          map[string]bool   // entries given their full pass in this run
-	pinnedPaths     map[string]bool   // keys pinned to a Vault path in a config file
-	startingCipher  map[string]string // starting value -> its ciphertext in the saved files
+	behind          map[string]string    // entry -> why it is behind (never a value)
+	passed          map[string]bool      // entries given their full pass in this run
+	pinnedPaths     map[string]bool      // keys pinned to a Vault path in a config file
+	startingCipher  map[string]string    // starting value -> its ciphertext in the saved files
+	lastWritten     map[string]time.Time // entry -> its last successful write
 	dropsSeen       uint64
 	dropsUnresolved bool
 }
@@ -82,6 +83,7 @@ func (cluster *Cluster) storeQueue() *credstore.StoreQueue {
 		c.passed = map[string]bool{}
 		c.pinnedPaths = map[string]bool{}
 		c.startingCipher = map[string]string{}
+		c.lastWritten = map[string]time.Time{}
 	})
 	return c.queue
 }
@@ -263,6 +265,7 @@ func (cluster *Cluster) secretWritePass() bool {
 			continue
 		}
 		cluster.setStoreBehind(name, "")
+		cluster.setStoreWritten(name)
 	}
 	if !retry {
 		c.mu.Lock()
@@ -998,4 +1001,123 @@ func (cluster *Cluster) reportOrchestratorSecret(object, key, value string) {
 			}
 		}
 	}
+}
+
+func (cluster *Cluster) setStoreWritten(entry string) {
+	c := &cluster.secretKv
+	c.mu.Lock()
+	c.lastWritten[entry] = time.Now()
+	c.mu.Unlock()
+}
+
+// SecretKvState is a vault entry's state for the API and the GUI: never a value.
+type SecretKvState struct {
+	LastWrite time.Time `json:"lastWrite,omitempty"` // its last successful write in this run
+	Behind    string    `json:"behind,omitempty"`    // why it is behind (WARN0269), empty when not
+}
+
+// SecretKvListResult is the vault entry list: the entries (secrets never returned, their
+// names in secretsSet), each one's state, the plugins' manifests, the queue's drops (WARN0270)
+// and the settings of the copies.
+type SecretKvListResult struct {
+	Entries      []config.SecretKvConfig         `json:"entries"`
+	States       map[string]SecretKvState        `json:"states"`
+	Plugins      []config.SecretKvPluginManifest `json:"plugins"`
+	Pinned       bool                            `json:"pinned"` // a config file sets the list: change it there
+	Queued       int                             `json:"queued"`
+	Dropped      uint64                          `json:"dropped"`
+	DropsPending bool                            `json:"dropsPending"` // WARN0270
+	Settings     map[string]int                  `json:"settings"`
+	Credentials  []CredentialInfo                `json:"credentials"`
+}
+
+// SecretKvList is the vault entry list for the API.
+func (cluster *Cluster) SecretKvList() SecretKvListResult {
+	q := cluster.storeQueue()
+	c := &cluster.secretKv
+	out := SecretKvListResult{
+		Entries: cluster.Conf.SecretKvList(),
+		States:  map[string]SecretKvState{},
+		Plugins: config.SecretKvPlugins(),
+		Pinned:  cluster.SecretKvsPinned(),
+		Queued:  q.Len(),
+		Dropped: q.Dropped(),
+		Settings: map[string]int{
+			"secret-kv-queue-limit":    cluster.Conf.SecretKvQueueLimit,
+			"secret-kv-write-timeout":  cluster.Conf.SecretKvWriteTimeout,
+			"secret-kv-retry-interval": cluster.Conf.SecretKvRetryInterval,
+			"secret-kv-start-timeout":  cluster.Conf.SecretKvStartTimeout,
+		},
+		Credentials: cluster.GetCredentialsInfo(),
+	}
+	if out.Entries == nil {
+		out.Entries = []config.SecretKvConfig{}
+	}
+	c.mu.Lock()
+	out.DropsPending = c.dropsUnresolved
+	for _, e := range out.Entries {
+		out.States[e.Name] = SecretKvState{LastWrite: c.lastWritten[e.Name], Behind: c.behind[e.Name]}
+	}
+	c.mu.Unlock()
+	return out
+}
+
+// SecretKvsPinned: a config file sets the list (secret-kv): the API cannot change it.
+func (cluster *Cluster) SecretKvsPinned() bool {
+	_, pinned := cluster.Conf.GetImmuableFlag("secret-kv")
+	return pinned
+}
+
+// ErrSecretKvsPinned is the refusal of a change of a list a config file sets.
+var ErrSecretKvsPinned = errors.New("the credential stores are set by a config file (secret-kv): change them there")
+
+// PutSecretKv adds (create) or changes a vault entry; the save writes it, a peer replays it,
+// an entry turned on gets its full pass at the next tick.
+func (cluster *Cluster) PutSecretKv(spec config.SecretKvSpec, create bool) (string, error) {
+	if cluster.SecretKvsPinned() {
+		return "", ErrSecretKvsPinned
+	}
+	name, err := cluster.Conf.PutSecretKv(spec, create)
+	if err != nil {
+		return "", err
+	}
+	cluster.Save()
+	return name, nil
+}
+
+// SetSecretKvEnabled turns a vault entry on or off.
+func (cluster *Cluster) SetSecretKvEnabled(name string, enabled bool) error {
+	if cluster.SecretKvsPinned() {
+		return ErrSecretKvsPinned
+	}
+	if err := cluster.Conf.SetSecretKvEnabled(name, enabled); err != nil {
+		return err
+	}
+	cluster.Save()
+	return nil
+}
+
+// RemoveSecretKv takes a vault entry out of the list; what it holds stays (rule 10).
+func (cluster *Cluster) RemoveSecretKv(name string) error {
+	if cluster.SecretKvsPinned() {
+		return ErrSecretKvsPinned
+	}
+	if err := cluster.Conf.DeleteSecretKv(name); err != nil {
+		return err
+	}
+	cluster.setStoreBehind(name, "")
+	cluster.Save()
+	return nil
+}
+
+// initialSource is where key's starting value is: a config file, the dynamic config, or the
+// default (#2227 rule 1).
+func (cluster *Cluster) initialSource(key string) string {
+	if _, ok := cluster.Conf.GetImmuableFlag(key); ok {
+		return credstore.SourcePinned
+	}
+	if _, ok := cluster.Conf.GetDynamicFlag(key); ok {
+		return credstore.SourceDynamic
+	}
+	return credstore.SourceDefault
 }

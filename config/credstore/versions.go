@@ -250,3 +250,10 @@ func isHeldRefusal(err error) bool {
 	var h *heldRefusal
 	return errors.As(err, &h)
 }
+
+// Count is how many versions key has.
+func (s *VersionStore) Count(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.versions[key])
+}
