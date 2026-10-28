@@ -3543,6 +3543,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchCheckReplicationFilters()
 	case "check-replication-state":
 		mycluster.SwitchRplChecks()
+	case "failover-falsepositive-heartbeat":
+		mycluster.SwitchCheckFalsePositiveHeartbeat()
 	case "scheduler-db-servers-logical-backup":
 		mycluster.SwitchSchedulerBackupLogical()
 	case "scheduler-db-servers-physical-backup":
@@ -3771,7 +3773,9 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchForceBinlogRow()
 	case "force-slave-semisync":
 		mycluster.SwitchForceSlaveSemisync()
-	case "force-slave-Heartbeat":
+	// force-slave-heartbeat is the key (the GUI sends it, #2208); the capital H was the only
+	// spelling matched before: kept for API scripts that sent it, to drop at the next major
+	case "force-slave-heartbeat", "force-slave-Heartbeat":
 		mycluster.SwitchForceSlaveHeartbeat()
 	case "force-slave-gtid":
 		mycluster.SwitchForceSlaveGtid()
@@ -5444,6 +5448,13 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "replication-master-retry-count":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.MasterRetryCount = val
+	case "force-slave-heartbeat-time":
+		// the period force-slave-heartbeat sets, and above which WARN0050 warns (#2208)
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 1 {
+			return fmt.Errorf("force-slave-heartbeat-time must be a whole number of seconds, at least 1: %q", value)
+		}
+		mycluster.Conf.ForceSlaveHeartbeatTime = val
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
 	case "haproxy-mode":
@@ -5609,6 +5620,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.CheckReplFilter = applyIsActive(mycluster.Conf.CheckReplFilter, isactive)
 	case "check-replication-state":
 		mycluster.Conf.RplChecks = applyIsActive(mycluster.Conf.RplChecks, isactive)
+	case "failover-falsepositive-heartbeat":
+		mycluster.Conf.CheckFalsePositiveHeartbeat = applyIsActive(mycluster.Conf.CheckFalsePositiveHeartbeat, isactive)
+	case "failover-falsepositive-heartbeat-timeout":
+		val, err := strconv.Atoi(value)
+		if err != nil || val < 0 {
+			return fmt.Errorf("failover-falsepositive-heartbeat-timeout must be a whole number of seconds: %q", value)
+		}
+		mycluster.Conf.CheckFalsePositiveHeartbeatTimeout = val
 	case "scheduler-db-servers-logical-backup":
 		oldValue := mycluster.Conf.SchedulerBackupLogical
 		newValue := applyIsActive(oldValue, isactive)
@@ -5854,7 +5873,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ForceBinlogRow = applyIsActive(mycluster.Conf.ForceBinlogRow, isactive)
 	case "force-slave-semisync":
 		mycluster.Conf.ForceSlaveSemisync = applyIsActive(mycluster.Conf.ForceSlaveSemisync, isactive)
-	case "force-slave-Heartbeat":
+	// see the switch: the capital H kept for API scripts, to drop at the next major
+	case "force-slave-heartbeat", "force-slave-Heartbeat":
 		mycluster.Conf.ForceSlaveHeartbeat = applyIsActive(mycluster.Conf.ForceSlaveHeartbeat, isactive)
 	case "force-slave-gtid":
 		mycluster.Conf.ForceSlaveGtid = applyIsActive(mycluster.Conf.ForceSlaveGtid, isactive)

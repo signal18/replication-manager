@@ -727,7 +727,8 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 			changemasteropt.User = rep.MasterUser.String
 			changemasteropt.Password = myparentrplpassword
 			changemasteropt.Retry = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry)
-			changemasteropt.Heartbeat = strconv.Itoa(int(rep.SlaveHeartbeatPeriod))
+			// the moved channel keeps its period (read as 0 before #2208: its heartbeats went off)
+			changemasteropt.Heartbeat = strconv.FormatFloat(rep.SlaveHeartbeatPeriod, 'f', -1, 64)
 			changemasteropt.RetryCount = strconv.Itoa(cluster.Conf.MasterRetryCount)
 			changemasteropt.Logfile = rep.MasterLogFile.String
 			changemasteropt.Logpos = rep.ExecMasterLogPos.String

@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -498,7 +499,7 @@ func getSlaveStatusRaw(db *sqlx.DB, Channel string, myver *version.Version) (Sla
 								'Slave_Pos' as  "Using_Gtid" ,
 								'0-0-' || ('x'|| replace(text(ss.received_lsn), '/' ,''))::bit(64)::bigint  as  "Gtid_IO_Pos" ,
 								'0-0-' || ('x'|| replace(text(ss.latest_end_lsn), '/' ,''))::bit(64)::bigint as "Gtid_Slave_Pos" ,
-								1 as "Slave_Heartbeat_Period" ,
+								1 as "Slave_heartbeat_period" ,
 								'' as "Slave_SQL_Running_State",
 								ros.external_id
 							FROM pg_replication_origin_status ros
@@ -668,7 +669,7 @@ func getAllSlavesStatusRaw(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, 
 		   	UsingGtid            sql.NullString `db:"Using_Gtid" json:"usingGtid"`
 		   	GtidIOPos            sql.NullString `db:"Gtid_IO_Pos" json:"gtidIoPos"`
 		   	GtidSlavePos         sql.NullString `db:"Gtid_Slave_Pos" json:"gtidSlavePos"`
-		   	SlaveHeartbeatPeriod float64        `db:"Slave_Heartbeat_Period" json:"slaveHeartbeatPeriod"`
+		   	SlaveHeartbeatPeriod float64        `db:"Slave_heartbeat_period" json:"slaveHeartbeatPeriod"`
 		   	ExecutedGtidSet      sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
 		   	RetrievedGtidSet     sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
 		   	SlaveSQLRunningState sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
@@ -700,7 +701,7 @@ func getAllSlavesStatusRaw(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, 
 							  'Slave_Pos' as  "Using_Gtid" ,
 								'0-0-' || ('x'|| replace(text(ss.received_lsn), '/' ,''))::bit(64)::bigint  as  "Gtid_IO_Pos" ,
 								'0-0-' || ('x'|| replace(text(ss.latest_end_lsn), '/' ,''))::bit(64)::bigint as "Gtid_Slave_Pos" ,
-								1 as "Slave_Heartbeat_Period" ,
+								1 as "Slave_heartbeat_period" ,
 								'' as "Slave_SQL_Running_State",
 								ros.external_id
 							FROM pg_replication_origin_status ros
@@ -955,32 +956,59 @@ func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *version.Version) (st
 	return cmd, err
 }
 
+// SetSlaveHeartbeat sets the heartbeat period (seconds) of one channel ("" for the default
+// one): STOP SLAVE, the CHANGE MASTER naming that channel, START SLAVE. The statement named
+// no channel before #2208, so on a named MariaDB connection it went to the default one.
+// PostgreSQL has no replication heartbeat: an error, no statement.
 func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, myver *version.Version) (string, error) {
-	var err error
-	logs := ""
-	log := ""
-	log, err = StopSlave(db, Channel, myver)
-	logs += log
+	stmt, err := setSlaveHeartbeatStatement(interval, Channel, myver)
+	if err != nil {
+		return "", err
+	}
+	logs, err := StopSlave(db, Channel, myver)
 	if err != nil {
 		return logs, err
 	}
+	logs += "\n" + stmt
+	_, changeErr := db.Exec(stmt)
+	// started again even when the change failed: the channel was running before
+	log, startErr := StartSlave(db, Channel, myver)
+	logs += "\n" + log
+	switch {
+	case startErr != nil && changeErr != nil:
+		return logs, fmt.Errorf("%v; the channel is left stopped: %v", changeErr, startErr)
+	case startErr != nil:
+		return logs, fmt.Errorf("the channel is left stopped: %v", startErr)
+	}
+	return logs, changeErr
+}
 
+// setSlaveHeartbeatStatement is the CHANGE MASTER / CHANGE REPLICATION SOURCE of
+// SetSlaveHeartbeat, its channel named the flavor's way.
+func setSlaveHeartbeatStatement(interval string, Channel string, myver *version.Version) (string, error) {
+	if myver.IsPostgreSQL() {
+		return "", errors.New("PostgreSQL has no replication heartbeat period")
+	}
+	if _, err := strconv.ParseFloat(interval, 64); err != nil {
+		return "", fmt.Errorf("invalid heartbeat period %q", interval)
+	}
+	if err := ValidateChannel(Channel); err != nil {
+		return "", err
+	}
+	if myver.IsMariaDB() {
+		if Channel != "" {
+			return "CHANGE MASTER '" + Channel + "' TO MASTER_HEARTBEAT_PERIOD=" + interval, nil
+		}
+		return "CHANGE MASTER TO MASTER_HEARTBEAT_PERIOD=" + interval, nil
+	}
 	stmt := "CHANGE MASTER TO MASTER_HEARTBEAT_PERIOD=" + interval
-	if myver.IsMySQLOrPerconaGreater84() {
-		stmt = "CHANGE REPLICA SOURCE TO SOURCE_HEARTBEAT_PERIOD=" + interval
+	if myver.GreaterEqual("8.0.23") {
+		stmt = "CHANGE REPLICATION SOURCE TO SOURCE_HEARTBEAT_PERIOD=" + interval
 	}
-	logs += "\n" + stmt
-	_, err = db.Exec(stmt)
-
-	if err != nil {
-		return logs, err
+	if Channel != "" {
+		stmt += " FOR CHANNEL '" + Channel + "'"
 	}
-	log, err = StartSlave(db, Channel, myver)
-	logs += "\n" + stmt
-	if err != nil {
-		return logs, err
-	}
-	return logs, err
+	return stmt, nil
 }
 
 func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *version.Version) (string, error) {
@@ -1465,4 +1493,45 @@ func GetAllSlavesStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, str
 		ss[i].MaskSecrets()
 	}
 	return ss, query, err
+}
+
+// ReplicationLastReceived is when a replica's channel last received something from its
+// source, a heartbeat (idle source) or an event (busy source), as the replica itself
+// records it, and the channel's heartbeat period in seconds.
+type ReplicationLastReceived struct {
+	Received        bool          // false: nothing received since the channel started
+	Age             time.Duration // how long ago, on the replica's clock
+	HeartbeatPeriod float64
+}
+
+// GetReplicationLastReceived reads when a channel ("" for the default one) last received
+// from its source. MySQL and Percona 5.7+ record it in performance_schema:
+// LAST_HEARTBEAT_TIMESTAMP, and from 8.0 LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP for the
+// events of a busy source (5.7 sees the heartbeats of an idle source only), aged with the
+// replica's NOW(6) so both ends use one clock. MariaDB records no such time (only the
+// Slave_received_heartbeats counter of SHOW ALL SLAVES STATUS: the monitor stamps the time it
+// sees it move), nor do MySQL before 5.7 and PostgreSQL: they return an error, no query (#2208).
+func GetReplicationLastReceived(db *sqlx.DB, channel string, myver *version.Version) (ReplicationLastReceived, string, error) {
+	var lr ReplicationLastReceived
+	if !myver.IsMySQLOrPercona() || !myver.GreaterEqual("5.7") {
+		return lr, "", errors.New("no last received time recorded by " + myver.Flavor + " " + myver.ToString())
+	}
+	// a channel that never received holds the zero timestamp, which MySQL 8 refuses in a
+	// comparison (error 1525): compare Unix times, the zero one reads 0
+	last := "UNIX_TIMESTAMP(s.LAST_HEARTBEAT_TIMESTAMP)"
+	if myver.GreaterEqual("8.0") {
+		last = "GREATEST(UNIX_TIMESTAMP(s.LAST_HEARTBEAT_TIMESTAMP), UNIX_TIMESTAMP(s.LAST_QUEUED_TRANSACTION_END_QUEUE_TIMESTAMP))"
+	}
+	query := "SELECT " + last + ", UNIX_TIMESTAMP(NOW(6)), c.HEARTBEAT_INTERVAL " +
+		"FROM performance_schema.replication_connection_status s " +
+		"JOIN performance_schema.replication_connection_configuration c ON c.CHANNEL_NAME = s.CHANNEL_NAME WHERE s.CHANNEL_NAME = ?"
+	var lastReceived, now float64
+	if err := db.QueryRowx(query, channel).Scan(&lastReceived, &now, &lr.HeartbeatPeriod); err != nil {
+		return lr, query, err
+	}
+	lr.Received = lastReceived > 0
+	if lr.Received {
+		lr.Age = time.Duration((now - lastReceived) * float64(time.Second))
+	}
+	return lr, query, nil
 }

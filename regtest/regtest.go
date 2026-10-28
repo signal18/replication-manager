@@ -51,7 +51,7 @@ var tests = []string{
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat",
 	"testFailoverNumberFailureLimitReach",
 	"testFailoverTimeNotReach",
-	"testFailoverManual",
+	"testCancelFailoverReplicationHeartbeatDetection",
 	"testFailoverAssyncAutoRejoinFlashback",
 	"testFailoverSemisyncAutoRejoinFlashback",
 	"testFailoverAssyncAutoRejoinNowrites",
@@ -239,7 +239,8 @@ var testTargets = map[string][]TestTarget{
 	"testFailoverNoRplChecksNoSemiSyncMasterHeartbeat":             anyCluster,
 	"testFailoverNumberFailureLimitReach":                          anyCluster,
 	"testFailoverTimeNotReach":                                     anyCluster,
-	"testFailoverManual":                                           anyCluster,
+	// a direct replica receives from the master: the check reads it on master-slave only
+	"testCancelFailoverReplicationHeartbeatDetection": {{TopologyTarget: []string{config.TopoMasterSlave}, NumberNodesTarget: 2, ConfigVariableMustSet: map[string]string{"failover-falsepositive-heartbeat": "true"}}},
 	"testFailoverAssyncAutoRejoinFlashback":                        anyCluster,
 	"testFailoverSemisyncAutoRejoinFlashback":                      anyCluster,
 	"testFailoverAssyncAutoRejoinNowrites":                         anyCluster,
@@ -297,6 +298,8 @@ var testTargets = map[string][]TestTarget{
 	"testK8SProvisionSchedulerVolumeBinding":                                   {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testK8SStopStartDatabaseService":                                          {{OrchestratorTarget: []string{config.ConstOrchestratorKubernetes}}},
 	"testSchemaPlugin":                                                         anyCluster,
+	// its own local web service: any cluster
+	"testAppMonitorHTTP": anyCluster,
 	"testGraphiteMetricsQueueBound":                                            anyCluster,
 	"testDirectReseedSystemAllEmptyDestination":                                anyCluster,
 	"testDirectReseedSystemAllPluginAlreadyActive":                             anyCluster,
@@ -329,6 +332,20 @@ const TestResultSkip = "SKIP"
 // none, why: the miss of each target joined by "; ". A test that declares no targets matches
 // with an empty target. An unknown flavor (no database version read yet) or DBU (no plan)
 // does not miss: the test runs and its result says what it found.
+// ConfigVariablesMustSet lists every must-set variable of every test, by test: the server
+// checks that the API can set each one (a key it refuses leaves its test unrun, ERR).
+func ConfigVariablesMustSet() map[string][]map[string]string {
+	all := make(map[string][]map[string]string)
+	for name, targets := range testTargets {
+		for _, target := range targets {
+			if len(target.ConfigVariableMustSet) > 0 {
+				all[name] = append(all[name], target.ConfigVariableMustSet)
+			}
+		}
+	}
+	return all
+}
+
 func (regtest *RegTest) MatchTarget(cl *cluster.Cluster, name string) (TestTarget, string) {
 	targets := testTargets[name]
 	if len(targets) == 0 {

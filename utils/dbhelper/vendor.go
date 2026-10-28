@@ -415,7 +415,7 @@ func (v *PostgreSQLVendor) GetReplicationStatusQuery(channel string) string {
 		'Slave_Pos' as "Using_Gtid",
 		'0-0-' || ('x'|| replace(text(ss.received_lsn), '/' ,''))::bit(64)::bigint as "Gtid_IO_Pos",
 		'0-0-' || ('x'|| replace(text(ss.latest_end_lsn), '/' ,''))::bit(64)::bigint as "Gtid_Slave_Pos",
-		1 as "Slave_Heartbeat_Period",
+		1 as "Slave_heartbeat_period",
 		'' as "Slave_SQL_Running_State",
 		ros.external_id
 	FROM pg_replication_origin_status ros
