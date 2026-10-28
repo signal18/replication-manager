@@ -257,6 +257,11 @@ func TestProbeNoRouteHTTPSCert(t *testing.T) {
 	if key != ErrAppCertificate || err == nil {
 		t.Fatalf("https-cert on a self-signed certificate: want APPERR010, got %s %v", key, err)
 	}
+	// the dial reached the server on app-port and refused its certificate (not a connection
+	// error on a wrong address)
+	if !strings.Contains(err.Error(), "certificate") || !strings.Contains(err.Error(), net.JoinHostPort(host, port)) {
+		t.Fatalf("https-cert must dial %s and refuse the certificate, got %v", net.JoinHostPort(host, port), err)
+	}
 	if desc := app.noRouteProbeErrDesc(key, err); !strings.Contains(desc, "ap1") || !strings.Contains(desc, "not valid") {
 		t.Fatalf("APPERR010 text: %q", desc)
 	}
@@ -338,5 +343,21 @@ func TestAppMonitorHostHeader(t *testing.T) {
 	}
 	if gotHost != host+":"+port {
 		t.Fatalf("non-default port: Host header %q, want %q", gotHost, host+":"+port)
+	}
+}
+
+// app-port is validated when set: a number 1-65535, never empty (#2209, review).
+func TestSetAppPortValidated(t *testing.T) {
+	app := &App{AppConfig: &config.AppConfig{AppPort: "443"}, ClusterGroup: &Cluster{}}
+	for _, bad := range []string{"", "0", "65536", "web", "44 3"} {
+		if err := app.SetSetting("app-port", bad); err == nil {
+			t.Fatalf("%q must be refused", bad)
+		}
+	}
+	if app.AppConfig.AppPort != "443" {
+		t.Fatalf("a refused port must not be stored, got %q", app.AppConfig.AppPort)
+	}
+	if err := app.SetSetting("app-port", " 8443 "); err != nil || app.AppConfig.AppPort != "8443" {
+		t.Fatalf("8443: %v %q", err, app.AppConfig.AppPort)
 	}
 }

@@ -846,7 +846,7 @@ func (r *Route) Validate() error {
 		if strings.Contains(r.SourcePort, ":") {
 			return fmt.Errorf("sourcePort must be a single port number, got %q", r.SourcePort)
 		}
-		if err := validateSinglePort(r.SourcePort); err != nil {
+		if err := ValidatePort(r.SourcePort); err != nil {
 			return fmt.Errorf("sourcePort: %w", err)
 		}
 	}
@@ -854,7 +854,7 @@ func (r *Route) Validate() error {
 		if strings.Contains(r.DestinationPort, ":") {
 			return fmt.Errorf("destPort must be a single port number, got %q", r.DestinationPort)
 		}
-		if err := validateSinglePort(r.DestinationPort); err != nil {
+		if err := ValidatePort(r.DestinationPort); err != nil {
 			return fmt.Errorf("destPort: %w", err)
 		}
 	}
@@ -906,7 +906,8 @@ func (r *Route) Validate() error {
 	return nil
 }
 
-func validateSinglePort(s string) error {
+// ValidatePort: a port number 1-65535 (routes, app-port).
+func ValidatePort(s string) error {
 	n, err := strconv.Atoi(s)
 	if err != nil || n < 1 || n > 65535 {
 		return fmt.Errorf("%q is not a valid port number", s)

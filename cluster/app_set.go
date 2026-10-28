@@ -268,7 +268,11 @@ func (app *App) SetSetting(key, value string) error {
 	case "prov-app-template":
 		app.AppConfig.ProvAppTemplate = value
 	case "app-port":
-		app.AppConfig.AppPort = value
+		// the identity of the app and the port of its checks: a number, never empty (#2209)
+		if err := config.ValidatePort(strings.TrimSpace(value)); err != nil {
+			return fmt.Errorf("app-port: %w", err)
+		}
+		app.AppConfig.AppPort = strings.TrimSpace(value)
 	case "app-db-user":
 		app.AppConfig.AppDbUser = value
 	case "app-db-pass":
