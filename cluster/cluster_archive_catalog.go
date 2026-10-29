@@ -249,6 +249,14 @@ func (cluster *Cluster) setArchiveSize(name string, size *ArchiveSize) {
 	cluster.saveArchiveSizesLocked()
 }
 
+// archiveSizeBytes is the archive's size as last read (archive-sizes.json), 0 before a read.
+func (cluster *Cluster) archiveSizeBytes(name string) int64 {
+	cluster.archiveOpsMu.Lock()
+	defer cluster.archiveOpsMu.Unlock()
+	cluster.loadArchiveSizesLocked()
+	return cluster.archiveSizes[name].Bytes
+}
+
 func (cluster *Cluster) renameArchiveSize(name, newName string) {
 	cluster.archiveOpsMu.Lock()
 	defer cluster.archiveOpsMu.Unlock()

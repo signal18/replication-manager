@@ -93,16 +93,26 @@ func (cluster *Cluster) localBackupBytes() int64 {
 }
 
 // resticRepositoryIsRemote reports whether the restic archive leaves the cluster: the
-// repository is an S3 or SFTP backend. A local path is local disk, counted by the walk.
+// repository restic runs (resticRepoPathFor: S3 when backup-restic-aws is on, else the local
+// repository) is an S3 or SFTP backend. Not backup-restic-repository: restic does not run it,
+// and its default is an S3 URL, so a local archive read as remote was counted twice, in BKU
+// (the walk) and in BAU. A local path is local disk, counted by the walk.
 func (cluster *Cluster) resticRepositoryIsRemote() bool {
-	repo := strings.TrimSpace(cluster.Conf.BackupResticRepository)
+	repo := strings.TrimSpace(cluster.resticRepoPathFor(cluster.Conf))
 	return config.IsS3ResticRepository(repo) || config.IsSftpResticRepository(repo)
 }
 
-// remoteBackupBytes is the restic repository raw-data size (restic stats --mode raw-data)
-// when the repository is remote (S3/SFTP): what is really held off the cluster. 0 when restic
-// is off or its repository is a local path (then it is local disk, already walked).
+// remoteBackupBytes is what the attached archive holds off the cluster. An external plugin's
+// archive (plakar on S3, PBS) at its last size read (SizeArchive), 0 before one; a restic
+// archive at its repository raw-data size (restic stats --mode raw-data) when that repository
+// is remote (S3/SFTP). 0 when restic is off or its repository is a local path: local disk,
+// already walked into BKU.
 func (cluster *Cluster) remoteBackupBytes() int64 {
+	if a, ok := cluster.attachedArchiveConfig(); ok {
+		if _, ext := externalArchive(a); ext {
+			return cluster.archiveSizeBytes(a.Name)
+		}
+	}
 	if cluster.ResticManager == nil || !cluster.Conf.BackupRestic || !cluster.resticRepositoryIsRemote() {
 		return 0
 	}

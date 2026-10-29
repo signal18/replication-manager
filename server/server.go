@@ -3665,6 +3665,8 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
 	repman.resourceManager.SetSmtGain(repman.Conf.ResourceManagerSmtGain)
 	repman.resourceManager.SetPrices(repman.billingPrices())
+	// the catalogue read at start (LoadMarketplaceCatalogue) before the manager existed
+	repman.resourceManager.SetMarketplaceCatalogue(repman.MarketplaceCatalogue())
 	if repman.Conf.WorkingDir != "" {
 		logf := func(format string, args ...interface{}) {
 			if repman.Logrus != nil {

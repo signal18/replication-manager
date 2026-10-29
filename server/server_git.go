@@ -1397,6 +1397,9 @@ func (repman *ReplicationManager) LoadMarketplaceCatalogue() {
 	if changed {
 		repman.marketplaceCatalogue.Store(&next)
 	}
+	if repman.resourceManager != nil { // billing prices an archive at its offer's BAU price
+		repman.resourceManager.SetMarketplaceCatalogue(next)
+	}
 }
 
 // loadPullList decodes a new version of .pull/<name> into list: read when it did, gone when the
