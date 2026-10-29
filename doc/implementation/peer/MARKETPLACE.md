@@ -219,7 +219,13 @@ whether the cluster already has that S3 provider (`added`) and whether it can us
   applied, the provider is there: the offer is `added` and `usable`. Until then it is
   `requested`. The keys reach the instance in clear in its private `-pull` repo (accepted for
   these per-cluster, per-bucket keys); replication-manager saves them encrypted;
-- an offer whose access is a partner token is "on request": the BO does not deliver it yet.
+- an offer the catalogue marks `requestable` that has no S3 storage (a PBS offer, `archive-pbs`):
+  **Request** adds it to the same setting; the BO creates the cluster's own token on the partner's
+  datastore and delivers an `[[archive]]` block of the offer's name (base URL, datastore, the cluster's
+  namespace, token, fingerprint) in the cluster's `inject.toml`. The archive is added, not attached.
+  The offer is then `added` (an archive of its name and plugin) and `usable`; the GUI says the archive
+  is in the list, to attach;
+- any other offer is "on request": the BO does not deliver it yet.
 
 An S3 provider has an optional `bucket` (`[[s3-provider]]` key `bucket`, `S3Provider.Bucket`):
 an archive on it that names no bucket uses it (`archiveBucketFolder`). An edit that does not

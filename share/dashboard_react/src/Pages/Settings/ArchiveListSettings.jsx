@@ -702,7 +702,8 @@ export function useArchiveSettings({ clusterName, user, help, config }) {
                       : o.priceEurBauMonth != null ? `${o.priceEurBauMonth} €/BAU/month` : 'price on request'].filter(Boolean).join(' · ')}
                 </Text>
               </Box>
-              {o.usable && <RMButton size='sm' isDisabled={!canSet || list.plugins.length === 0} onClick={() => takeOffer(o)}>{o.added ? 'Add an archive' : 'Use'}</RMButton>}
+              {o.usable && o.s3 && <RMButton size='sm' isDisabled={!canSet || list.plugins.length === 0} onClick={() => takeOffer(o)}>{o.added ? 'Add an archive' : 'Use'}</RMButton>}
+              {o.usable && !o.s3 && <Text fontSize='xs' maxW='260px'>delivered: archive {o.name} is in the list, attach it to use it</Text>}
               {o.requestable && <RMButton size='sm' isDisabled={!canSet || requesting} onClick={() => requestOffer(o)}>Request</RMButton>}
               {!o.usable && <Text fontSize='xs' maxW='260px'>{o.reason}</Text>}
             </Flex>

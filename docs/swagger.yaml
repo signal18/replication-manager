@@ -2832,7 +2832,7 @@ definitions:
         description: |-
           Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
           the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
-          delivers the S3 provider in the cluster's inject.toml
+          delivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)
         type: string
       cloud18CostCurrency:
         type: string
@@ -4280,6 +4280,12 @@ definitions:
         type: string
       replicationUseSsl:
         type: boolean
+      resourceManagerDiscoveredCpuCores:
+        type: number
+      resourceManagerDiscoveredInterval:
+        type: integer
+      resourceManagerDiscoveredMemoryMb:
+        type: number
       resourceManagerInfraCpuCores:
         type: number
       resourceManagerInfraDiskGb:
@@ -4916,7 +4922,8 @@ definitions:
       added:
         description: |-
           Added: the cluster has the offer's storage: an S3 provider of its name, on its endpoint (and
-          reached with the Cloud18 SSO for an SSO storage)
+          reached with the Cloud18 SSO for an SSO storage); for an offer delivered as an archive (PBS),
+          an archive of its name and plugin
         type: boolean
       auth:
         type: string

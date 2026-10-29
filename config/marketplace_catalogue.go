@@ -33,6 +33,9 @@ type MarketplaceArchiveOffer struct {
 	Title   string `json:"title,omitempty"`
 	Partner string `json:"partner"`
 	Plugin  string `json:"plugin"` // the archive plugin it runs with (archive-plakar-s3, archive-pbs)
+	// Requestable: the back-office delivers the cluster's own access on request
+	// (cloud18-archive-offer-requests); an offer with keys issued by Cloud18 always is
+	Requestable bool `json:"requestable,omitempty"`
 	// S3Provider names the MarketplaceS3 entry of an S3 offer; empty for the others
 	S3Provider          string   `json:"s3Provider,omitempty"`
 	Auth                string   `json:"auth"`

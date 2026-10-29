@@ -23,7 +23,8 @@ type ArchiveOffer struct {
 	// S3 is the catalogue's storage of an S3 offer (MarketplaceArchiveOffer.S3Provider)
 	S3 *config.MarketplaceS3 `json:"s3,omitempty"`
 	// Added: the cluster has the offer's storage: an S3 provider of its name, on its endpoint (and
-	// reached with the Cloud18 SSO for an SSO storage)
+	// reached with the Cloud18 SSO for an SSO storage); for an offer delivered as an archive (PBS),
+	// an archive of its name and plugin
 	Added bool `json:"added"`
 	// Usable: the cluster can add an archive on the offer's storage now: a storage reached with
 	// the Cloud18 SSO on a replication-manager connected to Cloud18 (no key), or a storage whose
@@ -45,8 +46,12 @@ const (
 	archiveOfferRequest   = "request it: Cloud18 creates the cluster's bucket and keys"
 	archiveOfferRequested = "requested: Cloud18 creates the cluster's bucket and keys, then they arrive with the cluster's config"
 	archiveOfferNoBucket  = "not yet: the catalogue gives no bucket for this storage"
-	archiveOfferConflict  = "an S3 provider of this name is another storage: rename it to use the offer"
-	archiveOfferPinned    = "the S3 providers are set in the configuration file (s3-provider): add this one there"
+	// an offer the back-office delivers as an archive (a PBS token)
+	archiveOfferRequestArchive   = "request it: Cloud18 creates the cluster's access and adds the archive"
+	archiveOfferRequestedArchive = "requested: Cloud18 creates the cluster's access, then the archive arrives with the cluster's config"
+	archiveOfferArchiveConflict  = "an archive of this name is another archive: rename it to receive the offer"
+	archiveOfferConflict         = "an S3 provider of this name is another storage: rename it to use the offer"
+	archiveOfferPinned           = "the S3 providers are set in the configuration file (s3-provider): add this one there"
 )
 
 // archiveOfferRequestsMax bounds cloud18-archive-offer-requests: offer names, each a catalogue name.
@@ -85,12 +90,19 @@ func archiveOfferRequests(setting string) map[string]bool {
 	return set
 }
 
-// archiveOffers joins the catalogue's archive offers with their S3 storages, the cluster's S3
-// providers and the offers it requested. ssoReady is the cluster's Cloud18SSOReady: why a
-// storage reached with the Cloud18 SSO cannot be used here, nil when it can. pinned: a
-// configuration file sets the provider list (S3ProvidersPinned), so neither Use nor a delivery
-// can add one.
-func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provider, requested map[string]bool, ssoReady error, pinned bool) []ArchiveOffer {
+// archiveOfferCluster is what archiveOffers reads of the cluster.
+type archiveOfferCluster struct {
+	providers []config.S3Provider
+	archives  []config.ArchiveConfig
+	requested map[string]bool // cloud18-archive-offer-requests
+	ssoReady  error           // Cloud18SSOReady: why an SSO storage cannot be used here, nil when it can
+	pinned    bool            // S3ProvidersPinned: a config file sets the provider list, neither Use nor a delivery adds one
+}
+
+// archiveOffers joins the catalogue's archive offers with their S3 storages and what the cluster
+// has and requested.
+func archiveOffers(cat config.MarketplaceCatalogue, cl archiveOfferCluster) []ArchiveOffer {
+	providers, requested, ssoReady, pinned := cl.providers, cl.requested, cl.ssoReady, cl.pinned
 	storages := make(map[string]config.MarketplaceS3, len(cat.S3))
 	for _, s := range cat.S3 {
 		if _, dup := storages[s.Name]; !dup { // remote data: the first of a duplicated name
@@ -140,6 +152,26 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 				row.Requestable = true
 				row.Reason = archiveOfferRequest
 			}
+		case row.S3 == nil && o.Requestable:
+			// delivered as an archive of the offer's name (archive-pbs: the cluster's own token)
+			row.Requested = requested[o.Name]
+			taken := false // an archive of the offer's name with another plugin: the delivery cannot land
+			for _, a := range cl.archives {
+				if a.Name == o.Name {
+					row.Added, taken = a.Plugin == o.Plugin, a.Plugin != o.Plugin
+				}
+			}
+			switch {
+			case taken:
+				row.Reason = archiveOfferArchiveConflict
+			case row.Added:
+				row.Usable = true
+			case row.Requested:
+				row.Reason = archiveOfferRequestedArchive
+			default:
+				row.Requestable = true
+				row.Reason = archiveOfferRequestArchive
+			}
 		default:
 			row.Reason = archiveOfferOnRequest
 		}
@@ -161,7 +193,13 @@ func archiveOffers(cat config.MarketplaceCatalogue, providers []config.S3Provide
 // @Router /api/clusters/{clusterName}/archive-offers [get]
 func (repman *ReplicationManager) handlerMuxArchiveOffers(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
-		writeArchiveJSON(w, archiveOffers(repman.MarketplaceCatalogue(), mycluster.GetS3ProvidersSnapshot(),
-			archiveOfferRequests(mycluster.Conf.Cloud18ArchiveOfferRequests), mycluster.Cloud18SSOReady(), mycluster.S3ProvidersPinned()))
+		archives, _ := mycluster.Conf.ArchiveList() // the second value is the attached archive's name
+		writeArchiveJSON(w, archiveOffers(repman.MarketplaceCatalogue(), archiveOfferCluster{
+			providers: mycluster.GetS3ProvidersSnapshot(),
+			archives:  archives,
+			requested: archiveOfferRequests(mycluster.Conf.Cloud18ArchiveOfferRequests),
+			ssoReady:  mycluster.Cloud18SSOReady(),
+			pinned:    mycluster.S3ProvidersPinned(),
+		}))
 	})
 }
