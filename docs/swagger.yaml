@@ -7993,15 +7993,31 @@ paths:
         name: clusterName
         required: true
         type: string
-      - description: Number of threads
+      - description: Sysbench test (sysbench-test)
+        in: query
+        name: test
+        type: string
+      - description: Duration in seconds (sysbench-time)
+        in: query
+        name: time
+        type: string
+      - description: Number of threads, 0 = scale from 1 to 2×cores (sysbench-threads)
         in: query
         name: threads
+        type: string
+      - description: Number of tables (sysbench-tables)
+        in: query
+        name: tables
         type: string
       produces:
       - application/json
       responses:
         "200":
           description: Successfully triggered sysbench
+          schema:
+            type: string
+        "400":
+          description: 'Unknown test or invalid number: nothing is changed or started'
           schema:
             type: string
         "403":

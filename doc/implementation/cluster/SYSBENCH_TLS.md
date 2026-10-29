@@ -67,3 +67,24 @@ WARN0270 (cluster level, WARNING: the monitored servers are not affected) with t
 the cause. A benchmark that runs through clears it. It does not expire: it is the state of the last
 benchmark, and fixing the cause (TLS, credentials) proves nothing until a benchmark runs.
 It lives in memory: a restart clears it, as it clears the run itself.
+
+# Benchmark parameters (#2239)
+
+- **Tests**: `config.GetSysbenchTests` lists the sysbench built-in tests that run on tables
+  (`oltp_read_write`, `oltp_read_only`, `oltp_write_only`, `oltp_point_select`, `oltp_insert`,
+  `oltp_delete`, `oltp_update_index`, `oltp_update_non_index`, `select_random_points`,
+  `select_random_ranges`) and `tpcc`. `bulk_insert` creates its own tables and is left out.
+- **Setters return an error** (`SetSysbenchTest/Time/Threads/Tables/Scale`): an unknown test or a
+  count below 1 is refused and the setting unchanged. They were logged and ignored, and the run
+  started with the previous values while the API answered 200.
+- **A request is applied whole or not at all**: `SetSysbenchRunParams` (sysbench and
+  sysbench-cleanup actions, MCP `cluster-sysbench-run`) checks every parameter before changing
+  any; the action answers 400 and starts nothing. `threads=0` stays the thread scaling, never
+  stored.
+- **Settings API**: `sysbench-test`, `-time`, `-threads`, `-tables`, `-scale` resolve in
+  `setClusterSetting` (they answered "setting not found"), so they can be set or restored without
+  starting a run.
+- **Tables**: `sysbenchTablesArg` passes `--tables=<sysbench-tables>` to the oltp tests (prepare,
+  run, cleanup, sysbench 1.0 syntax and later); it went to tpcc only, so the oltp tests always
+  ran one table. Default 1: unchanged for a cluster that never set it; a cluster that did now gets
+  its tables. The GUI's Tables choice is sent with each run and cleanup.

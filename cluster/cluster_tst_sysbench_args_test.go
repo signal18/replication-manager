@@ -166,3 +166,31 @@ func TestCheckBenchmarkState(t *testing.T) {
 		t.Fatal("WARN0270 still raised after a benchmark ran through")
 	}
 }
+
+// A benchmark request is applied whole or not at all (#2239): an unknown test or a bad
+// number changes nothing; threads 0 is the thread scaling, not a setting.
+func TestSetSysbenchRunParams(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{SysbenchTest: "oltp_read_write", SysbenchTime: 100, SysbenchThreads: 4, SysbenchTables: 1}}
+	same := func() bool {
+		c := cl.Conf
+		return c.SysbenchTest == "oltp_read_write" && c.SysbenchTime == 100 && c.SysbenchThreads == 4 && c.SysbenchTables == 1
+	}
+	for _, bad := range [][4]string{{"oltp_point_selectx", "60", "", ""}, {"oltp_point_select", "0", "", ""}, {"oltp_point_select", "60", "abc", ""}, {"", "", "", "-2"}} {
+		if err := cl.SetSysbenchRunParams(bad[0], bad[1], bad[2], bad[3]); err == nil || !same() {
+			t.Fatalf("%v: err %v, settings changed: %v", bad, err, !same())
+		}
+	}
+	if err := cl.SetSysbenchRunParams("oltp_point_select", "60", "0", "8"); err != nil {
+		t.Fatal(err)
+	}
+	if c := cl.Conf; c.SysbenchTest != "oltp_point_select" || c.SysbenchTime != 60 || c.SysbenchThreads != 4 || c.SysbenchTables != 8 {
+		t.Fatalf("got %s %d %d %d", c.SysbenchTest, c.SysbenchTime, c.SysbenchThreads, c.SysbenchTables)
+	}
+	if got := cl.sysbenchTablesArg(); got != "--tables=8" {
+		t.Fatalf("tables arg %s", got)
+	}
+	cl.Conf.SysbenchTables = 0 // unset: one table, as before
+	if got := cl.sysbenchTablesArg(); got != "--tables=1" {
+		t.Fatalf("tables arg %s", got)
+	}
+}

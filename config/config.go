@@ -3076,12 +3076,20 @@ func GetFSType() map[string]bool {
 	}
 }
 
+// GetSysbenchTests are the sysbench tests a benchmark accepts: the built-in tests of sysbench
+// 1.0 and 1.1 that run on tables (bulk_insert has its own and is left out), and tpcc (#2239).
 func GetSysbenchTests() map[string]bool {
 	return map[string]bool{
 		"oltp_read_write":       true,
 		"oltp_read_only":        true,
+		"oltp_write_only":       true,
+		"oltp_point_select":     true,
+		"oltp_insert":           true,
+		"oltp_delete":           true,
 		"oltp_update_non_index": true,
 		"oltp_update_index":     true,
+		"select_random_points":  true,
+		"select_random_ranges":  true,
 		"tpcc":                  true,
 	}
 }

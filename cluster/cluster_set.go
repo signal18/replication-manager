@@ -1614,31 +1614,95 @@ func (cluster *Cluster) SetClusterHead(ClusterName string) {
 	cluster.Conf.ClusterHead = ClusterName
 }
 
-func (cluster *Cluster) SetSysbenchTest(test string) {
-	if config.GetSysbenchTests()[test] {
-		cluster.Conf.SysbenchTest = test
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench test to %s", test)
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown sysbench test: %s", test)
+// SetSysbenchTest sets sysbench-test; a test not in GetSysbenchTests is refused, the setting
+// unchanged (it was logged and ignored, the next run took the previous test, #2239).
+func (cluster *Cluster) SetSysbenchTest(test string) error {
+	if !config.GetSysbenchTests()[test] {
+		return fmt.Errorf("unknown sysbench test %q", test)
 	}
+	cluster.Conf.SysbenchTest = test
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench test to %s", test)
+	return nil
 }
 
-func (cluster *Cluster) SetSysbenchThreads(Threads string) {
-	i, err := strconv.Atoi(Threads)
-	if err == nil {
-		cluster.Conf.SysbenchThreads = i
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting threads to int %s", err)
+// SetSysbenchRunParams applies the parameters of a benchmark request (API, MCP): each one
+// given is checked first, and on any invalid one nothing is changed (a run never starts
+// with half of its parameters). threads "0" is the thread scaling: not a setting.
+func (cluster *Cluster) SetSysbenchRunParams(test, seconds, threads, tables string) error {
+	if test != "" && !config.GetSysbenchTests()[test] {
+		return fmt.Errorf("unknown sysbench test %q", test)
 	}
+	for _, p := range []struct{ name, value string }{{"sysbench-time", seconds}, {"sysbench-threads", threads}, {"sysbench-tables", tables}} {
+		if p.value == "" || (p.name == "sysbench-threads" && p.value == "0") {
+			continue
+		}
+		if _, err := sysbenchCount(p.name, p.value); err != nil {
+			return err
+		}
+	}
+	if test != "" {
+		cluster.SetSysbenchTest(test)
+	}
+	if seconds != "" {
+		cluster.SetSysbenchTime(seconds)
+	}
+	if threads != "" && threads != "0" {
+		cluster.SetSysbenchThreads(threads)
+	}
+	if tables != "" {
+		cluster.SetSysbenchTables(tables)
+	}
+	return nil
 }
 
-func (cluster *Cluster) SetSysbenchTime(t string) {
-	i, err := strconv.Atoi(t)
-	if err == nil {
-		cluster.Conf.SysbenchTime = i
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting sysbench time to int %s", err)
+// sysbenchCount reads a sysbench count setting: a whole number of at least 1.
+func sysbenchCount(name, value string) (int, error) {
+	i, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || i < 1 {
+		return 0, fmt.Errorf("%s must be a whole number of at least 1, got %q", name, value)
 	}
+	return i, nil
+}
+
+// SetSysbenchThreads sets sysbench-threads (0, the thread scaling, is the sysbench action's
+// own value, never a setting).
+func (cluster *Cluster) SetSysbenchThreads(threads string) error {
+	i, err := sysbenchCount("sysbench-threads", threads)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.SysbenchThreads = i
+	return nil
+}
+
+// SetSysbenchTime sets sysbench-time, in seconds.
+func (cluster *Cluster) SetSysbenchTime(t string) error {
+	i, err := sysbenchCount("sysbench-time", t)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.SysbenchTime = i
+	return nil
+}
+
+// SetSysbenchTables sets sysbench-tables, the tables of the oltp tests and of tpcc.
+func (cluster *Cluster) SetSysbenchTables(tables string) error {
+	i, err := sysbenchCount("sysbench-tables", tables)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.SysbenchTables = i
+	return nil
+}
+
+// SetSysbenchScale sets sysbench-scale, the tpcc warehouses.
+func (cluster *Cluster) SetSysbenchScale(scale string) error {
+	i, err := sysbenchCount("sysbench-scale", scale)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.SysbenchScale = i
+	return nil
 }
 
 /*

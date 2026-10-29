@@ -3651,14 +3651,38 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Number of threads",
+                        "description": "Sysbench test (sysbench-test)",
+                        "name": "test",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Duration in seconds (sysbench-time)",
+                        "name": "time",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Number of threads, 0 = scale from 1 to 2×cores (sysbench-threads)",
                         "name": "threads",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Number of tables (sysbench-tables)",
+                        "name": "tables",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "Successfully triggered sysbench",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown test or invalid number: nothing is changed or started",
                         "schema": {
                             "type": "string"
                         }
