@@ -21,6 +21,7 @@ import (
 	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/cluster/logplugin"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
@@ -1921,10 +1922,11 @@ func (repman *ReplicationManager) ShallowClone() error {
 // PushUnitsLogToGit commits and pushes the closed month's Units.log to the git sync
 // repository, once, at the month rollover (the periodic sync never stages it: the file
 // is rewritten every minute and *.log is ignored; an explicit Add bypasses the ignore
-// like the event-changed logs above). No git configured: nothing to do.
+// like the event-changed logs above), with its usage_<MM>.log copy. No git configured:
+// nothing to do.
 func (repman *ReplicationManager) PushUnitsLogToGit(ctx context.Context, path, month string) error {
 	if repman.Conf.GitUrl == "" {
-		return nil // no git sync configured: the snapshot stays local (and is kept)
+		return nil // no git sync configured: the month stays local in its usage_<MM>.log
 	}
 	dir := repman.Conf.WorkingDir
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
@@ -1944,6 +1946,11 @@ func (repman *ReplicationManager) PushUnitsLogToGit(ctx context.Context, path, m
 	}
 	if _, err := w.Add(rel); err != nil {
 		return fmt.Errorf("cannot add %s: %w", rel, err)
+	}
+	if usage, uerr := cluster.UsageLogName(month); uerr == nil {
+		if _, err := w.Add(usage); err != nil {
+			return fmt.Errorf("cannot add %s: %w", usage, err)
+		}
 	}
 	_, err = w.Commit("Units statement "+month+" final", &git.CommitOptions{
 		Author: &git_obj.Signature{Name: "Replication Manager", When: time.Now()},

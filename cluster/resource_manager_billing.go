@@ -251,7 +251,9 @@ func monthBounds(t time.Time) (start time.Time, seconds float64) {
 // to its snapshot Units.<month>.log, pushed to the git sync repository once it can be
 // (outside the lock, bounded, retried every pushRetry until it lands), and the snapshot
 // is removed; the file then starts the new month. Past months are the Units.<month>.log
-// files of the git sync repository.
+// files of the git sync repository. Before each push the snapshot is copied to
+// usage_<MM>.log, pushed with it and kept: a yearly rotating buffer (the same month a year
+// later replaces it), so a closed month stays on disk whether or not it was pushed.
 const UnitsLogName = "Units.log"
 
 // pushRetry bounds how often a pending snapshot is pushed again after a failure.
@@ -259,6 +261,37 @@ const pushRetry = 10 * time.Minute
 
 func (m *ResourceManager) statementPath() string {
 	return filepath.Join(m.billing().dir, UnitsLogName)
+}
+
+// UsageLogName is the file a closed month ("YYYY-MM") is kept in: usage_<MM>.log.
+func UsageLogName(month string) (string, error) {
+	t, err := time.Parse("2006-01", month)
+	if err != nil {
+		return "", err
+	}
+	return "usage_" + t.Format("01") + ".log", nil
+}
+
+// keepUsageLog copies a closed month's snapshot to its usage_<MM>.log (atomically).
+func keepUsageLog(dir, path, month string) error {
+	name, err := UsageLogName(month)
+	if err != nil {
+		return nil // not a month: nothing to keep, the snapshot is pushed as before
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	usage := filepath.Join(dir, name)
+	if err := os.WriteFile(usage+".tmp", raw, 0o644); err != nil {
+		os.Remove(usage + ".tmp")
+		return err
+	}
+	if err := os.Rename(usage+".tmp", usage); err != nil {
+		os.Remove(usage + ".tmp")
+		return err
+	}
+	return nil
 }
 
 // closedStatementPath is the snapshot of a closed month, kept until pushed.
@@ -330,6 +363,10 @@ func (m *ResourceManager) PushPending(ctx context.Context) {
 	defer b.pushing.Store(false)
 	for _, month := range m.pendingClosedMonths(dir) {
 		path := filepath.Join(dir, "Units."+month+".log")
+		if err := keepUsageLog(dir, path, month); err != nil {
+			b.logf("Units.%s.log not copied to its usage log, kept and retried in %s: %v", month, pushRetry, err)
+			return
+		}
 		pctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		err := push(pctx, path, month)
 		cancel()
