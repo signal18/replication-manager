@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -109,5 +110,52 @@ func TestSysbenchFailureState(t *testing.T) {
 	cl.setBenchmarkFailure(nil)
 	if failure, _ := cl.benchmarkFailure.Load().(string); failure != "" {
 		t.Fatalf("failure not cleared by a run that went through: %q", failure)
+	}
+}
+
+// A client TLS decision that verifies the server gives sysbench the CA (and the client
+// certificate for VERIFY_IDENTITY), with no skip-verify environment.
+func TestSysbenchTLSVerify(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "app:secret"}}),
+		HostsTLSCA: "/w/ca.pem", HostsTlsCliCert: "/w/client-cert.pem", HostsTlsCliKey: "/w/client-key.pem"}, VersionsMap: config.NewVersionsMap()}
+	cl.VersionsMap.Set("sysbench", &version.Version{Flavor: "sysbench", Major: 1, Minor: 1})
+	cl.VersionsMap.Set("client", &version.Version{Flavor: "MariaDB", Major: 11, Minor: 4})
+	cl.master = &ServerMonitor{ClusterGroup: cl, DBVersion: &version.Version{Flavor: "MariaDB", Major: 11, Minor: 8}, Variables: config.NewStringsMap(), LastTLSConfig: ConstTLSCurrentConfig}
+	args, env := cl.sysbenchTLS()
+	if got := strings.Join(args, " "); got != "--mysql-ssl=on --mysql-ssl-ca=/w/ca.pem" || env != nil {
+		t.Fatalf("VERIFY_CA: got %q env %v", got, env)
+	}
+	if env := sysbenchTLSEnv(append([]string{"oltp_read_only"}, args...)); env != nil {
+		t.Fatalf("a command with a CA must verify the server, got env %v", env)
+	}
+	cl.Conf.HostsTlsSslMode = "VERIFY_IDENTITY"
+	args, _ = cl.sysbenchTLS()
+	if got := strings.Join(args, " "); got != "--mysql-ssl=on --mysql-ssl-ca=/w/ca.pem --mysql-ssl-cert=/w/client-cert.pem --mysql-ssl-key=/w/client-key.pem" {
+		t.Fatalf("VERIFY_IDENTITY: got %q", got)
+	}
+	if env := sysbenchTLSEnv([]string{"oltp_read_only", "--mysql-ssl=on"}); strings.Join(env, " ") != sysbenchSkipVerifyEnv {
+		t.Fatalf("TLS without a CA must not verify, got env %v", env)
+	}
+}
+
+// WARN0270 is raised each tick while the last benchmark failed, and no longer once one ran through.
+func TestCheckBenchmarkState(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{}, StateMachine: new(state.StateMachine)}
+	cl.StateMachine.Init()
+	tick := func() bool { // one tick: the check, then the states it leaves (IsInState reads them)
+		cl.checkBenchmarkState()
+		cl.StateMachine.ClearState()
+		return cl.StateMachine.IsInState("WARN0270")
+	}
+	if tick() {
+		t.Fatal("WARN0270 without a benchmark")
+	}
+	cl.setBenchmarkFailure(errors.New("sysbench cleanup: FATAL: error 3159"))
+	if !tick() || !tick() {
+		t.Fatal("WARN0270 not raised on every tick after a failed benchmark")
+	}
+	cl.setBenchmarkFailure(nil)
+	if tick() {
+		t.Fatal("WARN0270 still raised after a benchmark ran through")
 	}
 }

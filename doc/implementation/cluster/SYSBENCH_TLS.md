@@ -16,7 +16,8 @@ automatic TLS: `ssl_ca` and `ssl_cert` NULL) refuses any certificate presented
 
 Upstream sysbench (1.1, never packaged) takes `--mysql-ssl=on` with optional
 `--mysql-ssl-ca`, `--mysql-ssl-cert`, `--mysql-ssl-key` (built against libmariadb there is
-no SSL mode option: on/off only). `docker/build-sysbench.sh` builds it at a pinned commit
+no SSL mode option: on/off only). `docker/build-sysbench.sh` fetches the pinned commit by its hash (git checks the content against it, no
+archive download) and builds it
 with the MySQL and PostgreSQL drivers (LuaJIT bundled) in a `sysbench` stage of each image
 Dockerfile; the final stage copies its `/usr` tree and installs `libpq5` and `libaio1`
 instead of the Debian package. To move to another upstream commit: change
@@ -35,9 +36,28 @@ Decided from the master, the server behind the proxy:
     `--mysql-ssl=on` and `MARIADB_TLS_DISABLE_PEER_VERIFICATION=1` in the environment, the
     monitor's skip-verify.
 
+`sysbenchOutput` derives the environment from the command's own arguments (`sysbenchTLSEnv`:
+TLS without a CA = no verification), so arguments and environment come from one decision
+even if the master changes between building the command and running it.
+
+### Trade-offs
+- **Skip-verify by default.** A user-set `REQUIRED`/`PREFERRED`, or TLS certificates without
+  a verifying mode, give an encrypted connection whose server is not authenticated: the same
+  as the monitor's own connection (`tls=skip-verify`), never stronger or weaker than it.
+- **VERIFY_CA / VERIFY_IDENTITY rest on libmariadb.** sysbench built against libmariadb has no
+  SSL mode option and never sets `MYSQL_OPT_SSL_VERIFY_SERVER_CERT`: the CA is passed and the
+  check is libmariadb's default (3.4, the images' connector, verifies by default). With
+  MariaDB's automatic TLS the connector defers a failed check to the password-based
+  fingerprint after authentication, so a probe with an unknown user and a wrong CA reaches
+  authentication (1045) either way: fail-closed behaviour was not proven without credentials.
+  An older libmariadb (3.3) does not verify unless told.
+
 ## Failure state
 `sysbenchOutput` runs each sysbench command with that environment and returns sysbench's
-`FATAL:` lines as the error (password masked). `RunSysbench` and `RunSysbenchScaleThreads`
-record their outcome (`setBenchmarkFailure`); while the last one failed, the tick sets
+`FATAL:` lines as the error (password masked). `RunSysbench`, `RunSysbenchScaleThreads` and
+`RunSysbenchTPCPerMinuteIncreaseThreads` (the API's runs; a run with one failed thread count
+is failed) record their outcome (`setBenchmarkFailure`); while the last one failed, the tick sets
 WARN0270 (cluster level, WARNING: the monitored servers are not affected) with the time and
-the cause. A benchmark that runs through clears it.
+the cause. A benchmark that runs through clears it. It does not expire: it is the state of the last
+benchmark, and fixing the cause (TLS, credentials) proves nothing until a benchmark runs.
+It lives in memory: a restart clears it, as it clears the run itself.

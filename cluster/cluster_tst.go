@@ -541,10 +541,10 @@ func (cluster *Cluster) RunSysbenchScaleThreads() (err error) {
 	var runErr error // a failed thread count leaves the benchmark failed (WARN0270)
 	for threads <= maxThreads {
 		cluster.Conf.SysbenchThreads = threads
-		_, _, _, err := cluster.RunSysBench("oltp", strconv.Itoa(threads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex", scaleGroupTime)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Scale run at %d threads failed: %s", threads, err)
-			runErr = fmt.Errorf("%d threads: %w", threads, err)
+		_, _, _, threadErr := cluster.RunSysBench("oltp", strconv.Itoa(threads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex", scaleGroupTime)
+		if threadErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Scale run at %d threads failed: %s", threads, threadErr)
+			runErr = fmt.Errorf("%d threads: %w", threads, threadErr)
 		}
 		threads = threads * 2
 	}
@@ -558,7 +558,8 @@ func (cluster *Cluster) RunSysbenchScaleThreads() (err error) {
 	return runErr
 }
 
-func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() error {
+func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() (err error) {
+	defer func() { cluster.setBenchmarkFailure(err) }()
 	if err := cluster.CleanupBench(); err != nil {
 		return err
 	}
@@ -566,12 +567,15 @@ func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() error {
 		return err
 	}
 	threads := 1
+	var runErr error // a failed thread count leaves the benchmark failed (WARN0270)
 	for threads <= 256 {
-		_, _, _, _ = cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex")
+		if _, _, _, threadErr := cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex"); threadErr != nil {
+			runErr = fmt.Errorf("%d threads: %w", threads, threadErr)
+		}
 		threads = threads * 2
 	}
 	cluster.WriteSybenchTPCM()
-	return nil
+	return runErr
 }
 
 func (cluster *Cluster) CheckSlavesRunning() bool {
@@ -956,6 +960,10 @@ func (cluster *Cluster) sysbenchConnectionArgs(prx DatabaseProxy) []string {
 	return append(args, tlsArgs...)
 }
 
+// sysbenchSkipVerifyEnv: libmariadb (3.4 verifies the server by default) does not check the
+// server's certificate.
+const sysbenchSkipVerifyEnv = "MARIADB_TLS_DISABLE_PEER_VERIFICATION=1"
+
 // sysbenchTLS: the TLS options and environment of sysbench's mysql driver, from the
 // master's connection (the benchmark goes through the proxy to it, #2235). sysbench 1.1
 // (libmariadb) connects without TLS unless told: --mysql-ssl=on, with the CA and the client
@@ -986,16 +994,18 @@ func (cluster *Cluster) sysbenchTLS() (args []string, env []string) {
 		return args, nil
 	}
 	if mode != "" || cluster.HaveDBTLSCert || master.ForceTLSSkipVerify || master.Variables.Get("REQUIRE_SECURE_TRANSPORT") == "ON" {
-		return []string{"--mysql-ssl=on"}, []string{"MARIADB_TLS_DISABLE_PEER_VERIFICATION=1"}
+		return []string{"--mysql-ssl=on"}, []string{sysbenchSkipVerifyEnv}
 	}
 	return nil, nil
 }
 
-// sysbenchOutput runs a sysbench command with its TLS environment (sysbenchTLS). A failure
-// is returned with sysbench's FATAL lines, the cause (a refused connection), rather than
-// its exit status, the password masked.
+// sysbenchOutput runs a sysbench command with its TLS environment: TLS without a CA in its
+// own arguments is TLS without verification (sysbenchTLS), read from the command and not
+// decided again, so that arguments and environment never disagree after a master change.
+// A failure is returned with sysbench's FATAL lines, the cause (a refused connection),
+// rather than its exit status, the password masked.
 func (cluster *Cluster) sysbenchOutput(step string, cmd *exec.Cmd) ([]byte, error) {
-	if _, env := cluster.sysbenchTLS(); len(env) > 0 {
+	if env := sysbenchTLSEnv(cmd.Args); len(env) > 0 {
 		cmd.Env = append(os.Environ(), env...)
 	}
 	out, err := cmd.CombinedOutput()
@@ -1013,6 +1023,20 @@ func (cluster *Cluster) sysbenchOutput(step string, cmd *exec.Cmd) ([]byte, erro
 		cause = strings.Join(fatal, " ")
 	}
 	return out, fmt.Errorf("sysbench %s: %s", step, strings.ReplaceAll(cause, cluster.GetDbPass(), "XXXX"))
+}
+
+// sysbenchTLSEnv: the environment of a sysbench command line, MARIADB_TLS_DISABLE_PEER_VERIFICATION
+// when it asks for TLS without a CA.
+func sysbenchTLSEnv(args []string) []string {
+	var tls, ca bool
+	for _, a := range args {
+		tls = tls || a == "--mysql-ssl=on"
+		ca = ca || strings.HasPrefix(a, "--mysql-ssl-ca=")
+	}
+	if tls && !ca {
+		return []string{sysbenchSkipVerifyEnv}
+	}
+	return nil
 }
 
 // setBenchmarkFailure records the outcome of a benchmark launched by the API: a failure is

@@ -11,10 +11,13 @@ SYSBENCH_COMMIT=${SYSBENCH_COMMIT:-3ceba0b1e115f8c50d1d045a4574d8ed643bd497}
 DESTDIR=${DESTDIR:-/sysbench}
 
 apt-get update
-apt-get -y install --no-install-recommends ca-certificates curl make automake libtool pkg-config \
+apt-get -y install --no-install-recommends ca-certificates git make automake libtool pkg-config \
   gcc g++ libaio-dev libmariadb-dev libmariadb-dev-compat libpq-dev python3
-mkdir -p /src && cd /src
-curl -fsSL "https://github.com/akopytov/sysbench/archive/$SYSBENCH_COMMIT.tar.gz" | tar xz --strip-components=1
+# the commit by its hash, not an archive: git checks the content against it
+git init -q /src && cd /src
+git fetch -q --depth 1 https://github.com/akopytov/sysbench.git "$SYSBENCH_COMMIT"
+git checkout -q FETCH_HEAD
+test "$(git rev-parse HEAD)" = "$SYSBENCH_COMMIT"
 ./autogen.sh
 ./configure --prefix=/usr --with-mysql --with-pgsql
 make -j"$(nproc)"
