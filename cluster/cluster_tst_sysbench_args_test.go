@@ -96,6 +96,10 @@ func TestSSLClientMode(t *testing.T) {
 // A failed sysbench command is reported by its FATAL lines, the password masked, and a
 // failed benchmark is WARN0270 until one runs through.
 func TestSysbenchFailureState(t *testing.T) {
+	noPass := &Cluster{Conf: &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "app:"}})}}
+	if _, err := noPass.sysbenchOutput("run", exec.Command("sh", "-c", "echo 'FATAL: error 1045'; exit 1")); err == nil || err.Error() != "sysbench run: FATAL: error 1045" {
+		t.Fatalf("empty password: got %v", err)
+	}
 	cl := &Cluster{Conf: &config.Config{Secrets: config.NewSecrets(map[string]config.Secret{"db-servers-credential": {Value: "app:secret"}})}, VersionsMap: config.NewVersionsMap()}
 	cmd := exec.Command("sh", "-c", "echo 'sysbench 1.1.0'; echo 'FATAL: unable to connect, password secret'; echo 'FATAL: error 3159: insecure transport'; exit 1")
 	_, err := cl.sysbenchOutput("cleanup", cmd)
@@ -132,6 +136,9 @@ func TestSysbenchTLSVerify(t *testing.T) {
 	args, _ = cl.sysbenchTLS()
 	if got := strings.Join(args, " "); got != "--mysql-ssl=on --mysql-ssl-ca=/w/ca.pem --mysql-ssl-cert=/w/client-cert.pem --mysql-ssl-key=/w/client-key.pem" {
 		t.Fatalf("VERIFY_IDENTITY: got %q", got)
+	}
+	if args := sysbenchVerifyArgs("VERIFY_CA", "", "", ""); strings.Join(args, " ") != "--mysql-ssl=on --mysql-ssl-ca="+sysbenchSystemCA || sysbenchTLSEnv(args) != nil {
+		t.Fatalf("VERIFY_CA without a CA file: got %q", args)
 	}
 	if env := sysbenchTLSEnv([]string{"oltp_read_only", "--mysql-ssl=on"}); strings.Join(env, " ") != sysbenchSkipVerifyEnv {
 		t.Fatalf("TLS without a CA must not verify, got env %v", env)

@@ -5,7 +5,9 @@
 # server that trusts no client certificate (MariaDB's automatic TLS) refuses it, and with
 # require_secure_transport every benchmark fails. Upstream (1.1) takes --mysql-ssl=on with
 # optional --mysql-ssl-ca/cert/key. Built against libmariadb (no SSL mode option: on/off), with
-# the MySQL and PostgreSQL drivers, LuaJIT bundled.
+# the MySQL and PostgreSQL drivers, LuaJIT bundled. Linked against Debian's libmariadb-dev
+# (3.3) but run with the image's connector (MariaDB repository, 3.4): the server
+# certificate check (on by default in 3.4) is the runtime library's, not the build's.
 set -eu
 SYSBENCH_COMMIT=${SYSBENCH_COMMIT:-3ceba0b1e115f8c50d1d045a4574d8ed643bd497}
 DESTDIR=${DESTDIR:-/sysbench}

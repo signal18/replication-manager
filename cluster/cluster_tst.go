@@ -964,6 +964,9 @@ func (cluster *Cluster) sysbenchConnectionArgs(prx DatabaseProxy) []string {
 // server's certificate.
 const sysbenchSkipVerifyEnv = "MARIADB_TLS_DISABLE_PEER_VERIFICATION=1"
 
+// sysbenchSystemCA: the CA bundle of the images (Debian ca-certificates).
+const sysbenchSystemCA = "/etc/ssl/certs/ca-certificates.crt"
+
 // sysbenchTLS: the TLS options and environment of sysbench's mysql driver, from the
 // master's connection (the benchmark goes through the proxy to it, #2235). sysbench 1.1
 // (libmariadb) connects without TLS unless told: --mysql-ssl=on, with the CA and the client
@@ -984,19 +987,25 @@ func (cluster *Cluster) sysbenchTLS() (args []string, env []string) {
 	case "DISABLED":
 		return nil, nil
 	case "VERIFY_CA", "VERIFY_IDENTITY":
-		args = []string{"--mysql-ssl=on"}
-		if ca != "" {
-			args = append(args, "--mysql-ssl-ca="+ca)
-		}
-		if mode == "VERIFY_IDENTITY" && cert != "" && key != "" {
-			args = append(args, "--mysql-ssl-cert="+cert, "--mysql-ssl-key="+key)
-		}
-		return args, nil
+		return sysbenchVerifyArgs(mode, ca, cert, key), nil
 	}
 	if mode != "" || cluster.HaveDBTLSCert || master.ForceTLSSkipVerify || master.Variables.Get("REQUIRE_SECURE_TRANSPORT") == "ON" {
 		return []string{"--mysql-ssl=on"}, []string{sysbenchSkipVerifyEnv}
 	}
 	return nil, nil
+}
+
+// sysbenchVerifyArgs: the options of a verifying TLS mode, always with a CA so that the
+// command never reads as skip-verify (sysbenchTLSEnv): without a CA file, the system CAs.
+func sysbenchVerifyArgs(mode, ca, cert, key string) []string {
+	if ca == "" {
+		ca = sysbenchSystemCA
+	}
+	args := []string{"--mysql-ssl=on", "--mysql-ssl-ca=" + ca}
+	if mode == "VERIFY_IDENTITY" && cert != "" && key != "" {
+		args = append(args, "--mysql-ssl-cert="+cert, "--mysql-ssl-key="+key)
+	}
+	return args
 }
 
 // sysbenchOutput runs a sysbench command with its TLS environment: TLS without a CA in its
@@ -1022,7 +1031,10 @@ func (cluster *Cluster) sysbenchOutput(step string, cmd *exec.Cmd) ([]byte, erro
 	if len(fatal) > 0 {
 		cause = strings.Join(fatal, " ")
 	}
-	return out, fmt.Errorf("sysbench %s: %s", step, strings.ReplaceAll(cause, cluster.GetDbPass(), "XXXX"))
+	if pass := cluster.GetDbPass(); pass != "" { // an empty password would put XXXX between every character
+		cause = strings.ReplaceAll(cause, pass, "XXXX")
+	}
+	return out, fmt.Errorf("sysbench %s: %s", step, cause)
 }
 
 // sysbenchTLSEnv: the environment of a sysbench command line, MARIADB_TLS_DISABLE_PEER_VERIFICATION

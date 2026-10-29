@@ -30,7 +30,9 @@ Decided from the master, the server behind the proxy:
   `sslClientMode`, shared with the remote dump's `remoteDumpTLS`):
   - DISABLED: no option;
   - VERIFY_CA / VERIFY_IDENTITY: `--mysql-ssl=on` with the CA, and the client certificate
-    and key for VERIFY_IDENTITY;
+    and key for VERIFY_IDENTITY (`sysbenchVerifyArgs`); without a CA file, the system CA
+    bundle (`/etc/ssl/certs/ca-certificates.crt`): a verifying mode is never turned into
+    skip-verify;
   - any other mode, or none while the cluster has TLS certificates, the monitor fell back
     to TLS (`ForceTLSSkipVerify`) or the master reports `require_secure_transport=ON`:
     `--mysql-ssl=on` and `MARIADB_TLS_DISABLE_PEER_VERIFICATION=1` in the environment, the
@@ -50,7 +52,9 @@ even if the master changes between building the command and running it.
   MariaDB's automatic TLS the connector defers a failed check to the password-based
   fingerprint after authentication, so a probe with an unknown user and a wrong CA reaches
   authentication (1045) either way: fail-closed behaviour was not proven without credentials.
-  An older libmariadb (3.3) does not verify unless told.
+  An older libmariadb (3.3) does not verify unless told. The images link sysbench against
+  Debian's libmariadb-dev (3.3) and run it with the MariaDB repository's connector (3.4): the
+  behaviour is the runtime library's.
 
 ## Failure state
 `sysbenchOutput` runs each sysbench command with that environment and returns sysbench's
