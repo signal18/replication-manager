@@ -39,16 +39,16 @@ const SETTING_LABELS = {
 }
 
 // the state pill of an entry: off, behind (WARN0269) with its reason, or on
-function statePill(entry, state) {
-  if (!entry.enabled) return <Badge colorScheme='gray'>Off</Badge>
+function statePill(entry, state, variant) {
+  if (!entry.enabled) return <Badge colorScheme='gray' variant={variant}>Off</Badge>
   if (state?.behind) {
     return (
       <Tooltip label={state.behind} hasArrow>
-        <Badge colorScheme='orange'>Behind</Badge>
+        <Badge colorScheme='orange' variant={variant}>Behind</Badge>
       </Tooltip>
     )
   }
-  return <Badge colorScheme='green'>On</Badge>
+  return <Badge colorScheme='green' variant={variant}>On</Badge>
 }
 
 function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave }) {
@@ -106,7 +106,7 @@ function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave }) {
             <Text fontSize='sm' opacity='0.7'>
               The secrets are written under the mount, at path-prefix/cluster. repman never deletes what the vault holds.
             </Text>
-            {error && <Text color='red.500' fontSize='sm'>{error}</Text>}
+            {error && <Text color={theme === 'dark' ? 'red.300' : 'red.500'} fontSize='sm'>{error}</Text>}
           </Stack>
         </ModalBody>
         <ModalFooter gap='2'>
@@ -119,6 +119,9 @@ function SecretKvFormModal({ isOpen, closeModal, manifest, entry, onSave }) {
 }
 
 function SecretKvEntries({ clusterName, user }) {
+  const { theme } = useTheme()
+  const badgeVariant = theme === 'dark' ? 'solid' : 'subtle'
+  const mutedColor = theme === 'dark' ? 'gray.400' : 'gray.500'
   const [list, setList] = useState({ entries: [], states: {}, plugins: [], pinned: false, dropsPending: false, dropped: 0 })
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null) // the entry edited, {} to add one
@@ -171,7 +174,7 @@ function SecretKvEntries({ clusterName, user }) {
 
   return (
     <Stack spacing='2' width='100%'>
-      {list.entries.length === 0 && <Text as='span' color='gray.500'>no vault: the versions live in the local file only</Text>}
+      {list.entries.length === 0 && <Text as='span' color={mutedColor}>no vault: the versions live in the local file only</Text>}
       {list.entries.map((e) => {
         const state = list.states[e.name]
         // an entry from a Cloud18 marketplace offer: the back-office manages its settings, only
@@ -182,14 +185,14 @@ function SecretKvEntries({ clusterName, user }) {
             <Switch isChecked={!!e.enabled} isDisabled={!canSwitch || list.pinned}
               onChange={() => call(() => clusterService.switchSecretKv(clusterName, e.name, !e.enabled))} />
             <Text as='span' fontWeight='semibold'>{e.name}</Text>
-            {statePill(e, state)}
+            {statePill(e, state, badgeVariant)}
             {offer && (
               <Tooltip label='from the Cloud18 marketplace: its settings are managed by Cloud18, only its switch is yours' hasArrow>
-                <Badge colorScheme='teal'>Cloud18{offer.title ? ` · ${offer.title}` : ''}{offer.partner ? ` · ${offer.partner}` : ''}</Badge>
+                <Badge colorScheme='teal' variant={badgeVariant}>Cloud18{offer.title ? ` · ${offer.title}` : ''}{offer.partner ? ` · ${offer.partner}` : ''}</Badge>
               </Tooltip>
             )}
-            <Badge colorScheme='purple'>{e.settings?.address || 'no address'}</Badge>
-            <Text as='span' fontSize='sm' color='gray.500'>
+            <Badge colorScheme='purple' variant={badgeVariant}>{e.settings?.address || 'no address'}</Badge>
+            <Text as='span' fontSize='sm' color={mutedColor}>
               {(e.settings?.mount || 'kv') + '/' + (e.settings?.['path-prefix'] ? e.settings['path-prefix'] + '/' : '') + clusterName}
               {e.settings?.mode === 'database_engine' ? ' (database engine)' : ''}
               {state?.lastWrite && !state.lastWrite.startsWith('0001') ? ` · last write ${new Date(state.lastWrite).toLocaleString()}` : ''}
@@ -204,13 +207,13 @@ function SecretKvEntries({ clusterName, user }) {
         )
       })}
       {list.dropsPending && (
-        <Badge colorScheme='orange' alignSelf='flex-start'>{list.dropped} version(s) dropped: a full pass writes them again</Badge>
+        <Badge colorScheme='orange' variant={badgeVariant} alignSelf='flex-start'>{list.dropped} version(s) dropped: a full pass writes them again</Badge>
       )}
       <Flex gap='2' align='center'>
         <RMButton size='sm' isDisabled={!canManage || list.pinned || !manifest} onClick={() => setEditing({})}>Add a vault</RMButton>
-        {list.pinned && <Text as='span' fontSize='sm' color='gray.500'>set by a config file (secret-kv): change them there</Text>}
+        {list.pinned && <Text as='span' fontSize='sm' color={mutedColor}>set by a config file (secret-kv): change them there</Text>}
       </Flex>
-      {error && <Text color='red.500' fontSize='sm'>{error}</Text>}
+      {error && <Text color={theme === 'dark' ? 'red.300' : 'red.500'} fontSize='sm'>{error}</Text>}
       {editing && (
         <SecretKvFormModal isOpen={!!editing} closeModal={() => setEditing(null)} manifest={manifest}
           entry={editing.name ? editing : null} onSave={save} />
