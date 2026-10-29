@@ -25,6 +25,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 const recoverTime = 8
@@ -270,7 +271,7 @@ func (cluster *Cluster) PrepareBench() error {
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Command: %s", strings.ReplaceAll(cmdprep.String(), cluster.GetDbPass(), "XXXX"))
 
-		out, err := cmdprep.CombinedOutput()
+		out, err := cluster.sysbenchOutput("prepare", cmdprep)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"), err)
 			return err
@@ -328,7 +329,7 @@ func (cluster *Cluster) CleanupBench() error {
 			cmdcls.Dir = cluster.Conf.ShareDir + "/submodule/sysbench-tpcc"
 		}
 
-		out, err := cmdcls.CombinedOutput()
+		out, err := cluster.sysbenchOutput("cleanup", cmdcls)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"), err)
 			return err
@@ -399,7 +400,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Command: %s", strings.ReplaceAll(cmdrun.String(), cluster.GetDbPass(), "XXXX"))
 
-	out, err := cmdrun.CombinedOutput()
+	out, err := cluster.sysbenchOutput("run", cmdrun)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", strings.ReplaceAll(string(out), cluster.GetDbPass(), "XXXX"), err)
 		return 0, 0, 0, err
@@ -498,7 +499,8 @@ func (cluster *Cluster) RunBench() error {
 
 }
 
-func (cluster *Cluster) RunSysbench() error {
+func (cluster *Cluster) RunSysbench() (err error) {
+	defer func() { cluster.setBenchmarkFailure(err) }()
 	if err := cluster.CleanupBench(); err != nil {
 		return err
 	}
@@ -510,7 +512,8 @@ func (cluster *Cluster) RunSysbench() error {
 
 // RunSysbenchScaleThreads runs the configured test doubling threads from 1 up to 2×cores.
 // Each thread count is logged as a normal entry with IsScale=true and a shared ScaleGroup timestamp.
-func (cluster *Cluster) RunSysbenchScaleThreads() error {
+func (cluster *Cluster) RunSysbenchScaleThreads() (err error) {
+	defer func() { cluster.setBenchmarkFailure(err) }()
 	scaleGroupTime := time.Now()
 
 	prepareStart := time.Now()
@@ -535,11 +538,13 @@ func (cluster *Cluster) RunSysbenchScaleThreads() error {
 	defer func() { cluster.Conf.SysbenchThreads = origThreads }()
 
 	threads := 1
+	var runErr error // a failed thread count leaves the benchmark failed (WARN0270)
 	for threads <= maxThreads {
 		cluster.Conf.SysbenchThreads = threads
-		_, _, _, err := cluster.RunSysBench("oltp", strconv.Itoa(threads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex", scaleGroupTime)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Scale run at %d threads failed: %s", threads, err)
+		_, _, _, threadErr := cluster.RunSysBench("oltp", strconv.Itoa(threads), "1000000", strconv.Itoa(cluster.Conf.SysbenchTime), "complex", scaleGroupTime)
+		if threadErr != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Scale run at %d threads failed: %s", threads, threadErr)
+			runErr = fmt.Errorf("%d threads: %w", threads, threadErr)
 		}
 		threads = threads * 2
 	}
@@ -550,10 +555,11 @@ func (cluster *Cluster) RunSysbenchScaleThreads() error {
 	}
 	cluster.LogSysbenchStep("cleanup", cleanupStart, scaleGroupTime)
 
-	return nil
+	return runErr
 }
 
-func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() error {
+func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() (err error) {
+	defer func() { cluster.setBenchmarkFailure(err) }()
 	if err := cluster.CleanupBench(); err != nil {
 		return err
 	}
@@ -561,12 +567,15 @@ func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() error {
 		return err
 	}
 	threads := 1
+	var runErr error // a failed thread count leaves the benchmark failed (WARN0270)
 	for threads <= 256 {
-		_, _, _, _ = cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex")
+		if _, _, _, threadErr := cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex"); threadErr != nil {
+			runErr = fmt.Errorf("%d threads: %w", threads, threadErr)
+		}
 		threads = threads * 2
 	}
 	cluster.WriteSybenchTPCM()
-	return nil
+	return runErr
 }
 
 func (cluster *Cluster) CheckSlavesRunning() bool {
@@ -946,7 +955,117 @@ func (cluster *Cluster) sysbenchConnectionArgs(prx DatabaseProxy) []string {
 	if pg := cluster.postgresServer(); pg != nil {
 		return []string{"--db-driver=pgsql", "--pgsql-db=" + pg.PostgressDB, "--pgsql-user=" + cluster.GetDbUser(), "--pgsql-password=" + cluster.GetDbPass(), "--pgsql-host=" + prx.GetHost(), "--pgsql-port=" + strconv.Itoa(prx.GetWritePort())}
 	}
-	return []string{"--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user=" + cluster.GetDbUser(), "--mysql-password=" + cluster.GetDbPass(), "--mysql-host=" + prx.GetHost(), "--mysql-port=" + strconv.Itoa(prx.GetWritePort())}
+	args := []string{"--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user=" + cluster.GetDbUser(), "--mysql-password=" + cluster.GetDbPass(), "--mysql-host=" + prx.GetHost(), "--mysql-port=" + strconv.Itoa(prx.GetWritePort())}
+	tlsArgs, _ := cluster.sysbenchTLS()
+	return append(args, tlsArgs...)
+}
+
+// sysbenchSkipVerifyEnv: libmariadb (3.4 verifies the server by default) does not check the
+// server's certificate.
+const sysbenchSkipVerifyEnv = "MARIADB_TLS_DISABLE_PEER_VERIFICATION=1"
+
+// sysbenchSystemCA: the CA bundle of the images (Debian ca-certificates).
+const sysbenchSystemCA = "/etc/ssl/certs/ca-certificates.crt"
+
+// sysbenchTLS: the TLS options and environment of sysbench's mysql driver, from the
+// master's connection (the benchmark goes through the proxy to it, #2235). sysbench 1.1
+// (libmariadb) connects without TLS unless told: --mysql-ssl=on, with the CA and the client
+// certificate when the client TLS decision (GetSSLClientParam) verifies the server, else
+// without verifying it (MARIADB_TLS_DISABLE_PEER_VERIFICATION, the monitor's skip-verify)
+// when that decision asks for TLS, the monitor connects over TLS, or the master requires
+// it. sysbench 1.0 always sends a client certificate read from fixed file names in its
+// working directory, which a server trusting no client certificate refuses: it keeps
+// connecting without TLS.
+func (cluster *Cluster) sysbenchTLS() (args []string, env []string) {
+	master := cluster.GetMaster()
+	tool, ok := cluster.GetToolsVersion("sysbench")
+	if master == nil || master.IsPostgreSQLHost() || !ok || tool == nil || tool.Lower("1.1") {
+		return nil, nil
+	}
+	mode, ca, cert, key := sslClientMode(master.GetSSLClientParam("client"))
+	switch mode {
+	case "DISABLED":
+		return nil, nil
+	case "VERIFY_CA", "VERIFY_IDENTITY":
+		return sysbenchVerifyArgs(mode, ca, cert, key), nil
+	}
+	if mode != "" || cluster.HaveDBTLSCert || master.ForceTLSSkipVerify || master.Variables.Get("REQUIRE_SECURE_TRANSPORT") == "ON" {
+		return []string{"--mysql-ssl=on"}, []string{sysbenchSkipVerifyEnv}
+	}
+	return nil, nil
+}
+
+// sysbenchVerifyArgs: the options of a verifying TLS mode, always with a CA so that the
+// command never reads as skip-verify (sysbenchTLSEnv): without a CA file, the system CAs.
+func sysbenchVerifyArgs(mode, ca, cert, key string) []string {
+	if ca == "" {
+		ca = sysbenchSystemCA
+	}
+	args := []string{"--mysql-ssl=on", "--mysql-ssl-ca=" + ca}
+	if mode == "VERIFY_IDENTITY" && cert != "" && key != "" {
+		args = append(args, "--mysql-ssl-cert="+cert, "--mysql-ssl-key="+key)
+	}
+	return args
+}
+
+// sysbenchOutput runs a sysbench command with its TLS environment: TLS without a CA in its
+// own arguments is TLS without verification (sysbenchTLS), read from the command and not
+// decided again, so that arguments and environment never disagree after a master change.
+// A failure is returned with sysbench's FATAL lines, the cause (a refused connection),
+// rather than its exit status, the password masked.
+func (cluster *Cluster) sysbenchOutput(step string, cmd *exec.Cmd) ([]byte, error) {
+	if env := sysbenchTLSEnv(cmd.Args); len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return out, nil
+	}
+	var fatal []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "FATAL:") {
+			fatal = append(fatal, strings.TrimSpace(line))
+		}
+	}
+	cause := err.Error()
+	if len(fatal) > 0 {
+		cause = strings.Join(fatal, " ")
+	}
+	if pass := cluster.GetDbPass(); pass != "" { // an empty password would put XXXX between every character
+		cause = strings.ReplaceAll(cause, pass, "XXXX")
+	}
+	return out, fmt.Errorf("sysbench %s: %s", step, cause)
+}
+
+// sysbenchTLSEnv: the environment of a sysbench command line, MARIADB_TLS_DISABLE_PEER_VERIFICATION
+// when it asks for TLS without a CA.
+func sysbenchTLSEnv(args []string) []string {
+	var tls, ca bool
+	for _, a := range args {
+		tls = tls || a == "--mysql-ssl=on"
+		ca = ca || strings.HasPrefix(a, "--mysql-ssl-ca=")
+	}
+	if tls && !ca {
+		return []string{sysbenchSkipVerifyEnv}
+	}
+	return nil
+}
+
+// setBenchmarkFailure records the outcome of a benchmark launched by the API: a failure is
+// WARN0270 on the cluster until a benchmark runs through (checkBenchmarkState).
+func (cluster *Cluster) setBenchmarkFailure(err error) {
+	if err == nil {
+		cluster.benchmarkFailure.Store("")
+		return
+	}
+	cluster.benchmarkFailure.Store(time.Now().Format(time.RFC3339) + ": " + err.Error())
+}
+
+// checkBenchmarkState, every tick: WARN0270 while the last benchmark failed.
+func (cluster *Cluster) checkBenchmarkState() {
+	if failure, _ := cluster.benchmarkFailure.Load().(string); failure != "" {
+		cluster.SetState("WARN0270", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0270"], failure), ErrFrom: "BENCH"})
+	}
 }
 
 // postgresServer returns a PostgreSQL server of the cluster (the master when known), nil
