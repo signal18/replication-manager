@@ -32,7 +32,9 @@ Decided from the master, the server behind the proxy:
   - VERIFY_CA / VERIFY_IDENTITY: `--mysql-ssl=on` with the CA, and the client certificate
     and key for VERIFY_IDENTITY (`sysbenchVerifyArgs`); without a CA file, the system CA
     bundle (`/etc/ssl/certs/ca-certificates.crt`): a verifying mode is never turned into
-    skip-verify;
+    skip-verify. A cluster set to VERIFY_CA with no CA path and a self-signed server
+    certificate therefore fails the benchmark with a TLS error (WARN0270) rather than
+    connecting unverified: set the CA (`hosts-tls-ca`) or a non-verifying mode;
   - any other mode, or none while the cluster has TLS certificates, the monitor fell back
     to TLS (`ForceTLSSkipVerify`) or the master reports `require_secure_transport=ON`:
     `--mysql-ssl=on` and `MARIADB_TLS_DISABLE_PEER_VERIFICATION=1` in the environment, the
