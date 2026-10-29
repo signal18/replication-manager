@@ -7,7 +7,6 @@
 package cluster
 
 import (
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/tls"
@@ -172,291 +171,113 @@ func (cluster *Cluster) RotatePasswords() error {
 	if e, ok := cluster.vaultEngineEntry(); ok {
 		return cluster.rotateWithVaultEngine(e)
 	}
-	if cluster.Conf.IsVaultUsed() {
+	// the vault entries are stores of the chain (#2227): one path, the preconditions are
+	// CanRotatePasswords'
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Start Password rotation")
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Start password rotation using Vault.")
-		vkv := cluster.primaryVault()
-		ctx := context.Background()
-		client, err := cluster.GetVaultConnection()
+	new_password_db := misc.GetUUID()
+	new_password_rpl := misc.GetUUID()
+	new_password_proxysql := misc.GetUUID()
+	new_password_shard := misc.GetUUID()
 
-		if err != nil {
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "unable to initialize AppRole auth method: %v", err)
-			return err
-		}
-
-		if cluster.GetConf().VaultMode == VaultDbEngine {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Vault Database Engine mode activated")
-			if cluster.GetDbUser() == cluster.GetRplUser() {
-
-				err := vkv.RotateRole(ctx, client, cluster.GetDbUser())
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
-				}
-			} else {
-
-				err := vkv.RotateRole(ctx, client, cluster.GetDbUser())
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
-				}
-
-				err = vkv.RotateRole(ctx, client, cluster.GetRplUser())
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetRplUser(), err)
-				}
-			}
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Vault config store v2 mode activated")
-			if len(cluster.slaves) > 0 {
-				if !cluster.slaves.HasAllSlavesRunning() {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cluster replication is not all up, passwords can't be rotated!")
-					return errors.New("replication is not running on every replica")
-				}
-			}
-
-			new_password_db := misc.GetUUID()
-			new_password_rpl := misc.GetUUID()
-
-			new_password_proxysql := misc.GetUUID()
-
-			new_password_shard := misc.GetUUID()
-
-			if cluster.GetDbUser() == cluster.GetRplUser() {
-				new_password_rpl = new_password_db
-			}
-
-			secretData_db := map[string]interface{}{
-				"db-servers-credential": cluster.GetDbUser() + ":" + new_password_db,
-			}
-
-			secretData_rpl := map[string]interface{}{
-				"replication-credential": cluster.GetRplUser() + ":" + new_password_rpl,
-			}
-
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,config.LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
-
-			err = vkv.Patch(ctx, client, cluster.GetConf().User, secretData_db)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Password rotation cancel, unable to write secret: %v", err)
-				new_password_db = cluster.GetDbPass()
-			}
-
-			err = vkv.Patch(ctx, client, cluster.GetConf().RplUser, secretData_rpl)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replication Password rotation cancel, unable to write secret: %v", err)
-				new_password_rpl = cluster.GetRplPass()
-			}
-
-			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
-
-				secretData_proxysql := map[string]interface{}{
-					"proxysql-password": new_password_proxysql,
-				}
-				err = vkv.Patch(ctx, client, cluster.Conf.ProxysqlPassword, secretData_proxysql)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "ProxySQL Password rotation cancel, unable to write secret: %v", err)
-					new_password_proxysql = cluster.Conf.Secrets.Get("proxysql-password").Value
-				}
-				cluster.SetClusterProxyCredentialsFromConfig()
-			}
-
-			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) {
-
-				secretData_shardproxy := map[string]interface{}{
-					"shardproxy-credential": cluster.GetShardUser() + ":" + new_password_shard,
-				}
-				err = vkv.Patch(ctx, client, cluster.Conf.MdbsProxyCredential, secretData_shardproxy)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Shard Proxy Password rotation cancel, unable to write secret: %v", err)
-					new_password_shard = cluster.GetShardPass()
-				}
-				cluster.SetClusterProxyCredentialsFromConfig()
-
-			}
-
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,config.LvlErr, "TEST password Rotation new mdp : %s, %s, decrypt val %s", new_password_db, new_password_proxysql, cluster.GetDecryptedValue("proxysql-password"))
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Secret written successfully. New password generated: db-servers-credential %s, replication-credential %s", cluster.Conf.PrintSecret(new_password_db), cluster.Conf.PrintSecret(new_password_rpl))
-
-			cluster.SetClusterMonitorCredentialsFromConfig()
-
-			cluster.SetClusterReplicationCredentialsFromConfig()
-
-			for _, srv := range cluster.Servers {
-				srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
-			}
-
-			for _, u := range cluster.master.Users.ToNewMap() {
-				if u.User == cluster.GetDbUser() {
-					dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_db)
-				}
-				if u.User == cluster.GetRplUser() {
-					dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_rpl)
-				}
-			}
-			for _, s := range cluster.slaves {
-
-				for _, ss := range s.Replications {
-					err = s.rejoinSlaveChangePassword(&ss)
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password: %s", err)
-					}
-				}
-
-			}
-
-			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
-				for _, pri := range cluster.Proxies {
-					if prx, ok := pri.(*ProxySQLProxy); ok {
-						prx.RotateMonitoringPasswords(new_password_db)
-						prx.RotateProxyPasswords(new_password_proxysql)
-						prx.SetCredential(prx.User + ":" + new_password_proxysql)
-					}
-
-				}
-			}
-			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && cluster.Conf.IsPath(cluster.Conf.MdbsProxyCredential) {
-				for _, pri := range cluster.Proxies {
-					if prx, ok := pri.(*MariadbShardProxy); ok {
-						prx.RotateProxyPasswords(new_password_shard)
-						prx.SetCredential(prx.User + ":" + new_password_shard)
-						prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, new_password_shard)
-						for _, u := range prx.ShardProxy.Users.ToNewMap() {
-							if u.User == prx.User {
-								dbhelper.SetUserPassword(prx.ShardProxy.Conn, prx.ShardProxy.DBVersion, u.Host, u.User, new_password_shard)
-							}
-
-						}
-					}
-				}
-			}
-			err = cluster.ProvisionRotatePasswords(new_password_db)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password: %v", err)
-			}
-
-			if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
-				msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", msg)
-			}
-			if cluster.Conf.MailTo != "" {
-				msg := "A password rotation has been made\nCheck the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
-				subj := "Password Rotation Replication-Manager"
-				go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}))
-			}
-
-		}
-	} else {
-		// outside Vault: the preconditions are CanRotatePasswords'
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Start Password rotation")
-
-		new_password_db := misc.GetUUID()
-		new_password_rpl := misc.GetUUID()
-		new_password_proxysql := misc.GetUUID()
-		new_password_shard := misc.GetUUID()
-
-		if cluster.GetDbUser() == cluster.GetRplUser() {
-			new_password_rpl = new_password_db
-		}
-
-		// the new values go through the credential chain (#2075) as one unit, before any
-		// server is changed: a refusal or a failure changes nothing
-		chain := cluster.CredentialChain()
-		rotated := []credstore.Change{
-			{Key: "db-servers-credential", Value: cluster.GetDbUser() + ":" + new_password_db},
-			{Key: "replication-credential", Value: cluster.GetRplUser() + ":" + new_password_rpl},
-		}
-		// a proxy credential the chain does not take is not rotated, its proxy left as it is
-		rotateProxySQL := cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && chain.CanSet("proxysql-password") == nil
-		rotateShardProxy := cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && chain.CanSet("shardproxy-credential") == nil
-		if rotateProxySQL {
-			rotated = append(rotated, credstore.Change{Key: "proxysql-password", Value: new_password_proxysql})
-		}
-		if rotateShardProxy {
-			rotated = append(rotated, credstore.Change{Key: "shardproxy-credential", Value: cluster.GetShardUser() + ":" + new_password_shard})
-		}
-		if err := chain.SetAll(rotated...); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused, nothing changed: %s", err)
-			return err
-		}
-		cluster.MarkSecretVersionStoreDirty()
-		if rotateProxySQL || rotateShardProxy {
-			cluster.SetClusterProxyCredentialsFromConfig()
-		}
-
-		cluster.SetClusterMonitorCredentialsFromConfig()
-
-		cluster.SetClusterReplicationCredentialsFromConfig()
-
-		for _, srv := range cluster.Servers {
-			srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
-		}
-
-		for _, u := range cluster.master.Users.ToNewMap() {
-			if u.User == cluster.GetDbUser() {
-				dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_db)
-			}
-			if u.User == cluster.GetRplUser() {
-				dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_rpl)
-			}
-		}
-		for _, s := range cluster.slaves {
-
-			for _, ss := range s.Replications {
-				err := s.rejoinSlaveChangePassword(&ss)
-				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password: %s", err)
-				}
-			}
-
-		}
-
-		if rotateProxySQL {
-			for _, pri := range cluster.Proxies {
-				if prx, ok := pri.(*ProxySQLProxy); ok {
-					prx.RotateMonitoringPasswords(new_password_db)
-					prx.RotateProxyPasswords(new_password_proxysql)
-					prx.SetCredential(prx.User + ":" + new_password_proxysql)
-				}
-
-			}
-		}
-		if rotateShardProxy {
-			for _, pri := range cluster.Proxies {
-				if prx, ok := pri.(*MariadbShardProxy); ok {
-					prx.RotateProxyPasswords(new_password_shard)
-					prx.SetCredential(prx.User + ":" + new_password_shard)
-					prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, new_password_shard)
-					for _, u := range prx.ShardProxy.Users.ToNewMap() {
-						if u.User == prx.User {
-							dbhelper.SetUserPassword(prx.ShardProxy.Conn, prx.ShardProxy.DBVersion, u.Host, u.User, new_password_shard)
-						}
-
-					}
-				}
-			}
-		}
-		err := cluster.ProvisionRotatePasswords(new_password_db)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password: %v", err)
-		}
-
-		if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
-			msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster. Check the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", msg)
-		}
-		if cluster.Conf.MailTo != "" {
-			msg := "A password rotation has been made\nCheck the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
-			subj := "Password Rotation Replication-Manager"
-			go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}))
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Password rotation is done.")
-		cluster.ConfigManager.SaveConfig(cluster, false)
-		return nil
-		//cas sans vault
-		//etre en dynamic config, sinon give up
-		//appeler changePassword appele dans lapi et ajouter la modif des users/passwords en bdd
+	if cluster.GetDbUser() == cluster.GetRplUser() {
+		new_password_rpl = new_password_db
 	}
 
+	// the new values go through the credential chain (#2075) as one unit, before any
+	// server is changed: a refusal or a failure changes nothing
+	chain := cluster.CredentialChain()
+	rotated := []credstore.Change{
+		{Key: "db-servers-credential", Value: cluster.GetDbUser() + ":" + new_password_db},
+		{Key: "replication-credential", Value: cluster.GetRplUser() + ":" + new_password_rpl},
+	}
+	// a proxy credential the chain does not take is not rotated, its proxy left as it is
+	rotateProxySQL := cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && chain.CanSet("proxysql-password") == nil
+	rotateShardProxy := cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && chain.CanSet("shardproxy-credential") == nil
+	if rotateProxySQL {
+		rotated = append(rotated, credstore.Change{Key: "proxysql-password", Value: new_password_proxysql})
+	}
+	if rotateShardProxy {
+		rotated = append(rotated, credstore.Change{Key: "shardproxy-credential", Value: cluster.GetShardUser() + ":" + new_password_shard})
+	}
+	if err := chain.SetAll(rotated...); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation refused, nothing changed: %s", err)
+		return err
+	}
+	cluster.MarkSecretVersionStoreDirty()
+	if rotateProxySQL || rotateShardProxy {
+		cluster.SetClusterProxyCredentialsFromConfig()
+	}
+
+	cluster.SetClusterMonitorCredentialsFromConfig()
+
+	cluster.SetClusterReplicationCredentialsFromConfig()
+
+	for _, srv := range cluster.Servers {
+		srv.SetCredential(srv.URL, cluster.GetDbUser(), cluster.GetDbPass())
+	}
+
+	for _, u := range cluster.master.Users.ToNewMap() {
+		if u.User == cluster.GetDbUser() {
+			dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_db)
+		}
+		if u.User == cluster.GetRplUser() {
+			dbhelper.SetUserPassword(cluster.master.Conn, cluster.master.DBVersion, u.Host, u.User, new_password_rpl)
+		}
+	}
+	for _, s := range cluster.slaves {
+
+		for _, ss := range s.Replications {
+			err := s.rejoinSlaveChangePassword(&ss)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of rejoinSlaveChangePassword during rotation password: %s", err)
+			}
+		}
+
+	}
+
+	if rotateProxySQL {
+		for _, pri := range cluster.Proxies {
+			if prx, ok := pri.(*ProxySQLProxy); ok {
+				prx.RotateMonitoringPasswords(new_password_db)
+				prx.RotateProxyPasswords(new_password_proxysql)
+				prx.SetCredential(prx.User + ":" + new_password_proxysql)
+			}
+
+		}
+	}
+	if rotateShardProxy {
+		for _, pri := range cluster.Proxies {
+			if prx, ok := pri.(*MariadbShardProxy); ok {
+				prx.RotateProxyPasswords(new_password_shard)
+				prx.SetCredential(prx.User + ":" + new_password_shard)
+				prx.ShardProxy.SetCredential(prx.ShardProxy.URL, prx.User, new_password_shard)
+				for _, u := range prx.ShardProxy.Users.ToNewMap() {
+					if u.User == prx.User {
+						dbhelper.SetUserPassword(prx.ShardProxy.Conn, prx.ShardProxy.DBVersion, u.Host, u.User, new_password_shard)
+					}
+
+				}
+			}
+		}
+	}
+	err := cluster.ProvisionRotatePasswords(new_password_db)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of ProvisionRotatePasswords during rotation password: %v", err)
+	}
+
+	if cluster.GetConf().PushoverAppToken != "" && cluster.GetConf().PushoverUserToken != "" {
+		msg := "A password rotation has been made on Replication-Manager " + cluster.Name + " cluster: the new versions are in the cluster's credential stores."
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", msg)
+	}
+	if cluster.Conf.MailTo != "" {
+		msg := "A password rotation has been made on cluster " + cluster.Name + "\nThe new versions are in the cluster's credential stores."
+		subj := "Password Rotation Replication-Manager"
+		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(AlertRecipient{To: cluster.Conf.MailTo, All: true}))
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Password rotation is done.")
+	cluster.ConfigManager.SaveConfig(cluster, false)
 	return nil
 }
 
