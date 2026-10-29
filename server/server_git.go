@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash"
@@ -867,22 +868,37 @@ func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
 				src := filepath.Join(srcDir, e.Name())
 				dst := filepath.Join(sharedDir, e.Name())
 
+				// Hash before the signature: a binary already installed was
+				// verified when it was copied, and one already refused is the
+				// same refusal, so neither is verified nor logged again (#2233).
+				if gitPluginFilesEqual(src, dst) {
+					delete(repman.pullPluginRefused, e.Name())
+					continue
+				}
+
 				if filepath.Ext(e.Name()) == "" {
 					if repman.Conf.PluginSigningPublicKey != "" {
 						sigDir := filepath.Join(repman.Conf.ShareDir, "plugins")
+						refusalKey, keyErr := pullPluginRefusalKey(src, filepath.Join(sigDir, e.Name()+".sig"), repman.Conf.PluginSigningPublicKey)
+						if keyErr == nil && repman.pullPluginRefused[e.Name()] == refusalKey {
+							continue
+						}
 						if err := logplugin.VerifyPluginSignature(src, sigDir, repman.Conf.PluginSigningPublicKey); err != nil {
 							repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
 								"[logplugin] skipping pull plugin %s: %v", e.Name(), err)
+							if keyErr == nil {
+								if repman.pullPluginRefused == nil {
+									repman.pullPluginRefused = make(map[string]string)
+								}
+								repman.pullPluginRefused[e.Name()] = refusalKey
+							}
 							continue
 						}
+						delete(repman.pullPluginRefused, e.Name())
 					} else {
 						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
 							"[logplugin] copying unsigned pull plugin %s (no public key configured)", e.Name())
 					}
-				}
-
-				if gitPluginFilesEqual(src, dst) {
-					continue
 				}
 
 				if err := gitPluginCopyFile(src, dst); err != nil {
@@ -1119,6 +1135,24 @@ func gitPluginFilesEqual(src, dst string) bool {
 		return false
 	}
 	return bytes.Equal(srcHash, dstHash)
+}
+
+// pullPluginRefusalKey identifies one signature check of a pulled plugin: the
+// hashes of the binary, of its embedded .sig and of the public key. A refused
+// binary is checked again when any of the three changes, e.g. a package upgraded
+// in place without a restart. A missing .sig or key hashes as empty, so its
+// later arrival changes the key too.
+func pullPluginRefusalKey(binPath, sigPath, pubKeyPath string) (string, error) {
+	binHash, err := gitPluginFileHash(binPath)
+	if err != nil {
+		return "", err
+	}
+	key := hex.EncodeToString(binHash)
+	for _, path := range []string{sigPath, pubKeyPath} {
+		h, _ := gitPluginFileHash(path)
+		key += ":" + hex.EncodeToString(h)
+	}
+	return key, nil
 }
 
 func gitPluginFileHash(path string) ([]byte, error) {
