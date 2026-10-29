@@ -1889,10 +1889,10 @@ export const stagingProxy = createGuardedAsyncThunk(
   }
 )
 
-export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async ({ clusterName, thread, test, time }, thunkAPI) => {
+export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async ({ clusterName, thread, test, time, tables }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.runSysbench(clusterName, thread, baseURL, test, time)
+    const { data, status } = await clusterService.runSysbench(clusterName, thread, baseURL, test, time, tables)
     showSuccessBanner('Sysbench ran successfuly!', status, thunkAPI)
     return { data, status }
   } catch (error) {
@@ -1901,10 +1901,10 @@ export const runSysBench = createGuardedAsyncThunk('cluster/runSysBench', async 
   }
 })
 
-export const cleanupSysBench = createGuardedAsyncThunk('cluster/cleanupSysBench', async ({ clusterName, test }, thunkAPI) => {
+export const cleanupSysBench = createGuardedAsyncThunk('cluster/cleanupSysBench', async ({ clusterName, test, tables }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.cleanupSysbench(clusterName, test, baseURL)
+    const { data, status } = await clusterService.cleanupSysbench(clusterName, test, baseURL, tables)
     showSuccessBanner('Sysbench cleanup completed!', status, thunkAPI)
     return { data, status }
   } catch (error) {

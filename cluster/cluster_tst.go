@@ -261,7 +261,7 @@ func (cluster *Cluster) PrepareBench() error {
 			test = cluster.Conf.SysbenchTest
 			time = "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
 			tablesize = "--table-size=1000000"
-			cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test, tablesize}, cluster.sysbenchConnectionArgs(prx)...), time, threads, "prepare")...)
+			cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test, tablesize, cluster.sysbenchTablesArg()}, cluster.sysbenchConnectionArgs(prx)...), time, threads, "prepare")...)
 
 			if cluster.Conf.SysbenchTest == "tpcc" {
 				cmdprep = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "prepare", nil)...)
@@ -316,14 +316,14 @@ func (cluster *Cluster) CleanupBench() error {
 			return err
 		}
 
-		test := "--test=oltp"
+		args := []string{"--test=oltp"}
 		if useV1Syntax {
-			test = cluster.Conf.SysbenchTest
+			args = []string{cluster.Conf.SysbenchTest, cluster.sysbenchTablesArg()}
 		}
-		var cleanup = cluster.Conf.SysbenchBinaryPath + " " + test + " " + strings.Join(cluster.sysbenchConnectionArgs(prx), " ") + " cleanup"
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.ReplaceAll(cleanup, cluster.GetDbPass(), "XXXXX"))
+		args = append(append(args, cluster.sysbenchConnectionArgs(prx)...), "cleanup")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.ReplaceAll(cluster.Conf.SysbenchBinaryPath+" "+strings.Join(args, " "), cluster.GetDbPass(), "XXXXX"))
 		var cmdcls *exec.Cmd
-		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test}, cluster.sysbenchConnectionArgs(prx)...), "cleanup")...)
+		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, args...)
 		if cluster.Conf.SysbenchTest == "tpcc" {
 			cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "cleanup", nil)...)
 			cmdcls.Dir = cluster.Conf.ShareDir + "/submodule/sysbench-tpcc"
@@ -391,7 +391,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 		tablesize = "--table-size=" + mySize
 		threads = "--threads=" + myThreads
 		time = "--time=" + myTime
-		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test, tablesize}, cluster.sysbenchConnectionArgs(prx)...), time, threads, "--report-interval=1", "run")...)
+		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, append(append([]string{test, tablesize, cluster.sysbenchTablesArg()}, cluster.sysbenchConnectionArgs(prx)...), time, threads, "--report-interval=1", "run")...)
 		if cluster.Conf.SysbenchTest == "tpcc" {
 			override := map[string]string{"time": myTime, "threads": myThreads, "tablesize": mySize}
 			cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, cluster.prepareTpccParams(prx, "run", override)...)
@@ -943,6 +943,16 @@ func (cluster *Cluster) ForgetTopology() error {
 	cluster.vmaster = nil
 	cluster.slaves = nil
 	return nil
+}
+
+// sysbenchTablesArg: the tables of the oltp tests (sysbench 1.0 syntax and later), from
+// sysbench-tables; it was passed to tpcc only, the oltp tests always ran one table (#2239).
+func (cluster *Cluster) sysbenchTablesArg() string {
+	tables := cluster.Conf.SysbenchTables
+	if tables < 1 {
+		tables = 1
+	}
+	return "--tables=" + strconv.Itoa(tables)
 }
 
 // sysbenchConnectionArgs: the driver and connection options of sysbench for the cluster's

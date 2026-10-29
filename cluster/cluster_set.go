@@ -1614,31 +1614,104 @@ func (cluster *Cluster) SetClusterHead(ClusterName string) {
 	cluster.Conf.ClusterHead = ClusterName
 }
 
-func (cluster *Cluster) SetSysbenchTest(test string) {
-	if config.GetSysbenchTests()[test] {
+// sysbenchLimits bound the sysbench counts a request or a setting may give (#2239): tables of
+// 1M rows each fill the data disk of the cluster under test (F3), threads open connections
+// through its proxy, time holds the benchmark slot.
+var sysbenchLimits = map[string]int{
+	"sysbench-time":    86400, // one day
+	"sysbench-threads": 1024,
+	"sysbench-tables":  64,
+	"sysbench-scale":   1000, // tpcc warehouses
+}
+
+// sysbenchCount reads a sysbench count setting: a whole number from 1 to its limit.
+func sysbenchCount(name, value string) (int, error) {
+	i, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || i < 1 || i > sysbenchLimits[name] {
+		return 0, fmt.Errorf("%s must be a whole number from 1 to %d, got %q", name, sysbenchLimits[name], value)
+	}
+	return i, nil
+}
+
+// SetSysbenchRunParams applies the parameters of a benchmark request (API, MCP): each one
+// given is read first by the same checks as the settings, and on any invalid one nothing is
+// changed (a run never starts with half of its parameters). threads "0" is the thread
+// scaling: not a setting.
+func (cluster *Cluster) SetSysbenchRunParams(test, seconds, threads, tables string) error {
+	if test != "" && !config.GetSysbenchTests()[test] {
+		return fmt.Errorf("unknown sysbench test %q", test)
+	}
+	counts := map[string]int{}
+	for _, p := range []struct{ name, value string }{{"sysbench-time", seconds}, {"sysbench-threads", threads}, {"sysbench-tables", tables}} {
+		if p.value == "" || (p.name == "sysbench-threads" && p.value == "0") {
+			continue
+		}
+		i, err := sysbenchCount(p.name, p.value)
+		if err != nil {
+			return err
+		}
+		counts[p.name] = i
+	}
+	if test != "" {
 		cluster.Conf.SysbenchTest = test
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench test to %s", test)
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown sysbench test: %s", test)
 	}
-}
-
-func (cluster *Cluster) SetSysbenchThreads(Threads string) {
-	i, err := strconv.Atoi(Threads)
-	if err == nil {
-		cluster.Conf.SysbenchThreads = i
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting threads to int %s", err)
-	}
-}
-
-func (cluster *Cluster) SetSysbenchTime(t string) {
-	i, err := strconv.Atoi(t)
-	if err == nil {
+	if i, ok := counts["sysbench-time"]; ok {
 		cluster.Conf.SysbenchTime = i
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error converting sysbench time to int %s", err)
 	}
+	if i, ok := counts["sysbench-threads"]; ok {
+		cluster.Conf.SysbenchThreads = i
+	}
+	if i, ok := counts["sysbench-tables"]; ok {
+		cluster.Conf.SysbenchTables = i
+	}
+	return nil
+}
+
+// SetSysbenchTest sets sysbench-test; a test not in GetSysbenchTests is refused, the setting
+// unchanged (it was logged and ignored, the next run took the previous test, #2239).
+func (cluster *Cluster) SetSysbenchTest(test string) error {
+	if strings.TrimSpace(test) == "" {
+		return fmt.Errorf("unknown sysbench test %q", test)
+	}
+	return cluster.SetSysbenchRunParams(test, "", "", "")
+}
+
+// SetSysbenchThreads sets sysbench-threads (0, the thread scaling, is the sysbench action's
+// own value, never a setting: refused here).
+func (cluster *Cluster) SetSysbenchThreads(threads string) error {
+	if strings.TrimSpace(threads) == "" || strings.TrimSpace(threads) == "0" {
+		_, err := sysbenchCount("sysbench-threads", threads)
+		return err
+	}
+	return cluster.SetSysbenchRunParams("", "", threads, "")
+}
+
+// SetSysbenchTime sets sysbench-time, in seconds.
+func (cluster *Cluster) SetSysbenchTime(t string) error {
+	if strings.TrimSpace(t) == "" {
+		_, err := sysbenchCount("sysbench-time", t)
+		return err
+	}
+	return cluster.SetSysbenchRunParams("", t, "", "")
+}
+
+// SetSysbenchTables sets sysbench-tables, the tables of the oltp tests and of tpcc.
+func (cluster *Cluster) SetSysbenchTables(tables string) error {
+	if strings.TrimSpace(tables) == "" {
+		_, err := sysbenchCount("sysbench-tables", tables)
+		return err
+	}
+	return cluster.SetSysbenchRunParams("", "", "", tables)
+}
+
+// SetSysbenchScale sets sysbench-scale, the tpcc warehouses.
+func (cluster *Cluster) SetSysbenchScale(scale string) error {
+	i, err := sysbenchCount("sysbench-scale", scale)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.SysbenchScale = i
+	return nil
 }
 
 /*

@@ -4335,6 +4335,26 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err = mycluster.SetBackupLogicalRemoteArmTimeout(value); err != nil {
 			return err
 		}
+	case "sysbench-test":
+		if err := mycluster.SetSysbenchTest(value); err != nil {
+			return err
+		}
+	case "sysbench-time":
+		if err := mycluster.SetSysbenchTime(value); err != nil {
+			return err
+		}
+	case "sysbench-threads":
+		if err := mycluster.SetSysbenchThreads(value); err != nil {
+			return err
+		}
+	case "sysbench-tables":
+		if err := mycluster.SetSysbenchTables(value); err != nil {
+			return err
+		}
+	case "sysbench-scale":
+		if err := mycluster.SetSysbenchScale(value); err != nil {
+			return err
+		}
 	case "backup-keep-hourly":
 		err = mycluster.SetBackupKeepHourly(value)
 		if err != nil {
@@ -7409,8 +7429,12 @@ func (repman *ReplicationManager) handlerMuxClusterOptimize(w http.ResponseWrite
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Param threads query string false "Number of threads"
+// @Param test query string false "Sysbench test (sysbench-test)"
+// @Param time query string false "Duration in seconds (sysbench-time)"
+// @Param threads query string false "Number of threads, 0 = scale from 1 to 2×cores (sysbench-threads)"
+// @Param tables query string false "Number of tables (sysbench-tables)"
 // @Success 200 {string} string "Successfully triggered sysbench"
+// @Failure 400 {string} string "Unknown test or invalid number: nothing is changed or started"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 409 {string} string "No proxy configured"
 // @Failure 500 {string} string "No cluster"
@@ -7429,21 +7453,15 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			http.Error(w, "No proxy configured and no master", http.StatusConflict)
 			return
 		}
-		if r.URL.Query().Get("test") != "" {
-			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
+		q := r.URL.Query()
+		if err := mycluster.SetSysbenchRunParams(q.Get("test"), q.Get("time"), q.Get("threads"), q.Get("tables")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		if r.URL.Query().Get("time") != "" {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench time to %ss", r.URL.Query().Get("time"))
-			mycluster.SetSysbenchTime(r.URL.Query().Get("time"))
-		}
-		if r.URL.Query().Get("threads") == "0" {
+		if q.Get("threads") == "0" {
 			// threads=0 means scale from 1 to 2×cores
 			go mycluster.RunSysbenchScaleThreads()
 		} else {
-			if r.URL.Query().Get("threads") != "" {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
-				mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
-			}
 			go mycluster.RunSysbench()
 		}
 	}
@@ -7463,8 +7481,9 @@ func (repman *ReplicationManager) handlerMuxClusterSysbenchCleanup(w http.Respon
 			http.Error(w, "No proxy configured and no master", http.StatusConflict)
 			return
 		}
-		if r.URL.Query().Get("test") != "" {
-			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
+		if err := mycluster.SetSysbenchRunParams(r.URL.Query().Get("test"), "", "", r.URL.Query().Get("tables")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		go mycluster.CleanupBench()
 		w.WriteHeader(http.StatusOK)
