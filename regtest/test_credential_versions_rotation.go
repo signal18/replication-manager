@@ -22,8 +22,8 @@ import (
 // server monitored with no access denied and logged in with pass2, while the config still
 // holds pass1 and the local versioned file holds both versions.
 //
-// It needs monitoring-secret-versioning on and db-servers-credential not pinned in a config
-// file (a pinned credential is never rotated). The rotation is real: the cluster ends on pass2.
+// It needs monitoring-secret-versioning on; a credential set in a config file is rotated as
+// versions too (#2227 rule 9). The rotation is real: the cluster ends on pass2.
 func (regtest *RegTest) TestCredentialVersionsRotation(cl *cluster.Cluster, conf string, test *cluster.Test) bool {
 	return regtest.credentialVersionsRotation(cl, false)
 }

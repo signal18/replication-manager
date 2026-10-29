@@ -784,3 +784,22 @@ func assertSecretVersionCount(t *testing.T, store secretVersionStore, key string
 		t.Fatalf("unexpected latest version number for %s: got=%d want=%d", key, versions[len(versions)-1].Version, want)
 	}
 }
+
+// #2227 rule 9: the prune keeps the value a config file held when last seen, so an edit of
+// the file is still told from the versions made since
+func TestPruneSecretVersionStoreKeepsConfigFileValue(t *testing.T) {
+	store := secretVersionStore{"db-servers-credential": {
+		{Version: 1, HashValue: "f1", RotatedAt: "2026-01-01T00:00:00Z", FromConfigFile: true},
+		{Version: 2, HashValue: "h2", RotatedAt: "2026-01-02T00:00:00Z"},
+		{Version: 3, HashValue: "h3", RotatedAt: "2026-01-03T00:00:00Z"},
+		{Version: 4, HashValue: "h4", RotatedAt: "2026-01-04T00:00:00Z"},
+	}}
+	pruned, _, removed := pruneSecretVersionStore(store, 2)
+	got := pruned["db-servers-credential"]
+	if removed != 1 || len(got) != 3 || got[0].HashValue != "f1" || got[2].HashValue != "h4" {
+		t.Fatalf("removed %d, kept %+v", removed, got)
+	}
+	if _, _, again := pruneSecretVersionStore(pruned, 2); again != 0 {
+		t.Fatalf("a second prune removed %d", again)
+	}
+}

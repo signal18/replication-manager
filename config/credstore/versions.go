@@ -24,6 +24,8 @@ type FileVersion struct {
 	HashValue string `json:"hash_value"`
 	RotatedAt string `json:"rotated_at"`
 	WrittenBy int    `json:"written_by,omitempty"`
+	// FromConfigFile: the value a config file (immutable) held when it was seen (rule 9)
+	FromConfigFile bool `json:"from_config_file,omitempty"`
 }
 
 // At is when the version was written.
@@ -38,7 +40,9 @@ func (v FileVersion) At() time.Time {
 // local file (secret_store.json) is its copy on disk, written by the cluster's save callback
 // only (T25) and pushed with the config; the vault entries get each version from the queue.
 // A change is refused when no active store keeps versions, so the config never holds
-// anything else than the starting value.
+// anything else than the starting value. A value set in a config file (immutable) is a
+// starting value too: the versions win over it until an operator edits it there
+// (TakeConfigFileValue).
 type VersionStore struct {
 	mu       sync.Mutex
 	conf     func() *config.Config
@@ -89,9 +93,6 @@ func (s *VersionStore) CanSet(key string) error {
 	if !s.Holds(key) {
 		return fmt.Errorf("%s is not versioned: %w", key, ErrNotHeld)
 	}
-	if _, pinned := s.conf().GetImmuableFlag(key); pinned {
-		return &heldRefusal{fmt.Errorf("%s is set in a config file (immutable): a new value would be lost at the next restart", key)}
-	}
 	if s.keeps != nil {
 		if err := s.keeps(); err != nil {
 			return &heldRefusal{err}
@@ -120,6 +121,51 @@ func (s *VersionStore) add(key, stored string, at time.Time, by int) {
 	}
 	s.versions[key] = append(vs, FileVersion{Version: n, HashValue: stored, RotatedAt: at.UTC().Format(time.RFC3339Nano), WrittenBy: by})
 	s.dirty = true
+}
+
+// TakeConfigFileValue is the start's check of key set in a config file (immutable, rule 9),
+// plain its value there. The value last seen in the file is kept as a version marked
+// from_config_file: the same value changes nothing, the versions made since win over it; a
+// different value is an operator's edit of the file and becomes the current version, now.
+// Seen for the first time while versions exist, it is kept as seen before them, not made
+// current. True when the file's value became the current one.
+func (s *VersionStore) TakeConfigFileValue(key, plain string) bool {
+	if !s.Holds(key) || plain == "" {
+		return false
+	}
+	conf := s.conf()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	vs := s.versions[key]
+	seen := -1
+	for i := len(vs) - 1; i >= 0; i-- {
+		if vs[i].FromConfigFile {
+			seen = i
+			break
+		}
+	}
+	if seen >= 0 && conf.DecryptSecretValue(key, vs[seen].HashValue) == plain {
+		return false
+	}
+	v := FileVersion{HashValue: conf.EncryptSecretValue(plain), WrittenBy: conf.ArbitrationSasUniqueId, FromConfigFile: true}
+	if seen < 0 && len(vs) > 0 {
+		v.RotatedAt = vs[0].At().Add(-time.Nanosecond).UTC().Format(time.RFC3339Nano)
+		vs = append([]FileVersion{v}, vs...)
+		for i := range vs {
+			vs[i].Version = i + 1
+		}
+		s.versions[key] = vs
+		s.dirty = true
+		return false
+	}
+	v.Version = 1
+	if len(vs) > 0 {
+		v.Version = vs[len(vs)-1].Version + 1
+	}
+	v.RotatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	s.versions[key] = append(vs, v)
+	s.dirty = true
+	return true
 }
 
 // Insert adds a version read from another store, with its own time and writer: a newer

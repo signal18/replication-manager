@@ -56,7 +56,7 @@ func TestCanRotatePasswords(t *testing.T) {
 		{"vault entry enabled, db credential in a file", func(c *Cluster) {
 			c.Conf.SecretKvs = []config.SecretKvConfig{{Name: "vault-a", Plugin: config.ConstSecretKvPluginVault, Enabled: true}}
 			c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
-		}, "db-servers-credential is set in a config file"},
+		}, ""},
 		{"replication stopped, a database engine entry", func(c *Cluster) {
 			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}}
 			c.Servers = append(c.Servers, replica)
@@ -65,8 +65,13 @@ func TestCanRotatePasswords(t *testing.T) {
 		}, ""},
 		{"no encryption key", func(c *Cluster) { c.Conf.SecretKey = nil }, "no encryption key"},
 		{"config not saved", func(c *Cluster) { c.Conf.ConfRewrite = false }, "monitoring-save-config is off"},
-		{"db credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, "db-servers-credential is set in a config file"},
-		{"replication credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, "replication-credential is set in a config file"},
+		// #2227 rule 9: a credential set in a config file is a starting value, rotated as versions
+		{"db credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, ""},
+		{"replication credential in a file", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
+		{"db credential in a file, no versioned store", func(c *Cluster) {
+			c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x"
+			c.Conf.MonitoringSecretVersioning = false
+		}, "no credential store keeps versions"},
 		{"a database down", func(c *Cluster) { c.Servers = append(c.Servers, &ServerMonitor{State: stateFailed}) }, "databases are down"},
 		{"replication stopped on a replica", func(c *Cluster) {
 			replica := &ServerMonitor{State: stateSlave, Conn: &sqlx.DB{}, Replications: []dbhelper.SlaveStatus{{

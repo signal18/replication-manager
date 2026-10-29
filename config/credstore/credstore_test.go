@@ -420,3 +420,48 @@ func TestChainArchiveSecretsConcurrent(t *testing.T) {
 		t.Fatal("deadlock")
 	}
 }
+
+// #2227 rule 9: a value set in a config file is a starting value; the versions win over it
+// until an operator edits it in the file, and the edit is then the current version
+func TestTakeConfigFileValue(t *testing.T) {
+	conf := testConf()
+	conf.ImmuableFlagMap["replication-credential"] = "repl:file1"
+	vs := NewVersionStore(func() *config.Config { return conf }, func(k string) bool { return k == "replication-credential" }, nil, nil)
+	current := func() string { v, _ := vs.Latest("replication-credential"); return v.Value }
+
+	if err := vs.CanSet("replication-credential"); err != nil {
+		t.Fatalf("a key set in a config file is refused with a versioned store: %v", err)
+	}
+	if !vs.TakeConfigFileValue("replication-credential", "repl:file1") || current() != "repl:file1" {
+		t.Fatalf("first start: the file's value is version 1, got %q", current())
+	}
+	if err := vs.Set("replication-credential", "repl:rotated"); err != nil {
+		t.Fatal(err)
+	}
+	if vs.TakeConfigFileValue("replication-credential", "repl:file1") || current() != "repl:rotated" {
+		t.Fatalf("restart, file unchanged: the rotated version must win, got %q", current())
+	}
+	if !vs.TakeConfigFileValue("replication-credential", "repl:file2") || current() != "repl:file2" {
+		t.Fatalf("file edited: its value must be the current version, got %q", current())
+	}
+	if vs.TakeConfigFileValue("replication-credential", "repl:file2") || vs.Count("replication-credential") != 3 {
+		t.Fatalf("the same edit seen again makes no version: %d versions", vs.Count("replication-credential"))
+	}
+
+	// a file of versions made before the mark: the file's value is kept as seen, not current
+	legacy := NewVersionStore(func() *config.Config { return conf }, func(string) bool { return true }, nil, nil)
+	legacy.Load(map[string][]FileVersion{"replication-credential": {
+		{Version: 1, HashValue: conf.EncryptSecretValue("repl:old"), RotatedAt: "2026-01-01T00:00:00Z"},
+		{Version: 2, HashValue: conf.EncryptSecretValue("repl:new"), RotatedAt: "2026-01-02T00:00:00Z"},
+	}})
+	if legacy.TakeConfigFileValue("replication-credential", "repl:file1") {
+		t.Fatal("first sight with versions made the file's value current")
+	}
+	if v, _ := legacy.Latest("replication-credential"); v.Value != "repl:new" || legacy.Count("replication-credential") != 3 {
+		t.Fatalf("legacy: current %q, %d versions", v.Value, legacy.Count("replication-credential"))
+	}
+	file, _ := legacy.Export()
+	if !file["replication-credential"][0].FromConfigFile || file["replication-credential"][0].Version != 1 {
+		t.Fatalf("the seen value goes first: %+v", file["replication-credential"][0])
+	}
+}

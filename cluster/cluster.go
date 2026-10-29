@@ -883,7 +883,9 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LoadArchivePlugins()    // the external archive plugins' manifests, once per process (#2091)
 
 	// the newest version the vault entries hold, read once before monitoring begins, for
-	// the secrets the local file does not version (#2227 rule 1b, bounded)
+	// the secrets the local file does not version (#2227 rule 1b, bounded); first, a
+	// credential edited in a config file since the last start (rule 9)
+	cluster.takeConfigFileCredentials()
 	cluster.CredentialChain().Refresh()
 	cluster.ReadVaultsAtStart()
 	cluster.SetClusterCredentialsFromConfig()

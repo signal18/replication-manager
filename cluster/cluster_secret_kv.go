@@ -429,10 +429,14 @@ func splitUser(credential string) (string, string) {
 
 // applyStoreWinner makes a newer version read from a store the current one here: the
 // version store takes it with its own time and writer (no new version), the chain's cache
-// reads it, the save writes the file, and the servers get it. A key pinned in a file is left
-// to its file.
+// reads it, the save writes the file, and the servers get it. A key pinned to a Vault path
+// in a file is left to its path (rule 12).
 func (cluster *Cluster) applyStoreWinner(key string, winner credstore.Version, from string) {
-	if _, pinned := cluster.Conf.GetImmuableFlag(key); pinned {
+	c := &cluster.secretKv
+	c.mu.Lock()
+	pinnedPath := c.pinnedPaths[key]
+	c.mu.Unlock()
+	if pinnedPath {
 		return
 	}
 	vs := cluster.versionStore()
@@ -922,13 +926,35 @@ func (cluster *Cluster) ReadVaultsAtStart() {
 		if !ok || ver.Value == "" || ver.Value == cluster.Conf.Secrets.Get(key).Value {
 			continue
 		}
-		if _, pinned := cluster.Conf.GetImmuableFlag(key); pinned {
-			continue
-		}
 		vs.Insert(key, ver)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential stores: %s at start is the version held by %s", key, from[key])
 	}
 	cluster.CredentialChain().Refresh()
+}
+
+// takeConfigFileCredentials runs at a cluster's start, before the chain is read: a secret set
+// in a config file (immutable) is a starting value, the versions win over it, unless an
+// operator edited it in the file since the last start: that value is then the current version
+// (rule 9). Versioning on only, the value last seen is kept in the local file. A Vault path is
+// read at each start instead (rule 12).
+func (cluster *Cluster) takeConfigFileCredentials() {
+	if !cluster.Conf.IsMonitoringSecretVersioningEnabled() {
+		return
+	}
+	vs := cluster.versionStore()
+	for _, key := range cluster.secretKeys() {
+		raw, pinned := cluster.Conf.GetImmuableFlag(key)
+		if !pinned || raw == nil {
+			continue
+		}
+		v := fmt.Sprintf("%v", raw)
+		if v == "" || cluster.Conf.IsPath(v) {
+			continue
+		}
+		if vs.TakeConfigFileValue(key, cluster.Conf.DecryptSecretValue(key, v)) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Credential stores: %s was edited in a config file, its value is the current version", key)
+		}
+	}
 }
 
 // IsVersionedSecretKey: key is a secret the versioned stores hold (#2227 rule 1): its config

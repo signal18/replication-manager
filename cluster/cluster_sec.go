@@ -69,9 +69,8 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 	if err := cluster.versionsKeepError(); err != nil {
 		return err
 	}
-	// the credential chain must take the new values (#2075): a credential pinned in a config
-	// file is refused, the file would win at the next restart. Lifted when a versioned store
-	// (#2041) heads the chain.
+	// the credential chain must take the new values (#2075): the version store heads it, a
+	// credential set in a config file included, its versions win over the file (#2227 rule 9)
 	chain := cluster.CredentialChain()
 	for _, key := range []string{"db-servers-credential", "replication-credential"} {
 		if err := chain.CanSet(key); err != nil {
@@ -86,11 +85,11 @@ func (cluster *Cluster) canRotatePasswordsOutsideVault() error {
 var ErrCredentialChangeRefused = credstore.ErrChangeRefused
 
 // CanSetCredential says whether a credential set through the API would survive the next
-// restart (#2048). The save skips immutable keys, and saves nothing with
-// monitoring-save-config off: the value would be lost and repman would restart on the
-// former one. Immutable is lifted once #2041 reloads the secret store at start.
+// restart (#2048): a version in an active store, a key set in a config file included (#2227
+// rule 9); without a store keeping versions the value would be lost and repman would restart
+// on the former one.
 func (cluster *Cluster) CanSetCredential(key string) error {
-	// the credential chain decides (#2075): a pinned key takes no change; in static mode
+	// the credential chain decides (#2075): no store keeping versions, no change; in static mode
 	// (monitoring-save-config off) the change would live in memory only, refused for the
 	// database credentials, whose loss at the next restart locks repman out (#2048)
 	chain := cluster.CredentialChain()

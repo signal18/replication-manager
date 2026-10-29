@@ -461,12 +461,30 @@ func pruneSecretVersionStore(store secretVersionStore, keepLast int) (secretVers
 
 		start := len(versions) - keepLast
 		copied := append([]secretVersion(nil), versions[start:]...)
+		// the value a config file held when last seen stays, to tell an edit of the file
+		// (#2227 rule 9)
+		if seen := lastFromConfigFile(versions); seen >= 0 && seen < start {
+			copied = append([]secretVersion{versions[seen]}, copied...)
+			start--
+		}
 		pruned[key] = copied
-		keysPruned++
+		if start > 0 {
+			keysPruned++
+		}
 		versionsRemoved += start
 	}
 
 	return pruned, keysPruned, versionsRemoved
+}
+
+// lastFromConfigFile is the index of the last version marked from_config_file, else -1.
+func lastFromConfigFile(versions []secretVersion) int {
+	for i := len(versions) - 1; i >= 0; i-- {
+		if versions[i].FromConfigFile {
+			return i
+		}
+	}
+	return -1
 }
 
 func resolveSecretStoreEntryByVersion(key string, versions []secretVersion, requestedVersion int) (SecretVersionStoreRestoreEntry, error) {

@@ -22,8 +22,13 @@ func TestCanSetCredential(t *testing.T) {
 		want   string // "" = allowed, else a part of the refusal
 	}{
 		{"allowed", "db-servers-credential", func(*Cluster) {}, ""},
-		{"db credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, "db-servers-credential is set in a config file"},
-		{"replication credential in a file", "replication-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, "replication-credential is set in a config file"},
+		// #2227 rule 9: a credential set in a config file takes a change as a version
+		{"db credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["db-servers-credential"] = "root:x" }, ""},
+		{"replication credential in a file", "replication-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
+		{"credential in a file, no versioned store", "replication-credential", func(c *Cluster) {
+			c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x"
+			c.Conf.MonitoringSecretVersioning = false
+		}, "no credential store keeps versions"},
 		{"another credential in a file", "db-servers-credential", func(c *Cluster) { c.Conf.ImmuableFlagMap["replication-credential"] = "repl:x" }, ""},
 		// #2227 rule 1: the change is a version in the versioned stores, never in the config
 		{"config not saved, versioning on", "replication-credential", func(c *Cluster) { c.Conf.ConfRewrite = false }, ""},
@@ -78,7 +83,7 @@ func TestGetCredentialsInfo(t *testing.T) {
 	if s := c.GetCredentialsInfo()[0].Source; s != "dynamic-config" {
 		t.Fatalf("held by the dynamic config: source %q", s)
 	}
-	if rpl.User != "repl" || rpl.Source != "config-file" || !strings.HasPrefix(rpl.Refusal, "replication-credential is set in a config file") {
+	if rpl.User != "repl" || rpl.Source != "config-file" || rpl.Refusal != "" {
 		t.Fatalf("replication: %+v", rpl)
 	}
 	for _, i := range infos {

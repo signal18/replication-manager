@@ -132,8 +132,15 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    stores; it is read from the engine first.
 9. **Rotation** is allowed when an active store keeps versions (the file with versioning
    on, or any vault entry); refused otherwise, as today (`canRotatePasswordsOutsideVault`,
-   its check becoming "an active store keeps versions"). A pinned value stays refused.
-   Turning versioning or a store off is allowed; it only brings that refusal back.
+   its check becoming "an active store keeps versions"). A value set in a config file
+   (immutable) is a starting value like the others: with a store keeping versions it is
+   rotated and changed as versions, the newest version wins over it at a restart. When an
+   operator edits it in the file, that edit is the current version at the next start: the
+   local file keeps the value last seen in the config file (a version marked
+   `from_config_file`, never pruned away) to tell the edit. With vault entries only
+   (versioning off) nothing keeps that value and an edit is not told: the newest version
+   in the vaults wins. Turning versioning or a store off is allowed; it only brings the
+   refusal back.
 10. **Turning a store off** stops its versions and leaves what it holds. Repman never
     deletes a secret; a removed object's secrets stay, a renamed one writes under its new
     name.
@@ -169,8 +176,7 @@ a cluster whose config enables a `[[<cluster>.secret-kv]]` on a Vault or OpenBao
 container) in `regtest/test_credential_versions_rotation.go`. A repman restart is simulated
 in-process as `testCredentialPersistTagReload` does: the config the server builds from the
 files on disk, and the chain a start builds over it with the local file
-(`Cluster.ChainAtStart`). The rotation needs `db-servers-credential` not pinned in a config
-file.
+(`Cluster.ChainAtStart`). A credential set in a config file is rotated as well (rule 9).
 
 ### Implementation (#2227)
 
@@ -310,7 +316,9 @@ last, because it is the starting value.
   rotates).
 - **A pin is a starting value.** A store records the pinned value it last saw. When the
   operator edits that value in the file, the file wins and its value goes into the store
-  as a new version: the operator's intent beats an older stored value.
+  as a new version: the operator's intent beats an older stored value. Done by
+  `VersionStore.TakeConfigFileValue` at a cluster's start (`takeConfigFileCredentials`,
+  before the chain is read), versioning on.
 
 ## The four cases are four chains
 
@@ -366,8 +374,6 @@ One epic issue for the interface, with these steps:
 
 ## Open questions
 
-- **The pin rule**: should an operator's edit of a pinned value always win over the
-  store (proposed), or should the store win and raise a state that the file differs?
 - **Proxy and other credentials** (`proxysql-password`, `haproxy-password`,
   `mail-smtp-password`, `backup-verification-credential`…): the same chain from step 1,
   or database and replication credentials first?
