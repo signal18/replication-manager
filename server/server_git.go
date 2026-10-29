@@ -878,19 +878,19 @@ func (repman *ReplicationManager) syncPluginsFromPull(pullDir string) {
 
 				if filepath.Ext(e.Name()) == "" {
 					if repman.Conf.PluginSigningPublicKey != "" {
-						srcHash, hashErr := gitPluginFileHash(src)
-						if hashErr == nil && repman.pullPluginRefused[e.Name()] == hex.EncodeToString(srcHash) {
+						sigDir := filepath.Join(repman.Conf.ShareDir, "plugins")
+						refusalKey, keyErr := pullPluginRefusalKey(src, filepath.Join(sigDir, e.Name()+".sig"), repman.Conf.PluginSigningPublicKey)
+						if keyErr == nil && repman.pullPluginRefused[e.Name()] == refusalKey {
 							continue
 						}
-						sigDir := filepath.Join(repman.Conf.ShareDir, "plugins")
 						if err := logplugin.VerifyPluginSignature(src, sigDir, repman.Conf.PluginSigningPublicKey); err != nil {
 							repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModPlugin, config.LvlWarn,
 								"[logplugin] skipping pull plugin %s: %v", e.Name(), err)
-							if hashErr == nil {
+							if keyErr == nil {
 								if repman.pullPluginRefused == nil {
 									repman.pullPluginRefused = make(map[string]string)
 								}
-								repman.pullPluginRefused[e.Name()] = hex.EncodeToString(srcHash)
+								repman.pullPluginRefused[e.Name()] = refusalKey
 							}
 							continue
 						}
@@ -1135,6 +1135,24 @@ func gitPluginFilesEqual(src, dst string) bool {
 		return false
 	}
 	return bytes.Equal(srcHash, dstHash)
+}
+
+// pullPluginRefusalKey identifies one signature check of a pulled plugin: the
+// hashes of the binary, of its embedded .sig and of the public key. A refused
+// binary is checked again when any of the three changes, e.g. a package upgraded
+// in place without a restart. A missing .sig or key hashes as empty, so its
+// later arrival changes the key too.
+func pullPluginRefusalKey(binPath, sigPath, pubKeyPath string) (string, error) {
+	binHash, err := gitPluginFileHash(binPath)
+	if err != nil {
+		return "", err
+	}
+	key := hex.EncodeToString(binHash)
+	for _, path := range []string{sigPath, pubKeyPath} {
+		h, _ := gitPluginFileHash(path)
+		key += ":" + hex.EncodeToString(h)
+	}
+	return key, nil
 }
 
 func gitPluginFileHash(path string) ([]byte, error) {

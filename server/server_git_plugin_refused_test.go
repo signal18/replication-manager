@@ -83,6 +83,20 @@ func TestSyncPluginsFromPullLogsRefusalOnce(t *testing.T) {
 		t.Fatalf("a new refused binary logged %d refusals in total, want 2", got)
 	}
 
+	// The embedded .sig changes in place (package upgraded without a restart):
+	// the same binary is checked again, and now installed.
+	laterBuild := []byte("plugin binary of yet another build")
+	if err := os.WriteFile(filepath.Join(shareDir, "plugins", "plugin-test.sig"), ed25519.Sign(priv, laterBuild), 0644); err != nil {
+		t.Fatal(err)
+	}
+	pull(laterBuild)
+	if data, err := os.ReadFile(installed); err != nil || string(data) != string(laterBuild) {
+		t.Fatalf("binary matching the new .sig not installed (err=%v)", err)
+	}
+	if err := os.WriteFile(filepath.Join(shareDir, "plugins", "plugin-test.sig"), ed25519.Sign(priv, imageBuild), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	// The image's own build: installed, and the refusal is forgotten.
 	pull(imageBuild)
 	if data, err := os.ReadFile(installed); err != nil || string(data) != string(imageBuild) {

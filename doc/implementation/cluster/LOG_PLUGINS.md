@@ -846,11 +846,14 @@ signature:
 
 - a pulled binary identical to the installed copy is skipped: that copy was
   verified when it was installed, and the loader verifies it again;
-- a binary whose signature check fails is skipped and its hash is kept in
-  `pullPluginRefused` (plugin name → hash, one entry per plugin file, so it is
-  bounded by the pull directory);
-- at the next pulls the same binary (same hash) is skipped without a new check
-  and without a new log line; a different binary is checked (and logged) again;
+- a binary whose signature check fails is skipped and the check's key is kept in
+  `pullPluginRefused` (plugin name → hashes of the binary, its embedded `.sig`
+  and the public key; one entry per plugin file, so it is bounded by the pull
+  directory);
+- at the next pulls the same check (same three hashes) is skipped without a new
+  verification and without a new log line; a different binary, or a `.sig` or
+  key changed in place (a package upgraded without a restart), is checked (and
+  logged) again;
 - a binary that is installed, or found identical to the installed copy, clears
   its entry.
 
