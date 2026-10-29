@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
 )
 
@@ -169,7 +170,8 @@ type MonthStatement struct {
 
 type billingState struct {
 	prices    BillingPrices
-	priced    bool // SetPrices ran: prices is the instance's list, zeros included
+	priced    bool                        // SetPrices ran: prices is the instance's list, zeros included
+	catalogue config.MarketplaceCatalogue // SetMarketplaceCatalogue: the archive offers and their BAU prices
 	dir       string
 	pushFinal func(ctx context.Context, path, month string) error // pushes a closed month's snapshot (Units.<month>.log) to the git sync repository; never called under the lock
 	pushing   atomic.Bool                                         // one push at a time
@@ -217,6 +219,21 @@ func (m *ResourceManager) Prices() (BillingPrices, bool) {
 	defer m.mu.Unlock()
 	b := m.billing()
 	return b.prices, b.priced
+}
+
+// SetMarketplaceCatalogue gives the manager the back-office's catalogue the instance holds:
+// an archive on an offer's storage is priced at the offer's BAU price.
+func (m *ResourceManager) SetMarketplaceCatalogue(c config.MarketplaceCatalogue) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.billing().catalogue = c
+}
+
+// MarketplaceCatalogue is the catalogue last given, empty before one.
+func (m *ResourceManager) MarketplaceCatalogue() config.MarketplaceCatalogue {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.billing().catalogue
 }
 
 // SetBillingDir names where the month statements live and loads the current month.

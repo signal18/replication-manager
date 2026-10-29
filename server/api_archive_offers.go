@@ -123,7 +123,7 @@ func archiveOffers(cat config.MarketplaceCatalogue, cl archiveOfferCluster) []Ar
 		if row.S3 != nil {
 			if p, ok := have[row.S3.Name]; ok {
 				// the offer's storage only: same endpoint, and the SSO for an SSO storage
-				row.Added = strings.TrimRight(p.Endpoint, "/") == strings.TrimRight(row.S3.Endpoint, "/") && p.Cloud18SSO == row.S3.Cloud18SSO
+				row.Added = row.S3.SameStorage(p)
 				conflict = !row.Added
 			}
 		}

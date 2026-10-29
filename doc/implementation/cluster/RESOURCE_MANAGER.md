@@ -204,7 +204,12 @@ from it). `RefreshBackupUnits` (every 30 ticks, `cluster_bku.go`) measures **loc
 the restic archive when its repository is a local path; a backup kept after its push to the
 archive counts TWICE, it uses the disk twice; never a catalog sum) and **remote** = the restic
 repository raw-data size (`restic stats --mode raw-data`, refreshed by `ResticFetchRepo`) ONLY when
-that repository is S3/SFTP (`resticRepositoryIsRemote`; a local restic repository is local disk),
+the repository restic runs is S3/SFTP (`resticRepositoryIsRemote` on `resticRepoPathFor`, not on
+`backup-restic-repository`, whose default is an S3 URL; a local restic repository is local disk),
+or an external plugin's archive at its last size read; **priced** at the BAU price of the offer the
+attached archive runs on (`MarketplaceCatalogue.ArchiveOffer`, the `priceEurBauMonth` the archive
+offers show), else `cloud18-marketplace-bau-price`, 0 on the client's own storage (fixed 2026-10-29:
+what is billed is what was shown),
 converts local at the Storage-profile ratio (20 GB/BKU) into `BKUReading` (`backupUnits` in
 the cluster JSON) and asserts **WARN0225** when local BKU is over the plan (over-commit, billed
 never blocked; in `pstates30`), and remote at the same ratio into `BAUReading`
