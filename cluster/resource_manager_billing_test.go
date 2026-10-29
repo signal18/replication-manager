@@ -189,3 +189,52 @@ func TestResourceManagerBillingAccrualAndStatement(t *testing.T) {
 		t.Fatalf("statement months: %v", months)
 	}
 }
+
+// A closed month is copied to its usage_<MM>.log before every push and kept after it; a copy
+// that cannot be written keeps the snapshot and pushes nothing, like a failed push. The same
+// month a year later replaces it.
+func TestResourceManagerUsageLogKeptBeforePush(t *testing.T) {
+	dir := t.TempDir()
+	m := NewResourceManager()
+	if err := m.SetBillingDir(dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	usage := filepath.Join(dir, "usage_10.log")
+	statement := func(month string) string { return `{"month": "` + month + `", "final": true}` }
+	pushed := []string{}
+	m.SetFinalPush(func(ctx context.Context, path, month string) error {
+		if raw, err := os.ReadFile(usage); err != nil || string(raw) != statement(month) {
+			t.Errorf("usage_10.log holds %s before its push: %v", month, err)
+		}
+		pushed = append(pushed, month)
+		return nil
+	})
+	if err := os.WriteFile(filepath.Join(dir, "Units.2026-10.log"), []byte(statement("2026-10")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(usage, 0o755); err != nil { // usage_10.log cannot be written
+		t.Fatal(err)
+	}
+	m.PushPending(context.Background())
+	if _, err := os.Stat(filepath.Join(dir, "Units.2026-10.log")); err != nil || len(pushed) != 0 {
+		t.Fatalf("a copy that fails keeps the snapshot and pushes nothing: err=%v pushed=%v", err, pushed)
+	}
+	os.Remove(usage)
+	m.PushPending(context.Background())
+	if _, err := os.Stat(filepath.Join(dir, "Units.2026-10.log")); !os.IsNotExist(err) || len(pushed) != 1 {
+		t.Fatalf("once copied, the month is pushed and its snapshot removed: err=%v pushed=%v", err, pushed)
+	}
+	if raw, err := os.ReadFile(usage); err != nil || string(raw) != statement("2026-10") {
+		t.Fatalf("usage_10.log is kept after the push: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Units.2027-10.log"), []byte(statement("2027-10")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.PushPending(context.Background())
+	if raw, _ := os.ReadFile(usage); string(raw) != statement("2027-10") || len(pushed) != 2 {
+		t.Fatalf("a year later the same month replaces usage_10.log: %s pushed=%v", raw, pushed)
+	}
+	if _, err := UsageLogName("2026-13"); err == nil {
+		t.Fatalf("usage log name of a month that is not YYYY-MM")
+	}
+}
