@@ -175,7 +175,8 @@ func TestSetSysbenchRunParams(t *testing.T) {
 		c := cl.Conf
 		return c.SysbenchTest == "oltp_read_write" && c.SysbenchTime == 100 && c.SysbenchThreads == 4 && c.SysbenchTables == 1
 	}
-	for _, bad := range [][4]string{{"oltp_point_selectx", "60", "", ""}, {"oltp_point_select", "0", "", ""}, {"oltp_point_select", "60", "abc", ""}, {"", "", "", "-2"}} {
+	for _, bad := range [][4]string{{"oltp_point_selectx", "60", "", ""}, {"oltp_point_select", "0", "", ""}, {"oltp_point_select", "60", "abc", ""}, {"", "", "", "-2"},
+		{"", "", "", "65"}, {"", "", "1025", ""}, {"", "86401", "", ""}} { // the limits: tables 64, threads 1024, time one day
 		if err := cl.SetSysbenchRunParams(bad[0], bad[1], bad[2], bad[3]); err == nil || !same() {
 			t.Fatalf("%v: err %v, settings changed: %v", bad, err, !same())
 		}
@@ -192,5 +193,21 @@ func TestSetSysbenchRunParams(t *testing.T) {
 	cl.Conf.SysbenchTables = 0 // unset: one table, as before
 	if got := cl.sysbenchTablesArg(); got != "--tables=1" {
 		t.Fatalf("tables arg %s", got)
+	}
+}
+
+// The setters share SetSysbenchRunParams' checks and limits; an empty value is refused.
+func TestSysbenchSetters(t *testing.T) {
+	cl := &Cluster{Conf: &config.Config{SysbenchTest: "oltp_read_write", SysbenchTime: 100, SysbenchThreads: 4, SysbenchTables: 1, SysbenchScale: 1}}
+	for _, err := range []error{cl.SetSysbenchTest(""), cl.SetSysbenchTime(""), cl.SetSysbenchThreads("0"), cl.SetSysbenchThreads(""), cl.SetSysbenchTables("64x"), cl.SetSysbenchScale("1001")} {
+		if err == nil {
+			t.Fatal("an empty or invalid value was accepted")
+		}
+	}
+	if err := cl.SetSysbenchTables("64"); err != nil || cl.Conf.SysbenchTables != 64 {
+		t.Fatalf("tables 64: %v %d", err, cl.Conf.SysbenchTables)
+	}
+	if err := cl.SetSysbenchThreads("1024"); err != nil || cl.Conf.SysbenchThreads != 1024 {
+		t.Fatalf("threads 1024: %v %d", err, cl.Conf.SysbenchThreads)
 	}
 }
