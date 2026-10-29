@@ -3687,6 +3687,9 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
+	// the marketplace's vault offers, off until the sponsor turns them on (#2227): here for
+	// the clusters of the startup too, whose catalogue was read before they existed
+	repman.currentCluster.EnsureMarketplaceVaults(repman.MarketplaceCatalogue().Vaults)
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(repman.currentCluster, true)
 
@@ -3719,8 +3722,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	cl.SetClusterOrder(clusterOrderCopy)
 	cl.SetDeprecatedKeys(repman.DeprecatedKeys)
 	cl.SetCarbonLogger(repman.clog)
-	// the marketplace's vault offers, off until the sponsor turns them on (#2227)
-	cl.EnsureMarketplaceVaults(repman.MarketplaceCatalogue().Vaults)
 
 	// Mirror Phase 3a: refresh intra-cluster conflict cache.
 	cl.RefreshGatewayConflicts()
