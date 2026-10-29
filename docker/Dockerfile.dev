@@ -28,6 +28,12 @@ ARG PLUGIN_SIGNER_USER=""
 ARG PLUGIN_SIGNER_TOKEN=""
 RUN make pro cli PLUGIN_SIGNER_USER="$PLUGIN_SIGNER_USER" PLUGIN_SIGNER_TOKEN="$PLUGIN_SIGNER_TOKEN"
 
+# sysbench from upstream at a pinned commit: the Debian package cannot use TLS without a
+# client certificate (#2235)
+FROM debian:bookworm-slim AS sysbench
+COPY docker/build-sysbench.sh /build-sysbench.sh
+RUN sh /build-sysbench.sh && rm -rf /var/lib/apt/lists/*
+
 FROM golang:1.25-bookworm AS final
 
 ENV PROXYSQL_VERSION=2.7.3
@@ -37,7 +43,8 @@ ENV MYDUMPER_VERSION=0.17.1-1
 RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION" --skip-maxscale
 
 # Move to top for better cache
-RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-backup mariadb-plugin-spider haproxy wget openssh-client libmariadb-dev fuse sysbench curl vim libatomic1 libglib2.0 libpcre3 adduser
+RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-backup mariadb-plugin-spider haproxy wget openssh-client libmariadb-dev fuse libpq5 libaio1 curl vim libatomic1 libglib2.0 libpcre3 adduser
+COPY --from=sysbench /sysbench/usr/ /usr/
 RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian12_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian12_amd64.deb
 RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb
 

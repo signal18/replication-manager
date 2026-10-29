@@ -442,6 +442,7 @@ type Cluster struct {
 	inConnectVault                      bool                        `json:"-"`
 	CanInitNodes                        bool                        `json:"canInitNodes" groups:"web"`
 	errorInitNodes                      error                       `json:"-"`
+	benchmarkFailure                    atomic.Value                `json:"-"` // string: the last benchmark's failure, "" once one runs through (WARN0270)
 	CanConnectVault                     bool                        `json:"canConnectVault"`
 	errorConnectVault                   error                       `json:"-"`
 	SqlErrorLog                         *logsql.Logger              `json:"-"`
@@ -1464,6 +1465,7 @@ func (cluster *Cluster) tickBody() {
 				if cluster.Conf.GraphiteMetrics && heartbeats%5 != 0 {
 					cluster.StateMachine.PreserveState("WARN0192")
 				}
+				cluster.checkBenchmarkState()
 				if !cluster.CanInitNodes {
 					cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
 				}

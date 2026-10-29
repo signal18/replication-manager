@@ -186,41 +186,7 @@ var remoteDumpTLSHostFiles = []string{"ca-cert.pem", "client-cert.pem", "client-
 //   - written for the node's client: --ssl-mode for MySQL/Percona 8, --ssl and
 //     --ssl-verify-server-cert for the others.
 func remoteDumpTLS(local []string, workingDir, hostCA string, mysql8 bool) (args []string, dropped []string) {
-	var mode, ca, cert, key string
-	var on, off, verify bool
-	for _, a := range local {
-		opt, value, _ := strings.Cut(a, "=")
-		switch opt {
-		case "--ssl-mode":
-			mode = strings.ToUpper(value)
-		case "--ssl":
-			if strings.EqualFold(value, "FALSE") || value == "0" {
-				off = true
-			} else {
-				on = true
-			}
-		case "--skip-ssl":
-			off = true
-		case "--ssl-verify-server-cert":
-			verify = !strings.EqualFold(value, "false") && value != "0"
-		case "--ssl-ca":
-			ca = value
-		case "--ssl-cert":
-			cert = value
-		case "--ssl-key":
-			key = value
-		}
-	}
-	switch {
-	case off:
-		mode = "DISABLED"
-	case mode == "" && on && verify && cert != "" && key != "":
-		mode = "VERIFY_IDENTITY"
-	case mode == "" && on && verify:
-		mode = "VERIFY_CA"
-	case mode == "" && on:
-		mode = "REQUIRED"
-	}
+	mode, ca, cert, key := sslClientMode(local)
 	if mode == "" {
 		return nil, nil // the client's own defaults, as for a local dump
 	}
@@ -867,4 +833,45 @@ func (cluster *Cluster) stopRemoteDumpReceiver(port string) {
 			c.Close()
 		}
 	}
+}
+
+// sslClientMode reads back the TLS decision of client arguments written by
+// GetSSLClientParam, in either syntax: the mode (DISABLED, PREFERRED, REQUIRED, VERIFY_CA,
+// VERIFY_IDENTITY, or empty for the client's own defaults) and the files named.
+func sslClientMode(args []string) (mode, ca, cert, key string) {
+	var on, off, verify bool
+	for _, a := range args {
+		opt, value, _ := strings.Cut(a, "=")
+		switch opt {
+		case "--ssl-mode":
+			mode = strings.ToUpper(value)
+		case "--ssl":
+			if strings.EqualFold(value, "FALSE") || value == "0" {
+				off = true
+			} else {
+				on = true
+			}
+		case "--skip-ssl":
+			off = true
+		case "--ssl-verify-server-cert":
+			verify = !strings.EqualFold(value, "false") && value != "0"
+		case "--ssl-ca":
+			ca = value
+		case "--ssl-cert":
+			cert = value
+		case "--ssl-key":
+			key = value
+		}
+	}
+	switch {
+	case off:
+		mode = "DISABLED"
+	case mode == "" && on && verify && cert != "" && key != "":
+		mode = "VERIFY_IDENTITY"
+	case mode == "" && on && verify:
+		mode = "VERIFY_CA"
+	case mode == "" && on:
+		mode = "REQUIRED"
+	}
+	return mode, ca, cert, key
 }
