@@ -8118,22 +8118,31 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 	return nil
 }
 
-// waitForBinlogMeta blocks until the writelog API path fills in lastmeta.BinLogFileName.
+// binlogMetaWaitTimeout bounds waitForBinlogMeta: the position line comes through the job's log
+// pipe, a few seconds after the job's state at most. A line that never comes (an unparsed format,
+// a log pipe that stopped) must not keep the global backup slot forever (#2250).
+var binlogMetaWaitTimeout = 5 * time.Minute
+
+// waitForBinlogMeta waits until the writelog API path fills in lastmeta.BinLogFileName, for
+// binlogMetaWaitTimeout at most. It returns false when the deadline passed without a position.
 //
 // Lock contract: the caller MUST hold server.backupMetaMutex on entry, and it is held again on
 // return; the wait itself runs with the mutex RELEASED. BinLogFileName is published by the
-// writelog path (which takes this SAME mutex, see WriteJobMeta/writelog around the
-// server.backupMetaMutex.Lock that sets BinLogFileName), so polling it while holding the lock
-// is a self-deadlock: the poller would block forever on a value only settable by acquiring the
-// lock it is already holding. That is exactly what wedged belair/db2's rejoin for a day. The
-// per-iteration Lock/read/Unlock also keeps the read synchronized with the writer instead of
-// reading the field bare (race-clean).
-func (server *ServerMonitor) waitForBinlogMeta(lastmeta *backupmgr.BackupMetadata) {
+// writelog path (ParseLogEntries, which takes this SAME mutex to set it), so polling it while
+// holding the lock is a self-deadlock: the poller would block forever on a value only settable
+// by acquiring the lock it is already holding. That is exactly what wedged belair/db2's rejoin
+// for a day. The per-iteration Lock/read/Unlock also keeps the read synchronized with the
+// writer instead of reading the field bare (race-clean).
+func (server *ServerMonitor) waitForBinlogMeta(lastmeta *backupmgr.BackupMetadata) bool {
+	deadline := time.Now().Add(binlogMetaWaitTimeout)
 	server.backupMetaMutex.Unlock()
 	for {
 		server.backupMetaMutex.Lock()
 		if lastmeta.BinLogFileName != "" {
-			return // return holding the mutex, per the contract above
+			return true // return holding the mutex, per the contract above
+		}
+		if time.Now().After(deadline) {
+			return false
 		}
 		server.backupMetaMutex.Unlock()
 		time.Sleep(time.Second)
@@ -8205,12 +8214,18 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod
 	if task.State == 3 || task.State == 4 {
 		if backtype == backupmgr.BackupMethodPhysical && lastmeta.BackupTool == string(config.ConstTaskPgBaseBackup) {
 			// PostgreSQL: no binary log position to wait for, the tar carries the WAL it needs
+		} else if backtype == backupmgr.BackupMethodPhysical && !server.HaveBinlog {
+			// no binary log: the backup tool prints no position, there is nothing to wait for
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No binary log on %s: writing the physical backup metadata without a position", server.URL)
 		} else if backtype == backupmgr.BackupMethodPhysical {
 			//Wait for binlog metadata sent by writelog API
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Waiting for binlog info: %v", lastmeta)
 			// Releases backupMetaMutex while polling and re-acquires before we mutate below; see
 			// the waitForBinlogMeta contract -- this is the self-deadlock fix.
-			server.waitForBinlogMeta(lastmeta)
+			if !server.waitForBinlogMeta(lastmeta) {
+				// F12: the backup is kept without its position rather than holding the slot
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "No binlog position received for the physical backup on %s within %s: writing metadata without it", server.URL, binlogMetaWaitTimeout)
+			}
 		} else if lastmeta.BinLogFileName == "" {
 			// Only a physical backup gets its binlog position from the DB node (writelog API).
 			// A logical backup fills it while the dump is read, so once the dump function has
