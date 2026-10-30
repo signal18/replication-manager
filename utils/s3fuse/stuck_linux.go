@@ -28,6 +28,16 @@ const fuseConnections = "/sys/fs/fuse/connections"
 // the error says what could not be done, an abort needing write access to fusectl (root on a
 // host, or CAP_SYS_ADMIN in a container to mount it).
 func AbortStuckMounts(root string, interval time.Duration) ([]string, error) {
+	// another live replication-manager may be serving them (a second start by mistake, a
+	// restart overlapping): never abort a live server's busy mount (#2142); a dead one's main
+	// thread reads as a zombie and does not count, nor does a mount's server (#2246)
+	other := otherLiveProcess(processComm, os.Getpid())
+	if other == 0 {
+		// a mount's server still running lost its replication-manager (it did not end at its
+		// parent's death signal, or not yet): killed, its mount then answers ENOTCONN and the
+		// cluster's start detaches it
+		stopOrphanServers(os.Getpid())
+	}
 	data, err := os.ReadFile("/proc/self/mountinfo")
 	if err != nil {
 		return nil, err
@@ -36,11 +46,8 @@ func AbortStuckMounts(root string, interval time.Duration) ([]string, error) {
 	if len(mounts) == 0 {
 		return nil, nil
 	}
-	// another live replication-manager may be serving them (a second start by mistake, a
-	// restart overlapping): never abort a live server's busy mount (#2142); a dead one's main
-	// thread reads as a zombie and does not count
-	if pid := otherLiveProcess("replication-man", os.Getpid()); pid != 0 {
-		return nil, fmt.Errorf("another replication-manager runs (pid %d): the FUSE mounts under %s are left as they are", pid, root)
+	if other != 0 {
+		return nil, fmt.Errorf("another replication-manager runs (pid %d): the FUSE mounts under %s are left as they are", other, root)
 	}
 	// a container shows /sys read-only without fusectl: mounted in our own mount namespace for
 	// the check (CAP_SYS_ADMIN, which the FUSE mount needs anyway), then unmounted
@@ -145,12 +152,28 @@ func abortStuck(mounts []fuseMount, interval time.Duration, waiting func(conn st
 	return aborted, nil
 }
 
+// processComm is replication-manager's command name, as the kernel cuts it to 15 characters.
+const processComm = "replication-man"
+
 // otherLiveProcess is the pid of a live process (not a zombie) of that command name other than
-// self, 0 when none: /proc/<pid>/stat, whose command name the kernel cuts to 15 characters.
+// self and other than a mount's server, 0 when none: /proc/<pid>/stat, whose command name the
+// kernel cuts to 15 characters.
 func otherLiveProcess(comm string, self int) int {
+	pid := 0
+	liveProcesses(comm, self, func(p int, server bool) {
+		if !server && pid == 0 {
+			pid = p
+		}
+	})
+	return pid
+}
+
+// liveProcesses calls f with each live process of that command name other than self, saying
+// whether it is a mount's server.
+func liveProcesses(comm string, self int, f func(pid int, server bool)) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
-		return 0
+		return
 	}
 	for _, e := range entries {
 		pid, err := strconv.Atoi(e.Name())
@@ -162,10 +185,40 @@ func otherLiveProcess(comm string, self int) int {
 			continue
 		}
 		if name, state, ok := statCommState(string(b)); ok && name == comm && state != "Z" && state != "X" {
-			return pid
+			cmdline, _ := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
+			f(pid, isServerCmdline(string(cmdline)))
 		}
 	}
-	return 0
+}
+
+// isServerCmdline: a /proc/<pid>/cmdline (arguments separated by NUL) is a mount's server's.
+func isServerCmdline(cmdline string) bool {
+	args := strings.Split(strings.TrimRight(cmdline, "\x00"), "\x00")
+	return len(args) == 2 && args[1] == ServerCommand
+}
+
+// stopOrphanServers kills the mounts' servers left by a replication-manager gone (none other
+// runs: checked first), and waits a little for them to end.
+func stopOrphanServers(self int) {
+	var orphans []int
+	liveProcesses(processComm, self, func(pid int, server bool) {
+		if server {
+			orphans = append(orphans, pid)
+		}
+	})
+	for _, pid := range orphans {
+		unix.Kill(pid, unix.SIGKILL)
+	}
+	for i := 0; i < 20 && len(orphans) > 0; i++ {
+		time.Sleep(100 * time.Millisecond)
+		left := orphans[:0]
+		for _, pid := range orphans {
+			if unix.Kill(pid, 0) == nil {
+				left = append(left, pid)
+			}
+		}
+		orphans = left
+	}
 }
 
 // statCommState reads the command name and the state of a /proc/<pid>/stat line: "pid (comm) S ...",

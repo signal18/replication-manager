@@ -32,9 +32,10 @@ import (
 // <working-dir>/backups/<cluster> is a mount of backup-streaming-bucket, its folder
 // <cluster>/backups, under the instance's URI on Cloud18 (backupMountPrefix). The endpoint,
 // region and keys are those of an S3 provider of the cluster (backup-streaming-provider);
-// with none set, one is added from the backup-streaming-* values and set. The mount is served in
-// this process by utils/s3fuse (GeeseFS), every FUSE request answered within its deadline, so a
-// stalled S3 fails a write instead of freezing the monitor.
+// with none set, one is added from the backup-streaming-* values and set. The mount is served by
+// utils/s3fuse (GeeseFS) in a child process of replication-manager's binary, every FUSE request
+// answered within its deadline, so a stalled S3 fails a write instead of freezing the monitor, and
+// a crash of the file system ends the child, never the monitor (#2246).
 
 // ConstBackupMountProvider is the name of the S3 provider added from the backup-streaming-*
 // values.
@@ -66,8 +67,14 @@ type backupMount struct {
 	starting  bool          // the mount is being made
 	moving    bool          // the local backups are being uploaded into the bucket
 	signature string        // what is mounted, "" for nothing
-	mount     *s3fuse.Mount // the mount, served in this process
+	mount     *s3fuse.Mount // the mount, served by its child process
 	lastLate  time.Time     // the last request answered past its deadline
+	// a mount that failed or ended is made again at retryAt, its delay doubling with each
+	// failure in a row, while its settings stay retrySignature (#2246)
+	failures       int
+	retryAt        time.Time
+	retrySignature string
+	upAt           time.Time // the mount's last start, a mount that served a while starting over
 	state     BackupMountState
 	// state.Mounted, published for readers that never wait for mu, held across a mount's
 	// network calls: the restore catalogue on the monitor tick
@@ -298,7 +305,20 @@ const (
 	backupMountProbeTimeout = backupMountOpTimeout + 30*time.Second
 	backupMountStopTimeout  = time.Minute
 	backupMountLateWindow   = 10 * time.Minute // WARN0262 stays open that long after a late request
+	backupMountRetryMin     = time.Minute      // the delay before mounting again after a failure
+	backupMountRetryMax     = 10 * time.Minute // its bound, and how long a mount serves to start over
 )
+
+// failedLocked: the mount of sig failed or ended; the next attempt waits, the delay doubling
+// with each failure in a row, so a server crashing at once costs the monitor nothing; bm.mu held.
+func (bm *backupMount) failedLocked(sig string) {
+	if !bm.upAt.IsZero() && time.Since(bm.upAt) >= backupMountRetryMax {
+		bm.failures = 0
+	}
+	bm.upAt = time.Time{}
+	bm.failures++
+	bm.retrySignature, bm.retryAt = sig, time.Now().Add(min(backupMountRetryMin<<min(bm.failures-1, 4), backupMountRetryMax))
+}
 
 // RefreshBackupMount makes the backups folder mount what the settings say: mounted (local
 // backups moved into the bucket first), remounted after a change, unmounted when turned off;
@@ -324,6 +344,10 @@ func (cluster *Cluster) RefreshBackupMount() {
 	}
 	if err == nil && sig == "" && bm.signature == "" && bm.mount == nil {
 		bm.state = BackupMountState{}
+		return
+	}
+	// a failed mount waits for its next attempt, unless its settings changed
+	if bm.mount == nil && sig != "" && sig == bm.retrySignature && time.Now().Before(bm.retryAt) {
 		return
 	}
 	mountPoint := cluster.backupMountPoint()
@@ -427,8 +451,8 @@ func removeEmptyDirs(dir string) {
 	}
 }
 
-// startBackupMount mounts the bucket's folder in this process (utils/s3fuse: GeeseFS behind a
-// deadline on every request), then waits for the mount to end.
+// startBackupMount mounts the bucket's folder (utils/s3fuse: GeeseFS behind a deadline on every
+// request, in a child process), then waits for the mount to end.
 func (cluster *Cluster) startBackupMount(t *mountTarget, keys *mountKeys) {
 	bm := &cluster.backupMount
 	spec, _ := t.spec(keys.ssoUser)
@@ -453,6 +477,9 @@ func (cluster *Cluster) startBackupMount(t *mountTarget, keys *mountKeys) {
 		OnPanic: func(op string, r interface{}, stack []byte) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s panicked, answered EIO: %v %s", op, r, stack)
 		},
+		OnLog: func(line string) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount server: %s", line)
+		},
 	})
 	bm.mu.Lock()
 	bm.starting = false
@@ -460,6 +487,7 @@ func (cluster *Cluster) startBackupMount(t *mountTarget, keys *mountKeys) {
 	if err != nil {
 		bm.state.Mounted = false
 		bm.state.Error = err.Error()
+		bm.failedLocked(t.sig)
 		cluster.publishBackupMountLocked()
 		bm.mu.Unlock()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s", err)
@@ -470,24 +498,27 @@ func (cluster *Cluster) startBackupMount(t *mountTarget, keys *mountKeys) {
 	bm.state.Mounted = true
 	bm.state.Error = ""
 	bm.state.Bucket = spec
+	bm.upAt = time.Now()
 	cluster.publishBackupMountLocked()
 	bm.mu.Unlock()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Backups folder mount: %s mounted on %s", spec, point)
 	go cluster.resyncBackupCatalogue()
 
-	m.Join(context.Background())
+	ended := m.Join(context.Background())
 	bm.mu.Lock()
 	if bm.mount == m {
-		// it ended on its own (unmounted from outside): retried at the next refresh
+		// it ended on its own (its server crashed or was killed, or unmounted from outside):
+		// made again at a later refresh, WARN0261 saying why meanwhile
 		bm.mount, bm.signature = nil, ""
 		bm.state.Mounted = false
-		bm.state.Error = "the mount ended"
+		bm.state.Error = ended.Error()
 		bm.state.At = time.Now()
+		bm.failedLocked(t.sig)
 		cluster.publishBackupMountLocked()
 		bm.mu.Unlock()
 		lazyUnmount(point)
 		go cluster.resyncBackupCatalogue()
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s ended, mounted again at the next check", point)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s ended (%s), mounted again after %s", point, ended, time.Until(bm.retryAt).Round(time.Second))
 		return
 	}
 	bm.mu.Unlock()
