@@ -634,6 +634,14 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 	}
 	vs := cluster.versionStore()
 	path := SecretVersionStorePath(cluster.Conf.WorkingDir, cluster.Name)
+	// F9 whatever the order of events: a version kept in memory without the key (a vault read
+	// with versioning off, versioning then turned on) is encrypted once the key is there, and
+	// never written before. The test is a backstop (a token starting with hash_), not a proof
+	// of encryption.
+	if !vs.EncryptKeptAsRead(containsHashPrefixToken) {
+		vs.MarkDirty()
+		return errors.New("a credential version is not encrypted and there is no encryption key (monitoring-key-path): the file is not written")
+	}
 	file, changed := vs.Export()
 	if autoPrune, keepLast := cluster.getSecretVersionStoreAutoPruneSettings(); autoPrune {
 		if pruned, _, removed := pruneSecretVersionStore(file, keepLast); removed > 0 {
@@ -643,16 +651,6 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 	}
 	if !changed {
 		return nil
-	}
-	// F9 whatever the order of events: a version kept in memory without the key (versioning
-	// turned on at runtime, the key still missing) never reaches the file
-	for key, versions := range file {
-		for _, v := range versions {
-			if v.HashValue != "" && !containsHashPrefixToken(v.HashValue) {
-				vs.MarkDirty()
-				return fmt.Errorf("version %d of %s is not encrypted (no encryption key, monitoring-key-path): the file is not written", v.Version, key)
-			}
-		}
 	}
 	if err := writeSecretVersionStoreAtomic(path, file); err != nil {
 		vs.MarkDirty()

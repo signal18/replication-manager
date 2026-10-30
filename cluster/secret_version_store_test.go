@@ -806,7 +806,8 @@ func TestPruneSecretVersionStoreKeepsConfigFileValue(t *testing.T) {
 }
 
 // F9: a version kept in memory without the key (versioning off, then turned on at runtime with
-// the key still missing) is never written to the file
+// the key still missing) is never written to the file; once the key is installed it is
+// encrypted and the file written, without a restart
 func TestWriteSecretVersionFileRefusesUnencryptedVersion(t *testing.T) {
 	root := t.TempDir()
 	cl := &Cluster{
@@ -826,5 +827,22 @@ func TestWriteSecretVersionFileRefusesUnencryptedVersion(t *testing.T) {
 	}
 	if _, err := os.Stat(SecretVersionStorePath(root, cl.Name)); !os.IsNotExist(err) {
 		t.Fatalf("the file exists: %v", err)
+	}
+
+	// the key installed: the version is encrypted and the file written, no restart
+	cl.Conf.SecretKey = []byte("01234567890123456789012345678901")
+	if err := cl.writeSecretVersionFile(); err != nil {
+		t.Fatalf("with the key: %v", err)
+	}
+	file, err := loadSecretVersionStore(SecretVersionStorePath(root, cl.Name))
+	if err != nil || len(file["replication-credential"]) != 1 {
+		t.Fatalf("the file after the key: %v, %+v", err, file)
+	}
+	stored := file["replication-credential"][0].HashValue
+	if !containsHashPrefixToken(stored) || strings.Contains(stored, "cleartext") {
+		t.Fatalf("written unencrypted: %q", stored)
+	}
+	if v := cl.Conf.DecryptSecretValue("replication-credential", stored); v != "repl:cleartext" {
+		t.Fatalf("decrypts to %q", v)
 	}
 }

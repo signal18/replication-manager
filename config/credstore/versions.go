@@ -188,6 +188,29 @@ func (s *VersionStore) TakeConfigFileValue(key, plain string) bool {
 	return true
 }
 
+// EncryptKeptAsRead encrypts, once the key is there, the versions kept as they were read
+// without it (a vault read with versioning off, versioning then turned on). encrypted says
+// whether a stored value is already encrypted. False when such a version remains and the key
+// is still missing: the file must not be written (F9).
+func (s *VersionStore) EncryptKeptAsRead(encrypted func(string) bool) bool {
+	conf := s.conf()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, vs := range s.versions {
+		for i, v := range vs {
+			if v.HashValue == "" || encrypted(v.HashValue) {
+				continue
+			}
+			if !canEncrypt(conf) {
+				return false
+			}
+			vs[i].HashValue = conf.EncryptSecretValue(v.HashValue)
+			s.dirty = true
+		}
+	}
+	return true
+}
+
 // Insert adds a version read from another store, with its own time and writer: a newer
 // value becomes the current one here without a new version of it (rule 3).
 // Without the key nothing is added: the value stays where it was read.
