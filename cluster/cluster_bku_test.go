@@ -121,6 +121,20 @@ func TestBAUUnitPrice_ArchiveOffer(t *testing.T) {
 			t.Fatalf("attached %q: price %v, want %v", tc.attached, got, tc.want)
 		}
 	}
+	// two offers on one storage: the archive's plugin's offer, else the storage's first
+	restic := 0.16
+	rm.SetMarketplaceCatalogue(config.MarketplaceCatalogue{S3: cat.S3, Archives: append([]config.MarketplaceArchiveOffer{
+		{Name: "s3-restic-a", Plugin: config.ConstArchivePluginResticS3, S3Provider: "storage-a", PriceEurBauMonth: &restic}}, cat.Archives...)})
+	c.Conf.BackupArchiveName = "a-s3"
+	if got := c.bauUnitPrice(); got != s3Price {
+		t.Fatalf("plakar archive on a storage with a restic offer first: price %v, want %v", got, s3Price)
+	}
+	c.Conf.Archives[0].Plugin = "archive-other"
+	if got := c.bauUnitPrice(); got != restic {
+		t.Fatalf("no offer of the archive's plugin: the storage's first offer, got %v, want %v", got, restic)
+	}
+	c.Conf.Archives[0].Plugin = "archive-plakar-s3"
+	rm.SetMarketplaceCatalogue(cat)
 	// a provider of the offer's name on another endpoint is another storage: no offer
 	c.s3Providers.providers = []config.S3Provider{{Name: "storage-a", Endpoint: "https://elsewhere.example"}}
 	c.Conf.BackupArchiveName = "a-s3"

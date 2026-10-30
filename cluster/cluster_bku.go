@@ -93,11 +93,15 @@ func (cluster *Cluster) localBackupBytes() int64 {
 }
 
 // resticRepositoryIsRemote reports whether the restic archive leaves the cluster: the
-// repository restic runs (resticRepoPathFor: S3 when backup-restic-aws is on, else the local
-// repository) is an S3 or SFTP backend. Not backup-restic-repository: restic does not run it,
-// and its default is an S3 URL, so a local archive read as remote was counted twice, in BKU
-// (the walk) and in BAU. A local path is local disk, counted by the walk.
+// repository restic runs (resticRepoPathFor) is S3, backup-restic-aws on, or an SFTP backend.
+// Not backup-restic-repository: restic does not run it, and its default is an S3 URL, so a
+// local archive read as remote was counted twice, in BKU (the walk) and in BAU. A local path
+// is local disk, counted by the walk. S3 is read from the switch, not resolved: the metering
+// never decrypts the S3 secret, and a repository that does not resolve holds nothing.
 func (cluster *Cluster) resticRepositoryIsRemote() bool {
+	if cluster.Conf.BackupResticAws {
+		return true
+	}
 	repo := strings.TrimSpace(cluster.resticRepoPathFor(cluster.Conf))
 	return config.IsS3ResticRepository(repo) || config.IsSftpResticRepository(repo)
 }

@@ -68,8 +68,10 @@ func (s MarketplaceS3) SameStorage(p S3Provider) bool {
 
 // ArchiveOffer is the offer an archive runs on, nil when none: an S3 offer when the archive's
 // S3 provider (its s3-provider setting) has the offer's storage name and is that storage
-// (SameStorage); an offer delivered as an archive (no S3 storage, archive-pbs) when the archive
-// has the offer's name and plugin. Remote data: the first of a duplicated name wins.
+// (SameStorage), the offer of the archive's plugin first when the storage has several, else
+// the storage's first (the storage is what is billed, whatever plugin writes it); an offer
+// delivered as an archive (no S3 storage, archive-pbs) when the archive has the offer's name
+// and plugin. Remote data: the first of a duplicated name wins.
 func (c MarketplaceCatalogue) ArchiveOffer(a ArchiveConfig, providers []S3Provider) *MarketplaceArchiveOffer {
 	provider := ""
 	if v, ok := a.Settings[ConstArchiveSettingS3Provider]; ok && v != nil {
@@ -81,6 +83,7 @@ func (c MarketplaceCatalogue) ArchiveOffer(a ArchiveConfig, providers []S3Provid
 			storages[s.Name] = s
 		}
 	}
+	var onStorage *MarketplaceArchiveOffer
 	for i := range c.Archives {
 		o := c.Archives[i]
 		if o.S3Provider == "" {
@@ -95,9 +98,15 @@ func (c MarketplaceCatalogue) ArchiveOffer(a ArchiveConfig, providers []S3Provid
 		}
 		for _, p := range providers {
 			if p.Name == provider && s.SameStorage(p) {
-				return &o
+				if o.Plugin == a.Plugin {
+					return &o
+				}
+				if onStorage == nil {
+					onStorage = &o
+				}
+				break
 			}
 		}
 	}
-	return nil
+	return onStorage
 }

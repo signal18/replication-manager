@@ -28,8 +28,10 @@ versions, and the way back. Today the only archive is restic (`backup-archive-mo
   local repository), never of `backup-restic-repository`: restic does not run that key and
   its default is an S3 URL, so a local archive was metered twice, in BKU and in BAU. An
   external plugin's archive (plakar on S3, PBS) is metered at its last size read
-  (`archive-sizes.json`, `SizeArchive`); it is only read on request for now, so it meters 0
-  BAU before a first read (under-billed, never over-billed).
+  (`archive-sizes.json`, `SizeArchive`); before this fix it metered 0 BAU, so these archives
+  are billed from now on. The size is only read on request for now: 0 BAU before a first read,
+  and between reads the last size, below the real one while the archive grows, above it after
+  a retention purge until the next read. A periodic read is the follow-up.
 
 Adding a backend (native S3, rclone, a client's own storage) means touching all of these.
 
