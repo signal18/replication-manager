@@ -9,12 +9,12 @@ package cluster
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/jobapi"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -206,6 +207,9 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time) ([]byte, str
 		}
 	} else if !cluster.Conf.APISecretLoginLegacy {
 		return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused (api-secret-login-legacy off): upgrade the jobs script")
+	} else if auth, _ := server.jobStream.Load().(jobStreamAuth); auth.Key != "" {
+		// its script signs since this start: a legacy body now is a captured one replayed
+		return nil, JobKeyLegacy, 401, fmt.Errorf("Legacy job body refused: the jobs script of this server posts one-time bodies (replay)")
 	}
 	data, err := server.DecryptAES256(b.Data, key, iv)
 	if err != nil {
@@ -213,7 +217,6 @@ func (server *ServerMonitor) OpenJobBody(raw []byte, now time.Time) ([]byte, str
 	}
 	if mode == JobKeyLegacy {
 		atomic.StoreInt64(&server.legacyJobLoginAt, now.Unix())
-		server.jobStream.Store(jobStreamAuth{})
 		return data, mode, 200, nil
 	}
 	var fresh struct {
@@ -282,32 +285,24 @@ func (cluster *Cluster) CheckSecretLoginLegacy() {
 		ErrDesc: fmt.Sprintf(clusterError["WARN0272"], strings.Join(urls, ", "))})
 }
 
-// The job stream header: the first line of every stream replication-manager sends to a
-// database's jobs listener (SST_RECEIVER_PORT: a backup to restore, the jobs script of a jobs
-// upgrade, a config), so the script takes the stream from replication-manager only, not from
-// whoever connects to the port first:
-//
-//	MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(SHA256(secret), "stream:<server>:<ts>:<nonce>")>\n
-//
-// The secret is the one the server's script signs its job bodies with: the cluster's jobs key,
-// else the server's password. The script refuses a stream without a valid header, outside
-// jobStreamWindow of its timestamp, or with a nonce it already took. A script posting legacy
-// bodies (older, it does not read a header) gets none.
+// The job stream header (jobapi.StreamHeader): the first line of every stream between
+// replication-manager and a database's jobs, so each side takes a stream from the other only,
+// not from whoever connects to the port first. Signed with the key of the server's last
+// accepted job body (the cluster's jobs key, else the server's password), for the name the
+// script gives its server. A server whose script posts legacy bodies (older, it neither sends
+// nor reads a header) gets none and is not asked for one.
 
-// jobStreamTag opens a job stream header.
-const jobStreamTag = "MRMSTREAM1"
-
-// jobStreamAuth is how a server's jobs script checks the streams sent to it, learnt from its
-// last accepted job body: its key (JobKeyJobs or JobKeyDB) and the name it gives its server.
-// Key empty: no header (a legacy body, or none seen since start).
+// jobStreamAuth is how a server's jobs script signs and checks its streams, learnt from its
+// one-time job bodies: their key (JobKeyJobs or JobKeyDB) and the name it gives its server.
+// Key empty: no one-time body since start, the script is an older one.
 type jobStreamAuth struct {
 	Key  string
 	Name string
 }
 
-// JobStreamHeader is the header to send first on a stream to the server's jobs listener, nil
-// when its script does not check one.
-func (server *ServerMonitor) JobStreamHeader(now time.Time) ([]byte, error) {
+// jobStreamSecret is the secret and name the server's streams are signed with, "" when its
+// script does not sign.
+func (server *ServerMonitor) jobStreamSecret() (string, string, error) {
 	auth, _ := server.jobStream.Load().(jobStreamAuth)
 	var secret string
 	switch auth.Key {
@@ -316,27 +311,22 @@ func (server *ServerMonitor) JobStreamHeader(now time.Time) ([]byte, error) {
 	case JobKeyDB:
 		secret = server.Pass
 	default:
-		return nil, nil
+		return "", "", nil
 	}
 	if secret == "" || auth.Name == "" {
-		return nil, fmt.Errorf("No secret to sign the stream to %s", server.URL)
+		return "", "", fmt.Errorf("No secret to sign the streams of %s", server.URL)
 	}
-	n := make([]byte, 16)
-	if _, err := rand.Read(n); err != nil {
-		return nil, err
-	}
-	nonce := hex.EncodeToString(n)
-	ts := now.Unix()
-	return []byte(fmt.Sprintf("%s %d %s %s\n", jobStreamTag, ts, nonce, jobStreamMAC(secret, auth.Name, ts, nonce))), nil
+	return secret, auth.Name, nil
 }
 
-// jobStreamMAC is the header's MAC, keyed with SHA-256 of the secret as the script derives it
-// (derive_key).
-func jobStreamMAC(secret, name string, ts int64, nonce string) string {
-	key := sha256.Sum256([]byte(secret))
-	mac := hmac.New(sha256.New, key[:])
-	fmt.Fprintf(mac, "stream:%s:%d:%s", name, ts, nonce)
-	return hex.EncodeToString(mac.Sum(nil))
+// JobStreamHeader is the header to send first on a stream to the server's jobs listener, nil
+// when its script does not check one.
+func (server *ServerMonitor) JobStreamHeader(now time.Time) ([]byte, error) {
+	secret, name, err := server.jobStreamSecret()
+	if err != nil || secret == "" {
+		return nil, err
+	}
+	return jobapi.StreamHeader(secret, jobapi.StreamToDB, name, now)
 }
 
 // writeJobStreamHeader writes the header, when the server's script checks one, first on a
@@ -348,4 +338,81 @@ func (server *ServerMonitor) writeJobStreamHeader(w io.Writer) error {
 	}
 	_, err = w.Write(h)
 	return err
+}
+
+// CheckJobStream reads and checks the header of a stream the server's jobs send to a
+// replication-manager receiver: signed for this server, within the window, its nonce unseen
+// (the job body store). Nothing is read when the server's script does not sign (an older
+// one). A refused connection is closed by the caller, which waits for the next.
+func (server *ServerMonitor) CheckJobStream(conn net.Conn) error {
+	secret, name, err := server.jobStreamSecret()
+	if err != nil || secret == "" {
+		return err
+	}
+	// a connection that sends nothing must not hold the receiver
+	conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+	defer conn.SetReadDeadline(time.Time{})
+	line, err := jobapi.ReadStreamHeader(conn)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	window := server.ClusterGroup.secretLoginWindow()
+	nonce, err := jobapi.CheckStreamHeader(line, secret, jobapi.StreamToMonitor, name, now, window)
+	if err != nil {
+		return err
+	}
+	ok, err := useJobNonce("stream:"+nonce, now, now.Add(2*window))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("stream header already used (replay)")
+	}
+	return nil
+}
+
+// jobStreamRefusal is the last refused stream of a server: when and why.
+type jobStreamRefusal struct {
+	At     time.Time
+	Reason string
+}
+
+// acceptJobStream accepts the stream of the server's jobs on the receiver's listener: a
+// connection whose header CheckJobStream refuses is closed, noted for WARN0273, and the next
+// one awaited until the listener's deadline, so whoever connects first can neither write the
+// backup or log nor block the real transfer.
+func (sst *SST) acceptJobStream(server *ServerMonitor, task string) (net.Conn, error) {
+	for {
+		conn, err := sst.listener.Accept()
+		if err != nil || server == nil {
+			return conn, err
+		}
+		if err = server.CheckJobStream(conn); err == nil {
+			return conn, nil
+		}
+		server.jobStreamRefused.Store(jobStreamRefusal{At: time.Now(), Reason: fmt.Sprintf("%s from %s: %s", task, conn.RemoteAddr(), err)})
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "Stream for task %s of %s refused from %s: %s", task, server.URL, conn.RemoteAddr(), err)
+		conn.Close()
+	}
+}
+
+// CheckJobStreamRefused runs every tick: WARN0273, a security state, naming the servers whose
+// receivers refused a stream within legacyJobLoginShown, and why.
+func (cluster *Cluster) CheckJobStreamRefused() {
+	now := time.Now()
+	var refused []string
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+		if r, ok := s.jobStreamRefused.Load().(jobStreamRefusal); ok && now.Sub(r.At) <= legacyJobLoginShown {
+			refused = append(refused, s.URL+" ("+r.Reason+")")
+		}
+	}
+	if len(refused) == 0 {
+		return
+	}
+	cluster.SecurityStateMachine.AddState("WARN0273", state.State{ErrType: "WARNING", ErrKey: "WARN0273", ErrFrom: "SECURITY",
+		ErrDesc: fmt.Sprintf(clusterError["WARN0273"], strings.Join(refused, ", "))})
 }

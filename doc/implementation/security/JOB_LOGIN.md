@@ -113,38 +113,57 @@ On OpenSVC clusters, a replication-manager start flags every server for a jobs u
 (WARN0155, `SetRollingJobsUpgradeState`), so the scripts move to the one-time format at the
 first start of the new release.
 
-## Streams to the jobs listener
+## Streams between replication-manager and the jobs
 
-replication-manager sends three things to the jobs listener (`SST_RECEIVER_PORT`, socat on the
-database side): a backup to restore (reseed, flashback), the jobs script (jobs upgrade) and a
-config. The listener used to take the first connection, whoever made it: a stream sent there in
-time was restored, or installed and run as the new jobs script. The database password is not in
-the config, so neither side had a secret to check the stream with; the jobs key is that secret.
+The data does not go through the API: it goes over raw TCP (socat on the database side).
+- **To the database:** replication-manager sends to the jobs listener (`SST_RECEIVER_PORT`)
+  a backup to restore (reseed, flashback, PostgreSQL restore), the jobs script (jobs upgrade)
+  and a config.
+- **To replication-manager:** the jobs send to a port replication-manager opens for the
+  transfer: a backup, a remote dump, a collected log, the jobs check.
 
-Every stream now starts with a header line (`ServerMonitor.JobStreamHeader`, written by the four
-senders of `cluster_sst.go` before any data):
+Each listener used to take the first connection, whoever made it. A stream sent there in time
+was restored, installed and run as the new jobs script, or stored as a backup. The database
+password is not in the config, so neither side had a secret to check the stream with. The
+jobs key is that secret.
 
-    MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(SHA256(secret), "stream:<server>:<ts>:<nonce>")>
+Every stream now starts with a header line (`utils/jobapi/stream.go`; `job_stream_mac` in the
+script):
 
-- **Secret:** the key of the server's last accepted job body (`OpenJobBody` records it with the
-  name the script gives its server): the jobs key, else the server's password.
-- **Script:** `job_stream_open` sits between socat and whatever takes the stream (the unpack tool,
-  the script file, the config file). It reads the header and copies the rest only when the MAC
-  matches, its timestamp is within 300 seconds (`JOB_STREAM_WINDOW`) and its nonce was not taken
-  before (`<jobs dir>/.stream_nonces`, the nonces of twice the window: bounded). Otherwise nothing
-  is written, the reason goes to the job's log, and the job fails: a restore is aborted before
-  anything is unpacked, a new script is not installed, a config is not extracted.
-- **Older scripts:** a server whose script posts legacy bodies gets no header (it would take it
-  as data), and none either before its first body since replication-manager started (every run
-  logs in first). The first jobs upgrade from an older script therefore still goes over the
-  unchecked listener: it is the last one. Once WARN0272 is gone and `api-secret-login-legacy`
-  is off, every stream is checked.
+    MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(SHA256(secret), "<direction>:<server>:<ts>:<nonce>")>
+
+- **Secret:** the key of the server's job bodies: the jobs key, else the server's password.
+  replication-manager learns it from the server's one-time bodies, with the name the script
+  gives its server (`OpenJobBody`, `jobStreamAuth`).
+- **Direction:** `to-db` or `to-repman`, so a header sent one way cannot be replayed the other.
+- **To the database:**
+  - The four senders of `cluster_sst.go` write the header before any data.
+  - `job_stream_open` sits between socat and the consumer. It copies the rest only when the
+    MAC matches, the timestamp is within 300 seconds (`JOB_STREAM_WINDOW`) and the nonce is
+    new (`<jobs dir>/.stream_nonces`, twice the window: bounded).
+  - Otherwise nothing is written: the restore aborts before unpacking, the new script is not
+    installed, the config is not extracted, and the job logs why.
+  - The PostgreSQL sidecar does the same with `replication-manager-cli stream --listen --job`.
+- **To replication-manager:**
+  - The script signs with `job_stream_signed`; the PostgreSQL sidecar with `stream --to --job`.
+  - The receivers (`tcp_con_handle_to_file`, `_to_gzip`) check it with `acceptJobStream`:
+    MAC, window, and the nonce in the job body store.
+  - A refused connection is closed, and the receiver waits for the next one until its
+    deadline. Whoever connects first can neither write the backup nor block the real transfer.
+  - Each refusal opens the security state **WARN0273** for 10 minutes, naming the server, the
+    task and the source address.
+- **Older scripts:**
+  - A server whose script posts legacy bodies gets no header and is not asked for one. Its
+    first jobs upgrade still goes over the unchecked listener, and it is the last.
+  - Once a server has posted a one-time body, a legacy body for it is refused (a replay could
+    otherwise downgrade it) until replication-manager restarts.
+  - Once WARN0272 is gone and `api-secret-login-legacy` is off, every stream is checked.
+- **PostgreSQL:** `utils/jobapi` posts the one-time body too, with the jobs key when the
+  container has one (`JobsKeyFromEnv`), so `api-secret-login-legacy` can be turned off without
+  breaking the PostgreSQL jobs.
 - **What it does not do:** it authenticates the stream, it does not encrypt it (that is
-  `scheduler-receiver-use-ssl`). Someone connecting first still makes that transfer fail; the
-  job reports why.
-
-The streams the database sends to replication-manager (backups, logs, the jobs check) go the
-other way, to a port replication-manager opens for the transfer, and are not covered yet.
+  `scheduler-receiver-use-ssl`). Repeated connections from an attacker can still delay a
+  transfer until the receiver's deadline.
 
 ## Not covered here
 

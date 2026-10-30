@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os/exec"
 	"strings"
 	"sync/atomic"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/jobapi"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -269,13 +271,14 @@ func TestJobsPrincipalGrants(t *testing.T) {
 	}
 }
 
-// scriptStreamOpen runs the jobs script's job_stream_open on stream, as the jobs listener of
-// db1:3306 does, and returns what it lets through and why it refused (empty when it did not).
-func scriptStreamOpen(t *testing.T, logDir string, stream []byte, password, jobsKey string) (string, string) {
+// scriptStream runs the jobs script's stream functions as the jobs of db1:3306 do: fn is
+// job_stream_open (a stream to the jobs listener) or job_stream_signed (a stream to
+// replication-manager). It returns what goes through and why it was refused (job_stream_open).
+func scriptStream(t *testing.T, fn, logDir string, stream []byte, password, jobsKey string) (string, string) {
 	t.Helper()
 	fns := `src=../share/scripts/dbjobs_new.sh
-eval "$(sed -n '/^derive_key() {/,/^}/p; /^jobs_key() {/,/^}/p; /^readonly JOB_STREAM_WINDOW=/p; /^job_stream_open() {/,/^}/p; /^job_stream_refused() {/,/^}/p' "$src")"
-job_stream_open
+eval "$(sed -n '/^derive_key() {/,/^}/p; /^jobs_key() {/,/^}/p; /^readonly JOB_STREAM_WINDOW=/p; /^job_stream_open() {/,/^}/p; /^job_stream_mac() {/,/^}/p; /^job_stream_signed() {/,/^}/p; /^job_stream_refused() {/,/^}/p' "$src")"
+` + fn + `
 job_stream_refused >&2`
 	cmd := exec.Command("bash", "-c", fns)
 	cmd.Env = append(cmd.Environ(), "JOBS_API_KEY="+jobsKey, "MYSQL_ROOT_PASSWORD="+password, "MYSQL_SERVER=db1", "MYSQL_PORT=3306", "LOG_DIR="+logDir)
@@ -288,41 +291,57 @@ job_stream_refused >&2`
 
 // A stream to the jobs listener is taken only with the header replication-manager signs with
 // the key of the server's job bodies: once, within the window; a stream without it (whoever
-// connects to the port first), replayed or signed with another key is refused with nothing
-// written. A server whose script posts legacy bodies gets no header.
+// connects to the port first), replayed, forged or signed for the other direction is refused
+// with nothing written. A server whose script posts legacy bodies gets no header; once its
+// script signs, a legacy body is a replay.
 func TestJobStreamHeader(t *testing.T) {
 	s := jobLoginServer(true)
 	c := s.ClusterGroup
 	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
 	jk := c.GetJobsKey()
 	payload := "#!/bin/bash\necho new script\n# EOF\n"
+	open := func(dir string, stream []byte, password, key string) (string, string) {
+		return scriptStream(t, "job_stream_open", dir, stream, password, key)
+	}
 
+	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now()); code != 200 {
+		t.Fatalf("legacy body: %d", code)
+	}
 	if h, err := s.JobStreamHeader(time.Now()); h != nil || err != nil {
-		t.Fatalf("no job body seen yet: no header, got %q %v", h, err)
+		t.Fatalf("an older script reads no header: got %q %v", h, err)
 	}
 	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now()); code != 200 {
 		t.Fatalf("jobs key body: %d %v", code, err)
+	}
+	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now()); code != 401 {
+		t.Fatalf("a legacy body once the script signs is a replay, got %d", code)
 	}
 	h, err := s.JobStreamHeader(time.Now())
 	if err != nil || h == nil {
 		t.Fatalf("header: %q %v", h, err)
 	}
 	dir := t.TempDir()
-	if got, why := scriptStreamOpen(t, dir, append(append([]byte{}, h...), payload...), s.Pass, jk); got != payload || why != "" {
+	if got, why := open(dir, append(append([]byte{}, h...), payload...), s.Pass, jk); got != payload || why != "" {
 		t.Fatalf("signed stream: got %q, refused %q", got, why)
 	}
-	if got, why := scriptStreamOpen(t, dir, append(append([]byte{}, h...), payload...), s.Pass, jk); got != "" || !strings.Contains(why, "replay") {
+	if got, why := open(dir, append(append([]byte{}, h...), payload...), s.Pass, jk); got != "" || !strings.Contains(why, "replay") {
 		t.Fatalf("replayed header: got %q, refused %q", got, why)
 	}
-	if got, why := scriptStreamOpen(t, dir, []byte(payload), s.Pass, jk); got != "" || why == "" {
+	if got, why := open(dir, []byte(payload), s.Pass, jk); got != "" || why == "" {
 		t.Fatalf("no header (first to connect): got %q, refused %q", got, why)
 	}
-	forged := []byte(fmt.Sprintf("MRMSTREAM1 %d %s %s\n", time.Now().Unix(), strings.Repeat("ab", 16), jobStreamMAC("guess", "db1:3306", time.Now().Unix(), strings.Repeat("ab", 16))))
-	if got, why := scriptStreamOpen(t, dir, append(forged, payload...), s.Pass, jk); got != "" || !strings.Contains(why, "not signed") {
+	now := time.Now().Unix()
+	nonce := strings.Repeat("ab", 16)
+	forged := []byte(fmt.Sprintf("MRMSTREAM1 %d %s %s\n", now, nonce, jobapi.StreamMAC("guess", jobapi.StreamToDB, "db1:3306", now, nonce)))
+	if got, why := open(dir, append(forged, payload...), s.Pass, jk); got != "" || !strings.Contains(why, "not signed") {
 		t.Fatalf("forged header: got %q, refused %q", got, why)
 	}
+	otherWay, _ := jobapi.StreamHeader(jk, jobapi.StreamToMonitor, "db1:3306", time.Now())
+	if got, why := open(dir, append(otherWay, payload...), s.Pass, jk); got != "" || !strings.Contains(why, "not signed") {
+		t.Fatalf("a header of the other direction: got %q, refused %q", got, why)
+	}
 	old, _ := s.JobStreamHeader(time.Now().Add(-time.Hour))
-	if got, why := scriptStreamOpen(t, dir, append(old, payload...), s.Pass, jk); got != "" || !strings.Contains(why, "window") {
+	if got, why := open(dir, append(old, payload...), s.Pass, jk); got != "" || !strings.Contains(why, "window") {
 		t.Fatalf("old header: got %q, refused %q", got, why)
 	}
 
@@ -331,14 +350,122 @@ func TestJobStreamHeader(t *testing.T) {
 		t.Fatalf("db key body: %d %v", code, err)
 	}
 	h, _ = s.JobStreamHeader(time.Now())
-	if got, why := scriptStreamOpen(t, dir, append(h, payload...), s.Pass, ""); got != payload || why != "" {
+	if got, why := open(dir, append(h, payload...), s.Pass, ""); got != payload || why != "" {
 		t.Fatalf("db key stream: got %q, refused %q", got, why)
 	}
+}
 
-	if _, _, code, _ := s.OpenJobBody(legacyJobBody(t, `{"server":"db1:3306"}`, s.Pass), time.Now()); code != 200 {
-		t.Fatalf("legacy body: %d", code)
+// A replication-manager receiver takes the stream the script signs (job_stream_signed) and
+// refuses one without the header, closing it and waiting for the next on the same listener:
+// whoever connects first neither writes the backup nor blocks it; WARN0273 says so.
+func TestJobStreamReceiver(t *testing.T) {
+	s := jobLoginServer(false)
+	c := s.ClusterGroup
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	jk := c.GetJobsKey()
+	if _, _, code, err := s.OpenJobBody(scriptJobBodyKey(t, `{"server":"db1:3306"}`, s.Pass, jk), time.Now()); code != 200 {
+		t.Fatalf("jobs key body: %d %v", code, err)
 	}
-	if h, err := s.JobStreamHeader(time.Now()); h != nil || err != nil {
-		t.Fatalf("an older script reads no header: got %q %v", h, err)
+	payload := "backup bytes\x00\x01 and more\n"
+	signed, _ := scriptStream(t, "job_stream_signed", t.TempDir(), []byte(payload), s.Pass, jk)
+	if !strings.HasPrefix(signed, jobapi.StreamTag+" ") || !strings.HasSuffix(signed, payload) {
+		t.Fatalf("job_stream_signed: %q", signed)
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	sst := &SST{cluster: c, listener: ln}
+	got := make(chan string, 1)
+	go func() {
+		conn, err := sst.acceptJobStream(s, "mariabackup")
+		if err != nil {
+			got <- "accept: " + err.Error()
+			return
+		}
+		b, _ := io.ReadAll(conn)
+		conn.Close()
+		got <- string(b)
+	}()
+	send := func(b string) {
+		conn, err := net.Dial("tcp", ln.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		conn.Write([]byte(b))
+		conn.Close()
+	}
+	send("injected backup\n")
+	send(signed)
+	select {
+	case r := <-got:
+		if r != payload {
+			t.Fatalf("the receiver must take the signed stream only, got %q", r)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the receiver did not take the signed stream after refusing the first")
+	}
+	if err := s.CheckJobStream(pipeWith(signed)); err == nil || !strings.Contains(err.Error(), "replay") {
+		t.Fatalf("the same signed stream again is a replay: %v", err)
+	}
+	c.CheckJobStreamRefused()
+	if !c.SecurityStateMachine.IsInState("WARN0273") {
+		t.Fatal("a refused stream opens WARN0273")
+	}
+}
+
+// pipeWith is a connection that sends b.
+func pipeWith(b string) net.Conn {
+	a, z := net.Pipe()
+	go func() { z.Write([]byte(b)); z.Close() }()
+	return a
+}
+
+// The PostgreSQL sidecar (replication-manager-cli job, utils/jobapi) posts one-time bodies
+// too, with the jobs key or the password, and its stream listener (stream --listen --job)
+// takes replication-manager's signed stream only, once.
+func TestJobAPIClientOneTime(t *testing.T) {
+	s := jobLoginServer(false)
+	c := s.ClusterGroup
+	c.Conf.SecretKey = []byte("0123456789abcdef0123456789abcdef")
+	for _, key := range []string{"", c.GetJobsKey()} {
+		client := &jobapi.Client{Server: "db1", Port: "3306", Secret: s.Pass, JobsKey: key}
+		body, err := client.Body(time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, mode, code, err := s.OpenJobBody(body, time.Now())
+		if code != 200 || (key != "") != (mode == JobKeyJobs) {
+			t.Fatalf("jobapi body (jobs key %v): code %d, mode %s, err %v", key != "", code, mode, err)
+		}
+		if secret, _, _ := s.DecodeSecret(data); (secret == s.Pass) == (key != "") {
+			t.Fatalf("the password travels without a jobs key only (jobs key %v)", key != "")
+		}
+		if _, _, code, _ := s.OpenJobBody(body, time.Now()); code != 401 {
+			t.Fatalf("jobapi body replayed: %d", code)
+		}
+
+		h, _ := s.JobStreamHeader(time.Now())
+		secret, _ := client.StreamSecret()
+		nonces := t.TempDir() + "/nonces"
+		check := func(r io.Reader) error {
+			line, err := jobapi.ReadStreamHeader(r)
+			if err != nil {
+				return err
+			}
+			nonce, err := jobapi.CheckStreamHeader(line, secret, jobapi.StreamToDB, client.Name(), time.Now(), 300*time.Second)
+			if err != nil {
+				return err
+			}
+			return jobapi.TakeStreamNonce(nonces, nonce, time.Now(), 600*time.Second)
+		}
+		if err := check(bytes.NewReader(append(append([]byte{}, h...), "data"...))); err != nil {
+			t.Fatalf("sidecar check of replication-manager's header: %v", err)
+		}
+		if err := check(bytes.NewReader(append(append([]byte{}, h...), "data"...))); err == nil {
+			t.Fatal("the sidecar must refuse a header twice")
+		}
 	}
 }

@@ -10,9 +10,12 @@
 // `replication-manager-cli job` does them with this package, for images that ship
 // neither (PostgreSQL).
 //
-// The body of the authenticated calls is {"data": base64(AES-256-CBC(json))}, the key
-// being the SHA-256 and the IV the MD5 of the database password, the JSON carrying the
-// server and that password again as "secret" (cluster.SecretLoginCheck on the server).
+// The body of the authenticated calls is the one-time job body of dbjobs_new.sh (job_body):
+// {"data": base64(AES-256-CBC(json)), "iv": <random, hex>, "key": "jobs"|"db"}, the AES key
+// being the SHA-256 of the cluster's jobs key, else of the database password, the JSON
+// carrying a timestamp, a random nonce, the server and, without a jobs key, the password as
+// "secret" (cluster.OpenJobBody and SecretLoginCheck on the server): replication-manager
+// accepts each body once.
 package jobapi
 
 import (
@@ -20,9 +23,11 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,6 +44,7 @@ type Client struct {
 	Server  string // host as replication-manager monitors it
 	Port    string
 	Secret  string // the database password
+	JobsKey string // the cluster's jobs key (JOBS_API_KEY), signs instead of the password when set
 	HTTP    *http.Client
 }
 
@@ -52,10 +58,16 @@ func (c *Client) http() *http.Client {
 }
 
 // Encrypt returns base64(AES-256-CBC(plain)) with the key and IV derived from secret,
-// PKCS#7 padded: what `openssl aes-256-cbc -a -nosalt -K sha256 -iv md5` produces.
+// PKCS#7 padded: what `openssl aes-256-cbc -a -nosalt -K sha256 -iv md5` produces (the
+// legacy job body, replayable: kept for its tests and older peers).
 func Encrypt(plain []byte, secret string) (string, error) {
-	key := sha256.Sum256([]byte(secret))
 	iv := md5.Sum([]byte(secret))
+	return EncryptIV(plain, secret, iv[:])
+}
+
+// EncryptIV is Encrypt with the given 16-byte IV.
+func EncryptIV(plain []byte, secret string, iv []byte) (string, error) {
+	key := sha256.Sum256([]byte(secret))
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
 		return "", err
@@ -63,7 +75,7 @@ func Encrypt(plain []byte, secret string) (string, error) {
 	pad := aes.BlockSize - len(plain)%aes.BlockSize
 	padded := append(append([]byte{}, plain...), bytes.Repeat([]byte{byte(pad)}, pad)...)
 	out := make([]byte, len(padded))
-	cipher.NewCBCEncrypter(block, iv[:]).CryptBlocks(out, padded)
+	cipher.NewCBCEncrypter(block, iv).CryptBlocks(out, padded)
 	return base64.StdEncoding.EncodeToString(out), nil
 }
 
@@ -71,14 +83,49 @@ func (c *Client) endpoint(suffix string) string {
 	return strings.TrimRight(c.BaseURL, "/") + "/api/clusters/" + url.PathEscape(c.Cluster) + "/servers/" + url.PathEscape(c.Server) + "/" + url.PathEscape(c.Port) + suffix
 }
 
+// Name is how the job bodies and the stream headers name the server: host:port.
+func (c *Client) Name() string {
+	return c.Server + ":" + c.Port
+}
+
+// StreamSecret is the secret the bodies and the stream headers are signed with, and its
+// name in the body: the jobs key, else the database password.
+func (c *Client) StreamSecret() (string, string) {
+	if c.JobsKey != "" {
+		return c.JobsKey, "jobs"
+	}
+	return c.Secret, "db"
+}
+
+// Body is a one-time job body for now: random IV and nonce, timestamp.
+func (c *Client) Body(now time.Time) ([]byte, error) {
+	secret, keyname := c.StreamSecret()
+	iv := make([]byte, 16)
+	nonce := make([]byte, 16)
+	if _, err := rand.Read(iv); err != nil {
+		return nil, err
+	}
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	clear := map[string]interface{}{"ts": now.Unix(), "nonce": hex.EncodeToString(nonce), "server": c.Name()}
+	if keyname == "db" {
+		clear["secret"] = c.Secret
+	}
+	plain, _ := json.Marshal(clear)
+	data, err := EncryptIV(plain, secret, iv)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]string{"data": data, "iv": hex.EncodeToString(iv), "key": keyname})
+}
+
 // post sends the encrypted identity and returns the status and the trimmed body.
 func (c *Client) post(suffix string) (int, string, error) {
-	plain, _ := json.Marshal(map[string]string{"server": c.Server + ":" + c.Port, "secret": c.Secret})
-	data, err := Encrypt(plain, c.Secret)
+	body, err := c.Body(time.Now())
 	if err != nil {
 		return 0, "", err
 	}
-	body, _ := json.Marshal(map[string]string{"data": data})
 	resp, err := c.http().Post(c.endpoint(suffix), "application/json", bytes.NewReader(body))
 	if err != nil {
 		return 0, "", err

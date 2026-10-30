@@ -1523,6 +1523,7 @@ func (cluster *Cluster) tickBody() {
 		cluster.IsSameWsrepUUID()
 		cluster.CheckReplicationTLS()
 		cluster.CheckSecretLoginLegacy()
+		cluster.CheckJobStreamRefused()
 		// Run generic log-tailer plugin checks (errorlog / sqlerrorlog / slowlog 24h)
 		cluster.CheckLogPlugins()
 		// Replication plugins: supervised on the active monitor only (#2015)

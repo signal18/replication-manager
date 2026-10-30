@@ -29,6 +29,7 @@ type Options struct {
 	Gzip             bool          // compress on the sender, parallel gzip (standard gzip format)
 	CompressionLevel int           // gzip level 1..9, 0 = default
 	ConnectTimeout   time.Duration // 0 = 10s
+	Header           []byte        // written first, uncompressed (the job stream header), nil for none
 }
 
 // Send copies in to addr (host:port) and closes the write side, so the receiver sees the
@@ -50,6 +51,11 @@ func Send(in io.Reader, addr string, opts Options) (int64, error) {
 		return 0, fmt.Errorf("connect %s: %w", addr, err)
 	}
 	defer conn.Close()
+	if len(opts.Header) > 0 {
+		if _, err := conn.Write(opts.Header); err != nil {
+			return 0, fmt.Errorf("send to %s: %w", addr, err)
+		}
+	}
 
 	var out io.Writer = conn
 	var gz *pgzip.Writer
@@ -92,6 +98,14 @@ func Send(in io.Reader, addr string, opts Options) (int64, error) {
 // stored backup streamed by replication-manager to a PostgreSQL sidecar). The listener
 // waits at most accept for the connection.
 func Receive(addr string, out io.Writer, accept time.Duration) (int64, error) {
+	return ReceiveChecked(addr, out, accept, nil)
+}
+
+// ReceiveChecked is Receive taking only a connection check accepts (the job stream header,
+// read from the connection before its data): a refused connection is closed and the listener
+// waits for the next one, within the same accept time. The last refusal is returned when
+// none was accepted.
+func ReceiveChecked(addr string, out io.Writer, accept time.Duration, check func(io.Reader) error) (int64, error) {
 	if accept <= 0 {
 		accept = 10 * time.Minute
 	}
@@ -103,10 +117,26 @@ func Receive(addr string, out io.Writer, accept time.Duration) (int64, error) {
 	if tl, ok := ln.(*net.TCPListener); ok {
 		tl.SetDeadline(time.Now().Add(accept))
 	}
-	conn, err := ln.Accept()
-	if err != nil {
-		return 0, err
+	var refused error
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			if refused != nil {
+				return 0, refused
+			}
+			return 0, err
+		}
+		if check != nil {
+			// a connection that sends nothing must not hold the listener
+			conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+			refused = check(conn)
+			conn.SetReadDeadline(time.Time{})
+			if refused != nil {
+				conn.Close()
+				continue
+			}
+		}
+		defer conn.Close()
+		return io.Copy(out, conn)
 	}
-	defer conn.Close()
-	return io.Copy(out, conn)
 }

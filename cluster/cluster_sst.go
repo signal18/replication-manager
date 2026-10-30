@@ -342,7 +342,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 	}()
 
 	var conn net.Conn
-	conn, err = sst.listener.Accept()
+	conn, err = sst.acceptJobStream(server, task)
 	// published under SSTs: a backup that cuts its stream reads it (srv_job_backup_remote.go)
 	SSTs.Lock()
 	sst.in = conn
@@ -390,7 +390,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 	}()
 
 	var conn net.Conn
-	conn, err = sst.listener.Accept()
+	conn, err = sst.acceptJobStream(server, task)
 	// published under SSTs: a backup that cuts its stream reads it (srv_job_backup_remote.go)
 	SSTs.Lock()
 	sst.in = conn

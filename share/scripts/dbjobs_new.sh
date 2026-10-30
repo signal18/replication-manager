@@ -319,10 +319,13 @@ job_body() {
     echo "{\"data\":\"$encrypted\",\"iv\":\"$iv\",\"key\":\"$keyname\"}"
 }
 
-# A stream replication-manager sends to the jobs listener (SST_RECEIVER_PORT: a backup to
-# restore, a new jobs script, a config) starts with a header line signed with the key of the
-# job bodies (the jobs key, else the database password):
-#   MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(derive_key(secret), "stream:<server>:<ts>:<nonce>")>
+# Every stream between replication-manager and these jobs starts with a header line signed
+# with the key of the job bodies (the jobs key, else the database password), so each side takes
+# a stream from the other only (utils/jobapi/stream.go on the replication-manager side):
+#   MRMSTREAM1 <ts> <nonce> <hex HMAC-SHA256(derive_key(secret), "<direction>:<server>:<ts>:<nonce>")>
+# direction: to-db for what replication-manager sends to the jobs listener (SST_RECEIVER_PORT: a
+# backup to restore, a new jobs script, a config), to-repman for what the jobs send to a
+# replication-manager receiver (a backup, a dump, a log, the jobs check).
 # job_stream_open reads it from stdin and copies the rest of the stream to stdout only when it is
 # valid: within JOB_STREAM_WINDOW seconds of its timestamp, with a nonce not taken before. Else
 # it writes why in $LOG_DIR/stream.refused and returns 1 with nothing written, so a stream from
@@ -330,7 +333,7 @@ job_body() {
 # Usage: socat -u TCP-LISTEN:... STDOUT | job_stream_open | ...
 readonly JOB_STREAM_WINDOW=300
 job_stream_open() {
-    local line tag ts nonce mac secret want now store="$LOG_DIR/.stream_nonces"
+    local line tag ts nonce mac want now store="$LOG_DIR/.stream_nonces"
     rm -f "$LOG_DIR/stream.refused"
     # bash reads a pipe a byte at a time: the stream after the newline stays for cat. No read
     # timeout: the listener's own (accept-timeout, timeout) bounds the wait for the sender.
@@ -348,10 +351,7 @@ job_stream_open() {
         echo "stream header outside the ${JOB_STREAM_WINDOW}s window (clock skew or replay)" >"$LOG_DIR/stream.refused"
         return 1
     fi
-    secret=$(jobs_key)
-    [[ -n "$secret" ]] || secret="$MYSQL_ROOT_PASSWORD"
-    want=$(printf "stream:%s:%s:%s" "$MYSQL_SERVER:$MYSQL_PORT" "$ts" "$nonce" |
-        openssl dgst -sha256 -mac HMAC -macopt hexkey:"$(derive_key "$secret")" | awk '{print $NF}')
+    want=$(job_stream_mac to-db "$ts" "$nonce")
     if [[ "$want" != "$mac" ]]; then
         echo "stream header not signed by replication-manager" >"$LOG_DIR/stream.refused"
         return 1
@@ -363,6 +363,25 @@ job_stream_open() {
         return 1
     fi
     { awk -v min=$((now - 2 * JOB_STREAM_WINDOW)) '$1 >= min' "$store"; echo "$now $nonce"; } >"$store.$$" && mv -f "$store.$$" "$store"
+    exec cat
+}
+
+# job_stream_mac prints the MAC of a stream header: direction, ts, nonce.
+job_stream_mac() {
+    local secret
+    secret=$(jobs_key)
+    [[ -n "$secret" ]] || secret="$MYSQL_ROOT_PASSWORD"
+    printf "%s:%s:%s:%s" "$1" "$MYSQL_SERVER:$MYSQL_PORT" "$2" "$3" |
+        openssl dgst -sha256 -mac HMAC -macopt hexkey:"$(derive_key "$secret")" | awk '{print $NF}'
+}
+
+# job_stream_signed copies stdin to stdout after the header of a stream to replication-manager.
+# Usage: ... | job_stream_signed | socat -u STDIN TCP:...
+job_stream_signed() {
+    local ts nonce
+    ts=$(date +%s)
+    nonce=$(openssl rand -hex 16)
+    printf "MRMSTREAM1 %s %s %s\n" "$ts" "$nonce" "$(job_stream_mac to-repman "$ts" "$nonce")"
     exec cat
 }
 
@@ -1191,7 +1210,7 @@ send_mariadb_defaults() {
     local recv_host="${receiver_addr%%:*}"
     local recv_port="${receiver_addr##*:}"
 
-    if ! echo "$processed_output" | socat -u STDIN "TCP:$recv_host:$recv_port"; then
+    if ! echo "$processed_output" | job_stream_signed | socat -u STDIN "TCP:$recv_host:$recv_port"; then
         send_lines_to_api "ERROR: Failed to send data to $receiver_addr" "print-defaults" "$LVL_ERROR"
         return 1
     fi
@@ -1662,7 +1681,7 @@ dblogfile() {
     # If DB log has new content
     if [ -s "$TMPLOG" ]; then
         # Send content via socat
-        if socat -u stdio TCP:$ADDRESS < "$TMPLOG" &>"$LOG_DIR/$JOB.process.out"; then
+        if job_stream_signed < "$TMPLOG" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"; then
             # Persist the streaming offset: remember the last non-empty line we
             # just streamed so the next run resumes AFTER it (grep -Fxn on the
             # source) instead of re-sending the whole file from line 1. Without
@@ -1674,7 +1693,7 @@ dblogfile() {
         fi
     else
         # Send empty payload
-        echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
+        echo -n | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
     fi
 }
 
@@ -1787,7 +1806,7 @@ stream_dump() {
         DUMP_RC=(1 1)
         return
     fi
-    socat stdio TCP:$ADDRESS <"$fifo" &>"$LOG_DIR/$job.out" &
+    socat stdio TCP:$ADDRESS < <(job_stream_signed <"$fifo") &>"$LOG_DIR/$job.out" &
     local stream_pid=$!
     $BINARY_DUMP "${DUMP_ARGS[@]}" --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" 2>"$LOG_DIR/backup.out" >"$fifo" &
     local dump_pid=$!
@@ -3130,7 +3149,7 @@ jobsCheck() {
     fi
 
     echo "Sending new script." >>"$LOG_DIR/jobs-check.process.out"
-    socat -u FILE:"${BASH_SOURCE[0]}",rdonly TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=$SOCAT_BIND 2>>"$LOG_DIR/jobs-check.process.out"
+    job_stream_signed <"${BASH_SOURCE[0]}" | socat -u STDIN TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=$SOCAT_BIND 2>>"$LOG_DIR/jobs-check.process.out"
 
     if [ $? -ne 0 ]; then
         echo "Failed to send the script via socat." >>"$LOG_DIR/jobs-check.process.out"
@@ -3407,11 +3426,11 @@ for job in "${JOBS[@]}"; do
         xtrabackup)
             cd /docker-entrypoint-initdb.d
             xtrabackup_undo_args
-            $XTRABACKUP --defaults-file=$MYSQL_CONF/my.cnf --backup "${XB_UNDO_ARGS[@]}" -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=$LOG_DIR/ 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            $XTRABACKUP --defaults-file=$MYSQL_CONF/my.cnf --backup "${XB_UNDO_ARGS[@]}" -u$USER -H$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT --stream=xbstream --target-dir=$LOG_DIR/ 2>"$LOG_DIR/backup.out" | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mariabackup)
             cd /docker-entrypoint-initdb.d
-            $MARIADB_BACKUP --defaults-file="$MYSQL_CONF/my.cnf" --backup --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream --target-dir="$LOG_DIR/" 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            $MARIADB_BACKUP --defaults-file="$MYSQL_CONF/my.cnf" --backup --databases-exclude=.system --protocol=TCP --user="$USER" --host="$MYSQL_SERVER" --password="$PASSWORD" --port="$MYSQL_PORT" --stream=xbstream --target-dir="$LOG_DIR/" 2>"$LOG_DIR/backup.out" | job_stream_signed | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         mysqldump)
             # Logical backup on the DB node (scheduler-jobs-exec-remote): replication-manager
