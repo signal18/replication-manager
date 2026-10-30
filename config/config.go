@@ -811,6 +811,7 @@ type Config struct {
 	APIAutologin                              bool              `scope:"server" mapstructure:"api-autologin" toml:"api-autologin" json:"apiAutologin"`
 	APIAutologinUser                          string            `scope:"server" mapstructure:"api-autologin-user" toml:"api-autologin-user" json:"apiAutologinUser"`
 	APIDashboardUser                          string            `scope:"server" mapstructure:"api-dashboard-user" toml:"api-dashboard-user" json:"apiDashboardUser"`
+	APITrustedNetworks                        string            `scope:"server" mapstructure:"api-trusted-networks" toml:"api-trusted-networks" json:"apiTrustedNetworks"`
 	APIPort                                   string            `scope:"server" mapstructure:"api-port" toml:"api-port" json:"apiPort"`
 	APIBind                                   string            `scope:"server" mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIPublicURL                              string            `scope:"server" mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
