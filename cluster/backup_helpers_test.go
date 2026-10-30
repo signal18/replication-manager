@@ -800,6 +800,24 @@ func TestParseLogEntriesEmptyGTID(t *testing.T) {
 	}
 }
 
+// TestReseedPointInTimeRefusesBackupWithoutPosition: a PITR with binary logs from a backup with
+// no recorded position would replay every binlog from the oldest one over the restored data. It
+// is refused before anything is restored (#2256); the scheduler is off here, so a request that
+// went further would fail on it instead.
+func TestReseedPointInTimeRefusesBackupWithoutPosition(t *testing.T) {
+	cluster, server := newTestClusterServer(t)
+	cluster.BackupMetaMap.Set(7, &backupmgr.BackupMetadata{Id: 7, BackupTool: "mariabackup"})
+
+	err := server.ReseedPointInTime(backupmgr.PointInTimeMeta{Backup: 7, UseBinlog: true})
+	if err == nil || !strings.Contains(err.Error(), "no recorded binary log position") {
+		t.Fatalf("PITR with binary logs from a backup without position: err = %v, want the position refusal", err)
+	}
+	err = server.ReseedPointInTime(backupmgr.PointInTimeMeta{Backup: 7})
+	if err == nil || strings.Contains(err.Error(), "no recorded binary log position") {
+		t.Fatalf("PITR without binary logs: err = %v, want it to go past the position check", err)
+	}
+}
+
 // TestJobsCheckStatesApiModeSkipsSQL verifies the api-mode guard. In api mode the jobs table
 // is not the source of truth, so JobsCheckStates must return before the SQL path. With Conn
 // nil and no guard the function would instead return the "No connection pool" error (and in a
