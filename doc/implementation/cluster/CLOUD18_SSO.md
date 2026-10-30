@@ -11,7 +11,7 @@ once thanks to the realm's session. **No repman talks to another** for this: onl
 
 Any repman registered to Cloud18 with a public address, whatever its plan: `cloud18` on with a
 registered user (`cloud18-gitlab-user`), `api-public-url` a public https address (not the loopback
-default, not a private address), a realm (`cloud18-identity-url`), and `cloud18-sso-login` on (default).
+default, not a private address), a realm (`cloud18-identity-url`), and `cloud18-sso-login` on. It is **off by default**: the browser sign-in sends the realm this repman's callback address, and no repman is declared in the realm unless it registers its own address. Turn it on only on a repman whose `<api-public-url>/api/auth/cloud18/callback` the realm client accepts; elsewhere the Sign in form checks Cloud18 server-side and needs no address.
 A repman without a public address keeps the Sign in form, which checks the Cloud18 account since #2182.
 `GET /api/auth/cloud18` tells the login page (`{"enabled": …}`).
 
