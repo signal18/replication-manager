@@ -75,7 +75,7 @@ type backupMount struct {
 	retryAt        time.Time
 	retrySignature string
 	upAt           time.Time // the mount's last start, a mount that served a while starting over
-	state     BackupMountState
+	state          BackupMountState
 	// state.Mounted, published for readers that never wait for mu, held across a mount's
 	// network calls: the restore catalogue on the monitor tick
 	mounted atomic.Bool
@@ -514,11 +514,12 @@ func (cluster *Cluster) startBackupMount(t *mountTarget, keys *mountKeys) {
 		bm.state.Error = ended.Error()
 		bm.state.At = time.Now()
 		bm.failedLocked(t.sig)
+		retryIn := time.Until(bm.retryAt).Round(time.Second)
 		cluster.publishBackupMountLocked()
 		bm.mu.Unlock()
 		lazyUnmount(point)
 		go cluster.resyncBackupCatalogue()
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s ended (%s), mounted again after %s", point, ended, time.Until(bm.retryAt).Round(time.Second))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Backups folder mount: %s ended (%s), mounted again after %s", point, ended, retryIn)
 		return
 	}
 	bm.mu.Unlock()

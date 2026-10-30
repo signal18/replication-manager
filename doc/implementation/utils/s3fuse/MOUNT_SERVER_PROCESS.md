@@ -12,7 +12,11 @@ monitored nothing (F2).
 `s3fuse.New` starts `replication-manager backup-folder-mount` (hidden command,
 `s3fuse.ServerCommand`) from `/proc/self/exe`, the running binary even once an upgrade replaced
 it on disk. The child runs what used to run in process (`serve`: GeeseFS, `DeadlineFS`,
-`disablePoll`). A crash of the child closes its `/dev/fuse` descriptor: the kernel aborts the
+`disablePoll`). It runs as `replication-manager backup-folder-mount` (its argv[0]; the kernel
+names the process `exe`, so it is found by its command line, never its name), in its own process
+group (a Ctrl-C to replication-manager's group never stops it), with only `PATH`, the proxy and
+CA variables and `TMPDIR` of replication-manager's environment (F10). It loads no configuration:
+the hidden command reads stdin and writes fd 3. A crash of the child closes its `/dev/fuse` descriptor: the kernel aborts the
 connection, a request of replication-manager waiting on the mount fails (`ENOTCONN`) instead of
 waiting forever, and the monitor goes on.
 
@@ -28,6 +32,8 @@ waiting forever, and the monitor goes on.
   (the mount could not be made, its error), `late` (a request answered EIO at its deadline:
   `OnLate`, WARN0262), `panic` (`OnPanic`, the stack printed on stderr), `unmounted` (the answer
   to a stop, its error when the unmount was refused).
+- Event lines are read up to 64 KiB, an error in an event cut at 2000 bytes, so an event is
+  never cut and lost.
 - **The child's stdout and stderr** (GeeseFS's log, a Go crash) go line by line to `OnLog`, each
   line cut at 2000 bytes (`readLines`: a longer line never stops the reading, so the child never
   blocks writing); the last line is kept for the error of its end.

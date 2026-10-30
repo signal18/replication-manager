@@ -160,17 +160,17 @@ const processComm = "replication-man"
 // kernel cuts to 15 characters.
 func otherLiveProcess(comm string, self int) int {
 	pid := 0
-	liveProcesses(comm, self, func(p int, server bool) {
-		if !server && pid == 0 {
+	liveProcesses(self, func(p int, name string, server bool) {
+		if name == comm && !server && pid == 0 {
 			pid = p
 		}
 	})
 	return pid
 }
 
-// liveProcesses calls f with each live process of that command name other than self, saying
-// whether it is a mount's server.
-func liveProcesses(comm string, self int, f func(pid int, server bool)) {
+// liveProcesses calls f with each live process (not a zombie) other than self, its command name,
+// and whether it is a mount's server.
+func liveProcesses(self int, f func(pid int, comm string, server bool)) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return
@@ -184,24 +184,26 @@ func liveProcesses(comm string, self int, f func(pid int, server bool)) {
 		if err != nil {
 			continue
 		}
-		if name, state, ok := statCommState(string(b)); ok && name == comm && state != "Z" && state != "X" {
+		if name, state, ok := statCommState(string(b)); ok && state != "Z" && state != "X" {
 			cmdline, _ := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
-			f(pid, isServerCmdline(string(cmdline)))
+			f(pid, name, isServerCmdline(string(cmdline)))
 		}
 	}
 }
 
-// isServerCmdline: a /proc/<pid>/cmdline (arguments separated by NUL) is a mount's server's.
+// isServerCmdline: a /proc/<pid>/cmdline (arguments separated by NUL) is a mount's server's,
+// started as "replication-manager backup-folder-mount" (startServer). Its command name is no
+// help: started from /proc/self/exe, the kernel names it "exe".
 func isServerCmdline(cmdline string) bool {
 	args := strings.Split(strings.TrimRight(cmdline, "\x00"), "\x00")
-	return len(args) == 2 && args[1] == ServerCommand
+	return len(args) == 2 && args[0] == "replication-manager" && args[1] == ServerCommand
 }
 
 // stopOrphanServers kills the mounts' servers left by a replication-manager gone (none other
 // runs: checked first), and waits a little for them to end.
 func stopOrphanServers(self int) {
 	var orphans []int
-	liveProcesses(processComm, self, func(pid int, server bool) {
+	liveProcesses(self, func(pid int, _ string, server bool) {
 		if server {
 			orphans = append(orphans, pid)
 		}

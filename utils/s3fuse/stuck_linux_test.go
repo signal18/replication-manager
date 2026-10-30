@@ -94,7 +94,8 @@ func TestAbortStuckUnreadable(t *testing.T) {
 // Only a process started as a mount's server is one (#2246).
 func TestIsServerCmdline(t *testing.T) {
 	for cmdline, want := range map[string]bool{
-		"/proc/self/exe\x00" + ServerCommand + "\x00":                      true,
+		"replication-manager\x00" + ServerCommand + "\x00":                 true,
+		"/proc/self/exe\x00" + ServerCommand + "\x00":                      false,
 		"/usr/bin/replication-manager-osc\x00monitor\x00":                  false,
 		"/usr/bin/replication-manager-osc\x00monitor\x00--config\x00x\x00": false,
 		"": false,

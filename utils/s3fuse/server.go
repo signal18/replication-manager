@@ -45,6 +45,15 @@ const serverBusyBound = lateGrace
 // logLineMax bounds each line of the server's output passed on (F4)
 const logLineMax = 2000
 
+// eventLineMax bounds an event line, far above any event (an error is cut at logLineMax): an
+// event cut would not parse and would be lost
+const eventLineMax = 64 << 10
+
+// serverEnv are the variables of the environment the server keeps: what it runs (fusermount)
+// and how it reaches S3; nothing else of replication-manager's environment, secrets included
+// (F10)
+var serverEnv = []string{"PATH", "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "TMPDIR"}
+
 type mountRequest struct {
 	MountPoint  string        `json:"mountPoint"`
 	Bucket      string        `json:"bucket"`
@@ -109,16 +118,25 @@ func (s *server) send(r request) error {
 // startServer starts the mount's server and returns once it mounted, or why it did not.
 func startServer(ctx context.Context, o Options) (*server, error) {
 	cmd := exec.Command(selfExecutable(), ServerCommand)
+	cmd.Args[0] = "replication-manager" // ps shows what it is, not /proc/self/exe
+	cmd.Env = []string{}
+	for _, k := range serverEnv {
+		if v, ok := os.LookupEnv(k); ok {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
 	}
 	evR, evW, err := os.Pipe()
 	if err != nil {
+		stdin.Close()
 		return nil, err
 	}
 	logR, logW, err := os.Pipe()
 	if err != nil {
+		stdin.Close()
 		evR.Close()
 		evW.Close()
 		return nil, err
@@ -130,6 +148,7 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 	s := &server{stdin: stdin, unmounted: make(chan error, 1), exited: make(chan struct{})}
 	waited := make(chan error, 1)
 	if err := startLocked(cmd, waited); err != nil {
+		stdin.Close()
 		evR.Close()
 		evW.Close()
 		logR.Close()
@@ -155,7 +174,7 @@ func startServer(ctx context.Context, o Options) (*server, error) {
 	mountedCh := make(chan error, 1)
 	eventsDone := make(chan struct{})
 	go func() {
-		readLines(evR, logLineMax, func(line string) {
+		readLines(evR, eventLineMax, func(line string) {
 			var e event
 			if json.Unmarshal([]byte(line), &e) != nil {
 				return
@@ -389,6 +408,9 @@ var _ credentials.Provider = (*relayedCredentials)(nil)
 func Serve(in io.Reader, events io.Writer) error {
 	var emu sync.Mutex
 	emit := func(e event) {
+		if len(e.Error) > logLineMax {
+			e.Error = e.Error[:logLineMax]
+		}
 		b, _ := json.Marshal(e)
 		emu.Lock()
 		events.Write(append(b, '\n'))

@@ -10,7 +10,8 @@ import "syscall"
 func selfExecutable() string { return "/proc/self/exe" }
 
 // serverProcAttr: the server gets SIGTERM when replication-manager dies, so it unmounts and
-// ends with it, never serving a mount nobody supervises.
+// ends with it, never serving a mount nobody supervises; in its own process group, a Ctrl-C to
+// replication-manager's group (a foreground run) never stops it under the monitor.
 func serverProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
+	return &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM, Setpgid: true}
 }
