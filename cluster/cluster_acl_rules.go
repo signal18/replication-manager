@@ -217,6 +217,7 @@ var clusterACLRules = []ACLRule{
 	{"/secret-kv-actions/enable/", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
 	{"/secret-kv-actions/disable/", nil, []string{config.GrantClusterSettings, config.GrantDBConfigFlag}},
 	{"/archive-list", nil, []string{config.GrantClusterShowBackups}},
+	{"/archive-offers", nil, []string{config.GrantClusterShowBackups}},
 	{"/archive-actions/add", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/edit/", nil, []string{config.GrantClusterSettings}},
 	{"/archive-actions/rename/", nil, []string{config.GrantClusterSettings}},

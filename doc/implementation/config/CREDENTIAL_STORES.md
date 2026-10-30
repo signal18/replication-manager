@@ -93,7 +93,7 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    (`Cluster.ReadVaultsAtStart`: a database engine first, else the newest version), bounded
    by `secret-kv-start-timeout` (3 s): the value becomes the current one with its own time,
    no new version. Past the timeout or on a failure the cluster starts on what it has, the
-   entry is behind (WARN0269) and the full pass catches up. Never on the monitor tick.
+   entry is behind (WARN0271) and the full pass catches up. Never on the monitor tick.
 2. **Every write is a version in every active store.** The version is made in memory at the
    write, with its time and writing instance; the file is written only by the cluster's save
    callback after `cluster.Save()` (T25) and is in the config git push (encrypted values
@@ -102,8 +102,8 @@ settings (secrets encrypted, F9), on/off, forms drawn from the manifest.
    blocks the write, a provisioning or the monitor (F2). Only the active monitor writes.
 3. **Read**: the newest version wins across the stores (timestamp and writing instance,
    the event log's LWW rule); the seed last. A store behind the others is a tracked state
-   (WARN0269, security domain, per entry) and gets the winning version at the next pass.
-4. **Full pass**: when a store is turned on, at start, and after queue drops (WARN0270).
+   (WARN0271, security domain, per entry) and gets the winning version at the next pass.
+4. **Full pass**: when a store is turned on, at start, and after queue drops (WARN0272).
    It runs in the worker, reads each store's current version and writes only when it
    differs: no version churn, no blocking read at load (the one exception is the bounded
    read at start of rule 1b).
@@ -220,8 +220,8 @@ files on disk, and the chain a start builds over it with the local file
   secret variables, git and S3 secrets under `apps/<app>`), and the app's generated password
   (`apps/<app>/app-random-password`). The instance's secrets are never copied.
 - **API** (`server/api_secret_kv.go`, T6): `GET /api/clusters/{cluster}/secret-kv-list`
-  (entries with `secretsSet` only, per-entry state: last write and behind/WARN0269, the
-  queue's drops/WARN0270, the manifests, the copy settings, the credentials' initial source,
+  (entries with `secretsSet` only, per-entry state: last write and behind/WARN0271, the
+  queue's drops/WARN0272, the manifests, the copy settings, the credentials' initial source,
   current source, version count and last change); `POST .../secret-kv-actions/add`,
   `edit/{entry}`, `enable/{entry}`, `disable/{entry}`, `remove/{entry}` (409 when a config
   file sets `secret-kv`). ACL: `cluster-settings` for all; the list, enable and disable also
@@ -248,8 +248,8 @@ files on disk, and the chain a start builds over it with the local file
   cannot take a `cloud18-` name. The GUI shows a Cloud18 badge with the offer's title and
   partner and no Edit or Remove. The back-office side (the file, the
   vault's jwt role and the space policies of rule 14) is not built yet.
-- **States**: WARN0269 (security, per entry: behind, or failing), WARN0270 (security: drops
-  not repaired), WARN0271 (config, per key: a Vault path pinned in a file).
+- **States**: WARN0271 (security, per entry: behind, or failing), WARN0272 (security: drops
+  not repaired), WARN0273 (config, per key: a Vault path pinned in a file).
 - **Writers to wire later** call `Cluster.CopySecret(kind, object, key, value)`.
 
 ### The Cloud18 vault entry

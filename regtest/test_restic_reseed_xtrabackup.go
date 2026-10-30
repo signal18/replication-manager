@@ -197,7 +197,7 @@ func (regtest *RegTest) TestResticReseedXtrabackup(cl *clusterpkg.Cluster, conf 
 
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after auto strategy reseed")
 		return false
 	}
@@ -225,7 +225,7 @@ func (regtest *RegTest) TestResticReseedXtrabackup(cl *clusterpkg.Cluster, conf 
 
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after restore strategy reseed")
 		return false
 	}
@@ -254,7 +254,7 @@ func (regtest *RegTest) TestResticReseedXtrabackup(cl *clusterpkg.Cluster, conf 
 
 		time.Sleep(5 * time.Second)
 
-		if !cl.CheckTableConsistency("test.sbtest") {
+		if !cl.CheckTableConsistency(cl.BenchTable()) {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after mount strategy reseed")
 			return false
 		}
@@ -291,7 +291,7 @@ func (regtest *RegTest) TestResticReseedXtrabackup(cl *clusterpkg.Cluster, conf 
 		// If it succeeded, verify data consistency (may have fallen back to restore)
 		time.Sleep(5 * time.Second)
 
-		if !cl.CheckTableConsistency("test.sbtest") {
+		if !cl.CheckTableConsistency(cl.BenchTable()) {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after dump strategy reseed")
 			return false
 		}
@@ -320,7 +320,7 @@ func (regtest *RegTest) TestResticReseedXtrabackup(cl *clusterpkg.Cluster, conf 
 
 	time.Sleep(5 * time.Second)
 
-	if !cl.CheckTableConsistency("test.sbtest") {
+	if !cl.CheckTableConsistency(cl.BenchTable()) {
 		cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after uncompressed restore strategy reseed")
 		return false
 	}
@@ -349,7 +349,7 @@ func (regtest *RegTest) TestResticReseedXtrabackup(cl *clusterpkg.Cluster, conf 
 
 		time.Sleep(5 * time.Second)
 
-		if !cl.CheckTableConsistency("test.sbtest") {
+		if !cl.CheckTableConsistency(cl.BenchTable()) {
 			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Data inconsistency after uncompressed mount strategy reseed")
 			return false
 		}

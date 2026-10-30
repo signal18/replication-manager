@@ -353,6 +353,9 @@ func ConfigVariablesMustSet() map[string][]map[string]string {
 }
 
 func (regtest *RegTest) MatchTarget(cl *cluster.Cluster, name string) (TestTarget, string) {
+	if miss := mysqlGTIDMiss(cl); miss != "" {
+		return TestTarget{}, miss
+	}
 	targets := testTargets[name]
 	if len(targets) == 0 {
 		return TestTarget{}, ""
@@ -397,6 +400,27 @@ func (target TestTarget) missReason(cl *cluster.Cluster) string {
 		if value, ok := cl.Conf.GetValueByKey(key); !ok || !strings.EqualFold(value, want) {
 			return fmt.Sprintf("config-variable-must-have %s=%s, cluster has %s", key, want, value)
 		}
+	}
+	return ""
+}
+
+// mysqlGTIDMiss: every test runs a MySQL or Percona cluster on GTID, as the provisioning
+// builds it (#2226): the cluster declares the mysqlgtid tag. Without it a failover is
+// positional and the tests do not exercise what a client runs. Group replication has GTID
+// from its own tag.
+func mysqlGTIDMiss(cl *cluster.Cluster) string {
+	if cl.GetTopologyTarget() == config.TopoMultiMasterGrouprep {
+		return ""
+	}
+	server := SetupServer(cl)
+	if server == nil {
+		return ""
+	}
+	if v := server.GetVersion(); v == nil || !v.IsMySQLOrPercona() {
+		return ""
+	}
+	if !cl.Configurator.HaveDBTag(cluster.ProvisionMySQLGTIDTag) {
+		return fmt.Sprintf("a MySQL cluster declares the %s tag (prov-db-tags), cluster has %s", cluster.ProvisionMySQLGTIDTag, cl.Conf.ProvTags)
 	}
 	return ""
 }

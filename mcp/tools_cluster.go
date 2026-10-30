@@ -675,13 +675,10 @@ func (s *MCPServer) registerClusterWriteTools() {
 			if len(cl.Proxies) == 0 {
 				return mcp.NewToolResultError("no proxy configured on this cluster: sysbench runs through the proxy"), nil
 			}
-			if v := req.GetString("test", ""); v != "" {
-				cl.SetSysbenchTest(v)
-			}
-			if v := req.GetString("time", ""); v != "" {
-				cl.SetSysbenchTime(v)
-			}
 			threads := req.GetString("threads", "")
+			if err := cl.SetSysbenchRunParams(req.GetString("test", ""), req.GetString("time", ""), threads, ""); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
 			if threads == "0" {
 				go func() {
 					if err := cl.RunSysbenchScaleThreads(); err != nil {
@@ -689,9 +686,6 @@ func (s *MCPServer) registerClusterWriteTools() {
 					}
 				}()
 				return mcp.NewToolResultText(`{"status":"sysbench thread-scaling run initiated"}`), nil
-			}
-			if threads != "" {
-				cl.SetSysbenchThreads(threads)
 			}
 			go func() {
 				if err := cl.RunSysbench(); err != nil {

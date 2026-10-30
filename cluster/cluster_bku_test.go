@@ -85,6 +85,54 @@ func TestComputeBAU(t *testing.T) {
 	}
 }
 
+// What is billed is what the archive offers show: an archive on an offer's storage takes the
+// offer's BAU price, an archive on no offer the instance price, the client's own storage 0.
+func TestBAUUnitPrice_ArchiveOffer(t *testing.T) {
+	s3Price, pbsPrice := 0.149, 0.2577
+	cat := config.MarketplaceCatalogue{
+		S3: []config.MarketplaceS3{{Name: "storage-a", Endpoint: "https://s3.a.example/"}},
+		Archives: []config.MarketplaceArchiveOffer{
+			{Name: "s3-standard-a", Plugin: "archive-plakar-s3", S3Provider: "storage-a", PriceEurBauMonth: &s3Price},
+			{Name: "pbs-simple", Plugin: "archive-pbs", PriceEurBauMonth: &pbsPrice},
+		},
+	}
+	rm := NewResourceManager()
+	rm.SetPrices(BillingPrices{BAU: 2})
+	rm.SetMarketplaceCatalogue(cat)
+	c := &Cluster{Conf: &config.Config{}, resources: rm}
+	c.Conf.Archives = []config.ArchiveConfig{
+		{Name: "a-s3", Plugin: "archive-plakar-s3", Settings: map[string]interface{}{config.ConstArchiveSettingS3Provider: "storage-a"}},
+		{Name: "pbs-simple", Plugin: "archive-pbs", Settings: map[string]interface{}{}},
+		{Name: "a-local", Plugin: config.ConstArchivePluginResticLocal, Settings: map[string]interface{}{}},
+	}
+	c.s3Providers.providers = []config.S3Provider{{Name: "storage-a", Endpoint: "https://s3.a.example"}}
+
+	for _, tc := range []struct {
+		attached string
+		want     float64
+	}{
+		{"a-s3", s3Price},        // the S3 offer's storage
+		{"pbs-simple", pbsPrice}, // delivered as an archive of the offer's name and plugin
+		{"a-local", 2},           // no offer: the instance price
+		{"", 2},                  // none attached
+	} {
+		c.Conf.BackupArchiveName = tc.attached
+		if got := c.bauUnitPrice(); got != tc.want {
+			t.Fatalf("attached %q: price %v, want %v", tc.attached, got, tc.want)
+		}
+	}
+	// a provider of the offer's name on another endpoint is another storage: no offer
+	c.s3Providers.providers = []config.S3Provider{{Name: "storage-a", Endpoint: "https://elsewhere.example"}}
+	c.Conf.BackupArchiveName = "a-s3"
+	if got := c.bauUnitPrice(); got != 2 {
+		t.Fatalf("another storage of the same name must not take the offer price, got %v", got)
+	}
+	c.Conf.Cloud18MarketplaceBAUClientStorage = true
+	if got := c.bauUnitPrice(); got != 0 {
+		t.Fatalf("client storage must never be priced, got %v", got)
+	}
+}
+
 // The BKU is a plan unit like DBU and APU: per cluster, floor 1, its own flag, no resource follow.
 func TestPlanUnitBKU(t *testing.T) {
 	c := &Cluster{Name: "t", Conf: &config.Config{ProvDbBku: 6}}
@@ -126,12 +174,15 @@ func TestLocalBackupBytes_WalksBackupPaths(t *testing.T) {
 	if got := c.localBackupBytes(); got != 2000 {
 		t.Fatalf("local bytes = %d, want 2000 (last backup 1500 + local archive 500)", got)
 	}
-	if !c.resticRepositoryIsRemote() {
-		t.Fatalf("s3 repository must be remote")
-	}
-	c.Conf.BackupResticRepository = "/srv/restic"
+	// restic runs its local repository (backup-restic-aws off): the S3 URL left in
+	// backup-restic-repository (its default is one) is not run, so the archive is local disk,
+	// already walked into BKU, never BAU as well
 	if c.resticRepositoryIsRemote() || c.remoteBackupBytes() != 0 {
-		t.Fatalf("a local restic repository must not feed the remote reading")
+		t.Fatalf("a local restic archive must not feed the remote reading, whatever backup-restic-repository says")
+	}
+	c.Conf.BackupResticAws, c.Conf.BackupResticAwsBucket, c.Conf.BackupResticAwsEndpoint = true, "backups", "https://s3.example"
+	if !c.resticRepositoryIsRemote() {
+		t.Fatalf("restic on S3 (backup-restic-aws) must be remote, repo %q", c.resticRepoPathFor(c.Conf))
 	}
 	if got := (&Cluster{Name: "none", Conf: &config.Config{WorkingDir: wd}}).localBackupBytes(); got != 0 {
 		t.Fatalf("no servers, no paths: must read 0, got %d", got)

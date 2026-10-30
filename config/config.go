@@ -757,6 +757,9 @@ type Config struct {
 	ResourceManagerInfraDiskGB                float64           `scope:"server" mapstructure:"resource-manager-infra-disk-gb" toml:"resource-manager-infra-disk-gb" json:"resourceManagerInfraDiskGb"`
 	ResourceManagerInfraIops                  float64           `scope:"server" mapstructure:"resource-manager-infra-iops" toml:"resource-manager-infra-iops" json:"resourceManagerInfraIops"`
 	ResourceManagerInfraNetworkMbps           float64           `scope:"server" mapstructure:"resource-manager-infra-network-mbps" toml:"resource-manager-infra-network-mbps" json:"resourceManagerInfraNetworkMbps"`
+	ResourceManagerDiscoveredCpuCores         float64           `scope:"server" mapstructure:"resource-manager-discovered-cpu-cores" toml:"resource-manager-discovered-cpu-cores" json:"resourceManagerDiscoveredCpuCores"`
+	ResourceManagerDiscoveredMemoryMB         float64           `scope:"server" mapstructure:"resource-manager-discovered-memory-mb" toml:"resource-manager-discovered-memory-mb" json:"resourceManagerDiscoveredMemoryMb"`
+	ResourceManagerDiscoveredInterval         int               `scope:"server" mapstructure:"resource-manager-discovered-interval" toml:"resource-manager-discovered-interval" json:"resourceManagerDiscoveredInterval"`
 	ResourceManagerSmtGain                    float64           `scope:"server" mapstructure:"resource-manager-smt-gain" toml:"resource-manager-smt-gain" json:"resourceManagerSmtGain"`
 	ProvDbBootstrapScript                     string            `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
 	ProvProxyBootstrapScript                  string            `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
@@ -1148,6 +1151,10 @@ type Config struct {
 	TerminalSessionEnabled                 bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
 	TerminalSessionResume                  bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
 	TerminalSessionManager                 string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
+	// Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access
+	// the cluster asks the back-office for (comma-separated offer names); the BO harvests it and
+	// delivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)
+	Cloud18ArchiveOfferRequests string `mapstructure:"cloud18-archive-offer-requests" toml:"cloud18-archive-offer-requests" json:"cloud18ArchiveOfferRequests"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
@@ -2961,12 +2968,20 @@ func GetFSType() map[string]bool {
 	}
 }
 
+// GetSysbenchTests are the sysbench tests a benchmark accepts: the built-in tests of sysbench
+// 1.0 and 1.1 that run on tables (bulk_insert has its own and is left out), and tpcc (#2239).
 func GetSysbenchTests() map[string]bool {
 	return map[string]bool{
 		"oltp_read_write":       true,
 		"oltp_read_only":        true,
+		"oltp_write_only":       true,
+		"oltp_point_select":     true,
+		"oltp_insert":           true,
+		"oltp_delete":           true,
 		"oltp_update_non_index": true,
 		"oltp_update_index":     true,
+		"select_random_points":  true,
+		"select_random_ranges":  true,
 		"tpcc":                  true,
 	}
 }

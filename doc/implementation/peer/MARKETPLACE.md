@@ -201,6 +201,42 @@ does not read these files ignores them (`.pull` is read by name; the one directo
 Exposed by the MCP tool `list-cloud18-archive-offers` (any authenticated principal), which
 the website's sales assistant calls to propose the archive offers with their prices.
 
+In the GUI and the API, `GET /api/clusters/{cluster}/archive-offers` (`api_archive_offers.go`,
+grant `cluster-show-backups` like `archive-list`) gives each archive offer with its S3 storage,
+whether the cluster already has that S3 provider (`added`) and whether it can use the offer now
+(`usable`, else `reason`):
+
+- a storage reached with the Cloud18 SSO (`cloud18Sso`) is usable on a replication-manager
+  connected to Cloud18 (`Cluster.Cloud18SSOReady`): it needs no key, the storage gives the
+  cluster short-lived keys for a folder of its own (`archiveBucketFolder`);
+  The catalogue gives the storage's `bucket` (each identity has its own folder in it); a storage
+  without one is not usable yet;
+- an offer whose keys Cloud18 issues (`auth = cloud18-keys`, the OVH S3 offers) is
+  `requestable`: **Request** adds its name to the cluster setting
+  `cloud18-archive-offer-requests` (comma-separated). The BO harvests it, creates the cluster's
+  own bucket and S3 user with the OVH API, and writes an `[[s3-provider]]` block (name of the
+  catalogue's storage, endpoint, region, `bucket`, keys) in the cluster's `inject.toml`. Once
+  applied, the provider is there: the offer is `added` and `usable`. Until then it is
+  `requested`. The keys reach the instance in clear in its private `-pull` repo (accepted for
+  these per-cluster, per-bucket keys); replication-manager saves them encrypted;
+- an offer the catalogue marks `requestable` that has no S3 storage (a PBS offer, `archive-pbs`):
+  **Request** adds it to the same setting; the BO creates the cluster's own token on the partner's
+  datastore and delivers an `[[archive]]` block of the offer's name (base URL, datastore, the cluster's
+  namespace, token, fingerprint) in the cluster's `inject.toml`. The archive is added, not attached.
+  The offer is then `added` (an archive of its name and plugin) and `usable`; the GUI says the archive
+  is in the list, to attach;
+- any other offer is "on request": the BO does not deliver it yet.
+
+An S3 provider has an optional `bucket` (`[[s3-provider]]` key `bucket`, `S3Provider.Bucket`):
+an archive on it that names no bucket uses it (`archiveBucketFolder`). An edit that does not
+send it keeps it.
+
+The archive settings show the offers ("Cloud18 offers"). **Use** adds the storage through the
+existing `s3providers/add` (no write path of its own: `cloudSso`, no key, the role computed by
+`minioRoleArn`) and opens the archive form preset with the offer's plugin, its name and that
+`s3-provider`; the form's `s3-provider` setting is a choice among the cluster's S3 providers.
+The archive is added by `archive-actions/add` as any other.
+
 ---
 
 ## 4. Health-poll modes (`cloud18-peer-health-mode`)

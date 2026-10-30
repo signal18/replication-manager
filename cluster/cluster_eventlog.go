@@ -72,6 +72,9 @@ var instanceLocalConfigKeys = map[string]bool{
 	"cloud18-git-project-id":      true,
 	"cloud18-git-pull-project-id": true,
 	"cloud18-git-token-expires":   true,
+	// each instance writes what its own agents show (resource-manager-discovered-*)
+	"resource-manager-discovered-cpu-cores": true,
+	"resource-manager-discovered-memory-mb": true,
 }
 
 // IsInstanceLocalConfigKey reports whether a config key is excluded from

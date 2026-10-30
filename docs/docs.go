@@ -724,7 +724,7 @@ const docTemplate = `{
         },
         "/api/clusters/settings/actions/cloud18-identity": {
             "get": {
-                "description": "state none (nobody connected it), pending (a device login waits: device holds the code and the page), connected, or reconnect (the login ended: reason). Never a token.",
+                "description": "state none (not registered to Cloud18), registered (no login yet: made with the registered account at the next use or keep-alive), connected, or refused (the realm refused the registered account: register again, reason). Never a token.",
                 "produces": [
                     "application/json"
                 ],
@@ -751,96 +751,6 @@ const docTemplate = `{
                     },
                     "403": {
                         "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/settings/actions/cloud18-identity/connect": {
-            "post": {
-                "description": "Asks the realm for a code: the person opens the page (device.verificationUri), logs in and types the code (device.userCode); replication-manager then keeps the login. Replaces a login still waiting.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "GlobalSetting"
-                ],
-                "summary": "Connect this replication-manager to the Cloud18 identity (device login)",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/config.Cloud18IdentityStatus"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "409": {
-                        "description": "The realm or the setting refused the login",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "503": {
-                        "description": "The realm cannot be reached",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/settings/actions/cloud18-identity/disconnect": {
-            "post": {
-                "description": "Forgets the kept login and ends it at the realm (best effort). The S3 SSO storages and the Cloud18 vault refuse until someone connects it again.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "GlobalSetting"
-                ],
-                "summary": "Disconnect this replication-manager from the Cloud18 identity",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/config.Cloud18IdentityStatus"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "The login file cannot be removed",
                         "schema": {
                             "type": "string"
                         }
@@ -3741,14 +3651,38 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Number of threads",
+                        "description": "Sysbench test (sysbench-test)",
+                        "name": "test",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Duration in seconds (sysbench-time)",
+                        "name": "time",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Number of threads, 0 = scale from 1 to 2×cores (sysbench-threads)",
                         "name": "threads",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Number of tables (sysbench-tables)",
+                        "name": "tables",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "Successfully triggered sysbench",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Unknown test or invalid number: nothing is changed or started",
                         "schema": {
                             "type": "string"
                         }
@@ -4697,7 +4631,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Node Name (optional, if not provided, will restart default node). Can use ALL or * to restart on all nodes.",
+                        "description": "Node Name (optional). OpenSVC v3: without it, ALL or *, every instance restarts, one at a time by the orchestrator; with it, that instance only. OpenSVC v2: without it, the default node.",
                         "name": "node",
                         "in": "path"
                     }
@@ -6990,6 +6924,58 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/cluster.ArchiveListResult"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archive-offers": {
+            "get": {
+                "description": "The archive offers of the marketplace catalogue the back-office pushes to every instance, each with its S3 storage, whether the cluster already has that storage and whether it can use the offer now: a storage reached with the Cloud18 SSO needs no key; a storage whose keys Cloud18 issues is requested (cloud18-archive-offer-requests) and usable once its S3 provider is delivered; the others are on request. Public fields only, no key.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterArchive"
+                ],
+                "summary": "List the archive offers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/server.ArchiveOffer"
+                            }
                         }
                     },
                     "403": {
@@ -12284,7 +12270,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/secret-kv-list": {
             "get": {
-                "description": "The cluster's vault entries (secrets never returned, only the names of those set; offer: the Cloud18 marketplace offer an entry comes from, name, title and partner, null for the user's own), each one's state (last write, behind: WARN0269), the queue's drops (WARN0270), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.",
+                "description": "The cluster's vault entries (secrets never returned, only the names of those set; offer: the Cloud18 marketplace offer an entry comes from, name, title and partner, null for the user's own), each one's state (last write, behind: WARN0271), the queue's drops (WARN0272), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.",
                 "produces": [
                     "application/json"
                 ],
@@ -28509,7 +28495,7 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "dropsPending": {
-                    "description": "WARN0270",
+                    "description": "WARN0272",
                     "type": "boolean"
                 },
                 "entries": {
@@ -28549,7 +28535,7 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "behind": {
-                    "description": "why it is behind (WARN0269), empty when not",
+                    "description": "why it is behind (WARN0271), empty when not",
                     "type": "string"
                 },
                 "lastWrite": {
@@ -29107,31 +29093,11 @@ const docTemplate = `{
                 }
             }
         },
-        "config.Cloud18DeviceLogin": {
-            "type": "object",
-            "properties": {
-                "expiresAt": {
-                    "type": "string"
-                },
-                "userCode": {
-                    "type": "string"
-                },
-                "verificationUri": {
-                    "type": "string"
-                },
-                "verificationUriComplete": {
-                    "type": "string"
-                }
-            }
-        },
         "config.Cloud18IdentityStatus": {
             "type": "object",
             "properties": {
                 "connectedAt": {
                     "type": "string"
-                },
-                "device": {
-                    "$ref": "#/definitions/config.Cloud18DeviceLogin"
                 },
                 "expires": {
                     "type": "string"
@@ -29140,7 +29106,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "state": {
-                    "description": "none: nobody connected it; pending: a device login waits for the person; connected;\nreconnect: the login ended or ends soon, someone must connect again",
+                    "description": "none: not registered; registered: no login yet, made at the next use or keep-alive;\nconnected; refused: the realm refused the registered account, register again",
                     "type": "string"
                 },
                 "sub": {
@@ -29205,6 +29171,50 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "volumename": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.MarketplaceS3": {
+            "type": "object",
+            "properties": {
+                "auth": {
+                    "description": "cloud18-sso, cloud18-keys or partner-token",
+                    "type": "string"
+                },
+                "bucket": {
+                    "description": "Bucket: the bucket an archive on this storage uses (S3Provider.Bucket); with the Cloud18\nSSO, each identity has its own folder in it",
+                    "type": "string"
+                },
+                "cloud18Sso": {
+                    "description": "Cloud18SSO: reached with the Cloud18 identity, no keys (S3Provider.Cloud18SSO)",
+                    "type": "boolean"
+                },
+                "dc": {
+                    "type": "string"
+                },
+                "dcLocation": {
+                    "type": "string"
+                },
+                "endpoint": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "providerSource": {
+                    "$ref": "#/definitions/config.S3ProviderSource"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "storageClass": {
+                    "type": "string"
+                },
+                "title": {
                     "type": "string"
                 }
             }
@@ -29403,6 +29413,17 @@ const docTemplate = `{
                     "type": "string"
                 }
             }
+        },
+        "config.S3ProviderSource": {
+            "type": "string",
+            "enum": [
+                "app",
+                "custom"
+            ],
+            "x-enum-varnames": [
+                "S3ProviderSourceApp",
+                "S3ProviderSourceCustom"
+            ]
         },
         "config.SecretKvConfig": {
             "type": "object",
@@ -30316,6 +30337,10 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "cloud18AlertSlackUser": {
+                    "type": "string"
+                },
+                "cloud18ArchiveOfferRequests": {
+                    "description": "Cloud18ArchiveOfferRequests: the archive offers of the marketplace catalogue whose access\nthe cluster asks the back-office for (comma-separated offer names); the BO harvests it and\ndelivers, in the cluster's inject.toml, the S3 provider (OVH S3) or the archive (a PBS token)",
                     "type": "string"
                 },
                 "cloud18CostCurrency": {
@@ -32444,6 +32469,15 @@ const docTemplate = `{
                 "replicationUseSsl": {
                     "type": "boolean"
                 },
+                "resourceManagerDiscoveredCpuCores": {
+                    "type": "number"
+                },
+                "resourceManagerDiscoveredInterval": {
+                    "type": "integer"
+                },
+                "resourceManagerDiscoveredMemoryMb": {
+                    "type": "number"
+                },
                 "resourceManagerInfraCpuCores": {
                     "type": "number"
                 },
@@ -33372,6 +33406,84 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "server.ArchiveOffer": {
+            "type": "object",
+            "properties": {
+                "added": {
+                    "description": "Added: the cluster has the offer's storage: an S3 provider of its name, on its endpoint (and\nreached with the Cloud18 SSO for an SSO storage); for an offer delivered as an archive (PBS),\nan archive of its name and plugin",
+                    "type": "boolean"
+                },
+                "auth": {
+                    "type": "string"
+                },
+                "dc": {
+                    "type": "string"
+                },
+                "dcLocation": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "partner": {
+                    "type": "string"
+                },
+                "plugin": {
+                    "description": "the archive plugin it runs with (archive-plakar-s3, archive-pbs)",
+                    "type": "string"
+                },
+                "priceEurBauMonth": {
+                    "description": "per BAU (20 GiB) per month",
+                    "type": "number"
+                },
+                "priceEurMonth": {
+                    "type": "number"
+                },
+                "reason": {
+                    "description": "Reason: why the offer is not usable now",
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "requestable": {
+                    "description": "Requestable: the back-office delivers the storage's keys to the cluster on request\n(cloud18-archive-offer-requests); Requested: asked, not delivered yet",
+                    "type": "boolean"
+                },
+                "requested": {
+                    "type": "boolean"
+                },
+                "retrievalCostEurGib": {
+                    "type": "number"
+                },
+                "s3": {
+                    "description": "S3 is the catalogue's storage of an S3 offer (MarketplaceArchiveOffer.S3Provider)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.MarketplaceS3"
+                        }
+                    ]
+                },
+                "s3Provider": {
+                    "description": "S3Provider names the MarketplaceS3 entry of an S3 offer; empty for the others",
+                    "type": "string"
+                },
+                "sizeUnit": {
+                    "description": "the unit priceEurMonth is for: GiB, TiB or TB",
+                    "type": "string"
+                },
+                "storageClass": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "usable": {
+                    "description": "Usable: the cluster can add an archive on the offer's storage now: a storage reached with\nthe Cloud18 SSO on a replication-manager connected to Cloud18 (no key), or a storage whose\nkeys the back-office delivered (the S3 provider is there)",
                     "type": "boolean"
                 }
             }

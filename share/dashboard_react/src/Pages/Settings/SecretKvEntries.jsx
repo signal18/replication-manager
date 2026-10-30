@@ -38,7 +38,7 @@ const SETTING_LABELS = {
   'secret-id': 'Secret id'
 }
 
-// the state pill of an entry: off, behind (WARN0269) with its reason, or on
+// the state pill of an entry: off, behind (WARN0271) with its reason, or on
 function statePill(entry, state, variant) {
   if (!entry.enabled) return <Badge colorScheme='gray' variant={variant}>Off</Badge>
   if (state?.behind) {

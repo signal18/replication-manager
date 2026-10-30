@@ -27,7 +27,7 @@ import (
 // versioning) records it at the next tick, as before; each enabled vault entry gets it from
 // a bounded queue and a worker, never blocking the chain or the monitor (F2). The worker's
 // full pass reads every store and the newest version wins (time, then instance id); a store
-// behind is WARN0269 and gets the winner, a dropped version WARN0270. Only the active monitor
+// behind is WARN0271 and gets the winner, a dropped version WARN0272. Only the active monitor
 // writes the vaults. A value never reaches a log (F10): a line names the store, path and key.
 
 // databaseSecretKeys are the chain's credentials a database server uses: each is written
@@ -468,7 +468,7 @@ func (cluster *Cluster) applyCredential(key string) {
 // seedVaultPathSecrets reads, once, each credential whose config value is still a Vault path
 // (the way Vault was declared before #2227) from the first active vault entry, and writes the
 // value through the chain: the config holds the value from now on, every store gets it. A path
-// pinned in a config file is read at each start, as before, and WARN0271 asks the operator to
+// pinned in a config file is read at each start, as before, and WARN0273 asks the operator to
 // remove the pin.
 func (cluster *Cluster) seedVaultPathSecrets() {
 	entries := cluster.Conf.SecretKvActive()
@@ -659,7 +659,7 @@ func (cluster *Cluster) writeSecretVersionFile() error {
 
 // CheckSecretKvStores runs at each tick on the active monitor: the full pass at start, for a
 // store turned on and after drops; the worker back when versions wait; the states raised
-// again: WARN0269 per store behind, WARN0270 while drops are not repaired, WARN0271 per
+// again: WARN0271 per store behind, WARN0272 while drops are not repaired, WARN0273 per
 // credential pinned to a Vault path. It only queues: never blocks.
 func (cluster *Cluster) CheckSecretKvStores() {
 	// a standby takes the versions the active monitor pushed (rule 11)
@@ -674,8 +674,8 @@ func (cluster *Cluster) CheckSecretKvStores() {
 	c.mu.Unlock()
 	if cluster.ConfigStateMachine != nil {
 		for _, key := range pinned {
-			cluster.ConfigStateMachine.AddState("WARN0271", state.State{ErrType: "WARNING", ErrFrom: "CONF", ServerUrl: key,
-				ErrDesc: fmt.Sprintf(clusterError["WARN0271"], key)})
+			cluster.ConfigStateMachine.AddState("WARN0273", state.State{ErrType: "WARNING", ErrFrom: "CONF", ServerUrl: key,
+				ErrDesc: fmt.Sprintf(clusterError["WARN0273"], key)})
 		}
 	}
 	if !cluster.IsActive() || cluster.SecurityStateMachine == nil {
@@ -714,16 +714,16 @@ func (cluster *Cluster) CheckSecretKvStores() {
 		cluster.startSecretStores()
 	}
 	for name, why := range behind {
-		cluster.SecurityStateMachine.AddState("WARN0269", state.State{ErrType: "WARNING", ErrFrom: "SECURITY", ServerUrl: name,
-			ErrDesc: fmt.Sprintf(clusterError["WARN0269"], name, why)})
+		cluster.SecurityStateMachine.AddState("WARN0271", state.State{ErrType: "WARNING", ErrFrom: "SECURITY", ServerUrl: name,
+			ErrDesc: fmt.Sprintf(clusterError["WARN0271"], name, why)})
 	}
 	if dropsUnresolved {
 		limit := cluster.Conf.SecretKvQueueLimit
 		if limit <= 0 {
 			limit = credstore.DefaultStoreQueueLimit
 		}
-		cluster.SecurityStateMachine.AddState("WARN0270", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
-			ErrDesc: fmt.Sprintf(clusterError["WARN0270"], drops, limit)})
+		cluster.SecurityStateMachine.AddState("WARN0272", state.State{ErrType: "WARNING", ErrFrom: "SECURITY",
+			ErrDesc: fmt.Sprintf(clusterError["WARN0272"], drops, limit)})
 	}
 }
 
@@ -847,7 +847,7 @@ func SecretServerName(srv *ServerMonitor) string { return secretServerName(srv) 
 // not version (versioning off, or no version yet): a database engine first, else the newest
 // across the entries (rule 1b). The value becomes the current one with its own time, no new
 // version. The whole read is bounded by secret-kv-start-timeout: past it, or on a failure,
-// the cluster starts on what it has and the entry is behind (WARN0269); the background full
+// the cluster starts on what it has and the entry is behind (WARN0271); the background full
 // pass catches up. Never on the monitor tick.
 func (cluster *Cluster) ReadVaultsAtStart() {
 	entries := cluster.Conf.SecretKvActive()
@@ -1041,11 +1041,11 @@ func (cluster *Cluster) setStoreWritten(entry string) {
 // SecretKvState is a vault entry's state for the API and the GUI: never a value.
 type SecretKvState struct {
 	LastWrite time.Time `json:"lastWrite,omitempty"` // its last successful write in this run
-	Behind    string    `json:"behind,omitempty"`    // why it is behind (WARN0269), empty when not
+	Behind    string    `json:"behind,omitempty"`    // why it is behind (WARN0271), empty when not
 }
 
 // SecretKvListResult is the vault entry list: the entries (secrets never returned, their
-// names in secretsSet), each one's state, the plugins' manifests, the queue's drops (WARN0270)
+// names in secretsSet), each one's state, the plugins' manifests, the queue's drops (WARN0272)
 // and the settings of the copies.
 type SecretKvListResult struct {
 	Entries      []config.SecretKvConfig         `json:"entries"`
@@ -1054,7 +1054,7 @@ type SecretKvListResult struct {
 	Pinned       bool                            `json:"pinned"` // a config file sets the list: change it there
 	Queued       int                             `json:"queued"`
 	Dropped      uint64                          `json:"dropped"`
-	DropsPending bool                            `json:"dropsPending"` // WARN0270
+	DropsPending bool                            `json:"dropsPending"` // WARN0272
 	Settings     map[string]int                  `json:"settings"`
 	Credentials  []CredentialInfo                `json:"credentials"`
 }

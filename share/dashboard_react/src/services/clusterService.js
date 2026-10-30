@@ -58,6 +58,7 @@ export const clusterService = {
   putSecretKv,
   switchSecretKv,
   removeSecretKv,
+  getArchiveOffers,
   addArchive,
   editArchive,
   renameArchive,
@@ -891,14 +892,15 @@ function monitorAllSchemas(clusterName, baseURL) {
 //#endregion Database service APIs
 
 //#region Test run APIs
-function runSysbench(clusterName, threads, baseURL, test, time) {
-  const params = `threads=${threads}` + (test ? `&test=${test}` : '') + (time ? `&time=${time}` : '')
+function runSysbench(clusterName, threads, baseURL, test, time, tables) {
+  const params = `threads=${threads}` + (test ? `&test=${test}` : '') + (time ? `&time=${time}` : '') + (tables ? `&tables=${tables}` : '')
   return getApi(baseURL).get(`clusters/${clusterName}/actions/sysbench?${params}`)
 }
 
-function cleanupSysbench(clusterName, test, baseURL) {
-  const params = test ? `?test=${test}` : ''
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/sysbench-cleanup${params}`)
+function cleanupSysbench(clusterName, test, baseURL, tables) {
+  const params = [test ? `test=${test}` : '', tables ? `tables=${tables}` : ''].filter(Boolean).join('&')
+  const query = params ? `?${params}` : ''
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/sysbench-cleanup${query}`)
 }
 
 function runRegressionTests(clusterName, testName, baseURL) {
@@ -1169,6 +1171,10 @@ function removeSecretKv(clusterName, entryName, baseURL) {
 // archive list (#2091): secrets go in through add and edit and never come back
 function getArchiveList(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/archive-list`)
+}
+
+function getArchiveOffers(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/archive-offers`)
 }
 
 function addArchive(clusterName, spec, baseURL) {

@@ -5,12 +5,15 @@
 package regtest
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 // A test runs only on a cluster that matches its targets; a test without targets runs everywhere.
@@ -64,6 +67,37 @@ func TestSkipReason(t *testing.T) {
 	}
 }
 
+// A MySQL or Percona cluster runs the tests only when it declares the mysqlgtid tag, as
+// the provisioning builds it (#2226); group replication and MariaDB need no tag.
+func TestMySQLClusterDeclaresGTIDTag(t *testing.T) {
+	newCluster := func(flavor string, grouprep bool, tags ...string) *cluster.Cluster {
+		cl := &cluster.Cluster{Conf: new(config.Config)}
+		cl.Conf.MultiMasterGrouprep = grouprep
+		cl.Servers = []*cluster.ServerMonitor{{DBVersion: &version.Version{Flavor: flavor, Major: 8, Minor: 4}}}
+		cl.Configurator.DBTags = tags
+		return cl
+	}
+	regtest := new(RegTest)
+	for _, c := range []struct {
+		name string
+		cl   *cluster.Cluster
+		skip string
+	}{
+		{"mysql without the tag", newCluster("MySQL", false, "semisync", "row"), "mysqlgtid"},
+		{"percona without the tag", newCluster("Percona", false), "mysqlgtid"},
+		{"percona with the tag", newCluster("Percona", false, "mysqlgtid"), ""},
+		{"mysql with the tag", newCluster("MySQL", false, "semisync", "mysqlgtid"), ""},
+		{"mysql group replication", newCluster("MySQL", true), ""},
+		{"mariadb", newCluster("MariaDB", false), ""},
+	} {
+		// a test without targets: the tag applies to every test
+		_, got := regtest.MatchTarget(c.cl, "testFailoverAssyncAutoRejoinNoGtid")
+		if c.skip == "" && got != "" || c.skip != "" && !strings.Contains(got, c.skip) {
+			t.Errorf("%s: %q, want %q", c.name, got, c.skip)
+		}
+	}
+}
+
 // A must-have or must-set variable names a key that exists: a typo would skip its test
 // everywhere, or fail it.
 func TestConfigVariableKeys(t *testing.T) {
@@ -92,6 +126,46 @@ func TestTargetsDeclared(t *testing.T) {
 	for name := range testTargets {
 		if !slices.Contains(tests, name) {
 			t.Errorf("testTargets declares %s, which is not in tests", name)
+		}
+	}
+}
+
+// A consistency check names the table the benchmark writes (Cluster.BenchTable), never
+// test.sbtest: nothing writes it, and a table that cannot be checksummed fails (#2228).
+// It catches a literal table only: a name held in a variable passes it.
+func TestConsistencyChecksUseBenchTable(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(src), `CheckTableConsistency("`) {
+			t.Errorf("%s: CheckTableConsistency with a literal table, use BenchTable()", f)
+		}
+	}
+}
+
+// A rolling upgrade to the release the nodes run upgrades nothing: SKIP, never PASS (#2228).
+func TestNothingToUpgrade(t *testing.T) {
+	for _, c := range []struct {
+		from, release string
+		want          bool
+	}{
+		{"8.0.41", "8.0.41", true},
+		{"8.0.41", "8.0.46", false},
+		{"", "8.0.46", false},
+		{"8.0.41", "", false},
+		{"", "", false},
+	} {
+		if got := nothingToUpgrade(c.from, c.release); got != c.want {
+			t.Errorf("%q -> %q: %t, want %t", c.from, c.release, got, c.want)
 		}
 	}
 }

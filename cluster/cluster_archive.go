@@ -165,8 +165,16 @@ func (cluster *Cluster) externalArchiveLocation(a config.ArchiveConfig, m config
 // SSO user's (ssoUser), the only one its policy opens.
 func (cluster *Cluster) archiveBucketFolder(a config.ArchiveConfig, ssoUser string) (string, string) {
 	bucket := strings.Trim(archiveSetting(a, config.ConstArchiveSettingS3Bucket), "/")
-	if provider := archiveSetting(a, config.ConstArchiveSettingS3Provider); bucket == "" && (provider == ConstCloud18Provider || provider == cluster.Conf.BackupStreamingProvider) {
+	provider := archiveSetting(a, config.ConstArchiveSettingS3Provider)
+	if bucket == "" && (provider == ConstCloud18Provider || provider == cluster.Conf.BackupStreamingProvider) {
 		bucket = cluster.Conf.BackupStreamingBucket
+	}
+	if bucket == "" { // the provider's own bucket (one delivered with its bucket)
+		for _, p := range cluster.GetS3ProvidersSnapshot() {
+			if p.Name == provider {
+				bucket = strings.Trim(p.Bucket, "/")
+			}
+		}
 	}
 	prefix := strings.Trim(archiveSetting(a, config.ConstArchiveSettingS3Prefix), "/")
 	if prefix == "" {

@@ -37,7 +37,7 @@ func writeSecretKvError(w http.ResponseWriter, err error) {
 
 // handlerMuxSecretKvList lists the cluster's vault entries.
 // @Summary List the credential store entries
-// @Description The cluster's vault entries (secrets never returned, only the names of those set; offer: the Cloud18 marketplace offer an entry comes from, name, title and partner, null for the user's own), each one's state (last write, behind: WARN0269), the queue's drops (WARN0270), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.
+// @Description The cluster's vault entries (secrets never returned, only the names of those set; offer: the Cloud18 marketplace offer an entry comes from, name, title and partner, null for the user's own), each one's state (last write, behind: WARN0271), the queue's drops (WARN0272), the plugins' manifests, the copy settings, and the database credentials' starting value source, current source, version count and refusal.
 // @Tags ClusterCredentials
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)

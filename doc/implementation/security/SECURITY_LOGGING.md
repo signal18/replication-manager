@@ -142,13 +142,20 @@ against a local account (`admin`, `system`, `dba`, …). The registering owner
 | Field | Value |
 |---|---|
 | Type | `bool` |
-| Default | `false` |
+| Default | `true` (was `false` before 3.1.47, #2243) |
 | Scope | `server` (global, not per-cluster) |
 | Config key | `monitoring-log-api-login` |
 | JSON key | `monitoringLogApiLogin` |
 
-When `true`, successful logins via `/api/login` and `/secret-login` are emitted as security events.  
-Failure events (`api_auth_failure`, `api_account_locked`) are **always** logged regardless of this setting.
+When `true`, successful logins are emitted as security events: `/api/login`, Sign in with Cloud18,
+the Cloud18 token login, and `/secret-login`. Failure events (`api_auth_failure`,
+`api_account_locked`) are **always** logged regardless of this setting.
+
+On by default since 3.1.47 (#2243): repman writes no HTTP access log, so the login record is the
+only trace of who used the API; off, an operator investigating access found failures but no
+successful login. API tokens are bearer credentials checked on each call, never a login: token
+calls add no line. An automated account that logs in on every run adds one line per run: add it
+to `monitoring-log-api-login-silent-users`. Set `monitoring-log-api-login = false` to turn it off.
 
 **GUI:** Global Settings accordion → **Log API Login** (toggle switch).
 

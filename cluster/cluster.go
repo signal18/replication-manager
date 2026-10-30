@@ -226,6 +226,7 @@ type Cluster struct {
 	catalogueSaved map[string][]byte          // global backup catalogue file -> its content last written (#2091)
 	catalogueRun   catalogueRebuildState      // the catalogue's rebuild from the archives (#2091), guarded by catalogueMu
 	gatewayUnitsMu sync.Mutex                 // guards GatewayUnits: the gateway collector never waits on the cluster lock a tick holds (#2196)
+	rejoinMarkerMu sync.Mutex                 // orders the FailoverHistory slice swaps of the rejoin outcomes and the reads of the one-shot guard, the re-arm and LatestCrashURL (#2226); other readers (the JSON) read it as before. A leaf lock: nothing else is taken under it
 	BackupMount    BackupMountState           `json:"backupMount" groups:"web"` // its state, for the Backup settings
 	Agents         []Agent                    `json:"agents" groups:"web"`
 	AgentMaxFreq   map[string]int64           `json:"-"`
@@ -440,6 +441,7 @@ type Cluster struct {
 	inConnectVault                      bool                        `json:"-"`
 	CanInitNodes                        bool                        `json:"canInitNodes" groups:"web"`
 	errorInitNodes                      error                       `json:"-"`
+	benchmarkFailure                    atomic.Value                `json:"-"` // string: the last benchmark's failure, "" once one runs through (WARN0270)
 	CanConnectVault                     bool                        `json:"canConnectVault"`
 	errorConnectVault                   error                       `json:"-"`
 	SqlErrorLog                         *logsql.Logger              `json:"-"`
@@ -1471,6 +1473,7 @@ func (cluster *Cluster) tickBody() {
 				if cluster.Conf.GraphiteMetrics && heartbeats%5 != 0 {
 					cluster.StateMachine.PreserveState("WARN0192")
 				}
+				cluster.checkBenchmarkState()
 				if !cluster.CanInitNodes {
 					cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
 				}

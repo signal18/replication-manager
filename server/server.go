@@ -146,6 +146,11 @@ type ReplicationManager struct {
 	// written under the repman lock during Heartbeat.
 	peerHeartbeatFailures map[string]string `json:"-"`
 	peerHeartbeatSameUID  bool              `json:"-"`
+	// pullPluginRefused holds, per pulled plugin binary, the hash of the copy
+	// whose signature check failed, so the same binary is neither verified nor
+	// logged again at the next pull (#2233). Only syncPluginsFromPull uses it,
+	// and the git manager runs one pull at a time.
+	pullPluginRefused map[string]string `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag             []string                    `json:"-"`
 	ConfigPathList              []string                    `json:"-"`
@@ -176,7 +181,7 @@ type ReplicationManager struct {
 	IsGlobalInterventionPending bool                        `json:"isGlobalInterventionPending"`
 	GlobalInterventionEntry     *cluster.InterventionEntry  `json:"globalInterventionEntry,omitempty"`
 	ActiveInterventionCount     int                         `json:"activeInterventionCount"`
-	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, pending, connected, reconnect; "" Cloud18 off
+	Cloud18LoginState           string                      `json:"cloud18LoginState"` // the Cloud18 login (#2159): none, registered, connected, refused; "" Cloud18 off
 	UserAuthTry                 sync.Map                    `json:"-"`
 	apiTokens                   apiTokenStoreState          // user-issued API tokens store (api_token.go)
 	ViperConfig                 *viper.Viper                `json:"-"`
@@ -578,7 +583,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.LogLevelDatabaseAudit, "log-level-database-audit", 3, "Log Level for fetcher audit log")
 	flags.BoolVar(&conf.LogPlugin, "log-plugin", false, "Enable generic log-tailer plugin checks (errorlog, sqlerrorlog, slowlog 24h windows)")
 	flags.BoolVar(&conf.MonitorBinlogEvents, "monitoring-binlog-events", false, "Enable incremental binlog QUERY event scanning (feeds binlog security plugins: cleartext-password, credit-card-leak)")
-	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", false, "Log successful API logins to the global server log and security log")
+	flags.BoolVar(&conf.MonitoringLogAPILogin, "monitoring-log-api-login", true, "Log successful API logins to the global server log and security log")
 	flags.StringVar(&conf.MonitoringLogAPILoginSilentUsers, "monitoring-log-api-login-silent-users", "system", "Comma-separated list of usernames excluded from API login logging (default: system, used by dbjobs polling)")
 	flags.IntVar(&conf.LogPluginLevel, "log-level-plugin", 2, "Log verbosity level for log-tailer plugins (1=error,2=warn,3=info,4=debug)")
 
@@ -1209,6 +1214,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.Float64Var(&conf.ResourceManagerSmtGain, "resource-manager-smt-gain", 1, "Throughput of a physical core with all its SMT threads busy, relative to one thread (hyperthreading gain, e.g. 1.15). On a node whose agent reports more threads than cores, the capacity counts cores x gain and a DBU core gets threads-per-core / gain logical CPUs of quota, so a DBU core delivers a real core. 1 or less = SMT not accounted (capacity in physical cores, quota 1 CPU per core)")
 	flags.Float64Var(&conf.ResourceManagerInfraIops, "resource-manager-infra-iops", 0, "ResourceManager infra capacity override: total IOPS. 0 = unset (use the monitored/calibrated value).")
 	flags.Float64Var(&conf.ResourceManagerInfraNetworkMbps, "resource-manager-infra-network-mbps", 0, "ResourceManager infra capacity override: total public network bandwidth in Mbps (the BPU axis). 0 = unset (use the monitored value).")
+	flags.Float64Var(&conf.ResourceManagerDiscoveredCpuCores, "resource-manager-discovered-cpu-cores", 0, "ResourceManager infra capacity discovered from the agents: total CPU cores (x SMT gain). Written by replication-manager, not an override.")
+	flags.Float64Var(&conf.ResourceManagerDiscoveredMemoryMB, "resource-manager-discovered-memory-mb", 0, "ResourceManager infra capacity discovered from the agents: total memory in MB. Written by replication-manager, not an override.")
+	flags.IntVar(&conf.ResourceManagerDiscoveredInterval, "resource-manager-discovered-interval", 3600, "Seconds between two readings of the agents' capacity into resource-manager-discovered-*, on its own timer (not the monitoring loop); after a start it is read as soon as the agents are, then every interval. A change applies without a restart. 0 = never.")
 	flags.BoolVar(&conf.ProvSerialized, "prov-serialized", false, "Disable concurrent provisionning")
 	flags.StringVar(&conf.ProvDBClientBasedir, "prov-db-client-basedir", "/usr/bin", "Path to database client binary")
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
@@ -1273,6 +1281,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18IdentityURL, "cloud18-identity-url", config.ConstCloud18IdentityURL, "Cloud18 identity realm (OpenID Connect issuer): a person connects this replication-manager to it once (device login), for the S3 SSO storages, the Cloud18 vault and the Cloud18 GitLab token")
 	flags.BoolVar(&conf.Cloud18SSOLogin, "cloud18-sso-login", true, "On a registered repman with a public https address (api-public-url), the login page offers Sign in and Sign up with Cloud18: the browser signs in at the Cloud18 realm once for every such repman (#2185)")
 	flags.StringVar(&conf.Cloud18PlatformDescription, "cloud18-platform-description", "", "Marketing banner display on the cloud18 portal describing the infrastucture")
+	flags.StringVar(&conf.Cloud18ArchiveOfferRequests, "cloud18-archive-offer-requests", "", "Archive offers of the Cloud18 marketplace whose access the cluster asks the back-office for (comma-separated offer names): it delivers the S3 provider or the archive")
 	flags.StringVar(&conf.Cloud18InfraDataCenters, "cloud18-infra-data-centers", "", "Infrastucture datacenters name")
 	flags.Float64Var(&conf.Cloud18InfraPublicBandwidth, "cloud18-infra-public-bandwidth", 0, "Infrastucture public bandwidth")
 	flags.Float64Var(&conf.Cloud18PromotionPct, "cloud18-promotion-pct", 0, "Promotion in pourcentage")
@@ -3105,6 +3114,8 @@ func (repman *ReplicationManager) Run() error {
 	//then it generate a new PAT gitlab to preserved a valid PAT in order to clone/push/pull on the distant gitlab
 	// GWU (#1872): poll the gateways' HAProxy stats for the egress of every cluster.
 	go repman.gatewayTrafficLoop()
+	// resource-manager-discovered-*: the agents' capacity into the config, on its own interval.
+	go repman.discoveredResourcesLoop()
 
 	// App API tokens (#2158) are renewed at provision: warn daily about those close to expiry.
 	go func() {
@@ -3658,6 +3669,8 @@ func (repman *ReplicationManager) initCluster(clusterName string) (*cluster.Clus
 	repman.resourceManager.SetQuotaPct(repman.Conf.ResourceManagerInfraQuotaPct)
 	repman.resourceManager.SetSmtGain(repman.Conf.ResourceManagerSmtGain)
 	repman.resourceManager.SetPrices(repman.billingPrices())
+	// the catalogue read at start (LoadMarketplaceCatalogue) before the manager existed
+	repman.resourceManager.SetMarketplaceCatalogue(repman.MarketplaceCatalogue())
 	if repman.Conf.WorkingDir != "" {
 		logf := func(format string, args ...interface{}) {
 			if repman.Logrus != nil {

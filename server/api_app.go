@@ -788,7 +788,7 @@ func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *ht
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Param node path string false "Node Name (optional, if not provided, will restart default node). Can use ALL or * to restart on all nodes."
+// @Param node path string false "Node Name (optional). OpenSVC v3: without it, ALL or *, every instance restarts, one at a time by the orchestrator; with it, that instance only. OpenSVC v2: without it, the default node."
 // @Success 200 {string} string "App Service Restarted"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" "Server Not Found"
@@ -839,10 +839,13 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 		return
 	}
 	nodeParam := vars["node"]
-	if nodeParam == "" {
+	// OpenSVC v3: no node restarts every instance (the orchestrator does it one at a time),
+	// a node that instance only (#2223); v2 restarts the default agent
+	isV3 := mycluster.GetOrchestratorVersion() == "v3"
+	if nodeParam == "" && !isV3 {
 		nodeParam = app.GetAgent()
 	}
-	if nodeParam == "" {
+	if nodeParam == "" && !isV3 {
 		w.WriteHeader(http.StatusBadRequest)
 		if err := json.NewEncoder(w).Encode(map[string]string{"error": "Node is required when app has no default agent"}); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)
@@ -863,6 +866,7 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 		"message": "App service restarted successfully",
 		"app":     app.GetName(),
 		"node":    nodeParam,
+		"all":     cluster.AppRestartAllNodes(nodeParam),
 		"rid":     ridParam,
 	}); err != nil {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %s", err)

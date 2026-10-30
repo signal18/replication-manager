@@ -277,6 +277,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveList)),
 	))
+	router.Handle("/api/clusters/{clusterName}/archive-offers", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveOffers)),
+	)).Methods(http.MethodGet)
 	router.Handle("/api/clusters/{clusterName}/archive-snapshots/{archiveName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchiveSnapshots)),
@@ -482,14 +486,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18Identity)),
 	)).Methods(http.MethodGet)
-	router.Handle("/api/clusters/settings/actions/cloud18-identity/connect", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18IdentityConnect)),
-	)).Methods(http.MethodPost)
-	router.Handle("/api/clusters/settings/actions/cloud18-identity/disconnect", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCloud18IdentityDisconnect)),
-	)).Methods(http.MethodPost)
 	router.Handle("/api/clusters/settings/actions/calibrate-smt-gain", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCalibrateSMTGain)),
@@ -4365,6 +4361,26 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err = mycluster.SetBackupLogicalRemoteArmTimeout(value); err != nil {
 			return err
 		}
+	case "sysbench-test":
+		if err := mycluster.SetSysbenchTest(value); err != nil {
+			return err
+		}
+	case "sysbench-time":
+		if err := mycluster.SetSysbenchTime(value); err != nil {
+			return err
+		}
+	case "sysbench-threads":
+		if err := mycluster.SetSysbenchThreads(value); err != nil {
+			return err
+		}
+	case "sysbench-tables":
+		if err := mycluster.SetSysbenchTables(value); err != nil {
+			return err
+		}
+	case "sysbench-scale":
+		if err := mycluster.SetSysbenchScale(value); err != nil {
+			return err
+		}
 	case "backup-keep-hourly":
 		err = mycluster.SetBackupKeepHourly(value)
 		if err != nil {
@@ -5161,6 +5177,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Cloud18IdentityURL = value
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
+	case "cloud18-archive-offer-requests":
+		if err := validArchiveOfferRequests(value); err != nil {
+			return err
+		}
+		mycluster.Conf.Cloud18ArchiveOfferRequests = normalizedArchiveOfferRequests(value)
 	case "log-level-file":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
@@ -7447,8 +7468,12 @@ func (repman *ReplicationManager) handlerMuxClusterOptimize(w http.ResponseWrite
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Param threads query string false "Number of threads"
+// @Param test query string false "Sysbench test (sysbench-test)"
+// @Param time query string false "Duration in seconds (sysbench-time)"
+// @Param threads query string false "Number of threads, 0 = scale from 1 to 2×cores (sysbench-threads)"
+// @Param tables query string false "Number of tables (sysbench-tables)"
 // @Success 200 {string} string "Successfully triggered sysbench"
+// @Failure 400 {string} string "Unknown test or invalid number: nothing is changed or started"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 409 {string} string "No proxy configured"
 // @Failure 500 {string} string "No cluster"
@@ -7467,21 +7492,15 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 			http.Error(w, "No proxy configured and no master", http.StatusConflict)
 			return
 		}
-		if r.URL.Query().Get("test") != "" {
-			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
+		q := r.URL.Query()
+		if err := mycluster.SetSysbenchRunParams(q.Get("test"), q.Get("time"), q.Get("threads"), q.Get("tables")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		if r.URL.Query().Get("time") != "" {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench time to %ss", r.URL.Query().Get("time"))
-			mycluster.SetSysbenchTime(r.URL.Query().Get("time"))
-		}
-		if r.URL.Query().Get("threads") == "0" {
+		if q.Get("threads") == "0" {
 			// threads=0 means scale from 1 to 2×cores
 			go mycluster.RunSysbenchScaleThreads()
 		} else {
-			if r.URL.Query().Get("threads") != "" {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Sysbench threads to %s", r.URL.Query().Get("threads"))
-				mycluster.SetSysbenchThreads(r.URL.Query().Get("threads"))
-			}
 			go mycluster.RunSysbench()
 		}
 	}
@@ -7501,8 +7520,9 @@ func (repman *ReplicationManager) handlerMuxClusterSysbenchCleanup(w http.Respon
 			http.Error(w, "No proxy configured and no master", http.StatusConflict)
 			return
 		}
-		if r.URL.Query().Get("test") != "" {
-			mycluster.SetSysbenchTest(r.URL.Query().Get("test"))
+		if err := mycluster.SetSysbenchRunParams(r.URL.Query().Get("test"), "", "", r.URL.Query().Get("tables")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		go mycluster.CleanupBench()
 		w.WriteHeader(http.StatusOK)
@@ -11192,6 +11212,7 @@ type s3ProviderRequest struct {
 	SecretKey      string                  `json:"secretkey,omitempty"`
 	Cloud18SSO     bool                    `json:"cloud18Sso,omitempty"`
 	RoleArn        string                  `json:"roleArn,omitempty"`
+	Bucket         string                  `json:"bucket,omitempty"`
 }
 
 const s3ProviderRequestBodyMaxBytes int64 = 1 << 20 // 1 MiB
@@ -11245,6 +11266,8 @@ type s3ProviderResponse struct {
 	Endpoint       string                  `json:"endpoint,omitempty"`
 	Region         string                  `json:"region,omitempty"`
 	SecretKey      string                  `json:"secretkey,omitempty"`
+	Cloud18SSO     bool                    `json:"cloud18Sso,omitempty"`
+	Bucket         string                  `json:"bucket,omitempty"`
 }
 
 // maskS3Provider builds a read-safe response from a provider:
@@ -11256,6 +11279,8 @@ func maskS3Provider(p config.S3Provider) s3ProviderResponse {
 		ProviderApp:    p.ProviderApp,
 		Endpoint:       p.Endpoint,
 		Region:         p.Region,
+		Cloud18SSO:     p.Cloud18SSO,
+		Bucket:         p.Bucket,
 	}
 	if p.SecretKey != "" {
 		resp.SecretKey = "****"
@@ -11404,6 +11429,7 @@ func (repman *ReplicationManager) handlerMuxClusterS3ProviderAdd(w http.Response
 			SecretKey:      req.SecretKey,
 			Cloud18SSO:     req.Cloud18SSO,
 			RoleArn:        req.RoleArn,
+			Bucket:         req.Bucket,
 		}
 		if err := p.Validate(); err != nil {
 			return s3ProviderCRUDHTTPResponse{statusCode: http.StatusBadRequest, message: fmt.Sprintf("Validation error: %v", err)}
@@ -11449,6 +11475,7 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 		SecretKey:      req.SecretKey,
 		Cloud18SSO:     req.Cloud18SSO,
 		RoleArn:        req.RoleArn,
+		Bucket:         req.Bucket,
 	}
 
 	// Capture old state and merge blank credentials before validation.
@@ -11468,6 +11495,10 @@ func prepareModifyProvider(req s3ProviderRequest, mycluster *cluster.Cluster) (c
 		if p.SecretKey == "" {
 			p.SecretKey = oldProvider.SecretKey
 		}
+	}
+	// the bucket a provider was delivered with stays when the edit form does not send it
+	if oldProvider != nil && p.Bucket == "" {
+		p.Bucket = oldProvider.Bucket
 	}
 
 	if err := p.Validate(); err != nil {

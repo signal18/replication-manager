@@ -76,7 +76,7 @@ func TestSecretFoldersLayout(t *testing.T) {
 }
 
 // #2227: a change is written as a version under every server in every active store; a
-// failing store never delays the change, and is WARN0269 until it gets the version
+// failing store never delays the change, and is WARN0271 until it gets the version
 func TestFailingVaultNeverBlocksSetAll(t *testing.T) {
 	good := vaultfake.New("kv", "role", "sid")
 	defer good.Close()
@@ -104,7 +104,7 @@ func TestFailingVaultNeverBlocksSetAll(t *testing.T) {
 		}
 	}
 	cl.CheckSecretKvStores()
-	if !hasState(cl.SecurityStateMachine, "WARN0269@vault-b") || hasState(cl.SecurityStateMachine, "WARN0269@vault-a") {
+	if !hasState(cl.SecurityStateMachine, "WARN0271@vault-b") || hasState(cl.SecurityStateMachine, "WARN0271@vault-a") {
 		t.Fatalf("states %v", cl.SecurityStateMachine.GetStates())
 	}
 	if cl.storeQueue().Len() != 2 {
@@ -117,7 +117,7 @@ func TestFailingVaultNeverBlocksSetAll(t *testing.T) {
 	}
 	cl.SecurityStateMachine.ClearState()
 	cl.CheckSecretKvStores()
-	if hasState(cl.SecurityStateMachine, "WARN0269@vault-b") || bad.Get(testSpace+"/databases/db1/db-servers-credential") == nil {
+	if hasState(cl.SecurityStateMachine, "WARN0271@vault-b") || bad.Get(testSpace+"/databases/db1/db-servers-credential") == nil {
 		t.Fatal("the store did not catch up")
 	}
 }
@@ -220,7 +220,7 @@ func TestRotateWithVaultEngine(t *testing.T) {
 }
 
 // #2227: a credential still declared by a Vault path is read once and stored through the
-// chain; a path pinned in a file is read at each start and raises WARN0271
+// chain; a path pinned in a file is read at each start and raises WARN0273
 func TestSeedVaultPathSecrets(t *testing.T) {
 	v := vaultfake.New("kv", "role", "sid")
 	defer v.Close()
@@ -247,7 +247,7 @@ func TestSeedVaultPathSecrets(t *testing.T) {
 		t.Fatalf("pinned %q", got)
 	}
 	cl.CheckSecretKvStores()
-	if !hasState(cl.ConfigStateMachine, "WARN0271@replication-credential") || hasState(cl.ConfigStateMachine, "WARN0271@db-servers-credential") {
+	if !hasState(cl.ConfigStateMachine, "WARN0273@replication-credential") || hasState(cl.ConfigStateMachine, "WARN0273@db-servers-credential") {
 		t.Fatalf("config states %v", cl.ConfigStateMachine.GetStates())
 	}
 	// the next start: the seeded value is no path any more, only the pin is read again
@@ -259,7 +259,7 @@ func TestSeedVaultPathSecrets(t *testing.T) {
 	}
 }
 
-// #2227: the drops of a full queue are WARN0270 until the queue drains, then a full pass is due
+// #2227: the drops of a full queue are WARN0272 until the queue drains, then a full pass is due
 func TestStoreQueueDropsState(t *testing.T) {
 	v := vaultfake.New("kv", "role", "sid")
 	defer v.Close()
@@ -268,7 +268,7 @@ func TestStoreQueueDropsState(t *testing.T) {
 	cl.Servers = append(cl.Servers, &ServerMonitor{Name: "db3"})
 	cl.CredentialChain().Set("db-servers-credential", "u:x")
 	cl.CheckSecretKvStores()
-	if !hasState(cl.SecurityStateMachine, "WARN0270") {
+	if !hasState(cl.SecurityStateMachine, "WARN0272") {
 		t.Fatalf("states %v", cl.SecurityStateMachine.GetStates())
 	}
 	cl.secretKv.passDue.Store(false)
@@ -278,8 +278,8 @@ func TestStoreQueueDropsState(t *testing.T) {
 	}
 	cl.SecurityStateMachine.ClearState()
 	cl.CheckSecretKvStores()
-	if hasState(cl.SecurityStateMachine, "WARN0270") {
-		t.Fatal("WARN0270 after the queue drained")
+	if hasState(cl.SecurityStateMachine, "WARN0272") {
+		t.Fatal("WARN0272 after the queue drained")
 	}
 }
 
@@ -356,7 +356,7 @@ func TestReadVaultsAtStartRestores(t *testing.T) {
 }
 
 // #2227 rule 1b at start: a slow vault is bounded by secret-kv-start-timeout: the start goes
-// on with what it has and the entry is behind (WARN0269)
+// on with what it has and the entry is behind (WARN0271)
 func TestReadVaultsAtStartBounded(t *testing.T) {
 	v := vaultfake.New("kv", "role", "sid")
 	defer v.Close()
@@ -375,7 +375,7 @@ func TestReadVaultsAtStartBounded(t *testing.T) {
 		t.Fatalf("at start %q", got)
 	}
 	cl.CheckSecretKvStores()
-	if !hasState(cl.SecurityStateMachine, "WARN0269@vault-a") {
+	if !hasState(cl.SecurityStateMachine, "WARN0271@vault-a") {
 		t.Fatalf("states %v", cl.SecurityStateMachine.GetStates())
 	}
 }

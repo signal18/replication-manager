@@ -106,6 +106,49 @@ on a cluster of the right setup, a missing replica is a broken cluster, not a te
 
 The other tests declare `anyCluster` for now; they get real targets as they are worked on.
 
+## MySQL runs on GTID (#2226)
+
+Before any target, `MatchTarget` skips every test on a MySQL or Percona cluster that does not declare the
+`mysqlgtid` tag (`prov-db-tags`), group replication excepted (GTID comes from its own tag). The
+provisioning adds the tag to every MySQL/Percona cluster it builds (`Cluster.addMySQLGTIDTag`), so a
+cluster without it is not what a client runs: there a failover is positional, the replicas wait in
+maintenance on the dead master, and a run on it reported failures of a setup nobody provisions.
+
+## The table a consistency check reads (#2228)
+
+The tests that end with `CheckTableConsistency` checked `test.sbtest`, a table nothing writes, while
+sysbench writes `replication_manager_schema.sbtest1` (`--mysql-db`). Two NULL checksums used to compare
+equal, so those tests passed without checking anything. Since a78c2f0a9, a table that cannot be
+checksummed fails, so they all failed, whatever the failover did. They now read `Cluster.BenchTable()`:
+`replication_manager_schema.sbtest1` for sysbench, `replication_manager_schema.bench` for the table
+benchmark.
+
+sysbench does not create its database. `PrepareBench` now creates `replication_manager_schema` on the
+master first (`dbhelper.CreateReplicationManagerSchema`), with the binary log on so the replicas get it.
+On a MySQL cluster nothing else had created it, and every prepare failed with error 1049.
+
+`CheckTableConsistency` lists its replicas once from the cluster's servers (`consistencyReplicas`), not
+from `cluster.slaves`, which every topology pass rebuilds from empty: an old master just rejoined was
+missing at the wait and back at the checksum. It first waits for every replica of that list taking part (`replicaTakesPart`: not stopped,
+broken or delayed) to reach the master's position, read once
+(`waitReplicaReachTarget`: `WaitSyncToTarget` turns, ended by an SQL error or no progress for
+`replicaNoProgressFor`, the loop the restore gate uses too). Compared at once, a replica still applying
+the 1,000,000-row prepare differed (MariaDB 11.8: 693,504 rows applied). A replica it does not wait for (stopped, broken, delayed) is
+still compared, so a replica lagging that way fails the check. The rejoin's end (`WaitRejoin`) comes before
+the next monitoring pass makes the old master a replica: the flashback and mysqldump failover tests wait
+for it (`WaitDatabaseReplica`), otherwise the check ran without the old master, the one server the test
+is about. The flashback and mysqldump
+failover tests prepare through `ResetBench` (cleanup, then prepare) and run `RunBench` on the table they prepared, as the other failover tests do: `RunSysbench`
+cleans up and prepares again, which raced the first prepare (error 1050).
+
+## A test that finds nothing to exercise SKIPs (#2228)
+
+A test may set `test.SkipReason` and return: the runner then records SKIP with that reason, like a missed
+target, and does not report it to the tested setups. `testRollingUpgrade` does so when the declared image
+resolves to the release the nodes already run (an exact release declares itself; a line, such as
+`mysql:8.0`, resolves to its newest release): it had reported PASS for 8.0.41 -> 8.0.41 and 8.0.46 -> 8.0.46
+without upgrading anything.
+
 ## Tests
 
 `regtest/regtest_targets_test.go`: `TestSkipReason` covers each condition, matched and missed, the unknown
@@ -113,4 +156,6 @@ DBU, and a test with two targets (either matches; both missed gives both reasons
 checks every test declares targets and every declaration names a test; `server/regtest_must_set_test.go`
 checks the must-set goes through setClusterSetting and an unknown key stops the test;
 `TestConfigVariableKeys` checks every must-have and must-set key exists, since a typo would skip its test
-on every cluster.
+on every cluster. `TestMySQLClusterDeclaresGTIDTag` covers the MySQL GTID tag gate.
+`TestConsistencyChecksUseBenchTable` refuses a regtest that checks a literal table instead of
+`BenchTable()`.

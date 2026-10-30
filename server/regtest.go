@@ -79,6 +79,7 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 	for key, test := range allTests {
 		var res bool
 		testStart := time.Now()
+		test.SkipReason = "" // a result read back from tests.json carries the last run's
 		testConfig := startConfig
 		if testExp == "SUITE" && repman.regtestReporting(cl) {
 			testConfig = regtestFileTOML(test.ConfigFile)
@@ -474,6 +475,16 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 			res = regtest.TestAppMonitorHTTP(cl, test.ConfigFile, &test)
 		}
 
+		// A test that finds nothing to exercise on this cluster says why (test.SkipReason):
+		// SKIP, not reported, as a target missed (a rolling upgrade with no newer release
+		// passed without upgrading anything, #2228).
+		if test.SkipReason != "" {
+			cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "TEST", "Skip %s: %s", test.Name, test.SkipReason)
+			test.Result = regtest.GetTestSkipLabel()
+			closeTest()
+			allTests[key] = test
+			continue
+		}
 		test.Result = regtest.GetTestResultLabel(res)
 		// the setup is read before the suite closes its test cluster
 		reported = append(reported, regtestReportedTest{Setup: regtestSetupOf(cl, test), Test: test.Name, Result: test.Result, Duration: time.Since(testStart), ClusterTOML: testConfig})

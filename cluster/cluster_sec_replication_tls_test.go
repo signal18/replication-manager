@@ -71,6 +71,7 @@ func TestReplicationTLSFor(t *testing.T) {
 		{"configured certificate, replication-use-ssl off: channel kept", config.ConstOrchestratorOnPremise, nil, corp, false, "11.8.6", with(map[string]string{"SSL_CERT": "/c.pem"}), tlsOn, ReplicationTLS{}},
 		{"provisioned with the ssl tag: shipped CA", config.ConstOrchestratorOpenSVC, []string{"ssl"}, "", true, "12.3.3", with(map[string]string{"SSL_CERT": "/etc/mysql/ssl/server-cert.pem", "SSL_CA": shipped}), tlsOn, ReplicationTLS{CA: shipped}},
 		{"replica CA equal to the primary's", config.ConstOrchestratorOnPremise, nil, "", true, "11.8.6", with(map[string]string{"SSL_CERT": "/c.pem", "SSL_CA": corp}), with(map[string]string{"SSL_CA": corp}), ReplicationTLS{CA: corp}},
+		{"MySQL auto-generated certificates: same relative ca.pem on every node, CA emptied (#2218)", config.ConstOrchestratorOpenSVC, nil, "", true, "11.8.6", with(map[string]string{"SSL_CERT": "server-cert.pem", "SSL_CA": "ca.pem"}), with(map[string]string{"SSL_CA": "ca.pem"}), ReplicationTLS{ClearCA: true}},
 		{"replica CA differs from the primary's: channel kept", config.ConstOrchestratorOnPremise, nil, "", true, "11.8.6", with(map[string]string{"SSL_CERT": "/c.pem", "SSL_CA": corp}), with(map[string]string{"SSL_CA": "/other.pem"}), ReplicationTLS{}},
 	}
 	for _, tc := range cases {
